@@ -2,6 +2,7 @@ use std::{
     collections::{btree_map::Entry, BTreeMap, BTreeSet},
     convert::TryInto,
 };
+use tracing::error;
 
 use crate::{
     data_access_layer::balance::{BalanceHolds, BalanceHoldsWithProof},
@@ -12,10 +13,16 @@ use casper_types::{
     account::AccountHash,
     addressable_entity::NamedKeys,
     global_state::TrieMerkleProof,
-    system::mint::{BalanceHoldAddr, BalanceHoldAddrTag},
+    system::{
+        mint::{
+            BalanceHoldAddr, BalanceHoldAddrTag, MINT_GAS_HOLD_HANDLING_KEY,
+            MINT_GAS_HOLD_INTERVAL_KEY,
+        },
+        MINT,
+    },
     BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash, CLValue, ChecksumRegistry, EntityAddr,
-    HoldsEpoch, Key, KeyTag, Motes, Package, PackageHash, StoredValue, StoredValueTypeMismatch,
-    SystemEntityRegistry, URef, URefAddr, U512,
+    HoldBalanceHandling, HoldsEpoch, Key, KeyTag, Motes, Package, PackageHash, StoredValue,
+    StoredValueTypeMismatch, SystemEntityRegistry, URef, URefAddr, U512,
 };
 
 /// Higher-level operations on the state via a `TrackingCopy`.
@@ -25,6 +32,12 @@ pub trait TrackingCopyExt<R> {
 
     /// Reads the entity key for a given account hash.
     fn read_account_key(&mut self, account_hash: AccountHash) -> Result<Key, Self::Error>;
+
+    /// Returns balance hold configuration settings for imputed kind of balance hold.
+    fn get_balance_hold_config(
+        &mut self,
+        hold_kind: BalanceHoldAddrTag,
+    ) -> Result<(HoldBalanceHandling, u64), Self::Error>;
 
     /// Gets the purse balance key for a given purse.
     fn get_purse_balance_key(&self, purse_key: Key) -> Result<Key, Self::Error>;
@@ -110,6 +123,74 @@ where
             )),
             None => Err(TrackingCopyError::KeyNotFound(account_key)),
         }
+    }
+
+    fn get_balance_hold_config(
+        &mut self,
+        hold_kind: BalanceHoldAddrTag,
+    ) -> Result<(HoldBalanceHandling, u64), Self::Error> {
+        let (handling_key, interval_key) = match hold_kind {
+            BalanceHoldAddrTag::Processing => return Ok((HoldBalanceHandling::Accrued, 0)),
+            BalanceHoldAddrTag::Gas => (MINT_GAS_HOLD_HANDLING_KEY, MINT_GAS_HOLD_INTERVAL_KEY),
+        };
+
+        let system_contract_registry = self.get_system_entity_registry()?;
+
+        let entity_hash = system_contract_registry.get(MINT).ok_or_else(|| {
+            error!("Missing system mint contract hash");
+            TrackingCopyError::MissingSystemContractHash(MINT.to_string())
+        })?;
+
+        let named_keys = self.get_named_keys(EntityAddr::System(entity_hash.value()))?;
+
+        // get the handling
+        let handling = {
+            let named_key =
+                named_keys
+                    .get(handling_key)
+                    .ok_or(TrackingCopyError::NamedKeyNotFound(
+                        handling_key.to_string(),
+                    ))?;
+            let _uref = named_key
+                .as_uref()
+                .ok_or(TrackingCopyError::UnexpectedKeyVariant(*named_key))?;
+
+            match self.read(named_key) {
+                Ok(Some(StoredValue::CLValue(cl_value))) => {
+                    let handling_tag = cl_value.into_t().map_err(TrackingCopyError::CLValue)?;
+                    HoldBalanceHandling::from_tag(handling_tag).map_err(|_| {
+                        TrackingCopyError::ValueNotFound(
+                            "No hold balance handling variant matches stored tag".to_string(),
+                        )
+                    })?
+                }
+                Ok(_) => return Err(TrackingCopyError::UnexpectedStoredValueVariant),
+                Err(tce) => return Err(tce),
+            }
+        };
+
+        // get the interval.
+        let interval = {
+            let named_key =
+                named_keys
+                    .get(interval_key)
+                    .ok_or(TrackingCopyError::NamedKeyNotFound(
+                        interval_key.to_string(),
+                    ))?;
+            let _uref = named_key
+                .as_uref()
+                .ok_or(TrackingCopyError::UnexpectedKeyVariant(*named_key))?;
+
+            match self.read(named_key) {
+                Ok(Some(StoredValue::CLValue(cl_value))) => {
+                    cl_value.into_t().map_err(TrackingCopyError::CLValue)?
+                }
+                Ok(_) => return Err(TrackingCopyError::UnexpectedStoredValueVariant),
+                Err(tce) => return Err(tce),
+            }
+        };
+
+        Ok((handling, interval))
     }
 
     fn get_purse_balance_key(&self, purse_key: Key) -> Result<Key, Self::Error> {

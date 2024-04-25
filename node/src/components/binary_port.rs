@@ -10,14 +10,17 @@ use std::{convert::TryFrom, net::SocketAddr, sync::Arc};
 
 use bytes::Bytes;
 use casper_binary_port::{
-    BinaryRequest, BinaryRequestHeader, BinaryRequestTag, BinaryResponse, BinaryResponseAndRequest,
-    DictionaryItemIdentifier, DictionaryQueryResult, ErrorCode, GetRequest, GetTrieFullResult,
-    GlobalStateQueryResult, GlobalStateRequest, InformationRequest, InformationRequestTag,
-    NodeStatus, PayloadType, ReactorStateName, RecordId, TransactionWithExecutionInfo,
+    BalanceResponse, BinaryRequest, BinaryRequestHeader, BinaryRequestTag, BinaryResponse,
+    BinaryResponseAndRequest, DictionaryItemIdentifier, DictionaryQueryResult, ErrorCode,
+    GetRequest, GetTrieFullResult, GlobalStateQueryResult, GlobalStateRequest, InformationRequest,
+    InformationRequestTag, NodeStatus, PayloadType, PurseIdentifier, ReactorStateName, RecordId,
+    TransactionWithExecutionInfo,
 };
 use casper_storage::{
     data_access_layer::{
+        balance::BalanceHandling,
         tagged_values::{TaggedValuesRequest, TaggedValuesResult, TaggedValuesSelection},
+        BalanceIdentifier, BalanceRequest, BalanceResult, ProofHandling, ProofsResult,
         QueryRequest, QueryResult, TrieRequest,
     },
     global_state::trie::TrieRaw,
@@ -25,8 +28,8 @@ use casper_storage::{
 use casper_types::{
     addressable_entity::NamedKeyAddr,
     bytesrepr::{self, FromBytes, ToBytes},
-    BlockIdentifier, Digest, EntityAddr, GlobalStateIdentifier, Key, Peers, ProtocolVersion,
-    SignedBlock, StoredValue, TimeDiff, Transaction,
+    BlockHeader, BlockIdentifier, Chainspec, Digest, EntityAddr, GlobalStateIdentifier, HoldsEpoch,
+    Key, Peers, ProtocolVersion, SignedBlock, StoredValue, TimeDiff, Timestamp, Transaction,
 };
 
 use datasize::DataSize;
@@ -75,6 +78,8 @@ const COMPONENT_NAME: &str = "binary_port";
 pub(crate) struct BinaryPort {
     state: ComponentState,
     config: Arc<Config>,
+    /// The chainspec.
+    chainspec: Arc<Chainspec>,
     #[data_size(skip)]
     connection_limit: Arc<Semaphore>,
     #[data_size(skip)]
@@ -88,11 +93,16 @@ pub(crate) struct BinaryPort {
 }
 
 impl BinaryPort {
-    pub(crate) fn new(config: Config, registry: &Registry) -> Result<Self, prometheus::Error> {
+    pub(crate) fn new(
+        config: Config,
+        chainspec: Arc<Chainspec>,
+        registry: &Registry,
+    ) -> Result<Self, prometheus::Error> {
         Ok(Self {
             state: ComponentState::Uninitialized,
             connection_limit: Arc::new(Semaphore::new(config.max_connections)),
             config: Arc::new(config),
+            chainspec,
             metrics: Arc::new(Metrics::new(registry)?),
             local_addr: Arc::new(OnceCell::new()),
             shutdown_trigger: Arc::new(Notify::new()),
@@ -113,6 +123,7 @@ async fn handle_request<REv>(
     req: BinaryRequest,
     effect_builder: EffectBuilder<REv>,
     config: &Config,
+    chainspec: &Chainspec,
     metrics: &Metrics,
 ) -> BinaryResponse
 where
@@ -148,7 +159,15 @@ where
             try_speculative_execution(effect_builder, transaction, protocol_version).await
         }
         BinaryRequest::Get(get_req) => {
-            handle_get_request(get_req, effect_builder, config, metrics, protocol_version).await
+            handle_get_request(
+                get_req,
+                effect_builder,
+                config,
+                chainspec,
+                metrics,
+                protocol_version,
+            )
+            .await
         }
     }
 }
@@ -157,6 +176,7 @@ async fn handle_get_request<REv>(
     get_req: GetRequest,
     effect_builder: EffectBuilder<REv>,
     config: &Config,
+    chainspec: &Chainspec,
     metrics: &Metrics,
     protocol_version: ProtocolVersion,
 ) -> BinaryResponse
@@ -226,7 +246,7 @@ where
         }
         GetRequest::State(req) => {
             metrics.binary_port_get_state_count.inc();
-            handle_state_request(effect_builder, req, protocol_version, config).await
+            handle_state_request(effect_builder, *req, protocol_version, config, chainspec).await
         }
     }
 }
@@ -262,9 +282,13 @@ async fn handle_state_request<REv>(
     request: GlobalStateRequest,
     protocol_version: ProtocolVersion,
     config: &Config,
+    chainspec: &Chainspec,
 ) -> BinaryResponse
 where
-    REv: From<Event> + From<ContractRuntimeRequest> + From<StorageRequest>,
+    REv: From<Event>
+        + From<ContractRuntimeRequest>
+        + From<StorageRequest>
+        + From<ReactorInfoRequest>,
 {
     match request {
         GlobalStateRequest::Item {
@@ -381,6 +405,41 @@ where
                 Err(err) => BinaryResponse::new_error(err, protocol_version),
             }
         }
+        GlobalStateRequest::BalanceByBlock {
+            block_identifier,
+            purse_identifier,
+        } => {
+            let Some(header) = resolve_block_header(effect_builder, block_identifier).await else {
+                return BinaryResponse::new_empty(protocol_version);
+            };
+            get_balance(
+                effect_builder,
+                *header.state_root_hash(),
+                header.timestamp(),
+                purse_identifier,
+                protocol_version,
+                chainspec.core_config.gas_hold_interval,
+            )
+            .await
+        }
+        GlobalStateRequest::BalanceByStateRoot {
+            state_identifier,
+            purse_identifier,
+            timestamp,
+        } => {
+            let Some(state_root_hash) = resolve_state_root_hash(effect_builder, state_identifier).await else {
+                return BinaryResponse::new_empty(protocol_version);
+            };
+            get_balance(
+                effect_builder,
+                state_root_hash,
+                timestamp,
+                purse_identifier,
+                protocol_version,
+                chainspec.core_config.gas_hold_interval,
+            )
+            .await
+        }
     }
 }
 
@@ -460,6 +519,71 @@ where
     }
 }
 
+async fn get_balance<REv>(
+    effect_builder: EffectBuilder<REv>,
+    state_root_hash: Digest,
+    timestamp: Timestamp,
+    purse_identifier: PurseIdentifier,
+    protocol_version: ProtocolVersion,
+    gas_hold_interval: TimeDiff,
+) -> BinaryResponse
+where
+    REv: From<Event>
+        + From<StorageRequest>
+        + From<ContractRuntimeRequest>
+        + From<ReactorInfoRequest>,
+{
+    let balance_id = match purse_identifier {
+        PurseIdentifier::Payment => BalanceIdentifier::Payment,
+        PurseIdentifier::Accumulate => BalanceIdentifier::Accumulate,
+        PurseIdentifier::Purse(uref) => BalanceIdentifier::Purse(uref),
+        PurseIdentifier::PublicKey(pub_key) => BalanceIdentifier::Public(pub_key),
+        PurseIdentifier::Account(account) => BalanceIdentifier::Account(account),
+        PurseIdentifier::Entity(entity) => BalanceIdentifier::Entity(entity),
+    };
+    let balance_handling = BalanceHandling::Available {
+        holds_epoch: HoldsEpoch::from_timestamp(timestamp, gas_hold_interval),
+    };
+
+    let balance_req = BalanceRequest::new(
+        state_root_hash,
+        timestamp.into(),
+        protocol_version,
+        balance_id,
+        balance_handling,
+        ProofHandling::Proofs,
+    );
+    match effect_builder.get_balance(balance_req).await {
+        BalanceResult::RootNotFound => {
+            BinaryResponse::new_error(ErrorCode::RootNotFound, protocol_version)
+        }
+        BalanceResult::Success {
+            total_balance,
+            available_balance,
+            proofs_result,
+            ..
+        } => {
+            let ProofsResult::Proofs {
+                total_balance_proof,
+                balance_holds,
+            } = proofs_result else {
+                warn!("binary port received no proofs for a balance request with proofs");
+                return BinaryResponse::new_error(ErrorCode::InternalError, protocol_version);
+            };
+            let response = BalanceResponse {
+                total_balance,
+                available_balance,
+                total_balance_proof,
+                balance_holds,
+            };
+            BinaryResponse::from_value(response, protocol_version)
+        }
+        BalanceResult::Failure(_) => {
+            BinaryResponse::new_error(ErrorCode::FailedQuery, protocol_version)
+        }
+    }
+}
+
 async fn get_global_state_item<REv>(
     effect_builder: EffectBuilder<REv>,
     state_root_hash: Digest,
@@ -501,12 +625,7 @@ where
 {
     match req {
         InformationRequest::BlockHeader(identifier) => {
-            let Some(height) = resolve_block_height(effect_builder, identifier).await else {
-                return BinaryResponse::new_empty(protocol_version);
-            };
-            let maybe_header = effect_builder
-                .get_block_header_at_height_from_storage(height, true)
-                .await;
+            let maybe_header = resolve_block_header(effect_builder, identifier).await;
             BinaryResponse::from_option(maybe_header, protocol_version)
         }
         InformationRequest::SignedBlock(identifier) => {
@@ -890,6 +1009,32 @@ fn new_rpc_builder(config: &Config) -> RpcBuilder<1> {
     RpcBuilder::new(io_builder)
 }
 
+async fn resolve_block_header<REv>(
+    effect_builder: EffectBuilder<REv>,
+    block_identifier: Option<BlockIdentifier>,
+) -> Option<BlockHeader>
+where
+    REv: From<Event> + From<ContractRuntimeRequest> + From<StorageRequest>,
+{
+    match block_identifier {
+        Some(BlockIdentifier::Hash(block_hash)) => {
+            effect_builder
+                .get_block_header_from_storage(block_hash, true)
+                .await
+        }
+        Some(BlockIdentifier::Height(block_height)) => {
+            effect_builder
+                .get_block_header_at_height_from_storage(block_height, true)
+                .await
+        }
+        None => {
+            effect_builder
+                .get_highest_complete_block_header_from_storage()
+                .await
+        }
+    }
+}
+
 async fn resolve_block_height<REv>(
     effect_builder: EffectBuilder<REv>,
     block_identifier: Option<BlockIdentifier>,
@@ -1012,10 +1157,12 @@ where
                 }
                 Event::HandleRequest { request, responder } => {
                     let config = Arc::clone(&self.config);
+                    let chainspec = Arc::clone(&self.chainspec);
                     let metrics = Arc::clone(&self.metrics);
                     async move {
                         let response =
-                            handle_request(request, effect_builder, &config, &metrics).await;
+                            handle_request(request, effect_builder, &config, &chainspec, &metrics)
+                                .await;
                         responder.respond(response).await
                     }
                     .ignore()

@@ -501,7 +501,7 @@ dependencies = [
  "casper-execution-engine",
  "casper-storage",
  "casper-types",
- "env_logger 0.10.0",
+ "env_logger",
  "filesize",
  "humantime",
  "lmdb-rkv",
@@ -595,23 +595,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "casper-json-rpc"
-version = "1.1.0"
-dependencies = [
- "bytes",
- "env_logger 0.9.3",
- "futures",
- "http",
- "hyper",
- "itertools 0.10.5",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
- "warp",
-]
-
-[[package]]
 name = "casper-node"
 version = "2.0.0"
 dependencies = [
@@ -628,7 +611,6 @@ dependencies = [
  "bytes",
  "casper-binary-port",
  "casper-execution-engine",
- "casper-json-rpc",
  "casper-storage",
  "casper-types",
  "datasize",
@@ -1930,19 +1912,6 @@ dependencies = [
  "proc-macro2 1.0.66",
  "quote 1.0.32",
  "syn 2.0.28",
-]
-
-[[package]]
-name = "env_logger"
-version = "0.9.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a12e6657c4c97ebab115a42dcee77225f7f482cdd841cf7088c657a42e9e00e7"
-dependencies = [
- "atty",
- "humantime",
- "log",
- "regex",
- "termcolor",
 ]
 
 [[package]]

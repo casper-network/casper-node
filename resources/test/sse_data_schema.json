@@ -1699,9 +1699,7 @@
             "Reserved": {
               "type": "object",
               "required": [
-                "paid_amount",
-                "receipt",
-                "strike_price"
+                "receipt"
               ],
               "properties": {
                 "receipt": {
@@ -1711,18 +1709,6 @@
                       "$ref": "#/definitions/Digest"
                     }
                   ]
-                },
-                "paid_amount": {
-                  "description": "Price paid in the past to reserve space in a future block.",
-                  "type": "integer",
-                  "format": "uint64",
-                  "minimum": 0.0
-                },
-                "strike_price": {
-                  "description": "The gas price at the time of reservation.",
-                  "type": "integer",
-                  "format": "uint8",
-                  "minimum": 0.0
                 }
               },
               "additionalProperties": false
@@ -3920,6 +3906,19 @@
             }
           },
           "additionalProperties": false
+        },
+        {
+          "description": "A reservation record.",
+          "type": "object",
+          "required": [
+            "Reservation"
+          ],
+          "properties": {
+            "Reservation": {
+              "$ref": "#/definitions/ReservationKind"
+            }
+          },
+          "additionalProperties": false
         }
       ]
     },
@@ -4783,6 +4782,28 @@
         }
       }
     },
+    "ReservationKind": {
+      "description": "Container for bytes recording location, type and data for a gas reservation",
+      "type": "object",
+      "required": [
+        "receipt",
+        "reservation_data",
+        "reservation_kind"
+      ],
+      "properties": {
+        "receipt": {
+          "$ref": "#/definitions/Digest"
+        },
+        "reservation_kind": {
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0.0
+        },
+        "reservation_data": {
+          "$ref": "#/definitions/Bytes"
+        }
+      }
+    },
     "TransformError": {
       "description": "Error type for applying and combining transforms.\n\nA `TypeMismatch` occurs when a transform cannot be applied because the types are not compatible (e.g. trying to add a number to a string).",
       "oneOf": [
@@ -4942,45 +4963,18 @@
     },
     "EntityAddr": {
       "description": "The address for an AddressableEntity which contains the 32 bytes and tagging information.",
-      "oneOf": [
+      "anyOf": [
         {
           "description": "The address for a system entity account or contract.",
-          "type": "object",
-          "required": [
-            "System"
-          ],
-          "properties": {
-            "System": {
-              "type": "string"
-            }
-          },
-          "additionalProperties": false
+          "type": "string"
         },
         {
           "description": "The address of an entity that corresponds to an Account.",
-          "type": "object",
-          "required": [
-            "Account"
-          ],
-          "properties": {
-            "Account": {
-              "type": "string"
-            }
-          },
-          "additionalProperties": false
+          "type": "string"
         },
         {
           "description": "The address of an entity that corresponds to a Userland smart contract.",
-          "type": "object",
-          "required": [
-            "SmartContract"
-          ],
-          "properties": {
-            "SmartContract": {
-              "type": "string"
-            }
-          },
-          "additionalProperties": false
+          "type": "string"
         }
       ]
     },

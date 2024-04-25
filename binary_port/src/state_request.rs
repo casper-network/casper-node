@@ -5,8 +5,10 @@ use rand::Rng;
 
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    Digest, GlobalStateIdentifier, Key, KeyTag,
+    BlockIdentifier, Digest, GlobalStateIdentifier, Key, KeyTag, Timestamp,
 };
+
+use crate::PurseIdentifier;
 
 use super::dictionary_item_identifier::DictionaryItemIdentifier;
 
@@ -14,6 +16,8 @@ const ITEM_TAG: u8 = 0;
 const ALL_ITEMS_TAG: u8 = 1;
 const TRIE_TAG: u8 = 2;
 const DICTIONARY_ITEM_TAG: u8 = 3;
+const BALANCE_BY_BLOCK_TAG: u8 = 4;
+const BALANCE_BY_STATE_ROOT_TAG: u8 = 5;
 
 /// A request to get data from the global state.
 #[derive(Clone, Debug, PartialEq)]
@@ -46,52 +50,66 @@ pub enum GlobalStateRequest {
         /// Dictionary item identifier.
         identifier: DictionaryItemIdentifier,
     },
+    /// Get balance by block and purse.
+    BalanceByBlock {
+        /// Block identifier, `None` means "latest block".
+        block_identifier: Option<BlockIdentifier>,
+        /// Purse identifier.
+        purse_identifier: PurseIdentifier,
+    },
+    /// Get balance by state root and purse.
+    BalanceByStateRoot {
+        /// Global state identifier, `None` means "latest block state".
+        state_identifier: Option<GlobalStateIdentifier>,
+        /// Purse identifier.
+        purse_identifier: PurseIdentifier,
+        /// Timestamp used for holds lookup.
+        timestamp: Timestamp,
+    },
 }
 
 impl GlobalStateRequest {
     #[cfg(test)]
     pub(crate) fn random(rng: &mut TestRng) -> Self {
-        match TestRng::gen_range(rng, 0..4) {
-            0 => {
+        match TestRng::gen_range(rng, 0..5) {
+            ITEM_TAG => {
                 let path_count = rng.gen_range(10..20);
-                let state_identifier = if rng.gen() {
-                    Some(GlobalStateIdentifier::random(rng))
-                } else {
-                    None
-                };
                 GlobalStateRequest::Item {
-                    state_identifier,
+                    state_identifier: rng
+                        .gen::<bool>()
+                        .then(|| GlobalStateIdentifier::random(rng)),
                     base_key: rng.gen(),
                     path: std::iter::repeat_with(|| rng.random_string(32..64))
                         .take(path_count)
                         .collect(),
                 }
             }
-            1 => {
-                let state_identifier = if rng.gen() {
-                    Some(GlobalStateIdentifier::random(rng))
-                } else {
-                    None
-                };
-                GlobalStateRequest::AllItems {
-                    state_identifier,
-                    key_tag: KeyTag::random(rng),
-                }
-            }
-            2 => GlobalStateRequest::Trie {
+            ALL_ITEMS_TAG => GlobalStateRequest::AllItems {
+                state_identifier: rng
+                    .gen::<bool>()
+                    .then(|| GlobalStateIdentifier::random(rng)),
+                key_tag: KeyTag::random(rng),
+            },
+            TRIE_TAG => GlobalStateRequest::Trie {
                 trie_key: Digest::random(rng),
             },
-            3 => {
-                let state_identifier = if rng.gen() {
-                    Some(GlobalStateIdentifier::random(rng))
-                } else {
-                    None
-                };
-                GlobalStateRequest::DictionaryItem {
-                    state_identifier,
-                    identifier: DictionaryItemIdentifier::random(rng),
-                }
-            }
+            DICTIONARY_ITEM_TAG => GlobalStateRequest::DictionaryItem {
+                state_identifier: rng
+                    .gen::<bool>()
+                    .then(|| GlobalStateIdentifier::random(rng)),
+                identifier: DictionaryItemIdentifier::random(rng),
+            },
+            BALANCE_BY_BLOCK_TAG => GlobalStateRequest::BalanceByBlock {
+                block_identifier: rng.gen::<bool>().then(|| BlockIdentifier::random(rng)),
+                purse_identifier: PurseIdentifier::random(rng),
+            },
+            BALANCE_BY_STATE_ROOT_TAG => GlobalStateRequest::BalanceByStateRoot {
+                state_identifier: rng
+                    .gen::<bool>()
+                    .then(|| GlobalStateIdentifier::random(rng)),
+                purse_identifier: PurseIdentifier::random(rng),
+                timestamp: Timestamp::random(rng),
+            },
             _ => unreachable!(),
         }
     }
@@ -136,6 +154,24 @@ impl ToBytes for GlobalStateRequest {
                 state_identifier.write_bytes(writer)?;
                 identifier.write_bytes(writer)
             }
+            GlobalStateRequest::BalanceByBlock {
+                block_identifier,
+                purse_identifier,
+            } => {
+                BALANCE_BY_BLOCK_TAG.write_bytes(writer)?;
+                block_identifier.write_bytes(writer)?;
+                purse_identifier.write_bytes(writer)
+            }
+            GlobalStateRequest::BalanceByStateRoot {
+                state_identifier,
+                purse_identifier,
+                timestamp,
+            } => {
+                BALANCE_BY_STATE_ROOT_TAG.write_bytes(writer)?;
+                state_identifier.write_bytes(writer)?;
+                purse_identifier.write_bytes(writer)?;
+                timestamp.write_bytes(writer)
+            }
         }
     }
 
@@ -160,6 +196,19 @@ impl ToBytes for GlobalStateRequest {
                     state_identifier,
                     identifier,
                 } => state_identifier.serialized_length() + identifier.serialized_length(),
+                GlobalStateRequest::BalanceByBlock {
+                    block_identifier,
+                    purse_identifier,
+                } => block_identifier.serialized_length() + purse_identifier.serialized_length(),
+                GlobalStateRequest::BalanceByStateRoot {
+                    state_identifier,
+                    purse_identifier,
+                    timestamp,
+                } => {
+                    state_identifier.serialized_length()
+                        + purse_identifier.serialized_length()
+                        + timestamp.serialized_length()
+                }
             }
     }
 }
@@ -203,6 +252,30 @@ impl FromBytes for GlobalStateRequest {
                     GlobalStateRequest::DictionaryItem {
                         state_identifier,
                         identifier,
+                    },
+                    remainder,
+                ))
+            }
+            BALANCE_BY_BLOCK_TAG => {
+                let (block_identifier, remainder) = FromBytes::from_bytes(remainder)?;
+                let (purse_identifier, remainder) = FromBytes::from_bytes(remainder)?;
+                Ok((
+                    GlobalStateRequest::BalanceByBlock {
+                        block_identifier,
+                        purse_identifier,
+                    },
+                    remainder,
+                ))
+            }
+            BALANCE_BY_STATE_ROOT_TAG => {
+                let (state_identifier, remainder) = FromBytes::from_bytes(remainder)?;
+                let (purse_identifier, remainder) = FromBytes::from_bytes(remainder)?;
+                let (timestamp, remainder) = FromBytes::from_bytes(remainder)?;
+                Ok((
+                    GlobalStateRequest::BalanceByStateRoot {
+                        state_identifier,
+                        purse_identifier,
+                        timestamp,
                     },
                     remainder,
                 ))

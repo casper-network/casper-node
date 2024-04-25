@@ -70,7 +70,7 @@ strict_argument_checking = false
 # Number of simultaneous peer requests.
 simultaneous_peer_requests = 5
 # The consensus protocol to use. Options are "Zug" and "Highway".
-consensus_protocol = 'Highway'
+consensus_protocol = 'Zug'
 # The maximum amount of delegators per validator.
 max_delegators_per_validator = 1200
 # The split in finality signature rewards between block producer and participating signers.
@@ -106,7 +106,7 @@ refund_handling = { type = 'no_refund' }
 #                 administrator accounts
 #   'burn': fees are burned
 fee_handling = { type = 'no_fee' }
-# Defines how fees are handled.
+# Defines how pricing is handled.
 #
 # Valid options are:
 #   'classic': senders of transaction self-specify how much they pay.
@@ -117,9 +117,28 @@ pricing_handling = { type = 'fixed' }
 # execution? Currently not supported.
 #
 allow_reservations = false
+# Defines how gas holds affect available balance calculations.
 #
-# How long does it take for a balance hold to fade away?
-balance_hold_interval = '24 hours'
+# Valid options are:
+#   'accrued': sum of full value of all non-expired holds.
+#   'amortized': sum of each hold is amortized over the time remaining until expiry.
+#
+# For instance, if 12 hours remained on a gas hold with a 24-hour `gas_hold_interval`,
+#   with accrued, the full hold amount would be applied
+#   with amortized, half the hold amount would be applied
+gas_hold_balance_handling = { type = 'accrued' }
+# Defines how long gas holds last.
+#
+# If fee_handling is set to 'no_fee', the system places a balance hold on the payer
+# equal to the value the fee would have been. Such balance holds expire after a time
+# interval has elapsed. This setting controls how long that interval is. The available
+# balance of a purse equals its total balance minus the held amount(s) of non-expired
+# holds (see gas_hold_balance_handling setting for details of how that is calculated).
+#
+# For instance, if gas_hold_interval is 24 hours and 100 gas is used from a purse,
+# a hold for 100 is placed on that purse and is considered when calculating total balance
+# for 24 hours starting from the block_time when the hold was placed.
+gas_hold_interval = '24 hours'
 # List of public keys of administrator accounts. Setting this option makes only on private chains which require
 # administrator accounts for regulatory reasons.
 administrators = []

@@ -32,8 +32,8 @@ use casper_types::{
     execution::ExecutionResult, Approval, AvailableBlockRange, Block, BlockHash, BlockHeader,
     BlockSignatures, BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest,
     DisplayIter, EraId, ExecutionInfo, FinalitySignature, FinalitySignatureId, Key, NextUpgrade,
-    ProtocolVersion, PublicKey, Timestamp, Transaction, TransactionHash, TransactionHeader,
-    TransactionId, Transfer,
+    ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transaction, TransactionHash,
+    TransactionHeader, TransactionId, Transfer,
 };
 
 use super::{AutoClosingResponder, GossipTarget, Responder};
@@ -1054,6 +1054,9 @@ pub(crate) enum ReactorInfoRequest {
     ProtocolVersion {
         responder: Responder<ProtocolVersion>,
     },
+    BalanceHoldsInterval {
+        responder: Responder<TimeDiff>,
+    },
 }
 
 impl Display for ReactorInfoRequest {
@@ -1067,6 +1070,7 @@ impl Display for ReactorInfoRequest {
                 ReactorInfoRequest::Uptime { .. } => "Uptime",
                 ReactorInfoRequest::NetworkName { .. } => "NetworkName",
                 ReactorInfoRequest::ProtocolVersion { .. } => "ProtocolVersion",
+                ReactorInfoRequest::BalanceHoldsInterval { .. } => "BalanceHoldsInterval",
             }
         )
     }

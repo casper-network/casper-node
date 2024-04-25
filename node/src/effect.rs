@@ -132,8 +132,8 @@ use casper_types::{
     Approval, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures,
     BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest, EraId, ExecutionInfo,
     FinalitySignature, FinalitySignatureId, FinalitySignatureV2, Key, NextUpgrade, Package,
-    ProtocolVersion, PublicKey, Timestamp, Transaction, TransactionHash, TransactionHeader,
-    TransactionId, Transfer, U512,
+    ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transaction, TransactionHash,
+    TransactionHeader, TransactionId, Transfer, U512,
 };
 
 use crate::{
@@ -1524,6 +1524,18 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| ReactorInfoRequest::ProtocolVersion { responder },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    #[allow(unused)]
+    pub(crate) async fn get_balance_holds_interval(self) -> TimeDiff
+    where
+        REv: From<ReactorInfoRequest>,
+    {
+        self.make_request(
+            |responder| ReactorInfoRequest::BalanceHoldsInterval { responder },
             QueueKind::Regular,
         )
         .await

@@ -766,7 +766,8 @@ impl reactor::Reactor for Reactor {
                         BalanceIdentifier::Refund => {
                             responder
                                 .respond(BalanceResult::Failure(
-                                    TrackingCopyError::NamedKeyNotFound("refund".to_string()),
+                                    TrackingCopyError::NamedKeyNotFound("refund".to_string())
+                                        .into(),
                                 ))
                                 .ignore::<Self::Event>();
                             return Effects::new();
@@ -774,7 +775,8 @@ impl reactor::Reactor for Reactor {
                         BalanceIdentifier::Payment => {
                             responder
                                 .respond(BalanceResult::Failure(
-                                    TrackingCopyError::NamedKeyNotFound("payment".to_string()),
+                                    TrackingCopyError::NamedKeyNotFound("payment".to_string())
+                                        .into(),
                                 ))
                                 .ignore::<Self::Event>();
                             return Effects::new();
@@ -782,7 +784,8 @@ impl reactor::Reactor for Reactor {
                         BalanceIdentifier::Accumulate => {
                             responder
                                 .respond(BalanceResult::Failure(
-                                    TrackingCopyError::NamedKeyNotFound("accumulate".to_string()),
+                                    TrackingCopyError::NamedKeyNotFound("accumulate".to_string())
+                                        .into(),
                                 ))
                                 .ignore::<Self::Event>();
                             return Effects::new();
@@ -793,7 +796,7 @@ impl reactor::Reactor for Reactor {
                         None => {
                             responder
                                 .respond(BalanceResult::Failure(
-                                    TrackingCopyError::UnexpectedKeyVariant(key),
+                                    TrackingCopyError::UnexpectedKeyVariant(key).into(),
                                 ))
                                 .ignore::<Self::Event>();
                             return Effects::new();
