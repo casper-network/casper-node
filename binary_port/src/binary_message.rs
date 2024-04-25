@@ -16,7 +16,7 @@ pub struct BinaryMessage(Vec<u8>);
 
 impl BinaryMessage {
     pub fn new(payload: Vec<u8>) -> Self {
-        BinaryMessage(payload)
+        Self(payload)
     }
 
     pub fn payload(&self) -> &[u8] {
