@@ -372,7 +372,6 @@ impl From<&Chainspec> for GenesisConfig {
             .with_genesis_timestamp_millis(genesis_timestamp_millis)
             .with_gas_hold_balance_handling(gas_hold_balance_handling)
             .with_gas_hold_interval_millis(gas_hold_interval_millis)
-            .with_gas_hold_balance_handling(gas_hold_balance_handling)
             .build()
     }
 }
