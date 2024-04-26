@@ -14,8 +14,8 @@ use casper_types::{
     account::AccountHash,
     addressable_entity::{NamedKeyAddr, NamedKeyValue},
     system::handle_payment::Error,
-    AccessRights, AddressableEntityHash, CLValue, FeeHandling, GrantedAccess, HoldsEpoch, Key,
-    Phase, RefundHandling, StoredValue, TransferredTo, URef, U512,
+    AccessRights, AddressableEntityHash, CLValue, FeeHandling, GrantedAccess, Key, Phase,
+    RefundHandling, StoredValue, TransferredTo, URef, U512,
 };
 use std::collections::BTreeSet;
 use tracing::error;
@@ -102,14 +102,7 @@ where
         amount: U512,
     ) -> Result<(), Error> {
         // system purses do not have holds on them
-        match self.transfer(
-            None,
-            source,
-            target,
-            amount,
-            None,
-            HoldsEpoch::NOT_APPLICABLE,
-        ) {
+        match self.transfer(None, source, target, amount, None) {
             Ok(ret) => Ok(ret),
             Err(err) => {
                 error!("{}", err);
@@ -118,12 +111,8 @@ where
         }
     }
 
-    fn available_balance(
-        &mut self,
-        purse: URef,
-        holds_epoch: HoldsEpoch,
-    ) -> Result<Option<U512>, Error> {
-        match <Self as Mint>::balance(self, purse, holds_epoch) {
+    fn available_balance(&mut self, purse: URef) -> Result<Option<U512>, Error> {
+        match <Self as Mint>::balance(self, purse) {
             Ok(ret) => Ok(ret),
             Err(err) => {
                 error!("{}", err);

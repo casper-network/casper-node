@@ -3,7 +3,7 @@ use crate::{
     tracking_copy::TrackingCopyError,
 };
 use casper_types::{
-    execution::Effects, Digest, HoldsEpoch, InitiatorAddr, ProtocolVersion, TransactionHash, U512,
+    execution::Effects, Digest, InitiatorAddr, ProtocolVersion, TransactionHash, U512,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -13,7 +13,6 @@ pub enum HandleFeeMode {
         source: Box<BalanceIdentifier>,
         target: Box<BalanceIdentifier>,
         amount: U512,
-        holds_epoch: HoldsEpoch,
     },
     Burn {
         source: BalanceIdentifier,
@@ -27,14 +26,12 @@ impl HandleFeeMode {
         source: BalanceIdentifier,
         target: BalanceIdentifier,
         amount: U512,
-        holds_epoch: HoldsEpoch,
     ) -> Self {
         HandleFeeMode::Pay {
             initiator_addr,
             source: Box::new(source),
             target: Box::new(target),
             amount,
-            holds_epoch,
         }
     }
 

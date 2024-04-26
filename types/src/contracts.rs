@@ -10,18 +10,19 @@ use alloc::{
 };
 use core::{
     array::TryFromSliceError,
-    convert::TryFrom,
+    convert::{TryFrom, TryInto},
     fmt::{self, Debug, Display, Formatter},
 };
+use serde_bytes::ByteBuf;
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 #[cfg(feature = "json-schema")]
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
-use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
-#[cfg(feature = "json-schema")]
-use serde_map_to_array::KeyValueJsonSchema;
-use serde_map_to_array::{BTreeMapToArray, KeyValueLabels};
+use serde::{
+    de::{self, Error as SerdeError},
+    ser, Deserialize, Deserializer, Serialize, Serializer,
+};
 
 use crate::{
     account,
@@ -30,8 +31,8 @@ use crate::{
     checksummed_hex,
     contract_wasm::ContractWasmHash,
     package::PackageStatus,
-    uref,
-    uref::URef,
+    serde_helpers::contract_package::HumanReadableContractPackage,
+    uref::{self, URef},
     AddressableEntityHash, CLType, CLTyped, EntityVersionKey, EntryPoint, EntryPoints, Groups,
     HashAddr, Key, Package, ProtocolVersion, KEY_HASH_LENGTH,
 };
@@ -655,14 +656,19 @@ impl FromBytes for ContractPackageStatus {
 }
 
 /// Contract definition, metadata, and security container.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct ContractPackage {
     /// Key used to add or disable versions
     access_key: URef,
     /// All versions (enabled & disabled)
-    #[serde(with = "BTreeMapToArray::<ContractVersionKey, ContractHash, ContractVersionLabels>")]
+    #[cfg_attr(
+        feature = "json-schema",
+        schemars(
+            with = "Vec<crate::serde_helpers::contract_package::HumanReadableContractVersion>"
+        )
+    )]
     versions: ContractVersions,
     /// Disabled versions
     disabled_versions: DisabledVersions,
@@ -734,6 +740,11 @@ impl ContractPackage {
         &mut self.disabled_versions
     }
 
+    /// Returns lock_status of the contract package.
+    pub fn lock_status(&self) -> ContractPackageStatus {
+        self.lock_status.clone()
+    }
+
     #[cfg(test)]
     fn next_contract_version_for(&self, protocol_version: ProtocolVersionMajor) -> ContractVersion {
         let current_version = self
@@ -767,6 +778,32 @@ impl ContractPackage {
     #[cfg(test)]
     fn groups_mut(&mut self) -> &mut Groups {
         &mut self.groups
+    }
+}
+
+impl Serialize for ContractPackage {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if serializer.is_human_readable() {
+            HumanReadableContractPackage::from(self).serialize(serializer)
+        } else {
+            let bytes = self
+                .to_bytes()
+                .map_err(|error| ser::Error::custom(format!("{:?}", error)))?;
+            ByteBuf::from(bytes).serialize(serializer)
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ContractPackage {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        if deserializer.is_human_readable() {
+            let json_helper = HumanReadableContractPackage::deserialize(deserializer)?;
+            json_helper.try_into().map_err(de::Error::custom)
+        } else {
+            let bytes = ByteBuf::deserialize(deserializer)?.into_vec();
+            bytesrepr::deserialize::<ContractPackage>(bytes)
+                .map_err(|error| de::Error::custom(format!("{:?}", error)))
+        }
     }
 }
 
@@ -856,18 +893,6 @@ impl From<ContractPackage> for Package {
             lock_status,
         )
     }
-}
-
-struct ContractVersionLabels;
-
-impl KeyValueLabels for ContractVersionLabels {
-    const KEY: &'static str = "contract_version_key";
-    const VALUE: &'static str = "contract_entity_hash";
-}
-
-#[cfg(feature = "json-schema")]
-impl KeyValueJsonSchema for ContractVersionLabels {
-    const JSON_SCHEMA_KV_NAME: Option<&'static str> = Some("ContractVersionAndHash");
 }
 
 /// Methods and type signatures supported by a contract.

@@ -7,8 +7,8 @@ use casper_execution_engine::{engine_state, execution::ExecError};
 use casper_types::{
     account::AccountHash,
     addressable_entity::{AssociatedKeys, Weight},
-    runtime_args, AddressableEntityHash, CLValue, EntityVersion, EraId, PackageHash,
-    ProtocolVersion, RuntimeArgs, StoredValue, ENTITY_INITIAL_VERSION,
+    runtime_args, AddressableEntityHash, CLValue, EntityVersion, EraId, HoldBalanceHandling,
+    PackageHash, ProtocolVersion, RuntimeArgs, StoredValue, Timestamp, ENTITY_INITIAL_VERSION,
 };
 
 const DO_NOTHING_STORED_CONTRACT_NAME: &str = "do_nothing_stored";
@@ -857,16 +857,18 @@ fn setup_upgrade_threshold_state() -> (LmdbWasmTestBuilder, AccountHash) {
         .with_current_protocol_version(current_protocol_version)
         .with_new_protocol_version(new_protocol_version)
         .with_activation_point(activation_point)
+        .with_new_gas_hold_handling(HoldBalanceHandling::Accrued)
+        .with_new_gas_hold_interval(24 * 60 * 60 * 60)
         .build();
 
     builder
+        .with_block_time(Timestamp::now().into())
         .upgrade_using_scratch(&mut upgrade_request)
         .expect_upgrade_success();
 
     let transfer = TransferRequestBuilder::new(MINIMUM_ACCOUNT_CREATION_BALANCE, ACCOUNT_1_ADDR)
         .with_transfer_id(42)
         .build();
-
     builder.transfer_and_commit(transfer).expect_success();
 
     (builder, ACCOUNT_1_ADDR)

@@ -23,7 +23,7 @@ use casper_types::{
     Account, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockIdentifier,
     BlockSynchronizerStatus, CLValue, CLValueDictionary, ChainspecRawBytes, DictionaryAddr, Digest,
     EntityAddr, GlobalStateIdentifier, Key, KeyTag, NextUpgrade, Peers, ProtocolVersion, SecretKey,
-    SignedBlock, StoredValue, Timestamp, Transaction, TransactionV1Builder, Transfer, URef, U512,
+    SignedBlock, StoredValue, Transaction, TransactionV1Builder, Transfer, URef, U512,
 };
 use juliet::{
     io::IoCoreBuilder,
@@ -881,7 +881,6 @@ fn get_balance_by_state_root(state_root_hash: Digest, account_hash: AccountHash)
             GlobalStateRequest::BalanceByStateRoot {
                 state_identifier: Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
                 purse_identifier: PurseIdentifier::Account(account_hash),
-                timestamp: Timestamp::now(),
             },
         ))),
         asserter: Box::new(|response| {

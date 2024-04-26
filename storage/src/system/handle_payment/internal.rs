@@ -4,7 +4,7 @@ use super::{
 };
 use casper_types::{
     system::handle_payment::{Error, PAYMENT_PURSE_KEY, REFUND_PURSE_KEY},
-    HoldsEpoch, Key, Phase, PublicKey, URef, U512,
+    Key, Phase, PublicKey, URef, U512,
 };
 use num::CheckedMul;
 use num_rational::Ratio;
@@ -118,7 +118,7 @@ pub fn burn<P: MintProvider + RuntimeProvider + StorageProvider>(
     amount: Option<U512>,
 ) -> Result<(), Error> {
     // get the purse total balance (without holds)
-    let total_balance = match provider.available_balance(purse, HoldsEpoch::NOT_APPLICABLE)? {
+    let total_balance = match provider.available_balance(purse)? {
         Some(balance) => balance,
         None => return Err(Error::PaymentPurseBalanceNotFound),
     };
@@ -161,9 +161,7 @@ where
 
     let distribute_amount = match amount {
         Some(amount) => amount,
-        None => provider
-            .available_balance(source_uref, HoldsEpoch::NOT_APPLICABLE)?
-            .unwrap_or_default(),
+        None => provider.available_balance(source_uref)?.unwrap_or_default(),
     };
 
     if distribute_amount.is_zero() {
