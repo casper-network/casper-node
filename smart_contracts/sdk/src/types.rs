@@ -7,36 +7,26 @@ pub type Address = [u8; 32];
 #[derive(Debug)]
 pub struct Entry(pub(crate) ());
 
-#[repr(C)]
-#[derive(Debug, PartialEq)]
-pub enum ResultCode {
-    /// Called contract returned successfully.
-    Success = 0,
-    /// Callee contract reverted.
-    CalleeReverted = 1,
-    /// Called contract trapped.
-    CalleeTrapped = 2,
-    /// Called contract reached gas limit.
-    CalleeGasDepleted = 3,
-}
-
-impl From<u32> for ResultCode {
-    fn from(value: u32) -> Self {
-        match value {
-            0 => ResultCode::Success,
-            1 => ResultCode::CalleeReverted,
-            2 => ResultCode::CalleeTrapped,
-            3 => ResultCode::CalleeGasDepleted,
-            _ => unreachable!(),
-        }
-    }
-}
-
 #[derive(Debug, Copy, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
 pub enum CallError {
     CalleeReverted,
     CalleeTrapped,
     CalleeGasDepleted,
+    CodeNotFound,
+}
+
+impl TryFrom<u32> for CallError {
+    type Error = ();
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        match value {
+            1 => Ok(CallError::CalleeReverted),
+            2 => Ok(CallError::CalleeTrapped),
+            3 => Ok(CallError::CalleeGasDepleted),
+            4 => Ok(CallError::CodeNotFound),
+            _ => Err(()),
+        }
+    }
 }
 
 impl CasperABI for CallError {
@@ -62,6 +52,11 @@ impl CasperABI for CallError {
                 EnumVariant {
                     name: "CalleeGasDepleted".into(),
                     discriminant: 2,
+                    decl: <()>::declaration(),
+                },
+                EnumVariant {
+                    name: "CodeNotFound".into(),
+                    discriminant: 3,
                     decl: <()>::declaration(),
                 },
             ],

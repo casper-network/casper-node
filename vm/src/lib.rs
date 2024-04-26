@@ -16,6 +16,7 @@ const CALLEE_SUCCEED: u32 = 0;
 const CALLEE_REVERTED: u32 = 1;
 const CALLEE_TRAPPED: u32 = 2;
 const CALLEE_GAS_DEPLETED: u32 = 3;
+const CALLEE_NOT_CALLABLE: u32 = 4;
 
 /// Represents the result of a host function call.
 ///
@@ -29,6 +30,8 @@ pub enum HostError {
     CalleeTrapped(TrapCode),
     /// Called contract reached gas limit.
     CalleeGasDepleted,
+    /// Called contract is not callable.
+    NotCallable,
 }
 
 // no revert: output
@@ -45,6 +48,7 @@ impl HostError {
             HostError::CalleeReverted => CALLEE_REVERTED,
             HostError::CalleeTrapped(_) => CALLEE_TRAPPED,
             HostError::CalleeGasDepleted => CALLEE_GAS_DEPLETED,
+            HostError::NotCallable => CALLEE_NOT_CALLABLE,
         }
     }
 }

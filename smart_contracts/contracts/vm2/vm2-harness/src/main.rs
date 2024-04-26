@@ -13,7 +13,7 @@ use casper_sdk::{
     collections::Map,
     host::{self, Entity},
     log, revert,
-    types::{Address, CallError, ResultCode},
+    types::{Address, CallError},
     Contract, ContractHandle,
 };
 
@@ -467,8 +467,8 @@ pub fn call() {
                 .try_call(|harness| harness.emit_revert_with_data())
                 .expect("Call succeed");
 
-            assert_eq!(call_result.result, ResultCode::CalleeReverted);
-            assert_eq!(call_result.into_return_value(), Err(CustomError::Bar),);
+            assert_eq!(call_result.result, Err(CallError::CalleeReverted));
+            assert_eq!(call_result.into_result().unwrap(), Err(CustomError::Bar),);
 
             let counter_value_after = contract_handle
                 .call(|harness| harness.counter())
@@ -482,7 +482,7 @@ pub fn call() {
         let call_result = contract_handle
             .try_call(|harness| harness.emit_revert_without_data())
             .expect("Call succeed");
-        assert_eq!(call_result.result, ResultCode::CalleeReverted);
+        assert_eq!(call_result.result, Err(CallError::CalleeReverted));
         assert_eq!(call_result.data, None);
 
         log!("Revert without data success");
@@ -491,7 +491,7 @@ pub fn call() {
             .try_call(|harness| harness.should_revert_on_error(false))
             .expect("Call succeed");
         assert!(!call_result.did_revert());
-        assert_eq!(call_result.into_return_value(), Ok(()));
+        assert_eq!(call_result.into_result().unwrap(), Ok(()));
 
         log!("Revert on error success (ok case)");
 
@@ -500,7 +500,7 @@ pub fn call() {
             .expect("Call succeed");
         assert!(call_result.did_revert());
         assert_eq!(
-            call_result.into_return_value(),
+            call_result.into_result().unwrap(),
             Err(CustomError::WithBody("Reverted".to_string()))
         );
 

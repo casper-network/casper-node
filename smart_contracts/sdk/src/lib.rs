@@ -246,7 +246,7 @@ impl<T: ContractRef> CallBuilder<T> {
         let inst = T::new();
         let call_data = func(inst);
         let call_result = host::call(&self.address, self.value.unwrap_or(0), call_data)?;
-        Ok(call_result.into_return_value())
+        call_result.into_result()
     }
 }
 

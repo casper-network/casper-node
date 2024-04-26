@@ -197,7 +197,7 @@ pub fn casper_create(
 
     let manifest_ptr = NonNull::from(manifest);
 
-    let result_code = unsafe {
+    let call_error = unsafe {
         casper_sdk_sys::casper_create(
             code_ptr,
             code_size,
@@ -210,14 +210,11 @@ pub fn casper_create(
         )
     };
 
-    match ResultCode::from(result_code) {
-        ResultCode::Success => {
-            let result = unsafe { result.assume_init() };
-            Ok(result.into())
-        }
-        ResultCode::CalleeReverted => Err(CallError::CalleeReverted),
-        ResultCode::CalleeTrapped => Err(CallError::CalleeTrapped),
-        ResultCode::CalleeGasDepleted => Err(CallError::CalleeGasDepleted),
+    if call_error == 0 {
+        let result = unsafe { result.assume_init() };
+        Ok(result.into())
+    } else {
+        Err(CallError::try_from(call_error).expect("Unexpected error code"))
     }
 }
 
@@ -227,7 +224,7 @@ pub(crate) fn call_into<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
     selector: Selector,
     input_data: &[u8],
     alloc: Option<F>,
-) -> ResultCode {
+) -> Result<(), CallError> {
     let result_code = unsafe {
         casper_sdk_sys::casper_call(
             address.as_ptr(),
@@ -240,7 +237,11 @@ pub(crate) fn call_into<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
             &alloc as *const _ as *mut _,
         )
     };
-    ResultCode::from(result_code)
+    if result_code == 0 {
+        Ok(())
+    } else {
+        Err(CallError::try_from(result_code).expect("Unexpected error code"))
+    }
 }
 
 pub fn casper_call(
@@ -249,7 +250,7 @@ pub fn casper_call(
     // config: &CallCofnig,
     selector: Selector,
     input_data: &[u8],
-) -> (Option<Vec<u8>>, ResultCode) {
+) -> (Option<Vec<u8>>, Result<(), CallError>) {
     let mut output = None;
     let result_code = call_into(
         address,
@@ -275,7 +276,7 @@ use vm_common::{flags::ReturnFlags, keyspace::Keyspace};
 use crate::{
     abi::{CasperABI, EnumVariant},
     reserve_vec_space,
-    types::{Address, CallError, Entry, ResultCode},
+    types::{Address, CallError, Entry},
     Contract, Selector, ToCallData,
 };
 
@@ -334,27 +335,28 @@ pub fn start_noret<Args: BorshDeserialize, Ret: BorshSerialize>(
 #[derive(Debug)]
 pub struct CallResult<T: ToCallData> {
     pub data: Option<Vec<u8>>,
-    pub result: ResultCode,
+    pub result: Result<(), CallError>,
     pub marker: PhantomData<T>,
 }
 
 impl<T: ToCallData> CallResult<T> {
-    pub fn into_return_value<'a>(self) -> <T::Return<'a> as ToOwned>::Owned
+    pub fn into_result<'a>(self) -> Result<T::Return<'a>, CallError>
     where
-        <T::Return<'a> as ToOwned>::Owned: BorshDeserialize,
-        <T as ToCallData>::Return<'a>: Clone,
+        <T as ToCallData>::Return<'a>: BorshDeserialize,
     {
         match self.result {
-            ResultCode::Success | ResultCode::CalleeReverted => {
+            Ok(()) | Err(CallError::CalleeReverted) => {
                 let data = self.data.unwrap_or_default();
-                borsh::from_slice::<<T::Return<'a> as ToOwned>::Owned>(&data).unwrap()
+                Ok(borsh::from_slice(&data).unwrap())
             }
-            ResultCode::CalleeTrapped => panic!("CalleeTrapped"),
-            ResultCode::CalleeGasDepleted => panic!("CalleeGasDepleted"),
+            Err(CallError::CalleeTrapped) => Err(CallError::CalleeTrapped),
+            Err(CallError::CalleeGasDepleted) => Err(CallError::CalleeGasDepleted),
+            Err(CallError::CodeNotFound) => Err(CallError::CodeNotFound),
         }
     }
+
     pub fn did_revert(&self) -> bool {
-        self.result == ResultCode::CalleeReverted
+        self.result == Err(CallError::CalleeReverted)
     }
 }
 
@@ -367,13 +369,14 @@ pub fn call<T: ToCallData>(
 
     let (maybe_data, result_code) = casper_call(contract_address, value, T::SELECTOR, &input_data);
     match result_code {
-        ResultCode::Success | ResultCode::CalleeReverted => Ok(CallResult::<T> {
+        Ok(()) | Err(CallError::CalleeReverted) => Ok(CallResult::<T> {
             data: maybe_data,
             result: result_code,
             marker: PhantomData,
         }),
-        ResultCode::CalleeTrapped => Err(CallError::CalleeTrapped),
-        ResultCode::CalleeGasDepleted => Err(CallError::CalleeGasDepleted),
+        Err(error) => Err(CallError::CalleeTrapped),
+        Err(CallError::CalleeGasDepleted) => Err(CallError::CalleeGasDepleted),
+        Err(CallError::CodeNotFound) => Err(CallError::CodeNotFound),
     }
 }
 

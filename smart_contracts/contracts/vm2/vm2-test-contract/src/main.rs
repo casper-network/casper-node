@@ -15,7 +15,6 @@ mod exports {
     use casper_sdk::{
         host, reserve_vec_space,
         sys::{CreateResult, EntryPoint, Manifest, Param},
-        types::ResultCode,
     };
     use core::ptr::NonNull;
     use vm_common::keyspace::Keyspace;
@@ -154,10 +153,10 @@ mod exports {
                     host::casper_call(&contract_address, 10, MANGLED_ENTRY_POINT_1, &input_data);
 
                 match result_code {
-                    ResultCode::Success => {
+                    Ok(()) => {
                         host::casper_print(&format!("✅ Call succeeded. Output: {:?}", data));
                     }
-                    error => {
+                    Err(error) => {
                         host::casper_print(&format!("❌ Call failed. Error: {:?}", error));
                     }
                 }
