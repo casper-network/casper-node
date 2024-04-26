@@ -4,7 +4,7 @@ mod event;
 mod metrics;
 mod tests;
 
-use std::{collections::BTreeSet, fmt::Debug, sync::Arc, time::SystemTime};
+use std::{collections::BTreeSet, fmt::Debug, sync::Arc};
 
 use datasize::DataSize;
 use prometheus::Registry;
@@ -16,9 +16,9 @@ use casper_types::{
     account::AccountHash, addressable_entity::AddressableEntity, contracts::ContractHash,
     system::auction::ARG_AMOUNT, AddressableEntityHash, AddressableEntityIdentifier, BlockHeader,
     Chainspec, EntityAddr, EntityVersion, EntityVersionKey, ExecutableDeployItem,
-    ExecutableDeployItemIdentifier, HoldsEpoch, InitiatorAddr, Key, Package, PackageAddr,
-    PackageHash, PackageIdentifier, Transaction, TransactionEntryPoint,
-    TransactionInvocationTarget, TransactionTarget, U512,
+    ExecutableDeployItemIdentifier, InitiatorAddr, Key, Package, PackageAddr, PackageHash,
+    PackageIdentifier, Transaction, TransactionEntryPoint, TransactionInvocationTarget,
+    TransactionTarget, U512,
 };
 
 use crate::{
@@ -217,14 +217,10 @@ impl TransactionAcceptor {
                     return self.reject_transaction(effect_builder, *event_metadata, error);
                 }
                 let protocol_version = block_header.protocol_version();
-                let hold_interval = self.balance_hold_interval;
-                let block_time = SystemTime::UNIX_EPOCH.elapsed().unwrap().as_millis() as u64;
-                let holds_epoch = HoldsEpoch::from_millis(block_time, hold_interval);
-                let balance_handling = BalanceHandling::Available { holds_epoch };
+                let balance_handling = BalanceHandling::Available;
                 let proof_handling = ProofHandling::NoProofs;
                 let balance_request = BalanceRequest::from_purse(
                     *block_header.state_root_hash(),
-                    block_header.timestamp().into(),
                     protocol_version,
                     entity.main_purse(),
                     balance_handling,

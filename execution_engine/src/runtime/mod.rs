@@ -49,12 +49,12 @@ use casper_types::{
         entity, handle_payment, mint, Caller, SystemEntityType, AUCTION, ENTITY, HANDLE_PAYMENT,
         MINT, STANDARD_PAYMENT,
     },
-    AccessRights, ApiError, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLTyped,
-    CLValue, ContextAccessRights, ContractWasm, EntityAddr, EntityKind, EntityVersion,
-    EntityVersionKey, EntityVersions, Gas, GrantedAccess, Group, Groups, HoldsEpoch, HostFunction,
-    HostFunctionCost, InitiatorAddr, Key, NamedArg, Package, PackageHash, PackageStatus, Phase,
-    PublicKey, RuntimeArgs, StoredValue, Tagged, Transfer, TransferResult, TransferV2,
-    TransferredTo, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, U512,
+    AccessRights, ApiError, BlockGlobalAddr, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash,
+    ByteCodeKind, CLTyped, CLValue, ContextAccessRights, ContractWasm, EntityAddr, EntityKind,
+    EntityVersion, EntityVersionKey, EntityVersions, Gas, GrantedAccess, Group, Groups,
+    HostFunction, HostFunctionCost, InitiatorAddr, Key, NamedArg, Package, PackageHash,
+    PackageStatus, Phase, PublicKey, RuntimeArgs, StoredValue, Tagged, Transfer, TransferResult,
+    TransferV2, TransferredTo, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, U512,
 };
 
 use crate::{
@@ -555,14 +555,6 @@ where
         }
     }
 
-    /// Returns holds epoch.
-    fn holds_epoch(&self) -> HoldsEpoch {
-        HoldsEpoch::from_block_time(
-            self.context.get_blocktime(),
-            self.context.engine_config().balance_hold_interval,
-        )
-    }
-
     /// Calls host mint contract.
     fn call_host_mint(
         &mut self,
@@ -629,11 +621,9 @@ where
                 mint_runtime.charge_system_contract_call(mint_costs.balance)?;
 
                 let uref: URef = Self::get_named_argument(runtime_args, mint::ARG_PURSE)?;
-                let holds_epoch = self.holds_epoch();
 
-                let maybe_balance: Option<U512> = mint_runtime
-                    .balance(uref, holds_epoch)
-                    .map_err(Self::reverter)?;
+                let maybe_balance: Option<U512> =
+                    mint_runtime.balance(uref).map_err(Self::reverter)?;
                 CLValue::from_t(maybe_balance).map_err(Self::reverter)
             })(),
             // Type: `fn transfer(maybe_to: Option<AccountHash>, source: URef, target: URef, amount:
@@ -647,9 +637,8 @@ where
                 let target: URef = Self::get_named_argument(runtime_args, mint::ARG_TARGET)?;
                 let amount: U512 = Self::get_named_argument(runtime_args, mint::ARG_AMOUNT)?;
                 let id: Option<u64> = Self::get_named_argument(runtime_args, mint::ARG_ID)?;
-                let holds_epoch = self.holds_epoch();
                 let result: Result<(), mint::Error> =
-                    mint_runtime.transfer(maybe_to, source, target, amount, id, holds_epoch);
+                    mint_runtime.transfer(maybe_to, source, target, amount, id);
 
                 CLValue::from_t(result).map_err(Self::reverter)
             })(),
@@ -833,10 +822,8 @@ where
                 let delegation_rate =
                     Self::get_named_argument(runtime_args, auction::ARG_DELEGATION_RATE)?;
                 let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
-                let holds_epoch = self.holds_epoch();
-
                 let result = runtime
-                    .add_bid(account_hash, delegation_rate, amount, holds_epoch)
+                    .add_bid(account_hash, delegation_rate, amount)
                     .map_err(Self::reverter)?;
 
                 CLValue::from_t(result).map_err(Self::reverter)
@@ -865,7 +852,6 @@ where
                     self.context.engine_config().max_delegators_per_validator();
                 let minimum_delegation_amount =
                     self.context.engine_config().minimum_delegation_amount();
-                let holds_epoch = self.holds_epoch();
                 let result = runtime
                     .delegate(
                         delegator,
@@ -873,7 +859,6 @@ where
                         amount,
                         max_delegators_per_validator,
                         minimum_delegation_amount,
-                        holds_epoch,
                     )
                     .map_err(Self::reverter)?;
 
@@ -2518,14 +2503,9 @@ where
             return Err(ExecError::DisabledUnrestrictedTransfers);
         }
 
-        let holds_epoch = self.holds_epoch();
         // A precondition check that verifies that the transfer can be done
         // as the source purse has enough funds to cover the transfer.
-        if amount
-            > self
-                .available_balance(source, holds_epoch)?
-                .unwrap_or_default()
-        {
+        if amount > self.available_balance(source)?.unwrap_or_default() {
             return Ok(Err(mint::Error::InsufficientFunds.into()));
         }
 
@@ -2781,12 +2761,8 @@ where
         }
     }
 
-    fn available_balance(
-        &mut self,
-        purse: URef,
-        holds_epoch: HoldsEpoch,
-    ) -> Result<Option<U512>, ExecError> {
-        match self.context.available_balance(&purse, holds_epoch) {
+    fn available_balance(&mut self, purse: URef) -> Result<Option<U512>, ExecError> {
+        match self.context.available_balance(&purse) {
             Ok(motes) => Ok(Some(motes.value())),
             Err(err) => Err(err),
         }
@@ -2811,7 +2787,7 @@ where
             }
         };
 
-        let balance = match self.available_balance(purse, self.holds_epoch())? {
+        let balance = match self.available_balance(purse)? {
             Some(balance) => balance,
             None => return Ok(Err(ApiError::InvalidPurse)),
         };
@@ -3527,7 +3503,10 @@ where
             prev_topic_summary.message_count()
         };
 
-        let block_message_index: u64 = match self.context.read_gs(&Key::BlockMessageCount)? {
+        let block_message_index: u64 = match self
+            .context
+            .read_gs(&Key::BlockGlobal(BlockGlobalAddr::MessageCount))?
+        {
             Some(stored_value) => {
                 let (prev_block_time, prev_count): (BlockTime, u64) = CLValue::into_t(
                     CLValue::try_from(stored_value).map_err(ExecError::TypeMismatch)?,

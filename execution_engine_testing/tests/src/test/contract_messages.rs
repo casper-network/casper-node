@@ -8,10 +8,10 @@ use casper_engine_test_support::{
 use casper_types::{
     bytesrepr::ToBytes,
     contract_messages::{MessageChecksum, MessagePayload, MessageTopicSummary, TopicNameHash},
-    crypto, runtime_args, AddressableEntity, AddressableEntityHash, BlockTime, CLValue, CoreConfig,
-    Digest, EntityAddr, HostFunction, HostFunctionCosts, Key, MessageLimits, OpcodeCosts,
-    RuntimeArgs, StorageCosts, StoredValue, SystemConfig, WasmConfig, DEFAULT_MAX_STACK_HEIGHT,
-    DEFAULT_WASM_MAX_MEMORY, U512,
+    crypto, runtime_args, AddressableEntity, AddressableEntityHash, BlockGlobalAddr, BlockTime,
+    CLValue, CoreConfig, Digest, EntityAddr, HostFunction, HostFunctionCosts, Key, MessageLimits,
+    OpcodeCosts, RuntimeArgs, StorageCosts, StoredValue, SystemConfig, WasmConfig,
+    DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY, U512,
 };
 
 const MESSAGE_EMITTER_INSTALLER_WASM: &str = "contract_messages_emitter.wasm";
@@ -970,9 +970,10 @@ fn should_produce_per_block_message_ordering() {
     };
 
     let query_message_count = || -> Option<(BlockTime, u64)> {
-        let query_result = builder
-            .borrow_mut()
-            .query(None, Key::BlockMessageCount, &[]);
+        let query_result =
+            builder
+                .borrow_mut()
+                .query(None, Key::BlockGlobal(BlockGlobalAddr::MessageCount), &[]);
 
         match query_result {
             Ok(StoredValue::CLValue(cl_value)) => Some(cl_value.into_t().unwrap()),

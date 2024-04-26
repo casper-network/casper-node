@@ -311,6 +311,15 @@ impl GenesisConfigBuilder {
         self
     }
 
+    /// Sets the gas hold balance handling.
+    pub fn with_gas_hold_balance_handling(
+        mut self,
+        gas_hold_balance_handling: HoldBalanceHandling,
+    ) -> Self {
+        self.gas_hold_balance_handling = Some(gas_hold_balance_handling);
+        self
+    }
+
     /// Builds a new [`GenesisConfig`] object.
     pub fn build(self) -> GenesisConfig {
         GenesisConfig {
@@ -347,7 +356,10 @@ impl From<&Chainspec> for GenesisConfig {
             .genesis_timestamp()
             .map_or(0, |timestamp| timestamp.millis());
         let gas_hold_interval_millis = chainspec.core_config.gas_hold_interval.millis();
+        let gas_hold_balance_handling = chainspec.core_config.gas_hold_balance_handling;
 
+        // TODO: maybe construct this instead of accreting the values
+        //GenesisConfigBuilder::new(account,..)
         GenesisConfigBuilder::default()
             .with_accounts(chainspec.network_config.accounts_config.clone().into())
             .with_wasm_config(chainspec.wasm_config)
@@ -358,6 +370,7 @@ impl From<&Chainspec> for GenesisConfig {
             .with_round_seigniorage_rate(chainspec.core_config.round_seigniorage_rate)
             .with_unbonding_delay(chainspec.core_config.unbonding_delay)
             .with_genesis_timestamp_millis(genesis_timestamp_millis)
+            .with_gas_hold_balance_handling(gas_hold_balance_handling)
             .with_gas_hold_interval_millis(gas_hold_interval_millis)
             .build()
     }
