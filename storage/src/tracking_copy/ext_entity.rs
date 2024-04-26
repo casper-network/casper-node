@@ -76,11 +76,22 @@ pub trait TrackingCopyEntityExt<R> {
         named_keys: NamedKeys,
     ) -> Result<(), Self::Error>;
 
+    /// Upsert uref value to global state and imputed entity's named keys.
+    fn upsert_uref_to_named_keys(
+        &mut self,
+        entity_addr: EntityAddr,
+        name: &str,
+        named_keys: &NamedKeys,
+        uref: URef,
+        stored_value: StoredValue,
+    ) -> Result<(), Self::Error>;
+
     fn migrate_account(
         &mut self,
         account_hash: AccountHash,
         protocol_version: ProtocolVersion,
     ) -> Result<(), Self::Error>;
+
     fn create_new_addressable_entity_on_transfer(
         &mut self,
         account_hash: AccountHash,
@@ -315,6 +326,45 @@ where
             self.write(entry_key, named_key_value)
         }
 
+        Ok(())
+    }
+
+    fn upsert_uref_to_named_keys(
+        &mut self,
+        entity_addr: EntityAddr,
+        name: &str,
+        named_keys: &NamedKeys,
+        uref: URef,
+        stored_value: StoredValue,
+    ) -> Result<(), Self::Error> {
+        match named_keys.get(name) {
+            Some(key) => {
+                if let Key::URef(_) = key {
+                    self.write(*key, stored_value);
+                } else {
+                    return Err(Self::Error::UnexpectedKeyVariant(*key));
+                }
+            }
+            None => {
+                let uref_key = Key::URef(uref).normalize();
+                self.write(uref_key, stored_value);
+
+                let entry_value = {
+                    let named_key_value =
+                        NamedKeyValue::from_concrete_values(uref_key, name.to_string())
+                            .map_err(Self::Error::CLValue)?;
+                    StoredValue::NamedKey(named_key_value)
+                };
+                let entry_key = {
+                    let named_key_entry =
+                        NamedKeyAddr::new_from_string(entity_addr, name.to_string())
+                            .map_err(Self::Error::BytesRepr)?;
+                    Key::NamedKey(named_key_entry)
+                };
+
+                self.write(entry_key, entry_value);
+            }
+        };
         Ok(())
     }
 

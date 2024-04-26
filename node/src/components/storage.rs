@@ -70,8 +70,10 @@ use casper_types::{
     BlockSignatures, BlockSignaturesV1, BlockSignaturesV2, BlockV2, ChainNameDigest, DeployHash,
     EraId, ExecutionInfo, FinalitySignature, ProtocolVersion, SignedBlockHeader, Timestamp,
     Transaction, TransactionConfig, TransactionHash, TransactionHeader, TransactionId, Transfer,
+    U512,
 };
 use datasize::DataSize;
+use num_rational::Ratio;
 use prometheus::Registry;
 use smallvec::SmallVec;
 use tracing::{debug, error, info, warn};
@@ -1068,9 +1070,72 @@ impl Storage {
         let mut txn = self.block_store.checkout_rw()?;
         let era_id = block.era_id();
         let block_utilization_score = block.block_utilization(transaction_config);
+        let has_hit_slot_limit = block.has_hit_slot_capacity(transaction_config);
         let block_hash = txn.write(block)?;
         let _ = txn.write(approvals_hashes)?;
         let block_info = BlockHashHeightAndEra::new(block_hash, block.height(), block.era_id());
+
+        let utilization = if has_hit_slot_limit {
+            debug!("Block is at slot capacity, using slot utilization score");
+            block_utilization_score
+        } else if execution_results.is_empty() {
+            0u64
+        } else {
+            let total_gas_utilization = {
+                let total_gas_limit: U512 = execution_results
+                    .values()
+                    .map(|results| match results {
+                        ExecutionResult::V1(v1_result) => match v1_result {
+                            ExecutionResultV1::Failure { cost, .. } => *cost,
+                            ExecutionResultV1::Success { cost, .. } => *cost,
+                        },
+                        ExecutionResult::V2(v2_result) => v2_result.limit.value(),
+                    })
+                    .sum();
+
+                let consumed: u64 = total_gas_limit.as_u64();
+                let block_gas_limit = transaction_config.block_gas_limit;
+
+                Ratio::new(consumed * 100u64, block_gas_limit).to_integer()
+            };
+            debug!("Gas utilization at {total_gas_utilization}");
+
+            let total_size_utilization = {
+                let size_used: u64 = execution_results
+                    .values()
+                    .map(|results| {
+                        if let ExecutionResult::V2(result) = results {
+                            result.size_estimate
+                        } else {
+                            0u64
+                        }
+                    })
+                    .sum();
+
+                let block_size_limit = transaction_config.max_block_size as u64;
+                Ratio::new(size_used * 100, block_size_limit).to_integer()
+            };
+
+            debug!("Storage utilization at {total_size_utilization}");
+
+            let scores = vec![
+                block_utilization_score,
+                total_size_utilization,
+                total_gas_utilization,
+            ];
+
+            match scores.iter().max() {
+                Some(max_utlization) => *max_utlization,
+                None => {
+                    // This should never happen as we just created the scores vector to find the
+                    // max value
+                    warn!("Unable to determine max utilization, marking 0 utilization");
+                    0u64
+                }
+            }
+        };
+
+        debug!("Utilization for block is {utilization}");
 
         let _ = txn.write(&BlockExecutionResults {
             block_info,
@@ -1080,11 +1145,11 @@ impl Storage {
 
         match self.utilization_tracker.get_mut(&era_id) {
             Some(block_score) => {
-                block_score.insert(block.height(), block_utilization_score);
+                block_score.insert(block.height(), utilization);
             }
             None => {
                 let mut block_score = BTreeMap::new();
-                block_score.insert(block.height(), block_utilization_score);
+                block_score.insert(block.height(), utilization);
                 self.utilization_tracker.insert(era_id, block_score);
             }
         }

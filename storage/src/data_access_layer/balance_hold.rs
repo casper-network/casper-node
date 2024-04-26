@@ -1,15 +1,12 @@
 use crate::{
-    data_access_layer::{
-        balance::{BalanceError, GasHoldBalanceHandling},
-        BalanceIdentifier,
-    },
+    data_access_layer::{balance::BalanceFailure, BalanceIdentifier},
     tracking_copy::TrackingCopyError,
 };
 use casper_types::{
     account::AccountHash,
     execution::Effects,
     system::mint::{BalanceHoldAddr, BalanceHoldAddrTag},
-    BlockTime, Digest, HoldsEpoch, ProtocolVersion, U512,
+    Digest, ProtocolVersion, U512,
 };
 use std::fmt::{Display, Formatter};
 use thiserror::Error;
@@ -36,12 +33,10 @@ pub enum BalanceHoldMode {
     Hold {
         identifier: BalanceIdentifier,
         hold_amount: U512,
-        holds_epoch: HoldsEpoch,
         insufficient_handling: InsufficientBalanceHandling,
     },
     Clear {
         identifier: BalanceIdentifier,
-        holds_epoch: HoldsEpoch,
     },
 }
 
@@ -51,7 +46,6 @@ impl Default for BalanceHoldMode {
             insufficient_handling: InsufficientBalanceHandling::HoldRemaining,
             hold_amount: U512::zero(),
             identifier: BalanceIdentifier::Account(AccountHash::default()),
-            holds_epoch: HoldsEpoch::default(),
         }
     }
 }
@@ -70,10 +64,8 @@ pub enum InsufficientBalanceHandling {
 pub struct BalanceHoldRequest {
     state_hash: Digest,
     protocol_version: ProtocolVersion,
-    block_time: BlockTime,
     hold_kind: BalanceHoldKind,
     hold_mode: BalanceHoldMode,
-    gas_hold_balance_handling: GasHoldBalanceHandling,
 }
 
 impl BalanceHoldRequest {
@@ -84,25 +76,19 @@ impl BalanceHoldRequest {
         protocol_version: ProtocolVersion,
         identifier: BalanceIdentifier,
         hold_amount: U512,
-        block_time: BlockTime,
-        holds_epoch: HoldsEpoch,
         insufficient_handling: InsufficientBalanceHandling,
-        gas_hold_balance_handling: GasHoldBalanceHandling,
     ) -> Self {
         let hold_kind = BalanceHoldKind::Tag(BalanceHoldAddrTag::Gas);
         let hold_mode = BalanceHoldMode::Hold {
             identifier,
             hold_amount,
-            holds_epoch,
             insufficient_handling,
         };
         BalanceHoldRequest {
             state_hash,
             protocol_version,
-            block_time,
             hold_kind,
             hold_mode,
-            gas_hold_balance_handling,
         }
     }
 
@@ -113,25 +99,19 @@ impl BalanceHoldRequest {
         protocol_version: ProtocolVersion,
         identifier: BalanceIdentifier,
         hold_amount: U512,
-        block_time: BlockTime,
-        holds_epoch: HoldsEpoch,
         insufficient_handling: InsufficientBalanceHandling,
-        gas_hold_balance_handling: GasHoldBalanceHandling,
     ) -> Self {
         let hold_kind = BalanceHoldKind::Tag(BalanceHoldAddrTag::Processing);
         let hold_mode = BalanceHoldMode::Hold {
             identifier,
             hold_amount,
-            holds_epoch,
             insufficient_handling,
         };
         BalanceHoldRequest {
             state_hash,
             protocol_version,
-            block_time,
             hold_kind,
             hold_mode,
-            gas_hold_balance_handling,
         }
     }
 
@@ -139,23 +119,15 @@ impl BalanceHoldRequest {
     pub fn new_clear(
         state_hash: Digest,
         protocol_version: ProtocolVersion,
-        block_time: BlockTime,
         hold_kind: BalanceHoldKind,
         identifier: BalanceIdentifier,
-        holds_epoch: HoldsEpoch,
-        gas_hold_balance_handling: GasHoldBalanceHandling,
     ) -> Self {
-        let hold_mode = BalanceHoldMode::Clear {
-            identifier,
-            holds_epoch,
-        };
+        let hold_mode = BalanceHoldMode::Clear { identifier };
         BalanceHoldRequest {
             state_hash,
             protocol_version,
-            block_time,
             hold_kind,
             hold_mode,
-            gas_hold_balance_handling,
         }
     }
 
@@ -169,11 +141,6 @@ impl BalanceHoldRequest {
         self.protocol_version
     }
 
-    /// Block time.
-    pub fn block_time(&self) -> BlockTime {
-        self.block_time
-    }
-
     /// Balance hold kind.
     pub fn balance_hold_kind(&self) -> BalanceHoldKind {
         self.hold_kind
@@ -183,11 +150,6 @@ impl BalanceHoldRequest {
     pub fn balance_hold_mode(&self) -> BalanceHoldMode {
         self.hold_mode.clone()
     }
-
-    /// Gas hold balance handling.
-    pub fn gas_hold_balance_handling(&self) -> GasHoldBalanceHandling {
-        self.gas_hold_balance_handling
-    }
 }
 
 /// Possible balance hold errors.
@@ -195,14 +157,20 @@ impl BalanceHoldRequest {
 #[non_exhaustive]
 pub enum BalanceHoldError {
     TrackingCopy(TrackingCopyError),
-    Balance(BalanceError),
+    Balance(BalanceFailure),
     InsufficientBalance { remaining_balance: U512 },
     UnexpectedWildcardVariant, // programmer error
 }
 
-impl From<BalanceError> for BalanceHoldError {
-    fn from(be: BalanceError) -> Self {
+impl From<BalanceFailure> for BalanceHoldError {
+    fn from(be: BalanceFailure) -> Self {
         BalanceHoldError::Balance(be)
+    }
+}
+
+impl From<TrackingCopyError> for BalanceHoldError {
+    fn from(tce: TrackingCopyError) -> Self {
+        BalanceHoldError::TrackingCopy(tce)
     }
 }
 
@@ -231,6 +199,8 @@ impl Display for BalanceHoldError {
 pub enum BalanceHoldResult {
     /// Returned if a passed state root hash is not found.
     RootNotFound,
+    /// Returned if global state does not have an entry for block time.
+    BlockTimeNotFound,
     /// Balance hold successfully placed.
     Success {
         /// Hold addresses, if any.
@@ -298,7 +268,9 @@ impl BalanceHoldResult {
     /// Hold address, if any.
     pub fn holds(&self) -> Option<Vec<BalanceHoldAddr>> {
         match self {
-            BalanceHoldResult::RootNotFound | BalanceHoldResult::Failure(_) => None,
+            BalanceHoldResult::RootNotFound
+            | BalanceHoldResult::BlockTimeNotFound
+            | BalanceHoldResult::Failure(_) => None,
             BalanceHoldResult::Success { holds, .. } => holds.clone(),
         }
     }
@@ -314,7 +286,9 @@ impl BalanceHoldResult {
     /// Was the hold fully covered?
     pub fn is_fully_covered(&self) -> bool {
         match self {
-            BalanceHoldResult::RootNotFound | BalanceHoldResult::Failure(_) => false,
+            BalanceHoldResult::RootNotFound
+            | BalanceHoldResult::BlockTimeNotFound
+            | BalanceHoldResult::Failure(_) => false,
             BalanceHoldResult::Success { hold, held, .. } => hold == held,
         }
     }
@@ -332,7 +306,9 @@ impl BalanceHoldResult {
     /// The effects, if any.
     pub fn effects(&self) -> Effects {
         match self {
-            BalanceHoldResult::RootNotFound | BalanceHoldResult::Failure(_) => Effects::new(),
+            BalanceHoldResult::RootNotFound
+            | BalanceHoldResult::BlockTimeNotFound
+            | BalanceHoldResult::Failure(_) => Effects::new(),
             BalanceHoldResult::Success { effects, .. } => *effects.clone(),
         }
     }
@@ -350,6 +326,7 @@ impl BalanceHoldResult {
                 }
             }
             BalanceHoldResult::RootNotFound => "root not found".to_string(),
+            BalanceHoldResult::BlockTimeNotFound => "block time not found".to_string(),
             BalanceHoldResult::Failure(bhe) => {
                 format!("{:?}", bhe)
             }
@@ -357,8 +334,14 @@ impl BalanceHoldResult {
     }
 }
 
-impl From<BalanceError> for BalanceHoldResult {
-    fn from(be: BalanceError) -> Self {
+impl From<BalanceFailure> for BalanceHoldResult {
+    fn from(be: BalanceFailure) -> Self {
         BalanceHoldResult::Failure(be.into())
+    }
+}
+
+impl From<TrackingCopyError> for BalanceHoldResult {
+    fn from(tce: TrackingCopyError) -> Self {
+        BalanceHoldResult::Failure(tce.into())
     }
 }

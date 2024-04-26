@@ -718,49 +718,24 @@ where
         named_keys: &NamedKeys,
         stored_value: StoredValue,
     ) -> Result<(), ProtocolUpgradeError> {
-        match named_keys.get(name) {
-            Some(key) => {
-                if let Key::URef(_) = key {
-                    // write current interval to URef
-                    self.tracking_copy.borrow_mut().write(*key, stored_value);
-                } else {
-                    return Err(ProtocolUpgradeError::UnexpectedKeyVariant);
-                }
-            }
-            None => {
-                // first put value into global state under a uref
-                let uref = self
+        let uref = {
+            match named_keys.get(name) {
+                Some(key) => match key.as_uref() {
+                    Some(uref) => *uref,
+                    None => {
+                        return Err(ProtocolUpgradeError::UnexpectedKeyVariant);
+                    }
+                },
+                None => self
                     .address_generator
                     .borrow_mut()
-                    .new_uref(AccessRights::READ_ADD_WRITE);
-
-                let uref_key = Key::URef(uref).normalize();
-                self.tracking_copy
-                    .borrow_mut()
-                    .write(uref_key, stored_value);
-                // next, add the Key::URef to the mint's named keys
-                let entry_key = {
-                    let named_key_entry =
-                        NamedKeyAddr::new_from_string(entity_addr, name.to_string()).map_err(
-                            |_| {
-                                ProtocolUpgradeError::Bytesrepr("new_gas_hold_interval".to_string())
-                            },
-                        )?;
-                    Key::NamedKey(named_key_entry)
-                };
-                let entry_value = {
-                    let named_key_value =
-                        NamedKeyValue::from_concrete_values(entry_key, name.to_string())
-                            .map_err(|error| ProtocolUpgradeError::CLValue(error.to_string()))?;
-                    StoredValue::NamedKey(named_key_value)
-                };
-
-                self.tracking_copy
-                    .borrow_mut()
-                    .write(entry_key, entry_value);
+                    .new_uref(AccessRights::READ_ADD_WRITE),
             }
         };
-        Ok(())
+        self.tracking_copy
+            .borrow_mut()
+            .upsert_uref_to_named_keys(entity_addr, name, named_keys, uref, stored_value)
+            .map_err(ProtocolUpgradeError::TrackingCopy)
     }
 
     /// Handle new validator slots.
