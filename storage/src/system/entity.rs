@@ -4,9 +4,7 @@ pub mod storage_provider;
 // pub mod system_provider;
 
 use casper_types::{
-    account::AccountHash,
-    addressable_entity::{AddKeyFailure, RemoveKeyFailure, UpdateKeyFailure, Weight},
-    AddressableEntity,
+    account::AccountHash, addressable_entity::Weight, system::entity::Error, AddressableEntity,
 };
 
 use self::{runtime_provider::RuntimeProvider, storage_provider::StorageProvider};
@@ -18,7 +16,7 @@ pub trait Entity: RuntimeProvider + StorageProvider + Sized {
         &mut self,
         account_hash: AccountHash,
         weight: Weight,
-    ) -> Result<(), AddKeyFailure> {
+    ) -> Result<(), Error> {
         let entity_key = self.entity_key();
 
         // Get the current entity record
@@ -44,7 +42,7 @@ pub trait Entity: RuntimeProvider + StorageProvider + Sized {
     }
 
     /// Remove associated key.
-    fn remove_associated_key(&mut self, account_hash: AccountHash) -> Result<(), RemoveKeyFailure> {
+    fn remove_associated_key(&mut self, account_hash: AccountHash) -> Result<(), Error> {
         let entity_key = self.entity_key();
 
         // if !self
@@ -77,7 +75,7 @@ pub trait Entity: RuntimeProvider + StorageProvider + Sized {
         &mut self,
         account_hash: AccountHash,
         weight: Weight,
-    ) -> Result<(), UpdateKeyFailure> {
+    ) -> Result<(), Error> {
         let entity_key = self.entity_key();
 
         // if !self.entity().can_manage_keys_with(&self.authorization_keys) {

@@ -11,7 +11,7 @@ use crate::{
         TryFromIntError, TryFromSliceForAccountHashError, UpdateKeyFailure,
     },
     bytesrepr,
-    system::{auction, handle_payment, mint},
+    system::{auction, entity, handle_payment, mint},
     CLValueError,
 };
 
@@ -19,8 +19,11 @@ use crate::{
 /// value less than or equal to `RESERVED_ERROR_MAX`.
 const RESERVED_ERROR_MAX: u32 = u16::MAX as u32; // 0..=65535
 
+/// Entity errors will have this value added to them when being converted to a `u32`.
+const ENTITY_ERROR_OFFSET: u32 = RESERVED_ERROR_MAX - ((u8::MAX as u32) >> 1); // 65408..=65535
+
 /// Handle Payment errors will have this value added to them when being converted to a `u32`.
-const POS_ERROR_OFFSET: u32 = RESERVED_ERROR_MAX - u8::MAX as u32; // 65280..=65535
+const POS_ERROR_OFFSET: u32 = (ENTITY_ERROR_OFFSET - 1) - ((u8::MAX as u32) >> 1); // 65280..=65407
 
 /// Mint errors will have this value added to them when being converted to a `u32`.
 const MINT_ERROR_OFFSET: u32 = (POS_ERROR_OFFSET - 1) - u8::MAX as u32; // 65024..=65279
@@ -47,7 +50,7 @@ const MINT_ERROR_MAX: u32 = POS_ERROR_OFFSET - 1;
 const HP_ERROR_MIN: u32 = POS_ERROR_OFFSET;
 
 /// Maximum value of Handle Payment error's inclusive range.
-const HP_ERROR_MAX: u32 = RESERVED_ERROR_MAX;
+const HP_ERROR_MAX: u32 = ENTITY_ERROR_OFFSET - 1;
 
 /// Minimum value of contract header error's inclusive range.
 const HEADER_ERROR_MIN: u32 = HEADER_ERROR_OFFSET;
@@ -60,6 +63,12 @@ const AUCTION_ERROR_MIN: u32 = AUCTION_ERROR_OFFSET;
 
 /// Maximum value of an auction contract error's inclusive range.
 const AUCTION_ERROR_MAX: u32 = AUCTION_ERROR_OFFSET + u8::MAX as u32;
+
+/// Minimum value of Entity error's inclusive range.
+const ENTITY_ERROR_MIN: u32 = ENTITY_ERROR_OFFSET;
+
+/// Maximum value of Entity error's inclusive range.
+const ENTITY_ERROR_MAX: u32 = RESERVED_ERROR_MAX;
 
 /// Errors which can be encountered while running a smart contract.
 ///
@@ -75,7 +84,8 @@ const AUCTION_ERROR_MAX: u32 = AUCTION_ERROR_OFFSET + u8::MAX as u32;
 /// | [64512, 64767]  | `Auction`                                                       |
 /// | [64768, 65023]  | `ContractHeader`                                                |
 /// | [65024, 65279]  | `Mint`                                                          |
-/// | [65280, 65535]  | `HandlePayment`                                                 |
+/// | [65280, 65407]  | `HandlePayment`                                                 |
+/// | [65408, 65535]  | `Entity`                                                        |
 /// | [65536, 131071] | `User`                                                          |
 ///
 /// Users can specify a C-style enum and implement `From` to ease usage of
@@ -382,7 +392,7 @@ pub enum ApiError {
     /// [casper_types::system::handle_payment](crate::system::handle_payment::Error).
     /// ```
     /// # use casper_types::ApiError;
-    /// for code in 65280..=65535 {
+    /// for code in 65280..=65407 {
     ///     assert!(matches!(ApiError::from(code), ApiError::HandlePayment(_handle_payment_error)));
     /// }
     /// ```
@@ -446,6 +456,15 @@ pub enum ApiError {
     /// assert_eq!(ApiError::from(48), ApiError::NotAllowedToAddContractVersion);
     /// ```
     NotAllowedToAddContractVersion,
+    /// Error specific to Auction contract. See
+    /// [casper_types::system::entity::Error](crate::system::entity::Error).
+    /// ```
+    /// # use casper_types::ApiError;
+    /// for code in 65408..=65535 {
+    ///     assert!(matches!(ApiError::from(code), ApiError::Entity(_entity_error)));
+    /// }
+    /// ```
+    Entity(u8),
 }
 
 impl From<bytesrepr::Error> for ApiError {
@@ -559,6 +578,12 @@ impl From<MessageTopicError> for ApiError {
     }
 }
 
+impl From<entity::Error> for ApiError {
+    fn from(error: entity::Error) -> Self {
+        ApiError::Entity(error as u8)
+    }
+}
+
 impl From<ApiError> for u32 {
     fn from(error: ApiError) -> Self {
         match error {
@@ -614,6 +639,7 @@ impl From<ApiError> for u32 {
             ApiError::ContractHeader(value) => HEADER_ERROR_OFFSET + u32::from(value),
             ApiError::Mint(value) => MINT_ERROR_OFFSET + u32::from(value),
             ApiError::HandlePayment(value) => POS_ERROR_OFFSET + u32::from(value),
+            ApiError::Entity(value) => ENTITY_ERROR_OFFSET + u32::from(value),
             ApiError::User(value) => RESERVED_ERROR_MAX + 1 + u32::from(value),
         }
     }
@@ -675,6 +701,7 @@ impl From<u32> for ApiError {
             MINT_ERROR_MIN..=MINT_ERROR_MAX => ApiError::Mint(value as u8),
             HEADER_ERROR_MIN..=HEADER_ERROR_MAX => ApiError::ContractHeader(value as u8),
             AUCTION_ERROR_MIN..=AUCTION_ERROR_MAX => ApiError::AuctionError(value as u8),
+            ENTITY_ERROR_MIN..=ENTITY_ERROR_MAX => ApiError::Entity(value as u8),
             _ => ApiError::Unhandled,
         }
     }
@@ -765,6 +792,10 @@ impl Debug for ApiError {
                 "ApiError::HandlePayment({:?})",
                 handle_payment::Error::try_from(*value).map_err(|_err| fmt::Error::default())?
             )?,
+            ApiError::Entity(value) => write!(f,
+                "ApiError::Entity({:?})",
+                handle_payment::Error::try_from(*value).map_err(|_err| fmt::Error::default())?
+            )?,
             ApiError::User(value) => write!(f, "ApiError::User({})", value)?,
         }
         write!(f, " [{}]", u32::from(*self))
@@ -778,6 +809,7 @@ impl fmt::Display for ApiError {
             ApiError::ContractHeader(value) => write!(f, "Contract header error: {}", value),
             ApiError::Mint(value) => write!(f, "Mint error: {}", value),
             ApiError::HandlePayment(value) => write!(f, "Handle Payment error: {}", value),
+            ApiError::Entity(value) => write!(f, "Entity error: {}", value),
             _ => <Self as Debug>::fmt(self, f),
         }
     }

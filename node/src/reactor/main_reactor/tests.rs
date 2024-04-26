@@ -34,7 +34,7 @@ use casper_types::{
     execution::{ExecutionResult, ExecutionResultV2, TransformKindV2, TransformV2},
     system::{
         auction::{BidAddr, BidKind, BidsExt, DelegationRate},
-        AUCTION,
+        AUCTION, ENTITY,
     },
     testing::TestRng,
     AccountConfig, AccountsConfig, ActivationPoint, AddressableEntityHash, AvailableBlockRange,
@@ -2735,25 +2735,25 @@ async fn check_multisig() {
     let initial_stakes = InitialStakes::FromVec(vec![alice_stake.into(), 10_000_000_000]);
 
     let mut fixture = TestFixture::new(initial_stakes, None).await;
-    let alice_secret_key = Arc::clone(&fixture.node_contexts[0].secret_key);
-    let alice_public_key = PublicKey::from(&*alice_secret_key);
+    let secret_key = Arc::clone(&fixture.node_contexts[0].secret_key);
+    let public_key = PublicKey::from(&*secret_key);
+    let new_secret_key = SecretKey::generate_ed25519().unwrap();
+    let new_public_key = PublicKey::from(&new_secret_key);
 
     // Wait for all nodes to complete block 0.
     fixture.run_until_block_height(0, ONE_MIN).await;
 
-    // Ensure our post genesis assumption that Alice has a bid is correct.
-    fixture.check_bid_existence_at_tip(&alice_public_key, None, true);
-
-    // Create & sign deploy to withdraw Alice's full stake.
-    let mut deploy = Deploy::withdraw_bid(
+    // Add associated key.
+    let mut deploy = Deploy::add_associated_key(
         fixture.chainspec.network_config.name.clone(),
-        fixture.system_contract_hash(AUCTION),
-        alice_public_key.clone(),
-        alice_stake.into(),
+        fixture.system_contract_hash(ENTITY),
+        public_key.clone(),
+        new_public_key.clone(),
+        1,
         Timestamp::now(),
         TimeDiff::from_seconds(60),
     );
-    deploy.sign(&alice_secret_key);
+    deploy.sign(&secret_key);
     let txn = Transaction::Deploy(deploy);
     let txn_hash = txn.hash();
 
@@ -2762,4 +2762,33 @@ async fn check_multisig() {
     fixture
         .run_until_executed_transaction(&txn_hash, TEN_SECS)
         .await;
+
+    // Check if the associated key has been added.
+    let (_node_id, runner) = fixture.network.nodes().iter().next().unwrap();
+    let block_height = runner
+        .main_reactor()
+        .storage()
+        .highest_complete_block_height()
+        .expect("missing highest completed block");
+    let block_header = runner
+        .main_reactor()
+        .storage()
+        .read_block_header_by_height(block_height, true)
+        .expect("failure to read block header")
+        .unwrap();
+    let state_hash = *block_header.state_root_hash();
+    let request = AddressableEntityRequest::new(state_hash, public_key.to_account_hash().into());
+    let result = runner
+        .main_reactor()
+        .contract_runtime()
+        .data_access_layer()
+        .addressable_entity(request);
+    match result {
+        AddressableEntityResult::Success { entity } => {
+            let associated_keys = entity.associated_keys();
+            assert_eq!(associated_keys.len(), 2);
+            assert!(associated_keys.contains_key(&new_public_key.to_account_hash()));
+        }
+        _ => panic!(),
+    }
 }

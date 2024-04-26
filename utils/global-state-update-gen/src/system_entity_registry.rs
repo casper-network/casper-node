@@ -13,7 +13,7 @@ use casper_storage::{
 };
 use casper_types::{
     bytesrepr::FromBytes,
-    system::{AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT},
+    system::{AUCTION, ENTITY, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT},
     AddressableEntityHash, CLValue, Key, ProtocolVersion, StoredValue, SystemEntityRegistry,
     KEY_HASH_LENGTH,
 };
@@ -104,6 +104,7 @@ fn generate_system_entity_registry_using_protocol_data(data_dir: &Path) {
     registry.insert(HANDLE_PAYMENT.to_string(), handle_payment_hash);
     registry.insert(STANDARD_PAYMENT.to_string(), standard_payment_hash);
     registry.insert(AUCTION.to_string(), auction_hash);
+    registry.insert(ENTITY.to_string(), auction_hash);
 
     print_entry(
         &Key::SystemEntityRegistry,

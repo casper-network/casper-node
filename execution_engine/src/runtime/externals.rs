@@ -231,7 +231,7 @@ where
                         weight_value as HostFunctionCost,
                     ],
                 )?;
-                let value = self.add_associated_key(
+                let value = self.add_associated_key_old(
                     account_hash_ptr,
                     account_hash_size as usize,
                     weight_value,

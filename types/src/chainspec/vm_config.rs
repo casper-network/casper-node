@@ -1,5 +1,6 @@
 mod auction_costs;
 mod chainspec_registry;
+mod entity_costs;
 mod handle_payment_costs;
 mod host_function_costs;
 mod message_limits;
@@ -12,6 +13,7 @@ mod wasm_config;
 
 pub use auction_costs::{AuctionCosts, DEFAULT_ADD_BID_COST, DEFAULT_DELEGATE_COST};
 pub use chainspec_registry::ChainspecRegistry;
+pub use entity_costs::EntityCosts;
 pub use handle_payment_costs::HandlePaymentCosts;
 pub use host_function_costs::{
     Cost as HostFunctionCost, HostFunction, HostFunctionCosts,

@@ -657,13 +657,6 @@ impl GasLimited for TransactionV1 {
                     } else if self.is_native_auction() {
                         let entry_point = self.body().entry_point();
                         let amount = match entry_point {
-                            TransactionEntryPoint::Custom(_)
-                            | TransactionEntryPoint::Transfer
-                            | TransactionEntryPoint::AddAssociatedKey => {
-                                return Err(InvalidTransactionV1::EntryPointCannotBeCustom {
-                                    entry_point: entry_point.clone(),
-                                })
-                            }
                             TransactionEntryPoint::AddBid | TransactionEntryPoint::ActivateBid => {
                                 costs.auction_costs().add_bid
                             }
@@ -673,6 +666,11 @@ impl GasLimited for TransactionV1 {
                             TransactionEntryPoint::Delegate => costs.auction_costs().delegate,
                             TransactionEntryPoint::Undelegate => costs.auction_costs().undelegate,
                             TransactionEntryPoint::Redelegate => costs.auction_costs().redelegate,
+                            _ => {
+                                return Err(InvalidTransactionV1::EntryPointCannotBeCustom {
+                                    entry_point: entry_point.clone(),
+                                });
+                            }
                         };
                         amount as u64
                     } else if self.is_install_or_upgrade() {

@@ -32,12 +32,13 @@ use casper_types::{
             ERA_ID_KEY, INITIAL_ERA_END_TIMESTAMP_MILLIS, INITIAL_ERA_ID, LOCKED_FUNDS_PERIOD_KEY,
             SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
         },
+        entity,
         handle_payment::{self, ACCUMULATION_PURSE_KEY},
         mint::{
             self, ARG_ROUND_SEIGNIORAGE_RATE, MINT_GAS_HOLD_HANDLING_KEY,
             MINT_GAS_HOLD_INTERVAL_KEY, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY,
         },
-        SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
+        SystemEntityType, AUCTION, ENTITY, HANDLE_PAYMENT, MINT,
     },
     AccessRights, AddressableEntity, AddressableEntityHash, AdministratorAccount, ByteCode,
     ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLValue, Chainspec, ChainspecRegistry, Digest,
@@ -330,6 +331,23 @@ where
         )?;
 
         self.store_system_entity_registry(HANDLE_PAYMENT, contract_hash)?;
+
+        Ok(contract_hash)
+    }
+
+    fn create_entity(&self) -> Result<AddressableEntityHash, Box<GenesisError>> {
+        let entity_payment_purse = self.create_purse(U512::zero())?;
+        let named_keys = NamedKeys::new();
+
+        let entry_points = entity::entity_entry_points();
+
+        let contract_hash = self.store_system_contract(
+            named_keys,
+            entry_points,
+            EntityKind::System(SystemEntityType::Entity),
+        )?;
+
+        self.store_system_entity_registry(ENTITY, contract_hash)?;
 
         Ok(contract_hash)
     }
@@ -906,6 +924,9 @@ where
 
         // Create handle payment
         self.create_handle_payment()?;
+
+        // Create entity
+        self.create_entity()?;
 
         self.store_chainspec_registry(chainspec_registry)?;
 

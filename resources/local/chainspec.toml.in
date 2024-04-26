@@ -346,6 +346,8 @@ finalize_payment = 10_000
 [system_costs.standard_payment_costs]
 pay = 10_000
 
+[system_costs.entity_costs]
+add_associated_key = 10_000
 
 [vacancy]
 upper_threshold = 90

@@ -1,6 +1,7 @@
 //! This module contains executor state of the WASM code.
 mod args;
 mod auction_internal;
+mod entity_internal;
 mod externals;
 mod handle_payment_internal;
 mod host_function_flag;
@@ -25,7 +26,7 @@ use casper_wasmi::RuntimeValue;
 
 use casper_storage::{
     global_state::{error::Error as GlobalStateError, state::StateReader},
-    system::{auction::Auction, handle_payment::HandlePayment, mint::Mint},
+    system::{auction::Auction, entity::Entity, handle_payment::HandlePayment, mint::Mint},
     tracking_copy::TrackingCopyExt,
 };
 use casper_types::{
@@ -45,8 +46,8 @@ use casper_types::{
     system::{
         self,
         auction::{self, EraInfo},
-        handle_payment, mint, Caller, SystemEntityType, AUCTION, ENTITY, HANDLE_PAYMENT, MINT,
-        STANDARD_PAYMENT,
+        entity, handle_payment, mint, Caller, SystemEntityType, AUCTION, ENTITY, HANDLE_PAYMENT,
+        MINT, STANDARD_PAYMENT,
     },
     AccessRights, ApiError, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLTyped,
     CLValue, ContextAccessRights, ContractWasm, EntityAddr, EntityKind, EntityVersion,
@@ -1009,6 +1010,73 @@ where
         Ok(ret)
     }
 
+    /// Calls host `entity` contract.
+    fn call_host_entity(
+        &mut self,
+        entry_point_name: &str,
+        runtime_args: &RuntimeArgs,
+        access_rights: ContextAccessRights,
+        stack: RuntimeStack,
+    ) -> Result<CLValue, ExecError> {
+        let gas_counter = self.gas_counter();
+
+        let entity_hash = self.context.get_system_contract(ENTITY)?;
+        let entity_key = Key::addressable_entity_key(EntityKindTag::System, entity_hash);
+
+        let entity_named_keys = self
+            .context
+            .state()
+            .borrow_mut()
+            .get_named_keys(EntityAddr::System(entity_hash.value()))?;
+
+        let mut named_keys = entity_named_keys;
+
+        let runtime_context = self.context.new_from_self(
+            entity_key,
+            EntryPointType::Called,
+            &mut named_keys,
+            access_rights,
+            runtime_args.to_owned(),
+        );
+
+        let mut runtime = self.new_with_stack(runtime_context, stack);
+
+        let engine_config = self.context.engine_config();
+        let system_config = engine_config.system_config();
+        let entity_costs = system_config.entity_costs();
+
+        let result = match entry_point_name {
+            entity::METHOD_ADD_ASSOCIATED_KEY => (|| {
+                runtime.charge_system_contract_call(entity_costs.add_associated_key)?;
+                let account = Self::get_named_argument(runtime_args, entity::ARG_ACCOUNT)?;
+                let weight = Self::get_named_argument(runtime_args, entity::ARG_WEIGHT)?;
+
+                let result = runtime
+                    .add_associated_key(account, weight)
+                    .map_err(Self::reverter)?;
+                CLValue::from_t(result).map_err(Self::reverter)
+            })(),
+            _ => CLValue::from_t(()).map_err(Self::reverter),
+        };
+
+        self.gas(
+            runtime
+                .gas_counter()
+                .checked_sub(gas_counter)
+                .unwrap_or(gas_counter),
+        )?;
+
+        let ret = result?;
+
+        let urefs = utils::extract_urefs(&ret)?;
+        self.context.access_rights_extend(&urefs);
+        {
+            let transfers = self.context.transfers_mut();
+            *transfers = runtime.context.transfers().to_owned();
+        }
+        Ok(ret)
+    }
+
     /// Call a contract by pushing a stack element onto the frame.
     pub(crate) fn call_contract_with_stack(
         &mut self,
@@ -1415,9 +1483,16 @@ where
                         stack,
                     );
                 }
+                SystemEntityType::Entity => {
+                    return self.call_host_entity(
+                        entry_point_name,
+                        &runtime_args,
+                        access_rights,
+                        stack,
+                    );
+                }
                 // Not callable
                 SystemEntityType::StandardPayment => {}
-                SystemEntityType::Entity => todo!(),
             }
         }
 
@@ -2162,7 +2237,7 @@ where
         self.context.is_authorized_by_admin()
     }
 
-    fn add_associated_key(
+    fn add_associated_key_old(
         &mut self,
         account_hash_ptr: u32,
         account_hash_size: usize,

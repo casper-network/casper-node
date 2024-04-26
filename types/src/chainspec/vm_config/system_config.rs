@@ -9,10 +9,8 @@ use rand::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    bytesrepr::{self, FromBytes, ToBytes},
-    chainspec::vm_config::{AuctionCosts, HandlePaymentCosts, MintCosts, StandardPaymentCosts},
-};
+use super::{AuctionCosts, EntityCosts, HandlePaymentCosts, MintCosts, StandardPaymentCosts};
+use crate::bytesrepr::{self, FromBytes, ToBytes};
 
 /// Default gas limit of install / upgrade contracts
 pub const DEFAULT_INSTALL_UPGRADE_GAS_LIMIT: u64 = 3_500_000_000_000;
@@ -45,6 +43,9 @@ pub struct SystemConfig {
 
     /// Configuration of standard payment costs.
     standard_payment_costs: StandardPaymentCosts,
+
+    /// Configuration of entity entrypoint costs.
+    entity_costs: EntityCosts,
 }
 
 impl SystemConfig {
@@ -56,6 +57,7 @@ impl SystemConfig {
         mint_costs: MintCosts,
         handle_payment_costs: HandlePaymentCosts,
         standard_payment_costs: StandardPaymentCosts,
+        entity_costs: EntityCosts,
     ) -> Self {
         Self {
             install_upgrade_gas_limit,
@@ -64,6 +66,7 @@ impl SystemConfig {
             mint_costs,
             handle_payment_costs,
             standard_payment_costs,
+            entity_costs,
         }
     }
 
@@ -102,6 +105,11 @@ impl SystemConfig {
     pub fn standard_payment_costs(&self) -> &StandardPaymentCosts {
         &self.standard_payment_costs
     }
+
+    /// Returns the costs of executing `handle_payment` entry points.
+    pub fn entity_costs(&self) -> &EntityCosts {
+        &self.entity_costs
+    }
 }
 
 #[cfg(any(feature = "testing", test))]
@@ -116,6 +124,7 @@ impl SystemConfig {
         let mint_costs = rng.gen();
         let handle_payment_costs = rng.gen();
         let standard_payment_costs = rng.gen();
+        let entity_costs = rng.gen();
 
         SystemConfig {
             install_upgrade_gas_limit,
@@ -124,6 +133,7 @@ impl SystemConfig {
             mint_costs,
             handle_payment_costs,
             standard_payment_costs,
+            entity_costs,
         }
     }
 }
@@ -137,6 +147,7 @@ impl Default for SystemConfig {
             mint_costs: MintCosts::default(),
             handle_payment_costs: HandlePaymentCosts::default(),
             standard_payment_costs: StandardPaymentCosts::default(),
+            entity_costs: EntityCosts::default(),
         }
     }
 }
@@ -151,6 +162,7 @@ impl Distribution<SystemConfig> for Standard {
             mint_costs: rng.gen(),
             handle_payment_costs: rng.gen(),
             standard_payment_costs: rng.gen(),
+            entity_costs: rng.gen(),
         }
     }
 }
@@ -165,6 +177,7 @@ impl ToBytes for SystemConfig {
         ret.append(&mut self.mint_costs.to_bytes()?);
         ret.append(&mut self.handle_payment_costs.to_bytes()?);
         ret.append(&mut self.standard_payment_costs.to_bytes()?);
+        ret.append(&mut self.entity_costs.to_bytes()?);
 
         Ok(ret)
     }
@@ -176,6 +189,7 @@ impl ToBytes for SystemConfig {
             + self.mint_costs.serialized_length()
             + self.handle_payment_costs.serialized_length()
             + self.standard_payment_costs.serialized_length()
+            + self.entity_costs.serialized_length()
     }
 }
 
@@ -187,6 +201,7 @@ impl FromBytes for SystemConfig {
         let (mint_costs, rem) = FromBytes::from_bytes(rem)?;
         let (handle_payment_costs, rem) = FromBytes::from_bytes(rem)?;
         let (standard_payment_costs, rem) = FromBytes::from_bytes(rem)?;
+        let (entity_costs, rem) = FromBytes::from_bytes(rem)?;
         Ok((
             SystemConfig::new(
                 install_upgrade_cost,
@@ -195,6 +210,7 @@ impl FromBytes for SystemConfig {
                 mint_costs,
                 handle_payment_costs,
                 standard_payment_costs,
+                entity_costs,
             ),
             rem,
         ))
@@ -208,7 +224,7 @@ pub mod gens {
 
     use crate::{
         chainspec::vm_config::{
-            auction_costs::gens::auction_costs_arb,
+            auction_costs::gens::auction_costs_arb, entity_costs::gens::entity_costs_arb,
             handle_payment_costs::gens::handle_payment_costs_arb, mint_costs::gens::mint_costs_arb,
             standard_payment_costs::gens::standard_payment_costs_arb,
         },
@@ -223,6 +239,7 @@ pub mod gens {
             mint_costs in mint_costs_arb(),
             handle_payment_costs in handle_payment_costs_arb(),
             standard_payment_costs in standard_payment_costs_arb(),
+            entity_costs in entity_costs_arb(),
         ) -> SystemConfig {
             let install_upgrade_gas_limit = install_upgrade_gas_limit as u64;
             let standard_transaction_gas_limit =standard_transaction_gas_limit as u64;
@@ -233,6 +250,7 @@ pub mod gens {
                 mint_costs,
                 handle_payment_costs,
                 standard_payment_costs,
+                entity_costs,
             }
         }
     }

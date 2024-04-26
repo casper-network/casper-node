@@ -16,7 +16,7 @@ use casper_types::{
     },
     bytesrepr::ToBytes,
     execution::TransformKindV2,
-    system::{AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT},
+    system::{AUCTION, ENTITY, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT},
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, ByteCodeHash, CLValue,
     ContextAccessRights, EntityAddr, EntityKind, EntryPointType, EntryPoints, Gas, HoldsEpoch, Key,
     PackageHash, Phase, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StoredValue,
@@ -137,6 +137,7 @@ fn new_runtime_context<'a>(
             AddressableEntityHash::default(),
         );
         registry.insert(AUCTION.to_string(), AddressableEntityHash::default());
+        registry.insert(ENTITY.to_string(), AddressableEntityHash::default());
         StoredValue::CLValue(CLValue::from_t(registry).unwrap())
     };
 
@@ -393,6 +394,7 @@ fn contract_key_addable_valid() {
             AddressableEntityHash::default(),
         );
         registry.insert(AUCTION.to_string(), AddressableEntityHash::default());
+        registry.insert(ENTITY.to_string(), AddressableEntityHash::default());
         StoredValue::CLValue(CLValue::from_t(registry).unwrap())
     };
 

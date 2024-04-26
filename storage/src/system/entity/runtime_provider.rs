@@ -1,6 +1,6 @@
-use casper_types::{addressable_entity::AddKeyFailure, AddressableEntity};
+use casper_types::{system::entity::Error, AddressableEntity};
 
 /// Provider of runtime host functionality.
 pub trait RuntimeProvider {
-    fn entity_key(&self) -> Result<&AddressableEntity, AddKeyFailure>;
+    fn entity_key(&self) -> Result<&AddressableEntity, Error>;
 }

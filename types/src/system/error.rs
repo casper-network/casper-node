@@ -1,6 +1,6 @@
 use core::fmt::{self, Display, Formatter};
 
-use crate::system::{auction, handle_payment, mint};
+use crate::system::{auction, entity, handle_payment, mint};
 
 /// An aggregate enum error with variants for each system contract's error.
 #[derive(Debug, Copy, Clone)]
@@ -12,6 +12,8 @@ pub enum Error {
     HandlePayment(handle_payment::Error),
     /// Contains a [`auction::Error`].
     Auction(auction::Error),
+    /// Contains a [`entity::Error`].
+    Entity(entity::Error),
 }
 
 impl From<mint::Error> for Error {
@@ -32,12 +34,19 @@ impl From<auction::Error> for Error {
     }
 }
 
+impl From<entity::Error> for Error {
+    fn from(error: entity::Error) -> Error {
+        Error::Entity(error)
+    }
+}
+
 impl Display for Error {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match self {
-            Error::Mint(error) => write!(formatter, "Mint error: {}", error),
-            Error::HandlePayment(error) => write!(formatter, "HandlePayment error: {}", error),
-            Error::Auction(error) => write!(formatter, "Auction error: {}", error),
+            Error::Mint(error) => write!(formatter, "Mint error: {error}"),
+            Error::HandlePayment(error) => write!(formatter, "HandlePayment error: {error}"),
+            Error::Auction(error) => write!(formatter, "Auction error: {error}"),
+            Error::Entity(error) => write!(formatter, "Entity error: {error}"),
         }
     }
 }

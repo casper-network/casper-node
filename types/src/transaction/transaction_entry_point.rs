@@ -184,12 +184,12 @@ impl TransactionEntryPoint {
             TransactionEntryPoint::AddBid
             | TransactionEntryPoint::Delegate
             | TransactionEntryPoint::Custom(_)
-            | TransactionEntryPoint::Transfer
-            | TransactionEntryPoint::AddAssociatedKey => true,
+            | TransactionEntryPoint::Transfer => true,
             TransactionEntryPoint::WithdrawBid
             | TransactionEntryPoint::Undelegate
             | TransactionEntryPoint::Redelegate
-            | TransactionEntryPoint::ActivateBid => false,
+            | TransactionEntryPoint::ActivateBid
+            | TransactionEntryPoint::AddAssociatedKey => false,
         }
     }
 }

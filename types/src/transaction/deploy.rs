@@ -44,11 +44,15 @@ use super::{InitiatorAddr, InitiatorAddrAndSecretKey};
 use crate::runtime_args;
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::{
+    addressable_entity::Weight,
     bytesrepr::Bytes,
-    system::auction::{
-        ARG_AMOUNT as ARG_AUCTION_AMOUNT, ARG_DELEGATOR, ARG_NEW_VALIDATOR,
-        ARG_PUBLIC_KEY as ARG_AUCTION_PUBLIC_KEY, ARG_VALIDATOR, METHOD_DELEGATE,
-        METHOD_REDELEGATE, METHOD_UNDELEGATE, METHOD_WITHDRAW_BID,
+    system::{
+        auction::{
+            ARG_AMOUNT as ARG_AUCTION_AMOUNT, ARG_DELEGATOR, ARG_NEW_VALIDATOR,
+            ARG_PUBLIC_KEY as ARG_AUCTION_PUBLIC_KEY, ARG_VALIDATOR, METHOD_DELEGATE,
+            METHOD_REDELEGATE, METHOD_UNDELEGATE, METHOD_WITHDRAW_BID,
+        },
+        entity::METHOD_ADD_ASSOCIATED_KEY,
     },
     testing::TestRng,
     AddressableEntityHash, RuntimeArgs, DEFAULT_MAX_PAYMENT_MOTES, DEFAULT_MIN_TRANSFER_MOTES,
@@ -1143,6 +1147,43 @@ impl Deploy {
             payment,
             session,
             InitiatorAddrAndSecretKey::InitiatorAddr(InitiatorAddr::PublicKey(sender_public_key)),
+        )
+    }
+
+    /// Creates a delegate to add associated key, for testing.
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
+    pub fn add_associated_key(
+        chain_name: String,
+        auction_contract_hash: AddressableEntityHash,
+        public_key: PublicKey,
+        new_public_key: PublicKey,
+        weight: u8,
+        timestamp: Timestamp,
+        ttl: TimeDiff,
+    ) -> Self {
+        let args = runtime_args! {
+            "account" => new_public_key.to_account_hash(),
+            "weight" => Weight::new(weight),
+        };
+        let session = ExecutableDeployItem::StoredContractByHash {
+            hash: auction_contract_hash,
+            entry_point: METHOD_ADD_ASSOCIATED_KEY.into(),
+            args,
+        };
+        let payment = ExecutableDeployItem::ModuleBytes {
+            module_bytes: Bytes::new(),
+            args: runtime_args! { ARG_AMOUNT => U512::from(3_000_000_000_u64) },
+        };
+
+        Deploy::build(
+            timestamp,
+            ttl,
+            1,
+            Vec::new(),
+            chain_name,
+            payment,
+            session,
+            InitiatorAddrAndSecretKey::InitiatorAddr(InitiatorAddr::PublicKey(public_key)),
         )
     }
 }

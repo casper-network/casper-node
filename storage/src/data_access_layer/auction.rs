@@ -81,9 +81,6 @@ impl AuctionMethod {
         chainspec: &Chainspec,
     ) -> Result<Self, AuctionMethodError> {
         match entry_point {
-            TransactionEntryPoint::Custom(_) | TransactionEntryPoint::Transfer => {
-                Err(AuctionMethodError::InvalidEntryPoint(entry_point))
-            }
             TransactionEntryPoint::ActivateBid => Self::new_activate_bid(runtime_args),
             TransactionEntryPoint::AddBid => Self::new_add_bid(runtime_args, holds_epoch),
             TransactionEntryPoint::WithdrawBid => Self::new_withdraw_bid(runtime_args),
@@ -98,7 +95,7 @@ impl AuctionMethod {
                 runtime_args,
                 chainspec.core_config.minimum_delegation_amount,
             ),
-            TransactionEntryPoint::AddAssociatedKey => todo!(),
+            _ => Err(AuctionMethodError::InvalidEntryPoint(entry_point)),
         }
     }
 
