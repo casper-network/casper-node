@@ -322,8 +322,6 @@ gas_hold_handling = { type = 'accrued' }
 # Maximum number of connections to the server.
 max_connections = 16
 
-gas_hold_handling = { type = 'accrued' }
-
 # ==============================================
 # Configuration options for the REST HTTP server
 # ==============================================
