@@ -367,6 +367,7 @@ impl Harness {
         }
         match caller {
             Entity::Account(_) => {
+                // TODO: Transfer works only for accounts, not for contracts yet (need to implement `casper_transfer` for contracts) - this will be fixed in the future versions of the SDK and the contract will be able to transfer funds to other contracts.
                 if !host::casper_transfer(&caller, amount) {
                     return Err(CustomError::WithBody("Transfer failed".into()));
                 }

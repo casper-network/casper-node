@@ -793,7 +793,8 @@ pub(crate) fn casper_transfer<S: GlobalStateReader, E: Executor>(
         CASPER_ENTITY_CONTRACT => {
             let entity_addr = caller.memory_read(entity_addr_ptr, entity_addr_len as usize)?;
             let entity_addr: Address = entity_addr.try_into().unwrap();
-            Key::AddressableEntity(EntityAddr::SmartContract(entity_addr))
+            let entity_key = Key::AddressableEntity(EntityAddr::SmartContract(entity_addr));
+            todo!("Find an payable entrypoint to call {entity_key:?}");
         }
         _ => return Ok(0),
     };
