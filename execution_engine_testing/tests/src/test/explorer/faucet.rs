@@ -349,7 +349,7 @@ fn should_fund_existing_account() {
         faucet_purse_fund_amount,
         faucet_distributions_per_interval.into(),
     )
-    .to_integer();
+        .to_integer();
 
     assert_eq!(
         user_purse_balance_after,
@@ -680,7 +680,7 @@ fn should_not_fund_if_zero_distributions_per_interval() {
         FAUCET_INSTALLER_SESSION,
         runtime_args! {ARG_ID => FAUCET_ID, ARG_AMOUNT => faucet_fund_amount},
     )
-    .build();
+        .build();
 
     builder
         .exec(installer_session_request)
@@ -693,7 +693,7 @@ fn should_not_fund_if_zero_distributions_per_interval() {
         ENTRY_POINT_FAUCET,
         runtime_args! {ARG_TARGET => user_account},
     )
-    .build();
+        .build();
 
     builder
         .exec(installer_call_faucet_request)
@@ -926,9 +926,9 @@ fn faucet_costs() {
     // This test will fail if execution costs vary.  The expected costs should not be updated
     // without understanding why the cost has changed.  If the costs do change, it should be
     // reflected in the "Costs by Entry Point" section of the faucet crate's README.md.
-    const EXPECTED_FAUCET_INSTALL_COST: u64 = 89_243_134_240;
+    const EXPECTED_FAUCET_INSTALL_COST: u64 = 89_201_554_240;
     const EXPECTED_FAUCET_SET_VARIABLES_COST: u64 = 111_263_840;
-    const EXPECTED_FAUCET_CALL_BY_INSTALLER_COST: u64 = 2_774_829_320;
+    const EXPECTED_FAUCET_CALL_BY_INSTALLER_COST: u64 = 2_750_259_320;
     const EXPECTED_FAUCET_CALL_BY_USER_COST: u64 = 2_619_720_120;
 
     let installer_account = AccountHash::new([1u8; 32]);
@@ -957,7 +957,7 @@ fn faucet_costs() {
         FAUCET_INSTALLER_SESSION,
         runtime_args! {ARG_ID => FAUCET_ID, ARG_AMOUNT => faucet_fund_amount },
     )
-    .build();
+        .build();
 
     builder
         .exec(installer_session_request)
