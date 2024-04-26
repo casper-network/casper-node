@@ -1,5 +1,5 @@
 use std::{collections::BTreeSet, convert::TryFrom};
-use tracing::error;
+use tracing::{debug, error, info};
 
 use casper_types::{
     account::AccountHash,
@@ -134,8 +134,8 @@ pub trait TrackingCopyEntityExt<R> {
 }
 
 impl<R> TrackingCopyEntityExt<R> for TrackingCopy<R>
-where
-    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
+    where
+        R: StateReader<Key, StoredValue, Error=GlobalStateError>,
 {
     type Error = TrackingCopyError;
 
@@ -289,9 +289,9 @@ where
 
         if !administrative_accounts.is_empty()
             && administrative_accounts
-                .intersection(authorization_keys)
-                .next()
-                .is_some()
+            .intersection(authorization_keys)
+            .next()
+            .is_some()
         {
             // Exit early if there's at least a single signature coming from an admin.
             return Ok((entity_record, entity_hash));
@@ -454,7 +454,7 @@ where
         protocol_version: ProtocolVersion,
     ) -> Result<(), Self::Error> {
         let account_hash = account.account_hash();
-
+        debug!("migrating account {}", account_hash);
         // carry forward the account hash to allow reverse lookup
         let entity_hash = AddressableEntityHash::new(account_hash.value());
         let entity_addr = EntityAddr::new_account(entity_hash.value());
@@ -496,7 +496,7 @@ where
                     Weight::new(1u8),
                     Weight::new(account_threshold.key_management.value()),
                 )
-                .map_err(Self::Error::SetThresholdFailure)?
+                    .map_err(Self::Error::SetThresholdFailure)?
             };
 
             let associated_keys = AssociatedKeys::from(account.associated_keys().clone());

@@ -3,7 +3,7 @@ use num_rational::Ratio;
 use std::{cell::RefCell, collections::BTreeSet, rc::Rc};
 
 use thiserror::Error;
-use tracing::{debug, error};
+use tracing::{debug, error, info};
 
 use casper_types::{
     addressable_entity::{
@@ -136,8 +136,8 @@ impl SystemEntityAddresses {
 
 /// The system upgrader deals with conducting an actual protocol upgrade.
 pub struct ProtocolUpgrader<S>
-where
-    S: StateProvider + ?Sized,
+    where
+        S: StateProvider + ?Sized,
 {
     config: ProtocolUpgradeConfig,
     address_generator: Rc<RefCell<AddressGenerator>>,
@@ -145,8 +145,8 @@ where
 }
 
 impl<S> ProtocolUpgrader<S>
-where
-    S: StateProvider + ?Sized,
+    where
+        S: StateProvider + ?Sized,
 {
     /// Creates new system upgrader instance.
     pub fn new(
@@ -882,7 +882,7 @@ where
         if !self.config.migrate_legacy_accounts() {
             return Ok(());
         }
-        debug!("handle accounts migration");
+        info!("handling one time accounts migration");
         let mut tc = self.tracking_copy.borrow_mut();
         let existing_keys = match tc.get_keys(&KeyTag::Account) {
             Ok(keys) => keys,
@@ -903,6 +903,7 @@ where
                 }
             }
         }
+        info!("ending one time accounts migration");
         Ok(())
     }
 
@@ -911,7 +912,7 @@ where
         if !self.config.migrate_legacy_contracts() {
             return Ok(());
         }
-        debug!("handling one time contracts migration");
+        info!("handling one time contracts migration");
         let mut tc = self.tracking_copy.borrow_mut();
         let existing_keys = match tc.get_keys(&KeyTag::Hash) {
             Ok(keys) => keys,
@@ -927,6 +928,7 @@ where
                 continue;
             }
         }
+        info!("ending one time contracts migration");
         Ok(())
     }
 
