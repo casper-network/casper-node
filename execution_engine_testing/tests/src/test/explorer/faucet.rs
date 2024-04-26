@@ -349,7 +349,7 @@ fn should_fund_existing_account() {
         faucet_purse_fund_amount,
         faucet_distributions_per_interval.into(),
     )
-        .to_integer();
+    .to_integer();
 
     assert_eq!(
         user_purse_balance_after,
@@ -680,7 +680,7 @@ fn should_not_fund_if_zero_distributions_per_interval() {
         FAUCET_INSTALLER_SESSION,
         runtime_args! {ARG_ID => FAUCET_ID, ARG_AMOUNT => faucet_fund_amount},
     )
-        .build();
+    .build();
 
     builder
         .exec(installer_session_request)
@@ -693,7 +693,7 @@ fn should_not_fund_if_zero_distributions_per_interval() {
         ENTRY_POINT_FAUCET,
         runtime_args! {ARG_TARGET => user_account},
     )
-        .build();
+    .build();
 
     builder
         .exec(installer_call_faucet_request)
@@ -957,7 +957,7 @@ fn faucet_costs() {
         FAUCET_INSTALLER_SESSION,
         runtime_args! {ARG_ID => FAUCET_ID, ARG_AMOUNT => faucet_fund_amount },
     )
-        .build();
+    .build();
 
     builder
         .exec(installer_session_request)
