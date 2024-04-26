@@ -3,7 +3,7 @@ use std::collections::BTreeSet;
 
 use casper_types::{
     account::AccountHash, addressable_entity::NamedKeyAddr, system::handle_payment::Error, CLValue,
-    FeeHandling, HoldsEpoch, Key, Phase, RefundHandling, StoredValue, TransferredTo, URef, U512,
+    FeeHandling, Key, Phase, RefundHandling, StoredValue, TransferredTo, URef, U512,
 };
 
 use casper_storage::system::handle_payment::{
@@ -63,12 +63,8 @@ where
         }
     }
 
-    fn available_balance(
-        &mut self,
-        purse: URef,
-        holds_epoch: HoldsEpoch,
-    ) -> Result<Option<U512>, Error> {
-        Runtime::available_balance(self, purse, holds_epoch)
+    fn available_balance(&mut self, purse: URef) -> Result<Option<U512>, Error> {
+        Runtime::available_balance(self, purse)
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::GetBalance))
     }
 

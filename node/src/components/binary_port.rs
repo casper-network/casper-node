@@ -27,8 +27,8 @@ use casper_storage::{
 use casper_types::{
     addressable_entity::NamedKeyAddr,
     bytesrepr::{self, FromBytes, ToBytes},
-    BlockHeader, BlockIdentifier, Chainspec, Digest, EntityAddr, GlobalStateIdentifier, HoldsEpoch,
-    Key, Peers, ProtocolVersion, SignedBlock, StoredValue, TimeDiff, Timestamp, Transaction,
+    BlockHeader, BlockIdentifier, Chainspec, Digest, EntityAddr, GlobalStateIdentifier, Key, Peers,
+    ProtocolVersion, SignedBlock, StoredValue, TimeDiff, Transaction,
 };
 
 use datasize::DataSize;
@@ -275,7 +275,7 @@ async fn handle_state_request<REv>(
     request: GlobalStateRequest,
     protocol_version: ProtocolVersion,
     config: &Config,
-    chainspec: &Chainspec,
+    _chainspec: &Chainspec,
 ) -> BinaryResponse
 where
     REv: From<Event>
@@ -408,17 +408,14 @@ where
             get_balance(
                 effect_builder,
                 *header.state_root_hash(),
-                header.timestamp(),
                 purse_identifier,
                 protocol_version,
-                chainspec.core_config.gas_hold_interval,
             )
             .await
         }
         GlobalStateRequest::BalanceByStateRoot {
             state_identifier,
             purse_identifier,
-            timestamp,
         } => {
             let Some(state_root_hash) = resolve_state_root_hash(effect_builder, state_identifier).await else {
                 return BinaryResponse::new_empty(protocol_version);
@@ -426,10 +423,8 @@ where
             get_balance(
                 effect_builder,
                 state_root_hash,
-                timestamp,
                 purse_identifier,
                 protocol_version,
-                chainspec.core_config.gas_hold_interval,
             )
             .await
         }
@@ -515,10 +510,8 @@ where
 async fn get_balance<REv>(
     effect_builder: EffectBuilder<REv>,
     state_root_hash: Digest,
-    timestamp: Timestamp,
     purse_identifier: PurseIdentifier,
     protocol_version: ProtocolVersion,
-    gas_hold_interval: TimeDiff,
 ) -> BinaryResponse
 where
     REv: From<Event>
@@ -534,13 +527,10 @@ where
         PurseIdentifier::Account(account) => BalanceIdentifier::Account(account),
         PurseIdentifier::Entity(entity) => BalanceIdentifier::Entity(entity),
     };
-    let balance_handling = BalanceHandling::Available {
-        holds_epoch: HoldsEpoch::from_timestamp(timestamp, gas_hold_interval),
-    };
+    let balance_handling = BalanceHandling::Available;
 
     let balance_req = BalanceRequest::new(
         state_root_hash,
-        timestamp.into(),
         protocol_version,
         balance_id,
         balance_handling,
