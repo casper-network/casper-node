@@ -1,6 +1,7 @@
 use std::{collections::BTreeMap, convert::TryInto, sync::Arc, time::Instant};
 
 use itertools::Itertools;
+use num_rational::Ratio;
 use tracing::{debug, error, info, trace, warn};
 
 use casper_execution_engine::engine_state::{ExecutionEngineV1, WasmV1Request, WasmV1Result};
@@ -220,7 +221,7 @@ pub fn execute_finalized_block(
                 scratch_state.commit(state_root_hash, handle_refund_result.effects().clone())?;
         }
 
-        let balance_identifier = {
+        let mut balance_identifier = {
             let is_account_session = transaction.is_account_session();
             //  if standard payment & is session based...use account main purse
             //  if standard payment & is targeting a contract
@@ -438,7 +439,29 @@ pub fn execute_finalized_block(
         let refund_amount = {
             let consumed = artifact_builder.consumed();
             let refund_mode = match refund_handling {
-                RefundHandling::NoRefund => None,
+                RefundHandling::NoRefund => {
+                    if fee_handling.is_no_fee() && !transaction.is_standard_payment() {
+                        // in no fee mode, we need to return the motes to the refund purse,
+                        //  and then point the balance_identifier to the refund purse
+                        // this will result in the downstream no fee handling logic
+                        //  placing a hold on the correct purse.
+                        let source = Box::new(balance_identifier.clone());
+                        let target = Box::new(BalanceIdentifier::Refund);
+                        balance_identifier = BalanceIdentifier::Refund;
+                        Some(HandleRefundMode::Refund {
+                            initiator_addr: Box::new(initiator_addr.clone()),
+                            limit: gas_limit.value(),
+                            gas_price: current_gas_price,
+                            consumed: U512::zero(),
+                            cost,
+                            ratio: Ratio::new_raw(1, 1),
+                            source,
+                            target,
+                        })
+                    } else {
+                        None
+                    }
+                }
                 RefundHandling::Burn { refund_ratio } => Some(HandleRefundMode::Burn {
                     limit: gas_limit.value(),
                     gas_price: current_gas_price,
@@ -448,6 +471,7 @@ pub fn execute_finalized_block(
                     ratio: refund_ratio,
                 }),
                 RefundHandling::Refund { refund_ratio } => {
+                    let source = Box::new(balance_identifier.clone());
                     if transaction.is_standard_payment() {
                         Some(HandleRefundMode::RefundAmount {
                             limit: gas_limit.value(),
@@ -455,9 +479,10 @@ pub fn execute_finalized_block(
                             consumed,
                             cost,
                             ratio: refund_ratio,
-                            source: Box::new(balance_identifier.clone()),
+                            source,
                         })
                     } else {
+                        let target = Box::new(BalanceIdentifier::Refund);
                         Some(HandleRefundMode::Refund {
                             initiator_addr: Box::new(initiator_addr.clone()),
                             limit: gas_limit.value(),
@@ -465,10 +490,8 @@ pub fn execute_finalized_block(
                             consumed,
                             cost,
                             ratio: refund_ratio,
-                            // as this is currently behind a custom payment check,
-                            // the source is always BalanceIdentifier::Payment
-                            source: Box::new(balance_identifier.clone()),
-                            target: Box::new(BalanceIdentifier::Refund),
+                            source,
+                            target,
                         })
                     }
                 }
