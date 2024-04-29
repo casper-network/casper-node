@@ -759,9 +759,9 @@ mod tests {
     use casper_sdk::{
         host::native::{self, dispatch},
         schema::CasperSchema,
-        Selector,
+
     };
-    use vm_common::flags::EntryPointFlags;
+    use vm_common::{flags::EntryPointFlags, selector::Selector};
 
     use super::*;
 
@@ -902,6 +902,7 @@ mod tests {
     fn foo() {
         assert_eq!(Harness::default().into_greeting(), "Default value");
     }
+
 }
 
 #[cfg(not(target_arch = "wasm32"))]

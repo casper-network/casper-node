@@ -864,13 +864,6 @@ pub(crate) fn casper_transfer<S: GlobalStateReader, E: Executor>(
         }
     };
 
-    // 1. wasm [caller = A, callee = B]
-    //  1a. create [caller = B, callee = C]
-    //  1b. call [caller = B, callee = C]
-
-    // TODO: Add test to transfer tokens to a user from a smart contract invoked from a wasm session (that would have stack depth of 3).
-    // let source_purse = caller.context().callee;
-
     let transaction_hash = caller.context().transaction_hash;
     let address_generator = Arc::clone(&caller.context().address_generator);
     let args = MintTransferArgs {
