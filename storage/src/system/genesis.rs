@@ -766,15 +766,9 @@ where
             entity_kind,
         );
 
-        let access_key = self
-            .address_generator
-            .borrow_mut()
-            .new_uref(AccessRights::READ_ADD_WRITE);
-
         // Genesis contracts can be versioned contracts.
         let contract_package = {
             let mut package = Package::new(
-                access_key,
                 EntityVersions::new(),
                 BTreeSet::default(),
                 Groups::default(),

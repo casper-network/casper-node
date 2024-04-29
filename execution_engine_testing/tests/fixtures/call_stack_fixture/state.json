@@ -1,6 +1,6 @@
 {
   "genesis_request": {
-    "protocol_version": "1.0.0"
+    "protocol_version": "2.0.0"
   },
-  "post_state_hash": "b184ce5879b549a01834c687a55d1576feb644ebe4408cf11c29a127e3d222a1"
+  "post_state_hash": "9e58f96c2051b314545821d2bec3e8ed7679b46f9664a97402affafd0e91bf73"
 }

@@ -4568,21 +4568,12 @@
       "description": "Entity definition, metadata, and security container.",
       "type": "object",
       "required": [
-        "access_key",
         "disabled_versions",
         "groups",
         "lock_status",
         "versions"
       ],
       "properties": {
-        "access_key": {
-          "description": "Key used to add or disable versions.",
-          "allOf": [
-            {
-              "$ref": "#/definitions/URef"
-            }
-          ]
-        },
         "versions": {
           "description": "All versions (enabled & disabled).",
           "allOf": [
