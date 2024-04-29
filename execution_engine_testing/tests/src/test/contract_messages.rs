@@ -1110,3 +1110,55 @@ fn should_produce_per_block_message_ordering() {
         .value();
     assert_eq!(expected_message_hash, queried_message_summary);
 }
+
+#[ignore]
+#[test]
+fn emit_message_should_charge_variable_gas_cost_based_on_topic_and_message_size() {
+    const MESSAGE_EMIT_COST: u32 = 1_000_000;
+
+    const COST_PER_MESSAGE_TOPIC_NAME_SIZE: u32 = 2;
+    const COST_PER_MESSAGE_LENGTH: u32 = 1_000;
+    const MESSAGE_SUFFIX: &str = "test";
+
+    let wasm_config = WasmConfig::new(
+        DEFAULT_WASM_MAX_MEMORY,
+        DEFAULT_MAX_STACK_HEIGHT,
+        OpcodeCosts::zero(),
+        StorageCosts::zero(),
+        HostFunctionCosts {
+            emit_message: HostFunction::new(
+                MESSAGE_EMIT_COST,
+                [
+                    0,
+                    COST_PER_MESSAGE_TOPIC_NAME_SIZE,
+                    0,
+                    COST_PER_MESSAGE_LENGTH,
+                ],
+            ),
+            ..Zero::zero()
+        },
+        MessageLimits::default(),
+    );
+    let chainspec = ChainspecConfig {
+        wasm_config,
+        core_config: CoreConfig::default(),
+        system_costs_config: SystemConfig::default(),
+    };
+
+    let builder = RefCell::new(LmdbWasmTestBuilder::new_temporary_with_config(chainspec));
+    builder
+        .borrow_mut()
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone());
+
+    let contract_hash = install_messages_emitter_contract(&builder, true);
+
+    // Emit one message in this execution. Cost should be cost of the call to emit message + cost
+    // charged for message topic name length + cost for message payload size.
+    emit_message_with_suffix(&builder, MESSAGE_SUFFIX, &contract_hash, DEFAULT_BLOCK_TIME);
+    let emit_message_gas_cost = builder.borrow().last_exec_gas_cost().value();
+    let payload: MessagePayload = format!("{}{}", EMITTER_MESSAGE_PREFIX, MESSAGE_SUFFIX).into();
+    let expected_cost = MESSAGE_EMIT_COST
+        + COST_PER_MESSAGE_TOPIC_NAME_SIZE * MESSAGE_EMITTER_GENERIC_TOPIC.len() as u32
+        + COST_PER_MESSAGE_LENGTH * payload.serialized_length() as u32;
+    assert_eq!(emit_message_gas_cost, expected_cost.into());
+}

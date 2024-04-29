@@ -50,8 +50,6 @@ pub(crate) enum FunctionIndex {
     ExtendContractUserGroupURefsIndex,
     RemoveContractUserGroupURefsIndex,
     Blake2b,
-    RecordTransfer,
-    RecordEraInfo,
     NewDictionaryFuncIndex,
     DictionaryGetFuncIndex,
     DictionaryPutFuncIndex,
