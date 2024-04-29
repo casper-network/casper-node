@@ -97,7 +97,7 @@ impl From<bytesrepr::Error> for ProtocolUpgradeError {
     }
 }
 
-/// Adrresses for system entities.
+/// Addresses for system entities.
 pub struct SystemEntityAddresses {
     mint: AddressableEntityHash,
     auction: AddressableEntityHash,
