@@ -1,7 +1,6 @@
 use std::{collections::BTreeMap, convert::TryInto, sync::Arc, time::Instant};
 
 use itertools::Itertools;
-use num_rational::Ratio;
 use tracing::{debug, error, info, trace, warn};
 
 use casper_execution_engine::engine_state::{ExecutionEngineV1, WasmV1Request, WasmV1Result};
@@ -191,13 +190,12 @@ pub fn execute_finalized_block(
         artifact_builder.with_added_cost(cost);
 
         let is_standard_payment = transaction.is_standard_payment();
-        let refund_purse_active = !is_standard_payment && !refund_handling.skip_refund();
-        // set up the refund purse for this transaction, if custom payment && refunds are on
+        let refund_purse_active = !is_standard_payment; //&& !refund_handling.skip_refund();
         if refund_purse_active {
-            // if refunds are turned on we initialize the refund purse to the initiator's main
-            // purse before doing any processing. NOTE: when executed, custom payment logic
-            // has the option to call set_refund_purse on the handle payment contract to set
-            // up a different refund purse, if desired.
+            // if custom payment  before doing any processing, initialize the initiator's main purse
+            //  to be the refund purse for this transaction.
+            // NOTE: when executed, custom payment logic has the option to call set_refund_purse
+            //  on the handle payment contract to set up a different refund purse, if desired.
             let handle_refund_request = HandleRefundRequest::new(
                 native_runtime_config.clone(),
                 state_root_hash,
@@ -445,18 +443,12 @@ pub fn execute_finalized_block(
                         //  and then point the balance_identifier to the refund purse
                         // this will result in the downstream no fee handling logic
                         //  placing a hold on the correct purse.
-                        let source = Box::new(balance_identifier.clone());
-                        let target = Box::new(BalanceIdentifier::Refund);
                         balance_identifier = BalanceIdentifier::Refund;
-                        Some(HandleRefundMode::Refund {
+                        Some(HandleRefundMode::CustomHold {
                             initiator_addr: Box::new(initiator_addr.clone()),
                             limit: gas_limit.value(),
                             gas_price: current_gas_price,
-                            consumed: U512::zero(),
                             cost,
-                            ratio: Ratio::new_raw(1, 1),
-                            source,
-                            target,
                         })
                     } else {
                         None

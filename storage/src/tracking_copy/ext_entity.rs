@@ -58,7 +58,7 @@ pub trait TrackingCopyEntityExt<R> {
         &mut self,
         protocol_version: ProtocolVersion,
         account_hash: AccountHash,
-    ) -> Result<AddressableEntity, Self::Error>;
+    ) -> Result<(EntityAddr, AddressableEntity), Self::Error>;
 
     /// Get entity if authorized, else error.
     fn get_authorized_addressable_entity(
@@ -109,7 +109,15 @@ pub trait TrackingCopyEntityExt<R> {
     fn system_entity(
         &mut self,
         protocol_version: ProtocolVersion,
-    ) -> Result<(AddressableEntity, NamedKeys, ContextAccessRights), TrackingCopyError>;
+    ) -> Result<
+        (
+            EntityAddr,
+            AddressableEntity,
+            NamedKeys,
+            ContextAccessRights,
+        ),
+        TrackingCopyError,
+    >;
 
     /// Returns entity, named keys, and access rights.
     fn resolved_entity(
@@ -118,7 +126,15 @@ pub trait TrackingCopyEntityExt<R> {
         initiating_address: AccountHash,
         authorization_keys: &BTreeSet<AccountHash>,
         administrative_accounts: &BTreeSet<AccountHash>,
-    ) -> Result<(AddressableEntity, NamedKeys, ContextAccessRights), TrackingCopyError>;
+    ) -> Result<
+        (
+            EntityAddr,
+            AddressableEntity,
+            NamedKeys,
+            ContextAccessRights,
+        ),
+        TrackingCopyError,
+    >;
 
     /// Returns fee purse.
     fn fees_purse(
@@ -192,13 +208,10 @@ where
         &mut self,
         protocol_version: ProtocolVersion,
         account_hash: AccountHash,
-    ) -> Result<AddressableEntity, Self::Error> {
+    ) -> Result<(EntityAddr, AddressableEntity), Self::Error> {
         let account_key = Key::Account(account_hash);
 
-        let contract_key = match self.get(&account_key)? {
-            Some(StoredValue::CLValue(contract_key_as_cl_value)) => {
-                CLValue::into_t::<Key>(contract_key_as_cl_value)?
-            }
+        let entity_addr = match self.get(&account_key)? {
             Some(StoredValue::Account(account)) => {
                 // do a legacy account migration
                 let mut generator =
@@ -241,7 +254,8 @@ where
                     package
                 };
 
-                let entity_key = entity.entity_key(entity_hash);
+                let entity_addr = entity.entity_addr(entity_hash);
+                let entity_key = Key::AddressableEntity(entity_addr);
 
                 self.write(entity_key, StoredValue::AddressableEntity(entity.clone()));
                 self.write(package_hash.into(), package.into());
@@ -253,9 +267,14 @@ where
 
                 self.write(account_key, StoredValue::CLValue(contract_by_account));
 
-                return Ok(entity);
+                return Ok((entity_addr, entity));
             }
 
+            Some(StoredValue::CLValue(contract_key_as_cl_value)) => {
+                let key = CLValue::into_t::<Key>(contract_key_as_cl_value)?;
+                key.as_entity_addr()
+                    .ok_or(Self::Error::UnexpectedKeyVariant(key))?
+            }
             Some(other) => {
                 return Err(TrackingCopyError::TypeMismatch(
                     StoredValueTypeMismatch::new("Key".to_string(), other.type_name()),
@@ -264,12 +283,14 @@ where
             None => return Err(TrackingCopyError::KeyNotFound(account_key)),
         };
 
-        match self.get(&contract_key)? {
-            Some(StoredValue::AddressableEntity(contract)) => Ok(contract),
+        match self.get(&Key::AddressableEntity(entity_addr))? {
+            Some(StoredValue::AddressableEntity(contract)) => Ok((entity_addr, contract)),
             Some(other) => Err(TrackingCopyError::TypeMismatch(
                 StoredValueTypeMismatch::new("Contract".to_string(), other.type_name()),
             )),
-            None => Err(TrackingCopyError::KeyNotFound(contract_key)),
+            None => Err(TrackingCopyError::KeyNotFound(Key::AddressableEntity(
+                entity_addr,
+            ))),
         }
     }
 
@@ -280,7 +301,7 @@ where
         authorization_keys: &BTreeSet<AccountHash>,
         administrative_accounts: &BTreeSet<AccountHash>,
     ) -> Result<(AddressableEntity, AddressableEntityHash), Self::Error> {
-        let entity_record =
+        let (_, entity_record) =
             self.get_addressable_entity_by_account_hash(protocol_version, account_hash)?;
 
         let entity_hash = self.get_entity_hash_by_account_hash(account_hash)?;
@@ -534,9 +555,17 @@ where
     fn system_entity(
         &mut self,
         protocol_version: ProtocolVersion,
-    ) -> Result<(AddressableEntity, NamedKeys, ContextAccessRights), TrackingCopyError> {
+    ) -> Result<
+        (
+            EntityAddr,
+            AddressableEntity,
+            NamedKeys,
+            ContextAccessRights,
+        ),
+        TrackingCopyError,
+    > {
         let system_account_hash = PublicKey::System.to_account_hash();
-        let system_entity =
+        let (system_entity_addr, system_entity) =
             self.get_addressable_entity_by_account_hash(protocol_version, system_account_hash)?;
 
         let system_entity_registry = self.get_system_entity_registry()?;
@@ -603,7 +632,12 @@ where
 
         auction_access_rights.extend_access_rights(mint_access_rights.take_access_rights());
         auction_access_rights.extend_access_rights(payment_access_rights.take_access_rights());
-        Ok((system_entity, named_keys, auction_access_rights))
+        Ok((
+            system_entity_addr,
+            system_entity,
+            named_keys,
+            auction_access_rights,
+        ))
     }
 
     fn resolved_entity(
@@ -612,7 +646,15 @@ where
         initiating_address: AccountHash,
         authorization_keys: &BTreeSet<AccountHash>,
         administrative_accounts: &BTreeSet<AccountHash>,
-    ) -> Result<(AddressableEntity, NamedKeys, ContextAccessRights), TrackingCopyError> {
+    ) -> Result<
+        (
+            EntityAddr,
+            AddressableEntity,
+            NamedKeys,
+            ContextAccessRights,
+        ),
+        TrackingCopyError,
+    > {
         if initiating_address == PublicKey::System.to_account_hash() {
             return self.system_entity(protocol_version);
         }
@@ -627,7 +669,7 @@ where
         let named_keys = self.get_named_keys(entity_addr)?;
         let access_rights = entity
             .extract_access_rights(AddressableEntityHash::new(entity_addr.value()), &named_keys);
-        Ok((entity, named_keys, access_rights))
+        Ok((entity_addr, entity, named_keys, access_rights))
     }
 
     fn fees_purse(
@@ -640,10 +682,10 @@ where
         match fee_handling {
             FeesPurseHandling::None(uref) => Ok(uref),
             FeesPurseHandling::ToProposer(proposer) => {
-                let proposer_account: AddressableEntity =
+                let (_, entity) =
                     self.get_addressable_entity_by_account_hash(protocol_version, proposer)?;
 
-                Ok(proposer_account.main_purse())
+                Ok(entity.main_purse())
             }
             FeesPurseHandling::Accumulate => {
                 let registry = self.get_system_entity_registry()?;
@@ -678,7 +720,7 @@ where
             }
             FeesPurseHandling::Burn => {
                 // TODO: replace this with new burn logic once it merges
-                Ok(casper_types::URef::default())
+                Ok(URef::default())
             }
         }
     }

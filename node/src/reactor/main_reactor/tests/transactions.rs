@@ -1,5 +1,5 @@
 use super::*;
-use casper_storage::data_access_layer::ProofHandling;
+use casper_storage::data_access_layer::{BalanceIdentifier, ProofHandling};
 use casper_types::GasLimited;
 use once_cell::sync::Lazy;
 
@@ -152,6 +152,39 @@ fn get_balance(
             protocol_version,
             account_key.clone(),
             balance_handling,
+            ProofHandling::NoProofs,
+        ))
+}
+
+fn get_payment_purse_balance(
+    fixture: &mut TestFixture,
+    block_height: Option<u64>,
+) -> BalanceResult {
+    let (_node_id, runner) = fixture.network.nodes().iter().next().unwrap();
+    let protocol_version = fixture.chainspec.protocol_version();
+    let block_height = block_height.unwrap_or(
+        runner
+            .main_reactor()
+            .storage()
+            .highest_complete_block_height()
+            .expect("missing highest completed block"),
+    );
+    let block_header = runner
+        .main_reactor()
+        .storage()
+        .read_block_header_by_height(block_height, true)
+        .expect("failure to read block header")
+        .unwrap();
+    let state_hash = *block_header.state_root_hash();
+    runner
+        .main_reactor()
+        .contract_runtime()
+        .data_access_layer()
+        .balance(BalanceRequest::new(
+            state_hash,
+            protocol_version,
+            BalanceIdentifier::Payment,
+            BalanceHandling::Available,
             ProofHandling::NoProofs,
         ))
 }
@@ -768,6 +801,7 @@ struct SingleTransactionTestCase {
     charlie_public_key: PublicKey,
 }
 
+#[derive(Debug, PartialEq)]
 struct BalanceAmount {
     available: U512,
     total: U512,
@@ -981,7 +1015,7 @@ impl SingleTransactionTestCase {
             .balance(BalanceRequest::new(
                 state_hash,
                 protocol_version,
-                casper_storage::data_access_layer::BalanceIdentifier::Accumulate,
+                BalanceIdentifier::Accumulate,
                 balance_handling,
                 ProofHandling::NoProofs,
             ))
@@ -1588,6 +1622,114 @@ async fn only_refunds_are_burnt_no_fee_custom_payment() {
     assert_eq!(
         alice_current_balance.total.clone(),
         alice_expected_total_balance
+    );
+}
+
+#[tokio::test]
+async fn no_refund_no_fee_custom_payment() {
+    const MAX_GAS_PRICE: u8 = MIN_GAS_PRICE;
+
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_pricing_handling(PricingHandling::Classic)
+        .with_refund_handling(RefundHandling::NoRefund)
+        .with_fee_handling(FeeHandling::NoFee);
+
+    let mut test = SingleTransactionTestCase::new(
+        ALICE_SECRET_KEY.clone(),
+        BOB_SECRET_KEY.clone(),
+        CHARLIE_SECRET_KEY.clone(),
+        Some(config),
+    )
+    .await;
+
+    // This contract uses custom payment.
+    let contract_file = RESOURCES_PATH
+        .join("..")
+        .join("target")
+        .join("wasm32-unknown-unknown")
+        .join("release")
+        .join("ee_601_regression.wasm");
+    let module_bytes = Bytes::from(std::fs::read(contract_file).expect("cannot read module bytes"));
+
+    let expected_transaction_gas = 1000u64;
+    let expected_transaction_cost = expected_transaction_gas * MIN_GAS_PRICE as u64;
+
+    let mut txn = Transaction::from(
+        TransactionV1Builder::new_session(TransactionSessionKind::Standard, module_bytes, "call")
+            .with_chain_name(CHAIN_NAME)
+            .with_pricing_mode(PricingMode::Classic {
+                payment_amount: expected_transaction_gas,
+                gas_price_tolerance: MIN_GAS_PRICE,
+                standard_payment: false,
+            })
+            .with_initiator_addr(BOB_PUBLIC_KEY.clone())
+            .build()
+            .unwrap(),
+    );
+    txn.sign(&BOB_SECRET_KEY);
+
+    test.fixture
+        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+        .await;
+
+    let (alice_initial_balance, bob_initial_balance, _charlie_initial_balance) =
+        test.get_balances(None);
+    let initial_total_supply = test.get_total_supply(None);
+    let (_txn_hash, block_height, exec_result) = test.send_transaction(txn).await;
+    // expected to fail due to insufficient funding
+    assert!(!exec_result_is_success(&exec_result), "should have failed");
+    match exec_result {
+        ExecutionResult::V2(exec_result_v2) => {
+            assert_eq!(exec_result_v2.cost, expected_transaction_cost.into());
+        }
+        _ => {
+            panic!("Unexpected exec result version.")
+        }
+    }
+
+    let payment_purse_balance = get_payment_purse_balance(&mut test.fixture, Some(block_height));
+    assert_eq!(
+        *payment_purse_balance
+            .total_balance()
+            .expect("should have total balance"),
+        U512::zero(),
+        "payment purse should have a 0 balance"
+    );
+
+    // we're not burning anything, so total supply should be the same
+    assert_eq!(
+        test.get_total_supply(Some(block_height)),
+        initial_total_supply,
+        "total supply should be the same before and after"
+    );
+
+    // updated balances
+    let (alice_current_balance, bob_current_balance, _) = test.get_balances(Some(block_height));
+
+    // the proposer's balance should be the same because we are in no fee mode
+    assert_eq!(
+        alice_initial_balance, alice_current_balance,
+        "the proposers balance should be unchanged as we are in no fee mode"
+    );
+
+    // the initiator should have a hold equal to the cost
+    assert_eq!(
+        bob_current_balance.total.clone(),
+        bob_initial_balance.total,
+        "bob's total balance should be unchanged as we are in no fee mode"
+    );
+
+    assert_ne!(
+        bob_current_balance.available.clone(),
+        bob_initial_balance.total,
+        "bob's available balance and total balance should not be the same"
+    );
+
+    let bob_expected_available_balance = bob_initial_balance.total - expected_transaction_cost;
+    assert_eq!(
+        bob_current_balance.available.clone(),
+        bob_expected_available_balance,
+        "bob's available balance should reflect a hold for the cost"
     );
 }
 
