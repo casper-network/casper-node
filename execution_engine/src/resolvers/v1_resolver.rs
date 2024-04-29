@@ -200,14 +200,6 @@ impl ModuleImportResolver for RuntimeModuleImportResolver {
                 Signature::new(&[ValueType::I32; 4][..], Some(ValueType::I32)),
                 FunctionIndex::Blake2b.into(),
             ),
-            "casper_record_transfer" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32; 10][..], Some(ValueType::I32)),
-                FunctionIndex::RecordTransfer.into(),
-            ),
-            "casper_record_era_info" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32; 4][..], Some(ValueType::I32)),
-                FunctionIndex::RecordEraInfo.into(),
-            ),
             "casper_load_call_stack" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 2][..], Some(ValueType::I32)),
                 FunctionIndex::LoadCallStack.into(),
