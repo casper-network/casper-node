@@ -405,22 +405,7 @@ where
                 Err(err) => BinaryResponse::new_error(err, protocol_version),
             }
         }
-        GlobalStateRequest::BalanceByBlock {
-            block_identifier,
-            purse_identifier,
-        } => {
-            let Some(header) = resolve_block_header(effect_builder, block_identifier).await else {
-                return BinaryResponse::new_empty(protocol_version);
-            };
-            get_balance(
-                effect_builder,
-                *header.state_root_hash(),
-                purse_identifier,
-                protocol_version,
-            )
-            .await
-        }
-        GlobalStateRequest::BalanceByStateRoot {
+        GlobalStateRequest::Balance {
             state_identifier,
             purse_identifier,
         } => {

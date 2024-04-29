@@ -358,8 +358,7 @@ async fn binary_port_component() {
         try_spec_exec_invalid(&mut rng),
         try_accept_transaction_invalid(&mut rng),
         try_accept_transaction(&secret_signing_key),
-        get_balance_by_block(*highest_block.hash()),
-        get_balance_by_state_root(state_root_hash, test_account_hash),
+        get_balance(state_root_hash, test_account_hash),
     ];
 
     for TestCase {
@@ -855,34 +854,13 @@ fn get_dictionary_item_by_named_key(
     }
 }
 
-fn get_balance_by_block(block_hash: BlockHash) -> TestCase {
+fn get_balance(state_root_hash: Digest, account_hash: AccountHash) -> TestCase {
     TestCase {
-        name: "get_balance_by_block",
-        request: BinaryRequest::Get(GetRequest::State(Box::new(
-            GlobalStateRequest::BalanceByBlock {
-                block_identifier: Some(BlockIdentifier::Hash(block_hash)),
-                purse_identifier: PurseIdentifier::Payment,
-            },
-        ))),
-        asserter: Box::new(|response| {
-            assert_response::<BalanceResponse, _>(
-                response,
-                Some(PayloadType::BalanceResponse),
-                |res| res.available_balance == U512::zero(),
-            )
-        }),
-    }
-}
-
-fn get_balance_by_state_root(state_root_hash: Digest, account_hash: AccountHash) -> TestCase {
-    TestCase {
-        name: "get_balance_by_state_root",
-        request: BinaryRequest::Get(GetRequest::State(Box::new(
-            GlobalStateRequest::BalanceByStateRoot {
-                state_identifier: Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
-                purse_identifier: PurseIdentifier::Account(account_hash),
-            },
-        ))),
+        name: "get_balance",
+        request: BinaryRequest::Get(GetRequest::State(Box::new(GlobalStateRequest::Balance {
+            state_identifier: Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
+            purse_identifier: PurseIdentifier::Account(account_hash),
+        }))),
         asserter: Box::new(|response| {
             assert_response::<BalanceResponse, _>(
                 response,

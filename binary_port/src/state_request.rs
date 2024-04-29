@@ -5,7 +5,7 @@ use rand::Rng;
 
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    BlockIdentifier, Digest, GlobalStateIdentifier, Key, KeyTag,
+    Digest, GlobalStateIdentifier, Key, KeyTag,
 };
 
 use crate::PurseIdentifier;
@@ -16,8 +16,7 @@ const ITEM_TAG: u8 = 0;
 const ALL_ITEMS_TAG: u8 = 1;
 const TRIE_TAG: u8 = 2;
 const DICTIONARY_ITEM_TAG: u8 = 3;
-const BALANCE_BY_BLOCK_TAG: u8 = 4;
-const BALANCE_BY_STATE_ROOT_TAG: u8 = 5;
+const BALANCE_BY_STATE_ROOT_TAG: u8 = 4;
 
 /// A request to get data from the global state.
 #[derive(Clone, Debug, PartialEq)]
@@ -50,15 +49,8 @@ pub enum GlobalStateRequest {
         /// Dictionary item identifier.
         identifier: DictionaryItemIdentifier,
     },
-    /// Get balance by block and purse.
-    BalanceByBlock {
-        /// Block identifier, `None` means "latest block".
-        block_identifier: Option<BlockIdentifier>,
-        /// Purse identifier.
-        purse_identifier: PurseIdentifier,
-    },
     /// Get balance by state root and purse.
-    BalanceByStateRoot {
+    Balance {
         /// Global state identifier, `None` means "latest block state".
         state_identifier: Option<GlobalStateIdentifier>,
         /// Purse identifier.
@@ -97,11 +89,7 @@ impl GlobalStateRequest {
                     .then(|| GlobalStateIdentifier::random(rng)),
                 identifier: DictionaryItemIdentifier::random(rng),
             },
-            BALANCE_BY_BLOCK_TAG => GlobalStateRequest::BalanceByBlock {
-                block_identifier: rng.gen::<bool>().then(|| BlockIdentifier::random(rng)),
-                purse_identifier: PurseIdentifier::random(rng),
-            },
-            BALANCE_BY_STATE_ROOT_TAG => GlobalStateRequest::BalanceByStateRoot {
+            BALANCE_BY_STATE_ROOT_TAG => GlobalStateRequest::Balance {
                 state_identifier: rng
                     .gen::<bool>()
                     .then(|| GlobalStateIdentifier::random(rng)),
@@ -151,15 +139,7 @@ impl ToBytes for GlobalStateRequest {
                 state_identifier.write_bytes(writer)?;
                 identifier.write_bytes(writer)
             }
-            GlobalStateRequest::BalanceByBlock {
-                block_identifier,
-                purse_identifier,
-            } => {
-                BALANCE_BY_BLOCK_TAG.write_bytes(writer)?;
-                block_identifier.write_bytes(writer)?;
-                purse_identifier.write_bytes(writer)
-            }
-            GlobalStateRequest::BalanceByStateRoot {
+            GlobalStateRequest::Balance {
                 state_identifier,
                 purse_identifier,
             } => {
@@ -191,11 +171,7 @@ impl ToBytes for GlobalStateRequest {
                     state_identifier,
                     identifier,
                 } => state_identifier.serialized_length() + identifier.serialized_length(),
-                GlobalStateRequest::BalanceByBlock {
-                    block_identifier,
-                    purse_identifier,
-                } => block_identifier.serialized_length() + purse_identifier.serialized_length(),
-                GlobalStateRequest::BalanceByStateRoot {
+                GlobalStateRequest::Balance {
                     state_identifier,
                     purse_identifier,
                 } => state_identifier.serialized_length() + purse_identifier.serialized_length(),
@@ -246,22 +222,11 @@ impl FromBytes for GlobalStateRequest {
                     remainder,
                 ))
             }
-            BALANCE_BY_BLOCK_TAG => {
-                let (block_identifier, remainder) = FromBytes::from_bytes(remainder)?;
-                let (purse_identifier, remainder) = FromBytes::from_bytes(remainder)?;
-                Ok((
-                    GlobalStateRequest::BalanceByBlock {
-                        block_identifier,
-                        purse_identifier,
-                    },
-                    remainder,
-                ))
-            }
             BALANCE_BY_STATE_ROOT_TAG => {
                 let (state_identifier, remainder) = FromBytes::from_bytes(remainder)?;
                 let (purse_identifier, remainder) = FromBytes::from_bytes(remainder)?;
                 Ok((
-                    GlobalStateRequest::BalanceByStateRoot {
+                    GlobalStateRequest::Balance {
                         state_identifier,
                         purse_identifier,
                     },
