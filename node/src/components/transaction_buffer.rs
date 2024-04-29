@@ -118,7 +118,7 @@ impl TransactionBuffer {
                             err
                         )
                         .ignore(),
-                    )
+                    );
                 }
             };
             debug!(
@@ -454,10 +454,10 @@ impl TransactionBuffer {
                 );
             }
 
-            let Some((transaction_hash,footprint)) = buckets.get_mut(&body_hash).and_then(Vec::<_>::pop)
-            else {
-                continue;
-            };
+            let Some((transaction_hash, footprint)) = buckets.get_mut(&body_hash).and_then(Vec::<_>::pop)
+                else {
+                    continue;
+                };
 
             // bucket wasn't empty - push the hash back into the queue to be processed again on the
             // next pass

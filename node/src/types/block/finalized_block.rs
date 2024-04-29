@@ -1,21 +1,24 @@
 use std::{
     cmp::{Ord, PartialOrd},
+    collections::BTreeMap,
     fmt::{self, Display, Formatter},
     hash::Hash,
 };
 
 #[cfg(test)]
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
 #[cfg(test)]
-use casper_types::{SecretKey, Transaction, TransactionCategory};
+use casper_types::{SecretKey, Transaction};
 #[cfg(test)]
 use {casper_types::testing::TestRng, rand::Rng};
 
-use casper_types::{BlockV2, EraId, PublicKey, RewardedSignatures, Timestamp, TransactionHash};
+use casper_types::{
+    BlockV2, EraId, PublicKey, RewardedSignatures, Timestamp, TransactionCategory, TransactionHash,
+};
 
 use super::BlockPayload;
 
@@ -23,10 +26,7 @@ use super::BlockPayload;
 /// and before execution happened yet.
 #[derive(Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct FinalizedBlock {
-    pub(crate) mint: Vec<TransactionHash>,
-    pub(crate) auction: Vec<TransactionHash>,
-    pub(crate) install_upgrade: Vec<TransactionHash>,
-    pub(crate) standard: Vec<TransactionHash>,
+    pub(crate) transactions: BTreeMap<u8, Vec<TransactionHash>>,
     pub(crate) rewarded_signatures: RewardedSignatures,
     pub(crate) timestamp: Timestamp,
     pub(crate) random_bit: bool,
@@ -56,15 +56,33 @@ impl FinalizedBlock {
         height: u64,
         proposer: PublicKey,
     ) -> Self {
+        let transactions = {
+            let mut ret = BTreeMap::new();
+            ret.insert(
+                TransactionCategory::Mint as u8,
+                block_payload.mint().map(|(x, _)| x).copied().collect(),
+            );
+            ret.insert(
+                TransactionCategory::Auction as u8,
+                block_payload.auction().map(|(x, _)| x).copied().collect(),
+            );
+            ret.insert(
+                TransactionCategory::Standard as u8,
+                block_payload.standard().map(|(x, _)| x).copied().collect(),
+            );
+            ret.insert(
+                TransactionCategory::InstallUpgrade as u8,
+                block_payload
+                    .install_upgrade()
+                    .map(|(x, _)| x)
+                    .copied()
+                    .collect(),
+            );
+            ret
+        };
+
         FinalizedBlock {
-            mint: block_payload.mint().map(|(x, _)| x).copied().collect(),
-            auction: block_payload.auction().map(|(x, _)| x).copied().collect(),
-            install_upgrade: block_payload
-                .install_upgrade()
-                .map(|(x, _)| x)
-                .copied()
-                .collect(),
-            standard: block_payload.standard().map(|(x, _)| x).copied().collect(),
+            transactions,
             rewarded_signatures: block_payload.rewarded_signatures().clone(),
             timestamp,
             random_bit: block_payload.random_bit(),
@@ -75,13 +93,35 @@ impl FinalizedBlock {
         }
     }
 
+    pub(crate) fn mint(&self) -> Vec<TransactionHash> {
+        self.transactions
+            .get(&(TransactionCategory::Mint as u8))
+            .map(|transactions| transactions.to_vec())
+            .unwrap_or(vec![])
+    }
+
+    pub(crate) fn auction(&self) -> Vec<TransactionHash> {
+        self.transactions
+            .get(&(TransactionCategory::Auction as u8))
+            .map(|transactions| transactions.to_vec())
+            .unwrap_or(vec![])
+    }
+    pub(crate) fn install_upgrade(&self) -> Vec<TransactionHash> {
+        self.transactions
+            .get(&(TransactionCategory::InstallUpgrade as u8))
+            .map(|transactions| transactions.to_vec())
+            .unwrap_or(vec![])
+    }
+    pub(crate) fn standard(&self) -> Vec<TransactionHash> {
+        self.transactions
+            .get(&(TransactionCategory::Standard as u8))
+            .map(|transactions| transactions.to_vec())
+            .unwrap_or(vec![])
+    }
+
     /// The list of deploy hashes chained with the list of transfer hashes.
     pub(crate) fn all_transactions(&self) -> impl Iterator<Item = &TransactionHash> {
-        self.mint
-            .iter()
-            .chain(&self.auction)
-            .chain(&self.install_upgrade)
-            .chain(&self.standard)
+        self.transactions.values().flatten()
     }
 
     /// Generates a random instance using a `TestRng` and includes specified deploys.
@@ -149,10 +189,7 @@ impl FinalizedBlock {
 impl From<BlockV2> for FinalizedBlock {
     fn from(block: BlockV2) -> Self {
         FinalizedBlock {
-            mint: block.mint().copied().collect(),
-            auction: block.auction().copied().collect(),
-            install_upgrade: block.install_upgrade().copied().collect(),
-            standard: block.standard().copied().collect(),
+            transactions: block.transactions().clone(),
             timestamp: block.timestamp(),
             random_bit: block.random_bit(),
             era_report: block.era_end().map(|era_end| InternalEraReport {
@@ -176,10 +213,10 @@ impl Display for FinalizedBlock {
             self.height,
             self.era_id,
             self.timestamp,
-            self.mint.len(),
-            self.auction.len(),
-            self.install_upgrade.len(),
-            self.standard.len(),
+            self.mint().len(),
+            self.auction().len(),
+            self.install_upgrade().len(),
+            self.standard().len(),
         )?;
         if let Some(ref ee) = self.era_report {
             write!(formatter, ", era_end: {:?}", ee)?;
@@ -238,7 +275,10 @@ mod tests {
             PublicKey::random(&mut rng),
         );
 
-        let transactions = fb.standard;
+        let transactions = fb
+            .transactions
+            .get(&(TransactionCategory::Standard as u8))
+            .unwrap();
         assert!(!transactions.is_empty())
     }
 }

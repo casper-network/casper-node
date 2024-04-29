@@ -1064,7 +1064,7 @@ async fn registering_header_successfully_triggers_signatures_fetch_for_weak_fina
         effects.len(),
         min(
             test_env.validator_keys().len(),
-            MAX_SIMULTANEOUS_PEERS as usize
+            MAX_SIMULTANEOUS_PEERS as usize,
         )
     );
     for event in mock_reactor.process_effects(effects).await {
@@ -1137,7 +1137,7 @@ async fn fwd_more_signatures_are_requested_if_weak_finality_is_not_reached() {
         effects.len(),
         min(
             validators_secret_keys.len() - 1,
-            MAX_SIMULTANEOUS_PEERS as usize
+            MAX_SIMULTANEOUS_PEERS as usize,
         )
     );
     for event in mock_reactor.process_effects(effects).await {
@@ -2568,11 +2568,11 @@ async fn historical_sync_no_legacy_block() {
 
     match events.try_one() {
         Some(MockReactorEvent::ContractRuntimeRequest(
-            ContractRuntimeRequest::GetExecutionResultsChecksum {
-                state_root_hash,
-                responder,
-            },
-        )) => responder.respond(ExecutionResultsChecksumResult::Success {checksum: state_root_hash}).await,
+                 ContractRuntimeRequest::GetExecutionResultsChecksum {
+                     state_root_hash,
+                     responder,
+                 },
+             )) => responder.respond(ExecutionResultsChecksumResult::Success { checksum: state_root_hash }).await,
         other => panic!("Event should be of type `ContractRuntimeRequest(ContractRuntimeRequest::GetExecutionResultsChecksum) but it is {:?}", other),
     }
 
@@ -2796,11 +2796,11 @@ async fn historical_sync_legacy_block_strict_finality() {
 
     match events.try_one() {
         Some(MockReactorEvent::ContractRuntimeRequest(
-            ContractRuntimeRequest::GetExecutionResultsChecksum {
-                state_root_hash,
-                responder,
-            },
-             )) => responder.respond(ExecutionResultsChecksumResult::Success {checksum: state_root_hash}).await,
+                 ContractRuntimeRequest::GetExecutionResultsChecksum {
+                     state_root_hash,
+                     responder,
+                 },
+             )) => responder.respond(ExecutionResultsChecksumResult::Success { checksum: state_root_hash }).await,
         other => panic!("Event should be of type `ContractRuntimeRequest(ContractRuntimeRequest::GetExecutionResultsChecksum) but it is {:?}", other),
     }
 
@@ -2998,11 +2998,11 @@ async fn historical_sync_legacy_block_weak_finality() {
 
     match events.try_one() {
         Some(MockReactorEvent::ContractRuntimeRequest(
-            ContractRuntimeRequest::GetExecutionResultsChecksum {
-                state_root_hash,
-                responder,
-            },
-             )) => responder.respond(ExecutionResultsChecksumResult::Success {checksum: state_root_hash}).await,
+                 ContractRuntimeRequest::GetExecutionResultsChecksum {
+                     state_root_hash,
+                     responder,
+                 },
+             )) => responder.respond(ExecutionResultsChecksumResult::Success { checksum: state_root_hash }).await,
         other => panic!("Event should be of type `ContractRuntimeRequest(ContractRuntimeRequest::GetExecutionResultsChecksum) but it is {:?}", other),
     }
 
@@ -3211,11 +3211,11 @@ async fn historical_sync_legacy_block_any_finality() {
 
     match events.try_one() {
         Some(MockReactorEvent::ContractRuntimeRequest(
-            ContractRuntimeRequest::GetExecutionResultsChecksum {
-                state_root_hash,
-                responder,
-            },
-             )) => responder.respond(ExecutionResultsChecksumResult::Success {checksum: state_root_hash}).await,
+                 ContractRuntimeRequest::GetExecutionResultsChecksum {
+                     state_root_hash,
+                     responder,
+                 },
+             )) => responder.respond(ExecutionResultsChecksumResult::Success { checksum: state_root_hash }).await,
         other => panic!("Event should be of type `ContractRuntimeRequest(ContractRuntimeRequest::GetExecutionResultsChecksum) but it is {:?}", other),
     }
 
@@ -3817,13 +3817,13 @@ async fn historical_sync_latch_should_not_decrement_for_old_deploy_fetch_respons
     let block = test_env.block();
     let block_v2: BlockV2 = block.clone().try_into().unwrap();
     let first_txn = transactions
-        .get(block_v2.all_transactions().next().unwrap())
+        .get(&block_v2.all_transactions().next().unwrap())
         .unwrap();
     let second_txn = transactions
-        .get(block_v2.all_transactions().nth(1).unwrap())
+        .get(&block_v2.all_transactions().nth(1).unwrap())
         .unwrap();
     let third_txn = transactions
-        .get(block_v2.all_transactions().nth(2).unwrap())
+        .get(&block_v2.all_transactions().nth(2).unwrap())
         .unwrap();
 
     let peers = test_env.peers();
@@ -4238,7 +4238,7 @@ async fn historical_sync_latch_should_not_decrement_for_old_execution_results() 
             "Latch count should be {} since we already had the first chunk and no responses with chunks != 0 were received.",
             MAX_SIMULTANEOUS_PEERS
         )
-        .as_str(),
+            .as_str(),
     );
 
     // Receive a fetch error.

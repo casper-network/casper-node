@@ -134,10 +134,10 @@ pub(super) async fn exec_or_requeue<REv>(
 
         let switch_block_utilization_score = {
             let has_hit_slot_limt = {
-                (executable_block.mint.len() as u32 >= block_max_mint_count)
-                    || (executable_block.auction.len() as u32 >= block_max_auction_count)
-                    || (executable_block.standard.len() as u32 >= block_max_standard_count)
-                    || (executable_block.install_upgrade.len() as u32
+                (executable_block.mint().len() as u32 >= block_max_mint_count)
+                    || (executable_block.auction().len() as u32 >= block_max_auction_count)
+                    || (executable_block.standard().len() as u32 >= block_max_standard_count)
+                    || (executable_block.install_upgrade().len() as u32
                         >= block_max_install_upgrade_count)
             };
 

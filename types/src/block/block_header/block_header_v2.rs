@@ -32,6 +32,7 @@ static BLOCK_HEADER_V2: Lazy<BlockHeaderV2> = Lazy::new(|| {
     let protocol_version = ProtocolVersion::V1_0_0;
     let accumulated_seed = Digest::hash_pair(Digest::from([9; Digest::LENGTH]), [random_bit as u8]);
     let body_hash = Digest::from([5; Digest::LENGTH]);
+    let proposer = PublicKey::example().clone();
     BlockHeaderV2::new(
         parent_hash,
         state_root_hash,
@@ -43,6 +44,7 @@ static BLOCK_HEADER_V2: Lazy<BlockHeaderV2> = Lazy::new(|| {
         era_id,
         height,
         protocol_version,
+        proposer,
         current_gas_price,
         #[cfg(any(feature = "once_cell", test))]
         OnceCell::new(),
@@ -75,6 +77,8 @@ pub struct BlockHeaderV2 {
     pub(super) height: u64,
     /// The protocol version of the network from when this block was created.
     pub(super) protocol_version: ProtocolVersion,
+    /// The public key of the validator which proposed the block.
+    pub(super) proposer: PublicKey,
     /// The gas price of the era
     pub(super) current_gas_price: u8,
     #[cfg_attr(any(all(feature = "std", feature = "once_cell"), test), serde(skip))]
@@ -161,6 +165,11 @@ impl BlockHeaderV2 {
         self.era_end.is_some()
     }
 
+    /// Returns the public key of the validator which proposed the block.
+    pub fn proposer(&self) -> &PublicKey {
+        &self.proposer
+    }
+
     /// Returns the validators for the upcoming era and their respective weights (if this is a
     /// switch block).
     pub fn next_era_validator_weights(&self) -> Option<&BTreeMap<PublicKey, U512>> {
@@ -209,6 +218,7 @@ impl BlockHeaderV2 {
         era_id: EraId,
         height: u64,
         protocol_version: ProtocolVersion,
+        proposer: PublicKey,
         current_gas_price: u8,
         #[cfg(any(feature = "once_cell", test))] block_hash: OnceCell<BlockHash>,
     ) -> Self {
@@ -223,6 +233,7 @@ impl BlockHeaderV2 {
             era_id,
             height,
             protocol_version,
+            proposer,
             current_gas_price,
             #[cfg(any(feature = "once_cell", test))]
             block_hash,
@@ -266,6 +277,7 @@ impl PartialEq for BlockHeaderV2 {
             era_id,
             height,
             protocol_version,
+            proposer,
             current_gas_price,
             block_hash: _,
         } = self;
@@ -281,6 +293,7 @@ impl PartialEq for BlockHeaderV2 {
             era_id,
             height,
             protocol_version,
+            proposer,
             current_gas_price,
         } = self;
         *parent_hash == other.parent_hash
@@ -293,6 +306,7 @@ impl PartialEq for BlockHeaderV2 {
             && *era_id == other.era_id
             && *height == other.height
             && *protocol_version == other.protocol_version
+            && *proposer == other.proposer
             && *current_gas_price == other.current_gas_price
     }
 }
@@ -302,7 +316,7 @@ impl Display for BlockHeaderV2 {
         write!(
             formatter,
             "block header #{}, {}, timestamp {}, {}, parent {}, post-state hash {}, body hash {}, \
-            random bit {}, protocol version: {}, current_gas_price: {}",
+            random bit {}, protocol version: {}, proposed by {}, current_gas_price: {}",
             self.height,
             self.block_hash(),
             self.timestamp,
@@ -312,6 +326,7 @@ impl Display for BlockHeaderV2 {
             self.body_hash,
             self.random_bit,
             self.protocol_version,
+            self.proposer,
             self.current_gas_price
         )?;
         if let Some(era_end) = &self.era_end {
@@ -333,6 +348,7 @@ impl ToBytes for BlockHeaderV2 {
         self.era_id.write_bytes(writer)?;
         self.height.write_bytes(writer)?;
         self.protocol_version.write_bytes(writer)?;
+        self.proposer.write_bytes(writer)?;
         self.current_gas_price.write_bytes(writer)
     }
 
@@ -353,6 +369,7 @@ impl ToBytes for BlockHeaderV2 {
             + self.era_id.serialized_length()
             + self.height.serialized_length()
             + self.protocol_version.serialized_length()
+            + self.proposer.serialized_length()
             + self.current_gas_price.serialized_length()
     }
 }
@@ -369,6 +386,7 @@ impl FromBytes for BlockHeaderV2 {
         let (era_id, remainder) = EraId::from_bytes(remainder)?;
         let (height, remainder) = u64::from_bytes(remainder)?;
         let (protocol_version, remainder) = ProtocolVersion::from_bytes(remainder)?;
+        let (proposer, remainder) = PublicKey::from_bytes(remainder)?;
         let (current_gas_price, remainder) = u8::from_bytes(remainder)?;
         let block_header = BlockHeaderV2 {
             parent_hash,
@@ -381,6 +399,7 @@ impl FromBytes for BlockHeaderV2 {
             era_id,
             height,
             protocol_version,
+            proposer,
             current_gas_price,
             #[cfg(any(feature = "once_cell", test))]
             block_hash: OnceCell::new(),

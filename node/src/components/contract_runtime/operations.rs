@@ -911,10 +911,7 @@ pub fn execute_finalized_block(
         executable_block.height,
         protocol_version,
         (*proposer).clone(),
-        executable_block.mint,
-        executable_block.auction,
-        executable_block.install_upgrade,
-        executable_block.standard,
+        executable_block.transaction_map,
         executable_block.rewarded_signatures,
         current_gas_price,
     ));

@@ -6,7 +6,7 @@ use rand::Rng;
 use crate::{
     system::auction::ValidatorWeights, testing::TestRng, Block, BlockHash, BlockV2, Digest,
     EraEndV2, EraId, ProtocolVersion, PublicKey, RewardedSignatures, Timestamp, Transaction,
-    TransactionEntryPoint, TransactionSessionKind, TransactionTarget, U512,
+    TransactionCategory, TransactionEntryPoint, TransactionSessionKind, TransactionTarget, U512,
 };
 
 /// A helper to build the blocks with various properties required for tests.
@@ -172,8 +172,8 @@ impl TestBlockV2Builder {
         let protocol_version = protocol_version;
         let proposer = proposer.unwrap_or_else(|| PublicKey::random(rng));
 
-        let mut transfer_hashes = vec![];
-        let mut staking_hashes = vec![];
+        let mut mint_hashes = vec![];
+        let mut auction_hashes = vec![];
         let mut install_upgrade_hashes = vec![];
         let mut standard_hashes = vec![];
         for txn in txns {
@@ -181,7 +181,7 @@ impl TestBlockV2Builder {
             match txn {
                 Transaction::Deploy(deploy) => {
                     if deploy.session().is_transfer() {
-                        transfer_hashes.push(txn_hash);
+                        mint_hashes.push(txn_hash);
                     } else {
                         standard_hashes.push(txn_hash);
                     }
@@ -191,13 +191,13 @@ impl TestBlockV2Builder {
                         TransactionEntryPoint::Custom(_) => {
                             panic!("custom entry point not supported for native target")
                         }
-                        TransactionEntryPoint::Transfer => transfer_hashes.push(txn_hash),
+                        TransactionEntryPoint::Transfer => mint_hashes.push(txn_hash),
                         TransactionEntryPoint::AddBid
                         | TransactionEntryPoint::WithdrawBid
                         | TransactionEntryPoint::Delegate
                         | TransactionEntryPoint::Undelegate
                         | TransactionEntryPoint::Redelegate
-                        | TransactionEntryPoint::ActivateBid => staking_hashes.push(txn_hash),
+                        | TransactionEntryPoint::ActivateBid => auction_hashes.push(txn_hash),
                     },
                     TransactionTarget::Stored { .. } => standard_hashes.push(txn_hash),
                     TransactionTarget::Session { kind, .. } => match kind {
@@ -211,6 +211,17 @@ impl TestBlockV2Builder {
                 },
             }
         }
+        let transactions = {
+            let mut ret = BTreeMap::new();
+            ret.insert(TransactionCategory::Mint as u8, mint_hashes);
+            ret.insert(TransactionCategory::Auction as u8, auction_hashes);
+            ret.insert(
+                TransactionCategory::InstallUpgrade as u8,
+                install_upgrade_hashes,
+            );
+            ret.insert(TransactionCategory::Standard as u8, standard_hashes);
+            ret
+        };
         let rewarded_signatures = rewarded_signatures.unwrap_or_default();
         let current_gas_price: u8 = 1;
         BlockV2::new(
@@ -224,10 +235,7 @@ impl TestBlockV2Builder {
             height,
             protocol_version,
             proposer,
-            transfer_hashes,
-            staking_hashes,
-            install_upgrade_hashes,
-            standard_hashes,
+            transactions,
             rewarded_signatures,
             current_gas_price,
         )

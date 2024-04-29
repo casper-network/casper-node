@@ -1,4 +1,5 @@
 use alloc::{boxed::Box, vec::Vec};
+use alloc::collections::BTreeMap;
 
 use core::{
     convert::TryFrom,
@@ -20,12 +21,8 @@ use super::{Block, BlockBodyV2, BlockConversionError, RewardedSignatures};
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::testing::TestRng;
 #[cfg(feature = "json-schema")]
-use crate::TransactionV1Hash;
-use crate::{
-    bytesrepr::{self, FromBytes, ToBytes},
-    BlockHash, BlockHeaderV2, BlockValidationError, Digest, EraEndV2, EraId, ProtocolVersion,
-    PublicKey, Timestamp, TransactionHash,
-};
+use crate::{TransactionV1Hash, TransactionCategory};
+use crate::{bytesrepr::{self, FromBytes, ToBytes}, BlockHash, BlockHeaderV2, BlockValidationError, Digest, EraEndV2, EraId, ProtocolVersion, PublicKey, Timestamp, TransactionHash};
 
 #[cfg(feature = "json-schema")]
 static BLOCK_V2: Lazy<BlockV2> = Lazy::new(|| {
@@ -40,18 +37,29 @@ static BLOCK_V2: Lazy<BlockV2> = Lazy::new(|| {
     let protocol_version = ProtocolVersion::V1_0_0;
     let secret_key = crate::SecretKey::example();
     let proposer = PublicKey::from(secret_key);
-    let transfer_hashes = vec![TransactionHash::V1(TransactionV1Hash::new(Digest::from(
+    let mint_hashes = vec![TransactionHash::V1(TransactionV1Hash::new(Digest::from(
         [20; Digest::LENGTH],
     )))];
-    let non_transfer_native_hashes = vec![TransactionHash::V1(TransactionV1Hash::new(
-        Digest::from([21; Digest::LENGTH]),
-    ))];
+    let auction_hashes = vec![TransactionHash::V1(TransactionV1Hash::new(Digest::from(
+        [21; Digest::LENGTH],
+    )))];
     let installer_upgrader_hashes = vec![TransactionHash::V1(TransactionV1Hash::new(
         Digest::from([22; Digest::LENGTH]),
     ))];
-    let other_hashes = vec![TransactionHash::V1(TransactionV1Hash::new(Digest::from(
+    let standard = vec![TransactionHash::V1(TransactionV1Hash::new(Digest::from(
         [23; Digest::LENGTH],
     )))];
+    let transactions = {
+        let mut ret = BTreeMap::new();
+        ret.insert(TransactionCategory::Mint as u8, mint_hashes);
+        ret.insert(TransactionCategory::Auction as u8, auction_hashes);
+        ret.insert(
+            TransactionCategory::InstallUpgrade as u8,
+            installer_upgrader_hashes,
+        );
+        ret.insert(TransactionCategory::Standard as u8, standard);
+        ret
+    };
     let rewarded_signatures = RewardedSignatures::default();
     let current_gas_price = 1u8;
     BlockV2::new(
@@ -65,10 +73,7 @@ static BLOCK_V2: Lazy<BlockV2> = Lazy::new(|| {
         height,
         protocol_version,
         proposer,
-        transfer_hashes,
-        non_transfer_native_hashes,
-        installer_upgrader_hashes,
-        other_hashes,
+        transactions,
         rewarded_signatures,
         current_gas_price,
     )
@@ -104,21 +109,11 @@ impl BlockV2 {
         height: u64,
         protocol_version: ProtocolVersion,
         proposer: PublicKey,
-        mint: Vec<TransactionHash>,
-        auction: Vec<TransactionHash>,
-        install_upgrade: Vec<TransactionHash>,
-        standard: Vec<TransactionHash>,
+        transactions: BTreeMap<u8, Vec<TransactionHash>>,
         rewarded_signatures: RewardedSignatures,
         current_gas_price: u8,
     ) -> Self {
-        let body = BlockBodyV2::new(
-            proposer,
-            mint,
-            auction,
-            install_upgrade,
-            standard,
-            rewarded_signatures,
-        );
+        let body = BlockBodyV2::new(transactions, rewarded_signatures);
         let body_hash = body.hash();
         let accumulated_seed = Digest::hash_pair(parent_seed, [random_bit as u8]);
         let header = BlockHeaderV2::new(
@@ -132,9 +127,10 @@ impl BlockV2 {
             era_id,
             height,
             protocol_version,
+            proposer,
             current_gas_price,
             #[cfg(any(feature = "once_cell", test))]
-            OnceCell::new(),
+                OnceCell::new(),
         );
         Self::new_from_header_and_body(header, body)
     }
@@ -233,7 +229,7 @@ impl BlockV2 {
 
     /// Returns the public key of the validator which proposed the block.
     pub fn proposer(&self) -> &PublicKey {
-        self.body.proposer()
+        self.header.proposer()
     }
 
     /// List of identifiers for finality signatures for a particular past block.
@@ -242,28 +238,33 @@ impl BlockV2 {
     }
 
     /// Returns the hashes of the transfer transactions within the block.
-    pub fn mint(&self) -> impl Iterator<Item = &TransactionHash> {
+    pub fn mint(&self) -> impl Iterator<Item=TransactionHash> {
         self.body.mint()
     }
 
     /// Returns the hashes of the non-transfer, native transactions within the block.
-    pub fn auction(&self) -> impl Iterator<Item = &TransactionHash> {
+    pub fn auction(&self) -> impl Iterator<Item=TransactionHash> {
         self.body.auction()
     }
 
     /// Returns the hashes of the installer/upgrader transactions within the block.
-    pub fn install_upgrade(&self) -> impl Iterator<Item = &TransactionHash> {
+    pub fn install_upgrade(&self) -> impl Iterator<Item=TransactionHash> {
         self.body.install_upgrade()
     }
 
     /// Returns the hashes of all other transactions within the block.
-    pub fn standard(&self) -> impl Iterator<Item = &TransactionHash> {
+    pub fn standard(&self) -> impl Iterator<Item=TransactionHash> {
         self.body.standard()
     }
 
     /// Returns all of the transaction hashes in the order in which they were executed.
-    pub fn all_transactions(&self) -> impl Iterator<Item = &TransactionHash> {
+    pub fn all_transactions(&self) -> impl Iterator<Item=&TransactionHash> {
         self.body.all_transactions()
+    }
+
+    /// Returns a reference to the collection of mapped transactions.
+    pub fn transactions(&self) -> &BTreeMap<u8, Vec<TransactionHash>> {
+        self.body.transactions()
     }
 
     /// Returns `Ok` if and only if the block's provided block hash and body hash are identical to
