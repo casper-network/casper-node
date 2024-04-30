@@ -112,7 +112,9 @@ impl TransactionV1Body {
         match self.entry_point {
             TransactionEntryPoint::Custom(_)
             | TransactionEntryPoint::Transfer
-            | TransactionEntryPoint::AddAssociatedKey => false,
+            | TransactionEntryPoint::AddAssociatedKey
+            | TransactionEntryPoint::RemoveAssociatedKey
+            | TransactionEntryPoint::UpdateAssociatedKey => false,
             TransactionEntryPoint::AddBid
             | TransactionEntryPoint::WithdrawBid
             | TransactionEntryPoint::ActivateBid
@@ -208,6 +210,12 @@ impl TransactionV1Body {
                 TransactionEntryPoint::AddAssociatedKey => {
                     todo!()
                 }
+                TransactionEntryPoint::RemoveAssociatedKey => {
+                    todo!()
+                }
+                TransactionEntryPoint::UpdateAssociatedKey => {
+                    todo!()
+                }
             },
             TransactionTarget::Stored { .. } => match &self.entry_point {
                 TransactionEntryPoint::Custom(_) => Ok(()),
@@ -218,7 +226,9 @@ impl TransactionV1Body {
                 | TransactionEntryPoint::Undelegate
                 | TransactionEntryPoint::Redelegate
                 | TransactionEntryPoint::ActivateBid
-                | TransactionEntryPoint::AddAssociatedKey => {
+                | TransactionEntryPoint::AddAssociatedKey
+                | TransactionEntryPoint::RemoveAssociatedKey
+                | TransactionEntryPoint::UpdateAssociatedKey => {
                     debug!(
                         entry_point = %self.entry_point,
                         "transaction targeting stored entity/package must have custom entry point"
@@ -243,7 +253,9 @@ impl TransactionV1Body {
                 | TransactionEntryPoint::Undelegate
                 | TransactionEntryPoint::Redelegate
                 | TransactionEntryPoint::ActivateBid
-                | TransactionEntryPoint::AddAssociatedKey => {
+                | TransactionEntryPoint::AddAssociatedKey
+                | TransactionEntryPoint::RemoveAssociatedKey
+                | TransactionEntryPoint::UpdateAssociatedKey => {
                     debug!(
                         entry_point = %self.entry_point,
                         "transaction with session code must have custom entry point"

@@ -1041,6 +1041,25 @@ where
                     .map_err(Self::reverter)?;
                 CLValue::from_t(result).map_err(Self::reverter)
             })(),
+            entity::METHOD_REMOVE_ASSOCIATED_KEY => (|| {
+                runtime.charge_system_contract_call(entity_costs.remove_associated_key)?;
+                let account = Self::get_named_argument(runtime_args, entity::ARG_ACCOUNT)?;
+
+                let result = runtime
+                    .remove_associated_key(account)
+                    .map_err(Self::reverter)?;
+                CLValue::from_t(result).map_err(Self::reverter)
+            })(),
+            entity::METHOD_UPDATE_ASSOCIATED_KEY => (|| {
+                runtime.charge_system_contract_call(entity_costs.update_associated_key)?;
+                let account = Self::get_named_argument(runtime_args, entity::ARG_ACCOUNT)?;
+                let weight = Self::get_named_argument(runtime_args, entity::ARG_WEIGHT)?;
+
+                let result = runtime
+                    .update_associated_key(account, weight)
+                    .map_err(Self::reverter)?;
+                CLValue::from_t(result).map_err(Self::reverter)
+            })(),
             _ => CLValue::from_t(()).map_err(Self::reverter),
         };
 
@@ -2254,7 +2273,7 @@ where
         }
     }
 
-    fn remove_associated_key(
+    fn remove_associated_key_old(
         &mut self,
         account_hash_ptr: u32,
         account_hash_size: usize,
@@ -2279,7 +2298,7 @@ where
         }
     }
 
-    fn update_associated_key(
+    fn update_associated_key_old(
         &mut self,
         account_hash_ptr: u32,
         account_hash_size: usize,

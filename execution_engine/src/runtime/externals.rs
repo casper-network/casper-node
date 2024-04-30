@@ -246,7 +246,7 @@ where
                     [account_hash_ptr, account_hash_size],
                 )?;
                 let value =
-                    self.remove_associated_key(account_hash_ptr, account_hash_size as usize)?;
+                    self.remove_associated_key_old(account_hash_ptr, account_hash_size as usize)?;
                 Ok(Some(RuntimeValue::I32(value)))
             }
 
@@ -263,7 +263,7 @@ where
                         weight_value as HostFunctionCost,
                     ],
                 )?;
-                let value = self.update_associated_key(
+                let value = self.update_associated_key_old(
                     account_hash_ptr,
                     account_hash_size as usize,
                     weight_value,

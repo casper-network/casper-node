@@ -22,7 +22,9 @@ use tracing::{error, info};
 
 use casper_storage::{
     data_access_layer::{
-        balance::{BalanceHandling, BalanceResult}, AddressableEntityRequest, AddressableEntityResult, BalanceRequest, BidsRequest, BidsResult, ProofHandling, TotalSupplyRequest, TotalSupplyResult
+        balance::{BalanceHandling, BalanceResult},
+        AddressableEntityRequest, AddressableEntityResult, BalanceRequest, BidsRequest, BidsResult,
+        ProofHandling, TotalSupplyRequest, TotalSupplyResult,
     },
     global_state::state::{StateProvider, StateReader},
 };
@@ -33,12 +35,12 @@ use casper_types::{
         AUCTION, ENTITY,
     },
     testing::TestRng,
-    AccountConfig, AccountsConfig, ActivationPoint, AddressableEntityHash, AvailableBlockRange,
-    Block, BlockHash, BlockHeader, BlockV2, CLValue, Chainspec, ChainspecRawBytes,
-    ConsensusProtocolName, Deploy, EraId, FeeHandling, Gas, HoldBalanceHandling, Key, Motes,
-    NextUpgrade, PricingHandling, PricingMode, ProtocolVersion, PublicKey, RefundHandling, Rewards,
-    SecretKey, StoredValue, SystemEntityRegistry, TimeDiff, Timestamp, Transaction,
-    TransactionHash, TransactionV1Builder, ValidatorConfig, U512,
+    AccountConfig, AccountsConfig, ActivationPoint, AddressableEntity, AddressableEntityHash,
+    AvailableBlockRange, Block, BlockHash, BlockHeader, BlockV2, CLValue, Chainspec,
+    ChainspecRawBytes, ConsensusProtocolName, Deploy, EraId, FeeHandling, Gas, HoldBalanceHandling,
+    Key, Motes, NextUpgrade, PricingHandling, PricingMode, ProtocolVersion, PublicKey,
+    RefundHandling, Rewards, SecretKey, StoredValue, SystemEntityRegistry, TimeDiff, Timestamp,
+    Transaction, TransactionHash, TransactionV1Builder, ValidatorConfig, U512,
 };
 
 use crate::{
@@ -2862,32 +2864,60 @@ async fn check_multisig() {
         .run_until_executed_transaction(&txn_hash, TEN_SECS)
         .await;
 
-    // Check if the associated key has been added.
-    let (_node_id, runner) = fixture.network.nodes().iter().next().unwrap();
-    let block_height = runner
-        .main_reactor()
-        .storage()
-        .highest_complete_block_height()
-        .expect("missing highest completed block");
-    let block_header = runner
-        .main_reactor()
-        .storage()
-        .read_block_header_by_height(block_height, true)
-        .expect("failure to read block header")
-        .unwrap();
-    let state_hash = *block_header.state_root_hash();
-    let request = AddressableEntityRequest::new(state_hash, public_key.to_account_hash().into());
-    let result = runner
-        .main_reactor()
-        .contract_runtime()
-        .data_access_layer()
-        .addressable_entity(request);
-    match result {
-        AddressableEntityResult::Success { entity } => {
-            let associated_keys = entity.associated_keys();
-            assert_eq!(associated_keys.len(), 2);
-            assert!(associated_keys.contains_key(&new_public_key.to_account_hash()));
+    // From the network, get [`AddressableEntity`] for given Key.
+    fn get_entity(fixture: &TestFixture, key: Key) -> AddressableEntity {
+        let (_node_id, runner) = fixture.network.nodes().iter().next().unwrap();
+        let block_height = runner
+            .main_reactor()
+            .storage()
+            .highest_complete_block_height()
+            .expect("missing highest completed block");
+        let block_header = runner
+            .main_reactor()
+            .storage()
+            .read_block_header_by_height(block_height, true)
+            .expect("failure to read block header")
+            .unwrap();
+        let state_hash = *block_header.state_root_hash();
+        let request = AddressableEntityRequest::new(state_hash, key);
+        let result = runner
+            .main_reactor()
+            .contract_runtime()
+            .data_access_layer()
+            .addressable_entity(request);
+        match result {
+            AddressableEntityResult::Success { entity } => entity,
+            _ => panic!(),
         }
-        _ => panic!(),
     }
+
+    // Check if the associated key has been added.
+    let entity = get_entity(&fixture, public_key.to_account_hash().into());
+    let associated_keys = entity.associated_keys();
+    assert_eq!(associated_keys.len(), 2);
+    assert!(associated_keys.contains_key(&new_public_key.to_account_hash()));
+
+    // Remove associated key.
+    let mut deploy = Deploy::remove_associated_key(
+        fixture.chainspec.network_config.name.clone(),
+        fixture.system_contract_hash(ENTITY),
+        public_key.clone(),
+        new_public_key.clone(),
+        Timestamp::now(),
+        TimeDiff::from_seconds(60),
+    );
+    deploy.sign(&secret_key);
+    let txn = Transaction::Deploy(deploy);
+    let txn_hash = txn.hash();
+
+    // Inject the transaction and run the network until executed.
+    fixture.inject_transaction(txn).await;
+    fixture
+        .run_until_executed_transaction(&txn_hash, TEN_SECS)
+        .await;
+
+    // Check if the associated key has been removed.
+    let entity = get_entity(&fixture, public_key.to_account_hash().into());
+    let associated_keys = entity.associated_keys();
+    assert_eq!(associated_keys.len(), 1);
 }

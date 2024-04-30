@@ -199,7 +199,11 @@ impl TestBlockV2Builder {
                         | TransactionEntryPoint::Undelegate
                         | TransactionEntryPoint::Redelegate
                         | TransactionEntryPoint::ActivateBid => staking_hashes.push(txn_hash),
-                        TransactionEntryPoint::AddAssociatedKey => entity_hashes.push(txn_hash),
+                        TransactionEntryPoint::AddAssociatedKey
+                        | TransactionEntryPoint::RemoveAssociatedKey
+                        | TransactionEntryPoint::UpdateAssociatedKey => {
+                            entity_hashes.push(txn_hash)
+                        }
                     },
                     TransactionTarget::Stored { .. } => standard_hashes.push(txn_hash),
                     TransactionTarget::Session { kind, .. } => match kind {

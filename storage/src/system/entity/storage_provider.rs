@@ -1,10 +1,12 @@
 use casper_types::{
-    system::entity::Error, AddressableEntity, Key, StoredValue,
+    account::AccountHash, system::entity::Error, AddressableEntity, Key,
 };
 
 /// Provides functionality of a contract storage.
 pub trait StorageProvider {
-    fn read_key(&mut self, key: &Key) -> Result<Option<AddressableEntity>, Error>;
+    fn read_key(&mut self, account_hash: AccountHash) -> Result<Option<Key>, Error>;
 
-    fn write_key(&mut self, key: Key, value: StoredValue) -> Result<(), Error>;
+    fn read_entity(&mut self, key: &Key) -> Result<Option<AddressableEntity>, Error>;
+
+    fn write_entity(&mut self, key: Key, entity: AddressableEntity) -> Result<(), Error>;
 }

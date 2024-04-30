@@ -593,7 +593,9 @@ impl TransactionV1 {
                 | TransactionEntryPoint::Delegate
                 | TransactionEntryPoint::Undelegate
                 | TransactionEntryPoint::Redelegate => TransactionCategory::Auction,
-                TransactionEntryPoint::AddAssociatedKey => TransactionCategory::Entity,
+                TransactionEntryPoint::AddAssociatedKey
+                | TransactionEntryPoint::RemoveAssociatedKey
+                | TransactionEntryPoint::UpdateAssociatedKey => TransactionCategory::Entity,
             },
             TransactionTarget::Stored { .. } => TransactionCategory::Standard,
             TransactionTarget::Session { kind, .. } => match kind {
@@ -676,7 +678,17 @@ impl GasLimited for TransactionV1 {
                     } else if self.is_install_or_upgrade() {
                         costs.install_upgrade_limit()
                     } else if self.is_native_entity() {
-                        todo!()
+                        let costs = costs.entity_costs();
+                        let entry_point = self.body().entry_point();
+                        let amount = match entry_point {
+                            TransactionEntryPoint::AddAssociatedKey => costs.add_associated_key,
+                            _ => {
+                                return Err(InvalidTransactionV1::EntryPointCannotBeCustom {
+                                    entry_point: entry_point.clone(),
+                                });
+                            }
+                        };
+                        amount as u64
                     } else {
                         costs.standard_transaction_limit()
                     }

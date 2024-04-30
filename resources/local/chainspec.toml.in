@@ -348,6 +348,8 @@ pay = 10_000
 
 [system_costs.entity_costs]
 add_associated_key = 10_000
+remove_associated_key = 10_000
+update_associated_key = 10_000
 
 [vacancy]
 upper_threshold = 90
