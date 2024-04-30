@@ -23,6 +23,8 @@ pub struct ProtocolUpgradeConfig {
     global_state_update: BTreeMap<Key, StoredValue>,
     chainspec_registry: ChainspecRegistry,
     fee_handling: FeeHandling,
+    migrate_legacy_accounts: bool,
+    migrate_legacy_contracts: bool,
 }
 
 impl ProtocolUpgradeConfig {
@@ -43,6 +45,8 @@ impl ProtocolUpgradeConfig {
         global_state_update: BTreeMap<Key, StoredValue>,
         chainspec_registry: ChainspecRegistry,
         fee_handling: FeeHandling,
+        migrate_legacy_accounts: bool,
+        migrate_legacy_contracts: bool,
     ) -> Self {
         ProtocolUpgradeConfig {
             pre_state_hash,
@@ -59,6 +63,8 @@ impl ProtocolUpgradeConfig {
             global_state_update,
             chainspec_registry,
             fee_handling,
+            migrate_legacy_accounts,
+            migrate_legacy_contracts,
         }
     }
 
@@ -135,5 +141,15 @@ impl ProtocolUpgradeConfig {
     /// Fee handling setting.
     pub fn fee_handling(&self) -> FeeHandling {
         self.fee_handling
+    }
+
+    /// Migrate legacy accounts.
+    pub fn migrate_legacy_accounts(&self) -> bool {
+        self.migrate_legacy_accounts
+    }
+
+    /// Migrate legacy contracts.
+    pub fn migrate_legacy_contracts(&self) -> bool {
+        self.migrate_legacy_contracts
     }
 }

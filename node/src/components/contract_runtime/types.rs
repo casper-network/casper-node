@@ -75,6 +75,7 @@ pub(crate) struct ExecutionArtifactBuilder {
     cost: U512,
     limit: Gas,
     consumed: Gas,
+    size_estimate: u64,
 }
 
 impl ExecutionArtifactBuilder {
@@ -91,6 +92,7 @@ impl ExecutionArtifactBuilder {
             cost: U512::zero(),
             limit: Gas::zero(),
             consumed: Gas::zero(),
+            size_estimate: transaction.size_estimate() as u64,
         }
     }
 
@@ -310,6 +312,7 @@ impl ExecutionArtifactBuilder {
             consumed: self.consumed,
             cost: self.cost,
             payment: self.payment,
+            size_estimate: self.size_estimate,
             error_message: self.error_message,
         };
         let execution_result = ExecutionResult::V2(result);

@@ -5,7 +5,7 @@ use rand::Rng;
 
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    BlockIdentifier, Digest, GlobalStateIdentifier, Key, KeyTag, Timestamp,
+    BlockIdentifier, Digest, GlobalStateIdentifier, Key, KeyTag,
 };
 
 use crate::PurseIdentifier;
@@ -63,8 +63,6 @@ pub enum GlobalStateRequest {
         state_identifier: Option<GlobalStateIdentifier>,
         /// Purse identifier.
         purse_identifier: PurseIdentifier,
-        /// Timestamp used for holds lookup.
-        timestamp: Timestamp,
     },
 }
 
@@ -108,7 +106,6 @@ impl GlobalStateRequest {
                     .gen::<bool>()
                     .then(|| GlobalStateIdentifier::random(rng)),
                 purse_identifier: PurseIdentifier::random(rng),
-                timestamp: Timestamp::random(rng),
             },
             _ => unreachable!(),
         }
@@ -165,12 +162,10 @@ impl ToBytes for GlobalStateRequest {
             GlobalStateRequest::BalanceByStateRoot {
                 state_identifier,
                 purse_identifier,
-                timestamp,
             } => {
                 BALANCE_BY_STATE_ROOT_TAG.write_bytes(writer)?;
                 state_identifier.write_bytes(writer)?;
-                purse_identifier.write_bytes(writer)?;
-                timestamp.write_bytes(writer)
+                purse_identifier.write_bytes(writer)
             }
         }
     }
@@ -203,12 +198,7 @@ impl ToBytes for GlobalStateRequest {
                 GlobalStateRequest::BalanceByStateRoot {
                     state_identifier,
                     purse_identifier,
-                    timestamp,
-                } => {
-                    state_identifier.serialized_length()
-                        + purse_identifier.serialized_length()
-                        + timestamp.serialized_length()
-                }
+                } => state_identifier.serialized_length() + purse_identifier.serialized_length(),
             }
     }
 }
@@ -270,12 +260,10 @@ impl FromBytes for GlobalStateRequest {
             BALANCE_BY_STATE_ROOT_TAG => {
                 let (state_identifier, remainder) = FromBytes::from_bytes(remainder)?;
                 let (purse_identifier, remainder) = FromBytes::from_bytes(remainder)?;
-                let (timestamp, remainder) = FromBytes::from_bytes(remainder)?;
                 Ok((
                     GlobalStateRequest::BalanceByStateRoot {
                         state_identifier,
                         purse_identifier,
-                        timestamp,
                     },
                     remainder,
                 ))

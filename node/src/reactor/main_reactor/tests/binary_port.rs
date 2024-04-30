@@ -7,11 +7,12 @@ use std::{
 };
 
 use casper_binary_port::{
-    BalanceResponse, BinaryRequest, BinaryRequestHeader, BinaryResponse, BinaryResponseAndRequest,
-    ConsensusStatus, ConsensusValidatorChanges, DictionaryItemIdentifier, DictionaryQueryResult,
-    ErrorCode, GetRequest, GetTrieFullResult, GlobalStateQueryResult, GlobalStateRequest,
-    InformationRequest, InformationRequestTag, LastProgress, NetworkName, NodeStatus, PayloadType,
-    PurseIdentifier, ReactorStateName, RecordId, Uptime,
+    BalanceResponse, BinaryMessage, BinaryMessageCodec, BinaryRequest, BinaryRequestHeader,
+    BinaryResponse, BinaryResponseAndRequest, ConsensusStatus, ConsensusValidatorChanges,
+    DictionaryItemIdentifier, DictionaryQueryResult, ErrorCode, GetRequest, GetTrieFullResult,
+    GlobalStateQueryResult, GlobalStateRequest, InformationRequest, InformationRequestTag,
+    LastProgress, NetworkName, NodeStatus, PayloadType, PurseIdentifier, ReactorStateName,
+    RecordId, Uptime,
 };
 use casper_storage::global_state::state::CommitProvider;
 use casper_types::{
@@ -23,17 +24,12 @@ use casper_types::{
     Account, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockIdentifier,
     BlockSynchronizerStatus, CLValue, CLValueDictionary, ChainspecRawBytes, DictionaryAddr, Digest,
     EntityAddr, GlobalStateIdentifier, Key, KeyTag, NextUpgrade, Peers, ProtocolVersion, SecretKey,
-    SignedBlock, StoredValue, Timestamp, Transaction, TransactionV1Builder, Transfer, URef, U512,
+    SignedBlock, StoredValue, Transaction, TransactionV1Builder, Transfer, URef, U512,
 };
-use juliet::{
-    io::IoCoreBuilder,
-    protocol::ProtocolBuilder,
-    rpc::{JulietRpcClient, RpcBuilder},
-    ChannelConfiguration, ChannelId,
-};
+use futures::{SinkExt, StreamExt};
 use rand::Rng;
 use tokio::{net::TcpStream, time::timeout};
-use tracing::error;
+use tokio_util::codec::Framed;
 
 use crate::{
     reactor::{main_reactor::MainReactor, Runner},
@@ -49,6 +45,7 @@ const GUARANTEED_BLOCK_HEIGHT: u64 = 2;
 
 const TEST_DICT_NAME: &str = "test_dict";
 const TEST_DICT_ITEM_KEY: &str = "test_key";
+const MESSAGE_SIZE: u32 = 1024 * 1024 * 10;
 
 struct TestData {
     rng: TestRng,
@@ -77,7 +74,7 @@ fn network_produced_blocks(
 }
 
 async fn setup() -> (
-    JulietRpcClient<1>,
+    Framed<TcpStream, BinaryMessageCodec>,
     (
         impl futures::Future<Output = (TestingNetwork<FilterReactor<MainReactor>>, TestRng)>,
         TestData,
@@ -142,31 +139,14 @@ async fn setup() -> (
     // We let the entire network run in the background, until our request completes.
     let finish_cranking = fixture.run_until_stopped(rng.create_child());
 
-    // Set-up juliet client.
-    let protocol_builder = ProtocolBuilder::<1>::with_default_channel_config(
-        ChannelConfiguration::default()
-            .with_request_limit(10)
-            .with_max_request_payload_size(1024 * 1024 * 8)
-            .with_max_response_payload_size(1024 * 1024 * 8),
-    );
-    let io_builder = IoCoreBuilder::new(protocol_builder).buffer_size(ChannelId::new(0), 4096);
-    let rpc_builder = RpcBuilder::new(io_builder);
+    // Set-up client.
     let address = format!("localhost:{}", binary_port_addr.port());
     let stream = TcpStream::connect(address.clone())
         .await
         .expect("should create stream");
-    let (reader, writer) = stream.into_split();
-    let (client, mut server) = rpc_builder.build(reader, writer);
-
-    // We are not using the server functionality, but still need to run it for IO reasons.
-    tokio::spawn(async move {
-        if let Err(err) = server.next_request().await {
-            error!(%err, "server read error");
-        }
-    });
 
     (
-        client,
+        Framed::new(stream, BinaryMessageCodec::new(MESSAGE_SIZE)),
         (
             finish_cranking,
             TestData {
@@ -295,7 +275,7 @@ async fn binary_port_component() {
     testing::init_logging();
 
     let (
-        client,
+        mut client,
         (
             finish_cranking,
             TestData {
@@ -381,19 +361,18 @@ async fn binary_port_component() {
             .cloned()
             .collect::<Vec<_>>();
 
-        let request_guard = client
-            .create_request(ChannelId::new(0))
-            .with_payload(original_request_bytes.clone().into())
-            .queue_for_sending()
-            .await;
+        client
+            .send(BinaryMessage::new(original_request_bytes.clone()))
+            .await
+            .expect("should send message");
 
-        let response = timeout(Duration::from_secs(10), request_guard.wait_for_response())
+        let response = timeout(Duration::from_secs(10), client.next())
             .await
             .unwrap_or_else(|err| panic!("{}: should complete without timeout: {}", name, err))
-            .unwrap_or_else(|err| panic!("{}: should have ok response: {}", name, err))
-            .unwrap_or_else(|| panic!("{}: should have bytes", name));
+            .unwrap_or_else(|| panic!("{}: should have bytes", name))
+            .unwrap_or_else(|err| panic!("{}: should have ok response: {}", name, err));
         let (binary_response_and_request, _): (BinaryResponseAndRequest, _) =
-            FromBytes::from_bytes(&response).expect("should deserialize response");
+            FromBytes::from_bytes(response.payload()).expect("should deserialize response");
 
         let mirrored_request_bytes = binary_response_and_request.original_request();
         assert_eq!(
@@ -881,7 +860,6 @@ fn get_balance_by_state_root(state_root_hash: Digest, account_hash: AccountHash)
             GlobalStateRequest::BalanceByStateRoot {
                 state_identifier: Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
                 purse_identifier: PurseIdentifier::Account(account_hash),
-                timestamp: Timestamp::now(),
             },
         ))),
         asserter: Box::new(|response| {

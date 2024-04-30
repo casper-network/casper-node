@@ -8,11 +8,11 @@ use casper_storage::{
     block_store::types::ApprovalsHashes,
     data_access_layer::{
         balance::BalanceHandling, AuctionMethod, BalanceHoldKind, BalanceHoldRequest,
-        BalanceIdentifier, BalanceRequest, BiddingRequest, BlockRewardsRequest, BlockRewardsResult,
-        DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, EvictItem, FeeRequest,
-        FeeResult, FlushRequest, GasHoldBalanceHandling, HandleFeeMode, HandleFeeRequest,
-        HandleRefundMode, HandleRefundRequest, InsufficientBalanceHandling, ProofHandling,
-        PruneRequest, PruneResult, StepRequest, StepResult, TransferRequest,
+        BalanceIdentifier, BalanceRequest, BiddingRequest, BlockGlobalRequest, BlockGlobalResult,
+        BlockRewardsRequest, BlockRewardsResult, DataAccessLayer, EraValidatorsRequest,
+        EraValidatorsResult, EvictItem, FeeRequest, FeeResult, FlushRequest, HandleFeeMode,
+        HandleFeeRequest, HandleRefundMode, HandleRefundRequest, InsufficientBalanceHandling,
+        ProofHandling, PruneRequest, PruneResult, StepRequest, StepResult, TransferRequest,
     },
     global_state::state::{
         lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, ScratchProvider,
@@ -26,8 +26,8 @@ use casper_types::{
     execution::{Effects, ExecutionResult, TransformKindV2, TransformV2},
     system::handle_payment::ARG_AMOUNT,
     BlockHeader, BlockTime, BlockV2, CLValue, CategorizedTransaction, Chainspec, ChecksumRegistry,
-    Digest, EraEndV2, EraId, FeeHandling, Gas, GasLimited, HoldsEpoch, Key, ProtocolVersion,
-    PublicKey, RefundHandling, Transaction, TransactionCategory, U512,
+    Digest, EraEndV2, EraId, FeeHandling, Gas, GasLimited, Key, ProtocolVersion, PublicKey,
+    RefundHandling, Transaction, TransactionCategory, U512,
 };
 
 use super::{
@@ -92,14 +92,7 @@ pub fn execute_finalized_block(
     let insufficient_balance_handling = InsufficientBalanceHandling::HoldRemaining;
     let refund_handling = chainspec.core_config.refund_handling;
     let fee_handling = chainspec.core_config.fee_handling;
-    let gas_hold_interval = chainspec.core_config.gas_hold_interval;
-    let gas_hold_balance_handling: GasHoldBalanceHandling = (
-        chainspec.core_config.gas_hold_balance_handling,
-        gas_hold_interval,
-    )
-        .into();
-    let holds_epoch = HoldsEpoch::from_block_time(block_time, gas_hold_interval);
-    let balance_handling = BalanceHandling::Available { holds_epoch };
+    let balance_handling = BalanceHandling::Available;
 
     // get scratch state, which must be used for all processing and post processing data
     // requirements.
@@ -121,6 +114,27 @@ pub fn execute_finalized_block(
 
     // transaction processing starts now
     let txn_processing_start = Instant::now();
+
+    // put block_time to global state
+    // NOTE this must occur prior to any block processing as subsequent logic
+    // will refer to the block time value being written to GS now.
+    match scratch_state.block_global(BlockGlobalRequest::block_time(
+        state_root_hash,
+        protocol_version,
+        block_time,
+    )) {
+        BlockGlobalResult::RootNotFound => {
+            return Err(BlockExecutionError::RootNotFound(state_root_hash));
+        }
+        BlockGlobalResult::Failure(err) => {
+            return Err(BlockExecutionError::BlockGlobal(format!("{}", err)));
+        }
+        BlockGlobalResult::Success {
+            post_state_hash, ..
+        } => {
+            state_root_hash = post_state_hash;
+        }
+    }
 
     for transaction in executable_block.transactions {
         let mut artifact_builder = ExecutionArtifactBuilder::new(&transaction);
@@ -284,7 +298,6 @@ pub fn execute_finalized_block(
 
         let initial_balance_result = scratch_state.balance(BalanceRequest::new(
             state_root_hash,
-            block_time,
             protocol_version,
             balance_identifier.clone(),
             balance_handling,
@@ -307,10 +320,7 @@ pub fn execute_finalized_block(
                     protocol_version,
                     balance_identifier.clone(),
                     hold_amount,
-                    block_time,
-                    holds_epoch,
                     insufficient_balance_handling,
-                    gas_hold_balance_handling,
                 );
                 let hold_result = scratch_state.balance_hold(hold_request);
                 state_root_hash =
@@ -328,7 +338,6 @@ pub fn execute_finalized_block(
                         scratch_state.transfer(TransferRequest::with_runtime_args(
                             native_runtime_config.clone(),
                             state_root_hash,
-                            holds_epoch,
                             protocol_version,
                             transaction_hash,
                             initiator_addr.clone(),
@@ -344,12 +353,7 @@ pub fn execute_finalized_block(
                         .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
                 }
                 TransactionCategory::Auction => {
-                    match AuctionMethod::from_parts(
-                        entry_point,
-                        &runtime_args,
-                        holds_epoch,
-                        chainspec,
-                    ) {
+                    match AuctionMethod::from_parts(entry_point, &runtime_args, chainspec) {
                         Ok(auction_method) => {
                             let bidding_result = scratch_state.bidding(BiddingRequest::new(
                                 native_runtime_config.clone(),
@@ -419,11 +423,8 @@ pub fn execute_finalized_block(
             let hold_request = BalanceHoldRequest::new_clear(
                 state_root_hash,
                 protocol_version,
-                block_time,
                 BalanceHoldKind::All,
                 balance_identifier.clone(),
-                holds_epoch,
-                gas_hold_balance_handling,
             );
             let hold_result = scratch_state.balance_hold(hold_request);
             state_root_hash =
@@ -505,10 +506,7 @@ pub fn execute_finalized_block(
                     protocol_version,
                     balance_identifier,
                     amount,
-                    block_time,
-                    holds_epoch,
                     insufficient_balance_handling,
-                    gas_hold_balance_handling,
                 );
                 let hold_result = scratch_state.balance_hold(hold_request);
                 state_root_hash =
@@ -547,7 +545,6 @@ pub fn execute_finalized_block(
                         balance_identifier,
                         BalanceIdentifier::Public(*(proposer.clone())),
                         amount,
-                        holds_epoch,
                     ),
                 );
                 let handle_fee_result = scratch_state.handle_fee(handle_fee_request);
@@ -571,7 +568,6 @@ pub fn execute_finalized_block(
                         balance_identifier,
                         BalanceIdentifier::Accumulate,
                         amount,
-                        holds_epoch,
                     ),
                 );
                 let handle_fee_result = scratch_state.handle_fee(handle_fee_request);
@@ -672,7 +668,6 @@ pub fn execute_finalized_block(
                 state_root_hash,
                 protocol_version,
                 block_time,
-                holds_epoch,
             );
             match scratch_state.distribute_fees(fee_req) {
                 FeeResult::RootNotFound => {

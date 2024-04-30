@@ -3,7 +3,7 @@ use num_rational::Ratio;
 use std::{cell::RefCell, collections::BTreeSet, rc::Rc};
 
 use thiserror::Error;
-use tracing::{debug, error};
+use tracing::{debug, error, info};
 
 use casper_types::{
     addressable_entity::{
@@ -31,7 +31,7 @@ use casper_types::{
 
 use crate::{
     global_state::state::StateProvider,
-    tracking_copy::{TrackingCopy, TrackingCopyExt},
+    tracking_copy::{TrackingCopy, TrackingCopyEntityExt, TrackingCopyExt},
     AddressGenerator,
 };
 
@@ -97,7 +97,7 @@ impl From<bytesrepr::Error> for ProtocolUpgradeError {
     }
 }
 
-/// Adrresses for system entities.
+/// Addresses for system entities.
 pub struct SystemEntityAddresses {
     mint: AddressableEntityHash,
     auction: AddressableEntityHash,
@@ -183,6 +183,8 @@ where
         self.handle_new_locked_funds_period_millis(system_entity_addresses.auction())?;
         self.handle_new_unbonding_delay(system_entity_addresses.auction())?;
         self.handle_new_round_seigniorage_rate(system_entity_addresses.mint())?;
+        self.handle_legacy_accounts_migration()?;
+        self.handle_legacy_contracts_migration()?;
         self.handle_bids_migration()?;
         self.handle_global_state_updates();
         self.handle_era_info_migration()
@@ -530,11 +532,8 @@ where
             EntityKind::Account(account_hash),
         );
 
-        let access_key = address_generator.new_uref(AccessRights::READ_ADD_WRITE);
-
         let package = {
             let mut package = Package::new(
-                access_key,
                 EntityVersions::default(),
                 BTreeSet::default(),
                 Groups::default(),
@@ -719,49 +718,24 @@ where
         named_keys: &NamedKeys,
         stored_value: StoredValue,
     ) -> Result<(), ProtocolUpgradeError> {
-        match named_keys.get(name) {
-            Some(key) => {
-                if let Key::URef(_) = key {
-                    // write current interval to URef
-                    self.tracking_copy.borrow_mut().write(*key, stored_value);
-                } else {
-                    return Err(ProtocolUpgradeError::UnexpectedKeyVariant);
-                }
-            }
-            None => {
-                // first put value into global state under a uref
-                let uref = self
+        let uref = {
+            match named_keys.get(name) {
+                Some(key) => match key.as_uref() {
+                    Some(uref) => *uref,
+                    None => {
+                        return Err(ProtocolUpgradeError::UnexpectedKeyVariant);
+                    }
+                },
+                None => self
                     .address_generator
                     .borrow_mut()
-                    .new_uref(AccessRights::READ_ADD_WRITE);
-
-                let uref_key = Key::URef(uref).normalize();
-                self.tracking_copy
-                    .borrow_mut()
-                    .write(uref_key, stored_value);
-                // next, add the Key::URef to the mint's named keys
-                let entry_key = {
-                    let named_key_entry =
-                        NamedKeyAddr::new_from_string(entity_addr, name.to_string()).map_err(
-                            |_| {
-                                ProtocolUpgradeError::Bytesrepr("new_gas_hold_interval".to_string())
-                            },
-                        )?;
-                    Key::NamedKey(named_key_entry)
-                };
-                let entry_value = {
-                    let named_key_value =
-                        NamedKeyValue::from_concrete_values(entry_key, name.to_string())
-                            .map_err(|error| ProtocolUpgradeError::CLValue(error.to_string()))?;
-                    StoredValue::NamedKey(named_key_value)
-                };
-
-                self.tracking_copy
-                    .borrow_mut()
-                    .write(entry_key, entry_value);
+                    .new_uref(AccessRights::READ_ADD_WRITE),
             }
         };
-        Ok(())
+        self.tracking_copy
+            .borrow_mut()
+            .upsert_uref_to_named_keys(entity_addr, name, named_keys, uref, stored_value)
+            .map_err(ProtocolUpgradeError::TrackingCopy)
     }
 
     /// Handle new validator slots.
@@ -903,6 +877,61 @@ where
         Ok(())
     }
 
+    /// Handle legacy account migration.
+    pub fn handle_legacy_accounts_migration(&self) -> Result<(), ProtocolUpgradeError> {
+        if !self.config.migrate_legacy_accounts() {
+            return Ok(());
+        }
+        info!("handling one time accounts migration");
+        let mut tc = self.tracking_copy.borrow_mut();
+        let existing_keys = match tc.get_keys(&KeyTag::Account) {
+            Ok(keys) => keys,
+            Err(err) => return Err(ProtocolUpgradeError::TrackingCopy(err)),
+        };
+        let protocol_version = self.config.new_protocol_version();
+        for existing_key in existing_keys {
+            match existing_key.into_account() {
+                None => {
+                    // should we skip this and keep going or error?
+                    // for now, skipping.
+                    continue;
+                }
+                Some(account_hash) => {
+                    if let Err(tce) = tc.migrate_account(account_hash, protocol_version) {
+                        return Err(ProtocolUpgradeError::TrackingCopy(tce));
+                    }
+                }
+            }
+        }
+        info!("ending one time accounts migration");
+        Ok(())
+    }
+
+    /// Handle legacy contract migration.
+    pub fn handle_legacy_contracts_migration(&self) -> Result<(), ProtocolUpgradeError> {
+        if !self.config.migrate_legacy_contracts() {
+            return Ok(());
+        }
+        info!("handling one time contracts migration");
+        let mut tc = self.tracking_copy.borrow_mut();
+        let existing_keys = match tc.get_keys(&KeyTag::Hash) {
+            Ok(keys) => keys,
+            Err(err) => return Err(ProtocolUpgradeError::TrackingCopy(err)),
+        };
+        let protocol_version = self.config.new_protocol_version();
+        for existing_key in existing_keys {
+            if let Some(StoredValue::Contract(_)) = tc.read(&existing_key)? {
+                if let Err(tce) = tc.migrate_contract(existing_key, protocol_version) {
+                    return Err(ProtocolUpgradeError::TrackingCopy(tce));
+                }
+            } else {
+                continue;
+            }
+        }
+        info!("ending one time contracts migration");
+        Ok(())
+    }
+
     /// Handle bids migration.
     pub fn handle_bids_migration(&self) -> Result<(), ProtocolUpgradeError> {
         debug!("handle bids migration");
@@ -988,7 +1017,7 @@ where
                 }
                 None => {
                     // Can't find key
-                    // Most likely this chain did not yet ran an auction, or recently completed a
+                    // Most likely this chain did not yet run an auction, or recently completed a
                     // prune
                 }
             };

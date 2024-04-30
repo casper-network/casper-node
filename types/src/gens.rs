@@ -26,6 +26,7 @@ use crate::{
         action_thresholds::gens::action_thresholds_arb, associated_keys::gens::associated_keys_arb,
         MessageTopics, NamedKeyValue, NamedKeys, Parameters, Weight,
     },
+    block::BlockGlobalAddr,
     byte_code::ByteCodeKind,
     contract_messages::{MessageChecksum, MessageTopicSummary, TopicNameHash},
     contracts::{
@@ -151,6 +152,13 @@ pub fn balance_hold_addr_arb() -> impl Strategy<Value = BalanceHoldAddr> {
     let x = uref_arb().prop_map(|uref| uref.addr());
     let y = any::<u64>();
     (x, y).prop_map(|(x, y)| BalanceHoldAddr::new_gas(x, BlockTime::new(y)))
+}
+
+pub fn block_global_addr_arb() -> impl Strategy<Value = BlockGlobalAddr> {
+    prop_oneof![
+        0 => Just(BlockGlobalAddr::BlockTime),
+        1 => Just(BlockGlobalAddr::MessageCount)
+    ]
 }
 
 pub fn weight_arb() -> impl Strategy<Value = Weight> {
@@ -524,21 +532,16 @@ pub fn groups_arb() -> impl Strategy<Value = Groups> {
 }
 
 pub fn package_arb() -> impl Strategy<Value = Package> {
-    (
-        uref_arb(),
-        entity_versions_arb(),
-        disabled_versions_arb(),
-        groups_arb(),
-    )
-        .prop_map(|(access_key, versions, disabled_versions, groups)| {
+    (entity_versions_arb(), disabled_versions_arb(), groups_arb()).prop_map(
+        |(versions, disabled_versions, groups)| {
             Package::new(
-                access_key,
                 versions,
                 disabled_versions,
                 groups,
                 PackageStatus::default(),
             )
-        })
+        },
+    )
 }
 
 pub(crate) fn delegator_arb() -> impl Strategy<Value = Delegator> {
