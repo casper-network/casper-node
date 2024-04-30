@@ -15,7 +15,9 @@ use tracing::error;
 
 use casper_storage::{
     global_state::{error::Error as GlobalStateError, state::StateReader},
-    tracking_copy::{AddResult, TrackingCopy, TrackingCopyError, TrackingCopyExt},
+    tracking_copy::{
+        AddResult, TrackingCopy, TrackingCopyEntityExt, TrackingCopyError, TrackingCopyExt,
+    },
     AddressGenerator,
 };
 
@@ -480,7 +482,7 @@ where
     /// This is useful if you want to get the exact type from global state.
     pub fn read_gs_typed<T>(&mut self, key: &Key) -> Result<T, ExecError>
     where
-        T: TryFrom<StoredValue>,
+        T: TryFrom<StoredValue, Error = StoredValueTypeMismatch>,
         T::Error: Debug,
     {
         let value = match self.read_gs(key)? {
@@ -488,12 +490,9 @@ where
             Some(value) => value,
         };
 
-        value.try_into().map_err(|error| {
-            ExecError::FunctionNotFound(format!(
-                "Type mismatch for value under {:?}: {:?}",
-                key, error
-            ))
-        })
+        value
+            .try_into()
+            .map_err(|error| ExecError::TrackingCopy(TrackingCopyError::TypeMismatch(error)))
     }
 
     /// Returns all keys based on the tag prefix.
@@ -843,6 +842,17 @@ where
         self.tracking_copy.borrow_mut().prune(key.into());
     }
 
+    pub(crate) fn migrate_contract(
+        &mut self,
+        contract_hash: AddressableEntityHash,
+        protocol_version: ProtocolVersion,
+    ) -> Result<(), ExecError> {
+        self.tracking_copy
+            .borrow_mut()
+            .migrate_contract(Key::Hash(contract_hash.value()), protocol_version)
+            .map_err(ExecError::TrackingCopy)
+    }
+
     /// Writes data to global state with a measurement.
     ///
     /// Use with caution - there is no validation done as the key is assumed to be validated
@@ -1180,9 +1190,6 @@ where
         let package_hash_key = Key::from(package_hash);
         self.validate_key(&package_hash_key)?;
         let contract_package: Package = self.read_gs_typed(&Key::from(package_hash))?;
-        if !self.is_authorized_by_admin() {
-            self.validate_uref(&contract_package.access_key())?;
-        }
         Ok(contract_package)
     }
 

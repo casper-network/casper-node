@@ -366,7 +366,7 @@ impl TestFixture {
         if era_duration != TimeDiff::from_millis(0) {
             chainspec.core_config.era_duration = era_duration;
         }
-        info!("Foooo {block_gas_limit}");
+        info!(?block_gas_limit);
         chainspec.core_config.minimum_block_time = minimum_block_time;
         chainspec.core_config.minimum_era_height = minimum_era_height;
         chainspec.core_config.unbonding_delay = unbonding_delay;
@@ -415,9 +415,9 @@ impl TestFixture {
             chainspec.core_config.gas_hold_balance_handling = gas_hold_balance_handling;
         }
 
-        let limit = chainspec.transaction_config.block_gas_limit;
+        let applied_block_gas_limit = chainspec.transaction_config.block_gas_limit;
 
-        info!("THE LIMIT {limit}");
+        info!(?applied_block_gas_limit);
 
         let mut fixture = TestFixture {
             rng,
