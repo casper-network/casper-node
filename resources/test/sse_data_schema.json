@@ -630,6 +630,7 @@
         "era_id",
         "height",
         "parent_hash",
+        "proposer",
         "protocol_version",
         "random_bit",
         "state_root_hash",
@@ -713,6 +714,14 @@
             }
           ]
         },
+        "proposer": {
+          "description": "The public key of the validator which proposed the block.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PublicKey"
+            }
+          ]
+        },
         "current_gas_price": {
           "description": "The gas price of the era",
           "type": "integer",
@@ -772,48 +781,18 @@
       "description": "The body portion of a block. Version 2.",
       "type": "object",
       "required": [
-        "auction",
-        "install_upgrade",
-        "mint",
-        "proposer",
         "rewarded_signatures",
-        "standard"
+        "transactions"
       ],
       "properties": {
-        "proposer": {
-          "description": "The public key of the validator which proposed the block.",
-          "allOf": [
-            {
-              "$ref": "#/definitions/PublicKey"
+        "transactions": {
+          "description": "Map of transactions mapping categories to a list of transaction hashes.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/TransactionHash"
             }
-          ]
-        },
-        "mint": {
-          "description": "The hashes of the mint transactions within the block.",
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/TransactionHash"
-          }
-        },
-        "auction": {
-          "description": "The hashes of the auction transactions within the block.",
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/TransactionHash"
-          }
-        },
-        "install_upgrade": {
-          "description": "The hashes of the installer/upgrader transactions within the block.",
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/TransactionHash"
-          }
-        },
-        "standard": {
-          "description": "The hashes of all other transactions within the block.",
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/TransactionHash"
           }
         },
         "rewarded_signatures": {

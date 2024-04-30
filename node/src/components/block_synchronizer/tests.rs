@@ -90,7 +90,7 @@ impl MockReactor {
 
     async fn process_effects(
         &self,
-        effects: impl IntoIterator<Item = Effect<Event>>,
+        effects: impl IntoIterator<Item=Effect<Event>>,
     ) -> Vec<MockReactorEvent> {
         let mut events = Vec::new();
         for effect in effects {
@@ -205,7 +205,7 @@ async fn need_next(
     reactor.process_effects(effects).await
 }
 
-fn register_multiple_signatures<'a, I: IntoIterator<Item = &'a Arc<SecretKey>>>(
+fn register_multiple_signatures<'a, I: IntoIterator<Item=&'a Arc<SecretKey>>>(
     builder: &mut BlockBuilder,
     block: &Block,
     validator_keys_iter: I,
@@ -277,7 +277,7 @@ impl BlockSynchronizer {
             validator_matrix,
             &prometheus::Registry::new(),
         )
-        .expect("Failed to create BlockSynchronizer");
+            .expect("Failed to create BlockSynchronizer");
 
         <BlockSynchronizer as InitializedComponent<MainEvent>>::set_state(
             &mut block_synchronizer,
@@ -853,7 +853,7 @@ async fn sync_starts_with_header_fetch() {
         &mut block_synchronizer,
         MAX_SIMULTANEOUS_PEERS,
     )
-    .await;
+        .await;
 
     // The first thing needed after the synchronizer has peers is
     // to fetch the block header from peers.
@@ -901,7 +901,7 @@ async fn fwd_sync_is_not_blocked_by_failed_header_fetch_within_latch_interval() 
         &mut block_synchronizer,
         MAX_SIMULTANEOUS_PEERS,
     )
-    .await;
+        .await;
 
     let initial_progress = block_synchronizer
         .forward
@@ -1021,7 +1021,7 @@ async fn registering_header_successfully_triggers_signatures_fetch_for_weak_fina
         &mut block_synchronizer,
         MAX_SIMULTANEOUS_PEERS,
     )
-    .await;
+        .await;
 
     let mut peers_asked = Vec::new();
     for event in events {
@@ -1256,7 +1256,7 @@ async fn fwd_sync_is_not_blocked_by_failed_signatures_fetch_within_latch_interva
          * require the num_validators
          * signatures */
     )
-    .await;
+        .await;
 
     // Check what signatures were requested
     let mut sigs_requested = Vec::new();
@@ -1393,7 +1393,7 @@ async fn next_action_for_have_weak_finality_is_fetching_block_body() {
         &mut block_synchronizer,
         MAX_SIMULTANEOUS_PEERS,
     )
-    .await;
+        .await;
 
     for event in events {
         assert_matches!(
@@ -1461,7 +1461,7 @@ async fn registering_block_body_transitions_builder_to_have_block_state() {
         &mut block_synchronizer,
         MAX_SIMULTANEOUS_PEERS,
     )
-    .await;
+        .await;
 
     for event in events {
         assert_matches!(
@@ -1611,7 +1611,7 @@ async fn fwd_having_block_body_for_block_with_deploys_requires_approvals_hashes(
         &mut block_synchronizer,
         MAX_SIMULTANEOUS_PEERS,
     )
-    .await;
+        .await;
 
     for event in events {
         if !matches!(
@@ -2190,9 +2190,9 @@ async fn historical_sync_announces_meta_block() {
     // We should have a request to get the execution results
     match events.pop().unwrap() {
         MockReactorEvent::StorageRequest(StorageRequest::GetExecutionResults {
-            block_hash: actual_block_hash,
-            responder,
-        }) => {
+                                             block_hash: actual_block_hash,
+                                             responder,
+                                         }) => {
             assert_eq!(actual_block_hash, *block.hash());
             // We'll just send empty execution results for this case.
             responder.respond(Some(vec![])).await;
@@ -2406,12 +2406,12 @@ async fn historical_sync_skips_exec_results_and_deploys_if_block_empty() {
 
     let request = match events.try_one() {
         Some(MockReactorEvent::SyncGlobalStateRequest(
-            request @ SyncGlobalStateRequest {
-                block_hash,
-                state_root_hash,
-                ..
-            },
-        )) if block_hash == *block.hash() && &state_root_hash == block.state_root_hash() => request,
+                 request @ SyncGlobalStateRequest {
+                     block_hash,
+                     state_root_hash,
+                     ..
+                 },
+             )) if block_hash == *block.hash() && &state_root_hash == block.state_root_hash() => request,
         _ => panic!("there should be a unique event of type SyncGlobalStateRequest"),
     };
 
@@ -2513,12 +2513,12 @@ async fn historical_sync_no_legacy_block() {
 
     let request = match events.try_one() {
         Some(MockReactorEvent::SyncGlobalStateRequest(
-            request @ SyncGlobalStateRequest {
-                block_hash,
-                state_root_hash,
-                ..
-            },
-        )) if block_hash == *block.hash() && &state_root_hash == block.state_root_hash() => request,
+                 request @ SyncGlobalStateRequest {
+                     block_hash,
+                     state_root_hash,
+                     ..
+                 },
+             )) if block_hash == *block.hash() && &state_root_hash == block.state_root_hash() => request,
         _ => panic!("there should be a unique event of type SyncGlobalStateRequest"),
     };
 
@@ -2741,12 +2741,12 @@ async fn historical_sync_legacy_block_strict_finality() {
 
     let request = match events.try_one() {
         Some(MockReactorEvent::SyncGlobalStateRequest(
-            request @ SyncGlobalStateRequest {
-                block_hash,
-                state_root_hash,
-                ..
-            },
-        )) if block_hash == *block.hash() && &state_root_hash == block.state_root_hash() => request,
+                 request @ SyncGlobalStateRequest {
+                     block_hash,
+                     state_root_hash,
+                     ..
+                 },
+             )) if block_hash == *block.hash() && &state_root_hash == block.state_root_hash() => request,
         _ => panic!("there should be a unique event of type SyncGlobalStateRequest"),
     };
 
@@ -2943,12 +2943,12 @@ async fn historical_sync_legacy_block_weak_finality() {
 
     let request = match events.try_one() {
         Some(MockReactorEvent::SyncGlobalStateRequest(
-            request @ SyncGlobalStateRequest {
-                block_hash,
-                state_root_hash,
-                ..
-            },
-        )) if block_hash == *block.hash() && &state_root_hash == block.state_root_hash() => request,
+                 request @ SyncGlobalStateRequest {
+                     block_hash,
+                     state_root_hash,
+                     ..
+                 },
+             )) if block_hash == *block.hash() && &state_root_hash == block.state_root_hash() => request,
         _ => panic!("there should be a unique event of type SyncGlobalStateRequest"),
     };
 
@@ -3156,12 +3156,12 @@ async fn historical_sync_legacy_block_any_finality() {
 
     let request = match events.try_one() {
         Some(MockReactorEvent::SyncGlobalStateRequest(
-            request @ SyncGlobalStateRequest {
-                block_hash,
-                state_root_hash,
-                ..
-            },
-        )) if block_hash == *block.hash() && &state_root_hash == block.state_root_hash() => request,
+                 request @ SyncGlobalStateRequest {
+                     block_hash,
+                     state_root_hash,
+                     ..
+                 },
+             )) if block_hash == *block.hash() && &state_root_hash == block.state_root_hash() => request,
         _ => panic!("there should be a unique event of type SyncGlobalStateRequest"),
     };
 
@@ -3401,7 +3401,7 @@ async fn fwd_sync_latch_should_not_decrement_for_old_responses() {
                 "Latch count should be {} since no block header was received.",
                 MAX_SIMULTANEOUS_PEERS
             )
-            .as_str(),
+                .as_str(),
         );
 
         // Simulate successful fetch of the block header.
@@ -3441,7 +3441,7 @@ async fn fwd_sync_latch_should_not_decrement_for_old_responses() {
                 "Latch count should be {} since no finality sigs were received.",
                 expected_latch_count
             )
-            .as_str(),
+                .as_str(),
         );
 
         // Receive a late response with the block header.
@@ -3462,7 +3462,7 @@ async fn fwd_sync_latch_should_not_decrement_for_old_responses() {
                 "Latch count should be {} since no finality sigs were received.",
                 expected_latch_count
             )
-            .as_str(),
+                .as_str(),
         );
     }
 
@@ -3524,7 +3524,7 @@ async fn fwd_sync_latch_should_not_decrement_for_old_responses() {
                 "Latch count should be {} since no block was received.",
                 MAX_SIMULTANEOUS_PEERS
             )
-            .as_str(),
+                .as_str(),
         );
 
         // Receive some more finality signatures to check if the latch decrements.
@@ -3563,7 +3563,7 @@ async fn fwd_sync_latch_should_not_decrement_for_old_responses() {
                 "Latch count should be {} since no block was received.",
                 MAX_SIMULTANEOUS_PEERS
             )
-            .as_str(),
+                .as_str(),
         );
     }
 
@@ -3598,7 +3598,7 @@ async fn fwd_sync_latch_should_not_decrement_for_old_responses() {
                 "Latch count should be {} since no approval hashes were received.",
                 MAX_SIMULTANEOUS_PEERS
             )
-            .as_str(),
+                .as_str(),
         );
 
         // Receive another response with the block. This is the second response out of the 5 we sent
@@ -3620,7 +3620,7 @@ async fn fwd_sync_latch_should_not_decrement_for_old_responses() {
                 "Latch count should be {} since no approval hashes were received.",
                 MAX_SIMULTANEOUS_PEERS
             )
-            .as_str(),
+                .as_str(),
         );
     }
 
@@ -3662,7 +3662,7 @@ async fn fwd_sync_latch_should_not_decrement_for_old_responses() {
                 "Latch count should be {} since no deploys were received.",
                 MAX_SIMULTANEOUS_PEERS
             )
-            .as_str(),
+                .as_str(),
         );
 
         // Receive a late response with the approvals hashes.
@@ -3683,7 +3683,7 @@ async fn fwd_sync_latch_should_not_decrement_for_old_responses() {
                 "Latch count should be {} since no deploys were received.",
                 MAX_SIMULTANEOUS_PEERS
             )
-            .as_str(),
+                .as_str(),
         );
     }
 
@@ -3708,7 +3708,7 @@ async fn fwd_sync_latch_should_not_decrement_for_old_responses() {
                 "Latch count should be {} since no new signatures were received.",
                 expected_latch_count
             )
-            .as_str(),
+                .as_str(),
         );
 
         // Since it's the single deploy in the block, the next step is to get the rest of the
@@ -3804,8 +3804,8 @@ async fn historical_sync_latch_should_not_decrement_for_old_deploy_fetch_respons
         let hash = txn.hash();
         (hash, txn)
     })
-    .take(3)
-    .collect();
+        .take(3)
+        .collect();
     let test_env = TestEnv::random(rng).with_block(
         TestBlockBuilder::new()
             .era(1)
@@ -3817,13 +3817,13 @@ async fn historical_sync_latch_should_not_decrement_for_old_deploy_fetch_respons
     let block = test_env.block();
     let block_v2: BlockV2 = block.clone().try_into().unwrap();
     let first_txn = transactions
-        .get(&block_v2.all_transactions().next().unwrap())
+        .get(block_v2.all_transactions().next().unwrap())
         .unwrap();
     let second_txn = transactions
-        .get(&block_v2.all_transactions().nth(1).unwrap())
+        .get(block_v2.all_transactions().nth(1).unwrap())
         .unwrap();
     let third_txn = transactions
-        .get(&block_v2.all_transactions().nth(2).unwrap())
+        .get(block_v2.all_transactions().nth(2).unwrap())
         .unwrap();
 
     let peers = test_env.peers();
@@ -3950,7 +3950,7 @@ async fn historical_sync_latch_should_not_decrement_for_old_deploy_fetch_respons
             "Latch count should be {} since no deploys were received.",
             MAX_SIMULTANEOUS_PEERS
         )
-        .as_str(),
+            .as_str(),
     );
 
     // Receive 1 out of MAX_SIMULTANEOUS_PEERS requests for the first deploy.
@@ -3978,7 +3978,7 @@ async fn historical_sync_latch_should_not_decrement_for_old_deploy_fetch_respons
             "Latch count should be {} since the node should ask for the second deploy.",
             MAX_SIMULTANEOUS_PEERS
         )
-        .as_str(),
+            .as_str(),
     );
 
     // Receive 1 out of MAX_SIMULTANEOUS_PEERS requests for the second deploy.
@@ -4006,7 +4006,7 @@ async fn historical_sync_latch_should_not_decrement_for_old_deploy_fetch_respons
             "Latch count should be {} since the node should ask for the third deploy.",
             MAX_SIMULTANEOUS_PEERS
         )
-        .as_str(),
+            .as_str(),
     );
 
     // The current state is:
@@ -4188,7 +4188,7 @@ async fn historical_sync_latch_should_not_decrement_for_old_execution_results() 
             "Latch count should be {} since no chunks of execution results were received.",
             MAX_SIMULTANEOUS_PEERS
         )
-        .as_str(),
+            .as_str(),
     );
 
     // Receive the first chunk of execution results.
@@ -4218,7 +4218,7 @@ async fn historical_sync_latch_should_not_decrement_for_old_execution_results() 
             "Latch count should be {} since no responses with chunks != 0 were received.",
             MAX_SIMULTANEOUS_PEERS
         )
-        .as_str(),
+            .as_str(),
     );
 
     // Receive the first chunk of execution results again (late response).
@@ -4261,6 +4261,6 @@ async fn historical_sync_latch_should_not_decrement_for_old_execution_results() 
             "Latch count should be {} since we received an `Absent` response.",
             MAX_SIMULTANEOUS_PEERS - 1
         )
-        .as_str(),
+            .as_str(),
     );
 }

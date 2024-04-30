@@ -25,6 +25,7 @@ pub const BLOCK_BODY_V2_TAG: u8 = 1;
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(any(feature = "testing", test), derive(PartialEq))]
 #[derive(Clone, Serialize, Deserialize, Debug)]
+#[allow(clippy::large_enum_variant)]
 pub enum BlockBody {
     /// The legacy, initial version of the body portion of a block.
     #[serde(rename = "Version1")]
@@ -75,9 +76,9 @@ impl ToBytes for BlockBody {
     fn serialized_length(&self) -> usize {
         TAG_LENGTH
             + match self {
-                BlockBody::V1(v1) => v1.serialized_length(),
-                BlockBody::V2(v2) => v2.serialized_length(),
-            }
+            BlockBody::V1(v1) => v1.serialized_length(),
+            BlockBody::V2(v2) => v2.serialized_length(),
+        }
     }
 }
 

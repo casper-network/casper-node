@@ -31,29 +31,25 @@ pub struct ExecutableBlock {
 impl ExecutableBlock {
     pub(crate) fn mint(&self) -> Vec<TransactionHash> {
         self.transaction_map
-            .get(&(TransactionCategory::Mint as u8))
-            .map(|transaction| transaction.clone())
+            .get(&(TransactionCategory::Mint as u8)).cloned()
             .unwrap_or(vec![])
     }
 
     pub(crate) fn auction(&self) -> Vec<TransactionHash> {
         self.transaction_map
-            .get(&(TransactionCategory::Auction as u8))
-            .map(|transaction| transaction.clone())
+            .get(&(TransactionCategory::Auction as u8)).cloned()
             .unwrap_or(vec![])
     }
 
     pub(crate) fn install_upgrade(&self) -> Vec<TransactionHash> {
         self.transaction_map
-            .get(&(TransactionCategory::InstallUpgrade as u8))
-            .map(|transaction| transaction.clone())
+            .get(&(TransactionCategory::InstallUpgrade as u8)).cloned()
             .unwrap_or(vec![])
     }
 
     pub(crate) fn standard(&self) -> Vec<TransactionHash> {
         self.transaction_map
-            .get(&(TransactionCategory::Standard as u8))
-            .map(|transaction| transaction.clone())
+            .get(&(TransactionCategory::Standard as u8)).cloned()
             .unwrap_or(vec![])
     }
 
