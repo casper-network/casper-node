@@ -1,5 +1,4 @@
-use alloc::{boxed::Box, vec::Vec};
-use alloc::collections::BTreeMap;
+use alloc::{boxed::Box, collections::BTreeMap, vec::Vec};
 
 use core::{
     convert::TryFrom,
@@ -20,9 +19,13 @@ use once_cell::sync::OnceCell;
 use super::{Block, BlockBodyV2, BlockConversionError, RewardedSignatures};
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::testing::TestRng;
+use crate::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    BlockHash, BlockHeaderV2, BlockValidationError, Digest, EraEndV2, EraId, ProtocolVersion,
+    PublicKey, Timestamp, TransactionHash,
+};
 #[cfg(feature = "json-schema")]
-use crate::{TransactionV1Hash, TransactionCategory};
-use crate::{bytesrepr::{self, FromBytes, ToBytes}, BlockHash, BlockHeaderV2, BlockValidationError, Digest, EraEndV2, EraId, ProtocolVersion, PublicKey, Timestamp, TransactionHash};
+use crate::{TransactionCategory, TransactionV1Hash};
 
 #[cfg(feature = "json-schema")]
 static BLOCK_V2: Lazy<BlockV2> = Lazy::new(|| {
@@ -130,7 +133,7 @@ impl BlockV2 {
             proposer,
             current_gas_price,
             #[cfg(any(feature = "once_cell", test))]
-                OnceCell::new(),
+            OnceCell::new(),
         );
         Self::new_from_header_and_body(header, body)
     }
@@ -238,27 +241,27 @@ impl BlockV2 {
     }
 
     /// Returns the hashes of the transfer transactions within the block.
-    pub fn mint(&self) -> impl Iterator<Item=TransactionHash> {
+    pub fn mint(&self) -> impl Iterator<Item = TransactionHash> {
         self.body.mint()
     }
 
     /// Returns the hashes of the non-transfer, native transactions within the block.
-    pub fn auction(&self) -> impl Iterator<Item=TransactionHash> {
+    pub fn auction(&self) -> impl Iterator<Item = TransactionHash> {
         self.body.auction()
     }
 
     /// Returns the hashes of the installer/upgrader transactions within the block.
-    pub fn install_upgrade(&self) -> impl Iterator<Item=TransactionHash> {
+    pub fn install_upgrade(&self) -> impl Iterator<Item = TransactionHash> {
         self.body.install_upgrade()
     }
 
     /// Returns the hashes of all other transactions within the block.
-    pub fn standard(&self) -> impl Iterator<Item=TransactionHash> {
+    pub fn standard(&self) -> impl Iterator<Item = TransactionHash> {
         self.body.standard()
     }
 
     /// Returns all of the transaction hashes in the order in which they were executed.
-    pub fn all_transactions(&self) -> impl Iterator<Item=&TransactionHash> {
+    pub fn all_transactions(&self) -> impl Iterator<Item = &TransactionHash> {
         self.body.all_transactions()
     }
 

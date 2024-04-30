@@ -76,9 +76,9 @@ impl ToBytes for BlockBody {
     fn serialized_length(&self) -> usize {
         TAG_LENGTH
             + match self {
-            BlockBody::V1(v1) => v1.serialized_length(),
-            BlockBody::V2(v2) => v2.serialized_length(),
-        }
+                BlockBody::V1(v1) => v1.serialized_length(),
+                BlockBody::V2(v2) => v2.serialized_length(),
+            }
     }
 }
 
