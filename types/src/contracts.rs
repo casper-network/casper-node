@@ -38,9 +38,9 @@ use crate::{
 };
 
 const CONTRACT_STRING_PREFIX: &str = "contract-";
-const PACKAGE_STRING_PREFIX: &str = "contract-package-";
+const CONTRACT_PACKAGE_STRING_PREFIX: &str = "contract-package-";
 // We need to support the legacy prefix of "contract-package-wasm".
-const PACKAGE_STRING_LEGACY_EXTRA_PREFIX: &str = "wasm";
+const CONTRACT_PACKAGE_STRING_LEGACY_EXTRA_PREFIX: &str = "wasm";
 
 /// Set of errors which may happen when working with contract headers.
 #[derive(Debug, PartialEq, Eq)]
@@ -462,18 +462,22 @@ impl ContractPackageHash {
 
     /// Formats the `ContractPackageHash` for users getting and putting.
     pub fn to_formatted_string(self) -> String {
-        format!("{}{}", PACKAGE_STRING_PREFIX, base16::encode_lower(&self.0),)
+        format!(
+            "{}{}",
+            CONTRACT_PACKAGE_STRING_PREFIX,
+            base16::encode_lower(&self.0),
+        )
     }
 
     /// Parses a string formatted as per `Self::to_formatted_string()` into a
     /// `ContractPackageHash`.
     pub fn from_formatted_str(input: &str) -> Result<Self, FromStrError> {
         let remainder = input
-            .strip_prefix(PACKAGE_STRING_PREFIX)
+            .strip_prefix(CONTRACT_PACKAGE_STRING_PREFIX)
             .ok_or(FromStrError::InvalidPrefix)?;
 
         let hex_addr = remainder
-            .strip_prefix(PACKAGE_STRING_LEGACY_EXTRA_PREFIX)
+            .strip_prefix(CONTRACT_PACKAGE_STRING_LEGACY_EXTRA_PREFIX)
             .unwrap_or(remainder);
 
         let bytes = HashAddr::try_from(checksummed_hex::decode(hex_addr)?.as_ref())?;
@@ -886,7 +890,6 @@ impl From<ContractPackage> for Package {
         };
 
         Package::new(
-            value.access_key,
             versions.into(),
             disabled_versions,
             value.groups,
@@ -1088,7 +1091,6 @@ pub const UPGRADE_ENTRY_POINT_NAME: &str = "upgrade";
 
 #[cfg(test)]
 mod tests {
-
     use super::*;
     use crate::{AccessRights, EntryPointAccess, EntryPointType, Group, Parameter, URef};
     use alloc::borrow::ToOwned;
@@ -1315,6 +1317,47 @@ mod tests {
         let json_string = serde_json::to_string_pretty(&contract_hash).unwrap();
         let decoded = serde_json::from_str(&json_string).unwrap();
         assert_eq!(contract_hash, decoded)
+    }
+
+    #[test]
+    fn package_hash_from_legacy_str() {
+        let package_hash = ContractPackageHash([3; 32]);
+        let hex_addr = package_hash.to_string();
+        let legacy_encoded = format!("contract-package-wasm{}", hex_addr);
+        let decoded_from_legacy = ContractPackageHash::from_formatted_str(&legacy_encoded)
+            .expect("should accept legacy prefixed string");
+        assert_eq!(
+            package_hash, decoded_from_legacy,
+            "decoded_from_legacy should equal decoded"
+        );
+
+        let invalid_prefix =
+            "contract-packagewasm0000000000000000000000000000000000000000000000000000000000000000";
+        assert!(matches!(
+            ContractPackageHash::from_formatted_str(invalid_prefix).unwrap_err(),
+            FromStrError::InvalidPrefix
+        ));
+
+        let short_addr =
+            "contract-package-wasm00000000000000000000000000000000000000000000000000000000000000";
+        assert!(matches!(
+            ContractPackageHash::from_formatted_str(short_addr).unwrap_err(),
+            FromStrError::Hash(_)
+        ));
+
+        let long_addr =
+            "contract-package-wasm000000000000000000000000000000000000000000000000000000000000000000";
+        assert!(matches!(
+            ContractPackageHash::from_formatted_str(long_addr).unwrap_err(),
+            FromStrError::Hash(_)
+        ));
+
+        let invalid_hex =
+            "contract-package-wasm000000000000000000000000000000000000000000000000000000000000000g";
+        assert!(matches!(
+            ContractPackageHash::from_formatted_str(invalid_hex).unwrap_err(),
+            FromStrError::Hex(_)
+        ));
     }
 }
 

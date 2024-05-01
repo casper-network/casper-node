@@ -177,12 +177,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bddcadddf5e9015d310179a59bb28c4d4b9920ad0f11e8e14dbadf654890c9a6"
 
 [[package]]
-name = "array-init"
-version = "2.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3d62b7694a562cdf5a74227903507c56ab2cc8bdd1f781ed5cb4cf9c9f810bfc"
-
-[[package]]
 name = "assert-json-diff"
 version = "2.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -311,12 +305,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8c3c1a368f70d6cf7302d78f8f7093da241fb8e8807c05cc9e51a125895a6d5b"
 
 [[package]]
-name = "bimap"
-version = "0.6.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "230c5f1ca6a325a32553f8640d31ac9b49f2411e901e427570154868b46da4f7"
-
-[[package]]
 name = "bincode"
 version = "1.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -428,26 +416,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a3e2c3daef883ecc1b5d58c15adae93470a91d425f3532ba1695849656af3fc1"
 
 [[package]]
-name = "bytemuck"
-version = "1.14.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "374d28ec25809ee0e23827c2ab573d729e293f281dfe393500e7ad618baa61c6"
-dependencies = [
- "bytemuck_derive",
-]
-
-[[package]]
-name = "bytemuck_derive"
-version = "1.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "965ab7eb5f8f97d2a083c799f3a1b994fc397b2fe2da5d1da1626ce15a39f2b1"
-dependencies = [
- "proc-macro2 1.0.66",
- "quote 1.0.32",
- "syn 2.0.28",
-]
-
-[[package]]
 name = "byteorder"
 version = "1.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -472,6 +440,7 @@ name = "casper-binary-port"
 version = "1.0.0"
 dependencies = [
  "bincode",
+ "bytes",
  "casper-types",
  "once_cell",
  "rand",
@@ -481,6 +450,7 @@ dependencies = [
  "serde_json",
  "serde_test",
  "thiserror",
+ "tokio-util 0.6.10",
 ]
 
 [[package]]
@@ -586,7 +556,7 @@ dependencies = [
  "serde",
  "serde_bytes",
  "serde_json",
- "strum 0.24.1",
+ "strum",
  "tempfile",
  "thiserror",
  "tracing",
@@ -629,7 +599,6 @@ dependencies = [
  "humantime",
  "hyper",
  "itertools 0.10.5",
- "juliet",
  "libc",
  "linked-hash-map",
  "lmdb-rkv",
@@ -669,7 +638,7 @@ dependencies = [
  "static_assertions",
  "stats_alloc",
  "structopt",
- "strum 0.24.1",
+ "strum",
  "sys-info",
  "tempfile",
  "thiserror",
@@ -760,7 +729,7 @@ dependencies = [
  "serde_bytes",
  "serde_json",
  "serde_test",
- "strum 0.24.1",
+ "strum",
  "tempfile",
  "thiserror",
  "tracing",
@@ -3429,24 +3398,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "juliet"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4336a0d5e38193caafe774bd2be027cf5aa3c3e45b3f1bda1791fcacc9e9951d"
-dependencies = [
- "array-init",
- "bimap",
- "bytemuck",
- "bytes",
- "futures",
- "once_cell",
- "strum 0.25.0",
- "thiserror",
- "tokio",
- "tracing",
-]
-
-[[package]]
 name = "k256"
 version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5436,16 +5387,7 @@ version = "0.24.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "063e6045c0e62079840579a7e47a355ae92f60eb74daaf156fb1e84ba164e63f"
 dependencies = [
- "strum_macros 0.24.3",
-]
-
-[[package]]
-name = "strum"
-version = "0.25.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "290d54ea6f91c969195bdbcd7442c8c2a2ba87da8bf60a7ee86a235d4bc1e125"
-dependencies = [
- "strum_macros 0.25.3",
+ "strum_macros",
 ]
 
 [[package]]
@@ -5459,19 +5401,6 @@ dependencies = [
  "quote 1.0.32",
  "rustversion",
  "syn 1.0.109",
-]
-
-[[package]]
-name = "strum_macros"
-version = "0.25.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "23dc1fa9ac9c169a78ba62f0b841814b7abae11bdd047b9c58f893439e309ea0"
-dependencies = [
- "heck 0.4.1",
- "proc-macro2 1.0.66",
- "quote 1.0.32",
- "rustversion",
- "syn 2.0.28",
 ]
 
 [[package]]

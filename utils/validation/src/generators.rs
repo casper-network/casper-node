@@ -405,7 +405,6 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
         );
 
         let package = Package::new(
-            URef::new([39; 32], AccessRights::READ),
             active_versions,
             disabled_versions,
             groups,

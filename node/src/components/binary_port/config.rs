@@ -4,8 +4,8 @@ use serde::{Deserialize, Serialize};
 
 /// Uses a fixed port per node, but binds on any interface.
 const DEFAULT_ADDRESS: &str = "0.0.0.0:0";
-/// Default maximum payload size.
-const DEFAULT_MAX_PAYLOAD_SIZE: u32 = 4 * 1024 * 1024;
+/// Default maximum message size.
+const DEFAULT_MAX_MESSAGE_SIZE: u32 = 4 * 1024 * 1024;
 /// Default request limit.
 const DEFAULT_CLIENT_REQUEST_LIMIT: u16 = 3;
 /// Default request buffer size.
@@ -30,10 +30,8 @@ pub struct Config {
     pub allow_request_get_trie: bool,
     /// Flag used to enable/disable the [`TrySpeculativeExec`] request.
     pub allow_request_speculative_exec: bool,
-    /// Maximum size of a request in bytes.
-    pub max_request_size_bytes: u32,
-    /// Maximum size of a response in bytes.
-    pub max_response_size_bytes: u32,
+    /// Maximum size of the binary port message.
+    pub max_message_size_bytes: u32,
     /// Maximum number of in-flight requests per client.
     pub client_request_limit: u16,
     /// Number of requests that can be buffered per client.
@@ -54,8 +52,7 @@ impl Config {
             allow_request_get_trie: false,
             allow_request_speculative_exec: false,
             client_request_limit: DEFAULT_CLIENT_REQUEST_LIMIT,
-            max_request_size_bytes: DEFAULT_MAX_PAYLOAD_SIZE,
-            max_response_size_bytes: DEFAULT_MAX_PAYLOAD_SIZE,
+            max_message_size_bytes: DEFAULT_MAX_MESSAGE_SIZE,
             client_request_buffer_size: DEFAULT_CHANNEL_BUFFER_SIZE,
             max_connections: DEFAULT_MAX_CONNECTIONS,
             gas_hold_handling: DEFAULT_GAS_HOLD_BALANCE_HANDLING,

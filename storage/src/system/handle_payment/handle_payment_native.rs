@@ -142,19 +142,20 @@ where
 
     fn put_key(&mut self, name: &str, key: Key) -> Result<(), Error> {
         let name = name.to_string();
-        let entity = self.addressable_entity();
-        let addressable_entity_hash = AddressableEntityHash::new(self.address().value());
-        let entity_addr = entity.entity_addr(addressable_entity_hash);
+        let entity_addr = self
+            .entity_key()
+            .as_entity_addr()
+            .ok_or(Error::UnexpectedKeyVariant)?;
         let named_key_value = StoredValue::NamedKey(
             NamedKeyValue::from_concrete_values(key, name.clone()).map_err(|_| Error::PutKey)?,
         );
         let named_key_addr =
             NamedKeyAddr::new_from_string(entity_addr, name.clone()).map_err(|_| Error::PutKey)?;
-        let key = Key::NamedKey(named_key_addr);
+        let named_key = Key::NamedKey(named_key_addr);
         // write to both tracking copy and in-mem named keys cache
         self.tracking_copy()
             .borrow_mut()
-            .write(key, named_key_value);
+            .write(named_key, named_key_value);
         self.named_keys_mut().insert(name, key);
         Ok(())
     }

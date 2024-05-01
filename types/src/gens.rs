@@ -532,21 +532,16 @@ pub fn groups_arb() -> impl Strategy<Value = Groups> {
 }
 
 pub fn package_arb() -> impl Strategy<Value = Package> {
-    (
-        uref_arb(),
-        entity_versions_arb(),
-        disabled_versions_arb(),
-        groups_arb(),
-    )
-        .prop_map(|(access_key, versions, disabled_versions, groups)| {
+    (entity_versions_arb(), disabled_versions_arb(), groups_arb()).prop_map(
+        |(versions, disabled_versions, groups)| {
             Package::new(
-                access_key,
                 versions,
                 disabled_versions,
                 groups,
                 PackageStatus::default(),
             )
-        })
+        },
+    )
 }
 
 pub(crate) fn delegator_arb() -> impl Strategy<Value = Delegator> {

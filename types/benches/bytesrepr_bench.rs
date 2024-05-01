@@ -535,7 +535,6 @@ fn sample_contract_package(
     disabled_versions_len: u8,
     groups_len: u8,
 ) -> Package {
-    let access_key = URef::default();
     let versions = EntityVersions::from(sample_map(
         contract_version_key_fn,
         contract_hash_fn,
@@ -548,13 +547,7 @@ fn sample_contract_package(
         groups_len,
     ));
 
-    Package::new(
-        access_key,
-        versions,
-        disabled_versions,
-        groups,
-        PackageStatus::Locked,
-    )
+    Package::new(versions, disabled_versions, groups, PackageStatus::Locked)
 }
 
 fn serialize_contract_package(b: &mut Bencher) {

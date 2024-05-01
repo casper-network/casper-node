@@ -261,6 +261,12 @@ pub enum Error {
     /// assert_eq!(38, Error::IncompatiblePaymentSettings as u8);
     /// ```
     IncompatiblePaymentSettings = 38,
+    /// Unexpected key variant.
+    /// ```
+    /// # use casper_types::system::handle_payment::Error;
+    /// assert_eq!(39, Error::UnexpectedKeyVariant as u8);
+    /// ```
+    UnexpectedKeyVariant = 39,
 }
 
 impl Display for Error {
@@ -335,6 +341,7 @@ impl Display for Error {
             Error::IncompatiblePaymentSettings => {
                 formatter.write_str("Incompatible payment settings")
             }
+            Error::UnexpectedKeyVariant => formatter.write_str("Unexpected key variant"),
         }
     }
 }
@@ -412,6 +419,7 @@ impl TryFrom<u8> for Error {
             v if v == Error::IncompatiblePaymentSettings as u8 => {
                 Error::IncompatiblePaymentSettings
             }
+            v if v == Error::UnexpectedKeyVariant as u8 => Error::UnexpectedKeyVariant,
             _ => return Err(()),
         };
         Ok(error)

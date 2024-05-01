@@ -23,6 +23,8 @@ pub struct UpgradeRequestBuilder {
     global_state_update: BTreeMap<Key, StoredValue>,
     chainspec_registry: ChainspecRegistry,
     fee_handling: FeeHandling,
+    migrate_legacy_accounts: bool,
+    migrate_legacy_contracts: bool,
 }
 
 impl UpgradeRequestBuilder {
@@ -115,9 +117,21 @@ impl UpgradeRequestBuilder {
         self
     }
 
-    /// Sets the Chainspec registry.
+    /// Sets the fee handling.
     pub fn with_fee_handling(mut self, fee_handling: FeeHandling) -> Self {
         self.fee_handling = fee_handling;
+        self
+    }
+
+    /// Sets the migrate legacy accounts.
+    pub fn with_migrate_legacy_accounts(mut self, migrate_legacy_accounts: bool) -> Self {
+        self.migrate_legacy_accounts = migrate_legacy_accounts;
+        self
+    }
+
+    /// Sets the migrate legacy contracts.
+    pub fn with_migrate_legacy_contracts(mut self, migrate_legacy_contracts: bool) -> Self {
+        self.migrate_legacy_contracts = migrate_legacy_contracts;
         self
     }
 
@@ -138,6 +152,8 @@ impl UpgradeRequestBuilder {
             self.global_state_update,
             self.chainspec_registry,
             self.fee_handling,
+            self.migrate_legacy_accounts,
+            self.migrate_legacy_contracts,
         )
     }
 }
@@ -159,6 +175,8 @@ impl Default for UpgradeRequestBuilder {
             global_state_update: Default::default(),
             chainspec_registry: ChainspecRegistry::new_with_optional_global_state(&[], None),
             fee_handling: FeeHandling::default(),
+            migrate_legacy_accounts: false,
+            migrate_legacy_contracts: false,
         }
     }
 }
