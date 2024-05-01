@@ -16,7 +16,7 @@ use casper_types::{
         auction::{BidAddr, BidKind, EraInfo, Error, UnbondingPurse},
         mint,
     },
-    CLTyped, CLValue, Key, KeyTag, PublicKey, RuntimeArgs, StoredValue, URef, U512,
+    CLTyped, CLValue, Key, KeyPrefix, KeyTag, PublicKey, RuntimeArgs, StoredValue, URef, U512,
 };
 
 use super::Runtime;
@@ -168,7 +168,7 @@ where
         })
     }
 
-    fn get_keys_by_prefix(&mut self, prefix: &[u8]) -> Result<Vec<Key>, Error> {
+    fn get_keys_by_prefix(&mut self, prefix: &KeyPrefix) -> Result<Vec<Key>, Error> {
         self.context
             .get_keys_with_prefix(prefix)
             .map_err(|exec_error| {
@@ -178,10 +178,9 @@ where
     }
 
     fn delegator_count(&mut self, bid_addr: &BidAddr) -> Result<usize, Error> {
-        let prefix = bid_addr.delegators_prefix()?;
         let keys = self
             .context
-            .get_keys_with_prefix(&prefix)
+            .get_keys_with_prefix(&bid_addr.delegators_prefix())
             .map_err(|exec_error| {
                 error!("RuntimeProvider::delegator_count {:?}", exec_error);
                 <Option<Error>>::from(exec_error).unwrap_or(Error::Storage)

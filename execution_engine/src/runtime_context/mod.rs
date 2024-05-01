@@ -34,7 +34,7 @@ use casper_types::{
     system::auction::EraInfo,
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, CLType, CLValue,
     CLValueDictionary, ContextAccessRights, EntityAddr, EntryPointType, Gas, GrantedAccess, Key,
-    KeyTag, Motes, Package, PackageHash, Phase, ProtocolVersion, PublicKey, RuntimeArgs,
+    KeyPrefix, KeyTag, Motes, Package, PackageHash, Phase, ProtocolVersion, PublicKey, RuntimeArgs,
     StoredValue, StoredValueTypeMismatch, SystemEntityRegistry, TransactionHash, Transfer, URef,
     URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
 };
@@ -504,11 +504,12 @@ where
     }
 
     /// Returns all key's that start with prefix, if any.
-    pub fn get_keys_with_prefix(&mut self, prefix: &[u8]) -> Result<Vec<Key>, ExecError> {
+    pub fn get_keys_with_prefix(&mut self, prefix: &KeyPrefix) -> Result<Vec<Key>, ExecError> {
+        let prefix_bytes = prefix.to_bytes()?;
         self.tracking_copy
             .borrow_mut()
             .reader()
-            .keys_with_prefix(prefix)
+            .keys_with_prefix(&prefix_bytes)
             .map_err(Into::into)
     }
 

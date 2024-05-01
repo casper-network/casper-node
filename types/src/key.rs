@@ -1448,7 +1448,7 @@ impl ToBytes for Key {
                     + BLOCK_GLOBAL_PADDING_BYTES.len()
             }
             Key::BalanceHold(balance_hold_addr) => {
-                U8_SERIALIZED_LENGTH + balance_hold_addr.serialized_length()
+                KEY_ID_SERIALIZED_LENGTH + balance_hold_addr.serialized_length()
             }
         }
     }

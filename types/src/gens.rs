@@ -50,9 +50,9 @@ use crate::{
         TransferAddr,
     },
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, ByteCode, CLType, CLValue,
-    Digest, EntityKind, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, EraId, Group,
-    Key, NamedArg, Package, Parameter, Phase, ProtocolVersion, SemVer, StoredValue, URef, U128,
-    U256, U512,
+    Digest, EntityAddr, EntityKind, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints,
+    EraId, Group, Key, KeyPrefix, NamedArg, Package, Parameter, Phase, ProtocolVersion, SemVer,
+    StoredValue, URef, U128, U256, U512,
 };
 
 pub fn u8_slice_32() -> impl Strategy<Value = [u8; 32]> {
@@ -134,8 +134,32 @@ pub fn colliding_key_arb() -> impl Strategy<Value = Key> {
     ]
 }
 
+pub fn key_prefix_arb() -> impl Strategy<Value = KeyPrefix> {
+    prop_oneof![
+        account_hash_arb().prop_map(KeyPrefix::DelegatorBidAddrsByValidator),
+        entity_addr_arb().prop_map(KeyPrefix::MessagesByEntity),
+        (entity_addr_arb(), topic_name_hash_arb())
+            .prop_map(|(entity, topic)| KeyPrefix::MessagesByEntityAndTopic(entity, topic)),
+        entity_addr_arb().prop_map(KeyPrefix::NamedKeysByEntity),
+        u8_slice_32().prop_map(KeyPrefix::GasBalanceHoldsByPurse),
+        u8_slice_32().prop_map(KeyPrefix::ProcessingBalanceHoldsByPurse),
+    ]
+}
+
 pub fn account_hash_arb() -> impl Strategy<Value = AccountHash> {
     u8_slice_32().prop_map(AccountHash::new)
+}
+
+pub fn entity_addr_arb() -> impl Strategy<Value = EntityAddr> {
+    prop_oneof![
+        u8_slice_32().prop_map(EntityAddr::System),
+        u8_slice_32().prop_map(EntityAddr::Account),
+        u8_slice_32().prop_map(EntityAddr::SmartContract),
+    ]
+}
+
+pub fn topic_name_hash_arb() -> impl Strategy<Value = TopicNameHash> {
+    u8_slice_32().prop_map(TopicNameHash::new)
 }
 
 pub fn bid_addr_validator_arb() -> impl Strategy<Value = BidAddr> {

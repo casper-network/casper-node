@@ -53,6 +53,7 @@ pub mod gens;
 pub mod global_state;
 mod json_pretty_printer;
 mod key;
+mod key_prefix;
 mod motes;
 mod package;
 mod peers_map;
@@ -165,6 +166,7 @@ pub use key::{
     DictionaryAddr, FromStrError as KeyFromStrError, HashAddr, Key, KeyTag, PackageAddr,
     BLAKE2B_DIGEST_LENGTH, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_DICTIONARY_LENGTH, KEY_HASH_LENGTH,
 };
+pub use key_prefix::KeyPrefix;
 pub use motes::Motes;
 #[doc(inline)]
 pub use package::{

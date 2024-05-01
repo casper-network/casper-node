@@ -14,6 +14,7 @@ use crate::{
 use casper_types::{
     account::AccountHash,
     addressable_entity::NamedKeys,
+    bytesrepr::ToBytes,
     global_state::TrieMerkleProof,
     system::{
         mint::{
@@ -248,7 +249,7 @@ where
         let tagged_keys = {
             let mut ret: Vec<BalanceHoldAddr> = vec![];
             let tag = BalanceHoldAddrTag::Gas;
-            let gas_prefix = tag.purse_prefix_by_tag(purse_addr)?;
+            let gas_prefix = tag.purse_prefix_by_tag(purse_addr).to_bytes()?;
             for key in self.keys_with_prefix(&gas_prefix)? {
                 let addr = key
                     .as_balance_hold()
@@ -256,7 +257,7 @@ where
                 ret.push(*addr);
             }
             let tag = BalanceHoldAddrTag::Processing;
-            let processing_prefix = tag.purse_prefix_by_tag(purse_addr)?;
+            let processing_prefix = tag.purse_prefix_by_tag(purse_addr).to_bytes()?;
             for key in self.keys_with_prefix(&processing_prefix)? {
                 let addr = key
                     .as_balance_hold()
@@ -378,7 +379,7 @@ where
         filter: Vec<(BalanceHoldAddrTag, HoldsEpoch)>,
     ) -> Result<(), Self::Error> {
         for (tag, holds_epoch) in filter {
-            let prefix = tag.purse_prefix_by_tag(purse_addr)?;
+            let prefix = tag.purse_prefix_by_tag(purse_addr).to_bytes()?;
             let immut: &_ = self;
             let hold_keys = immut.keys_with_prefix(&prefix)?;
             for hold_key in hold_keys {
@@ -541,6 +542,7 @@ where
     fn get_named_keys(&self, entity_addr: EntityAddr) -> Result<NamedKeys, Self::Error> {
         let prefix = entity_addr
             .named_keys_prefix()
+            .to_bytes()
             .map_err(Self::Error::BytesRepr)?;
 
         let mut ret: BTreeSet<Key> = BTreeSet::new();

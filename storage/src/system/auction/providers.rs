@@ -8,7 +8,7 @@ use casper_types::{
         auction::{BidAddr, BidKind, EraInfo, Error, UnbondingPurse},
         mint,
     },
-    CLTyped, Key, KeyTag, URef, BLAKE2B_DIGEST_LENGTH, U512,
+    CLTyped, Key, KeyPrefix, KeyTag, URef, BLAKE2B_DIGEST_LENGTH, U512,
 };
 
 /// Provider of runtime host functionality.
@@ -26,7 +26,7 @@ pub trait RuntimeProvider {
     fn get_keys(&mut self, key_tag: &KeyTag) -> Result<BTreeSet<Key>, Error>;
 
     /// Gets keys by prefix.
-    fn get_keys_by_prefix(&mut self, prefix: &[u8]) -> Result<Vec<Key>, Error>;
+    fn get_keys_by_prefix(&mut self, prefix: &KeyPrefix) -> Result<Vec<Key>, Error>;
 
     /// Returns the current number of delegators for this validator.
     fn delegator_count(&mut self, bid_addr: &BidAddr) -> Result<usize, Error>;

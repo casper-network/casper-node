@@ -587,11 +587,7 @@ where
 {
     let mut ret = vec![];
     let bid_addr = BidAddr::from(validator_public_key.clone());
-    let delegator_bid_keys = provider.get_keys_by_prefix(
-        &bid_addr
-            .delegators_prefix()
-            .map_err(|_| Error::Serialization)?,
-    )?;
+    let delegator_bid_keys = provider.get_keys_by_prefix(&bid_addr.delegators_prefix())?;
 
     for delegator_bid_key in delegator_bid_keys {
         let delegator_bid = read_delegator_bid(provider, &delegator_bid_key)?;
@@ -715,11 +711,7 @@ where
     P: RuntimeProvider + ?Sized + StorageProvider,
 {
     let bid_addr = BidAddr::from(validator_bid.validator_public_key().clone());
-    let delegator_bid_keys = provider.get_keys_by_prefix(
-        &bid_addr
-            .delegators_prefix()
-            .map_err(|_| Error::Serialization)?,
-    )?;
+    let delegator_bid_keys = provider.get_keys_by_prefix(&bid_addr.delegators_prefix())?;
 
     let mut sum = U512::zero();
 

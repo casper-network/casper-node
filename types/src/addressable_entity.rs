@@ -67,8 +67,8 @@ use crate::{
     system::SystemEntityType,
     uref::{self, URef},
     AccessRights, ApiError, CLType, CLTyped, CLValue, CLValueError, ContextAccessRights, Group,
-    HashAddr, Key, KeyTag, PackageHash, ProtocolVersion, PublicKey, Tagged, BLAKE2B_DIGEST_LENGTH,
-    KEY_HASH_LENGTH,
+    HashAddr, Key, KeyPrefix, PackageHash, ProtocolVersion, PublicKey, Tagged,
+    BLAKE2B_DIGEST_LENGTH, KEY_HASH_LENGTH,
 };
 
 /// Maximum number of distinct user groups.
@@ -974,11 +974,8 @@ impl EntityAddr {
     }
 
     /// Returns the common prefix of all NamedKey entries.
-    pub fn named_keys_prefix(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut ret = Vec::with_capacity(self.serialized_length() + 1);
-        ret.push(KeyTag::NamedKey as u8);
-        self.write_bytes(&mut ret)?;
-        Ok(ret)
+    pub fn named_keys_prefix(&self) -> KeyPrefix {
+        KeyPrefix::NamedKeysByEntity(*self)
     }
 
     /// Returns the formatted String representation of the [`EntityAddr`].

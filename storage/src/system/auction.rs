@@ -407,7 +407,7 @@ pub trait Auction:
                 self.prune_bid(validator_bid_addr);
 
                 // Also slash delegator stakes when deactivating validator bid.
-                let prefix = validator_bid_addr.delegators_prefix()?;
+                let prefix = validator_bid_addr.delegators_prefix();
                 let delegator_keys = self.get_keys_by_prefix(&prefix)?;
                 for delegator_key in delegator_keys {
                     if let Some(BidKind::Delegator(delegator_bid)) =

@@ -1,9 +1,7 @@
 use crate::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
-    bytesrepr,
-    bytesrepr::{FromBytes, ToBytes},
-    system::auction::error::Error,
-    Key, KeyTag, PublicKey,
+    bytesrepr::{self, FromBytes, ToBytes},
+    Key, KeyPrefix, PublicKey,
 };
 use alloc::vec::Vec;
 use core::fmt::{Debug, Display, Formatter};
@@ -135,13 +133,8 @@ impl BidAddr {
     }
 
     /// Returns the common prefix of all delegators to the cited validator.
-    pub fn delegators_prefix(&self) -> Result<Vec<u8>, Error> {
-        let validator = self.validator_account_hash();
-        let mut ret = Vec::with_capacity(validator.serialized_length() + 2);
-        ret.push(KeyTag::BidAddr as u8);
-        ret.push(BidAddrTag::Delegator as u8);
-        validator.write_bytes(&mut ret)?;
-        Ok(ret)
+    pub fn delegators_prefix(&self) -> KeyPrefix {
+        KeyPrefix::DelegatorBidAddrsByValidator(self.validator_account_hash())
     }
 
     /// Validator account hash.

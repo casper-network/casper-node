@@ -20,11 +20,10 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    bytesrepr,
-    bytesrepr::{FromBytes, ToBytes},
+    bytesrepr::{self, FromBytes, ToBytes},
     checksummed_hex,
     key::FromStrError,
-    BlockTime, Key, KeyTag, Timestamp, URefAddr, BLOCKTIME_SERIALIZED_LENGTH, UREF_ADDR_LENGTH,
+    BlockTime, Key, KeyPrefix, Timestamp, URefAddr, BLOCKTIME_SERIALIZED_LENGTH, UREF_ADDR_LENGTH,
 };
 
 const GAS_TAG: u8 = 0;
@@ -62,12 +61,11 @@ impl BalanceHoldAddrTag {
     }
 
     /// Returns key prefix for a purse by balance hold addr tag.
-    pub fn purse_prefix_by_tag(&self, purse_addr: URefAddr) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut ret = Vec::with_capacity(purse_addr.serialized_length() + 2);
-        ret.push(KeyTag::BalanceHold as u8);
-        ret.push(*self as u8);
-        purse_addr.write_bytes(&mut ret)?;
-        Ok(ret)
+    pub fn purse_prefix_by_tag(&self, purse_addr: URefAddr) -> KeyPrefix {
+        match self {
+            BalanceHoldAddrTag::Gas => KeyPrefix::GasBalanceHoldsByPurse(purse_addr),
+            BalanceHoldAddrTag::Processing => KeyPrefix::ProcessingBalanceHoldsByPurse(purse_addr),
+        }
     }
 }
 
