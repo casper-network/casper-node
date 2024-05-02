@@ -21,6 +21,7 @@ use casper_binary_port::{
 use casper_storage::{
     block_store::types::ApprovalsHashes,
     data_access_layer::{
+        prefixed_values::{PrefixedValuesRequest, PrefixedValuesResult},
         tagged_values::{TaggedValuesRequest, TaggedValuesResult},
         AddressableEntityResult, BalanceRequest, BalanceResult, EntryPointsResult,
         EraValidatorsRequest, EraValidatorsResult, ExecutionResultsChecksumResult, PutTrieRequest,
@@ -769,6 +770,14 @@ pub(crate) enum ContractRuntimeRequest {
         /// Responder to call with the query result.
         responder: Responder<QueryResult>,
     },
+    /// A query by prefix request.
+    QueryByPrefix {
+        /// Query by prefix request.
+        #[serde(skip_serializing)]
+        request: PrefixedValuesRequest,
+        /// Responder to call with the query result.
+        responder: Responder<PrefixedValuesResult>,
+    },
     /// A balance request.
     GetBalance {
         /// Balance request.
@@ -860,6 +869,9 @@ impl Display for ContractRuntimeRequest {
                 ..
             } => {
                 write!(formatter, "query request: {:?}", query_request)
+            }
+            ContractRuntimeRequest::QueryByPrefix { request, .. } => {
+                write!(formatter, "query by prefix request: {:?}", request)
             }
             ContractRuntimeRequest::GetBalance {
                 request: balance_request,

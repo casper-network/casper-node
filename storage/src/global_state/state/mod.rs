@@ -45,6 +45,7 @@ use crate::{
         era_validators::EraValidatorsResult,
         handle_fee::{HandleFeeMode, HandleFeeRequest, HandleFeeResult},
         mint::{TransferRequest, TransferRequestArgs, TransferResult},
+        prefixed_values::{PrefixedValuesRequest, PrefixedValuesResult},
         tagged_values::{TaggedValuesRequest, TaggedValuesResult},
         AddressableEntityRequest, AddressableEntityResult, AuctionMethod, BalanceHoldError,
         BalanceHoldKind, BalanceHoldMode, BalanceHoldRequest, BalanceHoldResult, BalanceIdentifier,
@@ -72,8 +73,7 @@ use crate::{
         },
     },
     system::{
-        auction,
-        auction::Auction,
+        auction::{self, Auction},
         genesis::{GenesisError, GenesisInstaller},
         handle_payment::HandlePayment,
         mint::Mint,
@@ -1931,6 +1931,35 @@ pub trait StateProvider {
         TaggedValuesResult::Success {
             values,
             selection: request.selection(),
+        }
+    }
+
+    fn prefixed_values(&self, request: PrefixedValuesRequest) -> PrefixedValuesResult {
+        let mut tc = match self.tracking_copy(request.state_hash()) {
+            Ok(Some(tc)) => tc,
+            Ok(None) => return PrefixedValuesResult::RootNotFound,
+            Err(err) => return PrefixedValuesResult::Failure(TrackingCopyError::Storage(err)),
+        };
+        let byte_prefix = match request.key_prefix().to_bytes() {
+            Ok(prefix) => prefix,
+            Err(error) => return PrefixedValuesResult::Failure(error.into()),
+        };
+        match tc.reader().keys_with_prefix(&byte_prefix) {
+            Ok(keys) => {
+                let mut values = Vec::with_capacity(keys.len());
+                for key in keys {
+                    match tc.get(&key) {
+                        Ok(Some(value)) => values.push(value),
+                        Ok(None) => {}
+                        Err(error) => return PrefixedValuesResult::Failure(error.into()),
+                    }
+                }
+                PrefixedValuesResult::Success {
+                    values,
+                    key_prefix: request.key_prefix().clone(),
+                }
+            }
+            Err(error) => PrefixedValuesResult::Failure(error.into()),
         }
     }
 

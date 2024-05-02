@@ -5,7 +5,7 @@ use rand::Rng;
 
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    Digest, GlobalStateIdentifier, Key, KeyTag,
+    Digest, GlobalStateIdentifier, Key, KeyPrefix, KeyTag,
 };
 
 use crate::PurseIdentifier;
@@ -17,6 +17,7 @@ const ALL_ITEMS_TAG: u8 = 1;
 const TRIE_TAG: u8 = 2;
 const DICTIONARY_ITEM_TAG: u8 = 3;
 const BALANCE_TAG: u8 = 4;
+const ITEMS_BY_PREFIX_TAG: u8 = 5;
 
 /// A request to get data from the global state.
 #[derive(Clone, Debug, PartialEq)]
@@ -56,12 +57,18 @@ pub enum GlobalStateRequest {
         /// Purse identifier.
         purse_identifier: PurseIdentifier,
     },
+    ItemsByPrefix {
+        /// Global state identifier, `None` means "latest block state".
+        state_identifier: Option<GlobalStateIdentifier>,
+        /// Key prefix to search for.
+        key_prefix: KeyPrefix,
+    },
 }
 
 impl GlobalStateRequest {
     #[cfg(test)]
     pub(crate) fn random(rng: &mut TestRng) -> Self {
-        match TestRng::gen_range(rng, 0..5) {
+        match TestRng::gen_range(rng, 0..6) {
             ITEM_TAG => {
                 let path_count = rng.gen_range(10..20);
                 GlobalStateRequest::Item {
@@ -94,6 +101,12 @@ impl GlobalStateRequest {
                     .gen::<bool>()
                     .then(|| GlobalStateIdentifier::random(rng)),
                 purse_identifier: PurseIdentifier::random(rng),
+            },
+            ITEMS_BY_PREFIX_TAG => GlobalStateRequest::ItemsByPrefix {
+                state_identifier: rng
+                    .gen::<bool>()
+                    .then(|| GlobalStateIdentifier::random(rng)),
+                key_prefix: KeyPrefix::random(rng),
             },
             _ => unreachable!(),
         }
@@ -147,6 +160,14 @@ impl ToBytes for GlobalStateRequest {
                 state_identifier.write_bytes(writer)?;
                 purse_identifier.write_bytes(writer)
             }
+            GlobalStateRequest::ItemsByPrefix {
+                state_identifier,
+                key_prefix,
+            } => {
+                ITEMS_BY_PREFIX_TAG.write_bytes(writer)?;
+                state_identifier.write_bytes(writer)?;
+                key_prefix.write_bytes(writer)
+            }
         }
     }
 
@@ -175,6 +196,10 @@ impl ToBytes for GlobalStateRequest {
                     state_identifier,
                     purse_identifier,
                 } => state_identifier.serialized_length() + purse_identifier.serialized_length(),
+                GlobalStateRequest::ItemsByPrefix {
+                    state_identifier,
+                    key_prefix,
+                } => state_identifier.serialized_length() + key_prefix.serialized_length(),
             }
     }
 }
@@ -229,6 +254,17 @@ impl FromBytes for GlobalStateRequest {
                     GlobalStateRequest::Balance {
                         state_identifier,
                         purse_identifier,
+                    },
+                    remainder,
+                ))
+            }
+            ITEMS_BY_PREFIX_TAG => {
+                let (state_identifier, remainder) = FromBytes::from_bytes(remainder)?;
+                let (key_prefix, remainder) = FromBytes::from_bytes(remainder)?;
+                Ok((
+                    GlobalStateRequest::ItemsByPrefix {
+                        state_identifier,
+                        key_prefix,
                     },
                     remainder,
                 ))

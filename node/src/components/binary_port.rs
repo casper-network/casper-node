@@ -18,6 +18,7 @@ use casper_binary_port::{
 use casper_storage::{
     data_access_layer::{
         balance::BalanceHandling,
+        prefixed_values::{PrefixedValuesRequest, PrefixedValuesResult},
         tagged_values::{TaggedValuesRequest, TaggedValuesResult, TaggedValuesSelection},
         BalanceIdentifier, BalanceRequest, BalanceResult, ProofHandling, ProofsResult,
         QueryRequest, QueryResult, TrieRequest,
@@ -27,8 +28,8 @@ use casper_storage::{
 use casper_types::{
     addressable_entity::NamedKeyAddr,
     bytesrepr::{self, FromBytes, ToBytes},
-    BlockHeader, BlockIdentifier, Chainspec, Digest, EntityAddr, GlobalStateIdentifier, Key, Peers,
-    ProtocolVersion, SignedBlock, StoredValue, TimeDiff, Transaction,
+    BlockHeader, BlockIdentifier, Chainspec, Digest, EntityAddr, GlobalStateIdentifier, Key,
+    KeyPrefix, Peers, ProtocolVersion, SignedBlock, StoredValue, TimeDiff, Transaction,
 };
 
 use datasize::DataSize;
@@ -243,6 +244,33 @@ where
         }
     }
 }
+
+async fn handle_get_items_by_prefix<REv>(
+    state_identifier: Option<GlobalStateIdentifier>,
+    key_prefix: KeyPrefix,
+    effect_builder: EffectBuilder<REv>,
+    protocol_version: ProtocolVersion,
+) -> BinaryResponse
+where
+    REv: From<Event> + From<ContractRuntimeRequest> + From<StorageRequest>,
+{
+    let Some(state_root_hash) = resolve_state_root_hash(effect_builder, state_identifier).await else {
+        return BinaryResponse::new_empty(protocol_version)
+    };
+    let request = PrefixedValuesRequest::new(state_root_hash, key_prefix);
+    match effect_builder.get_prefixed_values(request).await {
+        PrefixedValuesResult::Success { values, .. } => {
+            BinaryResponse::from_value(values, protocol_version)
+        }
+        PrefixedValuesResult::RootNotFound => {
+            BinaryResponse::new_error(ErrorCode::RootNotFound, protocol_version)
+        }
+        PrefixedValuesResult::Failure(_err) => {
+            BinaryResponse::new_error(ErrorCode::InternalError, protocol_version)
+        }
+    }
+}
+
 async fn handle_get_all_items<REv>(
     state_identifier: Option<GlobalStateIdentifier>,
     key_tag: casper_types::KeyTag,
@@ -261,8 +289,7 @@ where
             BinaryResponse::from_value(values, protocol_version)
         }
         TaggedValuesResult::RootNotFound => {
-            let error_code = ErrorCode::RootNotFound;
-            BinaryResponse::new_error(error_code, protocol_version)
+            BinaryResponse::new_error(ErrorCode::RootNotFound, protocol_version)
         }
         TaggedValuesResult::Failure(_err) => {
             BinaryResponse::new_error(ErrorCode::InternalError, protocol_version)
@@ -409,6 +436,18 @@ where
                 effect_builder,
                 state_root_hash,
                 purse_identifier,
+                protocol_version,
+            )
+            .await
+        }
+        GlobalStateRequest::ItemsByPrefix {
+            state_identifier,
+            key_prefix,
+        } => {
+            handle_get_items_by_prefix(
+                state_identifier,
+                key_prefix,
+                effect_builder,
                 protocol_version,
             )
             .await

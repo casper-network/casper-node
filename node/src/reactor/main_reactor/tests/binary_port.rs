@@ -23,8 +23,8 @@ use casper_types::{
     testing::TestRng,
     Account, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockIdentifier,
     BlockSynchronizerStatus, CLValue, CLValueDictionary, ChainspecRawBytes, DictionaryAddr, Digest,
-    EntityAddr, GlobalStateIdentifier, Key, KeyTag, NextUpgrade, Peers, ProtocolVersion, SecretKey,
-    SignedBlock, StoredValue, Transaction, TransactionV1Builder, Transfer, URef, U512,
+    EntityAddr, GlobalStateIdentifier, Key, KeyPrefix, KeyTag, NextUpgrade, Peers, ProtocolVersion,
+    SecretKey, SignedBlock, StoredValue, Transaction, TransactionV1Builder, Transfer, URef, U512,
 };
 use futures::{SinkExt, StreamExt};
 use rand::Rng;
@@ -339,6 +339,7 @@ async fn binary_port_component() {
         try_accept_transaction_invalid(&mut rng),
         try_accept_transaction(&secret_signing_key),
         get_balance(state_root_hash, test_account_hash),
+        get_named_keys_by_prefix(state_root_hash, test_entity_addr),
     ];
 
     for TestCase {
@@ -845,6 +846,25 @@ fn get_balance(state_root_hash: Digest, account_hash: AccountHash) -> TestCase {
                 response,
                 Some(PayloadType::BalanceResponse),
                 |res| res.available_balance == U512::one(),
+            )
+        }),
+    }
+}
+
+fn get_named_keys_by_prefix(state_root_hash: Digest, entity_addr: EntityAddr) -> TestCase {
+    TestCase {
+        name: "get_named_keys_by_prefix",
+        request: BinaryRequest::Get(GetRequest::State(Box::new(
+            GlobalStateRequest::ItemsByPrefix {
+                state_identifier: Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
+                key_prefix: KeyPrefix::NamedKeysByEntity(entity_addr),
+            },
+        ))),
+        asserter: Box::new(|response| {
+            assert_response::<Vec<StoredValue>, _>(
+                response,
+                Some(PayloadType::StoredValues),
+                |res| res.iter().all(|v| matches!(v, StoredValue::NamedKey(_))),
             )
         }),
     }

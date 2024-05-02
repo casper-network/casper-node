@@ -41,6 +41,9 @@ const COMMIT_UPGRADE_HELP: &str = "time in seconds to commit an upgrade";
 const RUN_QUERY_NAME: &str = "contract_runtime_run_query";
 const RUN_QUERY_HELP: &str = "time in seconds to run a query in global state";
 
+const RUN_QUERY_BY_PREFIX_NAME: &str = "contract_runtime_run_query_by_prefix";
+const RUN_QUERY_BY_PREFIX_HELP: &str = "time in seconds to run a query by prefix in global state";
+
 const COMMIT_STEP_NAME: &str = "contract_runtime_commit_step";
 const COMMIT_STEP_HELP: &str = "time in seconds to commit the step at era end";
 
@@ -105,6 +108,7 @@ pub struct Metrics {
     pub(super) commit_genesis: Histogram,
     pub(super) commit_upgrade: Histogram,
     pub(super) run_query: Histogram,
+    pub(super) run_query_by_prefix: Histogram,
     pub(super) commit_step: Histogram,
     pub(super) get_balance: Histogram,
     pub(super) get_total_supply: Histogram,
@@ -183,6 +187,12 @@ impl Metrics {
                 registry,
                 RUN_QUERY_NAME,
                 RUN_QUERY_HELP,
+                common_buckets.clone(),
+            )?,
+            run_query_by_prefix: utils::register_histogram_metric(
+                registry,
+                RUN_QUERY_BY_PREFIX_NAME,
+                RUN_QUERY_BY_PREFIX_HELP,
                 common_buckets.clone(),
             )?,
             commit_step: utils::register_histogram_metric(
@@ -281,6 +291,7 @@ impl Drop for Metrics {
         unregister_metric!(self.registry, self.commit_genesis);
         unregister_metric!(self.registry, self.commit_upgrade);
         unregister_metric!(self.registry, self.run_query);
+        unregister_metric!(self.registry, self.run_query_by_prefix);
         unregister_metric!(self.registry, self.commit_step);
         unregister_metric!(self.registry, self.get_balance);
         unregister_metric!(self.registry, self.get_total_supply);
