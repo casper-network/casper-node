@@ -37,8 +37,6 @@ impl From<CallError> for TokenOwnerError {
 
 #[casper(trait_definition)]
 pub trait ReceiveTokens {
-    // interfaceid = hash()
-    #[casper(receive)]
     fn receive(&mut self);
 }
 
