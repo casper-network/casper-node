@@ -2054,6 +2054,13 @@
           "enum": [
             "ActivateBid"
           ]
+        },
+        {
+          "description": "The `change_bid_public_key` native entry point, used to change a bid's public key.",
+          "type": "string",
+          "enum": [
+            "ChangeBidPublicKey"
+          ]
         }
       ]
     },
@@ -3014,6 +3021,42 @@
       },
       "additionalProperties": false
     },
+    "Bridge": {
+      "description": "A bridge record pointing to a new `ValidatorBid` after the public key was changed.",
+      "type": "object",
+      "required": [
+        "era_id",
+        "new_validator_public_key",
+        "old_validator_public_key"
+      ],
+      "properties": {
+        "old_validator_public_key": {
+          "description": "Previous validator public key associated with the bid.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PublicKey"
+            }
+          ]
+        },
+        "new_validator_public_key": {
+          "description": "New validator public key associated with the bid.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PublicKey"
+            }
+          ]
+        },
+        "era_id": {
+          "description": "Era when bridge record was created.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EraId"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
     "WithdrawPurse": {
       "description": "A withdraw purse, a legacy structure.",
       "type": "object",
@@ -3206,6 +3249,19 @@
           "properties": {
             "Delegator": {
               "$ref": "#/definitions/Delegator"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "A bridge record pointing to a new `ValidatorBid` after the public key was changed.",
+          "type": "object",
+          "required": [
+            "Bridge"
+          ],
+          "properties": {
+            "Bridge": {
+              "$ref": "#/definitions/Bridge"
             }
           },
           "additionalProperties": false

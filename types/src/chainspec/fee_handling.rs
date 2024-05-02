@@ -36,7 +36,7 @@ impl FeeHandling {
     }
 
     /// Returns true if configured for no fees.
-    pub fn skip_fee_handling(&self) -> bool {
+    pub fn is_no_fee(&self) -> bool {
         matches!(self, FeeHandling::NoFee)
     }
 }

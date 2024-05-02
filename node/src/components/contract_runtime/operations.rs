@@ -191,13 +191,12 @@ pub fn execute_finalized_block(
         artifact_builder.with_added_cost(cost);
 
         let is_standard_payment = transaction.is_standard_payment();
-        let refund_purse_active = !is_standard_payment && !refund_handling.skip_refund();
-        // set up the refund purse for this transaction, if custom payment && refunds are on
+        let refund_purse_active = !is_standard_payment; //&& !refund_handling.skip_refund();
         if refund_purse_active {
-            // if refunds are turned on we initialize the refund purse to the initiator's main
-            // purse before doing any processing. NOTE: when executed, custom payment logic
-            // has the option to call set_refund_purse on the handle payment contract to set
-            // up a different refund purse, if desired.
+            // if custom payment  before doing any processing, initialize the initiator's main purse
+            //  to be the refund purse for this transaction.
+            // NOTE: when executed, custom payment logic has the option to call set_refund_purse
+            //  on the handle payment contract to set up a different refund purse, if desired.
             let handle_refund_request = HandleRefundRequest::new(
                 native_runtime_config.clone(),
                 state_root_hash,
@@ -221,7 +220,7 @@ pub fn execute_finalized_block(
                 scratch_state.commit(state_root_hash, handle_refund_result.effects().clone())?;
         }
 
-        let balance_identifier = {
+        let mut balance_identifier = {
             let is_account_session = transaction.is_account_session();
             //  if standard payment & is session based...use account main purse
             //  if standard payment & is targeting a contract
@@ -439,7 +438,23 @@ pub fn execute_finalized_block(
         let refund_amount = {
             let consumed = artifact_builder.consumed();
             let refund_mode = match refund_handling {
-                RefundHandling::NoRefund => None,
+                RefundHandling::NoRefund => {
+                    if fee_handling.is_no_fee() && !transaction.is_standard_payment() {
+                        // in no fee mode, we need to return the motes to the refund purse,
+                        //  and then point the balance_identifier to the refund purse
+                        // this will result in the downstream no fee handling logic
+                        //  placing a hold on the correct purse.
+                        balance_identifier = BalanceIdentifier::Refund;
+                        Some(HandleRefundMode::CustomHold {
+                            initiator_addr: Box::new(initiator_addr.clone()),
+                            limit: gas_limit.value(),
+                            gas_price: current_gas_price,
+                            cost,
+                        })
+                    } else {
+                        None
+                    }
+                }
                 RefundHandling::Burn { refund_ratio } => Some(HandleRefundMode::Burn {
                     limit: gas_limit.value(),
                     gas_price: current_gas_price,
@@ -449,6 +464,7 @@ pub fn execute_finalized_block(
                     ratio: refund_ratio,
                 }),
                 RefundHandling::Refund { refund_ratio } => {
+                    let source = Box::new(balance_identifier.clone());
                     if transaction.is_standard_payment() {
                         Some(HandleRefundMode::RefundAmount {
                             limit: gas_limit.value(),
@@ -456,9 +472,10 @@ pub fn execute_finalized_block(
                             consumed,
                             cost,
                             ratio: refund_ratio,
-                            source: Box::new(balance_identifier.clone()),
+                            source,
                         })
                     } else {
+                        let target = Box::new(BalanceIdentifier::Refund);
                         Some(HandleRefundMode::Refund {
                             initiator_addr: Box::new(initiator_addr.clone()),
                             limit: gas_limit.value(),
@@ -466,10 +483,8 @@ pub fn execute_finalized_block(
                             consumed,
                             cost,
                             ratio: refund_ratio,
-                            // as this is currently behind a custom payment check,
-                            // the source is always BalanceIdentifier::Payment
-                            source: Box::new(balance_identifier.clone()),
-                            target: Box::new(BalanceIdentifier::Refund),
+                            source,
+                            target,
                         })
                     }
                 }

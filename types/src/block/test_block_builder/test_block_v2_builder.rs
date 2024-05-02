@@ -197,7 +197,10 @@ impl TestBlockV2Builder {
                         | TransactionEntryPoint::Delegate
                         | TransactionEntryPoint::Undelegate
                         | TransactionEntryPoint::Redelegate
-                        | TransactionEntryPoint::ActivateBid => auction_hashes.push(txn_hash),
+                        | TransactionEntryPoint::ActivateBid
+                        | TransactionEntryPoint::ChangeBidPublicKey => {
+                            staking_hashes.push(txn_hash)
+                        },
                     },
                     TransactionTarget::Stored { .. } => standard_hashes.push(txn_hash),
                     TransactionTarget::Session { kind, .. } => match kind {

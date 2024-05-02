@@ -29,7 +29,7 @@ use casper_types::{
             BalanceHoldAddr, BalanceHoldAddrTag, ARG_AMOUNT, ROUND_SEIGNIORAGE_RATE_KEY,
             TOTAL_SUPPLY_KEY,
         },
-        AUCTION, MINT,
+        AUCTION, HANDLE_PAYMENT, MINT,
     },
     Account, AddressableEntity, BlockGlobalAddr, CLValue, Digest, EntityAddr, HoldsEpoch, Key,
     KeyTag, Phase, PublicKey, RuntimeArgs, StoredValue, U512,
@@ -1008,7 +1008,7 @@ pub trait StateProvider {
         };
 
         let source_account_hash = initiator.account_hash();
-        let (entity, entity_named_keys, entity_access_rights) =
+        let (entity_addr, entity, entity_named_keys, entity_access_rights) =
             match tc.borrow_mut().resolved_entity(
                 protocol_version,
                 source_account_hash,
@@ -1020,6 +1020,7 @@ pub trait StateProvider {
                     return BiddingResult::Failure(tce);
                 }
             };
+        let entity_key = Key::AddressableEntity(entity_addr);
 
         // IMPORTANT: this runtime _must_ use the payer's context.
         let mut runtime = RuntimeNative::new(
@@ -1028,6 +1029,7 @@ pub trait StateProvider {
             Id::Transaction(transaction_hash),
             Rc::clone(&tc),
             source_account_hash,
+            entity_key,
             entity,
             entity_named_keys,
             entity_access_rights,
@@ -1100,6 +1102,15 @@ pub trait StateProvider {
                 .map_err(|auc_err| {
                     TrackingCopyError::SystemContract(system::Error::Auction(auc_err))
                 }),
+            AuctionMethod::ChangeBidPublicKey {
+                public_key,
+                new_public_key,
+            } => runtime
+                .change_bid_public_key(public_key, new_public_key)
+                .map(|_| AuctionMethodRet::Unit)
+                .map_err(|auc_err| {
+                    TrackingCopyError::SystemContract(system::Error::Auction(auc_err))
+                }),
         };
 
         let effects = tc.borrow_mut().effects();
@@ -1127,18 +1138,40 @@ pub trait StateProvider {
             Err(err) => return HandleRefundResult::Failure(TrackingCopyError::Storage(err)),
         };
 
-        // this runtime uses the system's context
-        let mut runtime = match RuntimeNative::new_system_runtime(
-            config,
-            protocol_version,
-            Id::Transaction(transaction_hash),
-            Rc::clone(&tc),
-            refund_mode.phase(),
-        ) {
-            Ok(rt) => rt,
-            Err(tce) => {
-                return HandleRefundResult::Failure(tce);
+        let phase = refund_mode.phase();
+        let mut runtime = match phase {
+            Phase::FinalizePayment => {
+                // this runtime uses the system's context
+                match RuntimeNative::new_system_runtime(
+                    config,
+                    protocol_version,
+                    Id::Transaction(transaction_hash),
+                    Rc::clone(&tc),
+                    phase,
+                ) {
+                    Ok(rt) => rt,
+                    Err(tce) => {
+                        return HandleRefundResult::Failure(tce);
+                    }
+                }
             }
+            Phase::Payment => {
+                // this runtime uses the handle payment contract's context
+                match RuntimeNative::new_system_contract_runtime(
+                    config,
+                    protocol_version,
+                    Id::Transaction(transaction_hash),
+                    Rc::clone(&tc),
+                    phase,
+                    HANDLE_PAYMENT,
+                ) {
+                    Ok(rt) => rt,
+                    Err(tce) => {
+                        return HandleRefundResult::Failure(tce);
+                    }
+                }
+            }
+            Phase::System | Phase::Session => return HandleRefundResult::InvalidPhase,
         };
 
         let result = match refund_mode {
@@ -1220,6 +1253,53 @@ pub trait StateProvider {
                     .map_err(|_| Error::Transfer)
                 {
                     Ok(_) => Ok(Some(refund_amount)),
+                    Err(err) => Err(err),
+                }
+            }
+            HandleRefundMode::CustomHold {
+                initiator_addr,
+                limit,
+                cost,
+                gas_price,
+            } => {
+                let source = BalanceIdentifier::Payment;
+                let source_purse = match source.purse_uref(&mut tc.borrow_mut(), protocol_version) {
+                    Ok(value) => value,
+                    Err(tce) => return HandleRefundResult::Failure(tce),
+                };
+                let consumed = U512::zero();
+                let ratio = Ratio::new_raw(U512::one(), U512::one());
+                let refund_amount = match runtime.calculate_overpayment_and_fee(
+                    limit,
+                    gas_price,
+                    cost,
+                    consumed,
+                    source_purse,
+                    ratio,
+                ) {
+                    Ok((refund, _)) => refund,
+                    Err(hpe) => {
+                        return HandleRefundResult::Failure(TrackingCopyError::SystemContract(
+                            system::Error::HandlePayment(hpe),
+                        ));
+                    }
+                };
+                let target = BalanceIdentifier::Refund;
+                let target_purse = match target.purse_uref(&mut tc.borrow_mut(), protocol_version) {
+                    Ok(value) => value,
+                    Err(tce) => return HandleRefundResult::Failure(tce),
+                };
+                match runtime
+                    .transfer(
+                        Some(initiator_addr.account_hash()),
+                        source_purse,
+                        target_purse,
+                        refund_amount,
+                        None,
+                    )
+                    .map_err(|_| Error::Transfer)
+                {
+                    Ok(_) => Ok(Some(U512::zero())), // return 0 in this mode
                     Err(err) => Err(err),
                 }
             }
@@ -1720,7 +1800,7 @@ pub trait StateProvider {
             }
         }
 
-        let (entity, entity_named_keys, entity_access_rights) =
+        let (entity_addr, entity, entity_named_keys, entity_access_rights) =
             match tc.borrow_mut().resolved_entity(
                 protocol_version,
                 source_account_hash,
@@ -1732,7 +1812,7 @@ pub trait StateProvider {
                     return TransferResult::Failure(TransferError::TrackingCopy(tce));
                 }
             };
-
+        let entity_key = Key::AddressableEntity(entity_addr);
         let id = Id::Transaction(request.transaction_hash());
         // IMPORTANT: this runtime _must_ use the payer's context.
         let mut runtime = RuntimeNative::new(
@@ -1741,6 +1821,7 @@ pub trait StateProvider {
             id,
             Rc::clone(&tc),
             source_account_hash,
+            entity_key,
             entity.clone(),
             entity_named_keys.clone(),
             entity_access_rights,

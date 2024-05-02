@@ -58,7 +58,7 @@ where
             .borrow_mut()
             .get_addressable_entity_by_account_hash(self.protocol_version(), account_hash)
         {
-            Ok(entity) => Ok(Some(entity)),
+            Ok((_, entity)) => Ok(Some(entity)),
             Err(tce) => {
                 error!(%tce, "error reading addressable entity by account hash");
                 Err(ProviderError::AddressableEntityByAccountHash(account_hash))

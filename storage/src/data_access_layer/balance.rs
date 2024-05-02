@@ -89,14 +89,14 @@ impl BalanceIdentifier {
             BalanceIdentifier::Public(public_key) => {
                 let account_hash = public_key.to_account_hash();
                 match tc.get_addressable_entity_by_account_hash(protocol_version, account_hash) {
-                    Ok(entity) => entity.main_purse(),
+                    Ok((_, entity)) => entity.main_purse(),
                     Err(tce) => return Err(tce),
                 }
             }
             BalanceIdentifier::Account(account_hash)
             | BalanceIdentifier::PenalizedAccount(account_hash) => {
                 match tc.get_addressable_entity_by_account_hash(protocol_version, *account_hash) {
-                    Ok(entity) => entity.main_purse(),
+                    Ok((_, entity)) => entity.main_purse(),
                     Err(tce) => return Err(tce),
                 }
             }
