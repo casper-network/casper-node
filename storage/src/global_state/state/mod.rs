@@ -50,16 +50,16 @@ use crate::{
         BalanceHoldKind, BalanceHoldMode, BalanceHoldRequest, BalanceHoldResult, BalanceIdentifier,
         BalanceRequest, BalanceResult, BidsRequest, BidsResult, BlockGlobalKind,
         BlockGlobalRequest, BlockGlobalResult, BlockRewardsError, BlockRewardsRequest,
-        BlockRewardsResult, EraValidatorsRequest, ExecutionResultsChecksumRequest,
-        ExecutionResultsChecksumResult, FeeError, FeeRequest, FeeResult, FlushRequest, FlushResult,
-        GenesisRequest, GenesisResult, HandleRefundMode, HandleRefundRequest, HandleRefundResult,
-        InsufficientBalanceHandling, ProofHandling, ProofsResult, ProtocolUpgradeRequest,
-        ProtocolUpgradeResult, PruneRequest, PruneResult, PutTrieRequest, PutTrieResult,
-        QueryRequest, QueryResult, RoundSeigniorageRateRequest, RoundSeigniorageRateResult,
-        StepError, StepRequest, StepResult, SystemEntityRegistryPayload,
-        SystemEntityRegistryRequest, SystemEntityRegistryResult, SystemEntityRegistrySelector,
-        TotalSupplyRequest, TotalSupplyResult, TrieRequest, TrieResult,
-        EXECUTION_RESULTS_CHECKSUM_NAME,
+        BlockRewardsResult, EntryPointsRequest, EntryPointsResult, EraValidatorsRequest,
+        ExecutionResultsChecksumRequest, ExecutionResultsChecksumResult, FeeError, FeeRequest,
+        FeeResult, FlushRequest, FlushResult, GenesisRequest, GenesisResult, HandleRefundMode,
+        HandleRefundRequest, HandleRefundResult, InsufficientBalanceHandling, ProofHandling,
+        ProofsResult, ProtocolUpgradeRequest, ProtocolUpgradeResult, PruneRequest, PruneResult,
+        PutTrieRequest, PutTrieResult, QueryRequest, QueryResult, RoundSeigniorageRateRequest,
+        RoundSeigniorageRateResult, StepError, StepRequest, StepResult,
+        SystemEntityRegistryPayload, SystemEntityRegistryRequest, SystemEntityRegistryResult,
+        SystemEntityRegistrySelector, TotalSupplyRequest, TotalSupplyResult, TrieRequest,
+        TrieResult, EXECUTION_RESULTS_CHECKSUM_NAME,
     },
     global_state::{
         error::Error as GlobalStateError,
@@ -665,7 +665,7 @@ pub trait StateProvider {
                     total_balance,
                     available_balance: total_balance,
                     proofs_result,
-                }
+                };
             }
             Err(tce) => return tce.into(),
         };
@@ -679,7 +679,7 @@ pub trait StateProvider {
                         total_balance,
                         available_balance: total_balance,
                         proofs_result,
-                    }
+                    };
                 }
                 Err(tce) => return tce.into(),
             };
@@ -729,7 +729,7 @@ pub trait StateProvider {
                     BalanceHoldKind::All => {
                         return BalanceHoldResult::Failure(
                             BalanceHoldError::UnexpectedWildcardVariant,
-                        )
+                        );
                     }
                     BalanceHoldKind::Tag(tag) => tag,
                 };
@@ -814,7 +814,7 @@ pub trait StateProvider {
                 let purse_addr = match identifier.purse_uref(&mut tc, request.protocol_version()) {
                     Ok(source_purse) => source_purse.addr(),
                     Err(tce) => {
-                        return BalanceHoldResult::Failure(BalanceHoldError::TrackingCopy(tce))
+                        return BalanceHoldResult::Failure(BalanceHoldError::TrackingCopy(tce));
                     }
                 };
 
@@ -832,7 +832,7 @@ pub trait StateProvider {
                             Err(tce) => {
                                 return BalanceHoldResult::Failure(BalanceHoldError::TrackingCopy(
                                     tce,
-                                ))
+                                ));
                             }
                         };
                         filter.push((tag, HoldsEpoch::from_millis(block_time.value(), interval)));
@@ -847,7 +847,7 @@ pub trait StateProvider {
                             Err(tce) => {
                                 return BalanceHoldResult::Failure(BalanceHoldError::TrackingCopy(
                                     tce,
-                                ))
+                                ));
                             }
                         };
                         filter.push((tag, HoldsEpoch::from_millis(block_time.value(), interval)));

@@ -41,10 +41,11 @@ use casper_types::{
     },
     AccessRights, AddressableEntity, AddressableEntityHash, AdministratorAccount, BlockGlobalAddr,
     BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLValue, Chainspec,
-    ChainspecRegistry, Digest, EntityAddr, EntityVersions, EntryPointAddr, EntryPointValue, EntryPoints, EraId, FeeHandling,
-    GenesisAccount, GenesisConfig, GenesisConfigBuilder, Groups, Key, Motes, Package, PackageHash,
-    PackageStatus, Phase, ProtocolVersion, PublicKey, RefundHandling, StoredValue, SystemConfig,
-    SystemEntityRegistry, Tagged, TimeDiff, URef, WasmConfig, U512,
+    ChainspecRegistry, Digest, EntityAddr, EntityVersions, EntryPointAddr, EntryPointValue,
+    EntryPoints, EraId, FeeHandling, GenesisAccount, GenesisConfig, GenesisConfigBuilder, Groups,
+    Key, Motes, Package, PackageHash, PackageStatus, Phase, ProtocolVersion, PublicKey,
+    RefundHandling, StoredValue, SystemConfig, SystemEntityRegistry, Tagged, TimeDiff, URef,
+    WasmConfig, U512,
 };
 
 use crate::{

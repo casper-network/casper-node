@@ -23,8 +23,9 @@ use casper_types::{
         MINT,
     },
     BlockGlobalAddr, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash, CLValue, ChecksumRegistry,
-    EntityAddr, HoldBalanceHandling, HoldsEpoch, Key, KeyTag, Motes, Package, PackageHash,
-    StoredValue, StoredValueTypeMismatch, SystemEntityRegistry, URef, URefAddr, U512,
+    EntityAddr, EntryPointAddr, EntryPointValue, EntryPoints, HoldBalanceHandling, HoldsEpoch, Key,
+    KeyTag, Motes, Package, PackageHash, StoredValue, StoredValueTypeMismatch,
+    SystemEntityRegistry, URef, URefAddr, U512,
 };
 
 /// Higher-level operations on the state via a `TrackingCopy`.
@@ -150,7 +151,7 @@ where
         };
         let (handling_key, interval_key) = match hold_kind {
             BalanceHoldAddrTag::Processing => {
-                return Ok(Some((block_time, HoldBalanceHandling::Accrued, 0)))
+                return Ok(Some((block_time, HoldBalanceHandling::Accrued, 0)));
             }
             BalanceHoldAddrTag::Gas => (MINT_GAS_HOLD_HANDLING_KEY, MINT_GAS_HOLD_INTERVAL_KEY),
         };

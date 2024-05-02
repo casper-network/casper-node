@@ -23,7 +23,8 @@ use tokio::time;
 use casper_execution_engine::engine_state::MAX_PAYMENT_AMOUNT;
 use casper_storage::{
     data_access_layer::{
-        AddressableEntityResult, BalanceIdentifier, BalanceResult, ProofsResult, QueryResult,
+        AddressableEntityResult, BalanceIdentifier, BalanceResult, EntryPointsResult, ProofsResult,
+        QueryResult,
     },
     tracking_copy::TrackingCopyError,
 };

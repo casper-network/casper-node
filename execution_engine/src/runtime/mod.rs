@@ -50,10 +50,9 @@ use casper_types::{
     AccessRights, ApiError, BlockGlobalAddr, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash,
     ByteCodeKind, CLTyped, CLValue, ContextAccessRights, EntityAddr, EntityKind, EntityVersion,
     EntityVersionKey, EntityVersions, EntryPointAddr, EntryPointValue, Gas, GrantedAccess, Group,
-    Groups, HostFunction, HostFunctionCost, InitiatorAddr, Key, NamedArg, Package,
-    PackageHash, PackageStatus, Phase, PublicKey, RuntimeArgs, StoredValue, TransactionRuntime,
-    Transfer, TransferResult, TransferV2, TransferredTo, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH,
-    U512,
+    Groups, HostFunction, HostFunctionCost, InitiatorAddr, Key, NamedArg, Package, PackageHash,
+    PackageStatus, Phase, PublicKey, RuntimeArgs, StoredValue, TransactionRuntime, Transfer,
+    TransferResult, TransferV2, TransferredTo, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, U512,
 };
 
 use crate::{

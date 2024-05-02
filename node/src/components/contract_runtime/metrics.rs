@@ -90,12 +90,18 @@ const EXEC_QUEUE_SIZE_HELP: &str =
 /// Metrics for the contract runtime component.
 #[derive(Debug)]
 pub struct Metrics {
-    pub(super) exec_block_pre_processing: Histogram, // elapsed before tnx processing
-    pub(super) exec_block_tnx_processing: Histogram, // tnx processing elapsed
-    pub(super) exec_wasm_v1: Histogram,              // ee_v1 execution elapsed
-    pub(super) exec_block_step_processing: Histogram, // step processing elapsed
-    pub(super) exec_block_post_processing: Histogram, // elapsed after tnx processing
-    pub(super) exec_block_total: Histogram,          // total elapsed
+    pub(super) exec_block_pre_processing: Histogram,
+    // elapsed before tnx processing
+    pub(super) exec_block_tnx_processing: Histogram,
+    // tnx processing elapsed
+    pub(super) exec_wasm_v1: Histogram,
+    // ee_v1 execution elapsed
+    pub(super) exec_block_step_processing: Histogram,
+    // step processing elapsed
+    pub(super) exec_block_post_processing: Histogram,
+    // elapsed after tnx processing
+    pub(super) exec_block_total: Histogram,
+    // total elapsed
     pub(super) commit_genesis: Histogram,
     pub(super) commit_upgrade: Histogram,
     pub(super) run_query: Histogram,
@@ -237,7 +243,7 @@ impl Metrics {
                 registry,
                 ADDRESSABLE_ENTITY_NAME,
                 ADDRESSABLE_ENTITY_HELP,
-                common_buckets,
+                common_buckets.clone(),
             )?,
             entry_points: utils::register_histogram_metric(
                 registry,

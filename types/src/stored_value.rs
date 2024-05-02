@@ -898,7 +898,7 @@ mod serde_helpers {
                 }
                 StoredValue::NamedKey(payload) => HumanReadableSerHelper::NamedKey(payload),
                 StoredValue::Reservation(payload) => HumanReadableSerHelper::Reservation(payload),
-                StoredValue::EntryPoint(payload) => BinarySerHelper::EntryPoint(payload),
+                StoredValue::EntryPoint(payload) => HumanReadableSerHelper::EntryPoint(payload),
             }
         }
     }
@@ -936,7 +936,7 @@ mod serde_helpers {
                     StoredValue::Message(message_digest)
                 }
                 HumanReadableDeserHelper::NamedKey(payload) => StoredValue::NamedKey(payload),
-                BinaryDeserHelper::EntryPoint(payload) => StoredValue::EntryPoint(payload),
+                HumanReadableDeserHelper::EntryPoint(payload) => StoredValue::EntryPoint(payload),
             }
         }
     }
@@ -973,6 +973,7 @@ mod tests {
     use crate::{bytesrepr, gens, StoredValue};
     use proptest::proptest;
     use serde_json::Value;
+
     const STORED_VALUE_CONTRACT_PACKAGE_RAW: &str = r#"
     {
         "ContractPackage": {

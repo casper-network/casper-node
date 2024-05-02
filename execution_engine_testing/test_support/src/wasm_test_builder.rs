@@ -64,10 +64,10 @@ use casper_types::{
     },
     AccessRights, AddressableEntity, AddressableEntityHash, AuctionCosts, BlockGlobalAddr,
     BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash, CLTyped, CLValue, Contract, Digest,
-    EntityAddr, EntryPoints, EraId, Gas,
-    HandlePaymentCosts, HoldBalanceHandling, InitiatorAddr, Key, KeyTag, MintCosts, Motes, Package,
-    PackageHash, Phase, ProtocolUpgradeConfig, ProtocolVersion, PublicKey, RefundHandling, StoredValue,
-    SystemEntityRegistry, TransactionHash, TransactionV1Hash, URef, OS_PAGE_SIZE, U512,
+    EntityAddr, EntryPoints, EraId, Gas, HandlePaymentCosts, HoldBalanceHandling, InitiatorAddr,
+    Key, KeyTag, MintCosts, Motes, Package, PackageHash, Phase, ProtocolUpgradeConfig,
+    ProtocolVersion, PublicKey, RefundHandling, StoredValue, SystemEntityRegistry, TransactionHash,
+    TransactionV1Hash, URef, OS_PAGE_SIZE, U512,
 };
 
 use crate::{

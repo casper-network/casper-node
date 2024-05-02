@@ -16,8 +16,8 @@ use casper_types::{
     account::AccountHash, addressable_entity::AddressableEntity, contracts::ContractHash,
     system::auction::ARG_AMOUNT, AddressableEntityHash, AddressableEntityIdentifier, BlockHeader,
     Chainspec, EntityAddr, EntityVersion, EntityVersionKey, EntryPoint, EntryPointAddr,
-    ExecutableDeployItem, ExecutableDeployItemIdentifier,  InitiatorAddr, Key, Package,
-    PackageAddr, PackageHash, PackageIdentifier, Transaction, TransactionEntryPoint,
+    ExecutableDeployItem, ExecutableDeployItemIdentifier, InitiatorAddr, Key, Package, PackageAddr,
+    PackageHash, PackageIdentifier, Transaction, TransactionEntryPoint,
     TransactionInvocationTarget, TransactionTarget, U512,
 };
 

@@ -9,9 +9,11 @@ use casper_types::{
     },
     bytesrepr,
     system::{handle_payment::ACCUMULATION_PURSE_KEY, AUCTION, HANDLE_PAYMENT, MINT},
-    AccessRights, Account, AddressableEntity, AddressableEntityHash, ByteCode, ByteCodeAddr,ByteCodeHash, CLValue,
-    ContextAccessRights, EntityAddr, EntityKind, EntityVersions, Groups, Key, Package, PackageHash,
-    PackageStatus, Phase, ProtocolVersion, PublicKey, StoredValue, StoredValueTypeMismatch, URef,U512,
+    AccessRights, Account, AddressableEntity, AddressableEntityHash, ByteCode, ByteCodeAddr,
+    ByteCodeHash, CLValue, ContextAccessRights, EntityAddr, EntityKind, EntityVersions,
+    EntryPointAddr, EntryPointValue, EntryPoints, Groups, Key, Package, PackageHash, PackageStatus,
+    Phase, ProtocolVersion, PublicKey, StoredValue, StoredValueTypeMismatch, TransactionRuntime,
+    URef, U512,
 };
 
 use crate::{
@@ -73,6 +75,11 @@ pub trait TrackingCopyEntityExt<R> {
         &mut self,
         entity_addr: EntityAddr,
         named_keys: NamedKeys,
+    ) -> Result<(), Self::Error>;
+    fn migrate_entry_points(
+        &mut self,
+        entity_addr: EntityAddr,
+        entry_points: EntryPoints,
     ) -> Result<(), Self::Error>;
 
     /// Upsert uref value to global state and imputed entity's named keys.
@@ -346,6 +353,25 @@ where
         Ok(())
     }
 
+    fn migrate_entry_points(
+        &mut self,
+        entity_addr: EntityAddr,
+        entry_points: EntryPoints,
+    ) -> Result<(), Self::Error> {
+        if entry_points.is_empty() {
+            return Ok(());
+        }
+        for entry_point in entry_points.take_entry_points().into_iter() {
+            let entry_point_addr =
+                EntryPointAddr::new_v1_entry_point_addr(entity_addr, entry_point.name())?;
+            let entry_point_value =
+                StoredValue::EntryPoint(EntryPointValue::V1CasperVm(entry_point));
+            self.write(Key::EntryPoint(entry_point_addr), entry_point_value)
+        }
+
+        Ok(())
+    }
+
     fn upsert_uref_to_named_keys(
         &mut self,
         entity_addr: EntityAddr,
@@ -591,18 +617,19 @@ where
                         let updated_entity = AddressableEntity::new(
                             PackageHash::new(legacy_contract.contract_package_hash().value()),
                             ByteCodeHash::new(contract_wasm_hash.value()),
-                            legacy_contract.entry_points().clone(),
                             protocol_version,
                             purse,
                             AssociatedKeys::default(),
                             ActionThresholds::default(),
                             MessageTopics::default(),
-                            EntityKind::SmartContract,
+                            EntityKind::SmartContract(TransactionRuntime::VmCasperV1),
                         );
 
+                        let entry_points = legacy_contract.entry_points().clone();
                         let named_keys = legacy_contract.take_named_keys();
 
                         self.migrate_named_keys(contract_addr, named_keys)?;
+                        self.migrate_entry_points(contract_addr, entry_points.into())?;
 
                         let maybe_previous_wasm = self
                             .read(&Key::Hash(contract_wasm_hash.value()))?

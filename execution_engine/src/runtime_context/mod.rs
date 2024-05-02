@@ -34,9 +34,9 @@ use casper_types::{
     system::auction::EraInfo,
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, CLType, CLValue,
     CLValueDictionary, ContextAccessRights, EntityAddr, EntryPointAddr, EntryPointType,
-    EntryPointValue, EntryPoints, Gas, GrantedAccess,  Key, KeyTag, Motes, Package,
-    PackageHash, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue,
-    StoredValueTypeMismatch, SystemEntityRegistry, TransactionHash, Transfer, URef, URefAddr,
+    EntryPointValue, EntryPoints, Gas, GrantedAccess, Key, KeyTag, Motes, Package, PackageHash,
+    Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, StoredValueTypeMismatch,
+    SystemEntityRegistry, TransactionHash, Transfer, URef, URefAddr,
     DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
 };
 
@@ -714,7 +714,7 @@ where
             | StoredValue::MessageTopic(_)
             | StoredValue::Message(_)
             | StoredValue::Reservation(_)
-            | StoredValue::EntryPoint(_)=> Ok(()),
+            | StoredValue::EntryPoint(_) => Ok(()),
         }
     }
 

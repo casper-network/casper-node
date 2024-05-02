@@ -37,7 +37,8 @@ static TRANSFER_1_AMOUNT: Lazy<U512> =
     Lazy::new(|| U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE) + 1000);
 
 fn setup_from_lmdb_fixture() -> LmdbWasmTestBuilder {
-    let (mutbuilder, _, _) = lmdb_fixture::builder_from_global_state_fixture(GROUPS_FIXTURE);builder.with_block_time(Timestamp::now().into());
+    let (mut builder, _, _) = lmdb_fixture::builder_from_global_state_fixture(GROUPS_FIXTURE);
+    builder.with_block_time(Timestamp::now().into());
     builder.with_gas_hold_config(HoldBalanceHandling::default(), 1200u64);
     builder
 }
