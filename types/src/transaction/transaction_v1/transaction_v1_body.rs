@@ -116,7 +116,8 @@ impl TransactionV1Body {
             | TransactionEntryPoint::ActivateBid
             | TransactionEntryPoint::Delegate
             | TransactionEntryPoint::Undelegate
-            | TransactionEntryPoint::Redelegate => true,
+            | TransactionEntryPoint::Redelegate
+            | TransactionEntryPoint::ChangeBidPublicKey => true,
         }
     }
 
@@ -194,6 +195,9 @@ impl TransactionV1Body {
                 TransactionEntryPoint::ActivateBid => {
                     arg_handling::has_valid_activate_bid_args(&self.args)
                 }
+                TransactionEntryPoint::ChangeBidPublicKey => {
+                    arg_handling::has_valid_change_bid_public_key_args(&self.args)
+                }
             },
             TransactionTarget::Stored { .. } => match &self.entry_point {
                 TransactionEntryPoint::Custom(_) => Ok(()),
@@ -203,7 +207,8 @@ impl TransactionV1Body {
                 | TransactionEntryPoint::Delegate
                 | TransactionEntryPoint::Undelegate
                 | TransactionEntryPoint::Redelegate
-                | TransactionEntryPoint::ActivateBid => {
+                | TransactionEntryPoint::ActivateBid
+                | TransactionEntryPoint::ChangeBidPublicKey => {
                     debug!(
                         entry_point = %self.entry_point,
                         "transaction targeting stored entity/package must have custom entry point"
@@ -227,7 +232,8 @@ impl TransactionV1Body {
                 | TransactionEntryPoint::Delegate
                 | TransactionEntryPoint::Undelegate
                 | TransactionEntryPoint::Redelegate
-                | TransactionEntryPoint::ActivateBid => {
+                | TransactionEntryPoint::ActivateBid
+                | TransactionEntryPoint::ChangeBidPublicKey => {
                     debug!(
                         entry_point = %self.entry_point,
                         "transaction with session code must have custom entry point"

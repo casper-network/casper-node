@@ -969,6 +969,20 @@ where
                 CLValue::from_t(()).map_err(Self::reverter)
             })(),
 
+            auction::METHOD_CHANGE_BID_PUBLIC_KEY => (|| {
+                runtime.charge_system_contract_call(auction_costs.change_bid_public_key)?;
+
+                let public_key = Self::get_named_argument(runtime_args, auction::ARG_PUBLIC_KEY)?;
+                let new_public_key =
+                    Self::get_named_argument(runtime_args, auction::ARG_NEW_PUBLIC_KEY)?;
+
+                runtime
+                    .change_bid_public_key(public_key, new_public_key)
+                    .map_err(Self::reverter)?;
+
+                CLValue::from_t(()).map_err(Self::reverter)
+            })(),
+
             _ => CLValue::from_t(()).map_err(Self::reverter),
         };
 

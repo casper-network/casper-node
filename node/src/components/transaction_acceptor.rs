@@ -582,7 +582,8 @@ impl TransactionAcceptor {
                 | TransactionEntryPoint::Delegate
                 | TransactionEntryPoint::Undelegate
                 | TransactionEntryPoint::Redelegate
-                | TransactionEntryPoint::ActivateBid => None,
+                | TransactionEntryPoint::ActivateBid
+                | TransactionEntryPoint::ChangeBidPublicKey => None,
             },
         };
 
