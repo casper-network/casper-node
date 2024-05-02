@@ -827,6 +827,27 @@ mod symbols {
         let _call_result = with_current_environment(|stub| stub.casper_env_caller(dest, dest_len));
         crate::host::native::handle_ret_with(_call_result, || ptr::null())
     }
+    #[no_mangle]
+    pub extern "C" fn casper_env_value() -> u64 {
+        todo!()
+    }
+    #[no_mangle]
+    pub extern "C" fn casper_env_balance(
+        _entity_kind: u32,
+        _entity_addr_ptr: *const u8,
+        _entity_addr_len: usize,
+    ) -> u64 {
+        todo!()
+    }
+    #[no_mangle]
+    pub extern "C" fn casper_transfer(
+        _entity_kind: u32,
+        _entity_addr_ptr: *const u8,
+        _entity_addr_len: usize,
+        _amount: u64,
+    ) -> u32 {
+        todo!()
+    }
 }
 
 #[cfg(test)]

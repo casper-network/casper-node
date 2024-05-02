@@ -767,6 +767,9 @@ mod tests {
     use super::*;
 
     #[test]
+    fn xxx() {}
+
+    #[test]
     fn test() {
         dispatch(|| {
             native::call_export("call");
