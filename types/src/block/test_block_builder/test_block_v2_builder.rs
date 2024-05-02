@@ -105,7 +105,7 @@ impl TestBlockV2Builder {
     }
 
     /// Associates the given transactions with the created block.
-    pub fn transactions<'a, I: IntoIterator<Item=&'a Transaction>>(self, txns_iter: I) -> Self {
+    pub fn transactions<'a, I: IntoIterator<Item = &'a Transaction>>(self, txns_iter: I) -> Self {
         Self {
             txns: txns_iter.into_iter().cloned().collect(),
             ..self
@@ -278,8 +278,8 @@ fn gen_era_end_v2(
         let reward = rng.gen_range(1..=1_000_000_000 + 1);
         (pub_key, U512::from(reward))
     })
-        .take(rewards_count)
-        .collect();
+    .take(rewards_count)
+    .collect();
     let inactive_validators = iter::repeat_with(|| PublicKey::random(rng))
         .take(inactive_count)
         .collect();
