@@ -33,7 +33,7 @@ static BLOCK_HEADER_V2: Lazy<BlockHeaderV2> = Lazy::new(|| {
     let accumulated_seed = Digest::hash_pair(Digest::from([9; Digest::LENGTH]), [random_bit as u8]);
     let body_hash = Digest::from([5; Digest::LENGTH]);
     let proposer = PublicKey::example().clone();
-    let last_switch_block_hash = Digest::from([9; Digest::LENGTH]);
+    let last_switch_block_hash = BlockHash::new(Digest::from([9; Digest::LENGTH]));
     BlockHeaderV2::new(
         parent_hash,
         state_root_hash,
@@ -84,7 +84,7 @@ pub struct BlockHeaderV2 {
     /// The gas price of the era
     pub(super) current_gas_price: u8,
     /// The most recent switch block hash.
-    pub(super) last_switch_block_hash: Digest,
+    pub(super) last_switch_block_hash: BlockHash,
     #[cfg_attr(any(all(feature = "std", feature = "once_cell"), test), serde(skip))]
     #[cfg_attr(
         all(any(feature = "once_cell", test), feature = "datasize"),
@@ -193,7 +193,7 @@ impl BlockHeaderV2 {
     }
 
     /// Returns the hash for the last relevant switch block.
-    pub fn last_switch_block_hash(&self) -> Digest {
+    pub fn last_switch_block_hash(&self) -> BlockHash {
         self.last_switch_block_hash
     }
 
@@ -229,7 +229,7 @@ impl BlockHeaderV2 {
         protocol_version: ProtocolVersion,
         proposer: PublicKey,
         current_gas_price: u8,
-        last_switch_block_hash: Digest,
+        last_switch_block_hash: BlockHash,
         #[cfg(any(feature = "once_cell", test))] block_hash: OnceCell<BlockHash>,
     ) -> Self {
         BlockHeaderV2 {
@@ -405,7 +405,7 @@ impl FromBytes for BlockHeaderV2 {
         let (protocol_version, remainder) = ProtocolVersion::from_bytes(remainder)?;
         let (proposer, remainder) = PublicKey::from_bytes(remainder)?;
         let (current_gas_price, remainder) = u8::from_bytes(remainder)?;
-        let (last_switch_block_hash, remainder) = Digest::from_bytes(remainder)?;
+        let (last_switch_block_hash, remainder) = BlockHash::from_bytes(remainder)?;
         let block_header = BlockHeaderV2 {
             parent_hash,
             state_root_hash,

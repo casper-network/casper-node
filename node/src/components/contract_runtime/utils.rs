@@ -1,4 +1,13 @@
 use num_rational::Ratio;
+use once_cell::sync::Lazy;
+use std::{
+    cmp,
+    collections::{BTreeMap, HashMap},
+    fmt::Debug,
+    ops::Range,
+    sync::{Arc, Mutex},
+};
+use tracing::{debug, error, info, warn};
 
 use crate::{
     contract_runtime::{
@@ -21,16 +30,7 @@ use casper_execution_engine::engine_state::{ExecutionEngineV1, WasmV1Result};
 use casper_storage::{
     data_access_layer::DataAccessLayer, global_state::state::lmdb::LmdbGlobalState,
 };
-use casper_types::{BlockHash, Chainspec, Digest, EraId, GasLimited, Key};
-use once_cell::sync::Lazy;
-use std::{
-    cmp,
-    collections::{BTreeMap, HashMap},
-    fmt::Debug,
-    ops::Range,
-    sync::{Arc, Mutex},
-};
-use tracing::{debug, error, info, warn};
+use casper_types::{BlockHash, Chainspec, EraId, GasLimited, Key};
 
 /// Maximum number of resource intensive tasks that can be run in parallel.
 ///
@@ -235,14 +235,14 @@ pub(super) async fn exec_or_requeue<REv>(
         .await;
 
     let last_switch_block_hash = match maybe_switch_block_header {
-        Some(block_header) => *block_header.block_hash().inner(),
+        Some(block_header) => block_header.block_hash(),
         None => {
             let era_id = executable_block.era_id;
             if !era_id.is_genesis() {
                 let error = BlockExecutionError::NoSwitchBlockHash(era_id.successor().value());
                 return fatal!(effect_builder, "{}", error).await;
             } else {
-                Digest::default()
+                BlockHash::default()
             }
         }
     };

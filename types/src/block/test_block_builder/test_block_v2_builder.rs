@@ -224,7 +224,7 @@ impl TestBlockV2Builder {
         };
         let rewarded_signatures = rewarded_signatures.unwrap_or_default();
         let current_gas_price: u8 = 1;
-        let last_switch_block_hash = Digest::from([8; Digest::LENGTH]);
+        let last_switch_block_hash = BlockHash::new(Digest::from([8; Digest::LENGTH]));
         BlockV2::new(
             parent_hash,
             parent_seed,
