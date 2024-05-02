@@ -249,7 +249,7 @@ impl Metrics {
                 registry,
                 ENTRY_POINT_NAME,
                 ENTRY_POINT_HELP,
-                common_buckets.clone(),
+                common_buckets,
             )?,
             get_trie: utils::register_histogram_metric(
                 registry,
