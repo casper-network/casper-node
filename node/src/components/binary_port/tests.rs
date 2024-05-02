@@ -261,7 +261,7 @@ impl Reactor for MockReactor {
             }
             Event::AcceptTransactionRequest(req) => req.responder.respond(Ok(())).ignore(),
             Event::StorageRequest(StorageRequest::GetHighestCompleteBlockHeader { responder }) => {
-                let proposer = PublicKey::random(&mut TestRng::new());
+                let proposer = PublicKey::random(rng);
                 let block_header_v2 = casper_types::BlockHeaderV2::new(
                     Default::default(),
                     Default::default(),
