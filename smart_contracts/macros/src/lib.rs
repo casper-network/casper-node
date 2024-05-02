@@ -1,3 +1,5 @@
+pub(crate) mod utils;
+
 extern crate proc_macro;
 
 use darling::FromAttributes;
@@ -218,7 +220,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                             let dispatch_func_name =
                                 format_ident!("{trait_name}_{func_name}_dispatch");
 
-                            let selector = compute_selector(name_str.as_bytes());
+                            let selector = utils::compute_selector(&func.sig);
 
                             let arg_names_and_types = func
                                 .sig
@@ -610,7 +612,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
 
                                 let name_str = name.to_string();
 
-                                let selector = compute_selector(name_str.as_bytes());
+                                let selector = utils::compute_selector(&func.sig);
 
                                 manifest_entry_points.push(quote! {
                                 {
@@ -786,7 +788,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                         // for arg in &entry_point
                         let bits = flag_value.bits();
 
-                        let selector = compute_selector(func_name.to_string().as_bytes());
+                        let selector = utils::compute_selector(&func.sig);
 
                         defs.push(quote! {
                             casper_sdk::schema::SchemaEntryPoint {
@@ -1294,7 +1296,7 @@ pub fn selector(input: TokenStream) -> TokenStream {
     let str = input.value();
     let bytes = str.as_bytes();
 
-    let selector = compute_selector(bytes);
+    let selector = utils::compute_selector_bytes(bytes);
 
     TokenStream::from(quote! {
         vm_common::selector::Selector::new(#selector)
@@ -1307,32 +1309,12 @@ pub fn blake2b256(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as LitStr);
     let bytes = input.value();
 
-    let hash = compute_blake2b256(bytes.as_bytes());
+    let hash = utils::compute_blake2b256(bytes.as_bytes());
 
     TokenStream::from(quote! {
         [ #(#hash),* ]
     })
     .into()
-}
-
-pub(crate) fn compute_blake2b256(bytes: &[u8]) -> [u8; 32] {
-    let mut context = blake2_rfc::blake2b::Blake2b::new(32);
-    context.update(&bytes);
-    context.finalize().as_bytes().try_into().unwrap()
-}
-
-pub(crate) fn compute_selector(bytes: &[u8]) -> u32 {
-    let hash_bytes: blake2_rfc::blake2b::Blake2bResult = {
-        let mut context = blake2_rfc::blake2b::Blake2b::new(32);
-        context.update(&bytes);
-        context.finalize()
-    };
-
-    let selector_bytes: [u8; 4] = (&hash_bytes.as_bytes()[0..4]).try_into().unwrap();
-
-    // Using be constructor from first 4 bytes in big endian order should basically copy first 4
-    // bytes in order into the integer.
-    u32::from_be_bytes(selector_bytes)
 }
 
 #[proc_macro]

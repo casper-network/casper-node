@@ -1,5 +1,5 @@
 use casper_macros::selector;
-use casper_sdk::Selector;
+use vm_common::selector::Selector;
 
 const A: u8 = 184;
 const B: u8 = 254;

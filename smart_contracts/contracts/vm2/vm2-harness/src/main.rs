@@ -37,7 +37,8 @@ impl From<CallError> for TokenOwnerError {
 
 #[casper(trait_definition)]
 pub trait ReceiveTokens {
-    #[casper(payable)]
+    // interfaceid = hash()
+    #[casper(receive)]
     fn receive(&mut self);
 }
 
@@ -252,6 +253,9 @@ impl Harness {
 
     #[casper(revert_on_error)]
     pub fn emit_revert_with_data(&mut self) -> Result<(), CustomError> {
+        // revert(code), ret(bytes)
+
+        // casper_return(flags, bytes) flags == 0, flags & FLAG_REVERT
         log!("emit_revert_with_data state={:?}", self);
         log!(
             "Reverting with data before {counter}",
@@ -357,7 +361,7 @@ impl Harness {
         Ok(())
     }
 
-    #[casper(payable, revert_on_error)]
+    #[casper(revert_on_error)]
     pub fn withdraw(&mut self, balance_before: u64, amount: u64) -> Result<(), CustomError> {
         let caller = host::get_caller();
         log!("Withdrawing {amount} from {caller:?}");
@@ -759,7 +763,6 @@ mod tests {
     use casper_sdk::{
         host::native::{self, dispatch},
         schema::CasperSchema,
-
     };
     use vm_common::{flags::EntryPointFlags, selector::Selector};
 
@@ -902,7 +905,6 @@ mod tests {
     fn foo() {
         assert_eq!(Harness::default().into_greeting(), "Default value");
     }
-
 }
 
 #[cfg(not(target_arch = "wasm32"))]
