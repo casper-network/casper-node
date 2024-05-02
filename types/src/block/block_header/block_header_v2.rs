@@ -49,7 +49,7 @@ static BLOCK_HEADER_V2: Lazy<BlockHeaderV2> = Lazy::new(|| {
         current_gas_price,
         last_switch_block_hash,
         #[cfg(any(feature = "once_cell", test))]
-            OnceCell::new(),
+        OnceCell::new(),
     )
 });
 
@@ -87,8 +87,8 @@ pub struct BlockHeaderV2 {
     pub(super) last_switch_block_hash: Digest,
     #[cfg_attr(any(all(feature = "std", feature = "once_cell"), test), serde(skip))]
     #[cfg_attr(
-    all(any(feature = "once_cell", test), feature = "datasize"),
-    data_size(skip)
+        all(any(feature = "once_cell", test), feature = "datasize"),
+        data_size(skip)
     )]
     #[cfg(any(feature = "once_cell", test))]
     pub(super) block_hash: OnceCell<BlockHash>,
@@ -277,7 +277,7 @@ impl PartialEq for BlockHeaderV2 {
     fn eq(&self, other: &BlockHeaderV2) -> bool {
         // Destructure to make sure we don't accidentally omit fields.
         #[cfg(any(feature = "once_cell", test))]
-            let BlockHeaderV2 {
+        let BlockHeaderV2 {
             parent_hash,
             state_root_hash,
             body_hash,
@@ -294,7 +294,7 @@ impl PartialEq for BlockHeaderV2 {
             block_hash: _,
         } = self;
         #[cfg(not(any(feature = "once_cell", test)))]
-            let BlockHeaderV2 {
+        let BlockHeaderV2 {
             parent_hash,
             state_root_hash,
             body_hash,

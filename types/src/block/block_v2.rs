@@ -137,7 +137,7 @@ impl BlockV2 {
             current_gas_price,
             last_switch_block_hash,
             #[cfg(any(feature = "once_cell", test))]
-                OnceCell::new(),
+            OnceCell::new(),
         );
         Self::new_from_header_and_body(header, body)
     }
@@ -245,27 +245,27 @@ impl BlockV2 {
     }
 
     /// Returns the hashes of the transfer transactions within the block.
-    pub fn mint(&self) -> impl Iterator<Item=TransactionHash> {
+    pub fn mint(&self) -> impl Iterator<Item = TransactionHash> {
         self.body.mint()
     }
 
     /// Returns the hashes of the non-transfer, native transactions within the block.
-    pub fn auction(&self) -> impl Iterator<Item=TransactionHash> {
+    pub fn auction(&self) -> impl Iterator<Item = TransactionHash> {
         self.body.auction()
     }
 
     /// Returns the hashes of the installer/upgrader transactions within the block.
-    pub fn install_upgrade(&self) -> impl Iterator<Item=TransactionHash> {
+    pub fn install_upgrade(&self) -> impl Iterator<Item = TransactionHash> {
         self.body.install_upgrade()
     }
 
     /// Returns the hashes of all other transactions within the block.
-    pub fn standard(&self) -> impl Iterator<Item=TransactionHash> {
+    pub fn standard(&self) -> impl Iterator<Item = TransactionHash> {
         self.body.standard()
     }
 
     /// Returns all of the transaction hashes in the order in which they were executed.
-    pub fn all_transactions(&self) -> impl Iterator<Item=&TransactionHash> {
+    pub fn all_transactions(&self) -> impl Iterator<Item = &TransactionHash> {
         self.body.all_transactions()
     }
 
