@@ -2382,6 +2382,7 @@ mod tests {
                 transactions,
                 Default::default(),
                 gas_price,
+                Default::default(),
             );
 
             self.block = next.clone();

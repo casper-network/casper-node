@@ -59,6 +59,7 @@ pub fn execute_finalized_block(
     key_block_height_for_activation_point: u64,
     current_gas_price: u8,
     next_era_gas_price: Option<u8>,
+    last_switch_block_hash: Digest,
 ) -> Result<BlockAndExecutionArtifacts, BlockExecutionError> {
     if executable_block.height != execution_pre_state.next_block_height() {
         return Err(BlockExecutionError::WrongBlockHeight {
@@ -909,6 +910,7 @@ pub fn execute_finalized_block(
         executable_block.transaction_map,
         executable_block.rewarded_signatures,
         current_gas_price,
+        last_switch_block_hash,
     ));
 
     // TODO: this should just use the data_access_layer.query mechanism to avoid

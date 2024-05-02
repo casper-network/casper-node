@@ -33,6 +33,7 @@ static BLOCK_HEADER_V2: Lazy<BlockHeaderV2> = Lazy::new(|| {
     let accumulated_seed = Digest::hash_pair(Digest::from([9; Digest::LENGTH]), [random_bit as u8]);
     let body_hash = Digest::from([5; Digest::LENGTH]);
     let proposer = PublicKey::example().clone();
+    let last_switch_block_hash = Digest::from([9; Digest::LENGTH]);
     BlockHeaderV2::new(
         parent_hash,
         state_root_hash,
@@ -46,8 +47,9 @@ static BLOCK_HEADER_V2: Lazy<BlockHeaderV2> = Lazy::new(|| {
         protocol_version,
         proposer,
         current_gas_price,
+        last_switch_block_hash,
         #[cfg(any(feature = "once_cell", test))]
-        OnceCell::new(),
+            OnceCell::new(),
     )
 });
 
@@ -81,10 +83,12 @@ pub struct BlockHeaderV2 {
     pub(super) proposer: PublicKey,
     /// The gas price of the era
     pub(super) current_gas_price: u8,
+    /// The most recent switch block hash.
+    pub(super) last_switch_block_hash: Digest,
     #[cfg_attr(any(all(feature = "std", feature = "once_cell"), test), serde(skip))]
     #[cfg_attr(
-        all(any(feature = "once_cell", test), feature = "datasize"),
-        data_size(skip)
+    all(any(feature = "once_cell", test), feature = "datasize"),
+    data_size(skip)
     )]
     #[cfg(any(feature = "once_cell", test))]
     pub(super) block_hash: OnceCell<BlockHash>,
@@ -188,6 +192,11 @@ impl BlockHeaderV2 {
         self.current_gas_price
     }
 
+    /// Returns the hash for the last relevant switch block.
+    pub fn last_switch_block_hash(&self) -> Digest {
+        self.last_switch_block_hash
+    }
+
     /// Returns `true` if this block belongs to the last block before the upgrade to the
     /// current protocol version.
     #[cfg(feature = "std")]
@@ -220,6 +229,7 @@ impl BlockHeaderV2 {
         protocol_version: ProtocolVersion,
         proposer: PublicKey,
         current_gas_price: u8,
+        last_switch_block_hash: Digest,
         #[cfg(any(feature = "once_cell", test))] block_hash: OnceCell<BlockHash>,
     ) -> Self {
         BlockHeaderV2 {
@@ -235,6 +245,7 @@ impl BlockHeaderV2 {
             protocol_version,
             proposer,
             current_gas_price,
+            last_switch_block_hash,
             #[cfg(any(feature = "once_cell", test))]
             block_hash,
         }
@@ -266,7 +277,7 @@ impl PartialEq for BlockHeaderV2 {
     fn eq(&self, other: &BlockHeaderV2) -> bool {
         // Destructure to make sure we don't accidentally omit fields.
         #[cfg(any(feature = "once_cell", test))]
-        let BlockHeaderV2 {
+            let BlockHeaderV2 {
             parent_hash,
             state_root_hash,
             body_hash,
@@ -279,10 +290,11 @@ impl PartialEq for BlockHeaderV2 {
             protocol_version,
             proposer,
             current_gas_price,
+            last_switch_block_hash,
             block_hash: _,
         } = self;
         #[cfg(not(any(feature = "once_cell", test)))]
-        let BlockHeaderV2 {
+            let BlockHeaderV2 {
             parent_hash,
             state_root_hash,
             body_hash,
@@ -295,6 +307,7 @@ impl PartialEq for BlockHeaderV2 {
             protocol_version,
             proposer,
             current_gas_price,
+            last_switch_block_hash,
         } = self;
         *parent_hash == other.parent_hash
             && *state_root_hash == other.state_root_hash
@@ -308,6 +321,7 @@ impl PartialEq for BlockHeaderV2 {
             && *protocol_version == other.protocol_version
             && *proposer == other.proposer
             && *current_gas_price == other.current_gas_price
+            && *last_switch_block_hash == other.last_switch_block_hash
     }
 }
 
@@ -316,7 +330,7 @@ impl Display for BlockHeaderV2 {
         write!(
             formatter,
             "block header #{}, {}, timestamp {}, {}, parent {}, post-state hash {}, body hash {}, \
-            random bit {}, protocol version: {}, proposed by {}, current_gas_price: {}",
+            random bit {}, protocol version: {}, proposed by {}, current_gas_price: {}, last_switch_block_hash: {}",
             self.height,
             self.block_hash(),
             self.timestamp,
@@ -327,7 +341,8 @@ impl Display for BlockHeaderV2 {
             self.random_bit,
             self.protocol_version,
             self.proposer,
-            self.current_gas_price
+            self.current_gas_price,
+            self.last_switch_block_hash
         )?;
         if let Some(era_end) = &self.era_end {
             write!(formatter, ", era_end: {}", era_end)?;
@@ -349,7 +364,8 @@ impl ToBytes for BlockHeaderV2 {
         self.height.write_bytes(writer)?;
         self.protocol_version.write_bytes(writer)?;
         self.proposer.write_bytes(writer)?;
-        self.current_gas_price.write_bytes(writer)
+        self.current_gas_price.write_bytes(writer)?;
+        self.last_switch_block_hash.write_bytes(writer)
     }
 
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
@@ -371,6 +387,7 @@ impl ToBytes for BlockHeaderV2 {
             + self.protocol_version.serialized_length()
             + self.proposer.serialized_length()
             + self.current_gas_price.serialized_length()
+            + self.last_switch_block_hash.serialized_length()
     }
 }
 
@@ -388,6 +405,7 @@ impl FromBytes for BlockHeaderV2 {
         let (protocol_version, remainder) = ProtocolVersion::from_bytes(remainder)?;
         let (proposer, remainder) = PublicKey::from_bytes(remainder)?;
         let (current_gas_price, remainder) = u8::from_bytes(remainder)?;
+        let (last_switch_block_hash, remainder) = Digest::from_bytes(remainder)?;
         let block_header = BlockHeaderV2 {
             parent_hash,
             state_root_hash,
@@ -401,6 +419,7 @@ impl FromBytes for BlockHeaderV2 {
             protocol_version,
             proposer,
             current_gas_price,
+            last_switch_block_hash,
             #[cfg(any(feature = "once_cell", test))]
             block_hash: OnceCell::new(),
         };

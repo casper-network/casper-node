@@ -65,6 +65,7 @@ static BLOCK_V2: Lazy<BlockV2> = Lazy::new(|| {
     };
     let rewarded_signatures = RewardedSignatures::default();
     let current_gas_price = 1u8;
+    let last_switch_block_hash = Digest::from([10; Digest::LENGTH]);
     BlockV2::new(
         parent_hash,
         parent_seed,
@@ -79,6 +80,7 @@ static BLOCK_V2: Lazy<BlockV2> = Lazy::new(|| {
         transactions,
         rewarded_signatures,
         current_gas_price,
+        last_switch_block_hash,
     )
 });
 
@@ -115,6 +117,7 @@ impl BlockV2 {
         transactions: BTreeMap<u8, Vec<TransactionHash>>,
         rewarded_signatures: RewardedSignatures,
         current_gas_price: u8,
+        last_switch_block_hash: Digest,
     ) -> Self {
         let body = BlockBodyV2::new(transactions, rewarded_signatures);
         let body_hash = body.hash();
@@ -132,8 +135,9 @@ impl BlockV2 {
             protocol_version,
             proposer,
             current_gas_price,
+            last_switch_block_hash,
             #[cfg(any(feature = "once_cell", test))]
-            OnceCell::new(),
+                OnceCell::new(),
         );
         Self::new_from_header_and_body(header, body)
     }
@@ -241,33 +245,38 @@ impl BlockV2 {
     }
 
     /// Returns the hashes of the transfer transactions within the block.
-    pub fn mint(&self) -> impl Iterator<Item = TransactionHash> {
+    pub fn mint(&self) -> impl Iterator<Item=TransactionHash> {
         self.body.mint()
     }
 
     /// Returns the hashes of the non-transfer, native transactions within the block.
-    pub fn auction(&self) -> impl Iterator<Item = TransactionHash> {
+    pub fn auction(&self) -> impl Iterator<Item=TransactionHash> {
         self.body.auction()
     }
 
     /// Returns the hashes of the installer/upgrader transactions within the block.
-    pub fn install_upgrade(&self) -> impl Iterator<Item = TransactionHash> {
+    pub fn install_upgrade(&self) -> impl Iterator<Item=TransactionHash> {
         self.body.install_upgrade()
     }
 
     /// Returns the hashes of all other transactions within the block.
-    pub fn standard(&self) -> impl Iterator<Item = TransactionHash> {
+    pub fn standard(&self) -> impl Iterator<Item=TransactionHash> {
         self.body.standard()
     }
 
     /// Returns all of the transaction hashes in the order in which they were executed.
-    pub fn all_transactions(&self) -> impl Iterator<Item = &TransactionHash> {
+    pub fn all_transactions(&self) -> impl Iterator<Item=&TransactionHash> {
         self.body.all_transactions()
     }
 
     /// Returns a reference to the collection of mapped transactions.
     pub fn transactions(&self) -> &BTreeMap<u8, Vec<TransactionHash>> {
         self.body.transactions()
+    }
+
+    /// Returns the last relevant switch block hash.
+    pub fn last_switch_block_hash(&self) -> Digest {
+        self.header.last_switch_block_hash()
     }
 
     /// Returns `Ok` if and only if the block's provided block hash and body hash are identical to
