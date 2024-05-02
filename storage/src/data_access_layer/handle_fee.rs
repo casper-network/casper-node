@@ -3,7 +3,7 @@ use crate::{
     tracking_copy::TrackingCopyError,
 };
 use casper_types::{
-    execution::Effects, Digest, HoldsEpoch, InitiatorAddr, ProtocolVersion, TransactionHash, U512,
+    execution::Effects, Digest, InitiatorAddr, ProtocolVersion, TransactionHash, U512,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -13,15 +13,10 @@ pub enum HandleFeeMode {
         source: Box<BalanceIdentifier>,
         target: Box<BalanceIdentifier>,
         amount: U512,
-        holds_epoch: HoldsEpoch,
     },
     Burn {
         source: BalanceIdentifier,
         amount: Option<U512>,
-    },
-    ClearHolds {
-        source: BalanceIdentifier,
-        holds_epoch: HoldsEpoch,
     },
 }
 
@@ -31,14 +26,12 @@ impl HandleFeeMode {
         source: BalanceIdentifier,
         target: BalanceIdentifier,
         amount: U512,
-        holds_epoch: HoldsEpoch,
     ) -> Self {
         HandleFeeMode::Pay {
             initiator_addr,
             source: Box::new(source),
             target: Box::new(target),
             amount,
-            holds_epoch,
         }
     }
 
@@ -48,14 +41,6 @@ impl HandleFeeMode {
     /// burned leaving a remaining balance.
     pub fn burn(source: BalanceIdentifier, amount: Option<U512>) -> Self {
         HandleFeeMode::Burn { source, amount }
-    }
-
-    /// Clear expired holds against source's balance per epoch.
-    pub fn clear_holds(source: BalanceIdentifier, holds_epoch: HoldsEpoch) -> Self {
-        HandleFeeMode::ClearHolds {
-            source,
-            holds_epoch,
-        }
     }
 }
 

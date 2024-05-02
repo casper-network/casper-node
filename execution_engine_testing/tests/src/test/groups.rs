@@ -9,7 +9,9 @@ use casper_engine_test_support::{
     MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::{engine_state::Error, execution::ExecError};
-use casper_types::{account::AccountHash, runtime_args, Key, RuntimeArgs, U512};
+use casper_types::{
+    account::AccountHash, runtime_args, HoldBalanceHandling, Key, RuntimeArgs, Timestamp, U512,
+};
 
 use crate::{lmdb_fixture, wasm_utils};
 
@@ -35,7 +37,8 @@ static TRANSFER_1_AMOUNT: Lazy<U512> =
     Lazy::new(|| U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE) + 1000);
 
 fn setup_from_lmdb_fixture() -> LmdbWasmTestBuilder {
-    let (builder, _, _) = lmdb_fixture::builder_from_global_state_fixture(GROUPS_FIXTURE);
+    let (mutbuilder, _, _) = lmdb_fixture::builder_from_global_state_fixture(GROUPS_FIXTURE);builder.with_block_time(Timestamp::now().into());
+    builder.with_gas_hold_config(HoldBalanceHandling::default(), 1200u64);
     builder
 }
 

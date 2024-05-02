@@ -1,7 +1,10 @@
 use num_rational::Ratio;
 use std::collections::BTreeMap;
 
-use crate::{ChainspecRegistry, Digest, EraId, FeeHandling, Key, ProtocolVersion, StoredValue};
+use crate::{
+    ChainspecRegistry, Digest, EraId, FeeHandling, HoldBalanceHandling, Key, ProtocolVersion,
+    StoredValue,
+};
 
 /// Represents the configuration of a protocol upgrade.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -10,6 +13,8 @@ pub struct ProtocolUpgradeConfig {
     current_protocol_version: ProtocolVersion,
     new_protocol_version: ProtocolVersion,
     activation_point: Option<EraId>,
+    new_gas_hold_handling: Option<HoldBalanceHandling>,
+    new_gas_hold_interval: Option<u64>,
     new_validator_slots: Option<u32>,
     new_auction_delay: Option<u64>,
     new_locked_funds_period_millis: Option<u64>,
@@ -18,6 +23,8 @@ pub struct ProtocolUpgradeConfig {
     global_state_update: BTreeMap<Key, StoredValue>,
     chainspec_registry: ChainspecRegistry,
     fee_handling: FeeHandling,
+    migrate_legacy_accounts: bool,
+    migrate_legacy_contracts: bool,
 }
 
 impl ProtocolUpgradeConfig {
@@ -28,6 +35,8 @@ impl ProtocolUpgradeConfig {
         current_protocol_version: ProtocolVersion,
         new_protocol_version: ProtocolVersion,
         activation_point: Option<EraId>,
+        new_gas_hold_handling: Option<HoldBalanceHandling>,
+        new_gas_hold_interval: Option<u64>,
         new_validator_slots: Option<u32>,
         new_auction_delay: Option<u64>,
         new_locked_funds_period_millis: Option<u64>,
@@ -36,12 +45,16 @@ impl ProtocolUpgradeConfig {
         global_state_update: BTreeMap<Key, StoredValue>,
         chainspec_registry: ChainspecRegistry,
         fee_handling: FeeHandling,
+        migrate_legacy_accounts: bool,
+        migrate_legacy_contracts: bool,
     ) -> Self {
         ProtocolUpgradeConfig {
             pre_state_hash,
             current_protocol_version,
             new_protocol_version,
             activation_point,
+            new_gas_hold_handling,
+            new_gas_hold_interval,
             new_validator_slots,
             new_auction_delay,
             new_locked_funds_period_millis,
@@ -50,6 +63,8 @@ impl ProtocolUpgradeConfig {
             global_state_update,
             chainspec_registry,
             fee_handling,
+            migrate_legacy_accounts,
+            migrate_legacy_contracts,
         }
     }
 
@@ -71,6 +86,16 @@ impl ProtocolUpgradeConfig {
     /// Returns activation point in eras.
     pub fn activation_point(&self) -> Option<EraId> {
         self.activation_point
+    }
+
+    /// Returns new gas hold handling if specified.
+    pub fn new_gas_hold_handling(&self) -> Option<HoldBalanceHandling> {
+        self.new_gas_hold_handling
+    }
+
+    /// Returns new auction delay if specified.
+    pub fn new_gas_hold_interval(&self) -> Option<u64> {
+        self.new_gas_hold_interval
     }
 
     /// Returns new validator slots if specified.
@@ -116,5 +141,15 @@ impl ProtocolUpgradeConfig {
     /// Fee handling setting.
     pub fn fee_handling(&self) -> FeeHandling {
         self.fee_handling
+    }
+
+    /// Migrate legacy accounts.
+    pub fn migrate_legacy_accounts(&self) -> bool {
+        self.migrate_legacy_accounts
+    }
+
+    /// Migrate legacy contracts.
+    pub fn migrate_legacy_contracts(&self) -> bool {
+        self.migrate_legacy_contracts
     }
 }

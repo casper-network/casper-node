@@ -45,6 +45,16 @@ impl RefundHandling {
             RefundHandling::Burn { .. } => false,
         }
     }
+
+    /// Returns refund ratio.
+    pub fn refund_ratio(&self) -> Ratio<u64> {
+        match self {
+            RefundHandling::Refund { refund_ratio } | RefundHandling::Burn { refund_ratio } => {
+                *refund_ratio
+            }
+            RefundHandling::NoRefund => Ratio::zero(),
+        }
+    }
 }
 
 impl ToBytes for RefundHandling {

@@ -93,6 +93,9 @@ pub const DEFAULT_HOST_FUNCTION_NEW_DICTIONARY: HostFunction<[Cost; 1]> =
 /// emitted within an execution.
 pub const DEFAULT_COST_INCREASE_PER_MESSAGE_EMITTED: u32 = 50;
 
+const DEFAULT_MESSAGE_TOPIC_NAME_SIZE_WEIGHT: u32 = 30_000;
+const DEFAULT_MESSAGE_PAYLOAD_SIZE_WEIGHT: u32 = 120_000;
+
 /// Representation of a host function cost.
 ///
 /// The total gas cost is equal to `cost` + sum of each argument weight multiplied by the byte size
@@ -577,7 +580,22 @@ impl Default for HostFunctionCosts {
             ),
             create_contract_package_at_hash: HostFunction::default(),
             create_contract_user_group: HostFunction::default(),
-            add_contract_version: HostFunction::default(),
+            add_contract_version: HostFunction::new(
+                DEFAULT_FIXED_COST,
+                [
+                    NOT_USED,
+                    NOT_USED,
+                    NOT_USED,
+                    NOT_USED,
+                    NOT_USED,
+                    NOT_USED,
+                    NOT_USED,
+                    NOT_USED,
+                    DEFAULT_MESSAGE_TOPIC_NAME_SIZE_WEIGHT,
+                    NOT_USED,
+                    NOT_USED,
+                ],
+            ),
             disable_contract_version: HostFunction::default(),
             call_contract: HostFunction::new(
                 DEFAULT_CALL_CONTRACT_COST,
@@ -617,8 +635,24 @@ impl Default for HostFunctionCosts {
             blake2b: HostFunction::default(),
             random_bytes: HostFunction::default(),
             enable_contract_version: HostFunction::default(),
-            manage_message_topic: HostFunction::default(),
-            emit_message: HostFunction::default(),
+            manage_message_topic: HostFunction::new(
+                DEFAULT_FIXED_COST,
+                [
+                    NOT_USED,
+                    DEFAULT_MESSAGE_TOPIC_NAME_SIZE_WEIGHT,
+                    NOT_USED,
+                    NOT_USED,
+                ],
+            ),
+            emit_message: HostFunction::new(
+                DEFAULT_FIXED_COST,
+                [
+                    NOT_USED,
+                    DEFAULT_MESSAGE_TOPIC_NAME_SIZE_WEIGHT,
+                    NOT_USED,
+                    DEFAULT_MESSAGE_PAYLOAD_SIZE_WEIGHT,
+                ],
+            ),
             cost_increase_per_message: DEFAULT_COST_INCREASE_PER_MESSAGE_EMITTED,
         }
     }

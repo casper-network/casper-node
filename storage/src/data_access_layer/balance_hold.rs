@@ -1,10 +1,54 @@
-use crate::{data_access_layer::BalanceIdentifier, tracking_copy::TrackingCopyError};
+use crate::{
+    data_access_layer::{balance::BalanceFailure, BalanceIdentifier},
+    tracking_copy::TrackingCopyError,
+};
 use casper_types::{
-    execution::Effects, system::mint::BalanceHoldAddrTag, BlockTime, Digest, HoldsEpoch,
-    ProtocolVersion, U512,
+    account::AccountHash,
+    execution::Effects,
+    system::mint::{BalanceHoldAddr, BalanceHoldAddrTag},
+    Digest, ProtocolVersion, U512,
 };
 use std::fmt::{Display, Formatter};
 use thiserror::Error;
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default)]
+pub enum BalanceHoldKind {
+    #[default]
+    All,
+    Tag(BalanceHoldAddrTag),
+}
+
+impl BalanceHoldKind {
+    /// Returns true of imputed tag applies to instance.
+    pub fn matches(&self, balance_hold_addr_tag: BalanceHoldAddrTag) -> bool {
+        match self {
+            BalanceHoldKind::All => true,
+            BalanceHoldKind::Tag(tag) => tag == &balance_hold_addr_tag,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BalanceHoldMode {
+    Hold {
+        identifier: BalanceIdentifier,
+        hold_amount: U512,
+        insufficient_handling: InsufficientBalanceHandling,
+    },
+    Clear {
+        identifier: BalanceIdentifier,
+    },
+}
+
+impl Default for BalanceHoldMode {
+    fn default() -> Self {
+        BalanceHoldMode::Hold {
+            insufficient_handling: InsufficientBalanceHandling::HoldRemaining,
+            hold_amount: U512::zero(),
+            identifier: BalanceIdentifier::Account(AccountHash::default()),
+        }
+    }
+}
 
 /// How to handle available balance is less than hold amount?
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Default)]
@@ -20,36 +64,70 @@ pub enum InsufficientBalanceHandling {
 pub struct BalanceHoldRequest {
     state_hash: Digest,
     protocol_version: ProtocolVersion,
-    identifier: BalanceIdentifier,
-    hold_kind: BalanceHoldAddrTag,
-    hold_amount: U512,
-    block_time: BlockTime,
-    holds_epoch: HoldsEpoch,
-    insufficient_handling: InsufficientBalanceHandling,
+    hold_kind: BalanceHoldKind,
+    hold_mode: BalanceHoldMode,
 }
 
 impl BalanceHoldRequest {
-    /// Creates a new [`BalanceHoldRequest`].
+    /// Creates a new [`BalanceHoldRequest`] for adding a gas balance hold.
     #[allow(clippy::too_many_arguments)]
-    pub fn new(
+    pub fn new_gas_hold(
         state_hash: Digest,
         protocol_version: ProtocolVersion,
         identifier: BalanceIdentifier,
-        hold_kind: BalanceHoldAddrTag,
         hold_amount: U512,
-        block_time: BlockTime,
-        holds_epoch: HoldsEpoch,
         insufficient_handling: InsufficientBalanceHandling,
     ) -> Self {
+        let hold_kind = BalanceHoldKind::Tag(BalanceHoldAddrTag::Gas);
+        let hold_mode = BalanceHoldMode::Hold {
+            identifier,
+            hold_amount,
+            insufficient_handling,
+        };
         BalanceHoldRequest {
             state_hash,
             protocol_version,
-            identifier,
             hold_kind,
+            hold_mode,
+        }
+    }
+
+    /// Creates a new [`BalanceHoldRequest`] for adding a processing balance hold.
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_processing_hold(
+        state_hash: Digest,
+        protocol_version: ProtocolVersion,
+        identifier: BalanceIdentifier,
+        hold_amount: U512,
+        insufficient_handling: InsufficientBalanceHandling,
+    ) -> Self {
+        let hold_kind = BalanceHoldKind::Tag(BalanceHoldAddrTag::Processing);
+        let hold_mode = BalanceHoldMode::Hold {
+            identifier,
             hold_amount,
-            block_time,
-            holds_epoch,
             insufficient_handling,
+        };
+        BalanceHoldRequest {
+            state_hash,
+            protocol_version,
+            hold_kind,
+            hold_mode,
+        }
+    }
+
+    /// Creates a new [`BalanceHoldRequest`] for clearing holds.
+    pub fn new_clear(
+        state_hash: Digest,
+        protocol_version: ProtocolVersion,
+        hold_kind: BalanceHoldKind,
+        identifier: BalanceIdentifier,
+    ) -> Self {
+        let hold_mode = BalanceHoldMode::Clear { identifier };
+        BalanceHoldRequest {
+            state_hash,
+            protocol_version,
+            hold_kind,
+            hold_mode,
         }
     }
 
@@ -63,34 +141,14 @@ impl BalanceHoldRequest {
         self.protocol_version
     }
 
-    /// Returns the identifier [`BalanceIdentifier`].
-    pub fn identifier(&self) -> &BalanceIdentifier {
-        &self.identifier
-    }
-
-    /// Returns the hold kind.
-    pub fn hold_kind(&self) -> BalanceHoldAddrTag {
+    /// Balance hold kind.
+    pub fn balance_hold_kind(&self) -> BalanceHoldKind {
         self.hold_kind
     }
 
-    /// Returns the hold amount.
-    pub fn hold_amount(&self) -> U512 {
-        self.hold_amount
-    }
-
-    /// Returns the block time.
-    pub fn block_time(&self) -> BlockTime {
-        self.block_time
-    }
-
-    /// Returns the holds epoch.
-    pub fn holds_epoch(&self) -> HoldsEpoch {
-        self.holds_epoch
-    }
-
-    /// Returns insufficient balance handling option.
-    pub fn insufficient_handling(&self) -> InsufficientBalanceHandling {
-        self.insufficient_handling
+    /// Balance hold mode.
+    pub fn balance_hold_mode(&self) -> BalanceHoldMode {
+        self.hold_mode.clone()
     }
 }
 
@@ -99,18 +157,39 @@ impl BalanceHoldRequest {
 #[non_exhaustive]
 pub enum BalanceHoldError {
     TrackingCopy(TrackingCopyError),
+    Balance(BalanceFailure),
     InsufficientBalance { remaining_balance: U512 },
+    UnexpectedWildcardVariant, // programmer error
+}
+
+impl From<BalanceFailure> for BalanceHoldError {
+    fn from(be: BalanceFailure) -> Self {
+        BalanceHoldError::Balance(be)
+    }
+}
+
+impl From<TrackingCopyError> for BalanceHoldError {
+    fn from(tce: TrackingCopyError) -> Self {
+        BalanceHoldError::TrackingCopy(tce)
+    }
 }
 
 impl Display for BalanceHoldError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             BalanceHoldError::TrackingCopy(err) => {
-                write!(f, "TrackingCopy: {}", err)
+                write!(f, "TrackingCopy: {:?}", err)
             }
             BalanceHoldError::InsufficientBalance { remaining_balance } => {
                 write!(f, "InsufficientBalance: {}", remaining_balance)
             }
+            BalanceHoldError::UnexpectedWildcardVariant => {
+                write!(
+                    f,
+                    "UnexpectedWildcardVariant: unsupported use of BalanceHoldKind::All"
+                )
+            }
+            BalanceHoldError::Balance(be) => Display::fmt(be, f),
         }
     }
 }
@@ -120,8 +199,12 @@ impl Display for BalanceHoldError {
 pub enum BalanceHoldResult {
     /// Returned if a passed state root hash is not found.
     RootNotFound,
+    /// Returned if global state does not have an entry for block time.
+    BlockTimeNotFound,
     /// Balance hold successfully placed.
     Success {
+        /// Hold addresses, if any.
+        holds: Option<Vec<BalanceHoldAddr>>,
         /// Purse total balance.
         total_balance: Box<U512>,
         /// Purse available balance after hold placed.
@@ -139,6 +222,7 @@ pub enum BalanceHoldResult {
 
 impl BalanceHoldResult {
     pub fn success(
+        holds: Option<Vec<BalanceHoldAddr>>,
         total_balance: U512,
         available_balance: U512,
         hold: U512,
@@ -146,6 +230,7 @@ impl BalanceHoldResult {
         effects: Effects,
     ) -> Self {
         BalanceHoldResult::Success {
+            holds,
             total_balance: Box::new(total_balance),
             available_balance: Box::new(available_balance),
             hold: Box::new(hold),
@@ -154,10 +239,56 @@ impl BalanceHoldResult {
         }
     }
 
+    /// Returns the total balance for a [`BalanceHoldResult::Success`] variant.
+    pub fn total_balance(&self) -> Option<&U512> {
+        match self {
+            BalanceHoldResult::Success { total_balance, .. } => Some(total_balance),
+            _ => None,
+        }
+    }
+
+    /// Returns the available balance for a [`BalanceHoldResult::Success`] variant.
+    pub fn available_balance(&self) -> Option<&U512> {
+        match self {
+            BalanceHoldResult::Success {
+                available_balance, ..
+            } => Some(available_balance),
+            _ => None,
+        }
+    }
+
+    /// Returns the held amount for a [`BalanceHoldResult::Success`] variant.
+    pub fn held(&self) -> Option<&U512> {
+        match self {
+            BalanceHoldResult::Success { held, .. } => Some(held),
+            _ => None,
+        }
+    }
+
+    /// Hold address, if any.
+    pub fn holds(&self) -> Option<Vec<BalanceHoldAddr>> {
+        match self {
+            BalanceHoldResult::RootNotFound
+            | BalanceHoldResult::BlockTimeNotFound
+            | BalanceHoldResult::Failure(_) => None,
+            BalanceHoldResult::Success { holds, .. } => holds.clone(),
+        }
+    }
+
+    /// Does this result contain any hold addresses?
+    pub fn has_holds(&self) -> bool {
+        match self.holds() {
+            None => false,
+            Some(holds) => !holds.is_empty(),
+        }
+    }
+
     /// Was the hold fully covered?
     pub fn is_fully_covered(&self) -> bool {
         match self {
-            BalanceHoldResult::RootNotFound | BalanceHoldResult::Failure(_) => false,
+            BalanceHoldResult::RootNotFound
+            | BalanceHoldResult::BlockTimeNotFound
+            | BalanceHoldResult::Failure(_) => false,
             BalanceHoldResult::Success { hold, held, .. } => hold == held,
         }
     }
@@ -175,7 +306,9 @@ impl BalanceHoldResult {
     /// The effects, if any.
     pub fn effects(&self) -> Effects {
         match self {
-            BalanceHoldResult::RootNotFound | BalanceHoldResult::Failure(_) => Effects::new(),
+            BalanceHoldResult::RootNotFound
+            | BalanceHoldResult::BlockTimeNotFound
+            | BalanceHoldResult::Failure(_) => Effects::new(),
             BalanceHoldResult::Success { effects, .. } => *effects.clone(),
         }
     }
@@ -193,9 +326,22 @@ impl BalanceHoldResult {
                 }
             }
             BalanceHoldResult::RootNotFound => "root not found".to_string(),
+            BalanceHoldResult::BlockTimeNotFound => "block time not found".to_string(),
             BalanceHoldResult::Failure(bhe) => {
                 format!("{:?}", bhe)
             }
         }
+    }
+}
+
+impl From<BalanceFailure> for BalanceHoldResult {
+    fn from(be: BalanceFailure) -> Self {
+        BalanceHoldResult::Failure(be.into())
+    }
+}
+
+impl From<TrackingCopyError> for BalanceHoldResult {
+    fn from(tce: TrackingCopyError) -> Self {
+        BalanceHoldResult::Failure(tce.into())
     }
 }

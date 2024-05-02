@@ -64,7 +64,7 @@ pub enum TransactionInvocationTarget {
     },
     /// The alias and optional version identifying the package.
     ByPackageName {
-        /// The package alias.
+        /// The package name.
         name: String,
         /// The package version.
         ///

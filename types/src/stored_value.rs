@@ -23,7 +23,10 @@ use crate::{
     contract_wasm::ContractWasm,
     contracts::{Contract, ContractPackage},
     package::Package,
-    system::auction::{Bid, BidKind, EraInfo, UnbondingPurse, WithdrawPurse},
+    system::{
+        auction::{Bid, BidKind, EraInfo, UnbondingPurse, WithdrawPurse},
+        reservations::ReservationKind,
+    },
     AddressableEntity, ByteCode, CLValue, DeployInfo, EntryPointValue, TransferV1,
 };
 pub use global_state_identifier::GlobalStateIdentifier;
@@ -50,7 +53,8 @@ enum Tag {
     MessageTopic = 15,
     Message = 16,
     NamedKey = 17,
-    EntryPoint = 18,
+    Reservation = 18,
+    EntryPoint = 19,
 }
 
 /// A value stored in Global State.
@@ -60,7 +64,7 @@ enum Tag {
 #[cfg_attr(
     feature = "json-schema",
     derive(JsonSchema),
-    schemars(with = "serde_helpers::BinarySerHelper")
+    schemars(with = "serde_helpers::HumanReadableSerHelper")
 )]
 pub enum StoredValue {
     /// A CLValue.
@@ -99,6 +103,8 @@ pub enum StoredValue {
     Message(MessageChecksum),
     /// A NamedKey record.
     NamedKey(NamedKeyValue),
+    /// A reservation record.
+    Reservation(ReservationKind),
     /// An entrypoint record.
     EntryPoint(EntryPointValue),
 }
@@ -379,6 +385,7 @@ impl StoredValue {
             StoredValue::MessageTopic(_) => "MessageTopic".to_string(),
             StoredValue::Message(_) => "Message".to_string(),
             StoredValue::NamedKey(_) => "NamedKey".to_string(),
+            StoredValue::Reservation(_) => "Reservation".to_string(),
             StoredValue::EntryPoint(_) => "EntryPoint".to_string(),
         }
     }
@@ -403,6 +410,7 @@ impl StoredValue {
             StoredValue::MessageTopic(_) => Tag::MessageTopic,
             StoredValue::Message(_) => Tag::Message,
             StoredValue::NamedKey(_) => Tag::NamedKey,
+            StoredValue::Reservation(_) => Tag::Reservation,
             StoredValue::EntryPoint(_) => Tag::EntryPoint,
         }
     }
@@ -483,7 +491,7 @@ impl TryFrom<StoredValue> for CLValue {
             StoredValue::CLValue(cl_value) => Ok(cl_value),
             StoredValue::Package(contract_package) => Ok(CLValue::from_t(contract_package)
                 .map_err(|_error| TypeMismatch::new("ContractPackage".to_string(), type_name))?),
-            _ => Err(TypeMismatch::new("CLValue".to_string(), type_name)),
+            _ => Err(TypeMismatch::new("StoredValue".to_string(), type_name)),
         }
     }
 }
@@ -693,6 +701,7 @@ impl ToBytes for StoredValue {
                 }
                 StoredValue::Message(message_digest) => message_digest.serialized_length(),
                 StoredValue::NamedKey(named_key_value) => named_key_value.serialized_length(),
+                StoredValue::Reservation(reservation_kind) => reservation_kind.serialized_length(),
                 StoredValue::EntryPoint(entry_point_value) => entry_point_value.serialized_length(),
             }
     }
@@ -720,6 +729,7 @@ impl ToBytes for StoredValue {
             }
             StoredValue::Message(message_digest) => message_digest.write_bytes(writer),
             StoredValue::NamedKey(named_key_value) => named_key_value.write_bytes(writer),
+            StoredValue::Reservation(reservation_kind) => reservation_kind.write_bytes(writer),
             StoredValue::EntryPoint(entry_point_value) => entry_point_value.write_bytes(writer),
         }
     }
@@ -793,10 +803,24 @@ impl FromBytes for StoredValue {
 }
 
 mod serde_helpers {
+    use core::fmt;
+
     use super::*;
 
+    pub struct InvalidHumanReadableDeser(String);
+
+    impl fmt::Display for InvalidHumanReadableDeser {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(
+                f,
+                "Couldn't deserialize StoredValue. Underlying error: {}",
+                self.0
+            )
+        }
+    }
+
     #[derive(Serialize)]
-    pub(super) enum BinarySerHelper<'a> {
+    pub(super) enum HumanReadableSerHelper<'a> {
         CLValue(&'a CLValue),
         Account(&'a Account),
         ContractWasm(&'a ContractWasm),
@@ -815,11 +839,12 @@ mod serde_helpers {
         MessageTopic(&'a MessageTopicSummary),
         Message(&'a MessageChecksum),
         NamedKey(&'a NamedKeyValue),
+        Reservation(&'a ReservationKind),
         EntryPoint(&'a EntryPointValue),
     }
 
     #[derive(Deserialize)]
-    pub(super) enum BinaryDeserHelper {
+    pub(super) enum HumanReadableDeserHelper {
         CLValue(CLValue),
         Account(Account),
         ContractWasm(ContractWasm),
@@ -841,63 +866,76 @@ mod serde_helpers {
         EntryPoint(EntryPointValue),
     }
 
-    impl<'a> From<&'a StoredValue> for BinarySerHelper<'a> {
+    impl<'a> From<&'a StoredValue> for HumanReadableSerHelper<'a> {
         fn from(stored_value: &'a StoredValue) -> Self {
             match stored_value {
-                StoredValue::CLValue(payload) => BinarySerHelper::CLValue(payload),
-                StoredValue::Account(payload) => BinarySerHelper::Account(payload),
-                StoredValue::ContractWasm(payload) => BinarySerHelper::ContractWasm(payload),
-                StoredValue::Contract(payload) => BinarySerHelper::Contract(payload),
-                StoredValue::ContractPackage(payload) => BinarySerHelper::ContractPackage(payload),
-                StoredValue::LegacyTransfer(payload) => BinarySerHelper::LegacyTransfer(payload),
-                StoredValue::DeployInfo(payload) => BinarySerHelper::DeployInfo(payload),
-                StoredValue::EraInfo(payload) => BinarySerHelper::EraInfo(payload),
-                StoredValue::Bid(payload) => BinarySerHelper::Bid(payload),
-                StoredValue::Withdraw(payload) => BinarySerHelper::Withdraw(payload),
-                StoredValue::Unbonding(payload) => BinarySerHelper::Unbonding(payload),
+                StoredValue::CLValue(payload) => HumanReadableSerHelper::CLValue(payload),
+                StoredValue::Account(payload) => HumanReadableSerHelper::Account(payload),
+                StoredValue::ContractWasm(payload) => HumanReadableSerHelper::ContractWasm(payload),
+                StoredValue::Contract(payload) => HumanReadableSerHelper::Contract(payload),
+                StoredValue::ContractPackage(payload) => {
+                    HumanReadableSerHelper::ContractPackage(payload)
+                }
+                StoredValue::LegacyTransfer(payload) => {
+                    HumanReadableSerHelper::LegacyTransfer(payload)
+                }
+                StoredValue::DeployInfo(payload) => HumanReadableSerHelper::DeployInfo(payload),
+                StoredValue::EraInfo(payload) => HumanReadableSerHelper::EraInfo(payload),
+                StoredValue::Bid(payload) => HumanReadableSerHelper::Bid(payload),
+                StoredValue::Withdraw(payload) => HumanReadableSerHelper::Withdraw(payload),
+                StoredValue::Unbonding(payload) => HumanReadableSerHelper::Unbonding(payload),
                 StoredValue::AddressableEntity(payload) => {
-                    BinarySerHelper::AddressableEntity(payload)
+                    HumanReadableSerHelper::AddressableEntity(payload)
                 }
-                StoredValue::BidKind(payload) => BinarySerHelper::BidKind(payload),
-                StoredValue::Package(payload) => BinarySerHelper::Package(payload),
-                StoredValue::ByteCode(payload) => BinarySerHelper::ByteCode(payload),
+                StoredValue::BidKind(payload) => HumanReadableSerHelper::BidKind(payload),
+                StoredValue::Package(payload) => HumanReadableSerHelper::Package(payload),
+                StoredValue::ByteCode(payload) => HumanReadableSerHelper::ByteCode(payload),
                 StoredValue::MessageTopic(message_topic_summary) => {
-                    BinarySerHelper::MessageTopic(message_topic_summary)
+                    HumanReadableSerHelper::MessageTopic(message_topic_summary)
                 }
-                StoredValue::Message(message_digest) => BinarySerHelper::Message(message_digest),
-                StoredValue::NamedKey(payload) => BinarySerHelper::NamedKey(payload),
+                StoredValue::Message(message_digest) => {
+                    HumanReadableSerHelper::Message(message_digest)
+                }
+                StoredValue::NamedKey(payload) => HumanReadableSerHelper::NamedKey(payload),
+                StoredValue::Reservation(payload) => HumanReadableSerHelper::Reservation(payload),
                 StoredValue::EntryPoint(payload) => BinarySerHelper::EntryPoint(payload),
             }
         }
     }
 
-    impl From<BinaryDeserHelper> for StoredValue {
-        fn from(helper: BinaryDeserHelper) -> Self {
+    impl From<HumanReadableDeserHelper> for StoredValue {
+        fn from(helper: HumanReadableDeserHelper) -> Self {
             match helper {
-                BinaryDeserHelper::CLValue(payload) => StoredValue::CLValue(payload),
-                BinaryDeserHelper::Account(payload) => StoredValue::Account(payload),
-                BinaryDeserHelper::ContractWasm(payload) => StoredValue::ContractWasm(payload),
-                BinaryDeserHelper::Contract(payload) => StoredValue::Contract(payload),
-                BinaryDeserHelper::ContractPackage(payload) => {
+                HumanReadableDeserHelper::CLValue(payload) => StoredValue::CLValue(payload),
+                HumanReadableDeserHelper::Account(payload) => StoredValue::Account(payload),
+                HumanReadableDeserHelper::ContractWasm(payload) => {
+                    StoredValue::ContractWasm(payload)
+                }
+                HumanReadableDeserHelper::Contract(payload) => StoredValue::Contract(payload),
+                HumanReadableDeserHelper::ContractPackage(payload) => {
                     StoredValue::ContractPackage(payload)
                 }
-                BinaryDeserHelper::LegacyTransfer(payload) => StoredValue::LegacyTransfer(payload),
-                BinaryDeserHelper::DeployInfo(payload) => StoredValue::DeployInfo(payload),
-                BinaryDeserHelper::EraInfo(payload) => StoredValue::EraInfo(payload),
-                BinaryDeserHelper::Bid(bid) => StoredValue::Bid(bid),
-                BinaryDeserHelper::Withdraw(payload) => StoredValue::Withdraw(payload),
-                BinaryDeserHelper::Unbonding(payload) => StoredValue::Unbonding(payload),
-                BinaryDeserHelper::AddressableEntity(payload) => {
+                HumanReadableDeserHelper::LegacyTransfer(payload) => {
+                    StoredValue::LegacyTransfer(payload)
+                }
+                HumanReadableDeserHelper::DeployInfo(payload) => StoredValue::DeployInfo(payload),
+                HumanReadableDeserHelper::EraInfo(payload) => StoredValue::EraInfo(payload),
+                HumanReadableDeserHelper::Bid(bid) => StoredValue::Bid(bid),
+                HumanReadableDeserHelper::Withdraw(payload) => StoredValue::Withdraw(payload),
+                HumanReadableDeserHelper::Unbonding(payload) => StoredValue::Unbonding(payload),
+                HumanReadableDeserHelper::AddressableEntity(payload) => {
                     StoredValue::AddressableEntity(payload)
                 }
-                BinaryDeserHelper::BidKind(payload) => StoredValue::BidKind(payload),
-                BinaryDeserHelper::ByteCode(payload) => StoredValue::ByteCode(payload),
-                BinaryDeserHelper::Package(payload) => StoredValue::Package(payload),
-                BinaryDeserHelper::MessageTopic(message_topic_summary) => {
+                HumanReadableDeserHelper::BidKind(payload) => StoredValue::BidKind(payload),
+                HumanReadableDeserHelper::ByteCode(payload) => StoredValue::ByteCode(payload),
+                HumanReadableDeserHelper::Package(payload) => StoredValue::Package(payload),
+                HumanReadableDeserHelper::MessageTopic(message_topic_summary) => {
                     StoredValue::MessageTopic(message_topic_summary)
                 }
-                BinaryDeserHelper::Message(message_digest) => StoredValue::Message(message_digest),
-                BinaryDeserHelper::NamedKey(payload) => StoredValue::NamedKey(payload),
+                HumanReadableDeserHelper::Message(message_digest) => {
+                    StoredValue::Message(message_digest)
+                }
+                HumanReadableDeserHelper::NamedKey(payload) => StoredValue::NamedKey(payload),
                 BinaryDeserHelper::EntryPoint(payload) => StoredValue::EntryPoint(payload),
             }
         }
@@ -907,7 +945,7 @@ mod serde_helpers {
 impl Serialize for StoredValue {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         if serializer.is_human_readable() {
-            serde_helpers::BinarySerHelper::from(self).serialize(serializer)
+            serde_helpers::HumanReadableSerHelper::from(self).serialize(serializer)
         } else {
             let bytes = self
                 .to_bytes()
@@ -920,7 +958,7 @@ impl Serialize for StoredValue {
 impl<'de> Deserialize<'de> for StoredValue {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         if deserializer.is_human_readable() {
-            let json_helper = serde_helpers::BinaryDeserHelper::deserialize(deserializer)?;
+            let json_helper = serde_helpers::HumanReadableDeserHelper::deserialize(deserializer)?;
             Ok(StoredValue::from(json_helper))
         } else {
             let bytes = ByteBuf::deserialize(deserializer)?.into_vec();
@@ -932,11 +970,78 @@ impl<'de> Deserialize<'de> for StoredValue {
 
 #[cfg(test)]
 mod tests {
+    use crate::{bytesrepr, gens, StoredValue};
     use proptest::proptest;
+    use serde_json::Value;
+    const STORED_VALUE_CONTRACT_PACKAGE_RAW: &str = r#"
+    {
+        "ContractPackage": {
+          "access_key": "uref-024d69e50a458f337817d3d11ba95bdbdd6258ba8f2dc980644c9efdbd64945d-007",
+          "versions": [
+            {
+              "protocol_version_major": 1,
+              "contract_version": 1,
+              "contract_hash": "contract-1b301b49505ec5eaec1787686c54818bd60836b9301cce3f5c0237560e5a4bfd"
+            }
+          ],
+          "disabled_versions": [],
+          "groups": [],
+          "lock_status": "Unlocked"
+        }
+    }"#;
+    const INCORRECT_STORED_VALUE_CONTRACT_PACKAGE_RAW: &str = r#"
+    {
+        "ContractPackage": {
+          "access_key": "uref-024d69e50a458f337817d3d11ba95bdbdd6258ba8f2dc980644c9efdbd64945d-007",
+          "versions": [
+            {
+              "protocol_version_major": 1,
+              "contract_version": 1,
+              "contract_hash": "contract-1b301b49505ec5eaec1787686c54818bd60836b9301cce3f5c0237560e5a4bfd"
+            },
+            {
+              "protocol_version_major": 1,
+              "contract_version": 1,
+              "contract_hash": "contract-1b301b49505ec5eaec1787686c54818bd60836b9301cce3f5c0237560e5a4bfe"
+            }
+          ],
+          "disabled_versions": [],
+          "groups": [],
+          "lock_status": "Unlocked"
+        }
+    }
+    "#;
 
-    use crate::{bytesrepr, gens};
+    #[test]
+    fn contract_package_stored_value_serializes_versions_to_flat_array() {
+        let value_from_raw_json =
+            serde_json::from_str::<Value>(STORED_VALUE_CONTRACT_PACKAGE_RAW).unwrap();
+        let deserialized =
+            serde_json::from_str::<StoredValue>(STORED_VALUE_CONTRACT_PACKAGE_RAW).unwrap();
+        let roundtrip_value = serde_json::to_value(&deserialized).unwrap();
+        assert_eq!(value_from_raw_json, roundtrip_value);
+    }
+
+    #[test]
+    fn contract_package_stored_value_should_fail_on_duplicate_keys() {
+        let deserialization_res =
+            serde_json::from_str::<StoredValue>(INCORRECT_STORED_VALUE_CONTRACT_PACKAGE_RAW);
+        assert!(deserialization_res.is_err());
+        assert!(deserialization_res
+            .unwrap_err()
+            .to_string()
+            .contains("duplicate contract version: ContractVersionKey(1, 1)"));
+    }
 
     proptest! {
+
+        #[test]
+        fn json_serialization_roundtrip(v in gens::stored_value_arb()) {
+            let json_str = serde_json::to_string(&v).unwrap();
+            let deserialized = serde_json::from_str::<StoredValue>(&json_str).unwrap();
+            assert_eq!(v, deserialized);
+        }
+
         #[test]
         fn serialization_roundtrip(v in gens::stored_value_arb()) {
             bytesrepr::test_serialization_roundtrip(&v);

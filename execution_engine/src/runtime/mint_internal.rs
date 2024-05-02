@@ -14,8 +14,7 @@ use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
     system::{mint::Error, Caller},
-    AddressableEntity, CLTyped, CLValue, HoldsEpoch, Key, Phase, StoredValue, SystemEntityRegistry,
-    URef, U512,
+    AddressableEntity, CLTyped, CLValue, Key, Phase, StoredValue, SystemEntityRegistry, URef, U512,
 };
 
 use super::Runtime;
@@ -46,6 +45,29 @@ where
         Runtime::<'a, R>::get_immediate_caller(self).cloned()
     }
 
+    fn is_called_from_standard_payment(&self) -> bool {
+        self.context.phase() == Phase::Payment && self.module.is_none()
+    }
+
+    fn get_system_entity_registry(&self) -> Result<SystemEntityRegistry, ProviderError> {
+        self.context.system_entity_registry().map_err(|err| {
+            error!(%err, "unable to obtain system entity registry during transfer");
+            ProviderError::SystemEntityRegistry
+        })
+    }
+
+    fn read_addressable_entity_by_account_hash(
+        &mut self,
+        account_hash: AccountHash,
+    ) -> Result<Option<AddressableEntity>, ProviderError> {
+        self.context
+            .read_addressable_entity_by_account_hash(account_hash)
+            .map_err(|err| {
+                error!(%err, "error reading addressable entity by account hash");
+                ProviderError::AddressableEntityByAccountHash(account_hash)
+            })
+    }
+
     fn get_phase(&self) -> Phase {
         self.context.phase()
     }
@@ -72,31 +94,8 @@ where
         self.context.engine_config().is_administrator(account_hash)
     }
 
-    fn get_system_entity_registry(&self) -> Result<SystemEntityRegistry, ProviderError> {
-        self.context.system_entity_registry().map_err(|err| {
-            error!(%err, "unable to obtain system entity registry during transfer");
-            ProviderError::SystemEntityRegistry
-        })
-    }
-
     fn allow_unrestricted_transfers(&self) -> bool {
         self.context.engine_config().allow_unrestricted_transfers()
-    }
-
-    fn is_called_from_standard_payment(&self) -> bool {
-        self.context.phase() == Phase::Payment && self.module.is_none()
-    }
-
-    fn read_addressable_entity_by_account_hash(
-        &mut self,
-        account_hash: AccountHash,
-    ) -> Result<Option<AddressableEntity>, ProviderError> {
-        self.context
-            .read_addressable_entity_by_account_hash(account_hash)
-            .map_err(|err| {
-                error!(%err, "error reading addressable entity by account hash");
-                ProviderError::AddressableEntityByAccountHash(account_hash)
-            })
     }
 }
 
@@ -141,12 +140,13 @@ where
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))
     }
 
-    fn available_balance(
-        &mut self,
-        purse: URef,
-        holds_epoch: HoldsEpoch,
-    ) -> Result<Option<U512>, Error> {
-        Runtime::available_balance(self, purse, holds_epoch)
+    fn total_balance(&mut self, purse: URef) -> Result<U512, Error> {
+        Runtime::total_balance(self, purse)
+            .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))
+    }
+
+    fn available_balance(&mut self, purse: URef) -> Result<Option<U512>, Error> {
+        Runtime::available_balance(self, purse)
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))
     }
 

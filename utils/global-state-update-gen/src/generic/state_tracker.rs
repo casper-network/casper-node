@@ -177,7 +177,6 @@ impl<T: StateReader> StateTracker<T> {
         );
 
         let mut contract_package = Package::new(
-            URef::new(rng.gen(), AccessRights::READ_ADD_WRITE),
             EntityVersions::default(),
             BTreeSet::default(),
             Groups::default(),

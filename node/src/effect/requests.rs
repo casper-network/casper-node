@@ -24,8 +24,7 @@ use casper_storage::{
         tagged_values::{TaggedValuesRequest, TaggedValuesResult},
         AddressableEntityResult, BalanceRequest, BalanceResult, EntryPointsResult,
         EraValidatorsRequest, EraValidatorsResult, ExecutionResultsChecksumResult, PutTrieRequest,
-        PutTrieResult, QueryRequest, QueryResult, RoundSeigniorageRateRequest,
-        RoundSeigniorageRateResult, TotalSupplyRequest, TotalSupplyResult, TrieRequest, TrieResult,
+        PutTrieResult, QueryRequest, QueryResult, TrieRequest, TrieResult,
     },
     DbRawBytesSpec,
 };
@@ -33,8 +32,8 @@ use casper_types::{
     execution::ExecutionResult, Approval, AvailableBlockRange, Block, BlockHash, BlockHeader,
     BlockSignatures, BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest,
     DisplayIter, EraId, ExecutionInfo, FinalitySignature, FinalitySignatureId, Key, NextUpgrade,
-    ProtocolVersion, PublicKey, Timestamp, Transaction, TransactionHash, TransactionHeader,
-    TransactionId, Transfer,
+    ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transaction, TransactionHash,
+    TransactionHeader, TransactionId, Transfer,
 };
 
 use super::{AutoClosingResponder, GossipTarget, Responder};
@@ -778,18 +777,6 @@ pub(crate) enum ContractRuntimeRequest {
         /// Responder to call with the balance result.
         responder: Responder<BalanceResult>,
     },
-    /// Get the total supply on the chain.
-    GetTotalSupply {
-        #[serde(skip_serializing)]
-        request: TotalSupplyRequest,
-        responder: Responder<TotalSupplyResult>,
-    },
-    /// Get the round seigniorage rate.
-    GetRoundSeigniorageRate {
-        #[serde(skip_serializing)]
-        request: RoundSeigniorageRateRequest,
-        responder: Responder<RoundSeigniorageRateResult>,
-    },
     /// Returns validator weights.
     GetEraValidators {
         /// Get validators weights request.
@@ -878,22 +865,6 @@ impl Display for ContractRuntimeRequest {
                 request: balance_request,
                 ..
             } => write!(formatter, "balance request: {:?}", balance_request),
-            ContractRuntimeRequest::GetTotalSupply {
-                request: total_supply_request,
-                ..
-            } => {
-                write!(formatter, "get total supply: {:?}", total_supply_request)
-            }
-            ContractRuntimeRequest::GetRoundSeigniorageRate {
-                request: round_seigniorage_rate_request,
-                ..
-            } => {
-                write!(
-                    formatter,
-                    "get round seigniorage rate: {:?}",
-                    round_seigniorage_rate_request
-                )
-            }
             ContractRuntimeRequest::GetEraValidators { request, .. } => {
                 write!(formatter, "get era validators: {:?}", request)
             }
@@ -1101,6 +1072,9 @@ pub(crate) enum ReactorInfoRequest {
     ProtocolVersion {
         responder: Responder<ProtocolVersion>,
     },
+    BalanceHoldsInterval {
+        responder: Responder<TimeDiff>,
+    },
 }
 
 impl Display for ReactorInfoRequest {
@@ -1114,6 +1088,7 @@ impl Display for ReactorInfoRequest {
                 ReactorInfoRequest::Uptime { .. } => "Uptime",
                 ReactorInfoRequest::NetworkName { .. } => "NetworkName",
                 ReactorInfoRequest::ProtocolVersion { .. } => "ProtocolVersion",
+                ReactorInfoRequest::BalanceHoldsInterval { .. } => "BalanceHoldsInterval",
             }
         )
     }

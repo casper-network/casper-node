@@ -412,46 +412,6 @@ impl ContractRuntime {
                 }
                 .ignore()
             }
-            ContractRuntimeRequest::GetTotalSupply {
-                request: total_supply_request,
-                responder,
-            } => {
-                trace!(?total_supply_request, "total supply request");
-                let metrics = Arc::clone(&self.metrics);
-                let data_access_layer = Arc::clone(&self.data_access_layer);
-                async move {
-                    let start = Instant::now();
-                    let result = data_access_layer.total_supply(total_supply_request);
-                    metrics
-                        .get_total_supply
-                        .observe(start.elapsed().as_secs_f64());
-                    trace!(?result, "total supply results");
-                    responder.respond(result).await
-                }
-                .ignore()
-            }
-            ContractRuntimeRequest::GetRoundSeigniorageRate {
-                request: round_seigniorage_rate_request,
-                responder,
-            } => {
-                trace!(
-                    ?round_seigniorage_rate_request,
-                    "round seigniorage rate request"
-                );
-                let metrics = Arc::clone(&self.metrics);
-                let data_access_layer = Arc::clone(&self.data_access_layer);
-                async move {
-                    let start = Instant::now();
-                    let result =
-                        data_access_layer.round_seigniorage_rate(round_seigniorage_rate_request);
-                    metrics
-                        .get_round_seigniorage_rate
-                        .observe(start.elapsed().as_secs_f64());
-                    trace!(?result, "round seigniorage rate results");
-                    responder.respond(result).await
-                }
-                .ignore()
-            }
             ContractRuntimeRequest::GetTaggedValues {
                 request: tagged_values_request,
                 responder,

@@ -123,8 +123,7 @@ use casper_storage::{
         tagged_values::{TaggedValuesRequest, TaggedValuesResult},
         AddressableEntityResult, BalanceRequest, BalanceResult, EraValidatorsRequest,
         EraValidatorsResult, ExecutionResultsChecksumResult, PutTrieRequest, PutTrieResult,
-        QueryRequest, QueryResult, RoundSeigniorageRateRequest, RoundSeigniorageRateResult,
-        TotalSupplyRequest, TotalSupplyResult, TrieRequest, TrieResult,
+        QueryRequest, QueryResult, TrieRequest, TrieResult,
     },
     DbRawBytesSpec,
 };
@@ -133,8 +132,8 @@ use casper_types::{
     Approval, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures,
     BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest, EraId, ExecutionInfo,
     FinalitySignature, FinalitySignatureId, FinalitySignatureV2, Key, NextUpgrade, Package,
-    ProtocolVersion, PublicKey, Timestamp, Transaction, TransactionHash, TransactionHeader,
-    TransactionId, Transfer, U512,
+    ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transaction, TransactionHash,
+    TransactionHeader, TransactionId, Transfer, U512,
 };
 
 use crate::{
@@ -1531,6 +1530,18 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    #[allow(unused)]
+    pub(crate) async fn get_balance_holds_interval(self) -> TimeDiff
+    where
+        REv: From<ReactorInfoRequest>,
+    {
+        self.make_request(
+            |responder| ReactorInfoRequest::BalanceHoldsInterval { responder },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
     pub(crate) async fn get_block_synchronizer_status(self) -> BlockSynchronizerStatus
     where
         REv: From<BlockSynchronizerRequest>,
@@ -2080,37 +2091,6 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| ContractRuntimeRequest::GetEraValidators { request, responder },
-            QueueKind::ContractRuntime,
-        )
-        .await
-    }
-
-    /// Returns the total supply from the given `root_hash`.
-    ///
-    /// This operation is read only.
-    pub(crate) async fn get_total_supply(self, request: TotalSupplyRequest) -> TotalSupplyResult
-    where
-        REv: From<ContractRuntimeRequest>,
-    {
-        self.make_request(
-            move |responder| ContractRuntimeRequest::GetTotalSupply { request, responder },
-            QueueKind::ContractRuntime,
-        )
-        .await
-    }
-
-    /// Returns the seigniorage rate from the given `root_hash`.
-    ///
-    /// This operation is read only.
-    pub(crate) async fn get_round_seigniorage_rate(
-        self,
-        request: RoundSeigniorageRateRequest,
-    ) -> RoundSeigniorageRateResult
-    where
-        REv: From<ContractRuntimeRequest>,
-    {
-        self.make_request(
-            move |responder| ContractRuntimeRequest::GetRoundSeigniorageRate { request, responder },
             QueueKind::ContractRuntime,
         )
         .await

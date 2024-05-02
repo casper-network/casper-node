@@ -14,8 +14,8 @@ use casper_types::{
     account::AccountHash,
     addressable_entity::{NamedKeyAddr, NamedKeyValue},
     system::handle_payment::Error,
-    AccessRights, AddressableEntityHash, CLValue, FeeHandling, GrantedAccess, HoldsEpoch, Key,
-    Phase, RefundHandling, StoredValue, TransferredTo, URef, U512,
+    AccessRights, AddressableEntityHash, CLValue, FeeHandling, GrantedAccess, Key, Phase,
+    RefundHandling, StoredValue, TransferredTo, URef, U512,
 };
 use std::collections::BTreeSet;
 use tracing::error;
@@ -102,14 +102,7 @@ where
         amount: U512,
     ) -> Result<(), Error> {
         // system purses do not have holds on them
-        match self.transfer(
-            None,
-            source,
-            target,
-            amount,
-            None,
-            HoldsEpoch::NOT_APPLICABLE,
-        ) {
+        match self.transfer(None, source, target, amount, None) {
             Ok(ret) => Ok(ret),
             Err(err) => {
                 error!("{}", err);
@@ -118,12 +111,8 @@ where
         }
     }
 
-    fn available_balance(
-        &mut self,
-        purse: URef,
-        holds_epoch: HoldsEpoch,
-    ) -> Result<Option<U512>, Error> {
-        match <Self as Mint>::balance(self, purse, holds_epoch) {
+    fn available_balance(&mut self, purse: URef) -> Result<Option<U512>, Error> {
+        match <Self as Mint>::balance(self, purse) {
             Ok(ret) => Ok(ret),
             Err(err) => {
                 error!("{}", err);
@@ -153,23 +142,22 @@ where
 
     fn put_key(&mut self, name: &str, key: Key) -> Result<(), Error> {
         let name = name.to_string();
-        let entity = self.addressable_entity();
-        let addressable_entity_hash = AddressableEntityHash::new(self.address().value());
-        let entity_addr = entity.entity_addr(addressable_entity_hash);
+        let entity_addr = self
+            .entity_key()
+            .as_entity_addr()
+            .ok_or(Error::UnexpectedKeyVariant)?;
         let named_key_value = StoredValue::NamedKey(
             NamedKeyValue::from_concrete_values(key, name.clone()).map_err(|_| Error::PutKey)?,
         );
         let named_key_addr =
             NamedKeyAddr::new_from_string(entity_addr, name.clone()).map_err(|_| Error::PutKey)?;
-        let key = Key::NamedKey(named_key_addr);
+        let named_key = Key::NamedKey(named_key_addr);
         // write to both tracking copy and in-mem named keys cache
         self.tracking_copy()
             .borrow_mut()
-            .write(key, named_key_value);
-        match self.named_keys_mut().insert(name, key) {
-            Some(_) => Ok(()),
-            None => Err(Error::PutKey),
-        }
+            .write(named_key, named_key_value);
+        self.named_keys_mut().insert(name, key);
+        Ok(())
     }
 
     fn remove_key(&mut self, name: &str) -> Result<(), Error> {
@@ -180,11 +168,13 @@ where
         let named_key_addr = NamedKeyAddr::new_from_string(entity_addr, name.to_string())
             .map_err(|_| Error::RemoveKey)?;
         let key = Key::NamedKey(named_key_addr);
-        let tc = self.tracking_copy();
-        if let Some(StoredValue::NamedKey(_)) =
-            tc.borrow_mut().read(&key).map_err(|_| Error::RemoveKey)?
-        {
-            tc.borrow_mut().prune(key);
+        let value = self
+            .tracking_copy()
+            .borrow_mut()
+            .read(&key)
+            .map_err(|_| Error::RemoveKey)?;
+        if let Some(StoredValue::NamedKey(_)) = value {
+            self.tracking_copy().borrow_mut().prune(key);
         }
         Ok(())
     }

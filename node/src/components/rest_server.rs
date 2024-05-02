@@ -33,7 +33,6 @@ use once_cell::sync::OnceCell;
 use tokio::{sync::oneshot, task::JoinHandle};
 use tracing::{debug, error, info, warn};
 
-use casper_json_rpc::CorsOrigin;
 use casper_types::ProtocolVersion;
 
 use super::{Component, ComponentState, InitializedComponent};
@@ -196,6 +195,7 @@ where
                             node_uptime,
                             available_block_range,
                             block_sync,
+                            latest_switch_block_header,
                         ) = join!(
                             effect_builder.get_highest_complete_block_from_storage(),
                             effect_builder.network_peers(),
@@ -206,6 +206,7 @@ where
                             effect_builder.get_uptime(),
                             effect_builder.get_available_block_range_from_storage(),
                             effect_builder.get_block_synchronizer_status(),
+                            effect_builder.get_latest_switch_block_header_from_storage()
                         );
                         let starting_state_root_hash = effect_builder
                             .get_block_header_at_height_from_storage(
@@ -226,6 +227,7 @@ where
                             available_block_range,
                             block_sync,
                             starting_state_root_hash,
+                            latest_switch_block_header.map(|header| header.block_hash()),
                         );
                         responder.respond(status_feed).await;
                     }
@@ -286,33 +288,25 @@ where
         let builder = utils::start_listening(&cfg.address)?;
         let local_addr: Arc<OnceCell<SocketAddr>> = Default::default();
 
-        let server_join_handle = match cfg.cors_origin.as_str() {
-            "" => Some(tokio::spawn(http_server::run(
+        let server_join_handle = if cfg.cors_origin.is_empty() {
+            Some(tokio::spawn(http_server::run(
                 builder,
                 effect_builder,
                 self.api_version,
                 shutdown_receiver,
                 cfg.qps_limit,
                 local_addr.clone(),
-            ))),
-            "*" => Some(tokio::spawn(http_server::run_with_cors(
+            )))
+        } else {
+            Some(tokio::spawn(http_server::run_with_cors(
                 builder,
                 effect_builder,
                 self.api_version,
                 shutdown_receiver,
                 cfg.qps_limit,
                 local_addr.clone(),
-                CorsOrigin::Any,
-            ))),
-            _ => Some(tokio::spawn(http_server::run_with_cors(
-                builder,
-                effect_builder,
-                self.api_version,
-                shutdown_receiver,
-                cfg.qps_limit,
-                local_addr.clone(),
-                CorsOrigin::Specified(cfg.cors_origin.clone()),
-            ))),
+                cfg.cors_origin.clone(),
+            )))
         };
 
         let network_name = self.network_name.clone();

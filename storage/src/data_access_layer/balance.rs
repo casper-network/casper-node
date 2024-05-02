@@ -1,5 +1,4 @@
 //! Types for balance queries.
-use crate::data_access_layer::BalanceHoldRequest;
 use casper_types::{
     account::AccountHash,
     global_state::TrieMerkleProof,
@@ -8,10 +7,16 @@ use casper_types::{
         mint::BalanceHoldAddrTag,
         HANDLE_PAYMENT,
     },
-    AccessRights, BlockTime, Digest, EntityAddr, HoldsEpoch, InitiatorAddr, Key, ProtocolVersion,
-    PublicKey, StoredValue, URef, URefAddr, U512,
+    AccessRights, BlockTime, Digest, EntityAddr, HoldBalanceHandling, InitiatorAddr, Key,
+    ProtocolVersion, PublicKey, StoredValue, TimeDiff, URef, URefAddr, U512,
 };
-use std::collections::BTreeMap;
+use itertools::Itertools;
+use num_rational::Ratio;
+use num_traits::CheckedMul;
+use std::{
+    collections::{btree_map::Entry, BTreeMap},
+    fmt::{Display, Formatter},
+};
 use tracing::error;
 
 use crate::{
@@ -27,7 +32,17 @@ pub enum BalanceHandling {
     #[default]
     Total,
     /// Adjust for balance holds (if any).
-    Available { holds_epoch: HoldsEpoch },
+    Available,
+}
+
+/// Merkle proof handling options.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default)]
+pub enum ProofHandling {
+    /// Do not attempt to provide proofs.
+    #[default]
+    NoProofs,
+    /// Provide proofs.
+    Proofs,
 }
 
 /// Represents a way to make a balance inquiry.
@@ -74,14 +89,14 @@ impl BalanceIdentifier {
             BalanceIdentifier::Public(public_key) => {
                 let account_hash = public_key.to_account_hash();
                 match tc.get_addressable_entity_by_account_hash(protocol_version, account_hash) {
-                    Ok(entity) => entity.main_purse(),
+                    Ok((_, entity)) => entity.main_purse(),
                     Err(tce) => return Err(tce),
                 }
             }
             BalanceIdentifier::Account(account_hash)
             | BalanceIdentifier::PenalizedAccount(account_hash) => {
                 match tc.get_addressable_entity_by_account_hash(protocol_version, *account_hash) {
-                    Ok(entity) => entity.main_purse(),
+                    Ok((_, entity)) => entity.main_purse(),
                     Err(tce) => return Err(tce),
                 }
             }
@@ -158,6 +173,83 @@ impl From<InitiatorAddr> for BalanceIdentifier {
     }
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default)]
+pub struct ProcessingHoldBalanceHandling {}
+
+impl ProcessingHoldBalanceHandling {
+    /// Returns new instance.
+    pub fn new() -> Self {
+        ProcessingHoldBalanceHandling::default()
+    }
+
+    /// Returns handling.
+    pub fn handling(&self) -> HoldBalanceHandling {
+        HoldBalanceHandling::Accrued
+    }
+
+    /// Returns true if handling is amortized.
+    pub fn is_amortized(&self) -> bool {
+        false
+    }
+
+    /// Returns hold interval.
+    pub fn interval(&self) -> TimeDiff {
+        TimeDiff::default()
+    }
+}
+
+impl From<(HoldBalanceHandling, u64)> for ProcessingHoldBalanceHandling {
+    fn from(_value: (HoldBalanceHandling, u64)) -> Self {
+        ProcessingHoldBalanceHandling::default()
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default)]
+pub struct GasHoldBalanceHandling {
+    handling: HoldBalanceHandling,
+    interval: TimeDiff,
+}
+
+impl GasHoldBalanceHandling {
+    /// Returns new instance.
+    pub fn new(handling: HoldBalanceHandling, interval: TimeDiff) -> Self {
+        GasHoldBalanceHandling { handling, interval }
+    }
+
+    /// Returns handling.
+    pub fn handling(&self) -> HoldBalanceHandling {
+        self.handling
+    }
+
+    /// Returns interval.
+    pub fn interval(&self) -> TimeDiff {
+        self.interval
+    }
+
+    /// Returns true if handling is amortized.
+    pub fn is_amortized(&self) -> bool {
+        matches!(self.handling, HoldBalanceHandling::Amortized)
+    }
+}
+
+impl From<(HoldBalanceHandling, TimeDiff)> for GasHoldBalanceHandling {
+    fn from(value: (HoldBalanceHandling, TimeDiff)) -> Self {
+        GasHoldBalanceHandling {
+            handling: value.0,
+            interval: value.1,
+        }
+    }
+}
+
+impl From<(HoldBalanceHandling, u64)> for GasHoldBalanceHandling {
+    fn from(value: (HoldBalanceHandling, u64)) -> Self {
+        GasHoldBalanceHandling {
+            handling: value.0,
+            interval: TimeDiff::from_millis(value.1),
+        }
+    }
+}
+
 /// Represents a balance request.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BalanceRequest {
@@ -165,6 +257,7 @@ pub struct BalanceRequest {
     protocol_version: ProtocolVersion,
     identifier: BalanceIdentifier,
     balance_handling: BalanceHandling,
+    proof_handling: ProofHandling,
 }
 
 impl BalanceRequest {
@@ -174,12 +267,14 @@ impl BalanceRequest {
         protocol_version: ProtocolVersion,
         identifier: BalanceIdentifier,
         balance_handling: BalanceHandling,
+        proof_handling: ProofHandling,
     ) -> Self {
         BalanceRequest {
             state_hash,
             protocol_version,
             identifier,
             balance_handling,
+            proof_handling,
         }
     }
 
@@ -189,12 +284,14 @@ impl BalanceRequest {
         protocol_version: ProtocolVersion,
         purse_uref: URef,
         balance_handling: BalanceHandling,
+        proof_handling: ProofHandling,
     ) -> Self {
         BalanceRequest {
             state_hash,
             protocol_version,
             identifier: BalanceIdentifier::Purse(purse_uref),
             balance_handling,
+            proof_handling,
         }
     }
 
@@ -204,12 +301,14 @@ impl BalanceRequest {
         protocol_version: ProtocolVersion,
         public_key: PublicKey,
         balance_handling: BalanceHandling,
+        proof_handling: ProofHandling,
     ) -> Self {
         BalanceRequest {
             state_hash,
             protocol_version,
             identifier: BalanceIdentifier::Public(public_key),
             balance_handling,
+            proof_handling,
         }
     }
 
@@ -219,12 +318,14 @@ impl BalanceRequest {
         protocol_version: ProtocolVersion,
         account_hash: AccountHash,
         balance_handling: BalanceHandling,
+        proof_handling: ProofHandling,
     ) -> Self {
         BalanceRequest {
             state_hash,
             protocol_version,
             identifier: BalanceIdentifier::Account(account_hash),
             balance_handling,
+            proof_handling,
         }
     }
 
@@ -234,12 +335,14 @@ impl BalanceRequest {
         protocol_version: ProtocolVersion,
         entity_addr: EntityAddr,
         balance_handling: BalanceHandling,
+        proof_handling: ProofHandling,
     ) -> Self {
         BalanceRequest {
             state_hash,
             protocol_version,
             identifier: BalanceIdentifier::Entity(entity_addr),
             balance_handling,
+            proof_handling,
         }
     }
 
@@ -249,12 +352,14 @@ impl BalanceRequest {
         protocol_version: ProtocolVersion,
         balance_addr: URefAddr,
         balance_handling: BalanceHandling,
+        proof_handling: ProofHandling,
     ) -> Self {
         BalanceRequest {
             state_hash,
             protocol_version,
             identifier: BalanceIdentifier::Internal(balance_addr),
             balance_handling,
+            proof_handling,
         }
     }
 
@@ -277,19 +382,139 @@ impl BalanceRequest {
     pub fn balance_handling(&self) -> BalanceHandling {
         self.balance_handling
     }
+
+    /// Returns proof handling.
+    pub fn proof_handling(&self) -> ProofHandling {
+        self.proof_handling
+    }
 }
 
-impl From<BalanceHoldRequest> for BalanceRequest {
-    fn from(request: BalanceHoldRequest) -> Self {
-        let balance_handling = BalanceHandling::Available {
-            holds_epoch: request.holds_epoch(),
+pub trait AvailableBalanceChecker {
+    /// Calculate and return available balance.
+    fn available_balance(
+        &self,
+        block_time: BlockTime,
+        total_balance: U512,
+        gas_hold_balance_handling: GasHoldBalanceHandling,
+        processing_hold_balance_handling: ProcessingHoldBalanceHandling,
+    ) -> Result<U512, BalanceFailure> {
+        if self.is_empty() {
+            return Ok(total_balance);
+        }
+
+        let gas_held = match gas_hold_balance_handling.handling() {
+            HoldBalanceHandling::Accrued => self.accrued(BalanceHoldAddrTag::Gas),
+            HoldBalanceHandling::Amortized => {
+                let interval = gas_hold_balance_handling.interval();
+                self.amortization(BalanceHoldAddrTag::Gas, block_time, interval)?
+            }
         };
-        BalanceRequest::new(
-            request.state_hash(),
-            request.protocol_version(),
-            request.identifier().clone(),
-            balance_handling,
-        )
+
+        let processing_held = match processing_hold_balance_handling.handling() {
+            HoldBalanceHandling::Accrued => self.accrued(BalanceHoldAddrTag::Processing),
+            HoldBalanceHandling::Amortized => {
+                let interval = processing_hold_balance_handling.interval();
+                self.amortization(BalanceHoldAddrTag::Processing, block_time, interval)?
+            }
+        };
+
+        let held = gas_held.saturating_add(processing_held);
+
+        debug_assert!(
+            total_balance >= held,
+            "it should not be possible to hold more than the total available"
+        );
+        match total_balance.checked_sub(held) {
+            Some(available_balance) => Ok(available_balance),
+            None => {
+                error!(%held, %total_balance, "held amount exceeds total balance, which should never occur.");
+                Err(BalanceFailure::HeldExceedsTotal)
+            }
+        }
+    }
+
+    fn amortization(
+        &self,
+        hold_kind: BalanceHoldAddrTag,
+        block_time: BlockTime,
+        interval: TimeDiff,
+    ) -> Result<U512, BalanceFailure> {
+        let mut held = U512::zero();
+        let block_time = block_time.value();
+        let interval = interval.millis();
+
+        for (hold_created_time, holds) in self.holds(hold_kind) {
+            let hold_created_time = hold_created_time.value();
+            if hold_created_time > block_time {
+                continue;
+            }
+            let expiry = hold_created_time.saturating_add(interval);
+            if block_time > expiry {
+                continue;
+            }
+            // total held amount
+            let held_ratio = Ratio::new_raw(
+                holds.values().copied().collect_vec().into_iter().sum(),
+                U512::one(),
+            );
+            // remaining time
+            let remaining_time = U512::from(expiry.saturating_sub(block_time));
+            // remaining time over total time
+            let ratio = Ratio::new_raw(remaining_time, U512::from(interval));
+            /*
+                EXAMPLE: 1000 held for 24 hours
+                if 1 hours has elapsed, held amount = 1000 * (23/24) == 958
+                if 2 hours has elapsed, held amount = 1000 * (22/24) == 916
+                ...
+                if 23 hours has elapsed, held amount    = 1000 * (1/24) == 41
+                if 23.50 hours has elapsed, held amount = 1000 * (1/48) == 20
+                if 23.75 hours has elapsed, held amount = 1000 * (1/96) == 10
+                                                (54000 ms / 5184000 ms)
+            */
+            match held_ratio.checked_mul(&ratio) {
+                Some(amortized) => held += amortized.to_integer(),
+                None => return Err(BalanceFailure::AmortizationFailure),
+            }
+        }
+        Ok(held)
+    }
+
+    /// Return accrued amount.
+    fn accrued(&self, hold_kind: BalanceHoldAddrTag) -> U512;
+
+    /// Return holds.
+    fn holds(&self, hold_kind: BalanceHoldAddrTag) -> BTreeMap<BlockTime, BalanceHolds>;
+
+    /// Return true if empty.
+    fn is_empty(&self) -> bool;
+}
+
+/// Balance holds with Merkle proofs.
+pub type BalanceHolds = BTreeMap<BalanceHoldAddrTag, U512>;
+
+impl AvailableBalanceChecker for BTreeMap<BlockTime, BalanceHolds> {
+    fn accrued(&self, hold_kind: BalanceHoldAddrTag) -> U512 {
+        self.values()
+            .filter_map(|holds| holds.get(&hold_kind).copied())
+            .collect_vec()
+            .into_iter()
+            .sum()
+    }
+
+    fn holds(&self, hold_kind: BalanceHoldAddrTag) -> BTreeMap<BlockTime, BalanceHolds> {
+        let mut ret = BTreeMap::new();
+        for (k, v) in self {
+            if let Some(hold) = v.get(&hold_kind) {
+                let mut inner = BTreeMap::new();
+                inner.insert(hold_kind, *hold);
+                ret.insert(*k, inner);
+            }
+        }
+        ret
+    }
+
+    fn is_empty(&self) -> bool {
+        self.is_empty()
     }
 }
 
@@ -297,8 +522,158 @@ impl From<BalanceHoldRequest> for BalanceRequest {
 pub type BalanceHoldsWithProof =
     BTreeMap<BalanceHoldAddrTag, (U512, TrieMerkleProof<Key, StoredValue>)>;
 
+impl AvailableBalanceChecker for BTreeMap<BlockTime, BalanceHoldsWithProof> {
+    fn accrued(&self, hold_kind: BalanceHoldAddrTag) -> U512 {
+        self.values()
+            .filter_map(|holds| holds.get(&hold_kind))
+            .map(|(amount, _)| *amount)
+            .collect_vec()
+            .into_iter()
+            .sum()
+    }
+
+    fn holds(&self, hold_kind: BalanceHoldAddrTag) -> BTreeMap<BlockTime, BalanceHolds> {
+        let mut ret: BTreeMap<BlockTime, BalanceHolds> = BTreeMap::new();
+        for (block_time, holds_with_proof) in self {
+            let mut holds: BTreeMap<BalanceHoldAddrTag, U512> = BTreeMap::new();
+            for (addr, (held, _)) in holds_with_proof {
+                if addr == &hold_kind {
+                    match holds.entry(*addr) {
+                        Entry::Vacant(v) => v.insert(*held),
+                        Entry::Occupied(mut o) => &mut o.insert(*held),
+                    };
+                }
+            }
+            if !holds.is_empty() {
+                match ret.entry(*block_time) {
+                    Entry::Vacant(v) => v.insert(holds),
+                    Entry::Occupied(mut o) => &mut o.insert(holds),
+                };
+            }
+        }
+        ret
+    }
+
+    fn is_empty(&self) -> bool {
+        self.is_empty()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProofsResult {
+    NotRequested {
+        /// Any time-relevant active holds on the balance, without proofs.
+        balance_holds: BTreeMap<BlockTime, BalanceHolds>,
+    },
+    Proofs {
+        /// A proof that the given value is present in the Merkle trie.
+        total_balance_proof: Box<TrieMerkleProof<Key, StoredValue>>,
+        /// Any time-relevant active holds on the balance, with proofs..
+        balance_holds: BTreeMap<BlockTime, BalanceHoldsWithProof>,
+    },
+}
+
+impl ProofsResult {
+    /// Returns total balance proof, if any.
+    pub fn total_balance_proof(&self) -> Option<&TrieMerkleProof<Key, StoredValue>> {
+        match self {
+            ProofsResult::NotRequested { .. } => None,
+            ProofsResult::Proofs {
+                total_balance_proof,
+                ..
+            } => Some(total_balance_proof),
+        }
+    }
+
+    /// Returns balance holds, if any.
+    pub fn balance_holds_with_proof(&self) -> Option<&BTreeMap<BlockTime, BalanceHoldsWithProof>> {
+        match self {
+            ProofsResult::NotRequested { .. } => None,
+            ProofsResult::Proofs { balance_holds, .. } => Some(balance_holds),
+        }
+    }
+
+    /// Returns balance holds, if any.
+    pub fn balance_holds(&self) -> Option<&BTreeMap<BlockTime, BalanceHolds>> {
+        match self {
+            ProofsResult::NotRequested { balance_holds } => Some(balance_holds),
+            ProofsResult::Proofs { .. } => None,
+        }
+    }
+
+    /// Returns the total held amount.
+    pub fn total_held_amount(&self) -> U512 {
+        match self {
+            ProofsResult::NotRequested { balance_holds } => balance_holds
+                .values()
+                .flat_map(|holds| holds.values().copied())
+                .collect_vec()
+                .into_iter()
+                .sum(),
+            ProofsResult::Proofs { balance_holds, .. } => balance_holds
+                .values()
+                .flat_map(|holds| holds.values().map(|(v, _)| *v))
+                .collect_vec()
+                .into_iter()
+                .sum(),
+        }
+    }
+
+    /// Returns the available balance, calculated using imputed values.
+    #[allow(clippy::result_unit_err)]
+    pub fn available_balance(
+        &self,
+        block_time: BlockTime,
+        total_balance: U512,
+        gas_hold_balance_handling: GasHoldBalanceHandling,
+        processing_hold_balance_handling: ProcessingHoldBalanceHandling,
+    ) -> Result<U512, BalanceFailure> {
+        match self {
+            ProofsResult::NotRequested { balance_holds } => balance_holds.available_balance(
+                block_time,
+                total_balance,
+                gas_hold_balance_handling,
+                processing_hold_balance_handling,
+            ),
+            ProofsResult::Proofs { balance_holds, .. } => balance_holds.available_balance(
+                block_time,
+                total_balance,
+                gas_hold_balance_handling,
+                processing_hold_balance_handling,
+            ),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum BalanceFailure {
+    /// Failed to calculate amortization (checked multiplication).
+    AmortizationFailure,
+    /// Held amount exceeds total balance, which should never occur.
+    HeldExceedsTotal,
+}
+
+impl Display for BalanceFailure {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BalanceFailure::AmortizationFailure => {
+                write!(
+                    f,
+                    "AmortizationFailure: failed to calculate amortization (checked multiplication)."
+                )
+            }
+            BalanceFailure::HeldExceedsTotal => {
+                write!(
+                    f,
+                    "HeldExceedsTotal: held amount exceeds total balance, which should never occur."
+                )
+            }
+        }
+    }
+}
+
 /// Result enum that represents all possible outcomes of a balance request.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum BalanceResult {
     /// Returned if a passed state root hash is not found.
     RootNotFound,
@@ -310,33 +685,43 @@ pub enum BalanceResult {
         total_balance: U512,
         /// The available balance (total balance - sum of all active holds).
         available_balance: U512,
-        /// A proof that the given value is present in the Merkle trie.
-        total_balance_proof: Box<TrieMerkleProof<Key, StoredValue>>,
-        /// Any time-relevant active holds on the balance.
-        balance_holds: BTreeMap<BlockTime, BalanceHoldsWithProof>,
+        /// Proofs result.
+        proofs_result: ProofsResult,
     },
     Failure(TrackingCopyError),
 }
 
 impl BalanceResult {
-    /// Returns the amount of motes for a [`BalanceResult::Success`] variant.
-    pub fn motes(&self) -> Option<&U512> {
+    /// Returns the purse address for a [`BalanceResult::Success`] variant.
+    pub fn purse_addr(&self) -> Option<URefAddr> {
         match self {
-            BalanceResult::Success {
-                available_balance: motes,
-                ..
-            } => Some(motes),
+            BalanceResult::Success { purse_addr, .. } => Some(*purse_addr),
             _ => None,
         }
     }
 
-    /// Returns the Merkle proof for a given [`BalanceResult::Success`] variant.
-    pub fn proof(self) -> Option<TrieMerkleProof<Key, StoredValue>> {
+    /// Returns the total balance for a [`BalanceResult::Success`] variant.
+    pub fn total_balance(&self) -> Option<&U512> {
+        match self {
+            BalanceResult::Success { total_balance, .. } => Some(total_balance),
+            _ => None,
+        }
+    }
+
+    /// Returns the available balance for a [`BalanceResult::Success`] variant.
+    pub fn available_balance(&self) -> Option<&U512> {
         match self {
             BalanceResult::Success {
-                total_balance_proof: proof,
-                ..
-            } => Some(*proof),
+                available_balance, ..
+            } => Some(available_balance),
+            _ => None,
+        }
+    }
+
+    /// Returns the Merkle proofs, if any.
+    pub fn proofs_result(self) -> Option<ProofsResult> {
+        match self {
+            BalanceResult::Success { proofs_result, .. } => Some(proofs_result),
             _ => None,
         }
     }
@@ -357,5 +742,11 @@ impl BalanceResult {
             BalanceResult::RootNotFound | BalanceResult::Failure(_) => false,
             BalanceResult::Success { .. } => true,
         }
+    }
+}
+
+impl From<TrackingCopyError> for BalanceResult {
+    fn from(tce: TrackingCopyError) -> Self {
+        BalanceResult::Failure(tce)
     }
 }

@@ -372,52 +372,6 @@ extern "C" {
         id_ptr: *const u8,
         id_size: usize,
     ) -> i32;
-    /// Records a transfer.  Can only be called from within the mint contract.
-    /// Needed to support system contract-based execution.
-    ///
-    /// # Arguments
-    ///
-    /// * `maybe_to_ptr` - pointer in wasm memory to bytes representing the recipient
-    ///   `Option<AccountHash>`
-    /// * `maybe_to_size` - size of the source `Option<AccountHash>` (in bytes)
-    /// * `source_ptr` - pointer in wasm memory to bytes representing the source `URef` to transfer
-    ///   from
-    /// * `source_size` - size of the source `URef` (in bytes)
-    /// * `target_ptr` - pointer in wasm memory to bytes representing the target `URef` to transfer
-    ///   to
-    /// * `target_size` - size of the target (in bytes)
-    /// * `amount_ptr` - pointer in wasm memory to bytes representing the amount to transfer to the
-    ///   target account
-    /// * `amount_size` - size of the amount (in bytes)
-    /// * `id_ptr` - pointer in wasm memory to bytes representing the user-defined transaction id
-    /// * `id_size` - size of the id (in bytes)
-    pub fn casper_record_transfer(
-        maybe_to_ptr: *const u8,
-        maybe_to_size: usize,
-        source_ptr: *const u8,
-        source_size: usize,
-        target_ptr: *const u8,
-        target_size: usize,
-        amount_ptr: *const u8,
-        amount_size: usize,
-        id_ptr: *const u8,
-        id_size: usize,
-    ) -> i32;
-    /// Records era info.  Can only be called from within the auction contract.
-    /// Needed to support system contract-based execution.
-    ///
-    /// # Arguments
-    ///
-    /// * `era_id_ptr` - pointer in wasm memory to bytes representing the `EraId`
-    /// * `era_id_size` - size of the `EraId` (in bytes)
-    /// * `era_info_ptr` - pointer in wasm memory to bytes representing the `EraInfo`
-    /// * `era_info_size` - size of the `EraInfo` (in bytes)
-    pub fn casper_record_era_info(
-        era_id_ptr: *const u8,
-        era_id_size: usize,
-        era_info_ptr: *const u8,
-        era_info_size: usize,
-    ) -> i32;
     /// This function uses the mint contract's balance function to get the balance
     /// of the specified purse. It causes a `Trap` if the bytes in wasm memory
     /// from `purse_ptr` to `purse_ptr + purse_size` cannot be

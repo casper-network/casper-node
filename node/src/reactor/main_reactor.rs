@@ -263,6 +263,9 @@ impl reactor::Reactor for MainReactor {
                 ReactorInfoRequest::ProtocolVersion { responder } => responder
                     .respond(self.chainspec.protocol_version())
                     .ignore(),
+                ReactorInfoRequest::BalanceHoldsInterval { responder } => responder
+                    .respond(self.chainspec.core_config.gas_hold_interval)
+                    .ignore(),
             },
             MainEvent::MetaBlockAnnouncement(MetaBlockAnnouncement(meta_block)) => self
                 .handle_meta_block(
@@ -1141,7 +1144,12 @@ impl reactor::Reactor for MainReactor {
             protocol_version,
             chainspec.network_config.name.clone(),
         );
-        let binary_port = BinaryPort::new(config.binary_port_server.clone(), registry)?;
+
+        let binary_port = BinaryPort::new(
+            config.binary_port_server.clone(),
+            chainspec.clone(),
+            registry,
+        )?;
         let event_stream_server = EventStreamServer::new(
             config.event_stream_server.clone(),
             storage.root_path().to_path_buf(),

@@ -27,8 +27,8 @@ use casper_types::{
     contract_messages::{Message, Messages},
     execution::{Effects, TransformError, TransformInstruction, TransformKindV2, TransformV2},
     global_state::TrieMerkleProof,
-    handle_stored_dictionary_value, CLType, CLValue, CLValueError, Digest, Key, KeyTag,
-    StoredValue, StoredValueTypeMismatch, Tagged, U512,
+    handle_stored_dictionary_value, BlockGlobalAddr, CLType, CLValue, CLValueError, Digest, Key,
+    KeyTag, StoredValue, StoredValueTypeMismatch, Tagged, U512,
 };
 
 use self::meter::{heap_meter::HeapSize, Meter};
@@ -69,7 +69,7 @@ impl TrackingCopyQueryResult {
     }
 
     /// As result.
-    pub fn as_result(self) -> Result<StoredValue, TrackingCopyError> {
+    pub fn into_result(self) -> Result<StoredValue, TrackingCopyError> {
         match self {
             TrackingCopyQueryResult::RootNotFound => {
                 Err(TrackingCopyError::Storage(Error::RootNotFound))
@@ -243,7 +243,7 @@ impl<M: Meter<Key, StoredValue>> TrackingCopyCache<M> {
     }
 
     /// Gets the set of mutated keys in the cache by `KeyTag`.
-    pub fn get_key_tag_muts_cached(&mut self, key_tag: &KeyTag) -> Option<BTreeSet<Key>> {
+    pub fn get_key_tag_muts_cached(&self, key_tag: &KeyTag) -> Option<BTreeSet<Key>> {
         let pruned = &self.prunes_cached;
         if let Some(keys) = self.key_tag_muts_cached.get(key_tag) {
             let mut ret = BTreeSet::new();
@@ -422,7 +422,10 @@ where
     ) {
         self.write(message_key, message_value);
         self.write(message_topic_key, message_topic_summary);
-        self.write(Key::BlockMessageCount, block_message_count_value);
+        self.write(
+            Key::BlockGlobal(BlockGlobalAddr::MessageCount),
+            block_message_count_value,
+        );
         self.messages.push(message);
     }
 
@@ -700,6 +703,10 @@ where
                 }
                 StoredValue::EntryPoint(_) => {
                     return Ok(query.into_not_found_result("EntryPoint value found."));
+                }
+                // TODO: We may be interested in this value, check the logic
+                StoredValue::Reservation(_) => {
+                    return Ok(query.into_not_found_result("Reservation value found."))
                 }
             }
         }

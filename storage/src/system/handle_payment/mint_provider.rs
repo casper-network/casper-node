@@ -1,5 +1,5 @@
 use casper_types::{
-    account::AccountHash, system::handle_payment::Error, HoldsEpoch, TransferredTo, URef, U512,
+    account::AccountHash, system::handle_payment::Error, TransferredTo, URef, U512,
 };
 
 /// Provides an access to mint.
@@ -27,11 +27,7 @@ pub trait MintProvider {
     ) -> Result<(), Error>;
 
     /// Checks balance of a `purse`. Returns `None` if given purse does not exist.
-    fn available_balance(
-        &mut self,
-        purse: URef,
-        holds_epoch: HoldsEpoch,
-    ) -> Result<Option<U512>, Error>;
+    fn available_balance(&mut self, purse: URef) -> Result<Option<U512>, Error>;
 
     /// Reduce total supply by `amount`.
     fn reduce_total_supply(&mut self, amount: U512) -> Result<(), Error>;

@@ -11,6 +11,7 @@ pub mod auction;
 pub mod balance;
 mod balance_hold;
 pub mod bids;
+mod block_global;
 pub mod block_rewards;
 mod entry_points;
 pub mod era_validators;
@@ -33,11 +34,16 @@ mod trie;
 
 pub use addressable_entity::{AddressableEntityRequest, AddressableEntityResult};
 pub use auction::{AuctionMethod, BiddingRequest, BiddingResult};
-pub use balance::{BalanceIdentifier, BalanceRequest, BalanceResult};
+pub use balance::{
+    BalanceHolds, BalanceHoldsWithProof, BalanceIdentifier, BalanceRequest, BalanceResult,
+    GasHoldBalanceHandling, ProofHandling, ProofsResult,
+};
 pub use balance_hold::{
-    BalanceHoldError, BalanceHoldRequest, BalanceHoldResult, InsufficientBalanceHandling,
+    BalanceHoldError, BalanceHoldKind, BalanceHoldMode, BalanceHoldRequest, BalanceHoldResult,
+    InsufficientBalanceHandling,
 };
 pub use bids::{BidsRequest, BidsResult};
+pub use block_global::{BlockGlobalKind, BlockGlobalRequest, BlockGlobalResult};
 pub use block_rewards::{BlockRewardsError, BlockRewardsRequest, BlockRewardsResult};
 pub use entry_points::{EntryPointsRequest, EntryPointsResult};
 pub use era_validators::{EraValidatorsRequest, EraValidatorsResult};
@@ -118,8 +124,8 @@ where
         self.state.flush(request)
     }
 
-    fn checkout(&self, state_hash: Digest) -> Result<Option<Self::Reader>, GlobalStateError> {
-        self.state.checkout(state_hash)
+    fn empty_root(&self) -> Digest {
+        self.state.empty_root()
     }
 
     fn tracking_copy(
@@ -132,8 +138,8 @@ where
         }
     }
 
-    fn empty_root(&self) -> Digest {
-        self.state.empty_root()
+    fn checkout(&self, state_hash: Digest) -> Result<Option<Self::Reader>, GlobalStateError> {
+        self.state.checkout(state_hash)
     }
 
     fn trie(&self, request: TrieRequest) -> TrieResult {

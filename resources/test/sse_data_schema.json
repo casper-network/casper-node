@@ -1699,9 +1699,7 @@
             "Reserved": {
               "type": "object",
               "required": [
-                "paid_amount",
-                "receipt",
-                "strike_price"
+                "receipt"
               ],
               "properties": {
                 "receipt": {
@@ -1711,18 +1709,6 @@
                       "$ref": "#/definitions/Digest"
                     }
                   ]
-                },
-                "paid_amount": {
-                  "description": "Price paid in the past to reserve space in a future block.",
-                  "type": "integer",
-                  "format": "uint64",
-                  "minimum": 0.0
-                },
-                "strike_price": {
-                  "description": "The gas price at the time of reservation.",
-                  "type": "integer",
-                  "format": "uint8",
-                  "minimum": 0.0
                 }
               },
               "additionalProperties": false
@@ -1960,7 +1946,7 @@
               ],
               "properties": {
                 "name": {
-                  "description": "The package alias.",
+                  "description": "The package name.",
                   "type": "string"
                 },
                 "version": {
@@ -3316,11 +3302,12 @@
         "initiator",
         "limit",
         "payment",
+        "size_estimate",
         "transfers"
       ],
       "properties": {
         "initiator": {
-          "description": "Who initiatied this transaction.",
+          "description": "Who initiated this transaction.",
           "allOf": [
             {
               "$ref": "#/definitions/InitiatorAddr"
@@ -3371,6 +3358,12 @@
           "items": {
             "$ref": "#/definitions/Transfer"
           }
+        },
+        "size_estimate": {
+          "description": "The size estimate of the transaction",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
         },
         "effects": {
           "description": "The effects of executing this transaction.",
@@ -3920,6 +3913,19 @@
             }
           },
           "additionalProperties": false
+        },
+        {
+          "description": "A reservation record.",
+          "type": "object",
+          "required": [
+            "Reservation"
+          ],
+          "properties": {
+            "Reservation": {
+              "$ref": "#/definitions/ReservationKind"
+            }
+          },
+          "additionalProperties": false
         }
       ]
     },
@@ -4237,9 +4243,9 @@
         },
         "versions": {
           "description": "All versions (enabled & disabled)",
-          "type": "object",
-          "additionalProperties": {
-            "$ref": "#/definitions/ContractHash"
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ContractVersion"
           }
         },
         "disabled_versions": {
@@ -4265,6 +4271,29 @@
               "$ref": "#/definitions/ContractPackageStatus"
             }
           ]
+        }
+      }
+    },
+    "ContractVersion": {
+      "type": "object",
+      "required": [
+        "contract_hash",
+        "contract_version",
+        "protocol_version_major"
+      ],
+      "properties": {
+        "protocol_version_major": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "contract_version": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "contract_hash": {
+          "$ref": "#/definitions/ContractHash"
         }
       }
     },
@@ -4539,21 +4568,12 @@
       "description": "Entity definition, metadata, and security container.",
       "type": "object",
       "required": [
-        "access_key",
         "disabled_versions",
         "groups",
         "lock_status",
         "versions"
       ],
       "properties": {
-        "access_key": {
-          "description": "Key used to add or disable versions.",
-          "allOf": [
-            {
-              "$ref": "#/definitions/URef"
-            }
-          ]
-        },
         "versions": {
           "description": "All versions (enabled & disabled).",
           "allOf": [
@@ -4753,6 +4773,28 @@
         }
       }
     },
+    "ReservationKind": {
+      "description": "Container for bytes recording location, type and data for a gas reservation",
+      "type": "object",
+      "required": [
+        "receipt",
+        "reservation_data",
+        "reservation_kind"
+      ],
+      "properties": {
+        "receipt": {
+          "$ref": "#/definitions/Digest"
+        },
+        "reservation_kind": {
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0.0
+        },
+        "reservation_data": {
+          "$ref": "#/definitions/Bytes"
+        }
+      }
+    },
     "TransformError": {
       "description": "Error type for applying and combining transforms.\n\nA `TypeMismatch` occurs when a transform cannot be applied because the types are not compatible (e.g. trying to add a number to a string).",
       "oneOf": [
@@ -4912,45 +4954,18 @@
     },
     "EntityAddr": {
       "description": "The address for an AddressableEntity which contains the 32 bytes and tagging information.",
-      "oneOf": [
+      "anyOf": [
         {
           "description": "The address for a system entity account or contract.",
-          "type": "object",
-          "required": [
-            "System"
-          ],
-          "properties": {
-            "System": {
-              "type": "string"
-            }
-          },
-          "additionalProperties": false
+          "type": "string"
         },
         {
           "description": "The address of an entity that corresponds to an Account.",
-          "type": "object",
-          "required": [
-            "Account"
-          ],
-          "properties": {
-            "Account": {
-              "type": "string"
-            }
-          },
-          "additionalProperties": false
+          "type": "string"
         },
         {
           "description": "The address of an entity that corresponds to a Userland smart contract.",
-          "type": "object",
-          "required": [
-            "SmartContract"
-          ],
-          "properties": {
-            "SmartContract": {
-              "type": "string"
-            }
-          },
-          "additionalProperties": false
+          "type": "string"
         }
       ]
     },
