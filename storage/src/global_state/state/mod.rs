@@ -1102,6 +1102,15 @@ pub trait StateProvider {
                 .map_err(|auc_err| {
                     TrackingCopyError::SystemContract(system::Error::Auction(auc_err))
                 }),
+            AuctionMethod::ChangeBidPublicKey {
+                public_key,
+                new_public_key,
+            } => runtime
+                .change_bid_public_key(public_key, new_public_key)
+                .map(|_| AuctionMethodRet::Unit)
+                .map_err(|auc_err| {
+                    TrackingCopyError::SystemContract(system::Error::Auction(auc_err))
+                }),
         };
 
         let effects = tc.borrow_mut().effects();
