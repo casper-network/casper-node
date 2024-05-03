@@ -339,6 +339,12 @@ pub enum Error {
     /// assert_eq!(51, Error::MissingPurse as u8);
     /// ```
     MissingPurse = 51,
+    /// Unexpected bid variant.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(52, Error::UnexpectedBidVariant as u8);
+    /// ```
+    UnexpectedBidVariant = 52,
 }
 
 impl Display for Error {
@@ -396,6 +402,7 @@ impl Display for Error {
             Error::TransferToAdministrator => formatter.write_str("Transfer to administrator error"),
             Error::ForgedReference => formatter.write_str("Forged reference"),
             Error::MissingPurse => formatter.write_str("Missing purse"),
+            Error::UnexpectedBidVariant => formatter.write_str("Unexpected bid variant"),
         }
     }
 }
@@ -479,6 +486,7 @@ impl TryFrom<u8> for Error {
             d if d == Error::TransferToAdministrator as u8 => Ok(Error::TransferToAdministrator),
             d if d == Error::ForgedReference as u8 => Ok(Error::ForgedReference),
             d if d == Error::MissingPurse as u8 => Ok(Error::MissingPurse),
+            d if d == Error::UnexpectedBidVariant as u8 => Ok(Error::UnexpectedBidVariant),
             _ => Err(TryFromU8ForError(())),
         }
     }

@@ -75,6 +75,9 @@ impl<T: StateReader> StateTracker<T> {
                 delegator.validator_public_key(),
                 Some(delegator.delegator_public_key()),
             ),
+            BidKind::Credit(credit) => {
+                BidAddr::new_credit(credit.validator_public_key(), credit.era_id())
+            }
         };
 
         let _ = self
@@ -312,6 +315,9 @@ impl<T: StateReader> StateTracker<T> {
                     }
                 }
             }
+            BidKind::Credit(credit) => existing_bids
+                .credit(credit.validator_public_key())
+                .map(|existing_credit| BidKind::Credit(Box::new(existing_credit))),
         }
     }
 

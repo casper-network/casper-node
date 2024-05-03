@@ -24,7 +24,6 @@ use casper_types::{
     system::{
         self,
         auction::SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
-        handle_payment::Error,
         mint::{
             BalanceHoldAddr, BalanceHoldAddrTag, ARG_AMOUNT, ROUND_SEIGNIORAGE_RATE_KEY,
             TOTAL_SUPPLY_KEY,
@@ -1241,8 +1240,9 @@ pub trait StateProvider {
                         refund_amount,
                         None,
                     )
-                    .map_err(|_| Error::Transfer)
-                {
+                    .map_err(|mint_err| {
+                        TrackingCopyError::SystemContract(system::Error::Mint(mint_err))
+                    }) {
                     Ok(_) => Ok(Some(refund_amount)),
                     Err(err) => Err(err),
                 }
@@ -1288,8 +1288,9 @@ pub trait StateProvider {
                         refund_amount,
                         None,
                     )
-                    .map_err(|_| Error::Transfer)
-                {
+                    .map_err(|mint_err| {
+                        TrackingCopyError::SystemContract(system::Error::Mint(mint_err))
+                    }) {
                     Ok(_) => Ok(Some(U512::zero())), // return 0 in this mode
                     Err(err) => Err(err),
                 }
@@ -1325,7 +1326,9 @@ pub trait StateProvider {
                 };
                 match runtime.burn(source_purse, burn_amount) {
                     Ok(_) => Ok(burn_amount),
-                    Err(err) => Err(err),
+                    Err(hpe) => Err(TrackingCopyError::SystemContract(
+                        system::Error::HandlePayment(hpe),
+                    )),
                 }
             }
             HandleRefundMode::SetRefundPurse { target } => {
@@ -1335,12 +1338,16 @@ pub trait StateProvider {
                 };
                 match runtime.set_refund_purse(target_purse) {
                     Ok(_) => Ok(None),
-                    Err(err) => Err(err),
+                    Err(hpe) => Err(TrackingCopyError::SystemContract(
+                        system::Error::HandlePayment(hpe),
+                    )),
                 }
             }
             HandleRefundMode::ClearRefundPurse => match runtime.clear_refund_purse() {
                 Ok(_) => Ok(None),
-                Err(err) => Err(err),
+                Err(hpe) => Err(TrackingCopyError::SystemContract(
+                    system::Error::HandlePayment(hpe),
+                )),
             },
         };
 
@@ -1348,9 +1355,7 @@ pub trait StateProvider {
 
         match result {
             Ok(amount) => HandleRefundResult::Success { effects, amount },
-            Err(hpe) => HandleRefundResult::Failure(TrackingCopyError::SystemContract(
-                system::Error::HandlePayment(hpe),
-            )),
+            Err(tce) => HandleRefundResult::Failure(tce),
         }
     }
 
@@ -1386,6 +1391,16 @@ pub trait StateProvider {
         };
 
         let result = match handle_fee_mode {
+            HandleFeeMode::Credit {
+                validator,
+                amount,
+                era_id,
+            } => runtime
+                .write_validator_credit(*validator, era_id, amount)
+                .map(|_| ())
+                .map_err(|auction_error| {
+                    TrackingCopyError::SystemContract(system::Error::Auction(auction_error))
+                }),
             HandleFeeMode::Pay {
                 initiator_addr,
                 amount,
@@ -1408,14 +1423,22 @@ pub trait StateProvider {
                         amount,
                         None,
                     )
-                    .map_err(|_| Error::Transfer)
+                    .map_err(|mint_err| {
+                        TrackingCopyError::SystemContract(system::Error::Mint(mint_err))
+                    })
             }
             HandleFeeMode::Burn { source, amount } => {
                 let source_purse = match source.purse_uref(&mut tc.borrow_mut(), protocol_version) {
                     Ok(value) => value,
                     Err(tce) => return HandleFeeResult::Failure(tce),
                 };
-                runtime.burn(source_purse, amount)
+                runtime
+                    .burn(source_purse, amount)
+                    .map_err(|handle_payment_error| {
+                        TrackingCopyError::SystemContract(system::Error::HandlePayment(
+                            handle_payment_error,
+                        ))
+                    })
             }
         };
 
@@ -1423,9 +1446,7 @@ pub trait StateProvider {
 
         match result {
             Ok(_) => HandleFeeResult::Success { effects },
-            Err(hpe) => HandleFeeResult::Failure(TrackingCopyError::SystemContract(
-                system::Error::HandlePayment(hpe),
-            )),
+            Err(tce) => HandleFeeResult::Failure(tce),
         }
     }
 

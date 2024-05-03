@@ -3230,6 +3230,19 @@
             }
           },
           "additionalProperties": false
+        },
+        {
+          "description": "Credited amount.",
+          "type": "object",
+          "required": [
+            "Credit"
+          ],
+          "properties": {
+            "Credit": {
+              "$ref": "#/definitions/ValidatorCredit"
+            }
+          },
+          "additionalProperties": false
         }
       ]
     },
@@ -3288,6 +3301,42 @@
         "inactive": {
           "description": "`true` if validator has been \"evicted\"",
           "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ValidatorCredit": {
+      "description": "Validator credit record.",
+      "type": "object",
+      "required": [
+        "amount",
+        "era_id",
+        "validator_public_key"
+      ],
+      "properties": {
+        "validator_public_key": {
+          "description": "Validator public key",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PublicKey"
+            }
+          ]
+        },
+        "era_id": {
+          "description": "The era id the credit was created.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EraId"
+            }
+          ]
+        },
+        "amount": {
+          "description": "The credit amount.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/U512"
+            }
+          ]
         }
       },
       "additionalProperties": false

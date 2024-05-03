@@ -18,7 +18,7 @@ use casper_execution_engine::engine_state::engine_config::DEFAULT_PROTOCOL_VERSI
 use casper_types::{
     system::auction::{
         Bid, BidKind, BidsExt, Delegator, SeigniorageRecipient, SeigniorageRecipientsSnapshot,
-        ValidatorBid,
+        ValidatorBid, ValidatorCredit,
     },
     CLValue, EraId, PublicKey, StoredValue, U512,
 };
@@ -318,6 +318,10 @@ pub fn add_and_remove_bids<T: StateReader>(
                         *delegator_bid.bonding_purse(),
                     )))
                 }
+                BidKind::Credit(credit) => BidKind::Credit(Box::new(ValidatorCredit::empty(
+                    public_key.clone(),
+                    credit.era_id(),
+                ))),
             };
             state.set_bid(reset_bid, slash_instead_of_unbonding);
         }
