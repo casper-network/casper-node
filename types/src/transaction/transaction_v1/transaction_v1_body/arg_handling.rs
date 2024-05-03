@@ -37,6 +37,10 @@ const REDELEGATE_ARG_NEW_VALIDATOR: RequiredArg<PublicKey> = RequiredArg::new("n
 
 const ACTIVATE_BID_ARG_VALIDATOR: RequiredArg<PublicKey> = RequiredArg::new(ARG_VALIDATOR);
 
+const CHANGE_BID_PUBLIC_KEY_ARG_PUBLIC_KEY: RequiredArg<PublicKey> = RequiredArg::new("public_key");
+const CHANGE_BID_PUBLIC_KEY_ARG_NEW_PUBLIC_KEY: RequiredArg<PublicKey> =
+    RequiredArg::new("new_public_key");
+
 struct RequiredArg<T> {
     name: &'static str,
     _phantom: PhantomData<T>,
@@ -324,11 +328,20 @@ pub(in crate::transaction::transaction_v1) fn has_valid_redelegate_args(
     Ok(())
 }
 
-/// Checks the given `RuntimeArgs` are suitable for use in a redelegate transaction.
+/// Checks the given `RuntimeArgs` are suitable for use in an activate bid transaction.
 pub(in crate::transaction::transaction_v1) fn has_valid_activate_bid_args(
     args: &RuntimeArgs,
 ) -> Result<(), InvalidTransactionV1> {
     let _validator = ACTIVATE_BID_ARG_VALIDATOR.get(args)?;
+    Ok(())
+}
+
+/// Checks the given `RuntimeArgs` are suitable for use in a change bid public key transaction.
+pub(in crate::transaction::transaction_v1) fn has_valid_change_bid_public_key_args(
+    args: &RuntimeArgs,
+) -> Result<(), InvalidTransactionV1> {
+    let _public_key = CHANGE_BID_PUBLIC_KEY_ARG_PUBLIC_KEY.get(args)?;
+    let _new_public_key = CHANGE_BID_PUBLIC_KEY_ARG_NEW_PUBLIC_KEY.get(args)?;
     Ok(())
 }
 
