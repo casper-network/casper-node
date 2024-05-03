@@ -1,14 +1,18 @@
 #[cfg(test)]
 mod tests;
 
-use std::{collections::BTreeMap, ops::Range};
+use std::{collections::BTreeMap, ops::Range, sync::Arc};
 
-use casper_storage::data_access_layer::{
-    EraValidatorsRequest, RoundSeigniorageRateRequest, RoundSeigniorageRateResult,
-    TotalSupplyRequest, TotalSupplyResult,
+use casper_storage::{
+    data_access_layer::{
+        DataAccessLayer, EraValidatorsRequest, RoundSeigniorageRateRequest,
+        RoundSeigniorageRateResult, TotalSupplyRequest, TotalSupplyResult,
+    },
+    global_state::state::{lmdb::LmdbGlobalState, StateProvider},
 };
 use futures::stream::{self, StreamExt as _, TryStreamExt as _};
 
+use itertools::Itertools;
 use num_rational::Ratio;
 use num_traits::{CheckedAdd, CheckedMul};
 
@@ -62,6 +66,7 @@ impl CitedBlock {
 pub(crate) struct RewardsInfo {
     eras_info: BTreeMap<EraId, EraInfo>,
     cited_blocks: Vec<CitedBlock>,
+    cited_block_height_start: u64,
 }
 
 /// The era information needed in the rewards computation:
@@ -97,7 +102,10 @@ pub enum RewardsError {
 impl RewardsInfo {
     pub async fn new<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
+        data_access_layer: Arc<DataAccessLayer<LmdbGlobalState>>,
         protocol_version: ProtocolVersion,
+        activation_era_id: EraId,
+        maybe_upgraded_validators: Option<&BTreeMap<PublicKey, U512>>,
         signature_rewards_max_delay: u64,
         executable_block: ExecutableBlock,
     ) -> Result<Self, RewardsError> {
@@ -114,12 +122,20 @@ impl RewardsInfo {
                 .await
                 .ok_or(RewardsError::MissingSwitchBlock(previous_era_id))?;
 
-            // Here we do not substract 1, because we want one block more:
-            previous_era_switch_block_header
-                .height()
-                .saturating_sub(signature_rewards_max_delay)
+            if previous_era_id.is_genesis() || previous_era_id == activation_era_id {
+                // We do not attempt to reward blocks from before an upgrade!
+                previous_era_switch_block_header.height()
+            } else {
+                // Here we do not substract 1, because we want one block more:
+                previous_era_switch_block_header
+                    .height()
+                    .saturating_sub(signature_rewards_max_delay)
+            }
         };
-        let range_to_fetch = cited_block_height_start..executable_block.height;
+
+        // We need just one block from before the upgrade to determine the validators in
+        // the following era.
+        let range_to_fetch = cited_block_height_start.saturating_sub(1)..executable_block.height;
 
         let mut cited_blocks =
             collect_past_blocks_batched(effect_builder, range_to_fetch.clone()).await?;
@@ -131,8 +147,13 @@ impl RewardsInfo {
             "blocks fetched",
         );
 
-        let eras_info =
-            Self::create_eras_info(effect_builder, current_era_id, cited_blocks.iter()).await?;
+        let eras_info = Self::create_eras_info(
+            data_access_layer,
+            activation_era_id,
+            current_era_id,
+            maybe_upgraded_validators,
+            cited_blocks.iter(),
+        )?;
 
         cited_blocks.push(CitedBlock::from_executable_block(
             executable_block,
@@ -142,23 +163,28 @@ impl RewardsInfo {
         Ok(RewardsInfo {
             eras_info,
             cited_blocks,
+            cited_block_height_start,
         })
     }
 
     #[cfg(test)]
     pub fn new_testing(eras_info: BTreeMap<EraId, EraInfo>, cited_blocks: Vec<CitedBlock>) -> Self {
+        let cited_block_height_start = cited_blocks.first().map(|block| block.height).unwrap_or(0);
         Self {
             eras_info,
             cited_blocks,
+            cited_block_height_start,
         }
     }
 
     /// `block_hashs` is an iterator over the era ID to get the information about + the block
     /// hash to query to have such information (which may not be from the same era).
-    async fn create_eras_info<REv: ReactorEventT>(
-        effect_builder: EffectBuilder<REv>,
+    fn create_eras_info<'a>(
+        data_access_layer: Arc<DataAccessLayer<LmdbGlobalState>>,
+        activation_era_id: EraId,
         current_era_id: EraId,
-        mut cited_blocks: impl Iterator<Item = &CitedBlock>,
+        maybe_upgraded_validators: Option<&BTreeMap<PublicKey, U512>>,
+        mut cited_blocks: impl Iterator<Item = &'a CitedBlock>,
     ) -> Result<BTreeMap<EraId, EraInfo>, RewardsError> {
         let oldest_block = cited_blocks.next();
 
@@ -193,29 +219,33 @@ impl RewardsInfo {
         let num_eras_to_fetch =
             eras_and_state_root_hashes.len() + usize::from(oldest_block_is_genesis);
 
-        let mut eras_info: BTreeMap<_, _> = stream::iter(eras_and_state_root_hashes)
-            .then(|(era_id, protocol_version, state_root_hash)| async move {
-                let era_validators_result = effect_builder
-                    .get_era_validators_from_contract_runtime(EraValidatorsRequest::new(
-                        state_root_hash,
-                        protocol_version,
-                    ))
-                    .await;
-                let msg = format!("{}", era_validators_result);
-                let weights = era_validators_result
-                    .take_era_validators()
-                    .ok_or(msg)
-                    .map_err(RewardsError::FailedToFetchEra)?
-                    // We consume the map to not clone the value:
-                    .into_iter()
-                    .find(|(key, _)| key == &era_id)
-                    .ok_or_else(|| RewardsError::FailedToFetchEraValidators(state_root_hash))?
-                    .1;
+        let data_access_layer = &data_access_layer;
+
+        let mut eras_info: BTreeMap<_, _> = eras_and_state_root_hashes
+            .into_iter()
+            .map(|(era_id, protocol_version, state_root_hash)| {
+                let weights = if let (true, Some(upgraded_validators)) =
+                    (era_id == activation_era_id, maybe_upgraded_validators)
+                {
+                    upgraded_validators.clone()
+                } else {
+                    let request = EraValidatorsRequest::new(state_root_hash, protocol_version);
+                    let era_validators_result = data_access_layer.era_validators(request);
+                    let msg = format!("{}", era_validators_result);
+                    era_validators_result
+                        .take_era_validators()
+                        .ok_or(msg)
+                        .map_err(RewardsError::FailedToFetchEra)?
+                        // We consume the map to not clone the value:
+                        .into_iter()
+                        .find(|(key, _)| key == &era_id)
+                        .ok_or_else(|| RewardsError::FailedToFetchEraValidators(state_root_hash))?
+                        .1
+                };
 
                 let total_supply_request =
                     TotalSupplyRequest::new(state_root_hash, protocol_version);
-                let total_supply = match effect_builder.get_total_supply(total_supply_request).await
-                {
+                let total_supply = match data_access_layer.total_supply(total_supply_request) {
                     TotalSupplyResult::RootNotFound
                     | TotalSupplyResult::MintNotFound
                     | TotalSupplyResult::ValueNotFound(_)
@@ -227,18 +257,16 @@ impl RewardsInfo {
 
                 let seignorate_rate_request =
                     RoundSeigniorageRateRequest::new(state_root_hash, protocol_version);
-                let seignorate_rate = match effect_builder
-                    .get_round_seigniorage_rate(seignorate_rate_request)
-                    .await
-                {
-                    RoundSeigniorageRateResult::RootNotFound
-                    | RoundSeigniorageRateResult::MintNotFound
-                    | RoundSeigniorageRateResult::ValueNotFound(_)
-                    | RoundSeigniorageRateResult::Failure(_) => {
-                        return Err(RewardsError::FailedToFetchSeigniorageRate);
-                    }
-                    RoundSeigniorageRateResult::Success { rate } => rate,
-                };
+                let seignorate_rate =
+                    match data_access_layer.round_seigniorage_rate(seignorate_rate_request) {
+                        RoundSeigniorageRateResult::RootNotFound
+                        | RoundSeigniorageRateResult::MintNotFound
+                        | RoundSeigniorageRateResult::ValueNotFound(_)
+                        | RoundSeigniorageRateResult::Failure(_) => {
+                            return Err(RewardsError::FailedToFetchSeigniorageRate);
+                        }
+                        RoundSeigniorageRateResult::Success { rate } => rate,
+                    };
 
                 let reward_per_round = seignorate_rate * total_supply;
                 let total_weights = weights.values().copied().sum();
@@ -252,8 +280,7 @@ impl RewardsInfo {
                     },
                 ))
             })
-            .try_collect()
-            .await?;
+            .try_collect()?;
 
         // We cannot get the genesis info from a root hash, so we copy it from era 1 when needed.
         if oldest_block_is_genesis {
@@ -352,6 +379,7 @@ impl EraInfo {
 /// It is done in 2 steps so that it is easier to unit test the rewards calculation.
 pub(crate) async fn fetch_data_and_calculate_rewards_for_era<REv: ReactorEventT>(
     effect_builder: EffectBuilder<REv>,
+    data_access_layer: Arc<DataAccessLayer<LmdbGlobalState>>,
     chainspec: &Chainspec,
     executable_block: ExecutableBlock,
 ) -> Result<BTreeMap<PublicKey, U512>, RewardsError> {
@@ -366,16 +394,18 @@ pub(crate) async fn fetch_data_and_calculate_rewards_for_era<REv: ReactorEventT>
     {
         // Special case: genesis block and immediate switch blocks do not yield any reward, because
         // there is no block producer, and no signatures from previous blocks to be rewarded:
-        Ok(chainspec
-            .network_config
-            .accounts_config
-            .validators()
-            .map(|account| (account.public_key.clone(), U512::zero()))
-            .collect())
+        Ok(BTreeMap::new())
     } else {
         let rewards_info = RewardsInfo::new(
             effect_builder,
+            data_access_layer,
             chainspec.protocol_version(),
+            chainspec.protocol_config.activation_point.era_id(),
+            chainspec
+                .protocol_config
+                .global_state_update
+                .as_ref()
+                .and_then(|gsu| gsu.validators.as_ref()),
             chainspec.core_config.signature_rewards_max_delay,
             executable_block,
         )
@@ -442,7 +472,7 @@ pub(crate) fn rewards_for_era(
         for (signature_rewards, signed_block_height) in block
             .rewarded_signatures
             .iter()
-            .zip((0..block.height).rev())
+            .zip((rewards_info.cited_block_height_start..block.height).rev())
         {
             let signed_block_era = rewards_info.era_for_block_height(signed_block_height)?;
             let validators_providing_signature =

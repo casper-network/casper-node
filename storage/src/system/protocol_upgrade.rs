@@ -3,7 +3,7 @@ use num_rational::Ratio;
 use std::{cell::RefCell, collections::BTreeSet, rc::Rc};
 
 use thiserror::Error;
-use tracing::{debug, error};
+use tracing::{debug, error, info};
 
 use casper_types::{
     addressable_entity::{
@@ -17,7 +17,9 @@ use casper_types::{
             UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
         },
         handle_payment::ACCUMULATION_PURSE_KEY,
-        mint::ROUND_SEIGNIORAGE_RATE_KEY,
+        mint::{
+            MINT_GAS_HOLD_HANDLING_KEY, MINT_GAS_HOLD_INTERVAL_KEY, ROUND_SEIGNIORAGE_RATE_KEY,
+        },
         SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
     },
     AccessRights, AddressableEntity, AddressableEntityHash, ByteCode, ByteCodeAddr, ByteCodeHash,
@@ -29,7 +31,7 @@ use casper_types::{
 
 use crate::{
     global_state::state::StateProvider,
-    tracking_copy::{TrackingCopy, TrackingCopyExt},
+    tracking_copy::{TrackingCopy, TrackingCopyEntityExt, TrackingCopyExt},
     AddressGenerator,
 };
 
@@ -60,6 +62,9 @@ pub enum ProtocolUpgradeError {
     /// Failed to create system entity registry.
     #[error("Failed to insert system entity registry")]
     FailedToCreateSystemRegistry,
+    /// Found unexpected variant of a key.
+    #[error("Unexpected key variant")]
+    UnexpectedKeyVariant,
     /// Found unexpected variant of a stored value.
     #[error("Unexpected stored value variant")]
     UnexpectedStoredValueVariant,
@@ -92,7 +97,7 @@ impl From<bytesrepr::Error> for ProtocolUpgradeError {
     }
 }
 
-/// Adrresses for system entities.
+/// Addresses for system entities.
 pub struct SystemEntityAddresses {
     mint: AddressableEntityHash,
     auction: AddressableEntityHash,
@@ -135,6 +140,7 @@ where
     S: StateProvider + ?Sized,
 {
     config: ProtocolUpgradeConfig,
+    address_generator: Rc<RefCell<AddressGenerator>>,
     tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
 }
 
@@ -145,10 +151,19 @@ where
     /// Creates new system upgrader instance.
     pub fn new(
         config: ProtocolUpgradeConfig,
+        protocol_upgrade_config_hash: Digest,
         tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
     ) -> Self {
+        let phase = Phase::System;
+        let protocol_upgrade_config_hash_bytes = protocol_upgrade_config_hash.as_ref();
+
+        let address_generator = {
+            let generator = AddressGenerator::new(protocol_upgrade_config_hash_bytes, phase);
+            Rc::new(RefCell::new(generator))
+        };
         ProtocolUpgrader {
             config,
+            address_generator,
             tracking_copy,
         }
     }
@@ -162,11 +177,14 @@ where
             self.config.fee_handling(),
         )?;
         self.refresh_system_contracts(&system_entity_addresses)?;
+        self.handle_new_gas_hold_config(system_entity_addresses.mint())?;
         self.handle_new_validator_slots(system_entity_addresses.auction())?;
         self.handle_new_auction_delay(system_entity_addresses.auction())?;
         self.handle_new_locked_funds_period_millis(system_entity_addresses.auction())?;
         self.handle_new_unbonding_delay(system_entity_addresses.auction())?;
         self.handle_new_round_seigniorage_rate(system_entity_addresses.mint())?;
+        self.handle_legacy_accounts_migration()?;
+        self.handle_legacy_contracts_migration()?;
         self.handle_bids_migration()?;
         self.handle_global_state_updates();
         self.handle_era_info_migration()
@@ -514,11 +532,8 @@ where
             EntityKind::Account(account_hash),
         );
 
-        let access_key = address_generator.new_uref(AccessRights::READ_ADD_WRITE);
-
         let package = {
             let mut package = Package::new(
-                access_key,
                 EntityVersions::default(),
                 BTreeSet::default(),
                 Groups::default(),
@@ -648,6 +663,79 @@ where
         }
 
         Ok(())
+    }
+
+    /// Upsert gas hold interval to mint named keys.
+    pub fn handle_new_gas_hold_config(
+        &self,
+        mint: AddressableEntityHash,
+    ) -> Result<(), ProtocolUpgradeError> {
+        if self.config.new_gas_hold_handling().is_none()
+            && self.config.new_gas_hold_interval().is_none()
+        {
+            return Ok(());
+        }
+
+        let mint_addr = EntityAddr::new_system(mint.value());
+        let named_keys = self.tracking_copy.borrow_mut().get_named_keys(mint_addr)?;
+
+        if let Some(new_gas_hold_handling) = self.config.new_gas_hold_handling() {
+            debug!(%new_gas_hold_handling, "handle new gas hold handling");
+            let stored_value =
+                StoredValue::CLValue(CLValue::from_t(new_gas_hold_handling.tag()).map_err(
+                    |_| ProtocolUpgradeError::Bytesrepr("new_gas_hold_handling".to_string()),
+                )?);
+
+            self.system_uref(
+                mint_addr,
+                MINT_GAS_HOLD_HANDLING_KEY,
+                &named_keys,
+                stored_value,
+            )?;
+        }
+
+        if let Some(new_gas_hold_interval) = self.config.new_gas_hold_interval() {
+            debug!(%new_gas_hold_interval, "handle new gas hold interval");
+            let stored_value =
+                StoredValue::CLValue(CLValue::from_t(new_gas_hold_interval).map_err(|_| {
+                    ProtocolUpgradeError::Bytesrepr("new_gas_hold_interval".to_string())
+                })?);
+
+            self.system_uref(
+                mint_addr,
+                MINT_GAS_HOLD_INTERVAL_KEY,
+                &named_keys,
+                stored_value,
+            )?;
+        }
+        Ok(())
+    }
+
+    fn system_uref(
+        &self,
+        entity_addr: EntityAddr,
+        name: &str,
+        named_keys: &NamedKeys,
+        stored_value: StoredValue,
+    ) -> Result<(), ProtocolUpgradeError> {
+        let uref = {
+            match named_keys.get(name) {
+                Some(key) => match key.as_uref() {
+                    Some(uref) => *uref,
+                    None => {
+                        return Err(ProtocolUpgradeError::UnexpectedKeyVariant);
+                    }
+                },
+                None => self
+                    .address_generator
+                    .borrow_mut()
+                    .new_uref(AccessRights::READ_ADD_WRITE),
+            }
+        };
+        self.tracking_copy
+            .borrow_mut()
+            .upsert_uref_to_named_keys(entity_addr, name, named_keys, uref, stored_value)
+            .map_err(ProtocolUpgradeError::TrackingCopy)
     }
 
     /// Handle new validator slots.
@@ -789,6 +877,61 @@ where
         Ok(())
     }
 
+    /// Handle legacy account migration.
+    pub fn handle_legacy_accounts_migration(&self) -> Result<(), ProtocolUpgradeError> {
+        if !self.config.migrate_legacy_accounts() {
+            return Ok(());
+        }
+        info!("handling one time accounts migration");
+        let mut tc = self.tracking_copy.borrow_mut();
+        let existing_keys = match tc.get_keys(&KeyTag::Account) {
+            Ok(keys) => keys,
+            Err(err) => return Err(ProtocolUpgradeError::TrackingCopy(err)),
+        };
+        let protocol_version = self.config.new_protocol_version();
+        for existing_key in existing_keys {
+            match existing_key.into_account() {
+                None => {
+                    // should we skip this and keep going or error?
+                    // for now, skipping.
+                    continue;
+                }
+                Some(account_hash) => {
+                    if let Err(tce) = tc.migrate_account(account_hash, protocol_version) {
+                        return Err(ProtocolUpgradeError::TrackingCopy(tce));
+                    }
+                }
+            }
+        }
+        info!("ending one time accounts migration");
+        Ok(())
+    }
+
+    /// Handle legacy contract migration.
+    pub fn handle_legacy_contracts_migration(&self) -> Result<(), ProtocolUpgradeError> {
+        if !self.config.migrate_legacy_contracts() {
+            return Ok(());
+        }
+        info!("handling one time contracts migration");
+        let mut tc = self.tracking_copy.borrow_mut();
+        let existing_keys = match tc.get_keys(&KeyTag::Hash) {
+            Ok(keys) => keys,
+            Err(err) => return Err(ProtocolUpgradeError::TrackingCopy(err)),
+        };
+        let protocol_version = self.config.new_protocol_version();
+        for existing_key in existing_keys {
+            if let Some(StoredValue::Contract(_)) = tc.read(&existing_key)? {
+                if let Err(tce) = tc.migrate_contract(existing_key, protocol_version) {
+                    return Err(ProtocolUpgradeError::TrackingCopy(tce));
+                }
+            } else {
+                continue;
+            }
+        }
+        info!("ending one time contracts migration");
+        Ok(())
+    }
+
     /// Handle bids migration.
     pub fn handle_bids_migration(&self) -> Result<(), ProtocolUpgradeError> {
         debug!("handle bids migration");
@@ -874,7 +1017,7 @@ where
                 }
                 None => {
                     // Can't find key
-                    // Most likely this chain did not yet ran an auction, or recently completed a
+                    // Most likely this chain did not yet run an auction, or recently completed a
                     // prune
                 }
             };

@@ -21,8 +21,7 @@ pub const DEFAULT_CREATE_COST: u32 = 2_500_000_000;
 /// Default cost of the `balance` mint entry point.
 pub const DEFAULT_BALANCE_COST: u32 = 10_000;
 /// Default cost of the `transfer` mint entry point.
-/// TODO: Reinstate value to original value of 10_000
-pub const DEFAULT_TRANSFER_COST: u32 = 0;
+pub const DEFAULT_TRANSFER_COST: u32 = 10_000;
 /// Default cost of the `read_base_round_reward` mint entry point.
 pub const DEFAULT_READ_BASE_ROUND_REWARD_COST: u32 = 10_000;
 /// Default cost of the `mint_into_existing_purse` mint entry point.

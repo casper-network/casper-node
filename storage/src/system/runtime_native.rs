@@ -1,6 +1,6 @@
 use crate::{
     global_state::{error::Error as GlobalStateReader, state::StateReader},
-    tracking_copy::{TrackingCopyEntityExt, TrackingCopyError},
+    tracking_copy::{TrackingCopyEntityExt, TrackingCopyError, TrackingCopyExt},
     AddressGenerator, TrackingCopy,
 };
 use casper_types::{
@@ -9,6 +9,7 @@ use casper_types::{
     StoredValue, TransactionHash, Transfer, URef, U512,
 };
 use std::{cell::RefCell, collections::BTreeSet, rc::Rc};
+use tracing::error;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Config {
@@ -58,7 +59,7 @@ impl Config {
         let compute_rewards = chainspec.core_config.compute_rewards;
         let max_delegators_per_validator = chainspec.core_config.max_delegators_per_validator;
         let minimum_delegation_amount = chainspec.core_config.minimum_delegation_amount;
-        let balance_hold_interval = chainspec.core_config.balance_hold_interval.millis();
+        let balance_hold_interval = chainspec.core_config.gas_hold_interval.millis();
         Config::new(
             transfer_config,
             fee_handling,
@@ -235,6 +236,7 @@ pub struct RuntimeNative<S> {
 
     tracking_copy: Rc<RefCell<TrackingCopy<S>>>,
     address: AccountHash,
+    entity_key: Key,
     addressable_entity: AddressableEntity,
     named_keys: NamedKeys,
     access_rights: ContextAccessRights,
@@ -254,6 +256,7 @@ where
         id: Id,
         tracking_copy: Rc<RefCell<TrackingCopy<S>>>,
         address: AccountHash,
+        entity_key: Key,
         addressable_entity: AddressableEntity,
         named_keys: NamedKeys,
         access_rights: ContextAccessRights,
@@ -271,6 +274,7 @@ where
 
             tracking_copy,
             address,
+            entity_key,
             addressable_entity,
             named_keys,
             access_rights,
@@ -281,7 +285,6 @@ where
     }
 
     /// Creates a runtime with elevated permissions for systemic behaviors.
-    #[allow(clippy::too_many_arguments)]
     pub fn new_system_runtime(
         config: Config,
         protocol_version: ProtocolVersion,
@@ -292,8 +295,60 @@ where
         let seed = id.seed();
         let address_generator = AddressGenerator::new(&seed, phase);
         let transfers = vec![];
-        let (addressable_entity, named_keys, access_rights) =
+        let (entity_addr, addressable_entity, named_keys, access_rights) =
             tracking_copy.borrow_mut().system_entity(protocol_version)?;
+        let address = PublicKey::System.to_account_hash();
+        let entity_key = Key::AddressableEntity(entity_addr);
+        let remaining_spending_limit = U512::MAX; // system has no spending limit
+        Ok(RuntimeNative {
+            config,
+            id,
+            address_generator,
+            protocol_version,
+
+            tracking_copy,
+            address,
+            entity_key,
+            addressable_entity,
+            named_keys,
+            access_rights,
+            remaining_spending_limit,
+            transfers,
+            phase,
+        })
+    }
+
+    /// Creates a runtime context for a system contract.
+    pub fn new_system_contract_runtime(
+        config: Config,
+        protocol_version: ProtocolVersion,
+        id: Id,
+        tracking_copy: Rc<RefCell<TrackingCopy<S>>>,
+        phase: Phase,
+        name: &str,
+    ) -> Result<Self, TrackingCopyError> {
+        let seed = id.seed();
+        let address_generator = AddressGenerator::new(&seed, phase);
+        let transfers = vec![];
+
+        let system_entity_registry = tracking_copy.borrow().get_system_entity_registry()?;
+        let hash = match system_entity_registry.get(name).copied() {
+            Some(hash) => hash,
+            None => {
+                error!("unexpected failure; system contract {} not found", name);
+                return Err(TrackingCopyError::MissingSystemContractHash(
+                    name.to_string(),
+                ));
+            }
+        };
+        let addressable_entity = tracking_copy
+            .borrow_mut()
+            .get_addressable_entity_by_hash(hash)?;
+        let entity_addr = addressable_entity.entity_addr(hash);
+        let entity_key = Key::AddressableEntity(entity_addr);
+        let named_keys = tracking_copy.borrow().get_named_keys(entity_addr)?;
+        let access_rights = addressable_entity.extract_access_rights(hash, &named_keys);
+
         let address = PublicKey::System.to_account_hash();
         let remaining_spending_limit = U512::MAX; // system has no spending limit
         Ok(RuntimeNative {
@@ -304,6 +359,7 @@ where
 
             tracking_copy,
             address,
+            entity_key,
             addressable_entity,
             named_keys,
             access_rights,
@@ -335,6 +391,10 @@ where
 
     pub fn address(&self) -> AccountHash {
         self.address
+    }
+
+    pub fn entity_key(&self) -> &Key {
+        &self.entity_key
     }
 
     pub fn addressable_entity(&self) -> &AddressableEntity {

@@ -163,8 +163,7 @@ async fn run_test_case(
         allow_request_get_all_values,
         allow_request_get_trie,
         allow_request_speculative_exec,
-        max_request_size_bytes: 1024,
-        max_response_size_bytes: 1024,
+        max_message_size_bytes: 1024,
         client_request_limit: 2,
         client_request_buffer_size: 16,
         max_connections: 2,
@@ -223,14 +222,14 @@ impl Reactor for MockReactor {
 
     fn new(
         config: Self::Config,
-        _chainspec: Arc<Chainspec>,
+        chainspec: Arc<Chainspec>,
         _chainspec_raw_bytes: Arc<ChainspecRawBytes>,
         _network_identity: NetworkIdentity,
         registry: &Registry,
         _event_queue: EventQueueHandle<Self::Event>,
         _rng: &mut NodeRng,
     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
-        let mut binary_port = BinaryPort::new(config, registry).unwrap();
+        let mut binary_port = BinaryPort::new(config, chainspec, registry).unwrap();
         <BinaryPort as InitializedComponent<Event>>::start_initialization(&mut binary_port);
 
         let reactor = MockReactor { binary_port };

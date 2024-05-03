@@ -40,7 +40,6 @@ use casper_types::{
     contract_messages::{
         Message, MessageAddr, MessagePayload, MessageTopicOperation, MessageTopicSummary,
     },
-    contracts::ContractPackage,
     crypto,
     system::{
         self,
@@ -48,9 +47,9 @@ use casper_types::{
         handle_payment, mint, Caller, SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
         STANDARD_PAYMENT,
     },
-    AccessRights, ApiError, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLTyped,
-    CLValue, ContextAccessRights, ContractWasm, EntityAddr, EntityKind, EntityVersion,
-    EntityVersionKey, EntityVersions, Gas, GrantedAccess, Group, Groups, HoldsEpoch, HostFunction,
+    AccessRights, ApiError, BlockGlobalAddr, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash,
+    ByteCodeKind, CLTyped, CLValue, ContextAccessRights, EntityAddr, EntityKind, EntityVersion,
+    EntityVersionKey, EntityVersions, Gas, GrantedAccess, Group, Groups, HostFunction,
     HostFunctionCost, InitiatorAddr, Key, NamedArg, Package, PackageHash, PackageStatus, Phase,
     PublicKey, RuntimeArgs, StoredValue, Tagged, Transfer, TransferResult, TransferV2,
     TransferredTo, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, U512,
@@ -554,14 +553,6 @@ where
         }
     }
 
-    /// Returns holds epoch.
-    fn holds_epoch(&self) -> HoldsEpoch {
-        HoldsEpoch::from_block_time(
-            self.context.get_blocktime(),
-            self.context.engine_config().balance_hold_interval,
-        )
-    }
-
     /// Calls host mint contract.
     fn call_host_mint(
         &mut self,
@@ -636,11 +627,9 @@ where
                 mint_runtime.charge_system_contract_call(mint_costs.balance)?;
 
                 let uref: URef = Self::get_named_argument(runtime_args, mint::ARG_PURSE)?;
-                let holds_epoch = self.holds_epoch();
 
-                let maybe_balance: Option<U512> = mint_runtime
-                    .balance(uref, holds_epoch)
-                    .map_err(Self::reverter)?;
+                let maybe_balance: Option<U512> =
+                    mint_runtime.balance(uref).map_err(Self::reverter)?;
                 CLValue::from_t(maybe_balance).map_err(Self::reverter)
             })(),
             // Type: `fn transfer(maybe_to: Option<AccountHash>, source: URef, target: URef, amount:
@@ -654,9 +643,8 @@ where
                 let target: URef = Self::get_named_argument(runtime_args, mint::ARG_TARGET)?;
                 let amount: U512 = Self::get_named_argument(runtime_args, mint::ARG_AMOUNT)?;
                 let id: Option<u64> = Self::get_named_argument(runtime_args, mint::ARG_ID)?;
-                let holds_epoch = self.holds_epoch();
                 let result: Result<(), mint::Error> =
-                    mint_runtime.transfer(maybe_to, source, target, amount, id, holds_epoch);
+                    mint_runtime.transfer(maybe_to, source, target, amount, id);
 
                 CLValue::from_t(result).map_err(Self::reverter)
             })(),
@@ -840,10 +828,8 @@ where
                 let delegation_rate =
                     Self::get_named_argument(runtime_args, auction::ARG_DELEGATION_RATE)?;
                 let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
-                let holds_epoch = self.holds_epoch();
-
                 let result = runtime
-                    .add_bid(account_hash, delegation_rate, amount, holds_epoch)
+                    .add_bid(account_hash, delegation_rate, amount)
                     .map_err(Self::reverter)?;
 
                 CLValue::from_t(result).map_err(Self::reverter)
@@ -872,7 +858,6 @@ where
                     self.context.engine_config().max_delegators_per_validator();
                 let minimum_delegation_amount =
                     self.context.engine_config().minimum_delegation_amount();
-                let holds_epoch = self.holds_epoch();
                 let result = runtime
                     .delegate(
                         delegator,
@@ -880,7 +865,6 @@ where
                         amount,
                         max_delegators_per_validator,
                         minimum_delegation_amount,
-                        holds_epoch,
                     )
                     .map_err(Self::reverter)?;
 
@@ -989,6 +973,20 @@ where
                 let validator = Self::get_named_argument(runtime_args, auction::ARG_VALIDATOR)?;
 
                 runtime.activate_bid(validator).map_err(Self::reverter)?;
+
+                CLValue::from_t(()).map_err(Self::reverter)
+            })(),
+
+            auction::METHOD_CHANGE_BID_PUBLIC_KEY => (|| {
+                runtime.charge_system_contract_call(auction_costs.change_bid_public_key)?;
+
+                let public_key = Self::get_named_argument(runtime_args, auction::ARG_PUBLIC_KEY)?;
+                let new_public_key =
+                    Self::get_named_argument(runtime_args, auction::ARG_NEW_PUBLIC_KEY)?;
+
+                runtime
+                    .change_bid_public_key(public_key, new_public_key)
+                    .map_err(Self::reverter)?;
 
                 CLValue::from_t(()).map_err(Self::reverter)
             })(),
@@ -1650,7 +1648,6 @@ where
     ) -> Result<(Package, URef), ExecError> {
         let access_key = self.context.new_unit_uref()?;
         let contract_package = Package::new(
-            access_key,
             EntityVersions::new(),
             BTreeSet::new(),
             Groups::new(),
@@ -1753,6 +1750,9 @@ where
         output_ptr: u32,
     ) -> Result<Result<(), ApiError>, ExecError> {
         if !self.context.allow_casper_add_contract_version() {
+            // NOTE: This is not a permission check on the caller,
+            // it is enforcing the rule that only legacy standard deploys (which are grandfathered)
+            // and install / upgrade transactions are allowed to call this method
             return Ok(Err(ApiError::NotAllowedToAddContractVersion));
         }
 
@@ -1802,9 +1802,6 @@ where
             }
         }
 
-        // TODO: EE-1032 - Implement different ways of carrying on existing named keys.
-        named_keys.append(previous_named_keys);
-
         let byte_code_hash = self.context.new_hash_address()?;
 
         let entity_hash = self.context.new_hash_address()?;
@@ -1828,8 +1825,7 @@ where
 
         let entity_key = Key::AddressableEntity(entity_addr);
 
-        // Is this still valid??
-        // TODO: EE-1032 - Implement different ways of carrying on existing named keys.
+        named_keys.append(previous_named_keys);
         self.context.write_named_keys(entity_addr, named_keys)?;
 
         let entity = AddressableEntity::new(
@@ -1901,12 +1897,33 @@ where
             let action_thresholds = previous_entity.action_thresholds().clone();
 
             let associated_keys = previous_entity.associated_keys().clone();
-
+            // STEP 1: LOAD THE CONTRACT AND CHECK IF CALLER IS IN ASSOCIATED KEYS WITH ENOUGH
+            // WEIGHT     TO UPGRADE (COMPARE TO THE ACTION THRESHOLD FOR UPGRADE
+            // ACTION). STEP 2: IF CALLER IS NOT IN CONTRACTS ASSOCIATED KEYS
+            //    CHECK FOR LEGACY UREFADDR UNDER KEY:HASH(PACKAGEADDR)
+            //    IF FOUND,
+            //      call validate_uref(that uref)
+            //    IF VALID,
+            //      create the new contract version carrying forward previous state including
+            // associated keys      BUT add the caller to the associated keys with
+            // weight == to the action threshold for upgrade ELSE, error
             if !previous_entity.can_upgrade_with(self.context.authorization_keys()) {
                 // Check if the calling entity must be grandfathered into the new
                 // addressable entity format
                 let account_hash = self.context.get_caller();
-                let has_access = self.context.validate_uref(&package.access_key()).is_ok();
+
+                let access_key = match self
+                    .context
+                    .read_gs(&Key::Hash(previous_entity.package_hash().value()))?
+                    .and_then(|stored_value| stored_value.into_cl_value())
+                {
+                    None => {
+                        return Err(ExecError::UpgradeAuthorizationFailure);
+                    }
+                    Some(cl_value) => cl_value.into_t::<URef>().map_err(ExecError::CLValue),
+                }?;
+
+                let has_access = self.context.validate_uref(&access_key).is_ok();
 
                 if has_access && !associated_keys.contains_key(&account_hash) {
                     previous_entity.add_associated_key(
@@ -2443,14 +2460,9 @@ where
             return Err(ExecError::DisabledUnrestrictedTransfers);
         }
 
-        let holds_epoch = self.holds_epoch();
         // A precondition check that verifies that the transfer can be done
         // as the source purse has enough funds to cover the transfer.
-        if amount
-            > self
-                .available_balance(source, holds_epoch)?
-                .unwrap_or_default()
-        {
+        if amount > self.available_balance(source)?.unwrap_or_default() {
             return Ok(Err(mint::Error::InsufficientFunds.into()));
         }
 
@@ -2498,10 +2510,8 @@ where
                     EntityKind::Account(target),
                 );
 
-                let access_key = self.context.new_unit_uref()?;
                 let package = {
                     let mut package = Package::new(
-                        access_key,
                         EntityVersions::default(),
                         BTreeSet::default(),
                         Groups::default(),
@@ -2706,12 +2716,8 @@ where
         }
     }
 
-    fn available_balance(
-        &mut self,
-        purse: URef,
-        holds_epoch: HoldsEpoch,
-    ) -> Result<Option<U512>, ExecError> {
-        match self.context.available_balance(&purse, holds_epoch) {
+    fn available_balance(&mut self, purse: URef) -> Result<Option<U512>, ExecError> {
+        match self.context.available_balance(&purse) {
             Ok(motes) => Ok(Some(motes.value())),
             Err(err) => Err(err),
         }
@@ -2736,7 +2742,7 @@ where
             }
         };
 
-        let balance = match self.available_balance(purse, self.holds_epoch())? {
+        let balance = match self.available_balance(purse)? {
             Some(balance) => balance,
             None => return Ok(Err(ApiError::InvalidPurse)),
         };
@@ -3345,70 +3351,11 @@ where
         &mut self,
         contract_hash: AddressableEntityHash,
     ) -> Result<AddressableEntity, ExecError> {
-        let maybe_legacy_contract = self.context.read_gs(&Key::Hash(contract_hash.value()))?;
-        match maybe_legacy_contract {
-            Some(StoredValue::Contract(contract)) => {
-                let contract_package_key = Key::Hash(contract.contract_package_hash().value());
-
-                let legacy_contract_package: ContractPackage =
-                    self.context.read_gs_typed(&contract_package_key)?;
-
-                let package: Package = legacy_contract_package.into();
-
-                let access_uref = &package.access_key();
-
-                let package_key = Key::Package(contract.contract_package_hash().value());
-
-                self.context
-                    .metered_write_gs_unsafe(package_key, StoredValue::Package(package))?;
-
-                let entity_main_purse = self.create_purse()?;
-
-                let associated_keys = if self.context.validate_uref(access_uref).is_ok() {
-                    AssociatedKeys::new(self.context.get_caller(), Weight::new(1))
-                } else {
-                    AssociatedKeys::default()
-                };
-
-                let contract_addr = EntityAddr::new_smart_contract(contract_hash.value());
-
-                self.context
-                    .write_named_keys(contract_addr, contract.named_keys().clone())?;
-
-                let updated_entity = AddressableEntity::new(
-                    PackageHash::new(contract.contract_package_hash().value()),
-                    ByteCodeHash::new(contract.contract_wasm_hash().value()),
-                    contract.entry_points().clone(),
-                    self.context.protocol_version(),
-                    entity_main_purse,
-                    associated_keys,
-                    ActionThresholds::default(),
-                    MessageTopics::default(),
-                    EntityKind::SmartContract,
-                );
-
-                let previous_wasm = self.context.read_gs_typed::<ContractWasm>(&Key::Hash(
-                    contract.contract_wasm_hash().value(),
-                ))?;
-
-                let byte_code_key = Key::byte_code_key(ByteCodeAddr::new_wasm_addr(
-                    updated_entity.byte_code_addr(),
-                ));
-
-                let byte_code: ByteCode = previous_wasm.into();
-
-                self.context
-                    .metered_write_gs_unsafe(byte_code_key, StoredValue::ByteCode(byte_code))?;
-
-                let entity_key = Key::contract_entity_key(contract_hash);
-
-                self.context
-                    .metered_write_gs_unsafe(entity_key, updated_entity.clone())?;
-                Ok(updated_entity)
-            }
-            Some(_) => Err(ExecError::UnexpectedStoredValueVariant),
-            None => Err(ExecError::InvalidEntity(contract_hash)),
-        }
+        let protocol_version = self.context.protocol_version();
+        self.context
+            .migrate_contract(contract_hash, protocol_version)?;
+        self.context
+            .read_gs_typed(&Key::contract_entity_key(contract_hash))
     }
 
     fn add_message_topic(&mut self, topic_name: &str) -> Result<Result<(), ApiError>, ExecError> {
@@ -3450,7 +3397,10 @@ where
             prev_topic_summary.message_count()
         };
 
-        let block_message_index: u64 = match self.context.read_gs(&Key::BlockMessageCount)? {
+        let block_message_index: u64 = match self
+            .context
+            .read_gs(&Key::BlockGlobal(BlockGlobalAddr::MessageCount))?
+        {
             Some(stored_value) => {
                 let (prev_block_time, prev_count): (BlockTime, u64) = CLValue::into_t(
                     CLValue::try_from(stored_value).map_err(ExecError::TypeMismatch)?,

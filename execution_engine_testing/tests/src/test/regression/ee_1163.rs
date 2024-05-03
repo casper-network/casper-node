@@ -4,7 +4,8 @@ use casper_engine_test_support::{
 use casper_execution_engine::engine_state::{Error, WASMLESS_TRANSFER_FIXED_GAS_PRICE};
 use casper_storage::{data_access_layer::TransferRequest, system::transfer::TransferError};
 use casper_types::{
-    account::AccountHash, system::handle_payment, Gas, Motes, RuntimeArgs, SystemConfig, U512,
+    account::AccountHash, system::handle_payment, FeeHandling, Gas, Motes, RuntimeArgs,
+    SystemConfig, U512,
 };
 
 // const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);
@@ -40,15 +41,17 @@ fn should_charge_for_user_error(
         .expect("should have result");
     // TODO: reenable when new payment logic is added
     // assert_eq!(response.cost(), transfer_cost);
-    assert_eq!(
-        purse_balance_before - transfer_cost_motes.value(),
-        purse_balance_after
-    );
-    assert_eq!(
-        proposer_purse_balance_before + transfer_cost_motes.value(),
-        proposer_purse_balance_after
-    );
-
+    let fee_handling = builder.chainspec().core_config.fee_handling;
+    if fee_handling == FeeHandling::PayToProposer {
+        assert_eq!(
+            purse_balance_before - transfer_cost_motes.value(),
+            purse_balance_after
+        );
+        assert_eq!(
+            proposer_purse_balance_before + transfer_cost_motes.value(),
+            proposer_purse_balance_after
+        );
+    }
     // Verify handle payment postconditions
 
     let handle_payment = builder.get_handle_payment_contract();

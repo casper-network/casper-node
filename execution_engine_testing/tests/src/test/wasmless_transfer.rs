@@ -1,8 +1,8 @@
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, LmdbWasmTestBuilder, TransferRequestBuilder, UpgradeRequestBuilder,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION, LOCAL_GENESIS_REQUEST,
+    ExecuteRequestBuilder, LmdbWasmTestBuilder, TransferRequestBuilder, DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_PAYMENT, LOCAL_GENESIS_REQUEST,
 };
 use casper_execution_engine::engine_state::{
     Error as CoreError, WASMLESS_TRANSFER_FIXED_GAS_PRICE,
@@ -12,8 +12,7 @@ use casper_types::{
     account::AccountHash,
     runtime_args,
     system::{handle_payment, mint},
-    AccessRights, EraId, Gas, Key, MintCosts, Motes, ProtocolVersion, PublicKey, SecretKey, URef,
-    U512,
+    AccessRights, Gas, Key, MintCosts, Motes, PublicKey, SecretKey, URef, U512,
 };
 
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";
@@ -171,15 +170,8 @@ fn transfer_wasmless(wasmless_transfer: WasmlessTransfer) {
         .transfer_and_commit(no_wasm_transfer_request)
         .expect_success();
 
-    let wasmless_transfer_gas_cost = Gas::from(MintCosts::default().transfer);
-    let wasmless_transfer_cost = Motes::from_gas(
-        wasmless_transfer_gas_cost,
-        WASMLESS_TRANSFER_FIXED_GAS_PRICE,
-    )
-    .expect("gas overflow");
-
     assert_eq!(
-        account_1_starting_balance - transfer_amount - wasmless_transfer_cost.value(),
+        account_1_starting_balance - transfer_amount,
         builder.get_purse_balance(account_1_purse),
         "account 1 ending balance incorrect"
     );
@@ -541,13 +533,6 @@ fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer)
 #[ignore]
 #[test]
 fn transfer_wasmless_should_create_target_if_it_doesnt_exist() {
-    let wasmless_transfer_gas_cost = Gas::from(MintCosts::default().transfer);
-    let wasmless_transfer_cost = Motes::from_gas(
-        wasmless_transfer_gas_cost,
-        WASMLESS_TRANSFER_FIXED_GAS_PRICE,
-    )
-    .expect("gas overflow");
-
     let create_account_2: bool = false;
     let mut builder = init_wasmless_transform_builder(create_account_2);
     let transfer_amount: U512 = U512::from(1000);
@@ -580,7 +565,7 @@ fn transfer_wasmless_should_create_target_if_it_doesnt_exist() {
     let account_2_starting_balance = builder.get_purse_balance(account_2.main_purse());
 
     assert_eq!(
-        account_1_starting_balance - transfer_amount - wasmless_transfer_cost.value(),
+        account_1_starting_balance - transfer_amount,
         builder.get_purse_balance(account_1_purse),
         "account 1 ending balance incorrect"
     );
@@ -665,13 +650,6 @@ fn init_wasmless_transform_builder(create_account_2: bool) -> LmdbWasmTestBuilde
 #[ignore]
 #[test]
 fn transfer_wasmless_should_fail_without_main_purse_minimum_balance() {
-    let wasmless_transfer_gas_cost = Gas::from(MintCosts::default().transfer);
-    let wasmless_transfer_cost = Motes::from_gas(
-        wasmless_transfer_gas_cost,
-        WASMLESS_TRANSFER_FIXED_GAS_PRICE,
-    )
-    .expect("gas overflow");
-
     let create_account_2: bool = false;
     let mut builder = init_wasmless_transform_builder(create_account_2);
     let account_1_to_account_2_amount: U512 = U512::one();
@@ -706,7 +684,7 @@ fn transfer_wasmless_should_fail_without_main_purse_minimum_balance() {
     let account_2_starting_balance = builder.get_purse_balance(account_2.main_purse());
 
     assert_eq!(
-        account_1_starting_balance - account_1_to_account_2_amount - wasmless_transfer_cost.value(),
+        account_1_starting_balance - account_1_to_account_2_amount,
         builder.get_purse_balance(account_1_purse),
         "account 1 ending balance incorrect"
     );
@@ -780,7 +758,7 @@ fn transfer_wasmless_should_transfer_funds_after_paying_for_transfer() {
     let account_2_starting_balance = builder.get_purse_balance(account_2.main_purse());
 
     assert_eq!(
-        account_1_starting_balance - account_1_to_account_2_amount - wasmless_transfer_cost.value(),
+        account_1_starting_balance - account_1_to_account_2_amount,
         builder.get_purse_balance(account_1_purse),
         "account 1 ending balance incorrect"
     );
@@ -848,63 +826,64 @@ fn transfer_wasmless_should_fail_with_secondary_purse_insufficient_funds() {
     // );
 }
 
-#[ignore]
-#[test]
-fn transfer_wasmless_should_observe_upgraded_cost() {
-    let new_wasmless_transfer_cost_value = MintCosts::default().transfer * 2;
-    // let new_max_associated_keys = DEFAULT_MAX_ASSOCIATED_KEYS;
-
-    let new_wasmless_transfer_gas_cost = Gas::from(new_wasmless_transfer_cost_value);
-    let new_wasmless_transfer_cost = Motes::from_gas(
-        new_wasmless_transfer_gas_cost,
-        WASMLESS_TRANSFER_FIXED_GAS_PRICE,
-    )
-    .expect("gas overflow");
-
-    let transfer_amount = U512::one();
-
-    const DEFAULT_ACTIVATION_POINT: EraId = EraId::new(1);
-
-    let old_protocol_version = DEFAULT_PROTOCOL_VERSION;
-    let new_protocol_version = ProtocolVersion::from_parts(
-        old_protocol_version.value().major,
-        old_protocol_version.value().minor,
-        old_protocol_version.value().patch + 1,
-    );
-
-    let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
-
-    let default_account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
-        .expect("should get default_account");
-
-    let mut upgrade_request = {
-        UpgradeRequestBuilder::new()
-            .with_current_protocol_version(DEFAULT_PROTOCOL_VERSION)
-            .with_new_protocol_version(new_protocol_version)
-            .with_activation_point(DEFAULT_ACTIVATION_POINT)
-            .build()
-    };
-
-    builder.upgrade(&mut upgrade_request);
-
-    let default_account_balance_before = builder.get_purse_balance(default_account.main_purse());
-
-    let no_wasm_transfer_request_1 =
-        TransferRequestBuilder::new(transfer_amount, *ACCOUNT_2_ADDR).build();
-
-    builder
-        .transfer_and_commit(no_wasm_transfer_request_1)
-        .expect_success();
-
-    let default_account_balance_after = builder.get_purse_balance(default_account.main_purse());
-
-    assert_eq!(
-        default_account_balance_before - transfer_amount - new_wasmless_transfer_cost.value(),
-        default_account_balance_after,
-        "expected wasmless transfer cost to be {} but it was {}",
-        new_wasmless_transfer_cost,
-        default_account_balance_before - default_account_balance_after - transfer_amount
-    );
-}
+//TODO: reenable when new payment code is added
+// #[ignore]
+// #[test]
+// fn transfer_wasmless_should_observe_upgraded_cost() {
+//     let new_wasmless_transfer_cost_value = MintCosts::default().transfer * 2;
+//     // let new_max_associated_keys = DEFAULT_MAX_ASSOCIATED_KEYS;
+//
+//     let new_wasmless_transfer_gas_cost = Gas::from(new_wasmless_transfer_cost_value);
+//     let new_wasmless_transfer_cost = Motes::from_gas(
+//         new_wasmless_transfer_gas_cost,
+//         WASMLESS_TRANSFER_FIXED_GAS_PRICE,
+//     )
+//         .expect("gas overflow");
+//
+//     let transfer_amount = U512::one();
+//
+//     const DEFAULT_ACTIVATION_POINT: EraId = EraId::new(1);
+//
+//     let old_protocol_version = DEFAULT_PROTOCOL_VERSION;
+//     let new_protocol_version = ProtocolVersion::from_parts(
+//         old_protocol_version.value().major,
+//         old_protocol_version.value().minor,
+//         old_protocol_version.value().patch + 1,
+//     );
+//
+//     let mut builder = LmdbWasmTestBuilder::default();
+//     builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
+//
+//     let default_account = builder
+//         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+//         .expect("should get default_account");
+//
+//     let mut upgrade_request = {
+//         UpgradeRequestBuilder::new()
+//             .with_current_protocol_version(DEFAULT_PROTOCOL_VERSION)
+//             .with_new_protocol_version(new_protocol_version)
+//             .with_activation_point(DEFAULT_ACTIVATION_POINT)
+//             .build()
+//     };
+//
+//     builder.upgrade(&mut upgrade_request);
+//
+//     let default_account_balance_before = builder.get_purse_balance(default_account.main_purse());
+//
+//     let no_wasm_transfer_request_1 =
+//         TransferRequestBuilder::new(transfer_amount, *ACCOUNT_2_ADDR).build();
+//
+//     builder
+//         .transfer_and_commit(no_wasm_transfer_request_1)
+//         .expect_success();
+//
+//     let default_account_balance_after = builder.get_purse_balance(default_account.main_purse());
+//
+//     assert_eq!(
+//         default_account_balance_before - transfer_amount - new_wasmless_transfer_cost.value(),
+//         default_account_balance_after,
+//         "expected wasmless transfer cost to be {} but it was {}",
+//         new_wasmless_transfer_cost,
+//         default_account_balance_before - default_account_balance_after - transfer_amount
+//     );
+// }

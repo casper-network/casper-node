@@ -161,3 +161,7 @@ notes
 .lh/*
 
 *.patch
+
+# direnv-related files
+.envrc
+.direnv/

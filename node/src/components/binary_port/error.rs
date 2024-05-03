@@ -1,5 +1,4 @@
 use casper_types::bytesrepr;
-use juliet::rpc::RpcServerError;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -9,5 +8,5 @@ pub(crate) enum Error {
     #[error("received request without payload")]
     NoPayload,
     #[error(transparent)]
-    RpcServer(#[from] RpcServerError),
+    BinaryPort(#[from] casper_binary_port::Error),
 }

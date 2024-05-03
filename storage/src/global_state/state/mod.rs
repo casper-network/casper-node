@@ -6,16 +6,15 @@ pub mod lmdb;
 /// Lmdb implementation of global state with cache.
 pub mod scratch;
 
-use itertools::Itertools;
 use num_rational::Ratio;
 use std::{
     cell::RefCell,
-    collections::{BTreeMap, BTreeSet, HashMap},
+    collections::{BTreeMap, BTreeSet},
     convert::TryFrom,
     rc::Rc,
 };
 
-use tracing::{debug, error, warn};
+use tracing::{debug, error, info, warn};
 
 use casper_types::{
     addressable_entity::{EntityKindTag, NamedKeys},
@@ -30,10 +29,10 @@ use casper_types::{
             BalanceHoldAddr, BalanceHoldAddrTag, ARG_AMOUNT, ROUND_SEIGNIORAGE_RATE_KEY,
             TOTAL_SUPPLY_KEY,
         },
-        AUCTION, MINT,
+        AUCTION, HANDLE_PAYMENT, MINT,
     },
-    Account, AddressableEntity, CLValue, Digest, EntityAddr, HoldsEpoch, Key, KeyTag, Phase,
-    PublicKey, RuntimeArgs, StoredValue, TimeDiff, U512,
+    Account, AddressableEntity, BlockGlobalAddr, CLValue, Digest, EntityAddr, HoldsEpoch, Key,
+    KeyTag, Phase, PublicKey, RuntimeArgs, StoredValue, U512,
 };
 
 #[cfg(test)]
@@ -49,17 +48,18 @@ use crate::{
         tagged_values::{TaggedValuesRequest, TaggedValuesResult},
         AddressableEntityRequest, AddressableEntityResult, AuctionMethod, BalanceHoldError,
         BalanceHoldKind, BalanceHoldMode, BalanceHoldRequest, BalanceHoldResult, BalanceIdentifier,
-        BalanceRequest, BalanceResult, BidsRequest, BidsResult, BlockRewardsError,
-        BlockRewardsRequest, BlockRewardsResult, EraValidatorsRequest,
-        ExecutionResultsChecksumRequest, ExecutionResultsChecksumResult, FeeError, FeeRequest,
-        FeeResult, FlushRequest, FlushResult, GenesisRequest, GenesisResult, HandleRefundMode,
-        HandleRefundRequest, HandleRefundResult, InsufficientBalanceHandling, ProofHandling,
-        ProofsResult, ProtocolUpgradeRequest, ProtocolUpgradeResult, PruneRequest, PruneResult,
-        PutTrieRequest, PutTrieResult, QueryRequest, QueryResult, RoundSeigniorageRateRequest,
-        RoundSeigniorageRateResult, StepError, StepRequest, StepResult,
-        SystemEntityRegistryPayload, SystemEntityRegistryRequest, SystemEntityRegistryResult,
-        SystemEntityRegistrySelector, TotalSupplyRequest, TotalSupplyResult, TrieRequest,
-        TrieResult, EXECUTION_RESULTS_CHECKSUM_NAME,
+        BalanceRequest, BalanceResult, BidsRequest, BidsResult, BlockGlobalKind,
+        BlockGlobalRequest, BlockGlobalResult, BlockRewardsError, BlockRewardsRequest,
+        BlockRewardsResult, EraValidatorsRequest, ExecutionResultsChecksumRequest,
+        ExecutionResultsChecksumResult, FeeError, FeeRequest, FeeResult, FlushRequest, FlushResult,
+        GenesisRequest, GenesisResult, HandleRefundMode, HandleRefundRequest, HandleRefundResult,
+        InsufficientBalanceHandling, ProofHandling, ProofsResult, ProtocolUpgradeRequest,
+        ProtocolUpgradeResult, PruneRequest, PruneResult, PutTrieRequest, PutTrieResult,
+        QueryRequest, QueryResult, RoundSeigniorageRateRequest, RoundSeigniorageRateResult,
+        StepError, StepRequest, StepResult, SystemEntityRegistryPayload,
+        SystemEntityRegistryRequest, SystemEntityRegistryResult, SystemEntityRegistrySelector,
+        TotalSupplyRequest, TotalSupplyResult, TrieRequest, TrieResult,
+        EXECUTION_RESULTS_CHECKSUM_NAME,
     },
     global_state::{
         error::Error as GlobalStateError,
@@ -188,7 +188,7 @@ pub trait CommitProvider: StateProvider {
         };
 
         let protocol_upgrader: ProtocolUpgrader<Self> =
-            ProtocolUpgrader::new(request.config().clone(), tc.clone());
+            ProtocolUpgrader::new(request.config().clone(), pre_state_hash, tc.clone());
 
         if let Err(err) = protocol_upgrader.upgrade(pre_state_hash) {
             return err.into();
@@ -341,7 +341,7 @@ pub trait CommitProvider: StateProvider {
         let state_hash = request.state_hash();
         let rewards = request.rewards();
         if rewards.is_empty() {
-            warn!("rewards are empty");
+            info!("rewards are empty");
             // if there are no rewards to distribute, this is effectively a noop
             return BlockRewardsResult::Success {
                 post_state_hash: state_hash,
@@ -505,6 +505,56 @@ pub trait CommitProvider: StateProvider {
             )),
         }
     }
+
+    fn block_global(&self, request: BlockGlobalRequest) -> BlockGlobalResult {
+        let state_hash = request.state_hash();
+        let tc = match self.tracking_copy(state_hash) {
+            Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
+            Ok(None) => return BlockGlobalResult::RootNotFound,
+            Err(gse) => return BlockGlobalResult::Failure(TrackingCopyError::Storage(gse)),
+        };
+
+        // match request
+        match request.block_global_kind() {
+            BlockGlobalKind::BlockTime(block_time) => {
+                let cl_value =
+                    match CLValue::from_t(block_time.value()).map_err(TrackingCopyError::CLValue) {
+                        Ok(cl_value) => cl_value,
+                        Err(tce) => {
+                            return BlockGlobalResult::Failure(tce);
+                        }
+                    };
+                tc.borrow_mut().write(
+                    Key::BlockGlobal(BlockGlobalAddr::BlockTime),
+                    StoredValue::CLValue(cl_value),
+                );
+            }
+            BlockGlobalKind::MessageCount(count) => {
+                let cl_value = match CLValue::from_t(count).map_err(TrackingCopyError::CLValue) {
+                    Ok(cl_value) => cl_value,
+                    Err(tce) => {
+                        return BlockGlobalResult::Failure(tce);
+                    }
+                };
+                tc.borrow_mut().write(
+                    Key::BlockGlobal(BlockGlobalAddr::MessageCount),
+                    StoredValue::CLValue(cl_value),
+                );
+            }
+        }
+
+        let effects = tc.borrow_mut().effects();
+
+        let post_state_hash = match self.commit(state_hash, effects.clone()) {
+            Ok(post_state_hash) => post_state_hash,
+            Err(gse) => return BlockGlobalResult::Failure(TrackingCopyError::Storage(gse)),
+        };
+
+        BlockGlobalResult::Success {
+            post_state_hash,
+            effects: Box::new(effects),
+        }
+    }
 }
 
 /// A trait expressing operations over the trie.
@@ -544,123 +594,111 @@ pub trait StateProvider {
         let mut tc = match self.tracking_copy(request.state_hash()) {
             Ok(Some(tracking_copy)) => tracking_copy,
             Ok(None) => return BalanceResult::RootNotFound,
-            Err(err) => return BalanceResult::Failure(TrackingCopyError::Storage(err)),
+            Err(err) => return TrackingCopyError::Storage(err).into(),
         };
         let protocol_version = request.protocol_version();
         let balance_identifier = request.identifier();
         let purse_key = match balance_identifier.purse_uref(&mut tc, protocol_version) {
             Ok(value) => value.into(),
-            Err(tce) => return BalanceResult::Failure(tce),
+            Err(tce) => return tce.into(),
         };
         let (purse_balance_key, purse_addr) = match tc.get_purse_balance_key(purse_key) {
             Ok(key @ Key::Balance(addr)) => (key, addr),
-            Ok(key) => return BalanceResult::Failure(TrackingCopyError::UnexpectedKeyVariant(key)),
-            Err(tce) => return BalanceResult::Failure(tce),
+            Ok(key) => return TrackingCopyError::UnexpectedKeyVariant(key).into(),
+            Err(tce) => return tce.into(),
         };
 
-        let proof_handling = request.proof_handling();
-
-        match proof_handling {
+        let (total_balance, proofs_result) = match request.proof_handling() {
             ProofHandling::NoProofs => {
-                let balance_key = Key::Balance(purse_addr);
-                let total_balance = match tc.read(&balance_key) {
+                let total_balance = match tc.read(&purse_balance_key) {
                     Ok(Some(StoredValue::CLValue(cl_value))) => match cl_value.into_t::<U512>() {
                         Ok(val) => val,
-                        Err(cve) => return BalanceResult::Failure(TrackingCopyError::CLValue(cve)),
+                        Err(cve) => return TrackingCopyError::CLValue(cve).into(),
                     },
-                    Ok(Some(_)) => {
-                        return BalanceResult::Failure(
-                            TrackingCopyError::UnexpectedStoredValueVariant,
-                        )
-                    }
-                    Ok(None) => {
-                        return BalanceResult::Failure(TrackingCopyError::KeyNotFound(balance_key))
-                    }
-                    Err(tce) => return BalanceResult::Failure(tce),
+                    Ok(Some(_)) => return TrackingCopyError::UnexpectedStoredValueVariant.into(),
+                    Ok(None) => return TrackingCopyError::KeyNotFound(purse_balance_key).into(),
+                    Err(tce) => return tce.into(),
                 };
                 let balance_holds = match request.balance_handling() {
                     BalanceHandling::Total => BTreeMap::new(),
-                    BalanceHandling::Available { holds_epoch } => {
-                        match tc.get_balance_holds(purse_addr, holds_epoch) {
-                            Err(tce) => return BalanceResult::Failure(tce),
-                            Ok(holds) => holds,
-                        }
-                    }
+                    BalanceHandling::Available => match tc.get_balance_holds(purse_addr) {
+                        Ok(holds) => holds,
+                        Err(tce) => return tce.into(),
+                    },
                 };
-
-                let available_balance = if balance_holds.is_empty() {
-                    total_balance
-                } else {
-                    let held = balance_holds
-                        .values()
-                        .flat_map(|holds| holds.values().copied())
-                        .collect_vec()
-                        .into_iter()
-                        .sum();
-                    debug_assert!(
-                        total_balance >= held,
-                        "it should not be possible to hold more than the total available"
-                    );
-                    if held > total_balance {
-                        error!(%held, %total_balance, "holds somehow exceed total balance, which should never occur.");
-                    }
-                    total_balance.checked_sub(held).unwrap_or(U512::zero())
-                };
-
-                BalanceResult::Success {
-                    purse_addr,
-                    total_balance,
-                    available_balance,
-                    proofs_result: ProofsResult::NotRequested { balance_holds },
-                }
+                (total_balance, ProofsResult::NotRequested { balance_holds })
             }
             ProofHandling::Proofs => {
                 let (total_balance, total_balance_proof) =
                     match tc.get_total_balance_with_proof(purse_balance_key) {
-                        Err(tce) => return BalanceResult::Failure(tce),
                         Ok((balance, proof)) => (balance, Box::new(proof)),
+                        Err(tce) => return tce.into(),
                     };
 
-                let balance_holds_with_proofs = match request.balance_handling() {
+                let balance_holds = match request.balance_handling() {
                     BalanceHandling::Total => BTreeMap::new(),
-                    BalanceHandling::Available { holds_epoch } => {
-                        match tc.get_balance_holds_with_proof(purse_addr, holds_epoch) {
-                            Err(tce) => return BalanceResult::Failure(tce),
+                    BalanceHandling::Available => {
+                        match tc.get_balance_holds_with_proof(purse_addr) {
                             Ok(holds) => holds,
+                            Err(tce) => return tce.into(),
                         }
                     }
                 };
 
-                let available_balance = if balance_holds_with_proofs.is_empty() {
-                    total_balance
-                } else {
-                    let held = balance_holds_with_proofs
-                        .values()
-                        .flat_map(|holds| holds.values().map(|(v, _)| *v))
-                        .collect_vec()
-                        .into_iter()
-                        .sum();
+                (
+                    total_balance,
+                    ProofsResult::Proofs {
+                        total_balance_proof,
+                        balance_holds,
+                    },
+                )
+            }
+        };
 
-                    debug_assert!(
-                        total_balance >= held,
-                        "it should not be possible to hold more than the total available"
-                    );
-                    if held > total_balance {
-                        error!(%held, %total_balance, "holds somehow exceed total balance, which should never occur.");
-                    }
-                    total_balance.checked_sub(held).unwrap_or(U512::zero())
-                };
-
-                BalanceResult::Success {
+        let (block_time, gas_hold_handling) = match tc
+            .get_balance_hold_config(BalanceHoldAddrTag::Gas)
+        {
+            Ok(Some((block_time, handling, interval))) => (block_time, (handling, interval).into()),
+            Ok(None) => {
+                return BalanceResult::Success {
                     purse_addr,
                     total_balance,
-                    available_balance,
-                    proofs_result: ProofsResult::Proofs {
-                        total_balance_proof,
-                        balance_holds: balance_holds_with_proofs,
-                    },
+                    available_balance: total_balance,
+                    proofs_result,
                 }
             }
+            Err(tce) => return tce.into(),
+        };
+
+        let processing_hold_handling =
+            match tc.get_balance_hold_config(BalanceHoldAddrTag::Processing) {
+                Ok(Some((_, handling, interval))) => (handling, interval).into(),
+                Ok(None) => {
+                    return BalanceResult::Success {
+                        purse_addr,
+                        total_balance,
+                        available_balance: total_balance,
+                        proofs_result,
+                    }
+                }
+                Err(tce) => return tce.into(),
+            };
+
+        let available_balance = match &proofs_result.available_balance(
+            block_time,
+            total_balance,
+            gas_hold_handling,
+            processing_hold_handling,
+        ) {
+            Ok(available_balance) => *available_balance,
+            Err(be) => return BalanceResult::Failure(TrackingCopyError::Balance(be.clone())),
+        };
+
+        BalanceResult::Success {
+            purse_addr,
+            total_balance,
+            available_balance,
+            proofs_result,
         }
     }
 
@@ -680,9 +718,13 @@ pub trait StateProvider {
             BalanceHoldMode::Hold {
                 identifier,
                 hold_amount,
-                holds_epoch,
                 insufficient_handling,
             } => {
+                let block_time = match tc.get_block_time() {
+                    Ok(Some(block_time)) => block_time,
+                    Ok(None) => return BalanceHoldResult::BlockTimeNotFound,
+                    Err(tce) => return tce.into(),
+                };
                 let tag = match request.balance_hold_kind() {
                     BalanceHoldKind::All => {
                         return BalanceHoldResult::Failure(
@@ -695,15 +737,13 @@ pub trait StateProvider {
                     request.state_hash(),
                     request.protocol_version(),
                     identifier,
-                    BalanceHandling::Available { holds_epoch },
+                    BalanceHandling::Available,
                     ProofHandling::NoProofs,
                 );
                 let balance_result = self.balance(balance_request);
                 let (total_balance, remaining_balance, purse_addr) = match balance_result {
                     BalanceResult::RootNotFound => return BalanceHoldResult::RootNotFound,
-                    BalanceResult::Failure(tce) => {
-                        return BalanceHoldResult::Failure(BalanceHoldError::TrackingCopy(tce))
-                    }
+                    BalanceResult::Failure(be) => return be.into(),
                     BalanceResult::Success {
                         total_balance,
                         available_balance,
@@ -744,7 +784,6 @@ pub trait StateProvider {
                     }
                 };
 
-                let block_time = request.block_time();
                 let balance_hold_addr = match tag {
                     BalanceHoldAddrTag::Gas => BalanceHoldAddr::Gas {
                         purse_addr,
@@ -771,10 +810,7 @@ pub trait StateProvider {
                     effects,
                 )
             }
-            BalanceHoldMode::Clear {
-                identifier,
-                holds_epoch,
-            } => {
+            BalanceHoldMode::Clear { identifier } => {
                 let purse_addr = match identifier.purse_uref(&mut tc, request.protocol_version()) {
                     Ok(source_purse) => source_purse.addr(),
                     Err(tce) => {
@@ -784,18 +820,37 @@ pub trait StateProvider {
 
                 {
                     // clear holds
-                    let bid_kind = request.balance_hold_kind();
+                    let hold_kind = request.balance_hold_kind();
                     let mut filter = vec![];
                     let tag = BalanceHoldAddrTag::Processing;
-                    if bid_kind.matches(tag) {
-                        filter.push((
-                            BalanceHoldAddrTag::Processing,
-                            HoldsEpoch::from_block_time(request.block_time(), TimeDiff::ZERO),
-                        ));
+                    if hold_kind.matches(tag) {
+                        let (block_time, interval) = match tc.get_balance_hold_config(tag) {
+                            Ok(Some((block_time, _, interval))) => (block_time, interval),
+                            Ok(None) => {
+                                return BalanceHoldResult::BlockTimeNotFound;
+                            }
+                            Err(tce) => {
+                                return BalanceHoldResult::Failure(BalanceHoldError::TrackingCopy(
+                                    tce,
+                                ))
+                            }
+                        };
+                        filter.push((tag, HoldsEpoch::from_millis(block_time.value(), interval)));
                     }
                     let tag = BalanceHoldAddrTag::Gas;
-                    if bid_kind.matches(tag) {
-                        filter.push((tag, holds_epoch));
+                    if hold_kind.matches(tag) {
+                        let (block_time, interval) = match tc.get_balance_hold_config(tag) {
+                            Ok(Some((block_time, _, interval))) => (block_time, interval),
+                            Ok(None) => {
+                                return BalanceHoldResult::BlockTimeNotFound;
+                            }
+                            Err(tce) => {
+                                return BalanceHoldResult::Failure(BalanceHoldError::TrackingCopy(
+                                    tce,
+                                ))
+                            }
+                        };
+                        filter.push((tag, HoldsEpoch::from_millis(block_time.value(), interval)));
                     }
                     if let Err(tce) = tc.clear_expired_balance_holds(purse_addr, filter) {
                         return BalanceHoldResult::Failure(BalanceHoldError::TrackingCopy(tce));
@@ -807,14 +862,12 @@ pub trait StateProvider {
                     request.state_hash(),
                     request.protocol_version(),
                     identifier,
-                    BalanceHandling::Available { holds_epoch },
+                    BalanceHandling::Available,
                     ProofHandling::NoProofs,
                 ));
                 let (total_balance, available_balance) = match balance_result {
                     BalanceResult::RootNotFound => return BalanceHoldResult::RootNotFound,
-                    BalanceResult::Failure(tce) => {
-                        return BalanceHoldResult::Failure(BalanceHoldError::TrackingCopy(tce))
-                    }
+                    BalanceResult::Failure(be) => return be.into(),
                     BalanceResult::Success {
                         total_balance,
                         available_balance,
@@ -844,7 +897,7 @@ pub trait StateProvider {
     /// Get the requested era validators.
     fn era_validators(&self, request: EraValidatorsRequest) -> EraValidatorsResult {
         let state_hash = request.state_hash();
-        let mut tc = match self.tracking_copy(state_hash) {
+        let tc = match self.tracking_copy(state_hash) {
             Ok(Some(tc)) => tc,
             Ok(None) => return EraValidatorsResult::RootNotFound,
             Err(err) => return EraValidatorsResult::Failure(TrackingCopyError::Storage(err)),
@@ -955,7 +1008,7 @@ pub trait StateProvider {
         };
 
         let source_account_hash = initiator.account_hash();
-        let (entity, entity_named_keys, entity_access_rights) =
+        let (entity_addr, entity, entity_named_keys, entity_access_rights) =
             match tc.borrow_mut().resolved_entity(
                 protocol_version,
                 source_account_hash,
@@ -967,6 +1020,7 @@ pub trait StateProvider {
                     return BiddingResult::Failure(tce);
                 }
             };
+        let entity_key = Key::AddressableEntity(entity_addr);
 
         // IMPORTANT: this runtime _must_ use the payer's context.
         let mut runtime = RuntimeNative::new(
@@ -975,6 +1029,7 @@ pub trait StateProvider {
             Id::Transaction(transaction_hash),
             Rc::clone(&tc),
             source_account_hash,
+            entity_key,
             entity,
             entity_named_keys,
             entity_access_rights,
@@ -993,9 +1048,8 @@ pub trait StateProvider {
                 public_key,
                 delegation_rate,
                 amount,
-                holds_epoch,
             } => runtime
-                .add_bid(public_key, delegation_rate, amount, holds_epoch)
+                .add_bid(public_key, delegation_rate, amount)
                 .map(AuctionMethodRet::UpdatedAmount)
                 .map_err(TrackingCopyError::Api),
             AuctionMethod::WithdrawBid { public_key, amount } => runtime
@@ -1010,7 +1064,6 @@ pub trait StateProvider {
                 amount,
                 max_delegators_per_validator,
                 minimum_delegation_amount,
-                holds_epoch,
             } => runtime
                 .delegate(
                     delegator,
@@ -1018,7 +1071,6 @@ pub trait StateProvider {
                     amount,
                     max_delegators_per_validator,
                     minimum_delegation_amount,
-                    holds_epoch,
                 )
                 .map(AuctionMethodRet::UpdatedAmount)
                 .map_err(TrackingCopyError::Api),
@@ -1050,6 +1102,15 @@ pub trait StateProvider {
                 .map_err(|auc_err| {
                     TrackingCopyError::SystemContract(system::Error::Auction(auc_err))
                 }),
+            AuctionMethod::ChangeBidPublicKey {
+                public_key,
+                new_public_key,
+            } => runtime
+                .change_bid_public_key(public_key, new_public_key)
+                .map(|_| AuctionMethodRet::Unit)
+                .map_err(|auc_err| {
+                    TrackingCopyError::SystemContract(system::Error::Auction(auc_err))
+                }),
         };
 
         let effects = tc.borrow_mut().effects();
@@ -1077,18 +1138,40 @@ pub trait StateProvider {
             Err(err) => return HandleRefundResult::Failure(TrackingCopyError::Storage(err)),
         };
 
-        // this runtime uses the system's context
-        let mut runtime = match RuntimeNative::new_system_runtime(
-            config,
-            protocol_version,
-            Id::Transaction(transaction_hash),
-            Rc::clone(&tc),
-            refund_mode.phase(),
-        ) {
-            Ok(rt) => rt,
-            Err(tce) => {
-                return HandleRefundResult::Failure(tce);
+        let phase = refund_mode.phase();
+        let mut runtime = match phase {
+            Phase::FinalizePayment => {
+                // this runtime uses the system's context
+                match RuntimeNative::new_system_runtime(
+                    config,
+                    protocol_version,
+                    Id::Transaction(transaction_hash),
+                    Rc::clone(&tc),
+                    phase,
+                ) {
+                    Ok(rt) => rt,
+                    Err(tce) => {
+                        return HandleRefundResult::Failure(tce);
+                    }
+                }
             }
+            Phase::Payment => {
+                // this runtime uses the handle payment contract's context
+                match RuntimeNative::new_system_contract_runtime(
+                    config,
+                    protocol_version,
+                    Id::Transaction(transaction_hash),
+                    Rc::clone(&tc),
+                    phase,
+                    HANDLE_PAYMENT,
+                ) {
+                    Ok(rt) => rt,
+                    Err(tce) => {
+                        return HandleRefundResult::Failure(tce);
+                    }
+                }
+            }
+            Phase::System | Phase::Session => return HandleRefundResult::InvalidPhase,
         };
 
         let result = match refund_mode {
@@ -1112,7 +1195,6 @@ pub trait StateProvider {
                     cost,
                     consumed,
                     source_purse,
-                    HoldsEpoch::NOT_APPLICABLE,
                     ratio,
                 ) {
                     Ok((refund, _)) => Some(refund),
@@ -1146,7 +1228,6 @@ pub trait StateProvider {
                     cost,
                     consumed,
                     source_purse,
-                    HoldsEpoch::NOT_APPLICABLE,
                     ratio,
                 ) {
                     Ok((refund, _)) => refund,
@@ -1168,11 +1249,57 @@ pub trait StateProvider {
                         target_purse,
                         refund_amount,
                         None,
-                        HoldsEpoch::NOT_APPLICABLE,
                     )
                     .map_err(|_| Error::Transfer)
                 {
                     Ok(_) => Ok(Some(refund_amount)),
+                    Err(err) => Err(err),
+                }
+            }
+            HandleRefundMode::CustomHold {
+                initiator_addr,
+                limit,
+                cost,
+                gas_price,
+            } => {
+                let source = BalanceIdentifier::Payment;
+                let source_purse = match source.purse_uref(&mut tc.borrow_mut(), protocol_version) {
+                    Ok(value) => value,
+                    Err(tce) => return HandleRefundResult::Failure(tce),
+                };
+                let consumed = U512::zero();
+                let ratio = Ratio::new_raw(U512::one(), U512::one());
+                let refund_amount = match runtime.calculate_overpayment_and_fee(
+                    limit,
+                    gas_price,
+                    cost,
+                    consumed,
+                    source_purse,
+                    ratio,
+                ) {
+                    Ok((refund, _)) => refund,
+                    Err(hpe) => {
+                        return HandleRefundResult::Failure(TrackingCopyError::SystemContract(
+                            system::Error::HandlePayment(hpe),
+                        ));
+                    }
+                };
+                let target = BalanceIdentifier::Refund;
+                let target_purse = match target.purse_uref(&mut tc.borrow_mut(), protocol_version) {
+                    Ok(value) => value,
+                    Err(tce) => return HandleRefundResult::Failure(tce),
+                };
+                match runtime
+                    .transfer(
+                        Some(initiator_addr.account_hash()),
+                        source_purse,
+                        target_purse,
+                        refund_amount,
+                        None,
+                    )
+                    .map_err(|_| Error::Transfer)
+                {
+                    Ok(_) => Ok(Some(U512::zero())), // return 0 in this mode
                     Err(err) => Err(err),
                 }
             }
@@ -1196,7 +1323,6 @@ pub trait StateProvider {
                     cost,
                     consumed,
                     source_purse,
-                    HoldsEpoch::NOT_APPLICABLE,
                     ratio,
                 ) {
                     Ok((amount, _)) => Some(amount),
@@ -1274,7 +1400,6 @@ pub trait StateProvider {
                 amount,
                 source,
                 target,
-                holds_epoch,
             } => {
                 let source_purse = match source.purse_uref(&mut tc.borrow_mut(), protocol_version) {
                     Ok(value) => value,
@@ -1291,7 +1416,6 @@ pub trait StateProvider {
                         target_purse,
                         amount,
                         None,
-                        holds_epoch,
                     )
                     .map_err(|_| Error::Transfer)
             }
@@ -1443,7 +1567,7 @@ pub trait StateProvider {
         request: SystemEntityRegistryRequest,
     ) -> SystemEntityRegistryResult {
         let state_hash = request.state_hash();
-        let mut tc = match self.tracking_copy(state_hash) {
+        let tc = match self.tracking_copy(state_hash) {
             Ok(Some(tc)) => tc,
             Ok(None) => return SystemEntityRegistryResult::RootNotFound,
             Err(err) => {
@@ -1487,7 +1611,7 @@ pub trait StateProvider {
     /// Gets total supply.
     fn total_supply(&self, request: TotalSupplyRequest) -> TotalSupplyResult {
         let state_hash = request.state_hash();
-        let mut tc = match self.tracking_copy(state_hash) {
+        let tc = match self.tracking_copy(state_hash) {
             Ok(Some(tc)) => tc,
             Ok(None) => return TotalSupplyResult::RootNotFound,
             Err(err) => return TotalSupplyResult::Failure(TrackingCopyError::Storage(err)),
@@ -1540,7 +1664,7 @@ pub trait StateProvider {
         request: RoundSeigniorageRateRequest,
     ) -> RoundSeigniorageRateResult {
         let state_hash = request.state_hash();
-        let mut tc = match self.tracking_copy(state_hash) {
+        let tc = match self.tracking_copy(state_hash) {
             Ok(Some(tc)) => tc,
             Ok(None) => return RoundSeigniorageRateResult::RootNotFound,
             Err(err) => {
@@ -1604,7 +1728,7 @@ pub trait StateProvider {
             Err(err) => {
                 return TransferResult::Failure(TransferError::TrackingCopy(
                     TrackingCopyError::Storage(err),
-                ))
+                ));
             }
         };
 
@@ -1676,7 +1800,7 @@ pub trait StateProvider {
             }
         }
 
-        let (entity, entity_named_keys, entity_access_rights) =
+        let (entity_addr, entity, entity_named_keys, entity_access_rights) =
             match tc.borrow_mut().resolved_entity(
                 protocol_version,
                 source_account_hash,
@@ -1688,7 +1812,7 @@ pub trait StateProvider {
                     return TransferResult::Failure(TransferError::TrackingCopy(tce));
                 }
             };
-
+        let entity_key = Key::AddressableEntity(entity_addr);
         let id = Id::Transaction(request.transaction_hash());
         // IMPORTANT: this runtime _must_ use the payer's context.
         let mut runtime = RuntimeNative::new(
@@ -1697,6 +1821,7 @@ pub trait StateProvider {
             id,
             Rc::clone(&tc),
             source_account_hash,
+            entity_key,
             entity.clone(),
             entity_named_keys.clone(),
             entity_access_rights,
@@ -1713,7 +1838,7 @@ pub trait StateProvider {
                 let main_purse = match runtime.mint(U512::zero()) {
                     Ok(uref) => uref,
                     Err(mint_error) => {
-                        return TransferResult::Failure(TransferError::Mint(mint_error))
+                        return TransferResult::Failure(TransferError::Mint(mint_error));
                     }
                 };
                 // TODO: KARAN TO FIX: this should create a shiny new addressable entity instance,
@@ -1742,7 +1867,6 @@ pub trait StateProvider {
             transfer_args.target(),
             transfer_args.amount(),
             transfer_args.arg_id(),
-            request.holds_epoch(),
         ) {
             return TransferResult::Failure(TransferError::Mint(mint_error));
         }
@@ -1801,7 +1925,7 @@ pub fn put_stored_values<'a, R, S, E>(
     environment: &'a R,
     store: &S,
     prestate_hash: Digest,
-    stored_values: HashMap<Key, StoredValue>,
+    stored_values: BTreeMap<Key, StoredValue>,
 ) -> Result<Digest, E>
 where
     R: TransactionSource<'a, Handle = S::Handle>,

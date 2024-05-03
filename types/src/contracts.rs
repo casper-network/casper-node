@@ -10,18 +10,19 @@ use alloc::{
 };
 use core::{
     array::TryFromSliceError,
-    convert::TryFrom,
+    convert::{TryFrom, TryInto},
     fmt::{self, Debug, Display, Formatter},
 };
+use serde_bytes::ByteBuf;
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 #[cfg(feature = "json-schema")]
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
-use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
-#[cfg(feature = "json-schema")]
-use serde_map_to_array::KeyValueJsonSchema;
-use serde_map_to_array::{BTreeMapToArray, KeyValueLabels};
+use serde::{
+    de::{self, Error as SerdeError},
+    ser, Deserialize, Deserializer, Serialize, Serializer,
+};
 
 use crate::{
     account,
@@ -30,16 +31,16 @@ use crate::{
     checksummed_hex,
     contract_wasm::ContractWasmHash,
     package::PackageStatus,
-    uref,
-    uref::URef,
+    serde_helpers::contract_package::HumanReadableContractPackage,
+    uref::{self, URef},
     AddressableEntityHash, CLType, CLTyped, EntityVersionKey, EntryPoint, EntryPoints, Groups,
     HashAddr, Key, Package, ProtocolVersion, KEY_HASH_LENGTH,
 };
 
 const CONTRACT_STRING_PREFIX: &str = "contract-";
-const PACKAGE_STRING_PREFIX: &str = "contract-package-";
+const CONTRACT_PACKAGE_STRING_PREFIX: &str = "contract-package-";
 // We need to support the legacy prefix of "contract-package-wasm".
-const PACKAGE_STRING_LEGACY_EXTRA_PREFIX: &str = "wasm";
+const CONTRACT_PACKAGE_STRING_LEGACY_EXTRA_PREFIX: &str = "wasm";
 
 /// Set of errors which may happen when working with contract headers.
 #[derive(Debug, PartialEq, Eq)]
@@ -461,18 +462,22 @@ impl ContractPackageHash {
 
     /// Formats the `ContractPackageHash` for users getting and putting.
     pub fn to_formatted_string(self) -> String {
-        format!("{}{}", PACKAGE_STRING_PREFIX, base16::encode_lower(&self.0),)
+        format!(
+            "{}{}",
+            CONTRACT_PACKAGE_STRING_PREFIX,
+            base16::encode_lower(&self.0),
+        )
     }
 
     /// Parses a string formatted as per `Self::to_formatted_string()` into a
     /// `ContractPackageHash`.
     pub fn from_formatted_str(input: &str) -> Result<Self, FromStrError> {
         let remainder = input
-            .strip_prefix(PACKAGE_STRING_PREFIX)
+            .strip_prefix(CONTRACT_PACKAGE_STRING_PREFIX)
             .ok_or(FromStrError::InvalidPrefix)?;
 
         let hex_addr = remainder
-            .strip_prefix(PACKAGE_STRING_LEGACY_EXTRA_PREFIX)
+            .strip_prefix(CONTRACT_PACKAGE_STRING_LEGACY_EXTRA_PREFIX)
             .unwrap_or(remainder);
 
         let bytes = HashAddr::try_from(checksummed_hex::decode(hex_addr)?.as_ref())?;
@@ -655,14 +660,19 @@ impl FromBytes for ContractPackageStatus {
 }
 
 /// Contract definition, metadata, and security container.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct ContractPackage {
     /// Key used to add or disable versions
     access_key: URef,
     /// All versions (enabled & disabled)
-    #[serde(with = "BTreeMapToArray::<ContractVersionKey, ContractHash, ContractVersionLabels>")]
+    #[cfg_attr(
+        feature = "json-schema",
+        schemars(
+            with = "Vec<crate::serde_helpers::contract_package::HumanReadableContractVersion>"
+        )
+    )]
     versions: ContractVersions,
     /// Disabled versions
     disabled_versions: DisabledVersions,
@@ -734,6 +744,11 @@ impl ContractPackage {
         &mut self.disabled_versions
     }
 
+    /// Returns lock_status of the contract package.
+    pub fn lock_status(&self) -> ContractPackageStatus {
+        self.lock_status.clone()
+    }
+
     #[cfg(test)]
     fn next_contract_version_for(&self, protocol_version: ProtocolVersionMajor) -> ContractVersion {
         let current_version = self
@@ -767,6 +782,32 @@ impl ContractPackage {
     #[cfg(test)]
     fn groups_mut(&mut self) -> &mut Groups {
         &mut self.groups
+    }
+}
+
+impl Serialize for ContractPackage {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if serializer.is_human_readable() {
+            HumanReadableContractPackage::from(self).serialize(serializer)
+        } else {
+            let bytes = self
+                .to_bytes()
+                .map_err(|error| ser::Error::custom(format!("{:?}", error)))?;
+            ByteBuf::from(bytes).serialize(serializer)
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ContractPackage {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        if deserializer.is_human_readable() {
+            let json_helper = HumanReadableContractPackage::deserialize(deserializer)?;
+            json_helper.try_into().map_err(de::Error::custom)
+        } else {
+            let bytes = ByteBuf::deserialize(deserializer)?.into_vec();
+            bytesrepr::deserialize::<ContractPackage>(bytes)
+                .map_err(|error| de::Error::custom(format!("{:?}", error)))
+        }
     }
 }
 
@@ -849,25 +890,12 @@ impl From<ContractPackage> for Package {
         };
 
         Package::new(
-            value.access_key,
             versions.into(),
             disabled_versions,
             value.groups,
             lock_status,
         )
     }
-}
-
-struct ContractVersionLabels;
-
-impl KeyValueLabels for ContractVersionLabels {
-    const KEY: &'static str = "contract_version_key";
-    const VALUE: &'static str = "contract_entity_hash";
-}
-
-#[cfg(feature = "json-schema")]
-impl KeyValueJsonSchema for ContractVersionLabels {
-    const JSON_SCHEMA_KV_NAME: Option<&'static str> = Some("ContractVersionAndHash");
 }
 
 /// Methods and type signatures supported by a contract.
@@ -1063,7 +1091,6 @@ pub const UPGRADE_ENTRY_POINT_NAME: &str = "upgrade";
 
 #[cfg(test)]
 mod tests {
-
     use super::*;
     use crate::{AccessRights, EntryPointAccess, EntryPointType, Group, Parameter, URef};
     use alloc::borrow::ToOwned;
@@ -1290,6 +1317,47 @@ mod tests {
         let json_string = serde_json::to_string_pretty(&contract_hash).unwrap();
         let decoded = serde_json::from_str(&json_string).unwrap();
         assert_eq!(contract_hash, decoded)
+    }
+
+    #[test]
+    fn package_hash_from_legacy_str() {
+        let package_hash = ContractPackageHash([3; 32]);
+        let hex_addr = package_hash.to_string();
+        let legacy_encoded = format!("contract-package-wasm{}", hex_addr);
+        let decoded_from_legacy = ContractPackageHash::from_formatted_str(&legacy_encoded)
+            .expect("should accept legacy prefixed string");
+        assert_eq!(
+            package_hash, decoded_from_legacy,
+            "decoded_from_legacy should equal decoded"
+        );
+
+        let invalid_prefix =
+            "contract-packagewasm0000000000000000000000000000000000000000000000000000000000000000";
+        assert!(matches!(
+            ContractPackageHash::from_formatted_str(invalid_prefix).unwrap_err(),
+            FromStrError::InvalidPrefix
+        ));
+
+        let short_addr =
+            "contract-package-wasm00000000000000000000000000000000000000000000000000000000000000";
+        assert!(matches!(
+            ContractPackageHash::from_formatted_str(short_addr).unwrap_err(),
+            FromStrError::Hash(_)
+        ));
+
+        let long_addr =
+            "contract-package-wasm000000000000000000000000000000000000000000000000000000000000000000";
+        assert!(matches!(
+            ContractPackageHash::from_formatted_str(long_addr).unwrap_err(),
+            FromStrError::Hash(_)
+        ));
+
+        let invalid_hex =
+            "contract-package-wasm000000000000000000000000000000000000000000000000000000000000000g";
+        assert!(matches!(
+            ContractPackageHash::from_formatted_str(invalid_hex).unwrap_err(),
+            FromStrError::Hex(_)
+        ));
     }
 }
 
