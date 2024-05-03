@@ -149,7 +149,11 @@ mod tests {
             sha,
             std::env::var("NODE_GIT_SHA").unwrap_or_default().as_str()
         );
-        assert_eq!(profile, env!("NODE_BUILD_PROFILE").to_uppercase());
+        if env!("NODE_BUILD_PROFILE") == "release" {
+            assert_eq!(profile, "");
+        } else {
+            assert_eq!(profile, env!("NODE_BUILD_PROFILE").to_uppercase())
+        }
     }
 
     #[test]
@@ -163,10 +167,14 @@ mod tests {
             sha,
             std::env::var("NODE_GIT_SHA").unwrap_or_default().as_str()
         );
-        assert_eq!(
-            profile,
-            Red.paint(env!("NODE_BUILD_PROFILE").to_uppercase())
-                .to_string()
-        );
+        if env!("NODE_BUILD_PROFILE") == "release" {
+            assert_eq!(profile, "");
+        } else {
+            assert_eq!(
+                profile,
+                Red.paint(env!("NODE_BUILD_PROFILE").to_uppercase())
+                    .to_string()
+            );
+        }
     }
 }
