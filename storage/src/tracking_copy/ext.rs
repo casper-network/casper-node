@@ -10,6 +10,7 @@ use crate::{
     },
     global_state::{error::Error as GlobalStateError, state::StateReader},
     tracking_copy::{TrackingCopy, TrackingCopyError},
+    KeyPrefix,
 };
 use casper_types::{
     account::AccountHash,
@@ -248,16 +249,15 @@ where
     ) -> Result<Vec<BalanceHoldAddr>, Self::Error> {
         let tagged_keys = {
             let mut ret: Vec<BalanceHoldAddr> = vec![];
-            let tag = BalanceHoldAddrTag::Gas;
-            let gas_prefix = tag.purse_prefix_by_tag(purse_addr).to_bytes()?;
+            let gas_prefix = KeyPrefix::GasBalanceHoldsByPurse(purse_addr).to_bytes()?;
             for key in self.keys_with_prefix(&gas_prefix)? {
                 let addr = key
                     .as_balance_hold()
                     .ok_or(Self::Error::UnexpectedKeyVariant(key))?;
                 ret.push(*addr);
             }
-            let tag = BalanceHoldAddrTag::Processing;
-            let processing_prefix = tag.purse_prefix_by_tag(purse_addr).to_bytes()?;
+            let processing_prefix =
+                KeyPrefix::ProcessingBalanceHoldsByPurse(purse_addr).to_bytes()?;
             for key in self.keys_with_prefix(&processing_prefix)? {
                 let addr = key
                     .as_balance_hold()
@@ -379,9 +379,14 @@ where
         filter: Vec<(BalanceHoldAddrTag, HoldsEpoch)>,
     ) -> Result<(), Self::Error> {
         for (tag, holds_epoch) in filter {
-            let prefix = tag.purse_prefix_by_tag(purse_addr).to_bytes()?;
+            let prefix = match tag {
+                BalanceHoldAddrTag::Gas => KeyPrefix::GasBalanceHoldsByPurse(purse_addr),
+                BalanceHoldAddrTag::Processing => {
+                    KeyPrefix::ProcessingBalanceHoldsByPurse(purse_addr)
+                }
+            };
             let immut: &_ = self;
-            let hold_keys = immut.keys_with_prefix(&prefix)?;
+            let hold_keys = immut.keys_with_prefix(&prefix.to_bytes()?)?;
             for hold_key in hold_keys {
                 let balance_hold_addr = hold_key
                     .as_balance_hold()
@@ -540,8 +545,7 @@ where
     }
 
     fn get_named_keys(&self, entity_addr: EntityAddr) -> Result<NamedKeys, Self::Error> {
-        let prefix = entity_addr
-            .named_keys_prefix()
+        let prefix = KeyPrefix::NamedKeysByEntity(entity_addr)
             .to_bytes()
             .map_err(Self::Error::BytesRepr)?;
 

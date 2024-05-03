@@ -23,7 +23,7 @@ use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     checksummed_hex,
     key::FromStrError,
-    BlockTime, Key, KeyPrefix, Timestamp, URefAddr, BLOCKTIME_SERIALIZED_LENGTH, UREF_ADDR_LENGTH,
+    BlockTime, Key, Timestamp, URefAddr, BLOCKTIME_SERIALIZED_LENGTH, UREF_ADDR_LENGTH,
 };
 
 const GAS_TAG: u8 = 0;
@@ -58,14 +58,6 @@ impl BalanceHoldAddrTag {
             return Some(BalanceHoldAddrTag::Processing);
         }
         None
-    }
-
-    /// Returns key prefix for a purse by balance hold addr tag.
-    pub fn purse_prefix_by_tag(&self, purse_addr: URefAddr) -> KeyPrefix {
-        match self {
-            BalanceHoldAddrTag::Gas => KeyPrefix::GasBalanceHoldsByPurse(purse_addr),
-            BalanceHoldAddrTag::Processing => KeyPrefix::ProcessingBalanceHoldsByPurse(purse_addr),
-        }
     }
 }
 
@@ -135,7 +127,7 @@ impl BalanceHoldAddr {
         + BLOCKTIME_SERIALIZED_LENGTH;
 
     /// Creates a Gas variant instance of [`BalanceHoldAddr`].
-    pub(crate) const fn new_gas(purse_addr: URefAddr, block_time: BlockTime) -> BalanceHoldAddr {
+    pub const fn new_gas(purse_addr: URefAddr, block_time: BlockTime) -> BalanceHoldAddr {
         BalanceHoldAddr::Gas {
             purse_addr,
             block_time,
@@ -143,10 +135,7 @@ impl BalanceHoldAddr {
     }
 
     /// Creates a Processing variant instance of [`BalanceHoldAddr`].
-    pub(crate) const fn new_processing(
-        purse_addr: URefAddr,
-        block_time: BlockTime,
-    ) -> BalanceHoldAddr {
+    pub const fn new_processing(purse_addr: URefAddr, block_time: BlockTime) -> BalanceHoldAddr {
         BalanceHoldAddr::Processing {
             purse_addr,
             block_time,

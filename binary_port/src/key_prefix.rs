@@ -1,0 +1,171 @@
+#[cfg(any(feature = "testing", test))]
+use casper_types::testing::TestRng;
+use casper_types::{
+    account::AccountHash,
+    bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    contract_messages::TopicNameHash,
+    system::{auction::BidAddrTag, mint::BalanceHoldAddrTag},
+    EntityAddr, KeyTag, URefAddr,
+};
+#[cfg(any(feature = "testing", test))]
+use rand::Rng;
+
+/// Key prefixes used for querying the global state.
+#[derive(Debug, PartialEq, Eq, Clone, PartialOrd, Ord, Hash)]
+pub enum KeyPrefix {
+    /// Retrieves all delegator bid addresses for a given validator.
+    DelegatorBidAddrsByValidator(AccountHash),
+    /// Retrieves all messages for a given entity.
+    MessagesByEntity(EntityAddr),
+    /// Retrieves all messages for a given entity and topic.
+    MessagesByEntityAndTopic(EntityAddr, TopicNameHash),
+    /// Retrieves all named keys for a given entity.
+    NamedKeysByEntity(EntityAddr),
+    /// Retrieves all gas balance holds for a given purse.
+    GasBalanceHoldsByPurse(URefAddr),
+    /// Retrieves all processing balance holds for a given purse.
+    ProcessingBalanceHoldsByPurse(URefAddr),
+}
+
+impl KeyPrefix {
+    /// Returns a random `KeyPrefix`.
+    #[cfg(any(feature = "testing", test))]
+    pub fn random(rng: &mut TestRng) -> Self {
+        match rng.gen_range(0..6) {
+            0 => KeyPrefix::DelegatorBidAddrsByValidator(rng.gen()),
+            1 => KeyPrefix::MessagesByEntity(rng.gen()),
+            2 => KeyPrefix::MessagesByEntityAndTopic(rng.gen(), rng.gen()),
+            3 => KeyPrefix::NamedKeysByEntity(rng.gen()),
+            4 => KeyPrefix::GasBalanceHoldsByPurse(rng.gen()),
+            5 => KeyPrefix::ProcessingBalanceHoldsByPurse(rng.gen()),
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl ToBytes for KeyPrefix {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut result = bytesrepr::unchecked_allocate_buffer(self);
+        self.write_bytes(&mut result)?;
+        Ok(result)
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        match self {
+            KeyPrefix::DelegatorBidAddrsByValidator(validator) => {
+                writer.push(KeyTag::BidAddr as u8);
+                writer.push(BidAddrTag::Delegator as u8);
+                validator.write_bytes(writer)?;
+            }
+            KeyPrefix::MessagesByEntity(entity) => {
+                writer.push(KeyTag::Message as u8);
+                entity.write_bytes(writer)?;
+            }
+            KeyPrefix::MessagesByEntityAndTopic(entity, topic) => {
+                writer.push(KeyTag::Message as u8);
+                entity.write_bytes(writer)?;
+                topic.write_bytes(writer)?;
+            }
+            KeyPrefix::NamedKeysByEntity(entity) => {
+                writer.push(KeyTag::NamedKey as u8);
+                entity.write_bytes(writer)?;
+            }
+            KeyPrefix::GasBalanceHoldsByPurse(uref) => {
+                writer.push(KeyTag::BalanceHold as u8);
+                writer.push(BalanceHoldAddrTag::Gas as u8);
+                uref.write_bytes(writer)?;
+            }
+            KeyPrefix::ProcessingBalanceHoldsByPurse(uref) => {
+                writer.push(KeyTag::BalanceHold as u8);
+                writer.push(BalanceHoldAddrTag::Processing as u8);
+                uref.write_bytes(writer)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn serialized_length(&self) -> usize {
+        U8_SERIALIZED_LENGTH
+            + match self {
+                KeyPrefix::DelegatorBidAddrsByValidator(validator) => {
+                    U8_SERIALIZED_LENGTH + validator.serialized_length()
+                }
+                KeyPrefix::MessagesByEntity(entity) => entity.serialized_length(),
+                KeyPrefix::MessagesByEntityAndTopic(entity, topic) => {
+                    entity.serialized_length() + topic.serialized_length()
+                }
+                KeyPrefix::NamedKeysByEntity(entity) => entity.serialized_length(),
+                KeyPrefix::GasBalanceHoldsByPurse(uref) => {
+                    U8_SERIALIZED_LENGTH + uref.serialized_length()
+                }
+                KeyPrefix::ProcessingBalanceHoldsByPurse(uref) => {
+                    U8_SERIALIZED_LENGTH + uref.serialized_length()
+                }
+            }
+    }
+}
+
+impl FromBytes for KeyPrefix {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (tag, remainder) = u8::from_bytes(bytes)?;
+        let result = match tag {
+            tag if tag == KeyTag::BidAddr as u8 => {
+                let (bid_addr_tag, remainder) = u8::from_bytes(remainder)?;
+                match bid_addr_tag {
+                    tag if tag == BidAddrTag::Delegator as u8 => {
+                        let (validator, remainder) = AccountHash::from_bytes(remainder)?;
+                        (
+                            KeyPrefix::DelegatorBidAddrsByValidator(validator),
+                            remainder,
+                        )
+                    }
+                    _ => return Err(bytesrepr::Error::Formatting),
+                }
+            }
+            tag if tag == KeyTag::Message as u8 => {
+                let (entity, remainder) = EntityAddr::from_bytes(remainder)?;
+                if remainder.is_empty() {
+                    (KeyPrefix::MessagesByEntity(entity), remainder)
+                } else {
+                    let (topic, remainder) = TopicNameHash::from_bytes(remainder)?;
+                    (
+                        KeyPrefix::MessagesByEntityAndTopic(entity, topic),
+                        remainder,
+                    )
+                }
+            }
+            tag if tag == KeyTag::NamedKey as u8 => {
+                let (entity, remainder) = EntityAddr::from_bytes(remainder)?;
+                (KeyPrefix::NamedKeysByEntity(entity), remainder)
+            }
+            tag if tag == KeyTag::BalanceHold as u8 => {
+                let (balance_hold_addr_tag, remainder) = u8::from_bytes(remainder)?;
+                let (uref, remainder) = URefAddr::from_bytes(remainder)?;
+                match balance_hold_addr_tag {
+                    tag if tag == BalanceHoldAddrTag::Gas as u8 => {
+                        (KeyPrefix::GasBalanceHoldsByPurse(uref), remainder)
+                    }
+                    tag if tag == BalanceHoldAddrTag::Processing as u8 => {
+                        (KeyPrefix::ProcessingBalanceHoldsByPurse(uref), remainder)
+                    }
+                    _ => return Err(bytesrepr::Error::Formatting),
+                }
+            }
+            _ => return Err(bytesrepr::Error::Formatting),
+        };
+        Ok(result)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bytesrepr_roundtrip() {
+        let rng = &mut TestRng::new();
+
+        let key_prefix = KeyPrefix::random(rng);
+        bytesrepr::test_serialization_roundtrip(&key_prefix);
+    }
+}

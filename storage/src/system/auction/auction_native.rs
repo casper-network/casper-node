@@ -18,7 +18,7 @@ use casper_types::{
         auction::{BidAddr, BidKind, EraInfo, Error, UnbondingPurse},
         mint,
     },
-    CLTyped, CLValue, Key, KeyPrefix, KeyTag, PublicKey, StoredValue, URef, U512,
+    CLTyped, CLValue, Key, KeyTag, PublicKey, StoredValue, URef, U512,
 };
 use std::collections::BTreeSet;
 use tracing::error;
@@ -53,12 +53,11 @@ where
             })
     }
 
-    fn get_keys_by_prefix(&mut self, prefix: &KeyPrefix) -> Result<Vec<Key>, Error> {
-        let prefix_bytes = prefix.to_bytes().map_err(|_| Error::Serialization)?;
+    fn get_keys_by_prefix(&mut self, prefix: &[u8]) -> Result<Vec<Key>, Error> {
         self.tracking_copy()
             .borrow_mut()
             .reader()
-            .keys_with_prefix(&prefix_bytes)
+            .keys_with_prefix(prefix)
             .map_err(|error| {
                 error!("RuntimeProvider::get_keys_by_prefix: {:?}", error);
                 Error::Storage
@@ -66,12 +65,11 @@ where
     }
 
     fn delegator_count(&mut self, bid_addr: &BidAddr) -> Result<usize, Error> {
-        let keys = self
-            .get_keys_by_prefix(&bid_addr.delegators_prefix())
-            .map_err(|err| {
-                error!("RuntimeProvider::delegator_count {:?}", err);
-                Error::Storage
-            })?;
+        let prefix = bid_addr.delegators_prefix()?;
+        let keys = self.get_keys_by_prefix(&prefix).map_err(|err| {
+            error!("RuntimeProvider::delegator_count {:?}", err);
+            Error::Storage
+        })?;
         Ok(keys.len())
     }
 

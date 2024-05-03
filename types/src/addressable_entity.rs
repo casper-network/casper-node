@@ -67,8 +67,8 @@ use crate::{
     system::SystemEntityType,
     uref::{self, URef},
     AccessRights, ApiError, CLType, CLTyped, CLValue, CLValueError, ContextAccessRights, Group,
-    HashAddr, Key, KeyPrefix, PackageHash, ProtocolVersion, PublicKey, Tagged,
-    BLAKE2B_DIGEST_LENGTH, KEY_HASH_LENGTH,
+    HashAddr, Key, PackageHash, ProtocolVersion, PublicKey, Tagged, BLAKE2B_DIGEST_LENGTH,
+    KEY_HASH_LENGTH,
 };
 
 /// Maximum number of distinct user groups.
@@ -971,11 +971,6 @@ impl EntityAddr {
             | EntityAddr::Account(hash_addr)
             | EntityAddr::SmartContract(hash_addr) => *hash_addr,
         }
-    }
-
-    /// Returns the common prefix of all NamedKey entries.
-    pub fn named_keys_prefix(&self) -> KeyPrefix {
-        KeyPrefix::NamedKeysByEntity(*self)
     }
 
     /// Returns the formatted String representation of the [`EntityAddr`].

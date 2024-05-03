@@ -1,13 +1,12 @@
 #[cfg(any(feature = "testing", test))]
-use crate::testing::TestRng;
-use crate::{
+use casper_types::testing::TestRng;
+use casper_types::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contract_messages::TopicNameHash,
     system::{auction::BidAddrTag, mint::BalanceHoldAddrTag},
     EntityAddr, KeyTag, URefAddr,
 };
-use alloc::vec::Vec;
 #[cfg(any(feature = "testing", test))]
 use rand::Rng;
 
@@ -28,22 +27,6 @@ pub enum KeyPrefix {
     ProcessingBalanceHoldsByPurse(URefAddr),
 }
 
-impl KeyPrefix {
-    /// Returns a random `KeyPrefix`.
-    #[cfg(any(feature = "testing", test))]
-    pub fn random(rng: &mut TestRng) -> Self {
-        match rng.gen_range(0..6) {
-            0 => KeyPrefix::DelegatorBidAddrsByValidator(rng.gen()),
-            1 => KeyPrefix::MessagesByEntity(rng.gen()),
-            2 => KeyPrefix::MessagesByEntityAndTopic(rng.gen(), rng.gen()),
-            3 => KeyPrefix::NamedKeysByEntity(rng.gen()),
-            4 => KeyPrefix::GasBalanceHoldsByPurse(rng.gen()),
-            5 => KeyPrefix::ProcessingBalanceHoldsByPurse(rng.gen()),
-            _ => unreachable!(),
-        }
-    }
-}
-
 impl ToBytes for KeyPrefix {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = bytesrepr::unchecked_allocate_buffer(self);
@@ -51,7 +34,7 @@ impl ToBytes for KeyPrefix {
         Ok(result)
     }
 
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), crate::bytesrepr::Error> {
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         match self {
             KeyPrefix::DelegatorBidAddrsByValidator(validator) => {
                 writer.push(KeyTag::BidAddr as u8);
@@ -160,16 +143,28 @@ impl FromBytes for KeyPrefix {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
+    use casper_types::{
         addressable_entity::NamedKeyAddr,
         contract_messages::MessageAddr,
-        gens::key_prefix_arb,
+        gens::{account_hash_arb, entity_addr_arb, topic_name_hash_arb, u8_slice_32},
         system::{auction::BidAddr, mint::BalanceHoldAddr},
         BlockTime, Key,
     };
 
     use super::*;
     use proptest::prelude::*;
+
+    pub fn key_prefix_arb() -> impl Strategy<Value = KeyPrefix> {
+        prop_oneof![
+            account_hash_arb().prop_map(KeyPrefix::DelegatorBidAddrsByValidator),
+            entity_addr_arb().prop_map(KeyPrefix::MessagesByEntity),
+            (entity_addr_arb(), topic_name_hash_arb())
+                .prop_map(|(entity, topic)| KeyPrefix::MessagesByEntityAndTopic(entity, topic)),
+            entity_addr_arb().prop_map(KeyPrefix::NamedKeysByEntity),
+            u8_slice_32().prop_map(KeyPrefix::GasBalanceHoldsByPurse),
+            u8_slice_32().prop_map(KeyPrefix::ProcessingBalanceHoldsByPurse),
+        ]
+    }
 
     proptest! {
         #[test]
