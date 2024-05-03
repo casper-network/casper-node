@@ -16,7 +16,7 @@ const ITEM_TAG: u8 = 0;
 const ALL_ITEMS_TAG: u8 = 1;
 const TRIE_TAG: u8 = 2;
 const DICTIONARY_ITEM_TAG: u8 = 3;
-const BALANCE_BY_STATE_ROOT_TAG: u8 = 4;
+const BALANCE_TAG: u8 = 4;
 
 /// A request to get data from the global state.
 #[derive(Clone, Debug, PartialEq)]
@@ -89,7 +89,7 @@ impl GlobalStateRequest {
                     .then(|| GlobalStateIdentifier::random(rng)),
                 identifier: DictionaryItemIdentifier::random(rng),
             },
-            BALANCE_BY_STATE_ROOT_TAG => GlobalStateRequest::Balance {
+            BALANCE_TAG => GlobalStateRequest::Balance {
                 state_identifier: rng
                     .gen::<bool>()
                     .then(|| GlobalStateIdentifier::random(rng)),
@@ -143,7 +143,7 @@ impl ToBytes for GlobalStateRequest {
                 state_identifier,
                 purse_identifier,
             } => {
-                BALANCE_BY_STATE_ROOT_TAG.write_bytes(writer)?;
+                BALANCE_TAG.write_bytes(writer)?;
                 state_identifier.write_bytes(writer)?;
                 purse_identifier.write_bytes(writer)
             }
@@ -222,7 +222,7 @@ impl FromBytes for GlobalStateRequest {
                     remainder,
                 ))
             }
-            BALANCE_BY_STATE_ROOT_TAG => {
+            BALANCE_TAG => {
                 let (state_identifier, remainder) = FromBytes::from_bytes(remainder)?;
                 let (purse_identifier, remainder) = FromBytes::from_bytes(remainder)?;
                 Ok((
