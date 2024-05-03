@@ -59,7 +59,7 @@ pub fn execute_finalized_block(
     key_block_height_for_activation_point: u64,
     current_gas_price: u8,
     next_era_gas_price: Option<u8>,
-    last_switch_block_hash: BlockHash,
+    last_switch_block_hash: Option<BlockHash>,
 ) -> Result<BlockAndExecutionArtifacts, BlockExecutionError> {
     if executable_block.height != execution_pre_state.next_block_height() {
         return Err(BlockExecutionError::WrongBlockHeight {

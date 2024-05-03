@@ -242,7 +242,7 @@ impl TestBlockV2Builder {
             transactions,
             rewarded_signatures,
             current_gas_price,
-            last_switch_block_hash,
+            Some(last_switch_block_hash),
         )
     }
 

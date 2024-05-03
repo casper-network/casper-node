@@ -80,7 +80,7 @@ static BLOCK_V2: Lazy<BlockV2> = Lazy::new(|| {
         transactions,
         rewarded_signatures,
         current_gas_price,
-        last_switch_block_hash,
+        Some(last_switch_block_hash),
     )
 });
 
@@ -117,7 +117,7 @@ impl BlockV2 {
         transactions: BTreeMap<u8, Vec<TransactionHash>>,
         rewarded_signatures: RewardedSignatures,
         current_gas_price: u8,
-        last_switch_block_hash: BlockHash,
+        last_switch_block_hash: Option<BlockHash>,
     ) -> Self {
         let body = BlockBodyV2::new(transactions, rewarded_signatures);
         let body_hash = body.hash();
@@ -275,7 +275,7 @@ impl BlockV2 {
     }
 
     /// Returns the last relevant switch block hash.
-    pub fn last_switch_block_hash(&self) -> BlockHash {
+    pub fn last_switch_block_hash(&self) -> Option<BlockHash> {
         self.header.last_switch_block_hash()
     }
 

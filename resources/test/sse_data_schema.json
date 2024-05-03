@@ -727,6 +727,17 @@
           "type": "integer",
           "format": "uint8",
           "minimum": 0.0
+        },
+        "last_switch_block_hash": {
+          "description": "The most recent switch block hash.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/BlockHash"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       }
     },
@@ -3021,42 +3032,6 @@
       },
       "additionalProperties": false
     },
-    "Bridge": {
-      "description": "A bridge record pointing to a new `ValidatorBid` after the public key was changed.",
-      "type": "object",
-      "required": [
-        "era_id",
-        "new_validator_public_key",
-        "old_validator_public_key"
-      ],
-      "properties": {
-        "old_validator_public_key": {
-          "description": "Previous validator public key associated with the bid.",
-          "allOf": [
-            {
-              "$ref": "#/definitions/PublicKey"
-            }
-          ]
-        },
-        "new_validator_public_key": {
-          "description": "New validator public key associated with the bid.",
-          "allOf": [
-            {
-              "$ref": "#/definitions/PublicKey"
-            }
-          ]
-        },
-        "era_id": {
-          "description": "Era when bridge record was created.",
-          "allOf": [
-            {
-              "$ref": "#/definitions/EraId"
-            }
-          ]
-        }
-      },
-      "additionalProperties": false
-    },
     "WithdrawPurse": {
       "description": "A withdraw purse, a legacy structure.",
       "type": "object",
@@ -3323,6 +3298,42 @@
         "inactive": {
           "description": "`true` if validator has been \"evicted\"",
           "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "Bridge": {
+      "description": "A bridge record pointing to a new `ValidatorBid` after the public key was changed.",
+      "type": "object",
+      "required": [
+        "era_id",
+        "new_validator_public_key",
+        "old_validator_public_key"
+      ],
+      "properties": {
+        "old_validator_public_key": {
+          "description": "Previous validator public key associated with the bid.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PublicKey"
+            }
+          ]
+        },
+        "new_validator_public_key": {
+          "description": "New validator public key associated with the bid.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PublicKey"
+            }
+          ]
+        },
+        "era_id": {
+          "description": "Era when bridge record was created.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EraId"
+            }
+          ]
         }
       },
       "additionalProperties": false
