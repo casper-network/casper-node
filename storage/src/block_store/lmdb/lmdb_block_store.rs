@@ -78,7 +78,7 @@ pub struct LmdbBlockStore {
     state_store_db: Database,
     /// The finalized transaction approvals databases.
     pub(super) finalized_transaction_approvals_dbs:
-    VersionedDatabases<TransactionHash, BTreeSet<Approval>>,
+        VersionedDatabases<TransactionHash, BTreeSet<Approval>>,
 }
 
 impl LmdbBlockStore {
@@ -558,10 +558,10 @@ fn successful_transfers(execution_result: &ExecutionResult) -> Vec<Transfer> {
             }
         }
         ExecutionResult::V2(ExecutionResultV2 {
-                                transfers,
-                                error_message,
-                                ..
-                            }) => {
+            transfers,
+            error_message,
+            ..
+        }) => {
             if error_message.is_none() {
                 for transfer in transfers {
                     all_transfers.push(transfer.clone());
@@ -606,16 +606,16 @@ impl BlockStoreProvider for LmdbBlockStore {
 }
 
 pub struct LmdbBlockStoreTransaction<'t, T>
-    where
-        T: LmdbTransaction,
+where
+    T: LmdbTransaction,
 {
     txn: T,
     block_store: &'t LmdbBlockStore,
 }
 
 impl<'t, T> BlockStoreTransaction for LmdbBlockStoreTransaction<'t, T>
-    where
-        T: LmdbTransaction,
+where
+    T: LmdbTransaction,
 {
     fn commit(self) -> Result<(), BlockStoreError> {
         self.txn
@@ -629,8 +629,8 @@ impl<'t, T> BlockStoreTransaction for LmdbBlockStoreTransaction<'t, T>
 }
 
 impl<'t, T> DataReader<BlockHash, Block> for LmdbBlockStoreTransaction<'t, T>
-    where
-        T: LmdbTransaction,
+where
+    T: LmdbTransaction,
 {
     fn read(&self, key: BlockHash) -> Result<Option<Block>, BlockStoreError> {
         self.block_store.get_single_block(&self.txn, &key)
@@ -642,8 +642,8 @@ impl<'t, T> DataReader<BlockHash, Block> for LmdbBlockStoreTransaction<'t, T>
 }
 
 impl<'t, T> DataReader<BlockHash, BlockHeader> for LmdbBlockStoreTransaction<'t, T>
-    where
-        T: LmdbTransaction,
+where
+    T: LmdbTransaction,
 {
     fn read(&self, key: BlockHash) -> Result<Option<BlockHeader>, BlockStoreError> {
         self.block_store.get_single_block_header(&self.txn, &key)
@@ -655,8 +655,8 @@ impl<'t, T> DataReader<BlockHash, BlockHeader> for LmdbBlockStoreTransaction<'t,
 }
 
 impl<'t, T> DataReader<BlockHash, ApprovalsHashes> for LmdbBlockStoreTransaction<'t, T>
-    where
-        T: LmdbTransaction,
+where
+    T: LmdbTransaction,
 {
     fn read(&self, key: BlockHash) -> Result<Option<ApprovalsHashes>, BlockStoreError> {
         self.block_store.read_approvals_hashes(&self.txn, &key)
@@ -668,8 +668,8 @@ impl<'t, T> DataReader<BlockHash, ApprovalsHashes> for LmdbBlockStoreTransaction
 }
 
 impl<'t, T> DataReader<BlockHash, BlockSignatures> for LmdbBlockStoreTransaction<'t, T>
-    where
-        T: LmdbTransaction,
+where
+    T: LmdbTransaction,
 {
     fn read(&self, key: BlockHash) -> Result<Option<BlockSignatures>, BlockStoreError> {
         self.block_store.get_block_signatures(&self.txn, &key)
@@ -681,8 +681,8 @@ impl<'t, T> DataReader<BlockHash, BlockSignatures> for LmdbBlockStoreTransaction
 }
 
 impl<'t, T> DataReader<TransactionHash, Transaction> for LmdbBlockStoreTransaction<'t, T>
-    where
-        T: LmdbTransaction,
+where
+    T: LmdbTransaction,
 {
     fn read(&self, key: TransactionHash) -> Result<Option<Transaction>, BlockStoreError> {
         self.block_store
@@ -697,8 +697,8 @@ impl<'t, T> DataReader<TransactionHash, Transaction> for LmdbBlockStoreTransacti
 }
 
 impl<'t, T> DataReader<TransactionHash, BTreeSet<Approval>> for LmdbBlockStoreTransaction<'t, T>
-    where
-        T: LmdbTransaction,
+where
+    T: LmdbTransaction,
 {
     fn read(&self, key: TransactionHash) -> Result<Option<BTreeSet<Approval>>, BlockStoreError> {
         self.block_store
@@ -716,8 +716,8 @@ impl<'t, T> DataReader<TransactionHash, BTreeSet<Approval>> for LmdbBlockStoreTr
 }
 
 impl<'t, T> DataReader<TransactionHash, ExecutionResult> for LmdbBlockStoreTransaction<'t, T>
-    where
-        T: LmdbTransaction,
+where
+    T: LmdbTransaction,
 {
     fn read(&self, key: TransactionHash) -> Result<Option<ExecutionResult>, BlockStoreError> {
         self.block_store
@@ -735,8 +735,8 @@ impl<'t, T> DataReader<TransactionHash, ExecutionResult> for LmdbBlockStoreTrans
 }
 
 impl<'t, T> DataReader<BlockHash, Vec<Transfer>> for LmdbBlockStoreTransaction<'t, T>
-    where
-        T: LmdbTransaction,
+where
+    T: LmdbTransaction,
 {
     fn read(&self, key: BlockHash) -> Result<Option<Vec<Transfer>>, BlockStoreError> {
         self.block_store.get_transfers(&self.txn, &key)
@@ -748,9 +748,9 @@ impl<'t, T> DataReader<BlockHash, Vec<Transfer>> for LmdbBlockStoreTransaction<'
 }
 
 impl<'t, T, K> DataReader<K, Vec<u8>> for LmdbBlockStoreTransaction<'t, T>
-    where
-        K: AsRef<[u8]>,
-        T: LmdbTransaction,
+where
+    K: AsRef<[u8]>,
+    T: LmdbTransaction,
 {
     fn read(&self, key: K) -> Result<Option<Vec<u8>>, BlockStoreError> {
         self.block_store.read_state_store(&self.txn, &key)
@@ -780,7 +780,7 @@ impl<'t> DataWriter<BlockHash, Block> for LmdbBlockStoreTransaction<'t, RwTransa
 }
 
 impl<'t> DataWriter<BlockHash, ApprovalsHashes>
-for LmdbBlockStoreTransaction<'t, RwTransaction<'t>>
+    for LmdbBlockStoreTransaction<'t, RwTransaction<'t>>
 {
     fn write(&mut self, data: &ApprovalsHashes) -> Result<BlockHash, BlockStoreError> {
         self.block_store.write_approvals_hashes(&mut self.txn, data)
@@ -793,7 +793,7 @@ for LmdbBlockStoreTransaction<'t, RwTransaction<'t>>
 }
 
 impl<'t> DataWriter<BlockHash, BlockSignatures>
-for LmdbBlockStoreTransaction<'t, RwTransaction<'t>>
+    for LmdbBlockStoreTransaction<'t, RwTransaction<'t>>
 {
     fn write(&mut self, data: &BlockSignatures) -> Result<BlockHash, BlockStoreError> {
         self.block_store
@@ -817,7 +817,7 @@ impl<'t> DataWriter<BlockHash, BlockHeader> for LmdbBlockStoreTransaction<'t, Rw
 }
 
 impl<'t> DataWriter<TransactionHash, Transaction>
-for LmdbBlockStoreTransaction<'t, RwTransaction<'t>>
+    for LmdbBlockStoreTransaction<'t, RwTransaction<'t>>
 {
     fn write(&mut self, data: &Transaction) -> Result<TransactionHash, BlockStoreError> {
         self.block_store.write_transaction(&mut self.txn, data)
@@ -829,7 +829,7 @@ for LmdbBlockStoreTransaction<'t, RwTransaction<'t>>
 }
 
 impl<'t> DataWriter<BlockHash, BlockTransfers>
-for LmdbBlockStoreTransaction<'t, RwTransaction<'t>>
+    for LmdbBlockStoreTransaction<'t, RwTransaction<'t>>
 {
     fn write(&mut self, data: &BlockTransfers) -> Result<BlockHash, BlockStoreError> {
         self.block_store
@@ -843,7 +843,7 @@ for LmdbBlockStoreTransaction<'t, RwTransaction<'t>>
 }
 
 impl<'t> DataWriter<Cow<'static, [u8]>, StateStore>
-for LmdbBlockStoreTransaction<'t, RwTransaction<'t>>
+    for LmdbBlockStoreTransaction<'t, RwTransaction<'t>>
 {
     fn write(&mut self, data: &StateStore) -> Result<Cow<'static, [u8]>, BlockStoreError> {
         self.block_store
@@ -857,7 +857,7 @@ for LmdbBlockStoreTransaction<'t, RwTransaction<'t>>
 }
 
 impl<'t> DataWriter<TransactionHash, TransactionFinalizedApprovals>
-for LmdbBlockStoreTransaction<'t, RwTransaction<'t>>
+    for LmdbBlockStoreTransaction<'t, RwTransaction<'t>>
 {
     fn write(
         &mut self,
@@ -884,7 +884,7 @@ for LmdbBlockStoreTransaction<'t, RwTransaction<'t>>
 }
 
 impl<'t> DataWriter<BlockHashHeightAndEra, BlockExecutionResults>
-for LmdbBlockStoreTransaction<'t, RwTransaction<'t>>
+    for LmdbBlockStoreTransaction<'t, RwTransaction<'t>>
 {
     fn write(
         &mut self,
