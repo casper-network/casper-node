@@ -97,6 +97,7 @@ where
     fn allow_unrestricted_transfers(&self) -> bool {
         self.context.engine_config().allow_unrestricted_transfers()
     }
+}
 
 // TODO: update Mint + StorageProvider to better handle errors
 impl<'a, R> StorageProvider for Runtime<'a, R>
