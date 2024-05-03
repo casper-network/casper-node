@@ -1,12 +1,13 @@
 use std::{env, process::Command};
 
 const NODE_BUILD_PROFILE_ENV_VAR: &str = "NODE_BUILD_PROFILE";
+const NODE_GIT_HASH_ENV_VAR: &str = "NODE_GIT_SHA";
 
-const DEFAULT_BUILD_PROFILE: &str = "PROFILE";
+const CARGO_BUILD_PROFILE_ENV_VAR: &str = "PROFILE";
 
 ///
-/// `casper-node` build script to capture the git revision hash and export it to cargo to include
-/// it in the version information
+/// `casper-node` build script to capture the git revision hash and cargo build profile and export
+/// them to cargo to include them in the version information.
 ///
 /// Notes: This script exports information to cargo via println! with the old invocation prefix of
 /// `cargo:`, if/when the node uses a Rust version `1.77` or above, this should be changed to
@@ -25,22 +26,18 @@ fn main() {
                 String::from_utf8(output.stdout).expect("Failed to obtain commit hash to string");
             let git_hash = git_hash_raw.trim_end_matches('\n');
 
-            println!(
-                "cargo:rustc-env={}={}",
-                NODE_BUILD_PROFILE_ENV_VAR, git_hash
-            );
+            println!("cargo:rustc-env={}={}", NODE_GIT_HASH_ENV_VAR, git_hash);
         }
 
         Err(error) => {
             println!("cargo:warning={}", error);
             println!("cargo:warning=casper-node build version will not include git short hash");
-            // In the event of an error, export the error, and export a default build profile to
-            // cargo at compile time.
-            println!(
-                "cargo:rustc-env={}={}",
-                NODE_BUILD_PROFILE_ENV_VAR,
-                env::var(DEFAULT_BUILD_PROFILE).unwrap()
-            );
         }
     }
+
+    println!(
+        "cargo:rustc-env={}={}",
+        NODE_BUILD_PROFILE_ENV_VAR,
+        env::var(CARGO_BUILD_PROFILE_ENV_VAR).unwrap()
+    );
 }

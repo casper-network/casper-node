@@ -77,11 +77,11 @@ pub const MAX_THREAD_COUNT: usize = 512;
 
 fn version_string(color: bool) -> String {
     let mut version = env!("CARGO_PKG_VERSION").to_string();
-    if let Ok(git_sha) = env::var("VERGEN_GIT_SHA") {
+    if let Ok(git_sha) = env::var("NODE_GIT_SHA") {
         version = format!("{}-{}", version, git_sha);
     } else {
         warn!(
-            "vergen env var unavailable, casper-node build version will not include git short hash"
+            "git sha env var unavailable, casper-node build version will not include git short hash"
         );
     }
 
@@ -132,4 +132,41 @@ pub(crate) fn new_rng() -> NodeRng {
 #[cfg(test)]
 pub(crate) fn new_rng() -> NodeRng {
     NodeRng::new()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn version_string_format() {
+        let string = version_string(false);
+        let (prefix, profile) = string.split_once('@').unwrap_or((string.as_str(), ""));
+        let (version, sha) = prefix.split_once('-').unwrap_or((prefix, ""));
+
+        assert_eq!(version, env!("CARGO_PKG_VERSION"));
+        assert_eq!(
+            sha,
+            std::env::var("NODE_GIT_SHA").unwrap_or_default().as_str()
+        );
+        assert_eq!(profile, env!("NODE_BUILD_PROFILE").to_uppercase());
+    }
+
+    #[test]
+    fn version_string_color_format() {
+        let string = version_string(true);
+        let (prefix, profile) = string.split_once('@').unwrap_or((string.as_str(), ""));
+        let (version, sha) = prefix.split_once('-').unwrap_or((prefix, ""));
+
+        assert_eq!(version, env!("CARGO_PKG_VERSION"));
+        assert_eq!(
+            sha,
+            std::env::var("NODE_GIT_SHA").unwrap_or_default().as_str()
+        );
+        assert_eq!(
+            profile,
+            Red.paint(env!("NODE_BUILD_PROFILE").to_uppercase())
+                .to_string()
+        );
+    }
 }
