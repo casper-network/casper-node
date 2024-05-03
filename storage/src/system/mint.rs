@@ -55,27 +55,25 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
     /// Burns native tokens.
     fn burn(&mut self, purse: URef, amount: U512) -> Result<(), Error> {
         if !purse.is_writeable() {
-            return Err(Error::ForgedReference);
+            return Err(Error::InvalidAccessRights);
         }
         if !self.is_valid_uref(&purse) {
             return Err(Error::ForgedReference);
         }
 
-        let source_balance: U512 = match self.balance(purse)? {
+        let source_available_balance: U512 = match self.balance(purse)? {
             Some(source_balance) => source_balance,
             None => return Err(Error::PurseNotFound),
         };
 
-        let new_balance = match source_balance.checked_sub(amount) {
+        let new_balance = match source_available_balance.checked_sub(amount) {
             Some(value) => value,
             None => U512::zero(),
         };
-
-        // source_balance is >= than new_balance
-        // this should block user from reducing totaly supply beyond what they own
-        let burned_amount = source_balance - new_balance;
-
+        // change balance
         self.write_balance(purse, new_balance)?;
+        // reduce total supply AFTER changing balance in case changing balance errors
+        let burned_amount = source_available_balance.saturating_sub(new_balance);
         detail::reduce_total_supply_unsafe(self, burned_amount)
     }
 

@@ -1,11 +1,12 @@
 use casper_engine_test_support::{
-    auction, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, LOCAL_GENESIS_REQUEST,
 };
 use casper_types::{runtime_args, ProtocolVersion, URef, U512};
 
+use casper_storage::data_access_layer::BalanceIdentifier;
 use tempfile::TempDir;
 
-const TEST_DELEGATOR_INITIAL_ACCOUNT_BALANCE: u64 = 1_000_000 * 1_000_000_000;
+// const TEST_DELEGATOR_INITIAL_ACCOUNT_BALANCE: u64 = 1_000_000 * 1_000_000_000;
 
 const CONTRACT_BURN: &str = "burn.wasm";
 const CONTRACT_TRANSFER_TO_NAMED_PURSE: &str = "transfer_to_named_purse.wasm";
@@ -21,20 +22,22 @@ fn should_empty_purse_when_burning_above_balance() {
     let mut builder = LmdbWasmTestBuilder::new(data_dir.as_ref());
     let source = *DEFAULT_ACCOUNT_ADDR;
 
-    let delegator_keys = auction::generate_public_keys(1);
-    let validator_keys = auction::generate_public_keys(1);
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
-    auction::run_genesis_and_create_initial_accounts(
-        &mut builder,
-        &validator_keys,
-        delegator_keys
-            .iter()
-            .map(|public_key| public_key.to_account_hash())
-            .collect::<Vec<_>>(),
-        U512::from(TEST_DELEGATOR_INITIAL_ACCOUNT_BALANCE),
-    );
+    // let delegator_keys = auction::generate_public_keys(1);
+    // let validator_keys = auction::generate_public_keys(1);
 
-    let initial_supply = builder.total_supply(None);
+    // run_genesis_and_create_initial_accounts(
+    //     &mut builder,
+    //     &validator_keys,
+    //     delegator_keys
+    //         .iter()
+    //         .map(|public_key| public_key.to_account_hash())
+    //         .collect::<Vec<_>>(),
+    //     U512::from(TEST_DELEGATOR_INITIAL_ACCOUNT_BALANCE),
+    // );
+
+    let initial_supply = builder.total_supply(ProtocolVersion::V2_0_0, None);
     let purse_name = "purse";
     let purse_amount = U512::from(10_000_000_000u64);
 
@@ -64,8 +67,11 @@ fn should_empty_purse_when_burning_above_balance() {
 
     assert_eq!(
         builder
-            .get_purse_balance_result(ProtocolVersion::V2_0_0, purse_uref)
-            .motes()
+            .get_purse_balance_result_with_proofs(
+                ProtocolVersion::V2_0_0,
+                BalanceIdentifier::Purse(purse_uref)
+            )
+            .total_balance()
             .cloned()
             .unwrap(),
         purse_amount
@@ -89,8 +95,11 @@ fn should_empty_purse_when_burning_above_balance() {
 
     assert_eq!(
         builder
-            .get_purse_balance_result(ProtocolVersion::V2_0_0, purse_uref)
-            .motes()
+            .get_purse_balance_result_with_proofs(
+                ProtocolVersion::V2_0_0,
+                BalanceIdentifier::Purse(purse_uref)
+            )
+            .total_balance()
             .cloned()
             .unwrap(),
         num_of_tokens_after_burn
@@ -114,14 +123,17 @@ fn should_empty_purse_when_burning_above_balance() {
 
     assert_eq!(
         builder
-            .get_purse_balance_result(ProtocolVersion::V2_0_0, purse_uref)
-            .motes()
+            .get_purse_balance_result_with_proofs(
+                ProtocolVersion::V2_0_0,
+                BalanceIdentifier::Purse(purse_uref)
+            )
+            .total_balance()
             .cloned()
             .unwrap(),
         num_of_tokens_after_burn
     );
 
-    let supply_after_burns = builder.total_supply(None);
+    let supply_after_burns = builder.total_supply(ProtocolVersion::V2_0_0, None);
     let expected_supply_after_burns = initial_supply - U512::from(10_000_000_000u64);
 
     assert_eq!(supply_after_burns, expected_supply_after_burns);
@@ -134,20 +146,21 @@ fn should_not_burn_excess_tokens() {
     let mut builder = LmdbWasmTestBuilder::new(data_dir.as_ref());
     let source = *DEFAULT_ACCOUNT_ADDR;
 
-    let delegator_keys = auction::generate_public_keys(1);
-    let validator_keys = auction::generate_public_keys(1);
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
+    // let delegator_keys = auction::generate_public_keys(1);
+    // let validator_keys = auction::generate_public_keys(1);
+    //
+    // run_genesis_and_create_initial_accounts(
+    //     &mut builder,
+    //     &validator_keys,
+    //     delegator_keys
+    //         .iter()
+    //         .map(|public_key| public_key.to_account_hash())
+    //         .collect::<Vec<_>>(),
+    //     U512::from(TEST_DELEGATOR_INITIAL_ACCOUNT_BALANCE),
+    // );
 
-    auction::run_genesis_and_create_initial_accounts(
-        &mut builder,
-        &validator_keys,
-        delegator_keys
-            .iter()
-            .map(|public_key| public_key.to_account_hash())
-            .collect::<Vec<_>>(),
-        U512::from(TEST_DELEGATOR_INITIAL_ACCOUNT_BALANCE),
-    );
-
-    let initial_supply = builder.total_supply(None);
+    let initial_supply = builder.total_supply(ProtocolVersion::V2_0_0, None);
     let purse_name = "purse";
     let purse_amount = U512::from(10_000_000_000u64);
 
@@ -177,8 +190,11 @@ fn should_not_burn_excess_tokens() {
 
     assert_eq!(
         builder
-            .get_purse_balance_result(ProtocolVersion::V2_0_0, purse_uref)
-            .motes()
+            .get_purse_balance_result_with_proofs(
+                ProtocolVersion::V2_0_0,
+                BalanceIdentifier::Purse(purse_uref)
+            )
+            .total_balance()
             .cloned()
             .unwrap(),
         purse_amount
@@ -202,14 +218,17 @@ fn should_not_burn_excess_tokens() {
 
     assert_eq!(
         builder
-            .get_purse_balance_result(ProtocolVersion::V2_0_0, purse_uref)
-            .motes()
+            .get_purse_balance_result_with_proofs(
+                ProtocolVersion::V2_0_0,
+                BalanceIdentifier::Purse(purse_uref)
+            )
+            .total_balance()
             .cloned()
             .unwrap(),
         num_of_tokens_after_burn,
     );
 
-    let supply_after_burns = builder.total_supply(None);
+    let supply_after_burns = builder.total_supply(ProtocolVersion::V2_0_0, None);
     let expected_supply_after_burns = initial_supply - U512::from(10_000_000_000u64);
 
     assert_eq!(supply_after_burns, expected_supply_after_burns);

@@ -1332,7 +1332,7 @@ pub trait StateProvider {
                         ));
                     }
                 };
-                match runtime.burn(source_purse, burn_amount) {
+                match runtime.payment_burn(source_purse, burn_amount) {
                     Ok(_) => Ok(burn_amount),
                     Err(err) => Err(err),
                 }
@@ -1424,7 +1424,7 @@ pub trait StateProvider {
                     Ok(value) => value,
                     Err(tce) => return HandleFeeResult::Failure(tce),
                 };
-                runtime.burn(source_purse, amount)
+                runtime.payment_burn(source_purse, amount)
             }
         };
 
