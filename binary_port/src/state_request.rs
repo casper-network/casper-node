@@ -5,10 +5,10 @@ use rand::Rng;
 
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    Digest, GlobalStateIdentifier, Key, KeyPrefix, KeyTag,
+    Digest, GlobalStateIdentifier, Key, KeyTag,
 };
 
-use crate::PurseIdentifier;
+use crate::{KeyPrefix, PurseIdentifier};
 
 use super::dictionary_item_identifier::DictionaryItemIdentifier;
 

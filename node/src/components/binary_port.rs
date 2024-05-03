@@ -12,9 +12,10 @@ use casper_binary_port::{
     BalanceResponse, BinaryMessage, BinaryMessageCodec, BinaryRequest, BinaryRequestHeader,
     BinaryRequestTag, BinaryResponse, BinaryResponseAndRequest, DictionaryItemIdentifier,
     DictionaryQueryResult, ErrorCode, GetRequest, GetTrieFullResult, GlobalStateQueryResult,
-    GlobalStateRequest, InformationRequest, InformationRequestTag, NodeStatus, PayloadType,
-    PurseIdentifier, ReactorStateName, RecordId, TransactionWithExecutionInfo,
+    GlobalStateRequest, InformationRequest, InformationRequestTag, KeyPrefix, NodeStatus,
+    PayloadType, PurseIdentifier, ReactorStateName, RecordId, TransactionWithExecutionInfo,
 };
+use casper_storage::KeyPrefix as StorageKeyPrefix;
 use casper_storage::{
     data_access_layer::{
         balance::BalanceHandling,
@@ -28,8 +29,8 @@ use casper_storage::{
 use casper_types::{
     addressable_entity::NamedKeyAddr,
     bytesrepr::{self, FromBytes, ToBytes},
-    BlockHeader, BlockIdentifier, Chainspec, Digest, EntityAddr, GlobalStateIdentifier, Key,
-    KeyPrefix, Peers, ProtocolVersion, SignedBlock, StoredValue, TimeDiff, Transaction,
+    BlockHeader, BlockIdentifier, Chainspec, Digest, EntityAddr, GlobalStateIdentifier, Key, Peers,
+    ProtocolVersion, SignedBlock, StoredValue, TimeDiff, Transaction,
 };
 
 use datasize::DataSize;
@@ -257,7 +258,21 @@ where
     let Some(state_root_hash) = resolve_state_root_hash(effect_builder, state_identifier).await else {
         return BinaryResponse::new_empty(protocol_version)
     };
-    let request = PrefixedValuesRequest::new(state_root_hash, key_prefix);
+    let storage_key_prefix = match key_prefix {
+        KeyPrefix::DelegatorBidAddrsByValidator(hash) => {
+            StorageKeyPrefix::DelegatorBidAddrsByValidator(hash)
+        }
+        KeyPrefix::MessagesByEntity(addr) => StorageKeyPrefix::MessagesByEntity(addr),
+        KeyPrefix::MessagesByEntityAndTopic(addr, topic) => {
+            StorageKeyPrefix::MessagesByEntityAndTopic(addr, topic)
+        }
+        KeyPrefix::NamedKeysByEntity(addr) => StorageKeyPrefix::NamedKeysByEntity(addr),
+        KeyPrefix::GasBalanceHoldsByPurse(purse) => StorageKeyPrefix::GasBalanceHoldsByPurse(purse),
+        KeyPrefix::ProcessingBalanceHoldsByPurse(purse) => {
+            StorageKeyPrefix::ProcessingBalanceHoldsByPurse(purse)
+        }
+    };
+    let request = PrefixedValuesRequest::new(state_root_hash, storage_key_prefix);
     match effect_builder.get_prefixed_values(request).await {
         PrefixedValuesResult::Success { values, .. } => {
             BinaryResponse::from_value(values, protocol_version)

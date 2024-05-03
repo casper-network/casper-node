@@ -1,6 +1,6 @@
 //! Support for obtaining all values with a given key prefix.
-use crate::tracking_copy::TrackingCopyError;
-use casper_types::{Digest, KeyPrefix, StoredValue};
+use crate::{tracking_copy::TrackingCopyError, KeyPrefix};
+use casper_types::{Digest, StoredValue};
 
 /// Represents a request to obtain all values with a given key prefix.
 #[derive(Debug, Clone, PartialEq, Eq)]

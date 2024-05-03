@@ -1951,7 +1951,7 @@ pub trait StateProvider {
                     match tc.get(&key) {
                         Ok(Some(value)) => values.push(value),
                         Ok(None) => {}
-                        Err(error) => return PrefixedValuesResult::Failure(error.into()),
+                        Err(error) => return PrefixedValuesResult::Failure(error),
                     }
                 }
                 PrefixedValuesResult::Success {

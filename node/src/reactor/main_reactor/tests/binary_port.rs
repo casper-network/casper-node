@@ -11,8 +11,8 @@ use casper_binary_port::{
     BinaryResponse, BinaryResponseAndRequest, ConsensusStatus, ConsensusValidatorChanges,
     DictionaryItemIdentifier, DictionaryQueryResult, ErrorCode, GetRequest, GetTrieFullResult,
     GlobalStateQueryResult, GlobalStateRequest, InformationRequest, InformationRequestTag,
-    LastProgress, NetworkName, NodeStatus, PayloadType, PurseIdentifier, ReactorStateName,
-    RecordId, Uptime,
+    KeyPrefix, LastProgress, NetworkName, NodeStatus, PayloadType, PurseIdentifier,
+    ReactorStateName, RecordId, Uptime,
 };
 use casper_storage::global_state::state::CommitProvider;
 use casper_types::{
@@ -23,8 +23,8 @@ use casper_types::{
     testing::TestRng,
     Account, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockIdentifier,
     BlockSynchronizerStatus, CLValue, CLValueDictionary, ChainspecRawBytes, DictionaryAddr, Digest,
-    EntityAddr, GlobalStateIdentifier, Key, KeyPrefix, KeyTag, NextUpgrade, Peers, ProtocolVersion,
-    SecretKey, SignedBlock, StoredValue, Transaction, TransactionV1Builder, Transfer, URef, U512,
+    EntityAddr, GlobalStateIdentifier, Key, KeyTag, NextUpgrade, Peers, ProtocolVersion, SecretKey,
+    SignedBlock, StoredValue, Transaction, TransactionV1Builder, Transfer, URef, U512,
 };
 use futures::{SinkExt, StreamExt};
 use rand::Rng;
