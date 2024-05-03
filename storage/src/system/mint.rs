@@ -61,7 +61,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
             return Err(Error::ForgedReference);
         }
 
-        let source_balance: U512 = match self.read_balance(purse)? {
+        let source_balance: U512 = match self.balance(purse, HoldsEpoch::NOT_APPLICABLE)? {
             Some(source_balance) => source_balance,
             None => return Err(Error::PurseNotFound),
         };
