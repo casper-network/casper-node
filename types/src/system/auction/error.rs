@@ -127,7 +127,7 @@ pub enum Error {
     /// assert_eq!(17, Error::InvalidPublicKey as u8);
     /// ```
     InvalidPublicKey = 17,
-    /// Validator is not not bonded.
+    /// Validator is not bonded.
     /// ```
     /// # use casper_types::system::auction::Error;
     /// assert_eq!(18, Error::BondNotFound as u8);
