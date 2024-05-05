@@ -22,9 +22,9 @@ use casper_storage::{
     block_store::types::ApprovalsHashes,
     data_access_layer::{
         tagged_values::{TaggedValuesRequest, TaggedValuesResult},
-        AddressableEntityResult, BalanceRequest, BalanceResult, EraValidatorsRequest,
-        EraValidatorsResult, ExecutionResultsChecksumResult, PutTrieRequest, PutTrieResult,
-        QueryRequest, QueryResult, TrieRequest, TrieResult,
+        AddressableEntityResult, BalanceRequest, BalanceResult, EntryPointsResult,
+        EraValidatorsRequest, EraValidatorsResult, ExecutionResultsChecksumResult, PutTrieRequest,
+        PutTrieResult, QueryRequest, QueryResult, TrieRequest, TrieResult,
     },
     DbRawBytesSpec,
 };
@@ -808,6 +808,13 @@ pub(crate) enum ContractRuntimeRequest {
         key: Key,
         responder: Responder<AddressableEntityResult>,
     },
+    /// Returns a singular entry point based under the given state root hash and entry
+    /// point key.
+    GetEntryPoint {
+        state_root_hash: Digest,
+        key: Key,
+        responder: Responder<EntryPointsResult>,
+    },
     /// Get a trie or chunk by its ID.
     GetTrie {
         /// A request for a trie element.
@@ -912,6 +919,17 @@ impl Display for ContractRuntimeRequest {
             }
             ContractRuntimeRequest::GetEraGasPrice { era_id, .. } => {
                 write!(formatter, "Get gas price for era {}", era_id)
+            }
+            ContractRuntimeRequest::GetEntryPoint {
+                state_root_hash,
+                key,
+                ..
+            } => {
+                write!(
+                    formatter,
+                    "get entry point {} under {}",
+                    key, state_root_hash
+                )
             }
         }
     }

@@ -1,6 +1,6 @@
-use itertools::Itertools;
 use std::collections::BTreeMap;
 
+use itertools::Itertools;
 use rand::Rng;
 
 use casper_types::{
@@ -12,17 +12,18 @@ use casper_types::{
         WithdrawPurse, WithdrawPurses,
     },
     testing::TestRng,
-    AccessRights, AddressableEntity, ByteCodeHash, CLValue, EntityKind, EntryPoints, EraId, Key,
-    PackageHash, ProtocolVersion, PublicKey, StoredValue, URef, URefAddr, U512,
+    AccessRights, AddressableEntity, ByteCodeHash, CLValue, EntityKind, EraId, Key, PackageHash,
+    ProtocolVersion, PublicKey, StoredValue, URef, URefAddr, U512,
 };
+
+#[cfg(test)]
+use crate::utils::ValidatorInfo;
 
 use super::{
     config::{AccountConfig, Config, DelegatorConfig, Transfer, ValidatorConfig},
     get_update,
     state_reader::StateReader,
 };
-#[cfg(test)]
-use crate::utils::ValidatorInfo;
 
 const TOTAL_SUPPLY_KEY: URef = URef::new([1; 32], AccessRights::READ_ADD_WRITE);
 const SEIGNIORAGE_RECIPIENTS_KEY: URef = URef::new([2; 32], AccessRights::READ_ADD_WRITE);
@@ -62,7 +63,6 @@ impl MockStateReader {
         let entity = AddressableEntity::new(
             PackageHash::new(rng.gen()),
             ByteCodeHash::new(rng.gen()),
-            EntryPoints::new(),
             self.protocol_version,
             main_purse,
             AssociatedKeys::new(account_hash, Weight::new(1)),

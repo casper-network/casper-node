@@ -33,10 +33,11 @@ use casper_types::{
     handle_stored_dictionary_value,
     system::auction::EraInfo,
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, CLType, CLValue,
-    CLValueDictionary, ContextAccessRights, EntityAddr, EntryPointType, Gas, GrantedAccess, Key,
-    KeyTag, Motes, Package, PackageHash, Phase, ProtocolVersion, PublicKey, RuntimeArgs,
-    StoredValue, StoredValueTypeMismatch, SystemEntityRegistry, TransactionHash, Transfer, URef,
-    URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
+    CLValueDictionary, ContextAccessRights, EntityAddr, EntryPointAddr, EntryPointType,
+    EntryPointValue, EntryPoints, Gas, GrantedAccess, Key, KeyTag, Motes, Package, PackageHash,
+    Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, StoredValueTypeMismatch,
+    SystemEntityRegistry, TransactionHash, Transfer, URef, URefAddr,
+    DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
 };
 
 use crate::{engine_state::EngineConfig, execution::ExecError};
@@ -419,6 +420,42 @@ where
             .map_err(Into::into)
     }
 
+    pub(crate) fn write_entry_points(
+        &mut self,
+        entity_addr: EntityAddr,
+        entry_points: EntryPoints,
+    ) -> Result<(), ExecError> {
+        if entry_points.is_empty() {
+            return Ok(());
+        }
+
+        for entry_point in entry_points.take_entry_points() {
+            let entry_point_addr =
+                EntryPointAddr::new_v1_entry_point_addr(entity_addr, entry_point.name())?;
+            let entry_point_value =
+                StoredValue::EntryPoint(EntryPointValue::V1CasperVm(entry_point));
+            self.metered_write_gs_unsafe(Key::EntryPoint(entry_point_addr), entry_point_value)?;
+        }
+
+        Ok(())
+    }
+
+    pub(crate) fn get_casper_vm_v1_entry_point(
+        &mut self,
+        entity_key: Key,
+    ) -> Result<EntryPoints, ExecError> {
+        let entity_addr = if let Key::AddressableEntity(entity_addr) = entity_key {
+            entity_addr
+        } else {
+            return Err(ExecError::UnexpectedKeyVariant(entity_key));
+        };
+
+        self.tracking_copy
+            .borrow_mut()
+            .get_v1_entry_points(entity_addr)
+            .map_err(Into::into)
+    }
+
     #[cfg(test)]
     pub(crate) fn get_entity(&self) -> AddressableEntity {
         self.entity.clone()
@@ -676,7 +713,8 @@ where
             | StoredValue::ContractWasm(_)
             | StoredValue::MessageTopic(_)
             | StoredValue::Message(_)
-            | StoredValue::Reservation(_) => Ok(()),
+            | StoredValue::Reservation(_)
+            | StoredValue::EntryPoint(_) => Ok(()),
         }
     }
 

@@ -8,7 +8,7 @@ use alloc::{vec, vec::Vec};
 use casper_contract::{self, contract_api::storage, unwrap_or_revert::UnwrapOrRevert};
 use casper_types::{
     addressable_entity::Parameters, api_error, bytesrepr::ToBytes, AddressableEntityHash, CLType,
-    EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, RuntimeArgs,
+    EntryPoint, EntryPointAccess, EntryPointPayment, EntryPointType, EntryPoints, RuntimeArgs,
 };
 
 #[no_mangle]
@@ -82,6 +82,7 @@ pub extern "C" fn call() {
             CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
 
         entry_points.add_entry_point(entry_point);
