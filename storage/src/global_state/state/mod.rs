@@ -50,16 +50,16 @@ use crate::{
         BalanceHoldKind, BalanceHoldMode, BalanceHoldRequest, BalanceHoldResult, BalanceIdentifier,
         BalanceRequest, BalanceResult, BidsRequest, BidsResult, BlockGlobalKind,
         BlockGlobalRequest, BlockGlobalResult, BlockRewardsError, BlockRewardsRequest,
-        BlockRewardsResult, EraValidatorsRequest, ExecutionResultsChecksumRequest,
-        ExecutionResultsChecksumResult, FeeError, FeeRequest, FeeResult, FlushRequest, FlushResult,
-        GenesisRequest, GenesisResult, HandleRefundMode, HandleRefundRequest, HandleRefundResult,
-        InsufficientBalanceHandling, ProofHandling, ProofsResult, ProtocolUpgradeRequest,
-        ProtocolUpgradeResult, PruneRequest, PruneResult, PutTrieRequest, PutTrieResult,
-        QueryRequest, QueryResult, RoundSeigniorageRateRequest, RoundSeigniorageRateResult,
-        StepError, StepRequest, StepResult, SystemEntityRegistryPayload,
-        SystemEntityRegistryRequest, SystemEntityRegistryResult, SystemEntityRegistrySelector,
-        TotalSupplyRequest, TotalSupplyResult, TrieRequest, TrieResult,
-        EXECUTION_RESULTS_CHECKSUM_NAME,
+        BlockRewardsResult, EntryPointsRequest, EntryPointsResult, EraValidatorsRequest,
+        ExecutionResultsChecksumRequest, ExecutionResultsChecksumResult, FeeError, FeeRequest,
+        FeeResult, FlushRequest, FlushResult, GenesisRequest, GenesisResult, HandleRefundMode,
+        HandleRefundRequest, HandleRefundResult, InsufficientBalanceHandling, ProofHandling,
+        ProofsResult, ProtocolUpgradeRequest, ProtocolUpgradeResult, PruneRequest, PruneResult,
+        PutTrieRequest, PutTrieResult, QueryRequest, QueryResult, RoundSeigniorageRateRequest,
+        RoundSeigniorageRateResult, StepError, StepRequest, StepResult,
+        SystemEntityRegistryPayload, SystemEntityRegistryRequest, SystemEntityRegistryResult,
+        SystemEntityRegistrySelector, TotalSupplyRequest, TotalSupplyResult, TrieRequest,
+        TrieResult, EXECUTION_RESULTS_CHECKSUM_NAME,
     },
     global_state::{
         error::Error as GlobalStateError,
@@ -147,7 +147,7 @@ pub trait CommitProvider: StateProvider {
             Err(err) => {
                 return GenesisResult::Failure(GenesisError::TrackingCopy(
                     TrackingCopyError::Storage(err),
-                ))
+                ));
             }
         };
         let chainspec_hash = request.chainspec_hash();
@@ -183,7 +183,7 @@ pub trait CommitProvider: StateProvider {
             Err(err) => {
                 return ProtocolUpgradeResult::Failure(ProtocolUpgradeError::TrackingCopy(
                     TrackingCopyError::Storage(err),
-                ))
+                ));
             }
         };
 
@@ -250,7 +250,7 @@ pub trait CommitProvider: StateProvider {
             Err(err) => {
                 return StepResult::Failure(StepError::TrackingCopy(TrackingCopyError::Storage(
                     err,
-                )))
+                )));
             }
         };
         let protocol_version = request.protocol_version();
@@ -262,7 +262,7 @@ pub trait CommitProvider: StateProvider {
                 Err(bre) => {
                     return StepResult::Failure(StepError::TrackingCopy(
                         TrackingCopyError::BytesRepr(bre),
-                    ))
+                    ));
                 }
             };
             match &mut protocol_version.into_bytes() {
@@ -270,7 +270,7 @@ pub trait CommitProvider: StateProvider {
                 Err(bre) => {
                     return StepResult::Failure(StepError::TrackingCopy(
                         TrackingCopyError::BytesRepr(*bre),
-                    ))
+                    ));
                 }
             };
             match &mut request.next_era_id().into_bytes() {
@@ -278,7 +278,7 @@ pub trait CommitProvider: StateProvider {
                 Err(bre) => {
                     return StepResult::Failure(StepError::TrackingCopy(
                         TrackingCopyError::BytesRepr(*bre),
-                    ))
+                    ));
                 }
             };
 
@@ -355,7 +355,7 @@ pub trait CommitProvider: StateProvider {
             Err(err) => {
                 return BlockRewardsResult::Failure(BlockRewardsError::TrackingCopy(
                     TrackingCopyError::Storage(err),
-                ))
+                ));
             }
         };
 
@@ -367,7 +367,7 @@ pub trait CommitProvider: StateProvider {
                 Err(bre) => {
                     return BlockRewardsResult::Failure(BlockRewardsError::TrackingCopy(
                         TrackingCopyError::BytesRepr(bre),
-                    ))
+                    ));
                 }
             };
             match &mut protocol_version.into_bytes() {
@@ -375,7 +375,7 @@ pub trait CommitProvider: StateProvider {
                 Err(bre) => {
                     return BlockRewardsResult::Failure(BlockRewardsError::TrackingCopy(
                         TrackingCopyError::BytesRepr(*bre),
-                    ))
+                    ));
                 }
             };
 
@@ -433,7 +433,7 @@ pub trait CommitProvider: StateProvider {
             Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
             Ok(None) => return FeeResult::RootNotFound,
             Err(gse) => {
-                return FeeResult::Failure(FeeError::TrackingCopy(TrackingCopyError::Storage(gse)))
+                return FeeResult::Failure(FeeError::TrackingCopy(TrackingCopyError::Storage(gse)));
             }
         };
 
@@ -445,7 +445,7 @@ pub trait CommitProvider: StateProvider {
                 Err(bre) => {
                     return FeeResult::Failure(FeeError::TrackingCopy(
                         TrackingCopyError::BytesRepr(bre),
-                    ))
+                    ));
                 }
             };
             match &mut protocol_version.into_bytes() {
@@ -453,7 +453,7 @@ pub trait CommitProvider: StateProvider {
                 Err(bre) => {
                     return FeeResult::Failure(FeeError::TrackingCopy(
                         TrackingCopyError::BytesRepr(*bre),
-                    ))
+                    ));
                 }
             };
 
@@ -491,7 +491,7 @@ pub trait CommitProvider: StateProvider {
                     Err(gse) => {
                         return FeeResult::Failure(FeeError::TrackingCopy(
                             TrackingCopyError::Storage(gse),
-                        ))
+                        ));
                     }
                 };
                 FeeResult::Success {
@@ -665,7 +665,7 @@ pub trait StateProvider {
                     total_balance,
                     available_balance: total_balance,
                     proofs_result,
-                }
+                };
             }
             Err(tce) => return tce.into(),
         };
@@ -679,7 +679,7 @@ pub trait StateProvider {
                         total_balance,
                         available_balance: total_balance,
                         proofs_result,
-                    }
+                    };
                 }
                 Err(tce) => return tce.into(),
             };
@@ -710,7 +710,7 @@ pub trait StateProvider {
             Err(err) => {
                 return BalanceHoldResult::Failure(BalanceHoldError::TrackingCopy(
                     TrackingCopyError::Storage(err),
-                ))
+                ));
             }
         };
         let hold_mode = request.balance_hold_mode();
@@ -729,7 +729,7 @@ pub trait StateProvider {
                     BalanceHoldKind::All => {
                         return BalanceHoldResult::Failure(
                             BalanceHoldError::UnexpectedWildcardVariant,
-                        )
+                        );
                     }
                     BalanceHoldKind::Tag(tag) => tag,
                 };
@@ -780,7 +780,7 @@ pub trait StateProvider {
                     Err(cve) => {
                         return BalanceHoldResult::Failure(BalanceHoldError::TrackingCopy(
                             TrackingCopyError::CLValue(cve),
-                        ))
+                        ));
                     }
                 };
 
@@ -814,7 +814,7 @@ pub trait StateProvider {
                 let purse_addr = match identifier.purse_uref(&mut tc, request.protocol_version()) {
                     Ok(source_purse) => source_purse.addr(),
                     Err(tce) => {
-                        return BalanceHoldResult::Failure(BalanceHoldError::TrackingCopy(tce))
+                        return BalanceHoldResult::Failure(BalanceHoldError::TrackingCopy(tce));
                     }
                 };
 
@@ -832,7 +832,7 @@ pub trait StateProvider {
                             Err(tce) => {
                                 return BalanceHoldResult::Failure(BalanceHoldError::TrackingCopy(
                                     tce,
-                                ))
+                                ));
                             }
                         };
                         filter.push((tag, HoldsEpoch::from_millis(block_time.value(), interval)));
@@ -847,7 +847,7 @@ pub trait StateProvider {
                             Err(tce) => {
                                 return BalanceHoldResult::Failure(BalanceHoldError::TrackingCopy(
                                     tce,
-                                ))
+                                ));
                             }
                         };
                         filter.push((tag, HoldsEpoch::from_millis(block_time.value(), interval)));
@@ -978,7 +978,9 @@ pub trait StateProvider {
                         bids.push(bid_kind);
                     }
                     Some(_) => {
-                        return BidsResult::Failure(TrackingCopyError::UnexpectedStoredValueVariant)
+                        return BidsResult::Failure(
+                            TrackingCopyError::UnexpectedStoredValueVariant,
+                        );
                     }
                     None => return BidsResult::Failure(TrackingCopyError::MissingBid(*key)),
                 },
@@ -1448,7 +1450,7 @@ pub trait StateProvider {
             Ok(Some(tc)) => tc,
             Ok(None) => return ExecutionResultsChecksumResult::RootNotFound,
             Err(err) => {
-                return ExecutionResultsChecksumResult::Failure(TrackingCopyError::Storage(err))
+                return ExecutionResultsChecksumResult::Failure(TrackingCopyError::Storage(err));
             }
         };
         match tc.get_checksum_registry() {
@@ -1472,7 +1474,7 @@ pub trait StateProvider {
                 match self.query(query_request) {
                     QueryResult::RootNotFound => return AddressableEntityResult::RootNotFound,
                     QueryResult::ValueNotFound(msg) => {
-                        return AddressableEntityResult::ValueNotFound(msg)
+                        return AddressableEntityResult::ValueNotFound(msg);
                     }
                     QueryResult::Failure(err) => return AddressableEntityResult::Failure(err),
                     QueryResult::Success { value, .. } => {
@@ -1521,7 +1523,7 @@ pub trait StateProvider {
                 match self.query(query_request) {
                     QueryResult::RootNotFound => return AddressableEntityResult::RootNotFound,
                     QueryResult::ValueNotFound(msg) => {
-                        return AddressableEntityResult::ValueNotFound(msg)
+                        return AddressableEntityResult::ValueNotFound(msg);
                     }
                     QueryResult::Failure(err) => return AddressableEntityResult::Failure(err),
                     QueryResult::Success { value, .. } => {
@@ -1538,7 +1540,7 @@ pub trait StateProvider {
             _ => {
                 return AddressableEntityResult::Failure(TrackingCopyError::UnexpectedKeyVariant(
                     key,
-                ))
+                ));
             }
         };
 
@@ -1552,7 +1554,7 @@ pub trait StateProvider {
                     None => {
                         return AddressableEntityResult::Failure(
                             TrackingCopyError::UnexpectedStoredValueVariant,
-                        )
+                        );
                     }
                 };
                 AddressableEntityResult::Success { entity }
@@ -1571,7 +1573,7 @@ pub trait StateProvider {
             Ok(Some(tc)) => tc,
             Ok(None) => return SystemEntityRegistryResult::RootNotFound,
             Err(err) => {
-                return SystemEntityRegistryResult::Failure(TrackingCopyError::Storage(err))
+                return SystemEntityRegistryResult::Failure(TrackingCopyError::Storage(err));
             }
         };
 
@@ -1605,6 +1607,28 @@ pub trait StateProvider {
                     SystemEntityRegistryResult::NamedEntityNotFound(name.clone())
                 }
             },
+        }
+    }
+
+    /// Gets an entry point value.
+    fn entry_point(&self, request: EntryPointsRequest) -> EntryPointsResult {
+        let state_hash = request.state_hash();
+        let query_request = QueryRequest::new(state_hash, request.key(), vec![]);
+
+        match self.query(query_request) {
+            QueryResult::RootNotFound => EntryPointsResult::RootNotFound,
+            QueryResult::ValueNotFound(msg) => EntryPointsResult::ValueNotFound(msg),
+            QueryResult::Failure(tce) => EntryPointsResult::Failure(tce),
+            QueryResult::Success { value, .. } => {
+                if let StoredValue::EntryPoint(entry_point_value) = *value {
+                    EntryPointsResult::Success {
+                        entry_point: entry_point_value,
+                    }
+                } else {
+                    error!("Expected to get entry point value received other variant");
+                    EntryPointsResult::Failure(TrackingCopyError::UnexpectedStoredValueVariant)
+                }
+            }
         }
     }
 
@@ -1668,7 +1692,7 @@ pub trait StateProvider {
             Ok(Some(tc)) => tc,
             Ok(None) => return RoundSeigniorageRateResult::RootNotFound,
             Err(err) => {
-                return RoundSeigniorageRateResult::Failure(TrackingCopyError::Storage(err))
+                return RoundSeigniorageRateResult::Failure(TrackingCopyError::Storage(err));
             }
         };
 

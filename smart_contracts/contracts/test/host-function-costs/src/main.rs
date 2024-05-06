@@ -17,7 +17,7 @@ use casper_types::{
     addressable_entity::{ActionType, NamedKeys, Weight},
     bytesrepr::Bytes,
     runtime_args, ApiError, BlockTime, CLType, CLTyped, CLValue, EntryPoint, EntryPointAccess,
-    EntryPointType, EntryPoints, Key, Parameter, Phase, RuntimeArgs, U512,
+    EntryPointPayment, EntryPointType, EntryPoints, Key, Parameter, Phase, RuntimeArgs, U512,
 };
 
 const DO_NOTHING_NAME: &str = "do_nothing";
@@ -282,6 +282,7 @@ pub extern "C" fn call() {
             CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
         entry_points.add_entry_point(entry_point);
 
@@ -291,6 +292,7 @@ pub extern "C" fn call() {
             CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
         entry_points.add_entry_point(entry_point);
 
@@ -300,6 +302,7 @@ pub extern "C" fn call() {
             CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
         entry_points.add_entry_point(entry_point);
         let entry_point = EntryPoint::new(
@@ -308,6 +311,7 @@ pub extern "C" fn call() {
             CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
         entry_points.add_entry_point(entry_point);
 
@@ -317,6 +321,7 @@ pub extern "C" fn call() {
             CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
         entry_points.add_entry_point(entry_point);
         let entry_point = EntryPoint::new(
@@ -325,6 +330,7 @@ pub extern "C" fn call() {
             CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
         entry_points.add_entry_point(entry_point);
 
@@ -334,6 +340,7 @@ pub extern "C" fn call() {
             CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
         entry_points.add_entry_point(entry_point);
         let entry_point = EntryPoint::new(
@@ -342,6 +349,7 @@ pub extern "C" fn call() {
             CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
         entry_points.add_entry_point(entry_point);
 
@@ -351,6 +359,7 @@ pub extern "C" fn call() {
             CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
         entry_points.add_entry_point(entry_point);
 
@@ -360,6 +369,7 @@ pub extern "C" fn call() {
             CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
         entry_points.add_entry_point(entry_point);
 
@@ -369,6 +379,7 @@ pub extern "C" fn call() {
             CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
         entry_points.add_entry_point(entry_point);
 
@@ -378,6 +389,7 @@ pub extern "C" fn call() {
             CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
         entry_points.add_entry_point(entry_point);
 
@@ -387,6 +399,7 @@ pub extern "C" fn call() {
             CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
         entry_points.add_entry_point(entry_point);
 

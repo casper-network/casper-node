@@ -23,8 +23,9 @@ use casper_types::{
         MINT,
     },
     BlockGlobalAddr, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash, CLValue, ChecksumRegistry,
-    EntityAddr, HoldBalanceHandling, HoldsEpoch, Key, KeyTag, Motes, Package, PackageHash,
-    StoredValue, StoredValueTypeMismatch, SystemEntityRegistry, URef, URefAddr, U512,
+    EntityAddr, EntryPointAddr, EntryPointValue, EntryPoints, HoldBalanceHandling, HoldsEpoch, Key,
+    KeyTag, Motes, Package, PackageHash, StoredValue, StoredValueTypeMismatch,
+    SystemEntityRegistry, URef, URefAddr, U512,
 };
 
 /// Higher-level operations on the state via a `TrackingCopy`.
@@ -93,6 +94,9 @@ pub trait TrackingCopyExt<R> {
     /// Returns the collection of named keys for a given AddressableEntity.
     fn get_named_keys(&self, entity_addr: EntityAddr) -> Result<NamedKeys, Self::Error>;
 
+    /// Returns the collection of entry points for a given AddresableEntity.
+    fn get_v1_entry_points(&mut self, entity_addr: EntityAddr) -> Result<EntryPoints, Self::Error>;
+
     /// Gets a package by hash.
     fn get_package(&mut self, package_hash: PackageHash) -> Result<Package, Self::Error>;
 
@@ -147,7 +151,7 @@ where
         };
         let (handling_key, interval_key) = match hold_kind {
             BalanceHoldAddrTag::Processing => {
-                return Ok(Some((block_time, HoldBalanceHandling::Accrued, 0)))
+                return Ok(Some((block_time, HoldBalanceHandling::Accrued, 0)));
             }
             BalanceHoldAddrTag::Gas => (MINT_GAS_HOLD_HANDLING_KEY, MINT_GAS_HOLD_INTERVAL_KEY),
         };
@@ -580,7 +584,7 @@ where
                 Some(other) => {
                     return Err(TrackingCopyError::TypeMismatch(
                         StoredValueTypeMismatch::new("CLValue".to_string(), other.type_name()),
-                    ))
+                    ));
                 }
                 None => match self.cache.reads_cached.get(entry_key) {
                     Some(StoredValue::NamedKey(named_key_value)) => {
@@ -600,6 +604,78 @@ where
         }
 
         Ok(named_keys)
+    }
+
+    fn get_v1_entry_points(&mut self, entity_addr: EntityAddr) -> Result<EntryPoints, Self::Error> {
+        let entry_points_prefix = entity_addr
+            .entry_points_v1_prefix()
+            .map_err(Self::Error::BytesRepr)?;
+
+        let mut ret: BTreeSet<Key> = BTreeSet::new();
+        let keys = self.reader.keys_with_prefix(&entry_points_prefix)?;
+        let pruned = &self.cache.prunes_cached;
+        // don't include keys marked for pruning
+        for key in keys {
+            if pruned.contains(&key) {
+                continue;
+            }
+            ret.insert(key);
+        }
+
+        let cache = self.cache.get_key_tag_muts_cached(&KeyTag::EntryPoint);
+
+        // there may be newly inserted keys which have not been committed yet
+        if let Some(keys) = cache {
+            for key in keys {
+                if ret.contains(&key) {
+                    continue;
+                }
+                if let Key::EntryPoint(entry_point_addr) = key {
+                    match entry_point_addr {
+                        EntryPointAddr::VmCasperV1 { .. } => {
+                            ret.insert(key);
+                        }
+                        EntryPointAddr::VmCasperV2 { .. } => continue,
+                    }
+                }
+            }
+        };
+
+        let mut entry_points_v1 = EntryPoints::new();
+
+        for entry_point_key in ret.iter() {
+            match self.read(entry_point_key)? {
+                Some(StoredValue::EntryPoint(EntryPointValue::V1CasperVm(entry_point))) => {
+                    entry_points_v1.add_entry_point(entry_point)
+                }
+                Some(other) => {
+                    return Err(TrackingCopyError::TypeMismatch(
+                        StoredValueTypeMismatch::new(
+                            "EntryPointsV1".to_string(),
+                            other.type_name(),
+                        ),
+                    ));
+                }
+                None => match self.cache.reads_cached.get(entry_point_key) {
+                    Some(StoredValue::EntryPoint(EntryPointValue::V1CasperVm(entry_point))) => {
+                        entry_points_v1.add_entry_point(entry_point.to_owned())
+                    }
+                    Some(other) => {
+                        return Err(TrackingCopyError::TypeMismatch(
+                            StoredValueTypeMismatch::new(
+                                "EntryPointsV1".to_string(),
+                                other.type_name(),
+                            ),
+                        ));
+                    }
+                    None => {
+                        return Err(TrackingCopyError::KeyNotFound(*entry_point_key));
+                    }
+                },
+            }
+        }
+
+        Ok(entry_points_v1)
     }
 
     fn get_package(&mut self, package_hash: PackageHash) -> Result<Package, Self::Error> {

@@ -16,8 +16,8 @@ use casper_types::{
     addressable_entity::{EntityKindTag, NamedKeys},
     api_error,
     bytesrepr::ToBytes,
-    AccessRights, ApiError, CLType, CLValue, EntryPoint, EntryPointAccess, EntryPointType,
-    EntryPoints, Key, URef,
+    AccessRights, ApiError, CLType, CLValue, EntryPoint, EntryPointAccess, EntryPointPayment,
+    EntryPointType, EntryPoints, Key, URef,
 };
 
 pub const DICTIONARY_NAME: &str = "local";
@@ -184,6 +184,7 @@ pub fn delegate() {
         CLType::Unit,
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     ));
     entry_points.add_entry_point(EntryPoint::new(
         SHARE_RO_ENTRYPOINT,
@@ -191,6 +192,7 @@ pub fn delegate() {
         CLType::Unit,
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     ));
     entry_points.add_entry_point(EntryPoint::new(
         SHARE_W_ENTRYPOINT,
@@ -198,6 +200,7 @@ pub fn delegate() {
         CLType::Unit,
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     ));
     entry_points.add_entry_point(EntryPoint::new(
         INVALID_PUT_DICTIONARY_ITEM_KEY_ENTRYPOINT,
@@ -205,6 +208,7 @@ pub fn delegate() {
         CLType::Unit,
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     ));
     entry_points.add_entry_point(EntryPoint::new(
         INVALID_GET_DICTIONARY_ITEM_KEY_ENTRYPOINT,
@@ -212,6 +216,7 @@ pub fn delegate() {
         CLType::Unit,
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     ));
     let named_keys = {
         let uref = {

@@ -3,8 +3,8 @@
 
 use casper_contract::contract_api::{runtime, storage};
 use casper_types::{
-    addressable_entity::Parameters, CLType, EntryPoint, EntryPointAccess, EntryPointType,
-    EntryPoints, Key,
+    addressable_entity::Parameters, CLType, EntryPoint, EntryPointAccess, EntryPointPayment,
+    EntryPointType, EntryPoints, Key,
 };
 
 const CONTRACT_HASH_NAME: &str = "contract";
@@ -27,6 +27,7 @@ pub extern "C" fn call() {
             CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
 
         entry_points.add_entry_point(entry_point);

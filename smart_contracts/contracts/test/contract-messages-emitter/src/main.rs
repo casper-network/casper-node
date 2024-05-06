@@ -3,6 +3,7 @@
 
 #[macro_use]
 extern crate alloc;
+
 use alloc::{
     collections::BTreeMap,
     string::{String, ToString},
@@ -18,7 +19,7 @@ use casper_types::{
     addressable_entity::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys},
     api_error::ApiError,
     contract_messages::MessageTopicOperation,
-    CLType, CLTyped, Parameter, RuntimeArgs,
+    CLType, CLTyped, EntryPointPayment, Parameter, RuntimeArgs,
 };
 
 const ENTRY_POINT_INIT: &str = "init";
@@ -92,6 +93,7 @@ pub extern "C" fn call() {
         CLType::Unit,
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     ));
     emitter_entry_points.add_entry_point(EntryPoint::new(
         ENTRY_POINT_EMIT_MESSAGE,
@@ -99,6 +101,7 @@ pub extern "C" fn call() {
         CLType::Unit,
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     ));
     emitter_entry_points.add_entry_point(EntryPoint::new(
         ENTRY_POINT_ADD_TOPIC,
@@ -106,6 +109,7 @@ pub extern "C" fn call() {
         CLType::Unit,
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     ));
     emitter_entry_points.add_entry_point(EntryPoint::new(
         ENTRY_POINT_EMIT_MULTIPLE_MESSAGES,
@@ -113,6 +117,7 @@ pub extern "C" fn call() {
         CLType::Unit,
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     ));
 
     if register_topic_with_init {

@@ -49,10 +49,10 @@ use casper_types::{
     },
     AccessRights, ApiError, BlockGlobalAddr, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash,
     ByteCodeKind, CLTyped, CLValue, ContextAccessRights, EntityAddr, EntityKind, EntityVersion,
-    EntityVersionKey, EntityVersions, Gas, GrantedAccess, Group, Groups, HostFunction,
-    HostFunctionCost, InitiatorAddr, Key, NamedArg, Package, PackageHash, PackageStatus, Phase,
-    PublicKey, RuntimeArgs, StoredValue, Tagged, Transfer, TransferResult, TransferV2,
-    TransferredTo, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, U512,
+    EntityVersionKey, EntityVersions, EntryPointAddr, EntryPointValue, Gas, GrantedAccess, Group,
+    Groups, HostFunction, HostFunctionCost, InitiatorAddr, Key, NamedArg, Package, PackageHash,
+    PackageStatus, Phase, PublicKey, RuntimeArgs, StoredValue, TransactionRuntime, Transfer,
+    TransferResult, TransferV2, TransferredTo, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, U512,
 };
 
 use crate::{
@@ -1166,18 +1166,18 @@ where
         entry_point_name: &str,
         args: RuntimeArgs,
     ) -> Result<CLValue, ExecError> {
-        let (entity, entity_hash, package) = match identifier {
+        let (entity, entity_addr, package) = match identifier {
             CallContractIdentifier::Contract {
                 contract_hash: entity_hash,
             } => {
-                let entity_key = if self.context.is_system_addressable_entity(&entity_hash)? {
-                    Key::addressable_entity_key(EntityKindTag::System, entity_hash)
+                let entity_addr = if self.context.is_system_addressable_entity(&entity_hash)? {
+                    EntityAddr::new_system(entity_hash.value())
                 } else {
-                    Key::contract_entity_key(entity_hash)
+                    EntityAddr::new_smart_contract(entity_hash.value())
                 };
 
                 let entity = if let Some(StoredValue::AddressableEntity(entity)) =
-                    self.context.read_gs(&entity_key)?
+                    self.context.read_gs(&Key::AddressableEntity(entity_addr))?
                 {
                     entity
                 } else {
@@ -1198,7 +1198,7 @@ where
                     return Err(ExecError::DisabledEntity(entity_hash));
                 }
 
-                (entity, entity_hash, package)
+                (entity, entity_addr, package)
             }
             CallContractIdentifier::ContractPackage {
                 contract_package_hash,
@@ -1232,21 +1232,21 @@ where
                     .copied()
                     .ok_or(ExecError::MissingEntityVersion(entity_version_key))?;
 
-                let entity_key = if self.context.is_system_addressable_entity(&entity_hash)? {
-                    Key::addressable_entity_key(EntityKindTag::System, entity_hash)
+                let entity_addr = if self.context.is_system_addressable_entity(&entity_hash)? {
+                    EntityAddr::new_system(entity_hash.value())
                 } else {
-                    Key::contract_entity_key(entity_hash)
+                    EntityAddr::new_smart_contract(entity_hash.value())
                 };
 
                 let entity = if let Some(StoredValue::AddressableEntity(entity)) =
-                    self.context.read_gs(&entity_key)?
+                    self.context.read_gs(&Key::AddressableEntity(entity_addr))?
                 {
                     entity
                 } else {
                     self.migrate_contract_and_contract_package(entity_hash)?
                 };
 
-                (entity, entity_hash, package)
+                (entity, entity_addr, package)
             }
         };
 
@@ -1264,10 +1264,27 @@ where
             });
         }
 
-        let entry_point = entity
-            .entry_point(entry_point_name)
-            .cloned()
-            .ok_or_else(|| ExecError::NoSuchMethod(entry_point_name.to_owned()))?;
+        // First check if we can fetch the discrete record
+        // if not use the method on the tracking copy to fetch the
+        // full set which also peeks the cache.
+        let entry_point = {
+            let entry_point_addr =
+                EntryPointAddr::new_v1_entry_point_addr(entity_addr, entry_point_name)?;
+            match self.context.read_gs(&Key::EntryPoint(entry_point_addr))? {
+                Some(StoredValue::EntryPoint(EntryPointValue::V1CasperVm(entry_point))) => {
+                    entry_point
+                }
+                Some(_) | None => {
+                    let entry_points = self
+                        .context
+                        .get_casper_vm_v1_entry_point(Key::AddressableEntity(entity_addr))?;
+                    entry_points
+                        .get(entry_point_name)
+                        .cloned()
+                        .ok_or_else(|| ExecError::NoSuchMethod(entry_point_name.to_owned()))?
+                }
+            }
+        };
 
         let entry_point_type = entry_point.entry_point_type();
 
@@ -1309,6 +1326,8 @@ where
                 }
             }
         }
+
+        let entity_hash = AddressableEntityHash::new(entity_addr.value());
 
         if !self
             .context
@@ -1371,8 +1390,6 @@ where
             all_urefs
         };
 
-        let entity_addr = entity.entity_addr(entity_hash);
-
         let entity_named_keys = self
             .context
             .state()
@@ -1433,8 +1450,11 @@ where
                 EntityKind::System(_) | EntityKind::Account(_) => {
                     Key::ByteCode(ByteCodeAddr::Empty)
                 }
-                EntityKind::SmartContract => {
+                EntityKind::SmartContract(TransactionRuntime::VmCasperV1) => {
                     Key::ByteCode(ByteCodeAddr::new_wasm_addr(byte_code_addr))
+                }
+                EntityKind::SmartContract(runtime @ TransactionRuntime::VmCasperV2) => {
+                    return Err(ExecError::IncompatibleRuntime(runtime))
                 }
             };
 
@@ -1447,11 +1467,9 @@ where
             casper_wasm::deserialize_buffer(byte_code.bytes())?
         };
 
-        let entity_tag = entity.kind().tag();
-
         let mut named_keys = entity_named_keys;
 
-        let context_entity_key = Key::addressable_entity_key(entity_tag, entity_hash);
+        let context_entity_key = Key::AddressableEntity(entity_addr);
 
         let context = self.context.new_from_self(
             context_entity_key,
@@ -1756,9 +1774,9 @@ where
             return Ok(Err(ApiError::NotAllowedToAddContractVersion));
         }
 
-        if entry_points.contains_stored_session() {
-            return Err(ExecError::InvalidEntryPointType);
-        }
+        // if entry_points.contains_stored_session() {
+        //     return Err(ExecError::InvalidEntryPointType);
+        // }
 
         let mut package = self.context.get_package(package_hash)?;
 
@@ -1828,16 +1846,17 @@ where
         named_keys.append(previous_named_keys);
         self.context.write_named_keys(entity_addr, named_keys)?;
 
+        self.context.write_entry_points(entity_addr, entry_points)?;
+
         let entity = AddressableEntity::new(
             package_hash,
             byte_code_hash.into(),
-            entry_points,
             protocol_version,
             main_purse,
             associated_keys,
             action_thresholds,
             previous_message_topics.clone(),
-            EntityKind::SmartContract,
+            EntityKind::SmartContract(TransactionRuntime::VmCasperV1),
         );
 
         self.context.metered_write_gs_unsafe(entity_key, entity)?;
@@ -2495,13 +2514,11 @@ where
                 let package_hash = PackageHash::new(self.context.new_hash_address()?);
                 let main_purse = target_purse;
                 let associated_keys = AssociatedKeys::new(target, Weight::new(1));
-                let entry_points = EntryPoints::new();
                 let message_topics = MessageTopics::default();
 
                 let entity = AddressableEntity::new(
                     package_hash,
                     byte_code_hash,
-                    entry_points,
                     protocol_version,
                     main_purse,
                     associated_keys,
@@ -2978,12 +2995,10 @@ where
         let versions = package.versions();
         for entity_hash in versions.contract_hashes() {
             let entry_points = {
-                let entity: AddressableEntity = self
-                    .context
-                    .read_gs_typed(&Key::contract_entity_key(*entity_hash))?;
-                entity.entry_points().clone().take_entry_points()
+                self.context
+                    .get_casper_vm_v1_entry_point(Key::contract_entity_key(*entity_hash))?
             };
-            for entry_point in entry_points {
+            for entry_point in entry_points.take_entry_points() {
                 match entry_point.access() {
                     EntryPointAccess::Public | EntryPointAccess::Template => {
                         continue;

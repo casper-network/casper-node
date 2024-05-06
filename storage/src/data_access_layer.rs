@@ -13,6 +13,7 @@ mod balance_hold;
 pub mod bids;
 mod block_global;
 pub mod block_rewards;
+mod entry_points;
 pub mod era_validators;
 mod execution_results_checksum;
 mod fee;
@@ -44,6 +45,7 @@ pub use balance_hold::{
 pub use bids::{BidsRequest, BidsResult};
 pub use block_global::{BlockGlobalKind, BlockGlobalRequest, BlockGlobalResult};
 pub use block_rewards::{BlockRewardsError, BlockRewardsRequest, BlockRewardsResult};
+pub use entry_points::{EntryPointsRequest, EntryPointsResult};
 pub use era_validators::{EraValidatorsRequest, EraValidatorsResult};
 pub use execution_results_checksum::{
     ExecutionResultsChecksumRequest, ExecutionResultsChecksumResult,
