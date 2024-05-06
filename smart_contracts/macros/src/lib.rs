@@ -10,7 +10,7 @@ use syn::{
     parse_macro_input, Data, DeriveInput, Fields, ItemEnum, ItemFn, ItemImpl, ItemStruct,
     ItemTrait, ItemUnion, LitStr, Type,
 };
-use vm_common::flags::EntryPointFlags;
+use vm_common::{flags::EntryPointFlags, selector::Selector};
 
 #[derive(Debug, FromAttributes)]
 #[darling(attributes(casper))]
@@ -157,13 +157,13 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
         let item = item.clone();
         match attr {
             proc_macro::TokenTree::Ident(ident) if ident.to_string() == "trait_definition" => {
+                let mut combined_selectors = Selector::zero();
+
                 let mut item_trait = parse_macro_input!(item as ItemTrait);
-                // todo!("{item_trait:#?}");
+
                 let trait_name = &item_trait.ident;
 
                 let vis = &item_trait.vis;
-
-                // let mut manifest_data = Vec::new();
 
                 let mut dispatch_table = Vec::new();
 
@@ -215,12 +215,13 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                             // let call_data
 
                             let func_name = func.sig.ident.clone();
-                            let name_str = func_name.to_string();
 
                             let dispatch_func_name =
                                 format_ident!("{trait_name}_{func_name}_dispatch");
 
-                            let selector = utils::compute_selector(&func.sig);
+                            let selector_value = utils::compute_selector_value(&func.sig);
+
+                            combined_selectors ^= Selector::new(selector_value);
 
                             let arg_names_and_types = func
                                 .sig
@@ -256,7 +257,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                             schema_entry_points.push(quote! {
                                 casper_sdk::schema::SchemaEntryPoint {
                                     name: stringify!(#func_name).into(),
-                                    selector: #selector,
+                                    selector: #selector_value,
                                     arguments: vec![ #(#args,)* ],
                                     result: #result,
                                     flags: vm_common::flags::EntryPointFlags::default(), // TODO: Constructors in traits
@@ -294,7 +295,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
 
                             dispatch_table.push(quote! {
                                 casper_sdk::sys::EntryPoint {
-                                    selector: #selector,
+                                    selector: #selector_value,
                                     fptr: {
                                         #handle_dispatch
                                         #dispatch_func_name::<T>
@@ -327,7 +328,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                     }
 
                                     impl casper_sdk::ToCallData for CallData {
-                                        const SELECTOR: vm_common::selector::Selector = vm_common::selector::Selector::new(#selector);
+                                        const SELECTOR: vm_common::selector::Selector = vm_common::selector::Selector::new(#selector_value);
                                         type Return<'a> = #call_data_return_lifetime;
 
                                         fn input_data(&self) -> Option<Vec<u8>> {
@@ -354,6 +355,8 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
 
                 let manifest_data_len = dispatch_table.len();
 
+                let combined_selectors = combined_selectors.get();
+
                 let extension_struct = quote! {
                     #vis trait #ref_struct_trait: Sized {
                         #(#extra_code)*
@@ -363,6 +366,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                     #vis struct #ref_struct;
 
                     impl #ref_struct {
+                        pub const SELECTOR: vm_common::selector::Selector = vm_common::selector::Selector::new(#combined_selectors);
 
                         #[doc(hidden)]
                         #vis const fn __casper_new_trait_dispatch_table<T: #trait_name + borsh::BorshDeserialize + borsh::BorshSerialize + casper_sdk::Contract + Default>() -> [casper_sdk::sys::EntryPoint; #manifest_data_len] {
@@ -428,7 +432,8 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
             proc_macro::TokenTree::Ident(ident) if ident.to_string() == "contract" => {
                 // if let
                 if let Ok(mut entry_points) = syn::parse::<ItemImpl>(item.clone()) {
-                    // ident.
+                    let mut combined_selectors = Selector::zero();
+
                     let mut populate_definitions = Vec::new();
 
                     let impl_trait = match entry_points.trait_.as_ref() {
@@ -610,9 +615,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
 
                                 let bits = flag_value.bits();
 
-                                let name_str = name.to_string();
-
-                                let selector = utils::compute_selector(&func.sig);
+                                let selector = utils::compute_selector_value(&func.sig);
 
                                 manifest_entry_points.push(quote! {
                                 {
@@ -788,7 +791,9 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                         // for arg in &entry_point
                         let bits = flag_value.bits();
 
-                        let selector = utils::compute_selector(&func.sig);
+                        let selector = utils::compute_selector_value(&func.sig);
+
+                        combined_selectors ^= Selector::new(selector);
 
                         defs.push(quote! {
                             casper_sdk::schema::SchemaEntryPoint {
@@ -855,20 +860,23 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                         }),
                     };
 
-                    let ext_struct_name = format_ident!("{st_name}Ref");
+                    let ref_struct_name = format_ident!("{st_name}Ref");
+
+                    let combined_selectors = combined_selectors.get();
 
                     let res = quote! {
                         #entry_points
 
                         #handle_manifest
 
-                        impl #ext_struct_name {
+                        impl #ref_struct_name {
+                            pub const SELECTOR: vm_common::selector::Selector = vm_common::selector::Selector::new(#combined_selectors);
                             #(#extra_code)*
                         }
 
-                        impl casper_sdk::ContractRef for #ext_struct_name {
+                        impl casper_sdk::ContractRef for #ref_struct_name {
                             fn new() -> Self {
-                                #ext_struct_name
+                                #ref_struct_name
                             }
                         }
                     };

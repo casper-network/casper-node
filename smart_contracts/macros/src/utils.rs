@@ -71,7 +71,7 @@ pub(crate) fn compute_selector_bytes(bytes: &[u8]) -> u32 {
     u32::from_be_bytes(selector_bytes)
 }
 
-pub(crate) fn compute_selector(sig: &Signature) -> u32 {
+pub(crate) fn compute_selector_value(sig: &Signature) -> u32 {
     let preimage = selector_preimage(sig);
     let hash_bytes: blake2_rfc::blake2b::Blake2bResult = {
         let mut context = blake2_rfc::blake2b::Blake2b::new(32);

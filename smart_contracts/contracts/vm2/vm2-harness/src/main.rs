@@ -38,6 +38,9 @@ impl From<CallError> for TokenOwnerError {
 #[casper(trait_definition)]
 pub trait ReceiveTokens {
     fn receive(&mut self);
+    fn second_method(&mut self) {
+        log!("Second method");
+    }
 }
 
 #[derive(Contract, CasperSchema, BorshSerialize, BorshDeserialize, CasperABI, Debug, Default)]
@@ -767,7 +770,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn xxx() {}
+    fn trait_has_interface() {
+        let interface = ReceiveTokensRef::SELECTOR;
+        assert_ne!(interface, Selector::zero());
+        assert_eq!(interface, selector!("receive()") ^ selector!("second_method()"));
+    }
 
     #[test]
     fn test() {
