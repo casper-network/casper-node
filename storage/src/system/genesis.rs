@@ -42,10 +42,11 @@ use casper_types::{
     },
     AccessRights, AddressableEntity, AddressableEntityHash, AdministratorAccount, BlockGlobalAddr,
     BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLValue, Chainspec,
-    ChainspecRegistry, Digest, EntityAddr, EntityVersions, EntryPoints, EraId, FeeHandling,
-    GenesisAccount, GenesisConfig, GenesisConfigBuilder, Groups, Key, Motes, Package, PackageHash,
-    PackageStatus, Phase, ProtocolVersion, PublicKey, RefundHandling, StoredValue, SystemConfig,
-    SystemEntityRegistry, Tagged, TimeDiff, URef, WasmConfig, U512,
+    ChainspecRegistry, Digest, EntityAddr, EntityVersions, EntryPointAddr, EntryPointValue,
+    EntryPoints, EraId, FeeHandling, GenesisAccount, GenesisConfig, GenesisConfigBuilder, Groups,
+    Key, Motes, Package, PackageHash, PackageStatus, Phase, ProtocolVersion, PublicKey,
+    RefundHandling, StoredValue, SystemConfig, SystemEntityRegistry, Tagged, TimeDiff, URef,
+    WasmConfig, U512,
 };
 
 use crate::{
@@ -759,23 +760,15 @@ where
         let associated_keys = entity_kind.associated_keys();
         let maybe_account_hash = entity_kind.maybe_account_hash();
         let named_keys = maybe_named_keys.unwrap_or_default();
-        let entry_points = match maybe_entry_points {
-            Some(entry_points) => entry_points,
-            None => {
-                if maybe_account_hash.is_some() {
-                    EntryPoints::new()
-                } else {
-                    EntryPoints::new_with_default_entry_point()
-                }
-            }
-        };
 
         self.store_system_contract_named_keys(entity_hash, named_keys)?;
+        if let Some(entry_point) = maybe_entry_points {
+            self.store_system_entry_points(entity_hash, entry_point)?;
+        }
 
         let entity = AddressableEntity::new(
             package_hash,
             byte_code_hash,
-            entry_points,
             protocol_version,
             main_purse,
             associated_keys,
@@ -850,6 +843,26 @@ where
             self.tracking_copy
                 .borrow_mut()
                 .write(entry_key, StoredValue::NamedKey(named_key_value));
+        }
+
+        Ok(())
+    }
+
+    fn store_system_entry_points(
+        &self,
+        contract_hash: AddressableEntityHash,
+        entry_points: EntryPoints,
+    ) -> Result<(), Box<GenesisError>> {
+        let entity_addr = EntityAddr::new_system(contract_hash.value());
+
+        for entry_point in entry_points.take_entry_points() {
+            let entry_point_addr =
+                EntryPointAddr::new_v1_entry_point_addr(entity_addr, entry_point.name())
+                    .map_err(GenesisError::Bytesrepr)?;
+            self.tracking_copy.borrow_mut().write(
+                Key::EntryPoint(entry_point_addr),
+                StoredValue::EntryPoint(EntryPointValue::V1CasperVm(entry_point)),
+            )
         }
 
         Ok(())

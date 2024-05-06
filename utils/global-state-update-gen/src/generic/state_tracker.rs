@@ -11,8 +11,8 @@ use casper_types::{
     addressable_entity::{ActionThresholds, AssociatedKeys, MessageTopics, Weight},
     system::auction::{BidAddr, BidKind, BidsExt, SeigniorageRecipientsSnapshot, UnbondingPurse},
     AccessRights, AddressableEntity, AddressableEntityHash, ByteCodeHash, CLValue, EntityKind,
-    EntityVersions, EntryPoints, Groups, Key, Package, PackageHash, PackageStatus, ProtocolVersion,
-    PublicKey, StoredValue, URef, U512,
+    EntityVersions, Groups, Key, Package, PackageHash, PackageStatus, ProtocolVersion, PublicKey,
+    StoredValue, URef, U512,
 };
 
 use super::{config::Transfer, state_reader::StateReader};
@@ -75,6 +75,7 @@ impl<T: StateReader> StateTracker<T> {
                 delegator.validator_public_key(),
                 Some(delegator.delegator_public_key()),
             ),
+            BidKind::Bridge(bridge) => BidAddr::from(bridge.old_validator_public_key().clone()),
         };
 
         let _ = self
@@ -168,7 +169,6 @@ impl<T: StateReader> StateTracker<T> {
         let addressable_entity = AddressableEntity::new(
             package_hash,
             contract_wasm_hash,
-            EntryPoints::new(),
             self.protocol_version,
             main_purse,
             associated_keys,
@@ -312,13 +312,21 @@ impl<T: StateReader> StateTracker<T> {
                     }
                 }
             }
+            // avoid modifying bridge records
+            BidKind::Bridge(_) => None,
         }
     }
 
     /// Sets the bid for the given account.
     pub fn set_bid(&mut self, bid_kind: BidKind, slash_instead_of_unbonding: bool) {
-        let new_stake = bid_kind.staked_amount();
-        let bonding_purse = bid_kind.bonding_purse();
+        // skip bridge records since they shouldn't need to be overwritten
+        if let BidKind::Bridge(_) = bid_kind {
+            return;
+        }
+
+        // since we skip bridge records optional values should be present
+        let new_stake = bid_kind.staked_amount().expect("should have staked amount");
+        let bonding_purse = bid_kind.bonding_purse().expect("should have bonding purse");
         let bids = self.get_bids();
 
         let maybe_existing_bid = self.existing_bid(&bid_kind, bids);
@@ -327,9 +335,15 @@ impl<T: StateReader> StateTracker<T> {
             None => U512::zero(),
             Some(existing_bid) => {
                 //let previous_stake = self.get_purse_balance(existing_bid_kind.bonding_purse());
-                let previous_stake = existing_bid.staked_amount();
-                if existing_bid.bonding_purse() != bonding_purse {
-                    self.set_purse_balance(existing_bid.bonding_purse(), U512::zero());
+                let previous_stake = existing_bid
+                    .staked_amount()
+                    .expect("should have staked amount");
+                if existing_bid
+                    .bonding_purse()
+                    .expect("should have bonding purse")
+                    != bonding_purse
+                {
+                    self.set_purse_balance(existing_bid.bonding_purse().unwrap(), U512::zero());
                     self.set_purse_balance(bonding_purse, previous_stake);
                 }
                 previous_stake
@@ -344,7 +358,7 @@ impl<T: StateReader> StateTracker<T> {
 
         if (slash_instead_of_unbonding && new_stake != previous_stake) || new_stake > previous_stake
         {
-            self.set_purse_balance(bid_kind.bonding_purse(), new_stake);
+            self.set_purse_balance(bonding_purse, new_stake);
         } else if new_stake < previous_stake {
             let unbonder_key = match bid_kind.delegator_public_key() {
                 None => bid_kind.validator_public_key(),
@@ -356,7 +370,7 @@ impl<T: StateReader> StateTracker<T> {
 
             let amount = previous_stake - new_stake - already_unbonded;
             self.create_unbonding_purse(
-                bid_kind.bonding_purse(),
+                bonding_purse,
                 &bid_kind.validator_public_key(),
                 &unbonder_key,
                 amount,

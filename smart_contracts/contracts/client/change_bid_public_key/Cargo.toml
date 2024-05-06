@@ -1,0 +1,15 @@
+[package]
+name = "change_bid_public_key"
+version = "0.1.0"
+authors = ["Maciej Wójcik <mwojcik@teonite.com>"]
+edition = "2018"
+
+[[bin]]
+name = "change_bid_public_key"
+bench = false
+doctest = false
+test = false
+
+[dependencies]
+casper-contract = { path = "../../../contract" }
+casper-types = { path = "../../../../types" }

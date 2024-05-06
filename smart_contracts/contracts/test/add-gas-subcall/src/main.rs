@@ -10,7 +10,7 @@ use casper_contract::contract_api::{runtime, storage};
 
 use casper_types::{
     runtime_args, AddressableEntityHash, ApiError, CLType, EntityVersion, EntryPoint,
-    EntryPointAccess, EntryPointType, EntryPoints, Key, Parameter,
+    EntryPointAccess, EntryPointPayment, EntryPointType, EntryPoints, Key, Parameter,
 };
 
 const SUBCALL_NAME: &str = "add_gas";
@@ -56,6 +56,7 @@ fn store() -> (AddressableEntityHash, EntityVersion) {
             CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
 
         entry_points.add_entry_point(entry_point);

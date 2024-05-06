@@ -7,7 +7,7 @@ use alloc::{collections::BTreeSet, string::ToString};
 use casper_contract::contract_api::{runtime, storage};
 use casper_types::{
     account::AccountHash, addressable_entity::Parameters, ApiError, CLType, EntryPoint,
-    EntryPointAccess, EntryPointType, EntryPoints, Key,
+    EntryPointAccess, EntryPointPayment, EntryPointType, EntryPoints, Key,
 };
 
 const ROLE_A_KEYS: [AccountHash; 3] = [
@@ -78,6 +78,7 @@ pub extern "C" fn call() {
             CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
 
         let entrypoint_b = EntryPoint::new(
@@ -86,6 +87,7 @@ pub extern "C" fn call() {
             CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
 
         entry_points.add_entry_point(entrypoint_a);

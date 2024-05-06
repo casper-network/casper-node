@@ -120,7 +120,8 @@ impl TransactionV1Body {
             | TransactionEntryPoint::ActivateBid
             | TransactionEntryPoint::Delegate
             | TransactionEntryPoint::Undelegate
-            | TransactionEntryPoint::Redelegate => true,
+            | TransactionEntryPoint::Redelegate
+            | TransactionEntryPoint::ChangeBidPublicKey => true,
         }
     }
 
@@ -207,6 +208,9 @@ impl TransactionV1Body {
                 TransactionEntryPoint::ActivateBid => {
                     arg_handling::has_valid_activate_bid_args(&self.args)
                 }
+                TransactionEntryPoint::ChangeBidPublicKey => {
+                    arg_handling::has_valid_change_bid_public_key_args(&self.args)
+                }
                 TransactionEntryPoint::AddAssociatedKey => {
                     todo!()
                 }
@@ -226,6 +230,7 @@ impl TransactionV1Body {
                 | TransactionEntryPoint::Undelegate
                 | TransactionEntryPoint::Redelegate
                 | TransactionEntryPoint::ActivateBid
+                | TransactionEntryPoint::ChangeBidPublicKey
                 | TransactionEntryPoint::AddAssociatedKey
                 | TransactionEntryPoint::RemoveAssociatedKey
                 | TransactionEntryPoint::UpdateAssociatedKey => {
@@ -253,6 +258,7 @@ impl TransactionV1Body {
                 | TransactionEntryPoint::Undelegate
                 | TransactionEntryPoint::Redelegate
                 | TransactionEntryPoint::ActivateBid
+                | TransactionEntryPoint::ChangeBidPublicKey
                 | TransactionEntryPoint::AddAssociatedKey
                 | TransactionEntryPoint::RemoveAssociatedKey
                 | TransactionEntryPoint::UpdateAssociatedKey => {

@@ -17,7 +17,7 @@ use casper_contract::{
 use casper_types::{
     addressable_entity::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys},
     api_error::ApiError,
-    CLType, CLValue, Key, URef,
+    CLType, CLValue, EntryPointPayment, Key, URef,
 };
 
 const COUNT_KEY: &str = "count";
@@ -66,6 +66,7 @@ pub extern "C" fn call() {
         CLType::Unit,
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     ));
     counter_entry_points.add_entry_point(EntryPoint::new(
         COUNTER_GET,
@@ -73,6 +74,7 @@ pub extern "C" fn call() {
         CLType::I32,
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     ));
 
     let (stored_contract_hash, contract_version) = storage::new_contract(

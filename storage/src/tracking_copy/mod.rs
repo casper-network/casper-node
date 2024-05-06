@@ -568,7 +568,7 @@ where
                     return Ok(query.into_not_found_result(&format!(
                         "Failed to retrieve dictionary value: {}",
                         error
-                    )))
+                    )));
                 }
             };
 
@@ -619,11 +619,11 @@ where
                             }
                             Err(_) => {
                                 return Ok(query
-                                    .into_not_found_result("Failed to parse CLValue as String"))
+                                    .into_not_found_result("Failed to parse CLValue as String"));
                             }
                         },
                         None if path.is_empty() => {
-                            return Ok(TrackingCopyQueryResult::Success { value, proofs })
+                            return Ok(TrackingCopyQueryResult::Success { value, proofs });
                         }
                         None => return Ok(query.into_not_found_result("No visited names")),
                     }
@@ -700,6 +700,9 @@ where
                 }
                 StoredValue::Message(_) => {
                     return Ok(query.into_not_found_result("Message value found."));
+                }
+                StoredValue::EntryPoint(_) => {
+                    return Ok(query.into_not_found_result("EntryPoint value found."));
                 }
                 // TODO: We may be interested in this value, check the logic
                 StoredValue::Reservation(_) => {

@@ -13,7 +13,7 @@ use casper_contract::{
 use casper_types::{
     account::AccountHash,
     addressable_entity::{EntryPoint, EntryPointAccess, EntryPointType, NamedKeys, Parameter},
-    CLTyped, CLValue, EntryPoints, Key, URef,
+    CLTyped, CLValue, EntryPointPayment, EntryPoints, Key, URef,
 };
 
 const GET_PAYMENT_PURSE_NAME: &str = "get_payment_purse";
@@ -46,6 +46,7 @@ pub extern "C" fn call() {
             URef::cl_type(),
             EntryPointAccess::Public,
             EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
 
         entry_points.add_entry_point(faucet_entrypoint);

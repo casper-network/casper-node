@@ -120,7 +120,7 @@ impl SystemConfig {
         // this causes flaky test failures if the random result exceeds i64::MAX
         let install_upgrade_gas_limit = rng.gen::<u32>() as u64;
         let standard_transaction_gas_limit = rng.gen::<u32>() as u64;
-        let auction_costs = rng.gen();
+        let auction_costs: AuctionCosts = rng.gen();
         let mint_costs = rng.gen();
         let handle_payment_costs = rng.gen();
         let standard_payment_costs = rng.gen();
