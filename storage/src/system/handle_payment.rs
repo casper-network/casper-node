@@ -6,9 +6,10 @@ pub mod storage_provider;
 
 use casper_types::{
     system::handle_payment::{Error, REFUND_PURSE_KEY},
-    AccessRights, URef, U512,
+    AccessRights, PublicKey, URef, U512,
 };
 use num_rational::Ratio;
+use tracing::error;
 
 use crate::system::handle_payment::{
     mint_provider::MintProvider, runtime_provider::RuntimeProvider,
@@ -43,6 +44,11 @@ pub trait HandlePayment: MintProvider + RuntimeProvider + StorageProvider + Size
 
     /// Clear refund purse.
     fn clear_refund_purse(&mut self) -> Result<(), Error> {
+        if self.get_caller() != PublicKey::System.to_account_hash() {
+            error!("invalid caller to clear refund purse");
+            return Err(Error::InvalidCaller);
+        }
+
         self.remove_key(REFUND_PURSE_KEY)
     }
 
@@ -57,6 +63,11 @@ pub trait HandlePayment: MintProvider + RuntimeProvider + StorageProvider + Size
         source_purse: URef,
         refund_ratio: Ratio<U512>,
     ) -> Result<(U512, U512), Error> {
+        if self.get_caller() != PublicKey::System.to_account_hash() {
+            error!("invalid caller to calculate overpayment and fee");
+            return Err(Error::InvalidCaller);
+        }
+
         let available_balance = match self.available_balance(source_purse)? {
             Some(balance) => balance,
             None => return Err(Error::PaymentPurseBalanceNotFound),
@@ -77,11 +88,21 @@ pub trait HandlePayment: MintProvider + RuntimeProvider + StorageProvider + Size
         source_uref: URef,
         amount: Option<U512>,
     ) -> Result<(), Error> {
+        if self.get_caller() != PublicKey::System.to_account_hash() {
+            error!("invalid caller to distribute accumulated fee");
+            return Err(Error::InvalidCaller);
+        }
+
         internal::distribute_accumulated_fees(self, source_uref, amount)
     }
 
     /// Burns the imputed amount from the imputed purse.
-    fn burn(&mut self, source_uref: URef, amount: Option<U512>) -> Result<(), Error> {
-        internal::burn(self, source_uref, amount)
+    fn payment_burn(&mut self, source_uref: URef, amount: Option<U512>) -> Result<(), Error> {
+        if self.get_caller() != PublicKey::System.to_account_hash() {
+            error!("invalid caller to payment burn");
+            return Err(Error::InvalidCaller);
+        }
+
+        internal::payment_burn(self, source_uref, amount)
     }
 }
