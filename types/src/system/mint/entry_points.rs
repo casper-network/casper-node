@@ -53,6 +53,7 @@ pub fn mint_entry_points() -> EntryPoints {
         },
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     );
     entry_points.add_entry_point(entry_point);
 
