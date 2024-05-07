@@ -4,7 +4,7 @@ use casper_types::{InvalidDeploy, InvalidTransaction, InvalidTransactionV1};
 
 /// The error code indicating the result of handling the binary request.
 #[derive(Debug, Clone, thiserror::Error)]
-#[repr(u8)]
+#[repr(u16)]
 pub enum ErrorCode {
     /// Request executed correctly.
     #[error("request executed correctly")]
@@ -45,10 +45,10 @@ pub enum ErrorCode {
     /// This node has no complete blocks.
     #[error("no complete blocks")]
     NoCompleteBlocks = 12,
-    ///The transaction had an invalid chain name
+    ///The deploy had an invalid chain name
     #[error("The deploy had an invalid chain name")]
     InvalidDeployChainName = 13,
-    ///The transaction had a dependency that is no longer supported.
+    ///Deploy dependencies are no longer supported
     #[error("The dependencies for this transaction are no longer supported")]
     InvalidDeployDependenciesNoLongerSupported = 14,
     ///The deploy sent to the network had an excessive size
@@ -81,7 +81,7 @@ pub enum ErrorCode {
     InvalidDeployExcessivePaymentArgsLength = 23,
     ///The deploy sent to the network had a missing payment amount
     #[error("The deploy had a missing payment amount")]
-    InvalidDeployMisssingPaymentAmount = 24,
+    InvalidDeployMissingPaymentAmount = 24,
     ///The deploy sent to the network had a payment amount that was not parseable
     #[error("The deploy sent to the network had a payment amount that was unable to be parsed")]
     InvalidDeployFailedToParsePaymentAmount = 25,
@@ -103,7 +103,7 @@ pub enum ErrorCode {
     ///The network was unable to calculate the gas limit for the deploy
     #[error("The network was unable to calculate the gas limit associated with the deploy")]
     InvalidDeployUnableToCalculateGasLimit = 31,
-    ///The network was unble to calculate the gas cost for the deploy
+    ///The network was unable to calculate the gas cost for the deploy
     #[error("The network was unable to calculate the gas cost for the deploy")]
     InvalidDeployUnableToCalculateGasCost = 32,
     ///The deploy sent to the network was invalid for an unspecified reason
@@ -126,10 +126,10 @@ pub enum ErrorCode {
     #[error("The transaction sent to the network had an invalid body hash")]
     InvalidTransactionBodyHash = 38,
     /// The transaction sent to the network had a provided hash that conflicted with the hash
-    /// dreived by the network
-    #[error("The transaction sent to the network had an invalid body hash")]
+    /// derived by the network
+    #[error("The transaction sent to the network had an invalid hash")]
     InvalidTransactionHash = 39,
-    /// The transaction sent to the network had an emtpy approvals set
+    /// The transaction sent to the network had an empty approvals set
     #[error("The transaction sent to the network had no approvals")]
     InvalidTransactionEmptyApprovals = 40,
     /// The transaction sent to the network had an invalid approval
@@ -158,10 +158,10 @@ pub enum ErrorCode {
     InvalidTransactionInsufficientTransferAmount = 48,
     /// The transaction sent to the network had a custom entry point when it should have a non
     /// custom entry point.
-    #[error("The transaction sent to the network should not have a custom entry point")]
+    #[error("The native transaction sent to the network should not have a custom entry point")]
     InvalidTransactionEntryPointCannotBeCustom = 49,
     /// The transaction sent to the network had a standard entry point when it must be custom.
-    #[error("The transaction sent to the network must have a custom entry point")]
+    #[error("The non-native transaction sent to the network must have a custom entry point")]
     InvalidTransactionEntryPointMustBeCustom = 50,
     /// The transaction sent to the network had empty module bytes
     #[error("The transaction sent to the network had empty module bytes")]
@@ -172,8 +172,8 @@ pub enum ErrorCode {
     /// The network was unable to calculate the gas limit for the transaction sent.
     #[error("The network was unable to calculate the gas limit for the transaction sent")]
     InvalidTransactionUnableToCalculateGasLimit = 53,
-    /// The network was unable to calculate the gas limit for the transaction sent.
-    #[error("The network was unable to calculate the gas limit for the transaction sent.")]
+    /// The network was unable to calculate the gas cost for the transaction sent.
+    #[error("The network was unable to calculate the gas cost for the transaction sent.")]
     InvalidTransactionUnableToCalculateGasCost = 54,
     /// The transaction sent to the network had an invalid pricing mode
     #[error("The transaction sent to the network had an invalid pricing mode")]
@@ -217,7 +217,7 @@ impl TryFrom<u8> for ErrorCode {
             21 => Ok(ErrorCode::InvalidDeployApproval),
             22 => Ok(ErrorCode::InvalidDeployExcessiveSessionArgsLength),
             23 => Ok(ErrorCode::InvalidDeployExcessivePaymentArgsLength),
-            24 => Ok(ErrorCode::InvalidDeployMisssingPaymentAmount),
+            24 => Ok(ErrorCode::InvalidDeployMissingPaymentAmount),
             25 => Ok(ErrorCode::InvalidDeployFailedToParsePaymentAmount),
             26 => Ok(ErrorCode::InvalidDeployExceededBlockGasLimit),
             27 => Ok(ErrorCode::InvalidDeployMissingTransferAmount),
@@ -271,107 +271,115 @@ impl std::error::Error for UnknownErrorCode {}
 impl From<InvalidTransaction> for ErrorCode {
     fn from(value: InvalidTransaction) -> Self {
         match value {
-            InvalidTransaction::Deploy(invalid_deploy) => handle_invalid_deploy(invalid_deploy),
-            InvalidTransaction::V1(invalid_transaction) => {
-                handle_invalid_transaction(invalid_transaction)
-            }
+            InvalidTransaction::Deploy(invalid_deploy) => ErrorCode::from(invalid_deploy),
+            InvalidTransaction::V1(invalid_transaction) => ErrorCode::from(invalid_transaction),
             _ => ErrorCode::InvalidTransactionOrDeployUnspecified,
         }
     }
 }
 
-fn handle_invalid_deploy(invalid_deploy: InvalidDeploy) -> ErrorCode {
-    match invalid_deploy {
-        InvalidDeploy::InvalidChainName { .. } => ErrorCode::InvalidDeployChainName,
-        InvalidDeploy::DependenciesNoLongerSupported => {
-            ErrorCode::InvalidDeployDependenciesNoLongerSupported
+impl From<InvalidDeploy> for ErrorCode {
+    fn from(value: InvalidDeploy) -> Self {
+        match value {
+            InvalidDeploy::InvalidChainName { .. } => ErrorCode::InvalidDeployChainName,
+            InvalidDeploy::DependenciesNoLongerSupported => {
+                ErrorCode::InvalidDeployDependenciesNoLongerSupported
+            }
+            InvalidDeploy::ExcessiveSize(_) => ErrorCode::InvalidDeployExcessiveSize,
+            InvalidDeploy::ExcessiveTimeToLive { .. } => {
+                ErrorCode::InvalidDeployExcessiveTimeToLive
+            }
+            InvalidDeploy::TimestampInFuture { .. } => ErrorCode::InvalidDeployTimestampInFuture,
+            InvalidDeploy::InvalidBodyHash => ErrorCode::InvalidDeployBodyHash,
+            InvalidDeploy::InvalidDeployHash => ErrorCode::InvalidDeployHash,
+            InvalidDeploy::EmptyApprovals => ErrorCode::InvalidDeployEmptyApprovals,
+            InvalidDeploy::InvalidApproval { .. } => ErrorCode::InvalidDeployApproval,
+            InvalidDeploy::ExcessiveSessionArgsLength { .. } => {
+                ErrorCode::InvalidDeployExcessiveSessionArgsLength
+            }
+            InvalidDeploy::ExcessivePaymentArgsLength { .. } => {
+                ErrorCode::InvalidDeployExcessivePaymentArgsLength
+            }
+            InvalidDeploy::MissingPaymentAmount => ErrorCode::InvalidDeployMissingPaymentAmount,
+            InvalidDeploy::FailedToParsePaymentAmount => {
+                ErrorCode::InvalidDeployFailedToParsePaymentAmount
+            }
+            InvalidDeploy::ExceededBlockGasLimit { .. } => {
+                ErrorCode::InvalidDeployExceededBlockGasLimit
+            }
+            InvalidDeploy::MissingTransferAmount => ErrorCode::InvalidDeployMissingTransferAmount,
+            InvalidDeploy::FailedToParseTransferAmount => {
+                ErrorCode::InvalidDeployFailedToParseTransferAmount
+            }
+            InvalidDeploy::InsufficientTransferAmount { .. } => {
+                ErrorCode::InvalidDeployInsufficientTransferAmount
+            }
+            InvalidDeploy::ExcessiveApprovals { .. } => ErrorCode::InvalidDeployExcessiveApprovals,
+            InvalidDeploy::UnableToCalculateGasLimit => {
+                ErrorCode::InvalidDeployUnableToCalculateGasLimit
+            }
+            InvalidDeploy::UnableToCalculateGasCost => {
+                ErrorCode::InvalidDeployUnableToCalculateGasCost
+            }
+            _ => ErrorCode::InvalidDeployUnspecified,
         }
-        InvalidDeploy::ExcessiveSize(_) => ErrorCode::InvalidDeployExcessiveSize,
-        InvalidDeploy::ExcessiveTimeToLive { .. } => ErrorCode::InvalidDeployExcessiveTimeToLive,
-        InvalidDeploy::TimestampInFuture { .. } => ErrorCode::InvalidDeployTimestampInFuture,
-        InvalidDeploy::InvalidBodyHash => ErrorCode::InvalidDeployBodyHash,
-        InvalidDeploy::InvalidDeployHash => ErrorCode::InvalidDeployHash,
-        InvalidDeploy::EmptyApprovals => ErrorCode::InvalidDeployEmptyApprovals,
-        InvalidDeploy::InvalidApproval { .. } => ErrorCode::InvalidDeployApproval,
-        InvalidDeploy::ExcessiveSessionArgsLength { .. } => {
-            ErrorCode::InvalidDeployExcessiveSessionArgsLength
-        }
-        InvalidDeploy::ExcessivePaymentArgsLength { .. } => {
-            ErrorCode::InvalidDeployExcessivePaymentArgsLength
-        }
-        InvalidDeploy::MissingPaymentAmount => ErrorCode::InvalidDeployMisssingPaymentAmount,
-        InvalidDeploy::FailedToParsePaymentAmount => {
-            ErrorCode::InvalidDeployFailedToParsePaymentAmount
-        }
-        InvalidDeploy::ExceededBlockGasLimit { .. } => {
-            ErrorCode::InvalidDeployExceededBlockGasLimit
-        }
-        InvalidDeploy::MissingTransferAmount => ErrorCode::InvalidDeployMissingTransferAmount,
-        InvalidDeploy::FailedToParseTransferAmount => {
-            ErrorCode::InvalidDeployFailedToParseTransferAmount
-        }
-        InvalidDeploy::InsufficientTransferAmount { .. } => {
-            ErrorCode::InvalidDeployInsufficientTransferAmount
-        }
-        InvalidDeploy::ExcessiveApprovals { .. } => ErrorCode::InvalidDeployExcessiveApprovals,
-        InvalidDeploy::UnableToCalculateGasLimit => {
-            ErrorCode::InvalidDeployUnableToCalculateGasLimit
-        }
-        InvalidDeploy::UnableToCalculateGasCost => ErrorCode::InvalidDeployUnableToCalculateGasCost,
-        _ => ErrorCode::InvalidDeployUnspecified,
     }
 }
 
-fn handle_invalid_transaction(invalid_transaction: InvalidTransactionV1) -> ErrorCode {
-    match invalid_transaction {
-        InvalidTransactionV1::InvalidChainName { .. } => ErrorCode::InvalidTransactionChainName,
-        InvalidTransactionV1::ExcessiveSize(_) => ErrorCode::InvalidTransactionExcessiveSize,
-        InvalidTransactionV1::ExcessiveTimeToLive { .. } => {
-            ErrorCode::InvalidTransactionExcessiveTimeToLive
+impl From<InvalidTransactionV1> for ErrorCode {
+    fn from(value: InvalidTransactionV1) -> Self {
+        match value {
+            InvalidTransactionV1::InvalidChainName { .. } => ErrorCode::InvalidTransactionChainName,
+            InvalidTransactionV1::ExcessiveSize(_) => ErrorCode::InvalidTransactionExcessiveSize,
+            InvalidTransactionV1::ExcessiveTimeToLive { .. } => {
+                ErrorCode::InvalidTransactionExcessiveTimeToLive
+            }
+            InvalidTransactionV1::TimestampInFuture { .. } => {
+                ErrorCode::InvalidTransactionTimestampInFuture
+            }
+            InvalidTransactionV1::InvalidBodyHash => ErrorCode::InvalidTransactionBodyHash,
+            InvalidTransactionV1::InvalidTransactionHash => ErrorCode::InvalidTransactionHash,
+            InvalidTransactionV1::EmptyApprovals => ErrorCode::InvalidTransactionEmptyApprovals,
+            InvalidTransactionV1::InvalidApproval { .. } => {
+                ErrorCode::InvalidTransactionInvalidApproval
+            }
+            InvalidTransactionV1::ExcessiveArgsLength { .. } => {
+                ErrorCode::InvalidTransactionExcessiveArgsLength
+            }
+            InvalidTransactionV1::ExcessiveApprovals { .. } => {
+                ErrorCode::InvalidTransactionExcessiveApprovals
+            }
+            InvalidTransactionV1::ExceedsBlockGasLimit { .. } => {
+                ErrorCode::InvalidTransactionExceedsBlockGasLimit
+            }
+            InvalidTransactionV1::MissingArg { .. } => ErrorCode::InvalidTransactionMissingArg,
+            InvalidTransactionV1::UnexpectedArgType { .. } => {
+                ErrorCode::InvalidTransactionUnexpectedArgType
+            }
+            InvalidTransactionV1::InvalidArg { .. } => ErrorCode::InvalidTransactionInvalidArg,
+            InvalidTransactionV1::InsufficientTransferAmount { .. } => {
+                ErrorCode::InvalidTransactionInsufficientTransferAmount
+            }
+            InvalidTransactionV1::EntryPointCannotBeCustom { .. } => {
+                ErrorCode::InvalidTransactionEntryPointCannotBeCustom
+            }
+            InvalidTransactionV1::EntryPointMustBeCustom { .. } => {
+                ErrorCode::InvalidTransactionEntryPointMustBeCustom
+            }
+            InvalidTransactionV1::EmptyModuleBytes => ErrorCode::InvalidTransactionEmptyModuleBytes,
+            InvalidTransactionV1::GasPriceConversion { .. } => {
+                ErrorCode::InvalidTransactionGasPriceConversion
+            }
+            InvalidTransactionV1::UnableToCalculateGasLimit => {
+                ErrorCode::InvalidTransactionUnableToCalculateGasLimit
+            }
+            InvalidTransactionV1::UnableToCalculateGasCost => {
+                ErrorCode::InvalidTransactionUnableToCalculateGasCost
+            }
+            InvalidTransactionV1::InvalidPricingMode { .. } => {
+                ErrorCode::InvalidTransactionPricingMode
+            }
+            _ => ErrorCode::InvalidTransactionUnspecified,
         }
-        InvalidTransactionV1::TimestampInFuture { .. } => {
-            ErrorCode::InvalidTransactionTimestampInFuture
-        }
-        InvalidTransactionV1::InvalidBodyHash => ErrorCode::InvalidTransactionBodyHash,
-        InvalidTransactionV1::InvalidTransactionHash => ErrorCode::InvalidTransactionHash,
-        InvalidTransactionV1::EmptyApprovals => ErrorCode::InvalidTransactionEmptyApprovals,
-        InvalidTransactionV1::InvalidApproval { .. } => {
-            ErrorCode::InvalidTransactionInvalidApproval
-        }
-        InvalidTransactionV1::ExcessiveArgsLength { .. } => {
-            ErrorCode::InvalidTransactionExcessiveArgsLength
-        }
-        InvalidTransactionV1::ExcessiveApprovals { .. } => {
-            ErrorCode::InvalidTransactionExcessiveApprovals
-        }
-        InvalidTransactionV1::ExceedsBlockGasLimit { .. } => {
-            ErrorCode::InvalidTransactionExceedsBlockGasLimit
-        }
-        InvalidTransactionV1::MissingArg { .. } => ErrorCode::InvalidTransactionMissingArg,
-        InvalidTransactionV1::UnexpectedArgType { .. } => {
-            ErrorCode::InvalidTransactionUnexpectedArgType
-        }
-        InvalidTransactionV1::InvalidArg { .. } => ErrorCode::InvalidTransactionInvalidArg,
-        InvalidTransactionV1::InsufficientTransferAmount { .. } => {
-            ErrorCode::InvalidTransactionInsufficientTransferAmount
-        }
-        InvalidTransactionV1::EntryPointCannotBeCustom { .. } => {
-            ErrorCode::InvalidTransactionEntryPointCannotBeCustom
-        }
-        InvalidTransactionV1::EntryPointMustBeCustom { .. } => {
-            ErrorCode::InvalidTransactionEntryPointMustBeCustom
-        }
-        InvalidTransactionV1::EmptyModuleBytes => ErrorCode::InvalidTransactionEmptyModuleBytes,
-        InvalidTransactionV1::GasPriceConversion { .. } => {
-            ErrorCode::InvalidTransactionGasPriceConversion
-        }
-        InvalidTransactionV1::UnableToCalculateGasLimit => {
-            ErrorCode::InvalidTransactionUnableToCalculateGasLimit
-        }
-        InvalidTransactionV1::UnableToCalculateGasCost => {
-            ErrorCode::InvalidTransactionUnableToCalculateGasCost
-        }
-        InvalidTransactionV1::InvalidPricingMode { .. } => ErrorCode::InvalidTransactionPricingMode,
-        _ => ErrorCode::InvalidTransactionUnspecified,
     }
 }
