@@ -151,7 +151,7 @@ fn should_track_total_token_supply_in_mint() {
 
     builder.run_genesis(genesis_request);
 
-    let total_supply = builder.total_supply(None, protocol_version);
+    let total_supply = builder.total_supply(protocol_version, None);
 
     let expected_balance: U512 = accounts.iter().map(|item| item.balance().value()).sum();
     let expected_staked_amount: U512 = accounts

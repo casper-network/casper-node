@@ -4,7 +4,8 @@ use crate::{
     system::handle_payment::{
         ARG_PURSE, METHOD_GET_PAYMENT_PURSE, METHOD_GET_REFUND_PURSE, METHOD_SET_REFUND_PURSE,
     },
-    CLType, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Parameter,
+    CLType, EntryPoint, EntryPointAccess, EntryPointPayment, EntryPointType, EntryPoints,
+    Parameter,
 };
 
 /// Creates handle payment contract entry points.
@@ -17,6 +18,7 @@ pub fn handle_payment_entry_points() -> EntryPoints {
         CLType::URef,
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     );
     entry_points.add_entry_point(get_payment_purse);
 
@@ -26,6 +28,7 @@ pub fn handle_payment_entry_points() -> EntryPoints {
         CLType::Unit,
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     );
     entry_points.add_entry_point(set_refund_purse);
 
@@ -35,6 +38,7 @@ pub fn handle_payment_entry_points() -> EntryPoints {
         CLType::Option(Box::new(CLType::URef)),
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     );
     entry_points.add_entry_point(get_refund_purse);
 

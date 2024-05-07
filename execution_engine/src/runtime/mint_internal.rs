@@ -97,6 +97,11 @@ where
     fn allow_unrestricted_transfers(&self) -> bool {
         self.context.engine_config().allow_unrestricted_transfers()
     }
+
+    /// Validate URef against context access rights.
+    fn is_valid_uref(&self, uref: &URef) -> bool {
+        self.context.access_rights().has_access_rights_to_uref(uref)
+    }
 }
 
 // TODO: update Mint + StorageProvider to better handle errors

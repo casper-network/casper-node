@@ -13,8 +13,8 @@ use casper_contract::{
 use casper_types::{
     account::AccountHash,
     addressable_entity::{NamedKeys, Parameters},
-    AddressableEntityHash, ApiError, CLType, EntryPoint, EntryPointAccess, EntryPointType,
-    EntryPoints, Key, RuntimeArgs, URef, U512,
+    AddressableEntityHash, ApiError, CLType, EntryPoint, EntryPointAccess, EntryPointPayment,
+    EntryPointType, EntryPoints, Key, RuntimeArgs, URef, U512,
 };
 
 const DONATION_AMOUNT: u64 = 1;
@@ -133,6 +133,7 @@ fn delegate() -> Result<(), ApiError> {
                     CLType::Unit,
                     EntryPointAccess::Public,
                     EntryPointType::Called,
+                    EntryPointPayment::Caller,
                 );
 
                 entry_points.add_entry_point(entry_point_1);
@@ -143,6 +144,7 @@ fn delegate() -> Result<(), ApiError> {
                     CLType::Unit,
                     EntryPointAccess::Public,
                     EntryPointType::Called,
+                    EntryPointPayment::Caller,
                 );
 
                 entry_points.add_entry_point(entry_point_2);
@@ -153,6 +155,7 @@ fn delegate() -> Result<(), ApiError> {
                     CLType::Unit,
                     EntryPointAccess::Public,
                     EntryPointType::Called,
+                    EntryPointPayment::Caller,
                 );
 
                 entry_points.add_entry_point(entry_point_3);
@@ -163,6 +166,7 @@ fn delegate() -> Result<(), ApiError> {
                     CLType::Unit,
                     EntryPointAccess::Public,
                     EntryPointType::Called,
+                    EntryPointPayment::Caller,
                 );
 
                 entry_points.add_entry_point(entry_point_4);

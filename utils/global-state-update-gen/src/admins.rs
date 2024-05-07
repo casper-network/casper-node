@@ -35,7 +35,7 @@ pub(crate) fn generate_admins(matches: &ArgMatches<'_>) {
 
     let admin_values = matches.values_of("admin").expect("at least one argument");
     let protocol_version = DEFAULT_PROTOCOL_VERSION;
-    let mut total_supply = test_builder.total_supply(Some(post_state_hash), protocol_version);
+    let mut total_supply = test_builder.total_supply(protocol_version, Some(post_state_hash));
     let total_supply_before = total_supply;
 
     for value in admin_values {

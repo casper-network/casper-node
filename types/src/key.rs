@@ -36,7 +36,9 @@ use tracing::warn;
 use crate::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
     addressable_entity,
-    addressable_entity::{AddressableEntityHash, EntityAddr, EntityKindTag, NamedKeyAddr},
+    addressable_entity::{
+        AddressableEntityHash, EntityAddr, EntityKindTag, EntryPointAddr, NamedKeyAddr,
+    },
     block::BlockGlobalAddr,
     byte_code,
     bytesrepr::{
@@ -156,6 +158,7 @@ pub enum KeyTag {
     NamedKey = 20,
     BlockGlobal = 21,
     BalanceHold = 22,
+    EntryPoint = 23,
 }
 
 impl KeyTag {
@@ -186,6 +189,7 @@ impl KeyTag {
             20 => KeyTag::NamedKey,
             21 => KeyTag::BlockGlobal,
             22 => KeyTag::BalanceHold,
+            23 => KeyTag::EntryPoint,
             _ => panic!(),
         }
     }
@@ -217,6 +221,7 @@ impl Display for KeyTag {
             KeyTag::NamedKey => write!(f, "NamedKey"),
             KeyTag::BlockGlobal => write!(f, "BlockGlobal"),
             KeyTag::BalanceHold => write!(f, "BalanceHold"),
+            KeyTag::EntryPoint => write!(f, "EntryPoint"),
         }
     }
 }
@@ -265,6 +270,7 @@ impl FromBytes for KeyTag {
             tag if tag == KeyTag::NamedKey as u8 => KeyTag::NamedKey,
             tag if tag == KeyTag::BlockGlobal as u8 => KeyTag::BlockGlobal,
             tag if tag == KeyTag::BalanceHold as u8 => KeyTag::BalanceHold,
+            tag if tag == KeyTag::EntryPoint as u8 => KeyTag::EntryPoint,
             _ => return Err(Error::Formatting),
         };
         Ok((tag, rem))
@@ -325,6 +331,8 @@ pub enum Key {
     BlockGlobal(BlockGlobalAddr),
     /// A `Key` under which a hold on a purse balance is stored.
     BalanceHold(BalanceHoldAddr),
+    /// A `Key` under which a entrypoint record is written.
+    EntryPoint(EntryPointAddr),
 }
 
 #[cfg(feature = "json-schema")]
@@ -395,6 +403,8 @@ pub enum FromStrError {
     BlockGlobal(String),
     /// Balance hold parse error.
     BalanceHold(String),
+    /// Entry point parse error.
+    EntryPoint(String),
     /// Unknown prefix.
     UnknownPrefix,
 }
@@ -475,6 +485,9 @@ impl Display for FromStrError {
             FromStrError::BalanceHold(error) => {
                 write!(f, "balance-hold from string error: {}", error)
             }
+            FromStrError::EntryPoint(error) => {
+                write!(f, "entry-point from string error: {}", error)
+            }
             FromStrError::UnknownPrefix => write!(f, "unknown prefix for key"),
         }
     }
@@ -508,6 +521,7 @@ impl Key {
             Key::NamedKey(_) => String::from("Key::NamedKey"),
             Key::BlockGlobal(_) => String::from("Key::BlockGlobal"),
             Key::BalanceHold(_) => String::from("Key::BalanceHold"),
+            Key::EntryPoint(_) => String::from("Key::EntryPoint"),
         }
     }
 
@@ -627,6 +641,9 @@ impl Key {
             Key::BalanceHold(balance_hold_addr) => {
                 let tail = BalanceHoldAddr::to_formatted_string(&balance_hold_addr);
                 format!("{}{}", BALANCE_HOLD_PREFIX, tail)
+            }
+            Key::EntryPoint(entry_point_addr) => {
+                format!("{}", entry_point_addr)
             }
         }
     }
@@ -853,6 +870,12 @@ impl Key {
             return Ok(BlockGlobalAddr::MessageCount.into());
         }
 
+        match EntryPointAddr::from_formatted_str(input) {
+            Ok(entry_point_addr) => return Ok(Key::EntryPoint(entry_point_addr)),
+            Err(addressable_entity::FromStrError::InvalidPrefix) => {}
+            Err(error) => return Err(FromStrError::EntryPoint(error.to_string())),
+        }
+
         Err(FromStrError::UnknownPrefix)
     }
 
@@ -1048,6 +1071,11 @@ impl Key {
         Key::Message(MessageAddr::new_topic_addr(entity_addr, topic_name_hash))
     }
 
+    /// Creates a new [`Key::EntryPoint`] variant from an entrypoint addr.
+    pub fn entry_point(entry_point_addr: EntryPointAddr) -> Self {
+        Key::EntryPoint(entry_point_addr)
+    }
+
     /// Returns true if the key is of type [`Key::Dictionary`].
     pub fn is_dictionary_key(&self) -> bool {
         if let Key::Dictionary(_) = self {
@@ -1162,7 +1190,8 @@ impl Key {
             | Key::BalanceHold(_)
             | Key::Dictionary(_)
             | Key::Message(_)
-            | Key::BlockGlobal(_) => true,
+            | Key::BlockGlobal(_)
+            | Key::EntryPoint(_) => true,
             _ => false,
         };
         if !ret {
@@ -1301,6 +1330,9 @@ impl Display for Key {
             Key::BalanceHold(balance_hold_addr) => {
                 write!(f, "Key::BalanceHold({})", balance_hold_addr)
             }
+            Key::EntryPoint(entry_point_addr) => {
+                write!(f, "Key::EntryPointAddr({})", entry_point_addr)
+            }
         }
     }
 }
@@ -1337,6 +1369,7 @@ impl Tagged<KeyTag> for Key {
             Key::NamedKey(_) => KeyTag::NamedKey,
             Key::BlockGlobal(_) => KeyTag::BlockGlobal,
             Key::BalanceHold(_) => KeyTag::BalanceHold,
+            Key::EntryPoint(_) => KeyTag::EntryPoint,
         }
     }
 }
@@ -1450,6 +1483,9 @@ impl ToBytes for Key {
             Key::BalanceHold(balance_hold_addr) => {
                 KEY_ID_SERIALIZED_LENGTH + balance_hold_addr.serialized_length()
             }
+            Key::EntryPoint(entry_point_addr) => {
+                U8_SERIALIZED_LENGTH + entry_point_addr.serialized_length()
+            }
         }
     }
 
@@ -1482,6 +1518,7 @@ impl ToBytes for Key {
             Key::Message(message_addr) => message_addr.write_bytes(writer),
             Key::NamedKey(named_key_addr) => named_key_addr.write_bytes(writer),
             Key::BalanceHold(balance_hold_addr) => balance_hold_addr.write_bytes(writer),
+            Key::EntryPoint(entry_point_addr) => entry_point_addr.write_bytes(writer),
         }
     }
 }
@@ -1583,6 +1620,10 @@ impl FromBytes for Key {
                 let (balance_hold_addr, rem) = BalanceHoldAddr::from_bytes(remainder)?;
                 Ok((Key::BalanceHold(balance_hold_addr), rem))
             }
+            KeyTag::EntryPoint => {
+                let (entry_point_addr, rem) = EntryPointAddr::from_bytes(remainder)?;
+                Ok((Key::EntryPoint(entry_point_addr), rem))
+            }
         }
     }
 }
@@ -1615,6 +1656,7 @@ fn please_add_to_distribution_impl(key: Key) {
         Key::NamedKey(_) => unimplemented!(),
         Key::BlockGlobal(_) => unimplemented!(),
         Key::BalanceHold(_) => unimplemented!(),
+        Key::EntryPoint(_) => unimplemented!(),
     }
 }
 
@@ -1645,6 +1687,7 @@ impl Distribution<Key> for Standard {
             20 => Key::NamedKey(NamedKeyAddr::new_named_key_entry(rng.gen(), rng.gen())),
             21 => Key::BlockGlobal(rng.gen()),
             22 => Key::BalanceHold(rng.gen()),
+            23 => Key::EntryPoint(rng.gen()),
             _ => unreachable!(),
         }
     }
@@ -1679,6 +1722,7 @@ mod serde_helpers {
         NamedKey(&'a NamedKeyAddr),
         BlockGlobal(&'a BlockGlobalAddr),
         BalanceHold(&'a BalanceHoldAddr),
+        EntryPoint(&'a EntryPointAddr),
     }
 
     #[derive(Deserialize)]
@@ -1707,6 +1751,7 @@ mod serde_helpers {
         NamedKey(NamedKeyAddr),
         BlockGlobal(BlockGlobalAddr),
         BalanceHold(BalanceHoldAddr),
+        EntryPoint(EntryPointAddr),
     }
 
     impl<'a> From<&'a Key> for BinarySerHelper<'a> {
@@ -1739,6 +1784,7 @@ mod serde_helpers {
                 Key::BalanceHold(balance_hold_addr) => {
                     BinarySerHelper::BalanceHold(balance_hold_addr)
                 }
+                Key::EntryPoint(entry_point_addr) => BinarySerHelper::EntryPoint(entry_point_addr),
             }
         }
     }
@@ -1772,6 +1818,9 @@ mod serde_helpers {
                 BinaryDeserHelper::BlockGlobal(addr) => Key::BlockGlobal(addr),
                 BinaryDeserHelper::BalanceHold(balance_hold_addr) => {
                     Key::BalanceHold(balance_hold_addr)
+                }
+                BinaryDeserHelper::EntryPoint(entry_point_addr) => {
+                    Key::EntryPoint(entry_point_addr)
                 }
             }
         }
@@ -1863,6 +1912,10 @@ mod tests {
     const BLOCK_MESSAGE_COUNT_KEY: Key = Key::BlockGlobal(BlockGlobalAddr::MessageCount);
     const BALANCE_HOLD: Key =
         Key::BalanceHold(BalanceHoldAddr::new_gas([42; 32], BlockTime::new(100)));
+    const ENTRY_POINT: Key = Key::EntryPoint(EntryPointAddr::new_v2_entry_point_addr(
+        EntityAddr::new_smart_contract([42; 32]),
+        1u32,
+    ));
     const KEYS: &[Key] = &[
         ACCOUNT_KEY,
         HASH_KEY,
@@ -1894,6 +1947,7 @@ mod tests {
         BLOCK_TIME_KEY,
         BLOCK_MESSAGE_COUNT_KEY,
         BALANCE_HOLD,
+        ENTRY_POINT,
     ];
     const HEX_STRING: &str = "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a";
     const TOPIC_NAME_HEX_STRING: &str =
@@ -2489,5 +2543,6 @@ mod tests {
         bytesrepr::test_serialization_roundtrip(&MESSAGE_TOPIC_KEY);
         bytesrepr::test_serialization_roundtrip(&MESSAGE_KEY);
         bytesrepr::test_serialization_roundtrip(&NAMED_KEY);
+        bytesrepr::test_serialization_roundtrip(&ENTRY_POINT);
     }
 }

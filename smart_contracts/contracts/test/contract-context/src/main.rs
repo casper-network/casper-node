@@ -11,8 +11,8 @@ use casper_contract::{
 };
 use casper_types::{
     addressable_entity::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys},
-    runtime_args, AddressableEntityHash, CLType, EntityVersion, Key, PackageHash,
-    ENTITY_INITIAL_VERSION,
+    runtime_args, AddressableEntityHash, CLType, EntityVersion, EntryPointPayment, Key,
+    PackageHash, ENTITY_INITIAL_VERSION,
 };
 
 const PACKAGE_HASH_KEY: &str = "package_hash_key";
@@ -98,6 +98,7 @@ fn create_entrypoints_1() -> EntryPoints {
         CLType::I32,
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     );
     entry_points.add_entry_point(contract_code_test);
 
@@ -107,6 +108,7 @@ fn create_entrypoints_1() -> EntryPoints {
         CLType::I32,
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     );
     entry_points.add_entry_point(session_code_caller_as_contract);
 

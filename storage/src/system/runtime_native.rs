@@ -409,7 +409,7 @@ where
         &mut self.named_keys
     }
 
-    pub fn access_rights(&mut self) -> &ContextAccessRights {
+    pub fn access_rights(&self) -> &ContextAccessRights {
         &self.access_rights
     }
 

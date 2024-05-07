@@ -166,6 +166,7 @@ use announcements::{
     PeerBehaviorAnnouncement, QueueDumpFormat, TransactionAcceptorAnnouncement,
     TransactionBufferAnnouncement, UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
 };
+use casper_storage::data_access_layer::EntryPointsResult;
 use diagnostics_port::DumpConsensusStateRequest;
 use requests::{
     AcceptTransactionRequest, BeginGossipRequest, BlockAccumulatorRequest,
@@ -2023,6 +2024,26 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| ContractRuntimeRequest::GetAddressableEntity {
+                state_root_hash,
+                key,
+                responder,
+            },
+            QueueKind::ContractRuntime,
+        )
+        .await
+    }
+
+    /// Retrieves an `EntryPointValue` from under the given key in global state if present.
+    pub(crate) async fn get_entry_point_value(
+        self,
+        state_root_hash: Digest,
+        key: Key,
+    ) -> EntryPointsResult
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::GetEntryPoint {
                 state_root_hash,
                 key,
                 responder,

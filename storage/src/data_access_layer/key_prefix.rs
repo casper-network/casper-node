@@ -25,6 +25,10 @@ pub enum KeyPrefix {
     GasBalanceHoldsByPurse(URefAddr),
     /// Retrieves all processing balance holds for a given purse.
     ProcessingBalanceHoldsByPurse(URefAddr),
+    /// Retrieves all V1 entry points for a given entity.
+    EntryPointsV1ByEntity(EntityAddr),
+    /// Retrieves all V2 entry points for a given entity.
+    EntryPointsV2ByEntity(EntityAddr),
 }
 
 impl ToBytes for KeyPrefix {
@@ -64,6 +68,16 @@ impl ToBytes for KeyPrefix {
                 writer.push(BalanceHoldAddrTag::Processing as u8);
                 uref.write_bytes(writer)?;
             }
+            KeyPrefix::EntryPointsV1ByEntity(entity) => {
+                writer.push(KeyTag::EntryPoint as u8);
+                writer.push(0);
+                entity.write_bytes(writer)?;
+            }
+            KeyPrefix::EntryPointsV2ByEntity(entity) => {
+                writer.push(KeyTag::EntryPoint as u8);
+                writer.push(1);
+                entity.write_bytes(writer)?;
+            }
         }
         Ok(())
     }
@@ -84,6 +98,12 @@ impl ToBytes for KeyPrefix {
                 }
                 KeyPrefix::ProcessingBalanceHoldsByPurse(uref) => {
                     U8_SERIALIZED_LENGTH + uref.serialized_length()
+                }
+                KeyPrefix::EntryPointsV1ByEntity(entity) => {
+                    U8_SERIALIZED_LENGTH + entity.serialized_length()
+                }
+                KeyPrefix::EntryPointsV2ByEntity(entity) => {
+                    U8_SERIALIZED_LENGTH + entity.serialized_length()
                 }
             }
     }
@@ -135,6 +155,15 @@ impl FromBytes for KeyPrefix {
                     _ => return Err(bytesrepr::Error::Formatting),
                 }
             }
+            tag if tag == KeyTag::EntryPoint as u8 => {
+                let (entry_point_type, remainder) = u8::from_bytes(remainder)?;
+                let (entity, remainder) = EntityAddr::from_bytes(remainder)?;
+                match entry_point_type {
+                    0 => (KeyPrefix::EntryPointsV1ByEntity(entity), remainder),
+                    1 => (KeyPrefix::EntryPointsV2ByEntity(entity), remainder),
+                    _ => return Err(bytesrepr::Error::Formatting),
+                }
+            }
             _ => return Err(bytesrepr::Error::Formatting),
         };
         Ok(result)
@@ -148,7 +177,7 @@ mod tests {
         contract_messages::MessageAddr,
         gens::{account_hash_arb, entity_addr_arb, topic_name_hash_arb, u8_slice_32},
         system::{auction::BidAddr, mint::BalanceHoldAddr},
-        BlockTime, Key,
+        BlockTime, EntryPointAddr, Key,
     };
 
     use super::*;
@@ -163,6 +192,8 @@ mod tests {
             entity_addr_arb().prop_map(KeyPrefix::NamedKeysByEntity),
             u8_slice_32().prop_map(KeyPrefix::GasBalanceHoldsByPurse),
             u8_slice_32().prop_map(KeyPrefix::ProcessingBalanceHoldsByPurse),
+            entity_addr_arb().prop_map(KeyPrefix::EntryPointsV1ByEntity),
+            entity_addr_arb().prop_map(KeyPrefix::EntryPointsV2ByEntity),
         ]
     }
 
@@ -214,6 +245,20 @@ mod tests {
             (
                 Key::BalanceHold(BalanceHoldAddr::new_processing(hash1, BlockTime::new(0))),
                 KeyPrefix::ProcessingBalanceHoldsByPurse(hash1),
+            ),
+            (
+                Key::EntryPoint(
+                    EntryPointAddr::new_v1_entry_point_addr(EntityAddr::Account(hash1), "name")
+                        .expect("should create entry point"),
+                ),
+                KeyPrefix::EntryPointsV1ByEntity(EntityAddr::Account(hash1)),
+            ),
+            (
+                Key::EntryPoint(EntryPointAddr::new_v2_entry_point_addr(
+                    EntityAddr::Account(hash1),
+                    0,
+                )),
+                KeyPrefix::EntryPointsV2ByEntity(EntityAddr::Account(hash1)),
             ),
         ] {
             let key_bytes = key.to_bytes().expect("should serialize key");

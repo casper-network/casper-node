@@ -22,6 +22,7 @@
 extern crate alloc;
 
 extern crate core;
+
 mod access_rights;
 pub mod account;
 pub mod addressable_entity;
@@ -87,7 +88,8 @@ pub use account::Account;
 #[doc(inline)]
 pub use addressable_entity::{
     AddressableEntity, AddressableEntityHash, EntityAddr, EntityKind, EntryPoint, EntryPointAccess,
-    EntryPointType, EntryPoints, Parameter,
+    EntryPointAddr, EntryPointPayment, EntryPointType, EntryPointValue, EntryPoints, Parameter,
+    Parameters, DEFAULT_ENTRY_POINT_NAME,
 };
 #[doc(inline)]
 pub use api_error::ApiError;

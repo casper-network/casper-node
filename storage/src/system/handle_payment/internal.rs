@@ -4,7 +4,7 @@ use super::{
 };
 use casper_types::{
     system::handle_payment::{Error, PAYMENT_PURSE_KEY, REFUND_PURSE_KEY},
-    Key, Phase, PublicKey, URef, U512,
+    Key, Phase, URef, U512,
 };
 use num::CheckedMul;
 use num_rational::Ratio;
@@ -112,23 +112,22 @@ pub fn calculate_overpayment_and_fee(
     Ok((adjusted_refund, fee))
 }
 
-pub fn burn<P: MintProvider + RuntimeProvider + StorageProvider>(
+pub fn payment_burn<P: MintProvider + RuntimeProvider + StorageProvider>(
     provider: &mut P,
     purse: URef,
     amount: Option<U512>,
 ) -> Result<(), Error> {
-    // get the purse total balance (without holds)
-    let total_balance = match provider.available_balance(purse)? {
+    let available_balance = match provider.available_balance(purse)? {
         Some(balance) => balance,
         None => return Err(Error::PaymentPurseBalanceNotFound),
     };
-    let burn_amount = amount.unwrap_or(total_balance);
+    let burn_amount = amount.unwrap_or(available_balance);
     if burn_amount.is_zero() {
         // nothing to burn == noop
         return Ok(());
     }
     // Reduce the source purse and total supply by the refund amount
-    let adjusted_balance = total_balance
+    let adjusted_balance = available_balance
         .checked_sub(burn_amount)
         .ok_or(Error::ArithmeticOverflow)?;
     provider.write_balance(purse, adjusted_balance)?;
@@ -150,10 +149,6 @@ where
     let fee_handling = provider.fee_handling();
     if !fee_handling.is_accumulate() {
         return Err(Error::IncompatiblePaymentSettings);
-    }
-
-    if provider.get_caller() != PublicKey::System.to_account_hash() {
-        return Err(Error::SystemFunctionCalledByUserAccount);
     }
 
     let administrative_accounts = provider.administrative_accounts();

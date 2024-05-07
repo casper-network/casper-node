@@ -25,19 +25,25 @@ pub enum KeyPrefix {
     GasBalanceHoldsByPurse(URefAddr),
     /// Retrieves all processing balance holds for a given purse.
     ProcessingBalanceHoldsByPurse(URefAddr),
+    /// Retrieves all V1 entry points for a given entity.
+    EntryPointsV1ByEntity(EntityAddr),
+    /// Retrieves all V2 entry points for a given entity.
+    EntryPointsV2ByEntity(EntityAddr),
 }
 
 impl KeyPrefix {
     /// Returns a random `KeyPrefix`.
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
-        match rng.gen_range(0..6) {
+        match rng.gen_range(0..8) {
             0 => KeyPrefix::DelegatorBidAddrsByValidator(rng.gen()),
             1 => KeyPrefix::MessagesByEntity(rng.gen()),
             2 => KeyPrefix::MessagesByEntityAndTopic(rng.gen(), rng.gen()),
             3 => KeyPrefix::NamedKeysByEntity(rng.gen()),
             4 => KeyPrefix::GasBalanceHoldsByPurse(rng.gen()),
             5 => KeyPrefix::ProcessingBalanceHoldsByPurse(rng.gen()),
+            6 => KeyPrefix::EntryPointsV1ByEntity(rng.gen()),
+            7 => KeyPrefix::EntryPointsV2ByEntity(rng.gen()),
             _ => unreachable!(),
         }
     }
@@ -80,6 +86,16 @@ impl ToBytes for KeyPrefix {
                 writer.push(BalanceHoldAddrTag::Processing as u8);
                 uref.write_bytes(writer)?;
             }
+            KeyPrefix::EntryPointsV1ByEntity(entity) => {
+                writer.push(KeyTag::EntryPoint as u8);
+                writer.push(0);
+                entity.write_bytes(writer)?;
+            }
+            KeyPrefix::EntryPointsV2ByEntity(entity) => {
+                writer.push(KeyTag::EntryPoint as u8);
+                writer.push(1);
+                entity.write_bytes(writer)?;
+            }
         }
         Ok(())
     }
@@ -100,6 +116,12 @@ impl ToBytes for KeyPrefix {
                 }
                 KeyPrefix::ProcessingBalanceHoldsByPurse(uref) => {
                     U8_SERIALIZED_LENGTH + uref.serialized_length()
+                }
+                KeyPrefix::EntryPointsV1ByEntity(entity) => {
+                    U8_SERIALIZED_LENGTH + entity.serialized_length()
+                }
+                KeyPrefix::EntryPointsV2ByEntity(entity) => {
+                    U8_SERIALIZED_LENGTH + entity.serialized_length()
                 }
             }
     }
@@ -148,6 +170,15 @@ impl FromBytes for KeyPrefix {
                     tag if tag == BalanceHoldAddrTag::Processing as u8 => {
                         (KeyPrefix::ProcessingBalanceHoldsByPurse(uref), remainder)
                     }
+                    _ => return Err(bytesrepr::Error::Formatting),
+                }
+            }
+            tag if tag == KeyTag::EntryPoint as u8 => {
+                let (entry_point_type, remainder) = u8::from_bytes(remainder)?;
+                let (entity, remainder) = EntityAddr::from_bytes(remainder)?;
+                match entry_point_type {
+                    0 => (KeyPrefix::EntryPointsV1ByEntity(entity), remainder),
+                    1 => (KeyPrefix::EntryPointsV2ByEntity(entity), remainder),
                     _ => return Err(bytesrepr::Error::Formatting),
                 }
             }

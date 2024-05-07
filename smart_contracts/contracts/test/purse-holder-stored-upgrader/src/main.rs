@@ -11,8 +11,8 @@ use casper_contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    addressable_entity::NamedKeys, CLType, CLValue, EntryPoint, EntryPointAccess, EntryPointType,
-    EntryPoints, Key, PackageHash, Parameter, URef,
+    addressable_entity::NamedKeys, CLType, CLValue, EntryPoint, EntryPointAccess,
+    EntryPointPayment, EntryPointType, EntryPoints, Key, PackageHash, Parameter, URef,
 };
 
 pub const METHOD_ADD: &str = "add";
@@ -64,6 +64,7 @@ pub extern "C" fn call() {
             CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
         entry_points.add_entry_point(add);
         let version = EntryPoint::new(
@@ -72,6 +73,7 @@ pub extern "C" fn call() {
             CLType::String,
             EntryPointAccess::Public,
             EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
         entry_points.add_entry_point(version);
 
@@ -81,6 +83,7 @@ pub extern "C" fn call() {
             CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
         entry_points.add_entry_point(remove);
         entry_points
