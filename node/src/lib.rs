@@ -77,7 +77,7 @@ pub const MAX_THREAD_COUNT: usize = 512;
 
 fn version_string(color: bool) -> String {
     let mut version = env!("CARGO_PKG_VERSION").to_string();
-    if let Ok(git_sha) = env::var("NODE_GIT_SHA") {
+    if let Some(git_sha) = option_env!("NODE_GIT_SHA") {
         version = format!("{}-{}", version, git_sha);
     } else {
         warn!(
