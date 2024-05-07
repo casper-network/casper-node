@@ -516,7 +516,6 @@ pub trait Auction:
             )?;
 
             let remaining_auction_slots = validator_slots.saturating_sub(locked_validators.len());
-
             if remaining_auction_slots > 0 {
                 let unlocked_validators = validator_bids_detail.validator_weights(
                     self,
@@ -526,11 +525,12 @@ pub trait Auction:
                     false,
                     true,
                 )?;
-                unlocked_validators
+                let mut unlocked_validators = unlocked_validators
                     .iter()
                     .map(|(public_key, validator_bid)| (public_key.clone(), *validator_bid))
-                    .collect::<Vec<(PublicKey, U512)>>()
-                    .sort_by(|(_, lhs), (_, rhs)| rhs.cmp(lhs));
+                    .collect::<Vec<(PublicKey, U512)>>();
+
+                unlocked_validators.sort_by(|(_, lhs), (_, rhs)| rhs.cmp(lhs));
                 locked_validators
                     .into_iter()
                     .chain(

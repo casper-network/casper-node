@@ -7,7 +7,7 @@ use crate::{
     EraId, PublicKey, URef, U512,
 };
 
-use crate::system::auction::{bridge::Bridge, BidAddr};
+use crate::system::auction::Bridge;
 use alloc::{boxed::Box, vec::Vec};
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
@@ -132,7 +132,7 @@ impl BidKind {
             BidKind::Validator(validator_bid) => Some(validator_bid.staked_amount()),
             BidKind::Delegator(delegator) => Some(delegator.staked_amount()),
             BidKind::Bridge(_) => None,
-            BidKind::Credit(credit) => credit.amount(),
+            BidKind::Credit(credit) => Some(credit.amount()),
         }
     }
 
@@ -142,18 +142,9 @@ impl BidKind {
             BidKind::Unified(bid) => Some(*bid.bonding_purse()),
             BidKind::Validator(validator_bid) => Some(*validator_bid.bonding_purse()),
             BidKind::Delegator(delegator) => Some(*delegator.bonding_purse()),
-            BidKind::Bridge(_) => None,
-            BidKind::Credit(_) => URef::default(),
+            BidKind::Bridge(_) | BidKind::Credit(_) => None,
         }
     }
-
-    // /// Returns delegator public key, if any.
-    // pub fn maybe_delegator_public_key(&self) -> Option<PublicKey> {
-    //     match self {
-    //         BidKind::Unified(_) | BidKind::Validator(_) | BidKind::Bridge(_) | BidKind::Credit(_) => None,
-    //         BidKind::Delegator(delegator_bid) => Some(delegator_bid.delegator_public_key().clone()),
-    //     }
-    // }
 
     /// The delegator public key, if relevant.
     pub fn delegator_public_key(&self) -> Option<PublicKey> {
