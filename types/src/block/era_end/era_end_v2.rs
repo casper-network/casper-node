@@ -94,6 +94,11 @@ impl EraEndV2 {
         &self.rewards
     }
 
+    /// Returns the next era gas price.
+    pub fn next_era_gas_price(&self) -> u8 {
+        self.next_era_gas_price
+    }
+
     // This method is not intended to be used by third party crates.
     #[doc(hidden)]
     pub fn new(
@@ -142,16 +147,16 @@ impl EraEndV2 {
             let reward = rng.gen_range(1..=1_000_000_000);
             (pub_key, U512::from(reward))
         })
-        .take(next_era_validator_weights_count)
-        .collect();
+            .take(next_era_validator_weights_count)
+            .collect();
 
         let rewards = core::iter::repeat_with(|| {
             let pub_key = PublicKey::random(rng);
             let reward = rng.gen_range(1..=1_000_000_000);
             (pub_key, U512::from(reward))
         })
-        .take(rewards_count)
-        .collect();
+            .take(rewards_count)
+            .collect();
 
         Self::new(
             equivocators,

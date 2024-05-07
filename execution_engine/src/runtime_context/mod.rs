@@ -85,8 +85,8 @@ pub struct RuntimeContext<'a, R> {
 }
 
 impl<'a, R> RuntimeContext<'a, R>
-where
-    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
+    where
+        R: StateReader<Key, StoredValue, Error=GlobalStateError>,
 {
     /// Creates new runtime context where we don't already have one.
     ///
@@ -481,9 +481,9 @@ where
     ///
     /// This is useful if you want to get the exact type from global state.
     pub fn read_gs_typed<T>(&mut self, key: &Key) -> Result<T, ExecError>
-    where
-        T: TryFrom<StoredValue, Error = StoredValueTypeMismatch>,
-        T::Error: Debug,
+        where
+            T: TryFrom<StoredValue, Error=StoredValueTypeMismatch>,
+            T::Error: Debug,
     {
         let value = match self.read_gs(key)? {
             None => return Err(ExecError::KeyNotFound(*key)),
@@ -824,8 +824,8 @@ where
 
     /// Charges gas for using a host system contract's entrypoint.
     pub(crate) fn charge_system_contract_call<T>(&mut self, call_cost: T) -> Result<(), ExecError>
-    where
-        T: Into<Gas>,
+        where
+            T: Into<Gas>,
     {
         let amount: Gas = call_cost.into();
         self.charge_gas(amount)
@@ -836,8 +836,8 @@ where
     /// Use with caution - there is no validation done as the key is assumed to be validated
     /// already.
     pub(crate) fn prune_gs_unsafe<K>(&mut self, key: K)
-    where
-        K: Into<Key>,
+        where
+            K: Into<Key>,
     {
         self.tracking_copy.borrow_mut().prune(key.into());
     }
@@ -849,7 +849,7 @@ where
     ) -> Result<(), ExecError> {
         self.tracking_copy
             .borrow_mut()
-            .migrate_contract(Key::Hash(contract_hash.value()), protocol_version)
+            .migrate_package(Key::Hash(contract_hash.value()), protocol_version)
             .map_err(ExecError::TrackingCopy)
     }
 
@@ -862,9 +862,9 @@ where
         key: K,
         value: V,
     ) -> Result<(), ExecError>
-    where
-        K: Into<Key>,
-        V: Into<StoredValue>,
+        where
+            K: Into<Key>,
+            V: Into<StoredValue>,
     {
         let stored_value = value.into();
 
@@ -916,8 +916,8 @@ where
     ///
     /// This method performs full validation of the key to be written.
     pub(crate) fn metered_write_gs<T>(&mut self, key: Key, value: T) -> Result<(), ExecError>
-    where
-        T: Into<StoredValue>,
+        where
+            T: Into<StoredValue>,
     {
         let stored_value = value.into();
         self.validate_writeable(&key)?;
@@ -955,9 +955,9 @@ where
     /// value stored under `key` has different type, then `TypeMismatch`
     /// errors is returned.
     pub(crate) fn metered_add_gs<K, V>(&mut self, key: K, value: V) -> Result<(), ExecError>
-    where
-        K: Into<Key>,
-        V: Into<StoredValue>,
+        where
+            K: Into<Key>,
+            V: Into<StoredValue>,
     {
         let key = key.into();
         let value = value.into();
@@ -1133,7 +1133,7 @@ where
         } else {
             entity.set_action_threshold(action_type, threshold)
         }
-        .map_err(ExecError::from)?;
+            .map_err(ExecError::from)?;
 
         let entity_value = self.addressable_entity_to_validated_value(entity)?;
 
