@@ -14,11 +14,11 @@ use casper_types::{
         auction::{self, DelegationRate},
         handle_payment, mint, AUCTION,
     },
-    AuctionCosts, BrTableCost, ControlFlowCosts, CoreConfig, EraId, Gas, GenesisAccount,
-    GenesisValidator, HandlePaymentCosts, HostFunction, HostFunctionCost, HostFunctionCosts,
-    MessageLimits, MintCosts, Motes, OpcodeCosts, ProtocolVersion, PublicKey, RuntimeArgs,
-    SecretKey, StandardPaymentCosts, StorageCosts, SystemConfig, WasmConfig, DEFAULT_ADD_BID_COST,
-    DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY, U512,
+    AuctionCosts, BrTableCost, ControlFlowCosts, CoreConfig, EntityCosts, EraId, Gas,
+    GenesisAccount, GenesisValidator, HandlePaymentCosts, HostFunction, HostFunctionCost,
+    HostFunctionCosts, MessageLimits, MintCosts, Motes, OpcodeCosts, ProtocolVersion, PublicKey,
+    RuntimeArgs, SecretKey, StandardPaymentCosts, StorageCosts, SystemConfig, WasmConfig,
+    DEFAULT_ADD_BID_COST, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY, U512,
 };
 
 use crate::wasm_utils;
@@ -852,6 +852,7 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
         transfer: 0,
         ..Default::default()
     };
+    let new_entity_costs = EntityCosts::default();
     let new_standard_payment_costs = StandardPaymentCosts::default();
     let new_handle_payment_costs = HandlePaymentCosts::default();
 
@@ -862,6 +863,7 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
         new_mint_costs,
         new_handle_payment_costs,
         new_standard_payment_costs,
+        new_entity_costs,
     );
 
     let core_config = CoreConfig {

@@ -164,35 +164,35 @@ pub enum TransactionEntryPoint {
     )]
     ChangeBidPublicKey,
 
-    /// The `add_associated_key` native entry point, used to add a key.
+    /// The `add_associated_key` native entry point, used to add an associated key.
     ///
     /// Requires the following runtime args:
-    ///   * "associated_key": `???`
-    ///   * "weight": `???`
+    ///   * "account": `PublicKey`
+    ///   * "weight": `Weight`
     #[cfg_attr(
         feature = "json-schema",
-        schemars(description = "The `add_associated_key` native entry point, used to add a key.")
+        schemars(description = "The `add_associated_key` native entry point, used to add an associated key.")
     )]
     AddAssociatedKey,
 
-    /// The `remove_associated_key` native entry point, used to remove a key.
+    /// The `remove_associated_key` native entry point, used to remove an associated key.
     ///
     /// Requires the following runtime args:
-    ///   * "associated_key": `???`
+    ///   * "account": `PublicKey`
     #[cfg_attr(
         feature = "json-schema",
-        schemars(description = "The `remove_associated_key` native entry point, used to remove a key.")
+        schemars(description = "The `remove_associated_key` native entry point, used to remove an associated key.")
     )]
     RemoveAssociatedKey,
 
-    /// The `update_associated_key` native entry point, used to update a key.
+    /// The `update_associated_key` native entry point, used to update an associated key.
     ///
     /// Requires the following runtime args:
-    ///   * "associated_key": `???`
-    ///   * "weight": `???`
+    ///   * "account": `PublicKey`
+    ///   * "weight": `Weight`
     #[cfg_attr(
         feature = "json-schema",
-        schemars(description = "The `update_associated_key` native entry point, used to update a key.")
+        schemars(description = "The `update_associated_key` native entry point, used to update an associated key.")
     )]
     UpdateAssociatedKey,
 }

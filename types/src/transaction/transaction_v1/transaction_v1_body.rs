@@ -138,8 +138,15 @@ impl TransactionV1Body {
 
     /// Returns true if this transaction is a native entity interaction.
     pub fn is_native_entity(&self) -> bool {
-        TransactionTarget::Native == self.target
-            && TransactionEntryPoint::AddAssociatedKey == self.entry_point
+        if TransactionTarget::Native != self.target {
+            return false;
+        }
+        match self.entry_point {
+            TransactionEntryPoint::AddAssociatedKey
+            | TransactionEntryPoint::RemoveAssociatedKey
+            | TransactionEntryPoint::UpdateAssociatedKey => true,
+            _ => false,
+        }
     }
 
     /// Returns true if this transaction goes into the misc / standard category.
@@ -211,14 +218,12 @@ impl TransactionV1Body {
                 TransactionEntryPoint::ChangeBidPublicKey => {
                     arg_handling::has_valid_change_bid_public_key_args(&self.args)
                 }
-                TransactionEntryPoint::AddAssociatedKey => {
-                    todo!()
+                TransactionEntryPoint::AddAssociatedKey
+                | TransactionEntryPoint::UpdateAssociatedKey => {
+                    arg_handling::has_valid_add_or_update_associated_key_args(&self.args)
                 }
                 TransactionEntryPoint::RemoveAssociatedKey => {
-                    todo!()
-                }
-                TransactionEntryPoint::UpdateAssociatedKey => {
-                    todo!()
+                    arg_handling::has_valid_remove_associated_key_args(&self.args)
                 }
             },
             TransactionTarget::Stored { .. } => match &self.entry_point {
@@ -282,7 +287,7 @@ impl TransactionV1Body {
             TransactionCategory::Standard => Self::random_standard(rng),
             TransactionCategory::Auction => Self::random_staking(rng),
             TransactionCategory::Mint => Self::random_transfer(rng),
-            TransactionCategory::Entity => todo!(),
+            TransactionCategory::Entity => Self::random_entity(rng),
         }
     }
 
@@ -341,6 +346,19 @@ impl TransactionV1Body {
             args,
             TransactionTarget::Native,
             TransactionEntryPoint::AddBid,
+            TransactionScheduling::random(rng),
+        )
+    }
+
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
+    fn random_entity(rng: &mut TestRng) -> Self {
+        let account = PublicKey::random(rng);
+        let weight = rng.gen::<u8>();
+        let args = arg_handling::new_add_associated_key_args(account.to_account_hash(), weight).unwrap();
+        TransactionV1Body::new(
+            args,
+            TransactionTarget::Native,
+            TransactionEntryPoint::AddAssociatedKey,
             TransactionScheduling::random(rng),
         )
     }

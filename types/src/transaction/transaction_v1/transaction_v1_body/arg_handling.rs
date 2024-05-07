@@ -4,6 +4,7 @@ use tracing::debug;
 
 use crate::{
     account::AccountHash,
+    addressable_entity::Weight,
     bytesrepr::{FromBytes, ToBytes},
     system::auction::ARG_VALIDATOR,
     CLType, CLTyped, CLValue, CLValueError, InvalidTransactionV1, PublicKey, RuntimeArgs,
@@ -40,6 +41,9 @@ const ACTIVATE_BID_ARG_VALIDATOR: RequiredArg<PublicKey> = RequiredArg::new(ARG_
 const CHANGE_BID_PUBLIC_KEY_ARG_PUBLIC_KEY: RequiredArg<PublicKey> = RequiredArg::new("public_key");
 const CHANGE_BID_PUBLIC_KEY_ARG_NEW_PUBLIC_KEY: RequiredArg<PublicKey> =
     RequiredArg::new("new_public_key");
+
+const ASSOCIATED_KEY_ARG_ACCOUNT: RequiredArg<AccountHash> = RequiredArg::new("account");
+const ASSOCIATED_KEY_ARG_WEIGHT: RequiredArg<Weight> = RequiredArg::new("weight");
 
 struct RequiredArg<T> {
     name: &'static str,
@@ -342,6 +346,34 @@ pub(in crate::transaction::transaction_v1) fn has_valid_change_bid_public_key_ar
 ) -> Result<(), InvalidTransactionV1> {
     let _public_key = CHANGE_BID_PUBLIC_KEY_ARG_PUBLIC_KEY.get(args)?;
     let _new_public_key = CHANGE_BID_PUBLIC_KEY_ARG_NEW_PUBLIC_KEY.get(args)?;
+    Ok(())
+}
+
+/// Creates a `RuntimeArgs` suitable for use in an add_associated_key transaction.
+pub(in crate::transaction::transaction_v1) fn new_add_associated_key_args(
+    account: AccountHash,
+    weight: u8,
+) -> Result<RuntimeArgs, CLValueError> {
+    let mut args = RuntimeArgs::new();
+    ASSOCIATED_KEY_ARG_ACCOUNT.insert(&mut args, account)?;
+    ASSOCIATED_KEY_ARG_WEIGHT.insert(&mut args, Weight::new(weight))?;
+    Ok(args)
+}
+
+/// Checks the given `RuntimeArgs` are suitable for use in a add or update associated key transaction.
+pub(in crate::transaction::transaction_v1) fn has_valid_add_or_update_associated_key_args(
+    args: &RuntimeArgs,
+) -> Result<(), InvalidTransactionV1> {
+    let _account = ASSOCIATED_KEY_ARG_ACCOUNT.get(args)?;
+    let _weight = ASSOCIATED_KEY_ARG_WEIGHT.get(args)?;
+    Ok(())
+}
+
+/// Checks the given `RuntimeArgs` are suitable for use in a remove associated key transaction.
+pub(in crate::transaction::transaction_v1) fn has_valid_remove_associated_key_args(
+    args: &RuntimeArgs,
+) -> Result<(), InvalidTransactionV1> {
+    let _account = ASSOCIATED_KEY_ARG_ACCOUNT.get(args)?;
     Ok(())
 }
 

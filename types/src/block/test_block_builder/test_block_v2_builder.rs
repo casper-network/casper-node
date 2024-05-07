@@ -221,7 +221,7 @@ impl TestBlockV2Builder {
             }
         }
         let rewarded_signatures = rewarded_signatures.unwrap_or_default();
-        let current_gas_price: u8 = 1;
+        let current_gas_price = 1;
         BlockV2::new(
             parent_hash,
             parent_seed,

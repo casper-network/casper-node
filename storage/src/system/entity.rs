@@ -3,9 +3,7 @@ pub mod runtime_provider;
 pub mod storage_provider;
 // pub mod system_provider;
 
-use casper_types::{
-    account::AccountHash, addressable_entity::Weight, system::entity::Error, AddressableEntity,
-};
+use casper_types::{account::AccountHash, addressable_entity::Weight, system::entity::Error};
 
 use self::{runtime_provider::RuntimeProvider, storage_provider::StorageProvider};
 

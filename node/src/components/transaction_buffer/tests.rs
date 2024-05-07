@@ -101,7 +101,11 @@ fn create_valid_transaction(
             strict_timestamp,
             with_ttl,
         )),
-        TransactionCategory::Entity => todo!(),
+        TransactionCategory::Entity => Transaction::V1(TransactionV1::random_entity(
+            rng,
+            strict_timestamp,
+            with_ttl,
+        )),
     }
 }
 

@@ -11,11 +11,11 @@ use serde::{Deserialize, Serialize};
 use crate::bytesrepr::{self, FromBytes, ToBytes};
 
 /// Default cost of the `add_associated_key` entity entry point.
-pub const DEFAULT_ADD_ASSOCIATED_COST: u32 = 10_000;
+pub const DEFAULT_ADD_ASSOCIATED_COST: u64 = 10_000;
 /// Default cost of the `remove_associated_key` entity entry point.
-pub const DEFAULT_REMOVE_ASSOCIATED_COST: u32 = 10_000;
+pub const DEFAULT_REMOVE_ASSOCIATED_COST: u64 = 10_000;
 /// Default cost of the `update_associated_key` entity entry point.
-pub const DEFAULT_UPDATE_ASSOCIATED_COST: u32 = 10_000;
+pub const DEFAULT_UPDATE_ASSOCIATED_COST: u64 = 10_000;
 
 /// Description of the costs of calling `entity` entrypoints.
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug)]
@@ -23,11 +23,11 @@ pub const DEFAULT_UPDATE_ASSOCIATED_COST: u32 = 10_000;
 #[serde(deny_unknown_fields)]
 pub struct EntityCosts {
     /// Cost of calling the `add_associated_key` entry point.
-    pub add_associated_key: u32,
+    pub add_associated_key: u64,
     /// Cost of calling the `remove_associated_key` entry point.
-    pub remove_associated_key: u32,
+    pub remove_associated_key: u64,
     /// Cost of calling the `update_associated_key` entry point.
-    pub update_associated_key: u32,
+    pub update_associated_key: u64,
 }
 
 impl Default for EntityCosts {
@@ -95,9 +95,9 @@ pub mod gens {
 
     prop_compose! {
         pub fn entity_costs_arb()(
-            add_associated_key in num::u32::ANY,
-            remove_associated_key in num::u32::ANY,
-            update_associated_key in num::u32::ANY,
+            add_associated_key in num::u64::ANY,
+            remove_associated_key in num::u64::ANY,
+            update_associated_key in num::u64::ANY,
         ) -> EntityCosts {
             EntityCosts {
                 add_associated_key,

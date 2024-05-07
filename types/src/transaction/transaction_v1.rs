@@ -543,7 +543,7 @@ impl TransactionV1 {
         transaction
     }
 
-    /// Returns a random transaction with "install/upgrade" category.
+    /// Returns a random transaction with "auction" category.
     ///
     /// Note that the [`TransactionV1Builder`] can be used to create a random transaction with
     /// more specific values.
@@ -564,6 +564,31 @@ impl TransactionV1 {
         assert!(matches!(
             transaction.transaction_category(),
             TransactionCategory::Auction
+        ));
+        transaction
+    }
+
+    /// Returns a random transaction with "entity" category.
+    ///
+    /// Note that the [`TransactionV1Builder`] can be used to create a random transaction with
+    /// more specific values.
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
+    pub fn random_entity(
+        rng: &mut TestRng,
+        timestamp: Option<Timestamp>,
+        ttl: Option<TimeDiff>,
+    ) -> Self {
+        let transaction = TransactionV1Builder::new_random_with_category_and_timestamp_and_ttl(
+            rng,
+            &TransactionCategory::Entity,
+            timestamp,
+            ttl,
+        )
+        .build()
+        .unwrap();
+        assert!(matches!(
+            transaction.transaction_category(),
+            TransactionCategory::Entity
         ));
         transaction
     }
@@ -617,6 +642,8 @@ impl Categorized for TransactionV1 {
             TransactionCategory::Mint
         } else if self.is_native_auction() {
             TransactionCategory::Auction
+        } else if self.is_native_entity() {
+            TransactionCategory::Entity
         } else if self.is_install_or_upgrade() {
             TransactionCategory::InstallUpgrade
         } else {
@@ -690,15 +717,16 @@ impl GasLimited for TransactionV1 {
                     } else if self.is_native_entity() {
                         let costs = costs.entity_costs();
                         let entry_point = self.body().entry_point();
-                        let amount = match entry_point {
+                        match entry_point {
                             TransactionEntryPoint::AddAssociatedKey => costs.add_associated_key,
+                            TransactionEntryPoint::RemoveAssociatedKey => costs.remove_associated_key,
+                            TransactionEntryPoint::UpdateAssociatedKey => costs.update_associated_key,
                             _ => {
                                 return Err(InvalidTransactionV1::EntryPointCannotBeCustom {
                                     entry_point: entry_point.clone(),
                                 });
                             }
-                        };
-                        amount as u64
+                        }
                     } else {
                         costs.standard_transaction_limit()
                     }

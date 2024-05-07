@@ -69,9 +69,9 @@ pub use transaction_config::{DEFAULT_MAX_PAYMENT_MOTES, DEFAULT_MIN_TRANSFER_MOT
 pub use upgrade_config::ProtocolUpgradeConfig;
 pub use vacancy_config::VacancyConfig;
 pub use vm_config::{
-    AuctionCosts, BrTableCost, ChainspecRegistry, ControlFlowCosts, HandlePaymentCosts,
-    HostFunction, HostFunctionCost, HostFunctionCosts, MessageLimits, MintCosts, OpcodeCosts,
-    StandardPaymentCosts, StorageCosts, SystemConfig, WasmConfig,
+    AuctionCosts, BrTableCost, ChainspecRegistry, ControlFlowCosts, EntityCosts,
+    HandlePaymentCosts, HostFunction, HostFunctionCost, HostFunctionCosts, MessageLimits,
+    MintCosts, OpcodeCosts, StandardPaymentCosts, StorageCosts, SystemConfig, WasmConfig,
     DEFAULT_HOST_FUNCTION_NEW_DICTIONARY,
 };
 #[cfg(any(feature = "testing", test))]

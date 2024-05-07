@@ -116,8 +116,8 @@ pub use global_state::Pointer;
 pub use chainspec::{
     AccountConfig, AccountsConfig, ActivationPoint, AdministratorAccount, AuctionCosts,
     BrTableCost, Chainspec, ChainspecRawBytes, ChainspecRegistry, ConsensusProtocolName,
-    ControlFlowCosts, CoreConfig, DelegatorConfig, DeployConfig, FeeHandling, GenesisAccount,
-    GenesisConfig, GenesisConfigBuilder, GenesisValidator, GlobalStateUpdate,
+    ControlFlowCosts, CoreConfig, DelegatorConfig, DeployConfig, EntityCosts, FeeHandling,
+    GenesisAccount, GenesisConfig, GenesisConfigBuilder, GenesisValidator, GlobalStateUpdate,
     GlobalStateUpdateConfig, GlobalStateUpdateError, HandlePaymentCosts, HighwayConfig,
     HoldBalanceHandling, HostFunction, HostFunctionCost, HostFunctionCosts, LegacyRequiredFinality,
     MessageLimits, MintCosts, NetworkConfig, NextUpgrade, OpcodeCosts, PricingHandling,
