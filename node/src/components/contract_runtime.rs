@@ -29,9 +29,9 @@ use tracing::{debug, error, info, trace};
 use casper_execution_engine::engine_state::{EngineConfigBuilder, ExecutionEngineV1};
 use casper_storage::{
     data_access_layer::{
-        AddressableEntityRequest, BlockStore, DataAccessLayer, ExecutionResultsChecksumRequest,
-        FlushRequest, FlushResult, GenesisRequest, GenesisResult, ProtocolUpgradeRequest,
-        ProtocolUpgradeResult, TrieRequest,
+        AddressableEntityRequest, BlockStore, DataAccessLayer, EntryPointsRequest,
+        ExecutionResultsChecksumRequest, FlushRequest, FlushResult, GenesisRequest, GenesisResult,
+        ProtocolUpgradeRequest, ProtocolUpgradeResult, TrieRequest,
     },
     global_state::{
         state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
@@ -394,42 +394,20 @@ impl ContractRuntime {
                 }
                 .ignore()
             }
-            ContractRuntimeRequest::GetTotalSupply {
-                request: total_supply_request,
+            ContractRuntimeRequest::GetEntryPoint {
+                state_root_hash,
+                key,
                 responder,
             } => {
-                trace!(?total_supply_request, "total supply request");
+                trace!(?state_root_hash, "get entry point");
                 let metrics = Arc::clone(&self.metrics);
                 let data_access_layer = Arc::clone(&self.data_access_layer);
                 async move {
                     let start = Instant::now();
-                    let result = data_access_layer.total_supply(total_supply_request);
-                    metrics
-                        .get_total_supply
-                        .observe(start.elapsed().as_secs_f64());
-                    trace!(?result, "total supply results");
-                    responder.respond(result).await
-                }
-                .ignore()
-            }
-            ContractRuntimeRequest::GetRoundSeigniorageRate {
-                request: round_seigniorage_rate_request,
-                responder,
-            } => {
-                trace!(
-                    ?round_seigniorage_rate_request,
-                    "round seigniorage rate request"
-                );
-                let metrics = Arc::clone(&self.metrics);
-                let data_access_layer = Arc::clone(&self.data_access_layer);
-                async move {
-                    let start = Instant::now();
-                    let result =
-                        data_access_layer.round_seigniorage_rate(round_seigniorage_rate_request);
-                    metrics
-                        .get_round_seigniorage_rate
-                        .observe(start.elapsed().as_secs_f64());
-                    trace!(?result, "round seigniorage rate results");
+                    let request = EntryPointsRequest::new(state_root_hash, key);
+                    let result = data_access_layer.entry_point(request);
+                    metrics.entry_points.observe(start.elapsed().as_secs_f64());
+                    trace!(?result, "get addressable entity");
                     responder.respond(result).await
                 }
                 .ignore()

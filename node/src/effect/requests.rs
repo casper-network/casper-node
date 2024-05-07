@@ -22,10 +22,9 @@ use casper_storage::{
     block_store::types::ApprovalsHashes,
     data_access_layer::{
         tagged_values::{TaggedValuesRequest, TaggedValuesResult},
-        AddressableEntityResult, BalanceRequest, BalanceResult, EraValidatorsRequest,
-        EraValidatorsResult, ExecutionResultsChecksumResult, PutTrieRequest, PutTrieResult,
-        QueryRequest, QueryResult, RoundSeigniorageRateRequest, RoundSeigniorageRateResult,
-        TotalSupplyRequest, TotalSupplyResult, TrieRequest, TrieResult,
+        AddressableEntityResult, BalanceRequest, BalanceResult, EntryPointsResult,
+        EraValidatorsRequest, EraValidatorsResult, ExecutionResultsChecksumResult, PutTrieRequest,
+        PutTrieResult, QueryRequest, QueryResult, TrieRequest, TrieResult,
     },
     DbRawBytesSpec,
 };
@@ -778,18 +777,6 @@ pub(crate) enum ContractRuntimeRequest {
         /// Responder to call with the balance result.
         responder: Responder<BalanceResult>,
     },
-    /// Get the total supply on the chain.
-    GetTotalSupply {
-        #[serde(skip_serializing)]
-        request: TotalSupplyRequest,
-        responder: Responder<TotalSupplyResult>,
-    },
-    /// Get the round seigniorage rate.
-    GetRoundSeigniorageRate {
-        #[serde(skip_serializing)]
-        request: RoundSeigniorageRateRequest,
-        responder: Responder<RoundSeigniorageRateResult>,
-    },
     /// Returns validator weights.
     GetEraValidators {
         /// Get validators weights request.
@@ -820,6 +807,13 @@ pub(crate) enum ContractRuntimeRequest {
         state_root_hash: Digest,
         key: Key,
         responder: Responder<AddressableEntityResult>,
+    },
+    /// Returns a singular entry point based under the given state root hash and entry
+    /// point key.
+    GetEntryPoint {
+        state_root_hash: Digest,
+        key: Key,
+        responder: Responder<EntryPointsResult>,
     },
     /// Get a trie or chunk by its ID.
     GetTrie {
@@ -871,22 +865,6 @@ impl Display for ContractRuntimeRequest {
                 request: balance_request,
                 ..
             } => write!(formatter, "balance request: {:?}", balance_request),
-            ContractRuntimeRequest::GetTotalSupply {
-                request: total_supply_request,
-                ..
-            } => {
-                write!(formatter, "get total supply: {:?}", total_supply_request)
-            }
-            ContractRuntimeRequest::GetRoundSeigniorageRate {
-                request: round_seigniorage_rate_request,
-                ..
-            } => {
-                write!(
-                    formatter,
-                    "get round seigniorage rate: {:?}",
-                    round_seigniorage_rate_request
-                )
-            }
             ContractRuntimeRequest::GetEraValidators { request, .. } => {
                 write!(formatter, "get era validators: {:?}", request)
             }
@@ -941,6 +919,17 @@ impl Display for ContractRuntimeRequest {
             }
             ContractRuntimeRequest::GetEraGasPrice { era_id, .. } => {
                 write!(formatter, "Get gas price for era {}", era_id)
+            }
+            ContractRuntimeRequest::GetEntryPoint {
+                state_root_hash,
+                key,
+                ..
+            } => {
+                write!(
+                    formatter,
+                    "get entry point {} under {}",
+                    key, state_root_hash
+                )
             }
         }
     }

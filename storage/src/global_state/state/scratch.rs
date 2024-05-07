@@ -1,6 +1,6 @@
 use lmdb::RwTransaction;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet},
     mem,
     ops::Deref,
     sync::{Arc, RwLock},
@@ -40,15 +40,15 @@ use crate::tracking_copy::TrackingCopy;
 type SharedCache = Arc<RwLock<Cache>>;
 
 struct Cache {
-    cached_values: HashMap<Key, (bool, StoredValue)>,
-    pruned: HashSet<Key>,
+    cached_values: BTreeMap<Key, (bool, StoredValue)>,
+    pruned: BTreeSet<Key>,
 }
 
 impl Cache {
     fn new() -> Self {
         Cache {
-            cached_values: HashMap::new(),
-            pruned: HashSet::new(),
+            cached_values: BTreeMap::new(),
+            pruned: BTreeSet::new(),
         }
     }
 
@@ -80,9 +80,9 @@ impl Cache {
 
     /// Consumes self and returns only written values as values that were only read must be filtered
     /// out to prevent unnecessary writes.
-    fn into_dirty_writes(self) -> (HashMap<Key, StoredValue>, HashSet<Key>) {
+    fn into_dirty_writes(self) -> (BTreeMap<Key, StoredValue>, BTreeSet<Key>) {
         let keys_to_prune = self.pruned;
-        let stored_values: HashMap<Key, StoredValue> = self
+        let stored_values: BTreeMap<Key, StoredValue> = self
             .cached_values
             .into_iter()
             .filter_map(|(key, (dirty, value))| if dirty { Some((key, value)) } else { None })
@@ -148,7 +148,7 @@ impl ScratchGlobalState {
     }
 
     /// Consume self and return inner cache.
-    pub fn into_inner(self) -> (HashMap<Key, StoredValue>, HashSet<Key>) {
+    pub fn into_inner(self) -> (BTreeMap<Key, StoredValue>, BTreeSet<Key>) {
         let cache = mem::replace(&mut *self.cache.write().unwrap(), Cache::new());
         cache.into_dirty_writes()
     }

@@ -134,4 +134,10 @@ pub enum BlockExecutionError {
     MissingChecksumRegistry,
     #[error("Failed to get new era gas price when executing switch block")]
     FailedToGetNewEraGasPrice { era_id: EraId },
+    // Payment error.
+    #[error("Error while trying to set up payment for transaction: {0}")]
+    PaymentError(String),
+    // Error attempting to set block global data.
+    #[error("Error while attempting to store block global data: {0}")]
+    BlockGlobal(String),
 }

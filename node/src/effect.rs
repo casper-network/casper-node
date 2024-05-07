@@ -123,8 +123,7 @@ use casper_storage::{
         tagged_values::{TaggedValuesRequest, TaggedValuesResult},
         AddressableEntityResult, BalanceRequest, BalanceResult, EraValidatorsRequest,
         EraValidatorsResult, ExecutionResultsChecksumResult, PutTrieRequest, PutTrieResult,
-        QueryRequest, QueryResult, RoundSeigniorageRateRequest, RoundSeigniorageRateResult,
-        TotalSupplyRequest, TotalSupplyResult, TrieRequest, TrieResult,
+        QueryRequest, QueryResult, TrieRequest, TrieResult,
     },
     DbRawBytesSpec,
 };
@@ -167,6 +166,7 @@ use announcements::{
     PeerBehaviorAnnouncement, QueueDumpFormat, TransactionAcceptorAnnouncement,
     TransactionBufferAnnouncement, UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
 };
+use casper_storage::data_access_layer::EntryPointsResult;
 use diagnostics_port::DumpConsensusStateRequest;
 use requests::{
     AcceptTransactionRequest, BeginGossipRequest, BlockAccumulatorRequest,
@@ -1530,6 +1530,7 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    #[allow(unused)]
     pub(crate) async fn get_balance_holds_interval(self) -> TimeDiff
     where
         REv: From<ReactorInfoRequest>,
@@ -2032,6 +2033,26 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Retrieves an `EntryPointValue` from under the given key in global state if present.
+    pub(crate) async fn get_entry_point_value(
+        self,
+        state_root_hash: Digest,
+        key: Key,
+    ) -> EntryPointsResult
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::GetEntryPoint {
+                state_root_hash,
+                key,
+                responder,
+            },
+            QueueKind::ContractRuntime,
+        )
+        .await
+    }
+
     /// Retrieves a `Package` from under the given key in global state if present.
     pub(crate) async fn get_package(self, state_root_hash: Digest, key: Key) -> Option<Box<Package>>
     where
@@ -2070,37 +2091,6 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| ContractRuntimeRequest::GetEraValidators { request, responder },
-            QueueKind::ContractRuntime,
-        )
-        .await
-    }
-
-    /// Returns the total supply from the given `root_hash`.
-    ///
-    /// This operation is read only.
-    pub(crate) async fn get_total_supply(self, request: TotalSupplyRequest) -> TotalSupplyResult
-    where
-        REv: From<ContractRuntimeRequest>,
-    {
-        self.make_request(
-            move |responder| ContractRuntimeRequest::GetTotalSupply { request, responder },
-            QueueKind::ContractRuntime,
-        )
-        .await
-    }
-
-    /// Returns the seigniorage rate from the given `root_hash`.
-    ///
-    /// This operation is read only.
-    pub(crate) async fn get_round_seigniorage_rate(
-        self,
-        request: RoundSeigniorageRateRequest,
-    ) -> RoundSeigniorageRateResult
-    where
-        REv: From<ContractRuntimeRequest>,
-    {
-        self.make_request(
-            move |responder| ContractRuntimeRequest::GetRoundSeigniorageRate { request, responder },
             QueueKind::ContractRuntime,
         )
         .await

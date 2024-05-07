@@ -773,7 +773,10 @@ mod tests {
     fn trait_has_interface() {
         let interface = ReceiveTokensRef::SELECTOR;
         assert_ne!(interface, Selector::zero());
-        assert_eq!(interface, selector!("receive()") ^ selector!("second_method()"));
+        assert_eq!(
+            interface,
+            selector!("receive()") ^ selector!("second_method()")
+        );
     }
 
     #[test]

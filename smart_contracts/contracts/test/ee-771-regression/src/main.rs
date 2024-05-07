@@ -8,8 +8,8 @@ use alloc::string::ToString;
 use casper_contract::contract_api::{runtime, storage};
 use casper_types::{
     addressable_entity::{NamedKeys, Parameters},
-    AddressableEntityHash, CLType, EntityVersion, EntryPoint, EntryPointAccess, EntryPointType,
-    EntryPoints, Key, RuntimeArgs,
+    AddressableEntityHash, CLType, EntityVersion, EntryPoint, EntryPointAccess, EntryPointPayment,
+    EntryPointType, EntryPoints, Key, RuntimeArgs,
 };
 
 const ENTRY_POINT_NAME: &str = "contract_ext";
@@ -40,6 +40,7 @@ pub extern "C" fn contract_ext() {
                     CLType::Unit,
                     EntryPointAccess::Public,
                     EntryPointType::Called,
+                    EntryPointPayment::Caller,
                 );
 
                 entry_points.add_entry_point(entry_point);
@@ -62,6 +63,7 @@ fn store(named_keys: NamedKeys) -> (AddressableEntityHash, EntityVersion) {
             CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
 
         entry_points.add_entry_point(entry_point);

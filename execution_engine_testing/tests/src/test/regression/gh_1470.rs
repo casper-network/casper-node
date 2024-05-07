@@ -10,9 +10,9 @@ use casper_types::{
     account::AccountHash,
     runtime_args,
     system::{auction, auction::DelegationRate},
-    AccessRights, AddressableEntityHash, CLTyped, CLValue, Digest, EraId, Key, PackageHash,
-    ProtocolVersion, RuntimeArgs, StoredValue, StoredValueTypeMismatch, SystemEntityRegistry, URef,
-    U512,
+    AccessRights, AddressableEntityHash, CLTyped, CLValue, Digest, EraId, HoldBalanceHandling, Key,
+    PackageHash, ProtocolVersion, RuntimeArgs, StoredValue, StoredValueTypeMismatch,
+    SystemEntityRegistry, Timestamp, URef, U512,
 };
 
 use crate::lmdb_fixture;
@@ -642,10 +642,13 @@ fn should_transfer_after_major_version_bump_from_1_2_0() {
             .with_new_protocol_version(new_protocol_version)
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
             .with_global_state_update(global_state_update)
+            .with_new_gas_hold_handling(HoldBalanceHandling::Accrued)
+            .with_new_gas_hold_interval(1200u64)
             .build()
     };
 
     builder
+        .with_block_time(Timestamp::now().into())
         .upgrade(&mut upgrade_request)
         .expect_upgrade_success();
 
@@ -679,10 +682,13 @@ fn should_transfer_after_minor_version_bump_from_1_2_0() {
             .with_new_protocol_version(new_protocol_version)
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
             .with_global_state_update(global_state_update)
+            .with_new_gas_hold_handling(HoldBalanceHandling::Accrued)
+            .with_new_gas_hold_interval(1200u64)
             .build()
     };
 
     builder
+        .with_block_time(Timestamp::now().into())
         .upgrade(&mut upgrade_request)
         .expect_upgrade_success();
 
@@ -712,10 +718,13 @@ fn should_add_bid_after_major_bump() {
             .with_new_protocol_version(new_protocol_version)
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
             .with_global_state_update(global_state_update)
+            .with_new_gas_hold_handling(HoldBalanceHandling::Accrued)
+            .with_new_gas_hold_interval(1200u64)
             .build()
     };
 
     builder
+        .with_block_time(Timestamp::now().into())
         .upgrade(&mut upgrade_request)
         .expect_upgrade_success();
 
@@ -760,10 +769,13 @@ fn should_add_bid_after_minor_bump() {
             .with_new_protocol_version(new_protocol_version)
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
             .with_global_state_update(global_state_update)
+            .with_new_gas_hold_handling(HoldBalanceHandling::Accrued)
+            .with_new_gas_hold_interval(1200u64)
             .build()
     };
 
     builder
+        .with_block_time(Timestamp::now().into())
         .upgrade(&mut upgrade_request)
         .expect_upgrade_success();
 
@@ -805,10 +817,13 @@ fn should_wasm_transfer_after_major_bump() {
             .with_new_protocol_version(new_protocol_version)
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
             .with_global_state_update(global_state_update)
+            .with_new_gas_hold_handling(HoldBalanceHandling::Accrued)
+            .with_new_gas_hold_interval(1200u64)
             .build()
     };
 
     builder
+        .with_block_time(Timestamp::now().into())
         .upgrade(&mut upgrade_request)
         .expect_upgrade_success();
 
@@ -852,10 +867,13 @@ fn should_wasm_transfer_after_minor_bump() {
             .with_new_protocol_version(new_protocol_version)
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
             .with_global_state_update(global_state_update)
+            .with_new_gas_hold_handling(HoldBalanceHandling::Accrued)
+            .with_new_gas_hold_interval(1200u64)
             .build()
     };
 
     builder
+        .with_block_time(Timestamp::now().into())
         .upgrade(&mut upgrade_request)
         .expect_upgrade_success();
 

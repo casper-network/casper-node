@@ -43,4 +43,7 @@ pub trait RuntimeProvider {
     /// Checks if users can perform unrestricted transfers. This option is valid only for private
     /// chains.
     fn allow_unrestricted_transfers(&self) -> bool;
+
+    /// Validate URef against context access rights.
+    fn is_valid_uref(&self, uref: &URef) -> bool;
 }

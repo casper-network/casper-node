@@ -21,16 +21,6 @@ pub enum FatalStorageError {
     /// Failure to create the root database directory.
     #[error("failed to create database directory `{}`: {}", .0.display(), .1)]
     CreateDatabaseDirectory(PathBuf, io::Error),
-    /// Found a duplicate block-at-height index entry.
-    #[error("duplicate entries for block at height {height}: {first} / {second}")]
-    DuplicateBlockIndex {
-        /// Height at which duplicate was found.
-        height: u64,
-        /// First block hash encountered at `height`.
-        first: BlockHash,
-        /// Second block hash encountered at `height`.
-        second: BlockHash,
-    },
     /// Found a duplicate switch-block-at-era-id index entry.
     #[error("duplicate entries for switch block at era id {era_id}: {first} / {second}")]
     DuplicateEraIdIndex {
@@ -39,16 +29,6 @@ pub enum FatalStorageError {
         /// First block hash encountered at `era_id`.
         first: BlockHash,
         /// Second block hash encountered at `era_id`.
-        second: BlockHash,
-    },
-    /// Found a duplicate transaction index entry.
-    #[error("duplicate entries for blocks for transaction {transaction_hash}: {first} / {second}")]
-    DuplicateTransactionIndex {
-        /// Transaction hash at which duplicate was found.
-        transaction_hash: TransactionHash,
-        /// First block hash encountered at `transaction_hash`.
-        first: BlockHash,
-        /// Second block hash encountered at `transaction_hash`.
         second: BlockHash,
     },
     /// An internal DB error - blocks should be overwritten.

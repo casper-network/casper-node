@@ -118,7 +118,7 @@ impl TransactionBuffer {
                             err
                         )
                         .ignore(),
-                    )
+                    );
                 }
             };
             debug!(
