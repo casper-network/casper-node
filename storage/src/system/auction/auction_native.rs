@@ -66,15 +66,10 @@ where
 
     fn delegator_count(&mut self, bid_addr: &BidAddr) -> Result<usize, Error> {
         let prefix = bid_addr.delegators_prefix()?;
-        let keys = self
-            .tracking_copy()
-            .borrow_mut()
-            .reader()
-            .keys_with_prefix(&prefix)
-            .map_err(|err| {
-                error!("RuntimeProvider::delegator_count {:?}", err);
-                Error::Storage
-            })?;
+        let keys = self.get_keys_by_prefix(&prefix).map_err(|err| {
+            error!("RuntimeProvider::delegator_count {:?}", err);
+            Error::Storage
+        })?;
         Ok(keys.len())
     }
 

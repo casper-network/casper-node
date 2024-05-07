@@ -51,10 +51,7 @@ impl Display for Event {
                         GlobalStateRequest::DictionaryItem { .. } => {
                             write!(f, "get dictionary item")
                         }
-                        GlobalStateRequest::BalanceByBlock { .. } => {
-                            write!(f, "get balance by block")
-                        }
-                        GlobalStateRequest::BalanceByStateRoot { .. } => {
+                        GlobalStateRequest::Balance { .. } => {
                             write!(f, "get balance by state root",)
                         }
                     },

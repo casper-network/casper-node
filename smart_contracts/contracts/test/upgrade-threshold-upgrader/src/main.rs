@@ -11,7 +11,8 @@ use casper_contract::{
 use casper_types::{
     account::AccountHash,
     addressable_entity::{ActionType, NamedKeys, Weight},
-    CLType, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key, PackageHash, Parameter,
+    CLType, EntryPoint, EntryPointAccess, EntryPointPayment, EntryPointType, EntryPoints, Key,
+    PackageHash, Parameter,
 };
 
 const ARG_ENTITY_ACCOUNT_HASH: &str = "entity_account_hash";
@@ -58,6 +59,7 @@ pub extern "C" fn call() {
             CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
         entrypoints.add_entry_point(add_associated_key_entry_point);
         let manage_action_threshold_entrypoint = EntryPoint::new(
@@ -66,6 +68,7 @@ pub extern "C" fn call() {
             CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
         entrypoints.add_entry_point(manage_action_threshold_entrypoint);
         let remove_associated_key_entry_point = EntryPoint::new(
@@ -77,6 +80,7 @@ pub extern "C" fn call() {
             CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
         entrypoints.add_entry_point(remove_associated_key_entry_point);
         entrypoints

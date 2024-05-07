@@ -9,7 +9,7 @@ use casper_types::{
     bytesrepr,
     execution::TransformError,
     system, AccessRights, AddressableEntityHash, ApiError, ByteCodeHash, CLType, CLValueError,
-    EntityVersionKey, Key, PackageHash, StoredValueTypeMismatch, URef,
+    EntityVersionKey, Key, PackageHash, StoredValueTypeMismatch, TransactionRuntime, URef,
 };
 use casper_wasm::elements;
 
@@ -189,6 +189,9 @@ pub enum Error {
     /// Invalid string encoding.
     #[error("Invalid UTF-8 string encoding: {0}")]
     InvalidUtf8Encoding(Utf8Error),
+    /// Incompatible transaction runtime.
+    #[error("Incompatible runtime: {0}")]
+    IncompatibleRuntime(TransactionRuntime),
 }
 
 impl From<PreprocessingError> for Error {

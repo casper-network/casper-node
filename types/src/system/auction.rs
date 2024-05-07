@@ -2,6 +2,7 @@
 mod bid;
 mod bid_addr;
 mod bid_kind;
+mod bridge;
 mod constants;
 mod delegator;
 mod entry_points;
@@ -23,6 +24,7 @@ use alloc::{boxed::Box, collections::BTreeMap, vec::Vec};
 pub use bid::{Bid, VESTING_SCHEDULE_LENGTH_MILLIS};
 pub use bid_addr::{BidAddr, BidAddrTag};
 pub use bid_kind::{BidKind, BidKindTag};
+pub use bridge::Bridge;
 pub use constants::*;
 pub use delegator::Delegator;
 pub use entry_points::auction_entry_points;
@@ -79,6 +81,14 @@ pub trait BidsExt {
 
     /// Returns ValidatorBid matching public_key, if present.
     fn validator_bid(&self, public_key: &PublicKey) -> Option<ValidatorBid>;
+
+    /// Returns a bridge record matching old and new public key, if present.
+    fn bridge(
+        &self,
+        public_key: &PublicKey,
+        new_public_key: &PublicKey,
+        era_id: &EraId,
+    ) -> Option<Bridge>;
 
     /// Returns ValidatorCredit matching public_key, if present.
     fn credit(&self, public_key: &PublicKey) -> Option<ValidatorCredit>;
@@ -142,6 +152,24 @@ impl BidsExt for Vec<BidKind> {
         } else {
             None
         }
+    }
+
+    fn bridge(
+        &self,
+        public_key: &PublicKey,
+        new_public_key: &PublicKey,
+        era_id: &EraId,
+    ) -> Option<Bridge> {
+        self.iter().find_map(|x| match x {
+            BidKind::Bridge(bridge)
+                if bridge.old_validator_public_key() == public_key
+                    && bridge.new_validator_public_key() == new_public_key
+                    && bridge.era_id() == era_id =>
+            {
+                Some(*bridge.clone())
+            }
+            _ => None,
+        })
     }
 
     fn validator_total_stake(&self, public_key: &PublicKey) -> Option<U512> {
@@ -268,6 +296,15 @@ impl BidsExt for Vec<BidKind> {
                     x.is_delegator()
                         && x.validator_public_key() == bid_kind.validator_public_key()
                         && x.delegator_public_key() == bid_kind.delegator_public_key()
+                })
+                .map(|(idx, _)| idx),
+            BidKind::Bridge(_) => self
+                .iter()
+                .find_position(|x| {
+                    x.is_bridge()
+                        && x.validator_public_key() == bid_kind.validator_public_key()
+                        && x.new_validator_public_key() == bid_kind.new_validator_public_key()
+                        && x.era_id() == bid_kind.era_id()
                 })
                 .map(|(idx, _)| idx),
             BidKind::Credit(_) => self

@@ -13,6 +13,7 @@ mod balance_hold;
 pub mod bids;
 mod block_global;
 pub mod block_rewards;
+mod entry_points;
 pub mod era_validators;
 mod execution_results_checksum;
 mod fee;
@@ -20,6 +21,7 @@ mod flush;
 mod genesis;
 pub mod handle_fee;
 mod handle_refund;
+mod key_prefix;
 pub mod mint;
 mod protocol_upgrade;
 pub mod prune;
@@ -44,6 +46,7 @@ pub use balance_hold::{
 pub use bids::{BidsRequest, BidsResult};
 pub use block_global::{BlockGlobalKind, BlockGlobalRequest, BlockGlobalResult};
 pub use block_rewards::{BlockRewardsError, BlockRewardsRequest, BlockRewardsResult};
+pub use entry_points::{EntryPointsRequest, EntryPointsResult};
 pub use era_validators::{EraValidatorsRequest, EraValidatorsResult};
 pub use execution_results_checksum::{
     ExecutionResultsChecksumRequest, ExecutionResultsChecksumResult,
@@ -54,6 +57,7 @@ pub use flush::{FlushRequest, FlushResult};
 pub use genesis::{GenesisRequest, GenesisResult};
 pub use handle_fee::{HandleFeeMode, HandleFeeRequest, HandleFeeResult};
 pub use handle_refund::{HandleRefundMode, HandleRefundRequest, HandleRefundResult};
+pub use key_prefix::KeyPrefix;
 pub use mint::{TransferRequest, TransferResult};
 pub use protocol_upgrade::{ProtocolUpgradeRequest, ProtocolUpgradeResult};
 pub use prune::{PruneRequest, PruneResult};

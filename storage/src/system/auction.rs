@@ -15,8 +15,8 @@ use crate::system::auction::detail::{
 use casper_types::{
     account::AccountHash,
     system::auction::{
-        BidAddr, BidKind, DelegationRate, EraInfo, EraValidators, Error, SeigniorageRecipients,
-        UnbondingPurse, ValidatorBid, ValidatorCredit, ValidatorWeights,
+        BidAddr, BidKind, Bridge, DelegationRate, EraInfo, EraValidators, Error,
+        SeigniorageRecipients, UnbondingPurse, ValidatorBid, ValidatorCredit, ValidatorWeights,
         DELEGATION_RATE_DENOMINATOR,
     },
     ApiError, EraId, Key, PublicKey, U512,
@@ -604,6 +604,20 @@ pub trait Auction:
             .into_iter()
             .filter(|(key, _amount)| key != &PublicKey::System)
         {
+            // fetch most recent validator public key if public key was changed
+            // or the validator withdrew their bid completely
+            let validator_public_key =
+                match detail::get_most_recent_validator_public_key(self, proposer.clone()) {
+                    Ok(pubkey) => pubkey,
+                    Err(Error::BridgeRecordChainTooLong) => {
+                        // Validator bid's public key has been changed too many times,
+                        // and we were unable to find the current public key.
+                        // In this case we are unable to distribute rewards for this validator.
+                        continue;
+                    }
+                    Err(err) => return Err(err),
+                };
+
             let total_reward = Ratio::from(reward_amount);
             let recipient = seigniorage_recipients
                 .get(&proposer)
@@ -650,7 +664,7 @@ pub trait Auction:
             let delegator_payouts = detail::distribute_delegator_rewards(
                 self,
                 seigniorage_allocations,
-                proposer.clone(),
+                validator_public_key.clone(),
                 delegator_rewards,
             )?;
 
@@ -663,7 +677,7 @@ pub trait Auction:
             let validator_bonding_purse = detail::distribute_validator_rewards(
                 self,
                 seigniorage_allocations,
-                proposer.clone(),
+                validator_public_key.clone(),
                 validator_reward,
             )?;
 
@@ -705,6 +719,75 @@ pub trait Auction:
         } else {
             Err(Error::ValidatorNotFound)
         }
+    }
+
+    /// Updates a `ValidatorBid` and all related delegator bids to use a new public key.
+    ///
+    /// This in effect "transfers" a validator bid along with its stake and all delegators
+    /// from one public key to another.
+    /// This method can only be called by the account associated with the current `ValidatorBid`.
+    ///
+    /// The arguments are the existing bid's 'validator_public_key' and the new public key.
+    fn change_bid_public_key(
+        &mut self,
+        public_key: PublicKey,
+        new_public_key: PublicKey,
+    ) -> Result<(), Error> {
+        let validator_account_hash = AccountHash::from(&public_key);
+
+        // check that the caller is the current bid's owner
+        if !self.is_allowed_session_caller(&validator_account_hash) {
+            return Err(Error::InvalidContext);
+        }
+
+        // verify that a bid for given public key exists
+        let validator_bid_addr = BidAddr::from(public_key.clone());
+        let mut validator_bid = read_validator_bid(self, &validator_bid_addr.into())?;
+
+        // verify that a bid for the new key does not exist yet
+        let new_validator_bid_addr = BidAddr::from(new_public_key.clone());
+        if self.read_bid(&new_validator_bid_addr.into())?.is_some() {
+            return Err(Error::ValidatorBidExistsAlready);
+        }
+
+        debug!("changing validator bid {validator_bid_addr} public key from {public_key} to {new_public_key}");
+
+        // store new validator bid
+        validator_bid.with_validator_public_key(new_public_key.clone());
+        self.write_bid(
+            new_validator_bid_addr.into(),
+            BidKind::Validator(validator_bid),
+        )?;
+
+        // store bridge record in place of old validator bid
+        let bridge = Bridge::new(
+            public_key.clone(),
+            new_public_key.clone(),
+            self.read_era_id()?,
+        );
+        self.write_bid(validator_bid_addr.into(), BidKind::Bridge(Box::new(bridge)))?;
+
+        debug!("transferring delegator bids from validator bid {validator_bid_addr} to {new_validator_bid_addr}");
+        let delegators = read_delegator_bids(self, &public_key)?;
+        for mut delegator in delegators {
+            let delegator_public_key = delegator.delegator_public_key().clone();
+            let delegator_bid_addr =
+                BidAddr::new_from_public_keys(&public_key, Some(&delegator_public_key));
+
+            delegator.with_validator_public_key(new_public_key.clone());
+            let new_delegator_bid_addr =
+                BidAddr::new_from_public_keys(&new_public_key, Some(&delegator_public_key));
+
+            self.write_bid(
+                new_delegator_bid_addr.into(),
+                BidKind::Delegator(Box::from(delegator)),
+            )?;
+
+            debug!("pruning delegator bid {delegator_bid_addr}");
+            self.prune_bid(delegator_bid_addr);
+        }
+
+        Ok(())
     }
 
     /// Writes a validator credit record.

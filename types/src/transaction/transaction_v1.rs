@@ -587,7 +587,8 @@ impl TransactionV1 {
                 | TransactionEntryPoint::ActivateBid
                 | TransactionEntryPoint::Delegate
                 | TransactionEntryPoint::Undelegate
-                | TransactionEntryPoint::Redelegate => TransactionCategory::Auction,
+                | TransactionEntryPoint::Redelegate
+                | TransactionEntryPoint::ChangeBidPublicKey => TransactionCategory::Auction,
             },
             TransactionTarget::Stored { .. } => TransactionCategory::Standard,
             TransactionTarget::Session { kind, .. } => match kind {
@@ -657,16 +658,25 @@ impl GasLimited for TransactionV1 {
                                 })
                             }
                             TransactionEntryPoint::AddBid | TransactionEntryPoint::ActivateBid => {
-                                costs.auction_costs().add_bid
+                                costs.auction_costs().add_bid.into()
                             }
                             TransactionEntryPoint::WithdrawBid => {
-                                costs.auction_costs().withdraw_bid
+                                costs.auction_costs().withdraw_bid.into()
                             }
-                            TransactionEntryPoint::Delegate => costs.auction_costs().delegate,
-                            TransactionEntryPoint::Undelegate => costs.auction_costs().undelegate,
-                            TransactionEntryPoint::Redelegate => costs.auction_costs().redelegate,
+                            TransactionEntryPoint::Delegate => {
+                                costs.auction_costs().delegate.into()
+                            }
+                            TransactionEntryPoint::Undelegate => {
+                                costs.auction_costs().undelegate.into()
+                            }
+                            TransactionEntryPoint::Redelegate => {
+                                costs.auction_costs().redelegate.into()
+                            }
+                            TransactionEntryPoint::ChangeBidPublicKey => {
+                                costs.auction_costs().change_bid_public_key
+                            }
                         };
-                        amount as u64
+                        amount
                     } else if self.is_install_or_upgrade() {
                         costs.install_upgrade_limit()
                     } else {

@@ -64,9 +64,9 @@ use casper_types::{
     },
     AccessRights, AddressableEntity, AddressableEntityHash, AuctionCosts, BlockGlobalAddr,
     BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash, CLTyped, CLValue, Contract, Digest,
-    EntityAddr, EraId, Gas, HandlePaymentCosts, HoldBalanceHandling, InitiatorAddr, Key, KeyTag,
-    MintCosts, Motes, Package, PackageHash, Phase, ProtocolUpgradeConfig, ProtocolVersion,
-    PublicKey, RefundHandling, StoredValue, SystemEntityRegistry, TransactionHash,
+    EntityAddr, EntryPoints, EraId, Gas, HandlePaymentCosts, HoldBalanceHandling, InitiatorAddr,
+    Key, KeyTag, MintCosts, Motes, Package, PackageHash, Phase, ProtocolUpgradeConfig,
+    ProtocolVersion, PublicKey, RefundHandling, StoredValue, SystemEntityRegistry, TransactionHash,
     TransactionV1Hash, URef, OS_PAGE_SIZE, U512,
 };
 
@@ -705,8 +705,8 @@ where
     /// Panics if the total supply can't be found.
     pub fn total_supply(
         &self,
-        maybe_post_state: Option<Digest>,
         protocol_version: ProtocolVersion,
+        maybe_post_state: Option<Digest>,
     ) -> U512 {
         let post_state = maybe_post_state
             .or(self.post_state_hash)
@@ -759,7 +759,7 @@ where
         let post_state = maybe_post_state
             .or(self.post_state_hash)
             .expect("builder must have a post-state hash");
-        let total_supply = self.total_supply(Some(post_state), protocol_version);
+        let total_supply = self.total_supply(protocol_version, Some(post_state));
         let rate = self.round_seigniorage_rate(Some(post_state), protocol_version);
         rate.checked_mul(&Ratio::from(total_supply))
             .map(|ratio| ratio.to_integer())
@@ -1659,6 +1659,21 @@ where
         let reader = tracking_copy.reader();
 
         reader.keys_with_prefix(&[tag as u8])
+    }
+
+    /// Gets all entry points for a given entity
+    pub fn get_entry_points(&self, entity_addr: EntityAddr) -> EntryPoints {
+        let state_root_hash = self.get_post_state_hash();
+
+        let mut tracking_copy = self
+            .data_access_layer
+            .tracking_copy(state_root_hash)
+            .unwrap()
+            .unwrap();
+
+        tracking_copy
+            .get_v1_entry_points(entity_addr)
+            .expect("must get entry points")
     }
 
     /// Gets a stored value from a contract's named keys.

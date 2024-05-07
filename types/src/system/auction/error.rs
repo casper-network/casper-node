@@ -127,7 +127,7 @@ pub enum Error {
     /// assert_eq!(17, Error::InvalidPublicKey as u8);
     /// ```
     InvalidPublicKey = 17,
-    /// Validator is not not bonded.
+    /// Validator is not bonded.
     /// ```
     /// # use casper_types::system::auction::Error;
     /// assert_eq!(18, Error::BondNotFound as u8);
@@ -339,12 +339,26 @@ pub enum Error {
     /// assert_eq!(51, Error::MissingPurse as u8);
     /// ```
     MissingPurse = 51,
+    /// Failed to transfer validator bid to new public key.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(52, Error::ValidatorBidExistsAlready as u8);
+    /// ```
+    ValidatorBidExistsAlready = 52,
+    /// Failed to look up current validator bid
+    /// because it's public key has been changed
+    /// and bridge record chain is too long to follow.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(53, Error::BridgeRecordChainTooLong as u8);
+    /// ```
+    BridgeRecordChainTooLong = 53,
     /// Unexpected bid variant.
     /// ```
     /// # use casper_types::system::auction::Error;
-    /// assert_eq!(52, Error::UnexpectedBidVariant as u8);
+    /// assert_eq!(54, Error::UnexpectedBidVariant as u8);
     /// ```
-    UnexpectedBidVariant = 52,
+    UnexpectedBidVariant = 54,
 }
 
 impl Display for Error {
@@ -402,6 +416,8 @@ impl Display for Error {
             Error::TransferToAdministrator => formatter.write_str("Transfer to administrator error"),
             Error::ForgedReference => formatter.write_str("Forged reference"),
             Error::MissingPurse => formatter.write_str("Missing purse"),
+            Error::ValidatorBidExistsAlready => formatter.write_str("Validator bid with given public key already exists"),
+            Error::BridgeRecordChainTooLong => formatter.write_str("Bridge record chain is too long to find current validator bid"),
             Error::UnexpectedBidVariant => formatter.write_str("Unexpected bid variant"),
         }
     }
@@ -486,6 +502,10 @@ impl TryFrom<u8> for Error {
             d if d == Error::TransferToAdministrator as u8 => Ok(Error::TransferToAdministrator),
             d if d == Error::ForgedReference as u8 => Ok(Error::ForgedReference),
             d if d == Error::MissingPurse as u8 => Ok(Error::MissingPurse),
+            d if d == Error::ValidatorBidExistsAlready as u8 => {
+                Ok(Error::ValidatorBidExistsAlready)
+            }
+            d if d == Error::BridgeRecordChainTooLong as u8 => Ok(Error::BridgeRecordChainTooLong),
             d if d == Error::UnexpectedBidVariant as u8 => Ok(Error::UnexpectedBidVariant),
             _ => Err(TryFromU8ForError(())),
         }
