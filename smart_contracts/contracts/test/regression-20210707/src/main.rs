@@ -15,8 +15,8 @@ use casper_types::{
     addressable_entity::NamedKeys,
     runtime_args,
     system::{handle_payment, mint},
-    AccessRights, CLType, CLTyped, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key,
-    Parameter, RuntimeArgs, URef, U512,
+    AccessRights, CLType, CLTyped, EntryPoint, EntryPointAccess, EntryPointPayment, EntryPointType,
+    EntryPoints, Key, Parameter, RuntimeArgs, URef, U512,
 };
 
 const HARDCODED_UREF: URef = URef::new([42; 32], AccessRights::READ_ADD_WRITE);
@@ -150,6 +150,7 @@ pub extern "C" fn call() {
         CLType::Unit,
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     );
     let send_to_purse = EntryPoint::new(
         METHOD_SEND_TO_PURSE,
@@ -161,6 +162,7 @@ pub extern "C" fn call() {
         CLType::Unit,
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     );
     let hardcoded_src = EntryPoint::new(
         METHOD_HARDCODED_PURSE_SRC,
@@ -171,6 +173,7 @@ pub extern "C" fn call() {
         CLType::Unit,
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     );
     let stored_payment = EntryPoint::new(
         METHOD_STORED_PAYMENT,
@@ -181,6 +184,7 @@ pub extern "C" fn call() {
         CLType::Unit,
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     );
     let hardcoded_payment = EntryPoint::new(
         METHOD_HARDCODED_PAYMENT,
@@ -188,6 +192,7 @@ pub extern "C" fn call() {
         CLType::Unit,
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     );
 
     entry_points.add_entry_point(send_to_account);

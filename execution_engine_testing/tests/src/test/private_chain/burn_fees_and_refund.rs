@@ -121,7 +121,7 @@ fn test_burning_fees(
         .expect("should have rewards purse");
     let rewards_purse_uref = rewards_purse_key.into_uref().expect("should be uref");
     assert_eq!(builder.get_purse_balance(rewards_purse_uref), U512::zero());
-    let total_supply_before = builder.total_supply(None, protocol_version);
+    let total_supply_before = builder.total_supply(protocol_version, None);
     // TODO: reevaluate this test, considering fee / refund / pricing modes
     // let exec_request_1 = ExecuteRequestBuilder::module_bytes(
     //     *DEFAULT_ADMIN_ACCOUNT_ADDR,
@@ -139,7 +139,7 @@ fn test_burning_fees(
     //     U512::zero(),
     //     "proposer should not receive anything",
     // );
-    let total_supply_after = builder.total_supply(None, protocol_version);
+    let total_supply_after = builder.total_supply(protocol_version, None);
     assert_eq!(
         total_supply_before - total_supply_after,
         expected_burn_amount,
@@ -149,11 +149,11 @@ fn test_burning_fees(
         TransferRequestBuilder::new(MINIMUM_ACCOUNT_CREATION_BALANCE, *ACCOUNT_1_ADDR)
             .with_initiator(*DEFAULT_ADMIN_ACCOUNT_ADDR)
             .build();
-    let total_supply_before = builder.total_supply(None, protocol_version);
+    let total_supply_before = builder.total_supply(protocol_version, None);
     builder
         .transfer_and_commit(transfer_request)
         .expect_success();
-    let total_supply_after = builder.total_supply(None, protocol_version);
+    let total_supply_after = builder.total_supply(protocol_version, None);
 
     match fee_handling {
         FeeHandling::PayToProposer | FeeHandling::Accumulate | FeeHandling::NoFee => {

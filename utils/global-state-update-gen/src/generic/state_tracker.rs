@@ -11,8 +11,8 @@ use casper_types::{
     addressable_entity::{ActionThresholds, AssociatedKeys, MessageTopics, Weight},
     system::auction::{BidAddr, BidKind, BidsExt, SeigniorageRecipientsSnapshot, UnbondingPurse},
     AccessRights, AddressableEntity, AddressableEntityHash, ByteCodeHash, CLValue, EntityKind,
-    EntityVersions, EntryPoints, Groups, Key, Package, PackageHash, PackageStatus, ProtocolVersion,
-    PublicKey, StoredValue, URef, U512,
+    EntityVersions, Groups, Key, Package, PackageHash, PackageStatus, ProtocolVersion, PublicKey,
+    StoredValue, URef, U512,
 };
 
 use super::{config::Transfer, state_reader::StateReader};
@@ -169,7 +169,6 @@ impl<T: StateReader> StateTracker<T> {
         let addressable_entity = AddressableEntity::new(
             package_hash,
             contract_wasm_hash,
-            EntryPoints::new(),
             self.protocol_version,
             main_purse,
             associated_keys,

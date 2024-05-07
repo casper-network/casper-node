@@ -8,12 +8,13 @@ use casper_types::{
         ActionThresholds, AddressableEntityHash, AssociatedKeys, MessageTopics, NamedKeyAddr,
         NamedKeyValue, NamedKeys, Weight,
     },
+    contracts::EntryPoints as ContractEntryPoints,
     execution::{Effects, TransformKindV2, TransformV2},
     gens::*,
     global_state::TrieMerkleProof,
     handle_stored_dictionary_value, AccessRights, AddressableEntity, ByteCodeHash, CLValue,
-    CLValueDictionary, CLValueError, EntityAddr, EntityKind, EntryPoints, HashAddr, Key, KeyTag,
-    PackageHash, ProtocolVersion, StoredValue, URef, U256, U512, UREF_ADDR_LENGTH,
+    CLValueDictionary, CLValueError, EntityAddr, EntityKind, HashAddr, Key, KeyTag, PackageHash,
+    ProtocolVersion, StoredValue, TransactionRuntime, URef, U256, U512, UREF_ADDR_LENGTH,
 };
 
 use super::{
@@ -147,7 +148,7 @@ fn tracking_copy_write() {
         tc.effects,
         effects(vec![
             (k, TransformKindV2::Write(one)),
-            (k, TransformKindV2::Write(two))
+            (k, TransformKindV2::Write(two)),
         ])
     );
 }
@@ -192,7 +193,7 @@ fn tracking_copy_rw() {
         tc.effects,
         effects(vec![
             (k, TransformKindV2::Identity),
-            (k, TransformKindV2::Write(value))
+            (k, TransformKindV2::Write(value)),
         ])
     );
 }
@@ -212,7 +213,7 @@ fn tracking_copy_ra() {
         tc.effects,
         effects(vec![
             (k, TransformKindV2::Identity),
-            (k, TransformKindV2::AddInt32(3))
+            (k, TransformKindV2::AddInt32(3)),
         ])
     );
 }
@@ -233,7 +234,7 @@ fn tracking_copy_aw() {
         tc.effects,
         effects(vec![
             (k, TransformKindV2::AddInt32(3)),
-            (k, TransformKindV2::Write(write_value))
+            (k, TransformKindV2::Write(write_value)),
         ])
     );
 }
@@ -321,7 +322,7 @@ fn should_traverse_contract_pathing() {
         [2; 32].into(),
         [3; 32].into(),
         contract_named_keys,
-        EntryPoints::new(),
+        ContractEntryPoints::new(),
         ProtocolVersion::V1_0_0,
     );
     let contract_hash = ContractHash::default();
@@ -348,7 +349,7 @@ fn should_traverse_account_pathing() {
         [2; 32].into(),
         [3; 32].into(),
         NamedKeys::default(),
-        EntryPoints::new(),
+        ContractEntryPoints::new(),
         ProtocolVersion::V1_0_0,
     );
     let contract_hash = ContractHash::default();
@@ -412,7 +413,7 @@ fn should_traverse_all_paths() {
             [2; 32].into(),
             [3; 32].into(),
             contract_named_keys,
-            EntryPoints::new(),
+            ContractEntryPoints::new(),
             ProtocolVersion::V1_0_0,
         );
         StoredValue::Contract(contract)
@@ -517,6 +518,7 @@ fn should_traverse_all_paths() {
         "unexpected stored value"
     );
 }
+
 fn handle_stored_value_into(
     key: Key,
     stored_value: StoredValue,
@@ -547,13 +549,12 @@ proptest! {
             StoredValue::AddressableEntity(AddressableEntity::new(
             [2; 32].into(),
             [3; 32].into(),
-            EntryPoints::new(),
             ProtocolVersion::V1_0_0,
             URef::default(),
             AssociatedKeys::default(),
             ActionThresholds::default(),
             MessageTopics::default(),
-            EntityKind::SmartContract
+            EntityKind::SmartContract(TransactionRuntime::VmCasperV1)
         ));
         let contract_key = Key::AddressableEntity(EntityAddr::SmartContract(hash));
 
@@ -594,7 +595,6 @@ proptest! {
         let entity = AddressableEntity::new(
             PackageHash::new([1u8;32]),
             ByteCodeHash::default(),
-            EntryPoints::new_with_default_entry_point(),
             ProtocolVersion::V1_0_0,
             purse,
             associated_keys,
@@ -642,13 +642,12 @@ proptest! {
             StoredValue::AddressableEntity(AddressableEntity::new(
             [2; 32].into(),
             [3; 32].into(),
-            EntryPoints::new(),
             ProtocolVersion::V1_0_0,
             URef::default(),
             AssociatedKeys::default(),
             ActionThresholds::default(),
             MessageTopics::default(),
-            EntityKind::SmartContract
+            EntityKind::SmartContract(TransactionRuntime::VmCasperV1)
         ));
         let contract_key = Key::AddressableEntity(EntityAddr::SmartContract(hash));
         let contract_named_key = NamedKeyAddr::new_from_string(EntityAddr::SmartContract(hash), state_name.clone())
@@ -740,13 +739,12 @@ fn query_for_circular_references_should_fail() {
     let contract = StoredValue::AddressableEntity(AddressableEntity::new(
         [2; 32].into(),
         [3; 32].into(),
-        EntryPoints::new(),
         ProtocolVersion::V1_0_0,
         URef::default(),
         AssociatedKeys::default(),
         ActionThresholds::default(),
         MessageTopics::default(),
-        EntityKind::SmartContract,
+        EntityKind::SmartContract(TransactionRuntime::VmCasperV1),
     ));
 
     let name_key_cl_value = Key::NamedKey(
@@ -804,7 +802,6 @@ fn validate_query_proof_should_work() {
     let a_e = StoredValue::AddressableEntity(AddressableEntity::new(
         PackageHash::new([20; 32]),
         ByteCodeHash::default(),
-        EntryPoints::new_with_default_entry_point(),
         ProtocolVersion::V1_0_0,
         URef::default(),
         AssociatedKeys::new(AccountHash::new([3; 32]), Weight::new(1)),
@@ -817,13 +814,12 @@ fn validate_query_proof_should_work() {
     let c_e = StoredValue::AddressableEntity(AddressableEntity::new(
         [2; 32].into(),
         [3; 32].into(),
-        EntryPoints::new(),
         ProtocolVersion::V1_0_0,
         URef::default(),
         AssociatedKeys::default(),
         ActionThresholds::default(),
         MessageTopics::default(),
-        EntityKind::SmartContract,
+        EntityKind::SmartContract(TransactionRuntime::VmCasperV1),
     ));
 
     let c_nk = "abc".to_string();
@@ -1073,13 +1069,12 @@ fn query_with_large_depth_with_fixed_path_should_fail() {
         let contract = StoredValue::AddressableEntity(AddressableEntity::new(
             val_to_hashaddr(PACKAGE_OFFSET + value).into(),
             val_to_hashaddr(WASM_OFFSET + value).into(),
-            EntryPoints::new(),
             ProtocolVersion::V1_0_0,
             URef::default(),
             AssociatedKeys::default(),
             ActionThresholds::default(),
             MessageTopics::default(),
-            EntityKind::SmartContract,
+            EntityKind::SmartContract(TransactionRuntime::VmCasperV1),
         ));
         pairs.push((contract_key, contract));
         contract_keys.push(contract_key);
@@ -1141,13 +1136,12 @@ fn query_with_large_depth_with_urefs_should_fail() {
     let contract = StoredValue::AddressableEntity(AddressableEntity::new(
         val_to_hashaddr(PACKAGE_OFFSET).into(),
         val_to_hashaddr(WASM_OFFSET).into(),
-        EntryPoints::new(),
         ProtocolVersion::V1_0_0,
         URef::default(),
         AssociatedKeys::default(),
         ActionThresholds::default(),
         MessageTopics::default(),
-        EntityKind::SmartContract,
+        EntityKind::SmartContract(casper_types::TransactionRuntime::VmCasperV1),
     ));
     let contract_key = Key::AddressableEntity(contract_addr);
     pairs.push((contract_key, contract));

@@ -102,6 +102,10 @@ where
     fn allow_unrestricted_transfers(&self) -> bool {
         self.transfer_config().allow_unrestricted_transfers()
     }
+
+    fn is_valid_uref(&self, uref: &URef) -> bool {
+        self.access_rights().has_access_rights_to_uref(uref)
+    }
 }
 
 impl<S> StorageProvider for RuntimeNative<S>
