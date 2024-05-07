@@ -15,7 +15,6 @@ use casper_binary_port::{
     GlobalStateRequest, InformationRequest, InformationRequestTag, KeyPrefix, NodeStatus,
     PayloadType, PurseIdentifier, ReactorStateName, RecordId, TransactionWithExecutionInfo,
 };
-use casper_storage::KeyPrefix as StorageKeyPrefix;
 use casper_storage::{
     data_access_layer::{
         balance::BalanceHandling,
@@ -25,6 +24,7 @@ use casper_storage::{
         QueryRequest, QueryResult, TrieRequest,
     },
     global_state::trie::TrieRaw,
+    KeyPrefix as StorageKeyPrefix,
 };
 use casper_types::{
     addressable_entity::NamedKeyAddr,
