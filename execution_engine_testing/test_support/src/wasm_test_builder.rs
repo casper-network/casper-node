@@ -705,8 +705,8 @@ where
     /// Panics if the total supply can't be found.
     pub fn total_supply(
         &self,
-        maybe_post_state: Option<Digest>,
         protocol_version: ProtocolVersion,
+        maybe_post_state: Option<Digest>,
     ) -> U512 {
         let post_state = maybe_post_state
             .or(self.post_state_hash)
@@ -759,7 +759,7 @@ where
         let post_state = maybe_post_state
             .or(self.post_state_hash)
             .expect("builder must have a post-state hash");
-        let total_supply = self.total_supply(Some(post_state), protocol_version);
+        let total_supply = self.total_supply(protocol_version, Some(post_state));
         let rate = self.round_seigniorage_rate(Some(post_state), protocol_version);
         rate.checked_mul(&Ratio::from(total_supply))
             .map(|ratio| ratio.to_integer())
