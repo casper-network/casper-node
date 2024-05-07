@@ -16,6 +16,7 @@ pub mod system;
 pub mod tracking_copy;
 
 pub use address_generator::{AddressGenerator, AddressGeneratorBuilder};
+pub use data_access_layer::KeyPrefix;
 pub use tracking_copy::TrackingCopy;
 
 pub use block_store::{

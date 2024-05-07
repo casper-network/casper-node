@@ -665,7 +665,6 @@ where
             .delegators_prefix()
             .map_err(|_| Error::Serialization)?,
     )?;
-
     for delegator_bid_key in delegator_bid_keys {
         let delegator_bid = read_delegator_bid(provider, &delegator_bid_key)?;
         ret.push(*delegator_bid);
