@@ -12,7 +12,7 @@ use casper_contract::{
 use casper_types::{
     addressable_entity::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Parameter},
     system::standard_payment,
-    CLType, Key, RuntimeArgs, URef, U512,
+    CLType, EntryPointPayment, Key, RuntimeArgs, URef, U512,
 };
 
 const ENTRY_FUNCTION_NAME: &str = "pay";
@@ -54,6 +54,7 @@ pub extern "C" fn call() {
             CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
         entry_points.add_entry_point(entry_point);
         entry_points

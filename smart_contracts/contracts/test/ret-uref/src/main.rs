@@ -12,8 +12,8 @@ use casper_contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    runtime_args, CLType, CLValue, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key,
-    Parameter, URef,
+    runtime_args, CLType, CLValue, EntryPoint, EntryPointAccess, EntryPointPayment, EntryPointType,
+    EntryPoints, Key, Parameter, URef,
 };
 
 const ACCESS_UREF: &str = "access_uref";
@@ -55,6 +55,7 @@ pub extern "C" fn call() {
             CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
         entry_points.add_entry_point(put_uref_entrypoint);
         let get_uref_entrypoint = EntryPoint::new(
@@ -63,6 +64,7 @@ pub extern "C" fn call() {
             CLType::URef,
             EntryPointAccess::Public,
             EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
         entry_points.add_entry_point(get_uref_entrypoint);
         let insert_uref_entrypoint = EntryPoint::new(
@@ -71,6 +73,7 @@ pub extern "C" fn call() {
             CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Caller,
+            EntryPointPayment::Caller,
         );
         entry_points.add_entry_point(insert_uref_entrypoint);
         entry_points

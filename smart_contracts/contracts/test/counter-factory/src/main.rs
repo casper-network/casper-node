@@ -12,7 +12,8 @@ use casper_contract::{
 use casper_types::{
     addressable_entity::{EntryPoint, EntryPoints, NamedKeys, Parameters},
     bytesrepr::FromBytes,
-    ApiError, CLType, CLTyped, EntryPointAccess, EntryPointType, Key, URef, U512,
+    ApiError, CLType, CLTyped, EntryPointAccess, EntryPointPayment, EntryPointType, Key, URef,
+    U512,
 };
 
 const ACCESS_KEY_NAME: &str = "factory_access";
@@ -86,6 +87,7 @@ fn installer(name: String, initial_value: U512) {
             CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
         entry_points.add_entry_point(entry_point);
         let entry_point: EntryPoint = EntryPoint::new(
@@ -94,6 +96,7 @@ fn installer(name: String, initial_value: U512) {
             CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
         entry_points.add_entry_point(entry_point);
 
@@ -123,6 +126,7 @@ pub extern "C" fn call() {
             CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Factory,
+            EntryPointPayment::Caller,
         );
         entry_points.add_entry_point(entry_point);
         let entry_point: EntryPoint = EntryPoint::new(
@@ -131,6 +135,7 @@ pub extern "C" fn call() {
             CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Factory,
+            EntryPointPayment::Caller,
         );
         entry_points.add_entry_point(entry_point);
         let entry_point: EntryPoint = EntryPoint::new(
@@ -139,6 +144,7 @@ pub extern "C" fn call() {
             CLType::Unit,
             EntryPointAccess::Template,
             EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
         entry_points.add_entry_point(entry_point);
         let entry_point: EntryPoint = EntryPoint::new(
@@ -147,6 +153,7 @@ pub extern "C" fn call() {
             CLType::Unit,
             EntryPointAccess::Template,
             EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
         entry_points.add_entry_point(entry_point);
 

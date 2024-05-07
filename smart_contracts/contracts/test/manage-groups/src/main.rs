@@ -22,7 +22,7 @@ use casper_types::{
     addressable_entity::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys},
     api_error,
     bytesrepr::{self, ToBytes},
-    ApiError, CLType, Group, Key, Package, PackageHash, Parameter, URef,
+    ApiError, CLType, EntryPointPayment, Group, Key, Package, PackageHash, Parameter, URef,
 };
 
 const PACKAGE_HASH_KEY: &str = "package_hash_key";
@@ -179,6 +179,7 @@ fn create_entry_points_1() -> EntryPoints {
         CLType::Unit,
         EntryPointAccess::Public,
         EntryPointType::Caller,
+        EntryPointPayment::Caller,
     );
     entry_points.add_entry_point(restricted_session);
 
@@ -188,6 +189,7 @@ fn create_entry_points_1() -> EntryPoints {
         CLType::Unit,
         EntryPointAccess::Public,
         EntryPointType::Caller,
+        EntryPointPayment::Caller,
     );
     entry_points.add_entry_point(remove_group);
 
@@ -201,6 +203,7 @@ fn create_entry_points_1() -> EntryPoints {
         CLType::Unit,
         EntryPointAccess::Public,
         EntryPointType::Caller,
+        EntryPointPayment::Caller,
     );
     entry_points.add_entry_point(extend_group_urefs);
 
@@ -214,6 +217,7 @@ fn create_entry_points_1() -> EntryPoints {
         CLType::Unit,
         EntryPointAccess::Public,
         EntryPointType::Caller,
+        EntryPointPayment::Caller,
     );
     entry_points.add_entry_point(remove_group_urefs);
     entry_points

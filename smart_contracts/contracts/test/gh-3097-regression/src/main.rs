@@ -11,7 +11,7 @@ use casper_contract::{
 };
 use casper_types::{
     addressable_entity::{NamedKeys, Parameters},
-    CLType, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key,
+    CLType, EntryPoint, EntryPointAccess, EntryPointPayment, EntryPointType, EntryPoints, Key,
 };
 
 const CONTRACT_PACKAGE_HASH_KEY: &str = "contract_package_hash";
@@ -34,6 +34,7 @@ pub extern "C" fn call() {
             CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
 
         entry_points.add_entry_point(do_something);

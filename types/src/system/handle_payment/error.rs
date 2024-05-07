@@ -156,13 +156,12 @@ pub enum Error {
     /// assert_eq!(21, Error::StakesDeserializationFailed as u8);
     /// ```
     StakesDeserializationFailed = 21,
-    /// The invoked Handle Payment function can only be called by system contracts, but was called
-    /// by a user contract.
+    /// Raised when caller is not the system account.
     /// ```
     /// # use casper_types::system::handle_payment::Error;
-    /// assert_eq!(22, Error::SystemFunctionCalledByUserAccount as u8);
+    /// assert_eq!(22, Error::InvalidCaller as u8);
     /// ```
-    SystemFunctionCalledByUserAccount = 22,
+    InvalidCaller = 22,
     /// Internal error: while finalizing payment, the amount spent exceeded the amount available.
     /// ```
     /// # use casper_types::system::handle_payment::Error;
@@ -308,7 +307,7 @@ impl Display for Error {
             Error::StakesDeserializationFailed => {
                 formatter.write_str("Failed to deserialize stake's balance")
             }
-            Error::SystemFunctionCalledByUserAccount => {
+            Error::InvalidCaller => {
                 formatter.write_str("System function was called by user account")
             }
             Error::InsufficientPaymentForAmountSpent => {
@@ -387,9 +386,7 @@ impl TryFrom<u8> for Error {
             v if v == Error::StakesDeserializationFailed as u8 => {
                 Error::StakesDeserializationFailed
             }
-            v if v == Error::SystemFunctionCalledByUserAccount as u8 => {
-                Error::SystemFunctionCalledByUserAccount
-            }
+            v if v == Error::InvalidCaller as u8 => Error::InvalidCaller,
             v if v == Error::InsufficientPaymentForAmountSpent as u8 => {
                 Error::InsufficientPaymentForAmountSpent
             }

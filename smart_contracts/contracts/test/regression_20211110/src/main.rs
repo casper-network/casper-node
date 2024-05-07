@@ -7,7 +7,7 @@ extern crate alloc;
 use casper_contract::contract_api::{runtime, storage};
 use casper_types::{
     runtime_args, AddressableEntityHash, CLType, CLTyped, EntryPoint, EntryPointAccess,
-    EntryPointType, EntryPoints, Key, Parameter,
+    EntryPointPayment, EntryPointType, EntryPoints, Key, Parameter,
 };
 
 const RECURSE_ENTRYPOINT: &str = "recurse";
@@ -23,6 +23,7 @@ pub extern "C" fn call() {
         CLType::Unit,
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     ));
 
     let (contract_hash, _contract_version) =

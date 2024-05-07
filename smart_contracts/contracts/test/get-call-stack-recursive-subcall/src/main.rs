@@ -7,7 +7,8 @@ use alloc::{boxed::Box, string::ToString, vec};
 
 use casper_contract::contract_api::{runtime, storage};
 use casper_types::{
-    CLType, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key, Parameter,
+    CLType, EntryPoint, EntryPointAccess, EntryPointPayment, EntryPointType, EntryPoints, Key,
+    Parameter,
 };
 
 use get_call_stack_recursive_subcall::{
@@ -38,6 +39,7 @@ pub extern "C" fn call() {
             CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
         let forwarder_session_entry_point = EntryPoint::new(
             METHOD_FORWARDER_SESSION_NAME.to_string(),
@@ -48,6 +50,7 @@ pub extern "C" fn call() {
             CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Caller,
+            EntryPointPayment::Caller,
         );
         entry_points.add_entry_point(forwarder_contract_entry_point);
         entry_points.add_entry_point(forwarder_session_entry_point);

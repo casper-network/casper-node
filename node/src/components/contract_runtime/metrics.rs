@@ -68,6 +68,9 @@ const EXECUTION_RESULTS_CHECKSUM_HELP: &str = "contract_runtime_execution_result
 const ADDRESSABLE_ENTITY_NAME: &str = "contract_runtime_addressable_entity";
 const ADDRESSABLE_ENTITY_HELP: &str = "contract_runtime_addressable_entity";
 
+const ENTRY_POINT_NAME: &str = "contract_runtime_entry_point";
+const ENTRY_POINT_HELP: &str = "contract_runtime_entry_point";
+
 const PUT_TRIE_NAME: &str = "contract_runtime_put_trie";
 const PUT_TRIE_HELP: &str = "time in seconds to put a trie";
 
@@ -87,12 +90,18 @@ const EXEC_QUEUE_SIZE_HELP: &str =
 /// Metrics for the contract runtime component.
 #[derive(Debug)]
 pub struct Metrics {
-    pub(super) exec_block_pre_processing: Histogram, // elapsed before tnx processing
-    pub(super) exec_block_tnx_processing: Histogram, // tnx processing elapsed
-    pub(super) exec_wasm_v1: Histogram,              // ee_v1 execution elapsed
-    pub(super) exec_block_step_processing: Histogram, // step processing elapsed
-    pub(super) exec_block_post_processing: Histogram, // elapsed after tnx processing
-    pub(super) exec_block_total: Histogram,          // total elapsed
+    pub(super) exec_block_pre_processing: Histogram,
+    // elapsed before tnx processing
+    pub(super) exec_block_tnx_processing: Histogram,
+    // tnx processing elapsed
+    pub(super) exec_wasm_v1: Histogram,
+    // ee_v1 execution elapsed
+    pub(super) exec_block_step_processing: Histogram,
+    // step processing elapsed
+    pub(super) exec_block_post_processing: Histogram,
+    // elapsed after tnx processing
+    pub(super) exec_block_total: Histogram,
+    // total elapsed
     pub(super) commit_genesis: Histogram,
     pub(super) commit_upgrade: Histogram,
     pub(super) run_query: Histogram,
@@ -104,6 +113,7 @@ pub struct Metrics {
     pub(super) get_all_values: Histogram,
     pub(super) execution_results_checksum: Histogram,
     pub(super) addressable_entity: Histogram,
+    pub(super) entry_points: Histogram,
     pub(super) put_trie: Histogram,
     pub(super) get_trie: Histogram,
     pub(super) latest_commit_step: Gauge,
@@ -233,6 +243,12 @@ impl Metrics {
                 registry,
                 ADDRESSABLE_ENTITY_NAME,
                 ADDRESSABLE_ENTITY_HELP,
+                common_buckets.clone(),
+            )?,
+            entry_points: utils::register_histogram_metric(
+                registry,
+                ENTRY_POINT_NAME,
+                ENTRY_POINT_HELP,
                 common_buckets,
             )?,
             get_trie: utils::register_histogram_metric(
@@ -276,5 +292,6 @@ impl Drop for Metrics {
         unregister_metric!(self.registry, self.get_trie);
         unregister_metric!(self.registry, self.latest_commit_step);
         unregister_metric!(self.registry, self.exec_queue_size);
+        unregister_metric!(self.registry, self.entry_points);
     }
 }

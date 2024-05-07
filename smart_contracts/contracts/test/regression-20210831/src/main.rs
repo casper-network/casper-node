@@ -15,8 +15,8 @@ use casper_types::{
     bytesrepr::FromBytes,
     runtime_args,
     system::auction::{self, DelegationRate},
-    CLType, CLTyped, CLValue, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key,
-    PackageHash, Parameter, PublicKey, RuntimeArgs, U512,
+    CLType, CLTyped, CLValue, EntryPoint, EntryPointAccess, EntryPointPayment, EntryPointType,
+    EntryPoints, Key, PackageHash, Parameter, PublicKey, RuntimeArgs, U512,
 };
 
 const METHOD_ADD_BID_PROXY_CALL_1: &str = "add_bid_proxy_call_1";
@@ -183,6 +183,7 @@ pub extern "C" fn call() {
         U512::cl_type(),
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     );
     entry_points.add_entry_point(add_bid_proxy_call_1);
 
@@ -196,6 +197,7 @@ pub extern "C" fn call() {
         U512::cl_type(),
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     );
     entry_points.add_entry_point(add_bid_proxy_call);
 
@@ -208,6 +210,7 @@ pub extern "C" fn call() {
         CLType::Unit,
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     );
 
     let withdraw_proxy_call = EntryPoint::new(
@@ -219,6 +222,7 @@ pub extern "C" fn call() {
         CLType::Unit,
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     );
 
     let delegate_proxy_call = EntryPoint::new(
@@ -231,6 +235,7 @@ pub extern "C" fn call() {
         U512::cl_type(),
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     );
 
     let delegate_proxy_call_1 = EntryPoint::new(
@@ -243,6 +248,7 @@ pub extern "C" fn call() {
         U512::cl_type(),
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     );
 
     let undelegate_proxy_call = EntryPoint::new(
@@ -255,6 +261,7 @@ pub extern "C" fn call() {
         U512::cl_type(),
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     );
 
     let undelegate_proxy_call_1 = EntryPoint::new(
@@ -267,6 +274,7 @@ pub extern "C" fn call() {
         U512::cl_type(),
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     );
 
     let activate_bid_proxy_call = EntryPoint::new(
@@ -275,6 +283,7 @@ pub extern "C" fn call() {
         CLType::Unit,
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     );
     let activate_bid_proxy_call_1 = EntryPoint::new(
         METHOD_ACTIVATE_BID_CALL_1,
@@ -282,6 +291,7 @@ pub extern "C" fn call() {
         CLType::Unit,
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     );
 
     entry_points.add_entry_point(withdraw_proxy_call);
