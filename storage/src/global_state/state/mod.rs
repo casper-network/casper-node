@@ -1934,6 +1934,8 @@ pub trait StateProvider {
         }
     }
 
+    /// Gets all values under a given key prefix.
+    /// Currently, this ignores the cache and only provides values from the trie.
     fn prefixed_values(&self, request: PrefixedValuesRequest) -> PrefixedValuesResult {
         let mut tc = match self.tracking_copy(request.state_hash()) {
             Ok(Some(tc)) => tc,
