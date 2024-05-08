@@ -103,6 +103,8 @@ function run_soundness_test() {
     nctl-assets-teardown
 }
 
+CASPER_NCTL_NIGHTLY_TEST_COUNT=0
+
 source "$NCTL/sh/staging/set_override_tomls.sh"
 start_run_teardown "client.sh"
 start_run_teardown "itst01.sh"
@@ -136,3 +138,6 @@ start_run_teardown "itst06.sh"
 start_run_teardown "itst06_private_chain.sh"
 start_run_teardown "itst07.sh"
 start_run_teardown "itst07_private_chain.sh"
+
+echo "All tests passed. Test count: $CASPER_NCTL_NIGHTLY_TEST_COUNT"
+unset CASPER_NCTL_NIGHTLY_TEST_COUNT
