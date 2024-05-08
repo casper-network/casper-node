@@ -316,6 +316,10 @@ impl<T: StateReader> StateTracker<T> {
 
     /// Returns the sum of already unbonding purses for the given validator account & unbonder.
     fn already_unbonding_amount(&mut self, account: &AccountHash, unbonder: &PublicKey) -> U512 {
+        let current_era = self.read_snapshot().1.keys().next().unwrap();
+        let unbonding_delay = self.reader.get_unbonding_delay();
+        let limit_era = current_era.saturating_sub(unbonding_delay);
+
         let existing_purses = self
             .reader
             .get_unbonds()
@@ -329,7 +333,10 @@ impl<T: StateReader> StateTracker<T> {
             .cloned()
             .unwrap_or_default()
             .into_iter()
-            .map(UnbondingPurse::from);
+            .map(UnbondingPurse::from)
+            // There may be some leftover old legacy purses that haven't been purged - this is to
+            // make sure that we don't accidentally take them into account.
+            .filter(|purse| purse.era_of_creation() >= limit_era);
 
         existing_purses_legacy
             .chain(existing_purses)
