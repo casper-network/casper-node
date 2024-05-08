@@ -3687,7 +3687,7 @@ async fn fwd_sync_latch_should_not_decrement_for_old_responses() {
         );
     }
 
-    // Receive a deploy. This would make the synchonizer switch to HaveAllDeploys and continue
+    // Receive a deploy. This would make the synchronizer switch to HaveAllDeploys and continue
     // asking for more finality signatures in order to reach strict finality.
     {
         let effects = block_synchronizer.handle_event(
