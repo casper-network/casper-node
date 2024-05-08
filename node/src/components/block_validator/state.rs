@@ -587,6 +587,7 @@ mod tests {
             auction_count: u64,
             install_upgrade_count: u64,
             standard_count: u64,
+            entity_count: u64,
         ) -> (BlockValidationState, Option<Responder<bool>>) {
             let total_non_transfer_count = standard_count + auction_count + install_upgrade_count;
             let ttl = TimeDiff::from_seconds(10);
@@ -633,12 +634,23 @@ mod tests {
                 ret
             };
 
+            let entity_for_block = {
+                let mut ret = Vec::new();
+                for _ in 0..entity_count {
+                    let txn = new_entity(self.rng, timestamp, ttl);
+                    ret.push((TransactionHash::V1(*txn.hash()), txn.approvals().clone()));
+                    self.transactions.push(Transaction::V1(txn));
+                }
+                ret
+            };
+
             let proposed_block = new_proposed_block(
                 timestamp,
                 mint_for_block,
                 auction_for_block,
                 install_upgrade_for_block,
                 standard_for_block,
+                entity_for_block,
             );
 
             BlockValidationState::new(
@@ -667,6 +679,7 @@ mod tests {
         auction_count: u64,
         install_upgrade_count: u64,
         standard_count: u64,
+        entity_count: u64,
         state_validator: fn((BlockValidationState, Option<Responder<bool>>)) -> bool,
     }
 
@@ -675,6 +688,7 @@ mod tests {
         auction_count: 0,
         install_upgrade_count: 0,
         standard_count: 0,
+        entity_count: 0,
         state_validator: |(state, responder)| {
             responder.is_some() && matches!(state, BlockValidationState::Valid(_))
         },
@@ -685,6 +699,7 @@ mod tests {
         auction_count: MAX_AUCTION_COUNT,
         install_upgrade_count: 0,
         standard_count: 0,
+        entity_count: 0,
         state_validator: |(state, responder)| {
             responder.is_none() && matches!(state, BlockValidationState::InProgress { .. })
         },
@@ -711,6 +726,7 @@ mod tests {
         auction_count: 0,
         install_upgrade_count: MAX_INSTALL_UPGRADE_COUNT,
         standard_count: 0,
+        entity_count: 0,
         state_validator: |(state, responder)| {
             responder.is_none() && matches!(state, BlockValidationState::InProgress { .. })
         },
@@ -737,6 +753,7 @@ mod tests {
         auction_count: 0,
         install_upgrade_count: 0,
         standard_count: MAX_STANDARD_COUNT,
+        entity_count: 0,
         state_validator: |(state, responder)| {
             responder.is_none() && matches!(state, BlockValidationState::InProgress { .. })
         },
@@ -763,6 +780,7 @@ mod tests {
         auction_count: 0,
         install_upgrade_count: 0,
         standard_count: 0,
+        entity_count: 0,
         state_validator: |(state, responder)| {
             responder.is_none() && matches!(state, BlockValidationState::InProgress { .. })
         },
@@ -790,6 +808,7 @@ mod tests {
             auction_count,
             install_upgrade_count,
             standard_count,
+            entity_count,
             state_validator,
         }: TestCase,
         rng: &mut TestRng,
@@ -800,6 +819,7 @@ mod tests {
             auction_count,
             install_upgrade_count,
             standard_count,
+            entity_count,
         );
         assert!(state_validator(state));
     }
@@ -855,7 +875,14 @@ mod tests {
             .map(|transaction| (transaction.hash(), transaction.approvals()))
             .collect();
 
-        let proposed_block = new_proposed_block(timestamp, mint_for_block, vec![], vec![], vec![]);
+        let proposed_block = new_proposed_block(
+            timestamp,
+            mint_for_block,
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+        );
 
         let (state, maybe_responder) = BlockValidationState::new(
             &proposed_block,
@@ -875,11 +902,12 @@ mod tests {
         let mut fixture = Fixture::new(&mut rng);
 
         // This test must generate number of transactions within the limits as per the chainspec.
-        let (transfer_count, auction_count, install_upgrade_count, standard_count) = loop {
+        let (transfer_count, auction_count, install_upgrade_count, standard_count, entity_count) = loop {
             let transfer_count = fixture.rng.gen_range(0..10);
             let auction_count = fixture.rng.gen_range(0..20);
             let install_upgrade_count = fixture.rng.gen_range(0..2);
             let standard_count = fixture.rng.gen_range(0..10);
+            let entity_count = fixture.rng.gen_range(0..10);
             // Ensure at least one transaction is generated. Otherwise the state will be Valid.
             if transfer_count + auction_count + install_upgrade_count + standard_count > 0 {
                 break (
@@ -887,6 +915,7 @@ mod tests {
                     auction_count,
                     install_upgrade_count,
                     standard_count,
+                    entity_count,
                 );
             }
         };
@@ -895,6 +924,7 @@ mod tests {
             auction_count,
             install_upgrade_count,
             standard_count,
+            entity_count,
         );
 
         match state {
@@ -906,7 +936,11 @@ mod tests {
             } => {
                 assert_eq!(
                     missing_transactions.len() as u64,
-                    standard_count + transfer_count + install_upgrade_count + auction_count
+                    standard_count
+                        + transfer_count
+                        + install_upgrade_count
+                        + auction_count
+                        + entity_count
                 );
                 assert_eq!(holders.len(), 1);
                 assert_eq!(holders.values().next().unwrap(), &HolderState::Unasked);
@@ -923,7 +957,7 @@ mod tests {
     fn should_add_responder_if_in_progress() {
         let mut rng = TestRng::new();
         let mut fixture = Fixture::new(&mut rng);
-        let (mut state, _maybe_responder) = fixture.new_state(2, 2, 2, 2);
+        let (mut state, _maybe_responder) = fixture.new_state(2, 2, 2, 2, 2);
         assert!(matches!(state, BlockValidationState::InProgress { .. }));
         assert_eq!(state.responder_count(), 1);
 
@@ -964,7 +998,7 @@ mod tests {
     fn should_add_new_holder_if_in_progress() {
         let mut rng = TestRng::new();
         let mut fixture = Fixture::new(&mut rng);
-        let (mut state, _maybe_responder) = fixture.new_state(2, 2, 2, 2);
+        let (mut state, _maybe_responder) = fixture.new_state(2, 2, 2, 2, 2);
         assert!(matches!(state, BlockValidationState::InProgress { .. }));
         assert_eq!(state.holders_mut().unwrap().len(), 1);
 
@@ -981,7 +1015,7 @@ mod tests {
     fn should_not_change_holder_state() {
         let mut rng = TestRng::new();
         let mut fixture = Fixture::new(&mut rng);
-        let (mut state, _maybe_responder) = fixture.new_state(2, 2, 2, 2);
+        let (mut state, _maybe_responder) = fixture.new_state(2, 2, 2, 2, 2);
         assert!(matches!(state, BlockValidationState::InProgress { .. }));
         let (holder, holder_state) = state
             .holders_mut()
@@ -1004,7 +1038,7 @@ mod tests {
     fn should_start_fetching() {
         let mut rng = TestRng::new();
         let mut fixture = Fixture::new(&mut rng);
-        let (mut state, _maybe_responder) = fixture.new_state(2, 2, 2, 2);
+        let (mut state, _maybe_responder) = fixture.new_state(2, 2, 2, 2, 2);
         assert!(matches!(state, BlockValidationState::InProgress { .. }));
         let (holder, holder_state) = state
             .holders_mut()
@@ -1032,7 +1066,7 @@ mod tests {
                 ..
             } => {
                 assert_eq!(holder, original_holder);
-                assert_eq!(missing_transactions.len(), 8);
+                assert_eq!(missing_transactions.len(), 10);
             }
             _ => panic!("unexpected return value"),
         }
@@ -1046,7 +1080,7 @@ mod tests {
     fn start_fetching_should_return_ongoing_if_any_holder_in_asked_state() {
         let mut rng = TestRng::new();
         let mut fixture = Fixture::new(&mut rng);
-        let (mut state, _maybe_responder) = fixture.new_state(2, 2, 2, 2);
+        let (mut state, _maybe_responder) = fixture.new_state(2, 2, 2, 2, 2);
         assert!(matches!(state, BlockValidationState::InProgress { .. }));
 
         // Change the current (only) holder's state to `Asked`.
@@ -1091,7 +1125,7 @@ mod tests {
     fn start_fetching_should_return_unable_if_all_holders_in_failed_state() {
         let mut rng = TestRng::new();
         let mut fixture = Fixture::new(&mut rng);
-        let (mut state, _maybe_responder) = fixture.new_state(2, 2, 2, 2);
+        let (mut state, _maybe_responder) = fixture.new_state(2, 2, 2, 2, 2);
         assert!(matches!(state, BlockValidationState::InProgress { .. }));
 
         // Set the original holder's state to `Failed` and add some more failed.
@@ -1143,7 +1177,7 @@ mod tests {
     fn state_should_change_to_validation_succeeded() {
         let mut rng = TestRng::new();
         let mut fixture = Fixture::new(&mut rng);
-        let (mut state, _maybe_responder) = fixture.new_state(2, 2, 2, 2);
+        let (mut state, _maybe_responder) = fixture.new_state(2, 2, 2, 2, 2);
         assert!(matches!(state, BlockValidationState::InProgress { .. }));
 
         // While there is still at least one missing transaction, `try_add_transaction_footprint`
@@ -1172,7 +1206,7 @@ mod tests {
     fn unrelated_transaction_added_should_not_change_state() {
         let mut rng = TestRng::new();
         let mut fixture = Fixture::new(&mut rng);
-        let (mut state, _maybe_responder) = fixture.new_state(2, 2, 2, 2);
+        let (mut state, _maybe_responder) = fixture.new_state(2, 2, 2, 2, 2);
         let (appendable_block_before, missing_transactions_before, holders_before) = match &state {
             BlockValidationState::InProgress {
                 appendable_block,
@@ -1227,7 +1261,7 @@ mod tests {
             new_standard(fixture.rng, Timestamp::MAX, TimeDiff::from_seconds(1));
         let invalid_transaction_hash = invalid_transaction.hash();
         fixture.transactions.push(invalid_transaction.clone());
-        let (mut state, _maybe_responder) = fixture.new_state(2, 2, 2, 2);
+        let (mut state, _maybe_responder) = fixture.new_state(2, 2, 2, 2, 2);
         assert!(matches!(state, BlockValidationState::InProgress { .. }));
         if let BlockValidationState::InProgress {
             ref mut missing_transactions,

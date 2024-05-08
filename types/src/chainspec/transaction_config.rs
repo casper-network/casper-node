@@ -38,11 +38,11 @@ pub struct TransactionConfig {
     pub block_max_auction_count: u32,
     /// Maximum number of installer/upgrader transactions allowed in a block.
     pub block_max_install_upgrade_count: u32,
-    /// Maximum number of entity transactions allowed in a block.
-    pub block_max_entity_count: u32,
     /// Maximum number of other transactions (non-transfer, non-staking, non-installer/upgrader)
     /// allowed in a block.
     pub block_max_standard_count: u32,
+    /// Maximum number of entity transactions allowed in a block.
+    pub block_max_entity_count: u32,
     /// Maximum number of approvals (signatures) allowed in a block across all transactions.
     pub block_max_approval_count: u32,
     /// Maximum possible size in bytes of a block.

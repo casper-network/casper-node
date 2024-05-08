@@ -141,12 +141,12 @@ impl TransactionV1Body {
         if TransactionTarget::Native != self.target {
             return false;
         }
-        match self.entry_point {
+        matches!(
+            self.entry_point,
             TransactionEntryPoint::AddAssociatedKey
-            | TransactionEntryPoint::RemoveAssociatedKey
-            | TransactionEntryPoint::UpdateAssociatedKey => true,
-            _ => false,
-        }
+                | TransactionEntryPoint::RemoveAssociatedKey
+                | TransactionEntryPoint::UpdateAssociatedKey
+        )
     }
 
     /// Returns true if this transaction goes into the misc / standard category.
@@ -354,7 +354,8 @@ impl TransactionV1Body {
     fn random_entity(rng: &mut TestRng) -> Self {
         let account = PublicKey::random(rng);
         let weight = rng.gen::<u8>();
-        let args = arg_handling::new_add_associated_key_args(account.to_account_hash(), weight).unwrap();
+        let args =
+            arg_handling::new_add_associated_key_args(account.to_account_hash(), weight).unwrap();
         TransactionV1Body::new(
             args,
             TransactionTarget::Native,

@@ -79,9 +79,9 @@ impl FromBytes for EntityCosts {
 impl Distribution<EntityCosts> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> EntityCosts {
         EntityCosts {
-            add_associated_key: rng.gen(),
-            remove_associated_key: rng.gen(),
-            update_associated_key: rng.gen(),
+            add_associated_key: rng.gen::<u32>() as u64,
+            remove_associated_key: rng.gen::<u32>() as u64,
+            update_associated_key: rng.gen::<u32>() as u64,
         }
     }
 }

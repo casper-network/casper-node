@@ -138,6 +138,7 @@ pub(super) fn new_proposed_block_with_cited_signatures(
     staking: Vec<(TransactionHash, BTreeSet<Approval>)>,
     install_upgrade: Vec<(TransactionHash, BTreeSet<Approval>)>,
     standard: Vec<(TransactionHash, BTreeSet<Approval>)>,
+    entity: Vec<(TransactionHash, BTreeSet<Approval>)>,
     cited_signatures: RewardedSignatures,
 ) -> ProposedBlock<ClContext> {
     // Accusations and ancestors are empty, and the random bit is always true:
@@ -173,6 +174,13 @@ pub(super) fn new_proposed_block_with_cited_signatures(
                 .map(|(txn_hash, approvals)| (txn_hash, approvals))
                 .collect(),
         );
+        ret.insert(
+            TransactionCategory::Entity,
+            entity
+                .into_iter()
+                .map(|(txn_hash, approvals)| (txn_hash, approvals))
+                .collect(),
+        );
         ret
     };
     let block_payload = BlockPayload::new(transactions, vec![], cited_signatures, true);
@@ -185,6 +193,7 @@ pub(super) fn new_proposed_block(
     staking: Vec<(TransactionHash, BTreeSet<Approval>)>,
     install_upgrade: Vec<(TransactionHash, BTreeSet<Approval>)>,
     standard: Vec<(TransactionHash, BTreeSet<Approval>)>,
+    entity: Vec<(TransactionHash, BTreeSet<Approval>)>,
 ) -> ProposedBlock<ClContext> {
     new_proposed_block_with_cited_signatures(
         timestamp,
@@ -192,6 +201,7 @@ pub(super) fn new_proposed_block(
         staking,
         install_upgrade,
         standard,
+        entity,
         Default::default(),
     )
 }
@@ -206,6 +216,10 @@ pub(super) fn new_v1_standard(
 
 pub(super) fn new_auction(rng: &mut TestRng, timestamp: Timestamp, ttl: TimeDiff) -> TransactionV1 {
     TransactionV1::random_staking(rng, Some(timestamp), Some(ttl))
+}
+
+pub(super) fn new_entity(rng: &mut TestRng, timestamp: Timestamp, ttl: TimeDiff) -> TransactionV1 {
+    TransactionV1::random_entity(rng, Some(timestamp), Some(ttl))
 }
 
 pub(super) fn new_install_upgrade(
@@ -598,9 +612,10 @@ impl ValidationContext {
         new_proposed_block_with_cited_signatures(
             timestamp,
             self.transfers_to_include.to_vec(),
-            vec![],
-            vec![],
+            Vec::new(),
+            Vec::new(),
             self.transactions_to_include.to_vec(),
+            Vec::new(),
             rewarded_signatures,
         )
     }
@@ -990,9 +1005,10 @@ async fn should_fetch_from_multiple_peers() {
         let proposed_block = new_proposed_block(
             1100.into(),
             transfers_for_block,
-            vec![],
-            vec![],
+            Vec::new(),
+            Vec::new(),
             standard_for_block,
+            Vec::new(),
         );
 
         // Create the reactor and component.

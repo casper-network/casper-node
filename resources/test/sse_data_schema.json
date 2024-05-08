@@ -773,6 +773,7 @@
       "type": "object",
       "required": [
         "auction",
+        "entity",
         "install_upgrade",
         "mint",
         "proposer",
@@ -797,6 +798,13 @@
         },
         "auction": {
           "description": "The hashes of the auction transactions within the block.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/TransactionHash"
+          }
+        },
+        "entity": {
+          "description": "The hashes of the entity transactions within the block.",
           "type": "array",
           "items": {
             "$ref": "#/definitions/TransactionHash"
@@ -2077,7 +2085,7 @@
           ]
         },
         {
-          "description": "The `activate_bid` native entry point, used to used to reactivate an inactive bid.",
+          "description": "The `activate_bid` native entry point, used to reactivate an inactive bid.",
           "type": "string",
           "enum": [
             "ActivateBid"
@@ -2088,6 +2096,27 @@
           "type": "string",
           "enum": [
             "ChangeBidPublicKey"
+          ]
+        },
+        {
+          "description": "The `add_associated_key` native entry point, used to add an associated key.",
+          "type": "string",
+          "enum": [
+            "AddAssociatedKey"
+          ]
+        },
+        {
+          "description": "The `remove_associated_key` native entry point, used to remove an associated key.",
+          "type": "string",
+          "enum": [
+            "RemoveAssociatedKey"
+          ]
+        },
+        {
+          "description": "The `update_associated_key` native entry point, used to update an associated key.",
+          "type": "string",
+          "enum": [
+            "UpdateAssociatedKey"
           ]
         }
       ]
@@ -4556,6 +4585,13 @@
           "type": "string",
           "enum": [
             "Auction"
+          ]
+        },
+        {
+          "description": "Entity contract.",
+          "type": "string",
+          "enum": [
+            "Entity"
           ]
         }
       ]

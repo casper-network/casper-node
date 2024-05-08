@@ -40,7 +40,7 @@ impl TransactionCategory {
     /// Returns a random transaction category.
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub fn random(rng: &mut TestRng) -> Self {
-        match rng.gen_range(0u32..5) {
+        match rng.gen_range(0..5) {
             0 => Self::Mint,
             1 => Self::Auction,
             2 => Self::InstallUpgrade,

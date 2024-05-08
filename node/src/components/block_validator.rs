@@ -73,6 +73,11 @@ impl ProposedBlock<ClContext> {
         self.value().count(Some(TransactionCategory::Auction))
     }
 
+    /// How many entity transactions?
+    pub(crate) fn entity_count(&self) -> usize {
+        self.value().count(Some(TransactionCategory::Entity))
+    }
+
     /// How many install / upgrade transactions?
     pub(crate) fn install_upgrade_count(&self) -> usize {
         self.value()

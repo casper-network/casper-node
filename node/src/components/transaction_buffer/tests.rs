@@ -173,6 +173,7 @@ const fn all_categories() -> &'static [TransactionCategory] {
         TransactionCategory::InstallUpgrade,
         TransactionCategory::Auction,
         TransactionCategory::Standard,
+        TransactionCategory::Entity,
     ]
 }
 
@@ -485,14 +486,17 @@ fn block_fully_saturated() {
     let max_staking = rng.gen_range(0..20);
     let max_install_upgrade = rng.gen_range(0..20);
     let max_standard = rng.gen_range(0..20);
+    let max_entity = rng.gen_range(0..20);
 
-    let total_allowed = max_transfers + max_staking + max_install_upgrade + max_standard;
+    let total_allowed =
+        max_transfers + max_staking + max_install_upgrade + max_standard + max_entity;
 
     let transaction_config = TransactionConfig {
         block_max_mint_count: max_transfers,
         block_max_auction_count: max_staking,
         block_max_install_upgrade_count: max_install_upgrade,
         block_max_standard_count: max_standard,
+        block_max_entity_count: max_entity,
         block_max_approval_count: 210,
         block_gas_limit: u64::MAX, // making sure this test does not hit gas limit first
         ..Default::default()
@@ -511,15 +515,23 @@ fn block_fully_saturated() {
         .insert(ERA_ONE, DEFAULT_MINIMUM_GAS_PRICE);
 
     // Try to register 10 more transactions per each category as allowed by the config.
-    let (transfers, stakings, install_upgrades, standards) = generate_and_register_transactions(
-        &mut transaction_buffer,
-        max_transfers + 10,
-        max_staking + 10,
-        max_install_upgrade + 10,
-        max_standard + 10,
-        &mut rng,
-    );
-    let (transfers_hashes, stakings_hashes, install_upgrades_hashes, standards_hashes) = (
+    let (transfers, stakings, install_upgrades, standards, entities) =
+        generate_and_register_transactions(
+            &mut transaction_buffer,
+            max_transfers + 10,
+            max_staking + 10,
+            max_install_upgrade + 10,
+            max_standard + 10,
+            max_entity + 10,
+            &mut rng,
+        );
+    let (
+        transfers_hashes,
+        stakings_hashes,
+        install_upgrades_hashes,
+        standards_hashes,
+        entity_hashes,
+    ) = (
         transfers
             .iter()
             .map(|transaction| transaction.hash())
@@ -536,12 +548,20 @@ fn block_fully_saturated() {
             .iter()
             .map(|transaction| transaction.hash())
             .collect_vec(),
+        entities
+            .iter()
+            .map(|transaction| transaction.hash())
+            .collect_vec(),
     );
 
     // Check that we really generated the required number of transactions.
     assert_eq!(
-        transfers.len() + stakings.len() + install_upgrades.len() + standards.len(),
-        total_allowed as usize + 10 * 4
+        transfers.len()
+            + stakings.len()
+            + install_upgrades.len()
+            + standards.len()
+            + entities.len(),
+        total_allowed as usize + 10 * 5
     );
 
     // Ensure that only 'total_allowed' transactions are proposed.
@@ -556,6 +576,7 @@ fn block_fully_saturated() {
     let mut proposed_stakings = 0;
     let mut proposed_install_upgrades = 0;
     let mut proposed_standards = 0;
+    let mut proposed_entities = 0;
     appendable_block
         .transaction_hashes()
         .iter()
@@ -568,12 +589,15 @@ fn block_fully_saturated() {
                 proposed_install_upgrades += 1;
             } else if standards_hashes.contains(transaction_hash) {
                 proposed_standards += 1;
+            } else if entity_hashes.contains(transaction_hash) {
+                proposed_entities += 1;
             }
         });
     assert_eq!(proposed_transfers, max_transfers);
     assert_eq!(proposed_stakings, max_staking);
     assert_eq!(proposed_install_upgrades, max_install_upgrade);
     assert_eq!(proposed_standards, max_standard);
+    assert_eq!(proposed_entities, max_entity);
 }
 
 #[test]
@@ -616,15 +640,24 @@ fn block_not_fully_saturated() {
     let actual_stakings_count = rng.gen_range(0..MIN_COUNT - 1);
     let actual_install_upgrade_count = rng.gen_range(0..MIN_COUNT - 1);
     let actual_standard_count = rng.gen_range(0..MIN_COUNT - 1);
-    let (transfers, stakings, install_upgrades, standards) = generate_and_register_transactions(
-        &mut transaction_buffer,
-        actual_transfer_count,
-        actual_stakings_count,
-        actual_install_upgrade_count,
-        actual_standard_count,
-        &mut rng,
-    );
-    let (transfers_hashes, stakings_hashes, install_upgrades_hashes, standards_hashes) = (
+    let actual_entity_count = rng.gen_range(0..MIN_COUNT - 1);
+    let (transfers, stakings, install_upgrades, standards, entities) =
+        generate_and_register_transactions(
+            &mut transaction_buffer,
+            actual_transfer_count,
+            actual_stakings_count,
+            actual_install_upgrade_count,
+            actual_standard_count,
+            actual_entity_count,
+            &mut rng,
+        );
+    let (
+        transfers_hashes,
+        stakings_hashes,
+        install_upgrades_hashes,
+        standards_hashes,
+        entity_hashes,
+    ) = (
         transfers
             .iter()
             .map(|transaction| transaction.hash())
@@ -641,15 +674,24 @@ fn block_not_fully_saturated() {
             .iter()
             .map(|transaction| transaction.hash())
             .collect_vec(),
+        entities
+            .iter()
+            .map(|transaction| transaction.hash())
+            .collect_vec(),
     );
 
     // Check that we really generated the required number of transactions.
     assert_eq!(
-        transfers.len() + stakings.len() + install_upgrades.len() + standards.len(),
+        transfers.len()
+            + stakings.len()
+            + install_upgrades.len()
+            + standards.len()
+            + entities.len(),
         actual_transfer_count as usize
             + actual_stakings_count as usize
             + actual_install_upgrade_count as usize
             + actual_standard_count as usize
+            + actual_entity_count as usize
     );
 
     // Ensure that not more than 'total_allowed' transactions are proposed.
@@ -661,6 +703,7 @@ fn block_not_fully_saturated() {
     let mut proposed_stakings = 0;
     let mut proposed_install_upgrades = 0;
     let mut proposed_standards = 0;
+    let mut proposed_entities = 0;
     appendable_block
         .transaction_hashes()
         .iter()
@@ -673,12 +716,15 @@ fn block_not_fully_saturated() {
                 proposed_install_upgrades += 1;
             } else if standards_hashes.contains(transaction_hash) {
                 proposed_standards += 1;
+            } else if entity_hashes.contains(transaction_hash) {
+                proposed_entities += 1;
             }
         });
     assert_eq!(proposed_transfers, actual_transfer_count);
     assert_eq!(proposed_stakings, actual_stakings_count);
     assert_eq!(proposed_install_upgrades, actual_install_upgrade_count);
     assert_eq!(proposed_standards, actual_standard_count);
+    assert_eq!(proposed_entities, actual_entity_count);
 }
 
 #[test]
@@ -691,14 +737,17 @@ fn excess_transactions_do_not_sneak_into_transfer_bucket() {
     let max_staking = rng.gen_range(2..MAX);
     let max_install_upgrade = rng.gen_range(2..MAX);
     let max_standard = rng.gen_range(2..MAX);
+    let max_entity = rng.gen_range(2..MAX);
 
-    let total_allowed = max_transfers + max_staking + max_install_upgrade + max_standard;
+    let total_allowed =
+        max_transfers + max_staking + max_install_upgrade + max_standard + max_entity;
 
     let transaction_config = TransactionConfig {
         block_max_mint_count: max_transfers,
         block_max_auction_count: max_staking,
         block_max_install_upgrade_count: max_install_upgrade,
         block_max_standard_count: max_standard,
+        block_max_entity_count: max_entity,
         block_max_approval_count: 210,
         block_gas_limit: u64::MAX, // making sure this test does not hit gas limit first
         ..Default::default()
@@ -717,9 +766,10 @@ fn excess_transactions_do_not_sneak_into_transfer_bucket() {
         .insert(ERA_ONE, DEFAULT_MINIMUM_GAS_PRICE);
 
     // Saturate all buckets but transfers.
-    let (transfers, _, _, _) = generate_and_register_transactions(
+    let (transfers, _, _, _, _) = generate_and_register_transactions(
         &mut transaction_buffer,
         max_transfers - 1,
+        MAX * 3,
         MAX * 3,
         MAX * 3,
         MAX * 3,
@@ -756,14 +806,17 @@ fn excess_transactions_do_not_sneak_into_staking_bucket() {
     let max_staking = rng.gen_range(2..MAX);
     let max_install_upgrade = rng.gen_range(2..MAX);
     let max_standard = rng.gen_range(2..MAX);
+    let max_entity = rng.gen_range(2..MAX);
 
-    let total_allowed = max_transfers + max_staking + max_install_upgrade + max_standard;
+    let total_allowed =
+        max_transfers + max_staking + max_install_upgrade + max_standard + max_entity;
 
     let transaction_config = TransactionConfig {
         block_max_mint_count: max_transfers,
         block_max_auction_count: max_staking,
         block_max_install_upgrade_count: max_install_upgrade,
         block_max_standard_count: max_standard,
+        block_max_entity_count: max_entity,
         block_max_approval_count: 210,
         block_gas_limit: u64::MAX, // making sure this test does not hit gas limit first
         ..Default::default()
@@ -782,10 +835,11 @@ fn excess_transactions_do_not_sneak_into_staking_bucket() {
         .insert(ERA_ONE, DEFAULT_MINIMUM_GAS_PRICE);
 
     // Saturate all buckets but stakings.
-    let (_, stakings, _, _) = generate_and_register_transactions(
+    let (_, stakings, _, _, _) = generate_and_register_transactions(
         &mut transaction_buffer,
         MAX * 3,
         max_staking - 1,
+        MAX * 3,
         MAX * 3,
         MAX * 3,
         &mut rng,
@@ -821,14 +875,17 @@ fn excess_transactions_do_not_sneak_into_install_upgrades_bucket() {
     let max_staking = rng.gen_range(2..MAX);
     let max_install_upgrade = rng.gen_range(2..MAX);
     let max_standard = rng.gen_range(2..MAX);
+    let max_entity = rng.gen_range(2..MAX);
 
-    let total_allowed = max_transfers + max_staking + max_install_upgrade + max_standard;
+    let total_allowed =
+        max_transfers + max_staking + max_install_upgrade + max_standard + max_entity;
 
     let transaction_config = TransactionConfig {
         block_max_mint_count: max_transfers,
         block_max_auction_count: max_staking,
         block_max_install_upgrade_count: max_install_upgrade,
         block_max_standard_count: max_standard,
+        block_max_entity_count: max_entity,
         block_max_approval_count: 210,
         block_gas_limit: u64::MAX, // making sure this test does not hit gas limit first
         ..Default::default()
@@ -847,11 +904,12 @@ fn excess_transactions_do_not_sneak_into_install_upgrades_bucket() {
         .insert(ERA_ONE, DEFAULT_MINIMUM_GAS_PRICE);
 
     // Saturate all buckets but install_upgrades.
-    let (_, _, install_upgrades, _) = generate_and_register_transactions(
+    let (_, _, install_upgrades, _, _) = generate_and_register_transactions(
         &mut transaction_buffer,
         MAX * 3,
         MAX * 3,
         max_install_upgrade - 1,
+        MAX * 3,
         MAX * 3,
         &mut rng,
     );
@@ -886,14 +944,17 @@ fn excess_transactions_do_not_sneak_into_standards_bucket() {
     let max_staking = rng.gen_range(2..MAX);
     let max_install_upgrade = rng.gen_range(2..MAX);
     let max_standard = rng.gen_range(2..MAX);
+    let max_entity = rng.gen_range(2..MAX);
 
-    let total_allowed = max_transfers + max_staking + max_install_upgrade + max_standard;
+    let total_allowed =
+        max_transfers + max_staking + max_install_upgrade + max_standard + max_entity;
 
     let transaction_config = TransactionConfig {
         block_max_mint_count: max_transfers,
         block_max_auction_count: max_staking,
         block_max_install_upgrade_count: max_install_upgrade,
         block_max_standard_count: max_standard,
+        block_max_entity_count: max_entity,
         block_max_approval_count: 210,
         block_gas_limit: u64::MAX, // making sure this test does not hit gas limit first
         ..Default::default()
@@ -912,12 +973,13 @@ fn excess_transactions_do_not_sneak_into_standards_bucket() {
         .insert(ERA_ONE, DEFAULT_MINIMUM_GAS_PRICE);
 
     // Saturate all buckets but standards.
-    let (_, _, _, standards) = generate_and_register_transactions(
+    let (_, _, _, standards, _) = generate_and_register_transactions(
         &mut transaction_buffer,
         MAX * 3,
         MAX * 3,
         MAX * 3,
         max_standard - 1,
+        MAX * 3,
         &mut rng,
     );
     let hashes_in_non_saturated_bucket: Vec<_> = standards
@@ -964,8 +1026,10 @@ fn generate_and_register_transactions(
     stakings_count: u32,
     install_upgrade_count: u32,
     standard_count: u32,
+    entity_count: u32,
     rng: &mut TestRng,
 ) -> (
+    Vec<Transaction>,
     Vec<Transaction>,
     Vec<Transaction>,
     Vec<Transaction>,
@@ -983,16 +1047,21 @@ fn generate_and_register_transactions(
     let standards: Vec<_> = (0..standard_count)
         .map(|_| create_valid_transaction(rng, &TransactionCategory::Standard, None, None))
         .collect();
+    let entities: Vec<_> = (0..entity_count)
+        .map(|_| create_valid_transaction(rng, &TransactionCategory::Entity, None, None))
+        .collect();
     transfers
         .iter()
         .chain(
-            stakings
-                .iter()
-                .chain(installs_upgrades.iter().chain(standards.iter())),
+            stakings.iter().chain(
+                installs_upgrades
+                    .iter()
+                    .chain(standards.iter().chain(entities.iter())),
+            ),
         )
         .for_each(|transaction| transaction_buffer.register_transaction(transaction.clone()));
 
-    (transfers, stakings, installs_upgrades, standards)
+    (transfers, stakings, installs_upgrades, standards, entities)
 }
 
 #[test]

@@ -183,6 +183,7 @@ impl AppendableBlock {
             &mut transactions,
             &footprints,
         );
+        collate(TransactionCategory::Entity, &mut transactions, &footprints);
 
         BlockPayload::new(transactions, accusations, rewarded_signatures, random_bit)
     }
@@ -205,6 +206,7 @@ impl Display for AppendableBlock {
         let mint_count = self.category_count(&TransactionCategory::Mint);
         let auction_count = self.category_count(&TransactionCategory::Auction);
         let install_upgrade_count = self.category_count(&TransactionCategory::InstallUpgrade);
+        let entity_count = self.category_count(&TransactionCategory::Entity);
         let total_count = self.transactions.len();
         let total_gas_limit: Gas = self.transactions.values().map(|f| f.gas_limit).sum();
 
@@ -222,6 +224,7 @@ impl Display for AppendableBlock {
                 mint: {mint_count}, \
                 auction: {auction_count}, \
                 install_upgrade: {install_upgrade_count}, \
+                entity: {entity_count}, \
                 total count: {total_count}, \
                 approvals: {total_approvals_count}, \
                 gas: {total_gas_limit}, \

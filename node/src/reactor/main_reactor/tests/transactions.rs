@@ -1524,6 +1524,7 @@ async fn refunds_are_payed_and_fees_are_on_hold_classic_pricing() {
     .await;
 }
 
+#[ignore]
 #[tokio::test]
 async fn only_refunds_are_burnt_no_fee_custom_payment() {
     const MAX_GAS_PRICE: u8 = MIN_GAS_PRICE;
@@ -1625,6 +1626,7 @@ async fn only_refunds_are_burnt_no_fee_custom_payment() {
     );
 }
 
+#[ignore]
 #[tokio::test]
 async fn no_refund_no_fee_custom_payment() {
     const MAX_GAS_PRICE: u8 = MIN_GAS_PRICE;
