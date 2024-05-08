@@ -202,9 +202,7 @@ pub(super) async fn exec_or_requeue<REv>(
                 return fatal!(effect_builder, "{}", error).await;
             }
             Some((utilization, block_count)) => {
-                println!("Fooo {utilization} and {block_count}");
                 let era_score = { Ratio::new(utilization, block_count).to_integer() };
-                println!("Calculated era score {era_score} for {era_id}");
 
                 let new_gas_price = if era_score >= go_up {
                     let new_gas_price = current_gas_price + 1;

@@ -489,9 +489,7 @@ impl TestFixture {
                     .network
                     .nodes()
                     .iter()
-                    .find(|(_, runner)| {
-                        runner.main_reactor().consensus.public_key() == public_key
-                    })
+                    .find(|(_, runner)| runner.main_reactor().consensus.public_key() == public_key)
                     .expect("should have runner");
 
                 node_id
@@ -510,7 +508,6 @@ impl TestFixture {
             .maybe_current_gas_price()
             .expect("must have gas price")
     }
-
 
     #[track_caller]
     fn switch_block(&self, era: EraId) -> BlockV2 {
@@ -624,8 +621,8 @@ impl TestFixture {
     ///
     /// Returns an error if the condition isn't met in time.
     async fn try_run_until<F>(&mut self, condition: F, within: Duration) -> Result<(), Elapsed>
-        where
-            F: Fn(&Nodes) -> bool,
+    where
+        F: Fn(&Nodes) -> bool,
     {
         self.network
             .try_settle_on(&mut self.rng, condition, within)
@@ -636,8 +633,8 @@ impl TestFixture {
     ///
     /// Panics if the condition isn't met in time.
     async fn run_until<F>(&mut self, condition: F, within: Duration)
-        where
-            F: Fn(&Nodes) -> bool,
+    where
+        F: Fn(&Nodes) -> bool,
     {
         self.network
             .settle_on(&mut self.rng, condition, within)
@@ -666,7 +663,7 @@ impl TestFixture {
             },
             within,
         )
-            .await
+        .await
     }
 
     /// Runs the network until all nodes reach the given completed block height.
@@ -696,14 +693,14 @@ impl TestFixture {
             },
             within,
         )
-            .await
-            .unwrap_or_else(|_| {
-                panic!(
-                    "should reach {} within {} seconds",
-                    era_id,
-                    within.as_secs_f64(),
-                )
-            })
+        .await
+        .unwrap_or_else(|_| {
+            panic!(
+                "should reach {} within {} seconds",
+                era_id,
+                within.as_secs_f64(),
+            )
+        })
     }
 
     /// Runs the network until all nodes' storage components have stored the switch block header for
@@ -725,14 +722,14 @@ impl TestFixture {
             },
             within,
         )
-            .await
-            .unwrap_or_else(|_| {
-                panic!(
-                    "should have stored switch block header for {} within {} seconds",
-                    era_id,
-                    within.as_secs_f64(),
-                )
-            })
+        .await
+        .unwrap_or_else(|_| {
+            panic!(
+                "should have stored switch block header for {} within {} seconds",
+                era_id,
+                within.as_secs_f64(),
+            )
+        })
     }
 
     /// Runs the network until all nodes have executed the given transaction and stored the
@@ -775,14 +772,14 @@ impl TestFixture {
             },
             within,
         )
-            .await
-            .unwrap_or_else(|_| {
-                panic!(
-                    "should have stored execution result for {} within {} seconds",
-                    txn_hash,
-                    within.as_secs_f64(),
-                )
-            })
+        .await
+        .unwrap_or_else(|_| {
+            panic!(
+                "should have stored execution result for {} within {} seconds",
+                txn_hash,
+                within.as_secs_f64(),
+            )
+        })
     }
 
     async fn schedule_upgrade_for_era_two(&mut self) {
@@ -987,11 +984,11 @@ impl TestFixture {
         {
             ExecutionResult::V1(_) => unreachable!(),
             ExecutionResult::V2(ExecutionResultV2 {
-                                    effects,
-                                    consumed: gas,
-                                    error_message,
-                                    ..
-                                }) => {
+                effects,
+                consumed: gas,
+                error_message,
+                ..
+            }) => {
                 if error_message.is_none() {
                     effects.transforms().to_vec()
                 } else {
@@ -1012,7 +1009,7 @@ impl TestFixture {
     pub fn run_until_stopped(
         self,
         rng: TestRng,
-    ) -> impl futures::Future<Output=(TestingNetwork<FilterReactor<MainReactor>>, TestRng)> {
+    ) -> impl futures::Future<Output = (TestingNetwork<FilterReactor<MainReactor>>, TestRng)> {
         self.network.crank_until_stopped(rng)
     }
 }
@@ -1683,10 +1680,10 @@ async fn empty_block_validation_regression() {
         .inner_mut()
         .set_filter(move |event| match event {
             MainEvent::Consensus(consensus::Event::NewBlockPayload(NewBlockPayload {
-                                                                       era_id,
-                                                                       block_payload: _,
-                                                                       block_context,
-                                                                   })) => {
+                era_id,
+                block_payload: _,
+                block_context,
+            })) => {
                 info!("Accusing everyone else!");
                 // We hook into the NewBlockPayload event to replace the block being proposed with
                 // an empty one that accuses all the validators, except the malicious validator.
@@ -2258,16 +2255,16 @@ async fn run_rewards_network_scenario(
             let rewarded_blocks = &blocks[rewarded_range];
             let block_reward = (Ratio::<U512>::one()
                 - fixture
-                .chainspec
-                .core_config
-                .finality_signature_proportion
-                .into_u512())
+                    .chainspec
+                    .core_config
+                    .finality_signature_proportion
+                    .into_u512())
                 * recomputed_total_supply[&(i - 1)]
                 * fixture
-                .chainspec
-                .core_config
-                .round_seigniorage_rate
-                .into_u512();
+                    .chainspec
+                    .core_config
+                    .round_seigniorage_rate
+                    .into_u512();
             let signatures_reward = fixture
                 .chainspec
                 .core_config
@@ -2275,10 +2272,10 @@ async fn run_rewards_network_scenario(
                 .into_u512()
                 * recomputed_total_supply[&(i - 1)]
                 * fixture
-                .chainspec
-                .core_config
-                .round_seigniorage_rate
-                .into_u512();
+                    .chainspec
+                    .core_config
+                    .round_seigniorage_rate
+                    .into_u512();
             let previous_signatures_reward = if switch_blocks.headers[i - 1].is_genesis() {
                 None
             } else {
@@ -2290,10 +2287,10 @@ async fn run_rewards_network_scenario(
                         .into_u512()
                         * recomputed_total_supply[&(i - 2)]
                         * fixture
-                        .chainspec
-                        .core_config
-                        .round_seigniorage_rate
-                        .into_u512(),
+                            .chainspec
+                            .core_config
+                            .round_seigniorage_rate
+                            .into_u512(),
                 )
             };
 
@@ -2441,8 +2438,8 @@ async fn run_rewards_network_scenario(
                     .get(era)
                     .expect("expected recalculated supply")
                     - recomputed_total_supply
-                    .get(&(era - 1))
-                    .expect("expected recalculated supply"),
+                        .get(&(era - 1))
+                        .expect("expected recalculated supply"),
                 "supply growth does not match rewards at era {}",
                 era
             )
@@ -2471,7 +2468,7 @@ async fn run_reward_network_zug_all_finality_small_prime_five_eras() {
             ..Default::default()
         },
     )
-        .await;
+    .await;
 }
 
 #[tokio::test]
@@ -2495,7 +2492,7 @@ async fn run_reward_network_zug_all_finality_small_prime_five_eras_no_lookback()
             ..Default::default()
         },
     )
-        .await;
+    .await;
 }
 
 #[tokio::test]
@@ -2519,7 +2516,7 @@ async fn run_reward_network_zug_no_finality_small_nominal_five_eras() {
             ..Default::default()
         },
     )
-        .await;
+    .await;
 }
 
 #[tokio::test]
@@ -2543,7 +2540,7 @@ async fn run_reward_network_zug_half_finality_half_finders_small_nominal_five_er
             ..Default::default()
         },
     )
-        .await;
+    .await;
 }
 
 #[tokio::test]
@@ -2567,7 +2564,7 @@ async fn run_reward_network_zug_half_finality_half_finders_small_nominal_five_er
             ..Default::default()
         },
     )
-        .await;
+    .await;
 }
 
 #[tokio::test]
@@ -2591,7 +2588,7 @@ async fn run_reward_network_zug_all_finality_half_finders_small_nominal_five_era
             ..Default::default()
         },
     )
-        .await;
+    .await;
 }
 
 #[tokio::test]
@@ -2617,7 +2614,7 @@ async fn run_reward_network_zug_all_finality_half_finders() {
             ..Default::default()
         },
     )
-        .await;
+    .await;
 }
 
 #[tokio::test]
@@ -2643,7 +2640,7 @@ async fn run_reward_network_zug_all_finality_half_finders_five_eras() {
             ..Default::default()
         },
     )
-        .await;
+    .await;
 }
 
 #[tokio::test]
@@ -2669,7 +2666,7 @@ async fn run_reward_network_zug_all_finality_zero_finders() {
             ..Default::default()
         },
     )
-        .await;
+    .await;
 }
 
 #[tokio::test]
@@ -2695,7 +2692,7 @@ async fn run_reward_network_highway_all_finality_zero_finders() {
             ..Default::default()
         },
     )
-        .await;
+    .await;
 }
 
 #[tokio::test]
@@ -2721,7 +2718,7 @@ async fn run_reward_network_highway_no_finality() {
             ..Default::default()
         },
     )
-        .await;
+    .await;
 }
 
 #[allow(clippy::enum_variant_names)]
@@ -2736,11 +2733,8 @@ async fn run_gas_price_scenario(gas_price_scenario: GasPriceScenario) {
     let alice_stake = 200_000_000_000_u64;
     let bob_stake = 300_000_000_000_u64;
     let charlie_stake = 300_000_000_000_u64;
-    let initial_stakes: Vec<U512> = vec![
-        alice_stake.into(),
-        bob_stake.into(),
-        charlie_stake.into(),
-    ];
+    let initial_stakes: Vec<U512> =
+        vec![alice_stake.into(), bob_stake.into(), charlie_stake.into()];
 
     let mut secret_keys: Vec<Arc<SecretKey>> = (0..3)
         .map(|_| Arc::new(SecretKey::random(&mut rng)))
@@ -2767,12 +2761,13 @@ async fn run_gas_price_scenario(gas_price_scenario: GasPriceScenario) {
             ConfigsOverride::default().with_block_gas_limit(gas_limit)
         }
     }
-        .with_lower_threshold(5u64)
-        .with_upper_threshold(10u64)
-        .with_minimum_era_height(5)
-        .with_max_gas_price(max_gas_price);
+    .with_lower_threshold(5u64)
+    .with_upper_threshold(10u64)
+    .with_minimum_era_height(5)
+    .with_max_gas_price(max_gas_price);
 
-    let mut fixture = TestFixture::new_with_keys(rng, secret_keys, stakes, Some(spec_override)).await;
+    let mut fixture =
+        TestFixture::new_with_keys(rng, secret_keys, stakes, Some(spec_override)).await;
 
     let alice_secret_key = Arc::clone(&fixture.node_contexts[0].secret_key);
     let alice_public_key = PublicKey::from(&*alice_secret_key);
@@ -2813,7 +2808,8 @@ async fn run_gas_price_scenario(gas_price_scenario: GasPriceScenario) {
     let expected_gas_price = fixture.chainspec.vacancy_config.max_gas_price;
     let actual_gas_price = fixture.get_current_era_price();
     assert_eq!(actual_gas_price, expected_gas_price);
-    let gas_price_for_non_validating_node = fixture.get_block_gas_price_by_public_key(Some(&non_validating_public_key));
+    let gas_price_for_non_validating_node =
+        fixture.get_block_gas_price_by_public_key(Some(&non_validating_public_key));
     assert_eq!(actual_gas_price, gas_price_for_non_validating_node);
 
     let target_public_key = PublicKey::random(&mut fixture.rng);

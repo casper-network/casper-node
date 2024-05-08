@@ -110,9 +110,9 @@ pub trait TrackingCopyEntityExt<R> {
         account: Account,
         protocol_version: ProtocolVersion,
     ) -> Result<(), Self::Error>;
-    fn migrate_contract(
+    fn migrate_package(
         &mut self,
-        contract_key: Key,
+        legacy_package_key: Key,
         protocol_version: ProtocolVersion,
     ) -> Result<(), Self::Error>;
 
@@ -566,113 +566,109 @@ where
         Ok(())
     }
 
-    fn migrate_contract(
+    fn migrate_package(
         &mut self,
-        contract_key: Key,
+        legacy_package_key: Key,
         protocol_version: ProtocolVersion,
     ) -> Result<(), Self::Error> {
-        let maybe_legacy_contract = self.read(&contract_key)?;
+        let legacy_package = match self.read(&legacy_package_key)? {
+            Some(StoredValue::ContractPackage(legacy_package)) => legacy_package,
+            Some(_) | None => {
+                return Err(Self::Error::ValueNotFound(format!(
+                    "contract package not found {}",
+                    legacy_package_key
+                )))
+            }
+        };
 
-        match maybe_legacy_contract {
-            Some(StoredValue::Contract(legacy_contract)) => {
-                let contract_hash = AddressableEntityHash::new(
-                    contract_key
-                        .into_hash_addr()
-                        .ok_or(Self::Error::UnexpectedKeyVariant(contract_key))?,
-                );
+        let legacy_versions = legacy_package.versions().clone();
+        let access_uref = legacy_package.access_key();
+        let mut generator = AddressGenerator::new(access_uref.addr().as_ref(), Phase::System);
 
-                let contract_package_key =
-                    Key::Hash(legacy_contract.contract_package_hash().value());
-                let maybe_legacy_package = self
-                    .read(&contract_package_key)?
-                    .and_then(|stored_value| stored_value.into_contract_package());
-                match maybe_legacy_package {
-                    Some(legacy_package) => {
-                        let access_uref = legacy_package.access_key();
-                        let mut generator =
-                            AddressGenerator::new(access_uref.addr().as_ref(), Phase::System);
+        let mut package: Package = legacy_package.into();
 
-                        let package: Package = legacy_package.into();
-                        let package_key =
-                            Key::Package(legacy_contract.contract_package_hash().value());
+        for (_, contract_hash) in legacy_versions.into_iter() {
+            let legacy_contract = match self.read(&Key::Hash(contract_hash.value()))? {
+                Some(StoredValue::Contract(legacy_contract)) => legacy_contract,
+                Some(_) | None => {
+                    return Err(Self::Error::ValueNotFound(format!(
+                        "contract not found {}",
+                        contract_hash
+                    )))
+                }
+            };
 
-                        self.write(package_key, StoredValue::Package(package));
+            let purse = generator.new_uref(AccessRights::all());
+            let cl_value: CLValue = CLValue::from_t(()).map_err(Self::Error::CLValue)?;
+            self.write(Key::URef(purse), StoredValue::CLValue(cl_value));
 
-                        let purse = generator.new_uref(AccessRights::all());
-                        let cl_value: CLValue =
-                            CLValue::from_t(()).map_err(Self::Error::CLValue)?;
-                        self.write(Key::URef(purse), StoredValue::CLValue(cl_value));
+            let balance_value: CLValue =
+                CLValue::from_t(U512::zero()).map_err(Self::Error::CLValue)?;
+            self.write(
+                Key::Balance(purse.addr()),
+                StoredValue::CLValue(balance_value),
+            );
 
-                        let balance_value: CLValue =
-                            CLValue::from_t(U512::zero()).map_err(Self::Error::CLValue)?;
-                        self.write(
-                            Key::Balance(purse.addr()),
-                            StoredValue::CLValue(balance_value),
-                        );
+            let contract_addr = EntityAddr::new_smart_contract(contract_hash.value());
 
-                        let contract_addr = EntityAddr::new_smart_contract(contract_hash.value());
+            let contract_wasm_hash = legacy_contract.contract_wasm_hash();
 
-                        let contract_wasm_hash = legacy_contract.contract_wasm_hash();
+            let updated_entity = AddressableEntity::new(
+                PackageHash::new(legacy_contract.contract_package_hash().value()),
+                ByteCodeHash::new(contract_wasm_hash.value()),
+                protocol_version,
+                purse,
+                AssociatedKeys::default(),
+                ActionThresholds::default(),
+                MessageTopics::default(),
+                EntityKind::SmartContract(TransactionRuntime::VmCasperV1),
+            );
 
-                        let updated_entity = AddressableEntity::new(
-                            PackageHash::new(legacy_contract.contract_package_hash().value()),
-                            ByteCodeHash::new(contract_wasm_hash.value()),
-                            protocol_version,
-                            purse,
-                            AssociatedKeys::default(),
-                            ActionThresholds::default(),
-                            MessageTopics::default(),
-                            EntityKind::SmartContract(TransactionRuntime::VmCasperV1),
-                        );
+            let entry_points = legacy_contract.entry_points().clone();
+            let named_keys = legacy_contract.take_named_keys();
 
-                        let entry_points = legacy_contract.entry_points().clone();
-                        let named_keys = legacy_contract.take_named_keys();
+            self.migrate_named_keys(contract_addr, named_keys)?;
+            self.migrate_entry_points(contract_addr, entry_points.into())?;
 
-                        self.migrate_named_keys(contract_addr, named_keys)?;
-                        self.migrate_entry_points(contract_addr, entry_points.into())?;
+            let maybe_previous_wasm = self
+                .read(&Key::Hash(contract_wasm_hash.value()))?
+                .and_then(|stored_value| stored_value.into_contract_wasm());
 
-                        let maybe_previous_wasm = self
-                            .read(&Key::Hash(contract_wasm_hash.value()))?
-                            .and_then(|stored_value| stored_value.into_contract_wasm());
+            match maybe_previous_wasm {
+                None => {
+                    return Err(Self::Error::ValueNotFound(format!(
+                        "{}",
+                        contract_wasm_hash
+                    )));
+                }
+                Some(contract_wasm) => {
+                    let byte_code_key = Key::byte_code_key(ByteCodeAddr::new_wasm_addr(
+                        updated_entity.byte_code_addr(),
+                    ));
 
-                        match maybe_previous_wasm {
-                            None => {
-                                return Err(Self::Error::ValueNotFound(format!(
-                                    "{}",
-                                    contract_wasm_hash
-                                )));
-                            }
-                            Some(contract_wasm) => {
-                                let byte_code_key = Key::byte_code_key(
-                                    ByteCodeAddr::new_wasm_addr(updated_entity.byte_code_addr()),
-                                );
-
-                                let byte_code: ByteCode = contract_wasm.into();
-                                self.write(byte_code_key, StoredValue::ByteCode(byte_code));
-                            }
-                        }
-
-                        let entity_key = Key::contract_entity_key(contract_hash);
-                        self.write(entity_key, StoredValue::AddressableEntity(updated_entity));
-
-                        let access_key_value =
-                            CLValue::from_t(access_uref).map_err(Self::Error::CLValue)?;
-
-                        self.write(contract_package_key, StoredValue::CLValue(access_key_value));
-                    }
-                    None => {
-                        return Err(Self::Error::ValueNotFound(format!(
-                            "{}",
-                            contract_package_key
-                        )));
-                    }
+                    let byte_code: ByteCode = contract_wasm.into();
+                    self.write(byte_code_key, StoredValue::ByteCode(byte_code));
                 }
             }
-            Some(StoredValue::CLValue(_)) => return Ok(()),
-            Some(_) => return Err(Self::Error::UnexpectedStoredValueVariant),
-            None => return Err(Self::Error::ContractNotFound(contract_key)),
+
+            let entity_hash = AddressableEntityHash::new(contract_hash.value());
+            let entity_key = Key::contract_entity_key(entity_hash);
+            self.write(entity_key, StoredValue::AddressableEntity(updated_entity));
+
+            package.insert_entity_version(protocol_version.value().major, entity_hash);
         }
 
+        let access_key_value = CLValue::from_t(access_uref).map_err(Self::Error::CLValue)?;
+
+        let pacakage_key = Key::Package(
+            legacy_package_key
+                .into_hash_addr()
+                .ok_or(Self::Error::UnexpectedKeyVariant(legacy_package_key))?,
+        );
+
+        self.write(legacy_package_key, StoredValue::CLValue(access_key_value));
+
+        self.write(pacakage_key, StoredValue::Package(package));
         Ok(())
     }
 
