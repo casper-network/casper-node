@@ -6,10 +6,12 @@ use bytes::Bytes;
 use casper_storage::tracking_copy::{self, TrackingCopyExt};
 use casper_types::{
     account::AccountHash,
-    addressable_entity::NamedKeyAddr,
-    contracts::{ContractManifest, ContractV2, EntryPointV2},
-    ByteCode, ByteCodeAddr, ByteCodeKind, Digest, EntityAddr, EntityVersions, Groups, HoldsEpoch,
-    Key, Package, PackageStatus, StoredValue, URef, U512,
+    addressable_entity::{
+        self, ActionThresholds, AssociatedKeys, EntryPointV2, MessageTopics, NamedKeyAddr,
+    },
+    AddressableEntity, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, Digest, EntityAddr,
+    EntityKind, EntryPointAddr, EntryPointValue, Groups, HoldsEpoch, Key, Package, PackageHash,
+    PackageStatus, ProtocolVersion, StoredValue, TransactionRuntime, URef, U512,
 };
 use num_traits::ToBytes;
 use rand::Rng;
@@ -272,45 +274,28 @@ pub(crate) fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'stati
             Err(error) => todo!("handle error {:?}", error),
         };
 
-    let entrypoints = {
-        let mut vec = Vec::new();
-
-        for entry_point in entry_points {
-            vec.push(storage::EntryPoint {
-                selector: entry_point.selector,
-                function_index: entry_point.fptr,
-                flags: EntryPointFlags::from_bits_truncate(entry_point.flags),
-            })
-        }
-
-        vec
-    };
-
     // 1. Store package hash
-    let access_key = URef::default();
-
     let contract_package = Package::new(
-        access_key,
-        EntityVersions::new(),
-        BTreeSet::new(),
-        Groups::new(),
+        Default::default(),
+        Default::default(),
+        Groups::default(),
         PackageStatus::Unlocked,
     );
 
     let mut rng = rand::thread_rng(); // TODO: Deterministic random number generator
-    let package_hash: Address = rng.gen(); // TODO: Do we need packages at all in new VM?
+    let package_hash_bytes: Address = rng.gen(); // TODO: Do we need packages at all in new VM?
     let contract_hash: Address = rng.gen();
 
     caller.context_mut().tracking_copy.write(
-        Key::Package(package_hash),
+        Key::Package(package_hash_bytes),
         StoredValue::Package(contract_package),
     );
 
     // 2. Store wasm
-    let wasm_hash = Digest::hash(&code);
+    let bytecode_hash = Digest::hash(&code);
 
     let bytecode = ByteCode::new(ByteCodeKind::V1CasperWasm, code.clone().into());
-    let bytecode_addr = ByteCodeAddr::V1CasperWasm(wasm_hash.value());
+    let bytecode_addr = ByteCodeAddr::V2CasperWasm(bytecode_hash.value());
 
     caller.context_mut().tracking_copy.write(
         Key::ByteCode(bytecode_addr),
@@ -319,14 +304,13 @@ pub(crate) fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'stati
 
     // 3. Store addressable entity
 
-    let addressable_entity_key = Key::AddressableEntity(EntityAddr::SmartContract(contract_hash));
-
-    // let owner = EntityAddr::SmartContract(caller.context().address);
+    let entity_addr = EntityAddr::SmartContract(contract_hash);
+    let addressable_entity_key = Key::AddressableEntity(entity_addr);
 
     // TODO: abort(str) as an alternative to trap
     let address_generator = Arc::clone(&caller.context().address_generator);
     let transaction_hash = caller.context().transaction_hash;
-    let purse_uref: URef = match runtime::mint_mint(
+    let main_purse: URef = match runtime::mint_mint(
         &mut caller.context_mut().tracking_copy,
         transaction_hash,
         address_generator,
@@ -343,121 +327,95 @@ pub(crate) fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'stati
         }
     };
 
-    let entry_points = entrypoints
-        .iter()
-        .map(|entrypoint| {
-            let entry_point = EntryPointV2 {
-                selector: entrypoint.selector,
-                function_index: entrypoint.function_index,
-                flags: entrypoint.flags.bits(),
-            };
-            entry_point
-        })
-        .collect();
+    for entrypoint in entry_points {
+        let key = Key::EntryPoint(EntryPointAddr::VmCasperV2 {
+            entity_addr,
+            selector: entrypoint.selector,
+        });
+        let value = EntryPointValue::V2CasperVm(EntryPointV2 {
+            function_index: entrypoint.fptr,
+            flags: entrypoint.flags,
+        });
+        let stored_value = StoredValue::EntryPoint(value);
+        caller.context_mut().tracking_copy.write(key, stored_value);
+    }
 
-    let contract = ContractV2::V2(ContractManifest {
-        // owner: caller.context().caller,
-        bytecode_addr,
-        entry_points,
-        purse_uref,
-    });
+    let addressable_entity = AddressableEntity::new(
+        PackageHash::new(package_hash_bytes),
+        ByteCodeHash::new(bytecode_hash.value()),
+        ProtocolVersion::V2_0_0,
+        main_purse,
+        AssociatedKeys::default(),
+        ActionThresholds::default(),
+        MessageTopics::default(),
+        EntityKind::SmartContract(TransactionRuntime::VmCasperV2),
+    );
 
-    caller
-        .context_mut()
-        .tracking_copy
-        .write(addressable_entity_key, StoredValue::ContractV2(contract));
+    caller.context_mut().tracking_copy.write(
+        addressable_entity_key,
+        StoredValue::AddressableEntity(addressable_entity),
+    );
 
     let initial_state = match constructor_selector {
-        Some(constructor_selector) => {
-            // Find all entrypoints with a flag set to CONSTRUCTOR
-            let constructors: Vec<_> = entrypoints
-                .iter()
-                .filter_map(|entrypoint| {
-                    if entrypoint.flags.contains(EntryPointFlags::CONSTRUCTOR) {
-                        Some(entrypoint)
-                    } else {
-                        None
-                    }
+        Some(_) => {
+            // Take the gas spent so far and use it as a limit for the new VM.
+            let gas_limit = caller
+                .gas_consumed()
+                .try_into_remaining()
+                .expect("should be remaining");
+
+            let execute_request = ExecuteRequestBuilder::default()
+                .with_initiator(caller.context().initiator)
+                .with_caller_key(caller.context().callee)
+                .with_callee_key(addressable_entity_key)
+                .with_gas_limit(gas_limit)
+                .with_target(ExecutionKind::Contract {
+                    address: contract_hash,
+                    selector: Selector::new(selector),
                 })
-                .filter(|entry_point| entry_point.selector == constructor_selector.get())
-                .collect();
+                .with_input(input_data.unwrap_or_default())
+                .with_value(value)
+                .with_transaction_hash(caller.context().transaction_hash)
+                // We're using shared address generator there as we need to preserve and advance the state of deterministic address generator across chain of calls.
+                .with_shared_address_generator(Arc::clone(&caller.context().address_generator))
+                .build()
+                .expect("should build");
 
-            // TODO: Should we validate amount of constructors or just rely on the fact that the proc
-            // macro will statically check it, and the document the behavior that only first
-            // constructor will be called
+            let tracking_copy_for_ctor = caller.context().tracking_copy.fork2();
 
-            match constructors.first() {
-                Some(first_constructor) => {
-                    // Take the gas spent so far and use it as a limit for the new VM.
-                    let gas_limit = caller
-                        .gas_consumed()
-                        .try_into_remaining()
-                        .expect("should be remaining");
+            match caller
+                .context()
+                .executor
+                .execute(tracking_copy_for_ctor, execute_request)
+            {
+                Ok(ExecuteResult {
+                    host_error,
+                    output,
+                    gas_usage,
+                    tracking_copy_parts,
+                }) => {
+                    // output
 
-                    let execute_request = ExecuteRequestBuilder::default()
-                        .with_initiator(caller.context().initiator)
-                        .with_caller_key(caller.context().callee)
-                        .with_callee_key(addressable_entity_key)
-                        .with_gas_limit(gas_limit)
-                        .with_target(ExecutionKind::Contract {
-                            address: contract_hash,
-                            selector: Selector::new(selector),
-                        })
-                        .with_input(input_data.unwrap_or_default())
-                        .with_value(value)
-                        .with_transaction_hash(caller.context().transaction_hash)
-                        // We're using shared address generator there as we need to preserve and advance the state of deterministic address generator across chain of calls.
-                        .with_shared_address_generator(Arc::clone(
-                            &caller.context().address_generator,
-                        ))
-                        .build()
-                        .expect("should build");
+                    caller.consume_gas(gas_usage.gas_spent());
 
-                    let tracking_copy_for_ctor = caller.context().tracking_copy.fork2();
-
-                    match caller
-                        .context()
-                        .executor
-                        .execute(tracking_copy_for_ctor, execute_request)
-                    {
-                        Ok(ExecuteResult {
-                            host_error,
-                            output,
-                            gas_usage,
-                            tracking_copy_parts,
-                        }) => {
-                            // output
-
-                            caller.consume_gas(gas_usage.gas_spent());
-
-                            if let Some(host_error) = host_error {
-                                return Ok(Err(host_error));
-                            }
-
-                            caller
-                                .context_mut()
-                                .tracking_copy
-                                .merge_raw_parts(tracking_copy_parts);
-
-                            output
-                        }
-                        Err(ExecuteError::WasmPreparation(preparation_error)) => {
-                            // This is a bug in the EE, as it should have been caught during the preparation phase when the contract was stored in the global state.
-                            todo!()
-                        }
+                    if let Some(host_error) = host_error {
+                        return Ok(Err(host_error));
                     }
+
+                    caller
+                        .context_mut()
+                        .tracking_copy
+                        .merge_raw_parts(tracking_copy_parts);
+
+                    output
                 }
-                None => {
-                    // No constructor found
-                    todo!("No constructor found")
+                Err(ExecuteError::WasmPreparation(preparation_error)) => {
+                    // This is a bug in the EE, as it should have been caught during the preparation phase when the contract was stored in the global state.
+                    todo!()
                 }
             }
         }
-        None => {
-            // No constructor selector provided, assuming no initial state
-            // There may be an "implicit" state that will be created as part of a write operation to a `Keyspace::State`.
-            None
-        }
+        None => None,
     };
 
     if let Some(state) = initial_state {
@@ -474,7 +432,7 @@ pub(crate) fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'stati
     }
 
     let create_result = CreateResult {
-        package_address: package_hash,
+        package_address: package_hash_bytes,
         contract_address: contract_hash,
         version: 1,
     };
@@ -731,13 +689,6 @@ pub(crate) fn casper_env_balance<S: GlobalStateReader, E: Executor>(
         Ok(Some(StoredValue::AddressableEntity(addressable_entity))) => {
             addressable_entity.main_purse()
         }
-        Ok(Some(StoredValue::ContractV2(contract_v2))) => {
-            // TODO: Remove once 2.0 integration is done with v2 support.
-            match contract_v2 {
-                ContractV2::V2(contract) => contract.purse_uref,
-                _ => panic!("Expected ContractV2::V2"),
-            }
-        }
         Ok(Some(other_entity)) => {
             panic!("Unexpected entity type: {:?}", other_entity)
         }
@@ -835,9 +786,6 @@ pub(crate) fn casper_transfer<S: GlobalStateReader, E: Executor>(
                 Some(StoredValue::AddressableEntity(addressable_entity)) => {
                     addressable_entity.main_purse()
                 }
-                Some(StoredValue::ContractV2(contract_v2)) => match contract_v2 {
-                    ContractV2::V2(contract) => contract.purse_uref,
-                },
                 Some(other) => panic!("should be addressable entity but got {other:?}"),
                 None => todo!(),
             }
@@ -849,7 +797,6 @@ pub(crate) fn casper_transfer<S: GlobalStateReader, E: Executor>(
         Ok(Some(StoredValue::Account(account))) => {
             panic!("Expected AddressableEntity but got {:?}", account)
         }
-        Ok(Some(StoredValue::ContractV2(ContractV2::V2(contract)))) => contract.purse_uref,
         Ok(Some(StoredValue::AddressableEntity(addressable_entity))) => {
             addressable_entity.main_purse()
         }
@@ -872,7 +819,6 @@ pub(crate) fn casper_transfer<S: GlobalStateReader, E: Executor>(
         amount: U512::from(amount),
         maybe_to: None,
         id: None,
-        holds_epoch: HoldsEpoch::NOT_APPLICABLE,
     };
 
     runtime::mint_transfer(

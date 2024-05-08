@@ -3,8 +3,9 @@ use std::{collections::VecDeque, sync::Arc};
 use bytes::Bytes;
 use casper_storage::{address_generator, AddressGenerator};
 use casper_types::{
-    account::AccountHash, addressable_entity, contracts::ContractV2, system, AddressableEntityHash,
-    ByteCodeAddr, EntityAddr, HoldsEpoch, Key, PackageHash, StoredValue,
+    account::AccountHash, addressable_entity, system, AddressableEntityHash, ByteCodeAddr,
+    EntityAddr, EntityKind, EntryPointAddr, EntryPointValue, HoldsEpoch, Key, PackageHash,
+    StoredValue, TransactionRuntime,
 };
 use either::Either;
 use parking_lot::RwLock;
@@ -161,9 +162,6 @@ impl Executor for ExecutorV2 {
                 StoredValue::AddressableEntity(addressable_entity) => {
                     addressable_entity.main_purse()
                 }
-                StoredValue::ContractV2(ContractV2::V2(contract_manifest)) => {
-                    contract_manifest.purse_uref
-                }
                 other => panic!("should be account or contract received {other:?}"),
             }
         };
@@ -174,20 +172,23 @@ impl Executor for ExecutorV2 {
                 (wasm_bytes.clone(), Either::Left(DEFAULT_WASM_ENTRY_POINT))
             }
             ExecutionKind::Contract { address, selector } => {
-                let key = Key::AddressableEntity(EntityAddr::SmartContract(*address)); // TODO: Error handling
+                let entity_addr = EntityAddr::SmartContract(*address);
+                let key = Key::AddressableEntity(entity_addr); // TODO: Error handling
                 let contract = tracking_copy.read(&key).expect("should read contract");
 
                 match contract {
-                    Some(StoredValue::ContractV2(ContractV2::V2(manifest))) => {
-                        // source_uref = Some(manifest.purse_uref);
-
-                        let wasm_key = match manifest.bytecode_addr {
-                            ByteCodeAddr::V1CasperWasm(wasm_hash) => {
-                                Key::ByteCode(ByteCodeAddr::V1CasperWasm(wasm_hash))
+                    Some(StoredValue::AddressableEntity(addressable_entity)) => {
+                        let wasm_key = match addressable_entity.kind() {
+                            EntityKind::System(_) => todo!(),
+                            EntityKind::Account(_) => todo!(),
+                            EntityKind::SmartContract(TransactionRuntime::VmCasperV1) => {
+                                todo!()
                             }
-                            ByteCodeAddr::Empty => {
-                                // Note: What should happen?
-                                todo!("empty bytecode addr")
+                            EntityKind::SmartContract(TransactionRuntime::VmCasperV2) => {
+                                // OK
+                                Key::ByteCode(ByteCodeAddr::V2CasperWasm(
+                                    addressable_entity.byte_code_addr(),
+                                ))
                             }
                         };
 
@@ -201,38 +202,43 @@ impl Executor for ExecutorV2 {
                             .take_bytes();
 
                         let function_index = {
-                            // let entry_points = manifest.entry_points;
-                            let entry_point = manifest
-                                .entry_points
-                                .into_iter()
-                                .find_map(|entry_point| {
-                                    if entry_point.selector == selector.get() {
-                                        Some(entry_point)
-                                    } else {
-                                        None
-                                    }
-                                })
-                                .expect("should find entry point");
-                            entry_point.function_index
+                            let entry_point_addr = EntryPointAddr::VmCasperV2 {
+                                entity_addr,
+                                selector: selector.get(),
+                            };
+                            let key = Key::EntryPoint(entry_point_addr);
+                            match tracking_copy.read(&key) {
+                                Ok(Some(StoredValue::EntryPoint(EntryPointValue::V2CasperVm(
+                                    entrypoint_v2,
+                                )))) => entrypoint_v2.function_index,
+                                Ok(Some(StoredValue::EntryPoint(EntryPointValue::V1CasperVm(
+                                    entrypoint_v1,
+                                )))) => {
+                                    panic!("Unexpected V1 entry point found: {entrypoint_v1:?}");
+                                }
+                                Ok(Some(stored_value)) => {
+                                    panic!("Unexpected entry point found: {stored_value:?}");
+                                }
+                                Ok(None) => {
+                                    panic!("No entry point found for address {address:?} and selector {selector:?}");
+                                }
+                                Err(error) => panic!("Error reading entry point: {error:?}"),
+                            }
                         };
 
                         if value != 0 {
-                            // let purse_uref = source_uref.expect("should have purse uref");
-
                             let args = {
                                 let maybe_to = None;
                                 let source = source_purse;
-                                let target = manifest.purse_uref;
+                                let target = addressable_entity.main_purse();
                                 let amount = value;
                                 let id = None;
-                                let holds_epoch = HoldsEpoch::NOT_APPLICABLE;
                                 MintTransferArgs {
                                     maybe_to,
                                     source,
                                     target,
                                     amount: amount.into(),
                                     id,
-                                    holds_epoch,
                                 }
                             };
 

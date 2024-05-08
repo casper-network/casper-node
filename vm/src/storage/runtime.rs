@@ -80,6 +80,7 @@ fn dispatch_system_contract<R: GlobalStateReader, Ret>(
             address_generator,
             Rc::clone(&forked_tracking_copy),
             address,
+            Key::AddressableEntity(entity_addr),
             addressable_entity,
             named_keys,
             access_rights,
@@ -126,7 +127,6 @@ pub(crate) struct MintTransferArgs {
     pub(crate) target: URef,
     pub(crate) amount: U512,
     pub(crate) id: Option<u64>,
-    pub(crate) holds_epoch: HoldsEpoch,
 }
 
 pub(crate) fn mint_transfer<R: GlobalStateReader>(
@@ -147,7 +147,6 @@ pub(crate) fn mint_transfer<R: GlobalStateReader>(
                 args.target,
                 args.amount,
                 args.id,
-                args.holds_epoch,
             )
         },
     )
