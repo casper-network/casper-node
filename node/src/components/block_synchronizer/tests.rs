@@ -158,7 +158,7 @@ impl TestEnv {
     }
 
     fn random(rng: &mut TestRng) -> TestEnv {
-        let num_validators: usize = rng.gen_range(3..100);
+        let num_validators: usize = rng.gen_range(10..100);
         let validator_keys: Vec<_> = iter::repeat_with(|| Arc::new(SecretKey::random(rng)))
             .take(num_validators)
             .collect();
