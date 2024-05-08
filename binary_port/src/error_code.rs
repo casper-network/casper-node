@@ -4,7 +4,7 @@ use casper_types::{InvalidDeploy, InvalidTransaction, InvalidTransactionV1};
 
 /// The error code indicating the result of handling the binary request.
 #[derive(Debug, Clone, thiserror::Error)]
-#[repr(u16)]
+#[repr(u8)]
 pub enum ErrorCode {
     /// Request executed correctly.
     #[error("request executed correctly")]
