@@ -23,6 +23,7 @@ pub mod handle_fee;
 mod handle_refund;
 mod key_prefix;
 pub mod mint;
+pub mod prefixed_values;
 mod protocol_upgrade;
 pub mod prune;
 pub mod query;

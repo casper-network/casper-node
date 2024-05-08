@@ -54,6 +54,9 @@ impl Display for Event {
                         GlobalStateRequest::Balance { .. } => {
                             write!(f, "get balance by state root",)
                         }
+                        GlobalStateRequest::ItemsByPrefix { .. } => {
+                            write!(f, "get items by prefix")
+                        }
                     },
                 },
                 BinaryRequest::TryAcceptTransaction { transaction, .. } => {
