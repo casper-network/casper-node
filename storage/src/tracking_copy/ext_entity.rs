@@ -577,7 +577,7 @@ where
                 return Err(Self::Error::ValueNotFound(format!(
                     "contract package not found {}",
                     legacy_package_key
-                )))
+                )));
             }
         };
 
@@ -594,7 +594,7 @@ where
                     return Err(Self::Error::ValueNotFound(format!(
                         "contract not found {}",
                         contract_hash
-                    )))
+                    )));
                 }
             };
 
@@ -660,7 +660,7 @@ where
 
         let access_key_value = CLValue::from_t(access_uref).map_err(Self::Error::CLValue)?;
 
-        let pacakage_key = Key::Package(
+        let package_key = Key::Package(
             legacy_package_key
                 .into_hash_addr()
                 .ok_or(Self::Error::UnexpectedKeyVariant(legacy_package_key))?,
@@ -668,7 +668,7 @@ where
 
         self.write(legacy_package_key, StoredValue::CLValue(access_key_value));
 
-        self.write(pacakage_key, StoredValue::Package(package));
+        self.write(package_key, StoredValue::Package(package));
         Ok(())
     }
 

@@ -881,7 +881,7 @@ where
         self.tracking_copy.borrow_mut().prune(key.into());
     }
 
-    pub(crate) fn migrate_contract(
+    pub(crate) fn migrate_package(
         &mut self,
         contract_package_hash: ContractPackageHash,
         protocol_version: ProtocolVersion,

@@ -3372,7 +3372,7 @@ where
             .get_legacy_contract(ContractHash::new(contract_hash.value()))?;
         let package_hash = legacy_contract.contract_package_hash();
         self.context
-            .migrate_contract(package_hash, protocol_version)?;
+            .migrate_package(package_hash, protocol_version)?;
         self.context
             .read_gs_typed(&Key::contract_entity_key(contract_hash))
     }
