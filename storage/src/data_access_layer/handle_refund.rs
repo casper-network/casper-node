@@ -27,6 +27,12 @@ pub enum HandleRefundMode {
         source: Box<BalanceIdentifier>,
         target: Box<BalanceIdentifier>,
     },
+    CustomHold {
+        initiator_addr: Box<InitiatorAddr>,
+        limit: U512,
+        cost: U512,
+        gas_price: u8,
+    },
     RefundAmount {
         limit: U512,
         cost: U512,
@@ -48,6 +54,7 @@ impl HandleRefundMode {
             HandleRefundMode::ClearRefundPurse
             | HandleRefundMode::Burn { .. }
             | HandleRefundMode::Refund { .. }
+            | HandleRefundMode::CustomHold { .. }
             | HandleRefundMode::RefundAmount { .. } => Phase::FinalizePayment,
             HandleRefundMode::SetRefundPurse { .. } => Phase::Payment,
         }
@@ -107,6 +114,7 @@ impl HandleRefundRequest {
     }
 }
 
+#[derive(Debug)]
 pub enum HandleRefundResult {
     /// Invalid state root hash.
     RootNotFound,
@@ -115,6 +123,8 @@ pub enum HandleRefundResult {
         effects: Effects,
         amount: Option<U512>,
     },
+    /// Invalid phase selected (programmer error).
+    InvalidPhase,
     /// Handle refund request failed.
     Failure(TrackingCopyError),
 }
@@ -123,7 +133,9 @@ impl HandleRefundResult {
     /// The effects, if any.
     pub fn effects(&self) -> Effects {
         match self {
-            HandleRefundResult::RootNotFound | HandleRefundResult::Failure(_) => Effects::new(),
+            HandleRefundResult::RootNotFound
+            | HandleRefundResult::InvalidPhase
+            | HandleRefundResult::Failure(_) => Effects::new(),
             HandleRefundResult::Success { effects, .. } => effects.clone(),
         }
     }
@@ -131,7 +143,9 @@ impl HandleRefundResult {
     /// The refund amount.
     pub fn refund_amount(&self) -> U512 {
         match self {
-            HandleRefundResult::RootNotFound | HandleRefundResult::Failure(_) => U512::zero(),
+            HandleRefundResult::RootNotFound
+            | HandleRefundResult::InvalidPhase
+            | HandleRefundResult::Failure(_) => U512::zero(),
             HandleRefundResult::Success {
                 amount: refund_amount,
                 ..
@@ -143,6 +157,7 @@ impl HandleRefundResult {
     pub fn error_message(&self) -> Option<String> {
         match self {
             HandleRefundResult::RootNotFound => Some("root not found".to_string()),
+            HandleRefundResult::InvalidPhase => Some("invalid phase selected".to_string()),
             HandleRefundResult::Failure(tce) => Some(format!("{}", tce)),
             HandleRefundResult::Success { .. } => None,
         }

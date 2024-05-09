@@ -1699,9 +1699,7 @@
             "Reserved": {
               "type": "object",
               "required": [
-                "paid_amount",
-                "receipt",
-                "strike_price"
+                "receipt"
               ],
               "properties": {
                 "receipt": {
@@ -1711,18 +1709,6 @@
                       "$ref": "#/definitions/Digest"
                     }
                   ]
-                },
-                "paid_amount": {
-                  "description": "Price paid in the past to reserve space in a future block.",
-                  "type": "integer",
-                  "format": "uint64",
-                  "minimum": 0.0
-                },
-                "strike_price": {
-                  "description": "The gas price at the time of reservation.",
-                  "type": "integer",
-                  "format": "uint8",
-                  "minimum": 0.0
                 }
               },
               "additionalProperties": false
@@ -1989,6 +1975,13 @@
           "enum": [
             "VmCasperV1"
           ]
+        },
+        {
+          "description": "The Casper Version 2 Virtual Machine.",
+          "type": "string",
+          "enum": [
+            "VmCasperV2"
+          ]
         }
       ]
     },
@@ -2088,6 +2081,13 @@
           "type": "string",
           "enum": [
             "ActivateBid"
+          ]
+        },
+        {
+          "description": "The `change_bid_public_key` native entry point, used to change a bid's public key.",
+          "type": "string",
+          "enum": [
+            "ChangeBidPublicKey"
           ]
         }
       ]
@@ -3244,6 +3244,19 @@
             }
           },
           "additionalProperties": false
+        },
+        {
+          "description": "A bridge record pointing to a new `ValidatorBid` after the public key was changed.",
+          "type": "object",
+          "required": [
+            "Bridge"
+          ],
+          "properties": {
+            "Bridge": {
+              "$ref": "#/definitions/Bridge"
+            }
+          },
+          "additionalProperties": false
         }
       ]
     },
@@ -3324,6 +3337,42 @@
       },
       "additionalProperties": false
     },
+    "Bridge": {
+      "description": "A bridge record pointing to a new `ValidatorBid` after the public key was changed.",
+      "type": "object",
+      "required": [
+        "era_id",
+        "new_validator_public_key",
+        "old_validator_public_key"
+      ],
+      "properties": {
+        "old_validator_public_key": {
+          "description": "Previous validator public key associated with the bid.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PublicKey"
+            }
+          ]
+        },
+        "new_validator_public_key": {
+          "description": "New validator public key associated with the bid.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PublicKey"
+            }
+          ]
+        },
+        "era_id": {
+          "description": "Era when bridge record was created.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EraId"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
     "ExecutionResultV2": {
       "description": "The result of executing a single transaction.",
       "type": "object",
@@ -3334,6 +3383,7 @@
         "initiator",
         "limit",
         "payment",
+        "size_estimate",
         "transfers"
       ],
       "properties": {
@@ -3389,6 +3439,12 @@
           "items": {
             "$ref": "#/definitions/Transfer"
           }
+        },
+        "size_estimate": {
+          "description": "The size estimate of the transaction",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
         },
         "effects": {
           "description": "The effects of executing this transaction.",
@@ -3938,6 +3994,32 @@
             }
           },
           "additionalProperties": false
+        },
+        {
+          "description": "A reservation record.",
+          "type": "object",
+          "required": [
+            "Reservation"
+          ],
+          "properties": {
+            "Reservation": {
+              "$ref": "#/definitions/ReservationKind"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "An entrypoint record.",
+          "type": "object",
+          "required": [
+            "EntryPoint"
+          ],
+          "properties": {
+            "EntryPoint": {
+              "$ref": "#/definitions/EntryPointValue"
+            }
+          },
+          "additionalProperties": false
         }
       ]
     },
@@ -4255,11 +4337,10 @@
         },
         "versions": {
           "description": "All versions (enabled & disabled)",
-          "allOf": [
-            {
-              "$ref": "#/definitions/Array_of_ContractVersionAndHash"
-            }
-          ]
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ContractVersion"
+          }
         },
         "disabled_versions": {
           "description": "Disabled versions",
@@ -4287,34 +4368,32 @@
         }
       }
     },
-    "Array_of_ContractVersionAndHash": {
-      "type": "array",
-      "items": {
-        "$ref": "#/definitions/ContractVersionAndHash"
-      }
-    },
-    "ContractVersionAndHash": {
+    "ContractVersion": {
       "type": "object",
       "required": [
-        "contract_entity_hash",
-        "contract_version_key"
+        "contract_hash",
+        "contract_version",
+        "protocol_version_major"
       ],
       "properties": {
-        "contract_version_key": {
-          "allOf": [
-            {
-              "$ref": "#/definitions/ContractVersionKey"
-            }
-          ]
+        "protocol_version_major": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
         },
-        "contract_entity_hash": {
-          "allOf": [
-            {
-              "$ref": "#/definitions/ContractHash"
-            }
-          ]
+        "contract_version": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "contract_hash": {
+          "$ref": "#/definitions/ContractHash"
         }
       }
+    },
+    "ContractHash": {
+      "description": "The hash address of the contract",
+      "type": "string"
     },
     "ContractVersionKey": {
       "description": "Major element of `ProtocolVersion` combined with `ContractVersion`.",
@@ -4333,10 +4412,6 @@
       ],
       "maxItems": 2,
       "minItems": 2
-    },
-    "ContractHash": {
-      "description": "The hash address of the contract",
-      "type": "string"
     },
     "Array_of_NamedUserGroup": {
       "type": "array",
@@ -4394,7 +4469,6 @@
         "associated_keys",
         "byte_code_hash",
         "entity_kind",
-        "entry_points",
         "main_purse",
         "message_topics",
         "package_hash",
@@ -4415,9 +4489,6 @@
         },
         "main_purse": {
           "$ref": "#/definitions/URef"
-        },
-        "entry_points": {
-          "$ref": "#/definitions/Array_of_NamedEntryPoint"
         },
         "associated_keys": {
           "$ref": "#/definitions/EntityAssociatedKeys"
@@ -4461,10 +4532,16 @@
         },
         {
           "description": "Packages associated with Wasm stored on chain.",
-          "type": "string",
-          "enum": [
+          "type": "object",
+          "required": [
             "SmartContract"
-          ]
+          ],
+          "properties": {
+            "SmartContract": {
+              "$ref": "#/definitions/TransactionRuntime"
+            }
+          },
+          "additionalProperties": false
         }
       ]
     },
@@ -4587,21 +4664,12 @@
       "description": "Entity definition, metadata, and security container.",
       "type": "object",
       "required": [
-        "access_key",
         "disabled_versions",
         "groups",
         "lock_status",
         "versions"
       ],
       "properties": {
-        "access_key": {
-          "description": "Key used to add or disable versions.",
-          "allOf": [
-            {
-              "$ref": "#/definitions/URef"
-            }
-          ]
-        },
         "versions": {
           "description": "All versions (enabled & disabled).",
           "allOf": [
@@ -4798,6 +4866,142 @@
               "$ref": "#/definitions/CLValue"
             }
           ]
+        }
+      }
+    },
+    "ReservationKind": {
+      "description": "Container for bytes recording location, type and data for a gas reservation",
+      "type": "object",
+      "required": [
+        "receipt",
+        "reservation_data",
+        "reservation_kind"
+      ],
+      "properties": {
+        "receipt": {
+          "$ref": "#/definitions/Digest"
+        },
+        "reservation_kind": {
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0.0
+        },
+        "reservation_data": {
+          "$ref": "#/definitions/Bytes"
+        }
+      }
+    },
+    "EntryPointValue": {
+      "description": "The encaspulated representation of entrypoints.",
+      "oneOf": [
+        {
+          "description": "Entrypoints to be executed against the V1 Casper VM.",
+          "type": "object",
+          "required": [
+            "V1CasperVm"
+          ],
+          "properties": {
+            "V1CasperVm": {
+              "$ref": "#/definitions/EntryPoint2"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Entrypoints to be executed against the V2 Casper VM.",
+          "type": "object",
+          "required": [
+            "V2CasperVm"
+          ],
+          "properties": {
+            "V2CasperVm": {
+              "$ref": "#/definitions/EntryPointV2"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "EntryPoint2": {
+      "description": "Type signature of a method. Order of arguments matter since can be referenced by index as well as name.",
+      "type": "object",
+      "required": [
+        "access",
+        "args",
+        "entry_point_payment",
+        "entry_point_type",
+        "name",
+        "ret"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Parameter"
+          }
+        },
+        "ret": {
+          "$ref": "#/definitions/CLType"
+        },
+        "access": {
+          "$ref": "#/definitions/EntryPointAccess"
+        },
+        "entry_point_type": {
+          "$ref": "#/definitions/EntryPointType"
+        },
+        "entry_point_payment": {
+          "$ref": "#/definitions/EntryPointPayment"
+        }
+      }
+    },
+    "EntryPointPayment": {
+      "description": "An enum specifying who pays for the invocation and execution of the entrypoint.",
+      "oneOf": [
+        {
+          "description": "The caller must cover cost",
+          "type": "string",
+          "enum": [
+            "Caller"
+          ]
+        },
+        {
+          "description": "Will cover cost to execute self but not cost of any subsequent invoked contracts",
+          "type": "string",
+          "enum": [
+            "SelfOnly"
+          ]
+        },
+        {
+          "description": "will cover cost to execute self and the cost of any subsequent invoked contracts",
+          "type": "string",
+          "enum": [
+            "SelfOnward"
+          ]
+        }
+      ]
+    },
+    "EntryPointV2": {
+      "description": "The entry point for the V2 Casper VM.",
+      "type": "object",
+      "required": [
+        "flags",
+        "function_index"
+      ],
+      "properties": {
+        "function_index": {
+          "description": "The selector.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "flags": {
+          "description": "The flags.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
         }
       }
     },

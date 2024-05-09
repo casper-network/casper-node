@@ -4,7 +4,7 @@
 use casper_contract::contract_api::{runtime, storage};
 use casper_types::{
     addressable_entity::{EntryPoint, EntryPoints, Parameters},
-    CLType, EntryPointAccess, EntryPointType, Key,
+    CLType, EntryPointAccess, EntryPointPayment, EntryPointType, Key,
 };
 
 const ENTRY_FUNCTION_NAME: &str = "delegate";
@@ -28,6 +28,7 @@ pub extern "C" fn call() {
             CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
         entry_points.add_entry_point(entry_point);
         entry_points

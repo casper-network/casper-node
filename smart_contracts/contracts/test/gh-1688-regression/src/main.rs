@@ -6,8 +6,8 @@ extern crate alloc;
 use alloc::string::ToString;
 use casper_contract::contract_api::{runtime, storage};
 use casper_types::{
-    addressable_entity::Parameters, CLType, EntryPoint, EntryPointAccess, EntryPointType,
-    EntryPoints, Key,
+    addressable_entity::Parameters, CLType, EntryPoint, EntryPointAccess, EntryPointPayment,
+    EntryPointType, EntryPoints, Key,
 };
 
 const METHOD_PUT_KEY: &str = "put_key";
@@ -31,6 +31,7 @@ fn call() {
         CLType::Unit,
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     ));
 
     let (contract_hash, _version) = storage::new_contract(

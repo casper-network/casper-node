@@ -8,46 +8,41 @@ mod tests;
 
 use std::{convert::TryFrom, net::SocketAddr, sync::Arc};
 
-use bytes::Bytes;
 use casper_binary_port::{
-    BalanceResponse, BinaryRequest, BinaryRequestHeader, BinaryRequestTag, BinaryResponse,
-    BinaryResponseAndRequest, DictionaryItemIdentifier, DictionaryQueryResult, ErrorCode,
-    GetRequest, GetTrieFullResult, GlobalStateQueryResult, GlobalStateRequest, InformationRequest,
-    InformationRequestTag, NodeStatus, PayloadType, PurseIdentifier, ReactorStateName, RecordId,
-    TransactionWithExecutionInfo,
+    BalanceResponse, BinaryMessage, BinaryMessageCodec, BinaryRequest, BinaryRequestHeader,
+    BinaryRequestTag, BinaryResponse, BinaryResponseAndRequest, DictionaryItemIdentifier,
+    DictionaryQueryResult, ErrorCode, GetRequest, GetTrieFullResult, GlobalStateQueryResult,
+    GlobalStateRequest, InformationRequest, InformationRequestTag, KeyPrefix, NodeStatus,
+    PayloadType, PurseIdentifier, ReactorStateName, RecordId, TransactionWithExecutionInfo,
 };
 use casper_storage::{
     data_access_layer::{
         balance::BalanceHandling,
+        prefixed_values::{PrefixedValuesRequest, PrefixedValuesResult},
         tagged_values::{TaggedValuesRequest, TaggedValuesResult, TaggedValuesSelection},
         BalanceIdentifier, BalanceRequest, BalanceResult, ProofHandling, ProofsResult,
         QueryRequest, QueryResult, TrieRequest,
     },
     global_state::trie::TrieRaw,
+    KeyPrefix as StorageKeyPrefix,
 };
 use casper_types::{
     addressable_entity::NamedKeyAddr,
     bytesrepr::{self, FromBytes, ToBytes},
-    BlockHeader, BlockIdentifier, Digest, EntityAddr, GlobalStateIdentifier, HoldsEpoch, Key,
-    Peers, ProtocolVersion, SignedBlock, StoredValue, TimeDiff, Timestamp, Transaction,
+    BlockHeader, BlockIdentifier, Chainspec, Digest, EntityAddr, GlobalStateIdentifier, Key, Peers,
+    ProtocolVersion, SignedBlock, StoredValue, TimeDiff, Transaction,
 };
 
 use datasize::DataSize;
-use futures::{future::BoxFuture, FutureExt};
-use juliet::{
-    io::IoCoreBuilder,
-    protocol::ProtocolBuilder,
-    rpc::{JulietRpcServer, RpcBuilder},
-    ChannelConfiguration, ChannelId,
-};
+use futures::{future::BoxFuture, FutureExt, SinkExt, StreamExt};
 use once_cell::sync::OnceCell;
 use prometheus::Registry;
 use tokio::{
-    io::{AsyncRead, AsyncWrite},
     join,
     net::{TcpListener, TcpStream},
     sync::{Notify, OwnedSemaphorePermit, Semaphore},
 };
+use tokio_util::codec::Framed;
 use tracing::{debug, error, info, warn};
 
 use crate::{
@@ -78,6 +73,8 @@ const COMPONENT_NAME: &str = "binary_port";
 pub(crate) struct BinaryPort {
     state: ComponentState,
     config: Arc<Config>,
+    /// The chainspec.
+    chainspec: Arc<Chainspec>,
     #[data_size(skip)]
     connection_limit: Arc<Semaphore>,
     #[data_size(skip)]
@@ -91,11 +88,16 @@ pub(crate) struct BinaryPort {
 }
 
 impl BinaryPort {
-    pub(crate) fn new(config: Config, registry: &Registry) -> Result<Self, prometheus::Error> {
+    pub(crate) fn new(
+        config: Config,
+        chainspec: Arc<Chainspec>,
+        registry: &Registry,
+    ) -> Result<Self, prometheus::Error> {
         Ok(Self {
             state: ComponentState::Uninitialized,
             connection_limit: Arc::new(Semaphore::new(config.max_connections)),
             config: Arc::new(config),
+            chainspec,
             metrics: Arc::new(Metrics::new(registry)?),
             local_addr: Arc::new(OnceCell::new()),
             shutdown_trigger: Arc::new(Notify::new()),
@@ -116,6 +118,7 @@ async fn handle_request<REv>(
     req: BinaryRequest,
     effect_builder: EffectBuilder<REv>,
     config: &Config,
+    chainspec: &Chainspec,
     metrics: &Metrics,
 ) -> BinaryResponse
 where
@@ -151,7 +154,15 @@ where
             try_speculative_execution(effect_builder, transaction, protocol_version).await
         }
         BinaryRequest::Get(get_req) => {
-            handle_get_request(get_req, effect_builder, config, metrics, protocol_version).await
+            handle_get_request(
+                get_req,
+                effect_builder,
+                config,
+                chainspec,
+                metrics,
+                protocol_version,
+            )
+            .await
         }
     }
 }
@@ -160,6 +171,7 @@ async fn handle_get_request<REv>(
     get_req: GetRequest,
     effect_builder: EffectBuilder<REv>,
     config: &Config,
+    chainspec: &Chainspec,
     metrics: &Metrics,
     protocol_version: ProtocolVersion,
 ) -> BinaryResponse
@@ -229,10 +241,53 @@ where
         }
         GetRequest::State(req) => {
             metrics.binary_port_get_state_count.inc();
-            handle_state_request(effect_builder, *req, protocol_version, config).await
+            handle_state_request(effect_builder, *req, protocol_version, config, chainspec).await
         }
     }
 }
+
+async fn handle_get_items_by_prefix<REv>(
+    state_identifier: Option<GlobalStateIdentifier>,
+    key_prefix: KeyPrefix,
+    effect_builder: EffectBuilder<REv>,
+    protocol_version: ProtocolVersion,
+) -> BinaryResponse
+where
+    REv: From<Event> + From<ContractRuntimeRequest> + From<StorageRequest>,
+{
+    let Some(state_root_hash) = resolve_state_root_hash(effect_builder, state_identifier).await else {
+        return BinaryResponse::new_empty(protocol_version)
+    };
+    let storage_key_prefix = match key_prefix {
+        KeyPrefix::DelegatorBidAddrsByValidator(hash) => {
+            StorageKeyPrefix::DelegatorBidAddrsByValidator(hash)
+        }
+        KeyPrefix::MessagesByEntity(addr) => StorageKeyPrefix::MessagesByEntity(addr),
+        KeyPrefix::MessagesByEntityAndTopic(addr, topic) => {
+            StorageKeyPrefix::MessagesByEntityAndTopic(addr, topic)
+        }
+        KeyPrefix::NamedKeysByEntity(addr) => StorageKeyPrefix::NamedKeysByEntity(addr),
+        KeyPrefix::GasBalanceHoldsByPurse(purse) => StorageKeyPrefix::GasBalanceHoldsByPurse(purse),
+        KeyPrefix::ProcessingBalanceHoldsByPurse(purse) => {
+            StorageKeyPrefix::ProcessingBalanceHoldsByPurse(purse)
+        }
+        KeyPrefix::EntryPointsV1ByEntity(addr) => StorageKeyPrefix::EntryPointsV1ByEntity(addr),
+        KeyPrefix::EntryPointsV2ByEntity(addr) => StorageKeyPrefix::EntryPointsV2ByEntity(addr),
+    };
+    let request = PrefixedValuesRequest::new(state_root_hash, storage_key_prefix);
+    match effect_builder.get_prefixed_values(request).await {
+        PrefixedValuesResult::Success { values, .. } => {
+            BinaryResponse::from_value(values, protocol_version)
+        }
+        PrefixedValuesResult::RootNotFound => {
+            BinaryResponse::new_error(ErrorCode::RootNotFound, protocol_version)
+        }
+        PrefixedValuesResult::Failure(_err) => {
+            BinaryResponse::new_error(ErrorCode::InternalError, protocol_version)
+        }
+    }
+}
+
 async fn handle_get_all_items<REv>(
     state_identifier: Option<GlobalStateIdentifier>,
     key_tag: casper_types::KeyTag,
@@ -251,8 +306,7 @@ where
             BinaryResponse::from_value(values, protocol_version)
         }
         TaggedValuesResult::RootNotFound => {
-            let error_code = ErrorCode::RootNotFound;
-            BinaryResponse::new_error(error_code, protocol_version)
+            BinaryResponse::new_error(ErrorCode::RootNotFound, protocol_version)
         }
         TaggedValuesResult::Failure(_err) => {
             BinaryResponse::new_error(ErrorCode::InternalError, protocol_version)
@@ -265,6 +319,7 @@ async fn handle_state_request<REv>(
     request: GlobalStateRequest,
     protocol_version: ProtocolVersion,
     config: &Config,
+    _chainspec: &Chainspec,
 ) -> BinaryResponse
 where
     REv: From<Event>
@@ -387,26 +442,9 @@ where
                 Err(err) => BinaryResponse::new_error(err, protocol_version),
             }
         }
-        GlobalStateRequest::BalanceByBlock {
-            block_identifier,
-            purse_identifier,
-        } => {
-            let Some(header) = resolve_block_header(effect_builder, block_identifier).await else {
-                return BinaryResponse::new_empty(protocol_version);
-            };
-            get_balance(
-                effect_builder,
-                *header.state_root_hash(),
-                header.timestamp(),
-                purse_identifier,
-                protocol_version,
-            )
-            .await
-        }
-        GlobalStateRequest::BalanceByStateRoot {
+        GlobalStateRequest::Balance {
             state_identifier,
             purse_identifier,
-            timestamp,
         } => {
             let Some(state_root_hash) = resolve_state_root_hash(effect_builder, state_identifier).await else {
                 return BinaryResponse::new_empty(protocol_version);
@@ -414,8 +452,19 @@ where
             get_balance(
                 effect_builder,
                 state_root_hash,
-                timestamp,
                 purse_identifier,
+                protocol_version,
+            )
+            .await
+        }
+        GlobalStateRequest::ItemsByPrefix {
+            state_identifier,
+            key_prefix,
+        } => {
+            handle_get_items_by_prefix(
+                state_identifier,
+                key_prefix,
+                effect_builder,
                 protocol_version,
             )
             .await
@@ -502,7 +551,6 @@ where
 async fn get_balance<REv>(
     effect_builder: EffectBuilder<REv>,
     state_root_hash: Digest,
-    timestamp: Timestamp,
     purse_identifier: PurseIdentifier,
     protocol_version: ProtocolVersion,
 ) -> BinaryResponse
@@ -520,10 +568,8 @@ where
         PurseIdentifier::Account(account) => BalanceIdentifier::Account(account),
         PurseIdentifier::Entity(entity) => BalanceIdentifier::Entity(entity),
     };
-    let holds_interval = effect_builder.get_balance_holds_interval().await;
-    let balance_handling = BalanceHandling::Available {
-        holds_epoch: HoldsEpoch::from_timestamp(timestamp, holds_interval),
-    };
+    let balance_handling = BalanceHandling::Available;
+
     let balance_req = BalanceRequest::new(
         state_root_hash,
         protocol_version,
@@ -799,13 +845,12 @@ where
     }
 }
 
-async fn client_loop<REv, const N: usize, R, W>(
-    mut server: JulietRpcServer<N, R, W>,
+async fn handle_client_loop<REv>(
+    stream: TcpStream,
     effect_builder: EffectBuilder<REv>,
+    max_message_size_bytes: u32,
 ) -> Result<(), Error>
 where
-    R: AsyncRead + Unpin,
-    W: AsyncWrite + Unpin,
     REv: From<Event>
         + From<StorageRequest>
         + From<ContractRuntimeRequest>
@@ -818,20 +863,26 @@ where
         + From<ChainspecRawBytesRequest>
         + Send,
 {
+    let mut framed = Framed::new(stream, BinaryMessageCodec::new(max_message_size_bytes));
+
     loop {
-        let Some(incoming_request) = server.next_request().await? else {
+        let Some(result) = framed.next().await else {
             debug!("remote party closed the connection");
             return Ok(());
         };
-
-        let Some(payload) = incoming_request.payload() else {
+        let result = result?;
+        let payload = result.payload();
+        if payload.is_empty() {
             return Err(Error::NoPayload);
         };
 
         let version = effect_builder.get_protocol_version().await;
-        let resp = handle_payload(effect_builder, payload, version).await;
-        let resp_and_payload = BinaryResponseAndRequest::new(resp, payload);
-        incoming_request.respond(Some(Bytes::from(ToBytes::to_bytes(&resp_and_payload)?)))
+        let response = handle_payload(effect_builder, payload, version).await;
+        framed
+            .send(BinaryMessage::new(
+                BinaryResponseAndRequest::new(response, payload).to_bytes()?,
+            ))
+            .await?
     }
 }
 
@@ -873,7 +924,7 @@ where
 
 async fn handle_client<REv>(
     addr: SocketAddr,
-    mut client: TcpStream,
+    stream: TcpStream,
     effect_builder: EffectBuilder<REv>,
     config: Arc<Config>,
     _permit: OwnedSemaphorePermit,
@@ -890,12 +941,9 @@ async fn handle_client<REv>(
         + From<ChainspecRawBytesRequest>
         + Send,
 {
-    let (reader, writer) = client.split();
-    // We are a server, we won't make any requests of our own, but we need to keep the client
-    // around, since dropping the client will trigger a server shutdown.
-    let (_client, server) = new_rpc_builder(&config).build(reader, writer);
-
-    if let Err(err) = client_loop(server, effect_builder).await {
+    if let Err(err) =
+        handle_client_loop(stream, effect_builder, config.max_message_size_bytes).await
+    {
         // Low severity is used to prevent malicious clients from causing log floods.
         info!(%addr, err=display_error(&err), "binary port client handler error");
     }
@@ -973,18 +1021,6 @@ impl Finalize for BinaryPort {
         }
         .boxed()
     }
-}
-
-fn new_rpc_builder(config: &Config) -> RpcBuilder<1> {
-    let protocol_builder = ProtocolBuilder::<1>::with_default_channel_config(
-        ChannelConfiguration::default()
-            .with_request_limit(config.client_request_limit)
-            .with_max_request_payload_size(config.max_request_size_bytes)
-            .with_max_response_payload_size(config.max_response_size_bytes),
-    );
-    let io_builder = IoCoreBuilder::new(protocol_builder)
-        .buffer_size(ChannelId::new(0), config.client_request_buffer_size);
-    RpcBuilder::new(io_builder)
 }
 
 async fn resolve_block_header<REv>(
@@ -1135,10 +1171,12 @@ where
                 }
                 Event::HandleRequest { request, responder } => {
                     let config = Arc::clone(&self.config);
+                    let chainspec = Arc::clone(&self.chainspec);
                     let metrics = Arc::clone(&self.metrics);
                     async move {
                         let response =
-                            handle_request(request, effect_builder, &config, &metrics).await;
+                            handle_request(request, effect_builder, &config, &chainspec, &metrics)
+                                .await;
                         responder.respond(response).await
                     }
                     .ignore()

@@ -262,6 +262,12 @@ impl ValidatorBid {
         self.eviction_era = Some(era_id);
         true
     }
+
+    /// Sets validator public key
+    pub fn with_validator_public_key(&mut self, validator_public_key: PublicKey) -> &mut Self {
+        self.validator_public_key = validator_public_key;
+        self
+    }
 }
 
 impl CLTyped for ValidatorBid {

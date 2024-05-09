@@ -324,6 +324,9 @@ pub fn add_and_remove_bids<T: StateReader>(
                         *delegator_bid.bonding_purse(),
                     )))
                 }
+                // there should be no need to modify bridge records
+                // since they don't influence the bidding process
+                BidKind::Bridge(_) => continue,
             };
             state.set_bid(reset_bid, slash_instead_of_unbonding);
         }
@@ -374,7 +377,7 @@ fn find_large_bids<T: StateReader>(
                     x.validator_public_key() == *validator_bid.validator_public_key()
                         && x.is_delegator()
                 })
-                .map(|x| x.staked_amount())
+                .map(|x| x.staked_amount().unwrap())
                 .sum();
 
             let total = validator_bid

@@ -20,9 +20,9 @@ use casper_types::{
     },
     AccessRights, AddressableEntityHash, BlockTime, ByteCode, ByteCodeHash, ByteCodeKind, CLType,
     CLTyped, CLValue, DeployHash, DeployInfo, EntityVersionKey, EntityVersions, EntryPoint,
-    EntryPointAccess, EntryPointType, EntryPoints, EraId, Group, Groups, Key, Package, PackageHash,
-    PackageStatus, Parameter, ProtocolVersion, PublicKey, SecretKey, StoredValue, TransferAddr,
-    TransferV1, URef, U512,
+    EntryPointAccess, EntryPointPayment, EntryPointType, EntryPointValue, EraId, Group, Groups,
+    Key, Package, PackageHash, PackageStatus, Parameter, ProtocolVersion, PublicKey, SecretKey,
+    StoredValue, TransactionRuntime, TransferAddr, TransferV1, URef, U512,
 };
 use casper_validation::{
     abi::{ABIFixture, ABITestCase},
@@ -353,34 +353,35 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
             ABITestCase::from_inputs(vec![StoredValue::ByteCode(byte_code).into()])?,
         );
 
-        let entry_points = {
-            let mut entry_points = EntryPoints::new();
-            let public_contract_entry_point = EntryPoint::new(
-                "public_entry_point_func",
-                vec![
-                    Parameter::new("param1", U512::cl_type()),
-                    Parameter::new("param2", String::cl_type()),
-                ],
-                CLType::Unit,
-                EntryPointAccess::Public,
-                EntryPointType::Called,
-            );
+        let public_contract_entry_point = EntryPoint::new(
+            "public_entry_point_func",
+            vec![
+                Parameter::new("param1", U512::cl_type()),
+                Parameter::new("param2", String::cl_type()),
+            ],
+            CLType::Unit,
+            EntryPointAccess::Public,
+            EntryPointType::Called,
+            EntryPointPayment::Caller,
+        );
 
-            entry_points.add_entry_point(public_contract_entry_point);
-
-            entry_points
-        };
+        stored_value.insert(
+            "EntryPoint".to_string(),
+            ABITestCase::from_inputs(vec![StoredValue::EntryPoint(EntryPointValue::V1CasperVm(
+                public_contract_entry_point,
+            ))
+            .into()])?,
+        );
 
         let entity = AddressableEntity::new(
             PackageHash::new([100; 32]),
             ByteCodeHash::new([101; 32]),
-            entry_points,
             ProtocolVersion::V1_0_0,
             URef::default(),
             AssociatedKeys::default(),
             ActionThresholds::default(),
             MessageTopics::default(),
-            EntityKind::SmartContract,
+            EntityKind::SmartContract(TransactionRuntime::VmCasperV1),
         );
         stored_value.insert(
             "AddressableEntity".to_string(),
@@ -406,7 +407,6 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
         );
 
         let package = Package::new(
-            URef::new([39; 32], AccessRights::READ),
             active_versions,
             disabled_versions,
             groups,

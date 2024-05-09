@@ -10,8 +10,8 @@ use casper_contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    addressable_entity::NamedKeys, ApiError, CLType, EntryPoint, EntryPointAccess, EntryPointType,
-    EntryPoints, Key, Parameter, PublicKey, URef, U512,
+    addressable_entity::NamedKeys, ApiError, CLType, EntryPoint, EntryPointAccess,
+    EntryPointPayment, EntryPointType, EntryPoints, Key, Parameter, PublicKey, URef, U512,
 };
 
 #[repr(u16)]
@@ -115,6 +115,7 @@ pub extern "C" fn call() {
             CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
 
         let set_variables = EntryPoint::new(
@@ -136,6 +137,7 @@ pub extern "C" fn call() {
             CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
 
         let authorize_to = EntryPoint::new(
@@ -147,6 +149,7 @@ pub extern "C" fn call() {
             CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
 
         entry_points.add_entry_point(faucet);

@@ -15,7 +15,9 @@ use tracing::error;
 
 use casper_storage::{
     global_state::{error::Error as GlobalStateError, state::StateReader},
-    tracking_copy::{AddResult, TrackingCopy, TrackingCopyError, TrackingCopyExt},
+    tracking_copy::{
+        AddResult, TrackingCopy, TrackingCopyEntityExt, TrackingCopyError, TrackingCopyExt,
+    },
     AddressGenerator,
 };
 
@@ -31,10 +33,11 @@ use casper_types::{
     handle_stored_dictionary_value,
     system::auction::EraInfo,
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, CLType, CLValue,
-    CLValueDictionary, ContextAccessRights, EntityAddr, EntryPointType, Gas, GrantedAccess,
-    HoldsEpoch, Key, KeyTag, Motes, Package, PackageHash, Phase, ProtocolVersion, PublicKey,
-    RuntimeArgs, StoredValue, StoredValueTypeMismatch, SystemEntityRegistry, TransactionHash,
-    Transfer, URef, URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
+    CLValueDictionary, ContextAccessRights, EntityAddr, EntryPointAddr, EntryPointType,
+    EntryPointValue, EntryPoints, Gas, GrantedAccess, Key, KeyTag, Motes, Package, PackageHash,
+    Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, StoredValueTypeMismatch,
+    SystemEntityRegistry, TransactionHash, Transfer, URef, URefAddr,
+    DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
 };
 
 use crate::{engine_state::EngineConfig, execution::ExecError};
@@ -417,6 +420,42 @@ where
             .map_err(Into::into)
     }
 
+    pub(crate) fn write_entry_points(
+        &mut self,
+        entity_addr: EntityAddr,
+        entry_points: EntryPoints,
+    ) -> Result<(), ExecError> {
+        if entry_points.is_empty() {
+            return Ok(());
+        }
+
+        for entry_point in entry_points.take_entry_points() {
+            let entry_point_addr =
+                EntryPointAddr::new_v1_entry_point_addr(entity_addr, entry_point.name())?;
+            let entry_point_value =
+                StoredValue::EntryPoint(EntryPointValue::V1CasperVm(entry_point));
+            self.metered_write_gs_unsafe(Key::EntryPoint(entry_point_addr), entry_point_value)?;
+        }
+
+        Ok(())
+    }
+
+    pub(crate) fn get_casper_vm_v1_entry_point(
+        &mut self,
+        entity_key: Key,
+    ) -> Result<EntryPoints, ExecError> {
+        let entity_addr = if let Key::AddressableEntity(entity_addr) = entity_key {
+            entity_addr
+        } else {
+            return Err(ExecError::UnexpectedKeyVariant(entity_key));
+        };
+
+        self.tracking_copy
+            .borrow_mut()
+            .get_v1_entry_points(entity_addr)
+            .map_err(Into::into)
+    }
+
     #[cfg(test)]
     pub(crate) fn get_entity(&self) -> AddressableEntity {
         self.entity.clone()
@@ -438,25 +477,12 @@ where
     /// Reads the available balance of a purse [`URef`].
     ///
     /// Currently address of a purse [`URef`] is also a hash in the [`Key::Hash`] space.
-    pub(crate) fn available_balance(
-        &mut self,
-        purse_uref: &URef,
-        holds_epoch: HoldsEpoch,
-    ) -> Result<Motes, ExecError> {
+    pub(crate) fn available_balance(&mut self, purse_uref: &URef) -> Result<Motes, ExecError> {
         let key = Key::URef(*purse_uref);
         self.tracking_copy
             .borrow_mut()
-            .get_available_balance(key, holds_epoch)
+            .get_available_balance(key)
             .map_err(ExecError::TrackingCopy)
-    }
-
-    #[cfg(test)]
-    pub(crate) fn write_balance(
-        &mut self,
-        purse_uref: URef,
-        cl_value: CLValue,
-    ) -> Result<(), ExecError> {
-        self.metered_write_gs_unsafe(Key::Balance(purse_uref.addr()), cl_value)
     }
 
     /// Read a stored value under a [`Key`].
@@ -493,7 +519,7 @@ where
     /// This is useful if you want to get the exact type from global state.
     pub fn read_gs_typed<T>(&mut self, key: &Key) -> Result<T, ExecError>
     where
-        T: TryFrom<StoredValue>,
+        T: TryFrom<StoredValue, Error = StoredValueTypeMismatch>,
         T::Error: Debug,
     {
         let value = match self.read_gs(key)? {
@@ -501,12 +527,9 @@ where
             Some(value) => value,
         };
 
-        value.try_into().map_err(|error| {
-            ExecError::FunctionNotFound(format!(
-                "Type mismatch for value under {:?}: {:?}",
-                key, error
-            ))
-        })
+        value
+            .try_into()
+            .map_err(|error| ExecError::TrackingCopy(TrackingCopyError::TypeMismatch(error)))
     }
 
     /// Returns all keys based on the tag prefix.
@@ -667,7 +690,7 @@ where
     }
 
     /// Validates whether keys used in the `value` are not forged.
-    fn validate_value(&self, value: &StoredValue) -> Result<(), ExecError> {
+    pub(crate) fn validate_value(&self, value: &StoredValue) -> Result<(), ExecError> {
         match value {
             StoredValue::CLValue(cl_value) => self.validate_cl_value(cl_value),
             StoredValue::NamedKey(named_key_value) => {
@@ -689,7 +712,9 @@ where
             | StoredValue::ContractPackage(_)
             | StoredValue::ContractWasm(_)
             | StoredValue::MessageTopic(_)
-            | StoredValue::Message(_) => Ok(()),
+            | StoredValue::Message(_)
+            | StoredValue::Reservation(_)
+            | StoredValue::EntryPoint(_) => Ok(()),
         }
     }
 
@@ -740,7 +765,7 @@ where
     }
 
     /// Validates if a [`Key`] refers to a [`URef`] and has a write bit set.
-    fn validate_writeable(&self, key: &Key) -> Result<(), ExecError> {
+    pub(crate) fn validate_writeable(&self, key: &Key) -> Result<(), ExecError> {
         if self.is_writeable(key) {
             Ok(())
         } else {
@@ -853,6 +878,17 @@ where
         K: Into<Key>,
     {
         self.tracking_copy.borrow_mut().prune(key.into());
+    }
+
+    pub(crate) fn migrate_contract(
+        &mut self,
+        contract_hash: AddressableEntityHash,
+        protocol_version: ProtocolVersion,
+    ) -> Result<(), ExecError> {
+        self.tracking_copy
+            .borrow_mut()
+            .migrate_contract(Key::Hash(contract_hash.value()), protocol_version)
+            .map_err(ExecError::TrackingCopy)
     }
 
     /// Writes data to global state with a measurement.
@@ -1192,9 +1228,6 @@ where
         let package_hash_key = Key::from(package_hash);
         self.validate_key(&package_hash_key)?;
         let contract_package: Package = self.read_gs_typed(&Key::from(package_hash))?;
-        if !self.is_authorized_by_admin() {
-            self.validate_uref(&contract_package.access_key())?;
-        }
         Ok(contract_package)
     }
 

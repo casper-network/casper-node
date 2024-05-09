@@ -36,7 +36,10 @@ use tracing::warn;
 use crate::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
     addressable_entity,
-    addressable_entity::{AddressableEntityHash, EntityAddr, EntityKindTag, NamedKeyAddr},
+    addressable_entity::{
+        AddressableEntityHash, EntityAddr, EntityKindTag, EntryPointAddr, NamedKeyAddr,
+    },
+    block::BlockGlobalAddr,
     byte_code,
     bytesrepr::{
         self, Error, FromBytes, ToBytes, U32_SERIALIZED_LENGTH, U64_SERIALIZED_LENGTH,
@@ -72,7 +75,8 @@ const CHAINSPEC_REGISTRY_PREFIX: &str = "chainspec-registry-";
 const CHECKSUM_REGISTRY_PREFIX: &str = "checksum-registry-";
 const BID_ADDR_PREFIX: &str = "bid-addr-";
 const PACKAGE_PREFIX: &str = "package-";
-const BLOCK_MESSAGE_COUNT_PREFIX: &str = "block-message-count-";
+const BLOCK_GLOBAL_TIME_PREFIX: &str = "block-time-";
+const BLOCK_GLOBAL_MESSAGE_COUNT_PREFIX: &str = "block-message-count-";
 
 /// The number of bytes in a Blake2b hash
 pub const BLAKE2B_DIGEST_LENGTH: usize = 32;
@@ -89,6 +93,7 @@ pub const DICTIONARY_ITEM_KEY_MAX_LENGTH: usize = 128;
 /// The maximum length for an `Addr`.
 pub const ADDR_LENGTH: usize = 32;
 const PADDING_BYTES: [u8; 32] = [0u8; 32];
+const BLOCK_GLOBAL_PADDING_BYTES: [u8; 31] = [0u8; 31];
 const KEY_ID_SERIALIZED_LENGTH: usize = 1;
 // u8 used to determine the ID
 const KEY_HASH_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HASH_LENGTH;
@@ -104,8 +109,6 @@ const KEY_DICTIONARY_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_D
 const KEY_SYSTEM_ENTITY_REGISTRY_SERIALIZED_LENGTH: usize =
     KEY_ID_SERIALIZED_LENGTH + PADDING_BYTES.len();
 const KEY_ERA_SUMMARY_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + PADDING_BYTES.len();
-const KEY_BLOCK_MESSAGE_COUNT_SERIALIZED_LENGTH: usize =
-    KEY_ID_SERIALIZED_LENGTH + PADDING_BYTES.len();
 const KEY_CHAINSPEC_REGISTRY_SERIALIZED_LENGTH: usize =
     KEY_ID_SERIALIZED_LENGTH + PADDING_BYTES.len();
 const KEY_CHECKSUM_REGISTRY_SERIALIZED_LENGTH: usize =
@@ -153,8 +156,9 @@ pub enum KeyTag {
     ByteCode = 18,
     Message = 19,
     NamedKey = 20,
-    BlockMessageCount = 21,
+    BlockGlobal = 21,
     BalanceHold = 22,
+    EntryPoint = 23,
 }
 
 impl KeyTag {
@@ -183,8 +187,9 @@ impl KeyTag {
             18 => KeyTag::ByteCode,
             19 => KeyTag::Message,
             20 => KeyTag::NamedKey,
-            21 => KeyTag::BlockMessageCount,
+            21 => KeyTag::BlockGlobal,
             22 => KeyTag::BalanceHold,
+            23 => KeyTag::EntryPoint,
             _ => panic!(),
         }
     }
@@ -214,8 +219,9 @@ impl Display for KeyTag {
             KeyTag::ByteCode => write!(f, "ByteCode"),
             KeyTag::Message => write!(f, "Message"),
             KeyTag::NamedKey => write!(f, "NamedKey"),
-            KeyTag::BlockMessageCount => write!(f, "BlockMessageCount"),
+            KeyTag::BlockGlobal => write!(f, "BlockGlobal"),
             KeyTag::BalanceHold => write!(f, "BalanceHold"),
+            KeyTag::EntryPoint => write!(f, "EntryPoint"),
         }
     }
 }
@@ -262,8 +268,9 @@ impl FromBytes for KeyTag {
             tag if tag == KeyTag::ByteCode as u8 => KeyTag::ByteCode,
             tag if tag == KeyTag::Message as u8 => KeyTag::Message,
             tag if tag == KeyTag::NamedKey as u8 => KeyTag::NamedKey,
-            tag if tag == KeyTag::BlockMessageCount as u8 => KeyTag::BlockMessageCount,
+            tag if tag == KeyTag::BlockGlobal as u8 => KeyTag::BlockGlobal,
             tag if tag == KeyTag::BalanceHold as u8 => KeyTag::BalanceHold,
+            tag if tag == KeyTag::EntryPoint as u8 => KeyTag::EntryPoint,
             _ => return Err(Error::Formatting),
         };
         Ok((tag, rem))
@@ -320,10 +327,12 @@ pub enum Key {
     Message(MessageAddr),
     /// A `Key` under which a single named key entry is stored.
     NamedKey(NamedKeyAddr),
-    /// A `Key` under which the total number of emitted messages in the last block is stored.
-    BlockMessageCount,
+    /// A `Key` under which per-block details are stored to global state.
+    BlockGlobal(BlockGlobalAddr),
     /// A `Key` under which a hold on a purse balance is stored.
     BalanceHold(BalanceHoldAddr),
+    /// A `Key` under which a entrypoint record is written.
+    EntryPoint(EntryPointAddr),
 }
 
 #[cfg(feature = "json-schema")]
@@ -390,10 +399,12 @@ pub enum FromStrError {
     Message(contract_messages::FromStrError),
     /// Named key parse error.
     NamedKey(String),
-    /// BlockMessageCount key parse error.
-    BlockMessageCount(String),
+    /// BlockGlobal key parse error.
+    BlockGlobal(String),
     /// Balance hold parse error.
     BalanceHold(String),
+    /// Entry point parse error.
+    EntryPoint(String),
     /// Unknown prefix.
     UnknownPrefix,
 }
@@ -468,11 +479,14 @@ impl Display for FromStrError {
             FromStrError::NamedKey(error) => {
                 write!(f, "named-key from string error: {}", error)
             }
-            FromStrError::BlockMessageCount(error) => {
+            FromStrError::BlockGlobal(error) => {
                 write!(f, "block-message-count-key form string error: {}", error)
             }
             FromStrError::BalanceHold(error) => {
                 write!(f, "balance-hold from string error: {}", error)
+            }
+            FromStrError::EntryPoint(error) => {
+                write!(f, "entry-point from string error: {}", error)
             }
             FromStrError::UnknownPrefix => write!(f, "unknown prefix for key"),
         }
@@ -505,8 +519,9 @@ impl Key {
             Key::ByteCode(_) => String::from("Key::ByteCode"),
             Key::Message(_) => String::from("Key::Message"),
             Key::NamedKey(_) => String::from("Key::NamedKey"),
-            Key::BlockMessageCount => String::from("Key::BlockMessageCount"),
+            Key::BlockGlobal(_) => String::from("Key::BlockGlobal"),
             Key::BalanceHold(_) => String::from("Key::BalanceHold"),
+            Key::EntryPoint(_) => String::from("Key::EntryPoint"),
         }
     }
 
@@ -612,16 +627,23 @@ impl Key {
             Key::NamedKey(named_key) => {
                 format!("{}", named_key)
             }
-            Key::BlockMessageCount => {
+            Key::BlockGlobal(addr) => {
+                let prefix = match addr {
+                    BlockGlobalAddr::BlockTime => BLOCK_GLOBAL_TIME_PREFIX,
+                    BlockGlobalAddr::MessageCount => BLOCK_GLOBAL_MESSAGE_COUNT_PREFIX,
+                };
                 format!(
                     "{}{}",
-                    BLOCK_MESSAGE_COUNT_PREFIX,
-                    base16::encode_lower(&PADDING_BYTES)
+                    prefix,
+                    base16::encode_lower(&BLOCK_GLOBAL_PADDING_BYTES)
                 )
             }
             Key::BalanceHold(balance_hold_addr) => {
                 let tail = BalanceHoldAddr::to_formatted_string(&balance_hold_addr);
                 format!("{}{}", BALANCE_HOLD_PREFIX, tail)
+            }
+            Key::EntryPoint(entry_point_addr) => {
+                format!("{}", entry_point_addr)
             }
         }
     }
@@ -828,15 +850,30 @@ impl Key {
             Err(error) => return Err(FromStrError::NamedKey(error.to_string())),
         }
 
-        if let Some(message_count) = input.strip_prefix(BLOCK_MESSAGE_COUNT_PREFIX) {
+        if let Some(block_time) = input.strip_prefix(BLOCK_GLOBAL_TIME_PREFIX) {
+            let padded_bytes = checksummed_hex::decode(block_time)
+                .map_err(|error| FromStrError::BlockGlobal(error.to_string()))?;
+            let _padding: [u8; 31] = TryFrom::try_from(padded_bytes.as_ref()).map_err(|_| {
+                FromStrError::BlockGlobal("Failed to deserialize global block time key".to_string())
+            })?;
+            return Ok(BlockGlobalAddr::BlockTime.into());
+        }
+
+        if let Some(message_count) = input.strip_prefix(BLOCK_GLOBAL_MESSAGE_COUNT_PREFIX) {
             let padded_bytes = checksummed_hex::decode(message_count)
-                .map_err(|error| FromStrError::BlockMessageCount(error.to_string()))?;
-            let _padding: [u8; 32] = TryFrom::try_from(padded_bytes.as_ref()).map_err(|_| {
-                FromStrError::SystemEntityRegistry(
-                    "Failed to deserialize block message count key".to_string(),
+                .map_err(|error| FromStrError::BlockGlobal(error.to_string()))?;
+            let _padding: [u8; 31] = TryFrom::try_from(padded_bytes.as_ref()).map_err(|_| {
+                FromStrError::BlockGlobal(
+                    "Failed to deserialize global block message count key".to_string(),
                 )
             })?;
-            return Ok(Key::BlockMessageCount);
+            return Ok(BlockGlobalAddr::MessageCount.into());
+        }
+
+        match EntryPointAddr::from_formatted_str(input) {
+            Ok(entry_point_addr) => return Ok(Key::EntryPoint(entry_point_addr)),
+            Err(addressable_entity::FromStrError::InvalidPrefix) => {}
+            Err(error) => return Err(FromStrError::EntryPoint(error.to_string())),
         }
 
         Err(FromStrError::UnknownPrefix)
@@ -1034,6 +1071,11 @@ impl Key {
         Key::Message(MessageAddr::new_topic_addr(entity_addr, topic_name_hash))
     }
 
+    /// Creates a new [`Key::EntryPoint`] variant from an entrypoint addr.
+    pub fn entry_point(entry_point_addr: EntryPointAddr) -> Self {
+        Key::EntryPoint(entry_point_addr)
+    }
+
     /// Returns true if the key is of type [`Key::Dictionary`].
     pub fn is_dictionary_key(&self) -> bool {
         if let Key::Dictionary(_) = self {
@@ -1148,7 +1190,8 @@ impl Key {
             | Key::BalanceHold(_)
             | Key::Dictionary(_)
             | Key::Message(_)
-            | Key::BlockMessageCount => true,
+            | Key::BlockGlobal(_)
+            | Key::EntryPoint(_) => true,
             _ => false,
         };
         if !ret {
@@ -1276,15 +1319,19 @@ impl Display for Key {
             Key::NamedKey(named_key_addr) => {
                 write!(f, "Key::NamedKey({})", named_key_addr)
             }
-            Key::BlockMessageCount => {
+            Key::BlockGlobal(addr) => {
                 write!(
                     f,
-                    "Key::BlockMessageCount({})",
-                    base16::encode_lower(&PADDING_BYTES)
+                    "Key::BlockGlobal({}-{})",
+                    addr,
+                    base16::encode_lower(&BLOCK_GLOBAL_PADDING_BYTES)
                 )
             }
             Key::BalanceHold(balance_hold_addr) => {
                 write!(f, "Key::BalanceHold({})", balance_hold_addr)
+            }
+            Key::EntryPoint(entry_point_addr) => {
+                write!(f, "Key::EntryPointAddr({})", entry_point_addr)
             }
         }
     }
@@ -1320,8 +1367,9 @@ impl Tagged<KeyTag> for Key {
             Key::ByteCode(..) => KeyTag::ByteCode,
             Key::Message(_) => KeyTag::Message,
             Key::NamedKey(_) => KeyTag::NamedKey,
-            Key::BlockMessageCount => KeyTag::BlockMessageCount,
+            Key::BlockGlobal(_) => KeyTag::BlockGlobal,
             Key::BalanceHold(_) => KeyTag::BalanceHold,
+            Key::EntryPoint(_) => KeyTag::EntryPoint,
         }
     }
 }
@@ -1427,9 +1475,16 @@ impl ToBytes for Key {
             Key::NamedKey(named_key_addr) => {
                 KEY_ID_SERIALIZED_LENGTH + named_key_addr.serialized_length()
             }
-            Key::BlockMessageCount => KEY_BLOCK_MESSAGE_COUNT_SERIALIZED_LENGTH,
+            Key::BlockGlobal(addr) => {
+                KEY_ID_SERIALIZED_LENGTH
+                    + addr.serialized_length()
+                    + BLOCK_GLOBAL_PADDING_BYTES.len()
+            }
             Key::BalanceHold(balance_hold_addr) => {
-                U8_SERIALIZED_LENGTH + balance_hold_addr.serialized_length()
+                KEY_ID_SERIALIZED_LENGTH + balance_hold_addr.serialized_length()
+            }
+            Key::EntryPoint(entry_point_addr) => {
+                U8_SERIALIZED_LENGTH + entry_point_addr.serialized_length()
             }
         }
     }
@@ -1451,8 +1506,11 @@ impl ToBytes for Key {
             Key::SystemEntityRegistry
             | Key::EraSummary
             | Key::ChainspecRegistry
-            | Key::ChecksumRegistry
-            | Key::BlockMessageCount => PADDING_BYTES.write_bytes(writer),
+            | Key::ChecksumRegistry => PADDING_BYTES.write_bytes(writer),
+            Key::BlockGlobal(addr) => {
+                addr.write_bytes(writer)?;
+                BLOCK_GLOBAL_PADDING_BYTES.write_bytes(writer)
+            }
             Key::BidAddr(bid_addr) => bid_addr.write_bytes(writer),
             Key::Package(package_addr) => package_addr.write_bytes(writer),
             Key::AddressableEntity(entity_addr) => entity_addr.write_bytes(writer),
@@ -1460,6 +1518,7 @@ impl ToBytes for Key {
             Key::Message(message_addr) => message_addr.write_bytes(writer),
             Key::NamedKey(named_key_addr) => named_key_addr.write_bytes(writer),
             Key::BalanceHold(balance_hold_addr) => balance_hold_addr.write_bytes(writer),
+            Key::EntryPoint(entry_point_addr) => entry_point_addr.write_bytes(writer),
         }
     }
 }
@@ -1552,13 +1611,18 @@ impl FromBytes for Key {
                 let (named_key_addr, rem) = NamedKeyAddr::from_bytes(remainder)?;
                 Ok((Key::NamedKey(named_key_addr), rem))
             }
-            KeyTag::BlockMessageCount => {
-                let (_, rem) = <[u8; 32]>::from_bytes(remainder)?;
-                Ok((Key::BlockMessageCount, rem))
+            KeyTag::BlockGlobal => {
+                let (addr, rem) = BlockGlobalAddr::from_bytes(remainder)?;
+                let (_, rem) = <[u8; 31]>::from_bytes(rem)?; // strip padding
+                Ok((Key::BlockGlobal(addr), rem))
             }
             KeyTag::BalanceHold => {
                 let (balance_hold_addr, rem) = BalanceHoldAddr::from_bytes(remainder)?;
                 Ok((Key::BalanceHold(balance_hold_addr), rem))
+            }
+            KeyTag::EntryPoint => {
+                let (entry_point_addr, rem) = EntryPointAddr::from_bytes(remainder)?;
+                Ok((Key::EntryPoint(entry_point_addr), rem))
             }
         }
     }
@@ -1590,8 +1654,9 @@ fn please_add_to_distribution_impl(key: Key) {
         Key::ByteCode(..) => unimplemented!(),
         Key::Message(_) => unimplemented!(),
         Key::NamedKey(_) => unimplemented!(),
-        Key::BlockMessageCount => unimplemented!(),
+        Key::BlockGlobal(_) => unimplemented!(),
         Key::BalanceHold(_) => unimplemented!(),
+        Key::EntryPoint(_) => unimplemented!(),
     }
 }
 
@@ -1620,8 +1685,9 @@ impl Distribution<Key> for Standard {
             18 => Key::ByteCode(rng.gen()),
             19 => Key::Message(rng.gen()),
             20 => Key::NamedKey(NamedKeyAddr::new_named_key_entry(rng.gen(), rng.gen())),
-            21 => Key::BlockMessageCount,
+            21 => Key::BlockGlobal(rng.gen()),
             22 => Key::BalanceHold(rng.gen()),
+            23 => Key::EntryPoint(rng.gen()),
             _ => unreachable!(),
         }
     }
@@ -1654,8 +1720,9 @@ mod serde_helpers {
         ByteCode(&'a ByteCodeAddr),
         Message(&'a MessageAddr),
         NamedKey(&'a NamedKeyAddr),
-        BlockMessageCount,
+        BlockGlobal(&'a BlockGlobalAddr),
         BalanceHold(&'a BalanceHoldAddr),
+        EntryPoint(&'a EntryPointAddr),
     }
 
     #[derive(Deserialize)]
@@ -1682,8 +1749,9 @@ mod serde_helpers {
         ByteCode(ByteCodeAddr),
         Message(MessageAddr),
         NamedKey(NamedKeyAddr),
-        BlockMessageCount,
+        BlockGlobal(BlockGlobalAddr),
         BalanceHold(BalanceHoldAddr),
+        EntryPoint(EntryPointAddr),
     }
 
     impl<'a> From<&'a Key> for BinarySerHelper<'a> {
@@ -1712,10 +1780,11 @@ mod serde_helpers {
                 }
                 Key::ByteCode(byte_code_addr) => BinarySerHelper::ByteCode(byte_code_addr),
                 Key::NamedKey(named_key_addr) => BinarySerHelper::NamedKey(named_key_addr),
-                Key::BlockMessageCount => BinarySerHelper::BlockMessageCount,
+                Key::BlockGlobal(addr) => BinarySerHelper::BlockGlobal(addr),
                 Key::BalanceHold(balance_hold_addr) => {
                     BinarySerHelper::BalanceHold(balance_hold_addr)
                 }
+                Key::EntryPoint(entry_point_addr) => BinarySerHelper::EntryPoint(entry_point_addr),
             }
         }
     }
@@ -1746,9 +1815,12 @@ mod serde_helpers {
                 }
                 BinaryDeserHelper::ByteCode(byte_code_addr) => Key::ByteCode(byte_code_addr),
                 BinaryDeserHelper::NamedKey(named_key_addr) => Key::NamedKey(named_key_addr),
-                BinaryDeserHelper::BlockMessageCount => Key::BlockMessageCount,
+                BinaryDeserHelper::BlockGlobal(addr) => Key::BlockGlobal(addr),
                 BinaryDeserHelper::BalanceHold(balance_hold_addr) => {
                     Key::BalanceHold(balance_hold_addr)
+                }
+                BinaryDeserHelper::EntryPoint(entry_point_addr) => {
+                    Key::EntryPoint(entry_point_addr)
                 }
             }
         }
@@ -1836,9 +1908,14 @@ mod tests {
         EntityAddr::new_smart_contract([42; 32]),
         [43; 32],
     ));
-    const BLOCK_MESSAGE_COUNT: Key = Key::BlockMessageCount;
+    const BLOCK_TIME_KEY: Key = Key::BlockGlobal(BlockGlobalAddr::BlockTime);
+    const BLOCK_MESSAGE_COUNT_KEY: Key = Key::BlockGlobal(BlockGlobalAddr::MessageCount);
     const BALANCE_HOLD: Key =
         Key::BalanceHold(BalanceHoldAddr::new_gas([42; 32], BlockTime::new(100)));
+    const ENTRY_POINT: Key = Key::EntryPoint(EntryPointAddr::new_v2_entry_point_addr(
+        EntityAddr::new_smart_contract([42; 32]),
+        1u32,
+    ));
     const KEYS: &[Key] = &[
         ACCOUNT_KEY,
         HASH_KEY,
@@ -1867,8 +1944,10 @@ mod tests {
         MESSAGE_TOPIC_KEY,
         MESSAGE_KEY,
         NAMED_KEY,
-        BLOCK_MESSAGE_COUNT,
+        BLOCK_TIME_KEY,
+        BLOCK_MESSAGE_COUNT_KEY,
         BALANCE_HOLD,
+        ENTRY_POINT,
     ];
     const HEX_STRING: &str = "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a";
     const TOPIC_NAME_HEX_STRING: &str =
@@ -2048,10 +2127,19 @@ mod tests {
             )
         );
         assert_eq!(
-            format!("{}", BLOCK_MESSAGE_COUNT),
+            format!("{}", BLOCK_TIME_KEY),
             format!(
-                "Key::BlockMessageCount({})",
-                base16::encode_lower(&PADDING_BYTES)
+                "Key::BlockGlobal({}-{})",
+                BlockGlobalAddr::BlockTime,
+                base16::encode_lower(&BLOCK_GLOBAL_PADDING_BYTES)
+            )
+        );
+        assert_eq!(
+            format!("{}", BLOCK_MESSAGE_COUNT_KEY),
+            format!(
+                "Key::BlockGlobal({}-{})",
+                BlockGlobalAddr::MessageCount,
+                base16::encode_lower(&BLOCK_GLOBAL_PADDING_BYTES)
             )
         );
     }
@@ -2421,7 +2509,8 @@ mod tests {
             1,
         )));
         round_trip(&Key::NamedKey(NamedKeyAddr::default()));
-        round_trip(&Key::BlockMessageCount);
+        round_trip(&Key::BlockGlobal(BlockGlobalAddr::BlockTime));
+        round_trip(&Key::BlockGlobal(BlockGlobalAddr::MessageCount));
         round_trip(&Key::BalanceHold(BalanceHoldAddr::default()));
     }
 
@@ -2454,5 +2543,6 @@ mod tests {
         bytesrepr::test_serialization_roundtrip(&MESSAGE_TOPIC_KEY);
         bytesrepr::test_serialization_roundtrip(&MESSAGE_KEY);
         bytesrepr::test_serialization_roundtrip(&NAMED_KEY);
+        bytesrepr::test_serialization_roundtrip(&ENTRY_POINT);
     }
 }

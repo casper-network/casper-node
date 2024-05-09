@@ -4,8 +4,8 @@ use casper_engine_test_support::{ExecuteRequest, LmdbWasmTestBuilder, DEFAULT_AC
 use casper_execution_engine::{engine_state::Error as CoreError, execution::ExecError};
 use casper_types::{
     addressable_entity::NamedKeys, system::Caller, AddressableEntity, AddressableEntityHash,
-    CLValue, EntityAddr, EntryPointType, HashAddr, Key, PackageAddr, PackageHash, StoredValue,
-    U512,
+    CLValue, EntityAddr, EntryPointType, HashAddr, HoldBalanceHandling, Key, PackageAddr,
+    PackageHash, StoredValue, Timestamp, U512,
 };
 
 use crate::lmdb_fixture;
@@ -71,14 +71,18 @@ fn execute_and_assert_result(
     } else {
         builder.exec(execute_request).commit().expect_failure();
         let error = builder.get_error().expect("must have an error");
-        assert!(matches!(
-            error,
-            // Call chains have stored contract trying to call stored session which we don't
-            // support and is an actual error. Due to variable opcode costs such
-            // execution may end up in a success (and fail with InvalidContext) or GasLimit when
-            // executing longer chains.
-            CoreError::Exec(ExecError::InvalidContext) | CoreError::Exec(ExecError::GasLimit)
-        ));
+        assert!(
+            matches!(
+                error,
+                // Call chains have stored contract trying to call stored session which we don't
+                // support and is an actual error. Due to variable opcode costs such
+                // execution may end up in a success (and fail with InvalidContext) or GasLimit
+                // when executing longer chains.
+                CoreError::Exec(ExecError::InvalidContext) | CoreError::Exec(ExecError::GasLimit)
+            ),
+            "{:?}",
+            error
+        );
     }
 }
 
@@ -190,7 +194,9 @@ impl BuilderExt for LmdbWasmTestBuilder {
 }
 
 fn setup() -> LmdbWasmTestBuilder {
-    let (builder, _, _) = lmdb_fixture::builder_from_global_state_fixture(CALL_STACK_FIXTURE);
+    let (mut builder, _, _) = lmdb_fixture::builder_from_global_state_fixture(CALL_STACK_FIXTURE);
+    builder.with_block_time(Timestamp::now().into());
+    builder.with_gas_hold_config(HoldBalanceHandling::Accrued, 1200u64);
     builder
 }
 
