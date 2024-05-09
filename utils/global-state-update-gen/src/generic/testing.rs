@@ -270,6 +270,10 @@ impl StateReader for MockStateReader {
     fn get_unbonds(&mut self) -> UnbondingPurses {
         self.unbonds.clone()
     }
+
+    fn get_unbonding_delay(&mut self) -> u64 {
+        7
+    }
 }
 
 impl ValidatorInfo {

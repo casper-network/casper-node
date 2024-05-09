@@ -109,8 +109,17 @@ impl StateReader for LmdbWasmTestBuilder {
         // Find the hash of the auction contract.
         let auction_contract_hash = self.get_system_auction_hash();
 
-        self.get_contract(auction_contract_hash)
+        let unbonding_delay_key = self
+            .get_contract(auction_contract_hash)
             .expect("auction should exist")
-            .named_keys()[UNBONDING_DELAY_KEY]
+            .named_keys()[UNBONDING_DELAY_KEY];
+
+        self.query(unbonding_delay_key)
+            .expect("should query")
+            .as_cl_value()
+            .cloned()
+            .expect("should be cl value")
+            .into_t()
+            .expect("should be u64")
     }
 }

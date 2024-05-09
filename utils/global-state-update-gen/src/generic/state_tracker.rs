@@ -302,7 +302,7 @@ impl<T: StateReader> StateTracker<T> {
         for (delegator_public_key, delegator) in bid.delegators() {
             let old_amount = self.get_purse_balance(*delegator.bonding_purse());
             let already_unbonded =
-                self.already_unbonding_amount(&account_hash, &delegator_public_key);
+                self.already_unbonding_amount(&account_hash, delegator_public_key);
             let new_amount = *delegator.staked_amount() + already_unbonded;
             if (slash && new_amount != old_amount) || new_amount > old_amount {
                 self.set_purse_balance(*delegator.bonding_purse(), new_amount);
@@ -319,7 +319,7 @@ impl<T: StateReader> StateTracker<T> {
 
     /// Returns the sum of already unbonding purses for the given validator account & unbonder.
     fn already_unbonding_amount(&mut self, account: &AccountHash, unbonder: &PublicKey) -> U512 {
-        let current_era = self.read_snapshot().1.keys().next().unwrap();
+        let current_era = *self.read_snapshot().1.keys().next().unwrap();
         let unbonding_delay = self.reader.get_unbonding_delay();
         let limit_era = current_era.saturating_sub(unbonding_delay);
 
