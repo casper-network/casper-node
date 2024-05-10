@@ -176,7 +176,7 @@ pub struct TrackingCopyCache<M> {
     current_cache_size: usize,
     reads_cached: LinkedHashMap<Key, StoredValue>,
     muts_cached: BTreeMap<KeyWithByteRepr, StoredValue>,
-    prunes_cached: BTreeSet<KeyWithByteRepr>,
+    prunes_cached: BTreeSet<Key>,
     meter: M,
 }
 
@@ -215,23 +215,23 @@ impl<M: Meter<Key, StoredValue>> TrackingCopyCache<M> {
     /// Inserts `key` and `value` pair to Write/Add cache.
     pub fn insert_write(&mut self, key: Key, value: StoredValue) {
         let kb = KeyWithByteRepr::new(key);
-        self.prunes_cached.remove(&kb);
+        self.prunes_cached.remove(&key);
         self.muts_cached.insert(kb, value);
     }
 
     /// Inserts `key` and `value` pair to Write/Add cache.
     pub fn insert_prune(&mut self, key: Key) {
-        self.prunes_cached.insert(KeyWithByteRepr::new(key));
+        self.prunes_cached.insert(key);
     }
 
     /// Gets value from `key` in the cache.
     pub fn get(&mut self, key: &Key) -> Option<&StoredValue> {
-        let kb = KeyWithByteRepr::new(*key);
-        if self.prunes_cached.get(&kb).is_some() {
+        if self.prunes_cached.get(&key).is_some() {
             // the item is marked for pruning and therefore
             // is no longer accessible.
             return None;
         }
+        let kb = KeyWithByteRepr::new(*key);
         if let Some(value) = self.muts_cached.get(&kb) {
             return Some(value);
         };
@@ -256,7 +256,7 @@ impl<M: Meter<Key, StoredValue>> TrackingCopyCache<M> {
     }
 
     pub fn is_pruned(&self, key: &Key) -> bool {
-        self.prunes_cached.contains(&KeyWithByteRepr::new(*key))
+        self.prunes_cached.contains(&key)
     }
 }
 
