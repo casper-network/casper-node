@@ -94,6 +94,11 @@ impl EraEndV2 {
         &self.rewards
     }
 
+    /// Returns the next era gas price.
+    pub fn next_era_gas_price(&self) -> u8 {
+        self.next_era_gas_price
+    }
+
     // This method is not intended to be used by third party crates.
     #[doc(hidden)]
     pub fn new(
