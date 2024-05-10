@@ -8,11 +8,11 @@ use casper_storage::{
     block_store::types::ApprovalsHashes,
     data_access_layer::{
         balance::BalanceHandling, AuctionMethod, BalanceHoldKind, BalanceHoldRequest,
-        BalanceIdentifier, BalanceRequest, BiddingRequest, BlockRewardsRequest, BlockRewardsResult,
-        DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, EvictItem, FeeRequest,
-        FeeResult, FlushRequest, HandleFeeMode, HandleFeeRequest, HandleRefundMode,
-        HandleRefundRequest, InsufficientBalanceHandling, ProofHandling, PruneRequest, PruneResult,
-        StepRequest, StepResult, TransferRequest,
+        BalanceIdentifier, BalanceRequest, BiddingRequest, BlockGlobalRequest, BlockGlobalResult,
+        BlockRewardsRequest, BlockRewardsResult, DataAccessLayer, EraValidatorsRequest,
+        EraValidatorsResult, EvictItem, FeeRequest, FeeResult, FlushRequest, HandleFeeMode,
+        HandleFeeRequest, HandleRefundMode, HandleRefundRequest, InsufficientBalanceHandling,
+        ProofHandling, PruneRequest, PruneResult, StepRequest, StepResult, TransferRequest,
     },
     global_state::state::{
         lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, ScratchProvider,
@@ -24,9 +24,10 @@ use casper_storage::{
 use casper_types::{
     bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH},
     execution::{Effects, ExecutionResult, TransformKindV2, TransformV2},
+    system::handle_payment::ARG_AMOUNT,
     BlockHeader, BlockTime, BlockV2, CLValue, CategorizedTransaction, Chainspec, ChecksumRegistry,
-    Digest, EraEndV2, EraId, FeeHandling, Gas, GasLimited, HoldsEpoch, Key, ProtocolVersion,
-    PublicKey, RefundHandling, Transaction, TransactionCategory, U512,
+    Digest, EraEndV2, EraId, FeeHandling, Gas, GasLimited, Key, ProtocolVersion, PublicKey,
+    RefundHandling, Transaction, TransactionCategory, U512,
 };
 
 use super::{
@@ -88,12 +89,10 @@ pub fn execute_finalized_block(
     let mut artifacts = Vec::with_capacity(executable_block.transactions.len());
 
     // set up accounting variables / settings
-    let holds_epoch =
-        HoldsEpoch::from_block_time(block_time, chainspec.core_config.balance_hold_interval);
-    let balance_handling = BalanceHandling::Available { holds_epoch };
     let insufficient_balance_handling = InsufficientBalanceHandling::HoldRemaining;
     let refund_handling = chainspec.core_config.refund_handling;
     let fee_handling = chainspec.core_config.fee_handling;
+    let balance_handling = BalanceHandling::Available;
 
     // get scratch state, which must be used for all processing and post processing data
     // requirements.
@@ -115,6 +114,27 @@ pub fn execute_finalized_block(
 
     // transaction processing starts now
     let txn_processing_start = Instant::now();
+
+    // put block_time to global state
+    // NOTE this must occur prior to any block processing as subsequent logic
+    // will refer to the block time value being written to GS now.
+    match scratch_state.block_global(BlockGlobalRequest::block_time(
+        state_root_hash,
+        protocol_version,
+        block_time,
+    )) {
+        BlockGlobalResult::RootNotFound => {
+            return Err(BlockExecutionError::RootNotFound(state_root_hash));
+        }
+        BlockGlobalResult::Failure(err) => {
+            return Err(BlockExecutionError::BlockGlobal(format!("{}", err)));
+        }
+        BlockGlobalResult::Success {
+            post_state_hash, ..
+        } => {
+            state_root_hash = post_state_hash;
+        }
+    }
 
     for transaction in executable_block.transactions {
         let mut artifact_builder = ExecutionArtifactBuilder::new(&transaction);
@@ -170,13 +190,12 @@ pub fn execute_finalized_block(
         artifact_builder.with_added_cost(cost);
 
         let is_standard_payment = transaction.is_standard_payment();
-        let refund_purse_active = !is_standard_payment && !refund_handling.skip_refund();
-        // set up the refund purse for this transaction, if custom payment && refunds are on
+        let refund_purse_active = !is_standard_payment; //&& !refund_handling.skip_refund();
         if refund_purse_active {
-            // if refunds are turned on we initialize the refund purse to the initiator's main
-            // purse before doing any processing. NOTE: when executed, custom payment logic
-            // has the option to call set_refund_purse on the handle payment contract to set
-            // up a different refund purse, if desired.
+            // if custom payment  before doing any processing, initialize the initiator's main purse
+            //  to be the refund purse for this transaction.
+            // NOTE: when executed, custom payment logic has the option to call set_refund_purse
+            //  on the handle payment contract to set up a different refund purse, if desired.
             let handle_refund_request = HandleRefundRequest::new(
                 native_runtime_config.clone(),
                 state_root_hash,
@@ -200,7 +219,7 @@ pub fn execute_finalized_block(
                 scratch_state.commit(state_root_hash, handle_refund_result.effects().clone())?;
         }
 
-        let balance_identifier = {
+        let mut balance_identifier = {
             let is_account_session = transaction.is_account_session();
             //  if standard payment & is session based...use account main purse
             //  if standard payment & is targeting a contract
@@ -229,7 +248,15 @@ pub fn execute_finalized_block(
                         custom_payment_gas_limit,
                         &transaction,
                     ) {
-                        Ok(pay_request) => execution_engine_v1.execute(&scratch_state, pay_request),
+                        Ok(mut pay_request) => {
+                            // We'll send a hint to the custom payment logic on the amount
+                            // it should pay for the transaction to be executed.
+                            pay_request
+                                .args
+                                .insert(ARG_AMOUNT, cost)
+                                .map_err(|e| BlockExecutionError::PaymentError(e.to_string()))?;
+                            execution_engine_v1.execute(&scratch_state, pay_request)
+                        }
                         Err(error) => {
                             WasmV1Result::invalid_executable_item(custom_payment_gas_limit, error)
                         }
@@ -292,8 +319,6 @@ pub fn execute_finalized_block(
                     protocol_version,
                     balance_identifier.clone(),
                     hold_amount,
-                    block_time,
-                    holds_epoch,
                     insufficient_balance_handling,
                 );
                 let hold_result = scratch_state.balance_hold(hold_request);
@@ -312,7 +337,6 @@ pub fn execute_finalized_block(
                         scratch_state.transfer(TransferRequest::with_runtime_args(
                             native_runtime_config.clone(),
                             state_root_hash,
-                            holds_epoch,
                             protocol_version,
                             transaction_hash,
                             initiator_addr.clone(),
@@ -328,12 +352,7 @@ pub fn execute_finalized_block(
                         .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
                 }
                 TransactionCategory::Auction => {
-                    match AuctionMethod::from_parts(
-                        entry_point,
-                        &runtime_args,
-                        holds_epoch,
-                        chainspec,
-                    ) {
+                    match AuctionMethod::from_parts(entry_point, &runtime_args, chainspec) {
                         Ok(auction_method) => {
                             let bidding_result = scratch_state.bidding(BiddingRequest::new(
                                 native_runtime_config.clone(),
@@ -403,10 +422,8 @@ pub fn execute_finalized_block(
             let hold_request = BalanceHoldRequest::new_clear(
                 state_root_hash,
                 protocol_version,
-                block_time,
                 BalanceHoldKind::All,
                 balance_identifier.clone(),
-                holds_epoch,
             );
             let hold_result = scratch_state.balance_hold(hold_request);
             state_root_hash =
@@ -420,7 +437,23 @@ pub fn execute_finalized_block(
         let refund_amount = {
             let consumed = artifact_builder.consumed();
             let refund_mode = match refund_handling {
-                RefundHandling::NoRefund => None,
+                RefundHandling::NoRefund => {
+                    if fee_handling.is_no_fee() && !transaction.is_standard_payment() {
+                        // in no fee mode, we need to return the motes to the refund purse,
+                        //  and then point the balance_identifier to the refund purse
+                        // this will result in the downstream no fee handling logic
+                        //  placing a hold on the correct purse.
+                        balance_identifier = BalanceIdentifier::Refund;
+                        Some(HandleRefundMode::CustomHold {
+                            initiator_addr: Box::new(initiator_addr.clone()),
+                            limit: gas_limit.value(),
+                            gas_price: current_gas_price,
+                            cost,
+                        })
+                    } else {
+                        None
+                    }
+                }
                 RefundHandling::Burn { refund_ratio } => Some(HandleRefundMode::Burn {
                     limit: gas_limit.value(),
                     gas_price: current_gas_price,
@@ -430,6 +463,7 @@ pub fn execute_finalized_block(
                     ratio: refund_ratio,
                 }),
                 RefundHandling::Refund { refund_ratio } => {
+                    let source = Box::new(balance_identifier.clone());
                     if transaction.is_standard_payment() {
                         Some(HandleRefundMode::RefundAmount {
                             limit: gas_limit.value(),
@@ -437,9 +471,10 @@ pub fn execute_finalized_block(
                             consumed,
                             cost,
                             ratio: refund_ratio,
-                            source: Box::new(balance_identifier.clone()),
+                            source,
                         })
                     } else {
+                        let target = Box::new(BalanceIdentifier::Refund);
                         Some(HandleRefundMode::Refund {
                             initiator_addr: Box::new(initiator_addr.clone()),
                             limit: gas_limit.value(),
@@ -447,10 +482,8 @@ pub fn execute_finalized_block(
                             consumed,
                             cost,
                             ratio: refund_ratio,
-                            // as this is currently behind a custom payment check,
-                            // the source is always BalanceIdentifier::Payment
-                            source: Box::new(balance_identifier.clone()),
-                            target: Box::new(BalanceIdentifier::Refund),
+                            source,
+                            target,
                         })
                     }
                 }
@@ -488,8 +521,6 @@ pub fn execute_finalized_block(
                     protocol_version,
                     balance_identifier,
                     amount,
-                    block_time,
-                    holds_epoch,
                     insufficient_balance_handling,
                 );
                 let hold_result = scratch_state.balance_hold(hold_request);
@@ -529,7 +560,6 @@ pub fn execute_finalized_block(
                         balance_identifier,
                         BalanceIdentifier::Public(*(proposer.clone())),
                         amount,
-                        holds_epoch,
                     ),
                 );
                 let handle_fee_result = scratch_state.handle_fee(handle_fee_request);
@@ -553,7 +583,6 @@ pub fn execute_finalized_block(
                         balance_identifier,
                         BalanceIdentifier::Accumulate,
                         amount,
-                        holds_epoch,
                     ),
                 );
                 let handle_fee_result = scratch_state.handle_fee(handle_fee_request);
@@ -654,7 +683,6 @@ pub fn execute_finalized_block(
                 state_root_hash,
                 protocol_version,
                 block_time,
-                holds_epoch,
             );
             match scratch_state.distribute_fees(fee_req) {
                 FeeResult::RootNotFound => {

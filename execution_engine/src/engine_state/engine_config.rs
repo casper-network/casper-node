@@ -84,8 +84,6 @@ pub struct EngineConfig {
     pub(crate) fee_handling: FeeHandling,
     /// Compute auction rewards.
     pub(crate) compute_rewards: bool,
-    /// The period over which balance holds decay.
-    pub(crate) balance_hold_interval: TimeDiff,
 }
 
 impl Default for EngineConfig {
@@ -107,7 +105,6 @@ impl Default for EngineConfig {
             fee_handling: DEFAULT_FEE_HANDLING,
             compute_rewards: DEFAULT_COMPUTE_REWARDS,
             protocol_version: DEFAULT_PROTOCOL_VERSION,
-            balance_hold_interval: DEFAULT_BALANCE_HOLD_INTERVAL,
         }
     }
 }
@@ -416,9 +413,6 @@ impl EngineConfigBuilder {
             .max_delegators_per_validator
             .unwrap_or(DEFAULT_MAX_DELEGATORS_PER_VALIDATOR);
         let compute_rewards = self.compute_rewards.unwrap_or(DEFAULT_COMPUTE_REWARDS);
-        let balance_hold_interval = self
-            .balance_hold_interval
-            .unwrap_or(DEFAULT_BALANCE_HOLD_INTERVAL);
 
         EngineConfig {
             max_associated_keys,
@@ -437,7 +431,6 @@ impl EngineConfigBuilder {
             vesting_schedule_period_millis,
             max_delegators_per_validator,
             compute_rewards,
-            balance_hold_interval,
         }
     }
 }

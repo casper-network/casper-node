@@ -10,8 +10,8 @@ use casper_contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    addressable_entity::Parameters, CLType, CLValue, EntryPoint, EntryPointAccess, EntryPointType,
-    EntryPoints, Key, RuntimeArgs, URef, U512,
+    addressable_entity::Parameters, CLType, CLValue, EntryPoint, EntryPointAccess,
+    EntryPointPayment, EntryPointType, EntryPoints, Key, RuntimeArgs, URef, U512,
 };
 
 const ARG_FLAG: &str = "flag";
@@ -45,6 +45,7 @@ pub extern "C" fn call() {
             CLType::String,
             EntryPointAccess::Public,
             EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
 
         entry_points.add_entry_point(do_nothing_entry_point);
@@ -55,6 +56,7 @@ pub extern "C" fn call() {
             CLType::URef,
             EntryPointAccess::Public,
             EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
 
         entry_points.add_entry_point(do_something_entry_point);

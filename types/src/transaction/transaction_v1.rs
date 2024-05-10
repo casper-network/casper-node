@@ -6,7 +6,7 @@ mod transaction_v1_category;
 mod transaction_v1_hash;
 mod transaction_v1_header;
 
-#[cfg(any(feature = "std", test))]
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
 use alloc::string::ToString;
 use alloc::{collections::BTreeSet, vec::Vec};
 use core::{
@@ -31,13 +31,15 @@ use super::{
 };
 #[cfg(any(feature = "std", test))]
 use super::{GasLimited, InitiatorAddrAndSecretKey};
+#[cfg(any(feature = "std", test))]
+use crate::chainspec::Chainspec;
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
+use crate::chainspec::PricingHandling;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     crypto, Digest, DisplayIter, RuntimeArgs, SecretKey, TimeDiff, Timestamp, TransactionRuntime,
     TransactionSessionKind,
 };
-#[cfg(any(feature = "std", test))]
-use crate::{chainspec::Chainspec, chainspec::PricingHandling};
 
 #[cfg(any(feature = "std", test))]
 use crate::{Gas, Motes, TransactionConfig, U512};
@@ -585,7 +587,8 @@ impl TransactionV1 {
                 | TransactionEntryPoint::ActivateBid
                 | TransactionEntryPoint::Delegate
                 | TransactionEntryPoint::Undelegate
-                | TransactionEntryPoint::Redelegate => TransactionCategory::Auction,
+                | TransactionEntryPoint::Redelegate
+                | TransactionEntryPoint::ChangeBidPublicKey => TransactionCategory::Auction,
             },
             TransactionTarget::Stored { .. } => TransactionCategory::Standard,
             TransactionTarget::Session { kind, .. } => match kind {
@@ -655,16 +658,25 @@ impl GasLimited for TransactionV1 {
                                 })
                             }
                             TransactionEntryPoint::AddBid | TransactionEntryPoint::ActivateBid => {
-                                costs.auction_costs().add_bid
+                                costs.auction_costs().add_bid.into()
                             }
                             TransactionEntryPoint::WithdrawBid => {
-                                costs.auction_costs().withdraw_bid
+                                costs.auction_costs().withdraw_bid.into()
                             }
-                            TransactionEntryPoint::Delegate => costs.auction_costs().delegate,
-                            TransactionEntryPoint::Undelegate => costs.auction_costs().undelegate,
-                            TransactionEntryPoint::Redelegate => costs.auction_costs().redelegate,
+                            TransactionEntryPoint::Delegate => {
+                                costs.auction_costs().delegate.into()
+                            }
+                            TransactionEntryPoint::Undelegate => {
+                                costs.auction_costs().undelegate.into()
+                            }
+                            TransactionEntryPoint::Redelegate => {
+                                costs.auction_costs().redelegate.into()
+                            }
+                            TransactionEntryPoint::ChangeBidPublicKey => {
+                                costs.auction_costs().change_bid_public_key
+                            }
                         };
-                        amount as u64
+                        amount
                     } else if self.is_install_or_upgrade() {
                         costs.install_upgrade_limit()
                     } else {
@@ -673,18 +685,10 @@ impl GasLimited for TransactionV1 {
                 };
                 Gas::new(U512::from(computation_limit))
             }
-            PricingMode::Reserved {
-                paid_amount,
-                strike_price,
-                ..
-            } => {
-                // prepaid, if receipt is legit (future use)
-                Gas::from_price(U512::from(*paid_amount), *strike_price).ok_or(
-                    InvalidTransactionV1::GasPriceConversion {
-                        amount: *paid_amount,
-                        gas_price: *strike_price,
-                    },
-                )?
+            PricingMode::Reserved { receipt } => {
+                return Err(InvalidTransactionV1::InvalidPricingMode {
+                    price_mode: PricingMode::Reserved { receipt: *receipt },
+                })
             }
         };
         Ok(gas)
@@ -1108,8 +1112,6 @@ mod tests {
 
         let reserved_mode = PricingMode::Reserved {
             receipt: Default::default(),
-            paid_amount: Default::default(),
-            strike_price: Default::default(),
         };
 
         let reserved_transaction = TransactionV1Builder::new_random(rng)
@@ -1303,66 +1305,6 @@ mod tests {
             cost,
             limit * gas_price,
             "in fixed pricing, the cost should == limit * gas_price"
-        );
-    }
-
-    #[test]
-    fn should_have_limit_but_no_cost_for_reserved() {
-        reserved_pricing(500u64, 1u8);
-    }
-
-    #[test]
-    fn should_respect_strike_price_for_reserved() {
-        reserved_pricing(500u64, 2u8);
-    }
-
-    #[cfg(test)]
-    fn reserved_pricing(paid_amount: u64, strike_price: u8) {
-        let mut chainspec = Chainspec::default();
-        let chain_name = "net-1";
-        chainspec
-            .with_chain_name(chain_name.to_string())
-            .with_pricing_handling(PricingHandling::Fixed)
-            .with_allow_reservations(true);
-
-        let rng = &mut TestRng::new();
-        let builder = TransactionV1Builder::new_random(rng)
-            .with_chain_name(chain_name)
-            .with_pricing_mode(PricingMode::Reserved {
-                paid_amount,
-                strike_price,
-                receipt: Digest::default(),
-            });
-        let transaction = builder.build().expect("should build");
-        let mut gas_price = 1;
-        let limit = transaction
-            .gas_limit(&chainspec)
-            .expect("should limit")
-            .value()
-            .as_u64();
-        assert_eq!(
-            limit,
-            paid_amount / strike_price as u64,
-            "in reserved pricing, limit should == paid_amount / strike price"
-        );
-        let cost = transaction
-            .gas_cost(&chainspec, gas_price)
-            .expect("should cost")
-            .value();
-        assert_eq!(
-            cost,
-            U512::zero(),
-            "in reserved pricing, cost should == 0 as it was prepaid"
-        );
-        gas_price += 1;
-        let cost = transaction
-            .gas_cost(&chainspec, gas_price)
-            .expect("should cost")
-            .value();
-        assert_eq!(
-            cost,
-            U512::zero(),
-            "in reserved pricing, gas price does not matter as it was prepaid"
         );
     }
 }

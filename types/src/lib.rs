@@ -22,6 +22,7 @@
 extern crate alloc;
 
 extern crate core;
+
 mod access_rights;
 pub mod account;
 pub mod addressable_entity;
@@ -87,7 +88,8 @@ pub use account::Account;
 #[doc(inline)]
 pub use addressable_entity::{
     AddressableEntity, AddressableEntityHash, EntityAddr, EntityKind, EntryPoint, EntryPointAccess,
-    EntryPointType, EntryPoints, Parameter,
+    EntryPointAddr, EntryPointPayment, EntryPointType, EntryPointValue, EntryPoints, Parameter,
+    Parameters, DEFAULT_ENTRY_POINT_NAME,
 };
 #[doc(inline)]
 pub use api_error::ApiError;
@@ -95,13 +97,14 @@ pub use auction_state::{AuctionState, JsonEraValidators, JsonValidatorWeights};
 #[cfg(all(feature = "std", feature = "json-schema"))]
 pub use block::JsonBlockWithSignatures;
 pub use block::{
-    AvailableBlockRange, Block, BlockBody, BlockBodyV1, BlockBodyV2, BlockHash, BlockHashAndHeight,
-    BlockHeader, BlockHeaderV1, BlockHeaderV2, BlockIdentifier, BlockSignatures,
-    BlockSignaturesMergeError, BlockSignaturesV1, BlockSignaturesV2, BlockSyncStatus,
-    BlockSynchronizerStatus, BlockV1, BlockV2, BlockValidationError, ChainNameDigest, EraEnd,
-    EraEndV1, EraEndV2, EraReport, FinalitySignature, FinalitySignatureId, FinalitySignatureV1,
-    FinalitySignatureV2, RewardedSignatures, Rewards, SignedBlock, SignedBlockHeader,
-    SignedBlockHeaderValidationError, SingleBlockRewardedSignatures,
+    AvailableBlockRange, Block, BlockBody, BlockBodyV1, BlockBodyV2, BlockGlobalAddr,
+    BlockGlobalAddrTag, BlockHash, BlockHashAndHeight, BlockHeader, BlockHeaderV1, BlockHeaderV2,
+    BlockIdentifier, BlockSignatures, BlockSignaturesMergeError, BlockSignaturesV1,
+    BlockSignaturesV2, BlockSyncStatus, BlockSynchronizerStatus, BlockV1, BlockV2,
+    BlockValidationError, ChainNameDigest, EraEnd, EraEndV1, EraEndV2, EraReport,
+    FinalitySignature, FinalitySignatureId, FinalitySignatureV1, FinalitySignatureV2,
+    RewardedSignatures, Rewards, SignedBlock, SignedBlockHeader, SignedBlockHeaderValidationError,
+    SingleBlockRewardedSignatures,
 };
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 pub use block::{TestBlockBuilder, TestBlockV1Builder};
@@ -116,11 +119,12 @@ pub use chainspec::{
     ControlFlowCosts, CoreConfig, DelegatorConfig, DeployConfig, FeeHandling, GenesisAccount,
     GenesisConfig, GenesisConfigBuilder, GenesisValidator, GlobalStateUpdate,
     GlobalStateUpdateConfig, GlobalStateUpdateError, HandlePaymentCosts, HighwayConfig,
-    HostFunction, HostFunctionCost, HostFunctionCosts, LegacyRequiredFinality, MessageLimits,
-    MintCosts, NetworkConfig, NextUpgrade, OpcodeCosts, PricingHandling, ProtocolConfig,
-    ProtocolUpgradeConfig, RefundHandling, StandardPaymentCosts, StorageCosts, SystemConfig,
-    TransactionConfig, TransactionV1Config, VacancyConfig, ValidatorConfig, WasmConfig,
-    DEFAULT_BALANCE_HOLD_INTERVAL, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY, DEFAULT_REFUND_HANDLING,
+    HoldBalanceHandling, HostFunction, HostFunctionCost, HostFunctionCosts, LegacyRequiredFinality,
+    MessageLimits, MintCosts, NetworkConfig, NextUpgrade, OpcodeCosts, PricingHandling,
+    ProtocolConfig, ProtocolUpgradeConfig, RefundHandling, StandardPaymentCosts, StorageCosts,
+    SystemConfig, TransactionConfig, TransactionV1Config, VacancyConfig, ValidatorConfig,
+    WasmConfig, DEFAULT_GAS_HOLD_INTERVAL, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY,
+    DEFAULT_REFUND_HANDLING,
 };
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 pub use chainspec::{
@@ -133,9 +137,9 @@ pub use chainspec::{
     DEFAULT_CONTROL_FLOW_IF_OPCODE, DEFAULT_CONTROL_FLOW_LOOP_OPCODE,
     DEFAULT_CONTROL_FLOW_RETURN_OPCODE, DEFAULT_CONTROL_FLOW_SELECT_OPCODE,
     DEFAULT_CONVERSION_COST, DEFAULT_CURRENT_MEMORY_COST, DEFAULT_DELEGATE_COST, DEFAULT_DIV_COST,
-    DEFAULT_FEE_HANDLING, DEFAULT_GLOBAL_COST, DEFAULT_GROW_MEMORY_COST,
-    DEFAULT_INSTALL_UPGRADE_GAS_LIMIT, DEFAULT_INTEGER_COMPARISON_COST, DEFAULT_LOAD_COST,
-    DEFAULT_LOCAL_COST, DEFAULT_MAX_PAYMENT_MOTES, DEFAULT_MAX_STACK_HEIGHT,
+    DEFAULT_FEE_HANDLING, DEFAULT_GAS_HOLD_BALANCE_HANDLING, DEFAULT_GLOBAL_COST,
+    DEFAULT_GROW_MEMORY_COST, DEFAULT_INSTALL_UPGRADE_GAS_LIMIT, DEFAULT_INTEGER_COMPARISON_COST,
+    DEFAULT_LOAD_COST, DEFAULT_LOCAL_COST, DEFAULT_MAX_PAYMENT_MOTES, DEFAULT_MAX_STACK_HEIGHT,
     DEFAULT_MIN_TRANSFER_MOTES, DEFAULT_MUL_COST, DEFAULT_NEW_DICTIONARY_COST, DEFAULT_NOP_COST,
     DEFAULT_STANDARD_TRANSACTION_GAS_LIMIT, DEFAULT_STORE_COST, DEFAULT_TRANSFER_COST,
     DEFAULT_UNREACHABLE_COST, DEFAULT_WASM_MAX_MEMORY,

@@ -57,10 +57,6 @@ pub enum PricingMode {
     Reserved {
         /// Pre-paid receipt.
         receipt: Digest,
-        /// Price paid in the past to reserve space in a future block.
-        paid_amount: u64,
-        /// The gas price at the time of reservation.
-        strike_price: u8,
     },
 }
 
@@ -77,11 +73,7 @@ impl PricingMode {
             1 => PricingMode::Fixed {
                 gas_price_tolerance: rng.gen(),
             },
-            2 => PricingMode::Reserved {
-                receipt: rng.gen(),
-                paid_amount: rng.gen(),
-                strike_price: rng.gen(),
-            },
+            2 => PricingMode::Reserved { receipt: rng.gen() },
             _ => unreachable!(),
         }
     }
@@ -101,15 +93,7 @@ impl Display for PricingMode {
                     payment_amount, gas_price, standard_payment
                 )
             }
-            PricingMode::Reserved {
-                receipt,
-                paid_amount,
-                strike_price,
-            } => write!(
-                formatter,
-                "reserved: {} paid_amount: {} strike_price: {}",
-                receipt, paid_amount, strike_price
-            ),
+            PricingMode::Reserved { receipt } => write!(formatter, "reserved: {}", receipt),
             PricingMode::Fixed {
                 gas_price_tolerance,
             } => write!(formatter, "fixed pricing {}", gas_price_tolerance),
@@ -130,15 +114,9 @@ impl ToBytes for PricingMode {
                 gas_price.write_bytes(writer)?;
                 standard_payment.write_bytes(writer)
             }
-            PricingMode::Reserved {
-                receipt,
-                paid_amount,
-                strike_price,
-            } => {
+            PricingMode::Reserved { receipt } => {
                 RESERVED_TAG.write_bytes(writer)?;
-                receipt.write_bytes(writer)?;
-                paid_amount.write_bytes(writer)?;
-                strike_price.write_bytes(writer)
+                receipt.write_bytes(writer)
             }
             PricingMode::Fixed {
                 gas_price_tolerance,
@@ -167,15 +145,7 @@ impl ToBytes for PricingMode {
                         + gas_price.serialized_length()
                         + standard_payment.serialized_length()
                 }
-                PricingMode::Reserved {
-                    receipt,
-                    paid_amount,
-                    strike_price,
-                } => {
-                    receipt.serialized_length()
-                        + paid_amount.serialized_length()
-                        + strike_price.serialized_length()
-                }
+                PricingMode::Reserved { receipt } => receipt.serialized_length(),
                 PricingMode::Fixed {
                     gas_price_tolerance,
                 } => gas_price_tolerance.serialized_length(),
@@ -212,16 +182,7 @@ impl FromBytes for PricingMode {
             }
             RESERVED_TAG => {
                 let (receipt, remainder) = Digest::from_bytes(remainder)?;
-                let (paid_amount, remainder) = u64::from_bytes(remainder)?;
-                let (strike_price, remainder) = u8::from_bytes(remainder)?;
-                Ok((
-                    PricingMode::Reserved {
-                        receipt,
-                        paid_amount,
-                        strike_price,
-                    },
-                    remainder,
-                ))
+                Ok((PricingMode::Reserved { receipt }, remainder))
             }
             _ => Err(bytesrepr::Error::Formatting),
         }

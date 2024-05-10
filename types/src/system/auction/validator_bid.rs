@@ -239,6 +239,12 @@ impl ValidatorBid {
         true
     }
 
+    /// Sets validator public key
+    pub fn with_validator_public_key(&mut self, validator_public_key: PublicKey) -> &mut Self {
+        self.validator_public_key = validator_public_key;
+        self
+    }
+
     /// Returns minimum allowed delegation amount in motes.
     pub fn minimum_delegation_amount(&self) -> u64 {
         self.minimum_delegation_amount

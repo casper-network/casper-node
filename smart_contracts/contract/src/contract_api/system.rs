@@ -4,15 +4,9 @@ use alloc::vec::Vec;
 use core::mem::MaybeUninit;
 
 use casper_types::{
-    account::AccountHash,
-    addressable_entity::EntityKindTag,
-    api_error, bytesrepr,
-    system::{
-        auction::{self, EraInfo},
-        SystemEntityType,
-    },
-    AddressableEntityHash, ApiError, EraId, HashAddr, Key, PublicKey, TransferResult,
-    TransferredTo, URef, U512, UREF_SERIALIZED_LENGTH,
+    account::AccountHash, addressable_entity::EntityKindTag, api_error, bytesrepr,
+    system::SystemEntityType, AddressableEntityHash, ApiError, HashAddr, Key, PublicKey,
+    TransferResult, TransferredTo, URef, U512, UREF_SERIALIZED_LENGTH,
 };
 
 use crate::{
@@ -249,56 +243,4 @@ pub fn transfer_from_purse_to_purse(
         )
     };
     api_error::result_from(result)
-}
-
-/// Records a transfer.  Can only be called from within the mint contract.
-/// Needed to support system contract-based execution.
-#[doc(hidden)]
-pub fn record_transfer(
-    maybe_to: Option<AccountHash>,
-    source: URef,
-    target: URef,
-    amount: U512,
-    id: Option<u64>,
-) -> Result<(), ApiError> {
-    let (maybe_to_ptr, maybe_to_size, _bytes1) = contract_api::to_ptr(maybe_to);
-    let (source_ptr, source_size, _bytes2) = contract_api::to_ptr(source);
-    let (target_ptr, target_size, _bytes3) = contract_api::to_ptr(target);
-    let (amount_ptr, amount_size, _bytes4) = contract_api::to_ptr(amount);
-    let (id_ptr, id_size, _bytes5) = contract_api::to_ptr(id);
-    let result = unsafe {
-        ext_ffi::casper_record_transfer(
-            maybe_to_ptr,
-            maybe_to_size,
-            source_ptr,
-            source_size,
-            target_ptr,
-            target_size,
-            amount_ptr,
-            amount_size,
-            id_ptr,
-            id_size,
-        )
-    };
-    if result == 0 {
-        Ok(())
-    } else {
-        Err(ApiError::Transfer)
-    }
-}
-
-/// Records era info.  Can only be called from within the auction contract.
-/// Needed to support system contract-based execution.
-#[doc(hidden)]
-pub fn record_era_info(era_id: EraId, era_info: EraInfo) -> Result<(), ApiError> {
-    let (era_id_ptr, era_id_size, _bytes1) = contract_api::to_ptr(era_id);
-    let (era_info_ptr, era_info_size, _bytes2) = contract_api::to_ptr(era_info);
-    let result = unsafe {
-        ext_ffi::casper_record_era_info(era_id_ptr, era_id_size, era_info_ptr, era_info_size)
-    };
-    if result == 0 {
-        Ok(())
-    } else {
-        Err(auction::Error::RecordEraInfo.into())
-    }
 }

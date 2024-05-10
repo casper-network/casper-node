@@ -1,3 +1,4 @@
+pub(crate) mod detail;
 mod mint_native;
 pub mod runtime_provider;
 pub mod storage_provider;
@@ -12,7 +13,7 @@ use casper_types::{
         mint::{Error, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
         Caller,
     },
-    HoldsEpoch, Key, PublicKey, SystemEntityRegistry, URef, U512,
+    Key, PublicKey, SystemEntityRegistry, URef, U512,
 };
 
 use crate::system::mint::{
@@ -51,6 +52,31 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
         Ok(purse_uref)
     }
 
+    /// Burns native tokens.
+    fn burn(&mut self, purse: URef, amount: U512) -> Result<(), Error> {
+        if !purse.is_writeable() {
+            return Err(Error::InvalidAccessRights);
+        }
+        if !self.is_valid_uref(&purse) {
+            return Err(Error::ForgedReference);
+        }
+
+        let source_available_balance: U512 = match self.balance(purse)? {
+            Some(source_balance) => source_balance,
+            None => return Err(Error::PurseNotFound),
+        };
+
+        let new_balance = match source_available_balance.checked_sub(amount) {
+            Some(value) => value,
+            None => U512::zero(),
+        };
+        // change balance
+        self.write_balance(purse, new_balance)?;
+        // reduce total supply AFTER changing balance in case changing balance errors
+        let burned_amount = source_available_balance.saturating_sub(new_balance);
+        detail::reduce_total_supply_unsafe(self, burned_amount)
+    }
+
     /// Reduce total supply by `amount`. Returns unit on success, otherwise
     /// an error.
     fn reduce_total_supply(&mut self, amount: U512) -> Result<(), Error> {
@@ -60,34 +86,12 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
             return Err(Error::InvalidTotalSupplyReductionAttempt);
         }
 
-        if amount.is_zero() {
-            return Ok(()); // no change to supply
-        }
-
-        // get total supply or error
-        let total_supply_uref = match self.get_key(TOTAL_SUPPLY_KEY) {
-            Some(Key::URef(uref)) => uref,
-            Some(_) => return Err(Error::MissingKey), // TODO
-            None => return Err(Error::MissingKey),
-        };
-        let total_supply: U512 = self
-            .read(total_supply_uref)?
-            .ok_or(Error::TotalSupplyNotFound)?;
-
-        // decrease total supply
-        let reduced_total_supply = total_supply
-            .checked_sub(amount)
-            .ok_or(Error::ArithmeticOverflow)?;
-
-        // update total supply
-        self.write_amount(total_supply_uref, reduced_total_supply)?;
-
-        Ok(())
+        detail::reduce_total_supply_unsafe(self, amount)
     }
 
     /// Read balance of given `purse`.
-    fn balance(&mut self, purse: URef, hold_epoch: HoldsEpoch) -> Result<Option<U512>, Error> {
-        match self.available_balance(purse, hold_epoch)? {
+    fn balance(&mut self, purse: URef) -> Result<Option<U512>, Error> {
+        match self.available_balance(purse)? {
             some @ Some(_) => Ok(some),
             None => Err(Error::PurseNotFound),
         }
@@ -101,13 +105,11 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
         target: URef,
         amount: U512,
         id: Option<u64>,
-        holds_epoch: HoldsEpoch,
     ) -> Result<(), Error> {
         if !self.allow_unrestricted_transfers() {
-            let registry = match self.get_system_entity_registry() {
-                Ok(registry) => registry,
-                Err(_) => SystemEntityRegistry::new(),
-            };
+            let registry = self
+                .get_system_entity_registry()
+                .unwrap_or_else(|_| SystemEntityRegistry::new());
             let immediate_caller = self.get_immediate_caller();
             match immediate_caller {
                 Some(Caller::Entity {
@@ -134,7 +136,6 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
                 Some(Caller::Initiator { account_hash }) => {
                     // For example: a session using transfer host functions, or calling the mint's
                     // entrypoint directly
-
                     let is_source_admin = self.is_administrator(&account_hash);
                     match maybe_to {
                         Some(to) => {
@@ -211,7 +212,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
             // a deposit of token. Generally, deposit of a desirable resource is permissive.
             return Err(Error::InvalidAccessRights);
         }
-        let source_available_balance: U512 = match self.available_balance(source, holds_epoch)? {
+        let source_available_balance: U512 = match self.available_balance(source)? {
             Some(source_balance) => source_balance,
             None => return Err(Error::SourceNotFound),
         };
@@ -223,10 +224,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
         if source_available_balance > source_total_balance {
             panic!("available balance can never be greater than total balance");
         }
-        if self
-            .available_balance(target, HoldsEpoch::NOT_APPLICABLE)?
-            .is_none()
-        {
+        if self.available_balance(target)?.is_none() {
             return Err(Error::DestNotFound);
         }
         if self.get_caller() != PublicKey::System.to_account_hash()
@@ -237,8 +235,9 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
             }
             self.sub_approved_spending_limit(amount);
         }
+
         // NOTE: we use TOTAL balance to determine new balance
-        let new_balance = source_total_balance - amount;
+        let new_balance = source_total_balance.saturating_sub(amount);
         self.write_balance(source, new_balance)?;
         self.add_balance(target, amount)?;
         self.record_transfer(maybe_to, source, target, amount, id)?;
@@ -286,10 +285,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
             // treat as noop
             return Ok(());
         }
-        if self
-            .available_balance(existing_purse, HoldsEpoch::NOT_APPLICABLE)?
-            .is_none()
-        {
+        if self.available_balance(existing_purse)?.is_none() {
             return Err(Error::PurseNotFound);
         }
         self.add_balance(existing_purse, amount)?;

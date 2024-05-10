@@ -32,6 +32,10 @@ toml = "0.5.6"
 casper-types = { version = "5.0.0", path = "../../types", features = ["std"] }
 version-sync = "0.9.3"
 
+[build-dependencies]
+toml_edit = "=0.21.0"
+humantime = "2"
+
 [features]
 use-as-wasm = []
 

@@ -6,8 +6,8 @@ use casper_types::{
     addressable_entity::NamedKeys,
     bytesrepr::FromBytes,
     system::{mint, mint::Error as MintError},
-    AccessRights, AddressableEntity, CLType, CLTyped, CLValue, CLValueError, HoldsEpoch, Key,
-    ProtocolVersion, RuntimeArgs, StoredValue, StoredValueTypeMismatch, URef, U512,
+    AccessRights, AddressableEntity, CLType, CLTyped, CLValue, CLValueError, Key, ProtocolVersion,
+    RuntimeArgs, StoredValue, StoredValueTypeMismatch, URef, U512,
 };
 
 use crate::{
@@ -232,7 +232,7 @@ impl TransferRuntimeArgsBuilder {
         };
         tracking_copy
             .borrow_mut()
-            .get_available_balance(key, HoldsEpoch::NOT_APPLICABLE)
+            .get_available_balance(key)
             .is_ok()
     }
 
@@ -363,9 +363,8 @@ impl TransferRuntimeArgsBuilder {
             .borrow_mut()
             .get_addressable_entity_by_account_hash(protocol_version, account_hash)
         {
-            Ok(contract) => {
-                let main_purse_addable =
-                    contract.main_purse().with_access_rights(AccessRights::ADD);
+            Ok((_, entity)) => {
+                let main_purse_addable = entity.main_purse().with_access_rights(AccessRights::ADD);
                 Ok(NewTransferTargetMode::ExistingAccount {
                     target_account_hash: account_hash,
                     main_purse: main_purse_addable,

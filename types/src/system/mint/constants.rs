@@ -17,6 +17,8 @@ pub const ARG_ROUND_SEIGNIORAGE_RATE: &str = "round_seigniorage_rate";
 pub const METHOD_MINT: &str = "mint";
 /// Named constant for method `reduce_total_supply`.
 pub const METHOD_REDUCE_TOTAL_SUPPLY: &str = "reduce_total_supply";
+/// Named constant for method `burn`.
+pub const METHOD_BURN: &str = "burn";
 /// Named constant for (synthetic) method `create`
 pub const METHOD_CREATE: &str = "create";
 /// Named constant for method `balance`.
@@ -38,3 +40,7 @@ pub const BASE_ROUND_REWARD_KEY: &str = "mint_base_round_reward";
 pub const TOTAL_SUPPLY_KEY: &str = "total_supply";
 /// Storage for mint round seigniorage rate.
 pub const ROUND_SEIGNIORAGE_RATE_KEY: &str = "round_seigniorage_rate";
+/// Storage for gas hold handling.
+pub const MINT_GAS_HOLD_HANDLING_KEY: &str = "gas_hold_handling";
+/// Storage for gas hold interval.
+pub const MINT_GAS_HOLD_INTERVAL_KEY: &str = "gas_hold_interval";

@@ -33,15 +33,19 @@ use casper_types::{
             SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
         },
         handle_payment::{self, ACCUMULATION_PURSE_KEY},
-        mint::{self, ARG_ROUND_SEIGNIORAGE_RATE, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
+        mint::{
+            self, ARG_ROUND_SEIGNIORAGE_RATE, MINT_GAS_HOLD_HANDLING_KEY,
+            MINT_GAS_HOLD_INTERVAL_KEY, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY,
+        },
         SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
     },
-    AccessRights, AddressableEntity, AddressableEntityHash, AdministratorAccount, ByteCode,
-    ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLValue, Chainspec, ChainspecRegistry, Digest,
-    EntityAddr, EntityVersions, EntryPoints, EraId, FeeHandling, GenesisAccount, GenesisConfig,
-    GenesisConfigBuilder, Groups, Key, Motes, Package, PackageHash, PackageStatus, Phase,
-    ProtocolVersion, PublicKey, RefundHandling, StoredValue, SystemConfig, SystemEntityRegistry,
-    Tagged, URef, WasmConfig, U512,
+    AccessRights, AddressableEntity, AddressableEntityHash, AdministratorAccount, BlockGlobalAddr,
+    BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLValue, Chainspec,
+    ChainspecRegistry, Digest, EntityAddr, EntityVersions, EntryPointAddr, EntryPointValue,
+    EntryPoints, EraId, FeeHandling, GenesisAccount, GenesisConfig, GenesisConfigBuilder, Groups,
+    Key, Motes, Package, PackageHash, PackageStatus, Phase, ProtocolVersion, PublicKey,
+    RefundHandling, StoredValue, SystemConfig, SystemEntityRegistry, Tagged, TimeDiff, URef,
+    WasmConfig, U512,
 };
 
 use crate::{
@@ -225,6 +229,40 @@ where
             total_supply_uref
         };
 
+        let gas_hold_handling_uref =
+            {
+                let gas_hold_handling = self.config.gas_hold_balance_handling().tag();
+                let gas_hold_handling_uref = self
+                    .address_generator
+                    .borrow_mut()
+                    .new_uref(AccessRights::READ_ADD_WRITE);
+
+                self.tracking_copy.borrow_mut().write(
+                    gas_hold_handling_uref.into(),
+                    StoredValue::CLValue(CLValue::from_t(gas_hold_handling).map_err(|_| {
+                        GenesisError::CLValue(MINT_GAS_HOLD_HANDLING_KEY.to_string())
+                    })?),
+                );
+                gas_hold_handling_uref
+            };
+
+        let gas_hold_interval_uref =
+            {
+                let gas_hold_interval = self.config.gas_hold_interval_millis();
+                let gas_hold_interval_uref = self
+                    .address_generator
+                    .borrow_mut()
+                    .new_uref(AccessRights::READ_ADD_WRITE);
+
+                self.tracking_copy.borrow_mut().write(
+                    gas_hold_interval_uref.into(),
+                    StoredValue::CLValue(CLValue::from_t(gas_hold_interval).map_err(|_| {
+                        GenesisError::CLValue(MINT_GAS_HOLD_INTERVAL_KEY.to_string())
+                    })?),
+                );
+                gas_hold_interval_uref
+            };
+
         let named_keys = {
             let mut named_keys = NamedKeys::new();
             named_keys.insert(
@@ -232,7 +270,14 @@ where
                 round_seigniorage_rate_uref.into(),
             );
             named_keys.insert(TOTAL_SUPPLY_KEY.to_string(), total_supply_uref.into());
-
+            named_keys.insert(
+                MINT_GAS_HOLD_HANDLING_KEY.to_string(),
+                gas_hold_handling_uref.into(),
+            );
+            named_keys.insert(
+                MINT_GAS_HOLD_INTERVAL_KEY.to_string(),
+                gas_hold_interval_uref.into(),
+            );
             named_keys
         };
 
@@ -699,23 +744,15 @@ where
         let associated_keys = entity_kind.associated_keys();
         let maybe_account_hash = entity_kind.maybe_account_hash();
         let named_keys = maybe_named_keys.unwrap_or_default();
-        let entry_points = match maybe_entry_points {
-            Some(entry_points) => entry_points,
-            None => {
-                if maybe_account_hash.is_some() {
-                    EntryPoints::new()
-                } else {
-                    EntryPoints::new_with_default_entry_point()
-                }
-            }
-        };
 
         self.store_system_contract_named_keys(entity_hash, named_keys)?;
+        if let Some(entry_point) = maybe_entry_points {
+            self.store_system_entry_points(entity_hash, entry_point)?;
+        }
 
         let entity = AddressableEntity::new(
             package_hash,
             byte_code_hash,
-            entry_points,
             protocol_version,
             main_purse,
             associated_keys,
@@ -724,15 +761,9 @@ where
             entity_kind,
         );
 
-        let access_key = self
-            .address_generator
-            .borrow_mut()
-            .new_uref(AccessRights::READ_ADD_WRITE);
-
         // Genesis contracts can be versioned contracts.
         let contract_package = {
             let mut package = Package::new(
-                access_key,
                 EntityVersions::new(),
                 BTreeSet::default(),
                 Groups::default(),
@@ -801,6 +832,26 @@ where
         Ok(())
     }
 
+    fn store_system_entry_points(
+        &self,
+        contract_hash: AddressableEntityHash,
+        entry_points: EntryPoints,
+    ) -> Result<(), Box<GenesisError>> {
+        let entity_addr = EntityAddr::new_system(contract_hash.value());
+
+        for entry_point in entry_points.take_entry_points() {
+            let entry_point_addr =
+                EntryPointAddr::new_v1_entry_point_addr(entity_addr, entry_point.name())
+                    .map_err(GenesisError::Bytesrepr)?;
+            self.tracking_copy.borrow_mut().write(
+                Key::EntryPoint(entry_point_addr),
+                StoredValue::EntryPoint(EntryPointValue::V1CasperVm(entry_point)),
+            )
+        }
+
+        Ok(())
+    }
+
     fn store_system_entity_registry(
         &self,
         contract_name: &str,
@@ -844,13 +895,24 @@ where
         Ok(())
     }
 
+    /// Writes a tracking record to global state for block time / genesis timestamp.
+    fn store_block_time(&self) -> Result<(), Box<GenesisError>> {
+        let cl_value = CLValue::from_t(self.config.genesis_timestamp_millis())
+            .map_err(|error| GenesisError::CLValue(error.to_string()))?;
+
+        self.tracking_copy.borrow_mut().write(
+            Key::BlockGlobal(BlockGlobalAddr::BlockTime),
+            StoredValue::CLValue(cl_value),
+        );
+        Ok(())
+    }
+
     /// Performs a complete system installation.
     pub fn install(
         &mut self,
         chainspec_registry: ChainspecRegistry,
     ) -> Result<(), Box<GenesisError>> {
         // Setup system account
-
         self.setup_system_account()?;
 
         // Create mint
@@ -865,7 +927,11 @@ where
         // Create handle payment
         self.create_handle_payment()?;
 
+        // Write chainspec registry.
         self.store_chainspec_registry(chainspec_registry)?;
+
+        // Write block time to global state
+        self.store_block_time()?;
 
         Ok(())
     }

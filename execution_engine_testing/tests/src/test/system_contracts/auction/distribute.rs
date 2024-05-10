@@ -22,7 +22,7 @@ use casper_types::{
         ARG_DELEGATOR, ARG_PUBLIC_KEY, ARG_REWARDS_MAP, ARG_VALIDATOR, DELEGATION_RATE_DENOMINATOR,
         METHOD_DISTRIBUTE, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
     },
-    EntityAddr, EraId, HoldsEpoch, Key, ProtocolVersion, PublicKey, SecretKey, Timestamp, U512,
+    EntityAddr, EraId, Key, ProtocolVersion, PublicKey, SecretKey, Timestamp, U512,
 };
 
 const ARG_ENTRY_POINT: &str = "entry_point";
@@ -96,8 +96,8 @@ fn withdraw_bid(
 ) {
     let auction = builder.get_auction_contract_hash();
     let withdraw_bid_args = runtime_args! {
-        auction::ARG_PUBLIC_KEY => validator,
-        auction::ARG_AMOUNT => amount,
+        ARG_PUBLIC_KEY => validator,
+        ARG_AMOUNT => amount,
     };
     let withdraw_bid_request = ExecuteRequestBuilder::contract_call_by_hash(
         sender,
@@ -118,9 +118,9 @@ fn undelegate(
 ) {
     let auction = builder.get_auction_contract_hash();
     let undelegate_args = runtime_args! {
-        auction::ARG_DELEGATOR => delegator,
-        auction::ARG_VALIDATOR => validator,
-        auction::ARG_AMOUNT => amount,
+        ARG_DELEGATOR => delegator,
+        ARG_VALIDATOR => validator,
+        ARG_AMOUNT => amount,
     };
     let undelegate_request = ExecuteRequestBuilder::contract_call_by_hash(
         sender,
@@ -256,7 +256,7 @@ fn should_distribute_delegation_rate_zero() {
 
     let protocol_version = DEFAULT_PROTOCOL_VERSION;
     // initial token supply
-    let initial_supply = builder.total_supply(None, protocol_version);
+    let initial_supply = builder.total_supply(protocol_version, None);
     let total_payout = builder.base_round_reward(None, protocol_version);
     let expected_total_reward = *GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
     let expected_total_reward_integer = expected_total_reward.to_integer();
@@ -524,7 +524,7 @@ fn should_withdraw_bids_after_distribute() {
     let total_payout = builder.base_round_reward(None, protocol_version);
 
     // initial token supply
-    let initial_supply = builder.total_supply(None, protocol_version);
+    let initial_supply = builder.total_supply(protocol_version, None);
     let rate = builder.round_seigniorage_rate(None, protocol_version);
 
     let expected_total_reward = rate * initial_supply;
@@ -830,7 +830,7 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
 
     let protocol_version = DEFAULT_PROTOCOL_VERSION;
     // initial token supply
-    let initial_supply = builder.total_supply(None, protocol_version);
+    let initial_supply = builder.total_supply(protocol_version, None);
     let initial_rate = builder.round_seigniorage_rate(None, protocol_version);
     let initial_round_reward = builder.base_round_reward(None, protocol_version);
 
@@ -978,7 +978,7 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
         ));
 
         // Next round of rewards
-        let updated_supply = builder.total_supply(None, protocol_version);
+        let updated_supply = builder.total_supply(protocol_version, None);
         assert!(updated_supply > total_supply);
         total_supply = updated_supply;
 
@@ -1012,7 +1012,6 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
                 validator: VALIDATOR_1.clone(),
                 delegator: DELEGATOR_2.clone(),
                 amount: updelegate_amount,
-                holds_epoch: HoldsEpoch::NOT_APPLICABLE,
             },
         );
         assert!(updelegate_result.is_success(), "{:?}", updelegate_result);
@@ -1029,7 +1028,6 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
                     delegation_rate: 0,
                     minimum_delegation_amount: updelegate_amount.as_u64(),
                     maximum_delegation_amount: updelegate_amount.as_u64(),
-                    holds_epoch: HoldsEpoch::NOT_APPLICABLE,
                 }
             } else {
                 AuctionMethod::WithdrawBid {
@@ -1154,7 +1152,7 @@ fn should_distribute_delegation_rate_half() {
 
     let protocol_version = DEFAULT_PROTOCOL_VERSION;
     // initial token supply
-    let initial_supply = builder.total_supply(None, protocol_version);
+    let initial_supply = builder.total_supply(protocol_version, None);
     let total_payout = builder.base_round_reward(None, protocol_version);
     let expected_total_reward = *GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
     let expected_total_reward_integer = expected_total_reward.to_integer();
@@ -1386,7 +1384,7 @@ fn should_distribute_delegation_rate_full() {
 
     let protocol_version = DEFAULT_PROTOCOL_VERSION;
     // initial token supply
-    let initial_supply = builder.total_supply(None, protocol_version);
+    let initial_supply = builder.total_supply(protocol_version, None);
     let expected_total_reward = *GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
     let expected_total_reward_integer = expected_total_reward.to_integer();
 
@@ -1568,7 +1566,7 @@ fn should_distribute_uneven_delegation_rate_zero() {
 
     let protocol_version = DEFAULT_PROTOCOL_VERSION;
     // initial token supply
-    let initial_supply = builder.total_supply(None, protocol_version);
+    let initial_supply = builder.total_supply(protocol_version, None);
     let total_payout = builder.base_round_reward(None, protocol_version);
     let expected_total_reward = *GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
     let expected_total_reward_integer = expected_total_reward.to_integer();
@@ -1871,7 +1869,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
 
     let protocol_version = DEFAULT_PROTOCOL_VERSION;
     // initial token supply
-    let initial_supply = builder.total_supply(None, protocol_version);
+    let initial_supply = builder.total_supply(protocol_version, None);
     let total_payout = builder.base_round_reward(None, protocol_version);
     let expected_total_reward = *GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
     let expected_total_reward_integer = expected_total_reward.to_integer();
@@ -2203,7 +2201,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
 
     let protocol_version = DEFAULT_PROTOCOL_VERSION;
     // initial token supply
-    let initial_supply = builder.total_supply(None, protocol_version);
+    let initial_supply = builder.total_supply(protocol_version, None);
     let total_payout = builder.base_round_reward(None, protocol_version);
     let expected_total_reward = *GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
     let expected_total_reward_integer = expected_total_reward.to_integer();
@@ -2560,13 +2558,13 @@ fn should_increase_total_supply_after_distribute() {
 
     let protocol_version = DEFAULT_PROTOCOL_VERSION;
     // initial token supply
-    let initial_supply = builder.total_supply(None, protocol_version);
+    let initial_supply = builder.total_supply(protocol_version, None);
 
     for request in post_genesis_requests {
         builder.exec(request).commit().expect_success();
     }
 
-    let post_genesis_supply = builder.total_supply(None, protocol_version);
+    let post_genesis_supply = builder.total_supply(protocol_version, None);
 
     assert_eq!(
         initial_supply, post_genesis_supply,
@@ -2579,7 +2577,7 @@ fn should_increase_total_supply_after_distribute() {
         timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
-    let post_auction_supply = builder.total_supply(None, protocol_version);
+    let post_auction_supply = builder.total_supply(protocol_version, None);
     assert_eq!(
         initial_supply, post_auction_supply,
         "total supply should remain unchanged regardless of auction"
@@ -2606,7 +2604,7 @@ fn should_increase_total_supply_after_distribute() {
 
         builder.exec(distribute_request).expect_success().commit();
 
-        let post_distribute_supply = builder.total_supply(None, protocol_version);
+        let post_distribute_supply = builder.total_supply(protocol_version, None);
         assert!(
             initial_supply < post_distribute_supply,
             "total supply should increase after distribute ({} >= {})",
@@ -2740,13 +2738,13 @@ fn should_not_create_purses_during_distribute() {
 
     let protocol_version = DEFAULT_PROTOCOL_VERSION;
     // initial token supply
-    let initial_supply = builder.total_supply(None, protocol_version);
+    let initial_supply = builder.total_supply(protocol_version, None);
 
     for request in post_genesis_requests {
         builder.exec(request).commit().expect_success();
     }
 
-    let post_genesis_supply = builder.total_supply(None, protocol_version);
+    let post_genesis_supply = builder.total_supply(protocol_version, None);
 
     assert_eq!(
         initial_supply, post_genesis_supply,
@@ -2759,7 +2757,7 @@ fn should_not_create_purses_during_distribute() {
         timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
-    let post_auction_supply = builder.total_supply(None, protocol_version);
+    let post_auction_supply = builder.total_supply(protocol_version, None);
     assert_eq!(
         initial_supply, post_auction_supply,
         "total supply should remain unchanged regardless of auction"
@@ -2792,7 +2790,7 @@ fn should_not_create_purses_during_distribute() {
         number_of_purses_before_distribute
     );
 
-    let post_distribute_supply = builder.total_supply(None, protocol_version);
+    let post_distribute_supply = builder.total_supply(protocol_version, None);
     assert!(
         initial_supply < post_distribute_supply,
         "total supply should increase after distribute ({} >= {})",
@@ -2902,7 +2900,7 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
 
     let protocol_version = DEFAULT_PROTOCOL_VERSION;
     // initial token supply
-    let initial_supply = builder.total_supply(None, protocol_version);
+    let initial_supply = builder.total_supply(protocol_version, None);
     let expected_total_reward_before = *GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
     let expected_total_reward_integer = expected_total_reward_before.to_integer();
 
@@ -2988,7 +2986,7 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
 
     builder.upgrade(&mut upgrade_request);
 
-    let initial_supply = builder.total_supply(None, protocol_version);
+    let initial_supply = builder.total_supply(protocol_version, None);
 
     for _ in 0..5 {
         builder.advance_era();

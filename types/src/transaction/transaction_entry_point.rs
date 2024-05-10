@@ -27,6 +27,7 @@ const DELEGATE_TAG: u8 = 4;
 const UNDELEGATE_TAG: u8 = 5;
 const REDELEGATE_TAG: u8 = 6;
 const ACTIVATE_BID_TAG: u8 = 7;
+const CHANGE_BID_PUBLIC_KEY_TAG: u8 = 8;
 
 /// The entry point of a [`Transaction`].
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
@@ -148,13 +149,26 @@ pub enum TransactionEntryPoint {
         )
     )]
     ActivateBid,
+
+    /// The `change_bid_public_key` native entry point, used to change a bid's public key.
+    ///
+    /// Requires the following runtime args:
+    ///   * "public_key": `PublicKey`
+    ///   * "new_public_key": `PublicKey`
+    #[cfg_attr(
+        feature = "json-schema",
+        schemars(
+            description = "The `change_bid_public_key` native entry point, used to change a bid's public key."
+        )
+    )]
+    ChangeBidPublicKey,
 }
 
 impl TransactionEntryPoint {
     /// Returns a random `TransactionEntryPoint`.
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
-        match rng.gen_range(0..7) {
+        match rng.gen_range(0..8) {
             CUSTOM_TAG => TransactionEntryPoint::Custom(rng.random_string(1..21)),
             TRANSFER_TAG => TransactionEntryPoint::Transfer,
             ADD_BID_TAG => TransactionEntryPoint::AddBid,
@@ -163,6 +177,7 @@ impl TransactionEntryPoint {
             UNDELEGATE_TAG => TransactionEntryPoint::Undelegate,
             REDELEGATE_TAG => TransactionEntryPoint::Redelegate,
             ACTIVATE_BID_TAG => TransactionEntryPoint::ActivateBid,
+            CHANGE_BID_PUBLIC_KEY_TAG => TransactionEntryPoint::ChangeBidPublicKey,
             _ => unreachable!(),
         }
     }
@@ -177,7 +192,8 @@ impl TransactionEntryPoint {
             TransactionEntryPoint::WithdrawBid
             | TransactionEntryPoint::Undelegate
             | TransactionEntryPoint::Redelegate
-            | TransactionEntryPoint::ActivateBid => false,
+            | TransactionEntryPoint::ActivateBid
+            | TransactionEntryPoint::ChangeBidPublicKey => false,
         }
     }
 }
@@ -195,6 +211,7 @@ impl Display for TransactionEntryPoint {
             TransactionEntryPoint::Undelegate => write!(formatter, "undelegate"),
             TransactionEntryPoint::Redelegate => write!(formatter, "redelegate"),
             TransactionEntryPoint::ActivateBid => write!(formatter, "activate_bid"),
+            TransactionEntryPoint::ChangeBidPublicKey => write!(formatter, "change_bid_public_key"),
         }
     }
 }
@@ -213,6 +230,9 @@ impl ToBytes for TransactionEntryPoint {
             TransactionEntryPoint::Undelegate => UNDELEGATE_TAG.write_bytes(writer),
             TransactionEntryPoint::Redelegate => REDELEGATE_TAG.write_bytes(writer),
             TransactionEntryPoint::ActivateBid => ACTIVATE_BID_TAG.write_bytes(writer),
+            TransactionEntryPoint::ChangeBidPublicKey => {
+                CHANGE_BID_PUBLIC_KEY_TAG.write_bytes(writer)
+            }
         }
     }
 
@@ -232,7 +252,8 @@ impl ToBytes for TransactionEntryPoint {
                 | TransactionEntryPoint::Delegate
                 | TransactionEntryPoint::Undelegate
                 | TransactionEntryPoint::Redelegate
-                | TransactionEntryPoint::ActivateBid => 0,
+                | TransactionEntryPoint::ActivateBid
+                | TransactionEntryPoint::ChangeBidPublicKey => 0,
             }
     }
 }
@@ -252,6 +273,7 @@ impl FromBytes for TransactionEntryPoint {
             UNDELEGATE_TAG => Ok((TransactionEntryPoint::Undelegate, remainder)),
             REDELEGATE_TAG => Ok((TransactionEntryPoint::Redelegate, remainder)),
             ACTIVATE_BID_TAG => Ok((TransactionEntryPoint::ActivateBid, remainder)),
+            CHANGE_BID_PUBLIC_KEY_TAG => Ok((TransactionEntryPoint::ChangeBidPublicKey, remainder)),
             _ => Err(bytesrepr::Error::Formatting),
         }
     }
@@ -279,6 +301,9 @@ impl From<&str> for TransactionEntryPoint {
         }
         if value.to_lowercase() == auction::METHOD_REDELEGATE {
             return TransactionEntryPoint::Redelegate;
+        }
+        if value.to_lowercase() == auction::METHOD_CHANGE_BID_PUBLIC_KEY {
+            return TransactionEntryPoint::ChangeBidPublicKey;
         }
         TransactionEntryPoint::Custom(value.to_string())
     }
