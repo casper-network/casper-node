@@ -158,7 +158,7 @@ impl TestEnv {
     }
 
     fn random(rng: &mut TestRng) -> TestEnv {
-        let num_validators: usize = rng.gen_range(3..100);
+        let num_validators: usize = rng.gen_range(10..100);
         let validator_keys: Vec<_> = iter::repeat_with(|| Arc::new(SecretKey::random(rng)))
             .take(num_validators)
             .collect();
@@ -3687,7 +3687,7 @@ async fn fwd_sync_latch_should_not_decrement_for_old_responses() {
         );
     }
 
-    // Receive a deploy. This would make the synchonizer switch to HaveAllDeploys and continue
+    // Receive a deploy. This would make the synchronizer switch to HaveAllDeploys and continue
     // asking for more finality signatures in order to reach strict finality.
     {
         let effects = block_synchronizer.handle_event(

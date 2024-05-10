@@ -11,8 +11,8 @@ use casper_binary_port::{
     BinaryResponse, BinaryResponseAndRequest, ConsensusStatus, ConsensusValidatorChanges,
     DictionaryItemIdentifier, DictionaryQueryResult, ErrorCode, GetRequest, GetTrieFullResult,
     GlobalStateQueryResult, GlobalStateRequest, InformationRequest, InformationRequestTag,
-    LastProgress, NetworkName, NodeStatus, PayloadType, PurseIdentifier, ReactorStateName,
-    RecordId, Uptime,
+    KeyPrefix, LastProgress, NetworkName, NodeStatus, PayloadType, PurseIdentifier,
+    ReactorStateName, RecordId, Uptime,
 };
 use casper_storage::global_state::state::CommitProvider;
 use casper_types::{
@@ -339,6 +339,7 @@ async fn binary_port_component() {
         try_accept_transaction_invalid(&mut rng),
         try_accept_transaction(&secret_signing_key),
         get_balance(state_root_hash, test_account_hash),
+        get_named_keys_by_prefix(state_root_hash, test_entity_addr),
     ];
 
     for TestCase {
@@ -845,6 +846,25 @@ fn get_balance(state_root_hash: Digest, account_hash: AccountHash) -> TestCase {
                 response,
                 Some(PayloadType::BalanceResponse),
                 |res| res.available_balance == U512::one(),
+            )
+        }),
+    }
+}
+
+fn get_named_keys_by_prefix(state_root_hash: Digest, entity_addr: EntityAddr) -> TestCase {
+    TestCase {
+        name: "get_named_keys_by_prefix",
+        request: BinaryRequest::Get(GetRequest::State(Box::new(
+            GlobalStateRequest::ItemsByPrefix {
+                state_identifier: Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
+                key_prefix: KeyPrefix::NamedKeysByEntity(entity_addr),
+            },
+        ))),
+        asserter: Box::new(|response| {
+            assert_response::<Vec<StoredValue>, _>(
+                response,
+                Some(PayloadType::StoredValues),
+                |res| res.iter().all(|v| matches!(v, StoredValue::NamedKey(_))),
             )
         }),
     }
