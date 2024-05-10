@@ -50,7 +50,7 @@ pub(crate) enum Error {
     ExpectedDeploy,
 
     /// Component state error: expected a version 1 transaction.
-    #[error("internal error: expected a deploy")]
+    #[error("internal error: expected a transaction")]
     ExpectedTransactionV1,
 }
 
@@ -69,11 +69,15 @@ impl From<Error> for BinaryPortErrorCode {
     fn from(err: Error) -> Self {
         match err {
             Error::EmptyBlockchain
-            | Error::InvalidTransaction(_)
             | Error::Parameters { .. }
             | Error::Expired { .. }
             | Error::ExpectedDeploy
-            | Error::ExpectedTransactionV1 => BinaryPortErrorCode::InvalidTransaction,
+            | Error::ExpectedTransactionV1 => {
+                BinaryPortErrorCode::InvalidTransactionOrDeployUnspecified
+            }
+            Error::InvalidTransaction(invalid_transaction) => {
+                BinaryPortErrorCode::from(invalid_transaction)
+            }
         }
     }
 }

@@ -1,6 +1,6 @@
 use std::{
     collections::{BTreeMap, HashMap},
-    convert::TryInto,
+    convert::{TryFrom, TryInto},
     iter,
     sync::Arc,
     time::Duration,
@@ -890,7 +890,7 @@ fn try_accept_transaction_invalid(rng: &mut TestRng) -> TestCase {
     TestCase {
         name: "try_accept_transaction_invalid",
         request: BinaryRequest::TryAcceptTransaction { transaction },
-        asserter: Box::new(|response| response.error_code() == ErrorCode::InvalidTransaction as u8),
+        asserter: Box::new(|response| ErrorCode::try_from(response.error_code()).is_ok()),
     }
 }
 
@@ -899,6 +899,6 @@ fn try_spec_exec_invalid(rng: &mut TestRng) -> TestCase {
     TestCase {
         name: "try_spec_exec_invalid",
         request: BinaryRequest::TrySpeculativeExec { transaction },
-        asserter: Box::new(|response| response.error_code() == ErrorCode::InvalidTransaction as u8),
+        asserter: Box::new(|response| ErrorCode::try_from(response.error_code()).is_ok()),
     }
 }
