@@ -330,11 +330,24 @@ pub(crate) fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'stati
     for entrypoint in entry_points {
         let key = Key::EntryPoint(EntryPointAddr::VmCasperV2 {
             entity_addr,
-            selector: entrypoint.selector,
+            selector: Some(entrypoint.selector),
         });
         let value = EntryPointValue::V2CasperVm(EntryPointV2 {
             function_index: entrypoint.fptr,
             flags: entrypoint.flags,
+        });
+        let stored_value = StoredValue::EntryPoint(value);
+        caller.context_mut().tracking_copy.write(key, stored_value);
+    }
+
+    if manifest.fallback_fptr != 0 {
+        let key = Key::EntryPoint(EntryPointAddr::VmCasperV2 {
+            entity_addr,
+            selector: None,
+        });
+        let value = EntryPointValue::V2CasperVm(EntryPointV2 {
+            function_index: manifest.fallback_fptr,
+            flags: 0,
         });
         let stored_value = StoredValue::EntryPoint(value);
         caller.context_mut().tracking_copy.write(key, stored_value);
@@ -371,7 +384,7 @@ pub(crate) fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'stati
                 .with_gas_limit(gas_limit)
                 .with_target(ExecutionKind::Contract {
                     address: contract_hash,
-                    selector: Selector::new(selector),
+                    selector: Some(Selector::new(selector)),
                 })
                 .with_input(input_data.unwrap_or_default())
                 .with_value(value)
@@ -494,7 +507,7 @@ pub(crate) fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>
         .with_gas_limit(gas_limit)
         .with_target(ExecutionKind::Contract {
             address,
-            selector: Selector::new(selector),
+            selector: Some(Selector::new(selector)),
         })
         .with_value(value)
         .with_input(input_data)

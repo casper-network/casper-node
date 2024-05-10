@@ -26,6 +26,7 @@ unsafe impl TriviallyTransmutable for EntryPoint {}
 pub(crate) struct Manifest {
     pub(crate) entry_points_ptr: u32,
     pub(crate) entry_points_size: u32,
+    pub(crate) fallback_fptr: u32,
 }
 
 unsafe impl TriviallyTransmutable for Manifest {}

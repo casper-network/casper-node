@@ -42,7 +42,7 @@ pub struct SchemaArgument {
 
 pub struct SchemaEntryPoint {
     pub name: String,
-    pub selector: u32,
+    pub selector: Option<u32>,
     pub arguments: Vec<SchemaArgument>,
     pub result: abi::Declaration,
     #[serde(

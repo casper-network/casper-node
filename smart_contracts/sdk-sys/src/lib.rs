@@ -1,4 +1,5 @@
 pub mod for_each_host_function;
+pub mod utils;
 
 #[repr(C)]
 pub struct Param {

@@ -17,6 +17,7 @@ bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
     pub struct EntryPointFlags: u32 {
         const CONSTRUCTOR = 0x0000_0001;
+        const FALLBACK = 0x0000_0002;
     }
 
     /// Flags that can be passed as part of calling contracts.

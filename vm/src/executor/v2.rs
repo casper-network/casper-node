@@ -204,7 +204,7 @@ impl Executor for ExecutorV2 {
                         let function_index = {
                             let entry_point_addr = EntryPointAddr::VmCasperV2 {
                                 entity_addr,
-                                selector: selector.get(),
+                                selector: selector.map(|selector| selector.get()),
                             };
                             let key = Key::EntryPoint(entry_point_addr);
                             match tracking_copy.read(&key) {

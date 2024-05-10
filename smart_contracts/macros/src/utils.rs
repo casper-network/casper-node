@@ -1,6 +1,35 @@
 use quote::quote;
 use syn::Signature;
 
+const fn zero_exists_1d(arr: &[u8]) -> bool {
+    if arr.is_empty() {
+        return false;
+    }
+
+    let mut i = 0;
+    while i < arr.len() {
+        if arr[i] == 0 {
+            return true;
+        }
+        i += 1;
+    }
+
+    false
+}
+
+const fn zero_exists_2d(arr: &[&[u8]]) -> bool {
+    let mut i = 0;
+    while i < arr.len() {
+        if zero_exists_1d(arr[i]) {
+            return true;
+        }
+        i += 1;
+    }
+    return false;
+}
+
+// const fn
+
 /// Type definition without spaces
 fn sanitized_type_name(ty: &syn::Type) -> String {
     match ty {

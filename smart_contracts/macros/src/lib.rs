@@ -2,7 +2,7 @@ pub(crate) mod utils;
 
 extern crate proc_macro;
 
-use darling::FromAttributes;
+use darling::{ast, util::parse_expr, FromAttributes, FromMeta};
 use proc_macro::TokenStream;
 use proc_macro2::Span;
 use quote::{format_ident, quote};
@@ -11,6 +11,13 @@ use syn::{
     ItemTrait, ItemUnion, LitStr, Type,
 };
 use vm_common::{flags::EntryPointFlags, selector::Selector};
+
+#[derive(Debug, FromMeta)]
+enum SelectorAttribute {
+    #[darling(word)]
+    Fallback,
+    Value(u32),
+}
 
 #[derive(Debug, FromAttributes)]
 #[darling(attributes(casper))]
@@ -24,6 +31,8 @@ struct MethodAttribute {
     private: bool,
     #[darling(default)]
     payable: bool,
+    #[darling(default)]
+    selector: Option<SelectorAttribute>,
 }
 
 #[derive(Debug, FromAttributes)]
@@ -81,13 +90,8 @@ pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
             }
 
             fn create<T:casper_sdk::ToCallData>(value: u64, call_data: T) -> Result<casper_sdk::ContractHandle<Self::Ref>, casper_sdk::types::CallError> {
-                let entry_points: &[&[casper_sdk::sys::EntryPoint]] = &[
-                    #(#dynamic_manifest,)*
-                    #name::MANIFEST.as_slice(),
-                ];
-
-
                 // TODO: Pass multiple manifests by ptr to avoid allocation
+                let entry_points = &<(#ref_name)>::ENTRY_POINTS;
                 let entry_points_allocated: Vec<casper_sdk::sys::EntryPoint> = entry_points.into_iter().map(|i| i.into_iter().copied()).flatten().collect();
 
                 let manifest = casper_sdk::sys::Manifest {
@@ -102,13 +106,8 @@ pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
             }
 
             fn default_create() -> Result<casper_sdk::ContractHandle<Self::Ref>, casper_sdk::types::CallError> {
-                let entry_points: &[&[casper_sdk::sys::EntryPoint]] = &[
-                    #(#dynamic_manifest,)*
-                    #name::MANIFEST.as_slice(),
-                ];
-
-
                 // TODO: Pass multiple manifests by ptr to avoid allocation
+                let entry_points = &<(#ref_name)>::ENTRY_POINTS;
                 let entry_points_allocated: Vec<casper_sdk::sys::EntryPoint> = entry_points.into_iter().map(|i| i.into_iter().copied()).flatten().collect();
                 let manifest = casper_sdk::sys::Manifest {
                     entry_points: entry_points_allocated.as_ptr(),
@@ -116,11 +115,25 @@ pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
                 };
                 let create_result = casper_sdk::host::casper_create(None, &manifest, 0, None, None)?;
                 Ok(casper_sdk::ContractHandle::<Self::Ref>::from_address(create_result.contract_address))
+                // todo!()
             }
         }
 
         #[derive(Debug)]
         pub struct #ref_name;
+
+        #[doc(hidden)]
+        impl #ref_name {
+            #[doc(hidden)]
+            const ENTRY_POINTS: &'static [&'static [casper_sdk::sys::EntryPoint]] = &[
+                #(#dynamic_manifest,)*
+                &(#name::MANIFEST),
+            ];
+        }
+
+        const _: () = {
+            assert!(casper_sdk::sys::utils::fallback_selector_count(<#ref_name>::ENTRY_POINTS) <= 1, "There can be at most one fallback entry point");
+        };
 
         #(#impl_for_ref)*
     };
@@ -152,6 +165,8 @@ fn generate_call_data_return(output: &syn::ReturnType) -> proc_macro2::TokenStre
 #[proc_macro_attribute]
 pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
     let mut attrs_iter = attrs.into_iter().peekable();
+
+    let mut has_fallback_selector = false;
 
     for attr in &mut attrs_iter {
         let item = item.clone();
@@ -219,9 +234,27 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                             let dispatch_func_name =
                                 format_ident!("{trait_name}_{func_name}_dispatch");
 
-                            let selector_value = utils::compute_selector_value(&func.sig);
+                            let selector_value = match method_attribute.selector {
+                                Some(SelectorAttribute::Fallback) => {
+                                    if has_fallback_selector {
+                                        let err = syn::Error::new(
+                                            Span::call_site(),
+                                            "Only a single fallback entry point can be defined",
+                                        );
+                                        return TokenStream::from(err.to_compile_error());
+                                    }
+                                    has_fallback_selector = true;
+                                    None
+                                }
+                                Some(SelectorAttribute::Value(selector_value)) => {
+                                    Some(selector_value)
+                                }
+                                None => Some(utils::compute_selector_value(&func.sig)),
+                            };
 
-                            combined_selectors ^= Selector::new(selector_value);
+                            if let Some(selector_value) = selector_value {
+                                combined_selectors ^= Selector::new(selector_value);
+                            }
 
                             let arg_names_and_types = func
                                 .sig
@@ -254,13 +287,36 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                 });
                             }
 
+                            let schema_selector = match selector_value {
+                                Some(value) => {
+                                    quote! {
+                                        Some(#value)
+                                    }
+                                }
+                                None => {
+                                    quote! {
+                                        None
+                                    }
+                                }
+                            };
+                            let mut flags = EntryPointFlags::empty();
+
+                            let manifest_selector = match selector_value {
+                                Some(value) => value,
+                                None => {
+                                    flags.set(EntryPointFlags::FALLBACK, true);
+                                    0
+                                }
+                            };
+
+                            let flags = flags.bits();
                             schema_entry_points.push(quote! {
                                 casper_sdk::schema::SchemaEntryPoint {
                                     name: stringify!(#func_name).into(),
-                                    selector: #selector_value,
+                                    selector: #schema_selector,
                                     arguments: vec![ #(#args,)* ],
                                     result: #result,
-                                    flags: vm_common::flags::EntryPointFlags::default(), // TODO: Constructors in traits
+                                    flags: vm_common::flags::EntryPointFlags::from_bits(#flags).unwrap(),
                                 }
                             });
 
@@ -295,12 +351,12 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
 
                             dispatch_table.push(quote! {
                                 casper_sdk::sys::EntryPoint {
-                                    selector: #selector_value,
+                                    selector: #manifest_selector,
                                     fptr: {
                                         #handle_dispatch
                                         #dispatch_func_name::<T>
                                     },
-                                    flags: 0, // TODO?
+                                    flags: #flags, // TODO?
                                 }
                             });
 
@@ -320,7 +376,15 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                     self,
                                 })
                             };
-                            extra_code.push(quote! {
+
+                            let is_fallback = if let Some(selector) = method_attribute.selector {
+                                matches!(selector, SelectorAttribute::Fallback)
+                            } else {
+                                false
+                            };
+
+                            if !is_fallback {
+                                extra_code.push(quote! {
                                 fn #func_name<'a>(#self_ty #(#arg_names: #arg_types,)*) -> impl casper_sdk::ToCallData<Return<'a> = #call_data_return_lifetime> {
                                     #[derive(BorshSerialize)]
                                     struct CallData {
@@ -341,6 +405,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                     }
                                 }
                             });
+                            }
                         }
                         syn::TraitItem::Type(_) => todo!("Type"),
                         syn::TraitItem::Macro(_) => todo!("Macro"),
@@ -421,12 +486,13 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                         }
                 };
 
-                return quote! {
+                let foo = quote! {
                     #item_trait
 
                     #extension_struct
-                }
-                .into();
+                };
+
+                return foo.into();
             }
 
             proc_macro::TokenTree::Ident(ident) if ident.to_string() == "contract" => {
@@ -465,6 +531,8 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                         let method_attribute;
                         let mut flag_value = EntryPointFlags::empty();
 
+                        let selector_value: Option<u32>;
+
                         let func = match entry_point {
                             syn::ImplItem::Const(_) => todo!("Const"),
                             syn::ImplItem::Fn(ref mut func) => {
@@ -479,10 +547,30 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
 
                                 method_attribute =
                                     MethodAttribute::from_attributes(&func.attrs).unwrap();
+
                                 func.attrs.clear();
 
                                 let name = func.sig.ident.clone();
                                 names.push(name.clone());
+
+                                selector_value = match method_attribute.selector {
+                                    Some(SelectorAttribute::Fallback) => {
+                                        if has_fallback_selector {
+                                            let err = syn::Error::new(
+                                                Span::call_site(),
+                                                "Only a single fallback entry point can be defined",
+                                            );
+                                            return TokenStream::from(err.to_compile_error());
+                                        }
+                                        has_fallback_selector = true;
+                                        // Fallback entry points does not have valid selectors
+                                        None
+                                    }
+                                    Some(SelectorAttribute::Value(selector_value)) => {
+                                        Some(selector_value)
+                                    }
+                                    None => Some(utils::compute_selector_value(&func.sig)),
+                                };
 
                                 let arg_names_and_types = func
                                     .sig
@@ -613,9 +701,15 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                     flag_value |= EntryPointFlags::CONSTRUCTOR;
                                 }
 
-                                let bits = flag_value.bits();
+                                let selector_value = match selector_value {
+                                    Some(value) => value,
+                                    None => {
+                                        flag_value |= EntryPointFlags::FALLBACK;
+                                        0
+                                    }
+                                };
 
-                                let selector = utils::compute_selector_value(&func.sig);
+                                let bits = flag_value.bits();
 
                                 manifest_entry_points.push(quote! {
                                 {
@@ -634,7 +728,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                         }
 
                                     casper_sdk::sys::EntryPoint {
-                                        selector: #selector,
+                                        selector: #selector_value,
                                         fptr: #name,
                                         flags: #bits,
                                     }
@@ -683,7 +777,15 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                             })
                                         };
 
-                                        extra_code.push(quote! {
+                                        let is_fallback =
+                                            if let Some(selector) = method_attribute.selector {
+                                                matches!(selector, SelectorAttribute::Fallback)
+                                            } else {
+                                                false
+                                            };
+
+                                        if !is_fallback {
+                                            extra_code.push(quote! {
                                             pub fn #name<'a>(#self_ty #(#arg_names: #arg_types,)*) -> impl casper_sdk::ToCallData<Return<'a> = #call_data_return_lifetime> {
                                                 #[derive(BorshSerialize, PartialEq, Debug)]
                                                 struct #ident {
@@ -691,7 +793,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                                 }
 
                                                 impl casper_sdk::ToCallData for #ident {
-                                                    const SELECTOR: vm_common::selector::Selector = vm_common::selector::Selector::new(#selector);
+                                                    const SELECTOR: vm_common::selector::Selector = vm_common::selector::Selector::new(#selector_value);
                                                     type Return<'a> = #call_data_return_lifetime;
 
                                                     fn input_data(&self) -> Option<Vec<u8>> {
@@ -704,6 +806,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                                 }
                                             }
                                         });
+                                        }
                                     }
 
                                     _ => todo!("Different self_ty currently unsupported"),
@@ -791,14 +894,19 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                         // for arg in &entry_point
                         let bits = flag_value.bits();
 
-                        let selector = utils::compute_selector_value(&func.sig);
+                        if let Some(selector_value) = selector_value {
+                            combined_selectors ^= Selector::new(selector_value);
+                        }
 
-                        combined_selectors ^= Selector::new(selector);
+                        let schema_selector = match selector_value {
+                            Some(value) => quote! { Some(#value) },
+                            None => quote! { None },
+                        };
 
                         defs.push(quote! {
                             casper_sdk::schema::SchemaEntryPoint {
                                 name: stringify!(#func_name).into(),
-                                selector: #selector,
+                                selector: #schema_selector,
                                 arguments: vec![ #(#args,)* ],
                                 result: #result,
                                 flags: vm_common::flags::EntryPointFlags::from_bits(#bits).unwrap(),
@@ -880,7 +988,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                             }
                         }
                     };
-
+                    // return foo.into();
                     return res.into();
                 } else {
                     let err = syn::Error::new(
@@ -1304,10 +1412,10 @@ pub fn selector(input: TokenStream) -> TokenStream {
     let str = input.value();
     let bytes = str.as_bytes();
 
-    let selector = utils::compute_selector_bytes(bytes);
+    let selector_value = utils::compute_selector_bytes(bytes);
 
     TokenStream::from(quote! {
-        vm_common::selector::Selector::new(#selector)
+        vm_common::selector::Selector::new(#selector_value)
     })
     .into()
 }

@@ -192,7 +192,9 @@ pub enum ExecutionKind {
         /// Address of the contract.
         address: Address,
         /// Entry point selector.
-        selector: Selector,
+        ///
+        /// If `None`, fallback entry point is used (if present).
+        selector: Option<Selector>,
     },
 }
 

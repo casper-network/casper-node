@@ -529,7 +529,9 @@ impl Codegen {
 
             func.line(format!(
                 r#"const SELECTOR: Selector = Selector::new({});"#,
-                entry_point.selector
+                entry_point
+                    .selector
+                    .expect("TODO: Handle fallback entrypoint"),
             ));
 
             func.line("let value = 0; // TODO: Transferring values");
@@ -589,7 +591,10 @@ impl Codegen {
             impl_block.associate_const(
                 "SELECTOR",
                 "Selector",
-                format!("Selector::new({})", entry_point.selector),
+                format!(
+                    "Selector::new({})",
+                    entry_point.selector.expect("Handle fallback")
+                ),
                 String::new(),
             );
 

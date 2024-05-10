@@ -35,16 +35,7 @@ impl From<CallError> for TokenOwnerError {
     }
 }
 
-#[casper(trait_definition)]
-pub trait ReceiveTokens {
-    fn receive(&mut self);
-    fn second_method(&mut self) {
-        log!("Second method");
-    }
-}
-
 #[derive(Contract, CasperSchema, BorshSerialize, BorshDeserialize, CasperABI, Debug, Default)]
-#[casper(impl_traits(ReceiveTokens))]
 pub struct TokenOwnerContract {
     initial_balance: u64,
     received_tokens: u64,
@@ -118,14 +109,6 @@ impl TokenOwnerContract {
 
     pub fn total_received_tokens(&self) -> u64 {
         self.received_tokens
-    }
-}
-
-impl ReceiveTokens for TokenOwnerContract {
-    fn receive(&mut self) {
-        let value = host::get_value();
-        log!("Token owner received {value} tokens");
-        self.received_tokens += value;
     }
 }
 
@@ -385,11 +368,12 @@ impl Harness {
                 );
             }
             Entity::Contract(contract_address) => {
-                ContractHandle::<ReceiveTokensRef>::from_address(contract_address)
-                    .build_call()
-                    .with_value(amount)
-                    .call(|contract| contract.receive())
-                    .map_err(|e| CustomError::WithBody(format!("Receive contract failed{e:?}")))?;
+                todo!()
+                // ContractHandle::<ReceiveTokensRef>::from_address(contract_address)
+                //     .build_call()
+                //     .with_value(amount)
+                //     .call(|contract| contract.receive())
+                //     .map_err(|e| CustomError::WithBody(format!("Receive contract failed{e:?}")))?;
             }
         }
 
@@ -403,6 +387,31 @@ impl Harness {
         }
         let caller = host::get_caller();
         self.balances.get(&caller).unwrap_or(0)
+    }
+
+    #[casper(selector(fallback))]
+    pub fn fallback_entrypoint(&mut self) {
+        // Called when no entrypoint is matched
+        //
+        // Is invoked when
+        // a) user performs plan CSPR transfer (not a contract call)
+        //   a.1) if there's no fallback entrypoint, the transfer will fail
+        //   a.2) if there's fallback entrypoint, it will be called
+        // b) user calls a contract with no matching entrypoint
+        //   b.1) if there's no fallback entrypoint, the call will fail
+        //   b.2) if there's fallback entrypoint, it will be called and user can
+        log!(
+            "This is a fallback entrypoint with value={}",
+            host::get_value()
+        );
+    }
+
+    #[casper(selector(value = 0x0B4DC0D3))]
+    pub fn fixed_selector(&mut self) {
+        log!(
+            "This is a fixed selector entrypoint with value={}",
+            host::get_value()
+        );
     }
 }
 

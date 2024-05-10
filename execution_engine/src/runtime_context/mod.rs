@@ -715,7 +715,7 @@ where
             | StoredValue::Message(_)
             | StoredValue::Reservation(_)
             | StoredValue::EntryPoint(_)
-            | StoredValue::RawBytes(_raw_bytes) => Ok(()),
+            | StoredValue::RawBytes(_) => Ok(()),
         }
     }
 

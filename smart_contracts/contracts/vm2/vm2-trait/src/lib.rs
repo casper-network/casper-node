@@ -9,13 +9,21 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use casper_macros::{casper, CasperABI, CasperSchema, Contract};
 use casper_sdk::{
     collections::{sorted_vector::SortedVector, Map, Vector},
-    host::Entity,
+    host::{self, Entity},
     log,
     types::Address,
     Contract, ContractHandle,
 };
 
 const GREET_RETURN_VALUE: u64 = 123456789;
+
+#[casper(trait_definition)]
+trait HasFallback {
+    #[casper(selector(fallback))]
+    fn fallback(&self) {
+        log!("Fallback called with value={}", host::get_value());
+    }
+}
 
 #[casper(trait_definition)]
 trait Trait1 {
@@ -173,7 +181,7 @@ pub trait AccessControl {
 #[derive(
     Default, Contract, CasperSchema, BorshSerialize, BorshDeserialize, CasperABI, Debug, Clone,
 )]
-#[casper(impl_traits(Trait1, Counter))]
+#[casper(impl_traits(Trait1, HasFallback, Counter))]
 struct HasTraits {
     counter_state: CounterState,
     ownable_state: OwnableState,
@@ -189,6 +197,8 @@ impl Trait1 for HasTraits {
         lhs + rhs
     }
 }
+
+impl HasFallback for HasTraits {}
 
 // Implementing traits does not require extra annotation as the trait dispatcher is generated at the
 // trait level.
@@ -364,6 +374,19 @@ mod tests {
     }
 
     #[test]
+    fn entrypoints() {
+        let entrypoints = HasTraitsRef::ENTRY_POINTS;
+
+        let mut i = 0;
+        for entrypoint in entrypoints.to_vec().into_iter().flatten() {
+            if entrypoint.selector == 0 && entrypoint.flags == EntryPointFlags::FALLBACK.bits() {
+                i += 1;
+            }
+        }
+        assert_eq!(i, 1, "Exactly one fallback method");
+    }
+
+    #[test]
     fn trait_has_schema() {
         // We can't attach methods to trait itself, but we can generate an "${TRAIT}Ext" struct and
         // attach extra information to it. let schema = Trait1::schema();
@@ -377,28 +400,28 @@ mod tests {
             BTreeSet::from_iter([
                 SchemaEntryPoint {
                     name: "get_counter_value".to_string(),
-                    selector: selector!("get_counter_value").get(),
+                    selector: Some(selector!("get_counter_value").get()),
                     arguments: vec![],
                     result: "U64".to_string(),
                     flags: EntryPointFlags::empty()
                 },
                 SchemaEntryPoint {
                     name: "get_counter_state".to_string(),
-                    selector: selector!("get_counter_state").get(),
+                    selector: Some(selector!("get_counter_state").get()),
                     arguments: vec![],
                     result: "vm2_trait::CounterState".to_string(),
                     flags: EntryPointFlags::empty()
                 },
                 SchemaEntryPoint {
                     name: "decrement".to_string(),
-                    selector: selector!("decrement").get(),
+                    selector: Some(selector!("decrement").get()),
                     arguments: vec![],
                     result: "()".to_string(),
                     flags: EntryPointFlags::empty()
                 },
                 SchemaEntryPoint {
                     name: "increment".to_string(),
-                    selector: selector!("increment").get(),
+                    selector: Some(selector!("increment").get()),
                     arguments: vec![],
                     result: "()".to_string(),
                     flags: EntryPointFlags::empty()
@@ -463,6 +486,16 @@ mod tests {
                 .any(|e| e.name == "counter_state_mut"),
             "Trait method marked as private"
         );
+
+        let fallback = schema
+            .entry_points
+            .iter()
+            .filter_map(|e| if e.name == "fallback" { Some(e) } else { None })
+            .next()
+            .expect("Fallback method present in schema");
+
+        assert_eq!(fallback.selector, None);
+        assert_eq!(fallback.flags, EntryPointFlags::FALLBACK);
     }
 
     #[test]
@@ -470,7 +503,7 @@ mod tests {
         let _ret = dispatch_with(Environment::default(), || {
             let constructor = super::HasTraitsRef::new(5);
 
-            let has_traits_handle = HasTraits::create(constructor).expect("Constructor works");
+            let has_traits_handle = HasTraits::create(0, constructor).expect("Constructor works");
 
             let value = host::call(
                 &has_traits_handle.contract_address(),
@@ -479,7 +512,7 @@ mod tests {
             )
             .expect("Call");
 
-            assert_eq!(value.into_return_value(), 5);
+            assert_eq!(value.into_result(), Ok(5));
         });
         log!("OK");
     }
