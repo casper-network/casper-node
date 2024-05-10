@@ -254,7 +254,7 @@ impl<M: Meter<Key, StoredValue>> TrackingCopyCache<M> {
 
 /// A helper type for `TrackingCopyCache` that allows convenient storage and access
 /// to keys as bytes.
-/// It's equality and ordering is based on the byte representation of the key.
+/// Its equality and ordering is based on the byte representation of the key.
 struct KeyWithByteRepr(Key, Vec<u8>);
 
 impl KeyWithByteRepr {
