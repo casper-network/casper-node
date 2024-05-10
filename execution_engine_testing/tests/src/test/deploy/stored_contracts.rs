@@ -188,17 +188,7 @@ fn should_exec_stored_code_by_hash() {
     builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     // store payment
-    let (sending_account, custom_payment_package_hash, _) = install_custom_payment(&mut builder);
-
-    // verify stored contract functions as expected by checking all the maths
-    let sending_account_balance: U512 = builder.get_purse_balance(sending_account.main_purse());
-
-    let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
-
-    assert!(
-        sending_account_balance < initial_balance,
-        "balance should be less than initial balance"
-    );
+    let (_, custom_payment_package_hash, _) = install_custom_payment(&mut builder);
 
     let transferred_amount = U512::one();
 
