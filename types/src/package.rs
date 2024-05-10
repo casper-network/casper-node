@@ -29,9 +29,7 @@ use crate::{
     AddressableEntityHash, CLType, CLTyped, HashAddr, BLAKE2B_DIGEST_LENGTH, KEY_HASH_LENGTH,
 };
 
-const PACKAGE_STRING_PREFIX: &str = "contract-package-";
-// We need to support the legacy prefix of "contract-package-wasm".
-const PACKAGE_STRING_LEGACY_EXTRA_PREFIX: &str = "wasm";
+const PACKAGE_STRING_PREFIX: &str = "package-";
 
 /// Associated error type of `TryFrom<&[u8]>` for `ContractHash`.
 #[derive(Debug)]
@@ -259,6 +257,7 @@ impl KeyValueLabels for EntityVersionLabels {
 impl KeyValueJsonSchema for EntityVersionLabels {
     const JSON_SCHEMA_KV_NAME: Option<&'static str> = Some("EntityVersionAndHash");
 }
+
 /// Collection of named groups.
 #[derive(Clone, PartialEq, Eq, Default, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
@@ -395,13 +394,9 @@ impl PackageHash {
     /// Parses a string formatted as per `Self::to_formatted_string()` into a
     /// `PackageHash`.
     pub fn from_formatted_str(input: &str) -> Result<Self, FromStrError> {
-        let remainder = input
+        let hex_addr = input
             .strip_prefix(PACKAGE_STRING_PREFIX)
             .ok_or(FromStrError::InvalidPrefix)?;
-
-        let hex_addr = remainder
-            .strip_prefix(PACKAGE_STRING_LEGACY_EXTRA_PREFIX)
-            .unwrap_or(remainder);
 
         let bytes = HashAddr::try_from(checksummed_hex::decode(hex_addr)?.as_ref())?;
         Ok(PackageHash(bytes))
@@ -607,8 +602,6 @@ impl FromBytes for PackageStatus {
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct Package {
-    /// Key used to add or disable versions.
-    access_key: URef,
     /// All versions (enabled & disabled).
     versions: EntityVersions,
     /// Collection of disabled entity versions. The runtime will not permit disabled entity
@@ -631,14 +624,12 @@ impl CLTyped for Package {
 impl Package {
     /// Create new `Package` (with no versions) from given access key.
     pub fn new(
-        access_key: URef,
         versions: EntityVersions,
         disabled_versions: BTreeSet<EntityVersionKey>,
         groups: Groups,
         lock_status: PackageStatus,
     ) -> Self {
         Package {
-            access_key,
             versions,
             disabled_versions,
             groups,
@@ -656,11 +647,6 @@ impl Package {
         self.disabled_versions.remove(&entity_version_key);
 
         Ok(())
-    }
-
-    /// Get the access key for this entity.
-    pub fn access_key(&self) -> URef {
-        self.access_key
     }
 
     /// Get the mutable group definitions for this entity.
@@ -847,15 +833,13 @@ impl ToBytes for Package {
     }
 
     fn serialized_length(&self) -> usize {
-        self.access_key.serialized_length()
-            + self.versions.serialized_length()
+        self.versions.serialized_length()
             + self.disabled_versions.serialized_length()
             + self.groups.serialized_length()
             + self.lock_status.serialized_length()
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        self.access_key().write_bytes(writer)?;
         self.versions().write_bytes(writer)?;
         self.disabled_versions().write_bytes(writer)?;
         self.groups().write_bytes(writer)?;
@@ -867,14 +851,12 @@ impl ToBytes for Package {
 
 impl FromBytes for Package {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (access_key, bytes) = URef::from_bytes(bytes)?;
         let (versions, bytes) = EntityVersions::from_bytes(bytes)?;
         let (disabled_versions, bytes) = BTreeSet::<EntityVersionKey>::from_bytes(bytes)?;
         let (groups, bytes) = Groups::from_bytes(bytes)?;
         let (lock_status, bytes) = PackageStatus::from_bytes(bytes)?;
 
         let result = Package {
-            access_key,
             versions,
             disabled_versions,
             groups,
@@ -891,8 +873,8 @@ mod tests {
 
     use super::*;
     use crate::{
-        AccessRights, EntityVersionKey, EntryPoint, EntryPointAccess, EntryPointType, Parameter,
-        ProtocolVersion, URef,
+        AccessRights, EntityVersionKey, EntryPoint, EntryPointAccess, EntryPointPayment,
+        EntryPointType, Parameter, ProtocolVersion, URef,
     };
     use alloc::borrow::ToOwned;
 
@@ -901,7 +883,6 @@ mod tests {
 
     fn make_package_with_two_versions() -> Package {
         let mut package = Package::new(
-            URef::new([0; 32], AccessRights::NONE),
             EntityVersions::default(),
             BTreeSet::new(),
             Groups::default(),
@@ -934,6 +915,7 @@ mod tests {
                 CLType::U32,
                 EntryPointAccess::groups(&["Group 2"]),
                 EntryPointType::Caller,
+                EntryPointPayment::Caller,
             );
             ret.insert(entrypoint.name().to_owned(), entrypoint);
             let entrypoint = EntryPoint::new(
@@ -942,6 +924,7 @@ mod tests {
                 CLType::U32,
                 EntryPointAccess::groups(&["Group 1"]),
                 EntryPointType::Caller,
+                EntryPointPayment::Caller,
             );
             ret.insert(entrypoint.name().to_owned(), entrypoint);
             ret
@@ -960,7 +943,6 @@ mod tests {
     fn next_entity_version() {
         let major = 1;
         let mut package = Package::new(
-            URef::new([0; 32], AccessRights::NONE),
             EntityVersions::default(),
             BTreeSet::default(),
             Groups::default(),
@@ -1198,69 +1180,27 @@ mod tests {
         assert_eq!(package_hash, decoded);
 
         let invalid_prefix =
-            "contract-package0000000000000000000000000000000000000000000000000000000000000000";
+            "package0000000000000000000000000000000000000000000000000000000000000000";
         assert!(matches!(
             PackageHash::from_formatted_str(invalid_prefix).unwrap_err(),
             FromStrError::InvalidPrefix
         ));
 
-        let short_addr =
-            "contract-package-00000000000000000000000000000000000000000000000000000000000000";
+        let short_addr = "package-00000000000000000000000000000000000000000000000000000000000000";
         assert!(matches!(
             PackageHash::from_formatted_str(short_addr).unwrap_err(),
             FromStrError::Hash(_)
         ));
 
         let long_addr =
-            "contract-package-000000000000000000000000000000000000000000000000000000000000000000";
+            "package-000000000000000000000000000000000000000000000000000000000000000000";
         assert!(matches!(
             PackageHash::from_formatted_str(long_addr).unwrap_err(),
             FromStrError::Hash(_)
         ));
 
         let invalid_hex =
-            "contract-package-000000000000000000000000000000000000000000000000000000000000000g";
-        assert!(matches!(
-            PackageHash::from_formatted_str(invalid_hex).unwrap_err(),
-            FromStrError::Hex(_)
-        ));
-    }
-
-    #[test]
-    fn package_hash_from_legacy_str() {
-        let package_hash = PackageHash([3; 32]);
-        let hex_addr = package_hash.to_string();
-        let legacy_encoded = format!("contract-package-wasm{}", hex_addr);
-        let decoded_from_legacy = PackageHash::from_formatted_str(&legacy_encoded)
-            .expect("should accept legacy prefixed string");
-        assert_eq!(
-            package_hash, decoded_from_legacy,
-            "decoded_from_legacy should equal decoded"
-        );
-
-        let invalid_prefix =
-            "contract-packagewasm0000000000000000000000000000000000000000000000000000000000000000";
-        assert!(matches!(
-            PackageHash::from_formatted_str(invalid_prefix).unwrap_err(),
-            FromStrError::InvalidPrefix
-        ));
-
-        let short_addr =
-            "contract-package-wasm00000000000000000000000000000000000000000000000000000000000000";
-        assert!(matches!(
-            PackageHash::from_formatted_str(short_addr).unwrap_err(),
-            FromStrError::Hash(_)
-        ));
-
-        let long_addr =
-            "contract-package-wasm000000000000000000000000000000000000000000000000000000000000000000";
-        assert!(matches!(
-            PackageHash::from_formatted_str(long_addr).unwrap_err(),
-            FromStrError::Hash(_)
-        ));
-
-        let invalid_hex =
-            "contract-package-wasm000000000000000000000000000000000000000000000000000000000000000g";
+            "package-000000000000000000000000000000000000000000000000000000000000000g";
         assert!(matches!(
             PackageHash::from_formatted_str(invalid_hex).unwrap_err(),
             FromStrError::Hex(_)

@@ -20,11 +20,10 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    bytesrepr,
-    bytesrepr::{FromBytes, ToBytes},
+    bytesrepr::{self, FromBytes, ToBytes},
     checksummed_hex,
     key::FromStrError,
-    BlockTime, Key, KeyTag, Timestamp, URefAddr, BLOCKTIME_SERIALIZED_LENGTH, UREF_ADDR_LENGTH,
+    BlockTime, Key, Timestamp, URefAddr, BLOCKTIME_SERIALIZED_LENGTH, UREF_ADDR_LENGTH,
 };
 
 const GAS_TAG: u8 = 0;
@@ -59,15 +58,6 @@ impl BalanceHoldAddrTag {
             return Some(BalanceHoldAddrTag::Processing);
         }
         None
-    }
-
-    /// Returns key prefix for a purse by balance hold addr tag.
-    pub fn purse_prefix_by_tag(&self, purse_addr: URefAddr) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut ret = Vec::with_capacity(purse_addr.serialized_length() + 2);
-        ret.push(KeyTag::BalanceHold as u8);
-        ret.push(*self as u8);
-        purse_addr.write_bytes(&mut ret)?;
-        Ok(ret)
     }
 }
 
@@ -137,7 +127,7 @@ impl BalanceHoldAddr {
         + BLOCKTIME_SERIALIZED_LENGTH;
 
     /// Creates a Gas variant instance of [`BalanceHoldAddr`].
-    pub(crate) const fn new_gas(purse_addr: URefAddr, block_time: BlockTime) -> BalanceHoldAddr {
+    pub const fn new_gas(purse_addr: URefAddr, block_time: BlockTime) -> BalanceHoldAddr {
         BalanceHoldAddr::Gas {
             purse_addr,
             block_time,
@@ -145,10 +135,7 @@ impl BalanceHoldAddr {
     }
 
     /// Creates a Processing variant instance of [`BalanceHoldAddr`].
-    pub(crate) const fn new_processing(
-        purse_addr: URefAddr,
-        block_time: BlockTime,
-    ) -> BalanceHoldAddr {
+    pub const fn new_processing(purse_addr: URefAddr, block_time: BlockTime) -> BalanceHoldAddr {
         BalanceHoldAddr::Processing {
             purse_addr,
             block_time,

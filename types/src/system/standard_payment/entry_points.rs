@@ -2,7 +2,8 @@ use alloc::{boxed::Box, string::ToString};
 
 use crate::{
     system::standard_payment::{ARG_AMOUNT, METHOD_PAY},
-    CLType, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Parameter,
+    CLType, EntryPoint, EntryPointAccess, EntryPointPayment, EntryPointType, EntryPoints,
+    Parameter,
 };
 
 /// Creates standard payment contract entry points.
@@ -18,6 +19,7 @@ pub fn standard_payment_entry_points() -> EntryPoints {
         },
         EntryPointAccess::Public,
         EntryPointType::Caller,
+        EntryPointPayment::Caller,
     );
     entry_points.add_entry_point(entry_point);
 

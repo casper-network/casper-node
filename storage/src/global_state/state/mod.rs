@@ -29,7 +29,7 @@ use casper_types::{
             BalanceHoldAddr, BalanceHoldAddrTag, ARG_AMOUNT, ROUND_SEIGNIORAGE_RATE_KEY,
             TOTAL_SUPPLY_KEY,
         },
-        AUCTION, MINT,
+        AUCTION, HANDLE_PAYMENT, MINT,
     },
     Account, AddressableEntity, BlockGlobalAddr, CLValue, Digest, EntityAddr, HoldsEpoch, Key,
     KeyTag, Phase, PublicKey, RuntimeArgs, StoredValue, U512,
@@ -45,21 +45,22 @@ use crate::{
         era_validators::EraValidatorsResult,
         handle_fee::{HandleFeeMode, HandleFeeRequest, HandleFeeResult},
         mint::{TransferRequest, TransferRequestArgs, TransferResult},
+        prefixed_values::{PrefixedValuesRequest, PrefixedValuesResult},
         tagged_values::{TaggedValuesRequest, TaggedValuesResult},
         AddressableEntityRequest, AddressableEntityResult, AuctionMethod, BalanceHoldError,
         BalanceHoldKind, BalanceHoldMode, BalanceHoldRequest, BalanceHoldResult, BalanceIdentifier,
         BalanceRequest, BalanceResult, BidsRequest, BidsResult, BlockGlobalKind,
         BlockGlobalRequest, BlockGlobalResult, BlockRewardsError, BlockRewardsRequest,
-        BlockRewardsResult, EraValidatorsRequest, ExecutionResultsChecksumRequest,
-        ExecutionResultsChecksumResult, FeeError, FeeRequest, FeeResult, FlushRequest, FlushResult,
-        GenesisRequest, GenesisResult, HandleRefundMode, HandleRefundRequest, HandleRefundResult,
-        InsufficientBalanceHandling, ProofHandling, ProofsResult, ProtocolUpgradeRequest,
-        ProtocolUpgradeResult, PruneRequest, PruneResult, PutTrieRequest, PutTrieResult,
-        QueryRequest, QueryResult, RoundSeigniorageRateRequest, RoundSeigniorageRateResult,
-        StepError, StepRequest, StepResult, SystemEntityRegistryPayload,
-        SystemEntityRegistryRequest, SystemEntityRegistryResult, SystemEntityRegistrySelector,
-        TotalSupplyRequest, TotalSupplyResult, TrieRequest, TrieResult,
-        EXECUTION_RESULTS_CHECKSUM_NAME,
+        BlockRewardsResult, EntryPointsRequest, EntryPointsResult, EraValidatorsRequest,
+        ExecutionResultsChecksumRequest, ExecutionResultsChecksumResult, FeeError, FeeRequest,
+        FeeResult, FlushRequest, FlushResult, GenesisRequest, GenesisResult, HandleRefundMode,
+        HandleRefundRequest, HandleRefundResult, InsufficientBalanceHandling, ProofHandling,
+        ProofsResult, ProtocolUpgradeRequest, ProtocolUpgradeResult, PruneRequest, PruneResult,
+        PutTrieRequest, PutTrieResult, QueryRequest, QueryResult, RoundSeigniorageRateRequest,
+        RoundSeigniorageRateResult, StepError, StepRequest, StepResult,
+        SystemEntityRegistryPayload, SystemEntityRegistryRequest, SystemEntityRegistryResult,
+        SystemEntityRegistrySelector, TotalSupplyRequest, TotalSupplyResult, TrieRequest,
+        TrieResult, EXECUTION_RESULTS_CHECKSUM_NAME,
     },
     global_state::{
         error::Error as GlobalStateError,
@@ -72,8 +73,7 @@ use crate::{
         },
     },
     system::{
-        auction,
-        auction::Auction,
+        auction::{self, Auction},
         genesis::{GenesisError, GenesisInstaller},
         handle_payment::HandlePayment,
         mint::Mint,
@@ -147,7 +147,7 @@ pub trait CommitProvider: StateProvider {
             Err(err) => {
                 return GenesisResult::Failure(GenesisError::TrackingCopy(
                     TrackingCopyError::Storage(err),
-                ))
+                ));
             }
         };
         let chainspec_hash = request.chainspec_hash();
@@ -183,7 +183,7 @@ pub trait CommitProvider: StateProvider {
             Err(err) => {
                 return ProtocolUpgradeResult::Failure(ProtocolUpgradeError::TrackingCopy(
                     TrackingCopyError::Storage(err),
-                ))
+                ));
             }
         };
 
@@ -250,7 +250,7 @@ pub trait CommitProvider: StateProvider {
             Err(err) => {
                 return StepResult::Failure(StepError::TrackingCopy(TrackingCopyError::Storage(
                     err,
-                )))
+                )));
             }
         };
         let protocol_version = request.protocol_version();
@@ -262,7 +262,7 @@ pub trait CommitProvider: StateProvider {
                 Err(bre) => {
                     return StepResult::Failure(StepError::TrackingCopy(
                         TrackingCopyError::BytesRepr(bre),
-                    ))
+                    ));
                 }
             };
             match &mut protocol_version.into_bytes() {
@@ -270,7 +270,7 @@ pub trait CommitProvider: StateProvider {
                 Err(bre) => {
                     return StepResult::Failure(StepError::TrackingCopy(
                         TrackingCopyError::BytesRepr(*bre),
-                    ))
+                    ));
                 }
             };
             match &mut request.next_era_id().into_bytes() {
@@ -278,7 +278,7 @@ pub trait CommitProvider: StateProvider {
                 Err(bre) => {
                     return StepResult::Failure(StepError::TrackingCopy(
                         TrackingCopyError::BytesRepr(*bre),
-                    ))
+                    ));
                 }
             };
 
@@ -355,7 +355,7 @@ pub trait CommitProvider: StateProvider {
             Err(err) => {
                 return BlockRewardsResult::Failure(BlockRewardsError::TrackingCopy(
                     TrackingCopyError::Storage(err),
-                ))
+                ));
             }
         };
 
@@ -367,7 +367,7 @@ pub trait CommitProvider: StateProvider {
                 Err(bre) => {
                     return BlockRewardsResult::Failure(BlockRewardsError::TrackingCopy(
                         TrackingCopyError::BytesRepr(bre),
-                    ))
+                    ));
                 }
             };
             match &mut protocol_version.into_bytes() {
@@ -375,7 +375,7 @@ pub trait CommitProvider: StateProvider {
                 Err(bre) => {
                     return BlockRewardsResult::Failure(BlockRewardsError::TrackingCopy(
                         TrackingCopyError::BytesRepr(*bre),
-                    ))
+                    ));
                 }
             };
 
@@ -433,7 +433,7 @@ pub trait CommitProvider: StateProvider {
             Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
             Ok(None) => return FeeResult::RootNotFound,
             Err(gse) => {
-                return FeeResult::Failure(FeeError::TrackingCopy(TrackingCopyError::Storage(gse)))
+                return FeeResult::Failure(FeeError::TrackingCopy(TrackingCopyError::Storage(gse)));
             }
         };
 
@@ -445,7 +445,7 @@ pub trait CommitProvider: StateProvider {
                 Err(bre) => {
                     return FeeResult::Failure(FeeError::TrackingCopy(
                         TrackingCopyError::BytesRepr(bre),
-                    ))
+                    ));
                 }
             };
             match &mut protocol_version.into_bytes() {
@@ -453,7 +453,7 @@ pub trait CommitProvider: StateProvider {
                 Err(bre) => {
                     return FeeResult::Failure(FeeError::TrackingCopy(
                         TrackingCopyError::BytesRepr(*bre),
-                    ))
+                    ));
                 }
             };
 
@@ -491,7 +491,7 @@ pub trait CommitProvider: StateProvider {
                     Err(gse) => {
                         return FeeResult::Failure(FeeError::TrackingCopy(
                             TrackingCopyError::Storage(gse),
-                        ))
+                        ));
                     }
                 };
                 FeeResult::Success {
@@ -665,7 +665,7 @@ pub trait StateProvider {
                     total_balance,
                     available_balance: total_balance,
                     proofs_result,
-                }
+                };
             }
             Err(tce) => return tce.into(),
         };
@@ -679,7 +679,7 @@ pub trait StateProvider {
                         total_balance,
                         available_balance: total_balance,
                         proofs_result,
-                    }
+                    };
                 }
                 Err(tce) => return tce.into(),
             };
@@ -710,7 +710,7 @@ pub trait StateProvider {
             Err(err) => {
                 return BalanceHoldResult::Failure(BalanceHoldError::TrackingCopy(
                     TrackingCopyError::Storage(err),
-                ))
+                ));
             }
         };
         let hold_mode = request.balance_hold_mode();
@@ -729,7 +729,7 @@ pub trait StateProvider {
                     BalanceHoldKind::All => {
                         return BalanceHoldResult::Failure(
                             BalanceHoldError::UnexpectedWildcardVariant,
-                        )
+                        );
                     }
                     BalanceHoldKind::Tag(tag) => tag,
                 };
@@ -780,7 +780,7 @@ pub trait StateProvider {
                     Err(cve) => {
                         return BalanceHoldResult::Failure(BalanceHoldError::TrackingCopy(
                             TrackingCopyError::CLValue(cve),
-                        ))
+                        ));
                     }
                 };
 
@@ -814,7 +814,7 @@ pub trait StateProvider {
                 let purse_addr = match identifier.purse_uref(&mut tc, request.protocol_version()) {
                     Ok(source_purse) => source_purse.addr(),
                     Err(tce) => {
-                        return BalanceHoldResult::Failure(BalanceHoldError::TrackingCopy(tce))
+                        return BalanceHoldResult::Failure(BalanceHoldError::TrackingCopy(tce));
                     }
                 };
 
@@ -832,7 +832,7 @@ pub trait StateProvider {
                             Err(tce) => {
                                 return BalanceHoldResult::Failure(BalanceHoldError::TrackingCopy(
                                     tce,
-                                ))
+                                ));
                             }
                         };
                         filter.push((tag, HoldsEpoch::from_millis(block_time.value(), interval)));
@@ -847,7 +847,7 @@ pub trait StateProvider {
                             Err(tce) => {
                                 return BalanceHoldResult::Failure(BalanceHoldError::TrackingCopy(
                                     tce,
-                                ))
+                                ));
                             }
                         };
                         filter.push((tag, HoldsEpoch::from_millis(block_time.value(), interval)));
@@ -978,7 +978,9 @@ pub trait StateProvider {
                         bids.push(bid_kind);
                     }
                     Some(_) => {
-                        return BidsResult::Failure(TrackingCopyError::UnexpectedStoredValueVariant)
+                        return BidsResult::Failure(
+                            TrackingCopyError::UnexpectedStoredValueVariant,
+                        );
                     }
                     None => return BidsResult::Failure(TrackingCopyError::MissingBid(*key)),
                 },
@@ -1008,7 +1010,7 @@ pub trait StateProvider {
         };
 
         let source_account_hash = initiator.account_hash();
-        let (entity, entity_named_keys, entity_access_rights) =
+        let (entity_addr, entity, entity_named_keys, entity_access_rights) =
             match tc.borrow_mut().resolved_entity(
                 protocol_version,
                 source_account_hash,
@@ -1020,6 +1022,7 @@ pub trait StateProvider {
                     return BiddingResult::Failure(tce);
                 }
             };
+        let entity_key = Key::AddressableEntity(entity_addr);
 
         // IMPORTANT: this runtime _must_ use the payer's context.
         let mut runtime = RuntimeNative::new(
@@ -1028,6 +1031,7 @@ pub trait StateProvider {
             Id::Transaction(transaction_hash),
             Rc::clone(&tc),
             source_account_hash,
+            entity_key,
             entity,
             entity_named_keys,
             entity_access_rights,
@@ -1100,6 +1104,15 @@ pub trait StateProvider {
                 .map_err(|auc_err| {
                     TrackingCopyError::SystemContract(system::Error::Auction(auc_err))
                 }),
+            AuctionMethod::ChangeBidPublicKey {
+                public_key,
+                new_public_key,
+            } => runtime
+                .change_bid_public_key(public_key, new_public_key)
+                .map(|_| AuctionMethodRet::Unit)
+                .map_err(|auc_err| {
+                    TrackingCopyError::SystemContract(system::Error::Auction(auc_err))
+                }),
         };
 
         let effects = tc.borrow_mut().effects();
@@ -1127,18 +1140,40 @@ pub trait StateProvider {
             Err(err) => return HandleRefundResult::Failure(TrackingCopyError::Storage(err)),
         };
 
-        // this runtime uses the system's context
-        let mut runtime = match RuntimeNative::new_system_runtime(
-            config,
-            protocol_version,
-            Id::Transaction(transaction_hash),
-            Rc::clone(&tc),
-            refund_mode.phase(),
-        ) {
-            Ok(rt) => rt,
-            Err(tce) => {
-                return HandleRefundResult::Failure(tce);
+        let phase = refund_mode.phase();
+        let mut runtime = match phase {
+            Phase::FinalizePayment => {
+                // this runtime uses the system's context
+                match RuntimeNative::new_system_runtime(
+                    config,
+                    protocol_version,
+                    Id::Transaction(transaction_hash),
+                    Rc::clone(&tc),
+                    phase,
+                ) {
+                    Ok(rt) => rt,
+                    Err(tce) => {
+                        return HandleRefundResult::Failure(tce);
+                    }
+                }
             }
+            Phase::Payment => {
+                // this runtime uses the handle payment contract's context
+                match RuntimeNative::new_system_contract_runtime(
+                    config,
+                    protocol_version,
+                    Id::Transaction(transaction_hash),
+                    Rc::clone(&tc),
+                    phase,
+                    HANDLE_PAYMENT,
+                ) {
+                    Ok(rt) => rt,
+                    Err(tce) => {
+                        return HandleRefundResult::Failure(tce);
+                    }
+                }
+            }
+            Phase::System | Phase::Session => return HandleRefundResult::InvalidPhase,
         };
 
         let result = match refund_mode {
@@ -1223,6 +1258,53 @@ pub trait StateProvider {
                     Err(err) => Err(err),
                 }
             }
+            HandleRefundMode::CustomHold {
+                initiator_addr,
+                limit,
+                cost,
+                gas_price,
+            } => {
+                let source = BalanceIdentifier::Payment;
+                let source_purse = match source.purse_uref(&mut tc.borrow_mut(), protocol_version) {
+                    Ok(value) => value,
+                    Err(tce) => return HandleRefundResult::Failure(tce),
+                };
+                let consumed = U512::zero();
+                let ratio = Ratio::new_raw(U512::one(), U512::one());
+                let refund_amount = match runtime.calculate_overpayment_and_fee(
+                    limit,
+                    gas_price,
+                    cost,
+                    consumed,
+                    source_purse,
+                    ratio,
+                ) {
+                    Ok((refund, _)) => refund,
+                    Err(hpe) => {
+                        return HandleRefundResult::Failure(TrackingCopyError::SystemContract(
+                            system::Error::HandlePayment(hpe),
+                        ));
+                    }
+                };
+                let target = BalanceIdentifier::Refund;
+                let target_purse = match target.purse_uref(&mut tc.borrow_mut(), protocol_version) {
+                    Ok(value) => value,
+                    Err(tce) => return HandleRefundResult::Failure(tce),
+                };
+                match runtime
+                    .transfer(
+                        Some(initiator_addr.account_hash()),
+                        source_purse,
+                        target_purse,
+                        refund_amount,
+                        None,
+                    )
+                    .map_err(|_| Error::Transfer)
+                {
+                    Ok(_) => Ok(Some(U512::zero())), // return 0 in this mode
+                    Err(err) => Err(err),
+                }
+            }
             HandleRefundMode::Burn {
                 limit,
                 gas_price,
@@ -1252,7 +1334,7 @@ pub trait StateProvider {
                         ));
                     }
                 };
-                match runtime.burn(source_purse, burn_amount) {
+                match runtime.payment_burn(source_purse, burn_amount) {
                     Ok(_) => Ok(burn_amount),
                     Err(err) => Err(err),
                 }
@@ -1344,7 +1426,7 @@ pub trait StateProvider {
                     Ok(value) => value,
                     Err(tce) => return HandleFeeResult::Failure(tce),
                 };
-                runtime.burn(source_purse, amount)
+                runtime.payment_burn(source_purse, amount)
             }
         };
 
@@ -1368,7 +1450,7 @@ pub trait StateProvider {
             Ok(Some(tc)) => tc,
             Ok(None) => return ExecutionResultsChecksumResult::RootNotFound,
             Err(err) => {
-                return ExecutionResultsChecksumResult::Failure(TrackingCopyError::Storage(err))
+                return ExecutionResultsChecksumResult::Failure(TrackingCopyError::Storage(err));
             }
         };
         match tc.get_checksum_registry() {
@@ -1392,7 +1474,7 @@ pub trait StateProvider {
                 match self.query(query_request) {
                     QueryResult::RootNotFound => return AddressableEntityResult::RootNotFound,
                     QueryResult::ValueNotFound(msg) => {
-                        return AddressableEntityResult::ValueNotFound(msg)
+                        return AddressableEntityResult::ValueNotFound(msg);
                     }
                     QueryResult::Failure(err) => return AddressableEntityResult::Failure(err),
                     QueryResult::Success { value, .. } => {
@@ -1441,7 +1523,7 @@ pub trait StateProvider {
                 match self.query(query_request) {
                     QueryResult::RootNotFound => return AddressableEntityResult::RootNotFound,
                     QueryResult::ValueNotFound(msg) => {
-                        return AddressableEntityResult::ValueNotFound(msg)
+                        return AddressableEntityResult::ValueNotFound(msg);
                     }
                     QueryResult::Failure(err) => return AddressableEntityResult::Failure(err),
                     QueryResult::Success { value, .. } => {
@@ -1458,7 +1540,7 @@ pub trait StateProvider {
             _ => {
                 return AddressableEntityResult::Failure(TrackingCopyError::UnexpectedKeyVariant(
                     key,
-                ))
+                ));
             }
         };
 
@@ -1472,7 +1554,7 @@ pub trait StateProvider {
                     None => {
                         return AddressableEntityResult::Failure(
                             TrackingCopyError::UnexpectedStoredValueVariant,
-                        )
+                        );
                     }
                 };
                 AddressableEntityResult::Success { entity }
@@ -1491,7 +1573,7 @@ pub trait StateProvider {
             Ok(Some(tc)) => tc,
             Ok(None) => return SystemEntityRegistryResult::RootNotFound,
             Err(err) => {
-                return SystemEntityRegistryResult::Failure(TrackingCopyError::Storage(err))
+                return SystemEntityRegistryResult::Failure(TrackingCopyError::Storage(err));
             }
         };
 
@@ -1525,6 +1607,28 @@ pub trait StateProvider {
                     SystemEntityRegistryResult::NamedEntityNotFound(name.clone())
                 }
             },
+        }
+    }
+
+    /// Gets an entry point value.
+    fn entry_point(&self, request: EntryPointsRequest) -> EntryPointsResult {
+        let state_hash = request.state_hash();
+        let query_request = QueryRequest::new(state_hash, request.key(), vec![]);
+
+        match self.query(query_request) {
+            QueryResult::RootNotFound => EntryPointsResult::RootNotFound,
+            QueryResult::ValueNotFound(msg) => EntryPointsResult::ValueNotFound(msg),
+            QueryResult::Failure(tce) => EntryPointsResult::Failure(tce),
+            QueryResult::Success { value, .. } => {
+                if let StoredValue::EntryPoint(entry_point_value) = *value {
+                    EntryPointsResult::Success {
+                        entry_point: entry_point_value,
+                    }
+                } else {
+                    error!("Expected to get entry point value received other variant");
+                    EntryPointsResult::Failure(TrackingCopyError::UnexpectedStoredValueVariant)
+                }
+            }
         }
     }
 
@@ -1588,7 +1692,7 @@ pub trait StateProvider {
             Ok(Some(tc)) => tc,
             Ok(None) => return RoundSeigniorageRateResult::RootNotFound,
             Err(err) => {
-                return RoundSeigniorageRateResult::Failure(TrackingCopyError::Storage(err))
+                return RoundSeigniorageRateResult::Failure(TrackingCopyError::Storage(err));
             }
         };
 
@@ -1720,7 +1824,7 @@ pub trait StateProvider {
             }
         }
 
-        let (entity, entity_named_keys, entity_access_rights) =
+        let (entity_addr, entity, entity_named_keys, entity_access_rights) =
             match tc.borrow_mut().resolved_entity(
                 protocol_version,
                 source_account_hash,
@@ -1732,7 +1836,7 @@ pub trait StateProvider {
                     return TransferResult::Failure(TransferError::TrackingCopy(tce));
                 }
             };
-
+        let entity_key = Key::AddressableEntity(entity_addr);
         let id = Id::Transaction(request.transaction_hash());
         // IMPORTANT: this runtime _must_ use the payer's context.
         let mut runtime = RuntimeNative::new(
@@ -1741,6 +1845,7 @@ pub trait StateProvider {
             id,
             Rc::clone(&tc),
             source_account_hash,
+            entity_key,
             entity.clone(),
             entity_named_keys.clone(),
             entity_access_rights,
@@ -1826,6 +1931,37 @@ pub trait StateProvider {
         TaggedValuesResult::Success {
             values,
             selection: request.selection(),
+        }
+    }
+
+    /// Gets all values under a given key prefix.
+    /// Currently, this ignores the cache and only provides values from the trie.
+    fn prefixed_values(&self, request: PrefixedValuesRequest) -> PrefixedValuesResult {
+        let mut tc = match self.tracking_copy(request.state_hash()) {
+            Ok(Some(tc)) => tc,
+            Ok(None) => return PrefixedValuesResult::RootNotFound,
+            Err(err) => return PrefixedValuesResult::Failure(TrackingCopyError::Storage(err)),
+        };
+        let byte_prefix = match request.key_prefix().to_bytes() {
+            Ok(prefix) => prefix,
+            Err(error) => return PrefixedValuesResult::Failure(error.into()),
+        };
+        match tc.reader().keys_with_prefix(&byte_prefix) {
+            Ok(keys) => {
+                let mut values = Vec::with_capacity(keys.len());
+                for key in keys {
+                    match tc.get(&key) {
+                        Ok(Some(value)) => values.push(value),
+                        Ok(None) => {}
+                        Err(error) => return PrefixedValuesResult::Failure(error),
+                    }
+                }
+                PrefixedValuesResult::Success {
+                    values,
+                    key_prefix: request.key_prefix().clone(),
+                }
+            }
+            Err(error) => PrefixedValuesResult::Failure(error.into()),
         }
     }
 

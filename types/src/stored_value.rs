@@ -27,7 +27,7 @@ use crate::{
         auction::{Bid, BidKind, EraInfo, UnbondingPurse, WithdrawPurse},
         reservations::ReservationKind,
     },
-    AddressableEntity, ByteCode, CLValue, DeployInfo, TransferV1,
+    AddressableEntity, ByteCode, CLValue, DeployInfo, EntryPointValue, TransferV1,
 };
 pub use global_state_identifier::GlobalStateIdentifier;
 pub use type_mismatch::TypeMismatch;
@@ -54,6 +54,7 @@ enum Tag {
     Message = 16,
     NamedKey = 17,
     Reservation = 18,
+    EntryPoint = 19,
 }
 
 /// A value stored in Global State.
@@ -104,6 +105,8 @@ pub enum StoredValue {
     NamedKey(NamedKeyValue),
     /// A reservation record.
     Reservation(ReservationKind),
+    /// An entrypoint record.
+    EntryPoint(EntryPointValue),
 }
 
 impl StoredValue {
@@ -231,6 +234,14 @@ impl StoredValue {
         }
     }
 
+    /// Returns a reference to the wrapped `EntryPointValue` if this is a `EntryPointValue` variant.
+    pub fn as_entry_point_value(&self) -> Option<&EntryPointValue> {
+        match self {
+            StoredValue::EntryPoint(entry_point) => Some(entry_point),
+            _ => None,
+        }
+    }
+
     /// Returns the `CLValue` if this is a `CLValue` variant.
     pub fn into_cl_value(self) -> Option<CLValue> {
         match self {
@@ -343,6 +354,14 @@ impl StoredValue {
         }
     }
 
+    /// Returns the `EntryPointValue` if this is a `EntryPointValue` variant.
+    pub fn into_entry_point_value(self) -> Option<EntryPointValue> {
+        match self {
+            StoredValue::EntryPoint(value) => Some(value),
+            _ => None,
+        }
+    }
+
     /// Returns the type name of the [`StoredValue`] enum variant.
     ///
     /// For [`CLValue`] variants it will return the name of the [`CLType`](crate::cl_type::CLType)
@@ -367,6 +386,7 @@ impl StoredValue {
             StoredValue::Message(_) => "Message".to_string(),
             StoredValue::NamedKey(_) => "NamedKey".to_string(),
             StoredValue::Reservation(_) => "Reservation".to_string(),
+            StoredValue::EntryPoint(_) => "EntryPoint".to_string(),
         }
     }
 
@@ -391,6 +411,7 @@ impl StoredValue {
             StoredValue::Message(_) => Tag::Message,
             StoredValue::NamedKey(_) => Tag::NamedKey,
             StoredValue::Reservation(_) => Tag::Reservation,
+            StoredValue::EntryPoint(_) => Tag::EntryPoint,
         }
     }
 }
@@ -400,6 +421,7 @@ impl From<CLValue> for StoredValue {
         StoredValue::CLValue(value)
     }
 }
+
 impl From<Account> for StoredValue {
     fn from(value: Account) -> StoredValue {
         StoredValue::Account(value)
@@ -429,6 +451,7 @@ impl From<AddressableEntity> for StoredValue {
         StoredValue::AddressableEntity(value)
     }
 }
+
 impl From<Package> for StoredValue {
     fn from(value: Package) -> StoredValue {
         StoredValue::Package(value)
@@ -453,6 +476,12 @@ impl From<ByteCode> for StoredValue {
     }
 }
 
+impl From<EntryPointValue> for StoredValue {
+    fn from(value: EntryPointValue) -> Self {
+        StoredValue::EntryPoint(value)
+    }
+}
+
 impl TryFrom<StoredValue> for CLValue {
     type Error = TypeMismatch;
 
@@ -462,7 +491,7 @@ impl TryFrom<StoredValue> for CLValue {
             StoredValue::CLValue(cl_value) => Ok(cl_value),
             StoredValue::Package(contract_package) => Ok(CLValue::from_t(contract_package)
                 .map_err(|_error| TypeMismatch::new("ContractPackage".to_string(), type_name))?),
-            _ => Err(TypeMismatch::new("CLValue".to_string(), type_name)),
+            _ => Err(TypeMismatch::new("StoredValue".to_string(), type_name)),
         }
     }
 }
@@ -673,6 +702,7 @@ impl ToBytes for StoredValue {
                 StoredValue::Message(message_digest) => message_digest.serialized_length(),
                 StoredValue::NamedKey(named_key_value) => named_key_value.serialized_length(),
                 StoredValue::Reservation(reservation_kind) => reservation_kind.serialized_length(),
+                StoredValue::EntryPoint(entry_point_value) => entry_point_value.serialized_length(),
             }
     }
 
@@ -700,6 +730,7 @@ impl ToBytes for StoredValue {
             StoredValue::Message(message_digest) => message_digest.write_bytes(writer),
             StoredValue::NamedKey(named_key_value) => named_key_value.write_bytes(writer),
             StoredValue::Reservation(reservation_kind) => reservation_kind.write_bytes(writer),
+            StoredValue::EntryPoint(entry_point_value) => entry_point_value.write_bytes(writer),
         }
     }
 }
@@ -764,6 +795,8 @@ impl FromBytes for StoredValue {
                     (StoredValue::NamedKey(named_key_value), remainder)
                 })
             }
+            tag if tag == Tag::EntryPoint as u8 => EntryPointValue::from_bytes(remainder)
+                .map(|(entry_point, remainder)| (StoredValue::EntryPoint(entry_point), remainder)),
             _ => Err(Error::Formatting),
         }
     }
@@ -807,6 +840,7 @@ mod serde_helpers {
         Message(&'a MessageChecksum),
         NamedKey(&'a NamedKeyValue),
         Reservation(&'a ReservationKind),
+        EntryPoint(&'a EntryPointValue),
     }
 
     #[derive(Deserialize)]
@@ -829,6 +863,7 @@ mod serde_helpers {
         MessageTopic(MessageTopicSummary),
         Message(MessageChecksum),
         NamedKey(NamedKeyValue),
+        EntryPoint(EntryPointValue),
     }
 
     impl<'a> From<&'a StoredValue> for HumanReadableSerHelper<'a> {
@@ -863,6 +898,7 @@ mod serde_helpers {
                 }
                 StoredValue::NamedKey(payload) => HumanReadableSerHelper::NamedKey(payload),
                 StoredValue::Reservation(payload) => HumanReadableSerHelper::Reservation(payload),
+                StoredValue::EntryPoint(payload) => HumanReadableSerHelper::EntryPoint(payload),
             }
         }
     }
@@ -900,6 +936,7 @@ mod serde_helpers {
                     StoredValue::Message(message_digest)
                 }
                 HumanReadableDeserHelper::NamedKey(payload) => StoredValue::NamedKey(payload),
+                HumanReadableDeserHelper::EntryPoint(payload) => StoredValue::EntryPoint(payload),
             }
         }
     }
@@ -936,6 +973,7 @@ mod tests {
     use crate::{bytesrepr, gens, StoredValue};
     use proptest::proptest;
     use serde_json::Value;
+
     const STORED_VALUE_CONTRACT_PACKAGE_RAW: &str = r#"
     {
         "ContractPackage": {

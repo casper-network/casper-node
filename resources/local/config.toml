@@ -306,11 +306,8 @@ allow_request_get_trie = false
 # Flag that enables the `TrySpeculativeExec` request. Disabled by default.
 allow_request_speculative_exec = false
 
-# Maximum size of a request in bytes.
-max_request_size_bytes = 4_194_304
-
-# Maximum size of a response in bytes.
-max_response_size_bytes = 4_194_304
+# Maximum size of a message in bytes.
+max_message_size_bytes = 4_194_304
 
 # Maximum number of in-flight requests.
 # This is based on measurements captured on a local instance of the sidecar,

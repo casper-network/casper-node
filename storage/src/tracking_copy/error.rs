@@ -82,6 +82,9 @@ pub enum Error {
     /// Balance calculation failure.
     #[error("Balance calculation failure")]
     Balance(BalanceFailure),
+    /// Unable to find a contract.
+    #[error("Contract {:?} not found", _0)]
+    ContractNotFound(Key),
 }
 
 impl Error {

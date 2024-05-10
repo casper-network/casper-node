@@ -1,9 +1,9 @@
-use criterion::{black_box, criterion_group, criterion_main, Bencher, Criterion};
-
 use std::{
     collections::{BTreeMap, BTreeSet},
     iter,
 };
+
+use criterion::{black_box, criterion_group, criterion_main, Bencher, Criterion};
 
 use casper_types::{
     account::AccountHash,
@@ -12,12 +12,11 @@ use casper_types::{
     },
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     system::auction::{Bid, Delegator, EraInfo, SeigniorageAllocation},
-    AccessRights, AddressableEntityHash, ByteCodeHash, CLType, CLTyped, CLValue, DeployHash,
-    DeployInfo, EntityVersionKey, EntityVersions, EntryPoint, EntryPointAccess, EntryPointType,
-    EntryPoints, Gas, Group, Groups, InitiatorAddr, Key, Package, PackageHash, PackageStatus,
-    Parameter, ProtocolVersion, PublicKey, SecretKey, TransactionHash, TransactionV1Hash,
-    TransferAddr, TransferV2, URef, KEY_HASH_LENGTH, TRANSFER_ADDR_LENGTH, U128, U256, U512,
-    UREF_ADDR_LENGTH,
+    AccessRights, AddressableEntityHash, ByteCodeHash, CLTyped, CLValue, DeployHash, DeployInfo,
+    EntityVersionKey, EntityVersions, Gas, Group, Groups, InitiatorAddr, Key, Package, PackageHash,
+    PackageStatus, ProtocolVersion, PublicKey, SecretKey, TransactionHash, TransactionRuntime,
+    TransactionV1Hash, TransferAddr, TransferV2, URef, KEY_HASH_LENGTH, TRANSFER_ADDR_LENGTH, U128,
+    U256, U512, UREF_ADDR_LENGTH,
 };
 
 static KB: usize = 1024;
@@ -450,46 +449,26 @@ fn deserialize_u512(b: &mut Bencher) {
 }
 
 fn serialize_contract(b: &mut Bencher) {
-    let contract = sample_contract(10);
+    let contract = sample_contract();
     b.iter(|| ToBytes::to_bytes(black_box(&contract)));
 }
 
 fn deserialize_contract(b: &mut Bencher) {
-    let contract = sample_contract(10);
+    let contract = sample_contract();
     let contract_bytes = AddressableEntity::to_bytes(&contract).unwrap();
     b.iter(|| AddressableEntity::from_bytes(black_box(&contract_bytes)).unwrap());
 }
 
-fn sample_contract(entry_points_len: u8) -> AddressableEntity {
-    let entry_points = {
-        let mut tmp = EntryPoints::new_with_default_entry_point();
-        (1..entry_points_len).for_each(|i| {
-            let args = vec![
-                Parameter::new("first", CLType::U32),
-                Parameter::new("Foo", CLType::U32),
-            ];
-            let entry_point = EntryPoint::new(
-                format!("test-{}", i),
-                args,
-                casper_types::CLType::U512,
-                EntryPointAccess::groups(&["Group 2"]),
-                EntryPointType::Called,
-            );
-            tmp.add_entry_point(entry_point);
-        });
-        tmp
-    };
-
+fn sample_contract() -> AddressableEntity {
     AddressableEntity::new(
         PackageHash::default(),
         ByteCodeHash::default(),
-        entry_points,
         ProtocolVersion::default(),
         URef::default(),
         AssociatedKeys::default(),
         ActionThresholds::default(),
         MessageTopics::default(),
-        EntityKind::SmartContract,
+        EntityKind::SmartContract(TransactionRuntime::VmCasperV1),
     )
 }
 
@@ -535,7 +514,6 @@ fn sample_contract_package(
     disabled_versions_len: u8,
     groups_len: u8,
 ) -> Package {
-    let access_key = URef::default();
     let versions = EntityVersions::from(sample_map(
         contract_version_key_fn,
         contract_hash_fn,
@@ -548,13 +526,7 @@ fn sample_contract_package(
         groups_len,
     ));
 
-    Package::new(
-        access_key,
-        versions,
-        disabled_versions,
-        groups,
-        PackageStatus::Locked,
-    )
+    Package::new(versions, disabled_versions, groups, PackageStatus::Locked)
 }
 
 fn serialize_contract_package(b: &mut Bencher) {

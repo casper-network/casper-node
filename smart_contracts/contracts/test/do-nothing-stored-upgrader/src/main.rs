@@ -16,7 +16,7 @@ use core::convert::TryInto;
 
 use casper_types::{
     addressable_entity::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys},
-    CLType, CLTyped, Key, PackageHash, Parameter, URef,
+    CLType, CLTyped, EntryPointPayment, Key, PackageHash, Parameter, URef,
 };
 
 const ENTRY_FUNCTION_NAME: &str = "delegate";
@@ -43,6 +43,7 @@ pub extern "C" fn call() {
             CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
         entry_points.add_entry_point(delegate);
 

@@ -3,11 +3,12 @@ use alloc::boxed::Box;
 use crate::{
     addressable_entity::Parameters,
     system::mint::{
-        ARG_AMOUNT, ARG_ID, ARG_PURSE, ARG_SOURCE, ARG_TARGET, ARG_TO, METHOD_BALANCE,
+        ARG_AMOUNT, ARG_ID, ARG_PURSE, ARG_SOURCE, ARG_TARGET, ARG_TO, METHOD_BALANCE, METHOD_BURN,
         METHOD_CREATE, METHOD_MINT, METHOD_MINT_INTO_EXISTING_PURSE, METHOD_READ_BASE_ROUND_REWARD,
         METHOD_REDUCE_TOTAL_SUPPLY, METHOD_TRANSFER,
     },
-    CLType, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Parameter,
+    CLType, EntryPoint, EntryPointAccess, EntryPointPayment, EntryPointType, EntryPoints,
+    Parameter,
 };
 
 /// Returns entry points for a mint system contract.
@@ -23,6 +24,7 @@ pub fn mint_entry_points() -> EntryPoints {
         },
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     );
     entry_points.add_entry_point(entry_point);
 
@@ -35,6 +37,23 @@ pub fn mint_entry_points() -> EntryPoints {
         },
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
+    );
+    entry_points.add_entry_point(entry_point);
+
+    let entry_point = EntryPoint::new(
+        METHOD_BURN,
+        vec![
+            Parameter::new(ARG_PURSE, CLType::URef),
+            Parameter::new(ARG_AMOUNT, CLType::U512),
+        ],
+        CLType::Result {
+            ok: Box::new(CLType::Unit),
+            err: Box::new(CLType::U8),
+        },
+        EntryPointAccess::Public,
+        EntryPointType::Called,
+        EntryPointPayment::Caller,
     );
     entry_points.add_entry_point(entry_point);
 
@@ -44,6 +63,7 @@ pub fn mint_entry_points() -> EntryPoints {
         CLType::URef,
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     );
     entry_points.add_entry_point(entry_point);
 
@@ -53,6 +73,7 @@ pub fn mint_entry_points() -> EntryPoints {
         CLType::Option(Box::new(CLType::U512)),
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     );
     entry_points.add_entry_point(entry_point);
 
@@ -71,6 +92,7 @@ pub fn mint_entry_points() -> EntryPoints {
         },
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     );
     entry_points.add_entry_point(entry_point);
 
@@ -80,6 +102,7 @@ pub fn mint_entry_points() -> EntryPoints {
         CLType::U512,
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     );
     entry_points.add_entry_point(entry_point);
 
@@ -95,6 +118,7 @@ pub fn mint_entry_points() -> EntryPoints {
         },
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     );
     entry_points.add_entry_point(entry_point);
 
