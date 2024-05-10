@@ -894,7 +894,6 @@ fn should_verify_create_contract_user_group_is_charging_for_storage() {
     groups.insert(Group::new("Label"), BTreeSet::new());
 
     let mut package = Package::new(
-        Default::default(),
         [(
             EntityVersionKey::new(2, 1),
             AddressableEntityHash::new([0u8; 32]),
