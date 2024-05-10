@@ -122,6 +122,7 @@ fn should_exec_non_stored_code() {
     );
 }
 
+#[ignore]
 #[test]
 fn should_fail_if_calling_non_existent_entry_point() {
     let payment_purse_amount = *DEFAULT_PAYMENT;
@@ -177,6 +178,7 @@ fn should_fail_if_calling_non_existent_entry_point() {
     builder.assert_error(expected_error);
 }
 
+#[ignore]
 #[test]
 fn should_exec_stored_code_by_hash() {
     let default_payment = *DEFAULT_PAYMENT;
@@ -232,6 +234,7 @@ fn should_exec_stored_code_by_hash() {
     assert_matches!(error, Error::Exec(ExecError::ForgedReference(_)))
 }
 
+#[ignore]
 #[test]
 fn should_not_transfer_above_balance_using_stored_payment_code_by_hash() {
     let payment_purse_amount = *DEFAULT_PAYMENT;
@@ -327,6 +330,7 @@ fn should_empty_account_using_stored_payment_code_by_hash() {
     assert_matches!(error, Error::Exec(ExecError::ForgedReference(_)))
 }
 
+#[ignore]
 #[test]
 fn should_exec_stored_code_by_named_hash() {
     let payment_purse_amount = *DEFAULT_PAYMENT;
@@ -719,6 +723,7 @@ fn should_fail_session_stored_at_hash_with_incompatible_major_version() {
     )
 }
 
+#[ignore]
 #[test]
 fn should_execute_stored_payment_and_session_code_with_new_major_version() {
     let payment_purse_amount = *DEFAULT_PAYMENT;

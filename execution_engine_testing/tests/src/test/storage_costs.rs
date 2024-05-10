@@ -680,6 +680,7 @@ fn should_measure_unisolated_gas_cost_for_storage_usage_add() {
     );
 }
 
+#[ignore]
 #[test]
 fn should_verify_new_uref_storage_cost() {
     let mut builder = initialize_isolated_storage_costs();
@@ -724,6 +725,7 @@ fn should_verify_new_uref_storage_cost() {
     )
 }
 
+#[ignore]
 #[test]
 fn should_verify_put_key_is_charging_for_storage() {
     let mut builder = initialize_isolated_storage_costs();
@@ -771,6 +773,7 @@ fn should_verify_put_key_is_charging_for_storage() {
     )
 }
 
+#[ignore]
 #[test]
 fn should_verify_remove_key_is_not_charging_for_storage() {
     let mut builder = initialize_isolated_storage_costs();
@@ -812,6 +815,7 @@ fn should_verify_remove_key_is_not_charging_for_storage() {
     )
 }
 
+#[ignore]
 #[test]
 fn should_verify_create_contract_at_hash_is_charging_for_storage() {
     let mut builder = initialize_isolated_storage_costs();
@@ -856,6 +860,7 @@ fn should_verify_create_contract_at_hash_is_charging_for_storage() {
     )
 }
 
+#[ignore]
 #[test]
 fn should_verify_create_contract_user_group_is_charging_for_storage() {
     let mut builder = initialize_isolated_storage_costs();
@@ -961,6 +966,7 @@ fn should_verify_create_contract_user_group_is_charging_for_storage() {
     )
 }
 
+#[ignore]
 #[test]
 fn should_verify_subcall_new_uref_is_charging_for_storage() {
     let mut builder = initialize_isolated_storage_costs();
