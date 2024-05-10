@@ -226,7 +226,7 @@ impl<M: Meter<Key, StoredValue>> TrackingCopyCache<M> {
 
     /// Gets value from `key` in the cache.
     pub fn get(&mut self, key: &Key) -> Option<&StoredValue> {
-        if self.prunes_cached.get(&key).is_some() {
+        if self.prunes_cached.get(key).is_some() {
             // the item is marked for pruning and therefore
             // is no longer accessible.
             return None;
@@ -247,16 +247,8 @@ impl<M: Meter<Key, StoredValue>> TrackingCopyCache<M> {
             .collect()
     }
 
-    pub fn get_muts_cached_by_key_tag(&self, key_tag: &KeyTag) -> Vec<Key> {
-        self.get_muts_cached_by_byte_prefix(&[*key_tag as u8])
-    }
-
-    pub fn get_muts_cached_by_key_prefix(&self, key_prefix: &KeyPrefix) -> Vec<Key> {
-        self.get_muts_cached_by_byte_prefix(&key_prefix.to_bytes().unwrap())
-    }
-
     pub fn is_pruned(&self, key: &Key) -> bool {
-        self.prunes_cached.contains(&key)
+        self.prunes_cached.contains(key)
     }
 }
 
