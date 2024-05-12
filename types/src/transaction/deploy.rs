@@ -1152,7 +1152,7 @@ impl Categorized for Deploy {
         if self.is_transfer() {
             TransactionCategory::Mint
         } else {
-            TransactionCategory::Standard
+            TransactionCategory::Large
         }
     }
 }
@@ -1955,7 +1955,7 @@ mod tests {
         assert_eq!(
             Err(InvalidDeploy::ExcessiveApprovals {
                 got: deploy.approvals.len() as u32,
-                max_associated_keys
+                max_associated_keys,
             }),
             deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp)
         )

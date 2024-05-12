@@ -251,7 +251,9 @@ impl TransactionV1Body {
     pub fn random_of_category(rng: &mut TestRng, category: &TransactionCategory) -> Self {
         match category {
             TransactionCategory::InstallUpgrade => Self::random_install_upgrade(rng),
-            TransactionCategory::Standard => Self::random_standard(rng),
+            TransactionCategory::Large
+            | TransactionCategory::Small
+            | TransactionCategory::Medium => Self::random_standard(rng),
             TransactionCategory::Auction => Self::random_staking(rng),
             TransactionCategory::Mint => Self::random_transfer(rng),
         }
@@ -488,7 +490,7 @@ mod tests {
             got: 15,
         };
 
-        assert_eq!(body.is_valid(&config,), Err(expected_error));
+        assert_eq!(body.is_valid(&config), Err(expected_error));
     }
 
     #[test]
@@ -508,7 +510,7 @@ mod tests {
         let expected_error = InvalidTransactionV1::EntryPointCannotBeCustom { entry_point };
 
         let config = TransactionConfig::default();
-        assert_eq!(body.is_valid(&config,), Err(expected_error));
+        assert_eq!(body.is_valid(&config), Err(expected_error));
     }
 
     #[test]
@@ -542,8 +544,8 @@ mod tests {
 
             let expected_error = InvalidTransactionV1::EntryPointMustBeCustom { entry_point };
 
-            assert_eq!(stored_body.is_valid(&config,), Err(expected_error.clone()));
-            assert_eq!(session_body.is_valid(&config,), Err(expected_error));
+            assert_eq!(stored_body.is_valid(&config), Err(expected_error.clone()));
+            assert_eq!(session_body.is_valid(&config), Err(expected_error));
         };
 
         check(TransactionEntryPoint::Transfer);

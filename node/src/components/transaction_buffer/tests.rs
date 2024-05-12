@@ -20,7 +20,7 @@ const DEFAULT_MINIMUM_GAS_PRICE: u8 = 1;
 fn get_appendable_block(
     rng: &mut TestRng,
     transaction_buffer: &mut TransactionBuffer,
-    categories: impl Iterator<Item = &'static TransactionCategory>,
+    categories: impl Iterator<Item=&'static TransactionCategory>,
     transaction_limit: usize,
 ) {
     let transactions: Vec<_> = categories
@@ -77,7 +77,7 @@ fn create_valid_transaction(
                 ))
             }
         }
-        TransactionCategory::Standard => {
+        TransactionCategory::Large | TransactionCategory::Medium | TransactionCategory::Small => {
             if rng.gen() {
                 Transaction::Deploy(match (strict_timestamp, with_ttl) {
                     (Some(timestamp), Some(ttl)) if Timestamp::now() > timestamp + ttl => {
@@ -167,7 +167,7 @@ const fn all_categories() -> &'static [TransactionCategory] {
         TransactionCategory::Mint,
         TransactionCategory::InstallUpgrade,
         TransactionCategory::Auction,
-        TransactionCategory::Standard,
+        TransactionCategory::Large,
     ]
 }
 
@@ -181,7 +181,7 @@ fn register_transaction_and_check_size() {
             Config::default(),
             &Registry::new(),
         )
-        .unwrap();
+            .unwrap();
 
         // Try to register valid transactions
         let num_valid_transactions: usize = rng.gen_range(50..500);
@@ -232,7 +232,7 @@ fn register_block_with_valid_transactions() {
             Config::default(),
             &Registry::new(),
         )
-        .unwrap();
+            .unwrap();
 
         let txns: Vec<_> = (0..10)
             .map(|_| create_valid_transaction(&mut rng, category, None, None))
@@ -262,7 +262,7 @@ fn register_finalized_block_with_valid_transactions() {
             Config::default(),
             &Registry::new(),
         )
-        .unwrap();
+            .unwrap();
 
         let txns: Vec<_> = (0..10)
             .map(|_| create_valid_transaction(&mut rng, category, None, None))
@@ -284,7 +284,7 @@ fn get_proposable_transactions() {
             Config::default(),
             &Registry::new(),
         )
-        .unwrap();
+            .unwrap();
 
         transaction_buffer
             .prices
@@ -435,7 +435,7 @@ fn get_appendable_block_when_standards_are_of_one_category() {
     get_appendable_block(
         &mut rng,
         &mut transaction_buffer,
-        std::iter::repeat_with(|| &TransactionCategory::Standard),
+        std::iter::repeat_with(|| &TransactionCategory::Large),
         transaction_config.block_max_standard_count as usize + 50,
     );
 }
@@ -467,7 +467,7 @@ fn get_appendable_block_when_standards_are_both_legacy_and_v1() {
     get_appendable_block(
         &mut rng,
         &mut transaction_buffer,
-        [TransactionCategory::Standard].iter().cycle(),
+        [TransactionCategory::Large].iter().cycle(),
         transaction_config.block_max_standard_count as usize + 5,
     );
 }
@@ -976,7 +976,7 @@ fn generate_and_register_transactions(
         .map(|_| create_valid_transaction(rng, &TransactionCategory::InstallUpgrade, None, None))
         .collect();
     let standards: Vec<_> = (0..standard_count)
-        .map(|_| create_valid_transaction(rng, &TransactionCategory::Standard, None, None))
+        .map(|_| create_valid_transaction(rng, &TransactionCategory::Large, None, None))
         .collect();
     transfers
         .iter()
@@ -998,7 +998,7 @@ fn register_transactions_and_blocks() {
         Config::default(),
         &Registry::new(),
     )
-    .unwrap();
+        .unwrap();
 
     transaction_buffer
         .prices
@@ -1163,7 +1163,7 @@ async fn expire_transactions_and_check_announcement_when_transactions_are_of_one
             Config::default(),
             &Registry::new(),
         )
-        .unwrap();
+            .unwrap();
 
         let reactor = MockReactor::new();
         let event_queue_handle = EventQueueHandle::without_shutdown(reactor.scheduler);
@@ -1240,7 +1240,7 @@ async fn expire_transactions_and_check_announcement_when_transactions_are_of_ran
         Config::default(),
         &Registry::new(),
     )
-    .unwrap();
+        .unwrap();
 
     let reactor = MockReactor::new();
     let event_queue_handle = EventQueueHandle::without_shutdown(reactor.scheduler);

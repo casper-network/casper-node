@@ -117,7 +117,7 @@ impl TransactionBuffer {
                             "fatal block store error when attempting to read highest blocks: {}",
                             err
                         )
-                        .ignore(),
+                            .ignore(),
                     );
                 }
             };
@@ -139,7 +139,7 @@ impl TransactionBuffer {
                     "{} failed to initialize",
                     <Self as Component<MainEvent>>::name(self)
                 )
-                .ignore(),
+                    .ignore(),
             );
         }
         None
@@ -147,8 +147,8 @@ impl TransactionBuffer {
 
     /// Manages cache ejection.
     fn expire<REv>(&mut self, effect_builder: EffectBuilder<REv>) -> Effects<Event>
-    where
-        REv: From<Event> + From<TransactionBufferAnnouncement> + Send,
+        where
+            REv: From<Event> + From<TransactionBufferAnnouncement> + Send,
     {
         let now = Timestamp::now();
         let (buffer, mut freed): (HashMap<_, _>, _) = mem::take(&mut self.buffer)
@@ -212,8 +212,8 @@ impl TransactionBuffer {
         transaction_id: TransactionId,
         effect_builder: EffectBuilder<REv>,
     ) -> Effects<Event>
-    where
-        REv: From<Event> + From<StorageRequest> + Send,
+        where
+            REv: From<Event> + From<StorageRequest> + Send,
     {
         debug!(%transaction_id, "TransactionBuffer: registering gossiped transaction");
         effect_builder
@@ -230,8 +230,8 @@ impl TransactionBuffer {
         era_id: EraId,
         responder: Responder<AppendableBlock>,
     ) -> Effects<Event>
-    where
-        REv: From<ContractRuntimeRequest> + Send,
+        where
+            REv: From<ContractRuntimeRequest> + Send,
     {
         if self.prices.get(&era_id).is_none() {
             info!("Empty prices field, requesting gas price from contract runtime");
@@ -320,7 +320,7 @@ impl TransactionBuffer {
     fn register_transactions<'a>(
         &mut self,
         timestamp: Timestamp,
-        transaction_hashes: impl Iterator<Item = &'a TransactionHash>,
+        transaction_hashes: impl Iterator<Item=&'a TransactionHash>,
     ) {
         let expiry_timestamp = timestamp.saturating_add(self.chainspec.transaction_config.max_ttl);
 
@@ -432,7 +432,9 @@ impl TransactionBuffer {
         // TODO[RC]: It's error prone to use 4 different flags to track the limits. Implement a
         // proper limiter.
         let mut have_hit_mint_limit = false;
-        let mut have_hit_standard_limit = false;
+        let mut have_hit_large_limit = false;
+        let mut have_hit_small_limit = false;
+        let mut have_hit_medium_limit = false;
         let mut have_hit_install_upgrade_limit = false;
         let mut have_hit_auction_limit = false;
 
@@ -440,9 +442,9 @@ impl TransactionBuffer {
         let mut body_hashes_queue: VecDeque<_> = buckets.keys().cloned().collect();
 
         #[cfg(test)]
-        let mut iter_counter = 0;
+            let mut iter_counter = 0;
         #[cfg(test)]
-        let iter_limit = self.buffer.len() * 4;
+            let iter_limit = self.buffer.len() * 4;
 
         while let Some(body_hash) = body_hashes_queue.pop_front() {
             #[cfg(test)]
@@ -466,7 +468,13 @@ impl TransactionBuffer {
             if footprint.is_mint() && have_hit_mint_limit {
                 continue;
             }
-            if footprint.is_standard() && have_hit_standard_limit {
+            if footprint.is_large() && have_hit_large_limit {
+                continue;
+            }
+            if footprint.is_medium() && have_hit_medium_limit {
+                continue;
+            }
+            if footprint.is_small() && have_hit_small_limit {
                 continue;
             }
             if footprint.is_install_upgrade() && have_hit_install_upgrade_limit {
@@ -510,14 +518,22 @@ impl TransactionBuffer {
                                 TransactionCategory::Auction => {
                                     have_hit_auction_limit = true;
                                 }
-                                TransactionCategory::Standard => {
-                                    have_hit_standard_limit = true;
+                                TransactionCategory::Large => {
+                                    have_hit_large_limit = true;
+                                }
+                                TransactionCategory::Medium => {
+                                    have_hit_medium_limit = true
+                                }
+                                TransactionCategory::Small => {
+                                    have_hit_small_limit = true
                                 }
                                 TransactionCategory::InstallUpgrade => {
                                     have_hit_install_upgrade_limit = true;
                                 }
                             }
-                            if have_hit_standard_limit
+                            if have_hit_medium_limit
+                                && have_hit_large_limit
+                                && have_hit_small_limit
                                 && have_hit_auction_limit
                                 && have_hit_install_upgrade_limit
                                 && have_hit_mint_limit
@@ -614,8 +630,8 @@ impl TransactionBuffer {
 }
 
 impl<REv> InitializedComponent<REv> for TransactionBuffer
-where
-    REv: From<Event>
+    where
+        REv: From<Event>
         + From<TransactionBufferAnnouncement>
         + From<ContractRuntimeRequest>
         + From<StorageRequest>
@@ -638,8 +654,8 @@ where
 }
 
 impl<REv> Component<REv> for TransactionBuffer
-where
-    REv: From<Event>
+    where
+        REv: From<Event>
         + From<TransactionBufferAnnouncement>
         + From<StorageRequest>
         + From<ContractRuntimeRequest>
@@ -716,10 +732,10 @@ where
                     Effects::new()
                 }
                 Event::Request(TransactionBufferRequest::GetAppendableBlock {
-                    timestamp,
-                    era_id,
-                    responder,
-                }) => {
+                                   timestamp,
+                                   era_id,
+                                   responder,
+                               }) => {
                     self.handle_get_appendable_block(effect_builder, timestamp, era_id, responder)
                 }
                 Event::GetGasPriceResult(maybe_gas_price, era_id, timestamp, responder) => {

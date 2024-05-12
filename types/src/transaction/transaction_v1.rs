@@ -500,7 +500,7 @@ impl TransactionV1 {
     ) -> Self {
         let transaction = TransactionV1Builder::new_random_with_category_and_timestamp_and_ttl(
             rng,
-            &TransactionCategory::Standard,
+            &TransactionCategory::Large,
             timestamp,
             ttl,
         )
@@ -508,7 +508,7 @@ impl TransactionV1 {
         .unwrap();
         assert!(matches!(
             transaction.transaction_category(),
-            TransactionCategory::Standard
+            TransactionCategory::Large
         ));
         transaction
     }
@@ -580,7 +580,7 @@ impl TransactionV1 {
     pub fn transaction_category(&self) -> TransactionCategory {
         match self.body().target() {
             TransactionTarget::Native => match self.body().entry_point() {
-                TransactionEntryPoint::Custom(_) => TransactionCategory::Standard,
+                TransactionEntryPoint::Custom(_) => TransactionCategory::Large,
                 TransactionEntryPoint::Transfer => TransactionCategory::Mint,
                 TransactionEntryPoint::AddBid
                 | TransactionEntryPoint::WithdrawBid
@@ -590,10 +590,10 @@ impl TransactionV1 {
                 | TransactionEntryPoint::Redelegate
                 | TransactionEntryPoint::ChangeBidPublicKey => TransactionCategory::Auction,
             },
-            TransactionTarget::Stored { .. } => TransactionCategory::Standard,
+            TransactionTarget::Stored { .. } => TransactionCategory::Large,
             TransactionTarget::Session { kind, .. } => match kind {
                 TransactionSessionKind::Isolated | TransactionSessionKind::Standard => {
-                    TransactionCategory::Standard
+                    TransactionCategory::Large
                 }
                 TransactionSessionKind::Installer | TransactionSessionKind::Upgrader => {
                     TransactionCategory::InstallUpgrade
@@ -612,7 +612,7 @@ impl Categorized for TransactionV1 {
         } else if self.is_install_or_upgrade() {
             TransactionCategory::InstallUpgrade
         } else {
-            TransactionCategory::Standard
+            TransactionCategory::Large
         }
     }
 }
@@ -655,7 +655,7 @@ impl GasLimited for TransactionV1 {
                             TransactionEntryPoint::Custom(_) | TransactionEntryPoint::Transfer => {
                                 return Err(InvalidTransactionV1::EntryPointCannotBeCustom {
                                     entry_point: entry_point.clone(),
-                                })
+                                });
                             }
                             TransactionEntryPoint::AddBid | TransactionEntryPoint::ActivateBid => {
                                 costs.auction_costs().add_bid.into()
@@ -688,7 +688,7 @@ impl GasLimited for TransactionV1 {
             PricingMode::Reserved { receipt } => {
                 return Err(InvalidTransactionV1::InvalidPricingMode {
                     price_mode: PricingMode::Reserved { receipt: *receipt },
-                })
+                });
             }
         };
         Ok(gas)
@@ -992,7 +992,7 @@ mod tests {
             ret
         };
         assert_eq!(
-            transaction.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp,),
+            transaction.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp),
             Err(expected_error)
         );
         assert!(
@@ -1025,7 +1025,7 @@ mod tests {
             ret
         };
         assert_eq!(
-            transaction.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp,),
+            transaction.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp),
             Err(expected_error)
         );
         assert!(
@@ -1096,7 +1096,7 @@ mod tests {
         };
 
         assert_eq!(
-            transaction.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp,),
+            transaction.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp),
             Err(expected_error)
         );
         assert!(
@@ -1187,7 +1187,7 @@ mod tests {
             .is_config_compliant(
                 &fixed_handling_chainspec,
                 TimeDiff::default(),
-                current_timestamp
+                current_timestamp,
             )
             .is_ok());
 
@@ -1223,7 +1223,7 @@ mod tests {
             .is_config_compliant(
                 &classic_handling_chainspec,
                 TimeDiff::default(),
-                current_timestamp
+                current_timestamp,
             )
             .is_ok());
     }

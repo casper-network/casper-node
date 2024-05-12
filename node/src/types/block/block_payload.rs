@@ -77,7 +77,7 @@ impl BlockPayload {
     /// Returns the hashes and approvals of the standard transactions within the block.
     pub fn standard(&self) -> impl Iterator<Item = &(TransactionHash, BTreeSet<Approval>)> {
         let mut ret = vec![];
-        if let Some(transactions) = self.transactions.get(&TransactionCategory::Standard) {
+        if let Some(transactions) = self.transactions.get(&TransactionCategory::Large) {
             for transaction in transactions {
                 ret.push(transaction)
             }

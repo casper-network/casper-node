@@ -52,7 +52,7 @@ impl ExecutableBlock {
 
     pub(crate) fn standard(&self) -> Vec<TransactionHash> {
         self.transaction_map
-            .get(&(TransactionCategory::Standard as u8))
+            .get(&(TransactionCategory::Large as u8))
             .cloned()
             .unwrap_or(vec![])
     }

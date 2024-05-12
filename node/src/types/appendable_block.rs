@@ -78,7 +78,7 @@ impl AppendableBlock {
             return Err(AddError::Expired);
         }
         let limit = match footprint.category {
-            TransactionCategory::Standard => self.transaction_config.block_max_standard_count,
+            TransactionCategory::Large | TransactionCategory::Medium | TransactionCategory::Small => self.transaction_config.block_max_standard_count,
             TransactionCategory::Mint => self.transaction_config.block_max_mint_count,
             TransactionCategory::Auction => self.transaction_config.block_max_auction_count,
             TransactionCategory::InstallUpgrade => {
@@ -172,11 +172,7 @@ impl AppendableBlock {
         let mut transactions = BTreeMap::new();
         collate(TransactionCategory::Mint, &mut transactions, &footprints);
         collate(TransactionCategory::Auction, &mut transactions, &footprints);
-        collate(
-            TransactionCategory::Standard,
-            &mut transactions,
-            &footprints,
-        );
+        collate(TransactionCategory::Large, &mut transactions, &footprints);
         collate(
             TransactionCategory::InstallUpgrade,
             &mut transactions,
@@ -200,7 +196,7 @@ impl AppendableBlock {
 
 impl Display for AppendableBlock {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        let standard_count = self.category_count(&TransactionCategory::Standard);
+        let standard_count = self.category_count(&TransactionCategory::Large);
         let mint_count = self.category_count(&TransactionCategory::Mint);
         let auction_count = self.category_count(&TransactionCategory::Auction);
         let install_upgrade_count = self.category_count(&TransactionCategory::InstallUpgrade);

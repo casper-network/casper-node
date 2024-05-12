@@ -216,6 +216,11 @@ impl Chainspec {
             .millis()
             .saturating_sub(self.core_config.gas_hold_interval.millis())
     }
+
+    pub fn supported_categories(&self, category: u64) -> bool {
+        //TODO: Switch this to the vec, if you see this, the work is not done, lol.
+        true
+    }
 }
 
 #[cfg(any(feature = "testing", test))]

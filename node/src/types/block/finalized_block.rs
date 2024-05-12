@@ -67,7 +67,7 @@ impl FinalizedBlock {
                 block_payload.auction().map(|(x, _)| x).copied().collect(),
             );
             ret.insert(
-                TransactionCategory::Standard as u8,
+                TransactionCategory::Large as u8,
                 block_payload.standard().map(|(x, _)| x).copied().collect(),
             );
             ret.insert(
@@ -114,7 +114,7 @@ impl FinalizedBlock {
     }
     pub(crate) fn standard(&self) -> Vec<TransactionHash> {
         self.transactions
-            .get(&(TransactionCategory::Standard as u8))
+            .get(&(TransactionCategory::Large as u8))
             .map(|transactions| transactions.to_vec())
             .unwrap_or(vec![])
     }
@@ -161,7 +161,7 @@ impl FinalizedBlock {
         for transaction in txns_iter {
             standard.push((transaction.hash(), BTreeSet::new()));
         }
-        transactions.insert(TransactionCategory::Standard, standard);
+        transactions.insert(TransactionCategory::Large, standard);
         let rewarded_signatures = Default::default();
         let random_bit = rng.gen();
         let block_payload =
@@ -258,7 +258,7 @@ mod tests {
         let hash = standard.hash();
         let transactions = {
             let mut ret = BTreeMap::new();
-            ret.insert(TransactionCategory::Standard, vec![(hash, BTreeSet::new())]);
+            ret.insert(TransactionCategory::Large, vec![(hash, BTreeSet::new())]);
             ret.insert(TransactionCategory::Mint, vec![]);
             ret.insert(TransactionCategory::InstallUpgrade, vec![]);
             ret.insert(TransactionCategory::Auction, vec![]);
@@ -277,7 +277,7 @@ mod tests {
 
         let transactions = fb
             .transactions
-            .get(&(TransactionCategory::Standard as u8))
+            .get(&(TransactionCategory::Large as u8))
             .unwrap();
         assert!(!transactions.is_empty())
     }

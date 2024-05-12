@@ -304,11 +304,14 @@ pub fn execute_finalized_block(
             ProofHandling::NoProofs,
         ));
 
+        let category = transaction.category();
+
         let allow_execution = {
             let is_not_penalized = !balance_identifier.is_penalty();
             let sufficient_balance = initial_balance_result.is_sufficient(cost);
-            trace!(%transaction_hash, ?sufficient_balance, ?is_not_penalized, "payment preprocessing");
-            is_not_penalized && sufficient_balance
+            let is_supported = chainspec.supported_categories(category as u64);
+            trace!(%transaction_hash, ?sufficient_balance, ?is_not_penalized, ?is_supported, "payment preprocessing");
+            is_not_penalized && sufficient_balance && is_supported
         };
 
         if allow_execution {
@@ -330,7 +333,6 @@ pub fn execute_finalized_block(
                     .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
             }
 
-            let category = transaction.category();
             trace!(%transaction_hash, ?category, "eligible for execution");
             match category {
                 TransactionCategory::Mint => {
@@ -382,7 +384,7 @@ pub fn execute_finalized_block(
                         }
                     };
                 }
-                TransactionCategory::Standard | TransactionCategory::InstallUpgrade => {
+                TransactionCategory::Large | TransactionCategory::InstallUpgrade => {
                     let wasm_v1_start = Instant::now();
                     match WasmV1Request::new_session(
                         state_root_hash,
@@ -412,6 +414,10 @@ pub fn execute_finalized_block(
                             .exec_wasm_v1
                             .observe(wasm_v1_start.elapsed().as_secs_f64());
                     }
+                }
+                _ => {
+                    debug!(%transaction_hash, %category, "unsupported category");
+                    continue;
                 }
             }
         } else {
@@ -880,9 +886,9 @@ pub fn execute_finalized_block(
         (None, None) => None,
         (
             Some(InternalEraReport {
-                equivocators,
-                inactive_validators,
-            }),
+                     equivocators,
+                     inactive_validators,
+                 }),
             Some((next_era_validator_weights, next_era_gas_price)),
         ) => Some(EraEndV2::new(
             equivocators,
@@ -973,8 +979,8 @@ pub(super) fn speculatively_execute<S>(
     block_header: BlockHeader,
     transaction: Transaction,
 ) -> SpeculativeExecutionResult
-where
-    S: StateProvider,
+    where
+        S: StateProvider,
 {
     let state_root_hash = block_header.state_root_hash();
     let block_time = block_header
@@ -1051,14 +1057,14 @@ fn commit_step(
 /// serialized results are not greater than `ChunkWithProof::CHUNK_SIZE_BYTES`), or otherwise will
 /// be a Merkle root hash of the chunks derived from the serialized results.
 pub(crate) fn compute_execution_results_checksum<'a>(
-    execution_results_iter: impl Iterator<Item = &'a ExecutionResult> + Clone,
+    execution_results_iter: impl Iterator<Item=&'a ExecutionResult> + Clone,
 ) -> Result<Digest, BlockExecutionError> {
     // Serialize the execution results as if they were `Vec<ExecutionResult>`.
     let serialized_length = U32_SERIALIZED_LENGTH
         + execution_results_iter
-            .clone()
-            .map(|exec_result| exec_result.serialized_length())
-            .sum::<usize>();
+        .clone()
+        .map(|exec_result| exec_result.serialized_length())
+        .sum::<usize>();
     let mut serialized = vec![];
     serialized
         .try_reserve_exact(serialized_length)

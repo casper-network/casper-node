@@ -76,7 +76,7 @@ impl BlockBodyV2 {
 
     /// Returns the hashes of all other transactions within the block.
     pub fn standard(&self) -> impl Iterator<Item = TransactionHash> {
-        self.transaction_by_category(TransactionCategory::Standard)
+        self.transaction_by_category(TransactionCategory::Large)
             .into_iter()
     }
 

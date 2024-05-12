@@ -2364,7 +2364,7 @@ mod tests {
                     TransactionCategory::InstallUpgrade as u8,
                     install_upgrade_hashes,
                 );
-                ret.insert(TransactionCategory::Standard as u8, standard_hashes);
+                ret.insert(TransactionCategory::Large as u8, standard_hashes);
                 ret
             };
 

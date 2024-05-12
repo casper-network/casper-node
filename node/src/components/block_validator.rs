@@ -60,7 +60,7 @@ impl ProposedBlock<ClContext> {
 
     /// How many standard transactions?
     pub(crate) fn standard_count(&self) -> usize {
-        self.value().count(Some(TransactionCategory::Standard))
+        self.value().count(Some(TransactionCategory::Large))
     }
 
     /// How many mint transactions?

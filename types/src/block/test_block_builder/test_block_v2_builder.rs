@@ -222,7 +222,7 @@ impl TestBlockV2Builder {
                 TransactionCategory::InstallUpgrade as u8,
                 install_upgrade_hashes,
             );
-            ret.insert(TransactionCategory::Standard as u8, standard_hashes);
+            ret.insert(TransactionCategory::Large as u8, standard_hashes);
             ret
         };
         let rewarded_signatures = rewarded_signatures.unwrap_or_default();

@@ -708,7 +708,7 @@ impl LargestSpecimen for BlockV2 {
                 TransactionCategory::InstallUpgrade as u8,
                 install_upgrade_hashes,
             );
-            ret.insert(TransactionCategory::Standard as u8, standard_hashes);
+            ret.insert(TransactionCategory::Large as u8, standard_hashes);
             ret
         };
 
@@ -852,7 +852,7 @@ impl LargestSpecimen for BlockPayload {
             ],
         );
         transactions.insert(
-            TransactionCategory::Standard,
+            TransactionCategory::Large,
             vec![
                 large_txn_hash_with_approvals.clone();
                 estimator.parameter::<usize>("max_standard_transactions_per_block")

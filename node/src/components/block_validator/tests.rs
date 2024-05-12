@@ -167,7 +167,7 @@ pub(super) fn new_proposed_block_with_cited_signatures(
                 .collect(),
         );
         ret.insert(
-            TransactionCategory::Standard,
+            TransactionCategory::Large,
             standard
                 .into_iter()
                 .map(|(txn_hash, approvals)| (txn_hash, approvals))

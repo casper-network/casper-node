@@ -23,15 +23,19 @@ use serde::{Deserialize, Serialize};
 #[serde(deny_unknown_fields)]
 #[repr(u8)]
 pub enum TransactionCategory {
-    /// Standard transaction (the default).
+    /// Large wasm sized transaction interactio.
     #[default]
-    Standard = 0,
-    /// Native mint interaction.
-    Mint = 1,
-    /// Native auction interaction.
-    Auction = 2,
+    Large = 0,
+    /// Small wasm sized transaction interaction.
+    Small = 1,
+    /// .
+    Medium = 2,
     /// Install or Upgrade.
     InstallUpgrade = 3,
+    /// Native mint interaction.
+    Mint = 4,
+    /// Native auction interaction.
+    Auction = 5,
 }
 
 impl TransactionCategory {
@@ -39,10 +43,12 @@ impl TransactionCategory {
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub fn random(rng: &mut TestRng) -> Self {
         match rng.gen_range(0u32..4) {
-            0 => Self::Mint,
-            1 => Self::Auction,
-            2 => Self::InstallUpgrade,
-            3 => Self::Standard,
+            0 => Self::Large,
+            1 => Self::Small,
+            2 => Self::Medium,
+            3 => Self::InstallUpgrade,
+            4 => Self::Mint,
+            5 => Self::Auction,
             _ => unreachable!(),
         }
     }
@@ -51,10 +57,16 @@ impl TransactionCategory {
 impl fmt::Display for TransactionCategory {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            TransactionCategory::Standard => write!(f, "Standard"),
+            TransactionCategory::Large => write!(f, "Large"),
             TransactionCategory::Mint => write!(f, "Mint"),
             TransactionCategory::Auction => write!(f, "Auction"),
             TransactionCategory::InstallUpgrade => write!(f, "InstallUpgrade"),
+            TransactionCategory::Small => {
+                write!(f, "Small")
+            }
+            TransactionCategory::Medium => {
+                write!(f, "Medium")
+            }
         }
     }
 }

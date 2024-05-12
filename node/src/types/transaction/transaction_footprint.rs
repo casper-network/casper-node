@@ -79,8 +79,18 @@ impl TransactionFootprint {
     }
 
     /// Is standard transaction.
-    pub(crate) fn is_standard(&self) -> bool {
-        matches!(self.category, TransactionCategory::Standard)
+    pub(crate) fn is_large(&self) -> bool {
+        matches!(self.category, TransactionCategory::Large)
+    }
+
+    /// Is standard transaction.
+    pub(crate) fn is_medium(&self) -> bool {
+        matches!(self.category, TransactionCategory::Medium)
+    }
+
+    /// Is standard transaction.
+    pub(crate) fn is_small(&self) -> bool {
+        matches!(self.category, TransactionCategory::Small)
     }
 
     /// Is install or upgrade transaction.

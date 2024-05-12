@@ -60,7 +60,7 @@ static BLOCK_V2: Lazy<BlockV2> = Lazy::new(|| {
             TransactionCategory::InstallUpgrade as u8,
             installer_upgrader_hashes,
         );
-        ret.insert(TransactionCategory::Standard as u8, standard);
+        ret.insert(TransactionCategory::Large as u8, standard);
         ret
     };
     let rewarded_signatures = RewardedSignatures::default();
