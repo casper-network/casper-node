@@ -1,4 +1,5 @@
 use casper_engine_test_support::LmdbWasmTestBuilder;
+use casper_execution_engine::engine_state::engine_config::DEFAULT_PROTOCOL_VERSION;
 use casper_types::{
     account::Account, addressable_entity::NamedKeys, bytesrepr::ToBytes, system::mint,
     AccessRights, AsymmetricType, CLTyped, CLValue, Key, PublicKey, StoredValue, URef, U512,
@@ -25,11 +26,16 @@ pub(crate) fn generate_admins(matches: &ArgMatches<'_>) {
 
     // Open the global state that should be in the supplied directory.
     let post_state_hash = hash_from_str(state_hash);
-    let test_builder = LmdbWasmTestBuilder::open_raw(data_dir, Default::default(), post_state_hash);
+    let test_builder = LmdbWasmTestBuilder::open_raw(
+        data_dir,
+        Default::default(),
+        DEFAULT_PROTOCOL_VERSION,
+        post_state_hash,
+    );
 
     let admin_values = matches.values_of("admin").expect("at least one argument");
-
-    let mut total_supply = test_builder.total_supply(Some(post_state_hash));
+    let protocol_version = DEFAULT_PROTOCOL_VERSION;
+    let mut total_supply = test_builder.total_supply(protocol_version, Some(post_state_hash));
     let total_supply_before = total_supply;
 
     for value in admin_values {
@@ -78,11 +84,11 @@ pub(crate) fn generate_admins(matches: &ArgMatches<'_>) {
 
     let total_supply_key = {
         let mint_contract_hash = test_builder.get_mint_contract_hash();
-        let mint_contract = test_builder
-            .get_addressable_entity(mint_contract_hash)
-            .expect("mint system contract");
-        mint_contract
-            .named_keys()
+
+        let mint_named_keys =
+            test_builder.get_named_keys_by_contract_entity_hash(mint_contract_hash);
+
+        mint_named_keys
             .get(mint::TOTAL_SUPPLY_KEY)
             .cloned()
             .expect("valid key in mint named keys")

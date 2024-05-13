@@ -2,6 +2,10 @@
 //!
 //! Generally should not be used directly.  See the [`contract_api`](crate::contract_api) for
 //! high-level bindings suitable for writing smart contracts.
+
+#[cfg(doc)]
+use alloc::collections::BTreeMap;
+
 extern "C" {
     /// The bytes in the span of wasm memory from `key_ptr` to `key_ptr + key_size` must correspond
     /// to a valid global state key, otherwise the function will fail. If the key is de-serialized
@@ -368,52 +372,6 @@ extern "C" {
         id_ptr: *const u8,
         id_size: usize,
     ) -> i32;
-    /// Records a transfer.  Can only be called from within the mint contract.
-    /// Needed to support system contract-based execution.
-    ///
-    /// # Arguments
-    ///
-    /// * `maybe_to_ptr` - pointer in wasm memory to bytes representing the recipient
-    ///   `Option<AccountHash>`
-    /// * `maybe_to_size` - size of the source `Option<AccountHash>` (in bytes)
-    /// * `source_ptr` - pointer in wasm memory to bytes representing the source `URef` to transfer
-    ///   from
-    /// * `source_size` - size of the source `URef` (in bytes)
-    /// * `target_ptr` - pointer in wasm memory to bytes representing the target `URef` to transfer
-    ///   to
-    /// * `target_size` - size of the target (in bytes)
-    /// * `amount_ptr` - pointer in wasm memory to bytes representing the amount to transfer to the
-    ///   target account
-    /// * `amount_size` - size of the amount (in bytes)
-    /// * `id_ptr` - pointer in wasm memory to bytes representing the user-defined transaction id
-    /// * `id_size` - size of the id (in bytes)
-    pub fn casper_record_transfer(
-        maybe_to_ptr: *const u8,
-        maybe_to_size: usize,
-        source_ptr: *const u8,
-        source_size: usize,
-        target_ptr: *const u8,
-        target_size: usize,
-        amount_ptr: *const u8,
-        amount_size: usize,
-        id_ptr: *const u8,
-        id_size: usize,
-    ) -> i32;
-    /// Records era info.  Can only be called from within the auction contract.
-    /// Needed to support system contract-based execution.
-    ///
-    /// # Arguments
-    ///
-    /// * `era_id_ptr` - pointer in wasm memory to bytes representing the `EraId`
-    /// * `era_id_size` - size of the `EraId` (in bytes)
-    /// * `era_info_ptr` - pointer in wasm memory to bytes representing the `EraInfo`
-    /// * `era_info_size` - size of the `EraInfo` (in bytes)
-    pub fn casper_record_era_info(
-        era_id_ptr: *const u8,
-        era_id_size: usize,
-        era_info_ptr: *const u8,
-        era_info_size: usize,
-    ) -> i32;
     /// This function uses the mint contract's balance function to get the balance
     /// of the specified purse. It causes a `Trap` if the bytes in wasm memory
     /// from `purse_ptr` to `purse_ptr + purse_size` cannot be
@@ -476,7 +434,7 @@ extern "C" {
         bytes_written: *mut usize,
     ) -> i32;
     /// Creates new contract package at hash. Returns both newly generated
-    /// [`casper_types::ContractPackageHash`] and a [`casper_types::URef`] for further
+    /// [`casper_types::PackageHash`] and a [`casper_types::URef`] for further
     /// modifying access.
     pub fn casper_create_contract_package_at_hash(
         hash_addr_ptr: *mut u8,
@@ -506,32 +464,34 @@ extern "C" {
         existing_urefs_size: usize,
         output_size_ptr: *mut usize,
     ) -> i32;
-    /// Adds new contract version to a contract package.
+    /// Adds a new version to a package.
     ///
     /// # Arguments
     ///
-    /// * `contract_package_hash_ptr` - pointer to serialized contract package hash.
-    /// * `contract_package_hash_size` - size of contract package hash in serialized form.
+    /// * `package_hash_ptr` - pointer to serialized package hash.
+    /// * `package_hash_size` - size of package hash in serialized form.
     /// * `version_ptr` - output parameter where new version assigned by host is set
     /// * `entry_points_ptr` - pointer to serialized [`casper_types::EntryPoints`]
     /// * `entry_points_size` - size of serialized [`casper_types::EntryPoints`]
     /// * `named_keys_ptr` - pointer to serialized [`casper_types::addressable_entity::NamedKeys`]
     /// * `named_keys_size` - size of serialized [`casper_types::addressable_entity::NamedKeys`]
+    /// * `message_topics_ptr` - pointer to serialized BTreeMap<String, MessageTopicOperation>
+    ///   containing message topic names and the operation to pe performed on each one.
+    /// * `message_topics_size` - size of serialized BTreeMap<String, MessageTopicOperation>
     /// * `output_ptr` - pointer to a memory where host assigned contract hash is set to
-    /// * `output_size` - size of memory area that host can write to
-    /// * `bytes_written_ptr` - pointer to a value where host will set a number of bytes written to
-    ///   the `output_size` pointer
-    pub fn casper_add_contract_version(
-        contract_package_hash_ptr: *const u8,
-        contract_package_hash_size: usize,
+    /// * `output_size` - expected width of output (currently 32)
+    pub fn casper_add_package_version(
+        package_hash_ptr: *const u8,
+        package_hash_size: usize,
         version_ptr: *const u32,
         entry_points_ptr: *const u8,
         entry_points_size: usize,
         named_keys_ptr: *const u8,
         named_keys_size: usize,
+        message_topics_ptr: *const u8,
+        message_topics_size: usize,
         output_ptr: *mut u8,
         output_size: usize,
-        bytes_written_ptr: *mut usize,
     ) -> i32;
     /// Disables contract in a contract package. Returns non-zero standard error for a failure,
     /// otherwise a zero indicates success.
@@ -804,5 +764,35 @@ extern "C" {
         contract_package_hash_size: usize,
         contract_hash_ptr: *const u8,
         contract_hash_size: usize,
+    ) -> i32;
+    /// Manages a message topic.
+    ///
+    /// # Arguments
+    ///
+    /// * `topic_name_ptr` - pointer to the topic name UTF-8 string.
+    /// * `topic_name_size` - size of the serialized name string.
+    /// * `operation_ptr` - pointer to the management operation to be performed for the specified
+    ///   topic.
+    /// * `operation_ptr_size` - size of the operation.
+    pub fn casper_manage_message_topic(
+        topic_name_ptr: *const u8,
+        topic_name_size: usize,
+        operation_ptr: *const u8,
+        operation_size: usize,
+    ) -> i32;
+    /// Emits a new message on the specified topic.
+    ///
+    /// # Arguments
+    ///
+    /// * `topic_name_ptr` - pointer to the topic name UTF-8 string where the message will be
+    ///   emitted.
+    /// * `topic_name_size` - size of the serialized name string.
+    /// * `message_ptr` - pointer to the serialized message payload to be emitted.
+    /// * `message_size` - size of the serialized message payload.
+    pub fn casper_emit_message(
+        topic_name_ptr: *const u8,
+        topic_name_size: usize,
+        message_ptr: *const u8,
+        message_size: usize,
     ) -> i32;
 }

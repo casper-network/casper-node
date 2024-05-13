@@ -20,8 +20,10 @@ pub const BLOCK_REWARD: u64 = 1_000_000_000_000;
 pub const ARG_AMOUNT: &str = "amount";
 /// Named constant for `delegation_rate`.
 pub const ARG_DELEGATION_RATE: &str = "delegation_rate";
-/// Named constant for `account_hash`.
+/// Named constant for `public_key`.
 pub const ARG_PUBLIC_KEY: &str = "public_key";
+/// Named constant for `new_public_key`.
+pub const ARG_NEW_PUBLIC_KEY: &str = "new_public_key";
 /// Named constant for `validator`.
 pub const ARG_VALIDATOR: &str = "validator";
 /// Named constant for `delegator`.
@@ -36,10 +38,6 @@ pub const ARG_VALIDATOR_PUBLIC_KEYS: &str = "validator_public_keys";
 pub const ARG_NEW_VALIDATOR: &str = "new_validator";
 /// Named constant for `era_id`.
 pub const ARG_ERA_ID: &str = "era_id";
-/// Named constant for `validator_public_key`.
-pub const ARG_VALIDATOR_PUBLIC_KEY: &str = "validator_public_key";
-/// Named constant for `delegator_public_key`.
-pub const ARG_DELEGATOR_PUBLIC_KEY: &str = "delegator_public_key";
 /// Named constant for `validator_slots` argument.
 pub const ARG_VALIDATOR_SLOTS: &str = VALIDATOR_SLOTS_KEY;
 /// Named constant for `mint_contract_package_hash`
@@ -56,6 +54,10 @@ pub const ARG_UNBONDING_DELAY: &str = "unbonding_delay";
 pub const ARG_ERA_END_TIMESTAMP_MILLIS: &str = "era_end_timestamp_millis";
 /// Named constant for `evicted_validators`;
 pub const ARG_EVICTED_VALIDATORS: &str = "evicted_validators";
+/// Named constant for `rewards_map`;
+pub const ARG_REWARDS_MAP: &str = "rewards_map";
+/// Named constant for `entry_point`;
+pub const ARG_ENTRY_POINT: &str = "entry_point";
 
 /// Named constant for method `get_era_validators`.
 pub const METHOD_GET_ERA_VALIDATORS: &str = "get_era_validators";
@@ -79,6 +81,8 @@ pub const METHOD_DISTRIBUTE: &str = "distribute";
 pub const METHOD_READ_ERA_ID: &str = "read_era_id";
 /// Named constant for method `activate_bid`.
 pub const METHOD_ACTIVATE_BID: &str = "activate_bid";
+/// Named constant for method `change_bid_public_key`.
+pub const METHOD_CHANGE_BID_PUBLIC_KEY: &str = " change_bid_public_key";
 
 /// Storage for `EraId`.
 pub const ERA_ID_KEY: &str = "era_id";

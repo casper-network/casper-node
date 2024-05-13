@@ -15,8 +15,8 @@ use itertools::Itertools;
 use serde::Serialize;
 
 use casper_types::{
-    execution::Effects, Block, DeployHash, EraId, FinalitySignature, PublicKey, Timestamp,
-    Transaction, U512,
+    execution::Effects, Block, EraId, FinalitySignature, FinalitySignatureV2, NextUpgrade,
+    PublicKey, Timestamp, Transaction, TransactionHash, U512,
 };
 
 use crate::{
@@ -26,9 +26,9 @@ use crate::{
         fetcher::FetchItem,
         gossiper::GossipItem,
         network::blocklist::BlocklistJustification,
-        upgrade_watcher::NextUpgrade,
     },
     effect::Responder,
+    failpoints::FailpointActivation,
     types::{FinalizedBlock, MetaBlock, NodeId},
     utils::Source,
 };
@@ -66,6 +66,11 @@ pub(crate) enum ControlAnnouncement {
         /// Responder called when the dump has been finished.
         finished: Responder<()>,
     },
+    /// Activates/deactivates a failpoint.
+    ActivateFailpoint {
+        /// The failpoint activation to process.
+        activation: FailpointActivation,
+    },
 }
 
 impl Debug for ControlAnnouncement {
@@ -82,6 +87,10 @@ impl Debug for ControlAnnouncement {
             ControlAnnouncement::QueueDumpRequest { .. } => {
                 f.debug_struct("QueueDump").finish_non_exhaustive()
             }
+            ControlAnnouncement::ActivateFailpoint { activation } => f
+                .debug_struct("ActivateFailpoint")
+                .field("activation", activation)
+                .finish(),
         }
     }
 }
@@ -98,6 +107,9 @@ impl Display for ControlAnnouncement {
             }
             ControlAnnouncement::QueueDumpRequest { .. } => {
                 write!(f, "dump event queue")
+            }
+            ControlAnnouncement::ActivateFailpoint { activation } => {
+                write!(f, "failpoint activation: {}", activation)
             }
         }
     }
@@ -216,15 +228,15 @@ impl Display for TransactionAcceptorAnnouncement {
 }
 
 #[derive(Debug, Serialize)]
-pub(crate) enum DeployBufferAnnouncement {
-    /// Hashes of the deploys that expired.
-    DeploysExpired(Vec<DeployHash>),
+pub(crate) enum TransactionBufferAnnouncement {
+    /// Hashes of the transactions that expired.
+    TransactionsExpired(Vec<TransactionHash>),
 }
 
-impl Display for DeployBufferAnnouncement {
+impl Display for TransactionBufferAnnouncement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            DeployBufferAnnouncement::DeploysExpired(hashes) => {
+            TransactionBufferAnnouncement::TransactionsExpired(hashes) => {
                 write!(f, "pruned hashes: {}", hashes.iter().join(", "))
             }
         }
@@ -363,6 +375,10 @@ pub(crate) enum ContractRuntimeAnnouncement {
         /// The validators for the eras after the `era_that_is_ending` era.
         upcoming_era_validators: BTreeMap<EraId, BTreeMap<PublicKey, U512>>,
     },
+    NextEraGasPrice {
+        era_id: EraId,
+        next_era_gas_price: u8,
+    },
 }
 
 impl Display for ContractRuntimeAnnouncement {
@@ -380,6 +396,16 @@ impl Display for ContractRuntimeAnnouncement {
                     era_that_is_ending,
                 )
             }
+            ContractRuntimeAnnouncement::NextEraGasPrice {
+                era_id,
+                next_era_gas_price,
+            } => {
+                write!(
+                    f,
+                    "Calculated gas price {} for era {}",
+                    next_era_gas_price, era_id
+                )
+            }
         }
     }
 }
@@ -389,7 +415,7 @@ pub(crate) enum BlockAccumulatorAnnouncement {
     /// A finality signature which wasn't previously stored on this node has been accepted and
     /// stored.
     AcceptedNewFinalitySignature {
-        finality_signature: Box<FinalitySignature>,
+        finality_signature: Box<FinalitySignatureV2>,
     },
 }
 

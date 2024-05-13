@@ -5,27 +5,39 @@
 pub mod action_thresholds;
 mod action_type;
 pub mod associated_keys;
+mod entry_points;
 mod error;
 mod named_keys;
 mod weight;
 
 use alloc::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{btree_map::Entry, BTreeMap, BTreeSet},
     format,
     string::{String, ToString},
     vec::Vec,
 };
+use blake2::{
+    digest::{Update, VariableOutput},
+    VarBlake2b,
+};
 use core::{
     array::TryFromSliceError,
-    convert::TryFrom,
+    convert::{TryFrom, TryInto},
     fmt::{self, Debug, Display, Formatter},
     iter,
 };
-use num_derive::FromPrimitive;
-use num_traits::FromPrimitive;
 
+#[cfg(feature = "json-schema")]
+use crate::SecretKey;
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+#[cfg(feature = "json-schema")]
+use once_cell::sync::Lazy;
+#[cfg(any(feature = "testing", test))]
+use rand::{
+    distributions::{Distribution, Standard},
+    Rng,
+};
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
@@ -37,6 +49,10 @@ pub use self::{
     action_thresholds::ActionThresholds,
     action_type::ActionType,
     associated_keys::AssociatedKeys,
+    entry_points::{
+        EntryPoint, EntryPointAccess, EntryPointAddr, EntryPointPayment, EntryPointType,
+        EntryPointValue, EntryPoints, Parameter, Parameters, DEFAULT_ENTRY_POINT_NAME,
+    },
     error::{
         FromAccountHashStrError, SetThresholdFailure, TryFromIntError,
         TryFromSliceForAccountHashError,
@@ -44,16 +60,18 @@ pub use self::{
     named_keys::NamedKeys,
     weight::{Weight, WEIGHT_SERIALIZED_LENGTH},
 };
-
 use crate::{
     account::{Account, AccountHash},
-    bytesrepr::{self, FromBytes, ToBytes},
+    byte_code::ByteCodeHash,
+    bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     checksummed_hex,
-    contract_wasm::ContractWasmHash,
-    contracts::Contract,
+    contract_messages::TopicNameHash,
+    contracts::{Contract, ContractHash},
+    system::SystemEntityType,
     uref::{self, URef},
-    AccessRights, CLType, CLTyped, ContextAccessRights, ContractPackageHash, Group, HashAddr, Key,
-    ProtocolVersion, KEY_HASH_LENGTH,
+    AccessRights, ApiError, CLType, CLTyped, CLValue, CLValueError, ContextAccessRights, HashAddr,
+    Key, PackageHash, ProtocolVersion, PublicKey, Tagged, TransactionRuntime,
+    BLAKE2B_DIGEST_LENGTH, KEY_HASH_LENGTH,
 };
 
 /// Maximum number of distinct user groups.
@@ -61,16 +79,13 @@ pub const MAX_GROUPS: u8 = 10;
 /// Maximum number of URefs which can be assigned across all user groups.
 pub const MAX_TOTAL_UREFS: usize = 100;
 
-/// The tag for Contract Packages associated with Wasm stored on chain.
-pub const PACKAGE_KIND_WASM_TAG: u8 = 0;
-/// The tag for Contract Package associated with a native contract implementation.
-pub const PACKAGE_KIND_SYSTEM_CONTRACT_TAG: u8 = 1;
-/// The tag for Contract Package associated with an Account hash.
-pub const PACKAGE_KIND_ACCOUNT_TAG: u8 = 2;
-/// The tag for Contract Packages associated with legacy packages.
-pub const PACKAGE_KIND_LEGACY_TAG: u8 = 3;
+const ADDRESSABLE_ENTITY_STRING_PREFIX: &str = "addressable-entity-";
 
-const CONTRACT_STRING_PREFIX: &str = "contract-";
+const ENTITY_PREFIX: &str = "entity-";
+const ACCOUNT_ENTITY_PREFIX: &str = "account-";
+const CONTRACT_ENTITY_PREFIX: &str = "contract-";
+const SYSTEM_ENTITY_PREFIX: &str = "system-";
+const NAMED_KEY_PREFIX: &str = "named-key-";
 
 /// Set of errors which may happen when working with contract headers.
 #[derive(Debug, PartialEq, Eq)]
@@ -88,9 +103,9 @@ pub enum Error {
     /// Attempted to disable a contract that does not exist.
     /// ```
     /// # use casper_types::addressable_entity::Error;
-    /// assert_eq!(2, Error::ContractNotFound as u8);
+    /// assert_eq!(2, Error::EntityNotFound as u8);
     /// ```
-    ContractNotFound = 2,
+    EntityNotFound = 2,
     /// Attempted to create a user group which already exists (use the update
     /// function to change an existing user group).
     /// ```
@@ -145,7 +160,7 @@ impl TryFrom<u8> for Error {
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         let error = match value {
             v if v == Self::PreviouslyUsedVersion as u8 => Self::PreviouslyUsedVersion,
-            v if v == Self::ContractNotFound as u8 => Self::ContractNotFound,
+            v if v == Self::EntityNotFound as u8 => Self::EntityNotFound,
             v if v == Self::GroupAlreadyExists as u8 => Self::GroupAlreadyExists,
             v if v == Self::MaxGroupsExceeded as u8 => Self::MaxGroupsExceeded,
             v if v == Self::MaxTotalURefsExceeded as u8 => Self::MaxTotalURefsExceeded,
@@ -183,6 +198,8 @@ pub enum FromStrError {
     Hash(TryFromSliceError),
     /// Error when parsing an uref.
     URef(uref::FromStrError),
+    /// Error parsing from bytes.
+    BytesRepr(bytesrepr::Error),
 }
 
 impl From<base16::DecodeError> for FromStrError {
@@ -213,6 +230,9 @@ impl Display for FromStrError {
             FromStrError::Account(error) => {
                 write!(f, "account hash from string error: {:?}", error)
             }
+            FromStrError::BytesRepr(error) => {
+                write!(f, "bytesrepr error: {:?}", error)
+            }
         }
     }
 }
@@ -225,14 +245,19 @@ impl Display for FromStrError {
     derive(JsonSchema),
     schemars(description = "The hex-encoded address of the addressable entity.")
 )]
-pub struct ContractHash(
+pub struct AddressableEntityHash(
     #[cfg_attr(feature = "json-schema", schemars(skip, with = "String"))] HashAddr,
 );
 
-impl ContractHash {
-    /// Constructs a new `ContractHash` from the raw bytes of the contract hash.
-    pub const fn new(value: HashAddr) -> ContractHash {
-        ContractHash(value)
+impl AddressableEntityHash {
+    /// Constructs a new `AddressableEntityHash` from the raw bytes of the contract hash.
+    pub const fn new(value: HashAddr) -> AddressableEntityHash {
+        AddressableEntityHash(value)
+    }
+
+    /// Get the entity addr for this entity hash from the corresponding entity.
+    pub fn entity_addr(&self, entity: AddressableEntity) -> EntityAddr {
+        entity.entity_addr(*self)
     }
 
     /// Returns the raw bytes of the contract hash as an array.
@@ -245,45 +270,55 @@ impl ContractHash {
         &self.0
     }
 
-    /// Formats the `ContractHash` for users getting and putting.
+    /// Formats the `AddressableEntityHash` for users getting and putting.
     pub fn to_formatted_string(self) -> String {
         format!(
             "{}{}",
-            CONTRACT_STRING_PREFIX,
+            ADDRESSABLE_ENTITY_STRING_PREFIX,
             base16::encode_lower(&self.0),
         )
     }
 
     /// Parses a string formatted as per `Self::to_formatted_string()` into a
-    /// `ContractHash`.
+    /// `AddressableEntityHash`.
     pub fn from_formatted_str(input: &str) -> Result<Self, FromStrError> {
         let remainder = input
-            .strip_prefix(CONTRACT_STRING_PREFIX)
+            .strip_prefix(ADDRESSABLE_ENTITY_STRING_PREFIX)
             .ok_or(FromStrError::InvalidPrefix)?;
         let bytes = HashAddr::try_from(checksummed_hex::decode(remainder)?.as_ref())?;
-        Ok(ContractHash(bytes))
+        Ok(AddressableEntityHash(bytes))
     }
 }
 
-impl Display for ContractHash {
+impl From<ContractHash> for AddressableEntityHash {
+    fn from(contract_hash: ContractHash) -> Self {
+        AddressableEntityHash::new(contract_hash.value())
+    }
+}
+
+impl Display for AddressableEntityHash {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         write!(f, "{}", base16::encode_lower(&self.0))
     }
 }
 
-impl Debug for ContractHash {
+impl Debug for AddressableEntityHash {
     fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
-        write!(f, "ContractHash({})", base16::encode_lower(&self.0))
+        write!(
+            f,
+            "AddressableEntityHash({})",
+            base16::encode_lower(&self.0)
+        )
     }
 }
 
-impl CLTyped for ContractHash {
+impl CLTyped for AddressableEntityHash {
     fn cl_type() -> CLType {
         CLType::ByteArray(KEY_HASH_LENGTH as u32)
     }
 }
 
-impl ToBytes for ContractHash {
+impl ToBytes for AddressableEntityHash {
     #[inline(always)]
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         self.0.to_bytes()
@@ -301,20 +336,32 @@ impl ToBytes for ContractHash {
     }
 }
 
-impl FromBytes for ContractHash {
+impl FromBytes for AddressableEntityHash {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (bytes, rem) = FromBytes::from_bytes(bytes)?;
-        Ok((ContractHash::new(bytes), rem))
+        Ok((AddressableEntityHash::new(bytes), rem))
     }
 }
 
-impl From<[u8; 32]> for ContractHash {
+impl From<[u8; 32]> for AddressableEntityHash {
     fn from(bytes: [u8; 32]) -> Self {
-        ContractHash(bytes)
+        AddressableEntityHash(bytes)
     }
 }
 
-impl Serialize for ContractHash {
+impl TryFrom<Key> for AddressableEntityHash {
+    type Error = ApiError;
+
+    fn try_from(value: Key) -> Result<Self, Self::Error> {
+        if let Key::AddressableEntity(entity_addr) = value {
+            Ok(AddressableEntityHash::new(entity_addr.value()))
+        } else {
+            Err(ApiError::Formatting)
+        }
+    }
+}
+
+impl Serialize for AddressableEntityHash {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         if serializer.is_human_readable() {
             self.to_formatted_string().serialize(serializer)
@@ -324,41 +371,48 @@ impl Serialize for ContractHash {
     }
 }
 
-impl<'de> Deserialize<'de> for ContractHash {
+impl<'de> Deserialize<'de> for AddressableEntityHash {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         if deserializer.is_human_readable() {
             let formatted_string = String::deserialize(deserializer)?;
-            ContractHash::from_formatted_str(&formatted_string).map_err(SerdeError::custom)
+            AddressableEntityHash::from_formatted_str(&formatted_string).map_err(SerdeError::custom)
         } else {
             let bytes = HashAddr::deserialize(deserializer)?;
-            Ok(ContractHash(bytes))
+            Ok(AddressableEntityHash(bytes))
         }
     }
 }
 
-impl AsRef<[u8]> for ContractHash {
+impl AsRef<[u8]> for AddressableEntityHash {
     fn as_ref(&self) -> &[u8] {
         self.0.as_ref()
     }
 }
 
-impl TryFrom<&[u8]> for ContractHash {
+impl TryFrom<&[u8]> for AddressableEntityHash {
     type Error = TryFromSliceForContractHashError;
 
     fn try_from(bytes: &[u8]) -> Result<Self, TryFromSliceForContractHashError> {
         HashAddr::try_from(bytes)
-            .map(ContractHash::new)
+            .map(AddressableEntityHash::new)
             .map_err(|_| TryFromSliceForContractHashError(()))
     }
 }
 
-impl TryFrom<&Vec<u8>> for ContractHash {
+impl TryFrom<&Vec<u8>> for AddressableEntityHash {
     type Error = TryFromSliceForContractHashError;
 
     fn try_from(bytes: &Vec<u8>) -> Result<Self, Self::Error> {
         HashAddr::try_from(bytes as &[u8])
-            .map(ContractHash::new)
+            .map(AddressableEntityHash::new)
             .map_err(|_| TryFromSliceForContractHashError(()))
+    }
+}
+
+#[cfg(any(feature = "testing", test))]
+impl Distribution<AddressableEntityHash> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> AddressableEntityHash {
+        AddressableEntityHash(rng.gen())
     }
 }
 
@@ -505,17 +559,702 @@ impl TryFrom<i32> for UpdateKeyFailure {
     }
 }
 
-/// Collection of named entry points.
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
+/// Tag for the variants of [`EntityKind`].
+#[derive(Debug, Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[repr(u8)]
+pub enum EntityKindTag {
+    /// `EntityKind::System` variant.
+    System = 0,
+    /// `EntityKind::Account` variant.
+    Account = 1,
+    /// `EntityKind::SmartContract` variant.
+    SmartContract = 2,
+}
+
+impl TryFrom<u8> for EntityKindTag {
+    type Error = bytesrepr::Error;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(EntityKindTag::System),
+            1 => Ok(EntityKindTag::Account),
+            2 => Ok(EntityKindTag::SmartContract),
+            _ => Err(bytesrepr::Error::Formatting),
+        }
+    }
+}
+
+impl ToBytes for EntityKindTag {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        (*self as u8).to_bytes()
+    }
+
+    fn serialized_length(&self) -> usize {
+        U8_SERIALIZED_LENGTH
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        (*self as u8).write_bytes(writer)
+    }
+}
+
+impl FromBytes for EntityKindTag {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (entity_kind_tag, remainder) = u8::from_bytes(bytes)?;
+        Ok((entity_kind_tag.try_into()?, remainder))
+    }
+}
+
+impl Display for EntityKindTag {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            EntityKindTag::System => {
+                write!(f, "system")
+            }
+            EntityKindTag::Account => {
+                write!(f, "account")
+            }
+            EntityKindTag::SmartContract => {
+                write!(f, "contract")
+            }
+        }
+    }
+}
+
+#[cfg(any(feature = "testing", test))]
+impl Distribution<EntityKindTag> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> EntityKindTag {
+        match rng.gen_range(0..=2) {
+            0 => EntityKindTag::System,
+            1 => EntityKindTag::Account,
+            2 => EntityKindTag::SmartContract,
+            _ => unreachable!(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+/// The type of Package.
+pub enum EntityKind {
+    /// Package associated with a native contract implementation.
+    System(SystemEntityType),
+    /// Package associated with an Account hash.
+    Account(AccountHash),
+    /// Packages associated with Wasm stored on chain.
+    SmartContract(TransactionRuntime),
+}
+
+impl EntityKind {
+    /// Returns the Account hash associated with a Package based on the package kind.
+    pub fn maybe_account_hash(&self) -> Option<AccountHash> {
+        match self {
+            Self::Account(account_hash) => Some(*account_hash),
+            Self::SmartContract(_) | Self::System(_) => None,
+        }
+    }
+
+    /// Returns the associated key set based on the Account hash set in the package kind.
+    pub fn associated_keys(&self) -> AssociatedKeys {
+        match self {
+            Self::Account(account_hash) => AssociatedKeys::new(*account_hash, Weight::new(1)),
+            Self::SmartContract(_) | Self::System(_) => AssociatedKeys::default(),
+        }
+    }
+
+    /// Returns if the current package is either a system contract or the system entity.
+    pub fn is_system(&self) -> bool {
+        matches!(self, Self::System(_))
+    }
+
+    /// Returns if the current package is the system mint.
+    pub fn is_system_mint(&self) -> bool {
+        matches!(self, Self::System(SystemEntityType::Mint))
+    }
+
+    /// Returns if the current package is the system auction.
+    pub fn is_system_auction(&self) -> bool {
+        matches!(self, Self::System(SystemEntityType::Auction))
+    }
+
+    /// Returns if the current package is associated with the system addressable entity.
+    pub fn is_system_account(&self) -> bool {
+        match self {
+            Self::Account(account_hash) => {
+                if *account_hash == PublicKey::System.to_account_hash() {
+                    return true;
+                }
+                false
+            }
+            _ => false,
+        }
+    }
+}
+
+impl Tagged<EntityKindTag> for EntityKind {
+    fn tag(&self) -> EntityKindTag {
+        match self {
+            EntityKind::System(_) => EntityKindTag::System,
+            EntityKind::Account(_) => EntityKindTag::Account,
+            EntityKind::SmartContract(_) => EntityKindTag::SmartContract,
+        }
+    }
+}
+
+impl Tagged<u8> for EntityKind {
+    fn tag(&self) -> u8 {
+        let package_kind_tag: EntityKindTag = self.tag();
+        package_kind_tag as u8
+    }
+}
+
+impl ToBytes for EntityKind {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        U8_SERIALIZED_LENGTH
+            + match self {
+                EntityKind::SmartContract(transaction_runtime) => {
+                    transaction_runtime.serialized_length()
+                }
+                EntityKind::System(system_entity_type) => system_entity_type.serialized_length(),
+                EntityKind::Account(account_hash) => account_hash.serialized_length(),
+            }
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        match self {
+            EntityKind::SmartContract(transaction_runtime) => {
+                writer.push(self.tag());
+                transaction_runtime.write_bytes(writer)
+            }
+            EntityKind::System(system_entity_type) => {
+                writer.push(self.tag());
+                system_entity_type.write_bytes(writer)
+            }
+            EntityKind::Account(account_hash) => {
+                writer.push(self.tag());
+                account_hash.write_bytes(writer)
+            }
+        }
+    }
+}
+
+impl FromBytes for EntityKind {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (tag, remainder) = EntityKindTag::from_bytes(bytes)?;
+        match tag {
+            EntityKindTag::System => {
+                let (entity_type, remainder) = SystemEntityType::from_bytes(remainder)?;
+                Ok((EntityKind::System(entity_type), remainder))
+            }
+            EntityKindTag::Account => {
+                let (account_hash, remainder) = AccountHash::from_bytes(remainder)?;
+                Ok((EntityKind::Account(account_hash), remainder))
+            }
+            EntityKindTag::SmartContract => {
+                let (transaction_runtime, remainder) = TransactionRuntime::from_bytes(remainder)?;
+                Ok((EntityKind::SmartContract(transaction_runtime), remainder))
+            }
+        }
+    }
+}
+
+impl Display for EntityKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            EntityKind::System(system_entity) => {
+                write!(f, "system-entity-kind({})", system_entity)
+            }
+            EntityKind::Account(account_hash) => {
+                write!(f, "account-entity-kind({})", account_hash)
+            }
+            EntityKind::SmartContract(transaction_runtime) => {
+                write!(f, "smart-contract-entity-kind({})", transaction_runtime)
+            }
+        }
+    }
+}
+
+#[cfg(any(feature = "testing", test))]
+impl Distribution<EntityKind> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> EntityKind {
+        match rng.gen_range(0..=2) {
+            0 => EntityKind::System(rng.gen()),
+            1 => EntityKind::Account(rng.gen()),
+            2 => EntityKind::SmartContract(rng.gen()),
+            _ => unreachable!(),
+        }
+    }
+}
+
+/// The address for an AddressableEntity which contains the 32 bytes and tagging information.
+#[derive(PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema), schemars(untagged))]
+pub enum EntityAddr {
+    /// The address for a system entity account or contract.
+    System(#[cfg_attr(feature = "json-schema", schemars(skip, with = "String"))] HashAddr),
+    /// The address of an entity that corresponds to an Account.
+    Account(#[cfg_attr(feature = "json-schema", schemars(skip, with = "String"))] HashAddr),
+    /// The address of an entity that corresponds to a Userland smart contract.
+    SmartContract(#[cfg_attr(feature = "json-schema", schemars(skip, with = "String"))] HashAddr),
+}
+
+impl EntityAddr {
+    /// The length in bytes of an `EntityAddr`.
+    pub const LENGTH: usize = U8_SERIALIZED_LENGTH + KEY_HASH_LENGTH;
+
+    /// Constructs a new `EntityAddr` for a system entity.
+    pub const fn new_system(hash_addr: HashAddr) -> Self {
+        Self::System(hash_addr)
+    }
+
+    /// Constructs a new `EntityAddr` for an Account entity.
+    pub const fn new_account(hash_addr: HashAddr) -> Self {
+        Self::Account(hash_addr)
+    }
+
+    /// Constructs a new `EntityAddr` for a smart contract.
+    pub const fn new_smart_contract(hash_addr: HashAddr) -> Self {
+        Self::SmartContract(hash_addr)
+    }
+
+    /// Constructs a new `EntityAddr` based on the supplied kind.
+    pub fn new_of_kind(entity_kind: EntityKind, hash_addr: HashAddr) -> Self {
+        match entity_kind {
+            EntityKind::System(_) => Self::new_system(hash_addr),
+            EntityKind::Account(_) => Self::new_account(hash_addr),
+            EntityKind::SmartContract(_) => Self::new_smart_contract(hash_addr),
+        }
+    }
+
+    /// Returns the tag of the [`EntityAddr`].
+    pub fn tag(&self) -> EntityKindTag {
+        match self {
+            EntityAddr::System(_) => EntityKindTag::System,
+            EntityAddr::Account(_) => EntityKindTag::Account,
+            EntityAddr::SmartContract(_) => EntityKindTag::SmartContract,
+        }
+    }
+
+    /// Is this a system entity address?
+    pub fn is_system(&self) -> bool {
+        self.tag() == EntityKindTag::System
+            || self.value() == PublicKey::System.to_account_hash().value()
+    }
+
+    /// Returns the 32 bytes of the [`EntityAddr`].
+    pub fn value(&self) -> HashAddr {
+        match self {
+            EntityAddr::System(hash_addr)
+            | EntityAddr::Account(hash_addr)
+            | EntityAddr::SmartContract(hash_addr) => *hash_addr,
+        }
+    }
+
+    /// Returns the formatted String representation of the [`EntityAddr`].
+    pub fn to_formatted_string(&self) -> String {
+        match self {
+            EntityAddr::System(addr) => {
+                format!(
+                    "{}{}{}",
+                    ENTITY_PREFIX,
+                    SYSTEM_ENTITY_PREFIX,
+                    base16::encode_lower(addr)
+                )
+            }
+            EntityAddr::Account(addr) => {
+                format!(
+                    "{}{}{}",
+                    ENTITY_PREFIX,
+                    ACCOUNT_ENTITY_PREFIX,
+                    base16::encode_lower(addr)
+                )
+            }
+            EntityAddr::SmartContract(addr) => {
+                format!(
+                    "{}{}{}",
+                    ENTITY_PREFIX,
+                    CONTRACT_ENTITY_PREFIX,
+                    base16::encode_lower(addr)
+                )
+            }
+        }
+    }
+
+    /// Constructs an [`EntityAddr`] from a formatted String.
+    pub fn from_formatted_str(input: &str) -> Result<Self, FromStrError> {
+        if let Some(entity) = input.strip_prefix(ENTITY_PREFIX) {
+            let (addr_str, tag) = if let Some(str) = entity.strip_prefix(SYSTEM_ENTITY_PREFIX) {
+                (str, EntityKindTag::System)
+            } else if let Some(str) = entity.strip_prefix(ACCOUNT_ENTITY_PREFIX) {
+                (str, EntityKindTag::Account)
+            } else if let Some(str) = entity.strip_prefix(CONTRACT_ENTITY_PREFIX) {
+                (str, EntityKindTag::SmartContract)
+            } else {
+                return Err(FromStrError::InvalidPrefix);
+            };
+            let addr = checksummed_hex::decode(addr_str).map_err(FromStrError::Hex)?;
+            let hash_addr = HashAddr::try_from(addr.as_ref()).map_err(FromStrError::Hash)?;
+            let entity_addr = match tag {
+                EntityKindTag::System => EntityAddr::new_system(hash_addr),
+                EntityKindTag::Account => EntityAddr::new_account(hash_addr),
+                EntityKindTag::SmartContract => EntityAddr::new_smart_contract(hash_addr),
+            };
+
+            return Ok(entity_addr);
+        }
+
+        Err(FromStrError::InvalidPrefix)
+    }
+}
+
+impl ToBytes for EntityAddr {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        EntityAddr::LENGTH
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        match self {
+            EntityAddr::System(addr) => {
+                EntityKindTag::System.write_bytes(writer)?;
+                addr.write_bytes(writer)
+            }
+            EntityAddr::Account(addr) => {
+                EntityKindTag::Account.write_bytes(writer)?;
+                addr.write_bytes(writer)
+            }
+            EntityAddr::SmartContract(addr) => {
+                EntityKindTag::SmartContract.write_bytes(writer)?;
+                addr.write_bytes(writer)
+            }
+        }
+    }
+}
+
+impl FromBytes for EntityAddr {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (tag, remainder) = EntityKindTag::from_bytes(bytes)?;
+        let (addr, remainder) = HashAddr::from_bytes(remainder)?;
+        let entity_addr = match tag {
+            EntityKindTag::System => EntityAddr::System(addr),
+            EntityKindTag::Account => EntityAddr::Account(addr),
+            EntityKindTag::SmartContract => EntityAddr::SmartContract(addr),
+        };
+        Ok((entity_addr, remainder))
+    }
+}
+
+impl From<EntityAddr> for AddressableEntityHash {
+    fn from(entity_addr: EntityAddr) -> Self {
+        AddressableEntityHash::new(entity_addr.value())
+    }
+}
+
+impl Display for EntityAddr {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.to_formatted_string())
+    }
+}
+
+impl Debug for EntityAddr {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            EntityAddr::System(hash_addr) => {
+                write!(f, "EntityAddr::System({})", base16::encode_lower(hash_addr))
+            }
+            EntityAddr::Account(hash_addr) => {
+                write!(
+                    f,
+                    "EntityAddr::Account({})",
+                    base16::encode_lower(hash_addr)
+                )
+            }
+            EntityAddr::SmartContract(hash_addr) => {
+                write!(
+                    f,
+                    "EntityAddr::SmartContract({})",
+                    base16::encode_lower(hash_addr)
+                )
+            }
+        }
+    }
+}
+
+impl Serialize for EntityAddr {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if serializer.is_human_readable() {
+            self.to_formatted_string().serialize(serializer)
+        } else {
+            let (tag, value): (EntityKindTag, HashAddr) = (self.tag(), self.value());
+            (tag, value).serialize(serializer)
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for EntityAddr {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        if deserializer.is_human_readable() {
+            let formatted_string = String::deserialize(deserializer)?;
+            Self::from_formatted_str(&formatted_string).map_err(SerdeError::custom)
+        } else {
+            let (tag, addr) = <(EntityKindTag, HashAddr)>::deserialize(deserializer)?;
+            match tag {
+                EntityKindTag::System => Ok(EntityAddr::new_system(addr)),
+                EntityKindTag::Account => Ok(EntityAddr::new_account(addr)),
+                EntityKindTag::SmartContract => Ok(EntityAddr::new_smart_contract(addr)),
+            }
+        }
+    }
+}
+
+#[cfg(any(feature = "testing", test))]
+impl Distribution<EntityAddr> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> EntityAddr {
+        match rng.gen_range(0..=2) {
+            0 => EntityAddr::System(rng.gen()),
+            1 => EntityAddr::Account(rng.gen()),
+            2 => EntityAddr::SmartContract(rng.gen()),
+            _ => unreachable!(),
+        }
+    }
+}
+
+/// A NamedKey address.
+#[derive(PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy, Serialize, Deserialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+pub struct NamedKeyAddr {
+    /// The address of the entity.
+    base_addr: EntityAddr,
+    /// The bytes of the name.
+    string_bytes: [u8; KEY_HASH_LENGTH],
+}
+
+impl NamedKeyAddr {
+    /// The length in bytes of a [`NamedKeyAddr`].
+    pub const NAMED_KEY_ADDR_BASE_LENGTH: usize = 1 + EntityAddr::LENGTH;
+
+    /// Constructs a new [`NamedKeyAddr`] based on the supplied bytes.
+    pub const fn new_named_key_entry(
+        entity_addr: EntityAddr,
+        string_bytes: [u8; KEY_HASH_LENGTH],
+    ) -> Self {
+        Self {
+            base_addr: entity_addr,
+            string_bytes,
+        }
+    }
+
+    /// Constructs a new [`NamedKeyAddr`] based on string name.
+    /// Will fail if the string cannot be serialized.
+    pub fn new_from_string(
+        entity_addr: EntityAddr,
+        entry: String,
+    ) -> Result<Self, bytesrepr::Error> {
+        let bytes = entry.to_bytes()?;
+        let mut hasher = {
+            match VarBlake2b::new(BLAKE2B_DIGEST_LENGTH) {
+                Ok(hasher) => hasher,
+                Err(_) => return Err(bytesrepr::Error::Formatting),
+            }
+        };
+        hasher.update(bytes);
+        // NOTE: Assumed safe as size of `HashAddr` equals to the output provided by hasher.
+        let mut string_bytes = HashAddr::default();
+        hasher.finalize_variable(|hash| string_bytes.clone_from_slice(hash));
+        Ok(Self::new_named_key_entry(entity_addr, string_bytes))
+    }
+
+    /// Returns the encapsulated [`EntityAddr`].
+    pub fn entity_addr(&self) -> EntityAddr {
+        self.base_addr
+    }
+
+    /// Returns the formatted String representation of the [`NamedKeyAddr`].
+    pub fn to_formatted_string(&self) -> String {
+        format!("{}", self)
+    }
+
+    /// Constructs a [`NamedKeyAddr`] from a formatted string.
+    pub fn from_formatted_str(input: &str) -> Result<Self, FromStrError> {
+        if let Some(named_key) = input.strip_prefix(NAMED_KEY_PREFIX) {
+            if let Some((entity_addr_str, string_bytes_str)) = named_key.rsplit_once('-') {
+                let entity_addr = EntityAddr::from_formatted_str(entity_addr_str)?;
+                let string_bytes =
+                    checksummed_hex::decode(string_bytes_str).map_err(FromStrError::Hex)?;
+                let (string_bytes, _) =
+                    FromBytes::from_vec(string_bytes).map_err(FromStrError::BytesRepr)?;
+                return Ok(Self::new_named_key_entry(entity_addr, string_bytes));
+            };
+        }
+
+        Err(FromStrError::InvalidPrefix)
+    }
+}
+
+impl Default for NamedKeyAddr {
+    fn default() -> Self {
+        NamedKeyAddr {
+            base_addr: EntityAddr::System(HashAddr::default()),
+            string_bytes: Default::default(),
+        }
+    }
+}
+
+impl ToBytes for NamedKeyAddr {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        buffer.append(&mut self.base_addr.to_bytes()?);
+        buffer.append(&mut self.string_bytes.to_bytes()?);
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.base_addr.serialized_length() + self.string_bytes.serialized_length()
+    }
+}
+
+impl FromBytes for NamedKeyAddr {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (base_addr, remainder) = EntityAddr::from_bytes(bytes)?;
+        let (string_bytes, remainder) = FromBytes::from_bytes(remainder)?;
+        Ok((
+            Self {
+                base_addr,
+                string_bytes,
+            },
+            remainder,
+        ))
+    }
+}
+
+impl Display for NamedKeyAddr {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}{}-{}",
+            NAMED_KEY_PREFIX,
+            self.base_addr,
+            base16::encode_lower(&self.string_bytes)
+        )
+    }
+}
+
+impl Debug for NamedKeyAddr {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "NamedKeyAddr({:?}-{:?})",
+            self.base_addr,
+            base16::encode_lower(&self.string_bytes)
+        )
+    }
+}
+
+#[cfg(any(feature = "testing", test))]
+impl Distribution<NamedKeyAddr> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> NamedKeyAddr {
+        NamedKeyAddr {
+            base_addr: rng.gen(),
+            string_bytes: rng.gen(),
+        }
+    }
+}
+
+/// A NamedKey value.
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+pub struct NamedKeyValue {
+    /// The actual `Key` encoded as a CLValue.
+    named_key: CLValue,
+    /// The name of the `Key` encoded as a CLValue.
+    name: CLValue,
+}
+
+impl NamedKeyValue {
+    /// Constructs a new [`NamedKeyValue`].
+    pub fn new(key: CLValue, name: CLValue) -> Self {
+        Self {
+            named_key: key,
+            name,
+        }
+    }
+
+    /// Constructs a new [`NamedKeyValue`] from its [`Key`] and [`String`].
+    pub fn from_concrete_values(named_key: Key, name: String) -> Result<Self, CLValueError> {
+        let key_cl_value = CLValue::from_t(named_key)?;
+        let string_cl_value = CLValue::from_t(name)?;
+        Ok(Self::new(key_cl_value, string_cl_value))
+    }
+
+    /// Returns the [`Key`] as a CLValue.
+    pub fn get_key_as_cl_value(&self) -> &CLValue {
+        &self.named_key
+    }
+
+    /// Returns the [`String`] as a CLValue.
+    pub fn get_name_as_cl_value(&self) -> &CLValue {
+        &self.name
+    }
+
+    /// Returns the concrete `Key` value
+    pub fn get_key(&self) -> Result<Key, CLValueError> {
+        self.named_key.clone().into_t::<Key>()
+    }
+
+    /// Returns the concrete `String` value
+    pub fn get_name(&self) -> Result<String, CLValueError> {
+        self.name.clone().into_t::<String>()
+    }
+}
+
+impl ToBytes for NamedKeyValue {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        buffer.append(&mut self.named_key.to_bytes()?);
+        buffer.append(&mut self.name.to_bytes()?);
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.named_key.serialized_length() + self.name.serialized_length()
+    }
+}
+
+impl FromBytes for NamedKeyValue {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (named_key, remainder) = CLValue::from_bytes(bytes)?;
+        let (name, remainder) = CLValue::from_bytes(remainder)?;
+        Ok((Self { named_key, name }, remainder))
+    }
+}
+
+/// Collection of named message topics.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug, Default)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(transparent, deny_unknown_fields)]
-pub struct EntryPoints(
-    #[serde(with = "BTreeMapToArray::<String, EntryPoint, EntryPointLabels>")]
-    BTreeMap<String, EntryPoint>,
+pub struct MessageTopics(
+    #[serde(with = "BTreeMapToArray::<String, TopicNameHash, MessageTopicLabels>")]
+    BTreeMap<String, TopicNameHash>,
 );
 
-impl ToBytes for EntryPoints {
+impl ToBytes for MessageTopics {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         self.0.to_bytes()
     }
@@ -529,122 +1268,149 @@ impl ToBytes for EntryPoints {
     }
 }
 
-impl FromBytes for EntryPoints {
+impl FromBytes for MessageTopics {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (entry_points_map, remainder) = BTreeMap::<String, EntryPoint>::from_bytes(bytes)?;
-        Ok((EntryPoints(entry_points_map), remainder))
+        let (message_topics_map, remainder) = BTreeMap::<String, TopicNameHash>::from_bytes(bytes)?;
+        Ok((MessageTopics(message_topics_map), remainder))
     }
 }
 
-impl EntryPoints {
-    /// Constructs a new, empty `EntryPoints`.
-    pub const fn new() -> EntryPoints {
-        EntryPoints(BTreeMap::<String, EntryPoint>::new())
+impl MessageTopics {
+    /// Adds new message topic by topic name.
+    pub fn add_topic(
+        &mut self,
+        topic_name: &str,
+        topic_name_hash: TopicNameHash,
+    ) -> Result<(), MessageTopicError> {
+        match self.0.entry(topic_name.to_string()) {
+            Entry::Vacant(entry) => {
+                entry.insert(topic_name_hash);
+                Ok(())
+            }
+            Entry::Occupied(_) => Err(MessageTopicError::DuplicateTopic),
+        }
     }
 
-    /// Constructs a new `EntryPoints` with a single entry for the default `EntryPoint`.
-    pub fn new_with_default_entry_point() -> Self {
-        let mut entry_points = EntryPoints::new();
-        let entry_point = EntryPoint::default();
-        entry_points.add_entry_point(entry_point);
-        entry_points
+    /// Checks if given topic name exists.
+    pub fn has_topic(&self, topic_name: &str) -> bool {
+        self.0.contains_key(topic_name)
     }
 
-    /// Adds new [`EntryPoint`].
-    pub fn add_entry_point(&mut self, entry_point: EntryPoint) {
-        self.0.insert(entry_point.name().to_string(), entry_point);
+    /// Gets the topic hash from the collection by its topic name.
+    pub fn get(&self, topic_name: &str) -> Option<&TopicNameHash> {
+        self.0.get(topic_name)
     }
 
-    /// Checks if given [`EntryPoint`] exists.
-    pub fn has_entry_point(&self, entry_point_name: &str) -> bool {
-        self.0.contains_key(entry_point_name)
-    }
-
-    /// Gets an existing [`EntryPoint`] by its name.
-    pub fn get(&self, entry_point_name: &str) -> Option<&EntryPoint> {
-        self.0.get(entry_point_name)
-    }
-
-    /// Returns iterator for existing entry point names.
-    pub fn keys(&self) -> impl Iterator<Item = &String> {
-        self.0.keys()
-    }
-
-    /// Takes all entry points.
-    pub fn take_entry_points(self) -> Vec<EntryPoint> {
-        self.0.into_values().collect()
-    }
-
-    /// Returns the length of the entry points
+    /// Returns the length of the message topics.
     pub fn len(&self) -> usize {
         self.0.len()
     }
 
-    /// Checks if the `EntryPoints` is empty.
+    /// Returns true if no message topics are registered.
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
-}
 
-impl From<Vec<EntryPoint>> for EntryPoints {
-    fn from(entry_points: Vec<EntryPoint>) -> EntryPoints {
-        let entries = entry_points
-            .into_iter()
-            .map(|entry_point| (String::from(entry_point.name()), entry_point))
-            .collect();
-        EntryPoints(entries)
+    /// Returns an iterator over the topic name and its hash.
+    pub fn iter(&self) -> impl Iterator<Item = (&String, &TopicNameHash)> {
+        self.0.iter()
     }
 }
 
-struct EntryPointLabels;
+struct MessageTopicLabels;
 
-impl KeyValueLabels for EntryPointLabels {
-    const KEY: &'static str = "name";
-    const VALUE: &'static str = "entry_point";
+impl KeyValueLabels for MessageTopicLabels {
+    const KEY: &'static str = "topic_name";
+    const VALUE: &'static str = "topic_name_hash";
 }
 
 #[cfg(feature = "json-schema")]
-impl KeyValueJsonSchema for EntryPointLabels {
-    const JSON_SCHEMA_KV_NAME: Option<&'static str> = Some("NamedEntryPoint");
+impl KeyValueJsonSchema for MessageTopicLabels {
+    const JSON_SCHEMA_KV_NAME: Option<&'static str> = Some("MessageTopic");
 }
+
+impl From<BTreeMap<String, TopicNameHash>> for MessageTopics {
+    fn from(topics: BTreeMap<String, TopicNameHash>) -> MessageTopics {
+        MessageTopics(topics)
+    }
+}
+
+/// Errors that can occur while adding a new topic.
+#[derive(PartialEq, Eq, Debug, Clone)]
+#[non_exhaustive]
+pub enum MessageTopicError {
+    /// Topic already exists.
+    DuplicateTopic,
+    /// Maximum number of topics exceeded.
+    MaxTopicsExceeded,
+    /// Topic name size exceeded.
+    TopicNameSizeExceeded,
+}
+
+#[cfg(feature = "json-schema")]
+static ADDRESSABLE_ENTITY: Lazy<AddressableEntity> = Lazy::new(|| {
+    let secret_key = SecretKey::ed25519_from_bytes([0; 32]).unwrap();
+    let account_hash = PublicKey::from(&secret_key).to_account_hash();
+    let package_hash = PackageHash::new([0; 32]);
+    let byte_code_hash = ByteCodeHash::new([0; 32]);
+    let main_purse = URef::from_formatted_str(
+        "uref-09480c3248ef76b603d386f3f4f8a5f87f597d4eaffd475433f861af187ab5db-007",
+    )
+    .unwrap();
+    let weight = Weight::new(1);
+    let associated_keys = AssociatedKeys::new(account_hash, weight);
+    let action_thresholds = ActionThresholds::new(weight, weight, weight).unwrap();
+    let protocol_version = ProtocolVersion::from_parts(2, 0, 0);
+    let mut message_topics = MessageTopics::default();
+    message_topics
+        .add_topic("topic", TopicNameHash::new([0; 32]))
+        .unwrap();
+    AddressableEntity {
+        protocol_version,
+        entity_kind: EntityKind::Account(account_hash),
+        package_hash,
+        byte_code_hash,
+        main_purse,
+        associated_keys,
+        action_thresholds,
+        message_topics,
+    }
+});
 
 /// Methods and type signatures supported by a contract.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct AddressableEntity {
-    contract_package_hash: ContractPackageHash,
-    contract_wasm_hash: ContractWasmHash,
-    named_keys: NamedKeys,
-    entry_points: EntryPoints,
     protocol_version: ProtocolVersion,
+    entity_kind: EntityKind,
+    package_hash: PackageHash,
+    byte_code_hash: ByteCodeHash,
     main_purse: URef,
+
     associated_keys: AssociatedKeys,
     action_thresholds: ActionThresholds,
+    message_topics: MessageTopics,
 }
 
 impl From<AddressableEntity>
     for (
-        ContractPackageHash,
-        ContractWasmHash,
-        NamedKeys,
-        EntryPoints,
+        PackageHash,
+        ByteCodeHash,
         ProtocolVersion,
         URef,
         AssociatedKeys,
         ActionThresholds,
     )
 {
-    fn from(contract: AddressableEntity) -> Self {
+    fn from(entity: AddressableEntity) -> Self {
         (
-            contract.contract_package_hash,
-            contract.contract_wasm_hash,
-            contract.named_keys,
-            contract.entry_points,
-            contract.protocol_version,
-            contract.main_purse,
-            contract.associated_keys,
-            contract.action_thresholds,
+            entity.package_hash,
+            entity.byte_code_hash,
+            entity.protocol_version,
+            entity.main_purse,
+            entity.associated_keys,
+            entity.action_thresholds,
         )
     }
 }
@@ -653,45 +1419,45 @@ impl AddressableEntity {
     /// `AddressableEntity` constructor.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        contract_package_hash: ContractPackageHash,
-        contract_wasm_hash: ContractWasmHash,
-        named_keys: NamedKeys,
-        entry_points: EntryPoints,
+        package_hash: PackageHash,
+        byte_code_hash: ByteCodeHash,
         protocol_version: ProtocolVersion,
         main_purse: URef,
         associated_keys: AssociatedKeys,
         action_thresholds: ActionThresholds,
+        message_topics: MessageTopics,
+        entity_kind: EntityKind,
     ) -> Self {
         AddressableEntity {
-            contract_package_hash,
-            contract_wasm_hash,
-            named_keys,
-            entry_points,
+            package_hash,
+            byte_code_hash,
             protocol_version,
             main_purse,
             action_thresholds,
             associated_keys,
+            message_topics,
+            entity_kind,
+        }
+    }
+
+    /// Get the entity addr for this entity from the corresponding hash.
+    pub fn entity_addr(&self, entity_hash: AddressableEntityHash) -> EntityAddr {
+        let hash_addr = entity_hash.value();
+        match self.entity_kind {
+            EntityKind::System(_) => EntityAddr::new_system(hash_addr),
+            EntityKind::Account(_) => EntityAddr::new_account(hash_addr),
+            EntityKind::SmartContract(_) => EntityAddr::new_smart_contract(hash_addr),
         }
     }
 
     /// Hash for accessing contract package
-    pub fn contract_package_hash(&self) -> ContractPackageHash {
-        self.contract_package_hash
+    pub fn package_hash(&self) -> PackageHash {
+        self.package_hash
     }
 
     /// Hash for accessing contract WASM
-    pub fn contract_wasm_hash(&self) -> ContractWasmHash {
-        self.contract_wasm_hash
-    }
-
-    /// Checks whether there is a method with the given name
-    pub fn has_entry_point(&self, name: &str) -> bool {
-        self.entry_points.has_entry_point(name)
-    }
-
-    /// Returns the type signature for the given `method`.
-    pub fn entry_point(&self, method: &str) -> Option<&EntryPoint> {
-        self.entry_points.get(method)
+    pub fn byte_code_hash(&self) -> ByteCodeHash {
+        self.byte_code_hash
     }
 
     /// Get the protocol version this header is targeting.
@@ -838,7 +1604,7 @@ impl AddressableEntity {
         !authorization_keys.is_empty()
             && authorization_keys
                 .iter()
-                .all(|e| self.associated_keys.contains_key(e))
+                .any(|e| self.associated_keys.contains_key(e))
     }
 
     /// Checks whether the sum of the weights of all authorization keys is
@@ -861,39 +1627,33 @@ impl AddressableEntity {
         total_weight >= *self.action_thresholds().key_management()
     }
 
-    /// Adds new entry point
-    pub fn add_entry_point<T: Into<String>>(&mut self, entry_point: EntryPoint) {
-        self.entry_points.add_entry_point(entry_point);
+    /// Checks whether the sum of the weights of all authorization keys is
+    /// greater or equal to upgrade management threshold.
+    pub fn can_upgrade_with(&self, authorization_keys: &BTreeSet<AccountHash>) -> bool {
+        let total_weight = self
+            .associated_keys
+            .calculate_keys_weight(authorization_keys);
+
+        total_weight >= *self.action_thresholds().upgrade_management()
     }
 
-    /// Hash for accessing wasm bytes
-    pub fn contract_wasm_key(&self) -> Key {
-        self.contract_wasm_hash.into()
+    /// Addr for accessing wasm bytes
+    pub fn byte_code_addr(&self) -> HashAddr {
+        self.byte_code_hash.value()
     }
 
-    /// Returns immutable reference to methods
-    pub fn entry_points(&self) -> &EntryPoints {
-        &self.entry_points
+    /// Returns a reference to the message topics
+    pub fn message_topics(&self) -> &MessageTopics {
+        &self.message_topics
     }
 
-    /// Takes `named_keys`
-    pub fn take_named_keys(self) -> NamedKeys {
-        self.named_keys
-    }
-
-    /// Returns a reference to `named_keys`
-    pub fn named_keys(&self) -> &NamedKeys {
-        &self.named_keys
-    }
-
-    /// Appends `keys` to `named_keys`
-    pub fn named_keys_append(&mut self, keys: NamedKeys) {
-        self.named_keys.append(keys);
-    }
-
-    /// Removes given named key.
-    pub fn remove_named_key(&mut self, key: &str) -> Option<Key> {
-        self.named_keys.remove(key)
+    /// Adds a new message topic to the entity
+    pub fn add_message_topic(
+        &mut self,
+        topic_name: &str,
+        topic_name_hash: TopicNameHash,
+    ) -> Result<(), MessageTopicError> {
+        self.message_topics.add_topic(topic_name, topic_name_hash)
     }
 
     /// Set protocol_version.
@@ -903,78 +1663,122 @@ impl AddressableEntity {
 
     /// Determines if `AddressableEntity` is compatible with a given `ProtocolVersion`.
     pub fn is_compatible_protocol_version(&self, protocol_version: ProtocolVersion) -> bool {
-        self.protocol_version.value().major == protocol_version.value().major
+        let entity_protocol_version = self.protocol_version.value();
+        let context_protocol_version = protocol_version.value();
+        if entity_protocol_version.major == context_protocol_version.major {
+            return true;
+        }
+        if entity_protocol_version.major == 1 && context_protocol_version.major == 2 {
+            // the 1.x model has been deprecated but is still supported until 3.0.0
+            return true;
+        }
+        false
+    }
+
+    /// Returns the kind of `AddressableEntity`.
+    pub fn kind(&self) -> EntityKind {
+        self.entity_kind
+    }
+
+    /// Is this an account?
+    pub fn is_account_kind(&self) -> bool {
+        matches!(self.entity_kind, EntityKind::Account(_))
+    }
+
+    /// Key for the addressable entity
+    pub fn entity_key(&self, entity_hash: AddressableEntityHash) -> Key {
+        match self.entity_kind {
+            EntityKind::System(_) => {
+                Key::addressable_entity_key(EntityKindTag::System, entity_hash)
+            }
+            EntityKind::Account(_) => {
+                Key::addressable_entity_key(EntityKindTag::Account, entity_hash)
+            }
+            EntityKind::SmartContract(_) => {
+                Key::addressable_entity_key(EntityKindTag::SmartContract, entity_hash)
+            }
+        }
     }
 
     /// Extracts the access rights from the named keys of the addressable entity.
-    pub fn extract_access_rights(&self, contract_hash: ContractHash) -> ContextAccessRights {
-        let urefs_iter = self
-            .named_keys
+    pub fn extract_access_rights(
+        &self,
+        entity_hash: AddressableEntityHash,
+        named_keys: &NamedKeys,
+    ) -> ContextAccessRights {
+        let urefs_iter = named_keys
             .keys()
             .filter_map(|key| key.as_uref().copied())
             .chain(iter::once(self.main_purse));
-        ContextAccessRights::new(contract_hash.into(), urefs_iter)
+        ContextAccessRights::new(entity_hash, urefs_iter)
+    }
+
+    // This method is not intended to be used by third party crates.
+    #[doc(hidden)]
+    #[cfg(feature = "json-schema")]
+    pub fn example() -> &'static Self {
+        &ADDRESSABLE_ENTITY
     }
 }
 
 impl ToBytes for AddressableEntity {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = bytesrepr::allocate_buffer(self)?;
-        self.contract_package_hash().write_bytes(&mut result)?;
-        self.contract_wasm_hash().write_bytes(&mut result)?;
-        self.named_keys().write_bytes(&mut result)?;
-        self.entry_points().write_bytes(&mut result)?;
+        self.package_hash().write_bytes(&mut result)?;
+        self.byte_code_hash().write_bytes(&mut result)?;
         self.protocol_version().write_bytes(&mut result)?;
         self.main_purse().write_bytes(&mut result)?;
         self.associated_keys().write_bytes(&mut result)?;
         self.action_thresholds().write_bytes(&mut result)?;
+        self.message_topics().write_bytes(&mut result)?;
+        self.kind().write_bytes(&mut result)?;
         Ok(result)
     }
 
     fn serialized_length(&self) -> usize {
-        ToBytes::serialized_length(&self.entry_points)
-            + ToBytes::serialized_length(&self.contract_package_hash)
-            + ToBytes::serialized_length(&self.contract_wasm_hash)
+        ToBytes::serialized_length(&self.package_hash)
+            + ToBytes::serialized_length(&self.byte_code_hash)
             + ToBytes::serialized_length(&self.protocol_version)
-            + ToBytes::serialized_length(&self.named_keys)
             + ToBytes::serialized_length(&self.main_purse)
             + ToBytes::serialized_length(&self.associated_keys)
             + ToBytes::serialized_length(&self.action_thresholds)
+            + ToBytes::serialized_length(&self.message_topics)
+            + ToBytes::serialized_length(&self.entity_kind)
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        self.contract_package_hash().write_bytes(writer)?;
-        self.contract_wasm_hash().write_bytes(writer)?;
-        self.named_keys().write_bytes(writer)?;
-        self.entry_points().write_bytes(writer)?;
+        self.package_hash().write_bytes(writer)?;
+        self.byte_code_hash().write_bytes(writer)?;
         self.protocol_version().write_bytes(writer)?;
         self.main_purse().write_bytes(writer)?;
         self.associated_keys().write_bytes(writer)?;
         self.action_thresholds().write_bytes(writer)?;
+        self.message_topics().write_bytes(writer)?;
+        self.kind().write_bytes(writer)?;
         Ok(())
     }
 }
 
 impl FromBytes for AddressableEntity {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (contract_package_hash, bytes) = ContractPackageHash::from_bytes(bytes)?;
-        let (contract_wasm_hash, bytes) = ContractWasmHash::from_bytes(bytes)?;
-        let (named_keys, bytes) = NamedKeys::from_bytes(bytes)?;
-        let (entry_points, bytes) = EntryPoints::from_bytes(bytes)?;
+        let (package_hash, bytes) = PackageHash::from_bytes(bytes)?;
+        let (byte_code_hash, bytes) = ByteCodeHash::from_bytes(bytes)?;
         let (protocol_version, bytes) = ProtocolVersion::from_bytes(bytes)?;
         let (main_purse, bytes) = URef::from_bytes(bytes)?;
         let (associated_keys, bytes) = AssociatedKeys::from_bytes(bytes)?;
         let (action_thresholds, bytes) = ActionThresholds::from_bytes(bytes)?;
+        let (message_topics, bytes) = MessageTopics::from_bytes(bytes)?;
+        let (entity_kind, bytes) = EntityKind::from_bytes(bytes)?;
         Ok((
             AddressableEntity {
-                contract_package_hash,
-                contract_wasm_hash,
-                named_keys,
-                entry_points,
+                package_hash,
+                byte_code_hash,
                 protocol_version,
                 main_purse,
                 associated_keys,
                 action_thresholds,
+                message_topics,
+                entity_kind,
             },
             bytes,
         ))
@@ -984,14 +1788,14 @@ impl FromBytes for AddressableEntity {
 impl Default for AddressableEntity {
     fn default() -> Self {
         AddressableEntity {
-            named_keys: NamedKeys::new(),
-            entry_points: EntryPoints::new_with_default_entry_point(),
-            contract_wasm_hash: [0; KEY_HASH_LENGTH].into(),
-            contract_package_hash: [0; KEY_HASH_LENGTH].into(),
+            byte_code_hash: [0; KEY_HASH_LENGTH].into(),
+            package_hash: [0; KEY_HASH_LENGTH].into(),
             protocol_version: ProtocolVersion::V1_0_0,
             main_purse: URef::default(),
             action_thresholds: ActionThresholds::default(),
             associated_keys: AssociatedKeys::default(),
+            message_topics: MessageTopics::default(),
+            entity_kind: EntityKind::SmartContract(TransactionRuntime::VmCasperV1),
         }
     }
 }
@@ -999,14 +1803,14 @@ impl Default for AddressableEntity {
 impl From<Contract> for AddressableEntity {
     fn from(value: Contract) -> Self {
         AddressableEntity::new(
-            value.contract_package_hash(),
-            value.contract_wasm_hash(),
-            value.named_keys().clone(),
-            value.entry_points().clone(),
+            PackageHash::new(value.contract_package_hash().value()),
+            ByteCodeHash::new(value.contract_wasm_hash().value()),
             value.protocol_version(),
             URef::default(),
             AssociatedKeys::default(),
             ActionThresholds::default(),
+            MessageTopics::default(),
+            EntityKind::SmartContract(TransactionRuntime::VmCasperV1),
         )
     }
 }
@@ -1014,374 +1818,15 @@ impl From<Contract> for AddressableEntity {
 impl From<Account> for AddressableEntity {
     fn from(value: Account) -> Self {
         AddressableEntity::new(
-            ContractPackageHash::default(),
-            ContractWasmHash::new([0u8; 32]),
-            value.named_keys().clone(),
-            EntryPoints::new(),
+            PackageHash::default(),
+            ByteCodeHash::new([0u8; 32]),
             ProtocolVersion::default(),
             value.main_purse(),
             value.associated_keys().clone().into(),
             value.action_thresholds().clone().into(),
+            MessageTopics::default(),
+            EntityKind::Account(value.account_hash()),
         )
-    }
-}
-
-/// Context of method execution
-///
-/// Most significant bit represents version i.e.
-/// - 0b0 -> 0.x/1.x (session & contracts)
-/// - 0b1 -> 2.x and later (introduced installer, utility entry points)
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize, FromPrimitive)]
-#[cfg_attr(feature = "datasize", derive(DataSize))]
-#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-pub enum EntryPointType {
-    /// Runs as session code
-    Session = 0b00000000,
-    /// Runs within contract's context
-    Contract = 0b00000001,
-    /// Installer entry point.
-    Install = 0b10000000,
-}
-
-impl EntryPointType {
-    /// Checks if entry point type is introduced before 2.0.
-    ///
-    /// This method checks if there is a bit pattern for entry point types introduced in 2.0.
-    ///
-    /// If this bit is missing, that means given entry point type was defined in pre-2.0 world.
-    pub fn is_legacy_pattern(&self) -> bool {
-        (*self as u8) & 0b10000000 == 0
-    }
-
-    /// Get the bit pattern.
-    pub fn bits(self) -> u8 {
-        self as u8
-    }
-}
-
-impl ToBytes for EntryPointType {
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        self.bits().to_bytes()
-    }
-
-    fn serialized_length(&self) -> usize {
-        1
-    }
-
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        writer.push(self.bits());
-        Ok(())
-    }
-}
-
-impl FromBytes for EntryPointType {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (value, bytes) = u8::from_bytes(bytes)?;
-        let entry_point_type =
-            EntryPointType::from_u8(value).ok_or(bytesrepr::Error::Formatting)?;
-        Ok((entry_point_type, bytes))
-    }
-}
-
-/// Default name for an entry point.
-pub const DEFAULT_ENTRY_POINT_NAME: &str = "call";
-
-/// Name for an installer entry point.
-pub const INSTALL_ENTRY_POINT_NAME: &str = "install";
-
-/// Name for an upgrade entry point.
-pub const UPGRADE_ENTRY_POINT_NAME: &str = "upgrade";
-
-/// Collection of entry point parameters.
-pub type Parameters = Vec<Parameter>;
-
-/// Type signature of a method. Order of arguments matter since can be
-/// referenced by index as well as name.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "datasize", derive(DataSize))]
-#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-pub struct EntryPoint {
-    name: String,
-    args: Parameters,
-    ret: CLType,
-    access: EntryPointAccess,
-    entry_point_type: EntryPointType,
-}
-
-impl From<EntryPoint> for (String, Parameters, CLType, EntryPointAccess, EntryPointType) {
-    fn from(entry_point: EntryPoint) -> Self {
-        (
-            entry_point.name,
-            entry_point.args,
-            entry_point.ret,
-            entry_point.access,
-            entry_point.entry_point_type,
-        )
-    }
-}
-
-impl EntryPoint {
-    /// `EntryPoint` constructor.
-    pub fn new<T: Into<String>>(
-        name: T,
-        args: Parameters,
-        ret: CLType,
-        access: EntryPointAccess,
-        entry_point_type: EntryPointType,
-    ) -> Self {
-        EntryPoint {
-            name: name.into(),
-            args,
-            ret,
-            access,
-            entry_point_type,
-        }
-    }
-
-    /// Create a default [`EntryPoint`] with specified name.
-    pub fn default_with_name<T: Into<String>>(name: T) -> Self {
-        EntryPoint {
-            name: name.into(),
-            ..Default::default()
-        }
-    }
-
-    /// Get name.
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
-    /// Get access enum.
-    pub fn access(&self) -> &EntryPointAccess {
-        &self.access
-    }
-
-    /// Get the arguments for this method.
-    pub fn args(&self) -> &[Parameter] {
-        self.args.as_slice()
-    }
-
-    /// Get the return type.
-    pub fn ret(&self) -> &CLType {
-        &self.ret
-    }
-
-    /// Obtains entry point
-    pub fn entry_point_type(&self) -> EntryPointType {
-        self.entry_point_type
-    }
-}
-
-impl Default for EntryPoint {
-    /// constructor for a public session `EntryPoint` that takes no args and returns `Unit`
-    fn default() -> Self {
-        EntryPoint {
-            name: DEFAULT_ENTRY_POINT_NAME.to_string(),
-            args: Vec::new(),
-            ret: CLType::Unit,
-            access: EntryPointAccess::Public,
-            entry_point_type: EntryPointType::Session,
-        }
-    }
-}
-
-impl ToBytes for EntryPoint {
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut buffer = bytesrepr::allocate_buffer(self)?;
-        self.write_bytes(&mut buffer)?;
-        Ok(buffer)
-    }
-
-    fn serialized_length(&self) -> usize {
-        self.name.serialized_length()
-            + self.args.serialized_length()
-            + self.ret.serialized_length()
-            + self.access.serialized_length()
-            + self.entry_point_type.serialized_length()
-    }
-
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        self.name.write_bytes(writer)?;
-        self.args.write_bytes(writer)?;
-        self.ret.append_bytes(writer)?;
-        self.access.write_bytes(writer)?;
-        self.entry_point_type.write_bytes(writer)?;
-        Ok(())
-    }
-}
-
-impl FromBytes for EntryPoint {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (name, bytes) = String::from_bytes(bytes)?;
-        let (args, bytes) = Vec::<Parameter>::from_bytes(bytes)?;
-        let (ret, bytes) = CLType::from_bytes(bytes)?;
-        let (access, bytes) = EntryPointAccess::from_bytes(bytes)?;
-        let (entry_point_type, bytes) = EntryPointType::from_bytes(bytes)?;
-
-        Ok((
-            EntryPoint {
-                name,
-                args,
-                ret,
-                access,
-                entry_point_type,
-            },
-            bytes,
-        ))
-    }
-}
-
-/// Enum describing the possible access control options for a contract entry
-/// point (method).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "datasize", derive(DataSize))]
-#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-pub enum EntryPointAccess {
-    /// Anyone can call this method (no access controls).
-    Public,
-    /// Only users from the listed groups may call this method. Note: if the
-    /// list is empty then this method is not callable from outside the
-    /// contract.
-    Groups(Vec<Group>),
-    /// Can't be accessed directly but are kept in the derived wasm bytes.
-    Template,
-}
-
-const ENTRYPOINTACCESS_PUBLIC_TAG: u8 = 1;
-const ENTRYPOINTACCESS_GROUPS_TAG: u8 = 2;
-const ENTRYPOINTACCESS_ABSTRACT_TAG: u8 = 3;
-
-impl EntryPointAccess {
-    /// Constructor for access granted to only listed groups.
-    pub fn groups(labels: &[&str]) -> Self {
-        let list: Vec<Group> = labels
-            .iter()
-            .map(|s| Group::new(String::from(*s)))
-            .collect();
-        EntryPointAccess::Groups(list)
-    }
-}
-
-impl ToBytes for EntryPointAccess {
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut result = bytesrepr::allocate_buffer(self)?;
-
-        match self {
-            EntryPointAccess::Public => {
-                result.push(ENTRYPOINTACCESS_PUBLIC_TAG);
-            }
-            EntryPointAccess::Groups(groups) => {
-                result.push(ENTRYPOINTACCESS_GROUPS_TAG);
-                result.append(&mut groups.to_bytes()?);
-            }
-            EntryPointAccess::Template => {
-                result.push(ENTRYPOINTACCESS_ABSTRACT_TAG);
-            }
-        }
-        Ok(result)
-    }
-
-    fn serialized_length(&self) -> usize {
-        match self {
-            EntryPointAccess::Public => 1,
-            EntryPointAccess::Groups(groups) => 1 + groups.serialized_length(),
-            EntryPointAccess::Template => 1,
-        }
-    }
-
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        match self {
-            EntryPointAccess::Public => {
-                writer.push(ENTRYPOINTACCESS_PUBLIC_TAG);
-            }
-            EntryPointAccess::Groups(groups) => {
-                writer.push(ENTRYPOINTACCESS_GROUPS_TAG);
-                groups.write_bytes(writer)?;
-            }
-            EntryPointAccess::Template => {
-                writer.push(ENTRYPOINTACCESS_ABSTRACT_TAG);
-            }
-        }
-        Ok(())
-    }
-}
-
-impl FromBytes for EntryPointAccess {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (tag, bytes) = u8::from_bytes(bytes)?;
-
-        match tag {
-            ENTRYPOINTACCESS_PUBLIC_TAG => Ok((EntryPointAccess::Public, bytes)),
-            ENTRYPOINTACCESS_GROUPS_TAG => {
-                let (groups, bytes) = Vec::<Group>::from_bytes(bytes)?;
-                let result = EntryPointAccess::Groups(groups);
-                Ok((result, bytes))
-            }
-            ENTRYPOINTACCESS_ABSTRACT_TAG => Ok((EntryPointAccess::Template, bytes)),
-            _ => Err(bytesrepr::Error::Formatting),
-        }
-    }
-}
-
-/// Parameter to a method
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "datasize", derive(DataSize))]
-#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-pub struct Parameter {
-    name: String,
-    cl_type: CLType,
-}
-
-impl Parameter {
-    /// `Parameter` constructor.
-    pub fn new<T: Into<String>>(name: T, cl_type: CLType) -> Self {
-        Parameter {
-            name: name.into(),
-            cl_type,
-        }
-    }
-
-    /// Get the type of this argument.
-    pub fn cl_type(&self) -> &CLType {
-        &self.cl_type
-    }
-
-    /// Get a reference to the parameter's name.
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-}
-
-impl From<Parameter> for (String, CLType) {
-    fn from(parameter: Parameter) -> Self {
-        (parameter.name, parameter.cl_type)
-    }
-}
-
-impl ToBytes for Parameter {
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut result = ToBytes::to_bytes(&self.name)?;
-        self.cl_type.append_bytes(&mut result)?;
-
-        Ok(result)
-    }
-
-    fn serialized_length(&self) -> usize {
-        ToBytes::serialized_length(&self.name) + self.cl_type.serialized_length()
-    }
-
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        self.name.write_bytes(writer)?;
-        self.cl_type.append_bytes(writer)
-    }
-}
-
-impl FromBytes for Parameter {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (name, bytes) = String::from_bytes(bytes)?;
-        let (cl_type, bytes) = CLType::from_bytes(bytes)?;
-
-        Ok((Parameter { name, cl_type }, bytes))
     }
 }
 
@@ -1390,58 +1835,135 @@ mod tests {
     use super::*;
     use crate::{AccessRights, URef, UREF_ADDR_LENGTH};
 
+    #[cfg(feature = "json-schema")]
+    use schemars::{gen::SchemaGenerator, schema::InstanceType};
+
     #[test]
-    fn contract_hash_from_slice() {
+    fn entity_hash_from_slice() {
         let bytes: Vec<u8> = (0..32).collect();
-        let contract_hash = HashAddr::try_from(&bytes[..]).expect("should create contract hash");
-        let contract_hash = ContractHash::new(contract_hash);
-        assert_eq!(&bytes, &contract_hash.as_bytes());
+        let entity_hash = HashAddr::try_from(&bytes[..]).expect("should create contract hash");
+        let entity_hash = AddressableEntityHash::new(entity_hash);
+        assert_eq!(&bytes, &entity_hash.as_bytes());
     }
 
     #[test]
-    fn contract_hash_from_str() {
-        let contract_hash = ContractHash([3; 32]);
-        let encoded = contract_hash.to_formatted_string();
-        let decoded = ContractHash::from_formatted_str(&encoded).unwrap();
-        assert_eq!(contract_hash, decoded);
+    fn entity_hash_from_str() {
+        let entity_hash = AddressableEntityHash([3; 32]);
+        let encoded = entity_hash.to_formatted_string();
+        let decoded = AddressableEntityHash::from_formatted_str(&encoded).unwrap();
+        assert_eq!(entity_hash, decoded);
 
         let invalid_prefix =
-            "contract--0000000000000000000000000000000000000000000000000000000000000000";
-        assert!(ContractHash::from_formatted_str(invalid_prefix).is_err());
+            "addressable-entity--0000000000000000000000000000000000000000000000000000000000000000";
+        assert!(AddressableEntityHash::from_formatted_str(invalid_prefix).is_err());
 
-        let short_addr = "contract-00000000000000000000000000000000000000000000000000000000000000";
-        assert!(ContractHash::from_formatted_str(short_addr).is_err());
+        let short_addr =
+            "addressable-entity-00000000000000000000000000000000000000000000000000000000000000";
+        assert!(AddressableEntityHash::from_formatted_str(short_addr).is_err());
 
         let long_addr =
-            "contract-000000000000000000000000000000000000000000000000000000000000000000";
-        assert!(ContractHash::from_formatted_str(long_addr).is_err());
+            "addressable-entity-000000000000000000000000000000000000000000000000000000000000000000";
+        assert!(AddressableEntityHash::from_formatted_str(long_addr).is_err());
 
         let invalid_hex =
-            "contract-000000000000000000000000000000000000000000000000000000000000000g";
-        assert!(ContractHash::from_formatted_str(invalid_hex).is_err());
+            "addressable-entity-000000000000000000000000000000000000000000000000000000000000000g";
+        assert!(AddressableEntityHash::from_formatted_str(invalid_hex).is_err());
     }
 
     #[test]
-    fn contract_hash_serde_roundtrip() {
-        let contract_hash = ContractHash([255; 32]);
-        let serialized = bincode::serialize(&contract_hash).unwrap();
+    fn named_key_addr_from_str() {
+        let named_key_addr =
+            NamedKeyAddr::new_named_key_entry(EntityAddr::new_smart_contract([3; 32]), [4; 32]);
+        let encoded = named_key_addr.to_formatted_string();
+        let decoded = NamedKeyAddr::from_formatted_str(&encoded).unwrap();
+        assert_eq!(named_key_addr, decoded);
+    }
+
+    #[test]
+    fn entity_hash_serde_roundtrip() {
+        let entity_hash = AddressableEntityHash([255; 32]);
+        let serialized = bincode::serialize(&entity_hash).unwrap();
         let deserialized = bincode::deserialize(&serialized).unwrap();
-        assert_eq!(contract_hash, deserialized)
+        assert_eq!(entity_hash, deserialized)
     }
 
     #[test]
-    fn contract_hash_json_roundtrip() {
-        let contract_hash = ContractHash([255; 32]);
-        let json_string = serde_json::to_string_pretty(&contract_hash).unwrap();
+    fn entity_hash_json_roundtrip() {
+        let entity_hash = AddressableEntityHash([255; 32]);
+        let json_string = serde_json::to_string_pretty(&entity_hash).unwrap();
         let decoded = serde_json::from_str(&json_string).unwrap();
-        assert_eq!(contract_hash, decoded)
+        assert_eq!(entity_hash, decoded)
+    }
+
+    #[test]
+    fn entity_addr_formatted_string_roundtrip() {
+        let entity_addr = EntityAddr::Account([5; 32]);
+        let encoded = entity_addr.to_formatted_string();
+        let decoded = EntityAddr::from_formatted_str(&encoded).expect("must get entity addr");
+        assert_eq!(decoded, entity_addr);
+    }
+
+    #[test]
+    fn entity_addr_serialization_roundtrip() {
+        for addr in [
+            EntityAddr::new_system([1; 32]),
+            EntityAddr::new_account([1; 32]),
+            EntityAddr::new_smart_contract([1; 32]),
+        ] {
+            bytesrepr::test_serialization_roundtrip(&addr);
+        }
+    }
+
+    #[test]
+    fn entity_addr_serde_roundtrip() {
+        for addr in [
+            EntityAddr::new_system([1; 32]),
+            EntityAddr::new_account([1; 32]),
+            EntityAddr::new_smart_contract([1; 32]),
+        ] {
+            let serialized = bincode::serialize(&addr).unwrap();
+            let deserialized = bincode::deserialize(&serialized).unwrap();
+            assert_eq!(addr, deserialized)
+        }
+    }
+
+    #[test]
+    fn entity_addr_json_roundtrip() {
+        for addr in [
+            EntityAddr::new_system([1; 32]),
+            EntityAddr::new_account([1; 32]),
+            EntityAddr::new_smart_contract([1; 32]),
+        ] {
+            let json_string = serde_json::to_string_pretty(&addr).unwrap();
+            let decoded = serde_json::from_str(&json_string).unwrap();
+            assert_eq!(addr, decoded)
+        }
+    }
+
+    #[cfg(feature = "json-schema")]
+    #[test]
+    fn entity_addr_schema() {
+        let mut gen = SchemaGenerator::default();
+        let any_of = EntityAddr::json_schema(&mut gen)
+            .into_object()
+            .subschemas
+            .expect("should have subschemas")
+            .any_of
+            .expect("should have any_of");
+        for elem in any_of {
+            let schema = elem
+                .into_object()
+                .instance_type
+                .expect("should have instance type");
+            assert!(schema.contains(&InstanceType::String), "{:?}", schema);
+        }
     }
 
     #[test]
     fn should_extract_access_rights() {
         const MAIN_PURSE: URef = URef::new([2; 32], AccessRights::READ_ADD_WRITE);
 
-        let contract_hash = ContractHash([255; 32]);
+        let entity_hash = AddressableEntityHash([255; 32]);
         let uref = URef::new([84; UREF_ADDR_LENGTH], AccessRights::READ_ADD);
         let uref_r = URef::new([42; UREF_ADDR_LENGTH], AccessRights::READ);
         let uref_a = URef::new([42; UREF_ADDR_LENGTH], AccessRights::ADD);
@@ -1453,17 +1975,17 @@ mod tests {
         named_keys.insert("d".to_string(), Key::URef(uref));
         let associated_keys = AssociatedKeys::new(AccountHash::new([254; 32]), Weight::new(1));
         let contract = AddressableEntity::new(
-            ContractPackageHash::new([254; 32]),
-            ContractWasmHash::new([253; 32]),
-            named_keys,
-            EntryPoints::new_with_default_entry_point(),
+            PackageHash::new([254; 32]),
+            ByteCodeHash::new([253; 32]),
             ProtocolVersion::V1_0_0,
             MAIN_PURSE,
             associated_keys,
-            ActionThresholds::new(Weight::new(1), Weight::new(1))
+            ActionThresholds::new(Weight::new(1), Weight::new(1), Weight::new(1))
                 .expect("should create thresholds"),
+            MessageTopics::default(),
+            EntityKind::SmartContract(TransactionRuntime::VmCasperV1),
         );
-        let access_rights = contract.extract_access_rights(contract_hash);
+        let access_rights = contract.extract_access_rights(entity_hash, &named_keys);
         let expected_uref = URef::new([42; UREF_ADDR_LENGTH], AccessRights::READ_ADD_WRITE);
         assert!(
             access_rights.has_access_rights_to_uref(&uref),

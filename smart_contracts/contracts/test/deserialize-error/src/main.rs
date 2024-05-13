@@ -7,8 +7,8 @@ use alloc::{vec, vec::Vec};
 
 use casper_contract::{self, contract_api::storage, unwrap_or_revert::UnwrapOrRevert};
 use casper_types::{
-    addressable_entity::Parameters, api_error, bytesrepr::ToBytes, CLType, ContractHash,
-    EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, RuntimeArgs,
+    addressable_entity::Parameters, api_error, bytesrepr::ToBytes, AddressableEntityHash, CLType,
+    EntryPoint, EntryPointAccess, EntryPointPayment, EntryPointType, EntryPoints, RuntimeArgs,
 };
 
 #[no_mangle]
@@ -43,7 +43,7 @@ mod malicious_ffi {
 // This is half-baked runtime::call_contract with changed `extra_urefs`
 // parameter with a desired payload that's supposed to bring the node down.
 pub fn my_call_contract(
-    contract_hash: ContractHash,
+    contract_hash: AddressableEntityHash,
     _entry_point_name: &str,
     runtime_args: RuntimeArgs,
 ) -> usize {
@@ -81,14 +81,16 @@ pub extern "C" fn call() {
             Parameters::default(),
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Contract,
+            EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
 
         entry_points.add_entry_point(entry_point);
 
         entry_points
     };
-    let (contract_hash, _contract_version) = storage::new_contract(entry_points, None, None, None);
+    let (contract_hash, _contract_version) =
+        storage::new_contract(entry_points, None, None, None, None);
 
     my_call_contract(contract_hash, "do_nothing", RuntimeArgs::default());
 }

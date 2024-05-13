@@ -1,19 +1,18 @@
 use std::collections::BTreeMap;
 
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_ACCOUNT_PUBLIC_KEY, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
+    ExecuteRequestBuilder, LmdbWasmTestBuilder, TransferRequestBuilder, UpgradeRequestBuilder,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY, LOCAL_GENESIS_REQUEST,
+    MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
-use casper_execution_engine::{
-    engine_state::{EngineConfigBuilder, Error, SystemContractRegistry},
-    execution,
-};
+use casper_execution_engine::{engine_state::Error, execution::ExecError};
 use casper_types::{
     account::AccountHash,
     runtime_args,
-    system::{auction, auction::DelegationRate, mint},
-    AccessRights, CLTyped, CLValue, ContractHash, ContractPackageHash, Digest, EraId, Key,
-    ProtocolVersion, RuntimeArgs, StoredValue, StoredValueTypeMismatch, URef, U512,
+    system::{auction, auction::DelegationRate},
+    AccessRights, AddressableEntityHash, CLTyped, CLValue, Digest, EraId, HoldBalanceHandling, Key,
+    PackageHash, ProtocolVersion, RuntimeArgs, StoredValue, StoredValueTypeMismatch,
+    SystemEntityRegistry, Timestamp, URef, U512,
 };
 
 use crate::lmdb_fixture;
@@ -35,23 +34,22 @@ const PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V1_0_0;
 
 fn setup() -> LmdbWasmTestBuilder {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
-    let transfer = ExecuteRequestBuilder::transfer(
-        *DEFAULT_ACCOUNT_ADDR,
-        runtime_args! {
-            mint::ARG_TARGET => ACCOUNT_1_ADDR,
-            mint::ARG_AMOUNT => MINIMUM_ACCOUNT_CREATION_BALANCE,
-            mint::ARG_ID => Some(42u64),
-        },
-    )
-    .build();
+    let transfer = TransferRequestBuilder::new(MINIMUM_ACCOUNT_CREATION_BALANCE, ACCOUNT_1_ADDR)
+        .with_transfer_id(42)
+        .build();
 
-    builder.exec(transfer).expect_success().commit();
+    builder.transfer_and_commit(transfer).expect_success();
 
     let sem_ver = PROTOCOL_VERSION.value();
     let new_protocol_version =
         ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 1);
+
+    let updated_chainspec = builder
+        .chainspec()
+        .clone()
+        .with_strict_argument_checking(true);
 
     let mut upgrade_request = {
         UpgradeRequestBuilder::new()
@@ -61,14 +59,9 @@ fn setup() -> LmdbWasmTestBuilder {
             .build()
     };
 
-    let strict_argument_checking = true;
-
-    let engine_config = EngineConfigBuilder::new()
-        .with_strict_argument_checking(strict_argument_checking)
-        .build();
-
     builder
-        .upgrade_with_upgrade_request(engine_config, &mut upgrade_request)
+        .with_chainspec(updated_chainspec)
+        .upgrade(&mut upgrade_request)
         .expect_upgrade_success();
 
     builder
@@ -86,7 +79,7 @@ fn apply_global_state_update(
         .as_cl_value()
         .expect("must be CLValue")
         .clone()
-        .into_t::<SystemContractRegistry>()
+        .into_t::<SystemEntityRegistry>()
         .expect("must convert to btree map");
 
     let mut global_state_update = BTreeMap::<Key, StoredValue>::new();
@@ -94,7 +87,7 @@ fn apply_global_state_update(
         .expect("must convert to StoredValue")
         .into();
 
-    global_state_update.insert(Key::SystemContractRegistry, registry);
+    global_state_update.insert(Key::SystemEntityRegistry, registry);
 
     global_state_update
 }
@@ -114,80 +107,70 @@ fn gh_1470_call_contract_should_verify_group_access() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have default contract package");
 
-    let contract_hash_key = account
+    let entity_hash_key = account
         .named_keys()
         .get(gh_1470_regression::CONTRACT_HASH_NAME)
         .cloned()
         .unwrap();
-    let contract_hash = contract_hash_key
-        .into_hash()
-        .map(ContractHash::new)
+    let entity_hash = entity_hash_key
+        .into_entity_hash_addr()
+        .map(AddressableEntityHash::new)
         .unwrap();
-    let contract_package_hash_key = account
+    let package_hash_key = account
         .named_keys()
-        .get(gh_1470_regression::CONTRACT_PACKAGE_HASH_NAME)
+        .get(gh_1470_regression::PACKAGE_HASH_NAME)
         .cloned()
         .unwrap();
-    let contract_package_hash = contract_package_hash_key
-        .into_hash()
-        .map(ContractPackageHash::new)
+    let package_hash = package_hash_key
+        .into_package_addr()
+        .map(PackageHash::new)
         .unwrap();
 
     let call_contract_request = {
         let args = runtime_args! {
             gh_1470_regression_call::ARG_TEST_METHOD => gh_1470_regression_call::METHOD_CALL_DO_NOTHING,
-            gh_1470_regression_call::ARG_CONTRACT_HASH => contract_hash,
+            gh_1470_regression_call::ARG_CONTRACT_HASH => entity_hash,
         };
         ExecuteRequestBuilder::standard(ACCOUNT_1_ADDR, GH_1470_REGRESSION_CALL, args).build()
     };
 
     builder.exec(call_contract_request).commit();
 
-    let response = builder
-        .get_last_exec_results()
+    let exec_result = builder
+        .get_last_exec_result()
         .expect("should have last response");
-    assert_eq!(response.len(), 1);
-    let exec_response = response.last().expect("should have response");
-    let call_contract_error = exec_response
-        .as_error()
-        .cloned()
-        .expect("should have error");
+    let call_contract_error = exec_result.error().cloned().expect("should have error");
 
     let call_versioned_contract_request = {
         let args = runtime_args! {
             gh_1470_regression_call::ARG_TEST_METHOD => gh_1470_regression_call::METHOD_CALL_VERSIONED_DO_NOTHING,
-            gh_1470_regression_call::ARG_CONTRACT_PACKAGE_HASH => contract_package_hash,
+            gh_1470_regression_call::ARG_CONTRACT_PACKAGE_HASH => package_hash,
         };
         ExecuteRequestBuilder::standard(ACCOUNT_1_ADDR, GH_1470_REGRESSION_CALL, args).build()
     };
 
     builder.exec(call_versioned_contract_request).commit();
 
-    let response = builder
-        .get_last_exec_results()
+    let exec_result = builder
+        .get_last_exec_result()
         .expect("should have last response");
-    assert_eq!(response.len(), 1);
-    let exec_response = response.last().expect("should have response");
-    let call_versioned_contract_error = exec_response.as_error().expect("should have error");
+    let call_versioned_contract_error = exec_result.error().expect("should have error");
 
     match (&call_contract_error, &call_versioned_contract_error) {
-        (
-            Error::Exec(execution::Error::InvalidContext),
-            Error::Exec(execution::Error::InvalidContext),
-        ) => (),
+        (Error::Exec(ExecError::InvalidContext), Error::Exec(ExecError::InvalidContext)) => (),
         _ => panic!("Both variants should raise same error."),
     }
 
     assert!(matches!(
         call_versioned_contract_error,
-        Error::Exec(execution::Error::InvalidContext)
+        Error::Exec(ExecError::InvalidContext)
     ));
     assert!(matches!(
         call_contract_error,
-        Error::Exec(execution::Error::InvalidContext)
+        Error::Exec(ExecError::InvalidContext)
     ));
 }
 
@@ -270,8 +253,8 @@ fn gh_1470_call_contract_should_verify_group_access() {
 
 //     match (&call_contract_error, &call_versioned_contract_error) {
 //         (
-//             Error::Exec(execution::Error::MissingArgument { name: lhs_name }),
-//             Error::Exec(execution::Error::MissingArgument { name: rhs_name }),
+//             Error::Exec(ExecError::MissingArgument { name: lhs_name }),
+//             Error::Exec(ExecError::MissingArgument { name: rhs_name }),
 //         ) if lhs_name == rhs_name => (),
 //         _ => panic!(
 //             "Both variants should raise same error: lhs={:?} rhs={:?}",
@@ -282,7 +265,7 @@ fn gh_1470_call_contract_should_verify_group_access() {
 //     assert!(
 //         matches!(
 //             &call_versioned_contract_error,
-//             Error::Exec(execution::Error::MissingArgument {
+//             Error::Exec(ExecError::MissingArgument {
 //                 name,
 //             })
 //             if name == gh_1470_regression::ARG1
@@ -293,7 +276,7 @@ fn gh_1470_call_contract_should_verify_group_access() {
 //     assert!(
 //         matches!(
 //             &call_contract_error,
-//             Error::Exec(execution::Error::MissingArgument {
+//             Error::Exec(ExecError::MissingArgument {
 //                 name,
 //             })
 //             if name == gh_1470_regression::ARG1
@@ -318,7 +301,7 @@ fn gh_1470_call_contract_should_ignore_optional_args() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have default contract package");
 
     let contract_hash_key = account
@@ -326,24 +309,24 @@ fn gh_1470_call_contract_should_ignore_optional_args() {
         .get(gh_1470_regression::CONTRACT_HASH_NAME)
         .cloned()
         .unwrap();
-    let contract_hash = contract_hash_key
-        .into_hash()
-        .map(ContractHash::new)
+    let entity_hash = contract_hash_key
+        .into_entity_hash_addr()
+        .map(AddressableEntityHash::new)
         .unwrap();
-    let contract_package_hash_key = account
+    let package_hash_key = account
         .named_keys()
-        .get(gh_1470_regression::CONTRACT_PACKAGE_HASH_NAME)
+        .get(gh_1470_regression::PACKAGE_HASH_NAME)
         .cloned()
         .unwrap();
-    let contract_package_hash = contract_package_hash_key
-        .into_hash()
-        .map(ContractPackageHash::new)
+    let package_hash = package_hash_key
+        .into_package_addr()
+        .map(PackageHash::new)
         .unwrap();
 
     let call_contract_request = {
         let args = runtime_args! {
             gh_1470_regression_call::ARG_TEST_METHOD => gh_1470_regression_call::METHOD_CALL_DO_NOTHING_NO_OPTIONALS,
-            gh_1470_regression_call::ARG_CONTRACT_HASH => contract_hash,
+            gh_1470_regression_call::ARG_CONTRACT_HASH => entity_hash,
         };
         ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, GH_1470_REGRESSION_CALL, args)
             .build()
@@ -357,7 +340,7 @@ fn gh_1470_call_contract_should_ignore_optional_args() {
     let call_versioned_contract_request = {
         let args = runtime_args! {
             gh_1470_regression_call::ARG_TEST_METHOD => gh_1470_regression_call::METHOD_CALL_VERSIONED_DO_NOTHING_NO_OPTIONALS,
-            gh_1470_regression_call::ARG_CONTRACT_PACKAGE_HASH => contract_package_hash,
+            gh_1470_regression_call::ARG_CONTRACT_PACKAGE_HASH => package_hash,
         };
         ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, GH_1470_REGRESSION_CALL, args)
             .build()
@@ -384,7 +367,7 @@ fn gh_1470_call_contract_should_not_accept_extra_args() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have default contract package");
 
     let contract_hash_key = account
@@ -392,24 +375,24 @@ fn gh_1470_call_contract_should_not_accept_extra_args() {
         .get(gh_1470_regression::CONTRACT_HASH_NAME)
         .cloned()
         .unwrap();
-    let contract_hash = contract_hash_key
-        .into_hash()
-        .map(ContractHash::new)
+    let entity_hash = contract_hash_key
+        .into_entity_hash_addr()
+        .map(AddressableEntityHash::new)
         .unwrap();
-    let contract_package_hash_key = account
+    let package_hash_key = account
         .named_keys()
-        .get(gh_1470_regression::CONTRACT_PACKAGE_HASH_NAME)
+        .get(gh_1470_regression::PACKAGE_HASH_NAME)
         .cloned()
         .unwrap();
-    let contract_package_hash = contract_package_hash_key
-        .into_hash()
-        .map(ContractPackageHash::new)
+    let package_hash = package_hash_key
+        .into_package_addr()
+        .map(PackageHash::new)
         .unwrap();
 
     let call_contract_request = {
         let args = runtime_args! {
             gh_1470_regression_call::ARG_TEST_METHOD => gh_1470_regression_call::METHOD_CALL_DO_NOTHING_EXTRA,
-            gh_1470_regression_call::ARG_CONTRACT_HASH => contract_hash,
+            gh_1470_regression_call::ARG_CONTRACT_HASH => entity_hash,
         };
         ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, GH_1470_REGRESSION_CALL, args)
             .build()
@@ -423,7 +406,7 @@ fn gh_1470_call_contract_should_not_accept_extra_args() {
     let call_versioned_contract_request = {
         let args = runtime_args! {
             gh_1470_regression_call::ARG_TEST_METHOD => gh_1470_regression_call::METHOD_CALL_VERSIONED_DO_NOTHING_EXTRA,
-            gh_1470_regression_call::ARG_CONTRACT_PACKAGE_HASH => contract_package_hash,
+            gh_1470_regression_call::ARG_CONTRACT_PACKAGE_HASH => package_hash,
         };
         ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, GH_1470_REGRESSION_CALL, args)
             .build()
@@ -450,66 +433,59 @@ fn gh_1470_call_contract_should_verify_wrong_argument_types() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have contract");
 
-    let contract_hash_key = account
+    let entity_hash_key = account
         .named_keys()
         .get(gh_1470_regression::CONTRACT_HASH_NAME)
         .cloned()
         .unwrap();
-    let contract_hash = contract_hash_key
-        .into_hash()
-        .map(ContractHash::new)
+    let entity_hash = entity_hash_key
+        .into_entity_hash_addr()
+        .map(AddressableEntityHash::new)
         .unwrap();
-    let contract_package_hash_key = account
+    let package_hash_key = account
         .named_keys()
-        .get(gh_1470_regression::CONTRACT_PACKAGE_HASH_NAME)
+        .get(gh_1470_regression::PACKAGE_HASH_NAME)
         .cloned()
         .unwrap();
-    let contract_package_hash = contract_package_hash_key
-        .into_hash()
-        .map(ContractPackageHash::new)
+    let package_hash = package_hash_key
+        .into_package_addr()
+        .map(PackageHash::new)
         .unwrap();
 
     let call_contract_request = {
         let args = runtime_args! {
                     gh_1470_regression_call::ARG_TEST_METHOD =>
         gh_1470_regression_call::METHOD_CALL_DO_NOTHING_TYPE_MISMATCH,
-        gh_1470_regression_call::ARG_CONTRACT_HASH => contract_hash,         };
+        gh_1470_regression_call::ARG_CONTRACT_HASH => entity_hash,         };
         ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, GH_1470_REGRESSION_CALL, args)
             .build()
     };
 
     builder.exec(call_contract_request).commit();
 
-    let response = builder
-        .get_last_exec_results()
+    let exec_result = builder
+        .get_last_exec_result()
         .expect("should have last response");
-    assert_eq!(response.len(), 1);
-    let exec_response = response.last().expect("should have response");
-    let call_contract_error = exec_response
-        .as_error()
-        .cloned()
-        .expect("should have error");
+    let call_contract_error = exec_result.error().cloned().expect("should have error");
 
     let call_versioned_contract_request = {
         let args = runtime_args! {
                     gh_1470_regression_call::ARG_TEST_METHOD =>
         gh_1470_regression_call::METHOD_CALL_VERSIONED_DO_NOTHING_TYPE_MISMATCH,
-        gh_1470_regression_call::ARG_CONTRACT_PACKAGE_HASH => contract_package_hash,         };
+        gh_1470_regression_call::ARG_CONTRACT_PACKAGE_HASH => package_hash,         };
         ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, GH_1470_REGRESSION_CALL, args)
             .build()
     };
 
     builder.exec(call_versioned_contract_request).commit();
 
-    let response = builder
-        .get_last_exec_results()
+    let exec_result = builder
+        .get_last_exec_result()
         .expect("should have last response");
-    assert_eq!(response.len(), 1);
-    let exec_response = response.last().expect("should have response");
-    let call_versioned_contract_error = exec_response.as_error().expect("should have error");
+    let call_versioned_contract_error = exec_result.error().expect("should have error");
 
     let expected = gh_1470_regression::Arg1Type::cl_type();
     let found = gh_1470_regression::Arg3Type::cl_type();
@@ -519,8 +495,8 @@ fn gh_1470_call_contract_should_verify_wrong_argument_types() {
 
     match (&call_contract_error, &call_versioned_contract_error) {
         (
-            Error::Exec(execution::Error::TypeMismatch(lhs_type_mismatch)),
-            Error::Exec(execution::Error::TypeMismatch(rhs_type_mismatch)),
+            Error::Exec(ExecError::TypeMismatch(lhs_type_mismatch)),
+            Error::Exec(ExecError::TypeMismatch(rhs_type_mismatch)),
         ) if lhs_type_mismatch == &expected_type_mismatch
             && rhs_type_mismatch == &expected_type_mismatch => {}
         _ => panic!(
@@ -531,12 +507,12 @@ fn gh_1470_call_contract_should_verify_wrong_argument_types() {
 
     assert!(matches!(
         call_versioned_contract_error,
-        Error::Exec(execution::Error::TypeMismatch(type_mismatch))
+        Error::Exec(ExecError::TypeMismatch(type_mismatch))
             if *type_mismatch == expected_type_mismatch
     ));
     assert!(matches!(
         call_contract_error,
-        Error::Exec(execution::Error::TypeMismatch(type_mismatch))
+        Error::Exec(ExecError::TypeMismatch(type_mismatch))
             if type_mismatch == expected_type_mismatch
     ));
 }
@@ -556,54 +532,52 @@ fn gh_1470_call_contract_should_verify_wrong_optional_argument_types() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have default contract package");
 
-    let contract_hash_key = account
+    let entity_hash_key = account
         .named_keys()
         .get(gh_1470_regression::CONTRACT_HASH_NAME)
         .cloned()
         .unwrap();
-    let contract_hash = contract_hash_key
-        .into_hash()
-        .map(ContractHash::new)
+    let entity_hash = entity_hash_key
+        .into_entity_hash_addr()
+        .map(AddressableEntityHash::new)
         .unwrap();
-    let contract_package_hash_key = account
+    let package_hash_key = account
         .named_keys()
-        .get(gh_1470_regression::CONTRACT_PACKAGE_HASH_NAME)
+        .get(gh_1470_regression::PACKAGE_HASH_NAME)
         .cloned()
         .unwrap();
-    let contract_package_hash = contract_package_hash_key
-        .into_hash()
-        .map(ContractPackageHash::new)
+    let package_hash = package_hash_key
+        .into_package_addr()
+        .map(PackageHash::new)
         .unwrap();
 
     let call_contract_request = {
         let args = runtime_args! {
             gh_1470_regression_call::ARG_TEST_METHOD =>
             gh_1470_regression_call::METHOD_CALL_DO_NOTHING_OPTIONAL_TYPE_MISMATCH,
-            gh_1470_regression_call::ARG_CONTRACT_HASH => contract_hash,
+            gh_1470_regression_call::ARG_CONTRACT_HASH => entity_hash,
         };
         ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, GH_1470_REGRESSION_CALL, args)
             .build()
     };
 
-    builder.exec(call_contract_request).commit();
+    builder
+        .exec(call_contract_request)
+        .expect_failure()
+        .commit();
 
-    let response = builder
-        .get_last_exec_results()
+    let exec_result = builder
+        .get_last_exec_result()
         .expect("should have last response");
-    assert_eq!(response.len(), 1);
-    let exec_response = response.last().expect("should have response");
-    let call_contract_error = exec_response
-        .as_error()
-        .cloned()
-        .expect("should have error");
+    let call_contract_error = exec_result.error().cloned().expect("should have error");
 
     let call_versioned_contract_request = {
         let args = runtime_args! {
             gh_1470_regression_call::ARG_TEST_METHOD => gh_1470_regression_call::METHOD_CALL_VERSIONED_DO_NOTHING_OPTIONAL_TYPE_MISMATCH,
-            gh_1470_regression_call::ARG_CONTRACT_PACKAGE_HASH => contract_package_hash,
+            gh_1470_regression_call::ARG_CONTRACT_PACKAGE_HASH => package_hash,
         };
         ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, GH_1470_REGRESSION_CALL, args)
             .build()
@@ -611,12 +585,10 @@ fn gh_1470_call_contract_should_verify_wrong_optional_argument_types() {
 
     builder.exec(call_versioned_contract_request).commit();
 
-    let response = builder
-        .get_last_exec_results()
+    let exec_result = builder
+        .get_last_exec_result()
         .expect("should have last response");
-    assert_eq!(response.len(), 1);
-    let exec_response = response.last().expect("should have response");
-    let call_versioned_contract_error = exec_response.as_error().expect("should have error");
+    let call_versioned_contract_error = exec_result.error().expect("should have error");
 
     let expected = gh_1470_regression::Arg3Type::cl_type();
     let found = gh_1470_regression::Arg4Type::cl_type();
@@ -626,8 +598,8 @@ fn gh_1470_call_contract_should_verify_wrong_optional_argument_types() {
 
     match (&call_contract_error, &call_versioned_contract_error) {
         (
-            Error::Exec(execution::Error::TypeMismatch(lhs_type_mismatch)),
-            Error::Exec(execution::Error::TypeMismatch(rhs_type_mismatch)),
+            Error::Exec(ExecError::TypeMismatch(lhs_type_mismatch)),
+            Error::Exec(ExecError::TypeMismatch(rhs_type_mismatch)),
         ) if lhs_type_mismatch == &expected_type_mismatch
             && rhs_type_mismatch == &expected_type_mismatch => {}
         _ => panic!(
@@ -638,12 +610,12 @@ fn gh_1470_call_contract_should_verify_wrong_optional_argument_types() {
 
     assert!(matches!(
         call_versioned_contract_error,
-        Error::Exec(execution::Error::TypeMismatch(type_mismatch))
+        Error::Exec(ExecError::TypeMismatch(type_mismatch))
         if *type_mismatch == expected_type_mismatch
     ));
     assert!(matches!(
         call_contract_error,
-        Error::Exec(execution::Error::TypeMismatch(type_mismatch))
+        Error::Exec(ExecError::TypeMismatch(type_mismatch))
         if type_mismatch == expected_type_mismatch
     ));
 }
@@ -670,23 +642,21 @@ fn should_transfer_after_major_version_bump_from_1_2_0() {
             .with_new_protocol_version(new_protocol_version)
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
             .with_global_state_update(global_state_update)
+            .with_new_gas_hold_handling(HoldBalanceHandling::Accrued)
+            .with_new_gas_hold_interval(1200u64)
             .build()
     };
 
     builder
-        .upgrade_with_upgrade_request_and_config(None, &mut upgrade_request)
+        .with_block_time(Timestamp::now().into())
+        .upgrade(&mut upgrade_request)
         .expect_upgrade_success();
 
-    let transfer_args = runtime_args! {
-        mint::ARG_AMOUNT => U512::one(),
-        mint::ARG_TARGET => AccountHash::new([3; 32]),
-        mint::ARG_ID => Some(1u64),
-    };
-
-    let transfer = ExecuteRequestBuilder::transfer(*DEFAULT_ACCOUNT_ADDR, transfer_args)
-        .with_protocol_version(new_protocol_version)
+    let transfer = TransferRequestBuilder::new(1, AccountHash::new([3; 32]))
+        .with_transfer_id(1)
         .build();
-    builder.exec(transfer).expect_success().commit();
+
+    builder.transfer_and_commit(transfer).expect_success();
 }
 
 #[ignore]
@@ -694,12 +664,6 @@ fn should_transfer_after_major_version_bump_from_1_2_0() {
 fn should_transfer_after_minor_version_bump_from_1_2_0() {
     let (mut builder, lmdb_fixture_state, _temp_dir) =
         lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_3_1);
-
-    let transfer_args = runtime_args! {
-        mint::ARG_AMOUNT => U512::one(),
-        mint::ARG_TARGET => AccountHash::new([3; 32]),
-        mint::ARG_ID => Some(1u64),
-    };
 
     let current_protocol_version = lmdb_fixture_state.genesis_protocol_version();
 
@@ -718,17 +682,20 @@ fn should_transfer_after_minor_version_bump_from_1_2_0() {
             .with_new_protocol_version(new_protocol_version)
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
             .with_global_state_update(global_state_update)
+            .with_new_gas_hold_handling(HoldBalanceHandling::Accrued)
+            .with_new_gas_hold_interval(1200u64)
             .build()
     };
 
     builder
-        .upgrade_with_upgrade_request_and_config(None, &mut upgrade_request)
+        .with_block_time(Timestamp::now().into())
+        .upgrade(&mut upgrade_request)
         .expect_upgrade_success();
 
-    let transfer = ExecuteRequestBuilder::transfer(*DEFAULT_ACCOUNT_ADDR, transfer_args)
-        .with_protocol_version(new_protocol_version)
+    let transfer = TransferRequestBuilder::new(1, AccountHash::new([3; 32]))
+        .with_transfer_id(1)
         .build();
-    builder.exec(transfer).expect_success().commit();
+    builder.transfer_and_commit(transfer).expect_success();
 }
 
 #[ignore]
@@ -751,11 +718,14 @@ fn should_add_bid_after_major_bump() {
             .with_new_protocol_version(new_protocol_version)
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
             .with_global_state_update(global_state_update)
+            .with_new_gas_hold_handling(HoldBalanceHandling::Accrued)
+            .with_new_gas_hold_interval(1200u64)
             .build()
     };
 
     builder
-        .upgrade_with_upgrade_request_and_config(None, &mut upgrade_request)
+        .with_block_time(Timestamp::now().into())
+        .upgrade(&mut upgrade_request)
         .expect_upgrade_success();
 
     let add_bid_request = ExecuteRequestBuilder::standard(
@@ -767,7 +737,6 @@ fn should_add_bid_after_major_bump() {
             auction::ARG_DELEGATION_RATE => BID_DELEGATION_RATE,
         },
     )
-    .with_protocol_version(new_protocol_version)
     .build();
 
     builder.exec(add_bid_request).expect_success().commit();
@@ -800,11 +769,14 @@ fn should_add_bid_after_minor_bump() {
             .with_new_protocol_version(new_protocol_version)
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
             .with_global_state_update(global_state_update)
+            .with_new_gas_hold_handling(HoldBalanceHandling::Accrued)
+            .with_new_gas_hold_interval(1200u64)
             .build()
     };
 
     builder
-        .upgrade_with_upgrade_request_and_config(None, &mut upgrade_request)
+        .with_block_time(Timestamp::now().into())
+        .upgrade(&mut upgrade_request)
         .expect_upgrade_success();
 
     let add_bid_request = ExecuteRequestBuilder::standard(
@@ -816,7 +788,6 @@ fn should_add_bid_after_minor_bump() {
             auction::ARG_DELEGATION_RATE => BID_DELEGATION_RATE,
         },
     )
-    .with_protocol_version(new_protocol_version)
     .build();
 
     builder.exec(add_bid_request).expect_success().commit();
@@ -846,11 +817,14 @@ fn should_wasm_transfer_after_major_bump() {
             .with_new_protocol_version(new_protocol_version)
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
             .with_global_state_update(global_state_update)
+            .with_new_gas_hold_handling(HoldBalanceHandling::Accrued)
+            .with_new_gas_hold_interval(1200u64)
             .build()
     };
 
     builder
-        .upgrade_with_upgrade_request_and_config(None, &mut upgrade_request)
+        .with_block_time(Timestamp::now().into())
+        .upgrade(&mut upgrade_request)
         .expect_upgrade_success();
 
     let wasm_transfer = ExecuteRequestBuilder::standard(
@@ -861,7 +835,6 @@ fn should_wasm_transfer_after_major_bump() {
             ARG_TARGET => AccountHash::new([1; 32]),
         },
     )
-    .with_protocol_version(new_protocol_version)
     .build();
 
     builder.exec(wasm_transfer).expect_success().commit();
@@ -894,11 +867,14 @@ fn should_wasm_transfer_after_minor_bump() {
             .with_new_protocol_version(new_protocol_version)
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
             .with_global_state_update(global_state_update)
+            .with_new_gas_hold_handling(HoldBalanceHandling::Accrued)
+            .with_new_gas_hold_interval(1200u64)
             .build()
     };
 
     builder
-        .upgrade_with_upgrade_request_and_config(None, &mut upgrade_request)
+        .with_block_time(Timestamp::now().into())
+        .upgrade(&mut upgrade_request)
         .expect_upgrade_success();
 
     let wasm_transfer = ExecuteRequestBuilder::standard(
@@ -909,7 +885,6 @@ fn should_wasm_transfer_after_minor_bump() {
             ARG_TARGET => AccountHash::new([1; 32]),
         },
     )
-    .with_protocol_version(new_protocol_version)
     .build();
 
     builder.exec(wasm_transfer).expect_success().commit();
@@ -946,6 +921,6 @@ fn should_upgrade_from_1_3_1_rel_fixture() {
     };
 
     builder
-        .upgrade_with_upgrade_request_and_config(None, &mut upgrade_request)
+        .upgrade(&mut upgrade_request)
         .expect_upgrade_success();
 }

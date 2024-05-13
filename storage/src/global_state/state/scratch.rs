@@ -1,5 +1,6 @@
+use lmdb::RwTransaction;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet},
     mem,
     ops::Deref,
     sync::{Arc, RwLock},
@@ -8,38 +9,52 @@ use std::{
 use tracing::{debug, error};
 
 use casper_types::{
-    execution::{Effects, Transform, TransformInstruction, TransformKind},
+    bytesrepr::ToBytes,
+    execution::{Effects, TransformInstruction, TransformKindV2, TransformV2},
+    global_state::TrieMerkleProof,
     Digest, Key, StoredValue,
 };
 
-use crate::global_state::{
-    error,
-    state::{CommitError, CommitProvider, StateProvider, StateReader},
-    store::Store,
-    transaction_source::{lmdb::LmdbEnvironment, Transaction, TransactionSource},
-    trie::{merkle_proof::TrieMerkleProof, Trie, TrieRaw},
-    trie_store::{
-        lmdb::LmdbTrieStore,
-        operations::{
-            keys_with_prefix, missing_children, prune, put_trie, read, read_with_proof,
-            PruneResult, ReadResult,
+use crate::{
+    data_access_layer::{
+        FlushRequest, FlushResult, PutTrieRequest, PutTrieResult, TrieElement, TrieRequest,
+        TrieResult,
+    },
+    global_state::{
+        error::Error as GlobalStateError,
+        state::{CommitError, CommitProvider, StateProvider, StateReader},
+        store::Store,
+        transaction_source::{lmdb::LmdbEnvironment, Transaction, TransactionSource},
+        trie::{Trie, TrieRaw},
+        trie_store::{
+            lmdb::LmdbTrieStore,
+            operations::{
+                keys_with_prefix, missing_children, put_trie, read, read_with_proof, ReadResult,
+            },
         },
     },
 };
 
+use crate::tracking_copy::TrackingCopy;
+
 type SharedCache = Arc<RwLock<Cache>>;
 
 struct Cache {
-    cached_values: HashMap<Key, (bool, StoredValue)>,
-    pruned: HashSet<Key>,
+    cached_values: BTreeMap<Key, (bool, StoredValue)>,
+    pruned: BTreeSet<Key>,
 }
 
 impl Cache {
     fn new() -> Self {
         Cache {
-            cached_values: HashMap::new(),
-            pruned: HashSet::new(),
+            cached_values: BTreeMap::new(),
+            pruned: BTreeSet::new(),
         }
+    }
+
+    /// Returns true if the pruned and cached values are both empty.
+    pub fn is_empty(&self) -> bool {
+        self.cached_values.is_empty() && self.pruned.is_empty()
     }
 
     fn insert_write(&mut self, key: Key, value: StoredValue) {
@@ -65,9 +80,9 @@ impl Cache {
 
     /// Consumes self and returns only written values as values that were only read must be filtered
     /// out to prevent unnecessary writes.
-    fn into_dirty_writes(self) -> (HashMap<Key, StoredValue>, HashSet<Key>) {
+    fn into_dirty_writes(self) -> (BTreeMap<Key, StoredValue>, BTreeSet<Key>) {
         let keys_to_prune = self.pruned;
-        let stored_values: HashMap<Key, StoredValue> = self
+        let stored_values: BTreeMap<Key, StoredValue> = self
             .cached_values
             .into_iter()
             .filter_map(|(key, (dirty, value))| if dirty { Some((key, value)) } else { None })
@@ -92,6 +107,8 @@ pub struct ScratchGlobalState {
     // TODO: make this a lazy-static
     /// Empty root hash used for a new trie.
     pub(crate) empty_root_hash: Digest,
+    /// Max query depth
+    pub max_query_depth: u64,
 }
 
 /// Represents a "view" of global state at a particular root hash.
@@ -105,6 +122,13 @@ pub struct ScratchGlobalStateView {
     pub(crate) root_hash: Digest,
 }
 
+impl ScratchGlobalStateView {
+    /// Returns true if the pruned and cached values are both empty.
+    pub fn is_empty(&self) -> bool {
+        self.cache.read().unwrap().is_empty()
+    }
+}
+
 impl ScratchGlobalState {
     /// Creates a state from an existing environment, store, and root_hash.
     /// Intended to be used for testing.
@@ -112,24 +136,26 @@ impl ScratchGlobalState {
         environment: Arc<LmdbEnvironment>,
         trie_store: Arc<LmdbTrieStore>,
         empty_root_hash: Digest,
+        max_query_depth: u64,
     ) -> Self {
         ScratchGlobalState {
             cache: Arc::new(RwLock::new(Cache::new())),
             environment,
             trie_store,
             empty_root_hash,
+            max_query_depth,
         }
     }
 
     /// Consume self and return inner cache.
-    pub fn into_inner(self) -> (HashMap<Key, StoredValue>, HashSet<Key>) {
+    pub fn into_inner(self) -> (BTreeMap<Key, StoredValue>, BTreeSet<Key>) {
         let cache = mem::replace(&mut *self.cache.write().unwrap(), Cache::new());
         cache.into_dirty_writes()
     }
 }
 
 impl StateReader<Key, StoredValue> for ScratchGlobalStateView {
-    type Error = error::Error;
+    type Error = GlobalStateError;
 
     fn read(&self, key: &Key) -> Result<Option<StoredValue>, Self::Error> {
         {
@@ -163,9 +189,11 @@ impl StateReader<Key, StoredValue> for ScratchGlobalStateView {
         &self,
         key: &Key,
     ) -> Result<Option<TrieMerkleProof<Key, StoredValue>>, Self::Error> {
-        if self.cache.read().unwrap().pruned.contains(key) {
-            return Ok(None);
+        // if self.cache.is_empty() proceed else error
+        if !self.is_empty() {
+            return Err(Self::Error::CannotProvideProofsOverCachedData);
         }
+
         let txn = self.environment.create_read_txn()?;
         let ret = match read_with_proof::<
             Key,
@@ -184,6 +212,15 @@ impl StateReader<Key, StoredValue> for ScratchGlobalStateView {
     }
 
     fn keys_with_prefix(&self, prefix: &[u8]) -> Result<Vec<Key>, Self::Error> {
+        let mut ret = Vec::new();
+        let cache = self.cache.read().unwrap();
+        for cached_key in cache.cached_values.keys() {
+            let serialized_key = cached_key.to_bytes()?;
+            if serialized_key.starts_with(prefix) && !cache.pruned.contains(cached_key) {
+                ret.push(*cached_key)
+            }
+        }
+
         let txn = self.environment.create_read_txn()?;
         let keys_iter = keys_with_prefix::<Key, StoredValue, _, _>(
             &txn,
@@ -191,12 +228,13 @@ impl StateReader<Key, StoredValue> for ScratchGlobalStateView {
             &self.root_hash,
             prefix,
         );
-        let mut ret = Vec::new();
-        let cache = self.cache.read().unwrap();
         for result in keys_iter {
             match result {
                 Ok(key) => {
-                    if !cache.pruned.contains(&key) {
+                    // If the key is pruned then we won't return it. If the key is already cached,
+                    // then it would have been picked up by the code above so we don't add it again
+                    // to avoid duplicates.
+                    if !cache.pruned.contains(&key) && !cache.cached_values.contains_key(&key) {
                         ret.push(key);
                     }
                 }
@@ -211,11 +249,20 @@ impl StateReader<Key, StoredValue> for ScratchGlobalStateView {
 impl CommitProvider for ScratchGlobalState {
     /// State hash returned is the one provided, as we do not write to lmdb with this kind of global
     /// state. Note that the state hash is NOT used, and simply passed back to the caller.
-    fn commit(&self, state_hash: Digest, effects: Effects) -> Result<Digest, Self::Error> {
-        for (key, kind) in effects.value().into_iter().map(Transform::destructure) {
+    fn commit(&self, state_hash: Digest, effects: Effects) -> Result<Digest, GlobalStateError> {
+        for (key, kind) in effects.value().into_iter().map(TransformV2::destructure) {
             let cached_value = self.cache.read().unwrap().get(&key).cloned();
             let instruction = match (cached_value, kind) {
-                (None, TransformKind::Write(new_value)) => TransformInstruction::store(new_value),
+                (_, TransformKindV2::Identity) => {
+                    // effectively a noop.
+                    debug!(
+                        ?state_hash,
+                        ?key,
+                        "scratch commit: attempt to commit a read."
+                    );
+                    continue;
+                }
+                (None, TransformKindV2::Write(new_value)) => TransformInstruction::store(new_value),
                 (None, transform_kind) => {
                     // It might be the case that for `Add*` operations we don't have the previous
                     // value in cache yet.
@@ -225,7 +272,7 @@ impl CommitProvider for ScratchGlobalState {
                         StoredValue,
                         lmdb::RoTransaction,
                         LmdbTrieStore,
-                        Self::Error,
+                        GlobalStateError,
                     >(
                         &txn, self.trie_store.deref(), &state_hash, &key
                     )? {
@@ -279,11 +326,34 @@ impl CommitProvider for ScratchGlobalState {
 }
 
 impl StateProvider for ScratchGlobalState {
-    type Error = error::Error;
-
     type Reader = ScratchGlobalStateView;
 
-    fn checkout(&self, state_hash: Digest) -> Result<Option<Self::Reader>, Self::Error> {
+    fn flush(&self, _: FlushRequest) -> FlushResult {
+        if self.environment.is_manual_sync_enabled() {
+            match self.environment.sync() {
+                Ok(_) => FlushResult::Success,
+                Err(err) => FlushResult::Failure(err.into()),
+            }
+        } else {
+            FlushResult::ManualSyncDisabled
+        }
+    }
+
+    fn empty_root(&self) -> Digest {
+        self.empty_root_hash
+    }
+
+    fn tracking_copy(
+        &self,
+        hash: Digest,
+    ) -> Result<Option<TrackingCopy<Self::Reader>>, GlobalStateError> {
+        match self.checkout(hash)? {
+            Some(tc) => Ok(Some(TrackingCopy::new(tc, self.max_query_depth))),
+            None => Ok(None),
+        }
+    }
+
+    fn checkout(&self, state_hash: Digest) -> Result<Option<Self::Reader>, GlobalStateError> {
         let txn = self.environment.create_read_txn()?;
         let maybe_root: Option<Trie<Key, StoredValue>> = self.trie_store.get(&txn, &state_hash)?;
         let maybe_state = maybe_root.map(|_| ScratchGlobalStateView {
@@ -296,66 +366,92 @@ impl StateProvider for ScratchGlobalState {
         Ok(maybe_state)
     }
 
-    fn empty_root(&self) -> Digest {
-        self.empty_root_hash
+    fn trie(&self, request: TrieRequest) -> TrieResult {
+        let key = request.trie_key();
+        let txn = match self.environment.create_read_txn() {
+            Ok(ro) => ro,
+            Err(err) => return TrieResult::Failure(err.into()),
+        };
+        let raw = match Store::<Digest, Trie<Digest, StoredValue>>::get_raw(
+            &*self.trie_store,
+            &txn,
+            &key,
+        ) {
+            Ok(Some(bytes)) => TrieRaw::new(bytes),
+            Ok(None) => {
+                return TrieResult::ValueNotFound(key.to_string());
+            }
+            Err(err) => {
+                return TrieResult::Failure(err);
+            }
+        };
+        match txn.commit() {
+            Ok(_) => match request.chunk_id() {
+                Some(chunk_id) => TrieResult::Success {
+                    element: TrieElement::Chunked(raw, chunk_id),
+                },
+                None => TrieResult::Success {
+                    element: TrieElement::Raw(raw),
+                },
+            },
+            Err(err) => TrieResult::Failure(err.into()),
+        }
     }
 
-    fn get_trie_full(&self, trie_key: &Digest) -> Result<Option<TrieRaw>, Self::Error> {
-        let txn = self.environment.create_read_txn()?;
-        let ret: Option<TrieRaw> =
-            Store::<Digest, Trie<Digest, StoredValue>>::get_raw(&*self.trie_store, &txn, trie_key)?
-                .map(TrieRaw::new);
-        txn.commit()?;
-        Ok(ret)
-    }
+    /// Persists a trie element.
+    fn put_trie(&self, request: PutTrieRequest) -> PutTrieResult {
+        // We only allow bottom-up persistence of trie elements.
+        // Thus we do not persist the element unless we already have all of its descendants
+        // persisted. It is safer to throw away the element and rely on a follow up attempt
+        // to reacquire it later than to allow it to be persisted which would allow runtime
+        // access to acquire a root hash that is missing one or more children which will
+        // result in undefined behavior if a process attempts to access elements below that
+        // root which are not held locally.
+        let bytes = request.raw().inner();
+        match self.missing_children(bytes) {
+            Ok(missing_children) => {
+                if !missing_children.is_empty() {
+                    let hash = Digest::hash_into_chunks_if_necessary(bytes);
+                    return PutTrieResult::Failure(GlobalStateError::MissingTrieNodeChildren(
+                        hash,
+                        request.take_raw(),
+                        missing_children,
+                    ));
+                }
+            }
+            Err(err) => return PutTrieResult::Failure(err),
+        };
 
-    fn put_trie(&self, trie: &[u8]) -> Result<Digest, Self::Error> {
-        let mut txn = self.environment.create_read_write_txn()?;
-        let trie_hash =
-            put_trie::<Key, StoredValue, lmdb::RwTransaction, LmdbTrieStore, Self::Error>(
-                &mut txn,
-                &self.trie_store,
-                trie,
-            )?;
-        txn.commit()?;
-        Ok(trie_hash)
+        match self.environment.create_read_write_txn() {
+            Ok(mut txn) => {
+                match put_trie::<Key, StoredValue, RwTransaction, LmdbTrieStore, GlobalStateError>(
+                    &mut txn,
+                    &self.trie_store,
+                    bytes,
+                ) {
+                    Ok(hash) => match txn.commit() {
+                        Ok(_) => PutTrieResult::Success { hash },
+                        Err(err) => PutTrieResult::Failure(err.into()),
+                    },
+                    Err(err) => PutTrieResult::Failure(err),
+                }
+            }
+            Err(err) => PutTrieResult::Failure(err.into()),
+        }
     }
 
     /// Finds all of the keys of missing directly descendant `Trie<K,V>` values
-    fn missing_children(&self, trie_raw: &[u8]) -> Result<Vec<Digest>, Self::Error> {
+    fn missing_children(&self, trie_raw: &[u8]) -> Result<Vec<Digest>, GlobalStateError> {
         let txn = self.environment.create_read_txn()?;
-        let missing_descendants =
-            missing_children::<Key, StoredValue, lmdb::RoTransaction, LmdbTrieStore, Self::Error>(
-                &txn,
-                self.trie_store.deref(),
-                trie_raw,
-            )?;
+        let missing_descendants = missing_children::<
+            Key,
+            StoredValue,
+            lmdb::RoTransaction,
+            LmdbTrieStore,
+            GlobalStateError,
+        >(&txn, self.trie_store.deref(), trie_raw)?;
         txn.commit()?;
         Ok(missing_descendants)
-    }
-
-    fn prune_keys(
-        &self,
-        mut state_root_hash: Digest,
-        keys_to_delete: &[Key],
-    ) -> Result<PruneResult, Self::Error> {
-        let mut txn = self.environment.create_read_write_txn()?;
-        for key in keys_to_delete {
-            let prune_result = prune::<Key, StoredValue, _, _, Self::Error>(
-                &mut txn,
-                self.trie_store.deref(),
-                &state_root_hash,
-                key,
-            );
-            match prune_result? {
-                PruneResult::Pruned(root) => {
-                    state_root_hash = root;
-                }
-                other => return Ok(other),
-            }
-        }
-        txn.commit()?;
-        Ok(PruneResult::Pruned(state_root_hash))
     }
 }
 
@@ -366,7 +462,7 @@ pub(crate) mod tests {
 
     use casper_types::{
         account::AccountHash,
-        execution::{Effects, Transform, TransformKind},
+        execution::{Effects, TransformKindV2, TransformV2},
         CLValue, Digest,
     };
 
@@ -374,8 +470,10 @@ pub(crate) mod tests {
     use crate::global_state::{
         state::{lmdb::LmdbGlobalState, CommitProvider},
         trie_store::operations::{write, WriteResult},
-        DEFAULT_TEST_MAX_DB_SIZE, DEFAULT_TEST_MAX_READERS,
     };
+
+    #[cfg(test)]
+    use crate::global_state::{DEFAULT_MAX_DB_SIZE, DEFAULT_MAX_READERS};
 
     #[derive(Debug, Clone)]
     pub(crate) struct TestPair {
@@ -415,9 +513,9 @@ pub(crate) mod tests {
 
     pub(crate) fn create_test_transforms() -> Effects {
         let mut effects = Effects::new();
-        let transform = Transform::new(
+        let transform = TransformV2::new(
             Key::Account(AccountHash::new([3u8; 32])),
-            TransformKind::Write(StoredValue::CLValue(CLValue::from_t("one").unwrap())),
+            TransformKindV2::Write(StoredValue::CLValue(CLValue::from_t("one").unwrap())),
         );
         effects.push(transform);
         effects
@@ -428,13 +526,14 @@ pub(crate) mod tests {
         root_hash: Digest,
     }
 
+    #[cfg(test)]
     pub(crate) fn create_test_state() -> TestState {
         let temp_dir = tempdir().unwrap();
         let environment = Arc::new(
             LmdbEnvironment::new(
                 temp_dir.path(),
-                DEFAULT_TEST_MAX_DB_SIZE,
-                DEFAULT_TEST_MAX_READERS,
+                DEFAULT_MAX_DB_SIZE,
+                DEFAULT_MAX_READERS,
                 true,
             )
             .unwrap(),
@@ -442,13 +541,18 @@ pub(crate) mod tests {
         let trie_store =
             Arc::new(LmdbTrieStore::new(&environment, None, DatabaseFlags::empty()).unwrap());
 
-        let state = LmdbGlobalState::empty(environment, trie_store).unwrap();
+        let state = LmdbGlobalState::empty(
+            environment,
+            trie_store,
+            crate::global_state::DEFAULT_MAX_QUERY_DEPTH,
+        )
+        .unwrap();
         let mut current_root = state.empty_root_hash;
         {
             let mut txn = state.environment.create_read_write_txn().unwrap();
 
             for TestPair { key, value } in &create_test_pairs() {
-                match write::<_, _, _, LmdbTrieStore, error::Error>(
+                match write::<_, _, _, LmdbTrieStore, GlobalStateError>(
                     &mut txn,
                     &state.trie_store,
                     &current_root,
@@ -486,7 +590,7 @@ pub(crate) mod tests {
         let effects = {
             let mut tmp = Effects::new();
             for TestPair { key, value } in &test_pairs_updated {
-                let transform = Transform::new(*key, TransformKind::Write(value.to_owned()));
+                let transform = TransformV2::new(*key, TransformKindV2::Write(value.to_owned()));
                 tmp.push(transform);
             }
             tmp
@@ -536,7 +640,7 @@ pub(crate) mod tests {
         let effects = {
             let mut tmp = Effects::new();
             for TestPair { key, value } in &test_pairs_updated {
-                let transform = Transform::new(*key, TransformKind::Write(value.to_owned()));
+                let transform = TransformV2::new(*key, TransformKindV2::Write(value.to_owned()));
                 tmp.push(transform);
             }
             tmp
@@ -577,7 +681,7 @@ pub(crate) mod tests {
         let effects = {
             let mut tmp = Effects::new();
             for TestPair { key, value } in &test_pairs_updated {
-                let transform = Transform::new(*key, TransformKind::Write(value.to_owned()));
+                let transform = TransformV2::new(*key, TransformKindV2::Write(value.to_owned()));
                 tmp.push(transform);
             }
             tmp

@@ -1,13 +1,13 @@
-use std::{convert::Infallible, time::Duration};
+use std::{convert::Infallible, net::SocketAddr, sync::Arc, time::Duration};
 
 use futures::{future, TryFutureExt};
 use hyper::server::{conn::AddrIncoming, Builder};
+use once_cell::sync::OnceCell;
 use tokio::sync::oneshot;
 use tower::builder::ServiceBuilder;
 use tracing::{info, warn};
 use warp::Filter;
 
-use casper_json_rpc::CorsOrigin;
 use casper_types::ProtocolVersion;
 
 use super::{filters, ReactorEventT};
@@ -22,11 +22,11 @@ pub(super) async fn run<REv: ReactorEventT>(
     api_version: ProtocolVersion,
     shutdown_receiver: oneshot::Receiver<()>,
     qps_limit: u64,
+    local_addr: Arc<OnceCell<SocketAddr>>,
 ) {
     // REST filters.
     let rest_status = filters::create_status_filter(effect_builder, api_version);
     let rest_metrics = filters::create_metrics_filter(effect_builder);
-    let rest_open_rpc = filters::create_rpc_schema_filter(effect_builder);
     let rest_validator_changes =
         filters::create_validator_changes_filter(effect_builder, api_version);
     let rest_chainspec_filter = filters::create_chainspec_filter(effect_builder, api_version);
@@ -34,7 +34,6 @@ pub(super) async fn run<REv: ReactorEventT>(
     let service = warp::service(
         rest_status
             .or(rest_metrics)
-            .or(rest_open_rpc)
             .or(rest_validator_changes)
             .or(rest_chainspec_filter),
     );
@@ -48,6 +47,9 @@ pub(super) async fn run<REv: ReactorEventT>(
         .service(make_svc);
 
     let server = builder.serve(rate_limited_service);
+    if let Err(err) = local_addr.set(server.local_addr()) {
+        warn!(%err, "failed to set local addr for reflection");
+    }
     info!(address = %server.local_addr(), "started REST server");
 
     // Shutdown the server gracefully.
@@ -70,12 +72,12 @@ pub(super) async fn run_with_cors<REv: ReactorEventT>(
     api_version: ProtocolVersion,
     shutdown_receiver: oneshot::Receiver<()>,
     qps_limit: u64,
-    cors_origin: CorsOrigin,
+    local_addr: Arc<OnceCell<SocketAddr>>,
+    cors_origin: String,
 ) {
     // REST filters.
     let rest_status = filters::create_status_filter(effect_builder, api_version);
     let rest_metrics = filters::create_metrics_filter(effect_builder);
-    let rest_open_rpc = filters::create_rpc_schema_filter(effect_builder);
     let rest_validator_changes =
         filters::create_validator_changes_filter(effect_builder, api_version);
     let rest_chainspec_filter = filters::create_chainspec_filter(effect_builder, api_version);
@@ -83,12 +85,11 @@ pub(super) async fn run_with_cors<REv: ReactorEventT>(
     let service = warp::service(
         rest_status
             .or(rest_metrics)
-            .or(rest_open_rpc)
             .or(rest_validator_changes)
             .or(rest_chainspec_filter)
-            .with(match cors_origin {
-                CorsOrigin::Any => warp::cors().allow_any_origin(),
-                CorsOrigin::Specified(origin) => warp::cors().allow_origin(origin.as_str()),
+            .with(match cors_origin.as_str() {
+                "*" => warp::cors().allow_any_origin(),
+                origin => warp::cors().allow_origin(origin),
             }),
     );
 
@@ -101,6 +102,9 @@ pub(super) async fn run_with_cors<REv: ReactorEventT>(
         .service(make_svc);
 
     let server = builder.serve(rate_limited_service);
+    if let Err(err) = local_addr.set(server.local_addr()) {
+        warn!(%err, "failed to set local addr for reflection");
+    }
     info!(address = %server.local_addr(), "started REST server");
 
     // Shutdown the server gracefully.

@@ -10,8 +10,8 @@ use casper_contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    addressable_entity::NamedKeys, ApiError, CLType, EntryPoint, EntryPointAccess, EntryPointType,
-    EntryPoints, Parameter, PublicKey, URef, U512,
+    addressable_entity::NamedKeys, ApiError, CLType, EntryPoint, EntryPointAccess,
+    EntryPointPayment, EntryPointType, EntryPoints, Key, Parameter, PublicKey, URef, U512,
 };
 
 #[repr(u16)]
@@ -114,7 +114,8 @@ pub extern "C" fn call() {
             ],
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Contract,
+            EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
 
         let set_variables = EntryPoint::new(
@@ -135,7 +136,8 @@ pub extern "C" fn call() {
             ],
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Contract,
+            EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
 
         let authorize_to = EntryPoint::new(
@@ -146,7 +148,8 @@ pub extern "C" fn call() {
             )],
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Contract,
+            EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
 
         entry_points.add_entry_point(faucet);
@@ -183,6 +186,7 @@ pub extern "C" fn call() {
         Some(faucet_named_keys),
         Some(format!("{}_{}", faucet::HASH_KEY_NAME, id)),
         Some(format!("{}_{}", faucet::ACCESS_KEY_NAME, id)),
+        None,
     );
 
     // As a convenience, a specific contract version can be referred to either by its contract hash
@@ -223,7 +227,7 @@ pub extern "C" fn call() {
     );
     runtime::put_key(
         &format!("{}_{}", faucet::CONTRACT_NAME, id),
-        contract_hash.into(),
+        Key::contract_entity_key(contract_hash),
     );
 
     // This is specifically for this installing account, which would allow one installing account

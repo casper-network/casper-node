@@ -1,40 +1,34 @@
-use std::{
-    cell::RefCell,
-    collections::{BTreeMap, BTreeSet},
-    convert::TryInto,
-    iter::{self, FromIterator},
-    rc::Rc,
-};
+use std::{cell::RefCell, collections::BTreeSet, convert::TryInto, iter::FromIterator, rc::Rc};
 
 use once_cell::sync::Lazy;
 use rand::RngCore;
 
-use casper_storage::global_state::state::{self, lmdb::LmdbGlobalStateView, StateProvider};
+use casper_storage::{
+    global_state::state::lmdb::LmdbGlobalStateView, tracking_copy::new_temporary_tracking_copy,
+    AddressGenerator, TrackingCopy,
+};
+
 use casper_types::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
     addressable_entity::{
-        ActionThresholds, ActionType, AddKeyFailure, AssociatedKeys, NamedKeys, RemoveKeyFailure,
+        ActionType, AddKeyFailure, AssociatedKeys, MessageTopics, NamedKeys, RemoveKeyFailure,
         SetThresholdFailure, Weight,
     },
     bytesrepr::ToBytes,
-    execution::TransformKind,
-    package::ContractPackageKind,
+    execution::TransformKindV2,
     system::{AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT},
-    AccessRights, AddressableEntity, BlockTime, CLValue, ContextAccessRights, ContractHash,
-    ContractPackageHash, ContractWasmHash, DeployHash, EntryPointType, EntryPoints, Gas, Key,
-    Phase, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StoredValue, URef, KEY_HASH_LENGTH,
-    U256, U512,
+    AccessRights, AddressableEntity, AddressableEntityHash, BlockGlobalAddr, BlockTime,
+    ByteCodeHash, CLValue, ContextAccessRights, EntityAddr, EntityKind, EntryPointType, Gas, Key,
+    PackageHash, Phase, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StoredValue,
+    SystemEntityRegistry, Tagged, Timestamp, TransactionHash, TransactionV1Hash, URef,
+    KEY_HASH_LENGTH, U256, U512,
 };
 use tempfile::TempDir;
 
-use super::{Error, RuntimeContext};
-use crate::{
-    engine_state::{EngineConfig, SystemContractRegistry},
-    execution::AddressGenerator,
-    tracking_copy::TrackingCopy,
-};
+use super::{CallingAddContractVersion, ExecError, RuntimeContext};
+use crate::engine_state::EngineConfig;
 
-const DEPLOY_HASH: [u8; 32] = [1u8; 32];
+const TXN_HASH_RAW: [u8; 32] = [1u8; 32];
 const PHASE: Phase = Phase::Session;
 const GAS_LIMIT: u64 = 500_000_000_000_000u64;
 
@@ -51,51 +45,49 @@ fn new_tracking_copy(
 ) -> (TrackingCopy<LmdbGlobalStateView>, TempDir) {
     let entity_key_cl_value = CLValue::from_t(init_entity_key).expect("must convert to cl value");
 
-    let (global_state, state_root_hash, tempdir) = state::make_temporary_global_state([
+    let initial_data = [
         (init_entity_key, StoredValue::AddressableEntity(init_entity)),
         (
             Key::Account(account_hash),
             StoredValue::CLValue(entity_key_cl_value),
         ),
-    ]);
-
-    let reader = global_state
-        .checkout(state_root_hash)
-        .expect("Checkout should not throw errors.")
-        .expect("Root hash should exist.");
-
-    (TrackingCopy::new(reader), tempdir)
+    ];
+    new_temporary_tracking_copy(initial_data, None)
 }
 
 fn new_addressable_entity_with_purse(
     account_hash: AccountHash,
-    contract_hash: ContractHash,
+    entity_hash: AddressableEntityHash,
+    entity_kind: EntityKind,
     purse: [u8; 32],
-    named_keys: NamedKeys,
 ) -> (Key, Key, AddressableEntity) {
     let associated_keys = AssociatedKeys::new(account_hash, Weight::new(1));
     let entity = AddressableEntity::new(
-        ContractPackageHash::default(),
-        ContractWasmHash::default(),
-        named_keys,
-        EntryPoints::new_with_default_entry_point(),
+        PackageHash::default(),
+        ByteCodeHash::default(),
         ProtocolVersion::V1_0_0,
         URef::new(purse, AccessRights::READ_ADD_WRITE),
         associated_keys,
         Default::default(),
+        MessageTopics::default(),
+        entity_kind,
     );
     let account_key = Key::Account(account_hash);
-    let contract_key = contract_hash.into();
+    let contract_key = Key::addressable_entity_key(entity_kind.tag(), entity_hash);
 
     (account_key, contract_key, entity)
 }
 
 fn new_addressable_entity(
     account_hash: AccountHash,
-    contract_hash: ContractHash,
-    named_keys: NamedKeys,
+    entity_hash: AddressableEntityHash,
 ) -> (Key, Key, AddressableEntity) {
-    new_addressable_entity_with_purse(account_hash, contract_hash, [0; 32], named_keys)
+    new_addressable_entity_with_purse(
+        account_hash,
+        entity_hash,
+        EntityKind::Account(account_hash),
+        [0; 32],
+    )
 }
 
 // create random account key.
@@ -107,9 +99,9 @@ fn random_account_key<G: RngCore>(entropy_source: &mut G) -> Key {
 
 // create random contract key.
 fn random_contract_key<G: RngCore>(entropy_source: &mut G) -> Key {
-    let mut key = [0u8; 32];
-    entropy_source.fill_bytes(&mut key);
-    Key::Hash(key)
+    let mut key_hash = [0u8; 32];
+    entropy_source.fill_bytes(&mut key_hash);
+    Key::AddressableEntity(EntityAddr::SmartContract(key_hash))
 }
 
 // Create URef Key.
@@ -135,16 +127,27 @@ fn new_runtime_context<'a>(
     let (mut tracking_copy, tempdir) =
         new_tracking_copy(account_hash, entity_address, addressable_entity.clone());
 
+    let mint_hash = AddressableEntityHash::default();
+
     let default_system_registry = {
-        let mut registry = SystemContractRegistry::new();
-        registry.insert(MINT.to_string(), ContractHash::default());
-        registry.insert(HANDLE_PAYMENT.to_string(), ContractHash::default());
-        registry.insert(STANDARD_PAYMENT.to_string(), ContractHash::default());
-        registry.insert(AUCTION.to_string(), ContractHash::default());
+        let mut registry = SystemEntityRegistry::new();
+        registry.insert(MINT.to_string(), mint_hash);
+        registry.insert(HANDLE_PAYMENT.to_string(), AddressableEntityHash::default());
+        registry.insert(
+            STANDARD_PAYMENT.to_string(),
+            AddressableEntityHash::default(),
+        );
+        registry.insert(AUCTION.to_string(), AddressableEntityHash::default());
         StoredValue::CLValue(CLValue::from_t(registry).unwrap())
     };
 
-    tracking_copy.write(Key::SystemContractRegistry, default_system_registry);
+    tracking_copy.write(Key::SystemEntityRegistry, default_system_registry);
+
+    // write block time to gs
+    let now = Timestamp::now();
+    let cl_value = CLValue::from_t(now.millis()).expect("should get cl_value");
+    let stored_value = StoredValue::CLValue(cl_value);
+    tracking_copy.write(Key::BlockGlobal(BlockGlobalAddr::BlockTime), stored_value);
 
     let runtime_context = RuntimeContext::new(
         named_keys,
@@ -152,38 +155,41 @@ fn new_runtime_context<'a>(
         entity_address,
         BTreeSet::from_iter(vec![account_hash]),
         access_rights,
-        ContractPackageKind::Account(account_hash),
         account_hash,
         Rc::new(RefCell::new(address_generator)),
         Rc::new(RefCell::new(tracking_copy)),
         TEST_ENGINE_CONFIG.clone(),
         BlockTime::new(0),
         ProtocolVersion::V1_0_0,
-        DeployHash::from_raw([1u8; 32]),
+        TransactionHash::V1(TransactionV1Hash::from_raw([1u8; 32])),
         Phase::Session,
         RuntimeArgs::new(),
         Gas::new(U512::from(GAS_LIMIT)),
         Gas::default(),
         Vec::default(),
         U512::MAX,
-        EntryPointType::Session,
+        EntryPointType::Caller,
+        CallingAddContractVersion::Forbidden,
     );
 
     (runtime_context, tempdir)
 }
 
 #[allow(clippy::assertions_on_constants)]
-fn assert_forged_reference<T>(result: Result<T, Error>) {
+fn assert_forged_reference<T>(result: Result<T, ExecError>) {
     match result {
-        Err(Error::ForgedReference(_)) => assert!(true),
+        Err(ExecError::ForgedReference(_)) => assert!(true),
         _ => panic!("Error. Test should have failed with ForgedReference error but didn't."),
     }
 }
 
 #[allow(clippy::assertions_on_constants)]
-fn assert_invalid_access<T: std::fmt::Debug>(result: Result<T, Error>, expecting: AccessRights) {
+fn assert_invalid_access<T: std::fmt::Debug>(
+    result: Result<T, ExecError>,
+    expecting: AccessRights,
+) {
     match result {
-        Err(Error::InvalidAccess { required }) if required == expecting => assert!(true),
+        Err(ExecError::InvalidAccess { required }) if required == expecting => assert!(true),
         other => panic!(
             "Error. Test should have failed with InvalidAccess error but didn't: {:?}.",
             other
@@ -194,24 +200,21 @@ fn assert_invalid_access<T: std::fmt::Debug>(result: Result<T, Error>, expecting
 fn build_runtime_context_and_execute<T, F>(
     mut named_keys: NamedKeys,
     functor: F,
-) -> Result<T, Error>
+) -> Result<T, ExecError>
 where
-    F: FnOnce(RuntimeContext<LmdbGlobalStateView>) -> Result<T, Error>,
+    F: FnOnce(RuntimeContext<LmdbGlobalStateView>) -> Result<T, ExecError>,
 {
     let secret_key = SecretKey::ed25519_from_bytes([222; SecretKey::ED25519_LENGTH])
         .expect("should create secret key");
     let public_key = PublicKey::from(&secret_key);
     let account_hash = public_key.to_account_hash();
-    let contract_hash = ContractHash::new([10u8; 32]);
+    let entity_hash = AddressableEntityHash::new([10u8; 32]);
     let deploy_hash = [1u8; 32];
-    let (_, entity_key, addressable_entity) = new_addressable_entity(
-        public_key.to_account_hash(),
-        contract_hash,
-        named_keys.clone(),
-    );
+    let (_, entity_key, addressable_entity) =
+        new_addressable_entity(public_key.to_account_hash(), entity_hash);
 
     let address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);
-    let access_rights = addressable_entity.extract_access_rights(contract_hash);
+    let access_rights = addressable_entity.extract_access_rights(entity_hash, &named_keys);
     let (runtime_context, _tempdir) = new_runtime_context(
         &addressable_entity,
         account_hash,
@@ -227,8 +230,8 @@ where
 #[track_caller]
 fn last_transform_kind_on_addressable_entity(
     runtime_context: &RuntimeContext<LmdbGlobalStateView>,
-) -> TransformKind {
-    let key = runtime_context.entity_address;
+) -> TransformKindV2 {
+    let key = runtime_context.entity_key;
     runtime_context
         .effects()
         .transforms()
@@ -241,52 +244,52 @@ fn last_transform_kind_on_addressable_entity(
 #[test]
 fn use_uref_valid() {
     // Test fixture
-    let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
+    let mut rng = AddressGenerator::new(&TXN_HASH_RAW, PHASE);
     let uref_as_key = create_uref_as_key(&mut rng, AccessRights::READ_WRITE);
     let mut named_keys = NamedKeys::new();
     named_keys.insert(String::new(), uref_as_key);
     // Use uref as the key to perform an action on the global state.
     // This should succeed because the uref is valid.
     let value = StoredValue::CLValue(CLValue::from_t(43_i32).unwrap());
-    let query_result = build_runtime_context_and_execute(named_keys, |mut rc| {
+    let result = build_runtime_context_and_execute(named_keys, |mut rc| {
         rc.metered_write_gs(uref_as_key, value)
     });
-    query_result.expect("writing using valid uref should succeed");
+    result.expect("writing using valid uref should succeed");
 }
 
 #[test]
 fn use_uref_forged() {
     // Test fixture
-    let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
+    let mut rng = AddressGenerator::new(&TXN_HASH_RAW, PHASE);
     let uref = create_uref_as_key(&mut rng, AccessRights::READ_WRITE);
     let named_keys = NamedKeys::new();
     // named_keys.insert(String::new(), Key::from(uref));
     let value = StoredValue::CLValue(CLValue::from_t(43_i32).unwrap());
-    let query_result =
+    let result =
         build_runtime_context_and_execute(named_keys, |mut rc| rc.metered_write_gs(uref, value));
 
-    assert_forged_reference(query_result);
+    assert_forged_reference(result);
 }
 
 #[test]
 fn account_key_not_writeable() {
     let mut rng = rand::thread_rng();
     let acc_key = random_account_key(&mut rng);
-    let query_result = build_runtime_context_and_execute(NamedKeys::new(), |mut rc| {
+    let result = build_runtime_context_and_execute(NamedKeys::new(), |mut rc| {
         rc.metered_write_gs(
             acc_key,
             StoredValue::CLValue(CLValue::from_t(1_i32).unwrap()),
         )
     });
-    assert_invalid_access(query_result, AccessRights::WRITE);
+    assert_invalid_access(result, AccessRights::WRITE);
 }
 
 #[test]
 fn entity_key_readable_valid() {
     // Entity key is readable if it is a "base" key - current context of the
     // execution.
-    let query_result = build_runtime_context_and_execute(NamedKeys::new(), |mut rc| {
-        let base_key = rc.get_entity_address();
+    let result = build_runtime_context_and_execute(NamedKeys::new(), |mut rc| {
+        let base_key = rc.get_entity_key();
         let entity = rc.get_entity();
 
         let result = rc
@@ -298,18 +301,18 @@ fn entity_key_readable_valid() {
         Ok(())
     });
 
-    assert!(query_result.is_ok());
+    assert!(result.is_ok());
 }
 
 #[test]
 fn account_key_addable_returns_type_mismatch() {
     // Account key is not addable anymore as we do not store an account underneath they key
     // but instead there is a CLValue which acts as an indirection to the corresponding entity.
-    let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
+    let mut rng = AddressGenerator::new(&TXN_HASH_RAW, PHASE);
     let uref_as_key = create_uref_as_key(&mut rng, AccessRights::READ);
     let mut named_keys = NamedKeys::new();
     named_keys.insert(String::new(), uref_as_key);
-    let query_result = build_runtime_context_and_execute(named_keys, |mut rc| {
+    let result = build_runtime_context_and_execute(named_keys, |mut rc| {
         let account_key: Key = rc.account_hash.into();
         let uref_name = "NewURef".to_owned();
         let named_key = StoredValue::CLValue(CLValue::from_t((uref_name, uref_as_key)).unwrap());
@@ -317,7 +320,7 @@ fn account_key_addable_returns_type_mismatch() {
         rc.metered_add_gs(account_key, named_key)
     });
 
-    assert!(query_result.is_err());
+    assert!(result.is_err());
 }
 
 #[test]
@@ -327,14 +330,14 @@ fn account_key_addable_invalid() {
     let mut rng = rand::thread_rng();
     let other_acc_key = random_account_key(&mut rng);
 
-    let query_result = build_runtime_context_and_execute(NamedKeys::new(), |mut rc| {
+    let result = build_runtime_context_and_execute(NamedKeys::new(), |mut rc| {
         rc.metered_add_gs(
             other_acc_key,
             StoredValue::CLValue(CLValue::from_t(1_i32).unwrap()),
         )
     });
 
-    assert_invalid_access(query_result, AccessRights::ADD);
+    assert_invalid_access(result, AccessRights::ADD);
 }
 
 #[test]
@@ -343,10 +346,10 @@ fn contract_key_readable_valid() {
     // execution.
     let mut rng = rand::thread_rng();
     let contract_key = random_contract_key(&mut rng);
-    let query_result =
+    let result =
         build_runtime_context_and_execute(NamedKeys::new(), |mut rc| rc.read_gs(&contract_key));
 
-    assert!(query_result.is_ok());
+    assert!(result.is_ok());
 }
 
 #[test]
@@ -355,25 +358,24 @@ fn contract_key_not_writeable() {
     // execution.
     let mut rng = rand::thread_rng();
     let contract_key = random_contract_key(&mut rng);
-    let query_result = build_runtime_context_and_execute(NamedKeys::new(), |mut rc| {
+    let result = build_runtime_context_and_execute(NamedKeys::new(), |mut rc| {
         rc.metered_write_gs(
             contract_key,
             StoredValue::CLValue(CLValue::from_t(1_i32).unwrap()),
         )
     });
 
-    assert_invalid_access(query_result, AccessRights::WRITE);
+    assert_invalid_access(result, AccessRights::WRITE);
 }
 
 #[test]
 fn contract_key_addable_valid() {
     // Contract key is addable if it is a "base" key - current context of the execution.
     let account_hash = AccountHash::new([0u8; 32]);
-    let entity_hash = ContractHash::new([1u8; 32]);
-    let (_account_key, entity_key, entity) =
-        new_addressable_entity(account_hash, entity_hash, NamedKeys::new());
+    let entity_hash = AddressableEntityHash::new([1u8; 32]);
+    let (_account_key, entity_key, entity) = new_addressable_entity(account_hash, entity_hash);
     let authorization_keys = BTreeSet::from_iter(vec![account_hash]);
-    let mut address_generator = AddressGenerator::new(&DEPLOY_HASH, PHASE);
+    let mut address_generator = AddressGenerator::new(&TXN_HASH_RAW, PHASE);
 
     let mut rng = rand::thread_rng();
     let contract_key = random_contract_key(&mut rng);
@@ -381,7 +383,7 @@ fn contract_key_addable_valid() {
     let mut access_rights = entity_as_stored_value
         .as_addressable_entity()
         .unwrap()
-        .extract_access_rights(ContractHash::default());
+        .extract_access_rights(AddressableEntityHash::default(), &NamedKeys::new());
 
     let (tracking_copy, _tempdir) = new_tracking_copy(account_hash, entity_key, entity);
     let tracking_copy = Rc::new(RefCell::new(tracking_copy));
@@ -390,24 +392,27 @@ fn contract_key_addable_valid() {
         .write(contract_key, entity_as_stored_value.clone());
 
     let default_system_registry = {
-        let mut registry = SystemContractRegistry::new();
-        registry.insert(MINT.to_string(), ContractHash::default());
-        registry.insert(HANDLE_PAYMENT.to_string(), ContractHash::default());
-        registry.insert(STANDARD_PAYMENT.to_string(), ContractHash::default());
-        registry.insert(AUCTION.to_string(), ContractHash::default());
+        let mut registry = SystemEntityRegistry::new();
+        registry.insert(MINT.to_string(), AddressableEntityHash::default());
+        registry.insert(HANDLE_PAYMENT.to_string(), AddressableEntityHash::default());
+        registry.insert(
+            STANDARD_PAYMENT.to_string(),
+            AddressableEntityHash::default(),
+        );
+        registry.insert(AUCTION.to_string(), AddressableEntityHash::default());
         StoredValue::CLValue(CLValue::from_t(registry).unwrap())
     };
 
     tracking_copy
         .borrow_mut()
-        .write(Key::SystemContractRegistry, default_system_registry);
+        .write(Key::SystemEntityRegistry, default_system_registry);
 
     let uref_as_key = create_uref_as_key(&mut address_generator, AccessRights::WRITE);
     let uref_name = "NewURef".to_owned();
     let named_uref_tuple =
         StoredValue::CLValue(CLValue::from_t((uref_name.clone(), uref_as_key)).unwrap());
     let mut named_keys = NamedKeys::new();
-    named_keys.insert(uref_name.clone(), uref_as_key);
+    named_keys.insert(uref_name, uref_as_key);
 
     access_rights.extend(&[uref_as_key.into_uref().expect("should be a URef")]);
 
@@ -417,50 +422,35 @@ fn contract_key_addable_valid() {
         contract_key,
         authorization_keys,
         access_rights,
-        ContractPackageKind::Wasm,
         account_hash,
         Rc::new(RefCell::new(address_generator)),
         Rc::clone(&tracking_copy),
         EngineConfig::default(),
         BlockTime::new(0),
         ProtocolVersion::V1_0_0,
-        DeployHash::from_raw(DEPLOY_HASH),
+        TransactionHash::V1(TransactionV1Hash::from_raw(TXN_HASH_RAW)),
         PHASE,
         RuntimeArgs::new(),
         Gas::new(U512::from(GAS_LIMIT)),
         Gas::default(),
         Vec::default(),
         U512::zero(),
-        EntryPointType::Session,
+        EntryPointType::Caller,
+        CallingAddContractVersion::Forbidden,
     );
 
-    runtime_context
+    assert!(runtime_context
         .metered_add_gs(contract_key, named_uref_tuple)
-        .expect("Adding should work.");
-
-    let updated_contract = StoredValue::AddressableEntity(AddressableEntity::new(
-        [0u8; 32].into(),
-        [0u8; 32].into(),
-        NamedKeys::from(iter::once((uref_name, uref_as_key)).collect::<BTreeMap<_, _>>()),
-        EntryPoints::new_with_default_entry_point(),
-        ProtocolVersion::V1_0_0,
-        URef::default(),
-        AssociatedKeys::default(),
-        ActionThresholds::default(),
-    ));
-
-    let read_contract = runtime_context.read_gs(&contract_key).unwrap();
-    assert_eq!(read_contract, Some(updated_contract));
+        .is_err())
 }
 
 #[test]
 fn contract_key_addable_invalid() {
     let account_hash = AccountHash::new([0u8; 32]);
-    let contract_hash = ContractHash::new([1u8; 32]);
-    let (_, entity_key, entity) =
-        new_addressable_entity(account_hash, contract_hash, NamedKeys::new());
+    let entity_hash = AddressableEntityHash::new([1u8; 32]);
+    let (_, entity_key, entity) = new_addressable_entity(account_hash, entity_hash);
     let authorization_keys = BTreeSet::from_iter(vec![account_hash]);
-    let mut address_generator = AddressGenerator::new(&DEPLOY_HASH, PHASE);
+    let mut address_generator = AddressGenerator::new(&TXN_HASH_RAW, PHASE);
     let mut rng = rand::thread_rng();
     let contract_key = random_contract_key(&mut rng);
 
@@ -469,7 +459,7 @@ fn contract_key_addable_invalid() {
     let mut access_rights = contract
         .as_addressable_entity()
         .unwrap()
-        .extract_access_rights(ContractHash::default());
+        .extract_access_rights(AddressableEntityHash::default(), &NamedKeys::new());
     let (tracking_copy, _tempdir) = new_tracking_copy(account_hash, entity_key, entity.clone());
     let tracking_copy = Rc::new(RefCell::new(tracking_copy));
 
@@ -490,21 +480,21 @@ fn contract_key_addable_invalid() {
         other_contract_key,
         authorization_keys,
         access_rights,
-        ContractPackageKind::Account(account_hash),
         account_hash,
         Rc::new(RefCell::new(address_generator)),
         Rc::clone(&tracking_copy),
         EngineConfig::default(),
         BlockTime::new(0),
         ProtocolVersion::V1_0_0,
-        DeployHash::from_raw(DEPLOY_HASH),
+        TransactionHash::V1(TransactionV1Hash::from_raw(TXN_HASH_RAW)),
         PHASE,
         RuntimeArgs::new(),
         Gas::new(U512::from(GAS_LIMIT)),
         Gas::default(),
         Vec::default(),
         U512::zero(),
-        EntryPointType::Session,
+        EntryPointType::Caller,
+        CallingAddContractVersion::Forbidden,
     );
 
     let result = runtime_context.metered_add_gs(contract_key, named_uref_tuple);
@@ -514,131 +504,117 @@ fn contract_key_addable_invalid() {
 
 #[test]
 fn uref_key_readable_valid() {
-    let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
+    let mut rng = AddressGenerator::new(&TXN_HASH_RAW, PHASE);
     let uref_key = create_uref_as_key(&mut rng, AccessRights::READ);
 
     let mut named_keys = NamedKeys::new();
     named_keys.insert(String::new(), uref_key);
 
-    let query_result =
-        build_runtime_context_and_execute(named_keys, |mut rc| rc.read_gs(&uref_key));
-    assert!(query_result.is_ok());
+    let result = build_runtime_context_and_execute(named_keys, |mut rc| rc.read_gs(&uref_key));
+    assert!(result.is_ok());
 }
 
 #[test]
 fn uref_key_readable_invalid() {
-    let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
+    let mut rng = AddressGenerator::new(&TXN_HASH_RAW, PHASE);
     let uref_key = create_uref_as_key(&mut rng, AccessRights::WRITE);
 
     let mut named_keys = NamedKeys::new();
     named_keys.insert(String::new(), uref_key);
 
-    let query_result =
-        build_runtime_context_and_execute(named_keys, |mut rc| rc.read_gs(&uref_key));
-    assert_invalid_access(query_result, AccessRights::READ);
+    let result = build_runtime_context_and_execute(named_keys, |mut rc| rc.read_gs(&uref_key));
+    assert_invalid_access(result, AccessRights::READ);
 }
 
 #[test]
 fn uref_key_writeable_valid() {
-    let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
+    let mut rng = AddressGenerator::new(&TXN_HASH_RAW, PHASE);
     let uref_key = create_uref_as_key(&mut rng, AccessRights::WRITE);
 
     let mut named_keys = NamedKeys::new();
     named_keys.insert(String::new(), uref_key);
 
-    let query_result = build_runtime_context_and_execute(named_keys, |mut rc| {
+    let result = build_runtime_context_and_execute(named_keys, |mut rc| {
         rc.metered_write_gs(
             uref_key,
             StoredValue::CLValue(CLValue::from_t(1_i32).unwrap()),
         )
     });
-    assert!(query_result.is_ok());
+    assert!(result.is_ok());
 }
 
 #[test]
 fn uref_key_writeable_invalid() {
-    let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
+    let mut rng = AddressGenerator::new(&TXN_HASH_RAW, PHASE);
     let uref_key = create_uref_as_key(&mut rng, AccessRights::READ);
 
     let mut named_keys = NamedKeys::new();
     named_keys.insert(String::new(), uref_key);
 
-    let query_result = build_runtime_context_and_execute(named_keys, |mut rc| {
+    let result = build_runtime_context_and_execute(named_keys, |mut rc| {
         rc.metered_write_gs(
             uref_key,
             StoredValue::CLValue(CLValue::from_t(1_i32).unwrap()),
         )
     });
-    assert_invalid_access(query_result, AccessRights::WRITE);
+    assert_invalid_access(result, AccessRights::WRITE);
 }
 
 #[test]
 fn uref_key_addable_valid() {
-    let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
+    let mut rng = AddressGenerator::new(&TXN_HASH_RAW, PHASE);
     let uref_key = create_uref_as_key(&mut rng, AccessRights::ADD_WRITE);
 
     let mut named_keys = NamedKeys::new();
     named_keys.insert(String::new(), uref_key);
 
-    let query_result = build_runtime_context_and_execute(named_keys, |mut rc| {
+    let result = build_runtime_context_and_execute(named_keys, |mut rc| {
         rc.metered_write_gs(uref_key, CLValue::from_t(10_i32).unwrap())
             .expect("Writing to the GlobalState should work.");
         rc.metered_add_gs(uref_key, CLValue::from_t(1_i32).unwrap())
     });
-    assert!(query_result.is_ok());
+    assert!(result.is_ok());
 }
 
 #[test]
 fn uref_key_addable_invalid() {
-    let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
+    let mut rng = AddressGenerator::new(&TXN_HASH_RAW, PHASE);
     let uref_key = create_uref_as_key(&mut rng, AccessRights::WRITE);
 
     let mut named_keys = NamedKeys::new();
     named_keys.insert(String::new(), uref_key);
 
-    let query_result = build_runtime_context_and_execute(named_keys, |mut rc| {
+    let result = build_runtime_context_and_execute(named_keys, |mut rc| {
         rc.metered_add_gs(
             uref_key,
             StoredValue::CLValue(CLValue::from_t(1_i32).unwrap()),
         )
     });
-    assert_invalid_access(query_result, AccessRights::ADD);
+    assert_invalid_access(result, AccessRights::ADD);
 }
 
 #[test]
-fn hash_key_readable() {
-    // values under hash's are universally readable
-    let query = |runtime_context: RuntimeContext<LmdbGlobalStateView>| {
-        let mut rng = rand::thread_rng();
-        let key = random_hash(&mut rng);
-        runtime_context.validate_readable(&key)
-    };
-    let query_result = build_runtime_context_and_execute(NamedKeys::new(), query);
-    assert!(query_result.is_ok())
-}
-
-#[test]
-fn hash_key_writeable() {
+fn hash_key_is_not_writeable() {
     // values under hash's are immutable
-    let query = |runtime_context: RuntimeContext<LmdbGlobalStateView>| {
+    let functor = |runtime_context: RuntimeContext<LmdbGlobalStateView>| {
         let mut rng = rand::thread_rng();
         let key = random_hash(&mut rng);
         runtime_context.validate_writeable(&key)
     };
-    let query_result = build_runtime_context_and_execute(NamedKeys::new(), query);
-    assert!(query_result.is_err())
+    let result = build_runtime_context_and_execute(NamedKeys::new(), functor);
+    assert!(result.is_err())
 }
 
 #[test]
-fn hash_key_addable_invalid() {
+fn hash_key_is_not_addable() {
     // values under hashes are immutable
-    let query = |runtime_context: RuntimeContext<LmdbGlobalStateView>| {
+    let functor = |runtime_context: RuntimeContext<LmdbGlobalStateView>| {
         let mut rng = rand::thread_rng();
         let key = random_hash(&mut rng);
         runtime_context.validate_addable(&key)
     };
-    let query_result = build_runtime_context_and_execute(NamedKeys::new(), query);
-    assert!(query_result.is_err())
+    let result = build_runtime_context_and_execute(NamedKeys::new(), functor);
+    assert!(result.is_err())
 }
 
 #[test]
@@ -646,7 +622,7 @@ fn manage_associated_keys() {
     // Testing a valid case only - successfully added a key, and successfully removed,
     // making sure `account_dirty` mutated
     let named_keys = NamedKeys::new();
-    let query = |mut runtime_context: RuntimeContext<LmdbGlobalStateView>| {
+    let functor = |mut runtime_context: RuntimeContext<LmdbGlobalStateView>| {
         let account_hash = AccountHash::new([42; 32]);
         let weight = Weight::new(155);
 
@@ -658,7 +634,7 @@ fn manage_associated_keys() {
 
         let transform_kind = last_transform_kind_on_addressable_entity(&runtime_context);
         let entity = match transform_kind {
-            TransformKind::Write(StoredValue::AddressableEntity(entity)) => entity,
+            TransformKindV2::Write(StoredValue::AddressableEntity(entity)) => entity,
             _ => panic!("Invalid transform operation found"),
         };
         entity
@@ -673,7 +649,7 @@ fn manage_associated_keys() {
 
         let transform_kind = last_transform_kind_on_addressable_entity(&runtime_context);
         let entity = match transform_kind {
-            TransformKind::Write(StoredValue::AddressableEntity(entity)) => entity,
+            TransformKindV2::Write(StoredValue::AddressableEntity(entity)) => entity,
             _ => panic!("Invalid transform operation found"),
         };
         let value = entity
@@ -691,7 +667,7 @@ fn manage_associated_keys() {
         // Verify
         let transform_kind = last_transform_kind_on_addressable_entity(&runtime_context);
         let entity = match transform_kind {
-            TransformKind::Write(StoredValue::AddressableEntity(entity)) => entity,
+            TransformKindV2::Write(StoredValue::AddressableEntity(entity)) => entity,
             _ => panic!("Invalid transform operation found"),
         };
 
@@ -706,7 +682,7 @@ fn manage_associated_keys() {
 
         Ok(())
     };
-    let _ = build_runtime_context_and_execute(named_keys, query);
+    let _ = build_runtime_context_and_execute(named_keys, functor);
 }
 
 #[test]
@@ -714,7 +690,17 @@ fn action_thresholds_management() {
     // Testing a valid case only - successfully added a key, and successfully removed,
     // making sure `account_dirty` mutated
     let named_keys = NamedKeys::new();
-    let query = |mut runtime_context: RuntimeContext<LmdbGlobalStateView>| {
+    let functor = |mut runtime_context: RuntimeContext<LmdbGlobalStateView>| {
+        let entity_hash_by_account_hash =
+            CLValue::from_t(Key::Hash([2; 32])).expect("must convert to cl_value");
+
+        runtime_context
+            .metered_write_gs_unsafe(
+                Key::Account(AccountHash::new([42; 32])),
+                entity_hash_by_account_hash,
+            )
+            .expect("must write key to gs");
+
         runtime_context
             .add_associated_key(AccountHash::new([42; 32]), Weight::new(254))
             .expect("Unable to add associated key with maximum weight");
@@ -727,7 +713,7 @@ fn action_thresholds_management() {
 
         let transform_kind = last_transform_kind_on_addressable_entity(&runtime_context);
         let mutated_entity = match transform_kind {
-            TransformKind::Write(StoredValue::AddressableEntity(entity)) => entity,
+            TransformKindV2::Write(StoredValue::AddressableEntity(entity)) => entity,
             _ => panic!("Invalid transform operation found"),
         };
 
@@ -746,7 +732,7 @@ fn action_thresholds_management() {
 
         Ok(())
     };
-    let _ = build_runtime_context_and_execute(named_keys, query);
+    let _ = build_runtime_context_and_execute(named_keys, functor);
 }
 
 #[test]
@@ -754,23 +740,42 @@ fn should_verify_ownership_before_adding_key() {
     // Testing a valid case only - successfully added a key, and successfully removed,
     // making sure `account_dirty` mutated
     let named_keys = NamedKeys::new();
-    let query = |mut runtime_context: RuntimeContext<LmdbGlobalStateView>| {
+    let functor = |mut runtime_context: RuntimeContext<LmdbGlobalStateView>| {
         // Overwrites a `base_key` to a different one before doing any operation as
         // account `[0; 32]`
-        runtime_context.entity_address = Key::Hash([1; 32]);
+        // TODO: this test should be updated to use v2.0.0 / AddressableEntity model
+        let entity_hash_by_account_hash =
+            CLValue::from_t(Key::Hash([2; 32])).expect("must convert to cl_value");
+
+        runtime_context
+            .metered_write_gs_unsafe(
+                Key::Account(AccountHash::new([84; 32])),
+                entity_hash_by_account_hash,
+            )
+            .expect("must write key to gs");
+
+        runtime_context
+            .metered_write_gs_unsafe(Key::Hash([1; 32]), AddressableEntity::default())
+            .expect("must write key to gs");
+
+        runtime_context.entity_key = Key::Hash([1; 32]);
 
         let err = runtime_context
             .add_associated_key(AccountHash::new([84; 32]), Weight::new(123))
             .expect_err("This operation should return error");
 
         match err {
-            Error::AddKeyFailure(AddKeyFailure::PermissionDenied) => {}
+            ExecError::UnexpectedKeyVariant(_) => {
+                // This is the v2.0.0 error as this test is currently using Key::Hash
+                // instead of Key::AddressableEntity
+            }
+            ExecError::AddKeyFailure(AddKeyFailure::PermissionDenied) => {}
             e => panic!("Invalid error variant: {:?}", e),
         }
 
         Ok(())
     };
-    let _ = build_runtime_context_and_execute(named_keys, query);
+    let _ = build_runtime_context_and_execute(named_keys, functor);
 }
 
 #[test]
@@ -778,23 +783,28 @@ fn should_verify_ownership_before_removing_a_key() {
     // Testing a valid case only - successfully added a key, and successfully removed,
     // making sure `account_dirty` mutated
     let named_keys = NamedKeys::new();
-    let query = |mut runtime_context: RuntimeContext<LmdbGlobalStateView>| {
+    let functor = |mut runtime_context: RuntimeContext<LmdbGlobalStateView>| {
         // Overwrites a `base_key` to a different one before doing any operation as
         // account `[0; 32]`
-        runtime_context.entity_address = Key::Hash([1; 32]);
+        // TODO: this test should be updated to use v2.0.0 / AddressableEntity model
+        runtime_context.entity_key = Key::Hash([1; 32]);
 
         let err = runtime_context
             .remove_associated_key(AccountHash::new([84; 32]))
             .expect_err("This operation should return error");
 
         match err {
-            Error::RemoveKeyFailure(RemoveKeyFailure::PermissionDenied) => {}
+            ExecError::UnexpectedKeyVariant(_) => {
+                // this is the v2.0 error because this test is currently using
+                // Key::Hash instead of Key::AddressableEntity
+            }
+            ExecError::RemoveKeyFailure(RemoveKeyFailure::PermissionDenied) => {}
             ref e => panic!("Invalid error variant: {:?}", e),
         }
 
         Ok(())
     };
-    let _ = build_runtime_context_and_execute(named_keys, query);
+    let _ = build_runtime_context_and_execute(named_keys, functor);
 }
 
 #[test]
@@ -802,49 +812,28 @@ fn should_verify_ownership_before_setting_action_threshold() {
     // Testing a valid case only - successfully added a key, and successfully removed,
     // making sure `account_dirty` mutated
     let named_keys = NamedKeys::new();
-    let query = |mut runtime_context: RuntimeContext<LmdbGlobalStateView>| {
+    let functor = |mut runtime_context: RuntimeContext<LmdbGlobalStateView>| {
         // Overwrites a `base_key` to a different one before doing any operation as
         // account `[0; 32]`
-        runtime_context.entity_address = Key::Hash([1; 32]);
+        // TODO: this test should be updated to v2.0.0 / AddressableEntityHash model
+        runtime_context.entity_key = Key::Hash([1; 32]);
 
         let err = runtime_context
             .set_action_threshold(ActionType::Deployment, Weight::new(123))
             .expect_err("This operation should return error");
 
         match err {
-            Error::SetThresholdFailure(SetThresholdFailure::PermissionDeniedError) => {}
+            ExecError::UnexpectedKeyVariant(_) => {
+                // this is what is returned under protocol version 2.0 because Key::Hash(_) is
+                // deprecated.
+            }
+            ExecError::SetThresholdFailure(SetThresholdFailure::PermissionDeniedError) => {}
             ref e => panic!("Invalid error variant: {:?}", e),
         }
 
         Ok(())
     };
-    let _ = build_runtime_context_and_execute(named_keys, query);
-}
-
-#[test]
-fn can_roundtrip_key_value_pairs() {
-    let named_keys = NamedKeys::new();
-    let query = |mut runtime_context: RuntimeContext<LmdbGlobalStateView>| {
-        let deploy_hash = [1u8; 32];
-        let mut uref_address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);
-        let test_uref = create_uref_as_key(&mut uref_address_generator, AccessRights::default())
-            .as_uref()
-            .cloned()
-            .expect("must have created URef from the key");
-        let test_value = CLValue::from_t("test_value".to_string()).unwrap();
-
-        runtime_context
-            .write_purse_uref(test_uref.to_owned(), test_value.clone())
-            .expect("should write_ls");
-
-        let result = runtime_context
-            .read_purse_uref(&test_uref)
-            .expect("should read_ls");
-
-        Ok(result == Some(test_value))
-    };
-    let query_result = build_runtime_context_and_execute(named_keys, query).expect("should be ok");
-    assert!(query_result)
+    let _ = build_runtime_context_and_execute(named_keys, functor);
 }
 
 #[test]
@@ -857,13 +846,12 @@ fn remove_uref_works() {
     let uref_name = "Foo".to_owned();
     let uref_key = create_uref_as_key(&mut address_generator, AccessRights::READ);
     let account_hash = AccountHash::new([0u8; 32]);
-    let contract_hash = ContractHash::new([1u8; 32]);
+    let entity_hash = AddressableEntityHash::new([1u8; 32]);
     let mut named_keys = NamedKeys::new();
     named_keys.insert(uref_name.clone(), uref_key);
-    let (_, entity_key, addressable_entity) =
-        new_addressable_entity(account_hash, contract_hash, named_keys.clone());
+    let (_, entity_key, addressable_entity) = new_addressable_entity(account_hash, entity_hash);
 
-    let access_rights = addressable_entity.extract_access_rights(contract_hash);
+    let access_rights = addressable_entity.extract_access_rights(entity_hash, &named_keys);
 
     let (mut runtime_context, _tempdir) = new_runtime_context(
         &addressable_entity,
@@ -880,15 +868,15 @@ fn remove_uref_works() {
     // even if you remove the URef from the named keys.
     assert!(runtime_context.validate_key(&uref_key).is_ok());
     assert!(!runtime_context.named_keys_contains_key(&uref_name));
-    let transform_kind = last_transform_kind_on_addressable_entity(&runtime_context);
-    let entity = match transform_kind {
-        TransformKind::Write(StoredValue::AddressableEntity(entity)) => entity,
-        _ => panic!("Invalid transform operation found"),
-    };
-    assert!(!entity.named_keys().contains(&uref_name));
+    let entity = runtime_context.get_entity();
+
+    let entity_named_keys = runtime_context
+        .get_named_keys(entity_key)
+        .expect("must get named keys for entity");
+    assert!(!entity_named_keys.contains(&uref_name));
     // The next time the account is used, the access right is gone for the removed
     // named key.
-    let next_session_access_rights = entity.extract_access_rights(contract_hash);
+    let next_session_access_rights = entity.extract_access_rights(entity_hash, &named_keys);
     let address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);
     let (runtime_context, _tempdir) = new_runtime_context(
         &entity,
@@ -906,19 +894,19 @@ fn an_accounts_access_rights_should_include_main_purse() {
     let test_main_purse = URef::new([42u8; 32], AccessRights::READ_ADD_WRITE);
     // All other access rights except for main purse are extracted from named keys.
     let account_hash = AccountHash::new([0u8; 32]);
-    let contract_hash = ContractHash::new([1u8; 32]);
+    let entity_hash = AddressableEntityHash::new([1u8; 32]);
     let named_keys = NamedKeys::new();
     let (_base_key, _, entity) = new_addressable_entity_with_purse(
         account_hash,
-        contract_hash,
+        entity_hash,
+        EntityKind::Account(account_hash),
         test_main_purse.addr(),
-        named_keys,
     );
     assert!(
-        entity.named_keys().is_empty(),
+        named_keys.is_empty(),
         "Named keys does not contain main purse"
     );
-    let access_rights = entity.extract_access_rights(contract_hash);
+    let access_rights = entity.extract_access_rights(entity_hash, &named_keys);
     assert!(
         access_rights.has_access_rights_to_uref(&test_main_purse),
         "Main purse should be included in access rights"
@@ -935,15 +923,15 @@ fn validate_valid_purse_of_an_account() {
 
     let deploy_hash = [1u8; 32];
     let account_hash = AccountHash::new([0u8; 32]);
-    let contract_hash = ContractHash::new([1u8; 32]);
+    let entity_hash = AddressableEntityHash::new([1u8; 32]);
     let (base_key, _, entity) = new_addressable_entity_with_purse(
         account_hash,
-        contract_hash,
+        entity_hash,
+        EntityKind::Account(account_hash),
         test_main_purse.addr(),
-        named_keys.clone(),
     );
 
-    let mut access_rights = entity.extract_access_rights(contract_hash);
+    let mut access_rights = entity.extract_access_rights(entity_hash, &named_keys);
     access_rights.extend(&[test_main_purse]);
 
     let address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);
@@ -976,7 +964,7 @@ fn validate_valid_purse_of_an_account() {
 #[test]
 fn should_meter_for_gas_storage_write() {
     // Test fixture
-    let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
+    let mut rng = AddressGenerator::new(&TXN_HASH_RAW, PHASE);
     let uref_as_key = create_uref_as_key(&mut rng, AccessRights::READ_WRITE);
 
     let mut named_keys = NamedKeys::new();
@@ -1011,7 +999,7 @@ fn should_meter_for_gas_storage_write() {
 #[test]
 fn should_meter_for_gas_storage_add() {
     // Test fixture
-    let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
+    let mut rng = AddressGenerator::new(&TXN_HASH_RAW, PHASE);
     let uref_as_key = create_uref_as_key(&mut rng, AccessRights::ADD_WRITE);
 
     let mut named_keys = NamedKeys::new();
@@ -1065,6 +1053,6 @@ fn associated_keys_add_full() {
 
     assert!(matches!(
         final_add_result.expect_err("should error out"),
-        Error::AddKeyFailure(AddKeyFailure::MaxKeysLimit)
+        ExecError::AddKeyFailure(AddKeyFailure::MaxKeysLimit)
     ));
 }

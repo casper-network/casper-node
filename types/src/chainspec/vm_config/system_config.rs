@@ -1,6 +1,12 @@
+#[cfg(any(feature = "testing", test))]
+use crate::testing::TestRng;
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
-use rand::{distributions::Standard, prelude::*, Rng};
+#[cfg(any(feature = "testing", test))]
+use rand::{
+    distributions::{Distribution, Standard},
+    Rng,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -8,19 +14,25 @@ use crate::{
     chainspec::vm_config::{AuctionCosts, HandlePaymentCosts, MintCosts, StandardPaymentCosts},
 };
 
-/// Default gas cost for a wasmless transfer.
-pub const DEFAULT_WASMLESS_TRANSFER_COST: u32 = 100_000_000;
+/// Default gas limit of install / upgrade contracts
+pub const DEFAULT_INSTALL_UPGRADE_GAS_LIMIT: u64 = 3_500_000_000_000;
+
+/// Default gas limit of standard transactions
+pub const DEFAULT_STANDARD_TRANSACTION_GAS_LIMIT: u64 = 500_000_000_000;
 
 /// Definition of costs in the system.
 ///
 /// This structure contains the costs of all the system contract's entry points and, additionally,
-/// it defines a wasmless transfer cost.
+/// it defines a wasmless mint cost.
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[serde(deny_unknown_fields)]
 pub struct SystemConfig {
-    /// Wasmless transfer cost expressed in gas.
-    wasmless_transfer_cost: u32,
+    /// Standard transaction gas limit expressed in gas.
+    standard_transaction_gas_limit: u64,
+
+    /// Install or upgrade transaction gas limit expressed in gas.
+    install_upgrade_gas_limit: u64,
 
     /// Configuration of auction entrypoint costs.
     auction_costs: AuctionCosts,
@@ -38,14 +50,16 @@ pub struct SystemConfig {
 impl SystemConfig {
     /// Creates new system config instance.
     pub fn new(
-        wasmless_transfer_cost: u32,
+        install_upgrade_gas_limit: u64,
+        standard_transaction_gas_limit: u64,
         auction_costs: AuctionCosts,
         mint_costs: MintCosts,
         handle_payment_costs: HandlePaymentCosts,
         standard_payment_costs: StandardPaymentCosts,
     ) -> Self {
         Self {
-            wasmless_transfer_cost,
+            install_upgrade_gas_limit,
+            standard_transaction_gas_limit,
             auction_costs,
             mint_costs,
             handle_payment_costs,
@@ -53,9 +67,14 @@ impl SystemConfig {
         }
     }
 
-    /// Returns wasmless transfer cost.
-    pub fn wasmless_transfer_cost(&self) -> u32 {
-        self.wasmless_transfer_cost
+    /// Returns install / upgrade cost.
+    pub fn install_upgrade_limit(&self) -> u64 {
+        self.install_upgrade_gas_limit
+    }
+
+    /// Returns standard / flat cost.
+    pub fn standard_transaction_limit(&self) -> u64 {
+        self.standard_transaction_gas_limit
     }
 
     /// Returns the costs of executing auction entry points.
@@ -66,6 +85,12 @@ impl SystemConfig {
     /// Returns the costs of executing mint entry points.
     pub fn mint_costs(&self) -> &MintCosts {
         &self.mint_costs
+    }
+
+    /// Sets mint costs.
+    pub fn with_mint_costs(mut self, mint_costs: MintCosts) -> Self {
+        self.mint_costs = mint_costs;
+        self
     }
 
     /// Returns the costs of executing `handle_payment` entry points.
@@ -79,10 +104,35 @@ impl SystemConfig {
     }
 }
 
+#[cfg(any(feature = "testing", test))]
+impl SystemConfig {
+    /// Generates a random instance using a `TestRng`.
+    pub fn random(rng: &mut TestRng) -> Self {
+        // there's a bug in toml...under the hood it uses an i64 when it should use a u64
+        // this causes flaky test failures if the random result exceeds i64::MAX
+        let install_upgrade_gas_limit = rng.gen::<u32>() as u64;
+        let standard_transaction_gas_limit = rng.gen::<u32>() as u64;
+        let auction_costs: AuctionCosts = rng.gen();
+        let mint_costs = rng.gen();
+        let handle_payment_costs = rng.gen();
+        let standard_payment_costs = rng.gen();
+
+        SystemConfig {
+            install_upgrade_gas_limit,
+            standard_transaction_gas_limit,
+            auction_costs,
+            mint_costs,
+            handle_payment_costs,
+            standard_payment_costs,
+        }
+    }
+}
+
 impl Default for SystemConfig {
     fn default() -> Self {
         Self {
-            wasmless_transfer_cost: DEFAULT_WASMLESS_TRANSFER_COST,
+            install_upgrade_gas_limit: DEFAULT_INSTALL_UPGRADE_GAS_LIMIT,
+            standard_transaction_gas_limit: DEFAULT_STANDARD_TRANSACTION_GAS_LIMIT,
             auction_costs: AuctionCosts::default(),
             mint_costs: MintCosts::default(),
             handle_payment_costs: HandlePaymentCosts::default(),
@@ -91,10 +141,12 @@ impl Default for SystemConfig {
     }
 }
 
+#[cfg(any(feature = "testing", test))]
 impl Distribution<SystemConfig> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> SystemConfig {
         SystemConfig {
-            wasmless_transfer_cost: rng.gen(),
+            install_upgrade_gas_limit: rng.gen(),
+            standard_transaction_gas_limit: rng.gen(),
             auction_costs: rng.gen(),
             mint_costs: rng.gen(),
             handle_payment_costs: rng.gen(),
@@ -107,7 +159,8 @@ impl ToBytes for SystemConfig {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut ret = bytesrepr::unchecked_allocate_buffer(self);
 
-        ret.append(&mut self.wasmless_transfer_cost.to_bytes()?);
+        ret.append(&mut self.install_upgrade_gas_limit.to_bytes()?);
+        ret.append(&mut self.standard_transaction_gas_limit.to_bytes()?);
         ret.append(&mut self.auction_costs.to_bytes()?);
         ret.append(&mut self.mint_costs.to_bytes()?);
         ret.append(&mut self.handle_payment_costs.to_bytes()?);
@@ -117,7 +170,8 @@ impl ToBytes for SystemConfig {
     }
 
     fn serialized_length(&self) -> usize {
-        self.wasmless_transfer_cost.serialized_length()
+        self.install_upgrade_gas_limit.serialized_length()
+            + self.standard_transaction_gas_limit.serialized_length()
             + self.auction_costs.serialized_length()
             + self.mint_costs.serialized_length()
             + self.handle_payment_costs.serialized_length()
@@ -127,14 +181,16 @@ impl ToBytes for SystemConfig {
 
 impl FromBytes for SystemConfig {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (wasmless_transfer_cost, rem) = FromBytes::from_bytes(bytes)?;
+        let (install_upgrade_cost, rem) = FromBytes::from_bytes(bytes)?;
+        let (standard_transaction_cost, rem) = FromBytes::from_bytes(rem)?;
         let (auction_costs, rem) = FromBytes::from_bytes(rem)?;
         let (mint_costs, rem) = FromBytes::from_bytes(rem)?;
         let (handle_payment_costs, rem) = FromBytes::from_bytes(rem)?;
         let (standard_payment_costs, rem) = FromBytes::from_bytes(rem)?;
         Ok((
             SystemConfig::new(
-                wasmless_transfer_cost,
+                install_upgrade_cost,
+                standard_transaction_cost,
                 auction_costs,
                 mint_costs,
                 handle_payment_costs,
@@ -161,14 +217,18 @@ pub mod gens {
 
     prop_compose! {
         pub fn system_config_arb()(
-            wasmless_transfer_cost in num::u32::ANY,
+            install_upgrade_gas_limit in num::u32::ANY,
+            standard_transaction_gas_limit in num::u32::ANY,
             auction_costs in auction_costs_arb(),
             mint_costs in mint_costs_arb(),
             handle_payment_costs in handle_payment_costs_arb(),
             standard_payment_costs in standard_payment_costs_arb(),
         ) -> SystemConfig {
+            let install_upgrade_gas_limit = install_upgrade_gas_limit as u64;
+            let standard_transaction_gas_limit =standard_transaction_gas_limit as u64;
             SystemConfig {
-                wasmless_transfer_cost,
+                install_upgrade_gas_limit,
+                standard_transaction_gas_limit,
                 auction_costs,
                 mint_costs,
                 handle_payment_costs,

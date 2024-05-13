@@ -1,24 +1,21 @@
 use std::{collections::BTreeSet, iter::FromIterator};
 
-use casper_execution_engine::engine_state::{
-    genesis::ExecConfigBuilder, EngineConfigBuilder, RunGenesisRequest,
-};
 use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    utils, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG_HASH,
-    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROTOCOL_VERSION,
-    DEFAULT_VALIDATOR_SLOTS, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    utils, ChainspecConfig, ExecuteRequestBuilder, LmdbWasmTestBuilder, TransferRequestBuilder,
+    DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_CHAINSPEC_REGISTRY,
+    DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
+    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROTOCOL_VERSION, DEFAULT_VALIDATOR_SLOTS,
+    MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
+use casper_storage::data_access_layer::GenesisRequest;
 use casper_types::{
     runtime_args,
-    system::{
-        auction::{self, DelegationRate, EraValidators, VESTING_SCHEDULE_LENGTH_MILLIS},
-        mint,
-    },
-    GenesisAccount, GenesisValidator, Motes, PublicKey, SecretKey, U256, U512,
+    system::auction::{self, DelegationRate, EraValidators, VESTING_SCHEDULE_LENGTH_MILLIS},
+    GenesisAccount, GenesisConfigBuilder, GenesisValidator, Motes, PublicKey, SecretKey, U256,
+    U512,
 };
 
 const MINIMUM_BONDED_AMOUNT: u64 = 1_000;
@@ -63,9 +60,9 @@ static GENESIS_VALIDATORS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
     for (index, public_key) in GENESIS_VALIDATOR_PUBLIC_KEYS.iter().enumerate() {
         let account = GenesisAccount::account(
             public_key.clone(),
-            Motes::new(U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE)),
+            Motes::new(MINIMUM_ACCOUNT_CREATION_BALANCE),
             Some(GenesisValidator::new(
-                Motes::new(U512::from(index + 1) * 1_000),
+                Motes::new((index + 1) * 1_000),
                 DelegationRate::zero(),
             )),
         );
@@ -89,7 +86,7 @@ static LOWEST_STAKE_VALIDATOR: Lazy<PublicKey> = Lazy::new(|| {
 
     assert_eq!(
         genesis_account.staked_amount(),
-        Motes::new(U512::from(MINIMUM_BONDED_AMOUNT))
+        Motes::new(MINIMUM_BONDED_AMOUNT)
     );
 
     genesis_account.public_key()
@@ -105,19 +102,15 @@ fn initialize_builder() -> LmdbWasmTestBuilder {
     let mut builder = LmdbWasmTestBuilder::default();
 
     let run_genesis_request = utils::create_run_genesis_request(GENESIS_ACCOUNTS.clone());
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis(run_genesis_request);
 
-    let fund_request = ExecuteRequestBuilder::transfer(
-        *DEFAULT_ACCOUNT_ADDR,
-        runtime_args! {
-            mint::ARG_TARGET => PublicKey::System.to_account_hash(),
-            mint::ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE),
-            mint::ARG_ID => <Option<u64>>::None,
-        },
+    let fund_request = TransferRequestBuilder::new(
+        MINIMUM_ACCOUNT_CREATION_BALANCE,
+        PublicKey::System.to_account_hash(),
     )
     .build();
 
-    builder.exec(fund_request).expect_success().commit();
+    builder.transfer_and_commit(fund_request).expect_success();
 
     builder
 }
@@ -247,39 +240,34 @@ fn should_retain_genesis_validator_slot_protection() {
         DEFAULT_GENESIS_TIMESTAMP_MILLIS + CASPER_LOCKED_FUNDS_PERIOD_MILLIS;
 
     let mut builder = {
-        let engine_config = EngineConfigBuilder::default()
-            .with_vesting_schedule_period_millis(CASPER_VESTING_SCHEDULE_PERIOD_MILLIS)
-            .build();
+        let chainspec = ChainspecConfig::default()
+            .with_vesting_schedule_period_millis(CASPER_VESTING_SCHEDULE_PERIOD_MILLIS);
 
         let run_genesis_request = {
             let accounts = GENESIS_ACCOUNTS.clone();
-            let exec_config = ExecConfigBuilder::default()
+            let exec_config = GenesisConfigBuilder::default()
                 .with_accounts(accounts)
                 .with_locked_funds_period_millis(CASPER_LOCKED_FUNDS_PERIOD_MILLIS)
                 .build();
 
-            RunGenesisRequest::new(
-                *DEFAULT_GENESIS_CONFIG_HASH,
-                *DEFAULT_PROTOCOL_VERSION,
+            GenesisRequest::new(
+                DEFAULT_GENESIS_CONFIG_HASH,
+                DEFAULT_PROTOCOL_VERSION,
                 exec_config,
                 DEFAULT_CHAINSPEC_REGISTRY.clone(),
             )
         };
 
-        let mut builder = LmdbWasmTestBuilder::new_temporary_with_config(engine_config);
-        builder.run_genesis(&run_genesis_request);
+        let mut builder = LmdbWasmTestBuilder::new_temporary_with_config(chainspec);
+        builder.run_genesis(run_genesis_request);
 
-        let fund_request = ExecuteRequestBuilder::transfer(
-            *DEFAULT_ACCOUNT_ADDR,
-            runtime_args! {
-                mint::ARG_TARGET => PublicKey::System.to_account_hash(),
-                mint::ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE),
-                mint::ARG_ID => <Option<u64>>::None,
-            },
+        let fund_request = TransferRequestBuilder::new(
+            MINIMUM_ACCOUNT_CREATION_BALANCE,
+            PublicKey::System.to_account_hash(),
         )
         .build();
 
-        builder.exec(fund_request).expect_success().commit();
+        builder.transfer_and_commit(fund_request).expect_success();
 
         builder
     };

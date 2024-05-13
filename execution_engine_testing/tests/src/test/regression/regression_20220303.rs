@@ -4,14 +4,15 @@ use std::{
 };
 
 use casper_engine_test_support::{LmdbWasmTestBuilder, UpgradeRequestBuilder};
-use casper_execution_engine::engine_state::SystemContractRegistry;
 use casper_types::{
+    contracts::ContractHash,
     system::{self, mint},
-    AccessRights, CLValue, Digest, EraId, Key, ProtocolVersion, StoredValue, URef,
+    AccessRights, ByteCodeHash, CLValue, Digest, EntityAddr, EntryPoints, EraId, Key,
+    ProtocolVersion, StoredValue, SystemEntityRegistry, URef,
 };
 use rand::Rng;
 
-use crate::lmdb_fixture::{self, CONTRACT_REGISTRY_SPECIAL_ADDRESS};
+use crate::lmdb_fixture::{self, ENTRY_REGISTRY_SPECIAL_ADDRESS};
 
 const DEFAULT_ACTIVATION_POINT: EraId = EraId::new(1);
 
@@ -44,13 +45,13 @@ fn test_upgrade(major_bump: u32, minor_bump: u32, patch_bump: u32, upgrade_entri
         lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_3_1);
     let mint_contract_hash = {
         let stored_value: StoredValue = builder
-            .query(None, CONTRACT_REGISTRY_SPECIAL_ADDRESS, &[])
-            .expect("should query system contract registry");
+            .query(None, ENTRY_REGISTRY_SPECIAL_ADDRESS, &[])
+            .expect("should query system entity registry");
         let cl_value = stored_value
             .as_cl_value()
             .cloned()
             .expect("should have cl value");
-        let registry: SystemContractRegistry =
+        let registry: SystemEntityRegistry =
             cl_value.into_t().expect("should have system registry");
         registry
             .get(system::MINT)
@@ -58,10 +59,13 @@ fn test_upgrade(major_bump: u32, minor_bump: u32, patch_bump: u32, upgrade_entri
             .expect("should contract hash")
     };
     let old_protocol_version = lmdb_fixture_state.genesis_protocol_version();
-    let old_contract = builder
-        .get_legacy_contract(mint_contract_hash)
+
+    let legacy_mint_hash = ContractHash::new(mint_contract_hash.value());
+
+    let old_mint_contract = builder
+        .get_legacy_contract(legacy_mint_hash)
         .expect("should have mint contract");
-    assert_eq!(old_contract.protocol_version(), old_protocol_version);
+    assert_eq!(old_mint_contract.protocol_version(), old_protocol_version);
     let new_protocol_version = ProtocolVersion::from_parts(
         old_protocol_version.value().major + major_bump,
         old_protocol_version.value().minor + minor_bump,
@@ -90,7 +94,7 @@ fn test_upgrade(major_bump: u32, minor_bump: u32, patch_bump: u32, upgrade_entri
     };
     let start = Instant::now();
     builder
-        .upgrade_with_upgrade_request_and_config(None, &mut upgrade_request)
+        .upgrade(&mut upgrade_request)
         .expect_upgrade_success();
     let elapsed = start.elapsed();
     assert!(
@@ -102,16 +106,18 @@ fn test_upgrade(major_bump: u32, minor_bump: u32, patch_bump: u32, upgrade_entri
         .get_addressable_entity(mint_contract_hash)
         .expect("should have mint contract");
     assert_eq!(
-        old_contract.contract_package_hash(),
-        new_contract.contract_package_hash()
+        old_mint_contract.contract_package_hash().value(),
+        new_contract.package_hash().value()
     );
     assert_eq!(
-        old_contract.contract_wasm_hash(),
-        new_contract.contract_wasm_hash()
+        ByteCodeHash::default().value(),
+        new_contract.byte_code_hash().value()
     );
-    assert_ne!(old_contract.entry_points(), new_contract.entry_points());
+    let new_entry_points = builder.get_entry_points(EntityAddr::System(mint_contract_hash.value()));
+    let old_entry_points = EntryPoints::from(old_mint_contract.entry_points().clone());
+    assert_ne!(&old_entry_points, &new_entry_points);
     assert_eq!(
-        new_contract.entry_points(),
+        &new_entry_points,
         &mint::mint_entry_points(),
         "should have new entrypoints written"
     );
@@ -130,7 +136,7 @@ fn apply_global_state_update(
         .as_cl_value()
         .expect("must be CLValue")
         .clone()
-        .into_t::<SystemContractRegistry>()
+        .into_t::<SystemEntityRegistry>()
         .expect("must convert to btree map");
 
     let mut global_state_update = BTreeMap::<Key, StoredValue>::new();
@@ -138,7 +144,7 @@ fn apply_global_state_update(
         .expect("must convert to StoredValue")
         .into();
 
-    global_state_update.insert(Key::SystemContractRegistry, registry);
+    global_state_update.insert(Key::SystemEntityRegistry, registry);
 
     global_state_update
 }

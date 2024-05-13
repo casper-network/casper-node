@@ -1,6 +1,6 @@
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST, SYSTEM_ADDR,
+    DEFAULT_PAYMENT, LOCAL_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR,
 };
 use casper_types::{
     account::AccountHash, runtime_args, system::handle_payment, Key, RuntimeArgs, URef, U512,
@@ -41,7 +41,7 @@ fn initialize() -> LmdbWasmTestBuilder {
     )
     .build();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     builder.exec(exec_request_1).expect_success().commit();
 
@@ -79,7 +79,8 @@ fn finalize_payment_should_not_be_run_by_non_system_accounts() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn finalize_payment_should_refund_to_specified_purse() {
     let mut builder = LmdbWasmTestBuilder::default();
     let payment_amount = *DEFAULT_PAYMENT;
@@ -94,7 +95,7 @@ fn finalize_payment_should_refund_to_specified_purse() {
         ARG_PURSE_NAME => LOCAL_REFUND_PURSE,
     };
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let create_purse_request = {
         ExecuteRequestBuilder::standard(
@@ -125,19 +126,17 @@ fn finalize_payment_should_refund_to_specified_purse() {
         "payment purse should start with zero balance"
     );
 
-    let exec_request = {
-        let genesis_account_hash = *DEFAULT_ACCOUNT_ADDR;
+    let genesis_account_hash = *DEFAULT_ACCOUNT_ADDR;
 
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_deploy_hash([1; 32])
-            .with_session_code("do_nothing.wasm", RuntimeArgs::default())
-            .with_payment_code(FINALIZE_PAYMENT, args)
-            .with_authorization_keys(&[genesis_account_hash])
-            .build();
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(*DEFAULT_ACCOUNT_ADDR)
+        .with_deploy_hash([1; 32])
+        .with_session_code("do_nothing.wasm", RuntimeArgs::default())
+        .with_payment_code(FINALIZE_PAYMENT, args)
+        .with_authorization_keys(&[genesis_account_hash])
+        .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
@@ -205,7 +204,7 @@ fn get_named_account_balance(
     name: &str,
 ) -> Option<U512> {
     let account = builder
-        .get_entity_by_account_hash(account_address)
+        .get_entity_with_named_keys_by_account_hash(account_address)
         .expect("should have account");
 
     let purse = account

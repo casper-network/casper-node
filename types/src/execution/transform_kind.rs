@@ -46,13 +46,13 @@ impl From<StoredValue> for TransformInstruction {
 
 /// Representation of a single transformation occurring during execution.
 ///
-/// Note that all arithmetic variants of [`TransformKind`] are commutative which means that a given
+/// Note that all arithmetic variants of `TransformKindV2` are commutative which means that a given
 /// collection of them can be executed in any order to produce the same end result.
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
-pub enum TransformKind {
+pub enum TransformKindV2 {
     /// An identity transformation that does not modify a value in the global state.
     ///
     /// Created as a result of reading from the global state.
@@ -87,7 +87,7 @@ pub enum TransformKind {
     Failure(TransformError),
 }
 
-impl TransformKind {
+impl TransformKindV2 {
     /// Applies the transformation on a specified stored value instance.
     ///
     /// This method produces a new `StoredValue` instance based on the `TransformKind` variant.
@@ -96,40 +96,36 @@ impl TransformKind {
             TransformInstruction::Store(sv)
         }
         match self {
-            TransformKind::Identity => Ok(store(stored_value)),
-            TransformKind::Write(new_value) => Ok(store(new_value)),
-            TransformKind::Prune(key) => Ok(TransformInstruction::prune(key)),
-            TransformKind::AddInt32(to_add) => wrapping_addition(stored_value, to_add),
-            TransformKind::AddUInt64(to_add) => wrapping_addition(stored_value, to_add),
-            TransformKind::AddUInt128(to_add) => wrapping_addition(stored_value, to_add),
-            TransformKind::AddUInt256(to_add) => wrapping_addition(stored_value, to_add),
-            TransformKind::AddUInt512(to_add) => wrapping_addition(stored_value, to_add),
-            TransformKind::AddKeys(keys) => match stored_value {
-                StoredValue::AddressableEntity(mut entity) => {
-                    entity.named_keys_append(keys);
-                    Ok(store(StoredValue::AddressableEntity(entity)))
-                }
-                StoredValue::Account(_) | StoredValue::Contract(_) => {
-                    Err(TransformError::Deprecated)
-                }
+            TransformKindV2::Identity => Ok(store(stored_value)),
+            TransformKindV2::Write(new_value) => Ok(store(new_value)),
+            TransformKindV2::Prune(key) => Ok(TransformInstruction::prune(key)),
+            TransformKindV2::AddInt32(to_add) => wrapping_addition(stored_value, to_add),
+            TransformKindV2::AddUInt64(to_add) => wrapping_addition(stored_value, to_add),
+            TransformKindV2::AddUInt128(to_add) => wrapping_addition(stored_value, to_add),
+            TransformKindV2::AddUInt256(to_add) => wrapping_addition(stored_value, to_add),
+            TransformKindV2::AddUInt512(to_add) => wrapping_addition(stored_value, to_add),
+            TransformKindV2::AddKeys(_) => match stored_value {
+                StoredValue::Account(_)
+                | StoredValue::Contract(_)
+                | StoredValue::AddressableEntity(_) => Err(TransformError::Deprecated),
                 StoredValue::CLValue(cl_value) => {
                     let expected = "Contract or Account".to_string();
                     let found = format!("{:?}", cl_value.cl_type());
                     Err(StoredValueTypeMismatch::new(expected, found).into())
                 }
-                StoredValue::ContractPackage(_) => {
+                StoredValue::Package(_) => {
                     let expected = "Contract or Account".to_string();
                     let found = "ContractPackage".to_string();
                     Err(StoredValueTypeMismatch::new(expected, found).into())
                 }
-                StoredValue::ContractWasm(_) => {
+                StoredValue::ByteCode(_) => {
                     let expected = "Contract or Account".to_string();
-                    let found = "ContractWasm".to_string();
+                    let found = "ByteCode".to_string();
                     Err(StoredValueTypeMismatch::new(expected, found).into())
                 }
-                StoredValue::Transfer(_) => {
+                StoredValue::LegacyTransfer(_) => {
                     let expected = "Contract or Account".to_string();
-                    let found = "Transfer".to_string();
+                    let found = "LegacyTransfer".to_string();
                     Err(StoredValueTypeMismatch::new(expected, found).into())
                 }
                 StoredValue::DeployInfo(_) => {
@@ -162,8 +158,43 @@ impl TransformKind {
                     let found = "Unbonding".to_string();
                     Err(StoredValueTypeMismatch::new(expected, found).into())
                 }
+                StoredValue::ContractWasm(_) => {
+                    let expected = "Contract or Account".to_string();
+                    let found = "ContractWasm".to_string();
+                    Err(StoredValueTypeMismatch::new(expected, found).into())
+                }
+                StoredValue::ContractPackage(_) => {
+                    let expected = "Contract or Account".to_string();
+                    let found = "ContractPackage".to_string();
+                    Err(StoredValueTypeMismatch::new(expected, found).into())
+                }
+                StoredValue::NamedKey(_) => {
+                    let expected = "Contract or Account".to_string();
+                    let found = "NamedKeyValue".to_string();
+                    Err(StoredValueTypeMismatch::new(expected, found).into())
+                }
+                StoredValue::MessageTopic(_) => {
+                    let expected = "Contract or Account".to_string();
+                    let found = "MessageTopic".to_string();
+                    Err(StoredValueTypeMismatch::new(expected, found).into())
+                }
+                StoredValue::Message(_) => {
+                    let expected = "Contract or Account".to_string();
+                    let found = "Message".to_string();
+                    Err(StoredValueTypeMismatch::new(expected, found).into())
+                }
+                StoredValue::Reservation(_) => {
+                    let expected = "Contract or Account".to_string();
+                    let found = "Reservation".to_string();
+                    Err(StoredValueTypeMismatch::new(expected, found).into())
+                }
+                StoredValue::EntryPoint(_) => {
+                    let expected = "Contract or Account".to_string();
+                    let found = "EntryPoint".to_string();
+                    Err(StoredValueTypeMismatch::new(expected, found).into())
+                }
             },
-            TransformKind::Failure(error) => Err(error),
+            TransformKindV2::Failure(error) => Err(error),
         }
     }
 
@@ -171,66 +202,66 @@ impl TransformKind {
     #[cfg(any(feature = "testing", test))]
     pub fn random<R: Rng + ?Sized>(rng: &mut R) -> Self {
         match rng.gen_range(0..10) {
-            0 => TransformKind::Identity,
-            1 => TransformKind::Write(StoredValue::CLValue(CLValue::from_t(true).unwrap())),
-            2 => TransformKind::AddInt32(rng.gen()),
-            3 => TransformKind::AddUInt64(rng.gen()),
-            4 => TransformKind::AddUInt128(rng.gen::<u64>().into()),
-            5 => TransformKind::AddUInt256(rng.gen::<u64>().into()),
-            6 => TransformKind::AddUInt512(rng.gen::<u64>().into()),
+            0 => TransformKindV2::Identity,
+            1 => TransformKindV2::Write(StoredValue::CLValue(CLValue::from_t(true).unwrap())),
+            2 => TransformKindV2::AddInt32(rng.gen()),
+            3 => TransformKindV2::AddUInt64(rng.gen()),
+            4 => TransformKindV2::AddUInt128(rng.gen::<u64>().into()),
+            5 => TransformKindV2::AddUInt256(rng.gen::<u64>().into()),
+            6 => TransformKindV2::AddUInt512(rng.gen::<u64>().into()),
             7 => {
                 let mut named_keys = NamedKeys::new();
                 for _ in 0..rng.gen_range(1..6) {
                     named_keys.insert(rng.gen::<u64>().to_string(), rng.gen());
                 }
-                TransformKind::AddKeys(named_keys)
+                TransformKindV2::AddKeys(named_keys)
             }
-            8 => TransformKind::Failure(TransformError::Serialization(
+            8 => TransformKindV2::Failure(TransformError::Serialization(
                 bytesrepr::Error::EarlyEndOfStream,
             )),
-            9 => TransformKind::Prune(rng.gen::<Key>()),
+            9 => TransformKindV2::Prune(rng.gen::<Key>()),
             _ => unreachable!(),
         }
     }
 }
 
-impl ToBytes for TransformKind {
+impl ToBytes for TransformKindV2 {
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         match self {
-            TransformKind::Identity => (TransformTag::Identity as u8).write_bytes(writer),
-            TransformKind::Write(stored_value) => {
+            TransformKindV2::Identity => (TransformTag::Identity as u8).write_bytes(writer),
+            TransformKindV2::Write(stored_value) => {
                 (TransformTag::Write as u8).write_bytes(writer)?;
                 stored_value.write_bytes(writer)
             }
-            TransformKind::AddInt32(value) => {
+            TransformKindV2::AddInt32(value) => {
                 (TransformTag::AddInt32 as u8).write_bytes(writer)?;
                 value.write_bytes(writer)
             }
-            TransformKind::AddUInt64(value) => {
+            TransformKindV2::AddUInt64(value) => {
                 (TransformTag::AddUInt64 as u8).write_bytes(writer)?;
                 value.write_bytes(writer)
             }
-            TransformKind::AddUInt128(value) => {
+            TransformKindV2::AddUInt128(value) => {
                 (TransformTag::AddUInt128 as u8).write_bytes(writer)?;
                 value.write_bytes(writer)
             }
-            TransformKind::AddUInt256(value) => {
+            TransformKindV2::AddUInt256(value) => {
                 (TransformTag::AddUInt256 as u8).write_bytes(writer)?;
                 value.write_bytes(writer)
             }
-            TransformKind::AddUInt512(value) => {
+            TransformKindV2::AddUInt512(value) => {
                 (TransformTag::AddUInt512 as u8).write_bytes(writer)?;
                 value.write_bytes(writer)
             }
-            TransformKind::AddKeys(named_keys) => {
+            TransformKindV2::AddKeys(named_keys) => {
                 (TransformTag::AddKeys as u8).write_bytes(writer)?;
                 named_keys.write_bytes(writer)
             }
-            TransformKind::Failure(error) => {
+            TransformKindV2::Failure(error) => {
                 (TransformTag::Failure as u8).write_bytes(writer)?;
                 error.write_bytes(writer)
             }
-            TransformKind::Prune(value) => {
+            TransformKindV2::Prune(value) => {
                 (TransformTag::Prune as u8).write_bytes(writer)?;
                 value.write_bytes(writer)
             }
@@ -246,60 +277,62 @@ impl ToBytes for TransformKind {
     fn serialized_length(&self) -> usize {
         U8_SERIALIZED_LENGTH
             + match self {
-                TransformKind::Identity => 0,
-                TransformKind::Write(stored_value) => stored_value.serialized_length(),
-                TransformKind::AddInt32(value) => value.serialized_length(),
-                TransformKind::AddUInt64(value) => value.serialized_length(),
-                TransformKind::AddUInt128(value) => value.serialized_length(),
-                TransformKind::AddUInt256(value) => value.serialized_length(),
-                TransformKind::AddUInt512(value) => value.serialized_length(),
-                TransformKind::AddKeys(named_keys) => named_keys.serialized_length(),
-                TransformKind::Failure(error) => error.serialized_length(),
-                TransformKind::Prune(value) => value.serialized_length(),
+                TransformKindV2::Identity => 0,
+                TransformKindV2::Write(stored_value) => stored_value.serialized_length(),
+                TransformKindV2::AddInt32(value) => value.serialized_length(),
+                TransformKindV2::AddUInt64(value) => value.serialized_length(),
+                TransformKindV2::AddUInt128(value) => value.serialized_length(),
+                TransformKindV2::AddUInt256(value) => value.serialized_length(),
+                TransformKindV2::AddUInt512(value) => value.serialized_length(),
+                TransformKindV2::AddKeys(named_keys) => named_keys.serialized_length(),
+                TransformKindV2::Failure(error) => error.serialized_length(),
+                TransformKindV2::Prune(value) => value.serialized_length(),
             }
     }
 }
 
-impl FromBytes for TransformKind {
+impl FromBytes for TransformKindV2 {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (tag, remainder) = u8::from_bytes(bytes)?;
         match tag {
-            tag if tag == TransformTag::Identity as u8 => Ok((TransformKind::Identity, remainder)),
+            tag if tag == TransformTag::Identity as u8 => {
+                Ok((TransformKindV2::Identity, remainder))
+            }
             tag if tag == TransformTag::Write as u8 => {
                 let (stored_value, remainder) = StoredValue::from_bytes(remainder)?;
-                Ok((TransformKind::Write(stored_value), remainder))
+                Ok((TransformKindV2::Write(stored_value), remainder))
             }
             tag if tag == TransformTag::AddInt32 as u8 => {
                 let (value, remainder) = i32::from_bytes(remainder)?;
-                Ok((TransformKind::AddInt32(value), remainder))
+                Ok((TransformKindV2::AddInt32(value), remainder))
             }
             tag if tag == TransformTag::AddUInt64 as u8 => {
                 let (value, remainder) = u64::from_bytes(remainder)?;
-                Ok((TransformKind::AddUInt64(value), remainder))
+                Ok((TransformKindV2::AddUInt64(value), remainder))
             }
             tag if tag == TransformTag::AddUInt128 as u8 => {
                 let (value, remainder) = U128::from_bytes(remainder)?;
-                Ok((TransformKind::AddUInt128(value), remainder))
+                Ok((TransformKindV2::AddUInt128(value), remainder))
             }
             tag if tag == TransformTag::AddUInt256 as u8 => {
                 let (value, remainder) = U256::from_bytes(remainder)?;
-                Ok((TransformKind::AddUInt256(value), remainder))
+                Ok((TransformKindV2::AddUInt256(value), remainder))
             }
             tag if tag == TransformTag::AddUInt512 as u8 => {
                 let (value, remainder) = U512::from_bytes(remainder)?;
-                Ok((TransformKind::AddUInt512(value), remainder))
+                Ok((TransformKindV2::AddUInt512(value), remainder))
             }
             tag if tag == TransformTag::AddKeys as u8 => {
                 let (named_keys, remainder) = NamedKeys::from_bytes(remainder)?;
-                Ok((TransformKind::AddKeys(named_keys), remainder))
+                Ok((TransformKindV2::AddKeys(named_keys), remainder))
             }
             tag if tag == TransformTag::Failure as u8 => {
                 let (error, remainder) = TransformError::from_bytes(remainder)?;
-                Ok((TransformKind::Failure(error), remainder))
+                Ok((TransformKindV2::Failure(error), remainder))
             }
             tag if tag == TransformTag::Prune as u8 => {
                 let (key, remainder) = Key::from_bytes(remainder)?;
-                Ok((TransformKind::Prune(key), remainder))
+                Ok((TransformKindV2::Prune(key), remainder))
             }
             _ => Err(bytesrepr::Error::Formatting),
         }
@@ -378,7 +411,8 @@ mod tests {
     use num::{Bounded, Num};
 
     use crate::{
-        bytesrepr::Bytes, testing::TestRng, AccessRights, ContractWasm, Key, URef, U128, U256, U512,
+        byte_code::ByteCodeKind, bytesrepr::Bytes, testing::TestRng, AccessRights, ByteCode, Key,
+        URef, U128, U256, U512,
     };
 
     use super::*;
@@ -433,8 +467,8 @@ mod tests {
         let max_value = StoredValue::CLValue(CLValue::from_t(max).unwrap());
         let min_value = StoredValue::CLValue(CLValue::from_t(min).unwrap());
 
-        let apply_overflow = TransformKind::AddInt32(1).apply(max_value.clone());
-        let apply_underflow = TransformKind::AddInt32(-1).apply(min_value.clone());
+        let apply_overflow = TransformKindV2::AddInt32(1).apply(max_value.clone());
+        let apply_underflow = TransformKindV2::AddInt32(-1).apply(min_value.clone());
 
         assert_eq!(
             apply_overflow.expect("Unexpected overflow"),
@@ -448,7 +482,7 @@ mod tests {
 
     fn uint_overflow_test<T>()
     where
-        T: Num + Bounded + CLTyped + ToBytes + Into<TransformKind> + Copy,
+        T: Num + Bounded + CLTyped + ToBytes + Into<TransformKindV2> + Copy,
     {
         let max = T::max_value();
         let min = T::min_value();
@@ -459,12 +493,12 @@ mod tests {
         let min_value = StoredValue::CLValue(CLValue::from_t(min).unwrap());
         let zero_value = StoredValue::CLValue(CLValue::from_t(zero).unwrap());
 
-        let one_transform: TransformKind = one.into();
+        let one_transform: TransformKindV2 = one.into();
 
-        let apply_overflow = TransformKind::AddInt32(1).apply(max_value.clone());
+        let apply_overflow = TransformKindV2::AddInt32(1).apply(max_value.clone());
 
         let apply_overflow_uint = one_transform.apply(max_value.clone());
-        let apply_underflow = TransformKind::AddInt32(-1).apply(min_value);
+        let apply_underflow = TransformKindV2::AddInt32(-1).apply(min_value);
 
         assert_eq!(apply_overflow, Ok(zero_value.clone().into()));
         assert_eq!(apply_overflow_uint, Ok(zero_value.into()));
@@ -473,9 +507,9 @@ mod tests {
 
     #[test]
     fn u128_overflow() {
-        impl From<U128> for TransformKind {
+        impl From<U128> for TransformKindV2 {
             fn from(x: U128) -> Self {
-                TransformKind::AddUInt128(x)
+                TransformKindV2::AddUInt128(x)
             }
         }
         uint_overflow_test::<U128>();
@@ -483,9 +517,9 @@ mod tests {
 
     #[test]
     fn u256_overflow() {
-        impl From<U256> for TransformKind {
+        impl From<U256> for TransformKindV2 {
             fn from(x: U256) -> Self {
-                TransformKind::AddUInt256(x)
+                TransformKindV2::AddUInt256(x)
             }
         }
         uint_overflow_test::<U256>();
@@ -493,9 +527,9 @@ mod tests {
 
     #[test]
     fn u512_overflow() {
-        impl From<U512> for TransformKind {
+        impl From<U512> for TransformKindV2 {
             fn from(x: U512) -> Self {
-                TransformKind::AddUInt512(x)
+                TransformKindV2::AddUInt512(x)
             }
         }
         uint_overflow_test::<U512>();
@@ -510,8 +544,8 @@ mod tests {
             };
         }
 
-        let contract = StoredValue::ContractWasm(ContractWasm::new(vec![]));
-        assert_yields_type_mismatch_error(contract);
+        let byte_code = StoredValue::ByteCode(ByteCode::new(ByteCodeKind::V1CasperWasm, vec![]));
+        assert_yields_type_mismatch_error(byte_code);
 
         let uref = URef::new(ZERO_ARRAY, AccessRights::READ);
 
@@ -819,7 +853,7 @@ mod tests {
     fn bytesrepr_roundtrip() {
         let rng = &mut TestRng::new();
         for _ in 0..11 {
-            let execution_result = TransformKind::random(rng);
+            let execution_result = TransformKindV2::random(rng);
             bytesrepr::test_serialization_roundtrip(&execution_result);
         }
     }

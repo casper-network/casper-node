@@ -4,7 +4,7 @@
 use casper_contract::contract_api::{runtime, storage};
 use casper_types::{
     addressable_entity::{EntryPoint, EntryPoints, Parameters},
-    CLType, EntryPointAccess, EntryPointType,
+    CLType, EntryPointAccess, EntryPointPayment, EntryPointType, Key,
 };
 
 const ENTRY_FUNCTION_NAME: &str = "delegate";
@@ -27,7 +27,8 @@ pub extern "C" fn call() {
             Parameters::new(),
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Contract,
+            EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
         entry_points.add_entry_point(entry_point);
         entry_points
@@ -38,8 +39,9 @@ pub extern "C" fn call() {
         None,
         Some(PACKAGE_HASH_KEY_NAME.into()),
         Some(ACCESS_KEY_NAME.into()),
+        None,
     );
 
     runtime::put_key(CONTRACT_VERSION, storage::new_uref(contract_version).into());
-    runtime::put_key(HASH_KEY_NAME, contract_hash.into());
+    runtime::put_key(HASH_KEY_NAME, Key::contract_entity_key(contract_hash));
 }

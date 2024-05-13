@@ -12,6 +12,11 @@ pub enum ActionType {
     /// [`Weight`](super::Weight)s of signing [`AccountHash`](super::AccountHash)s required to
     /// perform various actions).
     KeyManagement = 1,
+    /// Represents changing the associated keys (i.e. map of [`AccountHash`](super::AccountHash)s
+    /// to [`Weight`](super::Weight)s) or action thresholds (i.e. the total
+    /// [`Weight`](super::Weight)s of signing [`AccountHash`](super::AccountHash)s required to
+    /// upgrade the addressable entity.
+    UpgradeManagement = 2,
 }
 
 // This conversion is not intended to be used by third party crates.
@@ -26,6 +31,7 @@ impl TryFrom<u32> for ActionType {
         match value {
             d if d == ActionType::Deployment as u32 => Ok(ActionType::Deployment),
             d if d == ActionType::KeyManagement as u32 => Ok(ActionType::KeyManagement),
+            d if d == ActionType::UpgradeManagement as u32 => Ok(ActionType::UpgradeManagement),
             _ => Err(TryFromIntError(())),
         }
     }

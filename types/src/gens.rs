@@ -2,42 +2,59 @@
 //! [`Proptest`](https://crates.io/crates/proptest).
 #![allow(missing_docs)]
 
-use alloc::{boxed::Box, collections::BTreeSet, string::String, vec};
+use alloc::{
+    boxed::Box,
+    collections::{BTreeMap, BTreeSet},
+    string::String,
+    vec,
+};
 
 use proptest::{
     array, bits, bool,
-    collection::{self, SizeRange},
+    collection::{self, vec, SizeRange},
     option,
     prelude::*,
     result,
 };
 
 use crate::{
-    account::{self, action_thresholds::gens::account_action_thresholds_arb, AccountHash},
-    addressable_entity::{NamedKeys, Parameters, Weight},
-    crypto::gens::public_key_arb_no_system,
-    package::{ContractPackageStatus, ContractVersionKey, ContractVersions, Groups},
-    system::auction::{
-        gens::era_info_arb, DelegationRate, Delegator, UnbondingPurse, WithdrawPurse,
-        DELEGATION_RATE_DENOMINATOR,
+    account::{
+        self, action_thresholds::gens::account_action_thresholds_arb,
+        associated_keys::gens::account_associated_keys_arb, Account, AccountHash,
     },
-    transfer::TransferAddr,
-    AccessRights, AddressableEntity, CLType, CLValue, ContractHash, ContractWasm, EntryPoint,
-    EntryPointAccess, EntryPointType, EntryPoints, EraId, Group, Key, NamedArg, Package, Parameter,
-    Phase, ProtocolVersion, SemVer, StoredValue, URef, U128, U256, U512,
-};
-
-use crate::{
-    account::{associated_keys::gens::account_associated_keys_arb, Account},
     addressable_entity::{
         action_thresholds::gens::action_thresholds_arb, associated_keys::gens::associated_keys_arb,
+        MessageTopics, NamedKeyValue, NamedKeys, Parameters, Weight,
     },
-    contracts::Contract,
-    deploy_info::gens::{deploy_hash_arb, transfer_addr_arb},
-    package::ContractPackageKind,
-    system::auction::{Bid, BidAddr, BidKind, ValidatorBid},
+    block::BlockGlobalAddr,
+    byte_code::ByteCodeKind,
+    contract_messages::{MessageChecksum, MessageTopicSummary, TopicNameHash},
+    contracts::{
+        Contract, ContractHash, ContractPackage, ContractPackageStatus, ContractVersionKey,
+        ContractVersions, EntryPoint as ContractEntryPoint, EntryPoints as ContractEntryPoints,
+    },
+    crypto::{self, gens::public_key_arb_no_system},
+    deploy_info::gens::deploy_info_arb,
+    global_state::{Pointer, TrieMerkleProof, TrieMerkleProofStep},
+    package::{EntityVersionKey, EntityVersions, Groups, PackageStatus},
+    system::{
+        auction::{
+            gens::era_info_arb, Bid, BidAddr, BidKind, DelegationRate, Delegator, UnbondingPurse,
+            ValidatorBid, WithdrawPurse, DELEGATION_RATE_DENOMINATOR,
+        },
+        mint::BalanceHoldAddr,
+        SystemEntityType,
+    },
+    transaction::gens::deploy_hash_arb,
+    transfer::{
+        gens::{transfer_v1_addr_arb, transfer_v1_arb},
+        TransferAddr,
+    },
+    AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, ByteCode, CLType, CLValue,
+    Digest, EntityAddr, EntityKind, EntryPoint, EntryPointAccess, EntryPointPayment,
+    EntryPointType, EntryPoints, EraId, Group, Key, NamedArg, Package, Parameter, Phase,
+    ProtocolVersion, SemVer, StoredValue, TransactionRuntime, URef, U128, U256, U512,
 };
-pub use crate::{deploy_info::gens::deploy_info_arb, transfer::gens::transfer_arb};
 
 pub fn u8_slice_32() -> impl Strategy<Value = [u8; 32]> {
     collection::vec(any::<u8>(), 32).prop_map(|b| {
@@ -95,7 +112,7 @@ pub fn key_arb() -> impl Strategy<Value = Key> {
         account_hash_arb().prop_map(Key::Account),
         u8_slice_32().prop_map(Key::Hash),
         uref_arb().prop_map(Key::URef),
-        transfer_addr_arb().prop_map(Key::Transfer),
+        transfer_v1_addr_arb().prop_map(Key::Transfer),
         deploy_hash_arb().prop_map(Key::DeployInfo),
         era_id_arb().prop_map(Key::EraInfo),
         uref_arb().prop_map(|uref| Key::Balance(uref.addr())),
@@ -103,6 +120,7 @@ pub fn key_arb() -> impl Strategy<Value = Key> {
         bid_addr_delegator_arb().prop_map(Key::BidAddr),
         account_hash_arb().prop_map(Key::Withdraw),
         u8_slice_32().prop_map(Key::Dictionary),
+        balance_hold_addr_arb().prop_map(Key::BalanceHold),
         Just(Key::EraSummary),
     ]
 }
@@ -121,6 +139,18 @@ pub fn account_hash_arb() -> impl Strategy<Value = AccountHash> {
     u8_slice_32().prop_map(AccountHash::new)
 }
 
+pub fn entity_addr_arb() -> impl Strategy<Value = EntityAddr> {
+    prop_oneof![
+        u8_slice_32().prop_map(EntityAddr::System),
+        u8_slice_32().prop_map(EntityAddr::Account),
+        u8_slice_32().prop_map(EntityAddr::SmartContract),
+    ]
+}
+
+pub fn topic_name_hash_arb() -> impl Strategy<Value = TopicNameHash> {
+    u8_slice_32().prop_map(TopicNameHash::new)
+}
+
 pub fn bid_addr_validator_arb() -> impl Strategy<Value = BidAddr> {
     u8_slice_32().prop_map(BidAddr::new_validator_addr)
 }
@@ -129,6 +159,19 @@ pub fn bid_addr_delegator_arb() -> impl Strategy<Value = BidAddr> {
     let x = u8_slice_32();
     let y = u8_slice_32();
     (x, y).prop_map(BidAddr::new_delegator_addr)
+}
+
+pub fn balance_hold_addr_arb() -> impl Strategy<Value = BalanceHoldAddr> {
+    let x = uref_arb().prop_map(|uref| uref.addr());
+    let y = any::<u64>();
+    (x, y).prop_map(|(x, y)| BalanceHoldAddr::new_gas(x, BlockTime::new(y)))
+}
+
+pub fn block_global_addr_arb() -> impl Strategy<Value = BlockGlobalAddr> {
+    prop_oneof![
+        0 => Just(BlockGlobalAddr::BlockTime),
+        1 => Just(BlockGlobalAddr::MessageCount)
+    ]
 }
 
 pub fn weight_arb() -> impl Strategy<Value = Weight> {
@@ -306,9 +349,17 @@ pub fn entry_point_access_arb() -> impl Strategy<Value = EntryPointAccess> {
 
 pub fn entry_point_type_arb() -> impl Strategy<Value = EntryPointType> {
     prop_oneof![
-        Just(EntryPointType::Session),
-        Just(EntryPointType::Contract),
-        Just(EntryPointType::Install),
+        Just(EntryPointType::Caller),
+        Just(EntryPointType::Called),
+        Just(EntryPointType::Factory),
+    ]
+}
+
+pub fn entry_point_payment_arb() -> impl Strategy<Value = EntryPointPayment> {
+    prop_oneof![
+        Just(EntryPointPayment::Caller),
+        Just(EntryPointPayment::SelfOnly),
+        Just(EntryPointPayment::SelfOnward),
     ]
 }
 
@@ -326,17 +377,58 @@ pub fn entry_point_arb() -> impl Strategy<Value = EntryPoint> {
         parameters_arb(),
         entry_point_type_arb(),
         entry_point_access_arb(),
+        entry_point_payment_arb(),
+        cl_type_arb(),
+    )
+        .prop_map(
+            |(name, parameters, entry_point_type, entry_point_access, entry_point_payment, ret)| {
+                EntryPoint::new(
+                    name,
+                    parameters,
+                    ret,
+                    entry_point_access,
+                    entry_point_type,
+                    entry_point_payment,
+                )
+            },
+        )
+}
+
+pub fn contract_entry_point_arb() -> impl Strategy<Value = ContractEntryPoint> {
+    (
+        ".*",
+        parameters_arb(),
+        entry_point_type_arb(),
+        entry_point_access_arb(),
         cl_type_arb(),
     )
         .prop_map(
             |(name, parameters, entry_point_type, entry_point_access, ret)| {
-                EntryPoint::new(name, parameters, ret, entry_point_access, entry_point_type)
+                ContractEntryPoint::new(name, parameters, ret, entry_point_access, entry_point_type)
             },
         )
 }
 
 pub fn entry_points_arb() -> impl Strategy<Value = EntryPoints> {
     collection::vec(entry_point_arb(), 1..10).prop_map(EntryPoints::from)
+}
+
+pub fn contract_entry_points_arb() -> impl Strategy<Value = ContractEntryPoints> {
+    collection::vec(contract_entry_point_arb(), 1..10).prop_map(ContractEntryPoints::from)
+}
+
+pub fn message_topics_arb() -> impl Strategy<Value = MessageTopics> {
+    collection::vec(any::<String>(), 1..100).prop_map(|topic_names| {
+        MessageTopics::from(
+            topic_names
+                .into_iter()
+                .map(|name| {
+                    let name_hash = crypto::blake2b(&name).into();
+                    (name, name_hash)
+                })
+                .collect::<BTreeMap<String, TopicNameHash>>(),
+        )
+    })
 }
 
 pub fn account_arb() -> impl Strategy<Value = Account> {
@@ -360,10 +452,28 @@ pub fn account_arb() -> impl Strategy<Value = Account> {
         )
 }
 
+pub fn contract_package_arb() -> impl Strategy<Value = ContractPackage> {
+    (
+        uref_arb(),
+        contract_versions_arb(),
+        disabled_contract_versions_arb(),
+        groups_arb(),
+    )
+        .prop_map(|(access_key, versions, disabled_versions, groups)| {
+            ContractPackage::new(
+                access_key,
+                versions,
+                disabled_versions,
+                groups,
+                ContractPackageStatus::default(),
+            )
+        })
+}
+
 pub fn contract_arb() -> impl Strategy<Value = Contract> {
     (
         protocol_version_arb(),
-        entry_points_arb(),
+        contract_entry_points_arb(),
         u8_slice_32(),
         u8_slice_32(),
         named_keys_arb(20),
@@ -387,49 +497,79 @@ pub fn contract_arb() -> impl Strategy<Value = Contract> {
         )
 }
 
+pub fn system_entity_type_arb() -> impl Strategy<Value = SystemEntityType> {
+    prop_oneof![
+        Just(SystemEntityType::Mint),
+        Just(SystemEntityType::HandlePayment),
+        Just(SystemEntityType::StandardPayment),
+        Just(SystemEntityType::Auction),
+    ]
+}
+
+pub fn transaction_runtime_arb() -> impl Strategy<Value = TransactionRuntime> {
+    prop_oneof![
+        Just(TransactionRuntime::VmCasperV1),
+        Just(TransactionRuntime::VmCasperV2),
+    ]
+}
+
+pub fn entity_kind_arb() -> impl Strategy<Value = EntityKind> {
+    prop_oneof![
+        system_entity_type_arb().prop_map(EntityKind::System),
+        account_hash_arb().prop_map(EntityKind::Account),
+        transaction_runtime_arb().prop_map(EntityKind::SmartContract),
+    ]
+}
+
 pub fn addressable_entity_arb() -> impl Strategy<Value = AddressableEntity> {
     (
         protocol_version_arb(),
-        entry_points_arb(),
         u8_slice_32(),
         u8_slice_32(),
-        named_keys_arb(20),
         uref_arb(),
         associated_keys_arb(),
         action_thresholds_arb(),
+        message_topics_arb(),
+        entity_kind_arb(),
     )
         .prop_map(
             |(
                 protocol_version,
-                entry_points,
                 contract_package_hash_arb,
                 contract_wasm_hash,
-                named_keys,
                 main_purse,
                 associated_keys,
                 action_thresholds,
+                message_topics,
+                entity_kind,
             )| {
                 AddressableEntity::new(
                     contract_package_hash_arb.into(),
                     contract_wasm_hash.into(),
-                    named_keys,
-                    entry_points,
                     protocol_version,
                     main_purse,
                     associated_keys,
                     action_thresholds,
+                    message_topics,
+                    entity_kind,
                 )
             },
         )
 }
 
-pub fn contract_wasm_arb() -> impl Strategy<Value = ContractWasm> {
-    collection::vec(any::<u8>(), 1..1000).prop_map(ContractWasm::new)
+pub fn byte_code_arb() -> impl Strategy<Value = ByteCode> {
+    collection::vec(any::<u8>(), 1..1000)
+        .prop_map(|byte_code| ByteCode::new(ByteCodeKind::V1CasperWasm, byte_code))
 }
 
 pub fn contract_version_key_arb() -> impl Strategy<Value = ContractVersionKey> {
     (1..32u32, 1..1000u32)
         .prop_map(|(major, contract_ver)| ContractVersionKey::new(major, contract_ver))
+}
+
+pub fn entity_version_key_arb() -> impl Strategy<Value = EntityVersionKey> {
+    (1..32u32, 1..1000u32)
+        .prop_map(|(major, contract_ver)| EntityVersionKey::new(major, contract_ver))
 }
 
 pub fn contract_versions_arb() -> impl Strategy<Value = ContractVersions> {
@@ -438,10 +578,22 @@ pub fn contract_versions_arb() -> impl Strategy<Value = ContractVersions> {
         u8_slice_32().prop_map(ContractHash::new),
         1..5,
     )
-    .prop_map(ContractVersions::from)
 }
 
-pub fn disabled_versions_arb() -> impl Strategy<Value = BTreeSet<ContractVersionKey>> {
+pub fn entity_versions_arb() -> impl Strategy<Value = EntityVersions> {
+    collection::btree_map(
+        entity_version_key_arb(),
+        u8_slice_32().prop_map(AddressableEntityHash::new),
+        1..5,
+    )
+    .prop_map(EntityVersions::from)
+}
+
+pub fn disabled_versions_arb() -> impl Strategy<Value = BTreeSet<EntityVersionKey>> {
+    collection::btree_set(entity_version_key_arb(), 0..5)
+}
+
+pub fn disabled_contract_versions_arb() -> impl Strategy<Value = BTreeSet<ContractVersionKey>> {
     collection::btree_set(contract_version_key_arb(), 0..5)
 }
 
@@ -450,23 +602,17 @@ pub fn groups_arb() -> impl Strategy<Value = Groups> {
         .prop_map(Groups::from)
 }
 
-pub fn contract_package_arb() -> impl Strategy<Value = Package> {
-    (
-        uref_arb(),
-        contract_versions_arb(),
-        disabled_versions_arb(),
-        groups_arb(),
-    )
-        .prop_map(|(access_key, versions, disabled_versions, groups)| {
+pub fn package_arb() -> impl Strategy<Value = Package> {
+    (entity_versions_arb(), disabled_versions_arb(), groups_arb()).prop_map(
+        |(versions, disabled_versions, groups)| {
             Package::new(
-                access_key,
                 versions,
                 disabled_versions,
                 groups,
-                ContractPackageStatus::default(),
-                ContractPackageKind::default(),
+                PackageStatus::default(),
             )
-        })
+        },
+    )
 }
 
 pub(crate) fn delegator_arb() -> impl Strategy<Value = Delegator> {
@@ -620,39 +766,114 @@ fn unbondings_arb(size: impl Into<SizeRange>) -> impl Strategy<Value = Vec<Unbon
     collection::vec(unbonding_arb(), size)
 }
 
+fn message_topic_summary_arb() -> impl Strategy<Value = MessageTopicSummary> {
+    (any::<u32>(), any::<u64>()).prop_map(|(message_count, blocktime)| MessageTopicSummary {
+        message_count,
+        blocktime: BlockTime::new(blocktime),
+    })
+}
+
+fn message_summary_arb() -> impl Strategy<Value = MessageChecksum> {
+    u8_slice_32().prop_map(MessageChecksum)
+}
+
+pub fn named_key_value_arb() -> impl Strategy<Value = NamedKeyValue> {
+    (key_arb(), "test").prop_map(|(key, string)| {
+        let cl_key = CLValue::from_t(key).unwrap();
+        let cl_string = CLValue::from_t(string).unwrap();
+        NamedKeyValue::new(cl_key, cl_string)
+    })
+}
+
 pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
     prop_oneof![
         cl_value_arb().prop_map(StoredValue::CLValue),
         account_arb().prop_map(StoredValue::Account),
-        contract_wasm_arb().prop_map(StoredValue::ContractWasm),
+        byte_code_arb().prop_map(StoredValue::ByteCode),
         contract_arb().prop_map(StoredValue::Contract),
-        addressable_entity_arb().prop_map(StoredValue::AddressableEntity),
         contract_package_arb().prop_map(StoredValue::ContractPackage),
-        transfer_arb().prop_map(StoredValue::Transfer),
+        addressable_entity_arb().prop_map(StoredValue::AddressableEntity),
+        package_arb().prop_map(StoredValue::Package),
+        transfer_v1_arb().prop_map(StoredValue::LegacyTransfer),
         deploy_info_arb().prop_map(StoredValue::DeployInfo),
         era_info_arb(1..10).prop_map(StoredValue::EraInfo),
         unified_bid_arb(0..3).prop_map(StoredValue::BidKind),
         validator_bid_arb().prop_map(StoredValue::BidKind),
         delegator_bid_arb().prop_map(StoredValue::BidKind),
         withdraws_arb(1..50).prop_map(StoredValue::Withdraw),
-        unbondings_arb(1..50).prop_map(StoredValue::Unbonding)
+        unbondings_arb(1..50).prop_map(StoredValue::Unbonding),
+        message_topic_summary_arb().prop_map(StoredValue::MessageTopic),
+        message_summary_arb().prop_map(StoredValue::Message),
+        named_key_value_arb().prop_map(StoredValue::NamedKey),
     ]
     .prop_map(|stored_value|
-        // The following match statement is here only to make sure
-        // we don't forget to update the generator when a new variant is added.
-        match stored_value {
-            StoredValue::CLValue(_) => stored_value,
-            StoredValue::Account(_) => stored_value,
-            StoredValue::ContractWasm(_) => stored_value,
-            StoredValue::Contract(_) => stored_value,
-            StoredValue::ContractPackage(_) => stored_value,
-            StoredValue::Transfer(_) => stored_value,
-            StoredValue::DeployInfo(_) => stored_value,
-            StoredValue::EraInfo(_) => stored_value,
-            StoredValue::Bid(_) => stored_value,
-            StoredValue::Withdraw(_) => stored_value,
-            StoredValue::Unbonding(_) => stored_value,
-            StoredValue::AddressableEntity(_) => stored_value,
-            StoredValue::BidKind(_) => stored_value,
+            // The following match statement is here only to make sure
+            // we don't forget to update the generator when a new variant is added.
+            match stored_value {
+                StoredValue::CLValue(_) => stored_value,
+                StoredValue::Account(_) => stored_value,
+                StoredValue::ContractWasm(_) => stored_value,
+                StoredValue::Contract(_) => stored_value,
+                StoredValue::ContractPackage(_) => stored_value,
+                StoredValue::LegacyTransfer(_) => stored_value,
+                StoredValue::DeployInfo(_) => stored_value,
+                StoredValue::EraInfo(_) => stored_value,
+                StoredValue::Bid(_) => stored_value,
+                StoredValue::Withdraw(_) => stored_value,
+                StoredValue::Unbonding(_) => stored_value,
+                StoredValue::AddressableEntity(_) => stored_value,
+                StoredValue::BidKind(_) => stored_value,
+                StoredValue::Package(_) => stored_value,
+                StoredValue::ByteCode(_) => stored_value,
+                StoredValue::MessageTopic(_) => stored_value,
+                StoredValue::Message(_) => stored_value,
+                StoredValue::NamedKey(_) => stored_value,
+                StoredValue::Reservation(_) => stored_value,
+                StoredValue::EntryPoint(_) => stored_value,
+            })
+}
+
+pub fn blake2b_hash_arb() -> impl Strategy<Value = Digest> {
+    vec(any::<u8>(), 0..1000).prop_map(Digest::hash)
+}
+
+pub fn trie_pointer_arb() -> impl Strategy<Value = Pointer> {
+    prop_oneof![
+        blake2b_hash_arb().prop_map(Pointer::LeafPointer),
+        blake2b_hash_arb().prop_map(Pointer::NodePointer)
+    ]
+}
+
+pub fn trie_merkle_proof_step_arb() -> impl Strategy<Value = TrieMerkleProofStep> {
+    const POINTERS_SIZE: usize = 32;
+    const AFFIX_SIZE: usize = 6;
+
+    prop_oneof![
+        (
+            <u8>::arbitrary(),
+            vec((<u8>::arbitrary(), trie_pointer_arb()), POINTERS_SIZE)
+        )
+            .prop_map(|(hole_index, indexed_pointers_with_hole)| {
+                TrieMerkleProofStep::Node {
+                    hole_index,
+                    indexed_pointers_with_hole,
+                }
+            }),
+        vec(<u8>::arbitrary(), AFFIX_SIZE).prop_map(|affix| {
+            TrieMerkleProofStep::Extension {
+                affix: affix.into(),
+            }
         })
+    ]
+}
+
+pub fn trie_merkle_proof_arb() -> impl Strategy<Value = TrieMerkleProof<Key, StoredValue>> {
+    const STEPS_SIZE: usize = 6;
+
+    (
+        key_arb(),
+        stored_value_arb(),
+        vec(trie_merkle_proof_step_arb(), STEPS_SIZE),
+    )
+        .prop_map(|(key, value, proof_steps)| TrieMerkleProof::new(key, value, proof_steps.into()))
 }

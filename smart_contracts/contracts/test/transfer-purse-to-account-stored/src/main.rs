@@ -9,7 +9,7 @@ use casper_contract::contract_api::{runtime, storage};
 
 use casper_types::{
     addressable_entity::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Parameter},
-    CLType,
+    CLType, EntryPointPayment, Key,
 };
 
 const ENTRY_FUNCTION_NAME: &str = "transfer";
@@ -38,7 +38,8 @@ pub extern "C" fn call() {
             ],
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Session,
+            EntryPointType::Caller,
+            EntryPointPayment::Caller,
         );
         entry_points.add_entry_point(entry_point);
         entry_points
@@ -49,7 +50,8 @@ pub extern "C" fn call() {
         None,
         Some(PACKAGE_HASH_KEY_NAME.to_string()),
         Some(ACCESS_KEY_NAME.to_string()),
+        None,
     );
     runtime::put_key(CONTRACT_VERSION, storage::new_uref(contract_version).into());
-    runtime::put_key(HASH_KEY_NAME, contract_hash.into());
+    runtime::put_key(HASH_KEY_NAME, Key::contract_entity_key(contract_hash));
 }

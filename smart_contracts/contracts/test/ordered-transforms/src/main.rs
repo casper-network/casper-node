@@ -3,6 +3,7 @@
 
 #[macro_use]
 extern crate alloc;
+
 use alloc::{string::ToString, vec::Vec};
 
 use casper_contract::{
@@ -10,8 +11,8 @@ use casper_contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    addressable_entity::NamedKeys, CLType, CLTyped, EntryPoint, EntryPointAccess, EntryPointType,
-    EntryPoints, Key, Parameter, URef,
+    addressable_entity::NamedKeys, CLType, CLTyped, EntryPoint, EntryPointAccess,
+    EntryPointPayment, EntryPointType, EntryPoints, Key, Parameter, URef,
 };
 
 #[no_mangle]
@@ -25,7 +26,8 @@ pub extern "C" fn call() {
         )],
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::Called,
+        EntryPointPayment::Caller,
     ));
 
     let n: u32 = runtime::get_named_arg("n");
@@ -36,8 +38,11 @@ pub extern "C" fn call() {
     named_keys.insert("n-urefs".to_string(), Key::URef(storage::new_uref(n)));
 
     let (contract_hash, _contract_version) =
-        storage::new_locked_contract(entry_points, Some(named_keys), None, None);
-    runtime::put_key("ordered-transforms-contract-hash", contract_hash.into());
+        storage::new_locked_contract(entry_points, Some(named_keys), None, None, None);
+    runtime::put_key(
+        "ordered-transforms-contract-hash",
+        Key::contract_entity_key(contract_hash),
+    );
 }
 
 #[no_mangle]

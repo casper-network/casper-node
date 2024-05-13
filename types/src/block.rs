@@ -1,18 +1,25 @@
+mod available_block_range;
 mod block_body;
+mod block_global;
 mod block_hash;
 mod block_hash_and_height;
 mod block_header;
+mod block_identifier;
 mod block_signatures;
+mod block_sync_status;
 mod block_v1;
 mod block_v2;
+mod chain_name_digest;
 mod era_end;
-mod era_report;
 mod finality_signature;
 mod finality_signature_id;
 mod json_compatibility;
+mod rewarded_signatures;
+mod rewards;
+mod signed_block;
 mod signed_block_header;
-#[cfg(any(feature = "testing", test))]
-pub mod test_block_builder;
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
+mod test_block_builder;
 
 use alloc::{boxed::Box, vec::Vec};
 use core::fmt::{self, Display, Formatter};
@@ -23,41 +30,52 @@ use std::error::Error as StdError;
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+#[cfg(feature = "std")]
+use num_rational::Ratio;
 
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
-#[cfg(any(feature = "std", test))]
-use serde::{Deserialize, Serialize};
+
+#[cfg(feature = "std")]
+use crate::TransactionConfig;
 
 use crate::{
     bytesrepr,
     bytesrepr::{FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    DeployHash, Digest, EraId, ProtocolVersion, Timestamp,
+    Digest, EraId, ProtocolVersion, PublicKey, Timestamp,
 };
-
+pub use available_block_range::AvailableBlockRange;
 pub use block_body::{BlockBody, BlockBodyV1, BlockBodyV2};
+pub use block_global::{BlockGlobalAddr, BlockGlobalAddrTag};
 pub use block_hash::BlockHash;
 pub use block_hash_and_height::BlockHashAndHeight;
-pub use block_header::BlockHeader;
-pub use block_signatures::{BlockSignatures, BlockSignaturesMergeError};
+pub use block_header::{BlockHeader, BlockHeaderV1, BlockHeaderV2};
+pub use block_identifier::BlockIdentifier;
+pub use block_signatures::{
+    BlockSignatures, BlockSignaturesMergeError, BlockSignaturesV1, BlockSignaturesV2,
+};
+pub use block_sync_status::{BlockSyncStatus, BlockSynchronizerStatus};
 pub use block_v1::BlockV1;
 pub use block_v2::BlockV2;
-pub use era_end::EraEnd;
-pub use era_report::EraReport;
-pub use finality_signature::FinalitySignature;
+pub use chain_name_digest::ChainNameDigest;
+pub use era_end::{EraEnd, EraEndV1, EraEndV2, EraReport};
+pub use finality_signature::{FinalitySignature, FinalitySignatureV1, FinalitySignatureV2};
 pub use finality_signature_id::FinalitySignatureId;
 #[cfg(all(feature = "std", feature = "json-schema"))]
 pub use json_compatibility::JsonBlockWithSignatures;
+pub use rewarded_signatures::{RewardedSignatures, SingleBlockRewardedSignatures};
+pub use rewards::Rewards;
+pub use signed_block::SignedBlock;
 pub use signed_block_header::{SignedBlockHeader, SignedBlockHeaderValidationError};
-#[cfg(any(feature = "testing", test))]
-pub use test_block_builder::{FromTestBlockBuilder, TestBlockBuilder};
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
+pub use test_block_builder::{TestBlockBuilder, TestBlockV1Builder};
 
 #[cfg(feature = "json-schema")]
 static BLOCK: Lazy<Block> = Lazy::new(|| BlockV2::example().into());
 
 /// An error that can arise when validating a block's cryptographic integrity using its hashes.
 #[derive(Clone, Eq, PartialEq, Debug)]
-#[cfg_attr(any(feature = "std", test), derive(Serialize))]
+#[cfg_attr(any(feature = "std", test), derive(serde::Serialize))]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[non_exhaustive]
 pub enum BlockValidationError {
@@ -77,6 +95,8 @@ pub enum BlockValidationError {
         /// The actual hash of the block's body.
         actual_block_body_hash: Digest,
     },
+    /// The header version does not match the body version.
+    IncompatibleVersions,
 }
 
 impl Display for BlockValidationError {
@@ -105,6 +125,9 @@ impl Display for BlockValidationError {
                     actual_block_body_hash, block
                 )
             }
+            BlockValidationError::IncompatibleVersions => {
+                write!(formatter, "block body and header versions do not match")
+            }
         }
     }
 }
@@ -121,7 +144,8 @@ impl StdError for BlockValidationError {
         match self {
             BlockValidationError::Bytesrepr(error) => Some(error),
             BlockValidationError::UnexpectedBlockHash { .. }
-            | BlockValidationError::UnexpectedBodyHash { .. } => None,
+            | BlockValidationError::UnexpectedBodyHash { .. }
+            | BlockValidationError::IncompatibleVersions => None,
         }
     }
 }
@@ -157,7 +181,7 @@ const BLOCK_V2_TAG: u8 = 1;
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(
     any(feature = "std", feature = "json-schema", test),
-    derive(Serialize, Deserialize)
+    derive(serde::Serialize, serde::Deserialize)
 )]
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
@@ -180,40 +204,37 @@ impl Block {
     // This method is not intended to be used by third party crates.
     #[doc(hidden)]
     pub fn new_from_header_and_body(
-        header: BlockHeader,
+        block_header: BlockHeader,
         block_body: BlockBody,
     ) -> Result<Self, Box<BlockValidationError>> {
-        let hash = header.block_hash();
-        let block = match block_body {
-            BlockBody::V1(v1) => Block::V1(BlockV1 {
-                hash,
-                header,
-                body: v1,
-            }),
-            BlockBody::V2(v2) => Block::V2(BlockV2 {
-                hash,
-                header,
-                body: v2,
-            }),
-        };
+        let hash = block_header.block_hash();
+        let block = match (block_body, block_header) {
+            (BlockBody::V1(body), BlockHeader::V1(header)) => {
+                Ok(Block::V1(BlockV1 { hash, header, body }))
+            }
+            (BlockBody::V2(body), BlockHeader::V2(header)) => {
+                Ok(Block::V2(BlockV2 { hash, header, body }))
+            }
+            _ => Err(BlockValidationError::IncompatibleVersions),
+        }?;
 
         block.verify()?;
         Ok(block)
     }
 
-    /// Returns the reference to the header.    
-    pub fn header(&self) -> &BlockHeader {
+    /// Clones the header, put it in the versioning enum, and returns it.
+    pub fn clone_header(&self) -> BlockHeader {
         match self {
-            Block::V1(v1) => v1.header(),
-            Block::V2(v2) => v2.header(),
+            Block::V1(v1) => BlockHeader::V1(v1.header().clone()),
+            Block::V2(v2) => BlockHeader::V2(v2.header().clone()),
         }
     }
 
     /// Returns the block's header, consuming `self`.
     pub fn take_header(self) -> BlockHeader {
         match self {
-            Block::V1(v1) => v1.take_header(),
-            Block::V2(v2) => v2.take_header(),
+            Block::V1(v1) => BlockHeader::V1(v1.take_header()),
+            Block::V2(v2) => BlockHeader::V2(v2.take_header()),
         }
     }
 
@@ -257,6 +278,14 @@ impl Block {
         }
     }
 
+    /// Returns a seed needed for initializing a future era.
+    pub fn accumulated_seed(&self) -> &Digest {
+        match self {
+            Block::V1(v1) => v1.accumulated_seed(),
+            Block::V2(v2) => v2.accumulated_seed(),
+        }
+    }
+
     /// Returns the parent block's hash.
     pub fn parent_hash(&self) -> &BlockHash {
         match self {
@@ -265,11 +294,27 @@ impl Block {
         }
     }
 
-    /// The block body.
-    pub fn body(&self) -> BlockBody {
+    /// Returns the public key of the validator which proposed the block.
+    pub fn proposer(&self) -> &PublicKey {
+        match self {
+            Block::V1(v1) => v1.proposer(),
+            Block::V2(v2) => v2.proposer(),
+        }
+    }
+
+    /// Clone the body and wrap is up in the versioned `Body`.
+    pub fn clone_body(&self) -> BlockBody {
         match self {
             Block::V1(v1) => BlockBody::V1(v1.body().clone()),
             Block::V2(v2) => BlockBody::V2(v2.body().clone()),
+        }
+    }
+
+    /// Returns the block's body, consuming `self`.
+    pub fn take_body(self) -> BlockBody {
+        match self {
+            Block::V1(v1) => BlockBody::V1(v1.take_body()),
+            Block::V2(v2) => BlockBody::V2(v2.take_body()),
         }
     }
 
@@ -289,14 +334,6 @@ impl Block {
         }
     }
 
-    /// Returns the deploy hashes within the block.
-    pub fn deploy_hashes(&self) -> &[DeployHash] {
-        match self {
-            Block::V1(v1) => v1.body.deploy_hashes(),
-            Block::V2(v2) => v2.body.deploy_hashes(),
-        }
-    }
-
     /// Returns the era ID in which this block was created.
     pub fn era_id(&self) -> EraId {
         match self {
@@ -305,11 +342,11 @@ impl Block {
         }
     }
 
-    /// Returns the `EraEnd` of a block if it is a switch block.
-    pub fn era_end(&self) -> Option<&EraEnd> {
+    /// Clones the era end, put it in the versioning enum, and returns it.
+    pub fn clone_era_end(&self) -> Option<EraEnd> {
         match self {
-            Block::V1(v1) => v1.header().era_end(),
-            Block::V2(v2) => v2.header().era_end(),
+            Block::V1(v1) => v1.header().era_end().cloned().map(EraEnd::V1),
+            Block::V2(v2) => v2.header().era_end().cloned().map(EraEnd::V2),
         }
     }
 
@@ -321,19 +358,12 @@ impl Block {
         }
     }
 
-    /// Returns the transfer hashes within the block.
-    pub fn transfer_hashes(&self) -> &[DeployHash] {
+    /// Returns `true` if this block is the first block of the chain, the genesis block.
+    pub fn is_genesis(&self) -> bool {
         match self {
-            Block::V1(v1) => v1.body.transfer_hashes(),
-            Block::V2(v2) => v2.body.transfer_hashes(),
+            Block::V1(v1) => v1.header.is_genesis(),
+            Block::V2(v2) => v2.header.is_genesis(),
         }
-    }
-
-    /// Returns the deploy and transfer hashes in the order in which they were executed.
-    pub fn deploy_and_transfer_hashes(&self) -> impl Iterator<Item = &DeployHash> {
-        self.deploy_hashes()
-            .iter()
-            .chain(self.transfer_hashes().iter())
     }
 
     /// Returns the root hash of global state after the deploys in this block have been executed.
@@ -341,6 +371,75 @@ impl Block {
         match self {
             Block::V1(v1) => v1.header.state_root_hash(),
             Block::V2(v2) => v2.header.state_root_hash(),
+        }
+    }
+
+    /// List of identifiers for finality signatures for a particular past block.
+    pub fn rewarded_signatures(&self) -> &RewardedSignatures {
+        match self {
+            Block::V1(_v1) => &rewarded_signatures::EMPTY,
+            Block::V2(v2) => v2.body.rewarded_signatures(),
+        }
+    }
+
+    /// Return the gas price for V2 block header.
+    pub fn maybe_current_gas_price(&self) -> Option<u8> {
+        match self {
+            Block::V1(_) => None,
+            Block::V2(v2) => Some(v2.header().current_gas_price()),
+        }
+    }
+
+    /// Returns the count of transactions within a block.
+    pub fn transaction_count(&self) -> u64 {
+        match self {
+            Block::V1(block) => {
+                (block.body.deploy_hashes().len() + block.body.transfer_hashes().len()) as u64
+            }
+            Block::V2(block_v2) => block_v2.all_transactions().count() as u64,
+        }
+    }
+
+    /// Returns the utilization of the block against a given chainspec.
+    #[cfg(feature = "std")]
+    pub fn block_utilization(&self, transaction_config: TransactionConfig) -> u64 {
+        match self {
+            Block::V1(_) => {
+                // We shouldnt be tracking this for legacy blocks
+                0
+            }
+            Block::V2(block_v2) => {
+                let has_hit_slot_limt = self.has_hit_slot_capacity(transaction_config);
+                let per_block_capacity = (transaction_config.block_max_mint_count
+                    + transaction_config.block_max_auction_count
+                    + transaction_config.block_max_standard_count
+                    + transaction_config.block_max_install_upgrade_count)
+                    as u64;
+
+                if has_hit_slot_limt {
+                    100u64
+                } else {
+                    let num = block_v2.all_transactions().count() as u64;
+                    Ratio::new(num * 100, per_block_capacity).to_integer()
+                }
+            }
+        }
+    }
+
+    /// Returns true if the block has reached capacity in any of its transaction limit.
+    #[cfg(feature = "std")]
+    pub fn has_hit_slot_capacity(&self, transaction_config: TransactionConfig) -> bool {
+        match self {
+            Block::V1(_) => false,
+            Block::V2(block_v2) => {
+                (block_v2.mint().count() as u32 >= transaction_config.block_max_mint_count)
+                    || (block_v2.auction().count() as u32
+                        >= transaction_config.block_max_auction_count)
+                    || (block_v2.standard().count() as u32
+                        >= transaction_config.block_max_standard_count)
+                    || (block_v2.install_upgrade().count() as u32
+                        >= transaction_config.block_max_install_upgrade_count)
+            }
         }
     }
 
@@ -368,7 +467,7 @@ impl Display for Block {
             self.random_bit(),
             self.protocol_version()
         )?;
-        if let Some(era_end) = self.era_end() {
+        if let Some(era_end) = self.clone_era_end() {
             write!(formatter, ", era_end: {}", era_end)?;
         }
         Ok(())
@@ -457,7 +556,7 @@ mod tests {
     #[test]
     fn bytesrepr_roundtrip() {
         let rng = &mut TestRng::new();
-        let block_v1 = BlockV1::build_for_test(TestBlockBuilder::new(), rng);
+        let block_v1 = TestBlockV1Builder::new().build(rng);
         let block = Block::V1(block_v1);
         bytesrepr::test_serialization_roundtrip(&block);
 

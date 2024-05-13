@@ -20,7 +20,39 @@ use crate::{
     ProtocolVersion, PublicKey, TimeDiff,
 };
 
-use super::{fee_handling::FeeHandling, refund_handling::RefundHandling};
+use super::{
+    fee_handling::FeeHandling, hold_balance_handling::HoldBalanceHandling,
+    pricing_handling::PricingHandling, refund_handling::RefundHandling,
+};
+
+/// Default value for maximum associated keys configuration option.
+pub const DEFAULT_MAX_ASSOCIATED_KEYS: u32 = 100;
+
+/// Default value for maximum runtime call stack height configuration option.
+pub const DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT: u32 = 12;
+
+/// Default refund handling.
+pub const DEFAULT_REFUND_HANDLING: RefundHandling = RefundHandling::NoRefund;
+
+/// Default pricing handling.
+pub const DEFAULT_PRICING_HANDLING: PricingHandling = PricingHandling::Fixed;
+
+/// Default fee handling.
+pub const DEFAULT_FEE_HANDLING: FeeHandling = FeeHandling::NoFee;
+
+/// Default allow reservations.
+pub const DEFAULT_ALLOW_RESERVATIONS: bool = false;
+
+/// Default processing hold balance handling.
+#[allow(unused)]
+pub const DEFAULT_PROCESSING_HOLD_BALANCE_HANDLING: HoldBalanceHandling =
+    HoldBalanceHandling::Accrued;
+
+/// Default gas hold balance handling.
+pub const DEFAULT_GAS_HOLD_BALANCE_HANDLING: HoldBalanceHandling = HoldBalanceHandling::Amortized;
+
+/// Default gas hold interval.
+pub const DEFAULT_GAS_HOLD_INTERVAL: TimeDiff = TimeDiff::from_seconds(24 * 60 * 60);
 
 /// Configuration values associated with the core protocol.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
@@ -53,6 +85,16 @@ pub struct CoreConfig {
     /// `start_protocol_version_with_strict_finality_signatures_required`.
     pub legacy_required_finality: LegacyRequiredFinality,
 
+    /// If true, the protocol upgrade will migrate ALL userland accounts to addressable entity.
+    /// If false, userland accounts will instead be left as is and will be lazily migrated
+    ///    on a per-account basis if / when that account is used during transaction execution.
+    pub migrate_legacy_accounts: bool,
+
+    /// If true, the protocol upgrade will migrate ALL userland contracts to addressable entity.
+    /// If false, userland contracts will instead be left as is and will be lazily migrated
+    ///    on a per-contract basis if / when that contract is used during transaction execution.
+    pub migrate_legacy_contracts: bool,
+
     /// Number of eras before an auction actually defines the set of validators.
     /// If you bond with a sufficient bid in era N, you will be a validator in era N +
     /// auction_delay + 1
@@ -64,7 +106,7 @@ pub struct CoreConfig {
     /// The period in which genesis validator's bid is released over time after it's unlocked.
     pub vesting_schedule_period: TimeDiff,
 
-    /// The delay in number of eras for paying out the the unbonding amount.
+    /// The delay in number of eras for paying out the unbonding amount.
     pub unbonding_delay: u64,
 
     /// Round seigniorage rate represented as a fractional number.
@@ -105,7 +147,7 @@ pub struct CoreConfig {
     pub finality_signature_proportion: Ratio<u64>,
 
     /// Lookback interval indicating which past block we are looking at to reward.
-    pub rewards_lag: u64,
+    pub signature_rewards_max_delay: u64,
     /// Auction entrypoints such as "add_bid" or "delegate" are disabled if this flag is set to
     /// `false`. Setting up this option makes sense only for private chains where validator set
     /// rotation is unnecessary.
@@ -114,14 +156,22 @@ pub struct CoreConfig {
     pub allow_unrestricted_transfers: bool,
     /// If set to false then consensus doesn't compute rewards and always uses 0.
     pub compute_rewards: bool,
-    /// Administrative accounts are valid option for for a private chain only.
-    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
-    pub administrators: BTreeSet<PublicKey>,
     /// Refund handling.
     #[cfg_attr(feature = "datasize", data_size(skip))]
     pub refund_handling: RefundHandling,
     /// Fee handling.
     pub fee_handling: FeeHandling,
+    /// Pricing handling.
+    pub pricing_handling: PricingHandling,
+    /// Allow reservations.
+    pub allow_reservations: bool,
+    /// How do gas holds affect available balance calculations?
+    pub gas_hold_balance_handling: HoldBalanceHandling,
+    /// How long does it take for a gas hold to expire?
+    pub gas_hold_interval: TimeDiff,
+    /// Administrative accounts are a valid option for a private chain only.
+    //#[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub administrators: BTreeSet<PublicKey>,
 }
 
 impl CoreConfig {
@@ -129,6 +179,22 @@ impl CoreConfig {
     pub fn recent_era_count(&self) -> u64 {
         // Safe to use naked `-` operation assuming `CoreConfig::is_valid()` has been checked.
         self.unbonding_delay - self.auction_delay
+    }
+
+    /// The proportion of the total rewards going to block production.
+    pub fn production_rewards_proportion(&self) -> Ratio<u64> {
+        Ratio::new(1, 1) - self.finality_signature_proportion
+    }
+
+    /// The finder's fee, *i.e.* the proportion of the total rewards going to the validator
+    /// collecting the finality signatures which is the validator producing the block.
+    pub fn collection_rewards_proportion(&self) -> Ratio<u64> {
+        self.finders_fee * self.finality_signature_proportion
+    }
+
+    /// The proportion of the total rewards going to finality signatures collection.
+    pub fn contribution_rewards_proportion(&self) -> Ratio<u64> {
+        (Ratio::new(1, 1) - self.finders_fee) * self.finality_signature_proportion
     }
 }
 
@@ -161,7 +227,7 @@ impl CoreConfig {
         let consensus_protocol = rng.gen();
         let finders_fee = Ratio::new(rng.gen_range(1..100), 100);
         let finality_signature_proportion = Ratio::new(rng.gen_range(1..100), 100);
-        let rewards_lag = rng.gen_range(1..10);
+        let signature_rewards_max_delay = rng.gen_range(1..10);
         let allow_auction_bids = rng.gen();
         let allow_unrestricted_transfers = rng.gen();
         let compute_rewards = rng.gen();
@@ -174,11 +240,30 @@ impl CoreConfig {
             RefundHandling::Refund { refund_ratio }
         };
 
+        let pricing_handling = if rng.gen() {
+            PricingHandling::Classic
+        } else {
+            PricingHandling::Fixed
+        };
+
+        let allow_reservations = DEFAULT_ALLOW_RESERVATIONS;
+
         let fee_handling = if rng.gen() {
             FeeHandling::PayToProposer
         } else {
-            FeeHandling::Accumulate
+            FeeHandling::NoFee
         };
+
+        let gas_hold_balance_handling = if rng.gen() {
+            HoldBalanceHandling::Accrued
+        } else {
+            HoldBalanceHandling::Amortized
+        };
+
+        let gas_hold_interval = TimeDiff::from_seconds(rng.gen_range(600..604_800));
+
+        let migrate_legacy_accounts = false;
+        let migrate_legacy_contracts = false;
 
         CoreConfig {
             era_duration,
@@ -203,13 +288,62 @@ impl CoreConfig {
             max_delegators_per_validator: 0,
             finders_fee,
             finality_signature_proportion,
-            rewards_lag,
+            signature_rewards_max_delay,
             allow_auction_bids,
             administrators,
             allow_unrestricted_transfers,
             compute_rewards,
             refund_handling,
+            pricing_handling,
+            allow_reservations,
             fee_handling,
+            gas_hold_balance_handling,
+            gas_hold_interval,
+            migrate_legacy_accounts,
+            migrate_legacy_contracts,
+        }
+    }
+}
+
+impl Default for CoreConfig {
+    fn default() -> Self {
+        Self {
+            era_duration: TimeDiff::from_seconds(41),
+            minimum_era_height: 5,
+            minimum_block_time: TimeDiff::from_millis(4096),
+            validator_slots: 7,
+            finality_threshold_fraction: Ratio::new(1, 3),
+            start_protocol_version_with_strict_finality_signatures_required:
+                ProtocolVersion::from_parts(1, 5, 0),
+            legacy_required_finality: LegacyRequiredFinality::Weak,
+            auction_delay: 1,
+            locked_funds_period: Default::default(),
+            vesting_schedule_period: Default::default(),
+            unbonding_delay: 7,
+            round_seigniorage_rate: Ratio::new(1, 4_200_000_000_000_000_000),
+            max_associated_keys: DEFAULT_MAX_ASSOCIATED_KEYS,
+            max_runtime_call_stack_height: DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
+            minimum_delegation_amount: 500_000_000_000,
+            prune_batch_size: 0,
+            strict_argument_checking: false,
+            simultaneous_peer_requests: 5,
+            consensus_protocol: ConsensusProtocolName::Zug,
+            max_delegators_per_validator: 1200,
+            finders_fee: Ratio::new(1, 5),
+            finality_signature_proportion: Ratio::new(1, 2),
+            signature_rewards_max_delay: 3,
+            allow_auction_bids: true,
+            allow_unrestricted_transfers: true,
+            compute_rewards: true,
+            administrators: Default::default(),
+            refund_handling: DEFAULT_REFUND_HANDLING,
+            pricing_handling: DEFAULT_PRICING_HANDLING,
+            fee_handling: DEFAULT_FEE_HANDLING,
+            allow_reservations: DEFAULT_ALLOW_RESERVATIONS,
+            gas_hold_balance_handling: DEFAULT_GAS_HOLD_BALANCE_HANDLING,
+            gas_hold_interval: DEFAULT_GAS_HOLD_INTERVAL,
+            migrate_legacy_accounts: false,
+            migrate_legacy_contracts: false,
         }
     }
 }
@@ -242,13 +376,19 @@ impl ToBytes for CoreConfig {
         buffer.extend(self.max_delegators_per_validator.to_bytes()?);
         buffer.extend(self.finders_fee.to_bytes()?);
         buffer.extend(self.finality_signature_proportion.to_bytes()?);
-        buffer.extend(self.rewards_lag.to_bytes()?);
+        buffer.extend(self.signature_rewards_max_delay.to_bytes()?);
         buffer.extend(self.allow_auction_bids.to_bytes()?);
         buffer.extend(self.allow_unrestricted_transfers.to_bytes()?);
         buffer.extend(self.compute_rewards.to_bytes()?);
         buffer.extend(self.administrators.to_bytes()?);
         buffer.extend(self.refund_handling.to_bytes()?);
+        buffer.extend(self.pricing_handling.to_bytes()?);
         buffer.extend(self.fee_handling.to_bytes()?);
+        buffer.extend(self.allow_reservations.to_bytes()?);
+        buffer.extend(self.gas_hold_balance_handling.to_bytes()?);
+        buffer.extend(self.gas_hold_interval.to_bytes()?);
+        buffer.extend(self.migrate_legacy_accounts.to_bytes()?);
+        buffer.extend(self.migrate_legacy_contracts.to_bytes()?);
         Ok(buffer)
     }
 
@@ -277,13 +417,19 @@ impl ToBytes for CoreConfig {
             + self.max_delegators_per_validator.serialized_length()
             + self.finders_fee.serialized_length()
             + self.finality_signature_proportion.serialized_length()
-            + self.rewards_lag.serialized_length()
+            + self.signature_rewards_max_delay.serialized_length()
             + self.allow_auction_bids.serialized_length()
             + self.allow_unrestricted_transfers.serialized_length()
             + self.compute_rewards.serialized_length()
             + self.administrators.serialized_length()
             + self.refund_handling.serialized_length()
+            + self.pricing_handling.serialized_length()
             + self.fee_handling.serialized_length()
+            + self.allow_reservations.serialized_length()
+            + self.gas_hold_balance_handling.serialized_length()
+            + self.gas_hold_interval.serialized_length()
+            + self.migrate_legacy_accounts.serialized_length()
+            + self.migrate_legacy_contracts.serialized_length()
     }
 }
 
@@ -312,13 +458,19 @@ impl FromBytes for CoreConfig {
         let (max_delegators_per_validator, remainder) = FromBytes::from_bytes(remainder)?;
         let (finders_fee, remainder) = Ratio::from_bytes(remainder)?;
         let (finality_signature_proportion, remainder) = Ratio::from_bytes(remainder)?;
-        let (rewards_lag, remainder) = u64::from_bytes(remainder)?;
+        let (signature_rewards_max_delay, remainder) = u64::from_bytes(remainder)?;
         let (allow_auction_bids, remainder) = FromBytes::from_bytes(remainder)?;
         let (allow_unrestricted_transfers, remainder) = FromBytes::from_bytes(remainder)?;
         let (compute_rewards, remainder) = bool::from_bytes(remainder)?;
         let (administrative_accounts, remainder) = FromBytes::from_bytes(remainder)?;
         let (refund_handling, remainder) = FromBytes::from_bytes(remainder)?;
+        let (pricing_handling, remainder) = FromBytes::from_bytes(remainder)?;
         let (fee_handling, remainder) = FromBytes::from_bytes(remainder)?;
+        let (allow_reservations, remainder) = FromBytes::from_bytes(remainder)?;
+        let (gas_hold_balance_handling, remainder) = FromBytes::from_bytes(remainder)?;
+        let (gas_hold_interval, remainder) = TimeDiff::from_bytes(remainder)?;
+        let (migrate_legacy_accounts, remainder) = FromBytes::from_bytes(remainder)?;
+        let (migrate_legacy_contracts, remainder) = FromBytes::from_bytes(remainder)?;
         let config = CoreConfig {
             era_duration,
             minimum_era_height,
@@ -342,13 +494,19 @@ impl FromBytes for CoreConfig {
             max_delegators_per_validator,
             finders_fee,
             finality_signature_proportion,
-            rewards_lag,
+            signature_rewards_max_delay,
             allow_auction_bids,
             allow_unrestricted_transfers,
             compute_rewards,
             administrators: administrative_accounts,
             refund_handling,
+            pricing_handling,
             fee_handling,
+            allow_reservations,
+            gas_hold_balance_handling,
+            gas_hold_interval,
+            migrate_legacy_accounts,
+            migrate_legacy_contracts,
         };
         Ok((config, remainder))
     }
@@ -362,6 +520,12 @@ pub enum ConsensusProtocolName {
     Highway,
     /// Zug.
     Zug,
+}
+
+impl Default for ConsensusProtocolName {
+    fn default() -> Self {
+        ConsensusProtocolName::Zug
+    }
 }
 
 impl Serialize for ConsensusProtocolName {
@@ -450,6 +614,12 @@ impl Serialize for LegacyRequiredFinality {
             LegacyRequiredFinality::Any => "Any",
         }
         .serialize(serializer)
+    }
+}
+
+impl Default for LegacyRequiredFinality {
+    fn default() -> Self {
+        LegacyRequiredFinality::Any
     }
 }
 

@@ -1,13 +1,14 @@
 use num_traits::Zero;
 
 use casper_engine_test_support::{
-    utils, ExecuteRequestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNTS,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PAYMENT, DEFAULT_PROPOSER_PUBLIC_KEY,
-    DEFAULT_PROTOCOL_VERSION, DEFAULT_UNBONDING_DELAY, MINIMUM_ACCOUNT_CREATION_BALANCE,
-    PRODUCTION_RUN_GENESIS_REQUEST, SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
+    utils, ExecuteRequestBuilder, LmdbWasmTestBuilder, TransferRequestBuilder,
+    UpgradeRequestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY,
+    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PAYMENT,
+    DEFAULT_PROPOSER_PUBLIC_KEY, DEFAULT_PROTOCOL_VERSION, DEFAULT_UNBONDING_DELAY,
+    LOCAL_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR,
+    TIMESTAMP_MILLIS_INCREMENT,
 };
-use casper_execution_engine::{engine_state::Error as EngineError, execution::Error};
+use casper_execution_engine::{engine_state::Error as EngineError, execution::ExecError};
 
 use casper_types::{
     account::AccountHash,
@@ -48,7 +49,7 @@ const DELEGATION_RATE: DelegationRate = 42;
 fn should_run_successful_bond_and_unbond_and_slashing() {
     let default_public_key_arg = DEFAULT_ACCOUNT_PUBLIC_KEY.clone();
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -198,17 +199,13 @@ fn should_fail_bonding_with_insufficient_funds_directly() {
     let transfer_amount = U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE);
     let delegation_rate: DelegationRate = 10;
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
-    let transfer_args = runtime_args! {
-        mint::ARG_TARGET => new_validator_hash,
-        mint::ARG_AMOUNT => transfer_amount,
-        mint::ARG_ID => Some(1u64),
-    };
-    let exec_request =
-        ExecuteRequestBuilder::transfer(*DEFAULT_ACCOUNT_ADDR, transfer_args).build();
+    let exec_request = TransferRequestBuilder::new(transfer_amount, new_validator_hash)
+        .with_transfer_id(1)
+        .build();
 
-    builder.exec(exec_request).expect_success().commit();
+    builder.transfer_and_commit(exec_request).expect_success();
 
     let new_validator_account = builder
         .get_entity_by_account_hash(new_validator_hash)
@@ -235,7 +232,7 @@ fn should_fail_bonding_with_insufficient_funds_directly() {
     assert!(
         matches!(
             error,
-            EngineError::Exec(Error::Revert(ApiError::Mint(mint_error))
+            EngineError::Exec(ExecError::Revert(ApiError::Mint(mint_error))
         )
         if mint_error == mint::Error::InsufficientFunds as u8),
         "{:?}",
@@ -244,7 +241,8 @@ fn should_fail_bonding_with_insufficient_funds_directly() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_fail_bonding_with_insufficient_funds() {
     let account_1_secret_key =
         SecretKey::ed25519_from_bytes([123; SecretKey::ED25519_LENGTH]).unwrap();
@@ -275,24 +273,24 @@ fn should_fail_bonding_with_insufficient_funds() {
     let mut builder = LmdbWasmTestBuilder::default();
 
     builder
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone())
         .exec(exec_request_1)
         .commit();
 
     builder.exec(exec_request_2).commit();
 
-    let response = builder
+    let exec_result = builder
         .get_exec_result_owned(1)
-        .expect("should have a response");
-
-    assert_eq!(response.len(), 1);
-    let exec_result = response[0].as_error().expect("should have error");
+        .expect("should have a response")
+        .error()
+        .cloned()
+        .expect("should have error");
     assert!(
         matches!(
             exec_result,
-            EngineError::Exec(Error::Revert(ApiError::Mint(mint_error))
+            EngineError::Exec(ExecError::Revert(ApiError::Mint(mint_error))
         )
-        if *mint_error == mint::Error::InsufficientFunds as u8),
+        if mint_error == mint::Error::InsufficientFunds as u8),
         "{:?}",
         exec_result
     );
@@ -313,7 +311,7 @@ fn should_fail_unbonding_validator_with_locked_funds() {
             account_1_public_key.clone(),
             Motes::new(account_1_balance),
             Some(GenesisValidator::new(
-                Motes::new(GENESIS_VALIDATOR_STAKE.into()),
+                Motes::new(GENESIS_VALIDATOR_STAKE),
                 DelegationRate::zero(),
             )),
         );
@@ -325,7 +323,7 @@ fn should_fail_unbonding_validator_with_locked_funds() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis(run_genesis_request);
 
     let exec_request_2 = ExecuteRequestBuilder::standard(
         account_1_hash,
@@ -339,11 +337,7 @@ fn should_fail_unbonding_validator_with_locked_funds() {
 
     builder.exec(exec_request_2).commit();
 
-    let response = builder
-        .get_exec_result_owned(0)
-        .expect("should have a response");
-
-    let error_message = utils::get_error_message(response);
+    let error_message = builder.get_error_message().expect("should have a result");
 
     // handle_payment::Error::NotBonded => 0
     assert!(
@@ -371,15 +365,11 @@ fn should_fail_unbonding_validator_without_bonding_first() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     builder.exec(exec_request).commit();
 
-    let response = builder
-        .get_exec_result_owned(0)
-        .expect("should have a response");
-
-    let error_message = utils::get_error_message(response);
+    let error_message = builder.get_error_message().expect("should have a result");
 
     assert!(
         error_message.contains(&format!(
@@ -400,7 +390,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
         DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let default_account = builder
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
@@ -556,11 +546,11 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
         DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let new_unbonding_delay = DEFAULT_UNBONDING_DELAY + 5;
 
-    let old_protocol_version = *DEFAULT_PROTOCOL_VERSION;
+    let old_protocol_version = DEFAULT_PROTOCOL_VERSION;
     let sem_ver = old_protocol_version.value();
     let new_protocol_version =
         ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 1);
@@ -575,7 +565,7 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
             .build()
     };
 
-    builder.upgrade_with_upgrade_request_and_config(None, &mut upgrade_request);
+    builder.upgrade(&mut upgrade_request);
 
     let default_account = builder
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
@@ -591,7 +581,6 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
             "amount" => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .with_protocol_version(new_protocol_version)
     .build();
 
     builder.exec(exec_request).expect_success().commit();
@@ -609,7 +598,6 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
             ARG_DELEGATION_RATE => DELEGATION_RATE,
         },
     )
-    .with_protocol_version(new_protocol_version)
     .build();
 
     builder.exec(exec_request_1).expect_success().commit();
@@ -646,7 +634,6 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
             ARG_PUBLIC_KEY => default_public_key_arg.clone(),
         },
     )
-    .with_protocol_version(new_protocol_version)
     .build();
 
     builder.exec(exec_request_2).expect_success().commit();

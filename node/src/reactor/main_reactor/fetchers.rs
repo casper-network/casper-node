@@ -1,17 +1,18 @@
 use datasize::DataSize;
 use prometheus::Registry;
 
-use casper_types::{Block, BlockHeader, Deploy, FinalitySignature, Transaction};
+use casper_types::{Block, BlockHeader, FinalitySignature, Transaction};
 
 use crate::{
     components::{fetcher, fetcher::Fetcher, Component},
     effect::{announcements::TransactionAcceptorAnnouncement, EffectBuilder, Effects},
     reactor,
     reactor::main_reactor::MainEvent,
-    types::{ApprovalsHashes, BlockExecutionResultsOrChunk, LegacyDeploy, SyncLeap, TrieOrChunk},
+    types::{BlockExecutionResultsOrChunk, LegacyDeploy, SyncLeap, TrieOrChunk},
     utils::Source,
     FetcherConfig, NodeRng,
 };
+use casper_storage::block_store::types::ApprovalsHashes;
 
 #[derive(DataSize, Debug)]
 pub(super) struct Fetchers {
@@ -21,7 +22,7 @@ pub(super) struct Fetchers {
     approvals_hashes_fetcher: Fetcher<ApprovalsHashes>,
     finality_signature_fetcher: Fetcher<FinalitySignature>,
     legacy_deploy_fetcher: Fetcher<LegacyDeploy>,
-    deploy_fetcher: Fetcher<Deploy>,
+    transaction_fetcher: Fetcher<Transaction>,
     trie_or_chunk_fetcher: Fetcher<TrieOrChunk>,
     block_execution_results_or_chunk_fetcher: Fetcher<BlockExecutionResultsOrChunk>,
 }
@@ -42,7 +43,7 @@ impl Fetchers {
             )?,
             legacy_deploy_fetcher: Fetcher::new("legacy_deploy", config, metrics_registry)?,
             block_fetcher: Fetcher::new("block", config, metrics_registry)?,
-            deploy_fetcher: Fetcher::new("deploy", config, metrics_registry)?,
+            transaction_fetcher: Fetcher::new("transaction", config, metrics_registry)?,
             trie_or_chunk_fetcher: Fetcher::new("trie_or_chunk", config, metrics_registry)?,
             block_execution_results_or_chunk_fetcher: Fetcher::new(
                 "block_execution_results_or_chunk_fetcher",
@@ -118,13 +119,14 @@ impl Fetchers {
                 self.legacy_deploy_fetcher
                     .handle_event(effect_builder, rng, request.into()),
             ),
-            MainEvent::DeployFetcher(event) => reactor::wrap_effects(
-                MainEvent::DeployFetcher,
-                self.deploy_fetcher.handle_event(effect_builder, rng, event),
+            MainEvent::TransactionFetcher(event) => reactor::wrap_effects(
+                MainEvent::TransactionFetcher,
+                self.transaction_fetcher
+                    .handle_event(effect_builder, rng, event),
             ),
-            MainEvent::DeployFetcherRequest(request) => reactor::wrap_effects(
-                MainEvent::DeployFetcher,
-                self.deploy_fetcher
+            MainEvent::TransactionFetcherRequest(request) => reactor::wrap_effects(
+                MainEvent::TransactionFetcher,
+                self.transaction_fetcher
                     .handle_event(effect_builder, rng, request.into()),
             ),
             MainEvent::TrieOrChunkFetcher(event) => reactor::wrap_effects(
@@ -162,22 +164,17 @@ impl Fetchers {
                     transaction,
                     source,
                 },
-            ) if matches!(source, Source::Peer(..)) => match &*transaction {
-                Transaction::Deploy(deploy) => reactor::wrap_effects(
-                    MainEvent::DeployFetcher,
-                    self.deploy_fetcher.handle_event(
-                        effect_builder,
-                        rng,
-                        fetcher::Event::GotRemotely {
-                            item: Box::new(deploy.clone()),
-                            source,
-                        },
-                    ),
+            ) if matches!(source, Source::Peer(..)) => reactor::wrap_effects(
+                MainEvent::TransactionFetcher,
+                self.transaction_fetcher.handle_event(
+                    effect_builder,
+                    rng,
+                    fetcher::Event::GotRemotely {
+                        item: Box::new((*transaction).clone()),
+                        source,
+                    },
                 ),
-                Transaction::V1(_txn) => {
-                    todo!("avoid matching on `&*transaction` once fetcher can handle transactions");
-                }
-            },
+            ),
             // allow non-fetcher events to fall thru
             _ => Effects::new(),
         }

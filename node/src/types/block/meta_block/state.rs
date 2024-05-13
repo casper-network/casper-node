@@ -32,7 +32,7 @@ impl From<bool> for StateChange {
 #[derive(Clone, Copy, Eq, PartialEq, Default, Serialize, Debug, DataSize)]
 pub(crate) struct State {
     pub(super) stored: bool,
-    pub(super) sent_to_deploy_buffer: bool,
+    pub(super) sent_to_transaction_buffer: bool,
     pub(super) updated_validator_matrix: bool,
     pub(super) gossiped: bool,
     pub(super) executed: bool,
@@ -40,6 +40,7 @@ pub(crate) struct State {
     pub(super) consensus_notified: bool,
     pub(super) accumulator_notified: bool,
     pub(super) synchronizer_notified: bool,
+    pub(super) validator_notified: bool,
     pub(super) sufficient_finality: bool,
     pub(super) marked_complete: bool,
     pub(super) all_actions_done: bool,
@@ -71,7 +72,7 @@ impl State {
     pub(crate) fn new_after_historical_sync() -> Self {
         State {
             stored: true,
-            sent_to_deploy_buffer: false,
+            sent_to_transaction_buffer: false,
             updated_validator_matrix: true,
             gossiped: true,
             executed: true,
@@ -79,6 +80,7 @@ impl State {
             consensus_notified: false,
             accumulator_notified: true,
             synchronizer_notified: true,
+            validator_notified: false,
             sufficient_finality: true,
             marked_complete: true,
             all_actions_done: false,
@@ -107,9 +109,9 @@ impl State {
         outcome
     }
 
-    pub(crate) fn register_as_sent_to_deploy_buffer(&mut self) -> StateChange {
-        let outcome = StateChange::from(self.sent_to_deploy_buffer);
-        self.sent_to_deploy_buffer = true;
+    pub(crate) fn register_as_sent_to_transaction_buffer(&mut self) -> StateChange {
+        let outcome = StateChange::from(self.sent_to_transaction_buffer);
+        self.sent_to_transaction_buffer = true;
         outcome
     }
 
@@ -155,6 +157,12 @@ impl State {
         outcome
     }
 
+    pub(crate) fn register_as_validator_notified(&mut self) -> StateChange {
+        let outcome = StateChange::from(self.validator_notified);
+        self.validator_notified = true;
+        outcome
+    }
+
     pub(crate) fn register_has_sufficient_finality(&mut self) -> StateChange {
         let outcome = StateChange::from(self.sufficient_finality);
         self.sufficient_finality = true;
@@ -176,7 +184,7 @@ impl State {
     pub(super) fn merge(mut self, other: State) -> Result<Self, MergeMismatchError> {
         let State {
             ref mut stored,
-            ref mut sent_to_deploy_buffer,
+            ref mut sent_to_transaction_buffer,
             ref mut updated_validator_matrix,
             ref mut gossiped,
             ref mut executed,
@@ -184,13 +192,14 @@ impl State {
             ref mut consensus_notified,
             ref mut accumulator_notified,
             ref mut synchronizer_notified,
+            ref mut validator_notified,
             ref mut sufficient_finality,
             ref mut marked_complete,
             ref mut all_actions_done,
         } = self;
 
         *stored |= other.stored;
-        *sent_to_deploy_buffer |= other.sent_to_deploy_buffer;
+        *sent_to_transaction_buffer |= other.sent_to_transaction_buffer;
         *updated_validator_matrix |= other.updated_validator_matrix;
         *gossiped |= other.gossiped;
         *executed |= other.executed;
@@ -198,6 +207,7 @@ impl State {
         *consensus_notified |= other.consensus_notified;
         *accumulator_notified |= other.accumulator_notified;
         *synchronizer_notified |= other.synchronizer_notified;
+        *validator_notified |= other.validator_notified;
         *sufficient_finality |= other.sufficient_finality;
         *marked_complete |= other.marked_complete;
         *all_actions_done |= other.all_actions_done;
@@ -207,7 +217,7 @@ impl State {
 
     pub(crate) fn verify_complete(&self) -> bool {
         self.stored
-            && self.sent_to_deploy_buffer
+            && self.sent_to_transaction_buffer
             && self.updated_validator_matrix
             && self.gossiped
             && self.executed
@@ -215,6 +225,7 @@ impl State {
             && self.consensus_notified
             && self.accumulator_notified
             && self.synchronizer_notified
+            && self.validator_notified
             && self.sufficient_finality
             && self.marked_complete
     }
@@ -233,7 +244,7 @@ mod tests {
     fn should_merge() {
         let all_true = State {
             stored: true,
-            sent_to_deploy_buffer: true,
+            sent_to_transaction_buffer: true,
             updated_validator_matrix: true,
             gossiped: true,
             executed: true,
@@ -241,6 +252,7 @@ mod tests {
             consensus_notified: true,
             accumulator_notified: true,
             synchronizer_notified: true,
+            validator_notified: true,
             sufficient_finality: true,
             marked_complete: true,
             all_actions_done: true,

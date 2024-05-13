@@ -44,23 +44,23 @@
 //! will usually be dictated by a restriction on a method on an
 //! [`EffectBuilder`](crate::effect::EffectBuilder).
 
+pub(crate) mod binary_port;
 pub(crate) mod block_accumulator;
 pub(crate) mod block_synchronizer;
 pub(crate) mod block_validator;
-pub(crate) mod consensus;
+pub mod consensus;
 pub mod contract_runtime;
-pub(crate) mod deploy_buffer;
 pub(crate) mod diagnostics_port;
 pub(crate) mod event_stream_server;
 pub(crate) mod fetcher;
 pub(crate) mod gossiper;
+pub(crate) mod transaction_buffer;
 // The `in_memory_network` is public for use in doctests.
 #[cfg(test)]
 pub mod in_memory_network;
 pub(crate) mod metrics;
 pub(crate) mod network;
 pub(crate) mod rest_server;
-pub mod rpc_server;
 pub(crate) mod shutdown_trigger;
 pub mod storage;
 pub(crate) mod sync_leaper;
@@ -74,6 +74,7 @@ use tracing::info;
 
 use crate::{
     effect::{EffectBuilder, Effects},
+    failpoints::FailpointActivation,
     NodeRng,
 };
 
@@ -127,6 +128,14 @@ pub(crate) trait Component<REv> {
     /// The event type that is handled by the component.
     type Event;
 
+    /// Name of the component.
+    fn name(&self) -> &str;
+
+    /// Activate/deactivate a failpoint.
+    fn activate_failpoint(&mut self, _activation: &FailpointActivation) {
+        // Default is to ignore failpoints.
+    }
+
     /// Processes an event, outputting zero or more effects.
     ///
     /// This function must not ever perform any blocking or CPU intensive work, as it is expected
@@ -137,9 +146,6 @@ pub(crate) trait Component<REv> {
         rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event>;
-
-    /// Name of the component.
-    fn name(&self) -> &str;
 }
 
 pub(crate) trait InitializedComponent<REv>: Component<REv> {

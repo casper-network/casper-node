@@ -2,12 +2,12 @@ use std::{collections::BTreeSet, iter::FromIterator};
 
 use crate::wasm_utils;
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, LOCAL_GENESIS_REQUEST,
 };
-use casper_execution_engine::{engine_state::Error, execution};
+use casper_execution_engine::{engine_state::Error, execution::ExecError};
 use casper_types::{
-    addressable_entity::DEFAULT_ENTRY_POINT_NAME, runtime_args, ContractHash, RuntimeArgs, U512,
+    addressable_entity::{EntityKindTag, DEFAULT_ENTRY_POINT_NAME},
+    runtime_args, AddressableEntityHash, ByteCodeAddr, Key, RuntimeArgs, U512,
 };
 
 const CONTRACT_COUNTER_FACTORY: &str = "counter_factory.wasm";
@@ -38,7 +38,7 @@ fn should_not_call_undefined_entrypoints_on_factory() {
     let no_such_method_1 = builder.get_error().expect("should have error");
 
     assert!(
-        matches!(no_such_method_1, Error::Exec(execution::Error::NoSuchMethod(function_name)) if function_name == DEFAULT_ENTRY_POINT_NAME)
+        matches!(no_such_method_1, Error::Exec(ExecError::NoSuchMethod(function_name)) if function_name == DEFAULT_ENTRY_POINT_NAME)
     );
 
     // Can't call abstract entry point "increase" on the factory.
@@ -56,7 +56,7 @@ fn should_not_call_undefined_entrypoints_on_factory() {
     let no_such_method_2 = builder.get_error().expect("should have error");
 
     assert!(
-        matches!(&no_such_method_2, Error::Exec(execution::Error::TemplateMethod(function_name)) if function_name == INCREASE_ENTRY_POINT),
+        matches!(&no_such_method_2, Error::Exec(ExecError::TemplateMethod(function_name)) if function_name == INCREASE_ENTRY_POINT),
         "{:?}",
         &no_such_method_2
     );
@@ -76,7 +76,7 @@ fn should_not_call_undefined_entrypoints_on_factory() {
     let no_such_method_3 = builder.get_error().expect("should have error");
 
     assert!(
-        matches!(&no_such_method_3, Error::Exec(execution::Error::TemplateMethod(function_name)) if function_name == DECREASE_ENTRY_POINT),
+        matches!(&no_such_method_3, Error::Exec(ExecError::TemplateMethod(function_name)) if function_name == DECREASE_ENTRY_POINT),
         "{:?}",
         &no_such_method_3
     );
@@ -87,17 +87,24 @@ fn should_not_call_undefined_entrypoints_on_factory() {
 fn contract_factory_wasm_should_have_expected_exports() {
     let (builder, contract_hash) = setup();
 
+    let factory_contract_entity_key =
+        Key::addressable_entity_key(EntityKindTag::SmartContract, contract_hash);
+
     let factory_contract = builder
-        .query(None, contract_hash.into(), &[])
+        .query(None, factory_contract_entity_key, &[])
         .expect("should have contract")
         .as_addressable_entity()
         .cloned()
         .expect("should be contract");
 
+    let factory_contract_byte_code_key = Key::byte_code_key(ByteCodeAddr::new_wasm_addr(
+        factory_contract.byte_code_addr(),
+    ));
+
     let factory_contract_wasm = builder
-        .query(None, factory_contract.contract_wasm_key(), &[])
+        .query(None, factory_contract_byte_code_key, &[])
         .expect("should have contract wasm")
-        .as_contract_wasm()
+        .as_byte_code()
         .cloned()
         .expect("should have wasm");
 
@@ -144,14 +151,14 @@ fn should_install_and_use_factory_pattern() {
     builder.exec(exec_request_2).commit().expect_success();
 
     let counter_factory_contract = builder
-        .get_addressable_entity(contract_hash)
+        .get_entity_with_named_keys_by_entity_hash(contract_hash)
         .expect("should have contract hash");
 
     let new_counter_1 = counter_factory_contract
         .named_keys()
         .get(NEW_COUNTER_1_NAME)
         .expect("new counter should exist")
-        .into_contract_hash()
+        .into_entity_hash()
         .unwrap();
 
     let new_counter_1_contract = builder
@@ -162,7 +169,7 @@ fn should_install_and_use_factory_pattern() {
         .named_keys()
         .get(NEW_COUNTER_2_NAME)
         .expect("new counter should exist")
-        .into_contract_hash()
+        .into_entity_hash()
         .unwrap();
 
     let _new_counter_2_contract = builder
@@ -170,9 +177,15 @@ fn should_install_and_use_factory_pattern() {
         .expect("should have contract instance");
 
     let counter_1_wasm = builder
-        .query(None, new_counter_1_contract.contract_wasm_key(), &[])
+        .query(
+            None,
+            Key::byte_code_key(ByteCodeAddr::new_wasm_addr(
+                new_counter_1_contract.byte_code_addr(),
+            )),
+            &[],
+        )
         .expect("should have contract wasm")
-        .as_contract_wasm()
+        .as_byte_code()
         .cloned()
         .expect("should have wasm");
 
@@ -206,9 +219,9 @@ fn should_install_and_use_factory_pattern() {
     builder.exec(decrement_request).commit().expect_success();
 }
 
-fn setup() -> (LmdbWasmTestBuilder, ContractHash) {
+fn setup() -> (LmdbWasmTestBuilder, AddressableEntityHash) {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -219,16 +232,14 @@ fn setup() -> (LmdbWasmTestBuilder, ContractHash) {
 
     builder.exec(exec_request).commit().expect_success();
 
-    let account_entity_hash = builder
-        .get_contract_hash_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
-        .expect("should have account");
     let account = builder
-        .get_addressable_entity(account_entity_hash)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have entity for account");
+
     let contract_hash_key = account
         .named_keys()
         .get("factory_hash")
         .expect("should have factory hash");
 
-    (builder, contract_hash_key.into_contract_hash().unwrap())
+    (builder, contract_hash_key.into_entity_hash().unwrap())
 }

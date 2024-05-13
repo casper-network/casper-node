@@ -1,22 +1,11 @@
 use proptest::{collection::vec, option, prelude::*};
 
 use casper_types::{
-    gens::{key_arb, stored_value_arb},
-    Digest, Key, StoredValue,
+    gens::{key_arb, stored_value_arb, trie_pointer_arb},
+    Key, StoredValue,
 };
 
 use super::{Pointer, PointerBlock, Trie};
-
-pub fn blake2b_hash_arb() -> impl Strategy<Value = Digest> {
-    vec(any::<u8>(), 0..1000).prop_map(Digest::hash)
-}
-
-pub fn trie_pointer_arb() -> impl Strategy<Value = Pointer> {
-    prop_oneof![
-        blake2b_hash_arb().prop_map(Pointer::LeafPointer),
-        blake2b_hash_arb().prop_map(Pointer::NodePointer)
-    ]
-}
 
 pub fn trie_pointer_block_arb() -> impl Strategy<Value = PointerBlock> {
     vec(option::of(trie_pointer_arb()), 256).prop_map(|vec| {

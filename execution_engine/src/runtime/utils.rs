@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
-use parity_wasm::elements::Module;
-use wasmi::{ImportsBuilder, MemoryRef, ModuleInstance, ModuleRef};
+use casper_wasm::elements::Module;
+use casper_wasmi::{ImportsBuilder, MemoryRef, ModuleInstance, ModuleRef};
 
 use casper_types::{
     addressable_entity::NamedKeys, AccessRights, CLType, CLValue, Key, ProtocolVersion, PublicKey,
@@ -10,7 +10,7 @@ use casper_types::{
 
 use crate::{
     engine_state::EngineConfig,
-    execution::Error,
+    execution::ExecError,
     resolvers::{self, memory_resolver::MemoryResolver},
 };
 
@@ -27,14 +27,14 @@ pub(super) fn instance_and_memory(
     parity_module: Module,
     protocol_version: ProtocolVersion,
     engine_config: &EngineConfig,
-) -> Result<(ModuleRef, MemoryRef), Error> {
-    let module = wasmi::Module::from_parity_wasm_module(parity_module)?;
+) -> Result<(ModuleRef, MemoryRef), ExecError> {
+    let module = casper_wasmi::Module::from_casper_wasm_module(parity_module)?;
     let resolver = resolvers::create_module_resolver(protocol_version, engine_config)?;
     let mut imports = ImportsBuilder::new();
     imports.push_resolver("env", &resolver);
     let not_started_module = ModuleInstance::new(&module, &imports)?;
     if not_started_module.has_start() {
-        return Err(Error::UnsupportedWasmStart);
+        return Err(ExecError::UnsupportedWasmStart);
     }
     let instance = not_started_module.not_started_instance().clone();
     let memory = resolver.memory_ref()?;
@@ -46,7 +46,7 @@ pub(super) fn attenuate_uref_in_args(
     mut args: RuntimeArgs,
     uref_addr: URefAddr,
     rights_to_disable: AccessRights,
-) -> Result<RuntimeArgs, Error> {
+) -> Result<RuntimeArgs, ExecError> {
     for arg in args.named_args_mut() {
         *arg.cl_value_mut() = rewrite_urefs(arg.cl_value().clone(), |uref| {
             if uref.addr() == uref_addr {
@@ -59,7 +59,7 @@ pub(super) fn attenuate_uref_in_args(
 }
 
 /// Extracts a copy of every uref able to be deserialized from `cl_value`.
-pub(super) fn extract_urefs(cl_value: &CLValue) -> Result<Vec<URef>, Error> {
+pub(super) fn extract_urefs(cl_value: &CLValue) -> Result<Vec<URef>, ExecError> {
     let mut vec: Vec<URef> = Vec::new();
     rewrite_urefs(cl_value.clone(), |uref| {
         vec.push(*uref);
@@ -70,7 +70,7 @@ pub(super) fn extract_urefs(cl_value: &CLValue) -> Result<Vec<URef>, Error> {
 /// Executes `func` on every uref able to be deserialized from `cl_value` and returns the resulting
 /// re-serialized `CLValue`.
 #[allow(clippy::cognitive_complexity)]
-fn rewrite_urefs(cl_value: CLValue, mut func: impl FnMut(&mut URef)) -> Result<CLValue, Error> {
+fn rewrite_urefs(cl_value: CLValue, mut func: impl FnMut(&mut URef)) -> Result<CLValue, ExecError> {
     let ret = match cl_value.cl_type() {
         CLType::Bool
         | CLType::I32

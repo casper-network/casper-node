@@ -22,16 +22,15 @@ use std::sync::Arc;
 use datasize::DataSize;
 use either::Either;
 use futures::FutureExt;
-use once_cell::sync::Lazy;
 use prometheus::Registry;
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, trace, warn};
 
-use casper_execution_engine::engine_state;
+use casper_storage::{
+    block_store::types::ApprovalsHashes, data_access_layer::ExecutionResultsChecksumResult,
+};
 use casper_types::{
-    Block, BlockHash, BlockHeader, BlockSignatures, Chainspec, Deploy, Digest, FinalitySignature,
-    FinalitySignatureId, Timestamp,
+    Block, BlockHash, BlockHeader, BlockSignatures, BlockSyncStatus, BlockSynchronizerStatus,
+    Chainspec, FinalitySignature, FinalitySignatureId, Timestamp, Transaction,
 };
 
 use super::network::blocklist::BlocklistJustification;
@@ -52,11 +51,10 @@ use crate::{
         EffectBuilder, EffectExt, EffectResultExt, Effects,
     },
     reactor::{self, main_reactor::MainEvent},
-    rpcs::docs::DocExample,
     types::{
-        sync_leap_validation_metadata::SyncLeapValidationMetaData, ApprovalsHashes,
-        BlockExecutionResultsOrChunk, FinalizedBlock, LegacyDeploy, MetaBlock, MetaBlockState,
-        NodeId, SyncLeap, SyncLeapIdentifier, TrieOrChunk, ValidatorMatrix,
+        sync_leap_validation_metadata::SyncLeapValidationMetaData, BlockExecutionResultsOrChunk,
+        ExecutableBlock, LegacyDeploy, MetaBlock, MetaBlockState, NodeId, SyncLeap,
+        SyncLeapIdentifier, TrieOrChunk, ValidatorMatrix,
     },
     NodeRng,
 };
@@ -81,31 +79,6 @@ pub(crate) use trie_accumulator::{
     Response as TrieAccumulatorResponse,
 };
 
-static BLOCK_SYNCHRONIZER_STATUS: Lazy<BlockSynchronizerStatus> = Lazy::new(|| {
-    BlockSynchronizerStatus::new(
-        Some(BlockSyncStatus {
-            block_hash: BlockHash::new(
-                Digest::from_hex(
-                    "16ddf28e2b3d2e17f4cef36f8b58827eca917af225d139b0c77df3b4a67dc55e",
-                )
-                .unwrap(),
-            ),
-            block_height: Some(40),
-            acquisition_state: "have strict finality(40) for: block hash 16dd..c55e".to_string(),
-        }),
-        Some(BlockSyncStatus {
-            block_hash: BlockHash::new(
-                Digest::from_hex(
-                    "59907b1e32a9158169c4d89d9ce5ac9164fc31240bfcfb0969227ece06d74983",
-                )
-                .unwrap(),
-            ),
-            block_height: Some(6701),
-            acquisition_state: "have block body(6701) for: block hash 5990..4983".to_string(),
-        }),
-    )
-});
-
 const COMPONENT_NAME: &str = "block_synchronizer";
 
 pub(crate) trait ReactorEvent:
@@ -114,7 +87,7 @@ pub(crate) trait ReactorEvent:
     + From<FetcherRequest<Block>>
     + From<FetcherRequest<BlockHeader>>
     + From<FetcherRequest<LegacyDeploy>>
-    + From<FetcherRequest<Deploy>>
+    + From<FetcherRequest<Transaction>>
     + From<FetcherRequest<FinalitySignature>>
     + From<FetcherRequest<TrieOrChunk>>
     + From<FetcherRequest<BlockExecutionResultsOrChunk>>
@@ -139,7 +112,7 @@ impl<REv> ReactorEvent for REv where
         + From<FetcherRequest<Block>>
         + From<FetcherRequest<BlockHeader>>
         + From<FetcherRequest<LegacyDeploy>>
-        + From<FetcherRequest<Deploy>>
+        + From<FetcherRequest<Transaction>>
         + From<FetcherRequest<FinalitySignature>>
         + From<FetcherRequest<TrieOrChunk>>
         + From<FetcherRequest<BlockExecutionResultsOrChunk>>
@@ -156,46 +129,6 @@ impl<REv> ReactorEvent for REv where
         + Send
         + 'static
 {
-}
-
-/// The status of syncing an individual block.
-#[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct BlockSyncStatus {
-    /// The block hash.
-    block_hash: BlockHash,
-    /// The height of the block, if known.
-    block_height: Option<u64>,
-    /// The state of acquisition of the data associated with the block.
-    acquisition_state: String,
-}
-
-/// The status of the block synchronizer.
-#[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct BlockSynchronizerStatus {
-    /// The status of syncing a historical block, if any.
-    historical: Option<BlockSyncStatus>,
-    /// The status of syncing a forward block, if any.
-    forward: Option<BlockSyncStatus>,
-}
-
-impl BlockSynchronizerStatus {
-    pub(crate) fn new(
-        historical: Option<BlockSyncStatus>,
-        forward: Option<BlockSyncStatus>,
-    ) -> Self {
-        Self {
-            historical,
-            forward,
-        }
-    }
-}
-
-impl DocExample for BlockSynchronizerStatus {
-    fn doc_example() -> &'static Self {
-        &BLOCK_SYNCHRONIZER_STATUS
-    }
 }
 
 #[derive(DataSize, Debug)]
@@ -338,7 +271,7 @@ impl BlockSynchronizer {
             let era_id = block_header.era_id();
             if let Some(validator_weights) = self.validator_matrix.validator_weights(era_id) {
                 let mut builder = BlockBuilder::new_from_sync_leap(
-                    block_header,
+                    block_header.clone(),
                     maybe_sigs,
                     validator_weights,
                     peers,
@@ -377,7 +310,7 @@ impl BlockSynchronizer {
     fn register_made_finalized_block(
         &mut self,
         block_hash: &BlockHash,
-        result: Option<(FinalizedBlock, Vec<Deploy>)>,
+        result: Option<ExecutableBlock>,
     ) {
         if let Some(builder) = &self.historical {
             if builder.block_hash() == *block_hash {
@@ -387,8 +320,8 @@ impl BlockSynchronizer {
 
         match &mut self.forward {
             Some(builder) if builder.block_hash() == *block_hash => {
-                if let Some((finalized_block, deploys)) = result {
-                    builder.register_made_finalized_block(finalized_block, deploys);
+                if let Some(executable_block) = result {
+                    builder.register_made_executable_block(executable_block);
                 } else {
                     // Could not create finalized block, abort
                     builder.abort();
@@ -486,7 +419,10 @@ impl BlockSynchronizer {
                                         effect_builder.announce_meta_block(meta_block).await;
                                     }
                                     None => {
-                                        warn!("should have execution results for {}", block.hash());
+                                        error!(
+                                            "should have execution results for {}",
+                                            block.hash()
+                                        );
                                     }
                                 }
                             })
@@ -658,11 +594,15 @@ impl BlockSynchronizer {
                             })
                     }))
                 }
-                NeedNext::DeployById(block_hash, deploy_id) => {
+                NeedNext::TransactionById(block_hash, txn_id) => {
                     builder.latch_by(peers.len());
                     results.extend(peers.into_iter().flat_map(|node_id| {
                         effect_builder
-                            .fetch::<Deploy>(deploy_id, node_id, Box::new(EmptyValidationMetadata))
+                            .fetch::<Transaction>(
+                                txn_id,
+                                node_id,
+                                Box::new(EmptyValidationMetadata),
+                            )
                             .event(move |result| Event::DeployFetched {
                                 block_hash,
                                 result: Either::Right(result),
@@ -684,13 +624,12 @@ impl BlockSynchronizer {
                         )
                     }
                 }
-                NeedNext::EnqueueForExecution(block_hash, _, finalized_block, deploys) => {
+                NeedNext::EnqueueForExecution(block_hash, _, executable_block) => {
                     builder.latch();
                     results.extend(
                         effect_builder
                             .enqueue_block_for_execution(
-                                *finalized_block,
-                                deploys,
+                                *executable_block,
                                 MetaBlockState::new_already_stored(),
                             )
                             .event(move |_| Event::MarkBlockExecutionEnqueued(block_hash)),
@@ -1075,41 +1014,55 @@ impl BlockSynchronizer {
     fn got_execution_results_checksum(
         &mut self,
         block_hash: BlockHash,
-        result: Result<Option<Digest>, engine_state::Error>,
+        result: ExecutionResultsChecksumResult,
     ) {
-        let execution_results_checksum = match result {
-            Ok(Some(digest)) => {
-                debug!(
-                    "BlockSynchronizer: got execution_results_checksum for {}",
-                    block_hash
-                );
-                ExecutionResultsChecksum::Checkable(digest)
+        let builder = match &mut self.historical {
+            None => {
+                // execution results checksums are only relevant to historical blocks
+                debug!(%block_hash, "BlockSynchronizer: not currently synchronising block");
+                return;
             }
-            Err(engine_state::Error::MissingChecksumRegistry) => {
-                // The registry will not exist for legacy blocks.
-                ExecutionResultsChecksum::Uncheckable
-            }
-            Ok(None) => {
-                warn!("BlockSynchronizer: the checksum registry should contain the execution results checksum");
-                ExecutionResultsChecksum::Uncheckable
-            }
-            Err(error) => {
-                error!(%error, "BlockSynchronizer: unexpected error getting checksum registry");
-                ExecutionResultsChecksum::Uncheckable
+            Some(builder) => {
+                let current_block_hash = builder.block_hash();
+                if current_block_hash != block_hash {
+                    debug!(%block_hash, %current_block_hash, "BlockSynchronizer: currently synchronising different block");
+                    return;
+                }
+                builder
             }
         };
 
-        if let Some(builder) = &mut self.historical {
-            if builder.block_hash() != block_hash {
-                debug!(%block_hash, "BlockSynchronizer: not currently synchronising block");
-            } else {
-                builder.latch_decrement();
-                if let Err(error) =
-                    builder.register_execution_results_checksum(execution_results_checksum)
-                {
-                    error!(%block_hash, %error, "BlockSynchronizer: failed to apply execution results checksum");
-                }
+        let execution_results_checksum = match result {
+            ExecutionResultsChecksumResult::Failure(error) => {
+                error!(%block_hash, %error, "BlockSynchronizer: unexpected error getting checksum registry");
+                ExecutionResultsChecksum::Uncheckable
             }
+            ExecutionResultsChecksumResult::RootNotFound => {
+                error!(%block_hash, "BlockSynchronizer: unexpected error getting checksum registry (root not found)");
+                ExecutionResultsChecksum::Uncheckable
+            }
+            ExecutionResultsChecksumResult::ChecksumNotFound => {
+                error!(%block_hash, "BlockSynchronizer: checksum not found (should exist)");
+                ExecutionResultsChecksum::Uncheckable
+            }
+            ExecutionResultsChecksumResult::RegistryNotFound => {
+                // we didn't track this checksum pre-1.5
+                debug!(%block_hash, "BlockSynchronizer: checksum registry not found (legacy record)");
+                ExecutionResultsChecksum::Uncheckable
+            }
+            ExecutionResultsChecksumResult::Success { checksum } => {
+                debug!(
+                    %block_hash, "BlockSynchronizer: got execution_results_checksum {}",
+                    checksum
+                );
+                ExecutionResultsChecksum::Checkable(checksum)
+            }
+        };
+
+        builder.latch_decrement();
+        if let Err(error) = builder.register_execution_results_checksum(execution_results_checksum)
+        {
+            error!(%block_hash, %error, "BlockSynchronizer: failed to apply execution results checksum");
         }
     }
 
@@ -1176,21 +1129,22 @@ impl BlockSynchronizer {
                     {
                         Ok(Some(execution_results)) => {
                             debug!(%block_hash, "execution_results_fetched: putting execution results to storage");
-                            let block_height = match builder.block_height() {
-                                Some(height) => height,
+                            let (block_height, era_id) = match builder.block_height_and_era() {
+                                Some(value) => value,
                                 None => {
                                     error!(
                                         %block_hash,
                                         "BlockSynchronizer: failed to apply execution results or \
-                                        chunk due to missing block height"
+                                        chunk due to missing block height and era id"
                                     );
                                     return Effects::new();
                                 }
                             };
                             return effect_builder
-                                .put_execution_results_to_storage(
+                                .put_execution_artifacts_to_storage(
                                     block_hash,
                                     block_height,
+                                    era_id,
                                     execution_results,
                                 )
                                 .event(move |()| Event::ExecutionResultsStored(block_hash));
@@ -1221,14 +1175,18 @@ impl BlockSynchronizer {
         }
     }
 
-    fn deploy_fetched(&mut self, block_hash: BlockHash, fetched_deploy: FetchedData<Deploy>) {
-        let (deploy, maybe_peer) = match fetched_deploy {
+    fn transaction_fetched(
+        &mut self,
+        block_hash: BlockHash,
+        fetched_txn: FetchedData<Transaction>,
+    ) {
+        let (txn, maybe_peer) = match fetched_txn {
             FetchedData::FromPeer { item, peer } => (item, Some(peer)),
             FetchedData::FromStorage { item } => (item, None),
         };
 
         if let Some(builder) = self.get_builder(block_hash, false) {
-            if let Err(error) = builder.register_deploy(deploy.fetch_id(), maybe_peer) {
+            if let Err(error) = builder.register_deploy(txn.fetch_id(), maybe_peer) {
                 error!(%block_hash, %error, "BlockSynchronizer: failed to apply deploy");
             }
         }
@@ -1294,15 +1252,19 @@ impl BlockSynchronizer {
 
     fn status(&self) -> BlockSynchronizerStatus {
         BlockSynchronizerStatus::new(
-            self.historical.as_ref().map(|builder| BlockSyncStatus {
-                block_hash: builder.block_hash(),
-                block_height: builder.block_height(),
-                acquisition_state: builder.block_acquisition_state().to_string(),
+            self.historical.as_ref().map(|builder| {
+                BlockSyncStatus::new(
+                    builder.block_hash(),
+                    builder.block_height(),
+                    builder.block_acquisition_state().to_string(),
+                )
             }),
-            self.forward.as_ref().map(|builder| BlockSyncStatus {
-                block_hash: builder.block_hash(),
-                block_height: builder.block_height(),
-                acquisition_state: builder.block_acquisition_state().to_string(),
+            self.forward.as_ref().map(|builder| {
+                BlockSyncStatus::new(
+                    builder.block_hash(),
+                    builder.block_height(),
+                    builder.block_acquisition_state().to_string(),
+                )
             }),
         )
     }
@@ -1590,12 +1552,12 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
                         Either::Left(Ok(fetched_legacy_deploy)) => {
                             let deploy_id = fetched_legacy_deploy.id();
                             debug!(%block_hash, ?deploy_id, "BlockSynchronizer: fetched legacy deploy");
-                            self.deploy_fetched(block_hash, fetched_legacy_deploy.convert())
+                            self.transaction_fetched(block_hash, fetched_legacy_deploy.convert())
                         }
-                        Either::Right(Ok(fetched_deploy)) => {
-                            let deploy_id = fetched_deploy.id();
-                            debug!(%block_hash, ?deploy_id, "BlockSynchronizer: fetched deploy");
-                            self.deploy_fetched(block_hash, fetched_deploy)
+                        Either::Right(Ok(fetched_txn)) => {
+                            let txn_id = fetched_txn.id();
+                            debug!(%block_hash, %txn_id, "BlockSynchronizer: fetched transaction");
+                            self.transaction_fetched(block_hash, fetched_txn)
                         }
                         Either::Left(Err(error)) => {
                             if let Some(builder) = self.get_builder(block_hash, false) {

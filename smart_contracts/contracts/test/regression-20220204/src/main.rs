@@ -10,20 +10,17 @@ use casper_contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    account::AccountHash,
-    addressable_entity::{NamedKeys, Parameters},
-    CLType, CLTyped, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key, Parameter,
-    URef, U512,
+    account::AccountHash, addressable_entity::NamedKeys, CLType, CLTyped, EntryPoint,
+    EntryPointAccess, EntryPointPayment, EntryPointType, EntryPoints, Key, Parameter, URef, U512,
 };
 
 const TRANSFER_AS_CONTRACT: &str = "transfer_as_contract";
-const TRANSFER_AS_SESSION: &str = "transfer_as_session";
-const TRANSFER_MAIN_PURSE_AS_SESSION: &str = "transfer_main_purse_as_session";
 const NONTRIVIAL_ARG_AS_CONTRACT: &str = "nontrivial_arg_as_contract";
 const ARG_PURSE: &str = "purse";
 const PURSE_KEY: &str = "purse";
 const CONTRACT_HASH_NAME: &str = "regression-contract-hash";
 const PACKAGE_HASH_NAME: &str = "package-contract-hash";
+
 type NonTrivialArg = BTreeMap<String, Key>;
 
 #[no_mangle]
@@ -38,15 +35,8 @@ pub extern "C" fn call() {
         vec![Parameter::new(ARG_PURSE, URef::cl_type())],
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
-    ));
-
-    entry_points.add_entry_point(EntryPoint::new(
-        TRANSFER_AS_SESSION,
-        vec![Parameter::new(ARG_PURSE, URef::cl_type())],
-        CLType::Unit,
-        EntryPointAccess::Public,
-        EntryPointType::Session,
+        EntryPointType::Called,
+        EntryPointPayment::Caller,
     ));
 
     type NonTrivialArg = BTreeMap<String, Key>;
@@ -56,23 +46,8 @@ pub extern "C" fn call() {
         vec![Parameter::new(ARG_PURSE, NonTrivialArg::cl_type())],
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
-    ));
-
-    entry_points.add_entry_point(EntryPoint::new(
-        TRANSFER_MAIN_PURSE_AS_SESSION,
-        Parameters::new(),
-        CLType::Unit,
-        EntryPointAccess::Public,
-        EntryPointType::Session,
-    ));
-
-    entry_points.add_entry_point(EntryPoint::new(
-        TRANSFER_MAIN_PURSE_AS_SESSION,
-        Parameters::new(),
-        CLType::Unit,
-        EntryPointAccess::Public,
-        EntryPointType::Session,
+        EntryPointType::Called,
+        EntryPointPayment::Caller,
     ));
 
     let named_keys = {
@@ -82,10 +57,14 @@ pub extern "C" fn call() {
         named_keys
     };
 
-    let (contract_hash, _contract_version) =
-        storage::add_contract_version(contract_package_hash, entry_points, named_keys);
+    let (contract_hash, _contract_version) = storage::add_contract_version(
+        contract_package_hash,
+        entry_points,
+        named_keys,
+        BTreeMap::new(),
+    );
 
-    runtime::put_key(CONTRACT_HASH_NAME, contract_hash.into());
+    runtime::put_key(CONTRACT_HASH_NAME, Key::contract_entity_key(contract_hash));
 }
 
 #[no_mangle]

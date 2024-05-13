@@ -43,7 +43,7 @@ impl MainReactor {
             );
         }
 
-        match self.storage.read_highest_complete_block() {
+        match self.storage.get_highest_complete_block() {
             Ok(Some(highest_complete_block)) => {
                 // If we're lagging behind the rest of the network, fall back out of Validate mode.
                 let sync_identifier = SyncIdentifier::LocalTip(

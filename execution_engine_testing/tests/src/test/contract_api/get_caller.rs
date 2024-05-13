@@ -1,6 +1,6 @@
 use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    LOCAL_GENESIS_REQUEST,
 };
 use casper_types::{account::AccountHash, runtime_args};
 
@@ -13,7 +13,7 @@ const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);
 #[test]
 fn should_run_get_caller_contract() {
     LmdbWasmTestBuilder::default()
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone())
         .exec(
             ExecuteRequestBuilder::standard(
                 *DEFAULT_ACCOUNT_ADDR,
@@ -31,7 +31,7 @@ fn should_run_get_caller_contract() {
 fn should_run_get_caller_contract_other_account() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     builder
         .exec(
@@ -63,7 +63,7 @@ fn should_run_get_caller_contract_other_account() {
 fn should_run_get_caller_subcall_contract() {
     {
         let mut builder = LmdbWasmTestBuilder::default();
-        builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+        builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
         builder
             .exec(
@@ -80,7 +80,7 @@ fn should_run_get_caller_subcall_contract() {
 
     let mut builder = LmdbWasmTestBuilder::default();
     builder
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone())
         .exec(
             ExecuteRequestBuilder::standard(
                 *DEFAULT_ACCOUNT_ADDR,

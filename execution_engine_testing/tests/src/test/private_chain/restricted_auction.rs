@@ -2,7 +2,7 @@ use casper_engine_test_support::{
     StepRequestBuilder, DEFAULT_BLOCK_TIME, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
     DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROTOCOL_VERSION, TIMESTAMP_MILLIS_INCREMENT,
 };
-use casper_execution_engine::engine_state::step::RewardItem;
+use casper_storage::data_access_layer::RewardItem;
 use casper_types::{system::auction::SeigniorageAllocation, Key, U512};
 
 use crate::test::private_chain::{PRIVATE_CHAIN_GENESIS_VALIDATORS, VALIDATOR_1_PUBLIC_KEY};
@@ -17,22 +17,20 @@ fn should_not_distribute_rewards_but_compute_next_set() {
 
     let mut builder = super::private_chain_setup();
 
+    let protocol_version = DEFAULT_PROTOCOL_VERSION;
     // initial token supply
-    let initial_supply = builder.total_supply(None);
+    let initial_supply = builder.total_supply(protocol_version, None);
 
     for _ in 0..3 {
-        builder
-            .distribute(
-                None,
-                *DEFAULT_PROTOCOL_VERSION,
-                VALIDATOR_1_PUBLIC_KEY.clone(),
-                1,
-                DEFAULT_BLOCK_TIME,
-            )
-            .unwrap();
+        builder.distribute(
+            None,
+            DEFAULT_PROTOCOL_VERSION,
+            IntoIterator::into_iter([(VALIDATOR_1_PUBLIC_KEY.clone(), U512::from(0))]).collect(),
+            DEFAULT_BLOCK_TIME,
+        );
         let step_request = StepRequestBuilder::new()
             .with_parent_state_hash(builder.get_post_state_hash())
-            .with_protocol_version(*DEFAULT_PROTOCOL_VERSION)
+            .with_protocol_version(DEFAULT_PROTOCOL_VERSION)
             .with_next_era_id(builder.get_era().successor())
             .with_era_end_timestamp_millis(timestamp_millis)
             .with_run_auction(true)
@@ -41,25 +39,25 @@ fn should_not_distribute_rewards_but_compute_next_set() {
                 VALIDATOR_1_REWARD_FACTOR,
             ))
             .build();
-        builder.step(step_request).expect("should execute step");
+        assert!(
+            builder.step(step_request).is_success(),
+            "should execute step"
+        );
         timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
     let last_trusted_era = builder.get_era();
 
-    builder
-        .distribute(
-            None,
-            *DEFAULT_PROTOCOL_VERSION,
-            VALIDATOR_1_PUBLIC_KEY.clone(),
-            0,
-            DEFAULT_BLOCK_TIME,
-        )
-        .unwrap();
+    builder.distribute(
+        None,
+        DEFAULT_PROTOCOL_VERSION,
+        IntoIterator::into_iter([(VALIDATOR_1_PUBLIC_KEY.clone(), U512::from(0))]).collect(),
+        DEFAULT_BLOCK_TIME,
+    );
 
     let step_request = StepRequestBuilder::new()
         .with_parent_state_hash(builder.get_post_state_hash())
-        .with_protocol_version(*DEFAULT_PROTOCOL_VERSION)
+        .with_protocol_version(DEFAULT_PROTOCOL_VERSION)
         .with_reward_item(RewardItem::new(
             VALIDATOR_1_PUBLIC_KEY.clone(),
             VALIDATOR_1_REWARD_FACTOR,
@@ -69,7 +67,10 @@ fn should_not_distribute_rewards_but_compute_next_set() {
         .with_run_auction(true)
         .build();
 
-    builder.step(step_request).expect("should execute step");
+    assert!(
+        builder.step(step_request).is_success(),
+        "should execute step"
+    );
 
     let era_info = {
         let era_info_value = builder
@@ -100,7 +101,7 @@ fn should_not_distribute_rewards_but_compute_next_set() {
         era_info
     );
 
-    let total_supply_after_distribution = builder.total_supply(None);
+    let total_supply_after_distribution = builder.total_supply(protocol_version, None);
     assert_eq!(
         initial_supply, total_supply_after_distribution,
         "total supply of tokens should not increase after an auction is ran"

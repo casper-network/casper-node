@@ -37,11 +37,7 @@ static BLOCK_HASH: Lazy<BlockHash> =
     schemars(description = "Hex-encoded cryptographic hash of a block.")
 )]
 #[serde(deny_unknown_fields)]
-#[rustfmt::skip]
-pub struct BlockHash(
-    #[cfg_attr(feature = "json-schema", schemars(skip, with = "String"))]
-    Digest
-);
+pub struct BlockHash(Digest);
 
 impl BlockHash {
     /// The number of bytes in a `BlockHash` digest.

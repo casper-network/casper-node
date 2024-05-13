@@ -230,7 +230,7 @@ impl<T: Clone + Eq + Hash + Display> GossipTable<T> {
     }
 
     /// We received knowledge about potentially new data with given ID from the given peer.  This
-    /// should only be called where we don't already hold everything locally we need to be able to
+    /// should only be called where we don't already hold everything locally needed to be able to
     /// gossip it onwards.  If we are able to gossip the data already, call `new_complete_data`
     /// instead.
     ///
@@ -273,7 +273,7 @@ impl<T: Clone + Eq + Hash + Display> GossipTable<T> {
     /// its ID should be passed in `maybe_holder`.  If received from a client or generated on this
     /// node, `maybe_holder` should be `None`.
     ///
-    /// This should only be called once we hold everything locally we need to be able to gossip it
+    /// This should only be called once we hold everything locally needed to be able to gossip it
     /// onwards.  If we aren't able to gossip this data yet, call `new_data_id` instead.
     ///
     /// Returns whether we should gossip it, and a list of peers to exclude.

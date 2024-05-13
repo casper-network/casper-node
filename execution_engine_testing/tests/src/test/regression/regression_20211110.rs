@@ -1,13 +1,10 @@
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, TransferRequestBuilder,
+    LOCAL_GENESIS_REQUEST,
 };
-use casper_execution_engine::{engine_state::Error as CoreError, execution::Error as ExecError};
+use casper_execution_engine::{engine_state::Error as CoreError, execution::ExecError};
 use casper_types::{
-    account::AccountHash,
-    runtime_args,
-    system::{mint, standard_payment},
-    ContractHash, Key, U512,
+    account::AccountHash, runtime_args, system::standard_payment, AddressableEntityHash, Key, U512,
 };
 
 const RECURSE_ENTRYPOINT: &str = "recurse";
@@ -25,65 +22,56 @@ fn regression_20211110() {
     let mut funds: u64 = STARTING_BALANCE;
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
-    let transfer_request = ExecuteRequestBuilder::transfer(
-        *DEFAULT_ACCOUNT_ADDR,
-        runtime_args! {
-            mint::ARG_TARGET => ACCOUNT_1_ADDR,
-            mint::ARG_AMOUNT => U512::from(funds),
-            mint::ARG_ID => Option::<u64>::None
-        },
-    )
-    .build();
+    let transfer_request = TransferRequestBuilder::new(funds, ACCOUNT_1_ADDR).build();
 
-    let install_request = {
-        let session_args = runtime_args! {};
-        let payment_args = runtime_args! {
-            standard_payment::ARG_AMOUNT => U512::from(INSTALL_COST)
-        };
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(ACCOUNT_1_ADDR)
-            .with_empty_payment_bytes(payment_args)
-            .with_session_code(REGRESSION_20211110_CONTRACT, session_args)
-            .with_authorization_keys(&[ACCOUNT_1_ADDR])
-            .with_deploy_hash([42; 32])
-            .build();
-
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
+    let session_args = runtime_args! {};
+    let payment_args = runtime_args! {
+        standard_payment::ARG_AMOUNT => U512::from(INSTALL_COST)
     };
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(ACCOUNT_1_ADDR)
+        .with_standard_payment(payment_args)
+        .with_session_code(REGRESSION_20211110_CONTRACT, session_args)
+        .with_authorization_keys(&[ACCOUNT_1_ADDR])
+        .with_deploy_hash([42; 32])
+        .build();
 
-    builder.exec(transfer_request).expect_success().commit();
+    let install_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
+
+    builder
+        .transfer_and_commit(transfer_request)
+        .expect_success();
     builder.exec(install_request).expect_success().commit();
 
     funds = funds.checked_sub(INSTALL_COST).unwrap();
 
     let contract_hash = match builder
-        .get_expected_addressable_entity_by_account_hash(ACCOUNT_1_ADDR)
+        .get_entity_with_named_keys_by_account_hash(ACCOUNT_1_ADDR)
+        .unwrap()
         .named_keys()
         .get(CONTRACT_HASH_NAME)
         .unwrap()
     {
-        Key::Hash(addr) => ContractHash::new(*addr),
+        Key::AddressableEntity(entity_addr) => AddressableEntityHash::new(entity_addr.value()),
         _ => panic!("Couldn't find regression contract."),
     };
 
-    let recurse_request = {
-        let payment_args = runtime_args! {
-            standard_payment::ARG_AMOUNT => U512::from(funds),
-        };
-        let session_args = runtime_args! {
-            ARG_TARGET => contract_hash
-        };
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(ACCOUNT_1_ADDR)
-            .with_empty_payment_bytes(payment_args)
-            .with_stored_session_hash(contract_hash, RECURSE_ENTRYPOINT, session_args)
-            .with_authorization_keys(&[ACCOUNT_1_ADDR])
-            .with_deploy_hash([43; 32])
-            .build();
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
+    let payment_args = runtime_args! {
+        standard_payment::ARG_AMOUNT => U512::from(funds),
     };
+    let session_args = runtime_args! {
+        ARG_TARGET => contract_hash
+    };
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(ACCOUNT_1_ADDR)
+        .with_standard_payment(payment_args)
+        .with_stored_session_hash(contract_hash, RECURSE_ENTRYPOINT, session_args)
+        .with_authorization_keys(&[ACCOUNT_1_ADDR])
+        .with_deploy_hash([43; 32])
+        .build();
+    let recurse_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder.exec(recurse_request).expect_failure();
 

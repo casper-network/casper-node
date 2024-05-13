@@ -2,15 +2,12 @@
 use datasize::DataSize;
 use thiserror::Error;
 
-use casper_storage::global_state::{self, state::CommitError};
-use casper_types::{
-    account::AccountHash, bytesrepr, system::mint, ApiError, ContractPackageHash, Digest, Key,
-    KeyTag, ProtocolVersion,
-};
+use casper_storage::{system::transfer::TransferError, tracking_copy::TrackingCopyError};
+use casper_types::{bytesrepr, system::mint, ApiError, Digest, Key, ProtocolVersion};
 
+use super::InvalidRequest;
 use crate::{
-    engine_state::{genesis::GenesisError, upgrade::ProtocolUpgradeError},
-    execution,
+    execution::ExecError,
     runtime::{stack, PreprocessingError},
 };
 
@@ -24,24 +21,12 @@ pub enum Error {
     /// Protocol version used in the deploy is invalid.
     #[error("Invalid protocol version: {0}")]
     InvalidProtocolVersion(ProtocolVersion),
-    /// Genesis error.
-    #[error("{0:?}")]
-    Genesis(Box<GenesisError>),
     /// WASM preprocessing error.
     #[error("Wasm preprocessing error: {0}")]
     WasmPreprocessing(#[from] PreprocessingError),
-    /// WASM serialization error.
-    #[error("Wasm serialization error: {0:?}")]
-    WasmSerialization(#[from] parity_wasm::SerializationError),
     /// Contract execution error.
     #[error(transparent)]
-    Exec(execution::Error),
-    /// Storage error.
-    #[error("Storage error: {0}")]
-    Storage(#[from] global_state::error::Error),
-    /// Authorization error.
-    #[error("Authorization failure: not authorized.")]
-    Authorization,
+    Exec(ExecError),
     /// Payment code provided insufficient funds for execution.
     #[error("Insufficient payment")]
     InsufficientPayment,
@@ -61,59 +46,29 @@ pub enum Error {
     #[error("Mint error: {0}")]
     Mint(String),
     /// Invalid key variant.
-    #[error("Unsupported key type")]
-    InvalidKeyVariant,
-    /// Protocol upgrade error.
-    #[error("Protocol upgrade error: {0}")]
-    ProtocolUpgrade(#[from] ProtocolUpgradeError),
+    #[error("Unsupported key type: {0}")]
+    InvalidKeyVariant(Key),
     /// Invalid deploy item variant.
     #[error("Unsupported deploy item variant: {0}")]
     InvalidDeployItemVariant(String),
-    /// Commit error.
-    #[error(transparent)]
-    CommitError(#[from] CommitError),
-    /// Missing system contract registry.
-    #[error("Missing system contract registry")]
-    MissingSystemContractRegistry,
     /// Missing system contract hash.
     #[error("Missing system contract hash: {0}")]
     MissingSystemContractHash(String),
-    /// Missing checksum registry.
-    #[error("Missing checksum registry")]
-    MissingChecksumRegistry,
     /// An attempt to push to the runtime stack while already at the maximum height.
     #[error("Runtime stack overflow")]
     RuntimeStackOverflow,
-    /// Failed to get the set of keys matching the specified tag.
-    #[error("Failed to get keys of kind: {0:?}")]
-    FailedToGetKeys(KeyTag),
-    /// Failed to get the purses stored under Key::Withdraw
-    #[error("Failed to get stored values under withdraws")]
-    FailedToGetStoredWithdraws,
-    /// Failed to convert the StoredValue into WithdrawPurse.
-    #[error("Failed to convert the stored value to a withdraw purse")]
-    FailedToGetWithdrawPurses,
-    /// Failed to retrieve the unbonding delay from the auction state.
-    #[error("Failed to retrieve the unbonding delay from the auction state")]
-    FailedToRetrieveUnbondingDelay,
-    /// Failed to retrieve the current EraId from the auction state.
-    #[error("Failed to retrieve the era_id from the auction state")]
-    FailedToRetrieveEraId,
-    /// Failed to put a trie node into global state because some of its children were missing.
-    #[error("Failed to put a trie into global state because some of its children were missing")]
-    MissingTrieNodeChildren(Vec<Digest>),
-    /// Failed to retrieve contract record by a given account hash.
-    #[error("Failed to retrieve contract by account hash {0}")]
-    MissingContractByAccountHash(AccountHash),
-    /// Failed to retrieve the entity's package
-    #[error("Failed to retrieve the entity package as {0}")]
-    MissingEntityPackage(ContractPackageHash),
-    /// Failed to retrieve accumulation purse from handle payment system contract.
-    #[error("Failed to retrieve accumulation purse from the handle payment contract")]
-    FailedToRetrieveAccumulationPurse,
-    /// Failed to prune listed keys.
-    #[error("Pruning attempt failed.")]
-    FailedToPrune(Vec<Key>),
+    /// Storage error.
+    #[error("Tracking copy error: {0}")]
+    TrackingCopy(TrackingCopyError),
+    /// Native transfer error.
+    #[error("Transfer error: {0}")]
+    Transfer(TransferError),
+    /// Deprecated functionality.
+    #[error("Deprecated: {0}")]
+    Deprecated(String),
+    /// Could not derive a valid item to execute.
+    #[error("Invalid executable item: {0}")]
+    InvalidExecutableItem(#[from] InvalidRequest),
 }
 
 impl Error {
@@ -123,14 +78,20 @@ impl Error {
     /// This method should be used only by native code that has to mimic logic of a WASM executed
     /// code.
     pub fn reverter(api_error: impl Into<ApiError>) -> Error {
-        Error::Exec(execution::Error::Revert(api_error.into()))
+        Error::Exec(ExecError::Revert(api_error.into()))
     }
 }
 
-impl From<execution::Error> for Error {
-    fn from(error: execution::Error) -> Self {
+impl From<TransferError> for Error {
+    fn from(err: TransferError) -> Self {
+        Error::Transfer(err)
+    }
+}
+
+impl From<ExecError> for Error {
+    fn from(error: ExecError) -> Self {
         match error {
-            execution::Error::WasmPreprocessing(preprocessing_error) => {
+            ExecError::WasmPreprocessing(preprocessing_error) => {
                 Error::WasmPreprocessing(preprocessing_error)
             }
             _ => Error::Exec(error),
@@ -150,15 +111,15 @@ impl From<mint::Error> for Error {
     }
 }
 
-impl From<Box<GenesisError>> for Error {
-    fn from(genesis_error: Box<GenesisError>) -> Self {
-        Self::Genesis(genesis_error)
-    }
-}
-
 impl From<stack::RuntimeStackOverflow> for Error {
     fn from(_: stack::RuntimeStackOverflow) -> Self {
         Self::RuntimeStackOverflow
+    }
+}
+
+impl From<TrackingCopyError> for Error {
+    fn from(e: TrackingCopyError) -> Self {
+        Error::TrackingCopy(e)
     }
 }
 

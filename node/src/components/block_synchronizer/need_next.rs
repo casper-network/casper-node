@@ -1,9 +1,9 @@
 use datasize::DataSize;
 use derive_more::Display;
 
-use casper_types::{Block, BlockHash, Deploy, DeployHash, DeployId, Digest, EraId, PublicKey};
+use casper_types::{Block, BlockHash, DeployHash, Digest, EraId, PublicKey, TransactionId};
 
-use crate::types::{BlockExecutionResultsOrChunkId, FinalizedBlock};
+use crate::types::{BlockExecutionResultsOrChunkId, ExecutableBlock};
 
 use super::execution_results_acquisition::ExecutionResultsChecksum;
 
@@ -32,8 +32,8 @@ pub(crate) enum NeedNext {
     GlobalState(BlockHash, Digest),
     #[display(fmt = "need next for {}: deploy {}", _0, _1)]
     DeployByHash(BlockHash, DeployHash),
-    #[display(fmt = "need next for {}: deploy {}", _0, _1)]
-    DeployById(BlockHash, DeployId),
+    #[display(fmt = "need next for {}: transaction {}", _0, _1)]
+    TransactionById(BlockHash, TransactionId),
     #[display(fmt = "need next for {}: make block executable (height {})", _0, _1)]
     MakeExecutableBlock(BlockHash, u64),
     #[display(
@@ -41,7 +41,7 @@ pub(crate) enum NeedNext {
         _0,
         _1
     )]
-    EnqueueForExecution(BlockHash, u64, Box<FinalizedBlock>, Vec<Deploy>),
+    EnqueueForExecution(BlockHash, u64, Box<ExecutableBlock>),
     /// We want the Merkle root hash stored in global state under the ChecksumRegistry key for the
     /// execution results.
     #[display(

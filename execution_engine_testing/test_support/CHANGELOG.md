@@ -11,6 +11,14 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
+## 6.0.0
+
+### Changed
+* Update `casper-execution-engine` dependency.
+* Handle evict items in the `WasmTestBuilder` when advancing eras or calling `step`.
+
+
+
 ## 5.0.0
 
 ### Added

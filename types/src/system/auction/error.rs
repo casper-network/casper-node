@@ -127,7 +127,7 @@ pub enum Error {
     /// assert_eq!(17, Error::InvalidPublicKey as u8);
     /// ```
     InvalidPublicKey = 17,
-    /// Validator is not not bonded.
+    /// Validator is not bonded.
     /// ```
     /// # use casper_types::system::auction::Error;
     /// assert_eq!(18, Error::BondNotFound as u8);
@@ -327,6 +327,32 @@ pub enum Error {
     /// assert_eq!(49, Error::TransferToAdministrator as u8);
     /// ```
     TransferToAdministrator = 49,
+    /// Failed to transfer desired amount into administrators account.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(50, Error::ForgedReference as u8);
+    /// ```
+    ForgedReference = 50,
+    /// Unable to find purse.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(51, Error::MissingPurse as u8);
+    /// ```
+    MissingPurse = 51,
+    /// Failed to transfer validator bid to new public key.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(52, Error::ValidatorBidExistsAlready as u8);
+    /// ```
+    ValidatorBidExistsAlready = 52,
+    /// Failed to look up current validator bid
+    /// because it's public key has been changed
+    /// and bridge record chain is too long to follow.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(53, Error::BridgeRecordChainTooLong as u8);
+    /// ```
+    BridgeRecordChainTooLong = 53,
 }
 
 impl Display for Error {
@@ -382,6 +408,10 @@ impl Display for Error {
             Error::AuctionBidsDisabled => formatter.write_str("Auction bids are disabled"),
             Error::GetAccumulationPurse => formatter.write_str("Get accumulation purse error"),
             Error::TransferToAdministrator => formatter.write_str("Transfer to administrator error"),
+            Error::ForgedReference => formatter.write_str("Forged reference"),
+            Error::MissingPurse => formatter.write_str("Missing purse"),
+            Error::ValidatorBidExistsAlready => formatter.write_str("Validator bid with given public key already exists"),
+            Error::BridgeRecordChainTooLong => formatter.write_str("Bridge record chain is too long to find current validator bid"),
         }
     }
 }
@@ -463,6 +493,12 @@ impl TryFrom<u8> for Error {
             d if d == Error::AuctionBidsDisabled as u8 => Ok(Error::AuctionBidsDisabled),
             d if d == Error::GetAccumulationPurse as u8 => Ok(Error::GetAccumulationPurse),
             d if d == Error::TransferToAdministrator as u8 => Ok(Error::TransferToAdministrator),
+            d if d == Error::ForgedReference as u8 => Ok(Error::ForgedReference),
+            d if d == Error::MissingPurse as u8 => Ok(Error::MissingPurse),
+            d if d == Error::ValidatorBidExistsAlready as u8 => {
+                Ok(Error::ValidatorBidExistsAlready)
+            }
+            d if d == Error::BridgeRecordChainTooLong as u8 => Ok(Error::BridgeRecordChainTooLong),
             _ => Err(TryFromU8ForError(())),
         }
     }
@@ -507,7 +543,7 @@ pub enum PurseLookupError {
 impl From<PurseLookupError> for Error {
     fn from(error: PurseLookupError) -> Self {
         match error {
-            PurseLookupError::KeyNotFound => Error::MissingKey,
+            PurseLookupError::KeyNotFound => Error::MissingPurse,
             PurseLookupError::KeyUnexpectedType => Error::InvalidKeyVariant,
         }
     }

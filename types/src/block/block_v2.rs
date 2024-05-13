@@ -16,15 +16,16 @@ use serde::{Deserialize, Serialize};
 #[cfg(any(feature = "once_cell", test))]
 use once_cell::sync::OnceCell;
 
+use super::{Block, BlockBodyV2, BlockConversionError, RewardedSignatures};
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::testing::TestRng;
+#[cfg(feature = "json-schema")]
+use crate::TransactionV1Hash;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    BlockHash, BlockHeader, BlockValidationError, DeployHash, Digest, EraEnd, EraId,
-    ProtocolVersion, PublicKey, Timestamp,
+    BlockHash, BlockHeaderV2, BlockValidationError, Digest, EraEndV2, EraId, ProtocolVersion,
+    PublicKey, Timestamp, TransactionHash,
 };
-
-use super::{Block, BlockBodyV2, BlockConversionError};
 
 #[cfg(feature = "json-schema")]
 static BLOCK_V2: Lazy<BlockV2> = Lazy::new(|| {
@@ -32,15 +33,27 @@ static BLOCK_V2: Lazy<BlockV2> = Lazy::new(|| {
     let parent_seed = Digest::from([9; Digest::LENGTH]);
     let state_root_hash = Digest::from([8; Digest::LENGTH]);
     let random_bit = true;
-    let era_end = Some(EraEnd::example().clone());
+    let era_end = Some(EraEndV2::example().clone());
     let timestamp = *Timestamp::example();
     let era_id = EraId::from(1);
     let height = 10;
     let protocol_version = ProtocolVersion::V1_0_0;
     let secret_key = crate::SecretKey::example();
     let proposer = PublicKey::from(secret_key);
-    let deploy_hashes = vec![DeployHash::new(Digest::from([20; Digest::LENGTH]))];
-    let transfer_hashes = vec![DeployHash::new(Digest::from([21; Digest::LENGTH]))];
+    let transfer_hashes = vec![TransactionHash::V1(TransactionV1Hash::new(Digest::from(
+        [20; Digest::LENGTH],
+    )))];
+    let non_transfer_native_hashes = vec![TransactionHash::V1(TransactionV1Hash::new(
+        Digest::from([21; Digest::LENGTH]),
+    ))];
+    let installer_upgrader_hashes = vec![TransactionHash::V1(TransactionV1Hash::new(
+        Digest::from([22; Digest::LENGTH]),
+    ))];
+    let other_hashes = vec![TransactionHash::V1(TransactionV1Hash::new(Digest::from(
+        [23; Digest::LENGTH],
+    )))];
+    let rewarded_signatures = RewardedSignatures::default();
+    let current_gas_price = 1u8;
     BlockV2::new(
         parent_hash,
         parent_seed,
@@ -52,8 +65,12 @@ static BLOCK_V2: Lazy<BlockV2> = Lazy::new(|| {
         height,
         protocol_version,
         proposer,
-        deploy_hashes,
         transfer_hashes,
+        non_transfer_native_hashes,
+        installer_upgrader_hashes,
+        other_hashes,
+        rewarded_signatures,
+        current_gas_price,
     )
 });
 
@@ -67,7 +84,7 @@ pub struct BlockV2 {
     /// The block hash identifying this block.
     pub(super) hash: BlockHash,
     /// The header portion of the block.
-    pub(super) header: BlockHeader,
+    pub(super) header: BlockHeaderV2,
     /// The body portion of the block.
     pub(super) body: BlockBodyV2,
 }
@@ -81,19 +98,30 @@ impl BlockV2 {
         parent_seed: Digest,
         state_root_hash: Digest,
         random_bit: bool,
-        era_end: Option<EraEnd>,
+        era_end: Option<EraEndV2>,
         timestamp: Timestamp,
         era_id: EraId,
         height: u64,
         protocol_version: ProtocolVersion,
         proposer: PublicKey,
-        deploy_hashes: Vec<DeployHash>,
-        transfer_hashes: Vec<DeployHash>,
+        mint: Vec<TransactionHash>,
+        auction: Vec<TransactionHash>,
+        install_upgrade: Vec<TransactionHash>,
+        standard: Vec<TransactionHash>,
+        rewarded_signatures: RewardedSignatures,
+        current_gas_price: u8,
     ) -> Self {
-        let body = BlockBodyV2::new(proposer, deploy_hashes, transfer_hashes);
+        let body = BlockBodyV2::new(
+            proposer,
+            mint,
+            auction,
+            install_upgrade,
+            standard,
+            rewarded_signatures,
+        );
         let body_hash = body.hash();
         let accumulated_seed = Digest::hash_pair(parent_seed, [random_bit as u8]);
-        let header = BlockHeader::new(
+        let header = BlockHeaderV2::new(
             parent_hash,
             state_root_hash,
             body_hash,
@@ -104,6 +132,7 @@ impl BlockV2 {
             era_id,
             height,
             protocol_version,
+            current_gas_price,
             #[cfg(any(feature = "once_cell", test))]
             OnceCell::new(),
         );
@@ -112,7 +141,7 @@ impl BlockV2 {
 
     // This method is not intended to be used by third party crates.
     #[doc(hidden)]
-    pub fn new_from_header_and_body(header: BlockHeader, body: BlockBodyV2) -> Self {
+    pub fn new_from_header_and_body(header: BlockHeaderV2, body: BlockBodyV2) -> Self {
         let hash = header.block_hash();
         BlockV2 { hash, header, body }
     }
@@ -123,18 +152,23 @@ impl BlockV2 {
     }
 
     /// Returns the block's header.
-    pub fn header(&self) -> &BlockHeader {
+    pub fn header(&self) -> &BlockHeaderV2 {
         &self.header
     }
 
     /// Returns the block's header, consuming `self`.
-    pub fn take_header(self) -> BlockHeader {
+    pub fn take_header(self) -> BlockHeaderV2 {
         self.header
     }
 
     /// Returns the block's body.
     pub fn body(&self) -> &BlockBodyV2 {
         &self.body
+    }
+
+    /// Returns the block's body, consuming `self`.
+    pub fn take_body(self) -> BlockBodyV2 {
+        self.body
     }
 
     /// Returns the parent block's hash.
@@ -163,7 +197,7 @@ impl BlockV2 {
     }
 
     /// Returns the `EraEnd` of a block if it is a switch block.
-    pub fn era_end(&self) -> Option<&EraEnd> {
+    pub fn era_end(&self) -> Option<&EraEndV2> {
         self.header.era_end()
     }
 
@@ -202,21 +236,34 @@ impl BlockV2 {
         self.body.proposer()
     }
 
-    /// Returns the deploy hashes within the block.
-    pub fn deploy_hashes(&self) -> &[DeployHash] {
-        self.body.deploy_hashes()
+    /// List of identifiers for finality signatures for a particular past block.
+    pub fn rewarded_signatures(&self) -> &RewardedSignatures {
+        self.body.rewarded_signatures()
     }
 
-    /// Returns the transfer hashes within the block.
-    pub fn transfer_hashes(&self) -> &[DeployHash] {
-        self.body.transfer_hashes()
+    /// Returns the hashes of the transfer transactions within the block.
+    pub fn mint(&self) -> impl Iterator<Item = &TransactionHash> {
+        self.body.mint()
     }
 
-    /// Returns the deploy and transfer hashes in the order in which they were executed.
-    pub fn deploy_and_transfer_hashes(&self) -> impl Iterator<Item = &DeployHash> {
-        self.deploy_hashes()
-            .iter()
-            .chain(self.transfer_hashes().iter())
+    /// Returns the hashes of the non-transfer, native transactions within the block.
+    pub fn auction(&self) -> impl Iterator<Item = &TransactionHash> {
+        self.body.auction()
+    }
+
+    /// Returns the hashes of the installer/upgrader transactions within the block.
+    pub fn install_upgrade(&self) -> impl Iterator<Item = &TransactionHash> {
+        self.body.install_upgrade()
+    }
+
+    /// Returns the hashes of all other transactions within the block.
+    pub fn standard(&self) -> impl Iterator<Item = &TransactionHash> {
+        self.body.standard()
+    }
+
+    /// Returns all of the transaction hashes in the order in which they were executed.
+    pub fn all_transactions(&self) -> impl Iterator<Item = &TransactionHash> {
+        self.body.all_transactions()
     }
 
     /// Returns `Ok` if and only if the block's provided block hash and body hash are identical to
@@ -307,7 +354,7 @@ impl ToBytes for BlockV2 {
 impl FromBytes for BlockV2 {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (hash, remainder) = BlockHash::from_bytes(bytes)?;
-        let (header, remainder) = BlockHeader::from_bytes(remainder)?;
+        let (header, remainder) = BlockHeaderV2::from_bytes(remainder)?;
         let (body, remainder) = BlockBodyV2::from_bytes(remainder)?;
         let block = BlockV2 { hash, header, body };
         Ok((block, remainder))
@@ -329,7 +376,7 @@ impl TryFrom<Block> for BlockV2 {
 
 #[cfg(test)]
 mod tests {
-    use crate::block::test_block_builder::TestBlockBuilder;
+    use crate::TestBlockBuilder;
 
     use super::*;
 

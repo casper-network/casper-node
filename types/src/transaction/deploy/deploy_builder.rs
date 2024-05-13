@@ -1,6 +1,9 @@
 mod error;
 
-use super::{super::AccountAndSecretKey, Deploy, DeployHash, ExecutableDeployItem, TransferTarget};
+use super::{
+    super::{InitiatorAddr, InitiatorAddrAndSecretKey, TransferTarget},
+    Deploy, DeployHash, ExecutableDeployItem,
+};
 use crate::{PublicKey, SecretKey, TimeDiff, Timestamp, URef, U512};
 pub use error::DeployBuilderError;
 
@@ -64,11 +67,11 @@ impl<'a> DeployBuilder<'a> {
     ///   * that payment code is provided by either calling
     ///     [`with_standard_payment`](Self::with_standard_payment) or
     ///     [`with_payment`](Self::with_payment)
-    pub fn new_transfer<C: Into<String>, A: Into<U512>>(
+    pub fn new_transfer<C: Into<String>, A: Into<U512>, T: Into<TransferTarget>>(
         chain_name: C,
         amount: A,
         maybe_source: Option<URef>,
-        target: TransferTarget,
+        target: T,
         maybe_transfer_id: Option<u64>,
     ) -> Self {
         let session =
@@ -127,13 +130,15 @@ impl<'a> DeployBuilder<'a> {
     /// [`with_standard_payment`](Self::with_standard_payment) nor
     /// [`with_payment`](Self::with_payment) were previously called.
     pub fn build(self) -> Result<Deploy, DeployBuilderError> {
-        let account_and_secret_key = match (self.account, self.secret_key) {
-            (Some(account), Some(secret_key)) => AccountAndSecretKey::Both {
-                account,
+        let initiator_addr_and_secret_key = match (self.account, self.secret_key) {
+            (Some(account), Some(secret_key)) => InitiatorAddrAndSecretKey::Both {
+                initiator_addr: InitiatorAddr::PublicKey(account),
                 secret_key,
             },
-            (Some(account), None) => AccountAndSecretKey::Account(account),
-            (None, Some(secret_key)) => AccountAndSecretKey::SecretKey(secret_key),
+            (Some(account), None) => {
+                InitiatorAddrAndSecretKey::InitiatorAddr(InitiatorAddr::PublicKey(account))
+            }
+            (None, Some(secret_key)) => InitiatorAddrAndSecretKey::SecretKey(secret_key),
             (None, None) => return Err(DeployBuilderError::DeployMissingSessionAccount),
         };
 
@@ -148,7 +153,7 @@ impl<'a> DeployBuilder<'a> {
             self.chain_name,
             payment,
             self.session,
-            account_and_secret_key,
+            initiator_addr_and_secret_key,
         );
         Ok(deploy)
     }

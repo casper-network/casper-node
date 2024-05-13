@@ -14,20 +14,23 @@ use tempfile::{tempdir, TempDir};
 
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
+    global_state::{Pointer, TrieMerkleProof},
     Digest,
 };
 
 use crate::global_state::{
     error,
     transaction_source::{lmdb::LmdbEnvironment, Readable, Transaction, TransactionSource},
-    trie::{merkle_proof::TrieMerkleProof, Pointer, Trie},
+    trie::Trie,
     trie_store::{
         lmdb::LmdbTrieStore,
         operations::{self, read, read_with_proof, write, ReadResult, WriteResult},
         TrieStore,
     },
-    DEFAULT_TEST_MAX_DB_SIZE, DEFAULT_TEST_MAX_READERS,
+    DEFAULT_MAX_DB_SIZE, DEFAULT_MAX_READERS,
 };
+
+use super::compute_state_hash;
 
 const TEST_KEY_LENGTH: usize = 7;
 
@@ -568,8 +571,8 @@ impl LmdbTestContext {
         let _temp_dir = tempdir()?;
         let environment = LmdbEnvironment::new(
             _temp_dir.path(),
-            DEFAULT_TEST_MAX_DB_SIZE,
-            DEFAULT_TEST_MAX_READERS,
+            DEFAULT_MAX_DB_SIZE,
+            DEFAULT_MAX_READERS,
             true,
         )?;
         let store = LmdbTrieStore::new(&environment, None, DatabaseFlags::empty())?;
@@ -641,7 +644,7 @@ where
                 read_with_proof::<_, _, _, _, E>(txn, store, root, key)?;
             match maybe_proof {
                 ReadResult::Found(proof) => {
-                    let hash = proof.compute_state_hash()?;
+                    let hash = compute_state_hash(&proof)?;
                     ret.push(hash == *root && proof.value() == value);
                 }
                 ReadResult::NotFound => {
@@ -791,7 +794,7 @@ where
             let maybe_proof = read_with_proof::<_, _, _, _, E>(&txn, store, root_hash, key)?;
             match maybe_proof {
                 ReadResult::Found(proof) => {
-                    let hash = proof.compute_state_hash()?;
+                    let hash = compute_state_hash(&proof)?;
                     if hash != *root_hash || proof.value() != value {
                         return Ok(false);
                     }

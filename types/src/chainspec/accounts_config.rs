@@ -31,7 +31,7 @@ where
 }
 
 /// Configuration values associated with accounts.toml
-#[derive(PartialEq, Eq, Serialize, Deserialize, Debug, Clone)]
+#[derive(PartialEq, Eq, Serialize, Deserialize, Debug, Clone, Default)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct AccountsConfig {
     #[serde(deserialize_with = "sorted_vec_deserializer")]
@@ -82,6 +82,13 @@ impl AccountsConfig {
             .find(|account| &account.public_key == public_key)
     }
 
+    /// All of the validators.
+    pub fn validators(&self) -> impl Iterator<Item = &AccountConfig> {
+        self.accounts
+            .iter()
+            .filter(|account| account.validator.is_some())
+    }
+
     /// Is the provided public key in the set of genesis validator public keys.
     pub fn is_genesis_validator(&self, public_key: &PublicKey) -> bool {
         match self.account(public_key) {
@@ -95,7 +102,7 @@ impl AccountsConfig {
     pub fn random(rng: &mut TestRng) -> Self {
         use rand::Rng;
 
-        use crate::{Motes, U512};
+        use crate::Motes;
 
         let alpha = AccountConfig::random(rng);
         let accounts = vec![
@@ -113,7 +120,7 @@ impl AccountsConfig {
         let admin_balance: u32 = rng.gen();
         let administrators = vec![AdministratorAccount::new(
             PublicKey::random(rng),
-            Motes::new(U512::from(admin_balance)),
+            Motes::new(admin_balance),
         )];
 
         AccountsConfig {

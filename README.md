@@ -96,7 +96,7 @@ __The node will not run properly without another node to connect to.  It is reco
 
 ### Running multiple nodes on one machine
 
-There is a [tool](https://github.com/casper-network/casper-node/tree/dev/utils/nctl) which automates the process of running multiple nodes on a single machine.
+There is a [tool](https://github.com/casper-network/casper-nctl) which automates the process of running multiple nodes on a single machine.
 
 Note that running multiple nodes on a single machine is normally only recommended for test purposes.
 
@@ -196,7 +196,7 @@ multiple nodes provided all logs are available.
 Another helpful logging feature is ancestor logging. If the target `dispatch` is set to at least debug level, events
 being dispatched will be logged as well. Any event has an id (`ev`) and may have an ancestor (`a`), which is the previous
 event whose effects caused the resulting event to be scheduled. As an example, if an incoming network message gets
-asssigned an ID of `ev=123`, the first round of subsequent events will show `a=123` as their ancestor in the logs.
+assigned an ID of `ev=123`, the first round of subsequent events will show `a=123` as their ancestor in the logs.
 
 ### Changing the logging filter at runtime
 
@@ -297,7 +297,7 @@ See [the client README](https://github.com/casper-ecosystem/casper-client-rs#rea
 
 ## Running a local network
 
-See [the nctl utility README](utils/nctl/README.md).
+See [the nctl utility README](https://github.com/casper-network/casper-nctl#readme).
 
 ## Running on an existing network
 

@@ -10,14 +10,14 @@ use once_cell::sync::Lazy;
 use casper_engine_test_support::{
     utils, LmdbWasmTestBuilder, StepRequestBuilder, DEFAULT_ACCOUNTS,
 };
-use casper_execution_engine::engine_state::{SlashItem, StepSuccess};
+use casper_storage::data_access_layer::{SlashItem, StepResult};
 use casper_types::{
-    execution::TransformKind,
+    execution::TransformKindV2,
     system::auction::{
         BidsExt, DelegationRate, SeigniorageRecipientsSnapshot, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
     },
-    CLValue, EraId, GenesisAccount, GenesisValidator, Key, Motes, ProtocolVersion, PublicKey,
-    SecretKey, StoredValue, U512,
+    CLValue, EntityAddr, EraId, GenesisAccount, GenesisValidator, Key, Motes, ProtocolVersion,
+    PublicKey, SecretKey, StoredValue, U512,
 };
 
 static ACCOUNT_1_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| {
@@ -41,17 +41,17 @@ fn initialize_builder() -> LmdbWasmTestBuilder {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
         let account_1 = GenesisAccount::account(
             ACCOUNT_1_PUBLIC_KEY.clone(),
-            Motes::new(ACCOUNT_1_BALANCE.into()),
+            Motes::new(ACCOUNT_1_BALANCE),
             Some(GenesisValidator::new(
-                Motes::new(ACCOUNT_1_BOND.into()),
+                Motes::new(ACCOUNT_1_BOND),
                 DelegationRate::zero(),
             )),
         );
         let account_2 = GenesisAccount::account(
             ACCOUNT_2_PUBLIC_KEY.clone(),
-            Motes::new(ACCOUNT_2_BALANCE.into()),
+            Motes::new(ACCOUNT_2_BALANCE),
             Some(GenesisValidator::new(
-                Motes::new(ACCOUNT_2_BOND.into()),
+                Motes::new(ACCOUNT_2_BOND),
                 DelegationRate::zero(),
             )),
         );
@@ -60,7 +60,7 @@ fn initialize_builder() -> LmdbWasmTestBuilder {
         tmp
     };
     let run_genesis_request = utils::create_run_genesis_request(accounts);
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis(run_genesis_request);
     builder
 }
 
@@ -86,8 +86,10 @@ fn should_not_create_any_purse() {
         .with_era_end_timestamp_millis(eras_end_timestamp_millis_1.as_millis().try_into().unwrap())
         .build();
 
-    let before_auction_seigniorage: SeigniorageRecipientsSnapshot =
-        builder.get_value(auction_hash, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY);
+    let before_auction_seigniorage: SeigniorageRecipientsSnapshot = builder.get_value(
+        EntityAddr::System(auction_hash.value()),
+        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+    );
 
     let bids_before_slashing = builder.get_bids();
     assert!(
@@ -96,9 +98,15 @@ fn should_not_create_any_purse() {
         bids_before_slashing
     );
 
-    let StepSuccess {
-        effects: effects_1, ..
-    } = builder.step(step_request_1).expect("should execute step");
+    let effects_1 = match builder.step(step_request_1) {
+        StepResult::Failure(_) => {
+            panic!("step_request_1: Failure")
+        }
+        StepResult::RootNotFound => {
+            panic!("step_request_1: RootNotFound")
+        }
+        StepResult::Success { effects, .. } => effects,
+    };
 
     assert!(
         builder
@@ -129,8 +137,10 @@ fn should_not_create_any_purse() {
     );
 
     // seigniorage snapshot should have changed after auction
-    let after_auction_seigniorage: SeigniorageRecipientsSnapshot =
-        builder.get_value(auction_hash, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY);
+    let after_auction_seigniorage: SeigniorageRecipientsSnapshot = builder.get_value(
+        EntityAddr::System(auction_hash.value()),
+        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+    );
     assert!(
         !before_auction_seigniorage
             .keys()
@@ -146,9 +156,12 @@ fn should_not_create_any_purse() {
         .with_era_end_timestamp_millis(eras_end_timestamp_millis_2.as_millis().try_into().unwrap())
         .build();
 
-    let StepSuccess {
-        effects: effects_2, ..
-    } = builder.step(step_request_2).expect("should execute step");
+    let effects_2 = match builder.step(step_request_2) {
+        StepResult::RootNotFound | StepResult::Failure(_) => {
+            panic!("step_request_2: failed to step")
+        }
+        StepResult::Success { effects, .. } => effects,
+    };
 
     let cl_u512_zero = CLValue::from_t(U512::zero()).unwrap();
 
@@ -156,8 +169,8 @@ fn should_not_create_any_purse() {
         .transforms()
         .iter()
         .filter_map(|transform| match transform.kind() {
-            TransformKind::Write(StoredValue::CLValue(cl_value))
-                if transform.key().as_balance().is_some() && *cl_value == cl_u512_zero =>
+            TransformKindV2::Write(StoredValue::CLValue(cl_value))
+                if transform.key().as_balance().is_some() && cl_value == &cl_u512_zero =>
             {
                 Some(*transform.key())
             }
@@ -171,8 +184,8 @@ fn should_not_create_any_purse() {
         .transforms()
         .iter()
         .filter_map(|transform| match transform.kind() {
-            TransformKind::Write(StoredValue::CLValue(cl_value))
-                if transform.key().as_balance().is_some() && *cl_value == cl_u512_zero =>
+            TransformKindV2::Write(StoredValue::CLValue(cl_value))
+                if transform.key().as_balance().is_some() && cl_value == &cl_u512_zero =>
             {
                 Some(*transform.key())
             }

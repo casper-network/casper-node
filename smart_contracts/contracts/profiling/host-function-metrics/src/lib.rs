@@ -15,8 +15,9 @@ use casper_types::{
     account::AccountHash,
     addressable_entity::{ActionType, NamedKeys, Weight},
     bytesrepr::Bytes,
-    runtime_args, ApiError, BlockTime, CLType, CLValue, ContractHash, ContractVersion, EntryPoint,
-    EntryPointAccess, EntryPointType, EntryPoints, Key, Parameter, Phase, U512,
+    runtime_args, AddressableEntityHash, ApiError, BlockTime, CLType, CLValue, EntityVersion,
+    EntryPoint, EntryPointAccess, EntryPointPayment, EntryPointType, EntryPoints, Key, Parameter,
+    Phase, U512,
 };
 
 const MIN_FUNCTION_NAME_LENGTH: usize = 1;
@@ -216,7 +217,7 @@ pub extern "C" fn call() {
 fn store_function(
     entry_point_name: &str,
     named_keys: Option<NamedKeys>,
-) -> (ContractHash, ContractVersion) {
+) -> (AddressableEntityHash, EntityVersion) {
     let entry_points = {
         let mut entry_points = EntryPoints::new();
 
@@ -228,438 +229,1079 @@ fn store_function(
             ],
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Contract,
+            EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
 
         entry_points.add_entry_point(entry_point);
 
         entry_points
     };
-    storage::new_contract(entry_points, named_keys, None, None)
+    storage::new_contract(entry_points, named_keys, None, None, None)
 }
 
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn s() { small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn ss() { small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn sss() { small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn ssss() { small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn sssss() { small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn ssssss() { small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn sssssss() { small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn ssssssss() { small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn sssssssss() { small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn ssssssssss() { small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn sssssssssss() { small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn ssssssssssss() { small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn sssssssssssss() { small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn ssssssssssssss() { small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn sssssssssssssss() { small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn ssssssssssssssss() { small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn sssssssssssssssss() { small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn ssssssssssssssssss() { small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn sssssssssssssssssss() { small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn ssssssssssssssssssss() { small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn sssssssssssssssssssss() { small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn ssssssssssssssssssssss() { small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn sssssssssssssssssssssss() { small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn ssssssssssssssssssssssss() { small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn sssssssssssssssssssssssss() { small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn ssssssssssssssssssssssssss() { small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn sssssssssssssssssssssssssss() { small_function()
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn s() { small_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn ss() { small_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn sss() { small_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn ssss() { small_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn sssss() { small_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn ssssss() { small_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn sssssss() { small_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn ssssssss() { small_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn sssssssss() { small_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn ssssssssss() { small_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn sssssssssss() { small_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn ssssssssssss() { small_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn sssssssssssss() { small_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn ssssssssssssss() { small_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn sssssssssssssss() { small_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn ssssssssssssssss() { small_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn sssssssssssssssss() { small_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn ssssssssssssssssss() { small_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn sssssssssssssssssss() { small_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn ssssssssssssssssssss() { small_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn sssssssssssssssssssss() { small_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn ssssssssssssssssssssss() { small_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn sssssssssssssssssssssss() { small_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn ssssssssssssssssssssssss() { small_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn sssssssssssssssssssssssss() { small_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn ssssssssssssssssssssssssss() { small_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn sssssssssssssssssssssssssss() {
+    small_function()
 }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn ssssssssssssssssssssssssssss() {
-small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn ssssssssssssssssssssssssssss() {
+    small_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 sssssssssssssssssssssssssssss() { small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C"
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C"
 fn ssssssssssssssssssssssssssssss() { small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern
 "C" fn sssssssssssssssssssssssssssssss() { small_function() }
-#[rustfmt::skip] #[no_mangle] pub
+
+#[rustfmt::skip]
+#[no_mangle]
+pub
 extern "C" fn ssssssssssssssssssssssssssssssss() { small_function() }
+
 #[rustfmt::skip]
-#[no_mangle] pub extern "C" fn sssssssssssssssssssssssssssssssss() { small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn ssssssssssssssssssssssssssssssssss() {
-small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+#[no_mangle]
+pub extern "C" fn sssssssssssssssssssssssssssssssss() { small_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn ssssssssssssssssssssssssssssssssss() {
+    small_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 sssssssssssssssssssssssssssssssssss() { small_function() }
-#[rustfmt::skip] #[no_mangle] pub
+
+#[rustfmt::skip]
+#[no_mangle]
+pub
 extern "C" fn ssssssssssssssssssssssssssssssssssss() { small_function() }
+
 #[rustfmt::skip]
-#[no_mangle] pub extern "C" fn sssssssssssssssssssssssssssssssssssss() { small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn ssssssssssssssssssssssssssssssssssssss() {
-small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+#[no_mangle]
+pub extern "C" fn sssssssssssssssssssssssssssssssssssss() { small_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn ssssssssssssssssssssssssssssssssssssss() {
+    small_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 sssssssssssssssssssssssssssssssssssssss() { small_function() }
-#[rustfmt::skip] #[no_mangle] pub
+
+#[rustfmt::skip]
+#[no_mangle]
+pub
 extern "C" fn ssssssssssssssssssssssssssssssssssssssss() { small_function() }
+
 #[rustfmt::skip]
-#[no_mangle] pub extern "C" fn sssssssssssssssssssssssssssssssssssssssss() { small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn ssssssssssssssssssssssssssssssssssssssssss() {
-small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+#[no_mangle]
+pub extern "C" fn sssssssssssssssssssssssssssssssssssssssss() { small_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn ssssssssssssssssssssssssssssssssssssssssss() {
+    small_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 sssssssssssssssssssssssssssssssssssssssssss() { small_function() }
-#[rustfmt::skip] #[no_mangle]
+
+#[rustfmt::skip]
+#[no_mangle]
 pub extern "C" fn ssssssssssssssssssssssssssssssssssssssssssss() { small_function() }
+
 #[rustfmt::
-skip] #[no_mangle] pub extern "C" fn sssssssssssssssssssssssssssssssssssssssssssss() {
-small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+skip]
+#[no_mangle]
+pub extern "C" fn sssssssssssssssssssssssssssssssssssssssssssss() {
+    small_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 ssssssssssssssssssssssssssssssssssssssssssssss() { small_function() }
+
 #[rustfmt::skip]
-#[no_mangle] pub extern "C" fn sssssssssssssssssssssssssssssssssssssssssssssss() {
-small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+#[no_mangle]
+pub extern "C" fn sssssssssssssssssssssssssssssssssssssssssssssss() {
+    small_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 ssssssssssssssssssssssssssssssssssssssssssssssss() { small_function() }
+
 #[rustfmt::skip]
-#[no_mangle] pub extern "C" fn sssssssssssssssssssssssssssssssssssssssssssssssss() {
-small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+#[no_mangle]
+pub extern "C" fn sssssssssssssssssssssssssssssssssssssssssssssssss() {
+    small_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 ssssssssssssssssssssssssssssssssssssssssssssssssss() { small_function() }
+
 #[rustfmt::skip]
-#[no_mangle] pub extern "C" fn sssssssssssssssssssssssssssssssssssssssssssssssssss() {
-small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+#[no_mangle]
+pub extern "C" fn sssssssssssssssssssssssssssssssssssssssssssssssssss() {
+    small_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 ssssssssssssssssssssssssssssssssssssssssssssssssssss() { small_function() }
+
 #[rustfmt::skip]
-#[no_mangle] pub extern "C" fn sssssssssssssssssssssssssssssssssssssssssssssssssssss() {
-small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+#[no_mangle]
+pub extern "C" fn sssssssssssssssssssssssssssssssssssssssssssssssssssss() {
+    small_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 ssssssssssssssssssssssssssssssssssssssssssssssssssssss() { small_function() }
+
 #[rustfmt::skip]
-#[no_mangle] pub extern "C" fn sssssssssssssssssssssssssssssssssssssssssssssssssssssss() {
-small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+#[no_mangle]
+pub extern "C" fn sssssssssssssssssssssssssssssssssssssssssssssssssssssss() {
+    small_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 ssssssssssssssssssssssssssssssssssssssssssssssssssssssss() { small_function() }
+
 #[rustfmt::skip]
-#[no_mangle] pub extern "C" fn sssssssssssssssssssssssssssssssssssssssssssssssssssssssss() {
-small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+#[no_mangle]
+pub extern "C" fn sssssssssssssssssssssssssssssssssssssssssssssssssssssssss() {
+    small_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 ssssssssssssssssssssssssssssssssssssssssssssssssssssssssss() { small_function() }
+
 #[rustfmt::
-skip] #[no_mangle] pub extern "C" fn
+skip]
+#[no_mangle]
+pub extern "C" fn
 sssssssssssssssssssssssssssssssssssssssssssssssssssssssssss() { small_function() }
+
 #[rustfmt::
-skip] #[no_mangle] pub extern "C" fn
+skip]
+#[no_mangle]
+pub extern "C" fn
 ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss() { small_function() }
+
 #[rustfmt::
-skip] #[no_mangle] pub extern "C" fn
+skip]
+#[no_mangle]
+pub extern "C" fn
 sssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss() { small_function() }
+
 #[rustfmt::
-skip] #[no_mangle] pub extern "C" fn
+skip]
+#[no_mangle]
+pub extern "C" fn
 ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss() { small_function() }
+
 #[rustfmt::
-skip] #[no_mangle] pub extern "C" fn
+skip]
+#[no_mangle]
+pub extern "C" fn
 sssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss() { small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss() { small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 sssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss() { small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss() { small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 sssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss() { small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss() { small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 sssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss() { small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss() { small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 sssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss() { small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss() { small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 sssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss() { small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss() { small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
-sssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss() { small_function()
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
+sssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss() {
+    small_function()
 }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
-ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss() { small_function()
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
+ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss() {
+    small_function()
 }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 sssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss() {
-small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+    small_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss() {
-small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+    small_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 sssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss() {
-small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+    small_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss() {
-small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+    small_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 sssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss() {
-small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+    small_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss() {
-small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+    small_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 sssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss() {
-small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+    small_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss() {
-small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+    small_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 sssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss() {
-small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+    small_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss() {
-small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+    small_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 sssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss() {
-small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+    small_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss() {
-small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+    small_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 sssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss() {
-small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+    small_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss() {
-small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+    small_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 sssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss() {
-small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+    small_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss() {
-small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+    small_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 sssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss() {
-small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+    small_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss()
 { small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 sssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss()
 { small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss()
 { small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 sssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss()
 { small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss()
 { small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 sssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss()
 { small_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss()
 { small_function() }
 
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn l() { large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn ll() { large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn lll() { large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn llll() { large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn lllll() { large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn llllll() { large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn lllllll() { large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn llllllll() { large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn lllllllll() { large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn llllllllll() { large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn lllllllllll() { large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn llllllllllll() { large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn lllllllllllll() { large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn llllllllllllll() { large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn lllllllllllllll() { large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn llllllllllllllll() { large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn lllllllllllllllll() { large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn llllllllllllllllll() { large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn lllllllllllllllllll() { large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn llllllllllllllllllll() { large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn lllllllllllllllllllll() { large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn llllllllllllllllllllll() { large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn lllllllllllllllllllllll() { large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn llllllllllllllllllllllll() { large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn lllllllllllllllllllllllll() { large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn llllllllllllllllllllllllll() { large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn lllllllllllllllllllllllllll() { large_function()
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn l() { large_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn ll() { large_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn lll() { large_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn llll() { large_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn lllll() { large_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn llllll() { large_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn lllllll() { large_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn llllllll() { large_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn lllllllll() { large_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn llllllllll() { large_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn lllllllllll() { large_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn llllllllllll() { large_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn lllllllllllll() { large_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn llllllllllllll() { large_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn lllllllllllllll() { large_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn llllllllllllllll() { large_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn lllllllllllllllll() { large_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn llllllllllllllllll() { large_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn lllllllllllllllllll() { large_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn llllllllllllllllllll() { large_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn lllllllllllllllllllll() { large_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn llllllllllllllllllllll() { large_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn lllllllllllllllllllllll() { large_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn llllllllllllllllllllllll() { large_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn lllllllllllllllllllllllll() { large_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn llllllllllllllllllllllllll() { large_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn lllllllllllllllllllllllllll() {
+    large_function()
 }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn llllllllllllllllllllllllllll() {
-large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn llllllllllllllllllllllllllll() {
+    large_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 lllllllllllllllllllllllllllll() { large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C"
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C"
 fn llllllllllllllllllllllllllllll() { large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern
 "C" fn lllllllllllllllllllllllllllllll() { large_function() }
-#[rustfmt::skip] #[no_mangle] pub
+
+#[rustfmt::skip]
+#[no_mangle]
+pub
 extern "C" fn llllllllllllllllllllllllllllllll() { large_function() }
+
 #[rustfmt::skip]
-#[no_mangle] pub extern "C" fn lllllllllllllllllllllllllllllllll() { large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn llllllllllllllllllllllllllllllllll() {
-large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+#[no_mangle]
+pub extern "C" fn lllllllllllllllllllllllllllllllll() { large_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn llllllllllllllllllllllllllllllllll() {
+    large_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 lllllllllllllllllllllllllllllllllll() { large_function() }
-#[rustfmt::skip] #[no_mangle] pub
+
+#[rustfmt::skip]
+#[no_mangle]
+pub
 extern "C" fn llllllllllllllllllllllllllllllllllll() { large_function() }
+
 #[rustfmt::skip]
-#[no_mangle] pub extern "C" fn lllllllllllllllllllllllllllllllllllll() { large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn llllllllllllllllllllllllllllllllllllll() {
-large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+#[no_mangle]
+pub extern "C" fn lllllllllllllllllllllllllllllllllllll() { large_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn llllllllllllllllllllllllllllllllllllll() {
+    large_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 lllllllllllllllllllllllllllllllllllllll() { large_function() }
-#[rustfmt::skip] #[no_mangle] pub
+
+#[rustfmt::skip]
+#[no_mangle]
+pub
 extern "C" fn llllllllllllllllllllllllllllllllllllllll() { large_function() }
+
 #[rustfmt::skip]
-#[no_mangle] pub extern "C" fn lllllllllllllllllllllllllllllllllllllllll() { large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn llllllllllllllllllllllllllllllllllllllllll() {
-large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+#[no_mangle]
+pub extern "C" fn lllllllllllllllllllllllllllllllllllllllll() { large_function() }
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn llllllllllllllllllllllllllllllllllllllllll() {
+    large_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 lllllllllllllllllllllllllllllllllllllllllll() { large_function() }
-#[rustfmt::skip] #[no_mangle]
+
+#[rustfmt::skip]
+#[no_mangle]
 pub extern "C" fn llllllllllllllllllllllllllllllllllllllllllll() { large_function() }
+
 #[rustfmt::
-skip] #[no_mangle] pub extern "C" fn lllllllllllllllllllllllllllllllllllllllllllll() {
-large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+skip]
+#[no_mangle]
+pub extern "C" fn lllllllllllllllllllllllllllllllllllllllllllll() {
+    large_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 llllllllllllllllllllllllllllllllllllllllllllll() { large_function() }
+
 #[rustfmt::skip]
-#[no_mangle] pub extern "C" fn lllllllllllllllllllllllllllllllllllllllllllllll() {
-large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+#[no_mangle]
+pub extern "C" fn lllllllllllllllllllllllllllllllllllllllllllllll() {
+    large_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 llllllllllllllllllllllllllllllllllllllllllllllll() { large_function() }
+
 #[rustfmt::skip]
-#[no_mangle] pub extern "C" fn lllllllllllllllllllllllllllllllllllllllllllllllll() {
-large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+#[no_mangle]
+pub extern "C" fn lllllllllllllllllllllllllllllllllllllllllllllllll() {
+    large_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 llllllllllllllllllllllllllllllllllllllllllllllllll() { large_function() }
+
 #[rustfmt::skip]
-#[no_mangle] pub extern "C" fn lllllllllllllllllllllllllllllllllllllllllllllllllll() {
-large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+#[no_mangle]
+pub extern "C" fn lllllllllllllllllllllllllllllllllllllllllllllllllll() {
+    large_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 llllllllllllllllllllllllllllllllllllllllllllllllllll() { large_function() }
+
 #[rustfmt::skip]
-#[no_mangle] pub extern "C" fn lllllllllllllllllllllllllllllllllllllllllllllllllllll() {
-large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+#[no_mangle]
+pub extern "C" fn lllllllllllllllllllllllllllllllllllllllllllllllllllll() {
+    large_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 llllllllllllllllllllllllllllllllllllllllllllllllllllll() { large_function() }
+
 #[rustfmt::skip]
-#[no_mangle] pub extern "C" fn lllllllllllllllllllllllllllllllllllllllllllllllllllllll() {
-large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+#[no_mangle]
+pub extern "C" fn lllllllllllllllllllllllllllllllllllllllllllllllllllllll() {
+    large_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 llllllllllllllllllllllllllllllllllllllllllllllllllllllll() { large_function() }
+
 #[rustfmt::skip]
-#[no_mangle] pub extern "C" fn lllllllllllllllllllllllllllllllllllllllllllllllllllllllll() {
-large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+#[no_mangle]
+pub extern "C" fn lllllllllllllllllllllllllllllllllllllllllllllllllllllllll() {
+    large_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 llllllllllllllllllllllllllllllllllllllllllllllllllllllllll() { large_function() }
+
 #[rustfmt::
-skip] #[no_mangle] pub extern "C" fn
+skip]
+#[no_mangle]
+pub extern "C" fn
 lllllllllllllllllllllllllllllllllllllllllllllllllllllllllll() { large_function() }
+
 #[rustfmt::
-skip] #[no_mangle] pub extern "C" fn
+skip]
+#[no_mangle]
+pub extern "C" fn
 llllllllllllllllllllllllllllllllllllllllllllllllllllllllllll() { large_function() }
+
 #[rustfmt::
-skip] #[no_mangle] pub extern "C" fn
+skip]
+#[no_mangle]
+pub extern "C" fn
 lllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll() { large_function() }
+
 #[rustfmt::
-skip] #[no_mangle] pub extern "C" fn
+skip]
+#[no_mangle]
+pub extern "C" fn
 llllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll() { large_function() }
+
 #[rustfmt::
-skip] #[no_mangle] pub extern "C" fn
+skip]
+#[no_mangle]
+pub extern "C" fn
 lllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll() { large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 llllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll() { large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 lllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll() { large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 llllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll() { large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 lllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll() { large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 llllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll() { large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 lllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll() { large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 llllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll() { large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 lllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll() { large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 llllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll() { large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 lllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll() { large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 llllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll() { large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
-lllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll() { large_function()
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
+lllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll() {
+    large_function()
 }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
-llllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll() { large_function()
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
+llllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll() {
+    large_function()
 }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 lllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll() {
-large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+    large_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 llllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll() {
-large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+    large_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 lllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll() {
-large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+    large_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 llllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll() {
-large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+    large_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 lllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll() {
-large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+    large_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 llllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll() {
-large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+    large_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 lllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll() {
-large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+    large_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 llllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll() {
-large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+    large_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 lllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll() {
-large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+    large_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 llllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll() {
-large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+    large_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 lllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll() {
-large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+    large_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 llllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll() {
-large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+    large_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 lllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll() {
-large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+    large_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 llllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll() {
-large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+    large_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 lllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll() {
-large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+    large_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 llllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll() {
-large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+    large_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 lllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll() {
-large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+    large_function()
+}
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 llllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll()
 { large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 lllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll()
 { large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 llllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll()
 { large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 lllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll()
 { large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 llllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll()
 { large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 lllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll()
 { large_function() }
-#[rustfmt::skip] #[no_mangle] pub extern "C" fn
+
+#[rustfmt::skip]
+#[no_mangle]
+pub extern "C" fn
 llllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll()
 { large_function() }

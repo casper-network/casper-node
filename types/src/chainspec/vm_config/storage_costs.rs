@@ -1,7 +1,13 @@
 //! Support for storage costs.
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
-use rand::{distributions::Standard, prelude::*, Rng};
+use derive_more::Add;
+use num_traits::Zero;
+#[cfg(any(feature = "testing", test))]
+use rand::{
+    distributions::{Distribution, Standard},
+    Rng,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -13,7 +19,7 @@ use crate::{
 pub const DEFAULT_GAS_PER_BYTE_COST: u32 = 630_000;
 
 /// Represents a cost table for storage costs.
-#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[derive(Add, Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[serde(deny_unknown_fields)]
 pub struct StorageCosts {
@@ -47,6 +53,7 @@ impl Default for StorageCosts {
     }
 }
 
+#[cfg(any(feature = "testing", test))]
 impl Distribution<StorageCosts> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> StorageCosts {
         StorageCosts {
@@ -74,6 +81,16 @@ impl FromBytes for StorageCosts {
         let (gas_per_byte, rem) = FromBytes::from_bytes(bytes)?;
 
         Ok((StorageCosts { gas_per_byte }, rem))
+    }
+}
+
+impl Zero for StorageCosts {
+    fn zero() -> Self {
+        StorageCosts { gas_per_byte: 0 }
+    }
+
+    fn is_zero(&self) -> bool {
+        self.gas_per_byte.is_zero()
     }
 }
 

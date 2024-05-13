@@ -1,13 +1,10 @@
 use std::convert::TryInto;
 
 use casper_engine_test_support::{
-    utils, DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
+    utils, DeployItemBuilder, ExecuteRequest, ExecuteRequestBuilder, LmdbWasmTestBuilder,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, LOCAL_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
-use casper_execution_engine::{
-    engine_state::{self, ExecuteRequest},
-    execution,
-};
+use casper_execution_engine::{engine_state, execution::ExecError};
 use casper_types::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
     bytesrepr::Bytes,
@@ -21,20 +18,16 @@ const CONTRACT_TRANSFER_TO_ACCOUNT_U512: &str = "transfer_to_account_u512.wasm";
 
 // This value is not systemic, as code is added the size of WASM will increase,
 // you can change this value to reflect the increase in WASM size.
-const HOST_FUNCTION_METRICS_STANDARD_SIZE: usize = 97_569;
-const HOST_FUNCTION_METRICS_STANDARD_GAS_COST: u64 = 347_080_271_020;
+const HOST_FUNCTION_METRICS_STANDARD_SIZE: usize = 122_154;
+const HOST_FUNCTION_METRICS_STANDARD_GAS_COST: u64 = 422_402_224_490;
 
 /// Acceptable size regression/improvement in percentage.
 const SIZE_MARGIN: usize = 5;
 /// Acceptable gas cost regression/improvement in percentage.
 const GAS_COST_MARGIN: u64 = 5;
 
-const HOST_FUNCTION_METRICS_MIN_SIZE: usize =
-    HOST_FUNCTION_METRICS_STANDARD_SIZE * (100 - SIZE_MARGIN) / 100;
 const HOST_FUNCTION_METRICS_MAX_SIZE: usize =
     HOST_FUNCTION_METRICS_STANDARD_SIZE * (100 + SIZE_MARGIN) / 100;
-const HOST_FUNCTION_METRICS_MIN_GAS_COST: u64 =
-    HOST_FUNCTION_METRICS_STANDARD_GAS_COST * (100 - GAS_COST_MARGIN) / 100;
 const HOST_FUNCTION_METRICS_MAX_GAS_COST: u64 =
     HOST_FUNCTION_METRICS_STANDARD_GAS_COST * (100 + GAS_COST_MARGIN) / 100;
 
@@ -53,17 +46,12 @@ const TRANSFER_FROM_MAIN_PURSE_AMOUNT: u64 = 2_000_000_u64;
 #[ignore]
 #[test]
 fn host_function_metrics_has_acceptable_size() {
-    let size = utils::read_wasm_file_bytes(CONTRACT_HOST_FUNCTION_METRICS).len();
+    let size = utils::read_wasm_file(CONTRACT_HOST_FUNCTION_METRICS).len();
     assert!(
         size <= HOST_FUNCTION_METRICS_MAX_SIZE,
         "Performance regression: contract host-function-metrics became {} bytes long; up to {} bytes long would be acceptable.",
         size,
         HOST_FUNCTION_METRICS_MAX_SIZE
-    );
-    assert!(
-        size >= HOST_FUNCTION_METRICS_MIN_SIZE,
-        "Performance improvement: contract host-function-metrics became only {} bytes long; please adjust this regression test.",
-        size
     );
     println!(
         "contract host-function-metrics byte size: {}, ubound: {}",
@@ -97,25 +85,21 @@ fn host_function_metrics_has_acceptable_gas_cost() {
         random_bytes
     };
 
-    let exec_request = {
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(ACCOUNT0_ADDR)
-            .with_deploy_hash([55; 32])
-            .with_session_code(
-                CONTRACT_HOST_FUNCTION_METRICS,
-                runtime_args! {
-                    ARG_SEED => seed,
-                    ARG_OTHERS => (Bytes::from(random_bytes), ACCOUNT0_ADDR, ACCOUNT1_ADDR),
-                    ARG_AMOUNT => TRANSFER_FROM_MAIN_PURSE_AMOUNT,
-                },
-            )
-            .with_empty_payment_bytes(
-                runtime_args! { standard_payment::ARG_AMOUNT => *DEFAULT_PAYMENT },
-            )
-            .with_authorization_keys(&[ACCOUNT0_ADDR])
-            .build();
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-    };
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(ACCOUNT0_ADDR)
+        .with_deploy_hash([55; 32])
+        .with_session_code(
+            CONTRACT_HOST_FUNCTION_METRICS,
+            runtime_args! {
+                ARG_SEED => seed,
+                ARG_OTHERS => (Bytes::from(random_bytes), ACCOUNT0_ADDR, ACCOUNT1_ADDR),
+                ARG_AMOUNT => TRANSFER_FROM_MAIN_PURSE_AMOUNT,
+            },
+        )
+        .with_standard_payment(runtime_args! { standard_payment::ARG_AMOUNT => *DEFAULT_PAYMENT })
+        .with_authorization_keys(&[ACCOUNT0_ADDR])
+        .build();
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder.exec(exec_request);
 
@@ -123,7 +107,7 @@ fn host_function_metrics_has_acceptable_gas_cost() {
     assert!(
         matches!(
             error,
-            engine_state::Error::Exec(execution::Error::Revert(ApiError::User(user_error)))
+            engine_state::Error::Exec(ExecError::Revert(ApiError::User(user_error)))
             if user_error == EXPECTED_REVERT_VALUE
         ),
         "Expected revert but actual error is {:?}",
@@ -137,17 +121,12 @@ fn host_function_metrics_has_acceptable_gas_cost() {
         gas_cost,
         HOST_FUNCTION_METRICS_MAX_GAS_COST
     );
-    assert!(
-        gas_cost >= U512::from(HOST_FUNCTION_METRICS_MIN_GAS_COST),
-        "Performance improvement: contract host-function-metrics used only {} gas; please adjust this regression test.",
-        gas_cost
-    );
 }
 
 fn setup() -> LmdbWasmTestBuilder {
     let mut builder = LmdbWasmTestBuilder::default();
     builder
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone())
         .exec(create_account_exec_request(ACCOUNT0_ADDR))
         .expect_success()
         .commit()

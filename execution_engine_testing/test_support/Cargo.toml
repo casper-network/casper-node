@@ -1,7 +1,7 @@
 [package]
 name = "casper-engine-test-support"
 # when updating, also update 'html_root_url' in lib.rs
-version = "5.0.0"
+version = "7.0.0"
 authors = ["Fraser Hutchison <fraser@casperlabs.io>"]
 edition = "2018"
 description = "Library to support testing of Wasm smart contracts for use on the Casper network."
@@ -12,11 +12,12 @@ repository = "https://github.com/CasperLabs/casper-node/tree/master/execution_en
 license = "Apache-2.0"
 
 [dependencies]
-casper-execution-engine = { version = "5.0.0", path = "../../execution_engine", features = [
+blake2 = "0.9.0"
+casper-execution-engine = { version = "7.0.0", path = "../../execution_engine", features = [
   "test-support",
 ] }
-casper-storage = { version = "1.4.3", path = "../../storage" }
-casper-types = { version = "3.0.0", path = "../../types" }
+casper-storage = { version = "2.0.0", path = "../../storage" }
+casper-types = { version = "5.0.0", path = "../../types" }
 env_logger = "0.10.0"
 filesize = "0.2.0"
 humantime = "2"
@@ -31,8 +32,12 @@ tempfile = "3.4.0"
 toml = "0.5.6"
 
 [dev-dependencies]
-casper-types = { version = "3.0.0", path = "../../types", features = ["std"] }
+casper-types = { version = "5.0.0", path = "../../types", features = ["std"] }
 version-sync = "0.9.3"
+
+[build-dependencies]
+toml_edit = "=0.21.0"
+humantime = "2"
 
 [features]
 use-as-wasm = []

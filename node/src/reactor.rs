@@ -61,8 +61,12 @@ use tracing::{debug_span, error, info, instrument, trace, warn, Span};
 use tracing_futures::Instrument;
 
 #[cfg(test)]
+use crate::components::ComponentState;
+#[cfg(test)]
 use casper_types::testing::TestRng;
-use casper_types::{Block, BlockHeader, Chainspec, ChainspecRawBytes, Deploy, FinalitySignature};
+use casper_types::{
+    Block, BlockHeader, Chainspec, ChainspecRawBytes, FinalitySignature, Transaction,
+};
 
 #[cfg(target_os = "linux")]
 use utils::rlimit::{Limit, OpenFiles, ResourceLimit};
@@ -81,14 +85,13 @@ use crate::{
         incoming::NetResponse,
         Effect, EffectBuilder, EffectExt, Effects,
     },
-    types::{
-        ApprovalsHashes, BlockExecutionResultsOrChunk, ExitCode, LegacyDeploy, NodeId, SyncLeap,
-        TrieOrChunk,
-    },
+    failpoints::FailpointActivation,
+    types::{BlockExecutionResultsOrChunk, ExitCode, LegacyDeploy, NodeId, SyncLeap, TrieOrChunk},
     unregister_metric,
     utils::{self, SharedFlag, WeightedRoundRobin},
     NodeRng, TERMINATION_REQUESTED,
 };
+use casper_storage::block_store::types::ApprovalsHashes;
 pub(crate) use queue_kind::QueueKind;
 
 /// Default threshold for when an event is considered slow.  Can be overridden by setting the env
@@ -298,6 +301,21 @@ pub(crate) trait Reactor: Sized {
 
     /// Instructs the reactor to update performance metrics, if any.
     fn update_metrics(&mut self, _event_queue_handle: EventQueueHandle<Self::Event>) {}
+
+    /// Activate/deactivate a failpoint.
+    fn activate_failpoint(&mut self, _activation: &FailpointActivation) {
+        // Default is to ignore the failpoint. If failpoint support is enabled for a reactor, route
+        // the activation to the respective components here.
+    }
+
+    /// Returns the state of a named components.
+    ///
+    /// May return `None` if the component cannot be found, or if the reactor does not support
+    /// querying component states.
+    #[cfg(test)]
+    fn get_component_state(&self, _name: &str) -> Option<&ComponentState> {
+        None
+    }
 }
 
 /// A reactor event type.
@@ -663,6 +681,12 @@ where
                     // Do nothing on queue dump otherwise.
                     (Default::default(), None, QueueKind::Control)
                 }
+                Some(ControlAnnouncement::ActivateFailpoint { activation }) => {
+                    self.reactor.activate_failpoint(&activation);
+
+                    // No other effects, calling the method is all we had to do.
+                    (Effects::new(), None, QueueKind::Control)
+                }
             }
         } else {
             (
@@ -1001,7 +1025,7 @@ where
         + From<fetcher::Event<BlockHeader>>
         + From<fetcher::Event<BlockExecutionResultsOrChunk>>
         + From<fetcher::Event<LegacyDeploy>>
-        + From<fetcher::Event<Deploy>>
+        + From<fetcher::Event<Transaction>>
         + From<fetcher::Event<SyncLeap>>
         + From<fetcher::Event<TrieOrChunk>>
         + From<fetcher::Event<ApprovalsHashes>>
@@ -1009,7 +1033,7 @@ where
         + From<PeerBehaviorAnnouncement>,
 {
     match *message {
-        NetResponse::Deploy(ref serialized_item) => handle_fetch_response::<R, Deploy>(
+        NetResponse::Transaction(ref serialized_item) => handle_fetch_response::<R, Transaction>(
             reactor,
             effect_builder,
             rng,

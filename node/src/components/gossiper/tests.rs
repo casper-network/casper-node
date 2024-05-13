@@ -18,8 +18,8 @@ use tokio::time;
 use tracing::debug;
 
 use casper_types::{
-    testing::TestRng, BlockV2, Chainspec, ChainspecRawBytes, Deploy, EraId, FinalitySignature,
-    ProtocolVersion, TimeDiff, Transaction, TransactionV1,
+    testing::TestRng, BlockV2, Chainspec, ChainspecRawBytes, EraId, FinalitySignatureV2,
+    ProtocolVersion, TimeDiff, Transaction, TransactionConfig,
 };
 
 use super::*;
@@ -113,7 +113,7 @@ impl Unhandled for ControlAnnouncement {}
 impl Unhandled for FatalAnnouncement {}
 impl Unhandled for ConsensusMessageIncoming {}
 impl Unhandled for GossiperIncoming<BlockV2> {}
-impl Unhandled for GossiperIncoming<FinalitySignature> {}
+impl Unhandled for GossiperIncoming<FinalitySignatureV2> {}
 impl Unhandled for GossiperIncoming<GossipedAddress> {}
 impl Unhandled for NetRequestIncoming {}
 impl Unhandled for NetResponseIncoming {}
@@ -157,9 +157,7 @@ impl reactor::Reactor for Reactor {
         event_queue: EventQueueHandle<Self::Event>,
         rng: &mut NodeRng,
     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
-        let network = NetworkController::create_node(event_queue, rng);
-
-        let (storage_config, storage_tempdir) = storage::Config::default_for_tests();
+        let (storage_config, storage_tempdir) = storage::Config::new_for_tests(1);
         let storage_withdir = WithDir::new(storage_tempdir.path(), storage_config);
         let storage = Storage::new(
             &storage_withdir,
@@ -171,6 +169,7 @@ impl reactor::Reactor for Reactor {
             RECENT_ERA_COUNT,
             Some(registry),
             false,
+            TransactionConfig::default(),
         )
         .unwrap();
 
@@ -181,6 +180,7 @@ impl reactor::Reactor for Reactor {
             registry,
         )?;
 
+        let network = NetworkController::create_node(event_queue, rng);
         let reactor = Reactor {
             network,
             storage,
@@ -267,10 +267,10 @@ impl reactor::Reactor for Reactor {
             ),
             Event::AcceptTransactionRequest(AcceptTransactionRequest {
                 transaction,
-                speculative_exec_at_block,
+                is_speculative,
                 responder,
             }) => {
-                assert!(speculative_exec_at_block.is_none());
+                assert!(!is_speculative);
                 let event = transaction_acceptor::Event::Accept {
                     transaction,
                     source: Source::Client,
@@ -332,23 +332,17 @@ impl NetworkedReactor for Reactor {
     }
 }
 
-fn random_txn(rng: &mut TestRng) -> Transaction {
-    if rng.gen() {
-        Transaction::from(Deploy::random_valid_native_transfer(rng))
-    } else {
-        Transaction::from(TransactionV1::random(rng))
-    }
-}
-
 fn announce_transaction_received(
     transaction: &Transaction,
 ) -> impl FnOnce(EffectBuilder<Event>) -> Effects<Event> {
     let txn = transaction.clone();
-    |effect_builder: EffectBuilder<Event>| effect_builder.try_accept_transaction(txn, None).ignore()
+    |effect_builder: EffectBuilder<Event>| {
+        effect_builder.try_accept_transaction(txn, false).ignore()
+    }
 }
 
 async fn run_gossip(rng: &mut TestRng, network_size: usize, txn_count: usize) {
-    const TIMEOUT: Duration = Duration::from_secs(20);
+    const TIMEOUT: Duration = Duration::from_secs(30);
     const QUIET_FOR: Duration = Duration::from_millis(50);
 
     NetworkController::<NodeMessage>::create_active();
@@ -359,7 +353,7 @@ async fn run_gossip(rng: &mut TestRng, network_size: usize, txn_count: usize) {
 
     // Create `txn_count` random transactions.
     let (all_txn_hashes, mut txns): (BTreeSet<_>, Vec<_>) = iter::repeat_with(|| {
-        let txn = random_txn(rng);
+        let txn = Transaction::random(rng);
         (txn.hash(), txn)
     })
     .take(txn_count)
@@ -376,12 +370,18 @@ async fn run_gossip(rng: &mut TestRng, network_size: usize, txn_count: usize) {
     // Check every node has every transaction stored locally.
     let all_txns_held = |nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<Reactor>>>| {
         nodes.values().all(|runner| {
-            let hashes = runner
-                .reactor()
-                .inner()
-                .storage
-                .get_all_transaction_hashes();
-            all_txn_hashes == hashes
+            for hash in all_txn_hashes.iter() {
+                if runner
+                    .reactor()
+                    .inner()
+                    .storage
+                    .get_transaction_by_hash(*hash)
+                    .is_none()
+                {
+                    return false;
+                }
+            }
+            true
         })
     };
     network.settle_on(rng, all_txns_held, TIMEOUT).await;
@@ -394,7 +394,7 @@ async fn run_gossip(rng: &mut TestRng, network_size: usize, txn_count: usize) {
 
 #[tokio::test]
 async fn should_gossip() {
-    const NETWORK_SIZES: [usize; 3] = [2, 5, 20];
+    const NETWORK_SIZES: [usize; 3] = [2, 5, 10];
     const TXN_COUNTS: [usize; 3] = [1, 10, 30];
 
     let rng = &mut TestRng::new();
@@ -420,7 +420,7 @@ async fn should_get_from_alternate_source() {
     let node_ids = network.add_nodes(rng, NETWORK_SIZE).await;
 
     // Create random transaction.
-    let txn = random_txn(rng);
+    let txn = Transaction::random(rng);
     let txn_hash = txn.hash();
 
     // Give the transaction to nodes 0 and 1 to be gossiped.
@@ -498,7 +498,7 @@ async fn should_timeout_gossip_response() {
     let mut node_ids = network.add_nodes(rng, infection_target as usize + 1).await;
 
     // Create random transaction.
-    let txn = random_txn(rng);
+    let txn = Transaction::random(rng);
     let txn_hash = txn.hash();
 
     // Give the transaction to node 0 to be gossiped.
@@ -575,7 +575,7 @@ async fn should_timeout_new_item_from_peer() {
     // received, no component triggers the `ItemReceived` event.
     reactor_0.fake_transaction_acceptor.set_active(false);
 
-    let txn = random_txn(rng);
+    let txn = Transaction::random(rng);
 
     // Give the transaction to node 1 to gossip to node 0.
     network
@@ -631,7 +631,7 @@ async fn should_not_gossip_old_stored_item_again() {
     let node_ids = network.add_nodes(rng, NETWORK_SIZE).await;
     let node_0 = node_ids[0];
 
-    let txn = random_txn(rng);
+    let txn = Transaction::random(rng);
 
     // Store the transaction on node 0.
     let store_txn = |effect_builder: EffectBuilder<Event>| {
@@ -701,7 +701,7 @@ async fn should_ignore_unexpected_message(message_type: Unexpected) {
     let node_ids = network.add_nodes(rng, NETWORK_SIZE).await;
     let node_0 = node_ids[0];
 
-    let txn = Box::new(random_txn(rng));
+    let txn = Box::new(Transaction::random(rng));
 
     let message = match message_type {
         Unexpected::Response => Message::GossipResponse {

@@ -1,19 +1,14 @@
 use std::{
     cmp::{Ord, PartialOrd},
+    collections::{BTreeMap, BTreeSet},
     fmt::{self, Display, Formatter},
     hash::Hash,
 };
 
 use datasize::DataSize;
-#[cfg(any(feature = "testing", test))]
-use rand::Rng;
 use serde::{Deserialize, Serialize};
 
-#[cfg(any(feature = "testing", test))]
-use casper_types::{testing::TestRng, DeployApproval};
-use casper_types::{DeployHash, PublicKey};
-
-use crate::types::{DeployHashWithApprovals, DeployOrTransferHash};
+use casper_types::{Approval, PublicKey, RewardedSignatures, TransactionCategory, TransactionHash};
 
 /// The piece of information that will become the content of a future block (isn't finalized or
 /// executed yet)
@@ -24,36 +19,90 @@ use crate::types::{DeployHashWithApprovals, DeployOrTransferHash};
 #[derive(
     Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize, Default,
 )]
-pub(crate) struct BlockPayload {
-    deploys: Vec<DeployHashWithApprovals>,
-    transfers: Vec<DeployHashWithApprovals>,
+pub struct BlockPayload {
+    transactions: BTreeMap<TransactionCategory, Vec<(TransactionHash, BTreeSet<Approval>)>>,
     accusations: Vec<PublicKey>,
+    rewarded_signatures: RewardedSignatures,
     random_bit: bool,
 }
 
 impl BlockPayload {
     pub(crate) fn new(
-        deploys: Vec<DeployHashWithApprovals>,
-        transfers: Vec<DeployHashWithApprovals>,
+        transactions: BTreeMap<TransactionCategory, Vec<(TransactionHash, BTreeSet<Approval>)>>,
         accusations: Vec<PublicKey>,
+        rewarded_signatures: RewardedSignatures,
         random_bit: bool,
     ) -> Self {
         BlockPayload {
-            deploys,
-            transfers,
+            transactions,
             accusations,
+            rewarded_signatures,
             random_bit,
         }
     }
 
-    /// The list of deploys included in the block, excluding transfers.
-    pub(crate) fn deploys(&self) -> &Vec<DeployHashWithApprovals> {
-        &self.deploys
+    /// Returns the hashes and approvals of the mint transactions within the block.
+    pub fn mint(&self) -> impl Iterator<Item = &(TransactionHash, BTreeSet<Approval>)> {
+        let mut ret = vec![];
+        if let Some(transactions) = self.transactions.get(&TransactionCategory::Mint) {
+            for transaction in transactions {
+                ret.push(transaction)
+            }
+        }
+        ret.into_iter()
     }
 
-    /// The list of transfers included in the block.
-    pub(crate) fn transfers(&self) -> &Vec<DeployHashWithApprovals> {
-        &self.transfers
+    /// Returns the hashes and approvals of the auction transactions within the block.
+    pub fn auction(&self) -> impl Iterator<Item = &(TransactionHash, BTreeSet<Approval>)> {
+        let mut ret = vec![];
+        if let Some(transactions) = self.transactions.get(&TransactionCategory::Auction) {
+            for transaction in transactions {
+                ret.push(transaction)
+            }
+        }
+        ret.into_iter()
+    }
+
+    /// Returns the hashes and approvals of the install / upgrade transactions within the block.
+    pub fn install_upgrade(&self) -> impl Iterator<Item = &(TransactionHash, BTreeSet<Approval>)> {
+        let mut ret = vec![];
+        if let Some(transactions) = self.transactions.get(&TransactionCategory::InstallUpgrade) {
+            for transaction in transactions {
+                ret.push(transaction)
+            }
+        }
+        ret.into_iter()
+    }
+
+    /// Returns the hashes and approvals of the standard transactions within the block.
+    pub fn standard(&self) -> impl Iterator<Item = &(TransactionHash, BTreeSet<Approval>)> {
+        let mut ret = vec![];
+        if let Some(transactions) = self.transactions.get(&TransactionCategory::Standard) {
+            for transaction in transactions {
+                ret.push(transaction)
+            }
+        }
+        ret.into_iter()
+    }
+
+    /// Returns count of transactions by category.
+    pub fn count(&self, category: Option<TransactionCategory>) -> usize {
+        match category {
+            None => self
+                .transactions
+                .values()
+                .map(|transactions| transactions.len())
+                .sum(),
+            Some(category) => match self.transactions.get(&category) {
+                Some(values) => values.len(),
+                None => 0,
+            },
+        }
+    }
+
+    /// Returns all of the transaction hashes and approvals within the block.
+    pub fn all_transactions(&self) -> impl Iterator<Item = &(TransactionHash, BTreeSet<Approval>)> {
+        self.transactions.values().flatten()
     }
 
     /// Returns the set of validators that are reported as faulty in this block.
@@ -65,115 +114,29 @@ impl BlockPayload {
         self.random_bit
     }
 
-    /// An iterator over deploy hashes included in the block, excluding transfers.
-    pub(crate) fn deploy_hashes(&self) -> impl Iterator<Item = &DeployHash> + Clone {
-        self.deploys.iter().map(|dwa| dwa.deploy_hash())
+    /// The finality signatures for the past blocks that will be rewarded in this block.
+    pub(crate) fn rewarded_signatures(&self) -> &RewardedSignatures {
+        &self.rewarded_signatures
     }
 
-    /// An iterator over transfer hashes included in the block.
-    pub(crate) fn transfer_hashes(&self) -> impl Iterator<Item = &DeployHash> + Clone {
-        self.transfers.iter().map(|dwa| dwa.deploy_hash())
-    }
-
-    /// The list of deploy hashes chained with the list of transfer hashes.
-    pub fn deploy_and_transfer_hashes(&self) -> impl Iterator<Item = &DeployHash> {
-        self.deploy_hashes().chain(self.transfer_hashes())
-    }
-
-    /// Returns an iterator over all deploys and transfers.
-    pub(crate) fn deploys_and_transfers_iter(
-        &self,
-    ) -> impl Iterator<Item = DeployOrTransferHash> + '_ {
-        self.deploy_hashes()
-            .copied()
-            .map(DeployOrTransferHash::Deploy)
-            .chain(
-                self.transfer_hashes()
-                    .copied()
-                    .map(DeployOrTransferHash::Transfer),
-            )
+    pub(crate) fn all_transaction_hashes(&self) -> impl Iterator<Item = TransactionHash> {
+        let mut ret: Vec<TransactionHash> = vec![];
+        for values in self.transactions.values() {
+            for (transaction_hash, _) in values {
+                ret.push(*transaction_hash);
+            }
+        }
+        ret.into_iter()
     }
 }
 
 impl Display for BlockPayload {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        let count = self.deploys.len() + self.transfers.len();
-        write!(formatter, "payload: {} deploys", count,)?;
+        let count = self.count(None);
+        write!(formatter, "payload: {} txns", count)?;
         if !self.accusations.is_empty() {
             write!(formatter, ", {} accusations", self.accusations.len())?;
         }
         Ok(())
-    }
-}
-
-#[cfg(any(feature = "testing", test))]
-impl BlockPayload {
-    #[allow(unused)] // TODO: remove when used in tests
-    pub fn random(
-        rng: &mut TestRng,
-        num_deploys: usize,
-        num_transfers: usize,
-        num_approvals: usize,
-        num_accusations: usize,
-    ) -> Self {
-        let mut total_approvals_left = num_approvals;
-        const MAX_APPROVALS_PER_DEPLOY: usize = 100;
-
-        let deploys = (0..num_deploys)
-            .map(|n| {
-                // We need at least one approval, and at least as many so that we are able to split
-                // all the remaining approvals between the remaining deploys while not exceeding
-                // the limit per deploy.
-                let min_approval_count = total_approvals_left
-                    .saturating_sub(
-                        MAX_APPROVALS_PER_DEPLOY * (num_transfers + num_deploys - n - 1),
-                    )
-                    .max(1);
-                // We have to leave at least one approval per deploy for the remaining deploys.
-                let max_approval_count = MAX_APPROVALS_PER_DEPLOY
-                    .min(total_approvals_left - (num_transfers + num_deploys - n - 1));
-                let n_approvals = rng.gen_range(min_approval_count..=max_approval_count);
-                total_approvals_left -= n_approvals;
-                DeployHashWithApprovals::new(
-                    DeployHash::random(rng),
-                    (0..n_approvals)
-                        .map(|_| DeployApproval::random(rng))
-                        .collect(),
-                )
-            })
-            .collect();
-
-        let transfers = (0..num_transfers)
-            .map(|n| {
-                // We need at least one approval, and at least as many so that we are able to split
-                // all the remaining approvals between the remaining transfers while not exceeding
-                // the limit per deploy.
-                let min_approval_count = total_approvals_left
-                    .saturating_sub(MAX_APPROVALS_PER_DEPLOY * (num_transfers - n - 1))
-                    .max(1);
-                // We have to leave at least one approval per transfer for the remaining transfers.
-                let max_approval_count =
-                    MAX_APPROVALS_PER_DEPLOY.min(total_approvals_left - (num_transfers - n - 1));
-                let n_approvals = rng.gen_range(min_approval_count..=max_approval_count);
-                total_approvals_left -= n_approvals;
-                DeployHashWithApprovals::new(
-                    DeployHash::random(rng),
-                    (0..n_approvals)
-                        .map(|_| DeployApproval::random(rng))
-                        .collect(),
-                )
-            })
-            .collect();
-
-        let accusations = (0..num_accusations)
-            .map(|_| PublicKey::random(rng))
-            .collect();
-
-        Self {
-            deploys,
-            transfers,
-            accusations,
-            random_bit: rng.gen(),
-        }
     }
 }

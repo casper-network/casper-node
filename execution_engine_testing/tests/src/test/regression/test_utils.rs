@@ -1,10 +1,9 @@
+use casper_engine_test_support::DEFAULT_WASM_CONFIG;
 use casper_types::addressable_entity::DEFAULT_ENTRY_POINT_NAME;
-use parity_wasm::{
+use casper_wasm::{
     builder,
     elements::{Instruction, Instructions},
 };
-
-use casper_engine_test_support::DEFAULT_WASM_CONFIG;
 
 /// Prepare malicious payload with amount of opcodes that could potentially overflow injected gas
 /// counter.
@@ -38,7 +37,7 @@ pub(crate) fn make_gas_counter_overflow() -> Vec<u8> {
         .memory()
         .build()
         .build();
-    parity_wasm::serialize(module).expect("should serialize")
+    casper_wasm::serialize(module).expect("should serialize")
 }
 
 /// Prepare malicious payload in a form of a wasm module without memory section.
@@ -67,7 +66,7 @@ pub(crate) fn make_module_without_memory_section() -> Vec<u8> {
         .field(DEFAULT_ENTRY_POINT_NAME)
         .build()
         .build();
-    parity_wasm::serialize(module).expect("should serialize")
+    casper_wasm::serialize(module).expect("should serialize")
 }
 
 /// Prepare malicious payload in a form of a wasm module with forbidden start section.

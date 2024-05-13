@@ -1,27 +1,25 @@
-use casper_storage::global_state::state::StateReader;
+use casper_storage::global_state::{error::Error as GlobalStateError, state::StateReader};
 use std::collections::BTreeSet;
 
 use casper_types::{
-    account::AccountHash, system::handle_payment::Error, BlockTime, CLValue, FeeHandling, Key,
-    Phase, RefundHandling, StoredValue, TransferredTo, URef, U512,
+    account::AccountHash, addressable_entity::NamedKeyAddr, system::handle_payment::Error, CLValue,
+    FeeHandling, Key, Phase, RefundHandling, StoredValue, TransferredTo, URef, U512,
 };
 
-use crate::{
-    execution,
-    runtime::Runtime,
-    system::handle_payment::{
-        mint_provider::MintProvider, runtime_provider::RuntimeProvider,
-        storage_provider::StorageProvider, HandlePayment,
-    },
+use casper_storage::system::handle_payment::{
+    mint_provider::MintProvider, runtime_provider::RuntimeProvider,
+    storage_provider::StorageProvider, HandlePayment,
 };
 
-impl From<execution::Error> for Option<Error> {
-    fn from(exec_error: execution::Error) -> Self {
+use crate::{execution::ExecError, runtime::Runtime};
+
+impl From<ExecError> for Option<Error> {
+    fn from(exec_error: ExecError) -> Self {
         match exec_error {
-            // This is used to propagate [`execution::Error::GasLimit`] to make sure
+            // This is used to propagate [`ExecError::GasLimit`] to make sure
             // [`HandlePayment`] contract running natively supports propagating gas limit
             // errors without a panic.
-            execution::Error::GasLimit => Some(Error::GasLimit),
+            ExecError::GasLimit => Some(Error::GasLimit),
             // There are possibly other exec errors happening but such translation would be lossy.
             _ => None,
         }
@@ -31,8 +29,7 @@ impl From<execution::Error> for Option<Error> {
 // TODO: Update MintProvider to better handle errors
 impl<'a, R> MintProvider for Runtime<'a, R>
 where
-    R: StateReader<Key, StoredValue>,
-    R::Error: Into<execution::Error>,
+    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
     fn transfer_purse_to_account(
         &mut self,
@@ -66,8 +63,8 @@ where
         }
     }
 
-    fn balance(&mut self, purse: URef) -> Result<Option<U512>, Error> {
-        self.get_balance(purse)
+    fn available_balance(&mut self, purse: URef) -> Result<Option<U512>, Error> {
+        Runtime::available_balance(self, purse)
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::GetBalance))
     }
 
@@ -89,11 +86,30 @@ where
 // TODO: Update RuntimeProvider to better handle errors
 impl<'a, R> RuntimeProvider for Runtime<'a, R>
 where
-    R: StateReader<Key, StoredValue>,
-    R::Error: Into<execution::Error>,
+    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
-    fn get_key(&self, name: &str) -> Option<Key> {
-        self.context.named_keys_get(name).cloned()
+    fn get_key(&mut self, name: &str) -> Option<Key> {
+        match self.context.named_keys_get(name).cloned() {
+            None => {
+                let entity_addr = match self.context.get_entity_key().as_entity_addr() {
+                    Some(addr) => addr,
+                    None => return None,
+                };
+                let key = if let Ok(addr) =
+                    NamedKeyAddr::new_from_string(entity_addr, name.to_string())
+                {
+                    Key::NamedKey(addr)
+                } else {
+                    return None;
+                };
+                if let Ok(Some(StoredValue::NamedKey(value))) = self.context.read_gs(&key) {
+                    value.get_key().ok()
+                } else {
+                    None
+                }
+            }
+            Some(key) => Some(key),
+        }
     }
 
     fn put_key(&mut self, name: &str, key: Key) -> Result<(), Error> {
@@ -112,15 +128,11 @@ where
         self.context.phase()
     }
 
-    fn get_block_time(&self) -> BlockTime {
-        self.context.get_blocktime()
-    }
-
     fn get_caller(&self) -> AccountHash {
         self.context.get_caller()
     }
 
-    fn refund_handling(&self) -> &RefundHandling {
+    fn refund_handling(&self) -> RefundHandling {
         self.context.engine_config().refund_handling()
     }
 
@@ -128,15 +140,17 @@ where
         self.context.engine_config().fee_handling()
     }
 
-    fn administrative_accounts(&self) -> &BTreeSet<AccountHash> {
-        self.context.engine_config().administrative_accounts()
+    fn administrative_accounts(&self) -> BTreeSet<AccountHash> {
+        self.context
+            .engine_config()
+            .administrative_accounts()
+            .clone()
     }
 }
 
 impl<'a, R> StorageProvider for Runtime<'a, R>
 where
-    R: StateReader<Key, StoredValue>,
-    R::Error: Into<execution::Error>,
+    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
     fn write_balance(&mut self, purse_uref: URef, amount: U512) -> Result<(), Error> {
         let cl_amount = CLValue::from_t(amount).map_err(|_| Error::Storage)?;
@@ -147,9 +161,7 @@ where
     }
 }
 
-impl<'a, R> HandlePayment for Runtime<'a, R>
-where
-    R: StateReader<Key, StoredValue>,
-    R::Error: Into<execution::Error>,
+impl<'a, R> HandlePayment for Runtime<'a, R> where
+    R: StateReader<Key, StoredValue, Error = GlobalStateError>
 {
 }

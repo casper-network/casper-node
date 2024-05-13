@@ -35,7 +35,7 @@ use tokio::sync::{
 use tracing::{error, info, warn};
 use warp::Filter;
 
-use casper_types::ProtocolVersion;
+use casper_types::{InitiatorAddr, ProtocolVersion, TransactionHeader};
 
 use super::Component;
 use crate::{
@@ -261,9 +261,9 @@ where
                     effects
                 }
                 Event::BlockAdded(_)
-                | Event::DeployAccepted(_)
-                | Event::DeployProcessed { .. }
-                | Event::DeploysExpired(_)
+                | Event::TransactionAccepted(_)
+                | Event::TransactionProcessed { .. }
+                | Event::TransactionsExpired(_)
                 | Event::Fault { .. }
                 | Event::FinalitySignature(_)
                 | Event::Step { .. } => {
@@ -288,24 +288,43 @@ where
                     block_hash: *block.hash(),
                     block: Box::new((*block).clone()),
                 }),
-                Event::DeployAccepted(deploy) => self.broadcast(SseData::DeployAccepted { deploy }),
-                Event::DeployProcessed {
-                    deploy_hash,
-                    deploy_header,
+                Event::TransactionAccepted(transaction) => {
+                    self.broadcast(SseData::TransactionAccepted { transaction })
+                }
+                Event::TransactionProcessed {
+                    transaction_hash,
+                    transaction_header,
                     block_hash,
                     execution_result,
-                } => self.broadcast(SseData::DeployProcessed {
-                    deploy_hash: Box::new(deploy_hash),
-                    account: Box::new(deploy_header.account().clone()),
-                    timestamp: deploy_header.timestamp(),
-                    ttl: deploy_header.ttl(),
-                    dependencies: deploy_header.dependencies().clone(),
-                    block_hash: Box::new(block_hash),
-                    execution_result,
-                }),
-                Event::DeploysExpired(deploy_hashes) => deploy_hashes
+                    messages,
+                } => {
+                    let (initiator_addr, timestamp, ttl) = match *transaction_header {
+                        TransactionHeader::Deploy(deploy_header) => (
+                            InitiatorAddr::PublicKey(deploy_header.account().clone()),
+                            deploy_header.timestamp(),
+                            deploy_header.ttl(),
+                        ),
+                        TransactionHeader::V1(txn_header) => (
+                            txn_header.initiator_addr().clone(),
+                            txn_header.timestamp(),
+                            txn_header.ttl(),
+                        ),
+                    };
+                    self.broadcast(SseData::TransactionProcessed {
+                        transaction_hash: Box::new(transaction_hash),
+                        initiator_addr: Box::new(initiator_addr),
+                        timestamp,
+                        ttl,
+                        block_hash: Box::new(block_hash),
+                        execution_result,
+                        messages,
+                    })
+                }
+                Event::TransactionsExpired(transaction_hashes) => transaction_hashes
                     .into_iter()
-                    .flat_map(|deploy_hash| self.broadcast(SseData::DeployExpired { deploy_hash }))
+                    .flat_map(|transaction_hash| {
+                        self.broadcast(SseData::TransactionExpired { transaction_hash })
+                    })
                     .collect(),
                 Event::Fault {
                     era_id,

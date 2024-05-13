@@ -14,6 +14,7 @@ use clap::ArgMatches;
 use itertools::Itertools;
 
 use casper_engine_test_support::LmdbWasmTestBuilder;
+use casper_execution_engine::engine_state::engine_config::DEFAULT_PROTOCOL_VERSION;
 use casper_types::{
     system::auction::{
         Bid, BidKind, BidsExt, Delegator, SeigniorageRecipient, SeigniorageRecipientsSnapshot,
@@ -39,13 +40,19 @@ pub(crate) fn generate_generic_update(matches: &ArgMatches<'_>) {
     let config_bytes = fs::read(config_path).expect("couldn't read the config file");
     let config: Config = toml::from_slice(&config_bytes).expect("couldn't parse the config file");
 
-    let builder = LmdbWasmTestBuilder::open_raw(data_dir, Default::default(), state_hash);
+    let builder = LmdbWasmTestBuilder::open_raw(
+        data_dir,
+        Default::default(),
+        DEFAULT_PROTOCOL_VERSION,
+        state_hash,
+    );
 
     update_from_config(builder, config);
 }
 
 fn get_update<T: StateReader>(reader: T, config: Config) -> Update {
-    let mut state_tracker = StateTracker::new(reader);
+    let protocol_version = config.protocol_version;
+    let mut state_tracker = StateTracker::new(reader, protocol_version);
 
     process_transfers(&mut state_tracker, &config.transfers);
 
@@ -311,6 +318,9 @@ pub fn add_and_remove_bids<T: StateReader>(
                         *delegator_bid.bonding_purse(),
                     )))
                 }
+                // there should be no need to modify bridge records
+                // since they don't influence the bidding process
+                BidKind::Bridge(_) => continue,
             };
             state.set_bid(reset_bid, slash_instead_of_unbonding);
         }
@@ -361,7 +371,7 @@ fn find_large_bids<T: StateReader>(
                     x.validator_public_key() == *validator_bid.validator_public_key()
                         && x.is_delegator()
                 })
-                .map(|x| x.staked_amount())
+                .map(|x| x.staked_amount().unwrap())
                 .sum();
 
             let total = validator_bid

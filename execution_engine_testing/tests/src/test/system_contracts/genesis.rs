@@ -3,18 +3,15 @@ use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     ChainspecConfig, LmdbWasmTestBuilder, DEFAULT_AUCTION_DELAY, DEFAULT_CHAINSPEC_REGISTRY,
-    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
+    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROTOCOL_VERSION,
     DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY,
     DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
 };
-use casper_execution_engine::engine_state::{
-    engine_config::{DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING},
-    genesis::ExecConfigBuilder,
-    run_genesis_request::RunGenesisRequest,
-};
+use casper_storage::data_access_layer::GenesisRequest;
 use casper_types::{
-    account::AccountHash, system::auction::DelegationRate, GenesisAccount, GenesisValidator, Motes,
-    ProtocolVersion, PublicKey, SecretKey, StoredValue, U512,
+    account::AccountHash, addressable_entity::EntityKindTag, system::auction::DelegationRate,
+    GenesisAccount, GenesisConfigBuilder, GenesisValidator, Key, Motes, ProtocolVersion, PublicKey,
+    SecretKey, StoredValue, U512,
 };
 
 const GENESIS_CONFIG_HASH: [u8; 32] = [127; 32];
@@ -36,8 +33,8 @@ static ACCOUNT_2_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*ACCO
 
 static GENESIS_CUSTOM_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
     let account_1 = {
-        let account_1_balance = Motes::new(ACCOUNT_1_BALANCE.into());
-        let account_1_bonded_amount = Motes::new(ACCOUNT_1_BONDED_AMOUNT.into());
+        let account_1_balance = Motes::new(ACCOUNT_1_BALANCE);
+        let account_1_bonded_amount = Motes::new(ACCOUNT_1_BONDED_AMOUNT);
         GenesisAccount::account(
             ACCOUNT_1_PUBLIC_KEY.clone(),
             account_1_balance,
@@ -48,8 +45,8 @@ static GENESIS_CUSTOM_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
         )
     };
     let account_2 = {
-        let account_2_balance = Motes::new(ACCOUNT_2_BALANCE.into());
-        let account_2_bonded_amount = Motes::new(ACCOUNT_2_BONDED_AMOUNT.into());
+        let account_2_balance = Motes::new(ACCOUNT_2_BALANCE);
+        let account_2_bonded_amount = Motes::new(ACCOUNT_2_BONDED_AMOUNT);
         GenesisAccount::account(
             ACCOUNT_2_PUBLIC_KEY.clone(),
             account_2_balance,
@@ -67,7 +64,7 @@ static GENESIS_CUSTOM_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
 fn should_run_genesis() {
     let protocol_version = ProtocolVersion::V1_0_0;
 
-    let run_genesis_request = ChainspecConfig::create_genesis_request_from_production_chainspec(
+    let run_genesis_request = ChainspecConfig::create_genesis_request_from_local_chainspec(
         GENESIS_CUSTOM_ACCOUNTS.clone(),
         protocol_version,
     )
@@ -75,7 +72,7 @@ fn should_run_genesis() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis(run_genesis_request);
 
     let _system_account = builder
         .get_entity_by_account_hash(PublicKey::System.to_account_hash())
@@ -95,10 +92,14 @@ fn should_run_genesis() {
     assert_eq!(account_1_balance_actual, U512::from(ACCOUNT_1_BALANCE));
     assert_eq!(account_2_balance_actual, U512::from(ACCOUNT_2_BALANCE));
 
-    let mint_contract_hash = builder.get_mint_contract_hash();
-    let handle_payment_contract_hash = builder.get_handle_payment_contract_hash();
+    let mint_contract_key =
+        Key::addressable_entity_key(EntityKindTag::System, builder.get_mint_contract_hash());
+    let handle_payment_contract_key = Key::addressable_entity_key(
+        EntityKindTag::System,
+        builder.get_handle_payment_contract_hash(),
+    );
 
-    let result = builder.query(None, mint_contract_hash.into(), &[]);
+    let result = builder.query(None, mint_contract_key, &[]);
     if let Ok(StoredValue::AddressableEntity(_)) = result {
         // Contract exists at mint contract hash
     } else {
@@ -106,7 +107,7 @@ fn should_run_genesis() {
     }
 
     if let Ok(StoredValue::AddressableEntity(_)) =
-        builder.query(None, handle_payment_contract_hash.into(), &[])
+        builder.query(None, handle_payment_contract_key, &[])
     {
         // Contract exists at handle payment contract hash
     } else {
@@ -120,16 +121,14 @@ fn should_track_total_token_supply_in_mint() {
     let accounts = GENESIS_CUSTOM_ACCOUNTS.clone();
     let wasm_config = *DEFAULT_WASM_CONFIG;
     let system_config = *DEFAULT_SYSTEM_CONFIG;
-    let protocol_version = ProtocolVersion::V1_0_0;
+    let protocol_version = DEFAULT_PROTOCOL_VERSION;
     let validator_slots = DEFAULT_VALIDATOR_SLOTS;
     let auction_delay = DEFAULT_AUCTION_DELAY;
     let locked_funds_period = DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
     let round_seigniorage_rate = DEFAULT_ROUND_SEIGNIORAGE_RATE;
     let unbonding_delay = DEFAULT_UNBONDING_DELAY;
     let genesis_timestamp = DEFAULT_GENESIS_TIMESTAMP_MILLIS;
-    let refund_handling = DEFAULT_REFUND_HANDLING;
-    let fee_handling = DEFAULT_FEE_HANDLING;
-    let ee_config = ExecConfigBuilder::default()
+    let config = GenesisConfigBuilder::default()
         .with_accounts(accounts.clone())
         .with_wasm_config(wasm_config)
         .with_system_config(system_config)
@@ -139,22 +138,20 @@ fn should_track_total_token_supply_in_mint() {
         .with_round_seigniorage_rate(round_seigniorage_rate)
         .with_unbonding_delay(unbonding_delay)
         .with_genesis_timestamp_millis(genesis_timestamp)
-        .with_refund_handling(refund_handling)
-        .with_fee_handling(fee_handling)
         .build();
 
-    let run_genesis_request = RunGenesisRequest::new(
+    let genesis_request = GenesisRequest::new(
         GENESIS_CONFIG_HASH.into(),
         protocol_version,
-        ee_config,
+        config,
         DEFAULT_CHAINSPEC_REGISTRY.clone(),
     );
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis(genesis_request);
 
-    let total_supply = builder.total_supply(None);
+    let total_supply = builder.total_supply(protocol_version, None);
 
     let expected_balance: U512 = accounts.iter().map(|item| item.balance().value()).sum();
     let expected_staked_amount: U512 = accounts

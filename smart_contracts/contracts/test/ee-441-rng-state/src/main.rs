@@ -10,8 +10,8 @@ use casper_contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    addressable_entity::Parameters, CLType, CLValue, EntryPoint, EntryPointAccess, EntryPointType,
-    EntryPoints, Key, RuntimeArgs, URef, U512,
+    addressable_entity::Parameters, CLType, CLValue, EntryPoint, EntryPointAccess,
+    EntryPointPayment, EntryPointType, EntryPoints, Key, RuntimeArgs, URef, U512,
 };
 
 const ARG_FLAG: &str = "flag";
@@ -44,7 +44,8 @@ pub extern "C" fn call() {
             Parameters::default(),
             CLType::String,
             EntryPointAccess::Public,
-            EntryPointType::Contract,
+            EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
 
         entry_points.add_entry_point(do_nothing_entry_point);
@@ -54,14 +55,16 @@ pub extern "C" fn call() {
             Parameters::default(),
             CLType::URef,
             EntryPointAccess::Public,
-            EntryPointType::Contract,
+            EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
 
         entry_points.add_entry_point(do_something_entry_point);
 
         entry_points
     };
-    let (contract_hash, _contract_version) = storage::new_contract(entry_points, None, None, None);
+    let (contract_hash, _contract_version) =
+        storage::new_contract(entry_points, None, None, None, None);
 
     if flag == "pass1" {
         // Two calls should forward the internal RNG. This pass is a baseline.

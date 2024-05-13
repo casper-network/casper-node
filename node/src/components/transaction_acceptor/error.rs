@@ -2,9 +2,10 @@ use datasize::DataSize;
 use serde::Serialize;
 use thiserror::Error;
 
+use casper_binary_port::ErrorCode as BinaryPortErrorCode;
 use casper_types::{
-    BlockHash, BlockHeader, ContractHash, ContractPackageHash, ContractVersion,
-    DeployConfigurationFailure, Digest, PublicKey, Timestamp, TransactionV1ConfigFailure,
+    AddressableEntityHash, BlockHash, BlockHeader, Digest, EntityVersion, InitiatorAddr,
+    InvalidTransaction, PackageHash, Timestamp,
 };
 
 // `allow` can be removed once https://github.com/casper-network/casper-node/issues/3063 is fixed.
@@ -15,13 +16,9 @@ pub(crate) enum Error {
     #[error("block chain has no blocks")]
     EmptyBlockchain,
 
-    /// The deploy has an invalid configuration.
-    #[error("invalid deploy: {0}")]
-    InvalidDeployConfiguration(#[from] DeployConfigurationFailure),
-
-    /// The v1 transaction has an invalid configuration.
-    #[error("invalid v1 transaction: {0}")]
-    InvalidV1Configuration(#[from] TransactionV1ConfigFailure),
+    /// The deploy has an invalid transaction.
+    #[error("invalid transaction: {0}")]
+    InvalidTransaction(#[from] InvalidTransaction),
 
     /// The transaction is invalid due to missing or otherwise invalid parameters.
     #[error(
@@ -53,7 +50,7 @@ pub(crate) enum Error {
     ExpectedDeploy,
 
     /// Component state error: expected a version 1 transaction.
-    #[error("internal error: expected a deploy")]
+    #[error("internal error: expected a transaction")]
     ExpectedTransactionV1,
 }
 
@@ -68,24 +65,49 @@ impl Error {
     }
 }
 
+impl From<Error> for BinaryPortErrorCode {
+    fn from(err: Error) -> Self {
+        match err {
+            Error::EmptyBlockchain
+            | Error::Parameters { .. }
+            | Error::Expired { .. }
+            | Error::ExpectedDeploy
+            | Error::ExpectedTransactionV1 => {
+                BinaryPortErrorCode::InvalidTransactionOrDeployUnspecified
+            }
+            Error::InvalidTransaction(invalid_transaction) => {
+                BinaryPortErrorCode::from(invalid_transaction)
+            }
+        }
+    }
+}
+
 /// A representation of the way in which a transaction failed parameter checks.
 #[derive(Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Debug, Error, Serialize)]
 pub(crate) enum ParameterFailure {
     /// No such addressable entity.
-    #[error("addressable entity under {public_key} does not exist")]
-    NoSuchAddressableEntity { public_key: PublicKey },
+    #[error("addressable entity under {initiator_addr} does not exist")]
+    NoSuchAddressableEntity { initiator_addr: InitiatorAddr },
     /// No such contract at given hash.
     #[error("contract at {contract_hash} does not exist")]
-    NoSuchContractAtHash { contract_hash: ContractHash },
+    NoSuchContractAtHash {
+        contract_hash: AddressableEntityHash,
+    },
     /// No such contract entrypoint.
     #[error("contract does not have entry point '{entry_point_name}'")]
     NoSuchEntryPoint { entry_point_name: String },
     /// No such package.
     #[error("package at {package_hash} does not exist")]
-    NoSuchPackageAtHash { package_hash: ContractPackageHash },
+    NoSuchPackageAtHash { package_hash: PackageHash },
     /// Invalid contract at given version.
-    #[error("invalid contract at version: {contract_version}")]
-    InvalidContractAtVersion { contract_version: ContractVersion },
+    #[error("invalid entity at version: {entity_version}")]
+    InvalidEntityAtVersion { entity_version: EntityVersion },
+    /// Invalid contract at given version.
+    #[error("disabled entity at version: {entity_version}")]
+    DisabledEntityAtVersion { entity_version: EntityVersion },
+    /// Invalid contract at given version.
+    #[error("missing entity at version: {entity_version}")]
+    MissingEntityAtVersion { entity_version: EntityVersion },
     /// Invalid associated keys.
     #[error("account authorization invalid")]
     InvalidAssociatedKeys,
@@ -93,11 +115,11 @@ pub(crate) enum ParameterFailure {
     #[error("insufficient transaction signature weight")]
     InsufficientSignatureWeight,
     /// The transaction's addressable entity has insufficient balance.
-    #[error("insufficient balance in {public_key}")]
-    InsufficientBalance { public_key: PublicKey },
+    #[error("insufficient balance in {initiator_addr}")]
+    InsufficientBalance { initiator_addr: InitiatorAddr },
     /// The balance of the transaction's addressable entity cannot be read.
-    #[error("unable to determine balance for {public_key}")]
-    UnknownBalance { public_key: PublicKey },
+    #[error("unable to determine balance for {initiator_addr}")]
+    UnknownBalance { initiator_addr: InitiatorAddr },
     /// Error specific to `Deploy` parameters.
     #[error(transparent)]
     Deploy(#[from] DeployParameterFailure),

@@ -12,7 +12,7 @@ use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
 use strum::EnumDiscriminants;
 
-use casper_types::{BlockV2, FinalitySignature, Transaction};
+use casper_types::{BlockV2, FinalitySignatureV2, Transaction};
 
 use crate::{
     components::{
@@ -49,7 +49,7 @@ pub(crate) enum Message {
     #[from]
     TransactionGossiper(gossiper::Message<Transaction>),
     #[from]
-    FinalitySignatureGossiper(gossiper::Message<FinalitySignature>),
+    FinalitySignatureGossiper(gossiper::Message<FinalitySignatureV2>),
     /// Address gossiper component message.
     #[from]
     AddressGossiper(gossiper::Message<GossipedAddress>),
@@ -69,7 +69,7 @@ pub(crate) enum Message {
     },
     /// Finality signature.
     #[from]
-    FinalitySignature(Box<FinalitySignature>),
+    FinalitySignature(Box<FinalitySignatureV2>),
 }
 
 impl Payload for Message {
@@ -82,7 +82,7 @@ impl Payload for Message {
             Message::TransactionGossiper(_) => MessageKind::TransactionGossip,
             Message::AddressGossiper(_) => MessageKind::AddressGossip,
             Message::GetRequest { tag, .. } | Message::GetResponse { tag, .. } => match tag {
-                Tag::Deploy | Tag::LegacyDeploy | Tag::Transaction => MessageKind::DeployTransfer,
+                Tag::Transaction | Tag::LegacyDeploy => MessageKind::TransactionTransfer,
                 Tag::Block => MessageKind::BlockTransfer,
                 Tag::BlockHeader => MessageKind::BlockTransfer,
                 Tag::TrieOrChunk => MessageKind::TrieTransfer,
@@ -123,7 +123,7 @@ impl Payload for Message {
             Message::FinalitySignatureGossiper(_) => weights.finality_signature_gossip,
             Message::AddressGossiper(_) => weights.address_gossip,
             Message::GetRequest { tag, .. } => match tag {
-                Tag::Deploy | Tag::Transaction => weights.deploy_requests,
+                Tag::Transaction => weights.transaction_requests,
                 Tag::LegacyDeploy => weights.legacy_deploy_requests,
                 Tag::Block => weights.block_requests,
                 Tag::BlockHeader => weights.block_header_requests,
@@ -134,7 +134,7 @@ impl Payload for Message {
                 Tag::BlockExecutionResults => weights.execution_results_requests,
             },
             Message::GetResponse { tag, .. } => match tag {
-                Tag::Deploy | Tag::Transaction => weights.deploy_responses,
+                Tag::Transaction => weights.transaction_responses,
                 Tag::LegacyDeploy => weights.legacy_deploy_responses,
                 Tag::Block => weights.block_responses,
                 Tag::BlockHeader => weights.block_header_responses,
@@ -302,7 +302,7 @@ where
         + From<ConsensusDemand>
         + From<GossiperIncoming<BlockV2>>
         + From<GossiperIncoming<Transaction>>
-        + From<GossiperIncoming<FinalitySignature>>
+        + From<GossiperIncoming<FinalitySignatureV2>>
         + From<GossiperIncoming<GossipedAddress>>
         + From<NetRequestIncoming>
         + From<NetResponseIncoming>
@@ -343,9 +343,9 @@ where
             }
             .into(),
             Message::GetRequest { tag, serialized_id } => match tag {
-                Tag::Deploy => NetRequestIncoming {
+                Tag::Transaction => NetRequestIncoming {
                     sender,
-                    message: Box::new(NetRequest::Deploy(serialized_id)),
+                    message: Box::new(NetRequest::Transaction(serialized_id)),
                 }
                 .into(),
                 Tag::LegacyDeploy => NetRequestIncoming {
@@ -388,19 +388,14 @@ where
                     message: Box::new(NetRequest::BlockExecutionResults(serialized_id)),
                 }
                 .into(),
-                Tag::Transaction => NetRequestIncoming {
-                    sender,
-                    message: Box::new(NetRequest::Deploy(serialized_id)),
-                }
-                .into(),
             },
             Message::GetResponse {
                 tag,
                 serialized_item,
             } => match tag {
-                Tag::Deploy => NetResponseIncoming {
+                Tag::Transaction => NetResponseIncoming {
                     sender,
-                    message: Box::new(NetResponse::Deploy(serialized_item)),
+                    message: Box::new(NetResponse::Transaction(serialized_item)),
                 }
                 .into(),
                 Tag::LegacyDeploy => NetResponseIncoming {
@@ -441,11 +436,6 @@ where
                 Tag::BlockExecutionResults => NetResponseIncoming {
                     sender,
                     message: Box::new(NetResponse::BlockExecutionResults(serialized_item)),
-                }
-                .into(),
-                Tag::Transaction => NetResponseIncoming {
-                    sender,
-                    message: Box::new(NetResponse::Deploy(serialized_item)),
                 }
                 .into(),
             },

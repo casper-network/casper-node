@@ -6,7 +6,7 @@ extern crate alloc;
 
 use core::iter;
 
-use alloc::{boxed::Box, string::String, vec::Vec};
+use alloc::{boxed::Box, collections::BTreeMap, string::String, vec::Vec};
 
 use casper_contract::{
     contract_api::{account, runtime, storage, system},
@@ -17,7 +17,7 @@ use casper_types::{
     addressable_entity::{ActionType, NamedKeys, Weight},
     bytesrepr::Bytes,
     runtime_args, ApiError, BlockTime, CLType, CLTyped, CLValue, EntryPoint, EntryPointAccess,
-    EntryPointType, EntryPoints, Key, Parameter, Phase, RuntimeArgs, U512,
+    EntryPointPayment, EntryPointType, EntryPoints, Key, Parameter, Phase, RuntimeArgs, U512,
 };
 
 const DO_NOTHING_NAME: &str = "do_nothing";
@@ -219,7 +219,7 @@ pub extern "C" fn account_function() {
 #[no_mangle]
 pub extern "C" fn calls_do_nothing_level1() {
     let contract_package_hash = runtime::get_key(HASH_KEY_NAME)
-        .and_then(Key::into_hash)
+        .and_then(Key::into_package_addr)
         .expect("should have key")
         .into();
     runtime::call_versioned_contract(
@@ -233,7 +233,7 @@ pub extern "C" fn calls_do_nothing_level1() {
 #[no_mangle]
 pub extern "C" fn calls_do_nothing_level2() {
     let contract_package_hash = runtime::get_key(HASH_KEY_NAME)
-        .and_then(Key::into_hash)
+        .and_then(Key::into_package_addr)
         .expect("should have key")
         .into();
     runtime::call_versioned_contract(
@@ -246,7 +246,7 @@ pub extern "C" fn calls_do_nothing_level2() {
 
 fn measure_arg_size(bytes: usize) {
     let contract_package_hash = runtime::get_key(HASH_KEY_NAME)
-        .and_then(Key::into_hash)
+        .and_then(Key::into_package_addr)
         .expect("should have key")
         .into();
 
@@ -281,7 +281,8 @@ pub extern "C" fn call() {
             Vec::new(),
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Contract,
+            EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
         entry_points.add_entry_point(entry_point);
 
@@ -290,7 +291,8 @@ pub extern "C" fn call() {
             Vec::new(),
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Contract,
+            EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
         entry_points.add_entry_point(entry_point);
 
@@ -299,7 +301,8 @@ pub extern "C" fn call() {
             Vec::new(),
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Contract,
+            EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
         entry_points.add_entry_point(entry_point);
         let entry_point = EntryPoint::new(
@@ -307,7 +310,8 @@ pub extern "C" fn call() {
             Vec::new(),
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Contract,
+            EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
         entry_points.add_entry_point(entry_point);
 
@@ -316,7 +320,8 @@ pub extern "C" fn call() {
             Vec::new(),
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Contract,
+            EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
         entry_points.add_entry_point(entry_point);
         let entry_point = EntryPoint::new(
@@ -324,7 +329,8 @@ pub extern "C" fn call() {
             Vec::new(),
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Contract,
+            EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
         entry_points.add_entry_point(entry_point);
 
@@ -333,7 +339,8 @@ pub extern "C" fn call() {
             Vec::new(),
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Contract,
+            EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
         entry_points.add_entry_point(entry_point);
         let entry_point = EntryPoint::new(
@@ -341,7 +348,8 @@ pub extern "C" fn call() {
             Vec::new(),
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Contract,
+            EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
         entry_points.add_entry_point(entry_point);
 
@@ -350,7 +358,8 @@ pub extern "C" fn call() {
             vec![Parameter::new(ARG_BYTES, <Vec<u8>>::cl_type())],
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Contract,
+            EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
         entry_points.add_entry_point(entry_point);
 
@@ -359,7 +368,8 @@ pub extern "C" fn call() {
             Vec::new(),
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Session,
+            EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
         entry_points.add_entry_point(entry_point);
 
@@ -368,7 +378,8 @@ pub extern "C" fn call() {
             Vec::new(),
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Contract,
+            EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
         entry_points.add_entry_point(entry_point);
 
@@ -377,7 +388,8 @@ pub extern "C" fn call() {
             Vec::new(),
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Contract,
+            EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
         entry_points.add_entry_point(entry_point);
 
@@ -386,7 +398,8 @@ pub extern "C" fn call() {
             Vec::new(),
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Contract,
+            EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
         entry_points.add_entry_point(entry_point);
 
@@ -400,7 +413,11 @@ pub extern "C" fn call() {
     let mut named_keys = NamedKeys::new();
     named_keys.insert(HASH_KEY_NAME.into(), contract_package_hash.into());
 
-    let (contract_hash, _version) =
-        storage::add_contract_version(contract_package_hash, entry_points, named_keys);
-    runtime::put_key(CONTRACT_KEY_NAME, contract_hash.into());
+    let (contract_hash, _version) = storage::add_contract_version(
+        contract_package_hash,
+        entry_points,
+        named_keys,
+        BTreeMap::new(),
+    );
+    runtime::put_key(CONTRACT_KEY_NAME, Key::contract_entity_key(contract_hash));
 }

@@ -52,33 +52,33 @@ const ACCOUNT_4_BOND: u64 = 200_000;
 fn should_run_ee_1045_squash_validators() {
     let account_1 = GenesisAccount::account(
         ACCOUNT_1_PK.clone(),
-        Motes::new(ACCOUNT_1_BALANCE.into()),
+        Motes::new(ACCOUNT_1_BALANCE),
         Some(GenesisValidator::new(
-            Motes::new(ACCOUNT_1_BOND.into()),
+            Motes::new(ACCOUNT_1_BOND),
             DelegationRate::zero(),
         )),
     );
     let account_2 = GenesisAccount::account(
         ACCOUNT_2_PK.clone(),
-        Motes::new(ACCOUNT_2_BALANCE.into()),
+        Motes::new(ACCOUNT_2_BALANCE),
         Some(GenesisValidator::new(
-            Motes::new(ACCOUNT_2_BOND.into()),
+            Motes::new(ACCOUNT_2_BOND),
             DelegationRate::zero(),
         )),
     );
     let account_3 = GenesisAccount::account(
         ACCOUNT_3_PK.clone(),
-        Motes::new(ACCOUNT_3_BALANCE.into()),
+        Motes::new(ACCOUNT_3_BALANCE),
         Some(GenesisValidator::new(
-            Motes::new(ACCOUNT_3_BOND.into()),
+            Motes::new(ACCOUNT_3_BOND),
             DelegationRate::zero(),
         )),
     );
     let account_4 = GenesisAccount::account(
         ACCOUNT_4_PK.clone(),
-        Motes::new(ACCOUNT_4_BALANCE.into()),
+        Motes::new(ACCOUNT_4_BALANCE),
         Some(GenesisValidator::new(
-            Motes::new(ACCOUNT_4_BOND.into()),
+            Motes::new(ACCOUNT_4_BOND),
             DelegationRate::zero(),
         )),
     );
@@ -111,7 +111,7 @@ fn should_run_ee_1045_squash_validators() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis(run_genesis_request);
 
     let genesis_validator_weights = builder
         .get_validator_weights(INITIAL_ERA_ID)

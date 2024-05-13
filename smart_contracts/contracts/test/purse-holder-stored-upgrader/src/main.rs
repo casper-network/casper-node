@@ -4,15 +4,15 @@
 #[macro_use]
 extern crate alloc;
 
-use alloc::string::String;
+use alloc::{collections::BTreeMap, string::String};
 
 use casper_contract::{
     contract_api::{runtime, storage, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    addressable_entity::NamedKeys, CLType, CLValue, ContractPackageHash, EntryPoint,
-    EntryPointAccess, EntryPointType, EntryPoints, Parameter, URef,
+    addressable_entity::NamedKeys, CLType, CLValue, EntryPoint, EntryPointAccess,
+    EntryPointPayment, EntryPointType, EntryPoints, Key, PackageHash, Parameter, URef,
 };
 
 pub const METHOD_ADD: &str = "add";
@@ -50,7 +50,7 @@ pub extern "C" fn version() {
 
 #[no_mangle]
 pub extern "C" fn call() {
-    let contract_package: ContractPackageHash = runtime::get_named_arg(ARG_CONTRACT_PACKAGE);
+    let contract_package: PackageHash = runtime::get_named_arg(ARG_CONTRACT_PACKAGE);
     let _access_key: URef = runtime::get_key(ACCESS_KEY_NAME)
         .expect("should have access key")
         .into_uref()
@@ -63,7 +63,8 @@ pub extern "C" fn call() {
             vec![Parameter::new(ARG_PURSE_NAME, CLType::String)],
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Contract,
+            EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
         entry_points.add_entry_point(add);
         let version = EntryPoint::new(
@@ -71,7 +72,8 @@ pub extern "C" fn call() {
             vec![],
             CLType::String,
             EntryPointAccess::Public,
-            EntryPointType::Contract,
+            EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
         entry_points.add_entry_point(version);
 
@@ -80,15 +82,23 @@ pub extern "C" fn call() {
             vec![Parameter::new(ARG_PURSE_NAME, CLType::String)],
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Contract,
+            EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
         entry_points.add_entry_point(remove);
         entry_points
     };
     // this should overwrite the previous contract obj with the new contract obj at the same uref
-    let (new_contract_hash, new_contract_version) =
-        storage::add_contract_version(contract_package, entry_points, NamedKeys::new());
-    runtime::put_key(PURSE_HOLDER_STORED_CONTRACT_NAME, new_contract_hash.into());
+    let (new_contract_hash, new_contract_version) = storage::add_contract_version(
+        contract_package,
+        entry_points,
+        NamedKeys::new(),
+        BTreeMap::new(),
+    );
+    runtime::put_key(
+        PURSE_HOLDER_STORED_CONTRACT_NAME,
+        Key::contract_entity_key(new_contract_hash),
+    );
     runtime::put_key(
         CONTRACT_VERSION,
         storage::new_uref(new_contract_version).into(),

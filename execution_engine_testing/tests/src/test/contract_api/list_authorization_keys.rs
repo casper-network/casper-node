@@ -1,14 +1,11 @@
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
+    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, TransferRequestBuilder,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, LOCAL_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
-use casper_execution_engine::{engine_state::Error, execution};
+use casper_execution_engine::{engine_state::Error, execution::ExecError};
 use casper_types::{
-    account::AccountHash,
-    addressable_entity::Weight,
-    runtime_args,
-    system::{mint, standard_payment::ARG_AMOUNT},
-    ApiError, PublicKey, SecretKey, U512,
+    account::AccountHash, addressable_entity::Weight, runtime_args,
+    system::standard_payment::ARG_AMOUNT, ApiError, PublicKey, SecretKey,
 };
 use once_cell::sync::Lazy;
 
@@ -42,7 +39,7 @@ fn should_list_authorization_keys() {
         test_match(
             *DEFAULT_ACCOUNT_ADDR,
             vec![*DEFAULT_ACCOUNT_ADDR],
-            vec![*DEFAULT_ACCOUNT_ADDR]
+            vec![*DEFAULT_ACCOUNT_ADDR],
         ),
         "one signature should match the expected authorization key"
     );
@@ -50,7 +47,7 @@ fn should_list_authorization_keys() {
         !test_match(
             *DEFAULT_ACCOUNT_ADDR,
             vec![*ACCOUNT_2_ADDR, *DEFAULT_ACCOUNT_ADDR],
-            vec![*DEFAULT_ACCOUNT_ADDR, *ACCOUNT_1_ADDR]
+            vec![*DEFAULT_ACCOUNT_ADDR, *ACCOUNT_1_ADDR],
         ),
         "two signatures are off by one"
     );
@@ -58,7 +55,7 @@ fn should_list_authorization_keys() {
         test_match(
             *DEFAULT_ACCOUNT_ADDR,
             vec![*ACCOUNT_2_ADDR, *DEFAULT_ACCOUNT_ADDR],
-            vec![*DEFAULT_ACCOUNT_ADDR, *ACCOUNT_2_ADDR]
+            vec![*DEFAULT_ACCOUNT_ADDR, *ACCOUNT_2_ADDR],
         ),
         "two signatures should match the expected list"
     );
@@ -66,7 +63,7 @@ fn should_list_authorization_keys() {
         test_match(
             *ACCOUNT_1_ADDR,
             vec![*ACCOUNT_1_ADDR],
-            vec![*ACCOUNT_1_ADDR]
+            vec![*ACCOUNT_1_ADDR],
         ),
         "one signature should match the output for non-default account"
     );
@@ -75,7 +72,7 @@ fn should_list_authorization_keys() {
         test_match(
             *DEFAULT_ACCOUNT_ADDR,
             vec![*ACCOUNT_2_ADDR, *DEFAULT_ACCOUNT_ADDR, *ACCOUNT_1_ADDR],
-            vec![*ACCOUNT_1_ADDR, *ACCOUNT_2_ADDR, *DEFAULT_ACCOUNT_ADDR]
+            vec![*ACCOUNT_1_ADDR, *ACCOUNT_2_ADDR, *DEFAULT_ACCOUNT_ADDR],
         ),
         "multisig matches expected list"
     );
@@ -83,7 +80,7 @@ fn should_list_authorization_keys() {
         !test_match(
             *DEFAULT_ACCOUNT_ADDR,
             vec![*ACCOUNT_2_ADDR, *DEFAULT_ACCOUNT_ADDR, *ACCOUNT_1_ADDR],
-            vec![]
+            vec![],
         ),
         "multisig is not empty"
     );
@@ -91,7 +88,7 @@ fn should_list_authorization_keys() {
         !test_match(
             *DEFAULT_ACCOUNT_ADDR,
             vec![*ACCOUNT_2_ADDR, *DEFAULT_ACCOUNT_ADDR, *ACCOUNT_1_ADDR],
-            vec![*ACCOUNT_2_ADDR, *ACCOUNT_1_ADDR]
+            vec![*ACCOUNT_2_ADDR, *ACCOUNT_1_ADDR],
         ),
         "multisig does not include caller account"
     );
@@ -103,27 +100,25 @@ fn test_match(
     expected_authorization_keys: Vec<AccountHash>,
 ) -> bool {
     let mut builder = setup();
-    let exec_request = {
-        let session_args = runtime_args! {
-            ARG_EXPECTED_AUTHORIZATION_KEYS => expected_authorization_keys
-        };
-        let deploy_hash = [42; 32];
-
-        let deploy = DeployItemBuilder::new()
-            .with_address(caller)
-            .with_session_code(CONTRACT_LIST_AUTHORIZATION_KEYS, session_args)
-            .with_empty_payment_bytes(runtime_args! {
-                ARG_AMOUNT => *DEFAULT_PAYMENT
-            })
-            .with_authorization_keys(&signatures)
-            .with_deploy_hash(deploy_hash)
-            .build();
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+    let session_args = runtime_args! {
+        ARG_EXPECTED_AUTHORIZATION_KEYS => expected_authorization_keys
     };
+    let deploy_hash = [42; 32];
+
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(caller)
+        .with_session_code(CONTRACT_LIST_AUTHORIZATION_KEYS, session_args)
+        .with_standard_payment(runtime_args! {
+            ARG_AMOUNT => *DEFAULT_PAYMENT
+        })
+        .with_authorization_keys(&signatures)
+        .with_deploy_hash(deploy_hash)
+        .build();
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
     builder.exec(exec_request).commit();
 
     match builder.get_error() {
-        Some(Error::Exec(execution::Error::Revert(ApiError::User(USER_ERROR_ASSERTION)))) => false,
+        Some(Error::Exec(ExecError::Revert(ApiError::User(USER_ERROR_ASSERTION)))) => false,
         Some(error) => panic!("Unexpected error {:?}", error),
         None => {
             // Success
@@ -134,7 +129,7 @@ fn test_match(
 
 fn setup() -> LmdbWasmTestBuilder {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     for account in [*ACCOUNT_1_ADDR, *ACCOUNT_2_ADDR] {
         let add_key_request = {
@@ -150,18 +145,13 @@ fn setup() -> LmdbWasmTestBuilder {
             .build()
         };
 
-        let transfer_request = {
-            let transfer_args = runtime_args! {
-                mint::ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE),
-                mint::ARG_TARGET => account,
-                mint::ARG_ID => Option::<u64>::None,
-            };
-
-            ExecuteRequestBuilder::transfer(*DEFAULT_ACCOUNT_ADDR, transfer_args).build()
-        };
+        let transfer_request =
+            TransferRequestBuilder::new(MINIMUM_ACCOUNT_CREATION_BALANCE, account).build();
 
         builder.exec(add_key_request).expect_success().commit();
-        builder.exec(transfer_request).expect_success().commit();
+        builder
+            .transfer_and_commit(transfer_request)
+            .expect_success();
     }
 
     builder

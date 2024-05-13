@@ -1,16 +1,17 @@
 //! Execution error and supporting code.
-use casper_storage::global_state;
-use parity_wasm::elements;
+use std::str::Utf8Error;
 use thiserror::Error;
+
+use casper_storage::{global_state, tracking_copy::TrackingCopyError};
 
 use casper_types::{
     addressable_entity::{AddKeyFailure, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure},
     bytesrepr,
     execution::TransformError,
-    package::ContractPackageKind,
-    system, AccessRights, ApiError, CLType, CLValueError, ContractHash, ContractPackageHash,
-    ContractVersionKey, ContractWasmHash, Key, StoredValueTypeMismatch, URef,
+    system, AccessRights, AddressableEntityHash, ApiError, ByteCodeHash, CLType, CLValueError,
+    EntityVersionKey, Key, PackageHash, StoredValueTypeMismatch, TransactionRuntime, URef,
 };
+use casper_wasm::elements;
 
 use crate::{
     resolvers::error::ResolverError,
@@ -51,9 +52,6 @@ pub enum Error {
     /// Forged reference error.
     #[error("Forged reference: {}", _0)]
     ForgedReference(URef),
-    /// Unable to find a [`URef`].
-    #[error("URef not found: {}", _0)]
-    URefNotFound(URef),
     /// Unable to find a function.
     #[error("Function not found: {}", _0)]
     FunctionNotFound(String),
@@ -66,7 +64,7 @@ pub enum Error {
     /// Execution exceeded the gas limit.
     #[error("Out of gas error")]
     GasLimit,
-    /// A stored smart contract incorrectly called a ret function.
+    /// A stored smart contract called a ret function.
     #[error("Return")]
     Ret(Vec<URef>),
     /// Error using WASM host function resolver.
@@ -96,9 +94,6 @@ pub enum Error {
     /// Host buffer expected a value to be present.
     #[error("Expected return value")]
     ExpectedReturnValue,
-    /// Host buffer was not expected to contain a value.
-    #[error("Unexpected return value")]
-    UnexpectedReturnValue,
     /// Error calling a host function in a wrong context.
     #[error("Invalid context")]
     InvalidContext,
@@ -113,45 +108,42 @@ pub enum Error {
     /// Error converting a CLValue.
     #[error("{0}")]
     CLValue(CLValueError),
-    /// Unable to access host buffer.
-    #[error("Host buffer is empty")]
-    HostBufferEmpty,
     /// WASM bytes contains an unsupported "start" section.
-    #[error("Unsupported WASM start")]
+    #[error("Unsupported Wasm start")]
     UnsupportedWasmStart,
     /// Contract package has no active contract versions.
     #[error("No active contract versions for contract package")]
-    NoActiveContractVersions(ContractPackageHash),
-    /// Invalid contract version supplied.
-    #[error("Invalid contract version: {}", _0)]
-    InvalidContractVersion(ContractVersionKey),
+    NoActiveEntityVersions(PackageHash),
+    /// Invalid entity version supplied.
+    #[error("Invalid entity version: {}", _0)]
+    InvalidEntityVersion(EntityVersionKey),
+    /// Invalid entity version supplied.
+    #[error("Disabled entity version: {}", _0)]
+    DisabledEntityVersion(EntityVersionKey),
+    /// Invalid entity version supplied.
+    #[error("Missing entity version: {}", _0)]
+    MissingEntityVersion(EntityVersionKey),
     /// Contract does not have specified entry point.
     #[error("No such method: {}", _0)]
     NoSuchMethod(String),
     /// Contract does
-    #[error("Error calling an abstract entry point: {}", _0)]
+    #[error("Error calling a template entry point: {}", _0)]
     TemplateMethod(String),
     /// Error processing WASM bytes.
     #[error("Wasm preprocessing error: {}", _0)]
     WasmPreprocessing(PreprocessingError),
-    /// Unable to convert a [`Key`] into an [`URef`].
-    #[error("Key is not a URef: {}", _0)]
-    KeyIsNotAURef(Key),
     /// Unexpected variant of a stored value.
     #[error("Unexpected variant of a stored value")]
     UnexpectedStoredValueVariant,
     /// Error upgrading a locked contract package.
     #[error("A locked contract cannot be upgraded")]
-    LockedContract(ContractPackageHash),
-    /// Unable to find a contract package by a specified hash address.
-    #[error("Invalid contract package: {}", _0)]
-    InvalidContractPackage(ContractPackageHash),
+    LockedEntity(PackageHash),
     /// Unable to find a contract by a specified hash address.
     #[error("Invalid contract: {}", _0)]
-    InvalidContract(ContractHash),
+    InvalidEntity(AddressableEntityHash),
     /// Unable to find the WASM bytes specified by a hash address.
     #[error("Invalid contract WASM: {}", _0)]
-    InvalidContractWasm(ContractWasmHash),
+    InvalidByteCode(ByteCodeHash),
     /// Error calling a smart contract with a missing argument.
     #[error("Missing argument: {name}")]
     MissingArgument {
@@ -161,36 +153,45 @@ pub enum Error {
     /// Error writing a dictionary item key which exceeded maximum allowed length.
     #[error("Dictionary item key exceeded maximum length")]
     DictionaryItemKeyExceedsLength,
-    /// Missing system contract registry.
-    #[error("Missing system contract registry")]
-    MissingSystemContractRegistry,
     /// Missing system contract hash.
     #[error("Missing system contract hash: {0}")]
     MissingSystemContractHash(String),
     /// An attempt to push to the runtime stack which is already at the maximum height.
     #[error("Runtime stack overflow")]
     RuntimeStackOverflow,
-    /// An attempt to write a value to global state where its serialized size is too large.
-    #[error("Value too large")]
-    ValueTooLarge,
     /// The runtime stack is `None`.
     #[error("Runtime stack missing")]
     MissingRuntimeStack,
     /// Contract is disabled.
     #[error("Contract is disabled")]
-    DisabledContract(ContractHash),
+    DisabledEntity(AddressableEntityHash),
     /// Transform error.
     #[error(transparent)]
     Transform(TransformError),
     /// Invalid key
     #[error("Invalid key {0}")]
     UnexpectedKeyVariant(Key),
-    /// Invalid Contract package kind.
-    #[error("Invalid contract package kind: {0}")]
-    InvalidContractPackageKind(ContractPackageKind),
     /// Failed to transfer tokens on a private chain.
     #[error("Failed to transfer with unrestricted transfers disabled")]
     DisabledUnrestrictedTransfers,
+    /// Storage error.
+    #[error("Tracking copy error: {0}")]
+    TrackingCopy(TrackingCopyError),
+    /// Weight of all used associated keys does not meet entity's upgrade threshold.
+    #[error("Deployment authorization failure")]
+    UpgradeAuthorizationFailure,
+    /// The EntryPoints contains an invalid entry.
+    #[error("The EntryPoints contains an invalid entry")]
+    InvalidEntryPointType,
+    /// Invalid message topic operation.
+    #[error("The requested operation is invalid for a message topic")]
+    InvalidMessageTopicOperation,
+    /// Invalid string encoding.
+    #[error("Invalid UTF-8 string encoding: {0}")]
+    InvalidUtf8Encoding(Utf8Error),
+    /// Incompatible transaction runtime.
+    #[error("Incompatible runtime: {0}")]
+    IncompatibleRuntime(TransactionRuntime),
 }
 
 impl From<PreprocessingError> for Error {
@@ -215,10 +216,10 @@ impl Error {
     }
 }
 
-impl wasmi::HostError for Error {}
+impl casper_wasmi::HostError for Error {}
 
-impl From<wasmi::Error> for Error {
-    fn from(error: wasmi::Error) -> Self {
+impl From<casper_wasmi::Error> for Error {
+    fn from(error: casper_wasmi::Error) -> Self {
         match error
             .as_host_error()
             .and_then(|host_error| host_error.downcast_ref::<Error>())
@@ -292,5 +293,11 @@ impl From<CLValueError> for Error {
 impl From<stack::RuntimeStackOverflow> for Error {
     fn from(_: stack::RuntimeStackOverflow) -> Self {
         Error::RuntimeStackOverflow
+    }
+}
+
+impl From<TrackingCopyError> for Error {
+    fn from(e: TrackingCopyError) -> Self {
+        Error::TrackingCopy(e)
     }
 }

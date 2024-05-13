@@ -19,30 +19,29 @@
 //!     example: curl -X GET 'http://IP:8888/metrics'
 
 mod config;
+mod docs;
 mod event;
 mod filters;
 mod http_server;
+mod info;
 
-use std::{fmt::Debug, time::Instant};
+use std::{net::SocketAddr, sync::Arc};
 
 use datasize::DataSize;
 use futures::{future::BoxFuture, join, FutureExt};
+use once_cell::sync::OnceCell;
 use tokio::{sync::oneshot, task::JoinHandle};
 use tracing::{debug, error, info, warn};
 
-use casper_json_rpc::CorsOrigin;
 use casper_types::ProtocolVersion;
 
-use super::Component;
+use super::{Component, ComponentState, InitializedComponent};
 use crate::{
-    components::{
-        rpc_server::rpcs::docs::OPEN_RPC_SCHEMA, ComponentState, InitializedComponent,
-        PortBoundComponent,
-    },
+    components::PortBoundComponent,
     effect::{
         requests::{
             BlockSynchronizerRequest, ChainspecRawBytesRequest, ConsensusRequest, MetricsRequest,
-            NetworkInfoRequest, ReactorStatusRequest, RestRequest, StorageRequest,
+            NetworkInfoRequest, ReactorInfoRequest, RestRequest, StorageRequest,
             UpgradeWatcherRequest,
         },
         EffectBuilder, EffectExt, Effects,
@@ -53,7 +52,10 @@ use crate::{
     NodeRng,
 };
 pub use config::Config;
+pub use docs::DocExample;
+pub(crate) use docs::DOCS_EXAMPLE_PROTOCOL_VERSION;
 pub(crate) use event::Event;
+pub(crate) use info::{GetChainspecResult, GetValidatorChangesResult};
 
 const COMPONENT_NAME: &str = "rest_server";
 
@@ -67,7 +69,7 @@ pub(crate) trait ReactorEventT:
     + From<UpgradeWatcherRequest>
     + From<ConsensusRequest>
     + From<MetricsRequest>
-    + From<ReactorStatusRequest>
+    + From<ReactorInfoRequest>
     + From<BlockSynchronizerRequest>
     + Send
 {
@@ -82,7 +84,7 @@ impl<REv> ReactorEventT for REv where
         + From<UpgradeWatcherRequest>
         + From<ConsensusRequest>
         + From<MetricsRequest>
-        + From<ReactorStatusRequest>
+        + From<ReactorInfoRequest>
         + From<BlockSynchronizerRequest>
         + Send
         + 'static
@@ -94,11 +96,11 @@ pub(crate) struct InnerRestServer {
     /// When the message is sent, it signals the server loop to exit cleanly.
     #[data_size(skip)]
     shutdown_sender: oneshot::Sender<()>,
+    /// The address the server is listening on.
+    local_addr: Arc<OnceCell<SocketAddr>>,
     /// The task handle which will only join once the server loop has exited.
     #[data_size(skip)]
     server_join_handle: Option<JoinHandle<()>>,
-    /// The instant at which the node has started.
-    node_startup_instant: Instant,
     /// The network name, as specified in the chainspec
     network_name: String,
 }
@@ -110,24 +112,17 @@ pub(crate) struct RestServer {
     config: Config,
     api_version: ProtocolVersion,
     network_name: String,
-    node_startup_instant: Instant,
     /// Inner server is present only when enabled in the config.
     inner_rest: Option<InnerRestServer>,
 }
 
 impl RestServer {
-    pub(crate) fn new(
-        config: Config,
-        api_version: ProtocolVersion,
-        network_name: String,
-        node_startup_instant: Instant,
-    ) -> Self {
+    pub(crate) fn new(config: Config, api_version: ProtocolVersion, network_name: String) -> Self {
         RestServer {
             state: ComponentState::Uninitialized,
             config,
             api_version,
             network_name,
-            node_startup_instant,
             inner_rest: None,
         }
     }
@@ -188,7 +183,6 @@ where
                     Effects::new()
                 }
                 Event::RestRequest(RestRequest::Status { responder }) => {
-                    let node_uptime = self.node_startup_instant.elapsed();
                     let network_name = self.network_name.clone();
                     async move {
                         let (
@@ -196,17 +190,23 @@ where
                             peers,
                             next_upgrade,
                             consensus_status,
-                            (reactor_state, last_progress),
+                            reactor_state,
+                            last_progress,
+                            node_uptime,
                             available_block_range,
                             block_sync,
+                            latest_switch_block_header,
                         ) = join!(
                             effect_builder.get_highest_complete_block_from_storage(),
                             effect_builder.network_peers(),
                             effect_builder.get_next_upgrade(),
                             effect_builder.consensus_status(),
-                            effect_builder.get_reactor_status(),
+                            effect_builder.get_reactor_state(),
+                            effect_builder.get_last_progress(),
+                            effect_builder.get_uptime(),
                             effect_builder.get_available_block_range_from_storage(),
                             effect_builder.get_block_synchronizer_status(),
+                            effect_builder.get_latest_switch_block_header_from_storage()
                         );
                         let starting_state_root_hash = effect_builder
                             .get_block_header_at_height_from_storage(
@@ -221,12 +221,13 @@ where
                             peers,
                             ChainspecInfo::new(network_name, next_upgrade),
                             consensus_status,
-                            node_uptime,
+                            node_uptime.into(),
                             reactor_state,
-                            last_progress,
+                            last_progress.into_inner(),
                             available_block_range,
                             block_sync,
                             starting_state_root_hash,
+                            latest_switch_block_header.map(|header| header.block_hash()),
                         );
                         responder.respond(status_feed).await;
                     }
@@ -238,10 +239,6 @@ where
                         text,
                         main_responder: responder,
                     }),
-                Event::RestRequest(RestRequest::RpcSchema { responder }) => {
-                    let schema = OPEN_RPC_SCHEMA.clone();
-                    responder.respond(schema).ignore()
-                }
                 Event::GetMetricsResult {
                     text,
                     main_responder,
@@ -289,39 +286,34 @@ where
         let (shutdown_sender, shutdown_receiver) = oneshot::channel::<()>();
 
         let builder = utils::start_listening(&cfg.address)?;
+        let local_addr: Arc<OnceCell<SocketAddr>> = Default::default();
 
-        let server_join_handle = match cfg.cors_origin.as_str() {
-            "" => Some(tokio::spawn(http_server::run(
+        let server_join_handle = if cfg.cors_origin.is_empty() {
+            Some(tokio::spawn(http_server::run(
                 builder,
                 effect_builder,
                 self.api_version,
                 shutdown_receiver,
                 cfg.qps_limit,
-            ))),
-            "*" => Some(tokio::spawn(http_server::run_with_cors(
+                local_addr.clone(),
+            )))
+        } else {
+            Some(tokio::spawn(http_server::run_with_cors(
                 builder,
                 effect_builder,
                 self.api_version,
                 shutdown_receiver,
                 cfg.qps_limit,
-                CorsOrigin::Any,
-            ))),
-            _ => Some(tokio::spawn(http_server::run_with_cors(
-                builder,
-                effect_builder,
-                self.api_version,
-                shutdown_receiver,
-                cfg.qps_limit,
-                CorsOrigin::Specified(cfg.cors_origin.clone()),
-            ))),
+                local_addr.clone(),
+                cfg.cors_origin.clone(),
+            )))
         };
 
-        let node_startup_instant = self.node_startup_instant;
         let network_name = self.network_name.clone();
         self.inner_rest = Some(InnerRestServer {
+            local_addr,
             shutdown_sender,
             server_join_handle,
-            node_startup_instant,
             network_name,
         });
 
@@ -354,15 +346,10 @@ impl Finalize for RestServer {
 
 #[cfg(test)]
 mod schema_tests {
-    use crate::{
-        rpcs::{
-            docs::OpenRpcSchema,
-            info::{GetChainspecResult, GetValidatorChangesResult},
-        },
-        testing::assert_schema,
-        types::GetStatusResult,
-    };
+    use crate::{testing::assert_schema, types::GetStatusResult};
     use schemars::schema_for;
+
+    use super::{GetChainspecResult, GetValidatorChangesResult};
 
     #[test]
     fn json_schema_status_check() {
@@ -370,7 +357,10 @@ mod schema_tests {
             "{}/../resources/test/rest_schema_status.json",
             env!("CARGO_MANIFEST_DIR")
         );
-        assert_schema(&schema_path, schema_for!(GetStatusResult));
+        assert_schema(
+            schema_path,
+            serde_json::to_string_pretty(&schema_for!(GetStatusResult)).unwrap(),
+        );
     }
 
     #[test]
@@ -379,16 +369,10 @@ mod schema_tests {
             "{}/../resources/test/rest_schema_validator_changes.json",
             env!("CARGO_MANIFEST_DIR")
         );
-        assert_schema(&schema_path, schema_for!(GetValidatorChangesResult));
-    }
-
-    #[test]
-    fn json_schema_rpc_schema_check() {
-        let schema_path = format!(
-            "{}/../resources/test/rest_schema_rpc_schema.json",
-            env!("CARGO_MANIFEST_DIR")
+        assert_schema(
+            schema_path,
+            serde_json::to_string_pretty(&schema_for!(GetValidatorChangesResult)).unwrap(),
         );
-        assert_schema(&schema_path, schema_for!(OpenRpcSchema));
     }
 
     #[test]
@@ -397,6 +381,9 @@ mod schema_tests {
             "{}/../resources/test/rest_schema_chainspec_bytes.json",
             env!("CARGO_MANIFEST_DIR")
         );
-        assert_schema(&schema_path, schema_for!(GetChainspecResult));
+        assert_schema(
+            schema_path,
+            serde_json::to_string_pretty(&schema_for!(GetChainspecResult)).unwrap(),
+        );
     }
 }

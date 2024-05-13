@@ -4,7 +4,6 @@ members = [
     "execution_engine",
     "execution_engine_testing/test_support",
     "execution_engine_testing/tests",
-    "json_rpc",
     "node",
     "smart_contracts/contract",
     "smart_contracts/contracts/[!.]*/*",
@@ -12,6 +11,7 @@ members = [
     "types",
     "utils/global-state-update-gen",
     "utils/validation",
+    "binary_port"
 ]
 
 default-members = [
@@ -19,15 +19,13 @@ default-members = [
     "execution_engine",
     "execution_engine_testing/test_support",
     "execution_engine_testing/tests",
-    "json_rpc",
     "node",
     "storage",
     "types",
     "utils/global-state-update-gen",
     "utils/validation",
+    "binary_port",
 ]
-
-exclude = ["utils/nctl/remotes/casper-client-rs"]
 
 # Include debug symbols in the release build of `casper-engine-tests` so that `simple-transfer` will yield useful
 # perf data.

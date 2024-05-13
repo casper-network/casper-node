@@ -2,9 +2,9 @@ use std::convert::TryInto;
 
 use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_WASM_CONFIG,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    LOCAL_GENESIS_REQUEST,
 };
-use casper_execution_engine::{engine_state::Error, execution};
+use casper_execution_engine::{engine_state::Error, execution::ExecError};
 use casper_types::{addressable_entity::DEFAULT_ENTRY_POINT_NAME, RuntimeArgs};
 use walrus::{ir::Value, FunctionBuilder, Module, ModuleConfig, ValType};
 
@@ -80,7 +80,7 @@ fn too_many_locals_should_exceed_stack_height() {
     );
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let success_request = ExecuteRequestBuilder::module_bytes(
         *DEFAULT_ACCOUNT_ADDR,
@@ -107,7 +107,7 @@ fn too_many_locals_should_exceed_stack_height() {
     assert!(
         matches!(
             &error,
-            Error::Exec(execution::Error::Interpreter(s)) if s.contains("Unreachable")
+            Error::Exec(ExecError::Interpreter(s)) if s.contains("Unreachable")
         ),
         "{:?}",
         error

@@ -1,14 +1,14 @@
-use clap::ArgMatches;
-
 use casper_engine_test_support::LmdbWasmTestBuilder;
+use casper_execution_engine::engine_state::engine_config::DEFAULT_PROTOCOL_VERSION;
 use casper_types::{AsymmetricType, PublicKey, U512};
+use clap::ArgMatches;
 
 use crate::{
     generic::{
         config::{AccountConfig, Config, ValidatorConfig},
         update_from_config,
     },
-    utils::hash_from_str,
+    utils::{hash_from_str, protocol_version_from_matches},
 };
 
 pub(crate) fn generate_validators_update(matches: &ArgMatches<'_>) {
@@ -50,14 +50,21 @@ pub(crate) fn generate_validators_update(matches: &ArgMatches<'_>) {
             })
             .collect(),
     };
+    let protocol_version = protocol_version_from_matches(matches);
 
     let config = Config {
         accounts,
         transfers: vec![],
         only_listed_validators: true,
         slash_instead_of_unbonding: false,
+        protocol_version,
     };
 
-    let builder = LmdbWasmTestBuilder::open_raw(data_dir, Default::default(), state_hash);
+    let builder = LmdbWasmTestBuilder::open_raw(
+        data_dir,
+        Default::default(),
+        DEFAULT_PROTOCOL_VERSION,
+        state_hash,
+    );
     update_from_config(builder, config);
 }

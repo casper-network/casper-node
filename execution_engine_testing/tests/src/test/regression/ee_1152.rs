@@ -37,17 +37,17 @@ fn should_run_ee_1152_regression_test() {
     let accounts = {
         let validator_1 = GenesisAccount::account(
             VALIDATOR_1.clone(),
-            Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
+            Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE),
             Some(GenesisValidator::new(
-                Motes::new(VALIDATOR_STAKE.into()),
+                Motes::new(VALIDATOR_STAKE),
                 DelegationRate::zero(),
             )),
         );
         let validator_2 = GenesisAccount::account(
             DELEGATOR_1.clone(),
-            Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
+            Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE),
             Some(GenesisValidator::new(
-                Motes::new(VALIDATOR_STAKE.into()),
+                Motes::new(VALIDATOR_STAKE),
                 DelegationRate::zero(),
             )),
         );
@@ -78,7 +78,7 @@ fn should_run_ee_1152_regression_test() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis(run_genesis_request);
 
     builder.exec(fund_request_1).commit().expect_success();
     builder.exec(fund_request_2).commit().expect_success();
@@ -148,7 +148,7 @@ fn should_run_ee_1152_regression_test() {
         .with_next_era_id(era_id)
         .with_era_end_timestamp_millis(timestamp_millis);
 
-    builder.step(step_request.build()).unwrap();
+    builder.step(step_request.build());
 
     builder.run_auction(timestamp_millis, Vec::new());
 }

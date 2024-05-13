@@ -333,8 +333,8 @@ pub(crate) enum MessageKind {
     FinalitySignatureGossip,
     /// Addresses being gossiped.
     AddressGossip,
-    /// Deploys being transferred directly (via requests).
-    DeployTransfer,
+    /// Transactions being transferred directly (via requests).
+    TransactionTransfer,
     /// Blocks for finality signatures being transferred directly (via requests and other means).
     BlockTransfer,
     /// Tries transferred, usually as part of chain syncing.
@@ -352,7 +352,7 @@ impl Display for MessageKind {
             MessageKind::BlockGossip => f.write_str("block_gossip"),
             MessageKind::FinalitySignatureGossip => f.write_str("finality_signature_gossip"),
             MessageKind::AddressGossip => f.write_str("address_gossip"),
-            MessageKind::DeployTransfer => f.write_str("deploy_transfer"),
+            MessageKind::TransactionTransfer => f.write_str("transaction_transfer"),
             MessageKind::BlockTransfer => f.write_str("block_transfer"),
             MessageKind::TrieTransfer => f.write_str("trie_transfer"),
             MessageKind::Other => f.write_str("other"),
@@ -420,8 +420,8 @@ pub struct EstimatorWeights {
     pub finality_signature_gossip: u32,
     pub address_gossip: u32,
     pub finality_signature_broadcasts: u32,
-    pub deploy_requests: u32,
-    pub deploy_responses: u32,
+    pub transaction_requests: u32,
+    pub transaction_responses: u32,
     pub legacy_deploy_requests: u32,
     pub legacy_deploy_responses: u32,
     pub block_requests: u32,
@@ -530,21 +530,37 @@ impl<'a> NetworkMessageEstimator<'a> {
                 .minimum_block_time
                 .millis()
                 .max(1) as i64,
-            "max_deploy_size" => self.chainspec.transaction_config.max_transaction_size as i64,
+            "max_transaction_size" => self.chainspec.transaction_config.max_transaction_size as i64,
             "approvals_hashes" => {
-                (self.chainspec.transaction_config.block_max_deploy_count
-                    + self.chainspec.transaction_config.block_max_native_count)
+                (self.chainspec.transaction_config.block_max_mint_count
+                    + self.chainspec.transaction_config.block_max_auction_count
+                    + self
+                        .chainspec
+                        .transaction_config
+                        .block_max_install_upgrade_count
+                    + self.chainspec.transaction_config.block_max_standard_count)
                     as i64
             }
-            "max_deploys_per_block" => {
-                self.chainspec.transaction_config.block_max_deploy_count as i64
+            "max_mint_per_block" => self.chainspec.transaction_config.block_max_mint_count as i64,
+            "max_auctions_per_block" => {
+                self.chainspec.transaction_config.block_max_auction_count as i64
             }
-            "max_transfers_per_block" => {
-                self.chainspec.transaction_config.block_max_native_count as i64
+            "max_install_upgrade_transactions_per_block" => {
+                self.chainspec
+                    .transaction_config
+                    .block_max_install_upgrade_count as i64
             }
-            "average_approvals_per_deploy_in_block" => {
-                let max_total_deploys = (self.chainspec.transaction_config.block_max_deploy_count
-                    + self.chainspec.transaction_config.block_max_native_count)
+            "max_standard_transactions_per_block" => {
+                self.chainspec.transaction_config.block_max_standard_count as i64
+            }
+            "average_approvals_per_transaction_in_block" => {
+                let max_total_txns = (self.chainspec.transaction_config.block_max_mint_count
+                    + self.chainspec.transaction_config.block_max_auction_count
+                    + self
+                        .chainspec
+                        .transaction_config
+                        .block_max_install_upgrade_count
+                    + self.chainspec.transaction_config.block_max_standard_count)
                     as i64;
 
                 // Note: The +1 is to overestimate, as depending on the serialization format chosen,
@@ -554,9 +570,9 @@ impl<'a> NetworkMessageEstimator<'a> {
                 //       using separators without trailing separators (e.g. commas in JSON),
                 //       spreading out will reduce the total number of bytes.
                 ((self.chainspec.transaction_config.block_max_approval_count as i64
-                    + max_total_deploys
+                    + max_total_txns
                     - 1)
-                    / max_total_deploys)
+                    / max_total_txns)
                     .max(0)
                     + 1
             }
@@ -566,6 +582,9 @@ impl<'a> NetworkMessageEstimator<'a> {
             // Endorsements are currently hard-disabled (via code). If ever re-enabled, this
             // parameter should ideally be removed entirely.
             "endorsements_enabled" => 0,
+            "signature_rewards_max_delay" => {
+                self.chainspec.core_config.signature_rewards_max_delay as i64
+            }
             _ => return None,
         })
     }
@@ -597,13 +616,16 @@ pub(crate) fn within_message_size_limit_tolerance(chainspec: &Chainspec) -> bool
     // exceed the configured message size limit.
     let configured_maximum = chainspec.network_config.maximum_net_message_size as usize;
     let serialized = serialize_net_message(&generate_largest_message(chainspec));
-    let calculated_length = serialized.len();
+    let calculated_size = serialized.len();
     let within_tolerance =
-        calculated_length + NETWORK_MESSAGE_LIMIT_SAFETY_MARGIN <= configured_maximum;
-    if false == within_tolerance {
-        warn!(calculated_length, configured_maximum,
-                "config value [network][maximum_net_message_size] is too small to accommodate the maximum message size",
-            );
+        calculated_size + NETWORK_MESSAGE_LIMIT_SAFETY_MARGIN <= configured_maximum;
+    if !within_tolerance {
+        warn!(
+            calculated_size,
+            configured_maximum,
+            "config value [network][maximum_net_message_size] is too small to accommodate the \
+            maximum message size"
+        );
     }
     within_tolerance
 }

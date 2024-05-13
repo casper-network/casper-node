@@ -4,7 +4,7 @@ RUSTUP = $(or $(shell which rustup), $(HOME)/.cargo/bin/rustup)
 NPM    = $(or $(shell which npm),    /usr/bin/npm)
 
 PINNED_NIGHTLY := $(shell cat smart_contracts/rust-toolchain)
-PINNED_STABLE  := $(shell sed -nr 's/channel\s+=\s+\"(.*)\"/\1/p' rust-toolchain.toml)
+PINNED_STABLE  := $(shell sed -nr 's/channel *= *\"(.*)\"/\1/p' rust-toolchain.toml)
 WASM_STRIP_VERSION := $(shell wasm-strip --version)
 
 CARGO_OPTS := --locked
@@ -16,6 +16,8 @@ DISABLE_LOGGING = RUST_LOG=MatchesNothing
 # Rust Contracts
 ALL_CONTRACTS    = $(shell find ./smart_contracts/contracts/[!.]*  -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
 CLIENT_CONTRACTS = $(shell find ./smart_contracts/contracts/client -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
+CARGO_HOME_REMAP = $(if $(CARGO_HOME),$(CARGO_HOME),$(HOME)/.cargo)
+RUSTC_FLAGS      = "--remap-path-prefix=$(CARGO_HOME_REMAP)=/home/cargo --remap-path-prefix=$$PWD=/dir"
 
 # AssemblyScript Contracts
 CLIENT_CONTRACTS_AS  = $(shell find ./smart_contracts/contracts_as/client     -mindepth 1 -maxdepth 1 -type d)
@@ -30,18 +32,13 @@ CONTRACT_TARGET_DIR       = target/wasm32-unknown-unknown/release
 CONTRACT_TARGET_DIR_AS    = target_as
 
 build-contract-rs/%:
-	cd smart_contracts/contracts && $(CARGO) build --release $(filter-out --release, $(CARGO_FLAGS)) --package $*
-	wasm-strip $(CONTRACT_TARGET_DIR)/$(subst -,_,$*).wasm 2>/dev/null | true
+	cd smart_contracts/contracts && RUSTFLAGS=$(RUSTC_FLAGS) $(CARGO) build --verbose --release $(filter-out --release, $(CARGO_FLAGS)) --package $*
 
 .PHONY: build-all-contracts-rs
-build-all-contracts-rs:
-	cd smart_contracts/contracts && \
-	$(CARGO) build --release $(filter-out --release, $(CARGO_FLAGS)) $(patsubst %, -p %, $(ALL_CONTRACTS))
+build-all-contracts-rs: $(patsubst %, build-contract-rs/%, $(ALL_CONTRACTS))
 
 .PHONY: build-client-contracts-rs
-build-client-contracts-rs:
-	cd smart_contracts/contracts && \
-	$(CARGO) build --release $(filter-out --release, $(CARGO_FLAGS)) $(patsubst %, -p %, $(CLIENT_CONTRACTS))
+build-client-contracts-rs: $(patsubst %, build-contract-rs/%, $(CLIENT_CONTRACTS))
 
 strip-contract/%:
 	wasm-strip $(CONTRACT_TARGET_DIR)/$(subst -,_,$*).wasm 2>/dev/null | true
@@ -74,8 +71,8 @@ resources/local/chainspec.toml: generate-chainspec.sh resources/local/chainspec.
 	@./$<
 
 .PHONY: test-rs
-test-rs: resources/local/chainspec.toml
-	$(LEGACY) $(DISABLE_LOGGING) $(CARGO) test --all-features $(CARGO_FLAGS) -- --nocapture
+test-rs: resources/local/chainspec.toml build-contracts-rs
+	$(LEGACY) $(DISABLE_LOGGING) $(CARGO) test --all-features --no-fail-fast $(CARGO_FLAGS) -- --nocapture
 
 .PHONY: resources/local/chainspec.toml
 test-rs-no-default-features:
@@ -111,6 +108,11 @@ check-std-features:
 check-sdk-features:
 	$(CARGO) check --all-targets --no-default-features --features=sdk
 	$(CARGO) check --all-targets --features=sdk
+.PHONY: check-testing-features
+
+check-testing-features:
+	cd types && $(CARGO) check --all-targets --no-default-features --features=testing
+	cd types && $(CARGO) check --all-targets --features=testing
 
 .PHONY: check-format
 check-format:
@@ -144,7 +146,7 @@ lint-smart-contracts:
 
 .PHONY: audit-rs
 audit-rs:
-	$(CARGO) audit --ignore RUSTSEC-2022-0093 --ignore RUSTSEC-2023-0044
+	$(CARGO) audit --ignore RUSTSEC-2024-0006 --ignore RUSTSEC-2024-0003 --ignore RUSTSEC-2024-0019 --ignore RUSTSEC-2024-0332
 
 .PHONY: audit-as
 audit-as:
@@ -167,18 +169,15 @@ check-rs: \
 	audit \
 	check-std-features \
 	check-sdk-features \
+	check-testing-features \
 	test-rs \
 	test-rs-no-default-features \
 	test-contracts-rs
 
 .PHONY: check
 check: \
-	check-format \
-	doc \
-	lint \
-	audit \
-	test \
-	test-contracts
+	check-rs \
+	test-as
 
 .PHONY: clean
 clean:

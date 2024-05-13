@@ -23,11 +23,8 @@ const VALID_BALANCE: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 fn should_fail_when_bonding_amount_is_zero_ee_597_regression() {
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
-        let account = GenesisAccount::account(
-            VALID_PUBLIC_KEY.clone(),
-            Motes::new(VALID_BALANCE.into()),
-            None,
-        );
+        let account =
+            GenesisAccount::account(VALID_PUBLIC_KEY.clone(), Motes::new(VALID_BALANCE), None);
         tmp.push(account);
         tmp
     };
@@ -43,15 +40,11 @@ fn should_fail_when_bonding_amount_is_zero_ee_597_regression() {
 
     let mut builder = LmdbWasmTestBuilder::default();
     builder
-        .run_genesis(&run_genesis_request)
+        .run_genesis(run_genesis_request)
         .exec(exec_request)
         .commit();
 
-    let response = builder
-        .get_exec_result_owned(0)
-        .expect("should have a response");
-
-    let error_message = utils::get_error_message(response);
+    let error_message = builder.get_error_message().expect("should have a result");
 
     // Error::BondTooSmall => 5,
     assert!(

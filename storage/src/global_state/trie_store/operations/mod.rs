@@ -11,16 +11,14 @@ use tracing::{error, warn};
 
 use casper_types::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
+    global_state::{Pointer, TrieMerkleProof, TrieMerkleProofStep},
     Digest,
 };
 
 use crate::global_state::{
+    error::Error as GlobalStateError,
     transaction_source::{Readable, Writable},
-    trie::{
-        self,
-        merkle_proof::{TrieMerkleProof, TrieMerkleProofStep},
-        Parents, Pointer, PointerBlock, Trie, TrieTag, RADIX, USIZE_EXCEEDS_U8,
-    },
+    trie::{self, Parents, PointerBlock, Trie, TrieTag, RADIX, USIZE_EXCEEDS_U8},
     trie_store::TrieStore,
 };
 
@@ -298,7 +296,7 @@ impl<K, V> TrieScan<K, V> {
 
 /// Returns a [`TrieScan`] from the given key at a given root in a given store.
 /// A scan consists of the deepest trie variant found at that key, a.k.a. the
-/// "tip", along the with the parents of that variant. Parents are ordered by
+/// "tip", along with the parents of that variant. Parents are ordered by
 /// their depth from the root (shallow to deep).
 fn scan<K, V, T, S, E>(
     txn: &T,
@@ -435,10 +433,11 @@ where
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum PruneResult {
+pub enum TriePruneResult {
     Pruned(Digest),
-    DoesNotExist,
+    MissingKey,
     RootNotFound,
+    Failure(GlobalStateError),
 }
 
 /// Delete provided key from a global state so it is not reachable from a resulting state root hash.
@@ -447,7 +446,7 @@ pub(crate) fn prune<K, V, T, S, E>(
     store: &S,
     root: &Digest,
     keys_to_prune: &K,
-) -> Result<PruneResult, E>
+) -> Result<TriePruneResult, E>
 where
     K: ToBytes + FromBytes + Clone + PartialEq + std::fmt::Debug,
     V: ToBytes + FromBytes + Clone,
@@ -457,7 +456,7 @@ where
     E: From<S::Error> + From<bytesrepr::Error>,
 {
     let root_trie_bytes = match store.get_raw(txn, root)? {
-        None => return Ok(PruneResult::RootNotFound),
+        None => return Ok(TriePruneResult::RootNotFound),
         Some(root_trie) => root_trie,
     };
 
@@ -482,7 +481,7 @@ where
                 );
                 key == *keys_to_prune
             } => {}
-        _ => return Ok(PruneResult::DoesNotExist),
+        _ => return Ok(TriePruneResult::MissingKey),
     }
 
     let mut new_elements: Vec<(Digest, Trie<K, V>)> = Vec::new();
@@ -588,8 +587,9 @@ where
                                 let trie_key = new_extension.trie_hash()?;
                                 new_elements.push((trie_key, new_extension))
                             }
-                            // The single sibling is a extension.  We output an extension to replace
-                            // the parent, prepending the sibling index to the sibling's affix.  In
+                            // The single sibling is an extension.  We output an extension to
+                            // replace the parent, prepending the
+                            // sibling index to the sibling's affix.  In
                             // the next loop iteration, we will handle the case where this extension
                             // might need to be combined with a grandparent extension.
                             Trie::Extension {
@@ -663,7 +663,7 @@ where
         .map(|(hash, _)| hash)
         .unwrap_or_else(|| root.to_owned());
 
-    Ok(PruneResult::Pruned(new_root))
+    Ok(TriePruneResult::Pruned(new_root))
 }
 
 #[allow(clippy::type_complexity)]
@@ -733,7 +733,7 @@ fn get_parents_path<K, V>(parents: &[(u8, Trie<K, V>)]) -> Vec<u8> {
 /// Takes a path to a leaf, that leaf's parent node, and the parents of that
 /// node, and adds the node to the parents.
 ///
-/// This function will panic if the the path to the leaf and the path to its
+/// This function will panic if the path to the leaf and the path to its
 /// parent node do not share a common prefix.
 fn add_node_to_parents<K, V>(
     path_to_leaf: &[u8],
@@ -832,7 +832,7 @@ struct SplitResult<K, V> {
 /// and child extensions.  The node pointer contained in the existing extension
 /// is repositioned in the new node or the possible child extension.  The
 /// possible parent extension is added to parents.  Returns the new node,
-/// parents, and the the possible child extension (paired with its hash).
+/// parents, and the possible child extension (paired with its hash).
 /// The new node and parents can be used by [`add_node_to_parents`], and the
 /// new hashed child extension can be added to the list of new trie elements.
 fn split_extension<K, V>(
@@ -1288,4 +1288,52 @@ where
         }
     }
     Ok(())
+}
+
+/// Recomputes a state root hash from a [`TrieMerkleProof`].
+/// This is done in the following steps:
+///
+/// 1. Using [`TrieMerkleProof::key`] and [`TrieMerkleProof::value`], construct a
+/// [`Trie::Leaf`] and compute a hash for that leaf.
+///
+/// 2. We then iterate over [`TrieMerkleProof::proof_steps`] left to right, using the hash from
+/// the previous step combined with the next step to compute a new hash.
+///
+/// 3. When there are no more steps, we return the final hash we have computed.
+///
+/// The steps in this function reflect `operations::rehash`.
+pub fn compute_state_hash<K, V>(proof: &TrieMerkleProof<K, V>) -> Result<Digest, bytesrepr::Error>
+where
+    K: ToBytes + Copy + Clone,
+    V: ToBytes + Clone,
+{
+    let mut hash = {
+        let leaf = Trie::leaf(proof.key(), proof.value().to_owned());
+        leaf.trie_hash()?
+    };
+
+    for (proof_step_index, proof_step) in proof.proof_steps().iter().enumerate() {
+        let pointer = if proof_step_index == 0 {
+            Pointer::LeafPointer(hash)
+        } else {
+            Pointer::NodePointer(hash)
+        };
+        let proof_step_bytes = match proof_step {
+            TrieMerkleProofStep::Node {
+                hole_index,
+                indexed_pointers_with_hole,
+            } => {
+                let hole_index = *hole_index;
+                assert!(hole_index as usize <= RADIX, "hole_index exceeded RADIX");
+                let mut indexed_pointers = indexed_pointers_with_hole.to_owned();
+                indexed_pointers.push((hole_index, pointer));
+                Trie::<K, V>::node(&indexed_pointers).to_bytes()?
+            }
+            TrieMerkleProofStep::Extension { affix } => {
+                Trie::<K, V>::extension(affix.clone().into(), pointer).to_bytes()?
+            }
+        };
+        hash = Digest::hash(&proof_step_bytes);
+    }
+    Ok(hash)
 }

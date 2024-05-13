@@ -1,7 +1,14 @@
 //! Support for Wasm opcode costs.
+
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
-use rand::{distributions::Standard, prelude::*, Rng};
+use derive_more::Add;
+use num_traits::Zero;
+#[cfg(any(feature = "testing", test))]
+use rand::{
+    distributions::{Distribution, Standard},
+    Rng,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::bytesrepr::{self, FromBytes, ToBytes};
@@ -48,21 +55,21 @@ pub const DEFAULT_CONTROL_FLOW_ELSE_OPCODE: u32 = 440;
 /// Default cost of the `end` Wasm opcode.
 pub const DEFAULT_CONTROL_FLOW_END_OPCODE: u32 = 440;
 /// Default cost of the `br` Wasm opcode.
-pub const DEFAULT_CONTROL_FLOW_BR_OPCODE: u32 = 440_000;
+pub const DEFAULT_CONTROL_FLOW_BR_OPCODE: u32 = 35_000;
 /// Default cost of the `br_if` Wasm opcode.
-pub const DEFAULT_CONTROL_FLOW_BR_IF_OPCODE: u32 = 440_000;
+pub const DEFAULT_CONTROL_FLOW_BR_IF_OPCODE: u32 = 35_000;
 /// Default cost of the `return` Wasm opcode.
 pub const DEFAULT_CONTROL_FLOW_RETURN_OPCODE: u32 = 440;
 /// Default cost of the `select` Wasm opcode.
 pub const DEFAULT_CONTROL_FLOW_SELECT_OPCODE: u32 = 440;
 /// Default cost of the `call` Wasm opcode.
-pub const DEFAULT_CONTROL_FLOW_CALL_OPCODE: u32 = 140_000;
+pub const DEFAULT_CONTROL_FLOW_CALL_OPCODE: u32 = 68_000;
 /// Default cost of the `call_indirect` Wasm opcode.
-pub const DEFAULT_CONTROL_FLOW_CALL_INDIRECT_OPCODE: u32 = 140_000;
+pub const DEFAULT_CONTROL_FLOW_CALL_INDIRECT_OPCODE: u32 = 68_000;
 /// Default cost of the `drop` Wasm opcode.
 pub const DEFAULT_CONTROL_FLOW_DROP_OPCODE: u32 = 440;
 /// Default fixed cost of the `br_table` Wasm opcode.
-pub const DEFAULT_CONTROL_FLOW_BR_TABLE_OPCODE: u32 = 440_000;
+pub const DEFAULT_CONTROL_FLOW_BR_TABLE_OPCODE: u32 = 35_000;
 /// Default multiplier for the size of targets in `br_table` Wasm opcode.
 pub const DEFAULT_CONTROL_FLOW_BR_TABLE_MULTIPLIER: u32 = 100;
 
@@ -74,7 +81,7 @@ pub const DEFAULT_CONTROL_FLOW_BR_TABLE_MULTIPLIER: u32 = 100;
 /// cost + (len(br_table.targets) * size_multiplier)
 /// ```
 // This is done to encourage users to avoid writing code with very long `br_table`s.
-#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[derive(Add, Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[serde(deny_unknown_fields)]
 pub struct BrTableCost {
@@ -93,6 +100,7 @@ impl Default for BrTableCost {
     }
 }
 
+#[cfg(any(feature = "testing", test))]
 impl Distribution<BrTableCost> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> BrTableCost {
         BrTableCost {
@@ -141,8 +149,25 @@ impl FromBytes for BrTableCost {
     }
 }
 
+impl Zero for BrTableCost {
+    fn zero() -> Self {
+        BrTableCost {
+            cost: 0,
+            size_multiplier: 0,
+        }
+    }
+
+    fn is_zero(&self) -> bool {
+        let BrTableCost {
+            cost,
+            size_multiplier,
+        } = self;
+        cost.is_zero() && size_multiplier.is_zero()
+    }
+}
+
 /// Definition of a cost table for a Wasm control flow opcodes.
-#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[derive(Add, Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[serde(deny_unknown_fields)]
 pub struct ControlFlowCosts {
@@ -301,6 +326,7 @@ impl FromBytes for ControlFlowCosts {
     }
 }
 
+#[cfg(any(feature = "testing", test))]
 impl Distribution<ControlFlowCosts> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ControlFlowCosts {
         ControlFlowCosts {
@@ -321,10 +347,61 @@ impl Distribution<ControlFlowCosts> for Standard {
     }
 }
 
+impl Zero for ControlFlowCosts {
+    fn zero() -> Self {
+        ControlFlowCosts {
+            block: 0,
+            op_loop: 0,
+            op_if: 0,
+            op_else: 0,
+            end: 0,
+            br: 0,
+            br_if: 0,
+            op_return: 0,
+            call: 0,
+            call_indirect: 0,
+            drop: 0,
+            select: 0,
+            br_table: BrTableCost::zero(),
+        }
+    }
+
+    fn is_zero(&self) -> bool {
+        let ControlFlowCosts {
+            block,
+            op_loop,
+            op_if,
+            op_else,
+            end,
+            br,
+            br_if,
+            op_return,
+            call,
+            call_indirect,
+            drop,
+            select,
+            br_table,
+        } = self;
+        block.is_zero()
+            && op_loop.is_zero()
+            && op_if.is_zero()
+            && op_else.is_zero()
+            && end.is_zero()
+            && br.is_zero()
+            && br_if.is_zero()
+            && op_return.is_zero()
+            && call.is_zero()
+            && call_indirect.is_zero()
+            && drop.is_zero()
+            && select.is_zero()
+            && br_table.is_zero()
+    }
+}
+
 /// Definition of a cost table for Wasm opcodes.
 ///
 /// This is taken (partially) from parity-ethereum.
-#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[derive(Add, Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[serde(deny_unknown_fields)]
 pub struct OpcodeCosts {
@@ -386,6 +463,7 @@ impl Default for OpcodeCosts {
     }
 }
 
+#[cfg(any(feature = "testing", test))]
 impl Distribution<OpcodeCosts> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> OpcodeCosts {
         OpcodeCosts {
@@ -528,6 +606,66 @@ impl FromBytes for OpcodeCosts {
             control_flow,
         };
         Ok((opcode_costs, bytes))
+    }
+}
+
+impl Zero for OpcodeCosts {
+    fn zero() -> Self {
+        Self {
+            bit: 0,
+            add: 0,
+            mul: 0,
+            div: 0,
+            load: 0,
+            store: 0,
+            op_const: 0,
+            local: 0,
+            global: 0,
+            integer_comparison: 0,
+            conversion: 0,
+            unreachable: 0,
+            nop: 0,
+            current_memory: 0,
+            grow_memory: 0,
+            control_flow: ControlFlowCosts::zero(),
+        }
+    }
+
+    fn is_zero(&self) -> bool {
+        let OpcodeCosts {
+            bit,
+            add,
+            mul,
+            div,
+            load,
+            store,
+            op_const,
+            local,
+            global,
+            integer_comparison,
+            conversion,
+            unreachable,
+            nop,
+            current_memory,
+            grow_memory,
+            control_flow,
+        } = self;
+        bit.is_zero()
+            && add.is_zero()
+            && mul.is_zero()
+            && div.is_zero()
+            && load.is_zero()
+            && store.is_zero()
+            && op_const.is_zero()
+            && local.is_zero()
+            && global.is_zero()
+            && integer_comparison.is_zero()
+            && conversion.is_zero()
+            && unreachable.is_zero()
+            && nop.is_zero()
+            && current_memory.is_zero()
+            && grow_memory.is_zero()
+            && control_flow.is_zero()
     }
 }
 

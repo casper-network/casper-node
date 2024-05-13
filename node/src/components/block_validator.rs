@@ -1,47 +1,50 @@
 //! Block validator
 //!
-//! The block validator checks whether all the deploys included in the block payload exist, either
-//! locally or on the network.
+//! The block validator checks whether all the transactions included in the block payload exist,
+//! either locally or on the network.
 //!
 //! When multiple requests are made to validate the same block payload, they will eagerly return
 //! true if valid, but only fail if all sources have been exhausted. This is only relevant when
 //! calling for validation of the same proposed block multiple times at the same time.
 
-mod keyed_counter;
+mod config;
+mod event;
+mod state;
 #[cfg(test)]
 mod tests;
 
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap},
-    fmt::Debug,
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     sync::Arc,
 };
 
 use datasize::DataSize;
-use derive_more::{Display, From};
-use itertools::Itertools;
-use smallvec::{smallvec, SmallVec};
-use tracing::{debug, info, warn};
+use tracing::{debug, error, trace, warn};
 
-use casper_types::{Chainspec, Deploy, DeployApproval, DeployFootprint, DeployHash, Timestamp};
+use casper_types::{
+    Approval, ApprovalsHash, Chainspec, EraId, FinalitySignature, FinalitySignatureId, PublicKey,
+    RewardedSignatures, SingleBlockRewardedSignatures, Timestamp, Transaction, TransactionCategory,
+    TransactionHash, TransactionId,
+};
 
 use crate::{
     components::{
         consensus::{ClContext, ProposedBlock},
-        fetcher::{EmptyValidationMetadata, FetchedData},
+        fetcher::{self, EmptyValidationMetadata, FetchResult, FetchedData},
         Component,
     },
     effect::{
+        announcements::FatalAnnouncement,
         requests::{BlockValidationRequest, FetcherRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects, Responder,
     },
-    types::{
-        appendable_block::AppendableBlock, DeployHashWithApprovals, DeployOrTransferHash,
-        LegacyDeploy, NodeId,
-    },
+    fatal,
+    types::{BlockWithMetadata, NodeId, TransactionFootprint, ValidatorMatrix},
     NodeRng,
 };
-use keyed_counter::KeyedCounter;
+pub use config::Config;
+pub(crate) use event::Event;
+use state::{AddResponderResult, BlockValidationState, MaybeStartFetching};
 
 const COMPONENT_NAME: &str = "block_validator";
 
@@ -50,128 +53,775 @@ impl ProposedBlock<ClContext> {
         self.context().timestamp()
     }
 
-    fn deploy_hashes(&self) -> impl Iterator<Item = &DeployHash> + '_ {
-        self.value().deploy_hashes()
+    /// How many transactions are being tracked?
+    pub(crate) fn transaction_count(&self) -> usize {
+        self.value().count(None)
     }
 
-    fn transfer_hashes(&self) -> impl Iterator<Item = &DeployHash> + '_ {
-        self.value().transfer_hashes()
+    /// How many standard transactions?
+    pub(crate) fn standard_count(&self) -> usize {
+        self.value().count(Some(TransactionCategory::Standard))
     }
 
-    fn deploys_and_transfers_iter(
+    /// How many mint transactions?
+    pub(crate) fn mint_count(&self) -> usize {
+        self.value().count(Some(TransactionCategory::Mint))
+    }
+
+    /// How many auction transactions?
+    pub(crate) fn auction_count(&self) -> usize {
+        self.value().count(Some(TransactionCategory::Auction))
+    }
+
+    /// How many install / upgrade transactions?
+    pub(crate) fn install_upgrade_count(&self) -> usize {
+        self.value()
+            .count(Some(TransactionCategory::InstallUpgrade))
+    }
+
+    pub(crate) fn all_transactions(
         &self,
-    ) -> impl Iterator<Item = (DeployOrTransferHash, BTreeSet<DeployApproval>)> + '_ {
-        let deploys = self.value().deploys().iter().map(|dwa| {
-            (
-                DeployOrTransferHash::Deploy(*dwa.deploy_hash()),
-                dwa.approvals().clone(),
-            )
-        });
-        let transfers = self.value().transfers().iter().map(|dwa| {
-            (
-                DeployOrTransferHash::Transfer(*dwa.deploy_hash()),
-                dwa.approvals().clone(),
-            )
-        });
-        deploys.chain(transfers)
+    ) -> impl Iterator<Item = &(TransactionHash, BTreeSet<Approval>)> {
+        self.value().all_transactions()
     }
 }
 
-/// Block validator component event.
-#[derive(Debug, From, Display)]
-pub(crate) enum Event {
-    /// A request made of the block validator component.
-    #[from]
-    Request(BlockValidationRequest),
-
-    /// A deploy has been successfully found.
-    #[display(fmt = "{} found", dt_hash)]
-    DeployFound {
-        dt_hash: DeployOrTransferHash,
-        deploy_footprint: Box<DeployFootprint>,
-    },
-
-    /// A request to find a specific deploy, potentially from a peer, failed.
-    #[display(fmt = "{} missing", _0)]
-    DeployMissing(DeployOrTransferHash),
-
-    /// Deploy was invalid. Unable to convert to a deploy type.
-    #[display(fmt = "{} invalid", _0)]
-    CannotConvertDeploy(DeployOrTransferHash),
-}
-
-/// State of the current process of block validation.
-///
-/// Tracks whether or not there are deploys still missing and who is interested in the final result.
-#[derive(DataSize, Debug)]
-pub(crate) struct BlockValidationState {
-    /// Appendable block ensuring that the deploys satisfy the validity conditions.
-    appendable_block: AppendableBlock,
-    /// The set of approvals contains approvals from deploys that would be finalized with the
-    /// block.
-    missing_deploys: HashMap<DeployOrTransferHash, BTreeSet<DeployApproval>>,
-    /// A list of responders that are awaiting an answer.
-    responders: SmallVec<[Responder<bool>; 2]>,
-}
-
-impl BlockValidationState {
-    fn respond<REv>(&mut self, value: bool) -> Effects<REv> {
-        self.responders
-            .drain(..)
-            .flat_map(|responder| responder.respond(value).ignore())
-            .collect()
-    }
+/// The return type of trying to handle a validation request as an already-existing request.
+enum MaybeHandled {
+    /// The request is already being handled - return the wrapped effects and finish.
+    Handled(Effects<Event>),
+    /// The request is new - it still needs to be handled.
+    NotHandled(BlockValidationRequest),
 }
 
 #[derive(DataSize, Debug)]
 pub(crate) struct BlockValidator {
-    /// Chainspec loaded for deploy validation.
+    /// Component configuration.
+    config: Config,
+    /// Chainspec loaded for transaction validation.
     #[data_size(skip)]
     chainspec: Arc<Chainspec>,
+    /// Validator matrix.
+    #[data_size(skip)]
+    validator_matrix: ValidatorMatrix,
     /// State of validation of a specific block.
     validation_states: HashMap<ProposedBlock<ClContext>, BlockValidationState>,
-    /// Number of requests for a specific deploy hash still in flight.
-    in_flight: KeyedCounter<DeployHash>,
+    /// Requests awaiting storing of a block, keyed by the height of the block being awaited.
+    requests_on_hold: BTreeMap<u64, Vec<BlockValidationRequest>>,
 }
 
 impl BlockValidator {
     /// Creates a new block validator instance.
-    pub(crate) fn new(chainspec: Arc<Chainspec>) -> Self {
+    pub(crate) fn new(
+        chainspec: Arc<Chainspec>,
+        validator_matrix: ValidatorMatrix,
+        config: Config,
+    ) -> Self {
         BlockValidator {
             chainspec,
+            validator_matrix,
+            config,
             validation_states: HashMap::new(),
-            in_flight: KeyedCounter::default(),
+            requests_on_hold: BTreeMap::new(),
         }
     }
 
-    /// Prints a log message about an invalid block with duplicated deploys.
-    fn log_block_with_replay(&self, sender: NodeId, block: &ProposedBlock<ClContext>) {
-        let mut deploy_counts = BTreeMap::new();
-        for (dt_hash, _) in block.deploys_and_transfers_iter() {
-            *deploy_counts.entry(dt_hash).or_default() += 1;
+    /// If the request is already being handled, we record the new info and return effects.  If not,
+    /// the request is returned for processing as a new request.
+    fn try_handle_as_existing_request<REv>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        request: BlockValidationRequest,
+    ) -> MaybeHandled
+    where
+        REv: From<Event>
+            + From<FetcherRequest<Transaction>>
+            + From<FetcherRequest<FinalitySignature>>
+            + Send,
+    {
+        if let Some(state) = self.validation_states.get_mut(&request.block) {
+            let BlockValidationRequest {
+                block,
+                sender,
+                responder,
+                ..
+            } = request;
+            debug!(%sender, %block, "already validating proposed block");
+            match state.add_responder(responder) {
+                AddResponderResult::Added => {}
+                AddResponderResult::ValidationCompleted {
+                    responder,
+                    response_to_send,
+                } => {
+                    debug!(%response_to_send, "proposed block validation already completed");
+                    return MaybeHandled::Handled(responder.respond(response_to_send).ignore());
+                }
+            }
+            state.add_holder(sender);
+
+            let effects = match state.start_fetching() {
+                MaybeStartFetching::Start {
+                    holder,
+                    missing_transactions,
+                    missing_signatures,
+                } => fetch_transactions_and_signatures(
+                    effect_builder,
+                    holder,
+                    missing_transactions,
+                    missing_signatures,
+                ),
+                MaybeStartFetching::Ongoing => {
+                    debug!("ongoing fetches while validating proposed block - noop");
+                    Effects::new()
+                }
+                MaybeStartFetching::Unable => {
+                    debug!("no new info while validating proposed block - responding `false`");
+                    respond(false, state.take_responders())
+                }
+                MaybeStartFetching::ValidationSucceeded | MaybeStartFetching::ValidationFailed => {
+                    // If validation is already completed, we should have exited in the
+                    // `AddResponderResult::ValidationCompleted` branch above.
+                    error!("proposed block validation already completed - noop");
+                    Effects::new()
+                }
+            };
+            MaybeHandled::Handled(effects)
+        } else {
+            MaybeHandled::NotHandled(request)
         }
-        let duplicates = deploy_counts
-            .into_iter()
-            .filter_map(|(dt_hash, count): (DeployOrTransferHash, usize)| {
-                (count > 1).then(|| format!("{} * {}", count, dt_hash))
+    }
+
+    fn handle_new_request<REv>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        request: BlockValidationRequest,
+    ) -> Effects<Event>
+    where
+        REv: From<Event>
+            + From<FetcherRequest<Transaction>>
+            + From<FetcherRequest<FinalitySignature>>
+            + From<StorageRequest>
+            + From<FatalAnnouncement>
+            + Send,
+    {
+        debug!(sender = %request.sender, block = %request.block, "validating new proposed block");
+        debug_assert!(!self.validation_states.contains_key(&request.block));
+
+        if request.block.value().rewarded_signatures().has_some() {
+            // The block contains cited signatures - we have to read the relevant blocks and find
+            // out who the validators are in order to decode the signature IDs
+            let signature_rewards_max_delay =
+                self.chainspec.core_config.signature_rewards_max_delay;
+            let minimum_block_height = request
+                .proposed_block_height
+                .saturating_sub(signature_rewards_max_delay);
+
+            debug!(
+                proposed_block=?request.block,
+                %minimum_block_height,
+                proposed_block_height=%request.proposed_block_height,
+                "block cites signatures, validation required - requesting past blocks from storage"
+            );
+
+            effect_builder
+                .collect_past_blocks_with_metadata(
+                    minimum_block_height..request.proposed_block_height,
+                    false,
+                )
+                .event(
+                    move |past_blocks_with_metadata| Event::GotPastBlocksWithMetadata {
+                        past_blocks_with_metadata,
+                        request,
+                    },
+                )
+        } else {
+            self.handle_new_request_with_signatures(effect_builder, request, HashSet::new())
+        }
+    }
+
+    /// This function pairs the `SingleBlockRewardedSignatures` entries from `rewarded_signatures`
+    /// with the relevant past blocks and their metadata. If a block for which some signatures are
+    /// cited is missing, or if some signatures are double-cited, it will return `None`.
+    fn relevant_blocks_and_cited_signatures<'b, 'c>(
+        past_blocks_with_metadata: &'b [Option<BlockWithMetadata>],
+        proposed_block_height: u64,
+        rewarded_signatures: &'c RewardedSignatures,
+    ) -> Result<Vec<(&'b BlockWithMetadata, &'c SingleBlockRewardedSignatures)>, Option<u64>> {
+        let mut result = Vec::new();
+        // Check whether we know all the blocks for which the proposed block cites some signatures,
+        // and if no signatures are doubly cited.
+        for ((past_block_height, signatures), maybe_block) in rewarded_signatures
+            .iter_with_height(proposed_block_height)
+            .zip(past_blocks_with_metadata.iter().rev())
+        {
+            match maybe_block {
+                None if signatures.has_some() => {
+                    trace!(%past_block_height, "maybe_block = None if signatures.has_some() - returning");
+
+                    return Err(Some(past_block_height));
+                }
+                None => {
+                    // we have no block, but there are also no signatures cited for this block, so
+                    // we can continue
+                    trace!(%past_block_height, "maybe_block = None");
+                }
+                Some(block) => {
+                    let padded_signatures = block.block.rewarded_signatures().clone().left_padded(
+                        proposed_block_height.saturating_sub(past_block_height) as usize,
+                    );
+                    trace!(
+                        ?padded_signatures,
+                        ?rewarded_signatures,
+                        intersection = ?rewarded_signatures.intersection(&padded_signatures),
+                        "maybe_block is Some"
+                    );
+                    if rewarded_signatures
+                        .intersection(&padded_signatures)
+                        .has_some()
+                    {
+                        // block cited a signature that has been cited before - it is invalid!
+                        debug!(
+                            %past_block_height,
+                            "maybe_block is Some, nonzero intersection with previous"
+                        );
+                        return Err(None);
+                    }
+                    // everything is OK - save the block in the result
+                    result.push((block, signatures));
+                }
+            }
+        }
+        Ok(result)
+    }
+
+    fn era_ids_vec(past_blocks_with_metadata: &[Option<BlockWithMetadata>]) -> Vec<Option<EraId>> {
+        // This will create a vector of era ids for the past blocks corresponding to cited
+        // signatures. The index of the entry in the vector will be the number of blocks in the
+        // past relative to the current block, minus 1 (ie., 0 is the previous block, 1 is the one
+        // before that, etc.) - these indices will correspond directly to the indices in
+        // RewardedSignatures.
+        past_blocks_with_metadata
+            .iter()
+            .rev()
+            .map(|maybe_metadata| {
+                maybe_metadata
+                    .as_ref()
+                    .map(|metadata| metadata.block.era_id())
             })
-            .join(", ");
-        info!(
-            peer_id=?sender, %duplicates,
-            "received invalid block containing duplicated deploys"
+            .collect()
+    }
+
+    fn get_relevant_validators(
+        &mut self,
+        past_blocks_with_metadata: &[Option<BlockWithMetadata>],
+    ) -> HashMap<EraId, BTreeSet<PublicKey>> {
+        let era_ids_vec = Self::era_ids_vec(past_blocks_with_metadata);
+        // get the set of unique era ids that are present in the cited blocks
+        let era_ids: HashSet<_> = era_ids_vec.iter().flatten().copied().collect();
+        let validator_matrix = &self.validator_matrix;
+
+        era_ids
+            .into_iter()
+            .filter_map(move |era_id| {
+                validator_matrix
+                    .validator_weights(era_id)
+                    .map(|weights| (era_id, weights.into_validator_public_keys().collect()))
+            })
+            .collect()
+    }
+
+    fn handle_got_past_blocks_with_metadata<REv>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        past_blocks_with_metadata: Vec<Option<BlockWithMetadata>>,
+        request: BlockValidationRequest,
+    ) -> Effects<Event>
+    where
+        REv: From<Event>
+            + From<FetcherRequest<Transaction>>
+            + From<FetcherRequest<FinalitySignature>>
+            + From<FatalAnnouncement>
+            + Send,
+    {
+        let rewarded_signatures = request.block.value().rewarded_signatures();
+
+        match Self::relevant_blocks_and_cited_signatures(
+            &past_blocks_with_metadata,
+            request.proposed_block_height,
+            rewarded_signatures,
+        ) {
+            Ok(blocks_and_signatures) => {
+                let validators = self.get_relevant_validators(&past_blocks_with_metadata);
+
+                // This will be a set of signature IDs of the signatures included in the block, but
+                // not found in metadata in storage.
+                let mut missing_sigs = HashSet::new();
+
+                for (block_with_metadata, single_block_rewarded_sigs) in blocks_and_signatures {
+                    let era_id = block_with_metadata.block.era_id();
+                    let Some(all_validators) = validators.get(&era_id) else {
+                        return fatal!(effect_builder, "couldn't get validators for {}", era_id).ignore();
+                    };
+                    let public_keys = single_block_rewarded_sigs
+                        .clone()
+                        .to_validator_set(all_validators.iter().cloned());
+                    let block_hash = *block_with_metadata.block.hash();
+                    missing_sigs.extend(
+                        public_keys
+                            .into_iter()
+                            .filter(move |public_key| {
+                                !block_with_metadata
+                                    .block_signatures
+                                    .has_finality_signature(public_key)
+                            })
+                            .map(move |public_key| {
+                                FinalitySignatureId::new(block_hash, era_id, public_key)
+                            }),
+                    );
+                }
+
+                trace!(
+                    ?missing_sigs,
+                    "handle_got_past_blocks_with_metadata missing_sigs"
+                );
+
+                self.handle_new_request_with_signatures(effect_builder, request, missing_sigs)
+            }
+            Err(Some(missing_block_height)) => {
+                // We are missing some blocks necessary for unpacking signatures from storage - put
+                // the request on hold for now.
+                self.requests_on_hold
+                    .entry(missing_block_height)
+                    .or_default()
+                    .push(request);
+                Effects::new()
+            }
+            Err(None) => {
+                // Rewarded signatures pre-validation failed
+                respond(false, Some(request.responder))
+            }
+        }
+    }
+
+    fn handle_block_stored<REv>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        stored_block_height: u64,
+    ) -> Effects<Event>
+    where
+        REv: From<Event>
+            + From<StorageRequest>
+            + From<FetcherRequest<Transaction>>
+            + From<FetcherRequest<FinalitySignature>>
+            + From<FatalAnnouncement>
+            + Send,
+    {
+        let mut pending_requests = vec![];
+
+        while self
+            .requests_on_hold
+            .first_key_value()
+            .map_or(false, |(height, _)| *height <= stored_block_height)
+        {
+            // unwrap is safe - we'd break the loop if there were no elements
+            pending_requests.extend(self.requests_on_hold.pop_first().unwrap().1);
+        }
+
+        pending_requests
+            .into_iter()
+            .flat_map(|request| self.handle_new_request(effect_builder, request))
+            .collect()
+    }
+
+    fn handle_new_request_with_signatures<REv>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        BlockValidationRequest {
+            block,
+            sender,
+            responder,
+            ..
+        }: BlockValidationRequest,
+        missing_signatures: HashSet<FinalitySignatureId>,
+    ) -> Effects<Event>
+    where
+        REv: From<Event>
+            + From<FetcherRequest<Transaction>>
+            + From<FetcherRequest<FinalitySignature>>
+            + From<FatalAnnouncement>
+            + Send,
+    {
+        if let Some(old_state) = self.validation_states.get_mut(&block) {
+            // if we got two requests for the same block in quick succession, it is possible that
+            // a state has been created and inserted for one of them while the other one was
+            // awaiting the past blocks from storage; in such a case just save the holder and
+            // responders, and return no effects, as all the fetching will have already been
+            // started
+            match old_state.add_responder(responder) {
+                AddResponderResult::Added => {}
+                AddResponderResult::ValidationCompleted {
+                    responder,
+                    response_to_send,
+                } => {
+                    debug!(%response_to_send, "proposed block validation already completed");
+                    return responder.respond(response_to_send).ignore();
+                }
+            }
+            old_state.add_holder(sender);
+            return Effects::new();
+        }
+
+        let (mut state, maybe_responder) = BlockValidationState::new(
+            &block,
+            missing_signatures,
+            sender,
+            responder,
+            self.chainspec.as_ref(),
+        );
+        let effects = match state.start_fetching() {
+            MaybeStartFetching::Start {
+                holder,
+                missing_transactions,
+                missing_signatures,
+            } => fetch_transactions_and_signatures(
+                effect_builder,
+                holder,
+                missing_transactions,
+                missing_signatures,
+            ),
+            MaybeStartFetching::ValidationSucceeded => {
+                debug!("no transactions - block validation complete");
+                debug_assert!(maybe_responder.is_some());
+                respond(true, maybe_responder)
+            }
+            MaybeStartFetching::ValidationFailed => {
+                debug_assert!(maybe_responder.is_some());
+                respond(false, maybe_responder)
+            }
+            MaybeStartFetching::Ongoing | MaybeStartFetching::Unable => {
+                // This `MaybeStartFetching` variant should never be returned here.
+                error!(%state, "invalid state while handling new block validation");
+                debug_assert!(false, "invalid state {}", state);
+                respond(false, state.take_responders())
+            }
+        };
+        self.validation_states.insert(block, state);
+        self.purge_oldest_complete();
+        effects
+    }
+
+    fn purge_oldest_complete(&mut self) {
+        let mut completed_times: Vec<_> = self
+            .validation_states
+            .values()
+            .filter_map(BlockValidationState::block_timestamp_if_completed)
+            .collect();
+        // Sort from newest (highest timestamp) to oldest.
+        completed_times.sort_unstable_by(|lhs, rhs| rhs.cmp(lhs));
+
+        // Normally we'll only need to remove a maximum of a single entry, but loop until we don't
+        // exceed the completed limit to cover any edge cases.
+        let max_completed_entries = self.config.max_completed_entries as usize;
+        while completed_times.len() > max_completed_entries {
+            self.validation_states.retain(|_block, state| {
+                if completed_times.len() <= max_completed_entries {
+                    return true;
+                }
+                if state.block_timestamp_if_completed().as_ref() == completed_times.last() {
+                    debug!(
+                        %state,
+                        num_completed_remaining = (completed_times.len() - 1),
+                        "purging completed block validation state"
+                    );
+                    let _ = completed_times.pop();
+                    return false;
+                }
+                true
+            });
+        }
+    }
+
+    fn handle_transaction_fetched<REv>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        transaction_hash: TransactionHash,
+        result: FetchResult<Transaction>,
+    ) -> Effects<Event>
+    where
+        REv: From<Event>
+            + From<FetcherRequest<Transaction>>
+            + From<FetcherRequest<FinalitySignature>>
+            + Send,
+    {
+        match &result {
+            Ok(FetchedData::FromPeer { peer, .. }) => {
+                debug!(%transaction_hash, %peer, "fetched transaction from peer")
+            }
+            Ok(FetchedData::FromStorage { .. }) => {
+                debug!(%transaction_hash, "fetched transaction locally")
+            }
+            Err(error) => warn!(%transaction_hash, %error, "could not fetch transaction"),
+        }
+        match result {
+            Ok(FetchedData::FromStorage { item }) | Ok(FetchedData::FromPeer { item, .. }) => {
+                let item_hash = item.hash();
+                if item_hash != transaction_hash {
+                    // Hard failure - change state to Invalid.
+                    let responders = self
+                        .validation_states
+                        .values_mut()
+                        .flat_map(|state| state.try_mark_invalid(&transaction_hash));
+                    return respond(false, responders);
+                }
+                let transaction_footprint = match TransactionFootprint::new(&self.chainspec, &item)
+                {
+                    Ok(footprint) => footprint,
+                    Err(invalid_transaction_error) => {
+                        warn!(
+                            %transaction_hash, ?invalid_transaction_error,
+                            "could not convert transaction",
+                        );
+                        // Hard failure - change state to Invalid.
+                        let responders = self
+                            .validation_states
+                            .values_mut()
+                            .flat_map(|state| state.try_mark_invalid(&transaction_hash));
+                        return respond(false, responders);
+                    }
+                };
+
+                let mut effects = Effects::new();
+                for state in self.validation_states.values_mut() {
+                    let responders = state
+                        .try_add_transaction_footprint(&transaction_hash, &transaction_footprint);
+                    if !responders.is_empty() {
+                        let is_valid = matches!(state, BlockValidationState::Valid(_));
+                        effects.extend(respond(is_valid, responders));
+                    }
+                }
+                effects
+            }
+            Err(error) => {
+                match error {
+                    fetcher::Error::Absent { peer, .. }
+                    | fetcher::Error::Rejected { peer, .. }
+                    | fetcher::Error::TimedOut { peer, .. } => {
+                        // Soft failure - just mark the holder as failed and see if we can start
+                        // fetching using a different holder.
+                        let mut effects = Effects::new();
+                        self.validation_states.values_mut().for_each(|state| {
+                            state.try_mark_holder_failed(&peer);
+                            match state.start_fetching() {
+                                MaybeStartFetching::Start {
+                                    holder,
+                                    missing_transactions,
+                                    missing_signatures,
+                                } => {
+                                    debug!(
+                                        %holder,
+                                        missing_transactions_len = missing_transactions.len(),
+                                        "fetching missing transactions from different peer"
+                                    );
+                                    effects.extend(fetch_transactions_and_signatures(
+                                        effect_builder,
+                                        holder,
+                                        missing_transactions,
+                                        missing_signatures,
+                                    ));
+                                }
+                                MaybeStartFetching::Unable => {
+                                    debug!(
+                                        "exhausted peers while validating proposed block - \
+                                        responding `false`"
+                                    );
+                                    effects.extend(respond(false, state.take_responders()));
+                                }
+                                MaybeStartFetching::Ongoing
+                                | MaybeStartFetching::ValidationSucceeded
+                                | MaybeStartFetching::ValidationFailed => {}
+                            }
+                        });
+                        effects
+                    }
+                    fetcher::Error::CouldNotConstructGetRequest { .. }
+                    | fetcher::Error::ValidationMetadataMismatch { .. } => {
+                        // Hard failure - change state to Invalid.
+                        let responders = self
+                            .validation_states
+                            .values_mut()
+                            .flat_map(|state| state.try_mark_invalid(&transaction_hash));
+                        respond(false, responders)
+                    }
+                }
+            }
+        }
+    }
+
+    fn handle_finality_signature_fetched<REv>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        finality_signature_id: FinalitySignatureId,
+        result: FetchResult<FinalitySignature>,
+    ) -> Effects<Event>
+    where
+        REv: From<Event>
+            + From<FetcherRequest<Transaction>>
+            + From<FetcherRequest<FinalitySignature>>
+            + Send,
+    {
+        match &result {
+            Ok(FetchedData::FromPeer { peer, .. }) => {
+                debug!(%finality_signature_id, %peer, "fetched finality signature from peer")
+            }
+            Ok(FetchedData::FromStorage { .. }) => {
+                debug!(%finality_signature_id, "fetched finality signature locally")
+            }
+            Err(error) => {
+                warn!(%finality_signature_id, %error, "could not fetch finality signature")
+            }
+        }
+        match result {
+            Ok(FetchedData::FromStorage { .. }) | Ok(FetchedData::FromPeer { .. }) => {
+                let mut effects = Effects::new();
+                for state in self.validation_states.values_mut() {
+                    let responders = state.try_add_signature(&finality_signature_id);
+                    if !responders.is_empty() {
+                        let is_valid = matches!(state, BlockValidationState::Valid(_));
+                        effects.extend(respond(is_valid, responders));
+                    }
+                }
+                effects
+            }
+            Err(error) => {
+                match error {
+                    fetcher::Error::Absent { peer, .. }
+                    | fetcher::Error::Rejected { peer, .. }
+                    | fetcher::Error::TimedOut { peer, .. } => {
+                        // Soft failure - just mark the holder as failed and see if we can start
+                        // fetching using a different holder.
+                        let mut effects = Effects::new();
+                        self.validation_states.values_mut().for_each(|state| {
+                            state.try_mark_holder_failed(&peer);
+                            match state.start_fetching() {
+                                MaybeStartFetching::Start {
+                                    holder,
+                                    missing_transactions,
+                                    missing_signatures,
+                                } => {
+                                    debug!(
+                                        %holder,
+                                        missing_transactions_len = missing_transactions.len(),
+                                        "fetching missing transactions and signatures from different \
+                                        peer"
+                                    );
+                                    effects.extend(fetch_transactions_and_signatures(
+                                        effect_builder,
+                                        holder,
+                                        missing_transactions,
+                                        missing_signatures,
+                                    ));
+                                }
+                                MaybeStartFetching::Unable => {
+                                    debug!(
+                                        "exhausted peers while validating proposed block - \
+                                        responding `false`"
+                                    );
+                                    effects.extend(respond(false, state.take_responders()));
+                                }
+                                MaybeStartFetching::Ongoing
+                                | MaybeStartFetching::ValidationSucceeded
+                                | MaybeStartFetching::ValidationFailed => {}
+                            }
+                        });
+                        effects
+                    }
+                    fetcher::Error::CouldNotConstructGetRequest { .. }
+                    | fetcher::Error::ValidationMetadataMismatch { .. } => {
+                        // Hard failure - change state to Invalid.
+                        let responders = self.validation_states.values_mut().flat_map(|state| {
+                            state.try_mark_invalid_signature(&finality_signature_id)
+                        });
+                        respond(false, responders)
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn fetch_transactions_and_signatures<REv>(
+    effect_builder: EffectBuilder<REv>,
+    holder: NodeId,
+    missing_transactions: HashMap<TransactionHash, ApprovalsHash>,
+    missing_signatures: HashSet<FinalitySignatureId>,
+) -> Effects<Event>
+where
+    REv: From<Event>
+        + From<FetcherRequest<Transaction>>
+        + From<FetcherRequest<FinalitySignature>>
+        + Send,
+{
+    let mut effects: Effects<Event> = Effects::new();
+    for (transaction_hash, approvals_hash) in missing_transactions {
+        let transaction_id = match transaction_hash {
+            TransactionHash::Deploy(deploy_hash) => {
+                TransactionId::new(deploy_hash.into(), approvals_hash)
+            }
+            TransactionHash::V1(v1_hash) => TransactionId::new(v1_hash.into(), approvals_hash),
+        };
+        effects.extend(
+            effect_builder
+                .fetch::<Transaction>(transaction_id, holder, Box::new(EmptyValidationMetadata))
+                .event(move |result| Event::TransactionFetched {
+                    transaction_hash,
+                    result,
+                }),
         );
     }
+
+    for missing_signature in missing_signatures {
+        effects.extend(
+            effect_builder
+                .fetch::<FinalitySignature>(
+                    Box::new(missing_signature.clone()),
+                    holder,
+                    Box::new(EmptyValidationMetadata),
+                )
+                .event(move |result| Event::FinalitySignatureFetched {
+                    finality_signature_id: Box::new(missing_signature),
+                    result,
+                }),
+        )
+    }
+
+    effects
+}
+
+fn respond(
+    is_valid: bool,
+    responders: impl IntoIterator<Item = Responder<bool>>,
+) -> Effects<Event> {
+    responders
+        .into_iter()
+        .flat_map(|responder| responder.respond(is_valid).ignore())
+        .collect()
 }
 
 impl<REv> Component<REv> for BlockValidator
 where
     REv: From<Event>
         + From<BlockValidationRequest>
-        + From<FetcherRequest<LegacyDeploy>>
+        + From<FetcherRequest<Transaction>>
+        + From<FetcherRequest<FinalitySignature>>
         + From<StorageRequest>
+        + From<FatalAnnouncement>
         + Send,
 {
     type Event = Event;
+
+    fn name(&self) -> &str {
+        COMPONENT_NAME
+    }
 
     fn handle_event(
         &mut self,
@@ -179,232 +829,39 @@ where
         _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        let mut effects = Effects::new();
         match event {
-            Event::Request(BlockValidationRequest {
-                block,
-                sender,
-                responder,
-            }) => {
-                debug!(?block, "validating proposed block");
-                if block.deploy_hashes().count()
-                    > self.chainspec.transaction_config.block_max_deploy_count as usize
-                {
-                    return responder.respond(false).ignore();
-                }
-                if block.transfer_hashes().count()
-                    > self.chainspec.transaction_config.block_max_native_count as usize
-                {
-                    return responder.respond(false).ignore();
-                }
-
-                let deploy_count = block.deploy_hashes().count() + block.transfer_hashes().count();
-                if deploy_count == 0 {
-                    // If there are no deploys, return early.
-                    return responder.respond(true).ignore();
-                }
-
-                // Collect the deploys in a map. If they are fewer now, then there was a duplicate!
-                let block_deploys: HashMap<_, _> = block.deploys_and_transfers_iter().collect();
-                if block_deploys.len() != deploy_count {
-                    self.log_block_with_replay(sender, &block);
-                    return responder.respond(false).ignore();
-                }
-
-                let block_timestamp = block.timestamp();
-                let state = self
-                    .validation_states
-                    .entry(block)
-                    .or_insert(BlockValidationState {
-                        appendable_block: AppendableBlock::new(
-                            self.chainspec.transaction_config,
-                            block_timestamp,
-                        ),
-                        missing_deploys: block_deploys.clone(),
-                        responders: smallvec![],
-                    });
-
-                if state.missing_deploys.is_empty() {
-                    debug!(
-                        block_timestamp = %state.appendable_block.timestamp(),
-                        "no missing deploys - block validation complete"
-                    );
-                    // Block has already been validated successfully or has no deploys.
-                    return responder.respond(true).ignore();
-                }
-
-                // We register ourselves as someone interested in the ultimate validation result.
-                state.responders.push(responder);
-
-                effects.extend(block_deploys.into_iter().flat_map(|(dt_hash, _)| {
-                    // For every request, increase the number of in-flight...
-                    self.in_flight.inc(&dt_hash.into());
-                    // ...then request it.
-                    fetch_deploy(effect_builder, dt_hash, sender)
-                }));
-            }
-            Event::DeployFound {
-                dt_hash,
-                deploy_footprint,
-            } => {
-                // We successfully found a hash. Decrease the number of outstanding requests.
-                self.in_flight.dec(&dt_hash.into());
-
-                // If a deploy is received for a given block that makes that block invalid somehow,
-                // mark it for removal.
-                let mut invalid = Vec::new();
-
-                // Our first pass updates all validation states, crossing off the found deploy.
-                for (key, state) in self.validation_states.iter_mut() {
-                    if let Some(approvals) = state.missing_deploys.remove(&dt_hash) {
-                        // If the deploy is of the wrong type or would be invalid for this block,
-                        // notify everyone still waiting on it that all is lost.
-                        let add_result = match dt_hash {
-                            DeployOrTransferHash::Deploy(hash) => {
-                                state.appendable_block.add_deploy(
-                                    DeployHashWithApprovals::new(hash, approvals.clone()),
-                                    &deploy_footprint,
-                                )
-                            }
-                            DeployOrTransferHash::Transfer(hash) => {
-                                state.appendable_block.add_transfer(
-                                    DeployHashWithApprovals::new(hash, approvals.clone()),
-                                    &deploy_footprint,
-                                )
-                            }
-                        };
-                        if let Err(err) = add_result {
-                            info!(block = ?key, %dt_hash, ?deploy_footprint, ?err, "block invalid");
-                            invalid.push(key.clone());
-                        }
-                        debug!(
-                            block_timestamp = %state.appendable_block.timestamp(),
-                            deploy_hash = %dt_hash,
-                            missing_deploy_count = %state.missing_deploys.len(),
-                            "found deploy for block validation"
-                        );
+            Event::Request(request) => {
+                debug!(block = ?request.block, "validating proposed block");
+                match self.try_handle_as_existing_request(effect_builder, request) {
+                    MaybeHandled::Handled(effects) => effects,
+                    MaybeHandled::NotHandled(request) => {
+                        self.handle_new_request(effect_builder, request)
                     }
                 }
-
-                // Now we remove all states that have finished and notify the requesters.
-                self.validation_states.retain(|key, state| {
-                    if invalid.contains(key) {
-                        effects.extend(state.respond(false));
-                        return false;
-                    }
-                    if state.missing_deploys.is_empty() {
-                        // This one is done and valid.
-                        effects.extend(state.respond(true));
-                        debug!(
-                            block_timestamp = %state.appendable_block.timestamp(),
-                            "no further missing deploys - block validation complete"
-                        );
-                        return false;
-                    }
-                    true
-                });
             }
-            Event::DeployMissing(dt_hash) => {
-                info!(%dt_hash, "request to download deploy timed out");
-                // A deploy failed to fetch. If there is still hope (i.e. other outstanding
-                // requests), we just ignore this little accident.
-                if self.in_flight.dec(&dt_hash.into()) != 0 {
-                    return Effects::new();
-                }
-
-                self.validation_states.retain(|key, state| {
-                    if !state.missing_deploys.contains_key(&dt_hash) {
-                        return true;
-                    }
-
-                    // Notify everyone still waiting on it that all is lost.
-                    info!(block = ?key, %dt_hash, "could not validate the deploy. block is invalid");
-                    // This validation state contains a deploy hash we failed to fetch from all
-                    // sources, it can never succeed.
-                    effects.extend(state.respond(false));
-                    false
-                });
+            Event::GotPastBlocksWithMetadata {
+                past_blocks_with_metadata,
+                request,
+            } => self.handle_got_past_blocks_with_metadata(
+                effect_builder,
+                past_blocks_with_metadata,
+                request,
+            ),
+            Event::BlockStored(stored_block_height) => {
+                self.handle_block_stored(effect_builder, stored_block_height)
             }
-            Event::CannotConvertDeploy(dt_hash) => {
-                // Deploy is invalid. There's no point waiting for other in-flight requests to
-                // finish.
-                self.in_flight.dec(&dt_hash.into());
-
-                self.validation_states.retain(|key, state| {
-                    if state.missing_deploys.contains_key(&dt_hash) {
-                        // Notify everyone still waiting on it that all is lost.
-                        info!(
-                            block = ?key, %dt_hash,
-                            "could not convert deploy to deploy type. block is invalid"
-                        );
-                        // This validation state contains a failed deploy hash, it can never
-                        // succeed.
-                        effects.extend(state.respond(false));
-                        false
-                    } else {
-                        true
-                    }
-                });
-            }
-        }
-        effects
-    }
-
-    fn name(&self) -> &str {
-        COMPONENT_NAME
-    }
-}
-
-/// Returns effects that fetch the deploy and validate it.
-fn fetch_deploy<REv>(
-    effect_builder: EffectBuilder<REv>,
-    dt_hash: DeployOrTransferHash,
-    sender: NodeId,
-) -> Effects<Event>
-where
-    REv: From<Event> + From<FetcherRequest<LegacyDeploy>> + Send,
-{
-    async move {
-        let deploy_hash: DeployHash = dt_hash.into();
-        let deploy = match effect_builder
-            .fetch::<LegacyDeploy>(deploy_hash, sender, Box::new(EmptyValidationMetadata))
-            .await
-        {
-            Ok(FetchedData::FromStorage { item }) | Ok(FetchedData::FromPeer { item, .. }) => {
-                Deploy::from(*item)
-            }
-            Err(fetcher_error) => {
-                warn!(
-                    "Could not fetch deploy with deploy hash {}: {}",
-                    deploy_hash, fetcher_error
-                );
-                return Event::DeployMissing(dt_hash);
-            }
-        };
-        if DeployOrTransferHash::new(&deploy) != dt_hash {
-            warn!(
-                deploy = ?deploy,
-                expected_deploy_or_transfer_hash = ?dt_hash,
-                actual_deploy_or_transfer_hash = ?DeployOrTransferHash::new(&deploy),
-                "Deploy has incorrect transfer hash"
-            );
-            return Event::CannotConvertDeploy(dt_hash);
-        }
-        match deploy.footprint() {
-            Ok(deploy_footprint) => Event::DeployFound {
-                dt_hash,
-                deploy_footprint: Box::new(deploy_footprint),
-            },
-            Err(error) => {
-                warn!(
-                    deploy = ?deploy,
-                    deploy_or_transfer_hash = ?dt_hash,
-                    ?error,
-                    "Could not convert deploy",
-                );
-                Event::CannotConvertDeploy(dt_hash)
-            }
+            Event::TransactionFetched {
+                transaction_hash,
+                result,
+            } => self.handle_transaction_fetched(effect_builder, transaction_hash, result),
+            Event::FinalitySignatureFetched {
+                finality_signature_id,
+                result,
+            } => self.handle_finality_signature_fetched(
+                effect_builder,
+                *finality_signature_id,
+                result,
+            ),
         }
     }
-    .event(std::convert::identity)
 }

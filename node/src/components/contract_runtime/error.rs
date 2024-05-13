@@ -1,26 +1,46 @@
 //! Errors that the contract runtime component may raise.
+use derive_more::From;
 use std::collections::BTreeMap;
 
 use serde::Serialize;
 use thiserror::Error;
 
-use casper_execution_engine::engine_state::{
-    Error as EngineStateError, GetEraValidatorsError, StepError,
+use casper_execution_engine::engine_state::Error as EngineStateError;
+use casper_storage::{
+    data_access_layer::{BlockRewardsError, FeeError, StepError},
+    global_state::error::Error as GlobalStateError,
+    tracking_copy::TrackingCopyError,
 };
-use casper_storage::global_state::error::Error as StorageLmdbError;
-use casper_types::{bytesrepr, CLValueError, EraReport, PublicKey, U512};
+use casper_types::{bytesrepr, CLValueError, Digest, EraId, PublicKey, U512};
 
-use crate::{components::contract_runtime::ExecutionPreState, types::FinalizedBlock};
+use crate::{
+    components::contract_runtime::ExecutionPreState,
+    types::{ChunkingError, ExecutableBlock, InternalEraReport},
+};
 
 /// An error returned from mis-configuring the contract runtime component.
 #[derive(Debug, Error)]
 pub(crate) enum ConfigError {
     /// Error initializing the LMDB environment.
     #[error("failed to initialize LMDB environment for contract runtime: {0}")]
-    Lmdb(#[from] StorageLmdbError),
+    GlobalState(#[from] GlobalStateError),
     /// Error initializing metrics.
     #[error("failed to initialize metrics for contract runtime: {0}")]
     Prometheus(#[from] prometheus::Error),
+}
+
+/// An enum that represents all possible error conditions of a `contract_runtime` component.
+#[derive(Debug, Error, From)]
+pub(crate) enum ContractRuntimeError {
+    /// The provided serialized id cannot be deserialized properly.
+    #[error("error deserializing id: {0}")]
+    InvalidSerializedId(#[source] bincode::Error),
+    // It was not possible to get trie with the specified id
+    #[error("error retrieving trie by id: {0}")]
+    FailedToRetrieveTrieById(#[source] GlobalStateError),
+    /// Chunking error.
+    #[error("failed to chunk the data {0}")]
+    ChunkingError(#[source] ChunkingError),
 }
 
 /// An error during block execution.
@@ -34,12 +54,12 @@ pub enum BlockExecutionError {
     /// block. These must agree and this error will be thrown if they do not.
     #[error(
         "block's height does not agree with execution pre-state. \
-         block: {finalized_block:?}, \
+         block: {executable_block:?}, \
          execution pre-state: {execution_pre_state:?}"
     )]
     WrongBlockHeight {
         /// The finalized block the system attempted to execute.
-        finalized_block: Box<FinalizedBlock>,
+        executable_block: Box<ExecutableBlock>,
         /// The state of the block chain prior to block execution that was to be used.
         execution_pre_state: Box<ExecutionPreState>,
     },
@@ -56,6 +76,18 @@ pub enum BlockExecutionError {
         #[from]
         #[serde(skip_serializing)]
         StepError,
+    ),
+    #[error(transparent)]
+    DistributeFees(
+        #[from]
+        #[serde(skip_serializing)]
+        FeeError,
+    ),
+    #[error(transparent)]
+    DistributeBlockRewards(
+        #[from]
+        #[serde(skip_serializing)]
+        BlockRewardsError,
     ),
     /// Failed to compute the approvals checksum.
     #[error("failed to compute approvals checksum: {0}")]
@@ -76,22 +108,36 @@ pub enum BlockExecutionError {
     )]
     FailedToCreateEraEnd {
         /// An optional `EraReport` we tried to use to construct an `EraEnd`.
-        maybe_era_report: Option<Box<EraReport<PublicKey>>>,
+        maybe_era_report: Option<InternalEraReport>,
         /// An optional map of the next era validator weights used to construct an `EraEnd`.
-        maybe_next_era_validator_weights: Option<BTreeMap<PublicKey, U512>>,
+        maybe_next_era_validator_weights: Option<(BTreeMap<PublicKey, U512>, u8)>,
     },
     /// An error that occurred while interacting with lmdb.
     #[error(transparent)]
     Lmdb(
         #[from]
         #[serde(skip_serializing)]
-        StorageLmdbError,
+        GlobalStateError,
     ),
     /// An error that occurred while getting era validators.
     #[error(transparent)]
     GetEraValidators(
         #[from]
         #[serde(skip_serializing)]
-        GetEraValidatorsError,
+        TrackingCopyError,
     ),
+    /// A root state hash was not found.
+    #[error("Root state hash not found in global state.")]
+    RootNotFound(Digest),
+    /// Missing checksum registry.
+    #[error("Missing checksum registry")]
+    MissingChecksumRegistry,
+    #[error("Failed to get new era gas price when executing switch block")]
+    FailedToGetNewEraGasPrice { era_id: EraId },
+    // Payment error.
+    #[error("Error while trying to set up payment for transaction: {0}")]
+    PaymentError(String),
+    // Error attempting to set block global data.
+    #[error("Error while attempting to store block global data: {0}")]
+    BlockGlobal(String),
 }

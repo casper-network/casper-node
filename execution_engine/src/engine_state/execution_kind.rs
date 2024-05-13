@@ -1,180 +1,180 @@
 //! Units of execution.
 
-use std::{cell::RefCell, rc::Rc};
-
-use casper_storage::global_state::state::StateReader;
-use casper_types::{
-    addressable_entity::NamedKeys, bytesrepr::Bytes, ContractHash, ContractPackageHash,
-    ContractVersionKey, ExecutableDeployItem, Key, Package, Phase, ProtocolVersion, StoredValue,
-};
-
-use crate::{
-    engine_state::error::Error,
-    execution::{self, Error as ExecError},
+use casper_storage::{
+    global_state::{error::Error as GlobalStateError, state::StateReader},
     tracking_copy::{TrackingCopy, TrackingCopyExt},
 };
+use casper_types::{
+    addressable_entity::NamedKeys, bytesrepr::Bytes, AddressableEntityHash, EntityVersionKey, Key,
+    PackageHash, ProtocolVersion, StoredValue, TransactionInvocationTarget, TransactionSessionKind,
+};
+
+use super::{Error, ExecutableItem};
+use crate::execution::ExecError;
 
 /// The type of execution about to be performed.
 #[derive(Clone, Debug)]
-pub(crate) enum ExecutionKind {
-    /// Wasm bytes.
-    Module(Bytes),
+pub(crate) enum ExecutionKind<'a> {
+    /// Standard (non-specialized) Wasm bytes related to a transaction of version 1 or later.
+    Standard(&'a Bytes),
+    /// Wasm bytes which install a stored entity.
+    Installer(&'a Bytes),
+    /// Wasm bytes which upgrade a stored entity.
+    Upgrader(&'a Bytes),
+    /// Wasm bytes which don't call any stored entity.
+    Isolated(&'a Bytes),
     /// Stored contract.
-    Contract {
-        /// Contract's hash.
-        contract_hash: ContractHash,
-        /// Entry point's name.
-        entry_point_name: String,
+    Stored {
+        /// AddressableEntity's hash.
+        entity_hash: AddressableEntityHash,
+        /// Entry point.
+        entry_point: String,
     },
+    /// Standard (non-specialized) Wasm bytes related to a `Deploy`.
+    ///
+    /// This is equivalent to the `Standard` variant with the exception that this kind will be
+    /// allowed to install or upgrade stored entities to retain existing (pre-node 2.0) behavior.
+    Deploy(&'a Bytes),
 }
 
-impl ExecutionKind {
-    /// Returns a new module variant of `ExecutionKind`.
-    pub fn new_module(module_bytes: Bytes) -> Self {
-        ExecutionKind::Module(module_bytes)
-    }
-
-    /// Returns a new contract variant of `ExecutionKind`.
-    pub fn new_contract(contract_hash: ContractHash, entry_point_name: String) -> Self {
-        ExecutionKind::Contract {
-            contract_hash,
-            entry_point_name,
+impl<'a> ExecutionKind<'a> {
+    pub(crate) fn new<R>(
+        tracking_copy: &mut TrackingCopy<R>,
+        named_keys: &NamedKeys,
+        executable_item: &'a ExecutableItem,
+        entry_point: String,
+        protocol_version: ProtocolVersion,
+    ) -> Result<Self, Error>
+    where
+        R: StateReader<Key, StoredValue, Error = GlobalStateError>,
+    {
+        match executable_item {
+            ExecutableItem::Invocation(target) => Self::new_stored(
+                tracking_copy,
+                named_keys,
+                target,
+                entry_point,
+                protocol_version,
+            ),
+            ExecutableItem::PaymentBytes(module_bytes)
+            | ExecutableItem::SessionBytes {
+                kind: TransactionSessionKind::Standard,
+                module_bytes,
+            } => Ok(ExecutionKind::Standard(module_bytes)),
+            ExecutableItem::SessionBytes {
+                kind: TransactionSessionKind::Installer,
+                module_bytes,
+            } => Ok(ExecutionKind::Installer(module_bytes)),
+            ExecutableItem::SessionBytes {
+                kind: TransactionSessionKind::Upgrader,
+                module_bytes,
+            } => Ok(ExecutionKind::Upgrader(module_bytes)),
+            ExecutableItem::SessionBytes {
+                kind: TransactionSessionKind::Isolated,
+                module_bytes,
+            } => Ok(ExecutionKind::Isolated(module_bytes)),
+            ExecutableItem::LegacyDeploy(module_bytes) => Ok(ExecutionKind::Deploy(module_bytes)),
         }
     }
 
-    /// Returns all the details necessary for execution.
-    ///
-    /// This object is generated based on information provided by [`ExecutableDeployItem`].
-    pub fn new<R>(
-        tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
+    fn new_stored<R>(
+        tracking_copy: &mut TrackingCopy<R>,
         named_keys: &NamedKeys,
-        executable_deploy_item: ExecutableDeployItem,
-        protocol_version: &ProtocolVersion,
-        phase: Phase,
-    ) -> Result<ExecutionKind, Error>
+        target: &TransactionInvocationTarget,
+        entry_point: String,
+        protocol_version: ProtocolVersion,
+    ) -> Result<Self, Error>
     where
-        R: StateReader<Key, StoredValue>,
-        R::Error: Into<ExecError>,
+        R: StateReader<Key, StoredValue, Error = GlobalStateError>,
     {
-        let contract_hash: ContractHash;
-        let contract_package: Package;
+        let entity_hash = match target {
+            TransactionInvocationTarget::ByHash(addr) => AddressableEntityHash::new(*addr),
+            TransactionInvocationTarget::ByName(alias) => {
+                let entity_key = named_keys
+                    .get(alias)
+                    .ok_or_else(|| Error::Exec(ExecError::NamedKeyNotFound(alias.clone())))?;
 
-        let is_payment_phase = phase == Phase::Payment;
+                match entity_key {
+                    Key::Hash(hash) => AddressableEntityHash::new(*hash),
+                    Key::AddressableEntity(entity_addr) => {
+                        AddressableEntityHash::new(entity_addr.value())
+                    }
+                    _ => return Err(Error::InvalidKeyVariant(*entity_key)),
+                }
+            }
+            TransactionInvocationTarget::ByPackageHash { addr, version } => {
+                let package_hash = PackageHash::from(*addr);
+                let package = tracking_copy.get_package(package_hash)?;
 
-        match executable_deploy_item {
-            ExecutableDeployItem::Transfer { .. } => {
-                Err(Error::InvalidDeployItemVariant("Transfer".into()))
-            }
-            ExecutableDeployItem::ModuleBytes { module_bytes, .. }
-                if module_bytes.is_empty() && is_payment_phase =>
-            {
-                Err(Error::InvalidDeployItemVariant(
-                    "Empty module bytes for custom payment".into(),
-                ))
-            }
-            ExecutableDeployItem::ModuleBytes { module_bytes, .. } => {
-                Ok(ExecutionKind::new_module(module_bytes))
-            }
-            ExecutableDeployItem::StoredContractByHash {
-                hash, entry_point, ..
-            } => Ok(ExecutionKind::new_contract(hash, entry_point)),
-            ExecutableDeployItem::StoredContractByName {
-                name, entry_point, ..
-            } => {
-                let contract_key = named_keys.get(&name).cloned().ok_or_else(|| {
-                    Error::Exec(execution::Error::NamedKeyNotFound(name.to_string()))
-                })?;
+                let maybe_version_key =
+                    version.map(|ver| EntityVersionKey::new(protocol_version.value().major, ver));
 
-                contract_hash =
-                    ContractHash::new(contract_key.into_hash().ok_or(Error::InvalidKeyVariant)?);
+                let entity_version_key = maybe_version_key
+                    .or_else(|| package.current_entity_version())
+                    .ok_or(Error::Exec(ExecError::NoActiveEntityVersions(package_hash)))?;
 
-                Ok(ExecutionKind::new_contract(contract_hash, entry_point))
+                if package.is_version_missing(entity_version_key) {
+                    return Err(Error::Exec(ExecError::MissingEntityVersion(
+                        entity_version_key,
+                    )));
+                }
+
+                if !package.is_version_enabled(entity_version_key) {
+                    return Err(Error::Exec(ExecError::DisabledEntityVersion(
+                        entity_version_key,
+                    )));
+                }
+
+                *package
+                    .lookup_entity_hash(entity_version_key)
+                    .ok_or(Error::Exec(ExecError::InvalidEntityVersion(
+                        entity_version_key,
+                    )))?
             }
-            ExecutableDeployItem::StoredVersionedContractByName {
-                name,
+            TransactionInvocationTarget::ByPackageName {
+                name: alias,
                 version,
-                entry_point,
-                ..
             } => {
-                let contract_package_hash: ContractPackageHash = {
-                    named_keys
-                        .get(&name)
-                        .cloned()
-                        .ok_or_else(|| {
-                            Error::Exec(execution::Error::NamedKeyNotFound(name.to_string()))
-                        })?
-                        .into_hash()
-                        .ok_or(Error::InvalidKeyVariant)?
-                        .into()
+                let package_key = named_keys
+                    .get(alias)
+                    .ok_or_else(|| Error::Exec(ExecError::NamedKeyNotFound(alias.to_string())))?;
+
+                let package_hash = match package_key {
+                    Key::Hash(hash) | Key::Package(hash) => PackageHash::new(*hash),
+                    _ => return Err(Error::InvalidKeyVariant(*package_key)),
                 };
 
-                contract_package = tracking_copy
-                    .borrow_mut()
-                    .get_contract_package(contract_package_hash)?;
+                let package = tracking_copy.get_package(package_hash)?;
 
                 let maybe_version_key =
-                    version.map(|ver| ContractVersionKey::new(protocol_version.value().major, ver));
+                    version.map(|ver| EntityVersionKey::new(protocol_version.value().major, ver));
 
-                let contract_version_key = maybe_version_key
-                    .or_else(|| contract_package.current_contract_version())
-                    .ok_or(Error::Exec(execution::Error::NoActiveContractVersions(
-                        contract_package_hash,
-                    )))?;
+                let entity_version_key = maybe_version_key
+                    .or_else(|| package.current_entity_version())
+                    .ok_or(Error::Exec(ExecError::NoActiveEntityVersions(package_hash)))?;
 
-                if !contract_package.is_version_enabled(contract_version_key) {
-                    return Err(Error::Exec(execution::Error::InvalidContractVersion(
-                        contract_version_key,
+                if package.is_version_missing(entity_version_key) {
+                    return Err(Error::Exec(ExecError::MissingEntityVersion(
+                        entity_version_key,
                     )));
                 }
 
-                let looked_up_contract_hash: ContractHash = contract_package
-                    .lookup_contract_hash(contract_version_key)
-                    .ok_or(Error::Exec(execution::Error::InvalidContractVersion(
-                        contract_version_key,
+                if !package.is_version_enabled(entity_version_key) {
+                    return Err(Error::Exec(ExecError::DisabledEntityVersion(
+                        entity_version_key,
+                    )));
+                }
+
+                *package
+                    .lookup_entity_hash(entity_version_key)
+                    .ok_or(Error::Exec(ExecError::InvalidEntityVersion(
+                        entity_version_key,
                     )))?
-                    .to_owned();
-
-                Ok(ExecutionKind::new_contract(
-                    looked_up_contract_hash,
-                    entry_point,
-                ))
             }
-            ExecutableDeployItem::StoredVersionedContractByHash {
-                hash: contract_package_hash,
-                version,
-                entry_point,
-                ..
-            } => {
-                contract_package = tracking_copy
-                    .borrow_mut()
-                    .get_contract_package(contract_package_hash)?;
-
-                let maybe_version_key =
-                    version.map(|ver| ContractVersionKey::new(protocol_version.value().major, ver));
-
-                let contract_version_key = maybe_version_key
-                    .or_else(|| contract_package.current_contract_version())
-                    .ok_or(Error::Exec(execution::Error::NoActiveContractVersions(
-                        contract_package_hash,
-                    )))?;
-
-                if !contract_package.is_version_enabled(contract_version_key) {
-                    return Err(Error::Exec(execution::Error::InvalidContractVersion(
-                        contract_version_key,
-                    )));
-                }
-
-                let looked_up_contract_hash = *contract_package
-                    .lookup_contract_hash(contract_version_key)
-                    .ok_or(Error::Exec(execution::Error::InvalidContractVersion(
-                        contract_version_key,
-                    )))?;
-
-                Ok(ExecutionKind::new_contract(
-                    looked_up_contract_hash,
-                    entry_point,
-                ))
-            }
-        }
+        };
+        Ok(ExecutionKind::Stored {
+            entity_hash,
+            entry_point,
+        })
     }
 }

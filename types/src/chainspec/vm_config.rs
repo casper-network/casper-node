@@ -2,12 +2,12 @@ mod auction_costs;
 mod chainspec_registry;
 mod handle_payment_costs;
 mod host_function_costs;
+mod message_limits;
 mod mint_costs;
 mod opcode_costs;
 mod standard_payment_costs;
 mod storage_costs;
 mod system_config;
-mod upgrade_config;
 mod wasm_config;
 
 pub use auction_costs::{AuctionCosts, DEFAULT_ADD_BID_COST, DEFAULT_DELEGATE_COST};
@@ -17,6 +17,7 @@ pub use host_function_costs::{
     Cost as HostFunctionCost, HostFunction, HostFunctionCosts,
     DEFAULT_HOST_FUNCTION_NEW_DICTIONARY, DEFAULT_NEW_DICTIONARY_COST,
 };
+pub use message_limits::MessageLimits;
 pub use mint_costs::{MintCosts, DEFAULT_TRANSFER_COST};
 pub use opcode_costs::{BrTableCost, ControlFlowCosts, OpcodeCosts};
 #[cfg(any(feature = "testing", test))]
@@ -35,6 +36,9 @@ pub use opcode_costs::{
 };
 pub use standard_payment_costs::StandardPaymentCosts;
 pub use storage_costs::StorageCosts;
-pub use system_config::{SystemConfig, DEFAULT_WASMLESS_TRANSFER_COST};
-pub use upgrade_config::UpgradeConfig;
+pub use system_config::SystemConfig;
+#[cfg(any(feature = "testing", test))]
+pub use system_config::{
+    DEFAULT_INSTALL_UPGRADE_GAS_LIMIT, DEFAULT_STANDARD_TRANSACTION_GAS_LIMIT,
+};
 pub use wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY};

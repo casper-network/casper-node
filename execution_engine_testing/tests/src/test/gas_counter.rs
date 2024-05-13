@@ -1,12 +1,12 @@
 use assert_matches::assert_matches;
-use parity_wasm::{
+use casper_wasm::{
     builder,
     elements::{BlockType, Instruction, Instructions},
 };
 
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, ARG_AMOUNT,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, DEFAULT_WASM_CONFIG, PRODUCTION_RUN_GENESIS_REQUEST,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, DEFAULT_WASM_CONFIG, LOCAL_GENESIS_REQUEST,
 };
 use casper_execution_engine::{engine_state::Error, runtime::PreprocessingError};
 use casper_types::{addressable_entity::DEFAULT_ENTRY_POINT_NAME, runtime_args, Gas, RuntimeArgs};
@@ -33,7 +33,7 @@ fn make_session_code_with(instructions: Vec<Instruction>) -> Vec<u8> {
         .memory()
         .build()
         .build();
-    parity_wasm::serialize(module).expect("should serialize")
+    casper_wasm::serialize(module).expect("should serialize")
 }
 
 #[ignore]
@@ -43,29 +43,25 @@ fn should_fail_to_overflow_gas_counter() {
 
     let session_bytes = make_gas_counter_overflow();
 
-    let exec_request = {
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_session_bytes(session_bytes, RuntimeArgs::default())
-            .with_empty_payment_bytes(runtime_args! {
-                ARG_AMOUNT => *DEFAULT_PAYMENT
-            })
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
-            .with_deploy_hash([42; 32])
-            .build();
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-    };
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(*DEFAULT_ACCOUNT_ADDR)
+        .with_session_bytes(session_bytes, RuntimeArgs::default())
+        .with_standard_payment(runtime_args! {
+            ARG_AMOUNT => *DEFAULT_PAYMENT
+        })
+        .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
+        .with_deploy_hash([42; 32])
+        .build();
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     builder.exec(exec_request).commit();
 
-    let responses = builder
+    let exec_result = builder
         .get_exec_result_owned(0)
         .expect("should have response");
-    let response = responses.get(0).expect("should have first element");
-
-    let lhs = response.as_error().expect("should have error");
+    let lhs = exec_result.error().expect("should have error");
     assert_matches!(
         lhs,
         Error::WasmPreprocessing(PreprocessingError::OperationForbiddenByGasRules)
@@ -151,20 +147,18 @@ fn should_correctly_measure_gas_for_opcodes() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
-    let exec_request = {
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_session_bytes(session_bytes, RuntimeArgs::default())
-            .with_empty_payment_bytes(runtime_args! {
-                ARG_AMOUNT => *DEFAULT_PAYMENT
-            })
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
-            .with_deploy_hash([42; 32])
-            .build();
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-    };
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(*DEFAULT_ACCOUNT_ADDR)
+        .with_session_bytes(session_bytes, RuntimeArgs::default())
+        .with_standard_payment(runtime_args! {
+            ARG_AMOUNT => *DEFAULT_PAYMENT
+        })
+        .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
+        .with_deploy_hash([42; 32])
+        .build();
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder.exec(exec_request).commit().expect_success();
 

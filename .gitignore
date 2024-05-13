@@ -133,6 +133,8 @@ resources/production/*.wasm
 resources/node-storage/*
 resources/local/chainspec.toml
 
+execution_engine_testing/test_support/resources/chainspec.toml
+
 # CLion
 .idea/
 cmake-build-debug/
@@ -140,14 +142,6 @@ cmake-build-debug/
 # vscode
 .vscode/
 .dccache
-
-# NCTL transient assets
-/utils/nctl/assets
-/utils/nctl/remotes
-/utils/nctl/stages
-/utils/nctl/dumps
-/utils/nctl/tmp
-/utils/nctl/overrides
 
 # utils data dirs
 /utils/**/chain-download
@@ -169,3 +163,7 @@ notes
 .lh/*
 
 *.patch
+
+# direnv-related files
+.envrc
+.direnv/

@@ -26,10 +26,10 @@ use crate::{
 #[cfg_attr(
     feature = "json-schema",
     derive(JsonSchema),
-    schemars(with = "String", description = "Hex-encoded TransactionV1 hash.")
+    schemars(description = "Hex-encoded TransactionV1 hash.")
 )]
 #[serde(deny_unknown_fields)]
-pub struct TransactionV1Hash(#[cfg_attr(feature = "json-schema", schemars(skip))] Digest);
+pub struct TransactionV1Hash(Digest);
 
 impl TransactionV1Hash {
     /// The number of bytes in a `TransactionV1Hash` digest.
@@ -47,7 +47,6 @@ impl TransactionV1Hash {
 
     /// Returns a new `TransactionV1Hash` directly initialized with the provided bytes; no hashing
     /// is done.
-    #[cfg(any(feature = "testing", test))]
     pub const fn from_raw(raw_digest: [u8; Self::LENGTH]) -> Self {
         TransactionV1Hash(Digest::from_raw(raw_digest))
     }

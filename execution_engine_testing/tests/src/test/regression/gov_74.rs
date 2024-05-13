@@ -1,12 +1,10 @@
-use once_cell::sync::Lazy;
-
 use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PROTOCOL_VERSION, PRODUCTION_RUN_GENESIS_REQUEST,
+    DEFAULT_PROTOCOL_VERSION, LOCAL_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
-    engine_state::{EngineConfigBuilder, Error},
-    execution::Error as ExecError,
+    engine_state::Error,
+    execution::ExecError,
     runtime::{PreprocessingError, WasmValidationError, DEFAULT_MAX_PARAMETER_COUNT},
 };
 use casper_types::{EraId, ProtocolVersion, RuntimeArgs, WasmConfig};
@@ -17,19 +15,16 @@ const ARITY_INTERPRETER_LIMIT: usize = DEFAULT_MAX_PARAMETER_COUNT as usize;
 const DEFAULT_ACTIVATION_POINT: EraId = EraId::new(1);
 const I32_WAT_TYPE: &str = "i64";
 const NEW_WASM_STACK_HEIGHT: u32 = 16;
-
-static OLD_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| *DEFAULT_PROTOCOL_VERSION);
-static NEW_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| {
-    ProtocolVersion::from_parts(
-        OLD_PROTOCOL_VERSION.value().major,
-        OLD_PROTOCOL_VERSION.value().minor,
-        OLD_PROTOCOL_VERSION.value().patch + 1,
-    )
-});
+const OLD_PROTOCOL_VERSION: ProtocolVersion = DEFAULT_PROTOCOL_VERSION;
+const NEW_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::from_parts(
+    OLD_PROTOCOL_VERSION.value().major,
+    OLD_PROTOCOL_VERSION.value().minor,
+    OLD_PROTOCOL_VERSION.value().patch + 1,
+);
 
 fn initialize_builder() -> LmdbWasmTestBuilder {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
     builder
 }
 
@@ -103,19 +98,20 @@ fn should_observe_stack_height_limit() {
     builder.exec(exec_request_1).expect_success().commit();
 
     {
-        // We need to perform an upgrade to be able to observe new max wasm stack height.
-        let new_engine_config = EngineConfigBuilder::default()
-            .with_wasm_max_stack_height(NEW_WASM_STACK_HEIGHT)
-            .build();
+        let updated_chainspec = builder
+            .chainspec()
+            .clone()
+            .with_wasm_max_stack_height(NEW_WASM_STACK_HEIGHT);
+
+        builder.with_chainspec(updated_chainspec);
 
         let mut upgrade_request = UpgradeRequestBuilder::new()
-            .with_current_protocol_version(*OLD_PROTOCOL_VERSION)
-            .with_new_protocol_version(*NEW_PROTOCOL_VERSION)
+            .with_current_protocol_version(OLD_PROTOCOL_VERSION)
+            .with_new_protocol_version(NEW_PROTOCOL_VERSION)
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
             .build();
 
-        builder
-            .upgrade_with_upgrade_request_and_config(Some(new_engine_config), &mut upgrade_request);
+        builder.upgrade(&mut upgrade_request);
     }
 
     // This runs out of the interpreter stack limit.
@@ -131,7 +127,6 @@ fn should_observe_stack_height_limit() {
             module_bytes,
             RuntimeArgs::default(),
         )
-        .with_protocol_version(*NEW_PROTOCOL_VERSION)
         .build()
     };
 
@@ -155,7 +150,6 @@ fn should_observe_stack_height_limit() {
             module_bytes,
             RuntimeArgs::default(),
         )
-        .with_protocol_version(*NEW_PROTOCOL_VERSION)
         .build()
     };
 

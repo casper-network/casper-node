@@ -1,7 +1,11 @@
 //! Costs of the auction system contract.
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
-use rand::{distributions::Standard, prelude::*, Rng};
+#[cfg(any(feature = "testing", test))]
+use rand::{
+    distributions::{Distribution, Standard},
+    Rng,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::bytesrepr::{self, FromBytes, ToBytes};
@@ -13,13 +17,13 @@ pub const DEFAULT_READ_SEIGNIORAGE_RECIPIENTS_COST: u32 = 10_000;
 /// Default cost of the `add_bid` auction entry point.
 pub const DEFAULT_ADD_BID_COST: u32 = 2_500_000_000;
 /// Default cost of the `withdraw_bid` auction entry point.
-pub const DEFAULT_WITHDRAW_BID_COST: u32 = 2_500_000_000;
+pub const DEFAULT_WITHDRAW_BID_COST: u32 = DEFAULT_ADD_BID_COST;
 /// Default cost of the `delegate` auction entry point.
-pub const DEFAULT_DELEGATE_COST: u32 = 2_500_000_000;
+pub const DEFAULT_DELEGATE_COST: u32 = DEFAULT_ADD_BID_COST;
 /// Default cost of the `redelegate` auction entry point.
-pub const DEFAULT_REDELEGATE_COST: u32 = 2_500_000_000;
+pub const DEFAULT_REDELEGATE_COST: u32 = DEFAULT_ADD_BID_COST;
 /// Default cost of the `undelegate` auction entry point.
-pub const DEFAULT_UNDELEGATE_COST: u32 = 2_500_000_000;
+pub const DEFAULT_UNDELEGATE_COST: u32 = DEFAULT_ADD_BID_COST;
 /// Default cost of the `run_auction` auction entry point.
 pub const DEFAULT_RUN_AUCTION_COST: u32 = 10_000;
 /// Default cost of the `slash` auction entry point.
@@ -34,6 +38,8 @@ pub const DEFAULT_WITHDRAW_VALIDATOR_REWARD_COST: u32 = 10_000;
 pub const DEFAULT_READ_ERA_ID_COST: u32 = 10_000;
 /// Default cost of the `activate_bid` auction entry point.
 pub const DEFAULT_ACTIVATE_BID_COST: u32 = 10_000;
+/// Default cost of the `change_bid_public_key` auction entry point.
+pub const DEFAULT_CHANGE_BID_PUBLIC_KEY_COST: u64 = 5_000_000_000;
 
 /// Description of the costs of calling auction entrypoints.
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug)]
@@ -68,6 +74,8 @@ pub struct AuctionCosts {
     pub activate_bid: u32,
     /// Cost of calling the `redelegate` entry point.
     pub redelegate: u32,
+    /// Cost of calling the `change_bid_public_key` entry point.
+    pub change_bid_public_key: u64,
 }
 
 impl Default for AuctionCosts {
@@ -87,6 +95,7 @@ impl Default for AuctionCosts {
             read_era_id: DEFAULT_READ_ERA_ID_COST,
             activate_bid: DEFAULT_ACTIVATE_BID_COST,
             redelegate: DEFAULT_REDELEGATE_COST,
+            change_bid_public_key: DEFAULT_CHANGE_BID_PUBLIC_KEY_COST,
         }
     }
 }
@@ -110,6 +119,7 @@ impl ToBytes for AuctionCosts {
             read_era_id,
             activate_bid,
             redelegate,
+            change_bid_public_key,
         } = self;
 
         ret.append(&mut get_era_validators.to_bytes()?);
@@ -126,6 +136,7 @@ impl ToBytes for AuctionCosts {
         ret.append(&mut read_era_id.to_bytes()?);
         ret.append(&mut activate_bid.to_bytes()?);
         ret.append(&mut redelegate.to_bytes()?);
+        ret.append(&mut change_bid_public_key.to_bytes()?);
 
         Ok(ret)
     }
@@ -146,6 +157,7 @@ impl ToBytes for AuctionCosts {
             read_era_id,
             activate_bid,
             redelegate,
+            change_bid_public_key,
         } = self;
 
         get_era_validators.serialized_length()
@@ -162,6 +174,7 @@ impl ToBytes for AuctionCosts {
             + read_era_id.serialized_length()
             + activate_bid.serialized_length()
             + redelegate.serialized_length()
+            + change_bid_public_key.serialized_length()
     }
 }
 
@@ -181,6 +194,7 @@ impl FromBytes for AuctionCosts {
         let (read_era_id, rem) = FromBytes::from_bytes(rem)?;
         let (activate_bid, rem) = FromBytes::from_bytes(rem)?;
         let (redelegate, rem) = FromBytes::from_bytes(rem)?;
+        let (change_bid_public_key, rem) = FromBytes::from_bytes(rem)?;
         Ok((
             Self {
                 get_era_validators,
@@ -197,14 +211,20 @@ impl FromBytes for AuctionCosts {
                 read_era_id,
                 activate_bid,
                 redelegate,
+                change_bid_public_key,
             },
             rem,
         ))
     }
 }
 
+#[cfg(any(feature = "testing", test))]
 impl Distribution<AuctionCosts> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> AuctionCosts {
+        // there's a bug in toml...under the hood it uses an i64 when it should use a u64
+        // this causes flaky test failures if the random result exceeds i64::MAX
+        let change_bid_public_key = rng.gen::<u32>() as u64;
+
         AuctionCosts {
             get_era_validators: rng.gen(),
             read_seigniorage_recipients: rng.gen(),
@@ -220,6 +240,7 @@ impl Distribution<AuctionCosts> for Standard {
             read_era_id: rng.gen(),
             activate_bid: rng.gen(),
             redelegate: rng.gen(),
+            change_bid_public_key,
         }
     }
 }
@@ -247,6 +268,7 @@ pub mod gens {
             read_era_id in num::u32::ANY,
             activate_bid in num::u32::ANY,
             redelegate in num::u32::ANY,
+            change_bid_public_key in num::u64::ANY,
         ) -> AuctionCosts {
             AuctionCosts {
                 get_era_validators,
@@ -263,6 +285,7 @@ pub mod gens {
                 read_era_id,
                 activate_bid,
                 redelegate,
+                change_bid_public_key,
             }
         }
     }

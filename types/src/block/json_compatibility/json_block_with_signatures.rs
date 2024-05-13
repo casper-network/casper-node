@@ -40,7 +40,7 @@ impl JsonBlockWithSignatures {
     /// Constructs a new `JsonBlock`.
     pub fn new(block: Block, maybe_signatures: Option<BlockSignatures>) -> Self {
         let proofs = maybe_signatures
-            .map(|signatures| signatures.proofs)
+            .map(|signatures| signatures.into_proofs())
             .unwrap_or_default();
 
         JsonBlockWithSignatures { block, proofs }
@@ -70,15 +70,33 @@ impl KeyValueJsonSchema for BlockProofLabels {
 
 #[cfg(test)]
 mod tests {
-    use crate::{testing::TestRng, TestBlockBuilder};
+    use crate::{
+        testing::TestRng, BlockSignaturesV1, BlockSignaturesV2, ChainNameDigest, TestBlockBuilder,
+    };
 
     use super::*;
 
     #[test]
-    fn block_to_and_from_json_block_with_signatures() {
+    fn block_to_and_from_json_block_with_signatures_v1() {
         let rng = &mut TestRng::new();
         let block: Block = TestBlockBuilder::new().build(rng).into();
-        let empty_signatures = BlockSignatures::new(*block.hash(), block.era_id());
+        let empty_signatures =
+            BlockSignatures::V1(BlockSignaturesV1::new(*block.hash(), block.era_id()));
+        let json_block = JsonBlockWithSignatures::new(block.clone(), Some(empty_signatures));
+        let recovered_block = Block::from(json_block);
+        assert_eq!(block, recovered_block);
+    }
+
+    #[test]
+    fn block_to_and_from_json_block_with_signatures_v2() {
+        let rng = &mut TestRng::new();
+        let block: Block = TestBlockBuilder::new().build(rng).into();
+        let empty_signatures = BlockSignatures::V2(BlockSignaturesV2::new(
+            *block.hash(),
+            block.height(),
+            block.era_id(),
+            ChainNameDigest::random(rng),
+        ));
         let json_block = JsonBlockWithSignatures::new(block.clone(), Some(empty_signatures));
         let recovered_block = Block::from(json_block);
         assert_eq!(block, recovered_block);

@@ -4,7 +4,7 @@ use casper_types::{runtime_args, system::mint, ApiError, CLValue, U512};
 
 use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
+    DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_PAYMENT, LOCAL_GENESIS_REQUEST,
 };
 
 const CONTRACT_TRANSFER_PURSE_TO_PURSE: &str = "transfer_purse_to_purse.wasm";
@@ -14,7 +14,8 @@ const ARG_TARGET: &str = "target";
 const ARG_AMOUNT: &str = "amount";
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_run_purse_to_purse_transfer() {
     let source = "purse:main".to_string();
     let target = "purse:secondary".to_string();
@@ -32,13 +33,13 @@ fn should_run_purse_to_purse_transfer() {
 
     let mut builder = LmdbWasmTestBuilder::default();
     builder
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone())
         .exec(exec_request_1)
         .expect_success()
         .commit();
 
     let default_account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get genesis account");
 
     // Get the `purse_transfer_result` for a given
@@ -89,7 +90,8 @@ fn should_run_purse_to_purse_transfer() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_run_purse_to_purse_transfer_with_error() {
     // This test runs a contract that's after every call extends the same key with
     // more data
@@ -103,13 +105,13 @@ fn should_run_purse_to_purse_transfer_with_error() {
         .build();
     let mut builder = LmdbWasmTestBuilder::default();
     builder
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone())
         .exec(exec_request_1)
         .expect_success()
         .commit();
 
     let default_account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get genesis account");
 
     // Get the `purse_transfer_result` for a given

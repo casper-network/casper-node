@@ -1,27 +1,32 @@
-use casper_storage::global_state::state::StateReader;
+use tracing::error;
+
+use casper_storage::{
+    global_state::{error::Error as GlobalStateError, state::StateReader},
+    system::{
+        error::ProviderError,
+        mint::{
+            runtime_provider::RuntimeProvider, storage_provider::StorageProvider,
+            system_provider::SystemProvider, Mint,
+        },
+    },
+};
 use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
-    system::{mint::Error, CallStackElement},
-    AddressableEntity, CLTyped, CLValue, Key, Phase, StoredValue, URef, U512,
+    system::{mint::Error, Caller},
+    AddressableEntity, CLTyped, CLValue, Key, Phase, StoredValue, SystemEntityRegistry, URef, U512,
 };
 
 use super::Runtime;
-use crate::{
-    engine_state::SystemContractRegistry,
-    execution,
-    system::mint::{
-        runtime_provider::RuntimeProvider, storage_provider::StorageProvider,
-        system_provider::SystemProvider, Mint,
-    },
-};
+use crate::execution::ExecError;
 
-impl From<execution::Error> for Option<Error> {
-    fn from(exec_error: execution::Error) -> Self {
+impl From<ExecError> for Option<Error> {
+    fn from(exec_error: ExecError) -> Self {
         match exec_error {
-            // This is used to propagate [`execution::Error::GasLimit`] to make sure [`Mint`]
+            // This is used to propagate [`ExecError::GasLimit`] to make sure [`Mint`]
             // contract running natively supports propagating gas limit errors without a panic.
-            execution::Error::GasLimit => Some(Error::GasLimit),
+            ExecError::GasLimit => Some(Error::GasLimit),
+            ExecError::ForgedReference(_) => Some(Error::ForgedReference),
             // There are possibly other exec errors happening but such translation would be lossy.
             _ => None,
         }
@@ -30,25 +35,41 @@ impl From<execution::Error> for Option<Error> {
 
 impl<'a, R> RuntimeProvider for Runtime<'a, R>
 where
-    R: StateReader<Key, StoredValue>,
-    R::Error: Into<execution::Error>,
+    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
     fn get_caller(&self) -> AccountHash {
         self.context.get_caller()
     }
 
-    fn get_immediate_caller(&self) -> Option<&CallStackElement> {
-        Runtime::<'a, R>::get_immediate_caller(self)
+    fn get_immediate_caller(&self) -> Option<Caller> {
+        Runtime::<'a, R>::get_immediate_caller(self).cloned()
+    }
+
+    fn is_called_from_standard_payment(&self) -> bool {
+        self.context.phase() == Phase::Payment && self.module.is_none()
+    }
+
+    fn get_system_entity_registry(&self) -> Result<SystemEntityRegistry, ProviderError> {
+        self.context.system_entity_registry().map_err(|err| {
+            error!(%err, "unable to obtain system entity registry during transfer");
+            ProviderError::SystemEntityRegistry
+        })
+    }
+
+    fn read_addressable_entity_by_account_hash(
+        &mut self,
+        account_hash: AccountHash,
+    ) -> Result<Option<AddressableEntity>, ProviderError> {
+        self.context
+            .read_addressable_entity_by_account_hash(account_hash)
+            .map_err(|err| {
+                error!(%err, "error reading addressable entity by account hash");
+                ProviderError::AddressableEntityByAccountHash(account_hash)
+            })
     }
 
     fn get_phase(&self) -> Phase {
         self.context.phase()
-    }
-
-    fn put_key(&mut self, name: &str, key: Key) -> Result<(), Error> {
-        self.context
-            .put_key(name.to_string(), key)
-            .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::PutKey))
     }
 
     fn get_key(&self, name: &str) -> Option<Key> {
@@ -77,28 +98,16 @@ where
         self.context.engine_config().allow_unrestricted_transfers()
     }
 
-    fn get_system_contract_registry(&self) -> Result<SystemContractRegistry, execution::Error> {
-        self.context.system_contract_registry()
-    }
-
-    fn is_called_from_standard_payment(&self) -> bool {
-        self.context.phase() == Phase::Payment && self.module.is_none()
-    }
-
-    fn read_addressable_entity_by_account_hash(
-        &mut self,
-        account_hash: AccountHash,
-    ) -> Result<Option<AddressableEntity>, execution::Error> {
-        self.context
-            .read_addressable_entity_by_account_hash(account_hash)
+    /// Validate URef against context access rights.
+    fn is_valid_uref(&self, uref: &URef) -> bool {
+        self.context.access_rights().has_access_rights_to_uref(uref)
     }
 }
 
 // TODO: update Mint + StorageProvider to better handle errors
 impl<'a, R> StorageProvider for Runtime<'a, R>
 where
-    R: StateReader<Key, StoredValue>,
-    R::Error: Into<execution::Error>,
+    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
     fn new_uref<T: CLTyped + ToBytes>(&mut self, init: T) -> Result<URef, Error> {
         let cl_value: CLValue = CLValue::from_t(init).map_err(|_| Error::CLValue)?;
@@ -122,8 +131,8 @@ where
         }
     }
 
-    fn write<T: CLTyped + ToBytes>(&mut self, uref: URef, value: T) -> Result<(), Error> {
-        let cl_value = CLValue::from_t(value).map_err(|_| Error::CLValue)?;
+    fn write_amount(&mut self, uref: URef, amount: U512) -> Result<(), Error> {
+        let cl_value = CLValue::from_t(amount).map_err(|_| Error::CLValue)?;
         self.context
             .metered_write_gs(Key::URef(uref), StoredValue::CLValue(cl_value))
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))
@@ -136,19 +145,14 @@ where
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))
     }
 
-    fn read_balance(&mut self, uref: URef) -> Result<Option<U512>, Error> {
-        let maybe_value = self
-            .context
-            .read_gs_direct(&Key::Balance(uref.addr()))
-            .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))?;
-        match maybe_value {
-            Some(StoredValue::CLValue(value)) => {
-                let value = CLValue::into_t(value).map_err(|_| Error::CLValue)?;
-                Ok(Some(value))
-            }
-            Some(_cl_value) => Err(Error::CLValue),
-            None => Ok(None),
-        }
+    fn total_balance(&mut self, purse: URef) -> Result<U512, Error> {
+        Runtime::total_balance(self, purse)
+            .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))
+    }
+
+    fn available_balance(&mut self, purse: URef) -> Result<Option<U512>, Error> {
+        Runtime::available_balance(self, purse)
+            .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))
     }
 
     fn write_balance(&mut self, uref: URef, balance: U512) -> Result<(), Error> {
@@ -168,8 +172,7 @@ where
 
 impl<'a, R> SystemProvider for Runtime<'a, R>
 where
-    R: StateReader<Key, StoredValue>,
-    R::Error: Into<execution::Error>,
+    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
     fn record_transfer(
         &mut self,
@@ -186,9 +189,4 @@ where
     }
 }
 
-impl<'a, R> Mint for Runtime<'a, R>
-where
-    R: StateReader<Key, StoredValue>,
-    R::Error: Into<execution::Error>,
-{
-}
+impl<'a, R> Mint for Runtime<'a, R> where R: StateReader<Key, StoredValue, Error = GlobalStateError> {}

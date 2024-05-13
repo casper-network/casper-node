@@ -42,23 +42,23 @@
       "additionalProperties": false
     },
     {
-      "description": "The given deploy has been newly-accepted by this node.",
+      "description": "The given transaction has been newly-accepted by this node.",
       "type": "object",
       "required": [
-        "DeployAccepted"
+        "TransactionAccepted"
       ],
       "properties": {
-        "DeployAccepted": {
+        "TransactionAccepted": {
           "type": "object",
           "required": [
-            "deploy"
+            "transaction"
           ],
           "properties": {
-            "deploy": {
-              "description": "a deploy",
+            "transaction": {
+              "description": "a transaction",
               "allOf": [
                 {
-                  "$ref": "#/definitions/Deploy"
+                  "$ref": "#/definitions/Transaction"
                 }
               ]
             }
@@ -68,29 +68,29 @@
       "additionalProperties": false
     },
     {
-      "description": "The given deploy has been executed, committed and forms part of the given block.",
+      "description": "The given transaction has been executed, committed and forms part of the given block.",
       "type": "object",
       "required": [
-        "DeployProcessed"
+        "TransactionProcessed"
       ],
       "properties": {
-        "DeployProcessed": {
+        "TransactionProcessed": {
           "type": "object",
           "required": [
-            "account",
             "block_hash",
-            "dependencies",
-            "deploy_hash",
             "execution_result",
+            "initiator_addr",
+            "messages",
             "timestamp",
+            "transaction_hash",
             "ttl"
           ],
           "properties": {
-            "deploy_hash": {
-              "$ref": "#/definitions/DeployHash"
+            "transaction_hash": {
+              "$ref": "#/definitions/TransactionHash"
             },
-            "account": {
-              "$ref": "#/definitions/PublicKey"
+            "initiator_addr": {
+              "$ref": "#/definitions/InitiatorAddr"
             },
             "timestamp": {
               "$ref": "#/definitions/Timestamp"
@@ -98,17 +98,17 @@
             "ttl": {
               "$ref": "#/definitions/TimeDiff"
             },
-            "dependencies": {
-              "type": "array",
-              "items": {
-                "$ref": "#/definitions/DeployHash"
-              }
-            },
             "block_hash": {
               "$ref": "#/definitions/BlockHash"
             },
             "execution_result": {
               "$ref": "#/definitions/ExecutionResult"
+            },
+            "messages": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/Message"
+              }
             }
           }
         }
@@ -116,20 +116,20 @@
       "additionalProperties": false
     },
     {
-      "description": "The given deploy has expired.",
+      "description": "The given transaction has expired.",
       "type": "object",
       "required": [
-        "DeployExpired"
+        "TransactionExpired"
       ],
       "properties": {
-        "DeployExpired": {
+        "TransactionExpired": {
           "type": "object",
           "required": [
-            "deploy_hash"
+            "transaction_hash"
           ],
           "properties": {
-            "deploy_hash": {
-              "$ref": "#/definitions/DeployHash"
+            "transaction_hash": {
+              "$ref": "#/definitions/TransactionHash"
             }
           }
         }
@@ -218,6 +218,14 @@
     },
     "BlockHash": {
       "description": "Hex-encoded cryptographic hash of a block.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/Digest"
+        }
+      ]
+    },
+    "Digest": {
+      "description": "Hex-encoded hash digest.",
       "type": "string"
     },
     "Block": {
@@ -272,7 +280,7 @@
           "description": "The header portion of the block.",
           "allOf": [
             {
-              "$ref": "#/definitions/BlockHeader"
+              "$ref": "#/definitions/BlockHeaderV1"
             }
           ]
         },
@@ -286,7 +294,7 @@
         }
       }
     },
-    "BlockHeader": {
+    "BlockHeaderV1": {
       "description": "The header portion of a block.",
       "type": "object",
       "required": [
@@ -341,7 +349,7 @@
           "description": "The `EraEnd` of a block if it is a switch block.",
           "anyOf": [
             {
-              "$ref": "#/definitions/EraEnd"
+              "$ref": "#/definitions/EraEndV1"
             },
             {
               "type": "null"
@@ -380,11 +388,7 @@
         }
       }
     },
-    "Digest": {
-      "description": "Hex-encoded hash digest.",
-      "type": "string"
-    },
-    "EraEnd": {
+    "EraEndV1": {
       "description": "Information related to the end of an era, and validator weights for the following era.",
       "type": "object",
       "required": [
@@ -445,6 +449,23 @@
     },
     "PublicKey": {
       "description": "Hex-encoded cryptographic public key, including the algorithm tag prefix.",
+      "examples": [
+        {
+          "name": "SystemPublicKey",
+          "description": "A pseudo public key, used for example when the system proposes an immediate switch block after a network upgrade rather than a specific validator. Its hex-encoded value is always '00', as is the corresponding pseudo signature's",
+          "value": "00"
+        },
+        {
+          "name": "Ed25519PublicKey",
+          "description": "An Ed25519 public key. Its hex-encoded value begins '01' and is followed by 64 characters",
+          "value": "018a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c"
+        },
+        {
+          "name": "Secp256k1PublicKey",
+          "description": "A secp256k1 public key. Its hex-encoded value begins '02' and is followed by 66 characters",
+          "value": "0203408e9526316fd1f8def480dd45b2cc72ffd732771c9ceb5d92ffa4051e6ee084"
+        }
+      ],
       "type": "string"
     },
     "Array_of_EraReward": {
@@ -515,9 +536,7 @@
     },
     "Timestamp": {
       "description": "Timestamp formatted as per RFC 3339",
-      "type": "integer",
-      "format": "uint64",
-      "minimum": 0.0
+      "type": "string"
     },
     "EraId": {
       "description": "Era ID newtype.",
@@ -560,7 +579,11 @@
     },
     "DeployHash": {
       "description": "Hex-encoded deploy hash.",
-      "type": "string"
+      "allOf": [
+        {
+          "$ref": "#/definitions/Digest"
+        }
+      ]
     },
     "BlockV2": {
       "description": "A block after execution, with the resulting global state root hash. This is the core component of the Casper linear blockchain. Version 2.",
@@ -583,7 +606,7 @@
           "description": "The header portion of the block.",
           "allOf": [
             {
-              "$ref": "#/definitions/BlockHeader"
+              "$ref": "#/definitions/BlockHeaderV2"
             }
           ]
         },
@@ -597,13 +620,164 @@
         }
       }
     },
+    "BlockHeaderV2": {
+      "description": "The header portion of a block.",
+      "type": "object",
+      "required": [
+        "accumulated_seed",
+        "body_hash",
+        "current_gas_price",
+        "era_id",
+        "height",
+        "parent_hash",
+        "protocol_version",
+        "random_bit",
+        "state_root_hash",
+        "timestamp"
+      ],
+      "properties": {
+        "parent_hash": {
+          "description": "The parent block's hash.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/BlockHash"
+            }
+          ]
+        },
+        "state_root_hash": {
+          "description": "The root hash of global state after the deploys in this block have been executed.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Digest"
+            }
+          ]
+        },
+        "body_hash": {
+          "description": "The hash of the block's body.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Digest"
+            }
+          ]
+        },
+        "random_bit": {
+          "description": "A random bit needed for initializing a future era.",
+          "type": "boolean"
+        },
+        "accumulated_seed": {
+          "description": "A seed needed for initializing a future era.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Digest"
+            }
+          ]
+        },
+        "era_end": {
+          "description": "The `EraEnd` of a block if it is a switch block.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/EraEndV2"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "timestamp": {
+          "description": "The timestamp from when the block was proposed.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Timestamp"
+            }
+          ]
+        },
+        "era_id": {
+          "description": "The era ID in which this block was created.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EraId"
+            }
+          ]
+        },
+        "height": {
+          "description": "The height of this block, i.e. the number of ancestors.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "protocol_version": {
+          "description": "The protocol version of the network from when this block was created.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ProtocolVersion"
+            }
+          ]
+        },
+        "current_gas_price": {
+          "description": "The gas price of the era",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0.0
+        }
+      }
+    },
+    "EraEndV2": {
+      "description": "Information related to the end of an era, and validator weights for the following era.",
+      "type": "object",
+      "required": [
+        "equivocators",
+        "inactive_validators",
+        "next_era_gas_price",
+        "next_era_validator_weights",
+        "rewards"
+      ],
+      "properties": {
+        "equivocators": {
+          "description": "The set of equivocators.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/PublicKey"
+          }
+        },
+        "inactive_validators": {
+          "description": "Validators that haven't produced any unit during the era.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/PublicKey"
+          }
+        },
+        "next_era_validator_weights": {
+          "description": "The validators for the upcoming era and their respective weights.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Array_of_ValidatorWeight"
+            }
+          ]
+        },
+        "rewards": {
+          "description": "The rewards distributed to the validators.",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/U512"
+          }
+        },
+        "next_era_gas_price": {
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0.0
+        }
+      }
+    },
     "BlockBodyV2": {
       "description": "The body portion of a block. Version 2.",
       "type": "object",
       "required": [
-        "deploy_hashes",
+        "auction",
+        "install_upgrade",
+        "mint",
         "proposer",
-        "transfer_hashes"
+        "rewarded_signatures",
+        "standard"
       ],
       "properties": {
         "proposer": {
@@ -614,21 +788,129 @@
             }
           ]
         },
-        "deploy_hashes": {
-          "description": "The deploy hashes of the non-transfer deploys within the block.",
+        "mint": {
+          "description": "The hashes of the mint transactions within the block.",
           "type": "array",
           "items": {
-            "$ref": "#/definitions/DeployHash"
+            "$ref": "#/definitions/TransactionHash"
           }
         },
-        "transfer_hashes": {
-          "description": "The deploy hashes of the transfers within the block.",
+        "auction": {
+          "description": "The hashes of the auction transactions within the block.",
           "type": "array",
           "items": {
-            "$ref": "#/definitions/DeployHash"
+            "$ref": "#/definitions/TransactionHash"
           }
+        },
+        "install_upgrade": {
+          "description": "The hashes of the installer/upgrader transactions within the block.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/TransactionHash"
+          }
+        },
+        "standard": {
+          "description": "The hashes of all other transactions within the block.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/TransactionHash"
+          }
+        },
+        "rewarded_signatures": {
+          "description": "List of identifiers for finality signatures for a particular past block.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/RewardedSignatures"
+            }
+          ]
         }
       }
+    },
+    "TransactionHash": {
+      "description": "A versioned wrapper for a transaction hash or deploy hash.",
+      "oneOf": [
+        {
+          "description": "A deploy hash.",
+          "type": "object",
+          "required": [
+            "Deploy"
+          ],
+          "properties": {
+            "Deploy": {
+              "$ref": "#/definitions/DeployHash"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "A version 1 transaction hash.",
+          "type": "object",
+          "required": [
+            "Version1"
+          ],
+          "properties": {
+            "Version1": {
+              "$ref": "#/definitions/TransactionV1Hash"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "TransactionV1Hash": {
+      "description": "Hex-encoded TransactionV1 hash.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/Digest"
+        }
+      ]
+    },
+    "RewardedSignatures": {
+      "description": "Describes finality signatures that will be rewarded in a block. Consists of a vector of `SingleBlockRewardedSignatures`, each of which describes signatures for a single ancestor block. The first entry represents the signatures for the parent block, the second for the parent of the parent, and so on.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/SingleBlockRewardedSignatures"
+      }
+    },
+    "SingleBlockRewardedSignatures": {
+      "description": "List of identifiers for finality signatures for a particular past block.\n\nThat past block height is current_height - signature_rewards_max_delay, the latter being defined in the chainspec.\n\nWe need to wait for a few blocks to pass (`signature_rewards_max_delay`) to store the finality signers because we need a bit of time to get the block finality.",
+      "type": "array",
+      "items": {
+        "type": "integer",
+        "format": "uint8",
+        "minimum": 0.0
+      }
+    },
+    "Transaction": {
+      "description": "A versioned wrapper for a transaction or deploy.",
+      "oneOf": [
+        {
+          "description": "A deploy.",
+          "type": "object",
+          "required": [
+            "Deploy"
+          ],
+          "properties": {
+            "Deploy": {
+              "$ref": "#/definitions/Deploy"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "A version 1 transaction.",
+          "type": "object",
+          "required": [
+            "Version1"
+          ],
+          "properties": {
+            "Version1": {
+              "$ref": "#/definitions/TransactionV1"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
     },
     "Deploy": {
       "description": "A signed smart contract.",
@@ -656,7 +938,7 @@
         "approvals": {
           "type": "array",
           "items": {
-            "$ref": "#/definitions/DeployApproval"
+            "$ref": "#/definitions/Approval"
           },
           "uniqueItems": true
         }
@@ -707,9 +989,7 @@
     },
     "TimeDiff": {
       "description": "Human-readable duration.",
-      "type": "integer",
-      "format": "uint64",
-      "minimum": 0.0
+      "type": "string"
     },
     "ExecutableDeployItem": {
       "description": "The executable component of a [`Deploy`].",
@@ -730,7 +1010,11 @@
               "properties": {
                 "module_bytes": {
                   "description": "Hex-encoded raw Wasm bytes.",
-                  "type": "string"
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/Bytes"
+                    }
+                  ]
                 },
                 "args": {
                   "description": "Runtime arguments.",
@@ -747,7 +1031,7 @@
           "additionalProperties": false
         },
         {
-          "description": "Stored contract referenced by its [`ContractHash`], entry point and an instance of [`RuntimeArgs`].",
+          "description": "Stored contract referenced by its [`AddressableEntityHash`], entry point and an instance of [`RuntimeArgs`].",
           "type": "object",
           "required": [
             "StoredContractByHash"
@@ -763,7 +1047,11 @@
               "properties": {
                 "hash": {
                   "description": "Hex-encoded contract hash.",
-                  "type": "string"
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/AddressableEntityHash"
+                    }
+                  ]
                 },
                 "entry_point": {
                   "description": "Name of an entry point.",
@@ -821,7 +1109,7 @@
           "additionalProperties": false
         },
         {
-          "description": "Stored versioned contract referenced by its [`ContractPackageHash`], entry point and an instance of [`RuntimeArgs`].",
+          "description": "Stored versioned contract referenced by its [`PackageHash`], entry point and an instance of [`RuntimeArgs`].",
           "type": "object",
           "required": [
             "StoredVersionedContractByHash"
@@ -837,7 +1125,11 @@
               "properties": {
                 "hash": {
                   "description": "Hex-encoded contract package hash.",
-                  "type": "string"
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/PackageHash"
+                    }
+                  ]
                 },
                 "version": {
                   "description": "An optional version of the contract to call. It will default to the highest enabled version if no value is specified.",
@@ -940,6 +1232,10 @@
           "additionalProperties": false
         }
       ]
+    },
+    "Bytes": {
+      "description": "Hex-encoded bytes.",
+      "type": "string"
     },
     "RuntimeArgs": {
       "description": "Represents a collection of arguments passed to a smart contract.",
@@ -1237,8 +1533,16 @@
         }
       ]
     },
-    "DeployApproval": {
-      "description": "A struct containing a signature of a deploy hash and the public key of the signer.",
+    "AddressableEntityHash": {
+      "description": "The hex-encoded address of the addressable entity.",
+      "type": "string"
+    },
+    "PackageHash": {
+      "description": "The hex-encoded address of the Package.",
+      "type": "string"
+    },
+    "Approval": {
+      "description": "A struct containing a signature of a transaction hash and the public key of the signer.",
       "type": "object",
       "required": [
         "signature",
@@ -1257,6 +1561,574 @@
     "Signature": {
       "description": "Hex-encoded cryptographic signature, including the algorithm tag prefix.",
       "type": "string"
+    },
+    "TransactionV1": {
+      "description": "A unit of work sent by a client to the network, which when executed can cause global state to be altered.",
+      "type": "object",
+      "required": [
+        "approvals",
+        "body",
+        "hash",
+        "header"
+      ],
+      "properties": {
+        "hash": {
+          "$ref": "#/definitions/TransactionV1Hash"
+        },
+        "header": {
+          "$ref": "#/definitions/TransactionV1Header"
+        },
+        "body": {
+          "$ref": "#/definitions/TransactionV1Body"
+        },
+        "approvals": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Approval"
+          },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "TransactionV1Header": {
+      "description": "The header portion of a TransactionV1.",
+      "type": "object",
+      "required": [
+        "body_hash",
+        "chain_name",
+        "initiator_addr",
+        "pricing_mode",
+        "timestamp",
+        "ttl"
+      ],
+      "properties": {
+        "chain_name": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/definitions/Timestamp"
+        },
+        "ttl": {
+          "$ref": "#/definitions/TimeDiff"
+        },
+        "body_hash": {
+          "$ref": "#/definitions/Digest"
+        },
+        "pricing_mode": {
+          "$ref": "#/definitions/PricingMode"
+        },
+        "initiator_addr": {
+          "$ref": "#/definitions/InitiatorAddr"
+        }
+      },
+      "additionalProperties": false
+    },
+    "PricingMode": {
+      "description": "Pricing mode of a Transaction.",
+      "oneOf": [
+        {
+          "description": "The original payment model, where the creator of the transaction specifies how much they will pay, at what gas price.",
+          "type": "object",
+          "required": [
+            "Classic"
+          ],
+          "properties": {
+            "Classic": {
+              "type": "object",
+              "required": [
+                "gas_price_tolerance",
+                "payment_amount",
+                "standard_payment"
+              ],
+              "properties": {
+                "payment_amount": {
+                  "description": "User-specified payment amount.",
+                  "type": "integer",
+                  "format": "uint64",
+                  "minimum": 0.0
+                },
+                "gas_price_tolerance": {
+                  "description": "User-specified gas_price tolerance (minimum 1). This is interpreted to mean \"do not include this transaction in a block if the current gas price is greater than this number\"",
+                  "type": "integer",
+                  "format": "uint8",
+                  "minimum": 0.0
+                },
+                "standard_payment": {
+                  "description": "Standard payment.",
+                  "type": "boolean"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "The cost of the transaction is determined by the cost table, per the transaction kind.",
+          "type": "object",
+          "required": [
+            "Fixed"
+          ],
+          "properties": {
+            "Fixed": {
+              "type": "object",
+              "required": [
+                "gas_price_tolerance"
+              ],
+              "properties": {
+                "gas_price_tolerance": {
+                  "description": "User-specified gas_price tolerance (minimum 1). This is interpreted to mean \"do not include this transaction in a block if the current gas price is greater than this number\"",
+                  "type": "integer",
+                  "format": "uint8",
+                  "minimum": 0.0
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "The payment for this transaction was previously reserved, as proven by the receipt hash (this is for future use, not currently implemented).",
+          "type": "object",
+          "required": [
+            "Reserved"
+          ],
+          "properties": {
+            "Reserved": {
+              "type": "object",
+              "required": [
+                "receipt"
+              ],
+              "properties": {
+                "receipt": {
+                  "description": "Pre-paid receipt.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/Digest"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "InitiatorAddr": {
+      "description": "The address of the initiator of a TransactionV1.",
+      "oneOf": [
+        {
+          "description": "The public key of the initiator.",
+          "type": "object",
+          "required": [
+            "PublicKey"
+          ],
+          "properties": {
+            "PublicKey": {
+              "$ref": "#/definitions/PublicKey"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "The account hash derived from the public key of the initiator.",
+          "type": "object",
+          "required": [
+            "AccountHash"
+          ],
+          "properties": {
+            "AccountHash": {
+              "$ref": "#/definitions/AccountHash"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "AccountHash": {
+      "description": "Account hash as a formatted string.",
+      "type": "string"
+    },
+    "TransactionV1Body": {
+      "description": "Body of a `TransactionV1`.",
+      "type": "object",
+      "required": [
+        "args",
+        "entry_point",
+        "scheduling",
+        "target"
+      ],
+      "properties": {
+        "args": {
+          "$ref": "#/definitions/RuntimeArgs"
+        },
+        "target": {
+          "$ref": "#/definitions/TransactionTarget"
+        },
+        "entry_point": {
+          "$ref": "#/definitions/TransactionEntryPoint"
+        },
+        "scheduling": {
+          "$ref": "#/definitions/TransactionScheduling"
+        }
+      },
+      "additionalProperties": false
+    },
+    "TransactionTarget": {
+      "description": "Execution target of a Transaction.",
+      "oneOf": [
+        {
+          "description": "The execution target is a native operation (e.g. a transfer).",
+          "type": "string",
+          "enum": [
+            "Native"
+          ]
+        },
+        {
+          "description": "The execution target is a stored entity or package.",
+          "type": "object",
+          "required": [
+            "Stored"
+          ],
+          "properties": {
+            "Stored": {
+              "type": "object",
+              "required": [
+                "id",
+                "runtime"
+              ],
+              "properties": {
+                "id": {
+                  "description": "The identifier of the stored execution target.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/TransactionInvocationTarget"
+                    }
+                  ]
+                },
+                "runtime": {
+                  "description": "The execution runtime to use.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/TransactionRuntime"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "The execution target is the included module bytes, i.e. compiled Wasm.",
+          "type": "object",
+          "required": [
+            "Session"
+          ],
+          "properties": {
+            "Session": {
+              "type": "object",
+              "required": [
+                "kind",
+                "module_bytes",
+                "runtime"
+              ],
+              "properties": {
+                "kind": {
+                  "description": "The kind of session.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/TransactionSessionKind"
+                    }
+                  ]
+                },
+                "module_bytes": {
+                  "description": "The compiled Wasm.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/Bytes"
+                    }
+                  ]
+                },
+                "runtime": {
+                  "description": "The execution runtime to use.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/TransactionRuntime"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "TransactionInvocationTarget": {
+      "description": "Identifier of a `Stored` transaction target.",
+      "oneOf": [
+        {
+          "description": "Hex-encoded entity address identifying the invocable entity.",
+          "type": "object",
+          "required": [
+            "ByHash"
+          ],
+          "properties": {
+            "ByHash": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "The alias identifying the invocable entity.",
+          "type": "object",
+          "required": [
+            "ByName"
+          ],
+          "properties": {
+            "ByName": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "The address and optional version identifying the package.",
+          "type": "object",
+          "required": [
+            "ByPackageHash"
+          ],
+          "properties": {
+            "ByPackageHash": {
+              "type": "object",
+              "required": [
+                "addr"
+              ],
+              "properties": {
+                "addr": {
+                  "description": "Hex-encoded address of the package.",
+                  "type": "string"
+                },
+                "version": {
+                  "description": "The package version.\n\nIf `None`, the latest enabled version is implied.",
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "uint32",
+                  "minimum": 0.0
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "The alias and optional version identifying the package.",
+          "type": "object",
+          "required": [
+            "ByPackageName"
+          ],
+          "properties": {
+            "ByPackageName": {
+              "type": "object",
+              "required": [
+                "name"
+              ],
+              "properties": {
+                "name": {
+                  "description": "The package name.",
+                  "type": "string"
+                },
+                "version": {
+                  "description": "The package version.\n\nIf `None`, the latest enabled version is implied.",
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "uint32",
+                  "minimum": 0.0
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "TransactionRuntime": {
+      "description": "Runtime used to execute a Transaction.",
+      "oneOf": [
+        {
+          "description": "The Casper Version 1 Virtual Machine.",
+          "type": "string",
+          "enum": [
+            "VmCasperV1"
+          ]
+        },
+        {
+          "description": "The Casper Version 2 Virtual Machine.",
+          "type": "string",
+          "enum": [
+            "VmCasperV2"
+          ]
+        }
+      ]
+    },
+    "TransactionSessionKind": {
+      "description": "Session kind of a Transaction.",
+      "oneOf": [
+        {
+          "description": "A standard (non-special-case) session.\n\nThis kind of session is not allowed to install or upgrade a stored contract, but can call stored contracts.",
+          "type": "string",
+          "enum": [
+            "Standard"
+          ]
+        },
+        {
+          "description": "A session which installs a stored contract.",
+          "type": "string",
+          "enum": [
+            "Installer"
+          ]
+        },
+        {
+          "description": "A session which upgrades a previously-installed stored contract.  Such a session must have \"package_id: PackageIdentifier\" runtime arg present.",
+          "type": "string",
+          "enum": [
+            "Upgrader"
+          ]
+        },
+        {
+          "description": "A session which doesn't call any stored contracts.\n\nThis kind of session is not allowed to install or upgrade a stored contract.",
+          "type": "string",
+          "enum": [
+            "Isolated"
+          ]
+        }
+      ]
+    },
+    "TransactionEntryPoint": {
+      "description": "Entry point of a Transaction.",
+      "oneOf": [
+        {
+          "description": "A non-native, arbitrary entry point.",
+          "type": "object",
+          "required": [
+            "Custom"
+          ],
+          "properties": {
+            "Custom": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "The `transfer` native entry point, used to transfer `Motes` from a source purse to a target purse.",
+          "type": "string",
+          "enum": [
+            "Transfer"
+          ]
+        },
+        {
+          "description": "The `add_bid` native entry point, used to create or top off a bid purse.",
+          "type": "string",
+          "enum": [
+            "AddBid"
+          ]
+        },
+        {
+          "description": "The `withdraw_bid` native entry point, used to decrease a stake.",
+          "type": "string",
+          "enum": [
+            "WithdrawBid"
+          ]
+        },
+        {
+          "description": "The `delegate` native entry point, used to add a new delegator or increase an existing delegator's stake.",
+          "type": "string",
+          "enum": [
+            "Delegate"
+          ]
+        },
+        {
+          "description": "The `undelegate` native entry point, used to reduce a delegator's stake or remove the delegator if the remaining stake is 0.",
+          "type": "string",
+          "enum": [
+            "Undelegate"
+          ]
+        },
+        {
+          "description": "The `redelegate` native entry point, used to reduce a delegator's stake or remove the delegator if the remaining stake is 0, and after the unbonding delay, automatically delegate to a new validator.",
+          "type": "string",
+          "enum": [
+            "Redelegate"
+          ]
+        },
+        {
+          "description": "The `activate_bid` native entry point, used to used to reactivate an inactive bid.",
+          "type": "string",
+          "enum": [
+            "ActivateBid"
+          ]
+        },
+        {
+          "description": "The `change_bid_public_key` native entry point, used to change a bid's public key.",
+          "type": "string",
+          "enum": [
+            "ChangeBidPublicKey"
+          ]
+        }
+      ]
+    },
+    "TransactionScheduling": {
+      "description": "Scheduling mode of a Transaction.",
+      "oneOf": [
+        {
+          "description": "No special scheduling applied.",
+          "type": "string",
+          "enum": [
+            "Standard"
+          ]
+        },
+        {
+          "description": "Execution should be scheduled for the specified era.",
+          "type": "object",
+          "required": [
+            "FutureEra"
+          ],
+          "properties": {
+            "FutureEra": {
+              "$ref": "#/definitions/EraId"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Execution should be scheduled for the specified timestamp or later.",
+          "type": "object",
+          "required": [
+            "FutureTimestamp"
+          ],
+          "properties": {
+            "FutureTimestamp": {
+              "$ref": "#/definitions/Timestamp"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
     },
     "ExecutionResult": {
       "description": "The versioned result of executing a single deploy.",
@@ -1317,7 +2189,7 @@
                   ]
                 },
                 "transfers": {
-                  "description": "A record of Transfers performed while executing the deploy.",
+                  "description": "A record of version 1 Transfers performed while executing the deploy.",
                   "type": "array",
                   "items": {
                     "$ref": "#/definitions/TransferAddr"
@@ -1406,7 +2278,7 @@
           "description": "The sequence of execution transforms.",
           "type": "array",
           "items": {
-            "$ref": "#/definitions/TransformEntry"
+            "$ref": "#/definitions/TransformV1"
           }
         }
       },
@@ -1475,7 +2347,7 @@
         }
       ]
     },
-    "TransformEntry": {
+    "TransformV1": {
       "description": "A transformation performed while executing a deploy.",
       "type": "object",
       "required": [
@@ -1491,14 +2363,14 @@
           "description": "The transformation.",
           "allOf": [
             {
-              "$ref": "#/definitions/Transform"
+              "$ref": "#/definitions/TransformKindV1"
             }
           ]
         }
       },
       "additionalProperties": false
     },
-    "Transform": {
+    "TransformKindV1": {
       "description": "The actual transformation performed while executing a deploy.",
       "oneOf": [
         {
@@ -1582,14 +2454,14 @@
           "additionalProperties": false
         },
         {
-          "description": "Writes the given Transfer to global state.",
+          "description": "Writes the given version 1 Transfer to global state.",
           "type": "object",
           "required": [
             "WriteTransfer"
           ],
           "properties": {
             "WriteTransfer": {
-              "$ref": "#/definitions/Transfer"
+              "$ref": "#/definitions/TransferV1"
             }
           },
           "additionalProperties": false
@@ -1771,10 +2643,6 @@
         }
       ]
     },
-    "AccountHash": {
-      "description": "Account hash as a formatted string.",
-      "type": "string"
-    },
     "DeployInfo": {
       "description": "Information relating to the given Deploy.",
       "type": "object",
@@ -1795,7 +2663,7 @@
           ]
         },
         "transfers": {
-          "description": "Transfers performed by the Deploy.",
+          "description": "Version 1 transfers performed by the Deploy.",
           "type": "array",
           "items": {
             "$ref": "#/definitions/TransferAddr"
@@ -1829,7 +2697,7 @@
       "additionalProperties": false
     },
     "TransferAddr": {
-      "description": "Hex-encoded transfer address.",
+      "description": "Hex-encoded version 1 transfer address.",
       "type": "string"
     },
     "URef": {
@@ -1938,8 +2806,8 @@
         }
       ]
     },
-    "Transfer": {
-      "description": "Represents a transfer from one purse to another",
+    "TransferV1": {
+      "description": "Represents a version 1 transfer from one purse to another.",
       "type": "object",
       "required": [
         "amount",
@@ -2257,10 +3125,18 @@
         },
         "key": {
           "description": "The value of the entry: a casper `Key` type.",
-          "type": "string"
+          "allOf": [
+            {
+              "$ref": "#/definitions/Key"
+            }
+          ]
         }
       },
       "additionalProperties": false
+    },
+    "Key": {
+      "description": "The key as a formatted string, under which data (e.g. `CLValue`s, smart contracts, user accounts) are stored in global state.",
+      "type": "string"
     },
     "UnbondingPurse": {
       "description": "Unbonding purse.",
@@ -2327,10 +3203,6 @@
       },
       "additionalProperties": false
     },
-    "Key": {
-      "description": "The key as a formatted string, under which data (e.g. `CLValue`s, smart contracts, user accounts) are stored in global state.",
-      "type": "string"
-    },
     "BidKind": {
       "description": "Auction bid variants.",
       "oneOf": [
@@ -2369,6 +3241,19 @@
           "properties": {
             "Delegator": {
               "$ref": "#/definitions/Delegator"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "A bridge record pointing to a new `ValidatorBid` after the public key was changed.",
+          "type": "object",
+          "required": [
+            "Bridge"
+          ],
+          "properties": {
+            "Bridge": {
+              "$ref": "#/definitions/Bridge"
             }
           },
           "additionalProperties": false
@@ -2434,112 +3319,1911 @@
       },
       "additionalProperties": false
     },
+    "Bridge": {
+      "description": "A bridge record pointing to a new `ValidatorBid` after the public key was changed.",
+      "type": "object",
+      "required": [
+        "era_id",
+        "new_validator_public_key",
+        "old_validator_public_key"
+      ],
+      "properties": {
+        "old_validator_public_key": {
+          "description": "Previous validator public key associated with the bid.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PublicKey"
+            }
+          ]
+        },
+        "new_validator_public_key": {
+          "description": "New validator public key associated with the bid.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PublicKey"
+            }
+          ]
+        },
+        "era_id": {
+          "description": "Era when bridge record was created.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EraId"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
     "ExecutionResultV2": {
-      "description": "The result of executing a single deploy.",
+      "description": "The result of executing a single transaction.",
+      "type": "object",
+      "required": [
+        "consumed",
+        "cost",
+        "effects",
+        "initiator",
+        "limit",
+        "payment",
+        "size_estimate",
+        "transfers"
+      ],
+      "properties": {
+        "initiator": {
+          "description": "Who initiated this transaction.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/InitiatorAddr"
+            }
+          ]
+        },
+        "error_message": {
+          "description": "If there is no error message, this execution was processed successfully. If there is an error message, this execution failed to fully process for the stated reason.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limit": {
+          "description": "What was the maximum allowed gas limit for this transaction?.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Gas"
+            }
+          ]
+        },
+        "consumed": {
+          "description": "How much gas was consumed executing this transaction.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Gas"
+            }
+          ]
+        },
+        "cost": {
+          "description": "How much was paid for this transaction.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/U512"
+            }
+          ]
+        },
+        "payment": {
+          "description": "Breakdown of payments made to cover the cost.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/PaymentInfo"
+          }
+        },
+        "transfers": {
+          "description": "A record of transfers performed while executing this transaction.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Transfer"
+          }
+        },
+        "size_estimate": {
+          "description": "The size estimate of the transaction",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "effects": {
+          "description": "The effects of executing this transaction.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Effects"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "Gas": {
+      "description": "The `Gas` struct represents a `U512` amount of gas.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/U512"
+        }
+      ]
+    },
+    "PaymentInfo": {
+      "description": "Breakdown of payments made to cover the cost.",
+      "type": "object",
+      "required": [
+        "source"
+      ],
+      "properties": {
+        "source": {
+          "description": "Source purse used for payment of the transaction.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/URef"
+            }
+          ]
+        }
+      }
+    },
+    "Transfer": {
+      "description": "A versioned wrapper for a transfer.",
       "oneOf": [
         {
-          "description": "The result of a failed execution.",
+          "description": "A version 1 transfer.",
           "type": "object",
           "required": [
-            "Failure"
+            "Version1"
           ],
           "properties": {
-            "Failure": {
-              "type": "object",
-              "required": [
-                "cost",
-                "effects",
-                "error_message",
-                "transfers"
-              ],
-              "properties": {
-                "effects": {
-                  "description": "The effects of executing the deploy.",
-                  "allOf": [
-                    {
-                      "$ref": "#/definitions/Effects"
-                    }
-                  ]
-                },
-                "transfers": {
-                  "description": "A record of transfers performed while executing the deploy.",
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/definitions/TransferAddr"
-                  }
-                },
-                "cost": {
-                  "description": "The cost in Motes of executing the deploy.",
-                  "allOf": [
-                    {
-                      "$ref": "#/definitions/U512"
-                    }
-                  ]
-                },
-                "error_message": {
-                  "description": "The error message associated with executing the deploy.",
-                  "type": "string"
-                }
-              },
-              "additionalProperties": false
+            "Version1": {
+              "$ref": "#/definitions/TransferV1"
             }
           },
           "additionalProperties": false
         },
         {
-          "description": "The result of a successful execution.",
+          "description": "A version 2 transfer.",
           "type": "object",
           "required": [
-            "Success"
+            "Version2"
           ],
           "properties": {
-            "Success": {
-              "type": "object",
-              "required": [
-                "cost",
-                "effects",
-                "transfers"
-              ],
-              "properties": {
-                "effects": {
-                  "description": "The effects of executing the deploy.",
-                  "allOf": [
-                    {
-                      "$ref": "#/definitions/Effects"
-                    }
-                  ]
-                },
-                "transfers": {
-                  "description": "A record of transfers performed while executing the deploy.",
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/definitions/TransferAddr"
-                  }
-                },
-                "cost": {
-                  "description": "The cost in Motes of executing the deploy.",
-                  "allOf": [
-                    {
-                      "$ref": "#/definitions/U512"
-                    }
-                  ]
-                }
-              },
-              "additionalProperties": false
+            "Version2": {
+              "$ref": "#/definitions/TransferV2"
             }
           },
           "additionalProperties": false
         }
       ]
     },
+    "TransferV2": {
+      "description": "Represents a version 2 transfer from one purse to another.",
+      "type": "object",
+      "required": [
+        "amount",
+        "from",
+        "gas",
+        "source",
+        "target",
+        "transaction_hash"
+      ],
+      "properties": {
+        "transaction_hash": {
+          "description": "Transaction that created the transfer.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/TransactionHash"
+            }
+          ]
+        },
+        "from": {
+          "description": "Entity from which transfer was executed.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/InitiatorAddr"
+            }
+          ]
+        },
+        "to": {
+          "description": "Account to which funds are transferred.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AccountHash"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source": {
+          "description": "Source purse.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/URef"
+            }
+          ]
+        },
+        "target": {
+          "description": "Target purse.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/URef"
+            }
+          ]
+        },
+        "amount": {
+          "description": "Transfer amount.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/U512"
+            }
+          ]
+        },
+        "gas": {
+          "description": "Gas.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Gas"
+            }
+          ]
+        },
+        "id": {
+          "description": "User-defined ID.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
     "Effects": {
       "description": "A log of all transforms produced during execution.",
       "type": "array",
       "items": {
-        "$ref": "#/definitions/Transform"
+        "$ref": "#/definitions/TransformV2"
       }
     },
+    "TransformV2": {
+      "description": "A transformation performed while executing a deploy.",
+      "type": "object",
+      "required": [
+        "key",
+        "kind"
+      ],
+      "properties": {
+        "key": {
+          "$ref": "#/definitions/Key"
+        },
+        "kind": {
+          "$ref": "#/definitions/TransformKindV2"
+        }
+      },
+      "additionalProperties": false
+    },
+    "TransformKindV2": {
+      "description": "Representation of a single transformation occurring during execution.\n\nNote that all arithmetic variants of `TransformKindV2` are commutative which means that a given collection of them can be executed in any order to produce the same end result.",
+      "oneOf": [
+        {
+          "description": "An identity transformation that does not modify a value in the global state.\n\nCreated as a result of reading from the global state.",
+          "type": "string",
+          "enum": [
+            "Identity"
+          ]
+        },
+        {
+          "description": "Writes a new value in the global state.",
+          "type": "object",
+          "required": [
+            "Write"
+          ],
+          "properties": {
+            "Write": {
+              "$ref": "#/definitions/StoredValue"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "A wrapping addition of an `i32` to an existing numeric value (not necessarily an `i32`) in the global state.",
+          "type": "object",
+          "required": [
+            "AddInt32"
+          ],
+          "properties": {
+            "AddInt32": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "A wrapping addition of a `u64` to an existing numeric value (not necessarily an `u64`) in the global state.",
+          "type": "object",
+          "required": [
+            "AddUInt64"
+          ],
+          "properties": {
+            "AddUInt64": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "A wrapping addition of a `U128` to an existing numeric value (not necessarily an `U128`) in the global state.",
+          "type": "object",
+          "required": [
+            "AddUInt128"
+          ],
+          "properties": {
+            "AddUInt128": {
+              "$ref": "#/definitions/U128"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "A wrapping addition of a `U256` to an existing numeric value (not necessarily an `U256`) in the global state.",
+          "type": "object",
+          "required": [
+            "AddUInt256"
+          ],
+          "properties": {
+            "AddUInt256": {
+              "$ref": "#/definitions/U256"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "A wrapping addition of a `U512` to an existing numeric value (not necessarily an `U512`) in the global state.",
+          "type": "object",
+          "required": [
+            "AddUInt512"
+          ],
+          "properties": {
+            "AddUInt512": {
+              "$ref": "#/definitions/U512"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Adds new named keys to an existing entry in the global state.\n\nThis transform assumes that the existing stored value is either an Account or a Contract.",
+          "type": "object",
+          "required": [
+            "AddKeys"
+          ],
+          "properties": {
+            "AddKeys": {
+              "$ref": "#/definitions/NamedKeys"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Removes the pathing to the global state entry of the specified key. The pruned element remains reachable from previously generated global state root hashes, but will not be included in the next generated global state root hash and subsequent state accumulated from it.",
+          "type": "object",
+          "required": [
+            "Prune"
+          ],
+          "properties": {
+            "Prune": {
+              "$ref": "#/definitions/Key"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Represents the case where applying a transform would cause an error.",
+          "type": "object",
+          "required": [
+            "Failure"
+          ],
+          "properties": {
+            "Failure": {
+              "$ref": "#/definitions/TransformError"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "StoredValue": {
+      "description": "A value stored in Global State.",
+      "oneOf": [
+        {
+          "description": "A CLValue.",
+          "type": "object",
+          "required": [
+            "CLValue"
+          ],
+          "properties": {
+            "CLValue": {
+              "$ref": "#/definitions/CLValue"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "An account.",
+          "type": "object",
+          "required": [
+            "Account"
+          ],
+          "properties": {
+            "Account": {
+              "$ref": "#/definitions/Account"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Contract wasm.",
+          "type": "object",
+          "required": [
+            "ContractWasm"
+          ],
+          "properties": {
+            "ContractWasm": {
+              "$ref": "#/definitions/ContractWasm"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "A contract.",
+          "type": "object",
+          "required": [
+            "Contract"
+          ],
+          "properties": {
+            "Contract": {
+              "$ref": "#/definitions/Contract"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "A contract package.",
+          "type": "object",
+          "required": [
+            "ContractPackage"
+          ],
+          "properties": {
+            "ContractPackage": {
+              "$ref": "#/definitions/ContractPackage"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "A version 1 (legacy) transfer.",
+          "type": "object",
+          "required": [
+            "LegacyTransfer"
+          ],
+          "properties": {
+            "LegacyTransfer": {
+              "$ref": "#/definitions/TransferV1"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Info about a deploy.",
+          "type": "object",
+          "required": [
+            "DeployInfo"
+          ],
+          "properties": {
+            "DeployInfo": {
+              "$ref": "#/definitions/DeployInfo"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Info about an era.",
+          "type": "object",
+          "required": [
+            "EraInfo"
+          ],
+          "properties": {
+            "EraInfo": {
+              "$ref": "#/definitions/EraInfo"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Variant that stores [`Bid`].",
+          "type": "object",
+          "required": [
+            "Bid"
+          ],
+          "properties": {
+            "Bid": {
+              "$ref": "#/definitions/Bid"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Variant that stores withdraw information.",
+          "type": "object",
+          "required": [
+            "Withdraw"
+          ],
+          "properties": {
+            "Withdraw": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/WithdrawPurse"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Unbonding information.",
+          "type": "object",
+          "required": [
+            "Unbonding"
+          ],
+          "properties": {
+            "Unbonding": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/UnbondingPurse"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "An `AddressableEntity`.",
+          "type": "object",
+          "required": [
+            "AddressableEntity"
+          ],
+          "properties": {
+            "AddressableEntity": {
+              "$ref": "#/definitions/AddressableEntity"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Variant that stores [`BidKind`].",
+          "type": "object",
+          "required": [
+            "BidKind"
+          ],
+          "properties": {
+            "BidKind": {
+              "$ref": "#/definitions/BidKind"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "A `Package`.",
+          "type": "object",
+          "required": [
+            "Package"
+          ],
+          "properties": {
+            "Package": {
+              "$ref": "#/definitions/Package"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "A record of byte code.",
+          "type": "object",
+          "required": [
+            "ByteCode"
+          ],
+          "properties": {
+            "ByteCode": {
+              "$ref": "#/definitions/ByteCode"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Variant that stores a message topic.",
+          "type": "object",
+          "required": [
+            "MessageTopic"
+          ],
+          "properties": {
+            "MessageTopic": {
+              "$ref": "#/definitions/MessageTopicSummary"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Variant that stores a message digest.",
+          "type": "object",
+          "required": [
+            "Message"
+          ],
+          "properties": {
+            "Message": {
+              "$ref": "#/definitions/MessageChecksum"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "A NamedKey record.",
+          "type": "object",
+          "required": [
+            "NamedKey"
+          ],
+          "properties": {
+            "NamedKey": {
+              "$ref": "#/definitions/NamedKeyValue"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "A reservation record.",
+          "type": "object",
+          "required": [
+            "Reservation"
+          ],
+          "properties": {
+            "Reservation": {
+              "$ref": "#/definitions/ReservationKind"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "An entrypoint record.",
+          "type": "object",
+          "required": [
+            "EntryPoint"
+          ],
+          "properties": {
+            "EntryPoint": {
+              "$ref": "#/definitions/EntryPointValue"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "Account": {
+      "description": "Represents an Account in the global state.",
+      "type": "object",
+      "required": [
+        "account_hash",
+        "action_thresholds",
+        "associated_keys",
+        "main_purse",
+        "named_keys"
+      ],
+      "properties": {
+        "account_hash": {
+          "$ref": "#/definitions/AccountHash"
+        },
+        "named_keys": {
+          "$ref": "#/definitions/NamedKeys"
+        },
+        "main_purse": {
+          "$ref": "#/definitions/URef"
+        },
+        "associated_keys": {
+          "$ref": "#/definitions/AccountAssociatedKeys"
+        },
+        "action_thresholds": {
+          "$ref": "#/definitions/AccountActionThresholds"
+        }
+      },
+      "additionalProperties": false
+    },
+    "NamedKeys": {
+      "description": "A collection of named keys.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/NamedKey"
+      }
+    },
+    "AccountAssociatedKeys": {
+      "description": "A collection of weighted public keys (represented as account hashes) associated with an account.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/Array_of_AssociatedKey"
+        }
+      ]
+    },
+    "Array_of_AssociatedKey": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/AssociatedKey"
+      }
+    },
+    "AssociatedKey": {
+      "description": "A weighted public key.",
+      "type": "object",
+      "required": [
+        "account_hash",
+        "weight"
+      ],
+      "properties": {
+        "account_hash": {
+          "description": "The account hash of the public key.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/AccountHash"
+            }
+          ]
+        },
+        "weight": {
+          "description": "The weight assigned to the public key.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/AccountAssociatedKeyWeight"
+            }
+          ]
+        }
+      }
+    },
+    "AccountAssociatedKeyWeight": {
+      "description": "The weight associated with public keys in an account's associated keys.",
+      "type": "integer",
+      "format": "uint8",
+      "minimum": 0.0
+    },
+    "AccountActionThresholds": {
+      "description": "Thresholds that have to be met when executing an action of a certain type.",
+      "type": "object",
+      "required": [
+        "deployment",
+        "key_management"
+      ],
+      "properties": {
+        "deployment": {
+          "description": "Threshold for deploy execution.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/AccountAssociatedKeyWeight"
+            }
+          ]
+        },
+        "key_management": {
+          "description": "Threshold for managing action threshold.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/AccountAssociatedKeyWeight"
+            }
+          ]
+        }
+      }
+    },
+    "ContractWasm": {
+      "description": "A container for contract's WASM bytes.",
+      "type": "object",
+      "required": [
+        "bytes"
+      ],
+      "properties": {
+        "bytes": {
+          "$ref": "#/definitions/Bytes"
+        }
+      }
+    },
+    "Contract": {
+      "description": "Methods and type signatures supported by a contract.",
+      "type": "object",
+      "required": [
+        "contract_package_hash",
+        "contract_wasm_hash",
+        "entry_points",
+        "named_keys",
+        "protocol_version"
+      ],
+      "properties": {
+        "contract_package_hash": {
+          "$ref": "#/definitions/ContractPackageHash"
+        },
+        "contract_wasm_hash": {
+          "$ref": "#/definitions/ContractWasmHash"
+        },
+        "named_keys": {
+          "$ref": "#/definitions/NamedKeys"
+        },
+        "entry_points": {
+          "$ref": "#/definitions/Array_of_NamedEntryPoint"
+        },
+        "protocol_version": {
+          "$ref": "#/definitions/ProtocolVersion"
+        }
+      }
+    },
+    "ContractPackageHash": {
+      "description": "The hash address of the contract package",
+      "type": "string"
+    },
+    "ContractWasmHash": {
+      "description": "The hash address of the contract wasm",
+      "type": "string"
+    },
+    "Array_of_NamedEntryPoint": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/NamedEntryPoint"
+      }
+    },
+    "NamedEntryPoint": {
+      "type": "object",
+      "required": [
+        "entry_point",
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "entry_point": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/EntryPoint"
+            }
+          ]
+        }
+      }
+    },
+    "EntryPoint": {
+      "description": "Type signature of a method. Order of arguments matter since can be referenced by index as well as name.",
+      "type": "object",
+      "required": [
+        "access",
+        "args",
+        "entry_point_type",
+        "name",
+        "ret"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Parameter"
+          }
+        },
+        "ret": {
+          "$ref": "#/definitions/CLType"
+        },
+        "access": {
+          "$ref": "#/definitions/EntryPointAccess"
+        },
+        "entry_point_type": {
+          "$ref": "#/definitions/EntryPointType"
+        }
+      }
+    },
+    "Parameter": {
+      "description": "Parameter to a method",
+      "type": "object",
+      "required": [
+        "cl_type",
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "cl_type": {
+          "$ref": "#/definitions/CLType"
+        }
+      }
+    },
+    "EntryPointAccess": {
+      "description": "Enum describing the possible access control options for a contract entry point (method).",
+      "oneOf": [
+        {
+          "description": "Anyone can call this method (no access controls).",
+          "type": "string",
+          "enum": [
+            "Public"
+          ]
+        },
+        {
+          "description": "Only users from the listed groups may call this method. Note: if the list is empty then this method is not callable from outside the contract.",
+          "type": "object",
+          "required": [
+            "Groups"
+          ],
+          "properties": {
+            "Groups": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/Group"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Can't be accessed directly but are kept in the derived wasm bytes.",
+          "type": "string",
+          "enum": [
+            "Template"
+          ]
+        }
+      ]
+    },
+    "Group": {
+      "description": "A (labelled) \"user group\". Each method of a versioned contract may be associated with one or more user groups which are allowed to call it.",
+      "type": "string"
+    },
+    "EntryPointType": {
+      "description": "Context of method execution\n\nMost significant bit represents version i.e. - 0b0 -> 0.x/1.x (session & contracts) - 0b1 -> 2.x and later (introduced installer, utility entry points)",
+      "oneOf": [
+        {
+          "description": "Runs using the calling entity's context. In v1.x this was used for both \"session\" code run using the originating Account's context, and also for \"StoredSession\" code that ran in the caller's context. While this made systemic sense due to the way the runtime context nesting works, this dual usage was very confusing to most human beings.\n\nIn v2.x the renamed Caller variant is exclusively used for wasm run using the initiating account entity's context. Previously installed 1.x stored session code should continue to work as the binary value matches but we no longer allow such logic to be upgraded, nor do we allow new stored session to be installed.",
+          "type": "string",
+          "enum": [
+            "Caller"
+          ]
+        },
+        {
+          "description": "Runs using the called entity's context.",
+          "type": "string",
+          "enum": [
+            "Called"
+          ]
+        },
+        {
+          "description": "Extract a subset of bytecode and installs it as a new smart contract. Runs using the called entity's context.",
+          "type": "string",
+          "enum": [
+            "Factory"
+          ]
+        }
+      ]
+    },
+    "ContractPackage": {
+      "description": "Contract definition, metadata, and security container.",
+      "type": "object",
+      "required": [
+        "access_key",
+        "disabled_versions",
+        "groups",
+        "lock_status",
+        "versions"
+      ],
+      "properties": {
+        "access_key": {
+          "description": "Key used to add or disable versions",
+          "allOf": [
+            {
+              "$ref": "#/definitions/URef"
+            }
+          ]
+        },
+        "versions": {
+          "description": "All versions (enabled & disabled)",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ContractVersion"
+          }
+        },
+        "disabled_versions": {
+          "description": "Disabled versions",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ContractVersionKey"
+          },
+          "uniqueItems": true
+        },
+        "groups": {
+          "description": "Mapping maintaining the set of URefs associated with each \"user group\". This can be used to control access to methods in a particular version of the contract. A method is callable by any context which \"knows\" any of the URefs associated with the method's user group.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Array_of_NamedUserGroup"
+            }
+          ]
+        },
+        "lock_status": {
+          "description": "A flag that determines whether a contract is locked",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ContractPackageStatus"
+            }
+          ]
+        }
+      }
+    },
+    "ContractVersion": {
+      "type": "object",
+      "required": [
+        "contract_hash",
+        "contract_version",
+        "protocol_version_major"
+      ],
+      "properties": {
+        "protocol_version_major": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "contract_version": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "contract_hash": {
+          "$ref": "#/definitions/ContractHash"
+        }
+      }
+    },
+    "ContractHash": {
+      "description": "The hash address of the contract",
+      "type": "string"
+    },
+    "ContractVersionKey": {
+      "description": "Major element of `ProtocolVersion` combined with `ContractVersion`.",
+      "type": "array",
+      "items": [
+        {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      ],
+      "maxItems": 2,
+      "minItems": 2
+    },
+    "Array_of_NamedUserGroup": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/NamedUserGroup"
+      }
+    },
+    "NamedUserGroup": {
+      "type": "object",
+      "required": [
+        "group_name",
+        "group_users"
+      ],
+      "properties": {
+        "group_name": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/Group"
+            }
+          ]
+        },
+        "group_users": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/URef"
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "ContractPackageStatus": {
+      "description": "A enum to determine the lock status of the contract package.",
+      "oneOf": [
+        {
+          "description": "The package is locked and cannot be versioned.",
+          "type": "string",
+          "enum": [
+            "Locked"
+          ]
+        },
+        {
+          "description": "The package is unlocked and can be versioned.",
+          "type": "string",
+          "enum": [
+            "Unlocked"
+          ]
+        }
+      ]
+    },
+    "AddressableEntity": {
+      "description": "Methods and type signatures supported by a contract.",
+      "type": "object",
+      "required": [
+        "action_thresholds",
+        "associated_keys",
+        "byte_code_hash",
+        "entity_kind",
+        "main_purse",
+        "message_topics",
+        "package_hash",
+        "protocol_version"
+      ],
+      "properties": {
+        "protocol_version": {
+          "$ref": "#/definitions/ProtocolVersion"
+        },
+        "entity_kind": {
+          "$ref": "#/definitions/EntityKind"
+        },
+        "package_hash": {
+          "$ref": "#/definitions/PackageHash"
+        },
+        "byte_code_hash": {
+          "$ref": "#/definitions/ByteCodeHash"
+        },
+        "main_purse": {
+          "$ref": "#/definitions/URef"
+        },
+        "associated_keys": {
+          "$ref": "#/definitions/EntityAssociatedKeys"
+        },
+        "action_thresholds": {
+          "$ref": "#/definitions/EntityActionThresholds"
+        },
+        "message_topics": {
+          "$ref": "#/definitions/Array_of_MessageTopic"
+        }
+      }
+    },
+    "EntityKind": {
+      "description": "The type of Package.",
+      "oneOf": [
+        {
+          "description": "Package associated with a native contract implementation.",
+          "type": "object",
+          "required": [
+            "System"
+          ],
+          "properties": {
+            "System": {
+              "$ref": "#/definitions/SystemEntityType"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Package associated with an Account hash.",
+          "type": "object",
+          "required": [
+            "Account"
+          ],
+          "properties": {
+            "Account": {
+              "$ref": "#/definitions/AccountHash"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Packages associated with Wasm stored on chain.",
+          "type": "object",
+          "required": [
+            "SmartContract"
+          ],
+          "properties": {
+            "SmartContract": {
+              "$ref": "#/definitions/TransactionRuntime"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "SystemEntityType": {
+      "description": "System contract types.\n\nUsed by converting to a `u32` and passing as the `system_contract_index` argument of `ext_ffi::casper_get_system_contract()`.",
+      "oneOf": [
+        {
+          "description": "Mint contract.",
+          "type": "string",
+          "enum": [
+            "Mint"
+          ]
+        },
+        {
+          "description": "Handle Payment contract.",
+          "type": "string",
+          "enum": [
+            "HandlePayment"
+          ]
+        },
+        {
+          "description": "Standard Payment contract.",
+          "type": "string",
+          "enum": [
+            "StandardPayment"
+          ]
+        },
+        {
+          "description": "Auction contract.",
+          "type": "string",
+          "enum": [
+            "Auction"
+          ]
+        }
+      ]
+    },
+    "ByteCodeHash": {
+      "description": "The hash address of the contract wasm",
+      "type": "string"
+    },
+    "EntityAssociatedKeys": {
+      "description": "A collection of weighted public keys (represented as account hashes) associated with an account.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/Array_of_AssociatedKey"
+        }
+      ]
+    },
+    "EntityActionThresholds": {
+      "description": "Thresholds that have to be met when executing an action of a certain type.",
+      "type": "object",
+      "required": [
+        "deployment",
+        "key_management",
+        "upgrade_management"
+      ],
+      "properties": {
+        "deployment": {
+          "description": "Threshold for deploy execution.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EntityAssociatedKeyWeight"
+            }
+          ]
+        },
+        "upgrade_management": {
+          "description": "Threshold for upgrading contracts.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EntityAssociatedKeyWeight"
+            }
+          ]
+        },
+        "key_management": {
+          "description": "Threshold for managing action threshold.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EntityAssociatedKeyWeight"
+            }
+          ]
+        }
+      }
+    },
+    "EntityAssociatedKeyWeight": {
+      "description": "The weight associated with public keys in an account's associated keys.",
+      "type": "integer",
+      "format": "uint8",
+      "minimum": 0.0
+    },
+    "Array_of_MessageTopic": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/MessageTopic"
+      }
+    },
+    "MessageTopic": {
+      "type": "object",
+      "required": [
+        "topic_name",
+        "topic_name_hash"
+      ],
+      "properties": {
+        "topic_name": {
+          "type": "string"
+        },
+        "topic_name_hash": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/TopicNameHash"
+            }
+          ]
+        }
+      }
+    },
+    "TopicNameHash": {
+      "description": "The hash of the name of the message topic.",
+      "type": "string"
+    },
+    "Package": {
+      "description": "Entity definition, metadata, and security container.",
+      "type": "object",
+      "required": [
+        "disabled_versions",
+        "groups",
+        "lock_status",
+        "versions"
+      ],
+      "properties": {
+        "versions": {
+          "description": "All versions (enabled & disabled).",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Array_of_EntityVersionAndHash"
+            }
+          ]
+        },
+        "disabled_versions": {
+          "description": "Collection of disabled entity versions. The runtime will not permit disabled entity versions to be executed.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/EntityVersionKey"
+          },
+          "uniqueItems": true
+        },
+        "groups": {
+          "description": "Mapping maintaining the set of URefs associated with each \"user group\". This can be used to control access to methods in a particular version of the entity. A method is callable by any context which \"knows\" any of the URefs associated with the method's user group.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Array_of_NamedUserGroup"
+            }
+          ]
+        },
+        "lock_status": {
+          "description": "A flag that determines whether a entity is locked",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PackageStatus"
+            }
+          ]
+        }
+      }
+    },
+    "Array_of_EntityVersionAndHash": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/EntityVersionAndHash"
+      }
+    },
+    "EntityVersionAndHash": {
+      "type": "object",
+      "required": [
+        "addressable_entity_hash",
+        "entity_version_key"
+      ],
+      "properties": {
+        "entity_version_key": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/EntityVersionKey"
+            }
+          ]
+        },
+        "addressable_entity_hash": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/AddressableEntityHash"
+            }
+          ]
+        }
+      }
+    },
+    "EntityVersionKey": {
+      "description": "Major element of `ProtocolVersion` combined with `EntityVersion`.",
+      "type": "object",
+      "required": [
+        "entity_version",
+        "protocol_version_major"
+      ],
+      "properties": {
+        "protocol_version_major": {
+          "description": "Major element of `ProtocolVersion` a `ContractVersion` is compatible with.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "entity_version": {
+          "description": "Automatically incremented value for a contract version within a major `ProtocolVersion`.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
+    },
+    "PackageStatus": {
+      "description": "A enum to determine the lock status of the package.",
+      "oneOf": [
+        {
+          "description": "The package is locked and cannot be versioned.",
+          "type": "string",
+          "enum": [
+            "Locked"
+          ]
+        },
+        {
+          "description": "The package is unlocked and can be versioned.",
+          "type": "string",
+          "enum": [
+            "Unlocked"
+          ]
+        }
+      ]
+    },
+    "ByteCode": {
+      "description": "A container for contract's Wasm bytes.",
+      "type": "object",
+      "required": [
+        "bytes",
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/definitions/ByteCodeKind"
+        },
+        "bytes": {
+          "$ref": "#/definitions/Bytes"
+        }
+      }
+    },
+    "ByteCodeKind": {
+      "description": "The type of Byte code.",
+      "oneOf": [
+        {
+          "description": "Empty byte code.",
+          "type": "string",
+          "enum": [
+            "Empty"
+          ]
+        },
+        {
+          "description": "Byte code to be executed with the version 1 Casper execution engine.",
+          "type": "string",
+          "enum": [
+            "V1CasperWasm"
+          ]
+        }
+      ]
+    },
+    "MessageTopicSummary": {
+      "description": "Summary of a message topic that will be stored in global state.",
+      "type": "object",
+      "required": [
+        "blocktime",
+        "message_count"
+      ],
+      "properties": {
+        "message_count": {
+          "description": "Number of messages in this topic.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "blocktime": {
+          "description": "Block timestamp in which these messages were emitted.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/BlockTime"
+            }
+          ]
+        }
+      }
+    },
+    "BlockTime": {
+      "description": "A newtype wrapping a [`u64`] which represents the block time.",
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0.0
+    },
+    "MessageChecksum": {
+      "description": "Message checksum as a formatted string.",
+      "type": "string"
+    },
+    "NamedKeyValue": {
+      "description": "A NamedKey value.",
+      "type": "object",
+      "required": [
+        "name",
+        "named_key"
+      ],
+      "properties": {
+        "named_key": {
+          "description": "The actual `Key` encoded as a CLValue.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/CLValue"
+            }
+          ]
+        },
+        "name": {
+          "description": "The name of the `Key` encoded as a CLValue.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/CLValue"
+            }
+          ]
+        }
+      }
+    },
+    "ReservationKind": {
+      "description": "Container for bytes recording location, type and data for a gas reservation",
+      "type": "object",
+      "required": [
+        "receipt",
+        "reservation_data",
+        "reservation_kind"
+      ],
+      "properties": {
+        "receipt": {
+          "$ref": "#/definitions/Digest"
+        },
+        "reservation_kind": {
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0.0
+        },
+        "reservation_data": {
+          "$ref": "#/definitions/Bytes"
+        }
+      }
+    },
+    "EntryPointValue": {
+      "description": "The encaspulated representation of entrypoints.",
+      "oneOf": [
+        {
+          "description": "Entrypoints to be executed against the V1 Casper VM.",
+          "type": "object",
+          "required": [
+            "V1CasperVm"
+          ],
+          "properties": {
+            "V1CasperVm": {
+              "$ref": "#/definitions/EntryPoint2"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Entrypoints to be executed against the V2 Casper VM.",
+          "type": "object",
+          "required": [
+            "V2CasperVm"
+          ],
+          "properties": {
+            "V2CasperVm": {
+              "$ref": "#/definitions/EntryPointV2"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "EntryPoint2": {
+      "description": "Type signature of a method. Order of arguments matter since can be referenced by index as well as name.",
+      "type": "object",
+      "required": [
+        "access",
+        "args",
+        "entry_point_payment",
+        "entry_point_type",
+        "name",
+        "ret"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Parameter"
+          }
+        },
+        "ret": {
+          "$ref": "#/definitions/CLType"
+        },
+        "access": {
+          "$ref": "#/definitions/EntryPointAccess"
+        },
+        "entry_point_type": {
+          "$ref": "#/definitions/EntryPointType"
+        },
+        "entry_point_payment": {
+          "$ref": "#/definitions/EntryPointPayment"
+        }
+      }
+    },
+    "EntryPointPayment": {
+      "description": "An enum specifying who pays for the invocation and execution of the entrypoint.",
+      "oneOf": [
+        {
+          "description": "The caller must cover cost",
+          "type": "string",
+          "enum": [
+            "Caller"
+          ]
+        },
+        {
+          "description": "Will cover cost to execute self but not cost of any subsequent invoked contracts",
+          "type": "string",
+          "enum": [
+            "SelfOnly"
+          ]
+        },
+        {
+          "description": "will cover cost to execute self and the cost of any subsequent invoked contracts",
+          "type": "string",
+          "enum": [
+            "SelfOnward"
+          ]
+        }
+      ]
+    },
+    "EntryPointV2": {
+      "description": "The entry point for the V2 Casper VM.",
+      "type": "object",
+      "required": [
+        "flags",
+        "function_index"
+      ],
+      "properties": {
+        "function_index": {
+          "description": "The selector.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "flags": {
+          "description": "The flags.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
+    },
+    "TransformError": {
+      "description": "Error type for applying and combining transforms.\n\nA `TypeMismatch` occurs when a transform cannot be applied because the types are not compatible (e.g. trying to add a number to a string).",
+      "oneOf": [
+        {
+          "description": "Error while (de)serializing data.",
+          "type": "object",
+          "required": [
+            "Serialization"
+          ],
+          "properties": {
+            "Serialization": {
+              "$ref": "#/definitions/BytesreprError"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Type mismatch error.",
+          "type": "object",
+          "required": [
+            "TypeMismatch"
+          ],
+          "properties": {
+            "TypeMismatch": {
+              "$ref": "#/definitions/TypeMismatch"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Type no longer supported.",
+          "type": "string",
+          "enum": [
+            "Deprecated"
+          ]
+        }
+      ]
+    },
+    "BytesreprError": {
+      "description": "Serialization and deserialization errors.",
+      "oneOf": [
+        {
+          "description": "Early end of stream while deserializing.",
+          "type": "string",
+          "enum": [
+            "EarlyEndOfStream"
+          ]
+        },
+        {
+          "description": "Formatting error while deserializing.",
+          "type": "string",
+          "enum": [
+            "Formatting"
+          ]
+        },
+        {
+          "description": "Not all input bytes were consumed in [`deserialize`].",
+          "type": "string",
+          "enum": [
+            "LeftOverBytes"
+          ]
+        },
+        {
+          "description": "Out of memory error.",
+          "type": "string",
+          "enum": [
+            "OutOfMemory"
+          ]
+        },
+        {
+          "description": "No serialized representation is available for a value.",
+          "type": "string",
+          "enum": [
+            "NotRepresentable"
+          ]
+        },
+        {
+          "description": "Exceeded a recursion depth limit.",
+          "type": "string",
+          "enum": [
+            "ExceededRecursionDepth"
+          ]
+        }
+      ]
+    },
+    "TypeMismatch": {
+      "description": "An error struct representing a type mismatch in [`StoredValue`](crate::StoredValue) operations.",
+      "type": "object",
+      "required": [
+        "expected",
+        "found"
+      ],
+      "properties": {
+        "expected": {
+          "description": "The name of the expected type.",
+          "type": "string"
+        },
+        "found": {
+          "description": "The actual type found.",
+          "type": "string"
+        }
+      }
+    },
+    "Message": {
+      "description": "Message that was emitted by an addressable entity during execution.",
+      "type": "object",
+      "required": [
+        "block_index",
+        "entity_hash",
+        "message",
+        "topic_index",
+        "topic_name",
+        "topic_name_hash"
+      ],
+      "properties": {
+        "entity_hash": {
+          "description": "The identity of the entity that produced the message.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EntityAddr"
+            }
+          ]
+        },
+        "message": {
+          "description": "The payload of the message.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/MessagePayload"
+            }
+          ]
+        },
+        "topic_name": {
+          "description": "The name of the topic on which the message was emitted on.",
+          "type": "string"
+        },
+        "topic_name_hash": {
+          "description": "The hash of the name of the topic.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/TopicNameHash"
+            }
+          ]
+        },
+        "topic_index": {
+          "description": "Message index in the topic.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "block_index": {
+          "description": "Message index in the block.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        }
+      }
+    },
+    "EntityAddr": {
+      "description": "The address for an AddressableEntity which contains the 32 bytes and tagging information.",
+      "anyOf": [
+        {
+          "description": "The address for a system entity account or contract.",
+          "type": "string"
+        },
+        {
+          "description": "The address of an entity that corresponds to an Account.",
+          "type": "string"
+        },
+        {
+          "description": "The address of an entity that corresponds to a Userland smart contract.",
+          "type": "string"
+        }
+      ]
+    },
+    "MessagePayload": {
+      "description": "The payload of the message emitted by an addressable entity during execution.",
+      "oneOf": [
+        {
+          "description": "Human readable string message.",
+          "type": "object",
+          "required": [
+            "String"
+          ],
+          "properties": {
+            "String": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Message represented as raw bytes.",
+          "type": "object",
+          "required": [
+            "Bytes"
+          ],
+          "properties": {
+            "Bytes": {
+              "$ref": "#/definitions/Bytes"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
     "FinalitySignature": {
+      "description": "A validator's signature of a block, confirming it is finalized.",
+      "oneOf": [
+        {
+          "description": "Version 1 of the finality signature.",
+          "type": "object",
+          "required": [
+            "V1"
+          ],
+          "properties": {
+            "V1": {
+              "$ref": "#/definitions/FinalitySignatureV1"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Version 2 of the finality signature.",
+          "type": "object",
+          "required": [
+            "V2"
+          ],
+          "properties": {
+            "V2": {
+              "$ref": "#/definitions/FinalitySignatureV2"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "FinalitySignatureV1": {
       "description": "A validator's signature of a block, confirming it is finalized.",
       "type": "object",
       "required": [
@@ -2582,6 +5266,74 @@
           ]
         }
       }
+    },
+    "FinalitySignatureV2": {
+      "description": "A validator's signature of a block, confirming it is finalized.",
+      "type": "object",
+      "required": [
+        "block_hash",
+        "block_height",
+        "chain_name_hash",
+        "era_id",
+        "public_key",
+        "signature"
+      ],
+      "properties": {
+        "block_hash": {
+          "description": "The block hash of the associated block.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/BlockHash"
+            }
+          ]
+        },
+        "block_height": {
+          "description": "The height of the associated block.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "era_id": {
+          "description": "The era in which the associated block was created.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EraId"
+            }
+          ]
+        },
+        "chain_name_hash": {
+          "description": "The hash of the chain name of the associated block.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ChainNameDigest"
+            }
+          ]
+        },
+        "signature": {
+          "description": "The signature over the block hash of the associated block.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Signature"
+            }
+          ]
+        },
+        "public_key": {
+          "description": "The public key of the signing validator.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PublicKey"
+            }
+          ]
+        }
+      }
+    },
+    "ChainNameDigest": {
+      "description": "Hex-encoded cryptographic hash of a chain name.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/Digest"
+        }
+      ]
     }
   }
 }

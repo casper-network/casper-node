@@ -50,8 +50,8 @@ impl DelegatorConfig {
             PublicKey::from(&SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>()).unwrap());
         let delegator_public_key =
             PublicKey::from(&SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>()).unwrap());
-        let balance = Motes::new(U512::from(rng.gen::<u64>()));
-        let delegated_amount = Motes::new(U512::from(rng.gen::<u64>()));
+        let balance = Motes::new(rng.gen::<u64>());
+        let delegated_amount = Motes::new(rng.gen::<u64>());
 
         DelegatorConfig {
             validator_public_key,

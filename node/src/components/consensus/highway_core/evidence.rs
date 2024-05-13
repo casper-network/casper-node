@@ -11,7 +11,7 @@ use crate::components::consensus::{
 
 /// An error due to invalid evidence.
 #[derive(Debug, Error, Eq, PartialEq)]
-pub(crate) enum EvidenceError {
+pub enum EvidenceError {
     #[error("The sequence numbers in the equivocating units are different.")]
     EquivocationDifferentSeqNumbers,
     #[error("The creators in the equivocating units are different.")]
@@ -57,7 +57,7 @@ pub mod relaxed {
         deserialize = "C::Hash: Deserialize<'de>",
     ))]
     #[strum_discriminants(derive(strum::EnumIter))]
-    pub(crate) enum Evidence<C>
+    pub enum Evidence<C>
     where
         C: Context,
     {
@@ -80,11 +80,11 @@ pub mod relaxed {
         },
     }
 }
-pub(crate) use relaxed::{Evidence, EvidenceDiscriminants};
+pub use relaxed::{Evidence, EvidenceDiscriminants};
 
 impl<C: Context> Evidence<C> {
     /// Returns the ID of the faulty validator.
-    pub(crate) fn perpetrator(&self) -> ValidatorIndex {
+    pub fn perpetrator(&self) -> ValidatorIndex {
         match self {
             Evidence::Equivocation(unit1, _) => unit1.wire_unit().creator,
             Evidence::Endorsements { endorsement1, .. } => endorsement1.validator_idx(),
@@ -96,7 +96,7 @@ impl<C: Context> Evidence<C> {
     ///
     /// - For an equivocation, it checks whether the creators, sequence numbers and instance IDs of
     /// the two units are the same.
-    pub(crate) fn validate(
+    pub fn validate(
         &self,
         validators: &Validators<C::ValidatorId>,
         instance_id: &C::InstanceId,

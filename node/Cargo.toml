@@ -1,7 +1,7 @@
 [package]
 name = "casper-node"
 # when updating, also update 'html_root_url' in lib.rs
-version = "1.5.2"
+version = "2.0.0"
 authors = [
     "Marc Brinkmann <marc@casperlabs.io>",
     "Fraser Hutchison <fraser@casperlabs.io>",
@@ -26,10 +26,10 @@ base16 = "0.2.1"
 base64 = "0.13.0"
 bincode = "1"
 bytes = "1.0.1"
-casper-execution-engine = { version = "5.0.0", path = "../execution_engine" }
-casper-json-rpc = { version = "1.0.0", path = "../json_rpc" }
-casper-storage = { version = "1.4.3", path = "../storage" }
-casper-types = { version = "3.0.0", path = "../types", features = [
+casper-binary-port = { version = "1.0.0", path = "../binary_port" }
+casper-execution-engine = { version = "7.0.0", path = "../execution_engine" }
+casper-storage = { version = "2.0.0", path = "../storage" }
+casper-types = { version = "5.0.0", path = "../types", features = [
     "datasize",
     "json-schema",
     "std",
@@ -72,7 +72,7 @@ rand = "0.8.3"
 rand_chacha = "0.3.0"
 regex = "1"
 rmp-serde = "0.14.4"
-schemars = { version = "0.8.12", features = [
+schemars = { version = "0.8.16", features = [
     "preserve_order",
     "impl_json_schema",
 ] }
@@ -82,7 +82,7 @@ serde-map-to-array = "1.1.0"
 serde_bytes = "0.11.5"
 serde_json = { version = "1", features = ["preserve_order"] }
 serde_repr = "0.1.6"
-shlex = "1.0.0"
+shlex = "1.3.0"
 signal-hook = "0.3.4"
 signature = "1"
 smallvec = { version = "1", features = ["serde"] }
@@ -104,7 +104,8 @@ tokio-openssl = "0.6.3"
 tokio-serde = { version = "0.8.0", features = ["bincode"] }
 tokio-stream = { version = "0.1.4", features = ["sync"] }
 tokio-util = { version = "0.6.4", features = ["codec"] }
-toml = "0.5.6"
+mio = "0.8.11"
+toml = { version = "0.7.8", features = ["preserve_order"] }
 tower = { version = "0.4.6", features = ["limit"] }
 tracing = "0.1.18"
 tracing-futures = "0.2.5"
@@ -115,7 +116,7 @@ tracing-subscriber = { version = "0.3.15", features = [
 ] }
 uint = "0.9.0"
 uuid = { version = "0.8.1", features = ["serde", "v4"] }
-warp = { version = "0.3.0", features = ["compression"] }
+warp = { version = "0.3.6", features = ["compression"] }
 wheelbuf = "0.2.0"
 
 [build-dependencies]
@@ -131,6 +132,7 @@ casper-types = { path = "../types", features = [
     "datasize",
     "json-schema",
     "std",
+    "testing",
 ] }
 fake_instant = "0.4.0"
 pnet = "0.28.0"
@@ -142,6 +144,7 @@ reqwest = { version = "0.11.18", features = ["stream"] }
 tokio = { version = "1", features = ["test-util"] }
 
 [features]
+failpoints = []
 testing = ["casper-types/testing"]
 vendored-openssl = ["openssl/vendored"]
 

@@ -1,13 +1,15 @@
 //! Support for runtime configuration of the execution engine - as an integral property of the
 //! `EngineState` instance.
-use casper_types::{FeeHandling, RefundHandling, SystemConfig, WasmConfig};
 
 use std::collections::BTreeSet;
 
 use num_rational::Ratio;
 use num_traits::One;
 
-use casper_types::{account::AccountHash, PublicKey};
+use casper_types::{
+    account::AccountHash, FeeHandling, ProtocolVersion, PublicKey, RefundHandling, SystemConfig,
+    TimeDiff, WasmConfig, DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING,
+};
 
 /// Default value for a maximum query depth configuration option.
 pub const DEFAULT_MAX_QUERY_DEPTH: u64 = 5;
@@ -32,26 +34,24 @@ const DAY_MILLIS: usize = 24 * 60 * 60 * 1000;
 /// Default length of total vesting schedule period expressed in days.
 pub const DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS: u64 =
     VESTING_SCHEDULE_LENGTH_DAYS as u64 * DAY_MILLIS as u64;
+/// Default maximum number of delegators per validator.
+pub const DEFAULT_MAX_DELEGATORS_PER_VALIDATOR: u32 = 1200;
 /// Default value for allowing auction bids.
 pub const DEFAULT_ALLOW_AUCTION_BIDS: bool = true;
 /// Default value for allowing unrestricted transfers.
 pub const DEFAULT_ALLOW_UNRESTRICTED_TRANSFERS: bool = true;
-/// Default gas cost refund ratio.
-pub const DEFAULT_REFUND_HANDLING: RefundHandling = RefundHandling::Refund {
-    refund_ratio: Ratio::new_raw(0, 1),
-};
-/// Default fee handling.
-pub const DEFAULT_FEE_HANDLING: FeeHandling = FeeHandling::PayToProposer;
 /// Default compute rewards.
 pub const DEFAULT_COMPUTE_REWARDS: bool = true;
+/// Default protocol version.
+pub const DEFAULT_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V2_0_0;
+/// Default period for balance holds to decay (currently 24 hours).
+pub const DEFAULT_BALANCE_HOLD_INTERVAL: TimeDiff = TimeDiff::from_seconds(24 * 60 * 60);
 
 /// The runtime configuration of the execution engine
 #[derive(Debug, Clone)]
 pub struct EngineConfig {
-    /// Max query depth of the engine.
-    pub(crate) max_query_depth: u64,
     /// Maximum number of associated keys (i.e. map of
-    /// [`AccountHash`](casper_types::account::AccountHash)s to
+    /// [`AccountHash`](AccountHash)s to
     /// [`Weight`](casper_types::account::Weight)s) for a single account.
     max_associated_keys: u32,
     max_runtime_call_stack_height: u32,
@@ -60,9 +60,10 @@ pub struct EngineConfig {
     strict_argument_checking: bool,
     /// Vesting schedule period in milliseconds.
     vesting_schedule_period_millis: u64,
-    max_delegators_per_validator: Option<u32>,
+    max_delegators_per_validator: u32,
     wasm_config: WasmConfig,
     system_config: SystemConfig,
+    protocol_version: ProtocolVersion,
     /// A private network specifies a list of administrative accounts.
     pub(crate) administrative_accounts: BTreeSet<AccountHash>,
     /// Auction entrypoints such as "add_bid" or "delegate" are disabled if this flag is set to
@@ -85,13 +86,12 @@ pub struct EngineConfig {
 impl Default for EngineConfig {
     fn default() -> Self {
         EngineConfig {
-            max_query_depth: DEFAULT_MAX_QUERY_DEPTH,
             max_associated_keys: DEFAULT_MAX_ASSOCIATED_KEYS,
             max_runtime_call_stack_height: DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
             minimum_delegation_amount: DEFAULT_MINIMUM_DELEGATION_AMOUNT,
             strict_argument_checking: DEFAULT_STRICT_ARGUMENT_CHECKING,
             vesting_schedule_period_millis: DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
-            max_delegators_per_validator: None,
+            max_delegators_per_validator: DEFAULT_MAX_DELEGATORS_PER_VALIDATOR,
             wasm_config: WasmConfig::default(),
             system_config: SystemConfig::default(),
             administrative_accounts: Default::default(),
@@ -100,50 +100,12 @@ impl Default for EngineConfig {
             refund_handling: DEFAULT_REFUND_HANDLING,
             fee_handling: DEFAULT_FEE_HANDLING,
             compute_rewards: DEFAULT_COMPUTE_REWARDS,
+            protocol_version: DEFAULT_PROTOCOL_VERSION,
         }
     }
 }
 
 impl EngineConfig {
-    /// Creates a new `EngineConfig` instance.
-    ///
-    /// New code should use [`EngineConfigBuilder`] instead as some config options will otherwise be
-    /// defaulted.
-    #[deprecated(
-        since = "3.0.0",
-        note = "prefer to use EngineConfigBuilder to construct an EngineConfig"
-    )]
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        max_query_depth: u64,
-        max_associated_keys: u32,
-        max_runtime_call_stack_height: u32,
-        minimum_delegation_amount: u64,
-        strict_argument_checking: bool,
-        vesting_schedule_period_millis: u64,
-        max_delegators_per_validator: Option<u32>,
-        wasm_config: WasmConfig,
-        system_config: SystemConfig,
-    ) -> EngineConfig {
-        Self {
-            max_query_depth,
-            max_associated_keys,
-            max_runtime_call_stack_height,
-            minimum_delegation_amount,
-            strict_argument_checking,
-            vesting_schedule_period_millis,
-            max_delegators_per_validator,
-            wasm_config,
-            system_config,
-            administrative_accounts: Default::default(),
-            allow_auction_bids: DEFAULT_ALLOW_AUCTION_BIDS,
-            allow_unrestricted_transfers: DEFAULT_ALLOW_UNRESTRICTED_TRANSFERS,
-            refund_handling: DEFAULT_REFUND_HANDLING,
-            fee_handling: DEFAULT_FEE_HANDLING,
-            compute_rewards: DEFAULT_COMPUTE_REWARDS,
-        }
-    }
-
     /// Returns the current max associated keys config.
     pub fn max_associated_keys(&self) -> u32 {
         self.max_associated_keys
@@ -164,6 +126,11 @@ impl EngineConfig {
         &self.system_config
     }
 
+    /// Returns the current protocol version.
+    pub fn protocol_version(&self) -> ProtocolVersion {
+        self.protocol_version
+    }
+
     /// Returns the minimum delegation amount in motes.
     pub fn minimum_delegation_amount(&self) -> u64 {
         self.minimum_delegation_amount
@@ -180,7 +147,7 @@ impl EngineConfig {
     }
 
     /// Get the max delegators per validator
-    pub fn max_delegators_per_validator(&self) -> Option<u32> {
+    pub fn max_delegators_per_validator(&self) -> u32 {
         self.max_delegators_per_validator
     }
 
@@ -205,8 +172,8 @@ impl EngineConfig {
     }
 
     /// Returns the engine config's refund ratio.
-    pub fn refund_handling(&self) -> &RefundHandling {
-        &self.refund_handling
+    pub fn refund_handling(&self) -> RefundHandling {
+        self.refund_handling
     }
 
     /// Returns the engine config's fee handling strategy.
@@ -217,6 +184,15 @@ impl EngineConfig {
     /// Returns the engine config's compute rewards flag.
     pub fn compute_rewards(&self) -> bool {
         self.compute_rewards
+    }
+
+    /// Sets the protocol version of the config.
+    ///
+    /// NOTE: This is only useful to the WasmTestBuilder for emulating a network upgrade, and hence
+    /// is subject to change or deletion without notice.
+    #[doc(hidden)]
+    pub fn set_protocol_version(&mut self, protocol_version: ProtocolVersion) {
+        self.protocol_version = protocol_version;
     }
 }
 
@@ -235,12 +211,14 @@ pub struct EngineConfigBuilder {
     max_delegators_per_validator: Option<u32>,
     wasm_config: Option<WasmConfig>,
     system_config: Option<SystemConfig>,
+    protocol_version: Option<ProtocolVersion>,
     administrative_accounts: Option<BTreeSet<PublicKey>>,
     allow_auction_bids: Option<bool>,
     allow_unrestricted_transfers: Option<bool>,
     refund_handling: Option<RefundHandling>,
     fee_handling: Option<FeeHandling>,
     compute_rewards: Option<bool>,
+    balance_hold_interval: Option<TimeDiff>,
 }
 
 impl EngineConfigBuilder {
@@ -283,8 +261,8 @@ impl EngineConfigBuilder {
     }
 
     /// Sets the max delegators per validator config option.
-    pub fn with_max_delegators_per_validator(mut self, value: Option<u32>) -> Self {
-        self.max_delegators_per_validator = value;
+    pub fn with_max_delegators_per_validator(mut self, value: u32) -> Self {
+        self.max_delegators_per_validator = Some(value);
         self
     }
 
@@ -297,6 +275,12 @@ impl EngineConfigBuilder {
     /// Sets the system config options.
     pub fn with_system_config(mut self, system_config: SystemConfig) -> Self {
         self.system_config = Some(system_config);
+        self
+    }
+
+    /// Sets the protocol version.
+    pub fn with_protocol_version(mut self, protocol_version: ProtocolVersion) -> Self {
+        self.protocol_version = Some(protocol_version);
         self
     }
 
@@ -343,6 +327,9 @@ impl EngineConfigBuilder {
                     "refund ratio should be in the range of [0, 1]"
                 );
             }
+            RefundHandling::NoRefund => {
+                //noop
+            }
         }
 
         self.refund_handling = Some(refund_handling);
@@ -361,9 +348,14 @@ impl EngineConfigBuilder {
         self
     }
 
+    /// Sets balance hold interval config option.
+    pub fn balance_hold_interval(mut self, balance_hold_interval: TimeDiff) -> Self {
+        self.balance_hold_interval = Some(balance_hold_interval);
+        self
+    }
+
     /// Builds a new [`EngineConfig`] object.
     pub fn build(self) -> EngineConfig {
-        let max_query_depth = self.max_query_depth.unwrap_or(DEFAULT_MAX_QUERY_DEPTH);
         let max_associated_keys = self
             .max_associated_keys
             .unwrap_or(DEFAULT_MAX_ASSOCIATED_KEYS);
@@ -375,6 +367,7 @@ impl EngineConfigBuilder {
             .unwrap_or(DEFAULT_MINIMUM_DELEGATION_AMOUNT);
         let wasm_config = self.wasm_config.unwrap_or_default();
         let system_config = self.system_config.unwrap_or_default();
+        let protocol_version = self.protocol_version.unwrap_or(DEFAULT_PROTOCOL_VERSION);
         let administrative_accounts = {
             self.administrative_accounts
                 .unwrap_or_default()
@@ -397,16 +390,18 @@ impl EngineConfigBuilder {
         let vesting_schedule_period_millis = self
             .vesting_schedule_period_millis
             .unwrap_or(DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS);
-        let max_delegators_per_validator = self.max_delegators_per_validator;
+        let max_delegators_per_validator = self
+            .max_delegators_per_validator
+            .unwrap_or(DEFAULT_MAX_DELEGATORS_PER_VALIDATOR);
         let compute_rewards = self.compute_rewards.unwrap_or(DEFAULT_COMPUTE_REWARDS);
 
         EngineConfig {
-            max_query_depth,
             max_associated_keys,
             max_runtime_call_stack_height,
             minimum_delegation_amount,
             wasm_config,
             system_config,
+            protocol_version,
             administrative_accounts,
             allow_auction_bids,
             allow_unrestricted_transfers,

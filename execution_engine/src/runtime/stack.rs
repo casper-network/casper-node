@@ -1,17 +1,16 @@
 //! Runtime stacks.
-
-use casper_types::{account::AccountHash, system::CallStackElement, PublicKey};
+use casper_types::{account::AccountHash, system::Caller};
 
 /// A runtime stack frame.
 ///
-/// Currently it aliases to a [`CallStackElement`].
+/// Currently it aliases to a [`Caller`].
 ///
 /// NOTE: Once we need to add more data to a stack frame we should make this a newtype, rather than
-/// change [`CallStackElement`].
-pub type RuntimeStackFrame = CallStackElement;
+/// change [`Caller`].
+pub type RuntimeStackFrame = Caller;
 
 /// The runtime stack.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct RuntimeStack {
     frames: Vec<RuntimeStackFrame>,
     max_height: usize,
@@ -40,14 +39,6 @@ impl RuntimeStack {
         let mut frames = Vec::with_capacity(max_height);
         frames.push(frame);
         Self { frames, max_height }
-    }
-
-    /// Creates a new call instance that starts with a system account.
-    pub(crate) fn new_system_call_stack(max_height: usize) -> Self {
-        RuntimeStack::new_with_frame(
-            max_height,
-            CallStackElement::session(PublicKey::System.to_account_hash()),
-        )
     }
 
     /// Is the stack empty?
@@ -94,14 +85,14 @@ impl RuntimeStack {
 
     // It is here for backwards compatibility only.
     /// A view of the stack in the previous stack format.
-    pub fn call_stack_elements(&self) -> &Vec<CallStackElement> {
+    pub fn call_stack_elements(&self) -> &Vec<Caller> {
         &self.frames
     }
 
     /// Returns a stack with exactly one session element with the associated account hash.
     pub fn from_account_hash(account_hash: AccountHash, max_height: usize) -> Self {
         RuntimeStack {
-            frames: vec![CallStackElement::session(account_hash)],
+            frames: vec![Caller::initiator(account_hash)],
             max_height,
         }
     }
@@ -115,11 +106,11 @@ mod test {
 
     use super::*;
 
-    fn nth_frame(n: usize) -> CallStackElement {
+    fn nth_frame(n: usize) -> Caller {
         let mut bytes = [0_u8; ACCOUNT_HASH_LENGTH];
         let n: u32 = n.try_into().unwrap();
         bytes[0..4].copy_from_slice(&n.to_le_bytes());
-        CallStackElement::session(AccountHash::new(bytes))
+        Caller::initiator(AccountHash::new(bytes))
     }
 
     #[allow(clippy::redundant_clone)]

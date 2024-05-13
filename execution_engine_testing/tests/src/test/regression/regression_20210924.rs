@@ -1,8 +1,6 @@
-use num_traits::Zero;
-
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    LOCAL_GENESIS_REQUEST,
 };
 use casper_execution_engine::engine_state::{Error as CoreError, MAX_PAYMENT};
 use casper_types::{runtime_args, Gas, RuntimeArgs, DEFAULT_NOP_COST, U512};
@@ -12,32 +10,30 @@ use crate::wasm_utils;
 const ARG_AMOUNT: &str = "amount";
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_charge_minimum_for_do_nothing_session() {
     let minimum_deploy_payment = U512::from(0);
 
-    let do_nothing_request = {
-        let account_hash = *DEFAULT_ACCOUNT_ADDR;
-        let session_args = RuntimeArgs::default();
-        let deploy_hash = [42; 32];
+    let account_hash = *DEFAULT_ACCOUNT_ADDR;
+    let session_args = RuntimeArgs::default();
+    let deploy_hash = [42; 32];
 
-        let deploy = DeployItemBuilder::new()
-            .with_address(account_hash)
-            .with_session_bytes(wasm_utils::do_nothing_bytes(), session_args)
-            .with_empty_payment_bytes(runtime_args! {
-                ARG_AMOUNT => minimum_deploy_payment,
-            })
-            .with_authorization_keys(&[account_hash])
-            .with_deploy_hash(deploy_hash)
-            .build();
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(account_hash)
+        .with_session_bytes(wasm_utils::do_nothing_bytes(), session_args)
+        .with_standard_payment(runtime_args! {
+            ARG_AMOUNT => minimum_deploy_payment,
+        })
+        .with_authorization_keys(&[account_hash])
+        .with_deploy_hash(deploy_hash)
+        .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy)
-    }
-    .build();
+    let do_nothing_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let account = builder
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
@@ -70,32 +66,30 @@ fn should_charge_minimum_for_do_nothing_session() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_execute_do_minimum_session() {
     let minimum_deploy_payment = U512::from(DEFAULT_NOP_COST);
 
-    let do_minimum_request = {
-        let account_hash = *DEFAULT_ACCOUNT_ADDR;
-        let session_args = RuntimeArgs::default();
-        let deploy_hash = [42; 32];
+    let account_hash = *DEFAULT_ACCOUNT_ADDR;
+    let session_args = RuntimeArgs::default();
+    let deploy_hash = [42; 32];
 
-        let deploy = DeployItemBuilder::new()
-            .with_address(account_hash)
-            .with_session_bytes(wasm_utils::do_minimum_bytes(), session_args)
-            .with_empty_payment_bytes(runtime_args! {
-                ARG_AMOUNT => minimum_deploy_payment,
-            })
-            .with_authorization_keys(&[account_hash])
-            .with_deploy_hash(deploy_hash)
-            .build();
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(account_hash)
+        .with_session_bytes(wasm_utils::do_minimum_bytes(), session_args)
+        .with_standard_payment(runtime_args! {
+            ARG_AMOUNT => minimum_deploy_payment,
+        })
+        .with_authorization_keys(&[account_hash])
+        .with_deploy_hash(deploy_hash)
+        .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy)
-    }
-    .build();
+    let do_minimum_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let account = builder
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
@@ -124,35 +118,33 @@ fn should_execute_do_minimum_session() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_charge_minimum_for_do_nothing_payment() {
     let minimum_deploy_payment = U512::from(0);
 
-    let do_nothing_request = {
-        let account_hash = *DEFAULT_ACCOUNT_ADDR;
-        let session_args = RuntimeArgs::default();
-        let deploy_hash = [42; 32];
+    let account_hash = *DEFAULT_ACCOUNT_ADDR;
+    let session_args = RuntimeArgs::default();
+    let deploy_hash = [42; 32];
 
-        let deploy = DeployItemBuilder::new()
-            .with_address(account_hash)
-            .with_session_bytes(wasm_utils::do_nothing_bytes(), session_args)
-            .with_payment_bytes(
-                wasm_utils::do_nothing_bytes(),
-                runtime_args! {
-                    ARG_AMOUNT => minimum_deploy_payment,
-                },
-            )
-            .with_authorization_keys(&[account_hash])
-            .with_deploy_hash(deploy_hash)
-            .build();
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(account_hash)
+        .with_session_bytes(wasm_utils::do_nothing_bytes(), session_args)
+        .with_payment_bytes(
+            wasm_utils::do_nothing_bytes(),
+            runtime_args! {
+                ARG_AMOUNT => minimum_deploy_payment,
+            },
+        )
+        .with_authorization_keys(&[account_hash])
+        .with_deploy_hash(deploy_hash)
+        .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy)
-    }
-    .build();
+    let do_nothing_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let account = builder
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)

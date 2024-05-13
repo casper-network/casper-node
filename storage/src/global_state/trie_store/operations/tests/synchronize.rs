@@ -4,13 +4,14 @@ use num_traits::FromPrimitive;
 
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
+    global_state::Pointer,
     Digest,
 };
 
 use crate::global_state::{
     error,
     transaction_source::{Readable, Transaction, TransactionSource},
-    trie::{Pointer, Trie, TrieTag},
+    trie::{Trie, TrieTag},
     trie_store::{
         operations::{
             self,

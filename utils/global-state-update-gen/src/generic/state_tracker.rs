@@ -8,11 +8,11 @@ use rand::Rng;
 
 use casper_types::{
     account::AccountHash,
-    addressable_entity::{ActionThresholds, AssociatedKeys, NamedKeys, Weight},
-    package::{ContractPackageKind, ContractPackageStatus, ContractVersions, Groups},
+    addressable_entity::{ActionThresholds, AssociatedKeys, MessageTopics, Weight},
     system::auction::{BidAddr, BidKind, BidsExt, SeigniorageRecipientsSnapshot, UnbondingPurse},
-    AccessRights, AddressableEntity, CLValue, ContractHash, ContractPackageHash, ContractWasmHash,
-    EntryPoints, Key, Package, ProtocolVersion, PublicKey, StoredValue, URef, U512,
+    AccessRights, AddressableEntity, AddressableEntityHash, ByteCodeHash, CLValue, EntityKind,
+    EntityVersions, Groups, Key, Package, PackageHash, PackageStatus, ProtocolVersion, PublicKey,
+    StoredValue, URef, U512,
 };
 
 use super::{config::Transfer, state_reader::StateReader};
@@ -33,15 +33,13 @@ pub struct StateTracker<T> {
 
 impl<T: StateReader> StateTracker<T> {
     /// Creates a new `StateTracker`.
-    pub fn new(mut reader: T) -> Self {
+    pub fn new(mut reader: T, protocol_version: ProtocolVersion) -> Self {
         // Read the URef under which total supply is stored.
         let total_supply_key = reader.get_total_supply_key();
 
         // Read the total supply.
         let total_supply_sv = reader.query(total_supply_key).expect("should query");
         let total_supply = total_supply_sv.into_cl_value().expect("should be cl value");
-
-        let protocol_version = reader.get_protocol_version();
 
         Self {
             reader,
@@ -77,6 +75,7 @@ impl<T: StateReader> StateTracker<T> {
                 delegator.validator_public_key(),
                 Some(delegator.delegator_public_key()),
             ),
+            BidKind::Bridge(bridge) => BidAddr::from(bridge.old_validator_public_key().clone()),
         };
 
         let _ = self
@@ -161,48 +160,45 @@ impl<T: StateReader> StateTracker<T> {
 
         let mut rng = rand::thread_rng();
 
-        let contract_hash = ContractHash::new(rng.gen());
-        let contract_package_hash = ContractPackageHash::new(rng.gen());
-        let contract_wasm_hash = ContractWasmHash::new([0u8; 32]);
+        let entity_hash = AddressableEntityHash::new(rng.gen());
+        let package_hash = PackageHash::new(rng.gen());
+        let contract_wasm_hash = ByteCodeHash::new([0u8; 32]);
 
         let associated_keys = AssociatedKeys::new(account_hash, Weight::new(1));
 
         let addressable_entity = AddressableEntity::new(
-            contract_package_hash,
+            package_hash,
             contract_wasm_hash,
-            NamedKeys::default(),
-            EntryPoints::new(),
             self.protocol_version,
             main_purse,
             associated_keys,
             ActionThresholds::default(),
+            MessageTopics::default(),
+            EntityKind::Account(account_hash),
         );
 
         let mut contract_package = Package::new(
-            URef::new(rng.gen(), AccessRights::READ_ADD_WRITE),
-            ContractVersions::default(),
+            EntityVersions::default(),
             BTreeSet::default(),
             Groups::default(),
-            ContractPackageStatus::Locked,
-            ContractPackageKind::Account(account_hash),
+            PackageStatus::Locked,
         );
 
-        contract_package
-            .insert_contract_version(self.protocol_version.value().major, contract_hash);
+        contract_package.insert_entity_version(self.protocol_version.value().major, entity_hash);
         self.write_entry(
-            contract_package_hash.into(),
-            StoredValue::ContractPackage(contract_package.clone()),
+            package_hash.into(),
+            StoredValue::Package(contract_package.clone()),
         );
 
+        let entity_key = addressable_entity.entity_key(entity_hash);
+
         self.write_entry(
-            contract_hash.into(),
+            entity_key,
             StoredValue::AddressableEntity(addressable_entity.clone()),
         );
 
-        let addressable_entity_by_account_hash = {
-            let contract_key: Key = contract_hash.into();
-            CLValue::from_t(contract_key).expect("must convert to cl_value")
-        };
+        let addressable_entity_by_account_hash =
+            { CLValue::from_t(entity_key).expect("must convert to cl_value") };
 
         self.accounts_cache
             .insert(account_hash, addressable_entity.clone());
@@ -261,7 +257,6 @@ impl<T: StateReader> StateTracker<T> {
         if let Some(key_and_snapshot) = &self.seigniorage_recipients {
             return key_and_snapshot.clone();
         }
-
         // Read the key under which the snapshot is stored.
         let validators_key = self.reader.get_seigniorage_recipients_key();
 
@@ -317,13 +312,21 @@ impl<T: StateReader> StateTracker<T> {
                     }
                 }
             }
+            // avoid modifying bridge records
+            BidKind::Bridge(_) => None,
         }
     }
 
     /// Sets the bid for the given account.
     pub fn set_bid(&mut self, bid_kind: BidKind, slash_instead_of_unbonding: bool) {
-        let new_stake = bid_kind.staked_amount();
-        let bonding_purse = bid_kind.bonding_purse();
+        // skip bridge records since they shouldn't need to be overwritten
+        if let BidKind::Bridge(_) = bid_kind {
+            return;
+        }
+
+        // since we skip bridge records optional values should be present
+        let new_stake = bid_kind.staked_amount().expect("should have staked amount");
+        let bonding_purse = bid_kind.bonding_purse().expect("should have bonding purse");
         let bids = self.get_bids();
 
         let maybe_existing_bid = self.existing_bid(&bid_kind, bids);
@@ -332,9 +335,15 @@ impl<T: StateReader> StateTracker<T> {
             None => U512::zero(),
             Some(existing_bid) => {
                 //let previous_stake = self.get_purse_balance(existing_bid_kind.bonding_purse());
-                let previous_stake = existing_bid.staked_amount();
-                if existing_bid.bonding_purse() != bonding_purse {
-                    self.set_purse_balance(existing_bid.bonding_purse(), U512::zero());
+                let previous_stake = existing_bid
+                    .staked_amount()
+                    .expect("should have staked amount");
+                if existing_bid
+                    .bonding_purse()
+                    .expect("should have bonding purse")
+                    != bonding_purse
+                {
+                    self.set_purse_balance(existing_bid.bonding_purse().unwrap(), U512::zero());
                     self.set_purse_balance(bonding_purse, previous_stake);
                 }
                 previous_stake
@@ -349,7 +358,7 @@ impl<T: StateReader> StateTracker<T> {
 
         if (slash_instead_of_unbonding && new_stake != previous_stake) || new_stake > previous_stake
         {
-            self.set_purse_balance(bid_kind.bonding_purse(), new_stake);
+            self.set_purse_balance(bonding_purse, new_stake);
         } else if new_stake < previous_stake {
             let unbonder_key = match bid_kind.delegator_public_key() {
                 None => bid_kind.validator_public_key(),
@@ -361,7 +370,7 @@ impl<T: StateReader> StateTracker<T> {
 
             let amount = previous_stake - new_stake - already_unbonded;
             self.create_unbonding_purse(
-                bid_kind.bonding_purse(),
+                bonding_purse,
                 &bid_kind.validator_public_key(),
                 &unbonder_key,
                 amount,

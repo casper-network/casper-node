@@ -1,7 +1,13 @@
 use std::collections::BTreeSet;
 use tracing::error;
 
-use casper_storage::global_state::state::StateReader;
+use casper_storage::{
+    global_state::{error::Error as GlobalStateError, state::StateReader},
+    system::auction::{
+        providers::{AccountProvider, MintProvider, RuntimeProvider, StorageProvider},
+        Auction,
+    },
+};
 use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
@@ -10,25 +16,18 @@ use casper_types::{
         auction::{BidAddr, BidKind, EraInfo, Error, UnbondingPurse},
         mint,
     },
-    CLTyped, CLValue, Key, KeyTag, PublicKey, RuntimeArgs, StoredValue, URef,
-    BLAKE2B_DIGEST_LENGTH, U512,
+    CLTyped, CLValue, Key, KeyTag, PublicKey, RuntimeArgs, StoredValue, URef, U512,
 };
 
 use super::Runtime;
-use crate::{
-    execution,
-    system::auction::{
-        providers::{AccountProvider, MintProvider, RuntimeProvider, StorageProvider},
-        Auction,
-    },
-};
+use crate::execution::ExecError;
 
-impl From<execution::Error> for Option<Error> {
-    fn from(exec_error: execution::Error) -> Self {
+impl From<ExecError> for Option<Error> {
+    fn from(exec_error: ExecError) -> Self {
         match exec_error {
             // This is used to propagate [`execution::Error::GasLimit`] to make sure [`Auction`]
             // contract running natively supports propagating gas limit errors without a panic.
-            execution::Error::GasLimit => Some(Error::GasLimit),
+            ExecError::GasLimit => Some(Error::GasLimit),
             // There are possibly other exec errors happening but such translation would be lossy.
             _ => None,
         }
@@ -37,8 +36,7 @@ impl From<execution::Error> for Option<Error> {
 
 impl<'a, R> StorageProvider for Runtime<'a, R>
 where
-    R: StateReader<Key, StoredValue>,
-    R::Error: Into<execution::Error>,
+    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
     fn read<T: FromBytes + CLTyped>(&mut self, uref: URef) -> Result<Option<T>, Error> {
         match self.context.read_gs(&uref.into()) {
@@ -50,10 +48,10 @@ where
                 Err(Error::Storage)
             }
             Ok(None) => Ok(None),
-            Err(execution::Error::BytesRepr(_)) => Err(Error::Serialization),
+            Err(ExecError::BytesRepr(_)) => Err(Error::Serialization),
             // NOTE: This extra condition is needed to correctly propagate GasLimit to the user. See
             // also [`Runtime::reverter`] and [`to_auction_error`]
-            Err(execution::Error::GasLimit) => Err(Error::GasLimit),
+            Err(ExecError::GasLimit) => Err(Error::GasLimit),
             Err(err) => {
                 error!("StorageProvider::read: {:?}", err);
                 Err(Error::Storage)
@@ -79,10 +77,10 @@ where
                 Err(Error::Storage)
             }
             Ok(None) => Ok(None),
-            Err(execution::Error::BytesRepr(_)) => Err(Error::Serialization),
+            Err(ExecError::BytesRepr(_)) => Err(Error::Serialization),
             // NOTE: This extra condition is needed to correctly propagate GasLimit to the user. See
             // also [`Runtime::reverter`] and [`to_auction_error`]
-            Err(execution::Error::GasLimit) => Err(Error::GasLimit),
+            Err(ExecError::GasLimit) => Err(Error::GasLimit),
             Err(err) => {
                 error!("StorageProvider::read_bid: {:?}", err);
                 Err(Error::Storage)
@@ -107,10 +105,10 @@ where
                 Err(Error::Storage)
             }
             Ok(None) => Ok(Vec::new()),
-            Err(execution::Error::BytesRepr(_)) => Err(Error::Serialization),
+            Err(ExecError::BytesRepr(_)) => Err(Error::Serialization),
             // NOTE: This extra condition is needed to correctly propagate GasLimit to the user. See
             // also [`Runtime::reverter`] and [`to_auction_error`]
-            Err(execution::Error::GasLimit) => Err(Error::GasLimit),
+            Err(ExecError::GasLimit) => Err(Error::GasLimit),
             Err(err) => {
                 error!("StorageProvider::read_unbonds: {:?}", err);
                 Err(Error::Storage)
@@ -149,8 +147,7 @@ where
 
 impl<'a, R> RuntimeProvider for Runtime<'a, R>
 where
-    R: StateReader<Key, StoredValue>,
-    R::Error: Into<execution::Error>,
+    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
     fn get_caller(&self) -> AccountHash {
         self.context.get_caller()
@@ -192,10 +189,6 @@ where
         Ok(keys.len())
     }
 
-    fn blake2b<T: AsRef<[u8]>>(&self, data: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {
-        crypto::blake2b(data)
-    }
-
     fn vesting_schedule_period_millis(&self) -> u64 {
         self.context
             .engine_config()
@@ -213,15 +206,14 @@ where
 
 impl<'a, R> MintProvider for Runtime<'a, R>
 where
-    R: StateReader<Key, StoredValue>,
-    R::Error: Into<execution::Error>,
+    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
     fn unbond(&mut self, unbonding_purse: &UnbondingPurse) -> Result<(), Error> {
         let account_hash =
             AccountHash::from_public_key(unbonding_purse.unbonder_public_key(), crypto::blake2b);
         let maybe_value = self
             .context
-            .read_gs_direct(&Key::Account(account_hash))
+            .read_gs_unsafe(&Key::Account(account_hash))
             .map_err(|exec_error| {
                 error!("MintProvider::unbond: {:?}", exec_error);
                 <Option<Error>>::from(exec_error).unwrap_or(Error::Storage)
@@ -238,7 +230,7 @@ where
 
         let maybe_value = self
             .context
-            .read_gs_direct(&contract_key)
+            .read_gs_unsafe(&contract_key)
             .map_err(|exec_error| {
                 error!("MintProvider::unbond: {:?}", exec_error);
                 <Option<Error>>::from(exec_error).unwrap_or(Error::Storage)
@@ -348,8 +340,8 @@ where
         })
     }
 
-    fn get_balance(&mut self, purse: URef) -> Result<Option<U512>, Error> {
-        Runtime::get_balance(self, purse)
+    fn available_balance(&mut self, purse: URef) -> Result<Option<U512>, Error> {
+        Runtime::available_balance(self, purse)
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::GetBalance))
     }
 
@@ -380,21 +372,16 @@ where
 
 impl<'a, R> AccountProvider for Runtime<'a, R>
 where
-    R: StateReader<Key, StoredValue>,
-    R::Error: Into<execution::Error>,
+    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
     fn get_main_purse(&self) -> Result<URef, Error> {
-        // NOTE: This violates security as system contract is a contract entrypoint and normal
-        // "get_main_purse" won't work for security reasons. But since we're not running it as a
-        // WASM contract, and purses are going to be removed anytime soon, we're making this
-        // exception here.
+        // NOTE: this is used by the system and is not (and should not be made to be) accessible
+        // from userland.
         Ok(Runtime::context(self).entity().main_purse())
     }
 }
 
-impl<'a, R> Auction for Runtime<'a, R>
-where
-    R: StateReader<Key, StoredValue>,
-    R::Error: Into<execution::Error>,
+impl<'a, R> Auction for Runtime<'a, R> where
+    R: StateReader<Key, StoredValue, Error = GlobalStateError>
 {
 }

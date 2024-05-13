@@ -116,7 +116,7 @@ mod tests {
 
     use datasize::DataSize;
 
-    use casper_types::Deploy;
+    use casper_types::Transaction;
 
     use super::ObjectPool;
     use crate::components::fetcher::FetchItem;
@@ -132,74 +132,74 @@ mod tests {
 
     #[test]
     fn can_load_and_store_items() {
-        let mut pool: ObjectPool<<Deploy as FetchItem>::Id> = ObjectPool::new(5);
+        let mut pool: ObjectPool<<Transaction as FetchItem>::Id> = ObjectPool::new(5);
         let mut rng = crate::new_rng();
 
-        let d1 = Deploy::random(&mut rng);
-        let d2 = Deploy::random(&mut rng);
-        let d1_id = d1.fetch_id();
-        let d2_id = d2.fetch_id();
-        let d1_serialized = bincode::serialize(&d1).expect("could not serialize first deploy");
-        let d2_serialized = bincode::serialize(&d2).expect("could not serialize second deploy");
+        let txn1 = Transaction::random(&mut rng);
+        let txn2 = Transaction::random(&mut rng);
+        let txn1_id = txn1.fetch_id();
+        let txn2_id = txn2.fetch_id();
+        let txn1_serialized = bincode::serialize(&txn1).expect("could not serialize first deploy");
+        let txn2_serialized = bincode::serialize(&txn2).expect("could not serialize second deploy");
 
-        let d1_shared = d1_serialized.into();
-        let d2_shared = d2_serialized.into();
+        let txn1_shared = txn1_serialized.into();
+        let txn2_shared = txn2_serialized.into();
 
-        assert!(pool.get(&d1_id).is_none());
-        assert!(pool.get(&d2_id).is_none());
+        assert!(pool.get(&txn1_id).is_none());
+        assert!(pool.get(&txn2_id).is_none());
 
-        pool.put(d1_id, Arc::downgrade(&d1_shared));
+        pool.put(txn1_id, Arc::downgrade(&txn1_shared));
         assert!(Arc::ptr_eq(
-            &pool.get(&d1_id).expect("did not find d1"),
-            &d1_shared
+            &pool.get(&txn1_id).expect("did not find d1"),
+            &txn1_shared
         ));
-        assert!(pool.get(&d2_id).is_none());
+        assert!(pool.get(&txn2_id).is_none());
 
-        pool.put(d2_id, Arc::downgrade(&d2_shared));
+        pool.put(txn2_id, Arc::downgrade(&txn2_shared));
         assert!(Arc::ptr_eq(
-            &pool.get(&d1_id).expect("did not find d1"),
-            &d1_shared
+            &pool.get(&txn1_id).expect("did not find d1"),
+            &txn1_shared
         ));
         assert!(Arc::ptr_eq(
-            &pool.get(&d2_id).expect("did not find d1"),
-            &d2_shared
+            &pool.get(&txn2_id).expect("did not find d1"),
+            &txn2_shared
         ));
     }
 
     #[test]
     fn frees_memory_after_reference_loss() {
-        let mut pool: ObjectPool<<Deploy as FetchItem>::Id> = ObjectPool::new(5);
+        let mut pool: ObjectPool<<Transaction as FetchItem>::Id> = ObjectPool::new(5);
         let mut rng = crate::new_rng();
 
-        let d1 = Deploy::random(&mut rng);
-        let d1_id = d1.fetch_id();
-        let d1_serialized = bincode::serialize(&d1).expect("could not serialize first deploy");
+        let txn1 = Transaction::random(&mut rng);
+        let txn1_id = txn1.fetch_id();
+        let txn1_serialized = bincode::serialize(&txn1).expect("could not serialize first deploy");
 
-        let d1_shared = d1_serialized.into();
+        let txn1_shared = txn1_serialized.into();
 
-        assert!(pool.get(&d1_id).is_none());
+        assert!(pool.get(&txn1_id).is_none());
 
-        pool.put(d1_id, Arc::downgrade(&d1_shared));
+        pool.put(txn1_id, Arc::downgrade(&txn1_shared));
         assert!(Arc::ptr_eq(
-            &pool.get(&d1_id).expect("did not find d1"),
-            &d1_shared
+            &pool.get(&txn1_id).expect("did not find d1"),
+            &txn1_shared
         ));
 
-        drop(d1_shared);
-        assert!(pool.get(&d1_id).is_none());
+        drop(txn1_shared);
+        assert!(pool.get(&txn1_id).is_none());
     }
 
     #[test]
     fn garbage_is_collected() {
-        let mut pool: ObjectPool<<Deploy as FetchItem>::Id> = ObjectPool::new(5);
+        let mut pool: ObjectPool<<Transaction as FetchItem>::Id> = ObjectPool::new(5);
         let mut rng = crate::new_rng();
 
         assert_eq!(pool.num_entries(), 0);
 
         for i in 0..5 {
-            let deploy = Deploy::random(&mut rng);
-            let id = deploy.fetch_id();
-            let serialized = bincode::serialize(&deploy).expect("could not serialize first deploy");
+            let txn = Transaction::random(&mut rng);
+            let id = txn.fetch_id();
+            let serialized = bincode::serialize(&txn).expect("could not serialize first deploy");
             let shared = serialized.into();
             pool.put(id, Arc::downgrade(&shared));
             assert_eq!(pool.num_entries(), i + 1);
@@ -207,9 +207,9 @@ mod tests {
             assert_eq!(pool.num_entries(), i + 1);
         }
 
-        let deploy = Deploy::random(&mut rng);
-        let id = deploy.fetch_id();
-        let serialized = bincode::serialize(&deploy).expect("could not serialize first deploy");
+        let txn = Transaction::random(&mut rng);
+        let id = txn.fetch_id();
+        let serialized = bincode::serialize(&txn).expect("could not serialize first deploy");
         let shared = serialized.into();
         pool.put(id, Arc::downgrade(&shared));
         assert_eq!(pool.num_entries(), 1);

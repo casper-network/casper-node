@@ -4,7 +4,10 @@
 #[macro_use]
 extern crate alloc;
 
-use alloc::string::{String, ToString};
+use alloc::{
+    collections::BTreeMap,
+    string::{String, ToString},
+};
 use casper_contract::{
     contract_api::{runtime, storage},
     unwrap_or_revert::UnwrapOrRevert,
@@ -13,7 +16,7 @@ use core::convert::TryInto;
 
 use casper_types::{
     addressable_entity::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys},
-    CLType, CLTyped, ContractPackageHash, Key, Parameter, URef,
+    CLType, CLTyped, EntryPointPayment, Key, PackageHash, Parameter, URef,
 };
 
 const ENTRY_FUNCTION_NAME: &str = "delegate";
@@ -39,27 +42,31 @@ pub extern "C" fn call() {
             vec![Parameter::new(ARG_PURSE_NAME, String::cl_type())],
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Session,
+            EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
         entry_points.add_entry_point(delegate);
 
         entry_points
     };
 
-    let do_nothing_package_hash: ContractPackageHash =
-        runtime::get_key(DO_NOTHING_PACKAGE_HASH_KEY_NAME)
-            .unwrap_or_revert()
-            .into_hash()
-            .unwrap()
-            .into();
+    let do_nothing_package_hash: PackageHash = runtime::get_key(DO_NOTHING_PACKAGE_HASH_KEY_NAME)
+        .unwrap_or_revert()
+        .into_package_addr()
+        .unwrap_or_revert()
+        .into();
 
     let _do_nothing_uref: URef = runtime::get_key(DO_NOTHING_ACCESS_KEY_NAME)
         .unwrap_or_revert()
         .try_into()
         .unwrap_or_revert();
 
-    let (contract_hash, contract_version) =
-        storage::add_contract_version(do_nothing_package_hash, entry_points, NamedKeys::new());
+    let (contract_hash, contract_version) = storage::add_contract_version(
+        do_nothing_package_hash,
+        entry_points,
+        NamedKeys::new(),
+        BTreeMap::new(),
+    );
     runtime::put_key(CONTRACT_VERSION, storage::new_uref(contract_version).into());
-    runtime::put_key("end of upgrade", contract_hash.into());
+    runtime::put_key("end of upgrade", Key::contract_entity_key(contract_hash));
 }

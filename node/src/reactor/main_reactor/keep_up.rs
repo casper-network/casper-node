@@ -6,14 +6,13 @@ use std::{
 use either::Either;
 use tracing::{debug, error, info, warn};
 
-use casper_execution_engine::engine_state::GetEraValidatorsError;
+use casper_storage::data_access_layer::EraValidatorsRequest;
 use casper_types::{ActivationPoint, BlockHash, BlockHeader, EraId, Timestamp};
 
 use crate::{
     components::{
         block_accumulator::{SyncIdentifier, SyncInstruction},
         block_synchronizer::BlockSynchronizerProgress,
-        contract_runtime::EraValidatorsRequest,
         storage::HighestOrphanedBlockResult,
         sync_leaper,
         sync_leaper::{LeapActivityError, LeapState},
@@ -178,7 +177,7 @@ impl MainReactor {
     }
 
     fn keep_up_idle(&mut self) -> Either<SyncIdentifier, KeepUpInstruction> {
-        match self.storage.read_highest_complete_block() {
+        match self.storage.get_highest_complete_block() {
             Ok(Some(block)) => Either::Left(SyncIdentifier::LocalTip(
                 *block.hash(),
                 block.height(),
@@ -337,6 +336,7 @@ impl MainReactor {
             let before_era_validators_result = effect_builder
                 .get_era_validators_from_contract_runtime(before_era_validators_request)
                 .await;
+
             let after_era_validators_request = EraValidatorsRequest::new(
                 global_states_metadata.after_state_hash,
                 global_states_metadata.after_protocol_version,
@@ -345,20 +345,16 @@ impl MainReactor {
                 .get_era_validators_from_contract_runtime(after_era_validators_request)
                 .await;
 
-            // Check the results.
-            // A return value of `Ok` means that validators were read successfully.
-            // An `Err` will contain a vector of (block_hash, global_state_hash) pairs to be
-            // fetched by the `GlobalStateSynchronizer`, along with a vector of peers to ask.
-            match (before_era_validators_result, after_era_validators_result) {
-                // Both states were present - return the result.
-                (Ok(before_era_validators), Ok(after_era_validators)) => {
+            let lhs = before_era_validators_result.take_era_validators();
+            let rhs = after_era_validators_result.take_era_validators();
+
+            match (lhs, rhs) {
+                // ++ -> return era validator weights for before & after
+                (Some(before_era_validators), Some(after_era_validators)) => {
                     Ok((before_era_validators, after_era_validators))
                 }
-                // Both were absent - fetch global states for both blocks.
-                (
-                    Err(GetEraValidatorsError::RootNotFound),
-                    Err(GetEraValidatorsError::RootNotFound),
-                ) => Err(vec![
+                // -- => Both were absent - fetch global states for both blocks.
+                (None, None) => Err(vec![
                     (
                         global_states_metadata.before_hash,
                         global_states_metadata.before_state_hash,
@@ -368,26 +364,16 @@ impl MainReactor {
                         global_states_metadata.after_state_hash,
                     ),
                 ]),
-                // The after-block's global state was missing - return the hashes.
-                (Ok(_), Err(GetEraValidatorsError::RootNotFound)) => Err(vec![(
+                // +- => The after-block's global state was missing - return the hashes.
+                (Some(_), None) => Err(vec![(
                     global_states_metadata.after_hash,
                     global_states_metadata.after_state_hash,
                 )]),
-                // The before-block's global state was missing - return the hashes.
-                (Err(GetEraValidatorsError::RootNotFound), Ok(_)) => Err(vec![(
+                // -+ => The before-block's global state was missing - return the hashes.
+                (None, Some(_)) => Err(vec![(
                     global_states_metadata.before_hash,
                     global_states_metadata.before_state_hash,
                 )]),
-                // We got some error other than `RootNotFound` - just log the error and don't
-                // synchronize anything.
-                (before_result, after_result) => {
-                    error!(
-                        ?before_result,
-                        ?after_result,
-                        "couldn't read era validators from global state in block"
-                    );
-                    Err(vec![])
-                }
             }
         }
         .result(
@@ -621,13 +607,9 @@ impl MainReactor {
                     sync_era,
                 }))
             }
-            HighestOrphanedBlockResult::MissingFromBlockHeightIndex(block_height) => Err(format!(
-                "KeepUp: storage is missing historical block height index entry {}",
-                block_height
-            )),
-            HighestOrphanedBlockResult::MissingHeader(block_hash) => Err(format!(
-                "KeepUp: storage is missing historical block header for {}",
-                block_hash
+            HighestOrphanedBlockResult::MissingHeader(height) => Err(format!(
+                "KeepUp: storage is missing historical block header for height {}",
+                height
             )),
             HighestOrphanedBlockResult::MissingHighestSequence => {
                 Err("KeepUp: storage is missing historical highest block sequence".to_string())
@@ -695,14 +677,14 @@ impl MainReactor {
         {
             match self
                 .storage
-                .read_switch_block_by_era_id(highest_orphaned_block_header.era_id().successor())
+                .get_switch_block_by_era_id(&highest_orphaned_block_header.era_id().successor())
             {
                 Ok(Some(switch)) => {
                     debug!(
                         ?highest_orphaned_block_header,
                         "KeepUp: historical sync in genesis era attempting correction for unmatrixed genesis validators"
                     );
-                    return Ok((switch.header().block_hash(), switch.header().era_id()));
+                    return Ok((*switch.hash(), switch.era_id()));
                 }
                 Ok(None) => return Err(
                     "In genesis era with no genesis validators and missing next era switch block"
@@ -712,7 +694,7 @@ impl MainReactor {
             }
         }
 
-        match self.storage.read_block_header(parent_hash) {
+        match self.storage.read_block_header_by_hash(parent_hash) {
             Ok(Some(parent_block_header)) => {
                 // even if we don't have a complete block (all parts and dependencies)
                 // we may have the parent's block header; if we do we also
@@ -844,19 +826,19 @@ mod tests {
             .era(100)
             .height(1000)
             .switch_block(true)
-            .build(rng);
+            .build_versioned(rng);
 
         let latest_orphaned_block = TestBlockBuilder::new()
             .era(0)
             .height(0)
             .switch_block(true)
-            .build(rng);
+            .build_versioned(rng);
 
         assert_eq!(latest_orphaned_block.height(), 0);
         assert_eq!(
             synced_to_ttl(
-                latest_switch_block.header(),
-                latest_orphaned_block.header(),
+                &latest_switch_block.clone_header(),
+                &latest_orphaned_block.clone_header(),
                 MAX_TTL
             ),
             Ok(true)

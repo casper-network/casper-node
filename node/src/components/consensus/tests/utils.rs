@@ -38,6 +38,14 @@ pub static CAROL_SECRET_KEY: Lazy<Arc<SecretKey>> =
     Lazy::new(|| Arc::new(SecretKey::ed25519_from_bytes([2; SecretKey::ED25519_LENGTH]).unwrap()));
 pub static CAROL_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&**CAROL_SECRET_KEY));
 
+pub static DAVE_SECRET_KEY: Lazy<Arc<SecretKey>> =
+    Lazy::new(|| Arc::new(SecretKey::ed25519_from_bytes([3; SecretKey::ED25519_LENGTH]).unwrap()));
+pub static DAVE_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&**DAVE_SECRET_KEY));
+
+pub static ELLEN_SECRET_KEY: Lazy<Arc<SecretKey>> =
+    Lazy::new(|| Arc::new(SecretKey::ed25519_from_bytes([4; SecretKey::ED25519_LENGTH]).unwrap()));
+pub static ELLEN_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&**ELLEN_SECRET_KEY));
+
 /// Loads the local chainspec and overrides timestamp and genesis account with the given stakes.
 /// The test `Chainspec` returned has eras with exactly two blocks.
 pub fn new_test_chainspec<I, T>(stakes: I) -> Chainspec
@@ -49,7 +57,7 @@ where
     let accounts = stakes
         .into_iter()
         .map(|(pk, stake)| {
-            let motes = Motes::new(stake.into());
+            let motes = Motes::new(stake);
             let validator_config = ValidatorConfig::new(motes, DelegationRate::zero());
             AccountConfig::new(pk, motes, Some(validator_config))
         })

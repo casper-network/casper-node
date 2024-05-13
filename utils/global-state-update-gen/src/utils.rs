@@ -1,3 +1,4 @@
+use clap::ArgMatches;
 use std::{
     collections::{BTreeMap, BTreeSet},
     convert::TryInto,
@@ -5,7 +6,7 @@ use std::{
 
 use casper_types::{
     bytesrepr::ToBytes, checksummed_hex, system::auction::SeigniorageRecipientsSnapshot,
-    AsymmetricType, Digest, Key, PublicKey, StoredValue, U512,
+    AsymmetricType, Digest, Key, ProtocolVersion, PublicKey, StoredValue, U512,
 };
 
 /// Parses a Digest from a string. Panics if parsing fails.
@@ -13,6 +14,20 @@ pub fn hash_from_str(hex_str: &str) -> Digest {
     (&checksummed_hex::decode(hex_str).unwrap()[..])
         .try_into()
         .unwrap()
+}
+
+pub fn num_from_str(str: Option<&str>) -> Option<u32> {
+    match str {
+        Some(val) => val.parse::<u32>().ok(),
+        None => None,
+    }
+}
+
+pub fn protocol_version_from_matches(matches: &ArgMatches<'_>) -> ProtocolVersion {
+    let major = num_from_str(matches.value_of("major")).unwrap_or(2);
+    let minor = num_from_str(matches.value_of("minor")).unwrap_or(0);
+    let patch = num_from_str(matches.value_of("patch")).unwrap_or(0);
+    ProtocolVersion::from_parts(major, minor, patch)
 }
 
 pub(crate) fn print_validators(validators: &[ValidatorInfo]) {

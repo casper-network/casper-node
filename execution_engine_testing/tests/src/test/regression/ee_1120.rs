@@ -59,17 +59,17 @@ fn should_run_ee_1120_slash_delegators() {
     let accounts = {
         let validator_1 = GenesisAccount::account(
             VALIDATOR_1.clone(),
-            Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
+            Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE),
             Some(GenesisValidator::new(
-                Motes::new(VALIDATOR_1_STAKE.into()),
+                Motes::new(VALIDATOR_1_STAKE),
                 DelegationRate::zero(),
             )),
         );
         let validator_2 = GenesisAccount::account(
             VALIDATOR_2.clone(),
-            Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
+            Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE),
             Some(GenesisValidator::new(
-                Motes::new(VALIDATOR_2_STAKE.into()),
+                Motes::new(VALIDATOR_2_STAKE),
                 DelegationRate::zero(),
             )),
         );
@@ -82,7 +82,7 @@ fn should_run_ee_1120_slash_delegators() {
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis(run_genesis_request);
 
     let transfer_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,

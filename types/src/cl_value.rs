@@ -14,7 +14,14 @@ use crate::{
     checksummed_hex, CLType, CLTyped,
 };
 
+mod checksum_registry;
+mod dictionary;
 mod jsonrepr;
+
+pub use checksum_registry::ChecksumRegistry;
+pub use dictionary::{handle_stored_dictionary_value, DictionaryValue};
+pub use system_entity_registry::SystemEntityRegistry;
+
 #[cfg(feature = "sdk")]
 pub use jsonrepr::cl_value_to_json;
 

@@ -249,8 +249,7 @@ impl Digest {
 
     /// Returns a new `Digest` directly initialized with the provided bytes; no hashing is done.
     ///
-    /// This is equivalent to `Deploy::from`, but is a const function.
-    #[cfg(any(feature = "testing", test))]
+    /// This is equivalent to `Digest::from`, but is a const function.
     pub const fn from_raw(raw_digest: [u8; Self::LENGTH]) -> Self {
         Digest(raw_digest)
     }

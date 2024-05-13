@@ -10,7 +10,7 @@
     )),
     no_std
 )]
-#![doc(html_root_url = "https://docs.rs/casper-types/3.0.0")]
+#![doc(html_root_url = "https://docs.rs/casper-types/5.0.0")]
 #![doc(
     html_favicon_url = "https://raw.githubusercontent.com/casper-network/casper-node/blob/dev/images/Casper_Logo_Favicon_48.png",
     html_logo_url = "https://raw.githubusercontent.com/casper-network/casper-node/blob/dev/images/Casper_Logo_Favicon.png"
@@ -20,14 +20,17 @@
 
 #[cfg_attr(not(test), macro_use)]
 extern crate alloc;
+
 extern crate core;
 
 mod access_rights;
 pub mod account;
 pub mod addressable_entity;
 pub mod api_error;
+mod auction_state;
 mod block;
 mod block_time;
+mod byte_code;
 pub mod bytesrepr;
 #[cfg(any(feature = "std", test))]
 mod chainspec;
@@ -37,6 +40,7 @@ mod cl_type;
 mod cl_value;
 #[cfg(feature = "sdk")]
 pub mod cl_value;
+pub mod contract_messages;
 mod contract_wasm;
 pub mod contracts;
 pub mod crypto;
@@ -50,10 +54,12 @@ pub mod file_utils;
 mod gas;
 #[cfg(any(feature = "testing", feature = "gens", test))]
 pub mod gens;
+pub mod global_state;
 mod json_pretty_printer;
 mod key;
 mod motes;
-pub mod package;
+mod package;
+mod peers_map;
 mod phase;
 mod protocol_version;
 mod semver;
@@ -69,6 +75,7 @@ mod transfer;
 mod transfer_result;
 mod uint;
 mod uref;
+mod validator_change;
 
 #[cfg(feature = "std")]
 #[cfg(not(any(feature = "sdk")))]
@@ -77,38 +84,51 @@ use libc::{c_long, sysconf, _SC_PAGESIZE};
 use once_cell::sync::Lazy;
 
 pub use crate::uint::{UIntParseError, U128, U256, U512};
+
 pub use access_rights::{
     AccessRights, ContextAccessRights, GrantedAccess, ACCESS_RIGHTS_SERIALIZED_LENGTH,
 };
+pub use account::Account;
 #[doc(inline)]
 pub use addressable_entity::{
-    AddressableEntity, ContractHash, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints,
-    Parameter,
+    AddressableEntity, AddressableEntityHash, EntityAddr, EntityKind, EntryPoint, EntryPointAccess,
+    EntryPointAddr, EntryPointPayment, EntryPointType, EntryPointValue, EntryPoints, Parameter,
+    Parameters, DEFAULT_ENTRY_POINT_NAME,
 };
 #[doc(inline)]
 pub use api_error::ApiError;
+pub use auction_state::{AuctionState, JsonEraValidators, JsonValidatorWeights};
 #[cfg(all(feature = "std", feature = "json-schema"))]
 pub use block::JsonBlockWithSignatures;
 pub use block::{
-    Block, BlockBody, BlockBodyV1, BlockBodyV2, BlockHash, BlockHashAndHeight, BlockHeader,
-    BlockSignatures, BlockSignaturesMergeError, BlockV1, BlockV2, BlockValidationError, EraEnd,
-    EraReport, FinalitySignature, FinalitySignatureId, SignedBlockHeader,
-    SignedBlockHeaderValidationError,
+    AvailableBlockRange, Block, BlockBody, BlockBodyV1, BlockBodyV2, BlockGlobalAddr,
+    BlockGlobalAddrTag, BlockHash, BlockHashAndHeight, BlockHeader, BlockHeaderV1, BlockHeaderV2,
+    BlockIdentifier, BlockSignatures, BlockSignaturesMergeError, BlockSignaturesV1,
+    BlockSignaturesV2, BlockSyncStatus, BlockSynchronizerStatus, BlockV1, BlockV2,
+    BlockValidationError, ChainNameDigest, EraEnd, EraEndV1, EraEndV2, EraReport,
+    FinalitySignature, FinalitySignatureId, FinalitySignatureV1, FinalitySignatureV2,
+    RewardedSignatures, Rewards, SignedBlock, SignedBlockHeader, SignedBlockHeaderValidationError,
+    SingleBlockRewardedSignatures,
 };
-#[cfg(any(feature = "testing", test))]
-pub use block::{FromTestBlockBuilder, TestBlockBuilder};
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
+pub use block::{TestBlockBuilder, TestBlockV1Builder};
+pub use block_time::{BlockTime, HoldsEpoch, BLOCKTIME_SERIALIZED_LENGTH};
+pub use byte_code::{ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind};
+pub use global_state::Pointer;
 
-pub use block_time::{BlockTime, BLOCKTIME_SERIALIZED_LENGTH};
 #[cfg(any(feature = "std", test))]
 pub use chainspec::{
     AccountConfig, AccountsConfig, ActivationPoint, AdministratorAccount, AuctionCosts,
     BrTableCost, Chainspec, ChainspecRawBytes, ChainspecRegistry, ConsensusProtocolName,
     ControlFlowCosts, CoreConfig, DelegatorConfig, DeployConfig, FeeHandling, GenesisAccount,
-    GenesisValidator, GlobalStateUpdate, GlobalStateUpdateConfig, GlobalStateUpdateError,
-    HandlePaymentCosts, HighwayConfig, HostFunction, HostFunctionCost, HostFunctionCosts,
-    LegacyRequiredFinality, MintCosts, NetworkConfig, OpcodeCosts, ProtocolConfig, RefundHandling,
-    StandardPaymentCosts, StorageCosts, SystemConfig, TransactionConfig, TransactionV1Config,
-    UpgradeConfig, ValidatorConfig, WasmConfig, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY,
+    GenesisConfig, GenesisConfigBuilder, GenesisValidator, GlobalStateUpdate,
+    GlobalStateUpdateConfig, GlobalStateUpdateError, HandlePaymentCosts, HighwayConfig,
+    HoldBalanceHandling, HostFunction, HostFunctionCost, HostFunctionCosts, LegacyRequiredFinality,
+    MessageLimits, MintCosts, NetworkConfig, NextUpgrade, OpcodeCosts, PricingHandling,
+    ProtocolConfig, ProtocolUpgradeConfig, RefundHandling, StandardPaymentCosts, StorageCosts,
+    SystemConfig, TransactionConfig, TransactionV1Config, VacancyConfig, ValidatorConfig,
+    WasmConfig, DEFAULT_GAS_HOLD_INTERVAL, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY,
+    DEFAULT_REFUND_HANDLING,
 };
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 pub use chainspec::{
@@ -121,17 +141,21 @@ pub use chainspec::{
     DEFAULT_CONTROL_FLOW_IF_OPCODE, DEFAULT_CONTROL_FLOW_LOOP_OPCODE,
     DEFAULT_CONTROL_FLOW_RETURN_OPCODE, DEFAULT_CONTROL_FLOW_SELECT_OPCODE,
     DEFAULT_CONVERSION_COST, DEFAULT_CURRENT_MEMORY_COST, DEFAULT_DELEGATE_COST, DEFAULT_DIV_COST,
-    DEFAULT_GLOBAL_COST, DEFAULT_GROW_MEMORY_COST, DEFAULT_INTEGER_COMPARISON_COST,
+    DEFAULT_FEE_HANDLING, DEFAULT_GAS_HOLD_BALANCE_HANDLING, DEFAULT_GLOBAL_COST,
+    DEFAULT_GROW_MEMORY_COST, DEFAULT_INSTALL_UPGRADE_GAS_LIMIT, DEFAULT_INTEGER_COMPARISON_COST,
     DEFAULT_LOAD_COST, DEFAULT_LOCAL_COST, DEFAULT_MAX_PAYMENT_MOTES, DEFAULT_MAX_STACK_HEIGHT,
     DEFAULT_MIN_TRANSFER_MOTES, DEFAULT_MUL_COST, DEFAULT_NEW_DICTIONARY_COST, DEFAULT_NOP_COST,
-    DEFAULT_STORE_COST, DEFAULT_TRANSFER_COST, DEFAULT_UNREACHABLE_COST,
-    DEFAULT_WASMLESS_TRANSFER_COST, DEFAULT_WASM_MAX_MEMORY,
+    DEFAULT_STANDARD_TRANSACTION_GAS_LIMIT, DEFAULT_STORE_COST, DEFAULT_TRANSFER_COST,
+    DEFAULT_UNREACHABLE_COST, DEFAULT_WASM_MAX_MEMORY,
 };
 pub use cl_type::{named_key_type, CLType, CLTyped};
 #[cfg(feature = "sdk")]
 pub use cl_value::cl_value_to_json;
-pub use cl_value::{CLTypeMismatch, CLValue, CLValueError};
-pub use contract_wasm::{ContractWasm, ContractWasmHash};
+pub use cl_value::{
+    handle_stored_dictionary_value, CLTypeMismatch, CLValue, CLValueError, ChecksumRegistry,
+    DictionaryValue as CLValueDictionary, SystemEntityRegistry,
+};
+pub use contract_wasm::ContractWasm;
 #[doc(inline)]
 pub use contracts::Contract;
 pub use crypto::*;
@@ -146,48 +170,52 @@ pub use gas::Gas;
 pub use json_pretty_printer::json_pretty_print;
 #[doc(inline)]
 pub use key::{
-    DictionaryAddr, FromStrError as KeyFromStrError, HashAddr, Key, KeyTag, BLAKE2B_DIGEST_LENGTH,
-    DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_DICTIONARY_LENGTH, KEY_HASH_LENGTH,
+    DictionaryAddr, FromStrError as KeyFromStrError, HashAddr, Key, KeyTag, PackageAddr,
+    BLAKE2B_DIGEST_LENGTH, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_DICTIONARY_LENGTH, KEY_HASH_LENGTH,
 };
 pub use motes::Motes;
+#[doc(inline)]
 pub use package::{
-    ContractPackageHash, ContractVersion, ContractVersionKey, ContractVersions, Group, Groups,
-    Package,
+    EntityVersion, EntityVersionKey, EntityVersions, Group, Groups, Package, PackageHash,
+    PackageStatus, ENTITY_INITIAL_VERSION,
 };
+pub use peers_map::{PeerEntry, Peers};
 pub use phase::{Phase, PHASE_SERIALIZED_LENGTH};
 pub use protocol_version::{ProtocolVersion, VersionCheckResult};
 pub use semver::{ParseSemVerError, SemVer, SEM_VER_SERIALIZED_LENGTH};
-pub use stored_value::{StoredValue, TypeMismatch as StoredValueTypeMismatch};
+pub use stored_value::{
+    GlobalStateIdentifier, StoredValue, TypeMismatch as StoredValueTypeMismatch,
+};
 pub use tagged::Tagged;
 #[cfg(any(feature = "std", test))]
 pub use timestamp::serde_option_time_diff;
 pub use timestamp::{TimeDiff, Timestamp};
-#[doc(inline)]
-pub use transaction::runtime_args::{NamedArg, RuntimeArgs};
-#[cfg(any(all(feature = "std", feature = "testing"), test))]
-pub use transaction::TestTransactionV1Builder;
+#[cfg(any(feature = "std", test))]
+pub use transaction::GasLimited;
 pub use transaction::{
-    runtime_args, AuctionTransactionV1, ContractIdentifier, ContractPackageIdentifier, Deploy,
-    DeployApproval, DeployApprovalsHash, DeployConfigurationFailure, DeployDecodeFromJsonError,
-    DeployError, DeployExcessiveSizeError, DeployFootprint, DeployHash, DeployHeader, DeployId,
-    DirectCallV1, ExecutableDeployItem, ExecutableDeployItemIdentifier, NativeTransactionV1,
-    PricingModeV1, Transaction, TransactionApprovalsHash, TransactionHash, TransactionId,
-    TransactionV1, TransactionV1Approval, TransactionV1ApprovalsHash, TransactionV1ConfigFailure,
-    TransactionV1DecodeFromJsonError, TransactionV1Error, TransactionV1ExcessiveSizeError,
-    TransactionV1Hash, TransactionV1Header, TransactionV1Kind, TransferTarget,
-    UserlandTransactionV1,
+    AddressableEntityIdentifier, Approval, ApprovalsHash, Categorized as CategorizedTransaction,
+    Deploy, DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError, DeployHash,
+    DeployHeader, DeployId, ExecutableDeployItem, ExecutableDeployItemIdentifier, ExecutionInfo,
+    InitiatorAddr, InvalidDeploy, InvalidTransaction, InvalidTransactionV1, NamedArg,
+    PackageIdentifier, PricingMode, RuntimeArgs, Transaction, TransactionCategory,
+    TransactionEntryPoint, TransactionHash, TransactionHeader, TransactionId,
+    TransactionInvocationTarget, TransactionRuntime, TransactionScheduling, TransactionSessionKind,
+    TransactionTarget, TransactionV1, TransactionV1Body, TransactionV1DecodeFromJsonError,
+    TransactionV1Error, TransactionV1ExcessiveSizeError, TransactionV1Hash, TransactionV1Header,
+    TransferTarget,
 };
 #[cfg(any(feature = "std", test))]
 pub use transaction::{
     DeployBuilder, DeployBuilderError, TransactionV1Builder, TransactionV1BuilderError,
 };
 pub use transfer::{
-    FromStrError as TransferFromStrError, Transfer, TransferAddr, TRANSFER_ADDR_LENGTH,
+    Transfer, TransferAddr, TransferFromStrError, TransferV1, TransferV2, TRANSFER_ADDR_LENGTH,
 };
 pub use transfer_result::{TransferResult, TransferredTo};
 pub use uref::{
     FromStrError as URefFromStrError, URef, URefAddr, UREF_ADDR_LENGTH, UREF_SERIALIZED_LENGTH,
 };
+pub use validator_change::ValidatorChange;
 
 /// OS page size.
 #[cfg(feature = "std")]

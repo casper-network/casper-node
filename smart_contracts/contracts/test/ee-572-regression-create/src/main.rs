@@ -9,7 +9,7 @@ use casper_contract::{
 };
 use casper_types::{
     addressable_entity::Parameters, AccessRights, CLType, CLValue, EntryPoint, EntryPointAccess,
-    EntryPointType, EntryPoints, URef,
+    EntryPointPayment, EntryPointType, EntryPoints, Key, URef,
 };
 
 const DATA: &str = "data";
@@ -34,14 +34,16 @@ pub extern "C" fn call() {
             Parameters::default(),
             CLType::URef,
             EntryPointAccess::Public,
-            EntryPointType::Contract,
+            EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
 
         entry_points.add_entry_point(entry_point);
 
         entry_points
     };
-    let (contract_hash, contract_version) = storage::new_contract(entry_points, None, None, None);
+    let (contract_hash, contract_version) =
+        storage::new_contract(entry_points, None, None, None, None);
     runtime::put_key(CONTRACT_VERSION, storage::new_uref(contract_version).into());
-    runtime::put_key(CONTRACT_NAME, contract_hash.into());
+    runtime::put_key(CONTRACT_NAME, Key::contract_entity_key(contract_hash));
 }

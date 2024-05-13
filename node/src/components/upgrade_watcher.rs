@@ -16,7 +16,6 @@ use std::{
 
 use datasize::DataSize;
 use derive_more::From;
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::task;
@@ -24,7 +23,7 @@ use tracing::{debug, error, info, trace, warn};
 
 use casper_types::{
     file_utils::{self, ReadFileError},
-    ActivationPoint, Chainspec, EraId, ProtocolConfig, ProtocolVersion, TimeDiff,
+    Chainspec, EraId, NextUpgrade, ProtocolConfig, ProtocolVersion, TimeDiff,
 };
 
 use crate::{
@@ -118,51 +117,6 @@ pub(crate) enum Error {
     },
 }
 
-/// Information about the next protocol upgrade.
-#[derive(PartialEq, Eq, DataSize, Debug, Serialize, Deserialize, Clone, JsonSchema)]
-pub struct NextUpgrade {
-    activation_point: ActivationPoint,
-    #[data_size(skip)]
-    #[schemars(with = "String")]
-    protocol_version: ProtocolVersion,
-}
-
-impl NextUpgrade {
-    pub(crate) fn new(
-        activation_point: ActivationPoint,
-        protocol_version: ProtocolVersion,
-    ) -> Self {
-        NextUpgrade {
-            activation_point,
-            protocol_version,
-        }
-    }
-
-    pub(crate) fn activation_point(&self) -> ActivationPoint {
-        self.activation_point
-    }
-}
-
-impl From<ProtocolConfig> for NextUpgrade {
-    fn from(protocol_config: ProtocolConfig) -> Self {
-        NextUpgrade {
-            activation_point: protocol_config.activation_point,
-            protocol_version: protocol_config.version,
-        }
-    }
-}
-
-impl Display for NextUpgrade {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            formatter,
-            "next upgrade to {} at start of era {}",
-            self.protocol_version,
-            self.activation_point.era_id()
-        )
-    }
-}
-
 #[derive(Clone, DataSize, Debug)]
 pub(crate) struct UpgradeWatcher {
     current_version: ProtocolVersion,
@@ -202,7 +156,7 @@ impl UpgradeWatcher {
 
     pub(crate) fn should_upgrade_after(&self, era_id: EraId) -> bool {
         self.next_upgrade.as_ref().map_or(false, |upgrade| {
-            upgrade.activation_point.should_upgrade(&era_id)
+            upgrade.activation_point().should_upgrade(&era_id)
         })
     }
 
@@ -257,7 +211,7 @@ impl UpgradeWatcher {
         if let Some(ref current_point) = self.next_upgrade {
             if next_upgrade != *current_point {
                 info!(
-                    new_point=%next_upgrade.activation_point,
+                    new_point=%next_upgrade.activation_point(),
                     %current_point,
                     "changing upgrade activation point"
                 );
@@ -359,10 +313,10 @@ struct UpgradePoint {
 
 impl UpgradePoint {
     /// Parses a chainspec file at the given path as an `UpgradePoint`.
-    fn from_chainspec_path<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
+    fn from_chainspec_path<P: AsRef<Path> + std::fmt::Debug>(path: P) -> Result<Self, Error> {
         let bytes = file_utils::read_file(path.as_ref().join(CHAINSPEC_FILENAME))
             .map_err(Error::LoadUpgradePoint)?;
-        Ok(toml::from_slice(&bytes)?)
+        Ok(toml::from_str(std::str::from_utf8(&bytes).unwrap())?)
     }
 }
 
@@ -569,11 +523,9 @@ mod tests {
         fs::create_dir(&subdir).unwrap();
 
         let path = subdir.join(CHAINSPEC_FILENAME);
-        fs::write(
-            path,
-            toml::to_string_pretty(&chainspec).expect("should encode to toml"),
-        )
-        .expect("should install chainspec");
+
+        let pretty = toml::to_string_pretty(&chainspec);
+        fs::write(path, pretty.expect("should encode to toml")).expect("should install chainspec");
         chainspec
     }
 
@@ -587,20 +539,20 @@ mod tests {
 
         let mut rng = crate::new_rng();
 
-        let mut current = ProtocolVersion::from_parts(0, 9, 9);
-        let v1_0_0 = ProtocolVersion::from_parts(1, 0, 0);
-        let chainspec_v1_0_0 = install_chainspec(&mut rng, tempdir.path(), &v1_0_0);
+        let mut current = ProtocolVersion::from_parts(1, 9, 9);
+        let v2_0_0 = ProtocolVersion::from_parts(2, 0, 0);
+        let chainspec_v2_0_0 = install_chainspec(&mut rng, tempdir.path(), &v2_0_0);
         assert_eq!(
             next_point(&current),
-            chainspec_v1_0_0.protocol_config.into()
+            chainspec_v2_0_0.protocol_config.into()
         );
 
-        current = v1_0_0;
-        let v1_0_3 = ProtocolVersion::from_parts(1, 0, 3);
-        let chainspec_v1_0_3 = install_chainspec(&mut rng, tempdir.path(), &v1_0_3);
+        current = v2_0_0;
+        let v2_0_3 = ProtocolVersion::from_parts(2, 0, 3);
+        let chainspec_v2_0_3 = install_chainspec(&mut rng, tempdir.path(), &v2_0_3);
         assert_eq!(
             next_point(&current),
-            chainspec_v1_0_3.protocol_config.into()
+            chainspec_v2_0_3.protocol_config.into()
         );
     }
 

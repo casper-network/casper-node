@@ -1,6 +1,5 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, LOCAL_GENESIS_REQUEST,
 };
 use casper_types::{RuntimeArgs, StoredValue};
 
@@ -11,9 +10,7 @@ const CONTRACT_PACKAGE_NAMED_KEY: &str = "do_nothing_package_hash";
 #[test]
 fn should_query_contract_package() {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
-        .commit();
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone()).commit();
 
     let install_request =
         ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, CONTRACT_NAME, RuntimeArgs::new())
@@ -22,7 +19,8 @@ fn should_query_contract_package() {
     builder.exec(install_request).expect_success().commit();
 
     let contract_package_hash = builder
-        .get_expected_addressable_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .unwrap()
         .named_keys()
         .clone()
         .get(CONTRACT_PACKAGE_NAMED_KEY)
@@ -33,5 +31,5 @@ fn should_query_contract_package() {
         .query(None, contract_package_hash, &[])
         .expect("failed to find contract package");
 
-    assert!(matches!(contract_package, StoredValue::ContractPackage(_)));
+    assert!(matches!(contract_package, StoredValue::Package(_)));
 }
