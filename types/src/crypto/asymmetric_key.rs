@@ -244,7 +244,6 @@ impl SecretKey {
 
     /// Attempts to read the key bytes from configured file path.
     #[cfg(any(feature = "std-fs-io", test))]
-
     pub fn from_file<P: AsRef<Path>>(file: P) -> Result<Self, ErrorExt> {
         let data = read_file(file).map_err(ErrorExt::SecretKeyLoad)?;
         Self::from_pem(data)
