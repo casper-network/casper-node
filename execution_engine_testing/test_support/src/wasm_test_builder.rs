@@ -1381,7 +1381,7 @@ where
     ) -> Option<EntityWithNamedKeys> {
         match self.get_addressable_entity(entity_hash) {
             Some(entity) => {
-                let named_keys = self.get_named_keys_by_contract_entity_hash(entity_hash);
+                let named_keys = self.get_named_keys(entity.entity_addr(entity_hash));
                 Some(EntityWithNamedKeys::new(entity, named_keys))
             }
             None => None,
@@ -1543,15 +1543,6 @@ where
             .get_entity_hash_by_account_hash(account_hash)
             .expect("must have entity hash");
         let entity_addr = EntityAddr::new_account(entity_hash.value());
-        self.get_named_keys(entity_addr)
-    }
-
-    /// Returns named keys for an account entity by its entity hash.
-    pub fn get_named_keys_by_contract_entity_hash(
-        &self,
-        contract_hash: AddressableEntityHash,
-    ) -> NamedKeys {
-        let entity_addr = EntityAddr::new_smart_contract(contract_hash.value());
         self.get_named_keys(entity_addr)
     }
 
