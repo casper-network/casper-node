@@ -1231,7 +1231,7 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveStrictFinalitySignatures(_, _)
             | BlockAcquisitionState::Failed(_, _)
             | BlockAcquisitionState::Complete(..) => {
-                warn!(
+                debug!(
                     ?txn_id,
                     "BlockAcquisition: invalid attempt to register deploy for: {}",
                     self.block_hash()
