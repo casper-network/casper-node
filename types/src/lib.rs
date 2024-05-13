@@ -67,7 +67,7 @@ mod tagged;
 #[cfg(any(feature = "testing", test))]
 pub mod testing;
 mod timestamp;
-mod transaction;
+pub mod transaction;
 mod transfer;
 mod transfer_result;
 mod uint;
