@@ -16,6 +16,7 @@ use casper_types::{
     account::AccountHash,
     addressable_entity::NamedKeys,
     bytesrepr::ToBytes,
+    contracts::ContractHash,
     global_state::TrieMerkleProof,
     system::{
         mint::{
@@ -25,8 +26,9 @@ use casper_types::{
         MINT,
     },
     BlockGlobalAddr, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash, CLValue, ChecksumRegistry,
-    EntityAddr, EntryPointValue, EntryPoints, HoldBalanceHandling, HoldsEpoch, Key, Motes, Package,
-    PackageHash, StoredValue, StoredValueTypeMismatch, SystemEntityRegistry, URef, URefAddr, U512,
+    Contract, EntityAddr, EntryPointAddr, EntryPointValue, EntryPoints, HoldBalanceHandling,
+    HoldsEpoch, Key, KeyTag, Motes, Package, PackageHash, StoredValue, StoredValueTypeMismatch,
+    SystemEntityRegistry, URef, URefAddr, U512,
 };
 
 /// Higher-level operations on the state via a `TrackingCopy`.
@@ -100,6 +102,10 @@ pub trait TrackingCopyExt<R> {
 
     /// Gets a package by hash.
     fn get_package(&mut self, package_hash: PackageHash) -> Result<Package, Self::Error>;
+    fn get_legacy_contract(
+        &mut self,
+        legacy_contract: ContractHash,
+    ) -> Result<Contract, Self::Error>;
 
     /// Gets the system entity registry.
     fn get_system_entity_registry(&self) -> Result<SystemEntityRegistry, Self::Error>;
@@ -644,8 +650,23 @@ where
                 Some(other) => Err(TrackingCopyError::TypeMismatch(
                     StoredValueTypeMismatch::new("ContractPackage".to_string(), other.type_name()),
                 )),
-                None => Err(Self::Error::KeyNotFound(key)),
+                None => Err(Self::Error::ValueNotFound(key.to_formatted_string())),
             },
+        }
+    }
+
+    fn get_legacy_contract(
+        &mut self,
+        legacy_contract: ContractHash,
+    ) -> Result<Contract, Self::Error> {
+        let key = Key::Hash(legacy_contract.value());
+        match self.read(&key)? {
+            Some(StoredValue::Contract(legacy_contract)) => Ok(legacy_contract),
+            Some(other) => Err(Self::Error::TypeMismatch(StoredValueTypeMismatch::new(
+                "Contract".to_string(),
+                other.type_name(),
+            ))),
+            None => Err(Self::Error::ValueNotFound(key.to_formatted_string())),
         }
     }
 
