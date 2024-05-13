@@ -515,7 +515,7 @@ impl PublicKey {
     }
 
     /// Attempts to read the key bytes from configured file path.
-    #[cfg(any(feature = "std-fs-io", test))]
+    #[cfg(any(feature = "std", test))]
     pub fn from_file<P: AsRef<Path>>(file: P) -> Result<Self, ErrorExt> {
         let data = read_file(file).map_err(ErrorExt::PublicKeyLoad)?;
         Self::from_pem(data)
