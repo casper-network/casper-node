@@ -1,6 +1,7 @@
 use std::{
     collections::{btree_map::Entry, BTreeMap},
     convert::TryInto,
+    ops::Mul,
 };
 
 use num_rational::Ratio;
@@ -113,6 +114,7 @@ impl ValidatorBidsDetail {
     }
 
     /// Get validator weights.
+    #[allow(clippy::too_many_arguments)]
     pub fn validator_weights<P>(
         &mut self,
         provider: &mut P,
@@ -121,6 +123,7 @@ impl ValidatorBidsDetail {
         vesting_schedule_period_millis: u64,
         locked: bool,
         include_credits: bool,
+        cap: Ratio<U512>,
     ) -> Result<ValidatorWeights, Error>
     where
         P: RuntimeProvider + ?Sized + StorageProvider,
@@ -140,6 +143,7 @@ impl ValidatorBidsDetail {
                 validator_public_key,
                 era_ending,
                 include_credits,
+                cap,
             ));
             ret.insert(validator_public_key.clone(), total);
         }
@@ -152,6 +156,7 @@ impl ValidatorBidsDetail {
         validator_public_key: &PublicKey,
         era_ending: EraId,
         include_credit: bool,
+        cap: Ratio<U512>,
     ) -> U512 {
         if !include_credit {
             return U512::zero();
@@ -159,7 +164,8 @@ impl ValidatorBidsDetail {
 
         if let Some(inner) = self.validator_credits.get(validator_public_key) {
             if let Some(credit) = inner.get(&era_ending) {
-                return credit.amount();
+                let amount = Ratio::new_raw(credit.amount(), U512::one());
+                return amount.mul(cap).to_integer();
             }
         }
 

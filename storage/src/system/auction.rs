@@ -465,6 +465,8 @@ pub trait Auction:
         evicted_validators: Vec<PublicKey>,
         max_delegators_per_validator: u32,
         minimum_delegation_amount: u64,
+        include_credits: bool,
+        credit_cap: Ratio<U512>,
     ) -> Result<(), ApiError> {
         if self.get_caller() != PublicKey::System.to_account_hash() {
             return Err(Error::InvalidCaller.into());
@@ -512,7 +514,8 @@ pub trait Auction:
                 era_end_timestamp_millis,
                 vesting_schedule_period_millis,
                 true,
-                true,
+                include_credits,
+                credit_cap,
             )?;
 
             let remaining_auction_slots = validator_slots.saturating_sub(locked_validators.len());
@@ -523,7 +526,8 @@ pub trait Auction:
                     era_end_timestamp_millis,
                     vesting_schedule_period_millis,
                     false,
-                    true,
+                    include_credits,
+                    credit_cap,
                 )?;
                 let mut unlocked_validators = unlocked_validators
                     .iter()

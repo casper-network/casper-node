@@ -117,6 +117,8 @@ refund_handling = { type = 'no_refund' }
 #                 administrator accounts
 #   'burn': fees are burned
 fee_handling = { type = 'no_fee' }
+# The proportion of baseline rewards going to reward finality signatures specifically.
+validator_credit_cap = [1, 5]
 # Defines how pricing is handled.
 #
 # Valid options are:

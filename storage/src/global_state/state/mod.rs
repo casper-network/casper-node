@@ -313,12 +313,16 @@ pub trait CommitProvider: StateProvider {
             .collect::<Vec<PublicKey>>();
         let max_delegators_per_validator = config.max_delegators_per_validator();
         let minimum_delegation_amount = config.minimum_delegation_amount();
+        let include_credits = config.include_credits();
+        let credit_cap = config.credit_cap();
 
         if let Err(err) = runtime.run_auction(
             era_end_timestamp_millis,
             evicted_validators,
             max_delegators_per_validator,
             minimum_delegation_amount,
+            include_credits,
+            credit_cap,
         ) {
             error!("{}", err);
             return StepResult::Failure(StepError::Auction);

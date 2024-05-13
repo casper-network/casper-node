@@ -22,6 +22,7 @@ use tracing::error;
 
 #[cfg(feature = "test-support")]
 use casper_wasmi::RuntimeValue;
+use num_rational::Ratio;
 
 use casper_storage::{
     global_state::{error::Error as GlobalStateError, state::StateReader},
@@ -928,6 +929,8 @@ where
                         evicted_validators,
                         max_delegators_per_validator,
                         minimum_delegation_amount,
+                        true,
+                        Ratio::new_raw(U512::from(1), U512::from(5)),
                     )
                     .map_err(Self::reverter)?;
 
