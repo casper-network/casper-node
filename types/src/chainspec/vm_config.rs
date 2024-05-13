@@ -10,15 +10,20 @@ mod storage_costs;
 mod system_config;
 mod wasm_config;
 
-pub use auction_costs::{AuctionCosts, DEFAULT_ADD_BID_COST, DEFAULT_DELEGATE_COST};
+pub use auction_costs::AuctionCosts;
+#[cfg(any(feature = "testing", test))]
+pub use auction_costs::{DEFAULT_ADD_BID_COST, DEFAULT_DELEGATE_COST};
 pub use chainspec_registry::ChainspecRegistry;
 pub use handle_payment_costs::HandlePaymentCosts;
+#[cfg(any(feature = "testing", test))]
+pub use host_function_costs::DEFAULT_NEW_DICTIONARY_COST;
 pub use host_function_costs::{
-    Cost as HostFunctionCost, HostFunction, HostFunctionCosts,
-    DEFAULT_HOST_FUNCTION_NEW_DICTIONARY, DEFAULT_NEW_DICTIONARY_COST,
+    Cost as HostFunctionCost, HostFunction, HostFunctionCosts, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY,
 };
 pub use message_limits::MessageLimits;
-pub use mint_costs::{MintCosts, DEFAULT_TRANSFER_COST};
+pub use mint_costs::MintCosts;
+#[cfg(any(feature = "testing", test))]
+pub use mint_costs::DEFAULT_TRANSFER_COST;
 pub use opcode_costs::{BrTableCost, ControlFlowCosts, OpcodeCosts};
 #[cfg(any(feature = "testing", test))]
 pub use opcode_costs::{
@@ -41,4 +46,6 @@ pub use system_config::SystemConfig;
 pub use system_config::{
     DEFAULT_INSTALL_UPGRADE_GAS_LIMIT, DEFAULT_STANDARD_TRANSACTION_GAS_LIMIT,
 };
-pub use wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY};
+pub use wasm_config::WasmConfig;
+#[cfg(any(feature = "testing", test))]
+pub use wasm_config::{DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY};

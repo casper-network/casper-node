@@ -38,6 +38,3 @@ impl Display for FromStrError {
         }
     }
 }
-/// Associated error type of `TryFrom<&[u8]>` for [`AccountHash`](super::AccountHash).
-#[derive(Debug)]
-pub struct TryFromSliceForAccountHashError(());

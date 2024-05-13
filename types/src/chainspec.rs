@@ -44,11 +44,12 @@ pub use activation_point::ActivationPoint;
 pub use chainspec_raw_bytes::ChainspecRawBytes;
 #[cfg(any(feature = "testing", test))]
 pub use core_config::DEFAULT_FEE_HANDLING;
+#[cfg(any(feature = "testing", test))]
+pub use core_config::DEFAULT_GAS_HOLD_BALANCE_HANDLING;
 #[cfg(any(feature = "std", test))]
 pub use core_config::DEFAULT_REFUND_HANDLING;
 pub use core_config::{
-    ConsensusProtocolName, CoreConfig, LegacyRequiredFinality, DEFAULT_GAS_HOLD_BALANCE_HANDLING,
-    DEFAULT_GAS_HOLD_INTERVAL,
+    ConsensusProtocolName, CoreConfig, LegacyRequiredFinality, DEFAULT_GAS_HOLD_INTERVAL,
 };
 pub use fee_handling::FeeHandling;
 #[cfg(any(feature = "testing", test))]
