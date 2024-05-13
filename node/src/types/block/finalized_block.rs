@@ -82,6 +82,7 @@ impl FinalizedBlock {
         self.mint
             .iter()
             .chain(&self.auction)
+            .chain(&self.entity)
             .chain(&self.install_upgrade)
             .chain(&self.standard)
     }
@@ -175,7 +176,7 @@ impl Display for FinalizedBlock {
         write!(
             formatter,
             "finalized block #{} in {}, timestamp {}, {} transfers, {} staking txns, {} \
-            install/upgrade txns, {} standard txns",
+            install/upgrade txns, {} standard txns, {} entity txns",
             self.height,
             self.era_id,
             self.timestamp,
@@ -183,6 +184,7 @@ impl Display for FinalizedBlock {
             self.auction.len(),
             self.install_upgrade.len(),
             self.standard.len(),
+            self.entity.len(),
         )?;
         if let Some(ref ee) = self.era_report {
             write!(formatter, ", era_end: {:?}", ee)?;

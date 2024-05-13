@@ -109,20 +109,16 @@ impl TransactionV1Body {
         if TransactionTarget::Native != self.target {
             return false;
         }
-        match self.entry_point {
-            TransactionEntryPoint::Custom(_)
-            | TransactionEntryPoint::Transfer
-            | TransactionEntryPoint::AddAssociatedKey
-            | TransactionEntryPoint::RemoveAssociatedKey
-            | TransactionEntryPoint::UpdateAssociatedKey => false,
+        matches!(
+            self.entry_point,
             TransactionEntryPoint::AddBid
-            | TransactionEntryPoint::WithdrawBid
-            | TransactionEntryPoint::ActivateBid
-            | TransactionEntryPoint::Delegate
-            | TransactionEntryPoint::Undelegate
-            | TransactionEntryPoint::Redelegate
-            | TransactionEntryPoint::ChangeBidPublicKey => true,
-        }
+                | TransactionEntryPoint::WithdrawBid
+                | TransactionEntryPoint::ActivateBid
+                | TransactionEntryPoint::Delegate
+                | TransactionEntryPoint::Undelegate
+                | TransactionEntryPoint::Redelegate
+                | TransactionEntryPoint::ChangeBidPublicKey
+        )
     }
 
     /// Returns true if this transaction is a smart contract installer or upgrader.

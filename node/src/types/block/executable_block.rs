@@ -96,7 +96,7 @@ impl fmt::Display for ExecutableBlock {
         write!(
             formatter,
             "executable block #{} in {}, timestamp {}, {} transfers, {} staking txns, {} \
-            install/upgrade txns, {} standard txns",
+            install/upgrade txns, {} standard txns, {} entity txns",
             self.height,
             self.era_id,
             self.timestamp,
@@ -104,6 +104,7 @@ impl fmt::Display for ExecutableBlock {
             self.auction.len(),
             self.install_upgrade.len(),
             self.standard.len(),
+            self.entity.len(),
         )?;
         if let Some(ref ee) = self.era_report {
             write!(formatter, ", era_end: {:?}", ee)?;

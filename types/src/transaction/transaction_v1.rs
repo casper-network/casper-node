@@ -719,8 +719,12 @@ impl GasLimited for TransactionV1 {
                         let entry_point = self.body().entry_point();
                         match entry_point {
                             TransactionEntryPoint::AddAssociatedKey => costs.add_associated_key,
-                            TransactionEntryPoint::RemoveAssociatedKey => costs.remove_associated_key,
-                            TransactionEntryPoint::UpdateAssociatedKey => costs.update_associated_key,
+                            TransactionEntryPoint::RemoveAssociatedKey => {
+                                costs.remove_associated_key
+                            }
+                            TransactionEntryPoint::UpdateAssociatedKey => {
+                                costs.update_associated_key
+                            }
                             _ => {
                                 return Err(InvalidTransactionV1::EntryPointCannotBeCustom {
                                     entry_point: entry_point.clone(),

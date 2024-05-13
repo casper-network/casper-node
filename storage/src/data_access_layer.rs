@@ -13,6 +13,7 @@ mod balance_hold;
 pub mod bids;
 mod block_global;
 pub mod block_rewards;
+pub mod entity;
 mod entry_points;
 pub mod era_validators;
 mod execution_results_checksum;
@@ -36,6 +37,7 @@ mod trie;
 
 pub use addressable_entity::{AddressableEntityRequest, AddressableEntityResult};
 pub use auction::{AuctionMethod, BiddingRequest, BiddingResult};
+pub use entity::EntityMethod;
 pub use balance::{
     BalanceHolds, BalanceHoldsWithProof, BalanceIdentifier, BalanceRequest, BalanceResult,
     GasHoldBalanceHandling, ProofHandling, ProofsResult,

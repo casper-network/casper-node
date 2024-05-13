@@ -9,10 +9,11 @@ use casper_storage::{
     data_access_layer::{
         balance::BalanceHandling, AuctionMethod, BalanceHoldKind, BalanceHoldRequest,
         BalanceIdentifier, BalanceRequest, BiddingRequest, BlockGlobalRequest, BlockGlobalResult,
-        BlockRewardsRequest, BlockRewardsResult, DataAccessLayer, EraValidatorsRequest,
-        EraValidatorsResult, EvictItem, FeeRequest, FeeResult, FlushRequest, HandleFeeMode,
-        HandleFeeRequest, HandleRefundMode, HandleRefundRequest, InsufficientBalanceHandling,
-        ProofHandling, PruneRequest, PruneResult, StepRequest, StepResult, TransferRequest,
+        BlockRewardsRequest, BlockRewardsResult, DataAccessLayer, EntityMethod,
+        EraValidatorsRequest, EraValidatorsResult, EvictItem, FeeRequest, FeeResult, FlushRequest,
+        HandleFeeMode, HandleFeeRequest, HandleRefundMode, HandleRefundRequest,
+        InsufficientBalanceHandling, ProofHandling, PruneRequest, PruneResult, StepRequest,
+        StepResult, TransferRequest,
     },
     global_state::state::{
         lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, ScratchProvider,
@@ -412,7 +413,19 @@ pub fn execute_finalized_block(
                             .observe(wasm_v1_start.elapsed().as_secs_f64());
                     }
                 }
-                TransactionCategory::Entity => todo!(),
+                TransactionCategory::Entity => {
+                    match EntityMethod::from_parts(entry_point, &runtime_args) {
+                        Ok(entity_method) => todo!(),
+                        Err(err) => {
+                            error!(
+                                %transaction_hash,
+                                ?err,
+                                "failed to determine entity method"
+                            );
+                            artifact_builder.with_entity_method_error(&err);
+                        }
+                    }
+                }
             }
         } else {
             debug!(%transaction_hash, "not eligible for execution");

@@ -2888,10 +2888,36 @@ async fn should_raise_gas_price_to_ceiling_and_reduce_to_floor_based_on_size_con
     run_gas_price_scenario(scenario).await
 }
 
+// From the network, get [`AddressableEntity`] for given Key.
+fn get_entity(fixture: &TestFixture, key: Key) -> AddressableEntity {
+    let (_node_id, runner) = fixture.network.nodes().iter().next().unwrap();
+    let block_height = runner
+        .main_reactor()
+        .storage()
+        .highest_complete_block_height()
+        .expect("missing highest completed block");
+    let block_header = runner
+        .main_reactor()
+        .storage()
+        .read_block_header_by_height(block_height, true)
+        .expect("failure to read block header")
+        .unwrap();
+    let state_hash = *block_header.state_root_hash();
+    let request = AddressableEntityRequest::new(state_hash, key);
+    let result = runner
+        .main_reactor()
+        .contract_runtime()
+        .data_access_layer()
+        .addressable_entity(request);
+    match result {
+        AddressableEntityResult::Success { entity } => entity,
+        _ => panic!(),
+    }
+}
+
 #[tokio::test]
 async fn check_multisig() {
-    let alice_stake = 200_000_000_000_u64;
-    let initial_stakes = InitialStakes::FromVec(vec![alice_stake.into(), 10_000_000_000]);
+    let initial_stakes = InitialStakes::FromVec(vec![200_000_000_000, 10_000_000_000]);
 
     let mut fixture = TestFixture::new(initial_stakes, None).await;
     let secret_key = Arc::clone(&fixture.node_contexts[0].secret_key);
@@ -2922,33 +2948,6 @@ async fn check_multisig() {
         .run_until_executed_transaction(&txn_hash, TEN_SECS)
         .await;
 
-    // From the network, get [`AddressableEntity`] for given Key.
-    fn get_entity(fixture: &TestFixture, key: Key) -> AddressableEntity {
-        let (_node_id, runner) = fixture.network.nodes().iter().next().unwrap();
-        let block_height = runner
-            .main_reactor()
-            .storage()
-            .highest_complete_block_height()
-            .expect("missing highest completed block");
-        let block_header = runner
-            .main_reactor()
-            .storage()
-            .read_block_header_by_height(block_height, true)
-            .expect("failure to read block header")
-            .unwrap();
-        let state_hash = *block_header.state_root_hash();
-        let request = AddressableEntityRequest::new(state_hash, key);
-        let result = runner
-            .main_reactor()
-            .contract_runtime()
-            .data_access_layer()
-            .addressable_entity(request);
-        match result {
-            AddressableEntityResult::Success { entity } => entity,
-            _ => panic!(),
-        }
-    }
-
     // Check if the associated key has been added.
     let entity = get_entity(&fixture, public_key.to_account_hash().into());
     let associated_keys = entity.associated_keys();
@@ -2978,4 +2977,47 @@ async fn check_multisig() {
     let entity = get_entity(&fixture, public_key.to_account_hash().into());
     let associated_keys = entity.associated_keys();
     assert_eq!(associated_keys.len(), 1);
+}
+
+#[tokio::test]
+async fn check_multisig_v1() {
+    let initial_stakes = InitialStakes::FromVec(vec![200_000_000_000, 10_000_000_000]);
+
+    let mut fixture = TestFixture::new(initial_stakes, None).await;
+    let secret_key = Arc::clone(&fixture.node_contexts[0].secret_key);
+    let public_key = PublicKey::from(&*secret_key);
+    let new_secret_key = SecretKey::generate_ed25519().unwrap();
+    let new_public_key = PublicKey::from(&new_secret_key);
+
+    // Wait for all nodes to complete block 0.
+    fixture.run_until_block_height(0, ONE_MIN).await;
+
+    // Add associated key.
+    let mut txn = Transaction::from(
+        TransactionV1Builder::new_add_associated_key(new_public_key.to_account_hash(), 1)
+            .unwrap()
+            .with_chain_name(fixture.chainspec.network_config.name.clone())
+            .with_initiator_addr(public_key.clone())
+            .with_pricing_mode(PricingMode::Fixed {
+                gas_price_tolerance: 1,
+            })
+            .build()
+            .unwrap(),
+    );
+    txn.sign(&secret_key);
+    let txn_hash = txn.hash();
+
+    // Inject the transaction and run the network until executed.
+    fixture.inject_transaction(txn).await;
+    fixture
+        .run_until_executed_transaction(&txn_hash, TEN_SECS)
+        .await;
+
+    // Check if the associated key has been added.
+    let entity = get_entity(&fixture, public_key.to_account_hash().into());
+    let associated_keys = entity.associated_keys();
+    assert_eq!(associated_keys.len(), 2);
+    assert!(associated_keys.contains_key(&new_public_key.to_account_hash()));
+
+    // TO BE CONTINUED...
 }

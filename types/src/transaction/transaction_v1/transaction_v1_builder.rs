@@ -14,8 +14,7 @@ use super::{
     InitiatorAddrAndSecretKey, PricingMode, TransactionV1, TransactionV1Body,
 };
 use crate::{
-    bytesrepr::Bytes, AddressableEntityHash, CLValue, CLValueError, EntityVersion, PackageHash,
-    PublicKey, RuntimeArgs, SecretKey, TimeDiff, Timestamp, TransferTarget, URef, U512,
+    account::AccountHash, bytesrepr::Bytes, AddressableEntityHash, CLValue, CLValueError, EntityVersion, PackageHash, PublicKey, RuntimeArgs, SecretKey, TimeDiff, Timestamp, TransferTarget, URef, U512
 };
 #[cfg(any(feature = "testing", test))]
 use crate::{
@@ -173,6 +172,21 @@ impl<'a> TransactionV1Builder<'a> {
             args,
             TransactionTarget::Native,
             TransactionEntryPoint::Redelegate,
+            Self::DEFAULT_SCHEDULING,
+        );
+        Ok(TransactionV1Builder::new(body))
+    }
+
+    /// Returns a new `TransactionV1Builder` suitable for building a native add associated key transaction.
+    pub fn new_add_associated_key(
+        account: AccountHash,
+        weight: u8,
+    ) -> Result<Self, CLValueError> {
+        let args = arg_handling::new_add_associated_key_args(account, weight)?;
+        let body = TransactionV1Body::new(
+            args,
+            TransactionTarget::Native,
+            TransactionEntryPoint::AddAssociatedKey,
             Self::DEFAULT_SCHEDULING,
         );
         Ok(TransactionV1Builder::new(body))
@@ -453,7 +467,7 @@ impl<'a> TransactionV1Builder<'a> {
 
     #[cfg(not(any(feature = "testing", test)))]
     fn do_build(self) -> Result<TransactionV1, TransactionV1BuilderError> {
-        let initiator_addr_and_secret_key = match (self.initiator_addr, self.secret_key) {
+        let initiator_addr_and_secret_key = match (self.initiator_addr, &self.secret_key) {
             (Some(initiator_addr), Some(secret_key)) => InitiatorAddrAndSecretKey::Both {
                 initiator_addr,
                 secret_key,

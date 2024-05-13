@@ -10,8 +10,8 @@ use casper_execution_engine::engine_state::{
 use casper_storage::{
     block_store::types::ApprovalsHashes,
     data_access_layer::{
-        auction::AuctionMethodError, BalanceHoldResult, BiddingResult, EraValidatorsRequest,
-        HandleFeeResult, HandleRefundResult, TransferResult,
+        auction::AuctionMethodError, entity::EntityMethodError, BalanceHoldResult, BiddingResult,
+        EraValidatorsRequest, HandleFeeResult, HandleRefundResult, TransferResult,
     },
 };
 use casper_types::{
@@ -252,6 +252,16 @@ impl ExecutionArtifactBuilder {
     ) -> &mut Self {
         if self.error_message.is_none() {
             self.error_message = Some(format!("{}", auction_method_error));
+        }
+        self
+    }
+
+    pub fn with_entity_method_error(
+        &mut self,
+        entity_method_error: &EntityMethodError,
+    ) -> &mut Self {
+        if self.error_message.is_none() {
+            self.error_message = Some(format!("{entity_method_error}"));
         }
         self
     }

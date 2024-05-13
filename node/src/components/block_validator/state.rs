@@ -197,6 +197,10 @@ impl BlockValidationState {
             warn!("too many mint transactions");
             return Err(());
         }
+        if block.entity_count() > config.block_max_entity_count as usize {
+            warn!("too many entity transactions");
+            return Err(());
+        }
 
         Ok(())
     }
