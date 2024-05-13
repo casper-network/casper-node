@@ -25,9 +25,9 @@ use casper_types::{
     bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH},
     execution::{Effects, ExecutionResult, TransformKindV2, TransformV2},
     system::handle_payment::ARG_AMOUNT,
-    BlockHeader, BlockTime, BlockV2, CLValue, CategorizedTransaction, Chainspec, ChecksumRegistry,
-    Digest, EraEndV2, EraId, FeeHandling, Gas, GasLimited, Key, ProtocolVersion, PublicKey,
-    RefundHandling, Transaction, TransactionCategory, U512,
+    BlockHash, BlockHeader, BlockTime, BlockV2, CLValue, CategorizedTransaction, Chainspec,
+    ChecksumRegistry, Digest, EraEndV2, EraId, FeeHandling, Gas, GasLimited, Key, ProtocolVersion,
+    PublicKey, RefundHandling, Transaction, TransactionCategory, U512,
 };
 
 use super::{
@@ -59,6 +59,7 @@ pub fn execute_finalized_block(
     key_block_height_for_activation_point: u64,
     current_gas_price: u8,
     next_era_gas_price: Option<u8>,
+    last_switch_block_hash: Option<BlockHash>,
 ) -> Result<BlockAndExecutionArtifacts, BlockExecutionError> {
     if executable_block.height != execution_pre_state.next_block_height() {
         return Err(BlockExecutionError::WrongBlockHeight {
@@ -921,12 +922,10 @@ pub fn execute_finalized_block(
         executable_block.height,
         protocol_version,
         (*proposer).clone(),
-        executable_block.mint,
-        executable_block.auction,
-        executable_block.install_upgrade,
-        executable_block.standard,
+        executable_block.transaction_map,
         executable_block.rewarded_signatures,
         current_gas_price,
+        last_switch_block_hash,
     ));
 
     // TODO: this should just use the data_access_layer.query mechanism to avoid
