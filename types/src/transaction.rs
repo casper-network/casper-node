@@ -1,3 +1,5 @@
+/// Module containing transaction types.
+///
 mod addressable_entity_identifier;
 mod approval;
 mod approvals_hash;
