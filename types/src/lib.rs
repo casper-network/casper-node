@@ -36,10 +36,7 @@ pub mod bytesrepr;
 mod chainspec;
 pub mod checksummed_hex;
 mod cl_type;
-#[cfg(not(any(feature = "sdk")))]
 mod cl_value;
-#[cfg(feature = "sdk")]
-pub mod cl_value;
 pub mod contract_messages;
 mod contract_wasm;
 pub mod contracts;
@@ -49,7 +46,7 @@ mod digest;
 mod display_iter;
 mod era_id;
 pub mod execution;
-#[cfg(any(feature = "std", test))]
+#[cfg(any(feature = "std-fs-io", test))]
 pub mod file_utils;
 mod gas;
 #[cfg(any(feature = "testing", feature = "gens", test))]
@@ -78,7 +75,6 @@ mod uref;
 mod validator_change;
 
 #[cfg(feature = "std")]
-#[cfg(not(any(feature = "sdk")))]
 use libc::{c_long, sysconf, _SC_PAGESIZE};
 #[cfg(feature = "std")]
 use once_cell::sync::Lazy;
@@ -149,11 +145,9 @@ pub use chainspec::{
     DEFAULT_UNREACHABLE_COST, DEFAULT_WASM_MAX_MEMORY,
 };
 pub use cl_type::{named_key_type, CLType, CLTyped};
-#[cfg(feature = "sdk")]
-pub use cl_value::cl_value_to_json;
 pub use cl_value::{
-    handle_stored_dictionary_value, CLTypeMismatch, CLValue, CLValueError, ChecksumRegistry,
-    DictionaryValue as CLValueDictionary, SystemEntityRegistry,
+    cl_value_to_json, handle_stored_dictionary_value, CLTypeMismatch, CLValue, CLValueError,
+    ChecksumRegistry, DictionaryValue as CLValueDictionary, SystemEntityRegistry,
 };
 pub use contract_wasm::ContractWasm;
 #[doc(inline)]
@@ -223,11 +217,11 @@ pub static OS_PAGE_SIZE: Lazy<usize> = Lazy::new(|| {
     /// Sensible default for many if not all systems.
     const DEFAULT_PAGE_SIZE: usize = 4096;
 
-    #[cfg(not(any(feature = "sdk")))]
+    #[cfg(any(feature = "std-fs-io", test))]
     // https://www.gnu.org/software/libc/manual/html_node/Sysconf.html
     let value: c_long = unsafe { sysconf(_SC_PAGESIZE) };
 
-    #[cfg(feature = "sdk")]
+    #[cfg(not(any(feature = "std-fs-io", test)))]
     let value = 0;
 
     if value <= 0 {

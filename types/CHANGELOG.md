@@ -16,7 +16,7 @@ All notable changes to this project will be documented in this file.  The format
 ### Added
 * Add new `EntryPointType::Install`, `EntryPointType::Normal`, `EntryPointAccess::Abstract` variants to support implementation of a factory pattern.
 * Add new types (`types/src/binary_port`) to support the BinaryPort interface
-
+* Remove filesystem I/O functionality from the `std` feature, and gated this behind a new feature `std-fs-io` which depends upon `std`.
 
 
 ## [Unreleased] (node 1.5.4)
@@ -31,9 +31,6 @@ All notable changes to this project will be documented in this file.  The format
 * Update `ed25519-dalek` to version 2.0.0 as mitigation for [RUSTSEC-2022-0093](https://rustsec.org/advisories/RUSTSEC-2022-0093)
 
 
-### Changed
-
-- Add "sdk" feature config checks to compile to wasm
 
 ## 3.0.0
 

@@ -37,9 +37,9 @@ impl<'a> DeployBuilder<'a> {
     ///     [`with_standard_payment`](Self::with_standard_payment) or
     ///     [`with_payment`](Self::with_payment)
     pub fn new<C: Into<String>>(chain_name: C, session: ExecutableDeployItem) -> Self {
-        #[cfg(not(any(feature = "sdk")))]
+        #[cfg(any(feature = "std-fs-io", test))]
         let timestamp = Timestamp::now();
-        #[cfg(feature = "sdk")]
+        #[cfg(not(any(feature = "std-fs-io", test)))]
         let timestamp = Timestamp::zero();
 
         DeployBuilder {

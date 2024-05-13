@@ -32,7 +32,7 @@ casper-storage = { version = "2.0.0", path = "../storage" }
 casper-types = { version = "5.0.0", path = "../types", features = [
     "datasize",
     "json-schema",
-    "std",
+    "std-fs-io",
 ] }
 datasize = { version = "0.2.11", features = [
     "detailed",
@@ -131,7 +131,7 @@ assert_matches = "1.5.0"
 casper-types = { path = "../types", features = [
     "datasize",
     "json-schema",
-    "std",
+    "std-fs-io",
     "testing",
 ] }
 fake_instant = "0.4.0"
