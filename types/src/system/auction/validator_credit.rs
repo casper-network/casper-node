@@ -73,11 +73,9 @@ impl CLTyped for ValidatorCredit {
 
 impl ToBytes for ValidatorCredit {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut result = bytesrepr::allocate_buffer(self)?;
-        self.validator_public_key.write_bytes(&mut result)?;
-        self.era_id.write_bytes(&mut result)?;
-        self.amount.write_bytes(&mut result)?;
-        Ok(result)
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
     }
 
     fn serialized_length(&self) -> usize {

@@ -128,7 +128,7 @@ pub fn execute_finalized_block(
             return Err(BlockExecutionError::RootNotFound(state_root_hash));
         }
         BlockGlobalResult::Failure(err) => {
-            return Err(BlockExecutionError::BlockGlobal(format!("{:?}", err)));
+            return Err(BlockExecutionError::BlockGlobal(format!("{}", err)));
         }
         BlockGlobalResult::Success {
             post_state_hash, ..

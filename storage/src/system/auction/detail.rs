@@ -1,8 +1,4 @@
-use std::{
-    collections::{btree_map::Entry, BTreeMap},
-    convert::TryInto,
-    ops::Mul,
-};
+use std::{collections::BTreeMap, convert::TryInto, ops::Mul};
 
 use num_rational::Ratio;
 
@@ -87,30 +83,25 @@ impl ValidatorBidsDetail {
     ) {
         let credits = &mut self.validator_credits;
 
-        match credits.entry(validator.clone()) {
-            Entry::Vacant(vacancy) => {
-                let mut inner = BTreeMap::new();
-                inner.insert(era_id, validator_credit);
-                vacancy.insert(inner);
-            }
-            Entry::Occupied(outer) => {
-                let mut inner = outer.remove();
-                match inner.entry(era_id) {
-                    Entry::Vacant(vacancy) => {
-                        vacancy.insert(validator_credit);
-                    }
-                    Entry::Occupied(_) => {
+        credits
+            .entry(validator.clone())
+            .and_modify(|inner| {
+                inner
+                    .entry(era_id)
+                    .and_modify(|_| {
                         warn!(
                             ?validator,
                             ?era_id,
                             "multiple validator credit entries in same era"
-                        );
-                        // put the original entry back
-                        credits.insert(validator, inner);
-                    }
-                }
-            }
-        }
+                        )
+                    })
+                    .or_insert(validator_credit.clone());
+            })
+            .or_insert_with(|| {
+                let mut inner = BTreeMap::new();
+                inner.insert(era_id, validator_credit);
+                inner
+            });
     }
 
     /// Get validator weights.
