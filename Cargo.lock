@@ -7148,6 +7148,7 @@ dependencies = [
  "casper-sdk",
  "impls",
  "serde_json",
+ "thiserror",
  "vm-common",
 ]
 

@@ -3,12 +3,13 @@ use std::{collections::VecDeque, sync::Arc};
 use bytes::Bytes;
 use casper_storage::{address_generator, tracking_copy::TrackingCopyExt, AddressGenerator};
 use casper_types::{
-    account::AccountHash, addressable_entity, system, AddressableEntityHash, ByteCodeAddr,
-    EntityAddr, EntityKind, EntryPointAddr, EntryPointValue, HoldsEpoch, Key, PackageHash,
-    StoredValue, TransactionRuntime,
+    account::AccountHash, addressable_entity, bytesrepr::ToBytes, system, AddressableEntityHash,
+    ByteCodeAddr, EntityAddr, EntityKind, EntryPointAddr, EntryPointValue, HoldsEpoch, Key,
+    PackageHash, StoredValue, TransactionRuntime,
 };
 use either::Either;
 use parking_lot::RwLock;
+use tracing::error;
 use vm_common::flags::ReturnFlags;
 
 use super::{ExecuteError, ExecuteRequest, ExecuteResult, ExecutionKind, Executor};
@@ -17,11 +18,13 @@ use crate::{
         runtime::{self, MintTransferArgs},
         Address, GlobalStateReader, TrackingCopy,
     },
-    wasm_backend::{Context, WasmInstance},
-    ConfigBuilder, HostError, VMError, WasmEngine,
+    wasm_backend::{Context, GasUsage, WasmInstance},
+    ConfigBuilder, HostError, RevertReason, VMError, WasmEngine,
 };
 
 const DEFAULT_WASM_ENTRY_POINT: &str = "call";
+
+const DEFAULT_MINT_TRANSFER_GAS_COST: u64 = 1; // NOTE: Require gas while executing and set this to at least 100_000_000 (or use chainspec)
 
 #[derive(Copy, Clone, Debug)]
 pub enum ExecutorKind {
@@ -242,13 +245,33 @@ impl Executor for ExecutorV2 {
                                 }
                             };
 
-                            runtime::mint_transfer(
+                            match runtime::mint_transfer(
                                 &mut tracking_copy,
                                 transaction_hash,
                                 Arc::clone(&address_generator),
                                 args,
-                            )
-                            .expect("Mint transfer to succeed");
+                            ) {
+                                Ok(()) => {
+                                    // Transfer succeed, go on
+                                }
+                                Err(casper_types::system::mint::Error::InsufficientFunds) => {
+                                    error!(?args, "Insufficient funds to transfer to contract");
+                                    // let error_bytes = error.to_bytes().expect("should serialize");
+                                    return Ok(ExecuteResult {
+                                        host_error: Some(HostError::CalleeReverted),
+                                        output: None,
+                                        gas_usage: GasUsage {
+                                            gas_limit,
+                                            remaining_points: gas_limit
+                                                - DEFAULT_MINT_TRANSFER_GAS_COST,
+                                        },
+                                        tracking_copy_parts: tracking_copy.into_raw_parts(),
+                                    });
+                                }
+                                Err(error) => {
+                                    panic!("Error transferring funds: {error:?}");
+                                }
+                            }
                         }
 
                         (Bytes::from(wasm_bytes), Either::Right(function_index))

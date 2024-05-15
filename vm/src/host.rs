@@ -927,6 +927,8 @@ pub(crate) fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
                 args,
             )
             .expect("should mint transfer");
+
+            Ok(1) // Transfer succeeded
         }
         EntityKindTag::Contract => {
             // let callee_purse = callee_stored_value.main_purse();
@@ -966,7 +968,7 @@ pub(crate) fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
                 .build()
                 .expect("should build");
 
-            let (gas_usage, host_result) = match caller
+            match caller
                 .context()
                 .executor
                 .execute(tracking_copy, execute_request)
@@ -979,10 +981,10 @@ pub(crate) fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
                 }) => {
                     caller.consume_gas(gas_usage.gas_spent());
 
-                    if let Some(host_error) = host_error {
-                        // return Ok(Err(host_error));
-                        todo!("error calling fallback {:?}", host_error);
-                    }
+                    // if let Some(host_error) = host_error {
+                    //     // return Ok(Err(host_error));
+                    //     // todo!("error calling fallback {:?}", host_error);
+                    // }
 
                     let host_result = match host_error {
                         Some(host_error) => Err(host_error),
@@ -995,27 +997,32 @@ pub(crate) fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
                         }
                     };
 
-                    (gas_usage, host_result)
+                    // (gas_usage, host_result)
+
+                    let gas_spent = gas_usage
+                        .gas_limit
+                        .checked_sub(gas_usage.remaining_points)
+                        .expect("remaining points always below or equal to the limit");
+
+                    match caller.consume_gas(gas_spent) {
+                        MeteringPoints::Remaining(_) => {}
+                        MeteringPoints::Exhausted => {
+                            todo!("exhausted")
+                        }
+                    }
+
+                    match host_result {
+                        Ok(()) => Ok(1),
+                        Err(host_error) => Ok(0), // Transfer failed, Wasm sees "false"
+                    }
                 }
                 Err(ExecuteError::WasmPreparation(preparation_error)) => {
                     // This is a bug in the EE, as it should have been caught during the preparation phase when the contract was stored in the global state.
                     unreachable!("Preparation error: {:?}", preparation_error)
                 }
-            };
+            }
         }
     }
 
-    // let gas_spent = gas_usage
-    //     .gas_limit
-    //     .checked_sub(gas_usage.remaining_points)
-    //     .expect("remaining points always below or equal to the limit");
-
-    // match caller.consume_gas(gas_spent) {
-    //     MeteringPoints::Remaining(_) => {}
-    //     MeteringPoints::Exhausted => {
-    //         todo!("exhausted")
-    //     }
-    // }
-
-    Ok(1)
+    // Ok(1)
 }

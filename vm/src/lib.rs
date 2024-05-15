@@ -18,6 +18,14 @@ const CALLEE_TRAPPED: u32 = 2;
 const CALLEE_GAS_DEPLETED: u32 = 3;
 const CALLEE_NOT_CALLABLE: u32 = 4;
 
+#[derive(Debug)]
+pub enum RevertReason {
+    /// Revert with no message.
+    InsufficientFunds,
+    /// Revert with data.
+    Return(Option<Bytes>),
+}
+
 /// Represents the result of a host function call.
 ///
 /// 0 is used as a success.

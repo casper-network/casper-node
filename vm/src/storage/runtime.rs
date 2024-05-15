@@ -121,6 +121,7 @@ pub(crate) fn mint_mint<R: GlobalStateReader>(
     )
 }
 
+#[derive(Debug, Copy, Clone)]
 pub(crate) struct MintTransferArgs {
     pub(crate) maybe_to: Option<AccountHash>,
     pub(crate) source: URef,

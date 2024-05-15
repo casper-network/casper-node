@@ -1,5 +1,8 @@
 #![cfg_attr(target_arch = "wasm32", no_main)]
 
+pub mod contracts;
+pub mod traits;
+
 #[macro_use]
 extern crate alloc;
 
@@ -17,424 +20,7 @@ use casper_sdk::{
     Contract, ContractHandle,
 };
 
-const INITIAL_GREETING: &str = "This is initial data set from a constructor";
-const BALANCES_PREFIX: &str = "b";
-
-#[casper(trait_definition)]
-pub trait Fallback {
-    #[casper(selector(fallback))]
-    fn fallback(&mut self);
-}
-
-#[repr(u32)]
-#[derive(Debug, BorshSerialize, BorshDeserialize, PartialEq, CasperABI, Clone)]
-#[borsh(use_discriminant = true)]
-pub enum TokenOwnerError {
-    CallError(CallError),
-    DepositError(CustomError),
-    WithdrawError(CustomError),
-}
-
-impl From<CallError> for TokenOwnerError {
-    fn from(v: CallError) -> Self {
-        Self::CallError(v)
-    }
-}
-
-#[derive(Contract, CasperSchema, BorshSerialize, BorshDeserialize, CasperABI, Debug, Default)]
-#[casper(impl_traits(Fallback))]
-pub struct TokenOwnerContract {
-    initial_balance: u64,
-    received_tokens: u64,
-}
-
-#[casper(contract)]
-impl TokenOwnerContract {
-    #[casper(constructor)]
-    pub fn initialize() -> Self {
-        Self {
-            initial_balance: host::get_value(),
-            received_tokens: 0,
-        }
-    }
-
-    pub fn do_deposit(
-        &self,
-        self_address: Address,
-        contract_address: Address,
-        amount: u64,
-    ) -> Result<(), TokenOwnerError> {
-        let self_balance = host::get_balance_of(&Entity::Contract(self_address));
-        let res = ContractHandle::<HarnessRef>::from_address(contract_address)
-            .build_call()
-            .with_value(amount)
-            .call(|harness| harness.deposit(self_balance))?;
-        match &res {
-            Ok(()) => log!("Token owner deposited {amount} to {contract_address:?}"),
-            Err(e) => log!("Token owner failed to deposit {amount} to {contract_address:?}: {e:?}"),
-        }
-        res.map_err(|error| TokenOwnerError::DepositError(error))?;
-        Ok(())
-    }
-
-    pub fn do_withdraw(
-        &self,
-        self_address: Address,
-        contract_address: Address,
-        amount: u64,
-    ) -> Result<(), TokenOwnerError> {
-        let self_entity = Entity::Contract(self_address);
-        let self_balance = host::get_balance_of(&self_entity);
-
-        let res = ContractHandle::<HarnessRef>::from_address(contract_address)
-            .build_call()
-            .call(|harness| {
-                // Be careful about re-entrancy here: we are calling a contract that can call back while we're still not done with this entry point.
-                // If &mut self is used, then the proc macro will save the state while the state was already saved at the end of `receive()` call.
-                // To protect against re-entrancy attacks, please use `&self` or `self`.
-                harness.withdraw(self_balance, amount)
-            });
-
-        let res = res?;
-
-        assert_eq!(
-            host::get_balance_of(&self_entity),
-            self_balance + amount,
-            "Balance should change"
-        );
-
-        match &res {
-            Ok(()) => log!("Token owner withdrew {amount} from {contract_address:?}"),
-            Err(e) => {
-                log!("Token owner failed to withdraw {amount} from {contract_address:?}: {e:?}")
-            }
-        }
-
-        res.map_err(|error| TokenOwnerError::WithdrawError(error))?;
-        Ok(())
-    }
-
-    pub fn total_received_tokens(&self) -> u64 {
-        self.received_tokens
-    }
-}
-
-impl Fallback for TokenOwnerContract {
-    fn fallback(&mut self) {
-        let value = host::get_value();
-        log!(
-            "TokenOwnerContract received fallback entrypoint with value={}",
-            value
-        );
-        self.received_tokens += value;
-    }
-}
-
-#[derive(Contract, CasperSchema, BorshSerialize, BorshDeserialize, CasperABI, Debug)]
-#[casper(impl_traits(Fallback))]
-pub struct Harness {
-    counter: u64,
-    greeting: String,
-    address_inside_constructor: Option<Entity>,
-    balances: Map<Entity, u64>,
-}
-
-impl Fallback for Harness {
-    fn fallback(&mut self) {
-        // Called when no entrypoint is matched
-        //
-        // Is invoked when
-        // a) user performs plan CSPR transfer (not a contract call)
-        //   a.1) if there's no fallback entrypoint, the transfer will fail
-        //   a.2) if there's fallback entrypoint, it will be called
-        // b) user calls a contract with no matching entrypoint
-        //   b.1) if there's no fallback entrypoint, the call will fail
-        //   b.2) if there's fallback entrypoint, it will be called and user can
-
-        log!(
-            "Harness received fallback entrypoint value={}",
-            host::get_value()
-        );
-    }
-}
-
-#[repr(u32)]
-#[derive(Debug, BorshSerialize, BorshDeserialize, PartialEq, CasperABI, Clone)]
-#[borsh(use_discriminant = true)]
-pub enum CustomError {
-    Foo,
-    Bar = 42,
-    WithBody(String),
-    Named { name: String, age: u64 },
-}
-
-impl Default for Harness {
-    fn default() -> Self {
-        Self {
-            counter: 0,
-            greeting: "Default value".to_string(),
-            address_inside_constructor: None,
-            balances: Map::new(BALANCES_PREFIX),
-        }
-    }
-}
-pub type Result2 = Result<(), CustomError>;
-
-#[casper(contract)]
-impl Harness {
-    #[casper(constructor)]
-    pub fn constructor_with_args(who: String) -> Self {
-        log!("👋 Hello from constructor with args: {who}");
-        Self {
-            counter: 0,
-            greeting: format!("Hello, {who}!"),
-            address_inside_constructor: Some(host::get_caller()),
-            balances: Map::new(BALANCES_PREFIX),
-        }
-    }
-
-    #[casper(constructor)]
-    pub fn failing_constructor(who: String) -> Self {
-        log!("👋 Hello from failing constructor with args: {who}");
-        revert!();
-    }
-
-    #[casper(constructor)]
-    pub fn trapping_constructor() -> Self {
-        log!("👋 Hello from trapping constructor");
-        // TODO: Storage doesn't fork as of yet, need to integrate casper-storage crate and leverage
-        // the tracking copy.
-        panic!("This will revert the execution of this constructor and won't create a new package");
-    }
-
-    #[casper(constructor)]
-    pub fn initialize() -> Self {
-        log!("👋 Hello from constructor");
-        Self {
-            counter: 0,
-            greeting: INITIAL_GREETING.to_string(),
-            address_inside_constructor: Some(host::get_caller()),
-            balances: Map::new(BALANCES_PREFIX),
-        }
-    }
-
-    #[casper(constructor, payable)]
-    pub fn payable_constructor() -> Self {
-        log!(
-            "👋 Hello from payable constructor value={}",
-            host::get_value()
-        );
-        Self {
-            counter: 0,
-            greeting: INITIAL_GREETING.to_string(),
-            address_inside_constructor: Some(host::get_caller()),
-            balances: Map::new(BALANCES_PREFIX),
-        }
-    }
-
-    #[casper(constructor, payable)]
-    pub fn payable_failing_constructor() -> Self {
-        log!(
-            "👋 Hello from payable failign constructor value={}",
-            host::get_value()
-        );
-        revert!();
-    }
-
-    #[casper(constructor, payable)]
-    pub fn payable_trapping_constructor() -> Self {
-        log!(
-            "👋 Hello from payable trapping constructor value={}",
-            host::get_value()
-        );
-        panic!("This will revert the execution of this constructor and won't create a new package")
-    }
-
-    pub fn get_greeting(&self) -> &str {
-        &self.greeting
-    }
-
-    pub fn increment_counter(&mut self) {
-        self.counter += 1;
-    }
-
-    pub fn counter(&self) -> u64 {
-        self.counter
-    }
-
-    pub fn set_greeting(&mut self, greeting: String) {
-        self.counter += 1;
-        log!("Saving greeting {}", greeting);
-        self.greeting = greeting;
-    }
-
-    pub fn emit_unreachable_trap(&mut self) -> ! {
-        self.counter += 1;
-        panic!("unreachable");
-    }
-
-    #[casper(revert_on_error)]
-    pub fn emit_revert_with_data(&mut self) -> Result<(), CustomError> {
-        // revert(code), ret(bytes)
-
-        // casper_return(flags, bytes) flags == 0, flags & FLAG_REVERT
-        log!("emit_revert_with_data state={:?}", self);
-        log!(
-            "Reverting with data before {counter}",
-            counter = self.counter
-        );
-        self.counter += 1;
-        log!(
-            "Reverting with data after {counter}",
-            counter = self.counter
-        );
-        // Here we can't use revert!() macro, as it explicitly calls `return` and does not involve writing the state again.
-        Err(CustomError::Bar)
-    }
-
-    pub fn emit_revert_without_data(&mut self) -> ! {
-        self.counter += 1;
-        revert!()
-    }
-
-    pub fn get_address_inside_constructor(&self) -> Entity {
-        self.address_inside_constructor
-            .expect("Constructor was expected to be caller")
-    }
-
-    #[casper(revert_on_error)]
-    pub fn should_revert_on_error(&self, flag: bool) -> Result2 {
-        if flag {
-            Err(CustomError::WithBody("Reverted".into()))
-        } else {
-            Ok(())
-        }
-    }
-
-    #[allow(dead_code)]
-    fn private_function_that_should_not_be_exported(&self) {
-        log!("This function should not be callable from outside");
-    }
-
-    pub(crate) fn restricted_function_that_should_be_part_of_manifest(&self) {
-        log!("This function should be callable from outside");
-    }
-
-    pub fn entry_point_without_state() {
-        log!("This function does not require state");
-    }
-
-    pub fn entry_point_without_state_with_args_and_output(mut arg: String) -> String {
-        log!("This function does not require state");
-        arg.push_str("extra");
-        arg
-    }
-
-    pub fn into_modified_greeting(mut self) -> String {
-        self.greeting.push_str("!");
-        self.greeting
-    }
-
-    pub fn into_greeting(self) -> String {
-        self.greeting
-    }
-
-    #[casper(payable)]
-    pub fn payable_entrypoint(&mut self) -> Result<(), CustomError> {
-        log!("This is a payable entrypoint value={}", host::get_value());
-        Ok(())
-    }
-
-    #[casper(payable, revert_on_error)]
-    pub fn payable_failing_entrypoint(&self) -> Result<(), CustomError> {
-        log!(
-            "This is a payable entrypoint with value={}",
-            host::get_value()
-        );
-        if host::get_value() == 123 {
-            Err(CustomError::Foo)
-        } else {
-            Ok(())
-        }
-    }
-
-    #[casper(payable, revert_on_error)]
-    pub fn deposit(&mut self, balance_before: u64) -> Result<(), CustomError> {
-        let caller = host::get_caller();
-        let value = host::get_value();
-
-        if value == 0 {
-            return Err(CustomError::WithBody(
-                "Value should be greater than 0".into(),
-            ));
-        }
-
-        assert_eq!(
-            balance_before
-                .checked_sub(value)
-                .unwrap_or_else(|| panic!("Balance before should be larger or equal to the value (caller={caller:?}, value={value})")),
-            host::get_balance_of(&caller),
-            "Balance mismatch; token transfer should happen before a contract call"
-        );
-
-        log!("Depositing {value} from {caller:?}");
-        let current_balance = self.balances.get(&caller).unwrap_or(0);
-        self.balances.insert(&caller, &(current_balance + value));
-        Ok(())
-    }
-
-    #[casper(revert_on_error)]
-    pub fn withdraw(&mut self, balance_before: u64, amount: u64) -> Result<(), CustomError> {
-        let caller = host::get_caller();
-        log!("Withdrawing {amount} into {caller:?}");
-        let current_balance = self.balances.get(&caller).unwrap_or(0);
-        if current_balance < amount {
-            return Err(CustomError::WithBody("Insufficient balance".into()));
-        }
-        // match caller {
-        // Entity::Account(_) => {
-        // TODO: Transfer works only for accounts, not for contracts yet (need to implement `casper_transfer` for contracts) - this will be fixed in the future versions of the SDK and the contract will be able to transfer funds to other contracts.
-        if !host::casper_transfer(&caller, amount) {
-            return Err(CustomError::WithBody("Transfer failed".into()));
-        }
-
-        let balance_after = balance_before + amount;
-        assert_eq!(
-            host::get_balance_of(&caller),
-            balance_after,
-            "Balance should be updated after withdrawal"
-        );
-        //     }
-        //     Entity::Contract(contract_address) => {
-        //         todo!()
-        //         // ContractHandle::<ReceiveTokensRef>::from_address(contract_address)
-        //         //     .build_call()
-        //         //     .with_value(amount)
-        //         //     .call(|contract| contract.receive())
-        //         //     .map_err(|e| CustomError::WithBody(format!("Receive contract failed{e:?}")))?;
-        //     }
-        // }
-
-        self.balances.insert(&caller, &(current_balance - amount));
-        Ok(())
-    }
-
-    pub fn balance(&self) -> u64 {
-        if host::get_value() != 0 {
-            panic!("This function is not payable");
-        }
-        let caller = host::get_caller();
-        self.balances.get(&caller).unwrap_or(0)
-    }
-
-    #[casper(selector(value = 0x0B4DC0D3))]
-    pub fn fixed_selector(&mut self) {
-        log!(
-            "This is a fixed selector entrypoint with value={}",
-            host::get_value()
-        );
-    }
-}
+use contracts::token_owner::{self, TokenOwnerContract, TokenOwnerContractRef};
 
 fn next_test(counter: &mut u32, name: &str) -> u32 {
     let current = *counter;
@@ -446,6 +32,12 @@ fn next_test(counter: &mut u32, name: &str) -> u32 {
 #[casper(export)]
 pub fn call() {
     use casper_sdk::ContractBuilder;
+    use contracts::harness::{CustomError, INITIAL_GREETING};
+
+    use crate::contracts::{
+        harness::{Harness, HarnessRef},
+        token_owner::FallbackHandler,
+    };
 
     log!("calling create");
 
@@ -734,11 +326,13 @@ pub fn call() {
             .create(|| HarnessRef::constructor_with_args("Contract".into()))
             .expect("Should create");
 
+        let initial_balance = 1000;
+
         let token_owner = ContractBuilder::<TokenOwnerContract>::new()
-            .with_value(100)
+            .with_value(initial_balance)
             .create(|| TokenOwnerContractRef::initialize())
             .expect("Should create");
-        assert_eq!(token_owner.balance(), 100);
+        assert_eq!(token_owner.balance(), initial_balance);
 
         // token owner contract performs a deposit into a harness contract through `deposit` payable entrypoint
         // caller: no change
@@ -750,12 +344,14 @@ pub fn call() {
             let token_owner_balance_before = token_owner.balance();
             let harness_balance_before = harness.balance();
 
+            let initial_deposit = 500;
+
             token_owner
                 .call(|contract| {
                     contract.do_deposit(
                         token_owner.contract_address(),
                         harness.contract_address(),
-                        50,
+                        initial_deposit,
                     )
                 })
                 .expect("Should call")
@@ -768,10 +364,10 @@ pub fn call() {
             );
             assert_eq!(
                 token_owner.balance(),
-                token_owner_balance_before - 50,
+                token_owner_balance_before - initial_deposit,
                 "Token owner balance should decrease"
             );
-            assert_eq!(harness.balance(), harness_balance_before + 50);
+            assert_eq!(harness.balance(), harness_balance_before + initial_deposit);
         }
 
         // token owner contract performs a withdrawal from a harness contract through `withdraw` entrypoint
@@ -810,6 +406,68 @@ pub fn call() {
                 .call(|contract| contract.total_received_tokens())
                 .expect("Should call");
             assert_eq!(total_received_tokens, 50);
+        }
+
+        {
+            next_test(
+                &mut counter,
+                "Token owner will revert inside fallback while plain transfer",
+            );
+            {
+                let harness_balance_before = harness.balance();
+                token_owner
+                    .call(|contract| {
+                        contract.set_fallback_handler(FallbackHandler::RejectWithRevert)
+                    })
+                    .expect("Should call");
+                let harness_balance_after = harness.balance();
+                assert_eq!(harness_balance_before, harness_balance_after);
+            }
+
+            {
+                let harness_balance_before = harness.balance();
+                let withdraw_result = token_owner
+                    .call(|contract| {
+                        contract.do_withdraw(
+                            token_owner.contract_address(),
+                            harness.contract_address(),
+                            50,
+                        )
+                    })
+                    .expect("Should call");
+                let harness_balance_after = harness.balance();
+                assert_eq!(harness_balance_before, harness_balance_after);
+            }
+        }
+
+        {
+            next_test(
+                &mut counter,
+                "Token owner will trap inside fallback while plain transfer",
+            );
+            {
+                let harness_balance_before = harness.balance();
+                token_owner
+                    .call(|contract| contract.set_fallback_handler(FallbackHandler::RejectWithTrap))
+                    .expect("Should call");
+                let harness_balance_after = harness.balance();
+                assert_eq!(harness_balance_before, harness_balance_after);
+            }
+
+            {
+                let harness_balance_before = harness.balance();
+                let withdraw_result = token_owner
+                    .call(|contract| {
+                        contract.do_withdraw(
+                            token_owner.contract_address(),
+                            harness.contract_address(),
+                            50,
+                        )
+                    })
+                    .expect("Should call");
+                let harness_balance_after = harness.balance();
+                assert_eq!(harness_balance_before, harness_balance_after);
+            }
         }
     }
 
