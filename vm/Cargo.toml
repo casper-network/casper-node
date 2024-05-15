@@ -23,8 +23,8 @@ rand = "0.8.5"
 digest = "0.10.7"
 safe-transmute = "0.11.2"
 
-num-traits = "0.2.14"
-num-derive = "0.4.1"
+num-traits = "0.2.18"
+num-derive = "0.4.2"
 
 tracing = "0.1.40"
 

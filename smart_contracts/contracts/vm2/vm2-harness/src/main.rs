@@ -20,6 +20,12 @@ use casper_sdk::{
 const INITIAL_GREETING: &str = "This is initial data set from a constructor";
 const BALANCES_PREFIX: &str = "b";
 
+#[casper(trait_definition)]
+pub trait Fallback {
+    #[casper(selector(fallback))]
+    fn fallback(&mut self);
+}
+
 #[repr(u32)]
 #[derive(Debug, BorshSerialize, BorshDeserialize, PartialEq, CasperABI, Clone)]
 #[borsh(use_discriminant = true)]
@@ -36,6 +42,7 @@ impl From<CallError> for TokenOwnerError {
 }
 
 #[derive(Contract, CasperSchema, BorshSerialize, BorshDeserialize, CasperABI, Debug, Default)]
+#[casper(impl_traits(Fallback))]
 pub struct TokenOwnerContract {
     initial_balance: u64,
     received_tokens: u64,
@@ -88,13 +95,13 @@ impl TokenOwnerContract {
                 harness.withdraw(self_balance, amount)
             });
 
+        let res = res?;
+
         assert_eq!(
             host::get_balance_of(&self_entity),
             self_balance + amount,
             "Balance should change"
         );
-
-        let res = res?;
 
         match &res {
             Ok(()) => log!("Token owner withdrew {amount} from {contract_address:?}"),
@@ -112,12 +119,43 @@ impl TokenOwnerContract {
     }
 }
 
+impl Fallback for TokenOwnerContract {
+    fn fallback(&mut self) {
+        let value = host::get_value();
+        log!(
+            "TokenOwnerContract received fallback entrypoint with value={}",
+            value
+        );
+        self.received_tokens += value;
+    }
+}
+
 #[derive(Contract, CasperSchema, BorshSerialize, BorshDeserialize, CasperABI, Debug)]
+#[casper(impl_traits(Fallback))]
 pub struct Harness {
     counter: u64,
     greeting: String,
     address_inside_constructor: Option<Entity>,
     balances: Map<Entity, u64>,
+}
+
+impl Fallback for Harness {
+    fn fallback(&mut self) {
+        // Called when no entrypoint is matched
+        //
+        // Is invoked when
+        // a) user performs plan CSPR transfer (not a contract call)
+        //   a.1) if there's no fallback entrypoint, the transfer will fail
+        //   a.2) if there's fallback entrypoint, it will be called
+        // b) user calls a contract with no matching entrypoint
+        //   b.1) if there's no fallback entrypoint, the call will fail
+        //   b.2) if there's fallback entrypoint, it will be called and user can
+
+        log!(
+            "Harness received fallback entrypoint value={}",
+            host::get_value()
+        );
+    }
 }
 
 #[repr(u32)]
@@ -348,34 +386,34 @@ impl Harness {
     #[casper(revert_on_error)]
     pub fn withdraw(&mut self, balance_before: u64, amount: u64) -> Result<(), CustomError> {
         let caller = host::get_caller();
-        log!("Withdrawing {amount} from {caller:?}");
+        log!("Withdrawing {amount} into {caller:?}");
         let current_balance = self.balances.get(&caller).unwrap_or(0);
         if current_balance < amount {
             return Err(CustomError::WithBody("Insufficient balance".into()));
         }
-        match caller {
-            Entity::Account(_) => {
-                // TODO: Transfer works only for accounts, not for contracts yet (need to implement `casper_transfer` for contracts) - this will be fixed in the future versions of the SDK and the contract will be able to transfer funds to other contracts.
-                if !host::casper_transfer(&caller, amount) {
-                    return Err(CustomError::WithBody("Transfer failed".into()));
-                }
-
-                let balance_after = balance_before + amount;
-                assert_eq!(
-                    host::get_balance_of(&caller),
-                    balance_after,
-                    "Balance should be updated after withdrawal"
-                );
-            }
-            Entity::Contract(contract_address) => {
-                todo!()
-                // ContractHandle::<ReceiveTokensRef>::from_address(contract_address)
-                //     .build_call()
-                //     .with_value(amount)
-                //     .call(|contract| contract.receive())
-                //     .map_err(|e| CustomError::WithBody(format!("Receive contract failed{e:?}")))?;
-            }
+        // match caller {
+        // Entity::Account(_) => {
+        // TODO: Transfer works only for accounts, not for contracts yet (need to implement `casper_transfer` for contracts) - this will be fixed in the future versions of the SDK and the contract will be able to transfer funds to other contracts.
+        if !host::casper_transfer(&caller, amount) {
+            return Err(CustomError::WithBody("Transfer failed".into()));
         }
+
+        let balance_after = balance_before + amount;
+        assert_eq!(
+            host::get_balance_of(&caller),
+            balance_after,
+            "Balance should be updated after withdrawal"
+        );
+        //     }
+        //     Entity::Contract(contract_address) => {
+        //         todo!()
+        //         // ContractHandle::<ReceiveTokensRef>::from_address(contract_address)
+        //         //     .build_call()
+        //         //     .with_value(amount)
+        //         //     .call(|contract| contract.receive())
+        //         //     .map_err(|e| CustomError::WithBody(format!("Receive contract failed{e:?}")))?;
+        //     }
+        // }
 
         self.balances.insert(&caller, &(current_balance - amount));
         Ok(())
@@ -389,23 +427,6 @@ impl Harness {
         self.balances.get(&caller).unwrap_or(0)
     }
 
-    #[casper(selector(fallback))]
-    pub fn fallback_entrypoint(&mut self) {
-        // Called when no entrypoint is matched
-        //
-        // Is invoked when
-        // a) user performs plan CSPR transfer (not a contract call)
-        //   a.1) if there's no fallback entrypoint, the transfer will fail
-        //   a.2) if there's fallback entrypoint, it will be called
-        // b) user calls a contract with no matching entrypoint
-        //   b.1) if there's no fallback entrypoint, the call will fail
-        //   b.2) if there's fallback entrypoint, it will be called and user can
-        log!(
-            "This is a fallback entrypoint with value={}",
-            host::get_value()
-        );
-    }
-
     #[casper(selector(value = 0x0B4DC0D3))]
     pub fn fixed_selector(&mut self) {
         log!(
@@ -413,6 +434,13 @@ impl Harness {
             host::get_value()
         );
     }
+}
+
+fn next_test(counter: &mut u32, name: &str) -> u32 {
+    let current = *counter;
+    log!("Test {}. Running test: {name}", current);
+    *counter += 1;
+    current
 }
 
 #[casper(export)]
@@ -425,8 +453,11 @@ pub fn call() {
     assert_ne!(session_caller, Entity::Account([0; 32]));
 
     // Constructor without args
+    let mut counter = 1;
 
     {
+        next_test(&mut counter, "Traps and reverts");
+
         let contract_handle = Harness::create(0, HarnessRef::initialize()).expect("Should create");
         log!("success");
         log!("contract_address: {:?}", contract_handle.contract_address());
@@ -535,6 +566,8 @@ pub fn call() {
     // Constructor with args
 
     {
+        next_test(&mut counter, "Constructor with args");
+
         let contract_handle = Harness::create(0, HarnessRef::constructor_with_args("World".into()))
             .expect("Should create");
         log!("success 2");
@@ -547,6 +580,8 @@ pub fn call() {
     }
 
     {
+        next_test(&mut counter, "Failing constructor");
+
         let error = Harness::create(0, HarnessRef::failing_constructor("World".to_string()))
             .expect_err(
                 "
@@ -564,6 +599,8 @@ pub fn call() {
     //
 
     {
+        next_test(&mut counter, "Checking payable entrypoints");
+
         let contract_handle = ContractBuilder::<Harness>::new()
             .with_value(1)
             .create(|| HarnessRef::payable_constructor())
@@ -614,7 +651,7 @@ pub fn call() {
     //     5. call (caller = C, callee = D)
 
     {
-        log!("Current caller {:?}", host::get_caller());
+        let current_test = next_test(&mut counter, "Deposit and withdraw");
 
         let contract_handle = ContractBuilder::<Harness>::new()
             .with_value(0)
@@ -624,6 +661,10 @@ pub fn call() {
         let caller = host::get_caller();
 
         {
+            next_test(
+                &mut counter,
+                &format!("{current_test} Depositing as an account"),
+            );
             let account_balance_1 = host::get_balance_of(&caller);
             contract_handle
                 .build_call()
@@ -652,6 +693,10 @@ pub fn call() {
         assert_eq!(current_contract_balance, 100 + 25);
 
         {
+            next_test(
+                &mut counter,
+                &format!("{current_test} Withdrawing as an account"),
+            );
             let account_balance_before = host::get_balance_of(&caller);
             contract_handle
                 .build_call()
@@ -677,6 +722,11 @@ pub fn call() {
     //
 
     {
+        next_test(
+            &mut counter,
+            "Contract acts as owner of funds deposited into other contract",
+        );
+
         let caller = host::get_caller();
 
         let harness = ContractBuilder::<Harness>::new()
@@ -695,6 +745,7 @@ pub fn call() {
         // token owner: -50
         // harness: +50
         {
+            next_test(&mut counter, "Subtest 1");
             let caller_balance_before = host::get_balance_of(&caller);
             let token_owner_balance_before = token_owner.balance();
             let harness_balance_before = harness.balance();
@@ -728,6 +779,7 @@ pub fn call() {
         // token owner: +50
         // harness: -50
         {
+            next_test(&mut counter, "Subtest 2");
             let caller_balance_before = host::get_balance_of(&caller);
             let token_owner_balance_before = token_owner.balance();
             let harness_balance_before = harness.balance();
@@ -780,12 +832,21 @@ mod tests {
 
     #[test]
     fn trait_has_interface() {
-        let interface = ReceiveTokensRef::SELECTOR;
-        assert_ne!(interface, Selector::zero());
-        assert_eq!(
-            interface,
-            selector!("receive()") ^ selector!("second_method()")
-        );
+        let interface = FallbackRef::SELECTOR;
+        assert_eq!(interface, Selector::zero());
+    }
+
+    #[test]
+    fn fallback_trait_flags_selectors() {
+        let mut value = 0;
+
+        for entry_point in HarnessRef::ENTRY_POINTS.iter().map(|e| *e).flatten() {
+            if entry_point.flags == EntryPointFlags::FALLBACK.bits() {
+                value ^= entry_point.selector;
+            }
+        }
+
+        assert_eq!(value, 0);
     }
 
     #[test]
@@ -870,7 +931,7 @@ mod tests {
 
         let manifest_selectors: BTreeSet<u32> = manifest.iter().map(|e| e.selector).collect();
 
-        assert_eq!(schema_mapping["constructor_with_args"], 4116419170,);
+        assert_eq!(schema_mapping["constructor_with_args"], Some(4116419170),);
         assert!(manifest_selectors.contains(&4116419170));
     }
 
@@ -907,7 +968,7 @@ mod tests {
             schema
                 .entry_points
                 .iter()
-                .find(|e| e.selector == PRIVATE_SELECTOR.get())
+                .find(|e| e.selector == Some(PRIVATE_SELECTOR.get()))
                 .is_none(),
             "This entry point should not be part of schema"
         );
@@ -915,7 +976,7 @@ mod tests {
             schema
                 .entry_points
                 .iter()
-                .find(|e| e.selector == PUB_CRATE_SELECTOR.get())
+                .find(|e| e.selector == Some(PUB_CRATE_SELECTOR.get()))
                 .is_some(),
             "This entry point should be part ozf schema"
         );

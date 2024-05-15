@@ -626,14 +626,14 @@ impl ToBytes for EntryPointV2 {
 
 impl FromBytes for EntryPointV2 {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
-        let (function_index, remainder) = u32::from_bytes(bytes)?;
-        let (flags, remainder) = u32::from_bytes(remainder)?;
+        let (function_index, bytes) = FromBytes::from_bytes(bytes)?;
+        let (flags, bytes) = FromBytes::from_bytes(bytes)?;
         Ok((
             EntryPointV2 {
                 function_index,
                 flags,
             },
-            remainder,
+            bytes,
         ))
     }
 }
@@ -971,8 +971,14 @@ mod tests {
         bytesrepr::test_serialization_roundtrip(&vm1);
         let vm2 = EntryPointAddr::VmCasperV2 {
             entity_addr: EntityAddr::new_smart_contract([42; 32]),
-            selector: u32::MAX,
+            selector: Some(u32::MAX),
         };
         bytesrepr::test_serialization_roundtrip(&vm2);
+
+        let vm2_fallback = EntryPointAddr::VmCasperV2 {
+            entity_addr: EntityAddr::new_smart_contract([42; 32]),
+            selector: None,
+        };
+        bytesrepr::test_serialization_roundtrip(&vm2_fallback);
     }
 }

@@ -13,7 +13,8 @@ use crate::{
 };
 use casper_types::{
     account::AccountHash,
-    addressable_entity::NamedKeys,
+    addressable_entity::{EntryPointV2, NamedKeys},
+    bytesrepr::ToBytes,
     global_state::TrieMerkleProof,
     system::{
         mint::{
@@ -96,6 +97,11 @@ pub trait TrackingCopyExt<R> {
 
     /// Returns the collection of entry points for a given AddresableEntity.
     fn get_v1_entry_points(&mut self, entity_addr: EntityAddr) -> Result<EntryPoints, Self::Error>;
+
+    fn get_v2_entry_points(
+        &mut self,
+        entity_addr: EntityAddr,
+    ) -> Result<Vec<(Key, EntryPointV2)>, Self::Error>;
 
     /// Gets a package by hash.
     fn get_package(&mut self, package_hash: PackageHash) -> Result<Package, Self::Error>;
@@ -676,6 +682,79 @@ where
         }
 
         Ok(entry_points_v1)
+    }
+
+    fn get_v2_entry_points(
+        &mut self,
+        entity_addr: EntityAddr,
+    ) -> Result<Vec<(Key, EntryPointV2)>, Self::Error> {
+        let entry_points_prefix = entity_addr
+            .entry_points_v2_prefix()
+            .map_err(Self::Error::BytesRepr)?;
+
+        let mut ret: BTreeSet<Key> = BTreeSet::new();
+        let keys = self.reader.keys_with_prefix(&entry_points_prefix)?;
+        let pruned = &self.cache.prunes_cached;
+        // don't include keys marked for pruning
+        for key in keys {
+            if pruned.contains(&key) {
+                continue;
+            }
+            ret.insert(key);
+        }
+
+        let cache: Option<BTreeSet<Key>> = self.cache.get_key_tag_muts_cached(&KeyTag::EntryPoint);
+
+        // there may be newly inserted keys which have not been committed yet
+        if let Some(keys) = cache {
+            for key in keys {
+                if ret.contains(&key) {
+                    continue;
+                }
+                let serialized_key = key.to_bytes()?;
+                if serialized_key.starts_with(&entry_points_prefix) {
+                    ret.insert(key);
+                }
+            }
+        };
+
+        let mut entry_points_v2 = Vec::new();
+
+        for entry_point_key in ret.iter() {
+            match self.read(entry_point_key)? {
+                Some(StoredValue::EntryPoint(EntryPointValue::V2CasperVm(entry_point))) => {
+                    entry_points_v2.push((*entry_point_key, entry_point))
+                }
+                Some(other) => {
+                    return Err(TrackingCopyError::TypeMismatch(
+                        StoredValueTypeMismatch::new(
+                            "EntryPointsV2".to_string(),
+                            other.type_name(),
+                        ),
+                    ));
+                }
+                None => match self.cache.reads_cached.get(entry_point_key) {
+                    Some(StoredValue::EntryPoint(EntryPointValue::V2CasperVm(entry_point))) => {
+                        entry_points_v2.push((*entry_point_key, entry_point.to_owned()))
+                    }
+                    Some(other) => {
+                        return Err(TrackingCopyError::TypeMismatch(
+                            StoredValueTypeMismatch::new(
+                                "EntryPointsV2".to_string(),
+                                other.type_name(),
+                            ),
+                        ));
+                    }
+                    None => {
+                        return Err(TrackingCopyError::KeyNotFound(*entry_point_key));
+                    }
+                },
+            }
+        }
+
+        dbg!(&entry_points_v2.len());
+
+        Ok(entry_points_v2)
     }
 
     fn get_package(&mut self, package_hash: PackageHash) -> Result<Package, Self::Error> {

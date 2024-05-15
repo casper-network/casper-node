@@ -1,7 +1,7 @@
 use std::{collections::VecDeque, sync::Arc};
 
 use bytes::Bytes;
-use casper_storage::{address_generator, AddressGenerator};
+use casper_storage::{address_generator, tracking_copy::TrackingCopyExt, AddressGenerator};
 use casper_types::{
     account::AccountHash, addressable_entity, system, AddressableEntityHash, ByteCodeAddr,
     EntityAddr, EntityKind, EntryPointAddr, EntryPointValue, HoldsEpoch, Key, PackageHash,
@@ -92,14 +92,6 @@ impl ExecutorV2 {
         }
     }
 
-    /// Get the context address of the currently executing contract.
-    pub(crate) fn context_address(&self) -> Option<Address> {
-        match self.execution_stack.read().back() {
-            Some(ExecutionKind::Contract { address, .. }) => Some(*address),
-            _ => None,
-        }
-    }
-
     /// Push the execution stack.
     pub(crate) fn push_execution_stack(&self, execution_kind: ExecutionKind) {
         let mut execution_stack = self.execution_stack.write();
@@ -171,9 +163,12 @@ impl Executor for ExecutorV2 {
                 // self.execute_wasm(tracking_copy, address, gas_limit, wasm_bytes, input)
                 (wasm_bytes.clone(), Either::Left(DEFAULT_WASM_ENTRY_POINT))
             }
-            ExecutionKind::Contract { address, selector } => {
-                let entity_addr = EntityAddr::SmartContract(*address);
-                let key = Key::AddressableEntity(entity_addr); // TODO: Error handling
+            ExecutionKind::Stored {
+                address: entity_addr,
+                selector,
+            } => {
+                let key = Key::AddressableEntity(*entity_addr); // TODO: Error handling
+
                 let contract = tracking_copy.read(&key).expect("should read contract");
 
                 match contract {
@@ -202,11 +197,16 @@ impl Executor for ExecutorV2 {
                             .take_bytes();
 
                         let function_index = {
+                            // let entry_points = tracking_copy.get_v2_entry_points(*entity_addr);
+                            // dbg!(&entry_points);
+
                             let entry_point_addr = EntryPointAddr::VmCasperV2 {
-                                entity_addr,
+                                entity_addr: *entity_addr,
                                 selector: selector.map(|selector| selector.get()),
                             };
+                            // dbg!(&entry_point_addr);
                             let key = Key::EntryPoint(entry_point_addr);
+                            // dbg!(&key);
                             match tracking_copy.read(&key) {
                                 Ok(Some(StoredValue::EntryPoint(EntryPointValue::V2CasperVm(
                                     entrypoint_v2,
@@ -220,7 +220,7 @@ impl Executor for ExecutorV2 {
                                     panic!("Unexpected entry point found: {stored_value:?}");
                                 }
                                 Ok(None) => {
-                                    panic!("No entry point found for address {address:?} and selector {selector:?}");
+                                    panic!("No entry point found for address {key:?} and selector {selector:?}");
                                 }
                                 Err(error) => panic!("Error reading entry point: {error:?}"),
                             }
@@ -268,9 +268,10 @@ impl Executor for ExecutorV2 {
         let mut initial_tracking_copy = tracking_copy.fork2();
 
         let callee_key = match &execution_kind {
-            ExecutionKind::Contract { address, .. } => {
-                Key::AddressableEntity(EntityAddr::SmartContract(*address))
-            }
+            ExecutionKind::Stored {
+                address: entity_addr,
+                ..
+            } => Key::AddressableEntity(*entity_addr),
             ExecutionKind::WasmBytes(_wasm_bytes) => Key::Account(AccountHash::new(initiator)),
         };
 

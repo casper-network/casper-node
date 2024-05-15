@@ -270,6 +270,7 @@ where
         // from the manifest, and it should be present in the table. The table should be validated
         // at creation time for all cases i.e. correct signature, the pointer is actually stored in
         // the table, etc.
+        // dbg!(&function_index);
         let function = table
             .get(&mut self.store, function_index)
             .expect("should have valid entry in the table");

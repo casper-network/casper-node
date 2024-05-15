@@ -5,7 +5,7 @@ use std::sync::Arc;
 use borsh::BorshSerialize;
 use bytes::Bytes;
 use casper_storage::{tracking_copy::TrackingCopyParts, AddressGenerator};
-use casper_types::{execution::Effects, Key, TransactionHash};
+use casper_types::{execution::Effects, EntityAddr, Key, TransactionHash};
 use parking_lot::RwLock;
 use thiserror::Error;
 use vm_common::selector::Selector;
@@ -188,9 +188,9 @@ pub enum ExecutionKind {
     /// Execute Wasm bytes directly.
     WasmBytes(Bytes),
     /// Execute a stored contract by its address.
-    Contract {
+    Stored {
         /// Address of the contract.
-        address: Address,
+        address: EntityAddr,
         /// Entry point selector.
         ///
         /// If `None`, fallback entry point is used (if present).

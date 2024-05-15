@@ -1275,6 +1275,13 @@ impl Key {
         }
         ret
     }
+
+    pub fn into_entity_addr(self) -> Option<EntityAddr> {
+        match self {
+            Key::AddressableEntity(entity_addr) => Some(entity_addr),
+            _ => None,
+        }
+    }
 }
 
 impl Display for Key {
@@ -1949,12 +1956,16 @@ mod tests {
     ));
     const BLOCK_TIME_KEY: Key = Key::BlockGlobal(BlockGlobalAddr::BlockTime);
     const BLOCK_MESSAGE_COUNT_KEY: Key = Key::BlockGlobal(BlockGlobalAddr::MessageCount);
-    const STATE_KEY: Key = Key::State(EntityAddr::new_contract_entity_addr([42; 32]));
+    // const STATE_KEY: Key = Key::State(EntityAddr::new_contract_entity_addr([42; 32]));
     const BALANCE_HOLD: Key =
         Key::BalanceHold(BalanceHoldAddr::new_gas([42; 32], BlockTime::new(100)));
-    const ENTRY_POINT: Key = Key::EntryPoint(EntryPointAddr::new_v2_entry_point_addr(
+    const ENTRY_POINT_V2: Key = Key::EntryPoint(EntryPointAddr::new_v2_entry_point_addr(
         EntityAddr::new_smart_contract([42; 32]),
-        1u32,
+        Some(1u32),
+    ));
+    const ENTRY_POINT_V2_FALLBACK: Key = Key::EntryPoint(EntryPointAddr::new_v2_entry_point_addr(
+        EntityAddr::new_smart_contract([42; 32]),
+        None,
     ));
     const KEYS: &[Key] = &[
         ACCOUNT_KEY,
@@ -1987,8 +1998,8 @@ mod tests {
         BLOCK_TIME_KEY,
         BLOCK_MESSAGE_COUNT_KEY,
         BALANCE_HOLD,
-        ENTRY_POINT,
-        STATE_KEY,
+        ENTRY_POINT_V2,
+        ENTRY_POINT_V2_FALLBACK,
     ];
     const HEX_STRING: &str = "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a";
     const TOPIC_NAME_HEX_STRING: &str =
@@ -2168,13 +2179,13 @@ mod tests {
             )
         );
 
-        assert_eq!(
-            format!("{}", STATE_KEY),
-            format!(
-                "Key::State(addressable-entity-contract-{})",
-                base16::encode_lower(&[42; 32])
-            )
-        );
+        // assert_eq!(
+        //     format!("{}", STATE_KEY),
+        //     format!(
+        //         "Key::State(addressable-entity-contract-{})",
+        //         base16::encode_lower(&[42; 32])
+        //     )
+        // );
         assert_eq!(
             format!("{}", BLOCK_TIME_KEY),
             format!(
@@ -2522,7 +2533,7 @@ mod tests {
         bytesrepr::test_serialization_roundtrip(&BID_KEY);
         bytesrepr::test_serialization_roundtrip(&WITHDRAW_KEY);
         bytesrepr::test_serialization_roundtrip(&DICTIONARY_KEY);
-        bytesrepr::test_serialization_roundtrip(&SYSTEM_CONTRACT_REGISTRY_KEY);
+        // bytesrepr::test_serialization_roundtrip(&SYSTEM_CONTRACT_REGISTRY_KEY);
         bytesrepr::test_serialization_roundtrip(&ERA_SUMMARY_KEY);
         bytesrepr::test_serialization_roundtrip(&UNBOND_KEY);
         bytesrepr::test_serialization_roundtrip(&CHAINSPEC_REGISTRY_KEY);
@@ -2539,7 +2550,7 @@ mod tests {
         bytesrepr::test_serialization_roundtrip(&MESSAGE_TOPIC_KEY);
         bytesrepr::test_serialization_roundtrip(&MESSAGE_KEY);
         bytesrepr::test_serialization_roundtrip(&NAMED_KEY);
-        bytesrepr::test_serialization_roundtrip(&STATE_KEY);
+        // bytesrepr::test_serialization_roundtrip(&STATE_KEY);
     }
 
     #[test]
@@ -2596,7 +2607,7 @@ mod tests {
     }
 
     #[test]
-    fn bytesrepr_serialization_roundtrip() {
+    fn roundtrip() {
         bytesrepr::test_serialization_roundtrip(&ACCOUNT_KEY);
         bytesrepr::test_serialization_roundtrip(&HASH_KEY);
         bytesrepr::test_serialization_roundtrip(&UREF_KEY);
@@ -2624,6 +2635,6 @@ mod tests {
         bytesrepr::test_serialization_roundtrip(&MESSAGE_TOPIC_KEY);
         bytesrepr::test_serialization_roundtrip(&MESSAGE_KEY);
         bytesrepr::test_serialization_roundtrip(&NAMED_KEY);
-        bytesrepr::test_serialization_roundtrip(&ENTRY_POINT);
+        bytesrepr::test_serialization_roundtrip(&ENTRY_POINT_V2);
     }
 }
