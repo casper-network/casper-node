@@ -130,12 +130,14 @@ impl ValidatorBidsDetail {
                 && !v.inactive()
         }) {
             let staked_amount = total_staked_amount(provider, bid)?;
-            let total = staked_amount.saturating_add(self.credit_amount(
+            let credit_amount = self.credit_amount(
                 validator_public_key,
                 era_ending,
+                staked_amount,
                 include_credits,
                 cap,
-            ));
+            );
+            let total = staked_amount.saturating_add(credit_amount);
             ret.insert(validator_public_key.clone(), total);
         }
 
@@ -146,6 +148,7 @@ impl ValidatorBidsDetail {
         &self,
         validator_public_key: &PublicKey,
         era_ending: EraId,
+        staked_amount: U512,
         include_credit: bool,
         cap: Ratio<U512>,
     ) -> U512 {
@@ -155,8 +158,11 @@ impl ValidatorBidsDetail {
 
         if let Some(inner) = self.validator_credits.get(validator_public_key) {
             if let Some(credit) = inner.get(&era_ending) {
-                let amount = Ratio::new_raw(credit.amount(), U512::one());
-                return amount.mul(cap).to_integer();
+                let capped = Ratio::new_raw(staked_amount, U512::one())
+                    .mul(cap)
+                    .to_integer();
+                let credit_amount = credit.amount();
+                return credit_amount.min(capped);
             }
         }
 
