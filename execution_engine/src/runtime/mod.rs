@@ -1057,29 +1057,29 @@ where
                 let account = Self::get_named_argument(runtime_args, entity::ARG_ACCOUNT)?;
                 let weight = Self::get_named_argument(runtime_args, entity::ARG_WEIGHT)?;
 
-                let result = runtime
+                runtime
                     .add_associated_key(account, weight)
                     .map_err(Self::reverter)?;
-                CLValue::from_t(result).map_err(Self::reverter)
-            })(),
-            entity::METHOD_REMOVE_ASSOCIATED_KEY => (|| {
-                runtime.charge_system_contract_call(entity_costs.remove_associated_key)?;
-                let account = Self::get_named_argument(runtime_args, entity::ARG_ACCOUNT)?;
-
-                let result = runtime
-                    .remove_associated_key(account)
-                    .map_err(Self::reverter)?;
-                CLValue::from_t(result).map_err(Self::reverter)
+                CLValue::from_t(()).map_err(Self::reverter)
             })(),
             entity::METHOD_UPDATE_ASSOCIATED_KEY => (|| {
                 runtime.charge_system_contract_call(entity_costs.update_associated_key)?;
                 let account = Self::get_named_argument(runtime_args, entity::ARG_ACCOUNT)?;
                 let weight = Self::get_named_argument(runtime_args, entity::ARG_WEIGHT)?;
 
-                let result = runtime
+                runtime
                     .update_associated_key(account, weight)
                     .map_err(Self::reverter)?;
-                CLValue::from_t(result).map_err(Self::reverter)
+                CLValue::from_t(()).map_err(Self::reverter)
+            })(),
+            entity::METHOD_REMOVE_ASSOCIATED_KEY => (|| {
+                runtime.charge_system_contract_call(entity_costs.remove_associated_key)?;
+                let account = Self::get_named_argument(runtime_args, entity::ARG_ACCOUNT)?;
+
+                runtime
+                    .remove_associated_key(account)
+                    .map_err(Self::reverter)?;
+                CLValue::from_t(()).map_err(Self::reverter)
             })(),
             _ => CLValue::from_t(()).map_err(Self::reverter),
         };

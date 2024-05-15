@@ -337,7 +337,6 @@ where
     }
 
     fn create_entity(&self) -> Result<AddressableEntityHash, Box<GenesisError>> {
-        let entity_payment_purse = self.create_purse(U512::zero())?;
         let named_keys = NamedKeys::new();
 
         let entry_points = entity::entity_entry_points();

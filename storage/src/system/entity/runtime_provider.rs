@@ -1,4 +1,4 @@
-use casper_types::{account::AccountHash, system::entity::Error, AddressableEntity};
+use casper_types::account::AccountHash;
 
 /// Provider of runtime host functionality.
 pub trait RuntimeProvider {
