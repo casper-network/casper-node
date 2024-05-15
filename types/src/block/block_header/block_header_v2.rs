@@ -32,6 +32,8 @@ static BLOCK_HEADER_V2: Lazy<BlockHeaderV2> = Lazy::new(|| {
     let protocol_version = ProtocolVersion::V1_0_0;
     let accumulated_seed = Digest::hash_pair(Digest::from([9; Digest::LENGTH]), [random_bit as u8]);
     let body_hash = Digest::from([5; Digest::LENGTH]);
+    let proposer = PublicKey::example().clone();
+    let last_switch_block_hash = BlockHash::new(Digest::from([9; Digest::LENGTH]));
     BlockHeaderV2::new(
         parent_hash,
         state_root_hash,
@@ -43,7 +45,9 @@ static BLOCK_HEADER_V2: Lazy<BlockHeaderV2> = Lazy::new(|| {
         era_id,
         height,
         protocol_version,
+        proposer,
         current_gas_price,
+        Some(last_switch_block_hash),
         #[cfg(any(feature = "once_cell", test))]
         OnceCell::new(),
     )
@@ -75,8 +79,12 @@ pub struct BlockHeaderV2 {
     pub(super) height: u64,
     /// The protocol version of the network from when this block was created.
     pub(super) protocol_version: ProtocolVersion,
+    /// The public key of the validator which proposed the block.
+    pub(super) proposer: PublicKey,
     /// The gas price of the era
     pub(super) current_gas_price: u8,
+    /// The most recent switch block hash.
+    pub(super) last_switch_block_hash: Option<BlockHash>,
     #[cfg_attr(any(all(feature = "std", feature = "once_cell"), test), serde(skip))]
     #[cfg_attr(
         all(any(feature = "once_cell", test), feature = "datasize"),
@@ -161,6 +169,11 @@ impl BlockHeaderV2 {
         self.era_end.is_some()
     }
 
+    /// Returns the public key of the validator which proposed the block.
+    pub fn proposer(&self) -> &PublicKey {
+        &self.proposer
+    }
+
     /// Returns the validators for the upcoming era and their respective weights (if this is a
     /// switch block).
     pub fn next_era_validator_weights(&self) -> Option<&BTreeMap<PublicKey, U512>> {
@@ -177,6 +190,11 @@ impl BlockHeaderV2 {
     /// Returns the gas price for the given block.
     pub fn current_gas_price(&self) -> u8 {
         self.current_gas_price
+    }
+
+    /// Returns the hash for the last relevant switch block.
+    pub fn last_switch_block_hash(&self) -> Option<BlockHash> {
+        self.last_switch_block_hash
     }
 
     /// Returns `true` if this block belongs to the last block before the upgrade to the
@@ -209,7 +227,9 @@ impl BlockHeaderV2 {
         era_id: EraId,
         height: u64,
         protocol_version: ProtocolVersion,
+        proposer: PublicKey,
         current_gas_price: u8,
+        last_switch_block_hash: Option<BlockHash>,
         #[cfg(any(feature = "once_cell", test))] block_hash: OnceCell<BlockHash>,
     ) -> Self {
         BlockHeaderV2 {
@@ -223,7 +243,9 @@ impl BlockHeaderV2 {
             era_id,
             height,
             protocol_version,
+            proposer,
             current_gas_price,
+            last_switch_block_hash,
             #[cfg(any(feature = "once_cell", test))]
             block_hash,
         }
@@ -266,7 +288,9 @@ impl PartialEq for BlockHeaderV2 {
             era_id,
             height,
             protocol_version,
+            proposer,
             current_gas_price,
+            last_switch_block_hash,
             block_hash: _,
         } = self;
         #[cfg(not(any(feature = "once_cell", test)))]
@@ -281,7 +305,9 @@ impl PartialEq for BlockHeaderV2 {
             era_id,
             height,
             protocol_version,
+            proposer,
             current_gas_price,
+            last_switch_block_hash,
         } = self;
         *parent_hash == other.parent_hash
             && *state_root_hash == other.state_root_hash
@@ -293,7 +319,9 @@ impl PartialEq for BlockHeaderV2 {
             && *era_id == other.era_id
             && *height == other.height
             && *protocol_version == other.protocol_version
+            && *proposer == other.proposer
             && *current_gas_price == other.current_gas_price
+            && *last_switch_block_hash == other.last_switch_block_hash
     }
 }
 
@@ -302,7 +330,7 @@ impl Display for BlockHeaderV2 {
         write!(
             formatter,
             "block header #{}, {}, timestamp {}, {}, parent {}, post-state hash {}, body hash {}, \
-            random bit {}, protocol version: {}, current_gas_price: {}",
+            random bit {}, protocol version: {}, proposed by {}, current_gas_price: {}",
             self.height,
             self.block_hash(),
             self.timestamp,
@@ -312,8 +340,16 @@ impl Display for BlockHeaderV2 {
             self.body_hash,
             self.random_bit,
             self.protocol_version,
-            self.current_gas_price
+            self.proposer,
+            self.current_gas_price,
         )?;
+        if let Some(last_switch_block_hash) = &self.last_switch_block_hash {
+            write!(
+                formatter,
+                ", last_switch_block_hash: {}",
+                last_switch_block_hash
+            )?;
+        }
         if let Some(era_end) = &self.era_end {
             write!(formatter, ", era_end: {}", era_end)?;
         }
@@ -333,7 +369,9 @@ impl ToBytes for BlockHeaderV2 {
         self.era_id.write_bytes(writer)?;
         self.height.write_bytes(writer)?;
         self.protocol_version.write_bytes(writer)?;
-        self.current_gas_price.write_bytes(writer)
+        self.proposer.write_bytes(writer)?;
+        self.current_gas_price.write_bytes(writer)?;
+        self.last_switch_block_hash.write_bytes(writer)
     }
 
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
@@ -353,7 +391,9 @@ impl ToBytes for BlockHeaderV2 {
             + self.era_id.serialized_length()
             + self.height.serialized_length()
             + self.protocol_version.serialized_length()
+            + self.proposer.serialized_length()
             + self.current_gas_price.serialized_length()
+            + self.last_switch_block_hash.serialized_length()
     }
 }
 
@@ -369,7 +409,9 @@ impl FromBytes for BlockHeaderV2 {
         let (era_id, remainder) = EraId::from_bytes(remainder)?;
         let (height, remainder) = u64::from_bytes(remainder)?;
         let (protocol_version, remainder) = ProtocolVersion::from_bytes(remainder)?;
+        let (proposer, remainder) = PublicKey::from_bytes(remainder)?;
         let (current_gas_price, remainder) = u8::from_bytes(remainder)?;
+        let (last_switch_block_hash, remainder) = Option::from_bytes(remainder)?;
         let block_header = BlockHeaderV2 {
             parent_hash,
             state_root_hash,
@@ -381,7 +423,9 @@ impl FromBytes for BlockHeaderV2 {
             era_id,
             height,
             protocol_version,
+            proposer,
             current_gas_price,
+            last_switch_block_hash,
             #[cfg(any(feature = "once_cell", test))]
             block_hash: OnceCell::new(),
         };

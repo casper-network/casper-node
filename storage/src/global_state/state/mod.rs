@@ -1942,11 +1942,7 @@ pub trait StateProvider {
             Ok(None) => return PrefixedValuesResult::RootNotFound,
             Err(err) => return PrefixedValuesResult::Failure(TrackingCopyError::Storage(err)),
         };
-        let byte_prefix = match request.key_prefix().to_bytes() {
-            Ok(prefix) => prefix,
-            Err(error) => return PrefixedValuesResult::Failure(error.into()),
-        };
-        match tc.reader().keys_with_prefix(&byte_prefix) {
+        match tc.get_keys_by_prefix(request.key_prefix()) {
             Ok(keys) => {
                 let mut values = Vec::with_capacity(keys.len());
                 for key in keys {
@@ -1961,7 +1957,7 @@ pub trait StateProvider {
                     key_prefix: request.key_prefix().clone(),
                 }
             }
-            Err(error) => PrefixedValuesResult::Failure(error.into()),
+            Err(error) => PrefixedValuesResult::Failure(error),
         }
     }
 

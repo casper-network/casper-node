@@ -192,7 +192,8 @@ impl IndexedLmdbBlockStore {
                                 .map(TransactionHash::from),
                         ),
                         Some(BlockBody::V2(v2_body)) => {
-                            deleted_transaction_hashes.extend(v2_body.all_transactions().copied())
+                            let transactions = v2_body.all_transactions();
+                            deleted_transaction_hashes.extend(transactions)
                         }
                         None => (),
                     }
@@ -336,6 +337,7 @@ fn initialize_execution_result_dbs(
     info!("execution result databases initialized");
     Ok(())
 }
+
 pub struct IndexedLmdbBlockStoreRWTransaction<'t> {
     txn: RwTransaction<'t>,
     block_store: &'t LmdbBlockStore,

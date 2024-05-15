@@ -1,4 +1,13 @@
 use num_rational::Ratio;
+use once_cell::sync::Lazy;
+use std::{
+    cmp,
+    collections::{BTreeMap, HashMap},
+    fmt::Debug,
+    ops::Range,
+    sync::{Arc, Mutex},
+};
+use tracing::{debug, error, info, warn};
 
 use crate::{
     contract_runtime::{
@@ -22,15 +31,6 @@ use casper_storage::{
     data_access_layer::DataAccessLayer, global_state::state::lmdb::LmdbGlobalState,
 };
 use casper_types::{BlockHash, Chainspec, EraId, GasLimited, Key};
-use once_cell::sync::Lazy;
-use std::{
-    cmp,
-    collections::{BTreeMap, HashMap},
-    fmt::Debug,
-    ops::Range,
-    sync::{Arc, Mutex},
-};
-use tracing::{debug, error, info, warn};
 
 /// Maximum number of resource intensive tasks that can be run in parallel.
 ///
@@ -136,10 +136,10 @@ pub(super) async fn exec_or_requeue<REv>(
 
         let switch_block_utilization_score = {
             let has_hit_slot_limt = {
-                (executable_block.mint.len() as u32 >= block_max_mint_count)
-                    || (executable_block.auction.len() as u32 >= block_max_auction_count)
-                    || (executable_block.standard.len() as u32 >= block_max_standard_count)
-                    || (executable_block.install_upgrade.len() as u32
+                (executable_block.mint().len() as u32 >= block_max_mint_count)
+                    || (executable_block.auction().len() as u32 >= block_max_auction_count)
+                    || (executable_block.standard().len() as u32 >= block_max_standard_count)
+                    || (executable_block.install_upgrade().len() as u32
                         >= block_max_install_upgrade_count)
             };
 
@@ -231,6 +231,17 @@ pub(super) async fn exec_or_requeue<REv>(
         None
     };
 
+    let era_id = executable_block.era_id;
+
+    let last_switch_block_hash = if let Some(previous_era) = era_id.predecessor() {
+        let switch_block_header = effect_builder
+            .get_switch_block_header_by_era_id_from_storage(previous_era)
+            .await;
+        switch_block_header.map(|header| header.block_hash())
+    } else {
+        None
+    };
+
     let BlockAndExecutionArtifacts {
         block,
         approvals_hashes,
@@ -248,6 +259,7 @@ pub(super) async fn exec_or_requeue<REv>(
             key_block_height_for_activation_point,
             current_gas_price,
             maybe_next_era_gas_price,
+            last_switch_block_hash,
         )
     })
     .await

@@ -542,12 +542,12 @@ pub(crate) fn new_environment(
     Environment::new()
         .set_flags(
             OS_FLAGS
-            // We manage our own directory.
-            | EnvironmentFlags::NO_SUB_DIR
-            // Disable thread local storage, strongly suggested for operation with tokio.
-            | EnvironmentFlags::NO_TLS
-            // Disable read-ahead. Our data is not stored/read in sequence that would benefit from the read-ahead.
-            | EnvironmentFlags::NO_READAHEAD,
+                // We manage our own directory.
+                | EnvironmentFlags::NO_SUB_DIR
+                // Disable thread local storage, strongly suggested for operation with tokio.
+                | EnvironmentFlags::NO_TLS
+                // Disable read-ahead. Our data is not stored/read in sequence that would benefit from the read-ahead.
+                | EnvironmentFlags::NO_READAHEAD,
         )
         .set_max_readers(MAX_TRANSACTIONS)
         .set_max_dbs(MAX_DB_COUNT)

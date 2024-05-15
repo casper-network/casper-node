@@ -7,7 +7,7 @@ use serde::Serialize;
 use casper_binary_port::{BinaryRequest, BinaryResponse, GetRequest, GlobalStateRequest};
 
 use casper_types::{
-    BlockHeader, Digest, GlobalStateIdentifier, KeyTag, Timestamp, Transaction,
+    BlockHeader, Digest, GlobalStateIdentifier, KeyTag, PublicKey, Timestamp, Transaction,
     TransactionV1Builder,
 };
 
@@ -261,6 +261,7 @@ impl Reactor for MockReactor {
             }
             Event::AcceptTransactionRequest(req) => req.responder.respond(Ok(())).ignore(),
             Event::StorageRequest(StorageRequest::GetHighestCompleteBlockHeader { responder }) => {
+                let proposer = PublicKey::random(rng);
                 let block_header_v2 = casper_types::BlockHeaderV2::new(
                     Default::default(),
                     Default::default(),
@@ -271,6 +272,8 @@ impl Reactor for MockReactor {
                     Timestamp::now(),
                     Default::default(),
                     Default::default(),
+                    Default::default(),
+                    proposer,
                     Default::default(),
                     Default::default(),
                     Default::default(),
