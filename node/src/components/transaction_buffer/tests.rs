@@ -1,9 +1,11 @@
+use std::iter;
+
 use prometheus::Registry;
 use rand::{seq::SliceRandom, Rng};
 
 use casper_types::{
-    testing::TestRng, Deploy, EraId, TestBlockBuilder, TimeDiff, Transaction, TransactionCategory,
-    TransactionConfig, TransactionV1,
+    testing::TestRng, Deploy, EraId, SecretKey, TestBlockBuilder, TimeDiff, Transaction,
+    TransactionCategory, TransactionConfig, TransactionV1,
 };
 
 use super::*;
@@ -15,6 +17,7 @@ use crate::{
 };
 
 const ERA_ONE: EraId = EraId::new(1u64);
+const GAS_PRICE_TOLERACNE: u8 = 1;
 const DEFAULT_MINIMUM_GAS_PRICE: u8 = 1;
 
 fn get_appendable_block(
@@ -117,47 +120,47 @@ fn assert_container_sizes(
     assert_eq!(
         transaction_buffer.buffer.len(),
         expected_buffer,
-	"buffer.len {} != expected {}",
+        "buffer.len {} != expected {}",
         transaction_buffer.buffer.len(),
-	expected_buffer
+        expected_buffer
     );
     assert_eq!(
         transaction_buffer.dead.len(),
         expected_dead,
-	"dead.len {} != expected {}",
+        "dead.len {} != expected {}",
         transaction_buffer.dead.len(),
-	expected_dead
+        expected_dead
     );
-  let hold_len = transaction_buffer
+    let hold_len = transaction_buffer
         .hold
         .values()
         .map(|transactions| transactions.len())
         .sum::<usize>();
     assert_eq!(
-	hold_len, expected_held,
+        hold_len, expected_held,
         "hold.len {} != expected {}",
-	hold_len, expected_held,
+        hold_len, expected_held,
     );
     assert_eq!(
         transaction_buffer.metrics.total_transactions.get(),
         expected_buffer as i64,
         "metrics total {} != expected {}",
-	transaction_buffer.metrics.total_transactions.get(),
-	expected_buffer,
+        transaction_buffer.metrics.total_transactions.get(),
+        expected_buffer,
     );
     assert_eq!(
         transaction_buffer.metrics.held_transactions.get(),
         expected_held as i64,
-	"metrics held {} != expected {}",
-	transaction_buffer.metrics.held_transactions.get(),
-	expected_held,
+        "metrics held {} != expected {}",
+        transaction_buffer.metrics.held_transactions.get(),
+        expected_held,
     );
     assert_eq!(
         transaction_buffer.metrics.dead_transactions.get(),
         expected_dead as i64,
-	"metrics dead {} != expected {}",
+        "metrics dead {} != expected {}",
         transaction_buffer.metrics.dead_transactions.get(),
-	expected_dead,
+        expected_dead,
     );
 }
 
@@ -533,7 +536,9 @@ fn block_fully_saturated() {
     );
 
     // Ensure that only 'total_allowed' transactions are proposed.
-    let appendable_block = transaction_buffer.appendable_block(Timestamp::now(), ERA_ONE);
+    let timestamp = Timestamp::now();
+    let expiry = timestamp.saturating_add(TimeDiff::from_seconds(1));
+    let appendable_block = transaction_buffer.appendable_block(Timestamp::now(), ERA_ONE, expiry);
     assert_eq!(
         appendable_block.transaction_hashes().len(),
         total_allowed as usize
@@ -641,7 +646,9 @@ fn block_not_fully_saturated() {
     );
 
     // Ensure that not more than 'total_allowed' transactions are proposed.
-    let appendable_block = transaction_buffer.appendable_block(Timestamp::now(), ERA_ONE);
+    let timestamp = Timestamp::now();
+    let expiry = timestamp.saturating_add(TimeDiff::from_seconds(1));
+    let appendable_block = transaction_buffer.appendable_block(Timestamp::now(), ERA_ONE, expiry);
     assert!(appendable_block.transaction_hashes().len() <= total_allowed as usize);
 
     // Assert the number of proposed transaction types, block should not be fully saturated.
@@ -720,7 +727,9 @@ fn excess_transactions_do_not_sneak_into_transfer_bucket() {
 
     // Ensure that only 'total_allowed - 1' transactions are proposed, since a single place int the
     // "transfers" bucket is still available.
-    let appendable_block = transaction_buffer.appendable_block(Timestamp::now(), ERA_ONE);
+    let timestamp = Timestamp::now();
+    let expiry = timestamp.saturating_add(TimeDiff::from_seconds(1));
+    let appendable_block = transaction_buffer.appendable_block(Timestamp::now(), ERA_ONE, expiry);
     assert_eq!(
         appendable_block.transaction_hashes().len(),
         total_allowed as usize - 1
@@ -785,7 +794,9 @@ fn excess_transactions_do_not_sneak_into_staking_bucket() {
 
     // Ensure that only 'total_allowed - 1' transactions are proposed, since a single place int the
     // "stakings" bucket is still available.
-    let appendable_block = transaction_buffer.appendable_block(Timestamp::now(), ERA_ONE);
+    let timestamp = Timestamp::now();
+    let expiry = timestamp.saturating_add(TimeDiff::from_seconds(1));
+    let appendable_block = transaction_buffer.appendable_block(Timestamp::now(), ERA_ONE, expiry);
     assert_eq!(
         appendable_block.transaction_hashes().len(),
         total_allowed as usize - 1
@@ -850,7 +861,9 @@ fn excess_transactions_do_not_sneak_into_install_upgrades_bucket() {
 
     // Ensure that only 'total_allowed - 1' transactions are proposed, since a single place int the
     // "install_upgrades" bucket is still available.
-    let appendable_block = transaction_buffer.appendable_block(Timestamp::now(), ERA_ONE);
+    let timestamp = Timestamp::now();
+    let expiry = timestamp.saturating_add(TimeDiff::from_seconds(1));
+    let appendable_block = transaction_buffer.appendable_block(Timestamp::now(), ERA_ONE, expiry);
     assert_eq!(
         appendable_block.transaction_hashes().len(),
         total_allowed as usize - 1
@@ -915,7 +928,9 @@ fn excess_transactions_do_not_sneak_into_standards_bucket() {
 
     // Ensure that only 'total_allowed - 1' transactions are proposed, since a single place int the
     // "standards" bucket is still available.
-    let appendable_block = transaction_buffer.appendable_block(Timestamp::now(), ERA_ONE);
+    let timestamp = Timestamp::now();
+    let expiry = timestamp.saturating_add(TimeDiff::from_seconds(1));
+    let appendable_block = transaction_buffer.appendable_block(Timestamp::now(), ERA_ONE, expiry);
     assert_eq!(
         appendable_block.transaction_hashes().len(),
         total_allowed as usize - 1
@@ -1311,16 +1326,20 @@ async fn expire_transactions_and_check_announcement_when_transactions_are_of_ran
 #[test]
 fn should_have_one_bucket_per_distinct_body_hash() {
     let mut rng = TestRng::new();
-    let max_deploy_count = 2;
-    let max_transfer_count = 0;
-    let deploy_config = DeployConfig {
-        block_max_deploy_count: max_deploy_count,
-        block_max_transfer_count: max_transfer_count,
-        block_max_approval_count: max_deploy_count + max_transfer_count,
+    let max_standard_count = 2;
+    let max_mint_count = 0;
+    let transaction_config = TransactionConfig {
+        block_max_standard_count: max_standard_count,
+        block_max_mint_count: max_mint_count,
+        block_max_approval_count: max_standard_count + max_mint_count,
         ..Default::default()
     };
-    let mut deploy_buffer =
-        DeployBuffer::new(deploy_config, Config::default(), &Registry::new()).unwrap();
+    let chainspec = Arc::new(Chainspec {
+        transaction_config,
+        ..Default::default()
+    });
+    let mut transaction_buffer =
+        TransactionBuffer::new(chainspec, Config::default(), &Registry::new()).unwrap();
 
     let secret_key1 = SecretKey::random(&mut rng);
     let ttl = TimeDiff::from_seconds(30);
@@ -1333,7 +1352,7 @@ fn should_have_one_bucket_per_distinct_body_hash() {
         Some(ttl),
     );
     let deploy1_body_hash = *deploy1.header().body_hash();
-    deploy_buffer.register_deploy(deploy1);
+    transaction_buffer.register_transaction(deploy1.into());
 
     let secret_key2 = SecretKey::random(&mut rng); // different signer
     let deploy2 = Deploy::random_contract_by_name(
@@ -1352,9 +1371,9 @@ fn should_have_one_bucket_per_distinct_body_hash() {
         deploy2.header().body_hash(),
         "1 & 2 should have same body hashes"
     );
-    deploy_buffer.register_deploy(deploy2);
+    transaction_buffer.register_transaction(deploy2.into());
 
-    let buckets = deploy_buffer.buckets();
+    let buckets = transaction_buffer.buckets(GAS_PRICE_TOLERACNE);
     assert!(buckets.len() == 1, "should be 1 bucket");
 
     let deploy3 = Deploy::random_contract_by_name(
@@ -1373,8 +1392,8 @@ fn should_have_one_bucket_per_distinct_body_hash() {
         deploy3.header().body_hash(),
         "1 & 3 should have same body hashes"
     );
-    deploy_buffer.register_deploy(deploy3);
-    let buckets = deploy_buffer.buckets();
+    transaction_buffer.register_transaction(deploy3.into());
+    let buckets = transaction_buffer.buckets(GAS_PRICE_TOLERACNE);
     assert!(buckets.len() == 1, "should still be 1 bucket");
 
     let deploy4 = Deploy::random_contract_by_name(
@@ -1393,8 +1412,8 @@ fn should_have_one_bucket_per_distinct_body_hash() {
         deploy4.header().body_hash(),
         "1 & 4 should have different body hashes"
     );
-    deploy_buffer.register_deploy(deploy4);
-    let buckets = deploy_buffer.buckets();
+    transaction_buffer.register_transaction(deploy4.into());
+    let buckets = transaction_buffer.buckets(GAS_PRICE_TOLERACNE);
     assert!(buckets.len() == 2, "should be 2 buckets");
 
     let transfer5 = Deploy::random_valid_native_transfer_with_timestamp_and_ttl(
@@ -1407,30 +1426,34 @@ fn should_have_one_bucket_per_distinct_body_hash() {
         transfer5.header().body_hash(),
         "1 & 5 should have different body hashes"
     );
-    deploy_buffer.register_deploy(transfer5);
-    let buckets = deploy_buffer.buckets();
+    transaction_buffer.register_transaction(transfer5.into());
+    let buckets = transaction_buffer.buckets(GAS_PRICE_TOLERACNE);
     assert!(buckets.len() == 3, "should be 3 buckets");
 }
 
 #[test]
 fn should_have_diverse_proposable_blocks_with_stocked_buffer() {
     let rng = &mut TestRng::new();
-    let max_deploy_count = 50;
-    let max_transfer_count = 5;
-    let deploy_config = DeployConfig {
-        block_max_deploy_count: max_deploy_count,
-        block_max_transfer_count: max_transfer_count,
-        block_max_approval_count: max_deploy_count + max_transfer_count,
+    let max_standard_count = 50;
+    let max_mint_count = 5;
+    let transaction_config = TransactionConfig {
+        block_max_standard_count: max_standard_count,
+        block_max_mint_count: max_mint_count,
+        block_max_approval_count: max_standard_count + max_mint_count,
         ..Default::default()
     };
-    let mut deploy_buffer =
-        DeployBuffer::new(deploy_config, Config::default(), &Registry::new()).unwrap();
+    let chainspec = Arc::new(Chainspec {
+        transaction_config,
+        ..Default::default()
+    });
+    let mut transaction_buffer =
+        TransactionBuffer::new(chainspec, Config::default(), &Registry::new()).unwrap();
 
-    let cap = (max_deploy_count * 100) as usize;
+    let cap = (max_standard_count * 100) as usize;
 
     let secret_keys: Vec<SecretKey> = iter::repeat_with(|| SecretKey::random(rng))
-    .take(10)
-    .collect();
+        .take(10)
+        .collect();
 
     let contract_names = ["a", "b", "c", "d", "e"];
     let contract_entry_points = ["foo", "bar"];
@@ -1440,9 +1463,8 @@ fn should_have_diverse_proposable_blocks_with_stocked_buffer() {
     }
 
     let mut last_timestamp = Timestamp::now();
-    for _ in 0..cap {
-        last_timestamp = timestamp(&mut rng, last_timestamp);
-        let ttl = ttl(&mut rng);
+    for i in 0..cap {
+        let ttl = ttl(rng);
         let secret_key = Some(
             SecretKey::from_pem(
                 secret_keys[rng.gen_range(0..secret_keys.len())]
@@ -1456,46 +1478,44 @@ fn should_have_diverse_proposable_blocks_with_stocked_buffer() {
             Some(contract_entry_points[rng.gen_range(0..contract_entry_points.len())].into());
         let deploy = Deploy::random_contract_by_name(
             rng,
-            &mut rng,
             secret_key,
             contract_name,
             contract_entry_point,
             Some(last_timestamp),
             Some(ttl),
         );
-        deploy_buffer.register_deploy(deploy)
+        transaction_buffer.register_transaction(deploy.into());
         assert_eq!(
-            deploy_buffer.buffer.len(),
+            transaction_buffer.buffer.len(),
             i + 1,
             "failed to buffer deploy {i}"
         );
         last_timestamp += TimeDiff::from_millis(1);
     }
 
-    for i in 0..max_transfer_count {
+    for i in 0..max_mint_count {
         let ttl = ttl(rng);
-        deploy_buffer.register_deploy(Deploy::random_valid_native_transfer_with_timestamp_and_ttl(
-            &mut rng,
-            last_timestamp,
-            ttl,
-        ));
+        transaction_buffer.register_transaction(
+            Deploy::random_valid_native_transfer_with_timestamp_and_ttl(rng, last_timestamp, ttl)
+                .into(),
+        );
         assert_eq!(
-            deploy_buffer.buffer.len(),
+            transaction_buffer.buffer.len(),
             i as usize + 1 + cap,
             "failed to buffer transfer {i}"
         );
-        last_timestamp += TimeDiff::from_millis(1);        
+        last_timestamp += TimeDiff::from_millis(1);
     }
 
-    let expected_count = cap + (max_transfer_count as usize);
-    assert_container_sizes(&deploy_buffer, expected_count, 0, 0);
+    let expected_count = cap + (max_mint_count as usize);
+    assert_container_sizes(&transaction_buffer, expected_count, 0, 0);
 
-    let buckets1 = deploy_buffer.buckets();
+    let buckets1 = transaction_buffer.buckets(GAS_PRICE_TOLERACNE);
     assert!(
         buckets1.len() > 1,
         "should be multiple buckets with this much state"
     );
-    let buckets2 = deploy_buffer.buckets();
+    let buckets2 = transaction_buffer.buckets(GAS_PRICE_TOLERACNE);
     assert_eq!(
         buckets1, buckets2,
         "with same state should get same buckets every time"
@@ -1507,8 +1527,8 @@ fn should_have_diverse_proposable_blocks_with_stocked_buffer() {
     let mut actual_eq_count = 0;
     let expiry = last_timestamp.saturating_add(TimeDiff::from_seconds(1));
     for _ in 0..10 {
-        let appendable1 = deploy_buffer.appendable_block(last_timestamp, expiry);
-        let appendable2 = deploy_buffer.appendable_block(last_timestamp, expiry);
+        let appendable1 = transaction_buffer.appendable_block(last_timestamp, ERA_ONE, expiry);
+        let appendable2 = transaction_buffer.appendable_block(last_timestamp, ERA_ONE, expiry);
         if appendable1 == appendable2 {
             actual_eq_count += 1;
         }
@@ -1524,16 +1544,20 @@ fn should_have_diverse_proposable_blocks_with_stocked_buffer() {
 #[test]
 fn should_be_empty_if_no_time_until_expiry() {
     let mut rng = TestRng::new();
-    let max_deploy_count = 1;
-    let max_transfer_count = 1;
-    let deploy_config = DeployConfig {
-        block_max_deploy_count: max_deploy_count,
-        block_max_transfer_count: max_transfer_count,
-        block_max_approval_count: max_deploy_count + max_transfer_count,
+    let max_standard_count = 1;
+    let max_mint_count = 1;
+    let transaction_config = TransactionConfig {
+        block_max_standard_count: max_standard_count,
+        block_max_mint_count: max_mint_count,
+        block_max_approval_count: max_standard_count + max_mint_count,
         ..Default::default()
     };
-    let mut deploy_buffer =
-        DeployBuffer::new(deploy_config, Config::default(), &Registry::new()).unwrap();
+    let chainspec = Arc::new(Chainspec {
+        transaction_config,
+        ..Default::default()
+    });
+    let mut transaction_buffer =
+        TransactionBuffer::new(chainspec, Config::default(), &Registry::new()).unwrap();
 
     let secret_key1 = SecretKey::random(&mut rng);
     let ttl = TimeDiff::from_seconds(30);
@@ -1546,9 +1570,9 @@ fn should_be_empty_if_no_time_until_expiry() {
         Some(ttl),
     );
     let deploy1_body_hash = *deploy1.header().body_hash();
-    deploy_buffer.register_deploy(deploy1);
+    transaction_buffer.register_transaction(deploy1.into());
 
-    let buckets = deploy_buffer.buckets();
+    let buckets = transaction_buffer.buckets(GAS_PRICE_TOLERACNE);
     assert!(buckets.len() == 1, "should be 1 buckets");
 
     let transfer2 = Deploy::random_valid_native_transfer_with_timestamp_and_ttl(
@@ -1561,24 +1585,28 @@ fn should_be_empty_if_no_time_until_expiry() {
         transfer2.header().body_hash(),
         "1 & 2 should have different body hashes"
     );
-    deploy_buffer.register_deploy(transfer2);
-    let buckets = deploy_buffer.buckets();
+    transaction_buffer.register_transaction(transfer2.into());
+    let buckets = transaction_buffer.buckets(GAS_PRICE_TOLERACNE);
     assert!(buckets.len() == 2, "should be 2 buckets");
 
-    let now = Timestamp::now();
-    let appendable = deploy_buffer.appendable_block(now, now);
-    let count = appendable.deploy_and_transfer_set().len();
+    let timestamp = Timestamp::now();
+    let expiry = timestamp.saturating_add(TimeDiff::from_seconds(1));
+    let appendable = transaction_buffer.appendable_block(timestamp, ERA_ONE, expiry);
+    let count = appendable.transaction_count();
     assert!(count == 0, "expected 0 found {}", count);
 
     // logic should tolerate invalid expiry
-    let appendable =
-        deploy_buffer.appendable_block(now, now.saturating_sub(TimeDiff::from_millis(1)));
-    let count = appendable.deploy_and_transfer_set().len();
+    let appendable = transaction_buffer.appendable_block(
+        timestamp,
+        ERA_ONE,
+        timestamp.saturating_sub(TimeDiff::from_millis(1)),
+    );
+    let count = appendable.transaction_count();
     assert!(count == 0, "expected 0 found {}", count);
 }
 
 fn register_random_deploys_unique_hashes(
-    deploy_buffer: &mut DeployBuffer,
+    transaction_buffer: &mut TransactionBuffer,
     num_deploys: usize,
     rng: &mut TestRng,
 ) {
@@ -1596,12 +1624,12 @@ fn register_random_deploys_unique_hashes(
     })
     .take(num_deploys);
     for deploy in deploys {
-        deploy_buffer.register_deploy(deploy);
+        transaction_buffer.register_transaction(deploy.into());
     }
 }
 
 fn register_random_deploys_same_hash(
-    deploy_buffer: &mut DeployBuffer,
+    transaction_buffer: &mut TransactionBuffer,
     num_deploys: usize,
     rng: &mut TestRng,
 ) {
@@ -1619,26 +1647,31 @@ fn register_random_deploys_same_hash(
     })
     .take(num_deploys);
     for deploy in deploys {
-        deploy_buffer.register_deploy(deploy);
+        transaction_buffer.register_transaction(deploy.into());
     }
 }
 
 #[test]
 fn test_buckets_single_hash() {
     let mut rng = TestRng::new();
-    let deploy_config = DeployConfig {
-        block_max_transfer_count: 1000,
-        block_max_deploy_count: 100,
+    let transaction_config = TransactionConfig {
+        block_max_mint_count: 1000,
+        block_max_standard_count: 100,
         block_max_approval_count: 1100,
         ..Default::default()
     };
-    let mut deploy_buffer =
-        DeployBuffer::new(deploy_config, Config::default(), &Registry::new()).unwrap();
+    let chainspec = Arc::new(Chainspec {
+        transaction_config,
+        ..Default::default()
+    });
+    let mut transaction_buffer =
+        TransactionBuffer::new(chainspec, Config::default(), &Registry::new()).unwrap();
 
-    register_random_deploys_same_hash(&mut deploy_buffer, 64000, &mut rng);
+    register_random_deploys_same_hash(&mut transaction_buffer, 64000, &mut rng);
 
-    let _block = deploy_buffer.appendable_block(
+    let _block = transaction_buffer.appendable_block(
         Timestamp::now(),
+        ERA_ONE,
         Timestamp::now() + TimeDiff::from_millis(16384 / 6),
     );
 }
@@ -1646,19 +1679,25 @@ fn test_buckets_single_hash() {
 #[test]
 fn test_buckets_unique_hashes() {
     let mut rng = TestRng::new();
-    let deploy_config = DeployConfig {
-        block_max_transfer_count: 1000,
-        block_max_deploy_count: 100,
+
+    let transaction_config = TransactionConfig {
+        block_max_mint_count: 1000,
+        block_max_standard_count: 100,
         block_max_approval_count: 1100,
         ..Default::default()
     };
-    let mut deploy_buffer =
-        DeployBuffer::new(deploy_config, Config::default(), &Registry::new()).unwrap();
+    let chainspec = Arc::new(Chainspec {
+        transaction_config,
+        ..Default::default()
+    });
+    let mut transaction_buffer =
+        TransactionBuffer::new(chainspec, Config::default(), &Registry::new()).unwrap();
 
-    register_random_deploys_unique_hashes(&mut deploy_buffer, 64000, &mut rng);
+    register_random_deploys_unique_hashes(&mut transaction_buffer, 64000, &mut rng);
 
-    let _block = deploy_buffer.appendable_block(
+    let _block = transaction_buffer.appendable_block(
         Timestamp::now(),
+        ERA_ONE,
         Timestamp::now() + TimeDiff::from_millis(16384 / 6),
     );
 }
@@ -1666,20 +1705,25 @@ fn test_buckets_unique_hashes() {
 #[test]
 fn test_buckets_mixed_load() {
     let mut rng = TestRng::new();
-    let deploy_config = DeployConfig {
-        block_max_transfer_count: 1000,
-        block_max_deploy_count: 100,
+    let transaction_config = TransactionConfig {
+        block_max_mint_count: 1000,
+        block_max_standard_count: 100,
         block_max_approval_count: 1100,
         ..Default::default()
     };
-    let mut deploy_buffer =
-        DeployBuffer::new(deploy_config, Config::default(), &Registry::new()).unwrap();
+    let chainspec = Arc::new(Chainspec {
+        transaction_config,
+        ..Default::default()
+    });
+    let mut transaction_buffer =
+        TransactionBuffer::new(chainspec, Config::default(), &Registry::new()).unwrap();
 
-    register_random_deploys_unique_hashes(&mut deploy_buffer, 60000, &mut rng);
-    register_random_deploys_same_hash(&mut deploy_buffer, 4000, &mut rng);
+    register_random_deploys_unique_hashes(&mut transaction_buffer, 60000, &mut rng);
+    register_random_deploys_same_hash(&mut transaction_buffer, 4000, &mut rng);
 
-    let _block = deploy_buffer.appendable_block(
+    let _block = transaction_buffer.appendable_block(
         Timestamp::now(),
+        ERA_ONE,
         Timestamp::now() + TimeDiff::from_millis(16384 / 6),
     );
 }

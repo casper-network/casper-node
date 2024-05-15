@@ -586,8 +586,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "wabt",
- "walrus 0.19.0",
- "walrus 0.20.2",
+ "walrus",
  "wat",
 ]
 
@@ -632,7 +631,7 @@ dependencies = [
  "thiserror",
  "tracing",
  "uint",
- "walrus 0.20.2",
+ "walrus",
 ]
 
 [[package]]
@@ -7081,20 +7080,6 @@ dependencies = [
 
 [[package]]
 name = "walrus"
-version = "0.19.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4eb08e48cde54c05f363d984bb54ce374f49e242def9468d2e1b6c2372d291f8"
-dependencies = [
- "anyhow",
- "id-arena",
- "leb128",
- "log",
- "walrus-macro",
- "wasmparser 0.77.1",
-]
-
-[[package]]
-name = "walrus"
 version = "0.20.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0a7b95ecf5892b48104914fa021721699bb8149ae754cff50a22daeb7df0928f"
@@ -7106,7 +7091,7 @@ dependencies = [
  "log",
  "walrus-macro",
  "wasm-encoder 0.29.0",
- "wasmparser 0.80.2",
+ "wasmparser",
 ]
 
 [[package]]
@@ -7264,12 +7249,6 @@ dependencies = [
  "wasm-bindgen-futures",
  "web-sys",
 ]
-
-[[package]]
-name = "wasmparser"
-version = "0.77.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5fe3d5405e9ea6c1317a656d6e0820912d8b7b3607823a7596117c8f666daf6f"
 
 [[package]]
 name = "wasmparser"

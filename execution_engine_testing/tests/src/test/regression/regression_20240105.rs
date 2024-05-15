@@ -6,19 +6,16 @@ mod repeated_ffi_call_should_gas_out_quickly {
         time::{Duration, Instant},
     };
 
+    use casper_execution_engine::{engine_state::Error, execution::ExecError};
     use rand::Rng;
     use tempfile::TempDir;
 
     use casper_engine_test_support::{
         ChainspecConfig, DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder,
-        DEFAULT_ACCOUNT_ADDR, PRODUCTION_CHAINSPEC_PATH, PRODUCTION_RUN_GENESIS_REQUEST,
-    };
-    use casper_execution_engine::core::{
-        engine_state::{EngineConfig, Error},
-        execution::Error as ExecError,
+        CHAINSPEC_SYMLINK, DEFAULT_ACCOUNT_ADDR, LOCAL_GENESIS_REQUEST,
     };
     use casper_types::{
-        account::AccountHash, runtime_args, testing::TestRng, RuntimeArgs,
+        account::AccountHash, runtime_args, testing::TestRng, ProtocolVersion, RuntimeArgs,
         DICTIONARY_ITEM_KEY_MAX_LENGTH, U512,
     };
 
@@ -27,8 +24,7 @@ mod repeated_ffi_call_should_gas_out_quickly {
     const PAYMENT_AMOUNT: u64 = 1_000_000_000_000_u64;
 
     fn production_max_associated_keys() -> u8 {
-        let chainspec_config =
-            ChainspecConfig::from_chainspec_path(&*PRODUCTION_CHAINSPEC_PATH).unwrap();
+        let chainspec_config = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK).unwrap();
         chainspec_config.max_associated_keys().try_into().unwrap()
     }
 
@@ -42,9 +38,7 @@ mod repeated_ffi_call_should_gas_out_quickly {
         fn new() -> Self {
             let data_dir = TempDir::new().unwrap();
             let mut builder = LmdbWasmTestBuilder::new_with_production_chainspec(data_dir.path());
-            builder
-                .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
-                .commit();
+            builder.run_genesis(LOCAL_GENESIS_REQUEST.clone()).commit();
             let rng = TestRng::new();
             Fixture {
                 builder,
@@ -56,15 +50,14 @@ mod repeated_ffi_call_should_gas_out_quickly {
         /// Calls regression_20240105.wasm with some setup function.  Execution is expected to
         /// succeed.
         fn execute_setup(&mut self, session_args: RuntimeArgs) {
-            let payment_args = runtime_args! { "amount" => U512::from(PAYMENT_AMOUNT * 4) };
             let deploy = DeployItemBuilder::new()
                 .with_address(*DEFAULT_ACCOUNT_ADDR)
                 .with_session_code(CONTRACT, session_args)
-                .with_empty_payment_bytes(payment_args)
+                .with_standard_payment(runtime_args! { "amount" => U512::from(PAYMENT_AMOUNT * 4) })
                 .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
                 .with_deploy_hash(self.rng.gen())
                 .build();
-            let exec_request = ExecuteRequestBuilder::from_deploy_item(deploy).build();
+            let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy).build();
             self.builder.exec(exec_request).expect_success().commit();
         }
 
@@ -88,28 +81,29 @@ mod repeated_ffi_call_should_gas_out_quickly {
                 auth_keys.push(AccountHash::new([i; 32]));
             }
             let executor = thread::spawn(move || {
-                let payment_args = runtime_args! { "amount" => U512::from(PAYMENT_AMOUNT) };
                 let deploy = DeployItemBuilder::new()
                     .with_address(*DEFAULT_ACCOUNT_ADDR)
                     .with_session_code(CONTRACT, session_args)
-                    .with_empty_payment_bytes(payment_args.clone())
+                    .with_standard_payment(runtime_args! { "amount" => U512::from(PAYMENT_AMOUNT) })
                     .with_authorization_keys(&auth_keys)
                     .with_deploy_hash(rng.gen())
                     .build();
-                let exec_request = ExecuteRequestBuilder::from_deploy_item(deploy).build();
+                let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy).build();
 
-                let chainspec_config =
-                    ChainspecConfig::from_chainspec_path(&*PRODUCTION_CHAINSPEC_PATH).unwrap();
-                let mut engine_config = EngineConfig::from(chainspec_config);
+                let mut chainspec_config =
+                    ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK).unwrap();
                 // Increase the `max_memory` available in order to avoid hitting unreachable
                 // instruction during execution.
-                engine_config.set_max_memory(10_000);
-                let mut builder =
-                    LmdbWasmTestBuilder::open(data_dir.path(), engine_config, post_state_hash);
-                let error = match builder.try_exec(exec_request) {
-                    Ok(_) => builder.get_error().unwrap(),
-                    Err(error) => error,
-                };
+                chainspec_config.wasm_config.max_memory = 10_000;
+                let mut builder = LmdbWasmTestBuilder::open(
+                    data_dir.path(),
+                    chainspec_config,
+                    ProtocolVersion::V2_0_0,
+                    post_state_hash,
+                );
+
+                builder.try_exec(exec_request);
+                let error = builder.get_error().unwrap();
                 let _ = tx.send(error);
             });
 

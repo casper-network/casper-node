@@ -438,17 +438,10 @@ fn next_upgrade(dir: PathBuf, current_version: ProtocolVersion) -> Option<NextUp
 
 #[cfg(test)]
 mod tests {
-    use casper_types::testing::TestRng;
+    use casper_types::{testing::TestRng, ActivationPoint, ChainspecRawBytes};
 
     use super::*;
-    use crate::{
-        logging,
-        types::{
-            chainspec::{ActivationPoint, CHAINSPEC_FILENAME},
-            ChainspecRawBytes,
-        },
-        utils::Loadable,
-    };
+    use crate::{logging, utils::Loadable};
 
     const V0_0_0: ProtocolVersion = ProtocolVersion::from_parts(0, 0, 0);
     const V0_9_9: ProtocolVersion = ProtocolVersion::from_parts(0, 9, 9);
@@ -573,19 +566,13 @@ mod tests {
 
         let mut current = ProtocolVersion::from_parts(1, 9, 9);
         let v2_0_0 = ProtocolVersion::from_parts(2, 0, 0);
-        let chainspec_v2_0_0 = install_chainspec(&mut rng, tempdir.path(), &v2_0_0);
-        assert_eq!(
-            next_point(&current),
-            chainspec_v2_0_0.protocol_config.into()
-        );
+        let chainspec_v2_0_0 = install_chainspec(&mut rng, tempdir.path(), v2_0_0);
+        assert_eq!(next_point(current), chainspec_v2_0_0.protocol_config.into());
 
         current = v2_0_0;
         let v2_0_3 = ProtocolVersion::from_parts(2, 0, 3);
-        let chainspec_v2_0_3 = install_chainspec(&mut rng, tempdir.path(), &v2_0_3);
-        assert_eq!(
-            next_point(&current),
-            chainspec_v2_0_3.protocol_config.into()
-        );
+        let chainspec_v2_0_3 = install_chainspec(&mut rng, tempdir.path(), v2_0_3);
+        assert_eq!(next_point(current), chainspec_v2_0_3.protocol_config.into());
 
         let chainspec_v1_0_0 = install_chainspec(&mut rng, tempdir.path(), V1_0_0);
         assert_eq!(next_point(V0_9_9), chainspec_v1_0_0.protocol_config.into());
@@ -649,10 +636,10 @@ mod tests {
             UpgradeWatcher::new(&chainspec, Config::default(), tempdir.path()).unwrap();
         assert!(upgrade_watcher.next_upgrade.is_none());
 
-        let next_upgrade = NextUpgrade {
-            activation_point: ActivationPoint::EraId(EraId::MAX),
-            protocol_version: ProtocolVersion::from_parts(9, 9, 9),
-        };
+        let next_upgrade = NextUpgrade::new(
+            ActivationPoint::EraId(EraId::MAX),
+            ProtocolVersion::from_parts(9, 9, 9),
+        );
         let _ = upgrade_watcher.handle_got_next_upgrade(Some(next_upgrade));
         assert_eq!(Some(next_upgrade), upgrade_watcher.next_upgrade);
 
