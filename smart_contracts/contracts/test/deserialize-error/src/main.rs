@@ -7,9 +7,8 @@ use alloc::{vec, vec::Vec};
 
 use casper_contract::{self, contract_api::storage, unwrap_or_revert::UnwrapOrRevert};
 use casper_types::{
-    addressable_entity::Parameters, api_error, bytesrepr::ToBytes, contracts::Parameters,
-    AddressableEntityHash, CLType, ContractHash, EntryPoint, EntryPointAccess, EntryPointPayment,
-    EntryPointType, EntryPoints, RuntimeArgs,
+    addressable_entity::Parameters, api_error, bytesrepr::ToBytes, AddressableEntityHash, CLType,
+    EntryPoint, EntryPointAccess, EntryPointPayment, EntryPointType, EntryPoints,
 };
 
 #[no_mangle]

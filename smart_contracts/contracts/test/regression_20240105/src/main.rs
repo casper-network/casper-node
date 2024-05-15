@@ -19,13 +19,14 @@ use casper_contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    account::{AccountHash, ActionType, Weight},
+    account::AccountHash,
+    addressable_entity::{ActionType, NamedKeys, Weight, MAX_GROUPS},
     api_error,
     bytesrepr::ToBytes,
-    contracts::MAX_GROUPS,
-    runtime_args, AccessRights, ApiError, CLType, CLValue, ContractHash, ContractPackageHash,
-    EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, EraId, Key, Parameter, RuntimeArgs,
-    TransferredTo, URef, U512,
+    contracts::{ContractHash, ContractPackageHash},
+    runtime_args, AccessRights, AddressableEntityHash, ApiError, CLType, CLValue, EntryPoint,
+    EntryPointAccess, EntryPointPayment, EntryPointType, EntryPoints, EraId, Key, PackageHash,
+    Parameter, TransferredTo, URef, U512,
 };
 
 const NOOP: &str = "noop";
@@ -40,23 +41,29 @@ fn to_ptr<T: ToBytes>(t: &T) -> (*const u8, usize, Vec<u8>) {
 #[no_mangle]
 extern "C" fn noop() {}
 
-fn store_noop_contract(maybe_contract_pkg_hash: Option<ContractPackageHash>) -> ContractHash {
+fn store_noop_contract(maybe_contract_pkg_hash: Option<PackageHash>) -> AddressableEntityHash {
     let mut entry_points = EntryPoints::new();
     entry_points.add_entry_point(EntryPoint::new(
         NOOP,
         vec![],
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::Caller,
+        EntryPointPayment::Caller,
     ));
     match maybe_contract_pkg_hash {
         Some(contract_pkg_hash) => {
-            let (contract_hash, _version) =
-                storage::add_contract_version(contract_pkg_hash, entry_points, BTreeMap::new());
+            let (contract_hash, _version) = storage::add_contract_version(
+                contract_pkg_hash,
+                entry_points,
+                NamedKeys::new(),
+                BTreeMap::new(),
+            );
             contract_hash
         }
         None => {
-            let (contract_hash, _version) = storage::new_contract(entry_points, None, None, None);
+            let (contract_hash, _version) =
+                storage::new_contract(entry_points, None, None, None, None);
             contract_hash
         }
     }
@@ -445,11 +452,12 @@ pub extern "C" fn call() {
                     vec![Parameter::new("a", CLType::PublicKey); 10],
                     CLType::Unit,
                     EntryPointAccess::Public,
-                    EntryPointType::Contract,
+                    EntryPointType::Caller,
+                    EntryPointPayment::Caller,
                 ));
             }
             let named_keys_len: u32 = runtime::get_named_arg("named_keys_len");
-            let mut named_keys = BTreeMap::new();
+            let mut named_keys = NamedKeys::new();
             for named_key_index in 0..named_keys_len {
                 let _ = named_keys.insert(named_key_index.to_string(), Key::Hash([1; 32]));
             }
@@ -459,6 +467,7 @@ pub extern "C" fn call() {
                     contract_pkg_hash,
                     entry_points.clone(),
                     named_keys.clone(),
+                    BTreeMap::new(),
                 );
                 assert_eq!(version, i as u32);
             }
@@ -468,6 +477,7 @@ pub extern "C" fn call() {
             let (contract_hash, _version) = storage::add_contract_version(
                 contract_pkg_hash,
                 EntryPoints::new(),
+                NamedKeys::new(),
                 BTreeMap::new(),
             );
             for _i in 0..u64::MAX {
@@ -745,6 +755,7 @@ pub extern "C" fn call() {
             let (contract_hash, _version) = storage::add_contract_version(
                 contract_pkg_hash,
                 EntryPoints::new(),
+                NamedKeys::new(),
                 BTreeMap::new(),
             );
             for _i in 0..u64::MAX {
