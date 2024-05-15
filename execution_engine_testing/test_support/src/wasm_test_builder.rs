@@ -24,12 +24,13 @@ use casper_storage::{
         balance::BalanceHandling, AuctionMethod, BalanceIdentifier, BalanceRequest, BalanceResult,
         BiddingRequest, BiddingResult, BidsRequest, BlockRewardsRequest, BlockRewardsResult,
         BlockStore, DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, FeeRequest,
-        FeeResult, FlushRequest, FlushResult, GenesisRequest, GenesisResult, ProofHandling,
-        ProtocolUpgradeRequest, ProtocolUpgradeResult, PruneRequest, PruneResult, QueryRequest,
-        QueryResult, RoundSeigniorageRateRequest, RoundSeigniorageRateResult, StepRequest,
-        StepResult, SystemEntityRegistryPayload, SystemEntityRegistryRequest,
-        SystemEntityRegistryResult, SystemEntityRegistrySelector, TotalSupplyRequest,
-        TotalSupplyResult, TransferRequest, TrieRequest,
+        FeeResult, FlushRequest, FlushResult, GenesisRequest, GenesisResult, HandleFeeMode,
+        HandleFeeRequest, HandleFeeResult, ProofHandling, ProtocolUpgradeRequest,
+        ProtocolUpgradeResult, PruneRequest, PruneResult, QueryRequest, QueryResult,
+        RoundSeigniorageRateRequest, RoundSeigniorageRateResult, StepRequest, StepResult,
+        SystemEntityRegistryPayload, SystemEntityRegistryRequest, SystemEntityRegistryResult,
+        SystemEntityRegistrySelector, TotalSupplyRequest, TotalSupplyResult, TransferRequest,
+        TrieRequest,
     },
     global_state::{
         state::{
@@ -1030,6 +1031,31 @@ where
         }
 
         distribute_block_rewards_result
+    }
+
+    /// Finalizes payment for a transaction
+    pub fn handle_fee(
+        &mut self,
+        pre_state_hash: Option<Digest>,
+        protocol_version: ProtocolVersion,
+        transaction_hash: TransactionHash,
+        handle_fee_mode: HandleFeeMode,
+    ) -> HandleFeeResult {
+        let pre_state_hash = pre_state_hash.or(self.post_state_hash).unwrap();
+        let native_runtime_config = self.native_runtime_config();
+        let handle_fee_request = HandleFeeRequest::new(
+            native_runtime_config,
+            pre_state_hash,
+            protocol_version,
+            transaction_hash,
+            handle_fee_mode,
+        );
+        let handle_fee_result = self.data_access_layer.handle_fee(handle_fee_request);
+        if let HandleFeeResult::Success { effects, .. } = &handle_fee_result {
+            self.commit_transforms(pre_state_hash, effects.clone());
+        }
+
+        handle_fee_result
     }
 
     /// Expects a successful run
