@@ -246,7 +246,7 @@ impl ReactorTrait for Reactor {
             Event::NetResponseIncoming(announcement) => {
                 let mut announcement_effects = Effects::new();
                 let effects = self.handle_net_response(effect_builder, rng, announcement);
-                announcement_effects.extend(effects.into_iter());
+                announcement_effects.extend(effects);
                 announcement_effects
             }
             Event::MarkBlockCompletedRequest(request) => reactor::wrap_effects(

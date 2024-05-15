@@ -1,7 +1,8 @@
 use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, LOCAL_GENESIS_REQUEST,
 };
-use casper_types::RuntimeArgs;
+use casper_execution_engine::core::{engine_state, execution};
+use casper_types::{bytesrepr, RuntimeArgs};
 
 const CONTRACT_DESERIALIZE_ERROR: &str = "deserialize_error.wasm";
 
@@ -18,7 +19,16 @@ fn should_not_fail_deserializing() {
         .run_genesis(LOCAL_GENESIS_REQUEST.clone())
         .exec(exec_request)
         .commit()
-        .is_error();
+        .get_error();
 
-    assert!(is_error);
+    assert!(
+        matches!(
+            error,
+            Some(engine_state::Error::Exec(execution::Error::BytesRepr(
+                bytesrepr::Error::EarlyEndOfStream
+            )))
+        ),
+        "{:?}",
+        error
+    );
 }

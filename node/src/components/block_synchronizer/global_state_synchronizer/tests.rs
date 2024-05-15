@@ -80,7 +80,7 @@ impl MockReactor {
 }
 
 fn random_test_trie(rng: &mut TestRng) -> TrieRaw {
-    let data: Vec<u8> = (0..64).into_iter().map(|_| rng.gen()).collect();
+    let data: Vec<u8> = (0..64).map(|_| rng.gen()).collect();
     TrieRaw::new(Bytes::from(data))
 }
 
@@ -505,7 +505,6 @@ async fn missing_trie_node_children_triggers_fetch() {
     // We generate more than the parallel_fetch_limit.
     let num_missing_trie_nodes = rng.gen_range(12..20);
     let missing_tries: Vec<TrieRaw> = (0..num_missing_trie_nodes)
-        .into_iter()
         .map(|_| random_test_trie(&mut rng))
         .collect();
     let missing_trie_nodes_hashes: Vec<Digest> = missing_tries

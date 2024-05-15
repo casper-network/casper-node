@@ -194,7 +194,7 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         let result = match event {
-            Event::StorageRequest(req) => self.handle_storage_request::<REv>(*req),
+            Event::StorageRequest(req) => self.handle_storage_request(*req),
             Event::NetRequestIncoming(ref incoming) => {
                 match self.handle_net_request_incoming::<REv>(effect_builder, incoming) {
                     Ok(effects) => Ok(effects),
@@ -551,7 +551,7 @@ impl Storage {
     }
 
     /// Handles a storage request.
-    fn handle_storage_request<REv>(
+    fn handle_storage_request(
         &mut self,
         req: StorageRequest,
     ) -> Result<Effects<Event>, FatalStorageError> {

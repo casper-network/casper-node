@@ -17,7 +17,7 @@ impl LocalTipIdentifier {
 
 impl PartialOrd for LocalTipIdentifier {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.height.partial_cmp(&other.height)
+        Some(self.cmp(other))
     }
 }
 

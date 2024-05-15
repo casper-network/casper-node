@@ -659,14 +659,13 @@ where
     Ok(ret)
 }
 
-fn check_keys<K, V, T, S, E>(txn: &T, store: &S, root: &Digest, leaves: &[Trie<K, V>]) -> bool
+fn check_keys<K, V, T, S>(txn: &T, store: &S, root: &Digest, leaves: &[Trie<K, V>]) -> bool
 where
     K: ToBytes + FromBytes + Eq + std::fmt::Debug + Clone + Ord,
     V: ToBytes + FromBytes + Eq + std::fmt::Debug + Copy,
     T: Readable<Handle = S::Handle>,
     S: TrieStore<K, V>,
     S::Error: From<T::Error>,
-    E: From<S::Error> + From<bytesrepr::Error>,
 {
     let expected = {
         let mut tmp = leaves
@@ -728,7 +727,7 @@ where
             .all(bool::not)
     );
 
-    assert!(check_keys::<_, _, _, _, E>(&txn, store, root, present,));
+    assert!(check_keys::<_, _, _, _>(&txn, store, root, present,));
 
     txn.commit()?;
     Ok(())

@@ -47,6 +47,8 @@ mod display_iter;
 mod era_id;
 pub mod execution;
 #[cfg(any(feature = "std", test))]
+mod execution_result;
+#[cfg(any(feature = "std-fs-io", test))]
 pub mod file_utils;
 mod gas;
 #[cfg(any(feature = "testing", feature = "gens", test))]
@@ -105,6 +107,15 @@ pub use block::{
     FinalitySignature, FinalitySignatureId, FinalitySignatureV1, FinalitySignatureV2,
     RewardedSignatures, Rewards, SignedBlock, SignedBlockHeader, SignedBlockHeaderValidationError,
     SingleBlockRewardedSignatures,
+pub use block_time::{BlockTime, BLOCKTIME_SERIALIZED_LENGTH};
+pub use cl_type::{named_key_type, CLType, CLTyped};
+pub use cl_value::{cl_value_to_json, CLTypeMismatch, CLValue, CLValueError};
+pub use contract_wasm::{ContractWasm, ContractWasmHash};
+#[doc(inline)]
+pub use contracts::{
+    Contract, ContractHash, ContractPackage, ContractPackageHash, ContractVersion,
+    ContractVersionKey, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Group,
+    Parameter,
 };
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 pub use block::{TestBlockBuilder, TestBlockV1Builder};

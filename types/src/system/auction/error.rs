@@ -551,8 +551,6 @@ impl From<PurseLookupError> for Error {
 
 #[cfg(test)]
 mod tests {
-    use std::convert::TryFrom;
-
     use strum::IntoEnumIterator;
 
     use super::Error;

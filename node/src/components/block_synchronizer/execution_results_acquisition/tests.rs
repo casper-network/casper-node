@@ -371,12 +371,12 @@ fn acquisition_pending_state_has_correct_transitions() {
         *block.hash(),
         ValueOrChunk::ChunkWithProof(first_chunk.clone()),
     );
-    let deploy_hashes: Vec<TransactionHash> = (0..NUM_TEST_EXECUTION_RESULTS)
+    let transaction_hashes: Vec<TransactionHash> = (0..NUM_TEST_EXECUTION_RESULTS)
         .into_iter()
         .map(|index| DeployHash::new(Digest::hash(index.to_bytes().unwrap())).into())
         .collect();
     assert_matches!(
-        acquisition.apply_block_execution_results_or_chunk(exec_result, deploy_hashes),
+        acquisition.apply_block_execution_results_or_chunk(exec_result, transaction_hashes),
         Ok((
             ExecutionResultsAcquisition::Acquiring { .. },
             Acceptance::NeededIt
@@ -430,12 +430,12 @@ fn acquisition_acquiring_state_has_correct_transitions() {
         *block.hash(),
         ValueOrChunk::ChunkWithProof(last_chunk.clone()),
     );
-    let deploy_hashes: Vec<TransactionHash> = (0..NUM_TEST_EXECUTION_RESULTS)
+    let transaction_hashes: Vec<TransactionHash> = (0..NUM_TEST_EXECUTION_RESULTS)
         .into_iter()
         .map(|index| DeployHash::new(Digest::hash(index.to_bytes().unwrap())).into())
         .collect();
     acquisition = assert_matches!(
-        acquisition.apply_block_execution_results_or_chunk(exec_result, deploy_hashes),
+        acquisition.apply_block_execution_results_or_chunk(exec_result, transaction_hashes),
         Ok((acq, Acceptance::NeededIt)) => acq
     );
     assert_matches!(acquisition, ExecutionResultsAcquisition::Complete { .. });

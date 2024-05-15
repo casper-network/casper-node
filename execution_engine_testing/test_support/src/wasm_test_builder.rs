@@ -71,9 +71,12 @@ use casper_types::{
 };
 
 use crate::{
+    chainspec_config::{ChainspecConfig, CoreConfig},
     chainspec_config::{ChainspecConfig, CHAINSPEC_SYMLINK},
-    ExecuteRequest, ExecuteRequestBuilder, StepRequestBuilder, DEFAULT_GAS_PRICE,
-    DEFAULT_PROPOSER_ADDR, DEFAULT_PROTOCOL_VERSION, SYSTEM_ADDR,
+    utils, ExecuteRequest, ExecuteRequestBuilder, ExecuteRequestBuilder, StepRequestBuilder,
+    StepRequestBuilder, DEFAULT_GAS_PRICE, DEFAULT_GAS_PRICE, DEFAULT_PROPOSER_ADDR,
+    DEFAULT_PROPOSER_ADDR, DEFAULT_PROTOCOL_VERSION, DEFAULT_PROTOCOL_VERSION, SYSTEM_ADDR,
+    SYSTEM_ADDR,
 };
 
 /// LMDB initial map size is calculated based on DEFAULT_LMDB_PAGES and systems page size.
@@ -819,7 +822,24 @@ where
     ///
     /// If the custom payment is `Some` and its execution fails, the session request is not
     /// attempted.
-    pub fn exec(&mut self, mut execute_request: ExecuteRequest) -> &mut Self {
+    pub fn exec_wasm_v1(&mut self, mut request: WasmV1Request) -> &mut Self {
+        request.state_hash = self.post_state_hash.expect("expected post_state_hash");
+        let result = self
+            .execution_engine
+            .execute(self.data_access_layer.as_ref(), request);
+        let effects = result.effects().clone();
+        self.exec_results.push(result);
+        self.effects.push(effects);
+        self
+    }
+
+    /// Runs an [`ExecuteRequest`].
+    pub fn exec(&mut self, exec_request: ExecuteRequest) -> &mut Self {
+        self.try_exec(exec_request).expect_success()
+    }
+
+    /// Tries to run an [`ExecuteRequest`].
+    pub fn try_exec(&mut self, mut exec_request: ExecuteRequest) -> &mut Self {
         let mut effects = Effects::new();
         if let Some(mut payment) = execute_request.custom_payment {
             payment.state_hash = self.post_state_hash.expect("expected post_state_hash");
@@ -846,18 +866,6 @@ where
         effects.append(session_result.effects().clone());
         self.effects.push(effects);
         self.exec_results.push(session_result);
-        self
-    }
-
-    /// Execute a `WasmV1Request`.
-    pub fn exec_wasm_v1(&mut self, mut request: WasmV1Request) -> &mut Self {
-        request.state_hash = self.post_state_hash.expect("expected post_state_hash");
-        let result = self
-            .execution_engine
-            .execute(self.data_access_layer.as_ref(), request);
-        let effects = result.effects().clone();
-        self.exec_results.push(result);
-        self.effects.push(effects);
         self
     }
 

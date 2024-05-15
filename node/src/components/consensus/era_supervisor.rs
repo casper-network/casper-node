@@ -121,6 +121,7 @@ pub struct EraSupervisor {
 
     /// Failpoints
     pub(super) message_delay_failpoint: Failpoint<u64>,
+    pub(super) proposal_delay_failpoint: Failpoint<u64>,
 }
 
 impl Debug for EraSupervisor {
@@ -156,6 +157,7 @@ impl EraSupervisor {
             next_executed_height: 0,
             last_progress: Timestamp::now(),
             message_delay_failpoint: Failpoint::new("consensus.message_delay"),
+            proposal_delay_failpoint: Failpoint::new("consensus.proposal_delay"),
         };
 
         Ok(era_supervisor)
@@ -468,7 +470,7 @@ impl EraSupervisor {
         let seed = Self::era_seed(booking_block_hash, *key_block.accumulated_seed());
 
         // The beginning of the new era is marked by the key block.
-        #[allow(clippy::integer_arithmetic)] // Block height should never reach u64::MAX.
+        #[allow(clippy::arithmetic_side_effects)] // Block height should never reach u64::MAX.
         let start_height = key_block.height() + 1;
         let start_time = key_block.timestamp();
 
@@ -973,7 +975,7 @@ impl EraSupervisor {
         self.open_eras.get_mut(&era_id).unwrap()
     }
 
-    #[allow(clippy::integer_arithmetic)] // Block height should never reach u64::MAX.
+    #[allow(clippy::arithmetic_side_effects)] // Block height should never reach u64::MAX.
     fn handle_consensus_outcome<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
@@ -1057,15 +1059,18 @@ impl EraSupervisor {
             ProtocolOutcome::QueueAction(action_id) => effect_builder
                 .immediately()
                 .event(move |()| Event::Action { era_id, action_id }),
-            ProtocolOutcome::CreateNewBlock(block_context) => {
+            ProtocolOutcome::CreateNewBlock(block_context, proposal_expiry) => {
                 let signature_rewards_max_delay =
                     self.chainspec.core_config.signature_rewards_max_delay;
                 let current_block_height = self.proposed_block_height(&block_context, era_id);
                 let minimum_block_height =
                     current_block_height.saturating_sub(signature_rewards_max_delay);
 
-                let awaitable_appendable_block =
-                    effect_builder.request_appendable_block(block_context.timestamp(), era_id);
+                let awaitable_appendable_block = effect_builder.request_appendable_block(
+                    block_context.timestamp(),
+                    era_id,
+                    proposal_expiry,
+                );
                 let awaitable_blocks_with_metadata = async move {
                     effect_builder
                         .collect_past_blocks_with_metadata(
@@ -1085,7 +1090,16 @@ impl EraSupervisor {
 
                 let validator_matrix = self.validator_matrix.clone();
 
-                join_2(awaitable_appendable_block, awaitable_blocks_with_metadata).event(
+                let delay_by = self.proposal_delay_failpoint.fire(rng).cloned();
+                async move {
+                    if let Some(delay) = delay_by {
+                        effect_builder
+                            .set_timeout(Duration::from_millis(delay))
+                            .await;
+                    }
+                    join_2(awaitable_appendable_block, awaitable_blocks_with_metadata)
+                }
+                .event(
                     move |(appendable_block, maybe_past_blocks_with_metadata)| {
                         let rewarded_signatures = create_rewarded_signatures(
                             &maybe_past_blocks_with_metadata,

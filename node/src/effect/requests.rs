@@ -702,6 +702,7 @@ pub(crate) enum TransactionBufferRequest {
     GetAppendableBlock {
         timestamp: Timestamp,
         era_id: EraId,
+        request_expiry: Timestamp,
         responder: Responder<AppendableBlock>,
     },
 }
@@ -710,12 +711,15 @@ impl Display for TransactionBufferRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             TransactionBufferRequest::GetAppendableBlock {
-                timestamp, era_id, ..
+                timestamp,
+                era_id,
+                request_expiry,
+                ..
             } => {
                 write!(
                     formatter,
-                    "request for appendable block at instant {} for era {}",
-                    timestamp, era_id
+                    "request for appendable block at instant {} for era {} (expires at {})",
+                    timestamp, era_id, request_expiry
                 )
             }
         }

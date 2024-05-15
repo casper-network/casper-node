@@ -337,11 +337,11 @@ mod fixture {
             let rewards: Vec<&U512> = era_infos
                 .iter()
                 .flat_map(|era_info| era_info.seigniorage_allocations())
-                .filter_map(|seigniorage| match seigniorage {
+                .map(|seigniorage| match seigniorage {
                     SeigniorageAllocation::Validator {
                         validator_public_key,
                         amount,
-                    } if validator_public_key == &*DEFAULT_ACCOUNT_PUBLIC_KEY => Some(amount),
+                    } if validator_public_key == &*DEFAULT_ACCOUNT_PUBLIC_KEY => amount,
                     SeigniorageAllocation::Validator { .. } => panic!("Unexpected validator"),
                     SeigniorageAllocation::Delegator { .. } => panic!("No delegators"),
                 })

@@ -1,6 +1,6 @@
 //! A library to support testing of Wasm smart contracts for use on the Casper Platform.
 
-#![doc(html_root_url = "https://docs.rs/casper-engine-test-support/7.0.0")]
+#![doc(html_root_url = "https://docs.rs/casper-engine-test-support/7.0.1")]
 #![doc(
     html_favicon_url = "https://raw.githubusercontent.com/casper-network/casper-node/blob/dev/images/Casper_Logo_Favicon_48.png",
     html_logo_url = "https://raw.githubusercontent.com/casper-network/casper-node/blob/dev/images/Casper_Logo_Favicon.png",
@@ -28,6 +28,7 @@ use casper_types::{
     SystemConfig, WasmConfig, U512,
 };
 
+pub use additive_map_diff::AdditiveMapDiff;
 pub use chainspec_config::{ChainspecConfig, CHAINSPEC_SYMLINK};
 pub use deploy_item_builder::DeployItemBuilder;
 pub use execute_request_builder::{ExecuteRequest, ExecuteRequestBuilder};
@@ -136,7 +137,7 @@ pub static DEFAULT_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
 /// Default [`ProtocolVersion`].
 pub const DEFAULT_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V2_0_0;
 /// Default payment.
-pub static DEFAULT_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(1_500_000_000_000u64));
+pub static DEFAULT_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(2_500_000_000_000u64));
 /// Default [`WasmConfig`].
 pub static DEFAULT_WASM_CONFIG: Lazy<WasmConfig> = Lazy::new(WasmConfig::default);
 /// Default [`SystemConfig`].

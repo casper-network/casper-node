@@ -2,7 +2,7 @@
 name = "regression-add-bid"
 version = "0.1.0"
 authors = ["Karan Dhareshwar <karan@casperlabs.io>", "Michał Papierski <michal@casperlabs.io>"]
-edition = "2018"
+edition = "2021"
 
 [[bin]]
 name = "regression_add_bid"

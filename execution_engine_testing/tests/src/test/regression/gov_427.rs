@@ -1,5 +1,3 @@
-use std::convert::TryInto;
-
 use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_WASM_CONFIG,
     LOCAL_GENESIS_REQUEST,

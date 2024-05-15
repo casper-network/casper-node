@@ -215,10 +215,7 @@ impl<M: Meter<Key, StoredValue>> TrackingCopyCache<M> {
         self.prunes_cached.remove(&key);
         self.muts_cached.insert(key, value);
 
-        let key_set = self
-            .key_tag_muts_cached
-            .entry(key.tag())
-            .or_insert_with(BTreeSet::new);
+        let key_set = self.key_tag_muts_cached.entry(key.tag()).or_default();
 
         key_set.insert(key);
     }

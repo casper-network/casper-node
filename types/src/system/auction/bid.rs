@@ -318,9 +318,7 @@ impl Bid {
     pub fn total_staked_amount(&self) -> Result<U512, Error> {
         self.delegators
             .iter()
-            .fold(Some(U512::zero()), |maybe_a, (_, b)| {
-                maybe_a.and_then(|a| a.checked_add(b.staked_amount()))
-            })
+            .try_fold(U512::zero(), |a, (_, b)| a.checked_add(*b.staked_amount()))
             .and_then(|delegators_sum| delegators_sum.checked_add(*self.staked_amount()))
             .ok_or(Error::InvalidAmount)
     }
