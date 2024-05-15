@@ -42,6 +42,7 @@ use crate::{
     data_access_layer::{
         auction::{AuctionMethodRet, BiddingRequest, BiddingResult},
         balance::BalanceHandling,
+        entity::{EntityRequest, EntityResult},
         era_validators::EraValidatorsResult,
         handle_fee::{HandleFeeMode, HandleFeeRequest, HandleFeeResult},
         mint::{TransferRequest, TransferRequestArgs, TransferResult},
@@ -51,16 +52,16 @@ use crate::{
         BalanceHoldKind, BalanceHoldMode, BalanceHoldRequest, BalanceHoldResult, BalanceIdentifier,
         BalanceRequest, BalanceResult, BidsRequest, BidsResult, BlockGlobalKind,
         BlockGlobalRequest, BlockGlobalResult, BlockRewardsError, BlockRewardsRequest,
-        BlockRewardsResult, EntryPointsRequest, EntryPointsResult, EraValidatorsRequest,
-        ExecutionResultsChecksumRequest, ExecutionResultsChecksumResult, FeeError, FeeRequest,
-        FeeResult, FlushRequest, FlushResult, GenesisRequest, GenesisResult, HandleRefundMode,
-        HandleRefundRequest, HandleRefundResult, InsufficientBalanceHandling, ProofHandling,
-        ProofsResult, ProtocolUpgradeRequest, ProtocolUpgradeResult, PruneRequest, PruneResult,
-        PutTrieRequest, PutTrieResult, QueryRequest, QueryResult, RoundSeigniorageRateRequest,
-        RoundSeigniorageRateResult, StepError, StepRequest, StepResult,
-        SystemEntityRegistryPayload, SystemEntityRegistryRequest, SystemEntityRegistryResult,
-        SystemEntityRegistrySelector, TotalSupplyRequest, TotalSupplyResult, TrieRequest,
-        TrieResult, EXECUTION_RESULTS_CHECKSUM_NAME,
+        BlockRewardsResult, EntityMethod, EntryPointsRequest, EntryPointsResult,
+        EraValidatorsRequest, ExecutionResultsChecksumRequest, ExecutionResultsChecksumResult,
+        FeeError, FeeRequest, FeeResult, FlushRequest, FlushResult, GenesisRequest, GenesisResult,
+        HandleRefundMode, HandleRefundRequest, HandleRefundResult, InsufficientBalanceHandling,
+        ProofHandling, ProofsResult, ProtocolUpgradeRequest, ProtocolUpgradeResult, PruneRequest,
+        PruneResult, PutTrieRequest, PutTrieResult, QueryRequest, QueryResult,
+        RoundSeigniorageRateRequest, RoundSeigniorageRateResult, StepError, StepRequest,
+        StepResult, SystemEntityRegistryPayload, SystemEntityRegistryRequest,
+        SystemEntityRegistryResult, SystemEntityRegistrySelector, TotalSupplyRequest,
+        TotalSupplyResult, TrieRequest, TrieResult, EXECUTION_RESULTS_CHECKSUM_NAME,
     },
     global_state::{
         error::Error as GlobalStateError,
@@ -74,6 +75,7 @@ use crate::{
     },
     system::{
         auction::{self, Auction},
+        entity::Entity,
         genesis::{GenesisError, GenesisInstaller},
         handle_payment::HandlePayment,
         mint::Mint,
@@ -1120,6 +1122,75 @@ pub trait StateProvider {
         match result {
             Ok(ret) => BiddingResult::Success { ret, effects },
             Err(tce) => BiddingResult::Failure(tce),
+        }
+    }
+
+    /// Direct entity interaction.
+    fn handle_entity(
+        &self,
+        EntityRequest {
+            config,
+            state_hash,
+            protocol_version,
+            entity_method,
+            transaction_hash,
+            initiator,
+            authorization_keys,
+        }: EntityRequest,
+    ) -> EntityResult {
+        let tc = match self.tracking_copy(state_hash) {
+            Ok(Some(tc)) => Rc::new(RefCell::new(tc)),
+            Ok(None) => return EntityResult::RootNotFound,
+            Err(err) => return EntityResult::Failure(TrackingCopyError::Storage(err)),
+        };
+
+        let source_account_hash = initiator.account_hash();
+        let (entity_addr, entity, entity_named_keys, entity_access_rights) =
+            match tc.borrow_mut().resolved_entity(
+                protocol_version,
+                source_account_hash,
+                &authorization_keys,
+                &BTreeSet::default(),
+            ) {
+                Ok(ret) => ret,
+                Err(tce) => {
+                    return EntityResult::Failure(tce);
+                }
+            };
+        let entity_key = Key::AddressableEntity(entity_addr);
+
+        // IMPORTANT: this runtime _must_ use the payer's context.
+        let mut runtime = RuntimeNative::new(
+            config,
+            protocol_version,
+            Id::Transaction(transaction_hash),
+            Rc::clone(&tc),
+            source_account_hash,
+            entity_key,
+            entity,
+            entity_named_keys,
+            entity_access_rights,
+            U512::MAX,
+            Phase::Session,
+        );
+
+        let result: Result<(), TrackingCopyError> = match entity_method {
+            EntityMethod::AddAssociatedKey { account, weight } => runtime
+                .add_associated_key(account, weight)
+                .map_err(|err| TrackingCopyError::SystemContract(system::Error::Entity(err))),
+            EntityMethod::UpdateAssociatedKey { account, weight } => runtime
+                .update_associated_key(account, weight)
+                .map_err(|err| TrackingCopyError::SystemContract(system::Error::Entity(err))),
+            EntityMethod::RemoveAssociatedKey { account } => runtime
+                .remove_associated_key(account)
+                .map_err(|err| TrackingCopyError::SystemContract(system::Error::Entity(err))),
+        };
+
+        let effects = tc.borrow_mut().effects();
+
+        match result {
+            Ok(()) => EntityResult::Success { effects },
+            Err(tce) => EntityResult::Failure(tce),
         }
     }
 

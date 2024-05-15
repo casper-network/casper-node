@@ -32,23 +32,19 @@ where
     fn get_caller_new(&self) -> AccountHash {
         self.context.get_caller()
     }
-
-    fn entity_key(&self) -> Result<&AddressableEntity, Error> {
-        unimplemented!()
-    }
 }
 
 impl<'a, R> StorageProvider for Runtime<'a, R>
 where
     R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
-    fn read_key(&mut self, account_hash: AccountHash) -> Result<Option<Key>, Error> {
-        match self.context.read_gs(&Key::Account(account_hash)) {
+    fn read_key(&mut self, account: AccountHash) -> Result<Option<Key>, Error> {
+        match self.context.read_gs(&Key::Account(account)) {
             Ok(Some(StoredValue::CLValue(cl_value))) => {
                 Ok(Some(cl_value.into_t().map_err(|_| Error::CLValue)?))
             }
             Ok(Some(_)) => {
-                error!("StorageProvider::read: unexpected StoredValue variant");
+                error!("StorageProvider::read_key: unexpected StoredValue variant");
                 Err(Error::Storage)
             }
             Ok(None) => Ok(None),
@@ -57,7 +53,7 @@ where
             // also [`Runtime::reverter`] and [`to_auction_error`]
             Err(ExecError::GasLimit) => Err(Error::GasLimit),
             Err(err) => {
-                error!("StorageProvider::read: {err:?}");
+                error!("StorageProvider::read_key: {err:?}");
                 Err(Error::Storage)
             }
         }
@@ -96,41 +92,33 @@ impl<'a, R> Entity for Runtime<'a, R>
 where
     R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
-    fn add_associated_key(
-        &mut self,
-        account_hash: AccountHash,
-        weight: Weight,
-    ) -> Result<(), Error> {
+    fn add_associated_key(&mut self, account: AccountHash, weight: Weight) -> Result<(), Error> {
         let caller = self.get_caller_new();
         if let Some(key) = self.read_key(caller)? {
             if let Some(mut addressable_entity) = self.read_entity(&key)? {
-                addressable_entity.add_associated_key(account_hash, weight)?;
+                addressable_entity.add_associated_key(account, weight)?;
                 self.write_entity(key, addressable_entity)?;
             }
         }
         Ok(())
     }
 
-    fn remove_associated_key(&mut self, account_hash: AccountHash) -> Result<(), Error> {
+    fn remove_associated_key(&mut self, account: AccountHash) -> Result<(), Error> {
         let caller = self.get_caller_new();
         if let Some(key) = self.read_key(caller)? {
             if let Some(mut addressable_entity) = self.read_entity(&key)? {
-                addressable_entity.remove_associated_key(account_hash)?;
+                addressable_entity.remove_associated_key(account)?;
                 self.write_entity(key, addressable_entity)?;
             }
         }
         Ok(())
     }
 
-    fn update_associated_key(
-        &mut self,
-        account_hash: AccountHash,
-        weight: Weight,
-    ) -> Result<(), Error> {
+    fn update_associated_key(&mut self, account: AccountHash, weight: Weight) -> Result<(), Error> {
         let caller = self.get_caller_new();
         if let Some(key) = self.read_key(caller)? {
             if let Some(mut addressable_entity) = self.read_entity(&key)? {
-                addressable_entity.update_associated_key(account_hash, weight)?;
+                addressable_entity.update_associated_key(account, weight)?;
                 self.write_entity(key, addressable_entity)?;
             }
         }

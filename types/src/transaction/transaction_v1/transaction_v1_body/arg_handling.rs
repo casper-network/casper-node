@@ -349,7 +349,7 @@ pub(in crate::transaction::transaction_v1) fn has_valid_change_bid_public_key_ar
     Ok(())
 }
 
-/// Creates a `RuntimeArgs` suitable for use in an add_associated_key transaction.
+/// Creates a `RuntimeArgs` suitable for use in an add/update_associated_key transaction.
 pub(in crate::transaction::transaction_v1) fn new_add_associated_key_args(
     account: AccountHash,
     weight: u8,
@@ -357,6 +357,15 @@ pub(in crate::transaction::transaction_v1) fn new_add_associated_key_args(
     let mut args = RuntimeArgs::new();
     ASSOCIATED_KEY_ARG_ACCOUNT.insert(&mut args, account)?;
     ASSOCIATED_KEY_ARG_WEIGHT.insert(&mut args, Weight::new(weight))?;
+    Ok(args)
+}
+
+/// Creates a `RuntimeArgs` suitable for use in an add_associated_key transaction.
+pub(in crate::transaction::transaction_v1) fn new_remove_associated_key_args(
+    account: AccountHash,
+) -> Result<RuntimeArgs, CLValueError> {
+    let mut args = RuntimeArgs::new();
+    ASSOCIATED_KEY_ARG_ACCOUNT.insert(&mut args, account)?;
     Ok(args)
 }
 

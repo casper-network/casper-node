@@ -10,8 +10,10 @@ use casper_execution_engine::engine_state::{
 use casper_storage::{
     block_store::types::ApprovalsHashes,
     data_access_layer::{
-        auction::AuctionMethodError, entity::EntityMethodError, BalanceHoldResult, BiddingResult,
-        EraValidatorsRequest, HandleFeeResult, HandleRefundResult, TransferResult,
+        auction::AuctionMethodError,
+        entity::{EntityMethodError, EntityResult},
+        BalanceHoldResult, BiddingResult, EraValidatorsRequest, HandleFeeResult,
+        HandleRefundResult, TransferResult,
     },
 };
 use casper_types::{
@@ -295,6 +297,19 @@ impl ExecutionArtifactBuilder {
             self.error_message = Some(format!("{}", err));
         }
         if let BiddingResult::Success { effects, .. } = bidding_result {
+            self.with_appended_effects(effects);
+        }
+        Ok(self)
+    }
+
+    pub fn with_entity_result(&mut self, entity_result: EntityResult) -> Result<&mut Self, ()> {
+        if let EntityResult::RootNotFound = entity_result {
+            return Err(());
+        }
+        if let (None, EntityResult::Failure(err)) = (&self.error_message, &entity_result) {
+            self.error_message = Some(format!("{err}"));
+        }
+        if let EntityResult::Success { effects } = entity_result {
             self.with_appended_effects(effects);
         }
         Ok(self)

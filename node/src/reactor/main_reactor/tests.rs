@@ -29,6 +29,7 @@ use casper_storage::{
     global_state::state::{StateProvider, StateReader},
 };
 use casper_types::{
+    addressable_entity::Weight,
     execution::{ExecutionResult, ExecutionResultV2, TransformKindV2, TransformV2},
     system::{
         auction::{BidAddr, BidKind, BidsExt, DelegationRate},
@@ -2952,7 +2953,39 @@ async fn check_multisig() {
     let entity = get_entity(&fixture, public_key.to_account_hash().into());
     let associated_keys = entity.associated_keys();
     assert_eq!(associated_keys.len(), 2);
-    assert!(associated_keys.contains_key(&new_public_key.to_account_hash()));
+    assert_eq!(
+        associated_keys.get(&new_public_key.to_account_hash()),
+        Some(&Weight::new(1))
+    );
+
+    // Update associated key.
+    let mut deploy = Deploy::update_associated_key(
+        fixture.chainspec.network_config.name.clone(),
+        fixture.system_contract_hash(ENTITY),
+        public_key.clone(),
+        new_public_key.clone(),
+        2,
+        Timestamp::now(),
+        TimeDiff::from_seconds(60),
+    );
+    deploy.sign(&secret_key);
+    let txn = Transaction::Deploy(deploy);
+    let txn_hash = txn.hash();
+
+    // Inject the transaction and run the network until executed.
+    fixture.inject_transaction(txn).await;
+    fixture
+        .run_until_executed_transaction(&txn_hash, TEN_SECS)
+        .await;
+
+    // Check if the associated key has been updated.
+    let entity = get_entity(&fixture, public_key.to_account_hash().into());
+    let associated_keys = entity.associated_keys();
+    assert_eq!(associated_keys.len(), 2);
+    assert_eq!(
+        associated_keys.get(&new_public_key.to_account_hash()),
+        Some(&Weight::new(2))
+    );
 
     // Remove associated key.
     let mut deploy = Deploy::remove_associated_key(
@@ -2977,6 +3010,7 @@ async fn check_multisig() {
     let entity = get_entity(&fixture, public_key.to_account_hash().into());
     let associated_keys = entity.associated_keys();
     assert_eq!(associated_keys.len(), 1);
+    assert!(!associated_keys.contains_key(&new_public_key.to_account_hash()));
 }
 
 #[tokio::test]
@@ -2998,9 +3032,6 @@ async fn check_multisig_v1() {
             .unwrap()
             .with_chain_name(fixture.chainspec.network_config.name.clone())
             .with_initiator_addr(public_key.clone())
-            .with_pricing_mode(PricingMode::Fixed {
-                gas_price_tolerance: 1,
-            })
             .build()
             .unwrap(),
     );
@@ -3017,7 +3048,59 @@ async fn check_multisig_v1() {
     let entity = get_entity(&fixture, public_key.to_account_hash().into());
     let associated_keys = entity.associated_keys();
     assert_eq!(associated_keys.len(), 2);
-    assert!(associated_keys.contains_key(&new_public_key.to_account_hash()));
+    assert_eq!(
+        associated_keys.get(&new_public_key.to_account_hash()),
+        Some(&Weight::new(1))
+    );
 
-    // TO BE CONTINUED...
+    // Update associated key.
+    let mut txn = Transaction::from(
+        TransactionV1Builder::new_update_associated_key(new_public_key.to_account_hash(), 2)
+            .unwrap()
+            .with_chain_name(fixture.chainspec.network_config.name.clone())
+            .with_initiator_addr(public_key.clone())
+            .build()
+            .unwrap(),
+    );
+    txn.sign(&secret_key);
+    let txn_hash = txn.hash();
+
+    // Inject the transaction and run the network until executed.
+    fixture.inject_transaction(txn).await;
+    fixture
+        .run_until_executed_transaction(&txn_hash, TEN_SECS)
+        .await;
+
+    // Check if the associated key has been updated.
+    let entity = get_entity(&fixture, public_key.to_account_hash().into());
+    let associated_keys = entity.associated_keys();
+    assert_eq!(associated_keys.len(), 2);
+    assert_eq!(
+        associated_keys.get(&new_public_key.to_account_hash()),
+        Some(&Weight::new(2))
+    );
+
+    // Remove associated key.
+    let mut txn = Transaction::from(
+        TransactionV1Builder::new_remove_associated_key(new_public_key.to_account_hash())
+            .unwrap()
+            .with_chain_name(fixture.chainspec.network_config.name.clone())
+            .with_initiator_addr(public_key.clone())
+            .build()
+            .unwrap(),
+    );
+    txn.sign(&secret_key);
+    let txn_hash = txn.hash();
+
+    // Inject the transaction and run the network until executed.
+    fixture.inject_transaction(txn).await;
+    fixture
+        .run_until_executed_transaction(&txn_hash, TEN_SECS)
+        .await;
+
+    // Check if the associated key has been removed.
+    let entity = get_entity(&fixture, public_key.to_account_hash().into());
+    let associated_keys = entity.associated_keys();
+    assert_eq!(associated_keys.len(), 1);
+    assert!(!associated_keys.contains_key(&new_public_key.to_account_hash()));
 }

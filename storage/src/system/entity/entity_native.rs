@@ -3,7 +3,7 @@ use casper_types::{
 };
 use tracing::error;
 
-use super::{runtime_provider::RuntimeProvider, storage_provider::StorageProvider};
+use super::{runtime_provider::RuntimeProvider, storage_provider::StorageProvider, Entity};
 use crate::{
     global_state::{error::Error as GlobalStateError, state::StateReader},
     system::runtime_native::RuntimeNative,
@@ -17,26 +17,28 @@ where
     fn get_caller_new(&self) -> AccountHash {
         self.address()
     }
-
-    fn entity_key(&self) -> Result<&AddressableEntity, Error> {
-        let entity_key = self.addressable_entity();
-
-        if !entity_key.is_account_kind() {
-            // Exit early with error to avoid mutations
-            // return Err(AddKeyFailure::PermissionDenied);
-            return Err(Error::Serialization);
-        }
-
-        Ok(entity_key)
-    }
 }
 
 impl<S> StorageProvider for RuntimeNative<S>
 where
     S: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
-    fn read_key(&mut self, account_hash: AccountHash) -> Result<Option<Key>, Error> {
-        unimplemented!()
+    fn read_key(&mut self, account: AccountHash) -> Result<Option<Key>, Error> {
+        match self.tracking_copy().borrow_mut().read(&Key::Account(account)) {
+            Ok(Some(StoredValue::CLValue(cl_value))) => {
+                Ok(Some(cl_value.into_t().map_err(|_| Error::CLValue)?))
+            }
+            Ok(Some(_)) => {
+                error!("StorageProvider::read_key: unexpected StoredValue variant");
+                Err(Error::Storage)
+            }
+            Ok(None) => Ok(None),
+            Err(TrackingCopyError::BytesRepr(_)) => Err(Error::Serialization),
+            Err(err) => {
+                error!("StorageProvider::read_key: {err:?}");
+                Err(Error::Storage)
+            }
+        }
     }
 
     fn read_entity(&mut self, key: &Key) -> Result<Option<AddressableEntity>, Error> {
@@ -66,3 +68,6 @@ where
         Ok(())
     }
 }
+
+impl<S> Entity for RuntimeNative<S> where S: StateReader<Key, StoredValue, Error = GlobalStateError>
+{}

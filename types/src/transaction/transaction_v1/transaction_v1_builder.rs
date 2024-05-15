@@ -14,7 +14,9 @@ use super::{
     InitiatorAddrAndSecretKey, PricingMode, TransactionV1, TransactionV1Body,
 };
 use crate::{
-    account::AccountHash, bytesrepr::Bytes, AddressableEntityHash, CLValue, CLValueError, EntityVersion, PackageHash, PublicKey, RuntimeArgs, SecretKey, TimeDiff, Timestamp, TransferTarget, URef, U512
+    account::AccountHash, bytesrepr::Bytes, AddressableEntityHash, CLValue, CLValueError,
+    EntityVersion, PackageHash, PublicKey, RuntimeArgs, SecretKey, TimeDiff, Timestamp,
+    TransferTarget, URef, U512,
 };
 #[cfg(any(feature = "testing", test))]
 use crate::{
@@ -178,7 +180,19 @@ impl<'a> TransactionV1Builder<'a> {
     }
 
     /// Returns a new `TransactionV1Builder` suitable for building a native add associated key transaction.
-    pub fn new_add_associated_key(
+    pub fn new_add_associated_key(account: AccountHash, weight: u8) -> Result<Self, CLValueError> {
+        let args = arg_handling::new_add_associated_key_args(account, weight)?;
+        let body = TransactionV1Body::new(
+            args,
+            TransactionTarget::Native,
+            TransactionEntryPoint::AddAssociatedKey,
+            Self::DEFAULT_SCHEDULING,
+        );
+        Ok(TransactionV1Builder::new(body))
+    }
+
+    /// Returns a new `TransactionV1Builder` suitable for building a native update associated key transaction.
+    pub fn new_update_associated_key(
         account: AccountHash,
         weight: u8,
     ) -> Result<Self, CLValueError> {
@@ -186,7 +200,19 @@ impl<'a> TransactionV1Builder<'a> {
         let body = TransactionV1Body::new(
             args,
             TransactionTarget::Native,
-            TransactionEntryPoint::AddAssociatedKey,
+            TransactionEntryPoint::UpdateAssociatedKey,
+            Self::DEFAULT_SCHEDULING,
+        );
+        Ok(TransactionV1Builder::new(body))
+    }
+
+    /// Returns a new `TransactionV1Builder` suitable for building a native remove associated key transaction.
+    pub fn new_remove_associated_key(account: AccountHash) -> Result<Self, CLValueError> {
+        let args = arg_handling::new_remove_associated_key_args(account)?;
+        let body = TransactionV1Body::new(
+            args,
+            TransactionTarget::Native,
+            TransactionEntryPoint::RemoveAssociatedKey,
             Self::DEFAULT_SCHEDULING,
         );
         Ok(TransactionV1Builder::new(body))

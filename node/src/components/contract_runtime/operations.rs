@@ -7,9 +7,9 @@ use casper_execution_engine::engine_state::{ExecutionEngineV1, WasmV1Request, Wa
 use casper_storage::{
     block_store::types::ApprovalsHashes,
     data_access_layer::{
-        balance::BalanceHandling, AuctionMethod, BalanceHoldKind, BalanceHoldRequest,
-        BalanceIdentifier, BalanceRequest, BiddingRequest, BlockGlobalRequest, BlockGlobalResult,
-        BlockRewardsRequest, BlockRewardsResult, DataAccessLayer, EntityMethod,
+        balance::BalanceHandling, entity::EntityRequest, AuctionMethod, BalanceHoldKind,
+        BalanceHoldRequest, BalanceIdentifier, BalanceRequest, BiddingRequest, BlockGlobalRequest,
+        BlockGlobalResult, BlockRewardsRequest, BlockRewardsResult, DataAccessLayer, EntityMethod,
         EraValidatorsRequest, EraValidatorsResult, EvictItem, FeeRequest, FeeResult, FlushRequest,
         HandleFeeMode, HandleFeeRequest, HandleRefundMode, HandleRefundRequest,
         InsufficientBalanceHandling, ProofHandling, PruneRequest, PruneResult, StepRequest,
@@ -416,7 +416,24 @@ pub fn execute_finalized_block(
                 }
                 TransactionCategory::Entity => {
                     match EntityMethod::from_parts(entry_point, &runtime_args) {
-                        Ok(entity_method) => todo!(),
+                        Ok(entity_method) => {
+                            let entity_result = scratch_state.handle_entity(EntityRequest::new(
+                                native_runtime_config.clone(),
+                                state_root_hash,
+                                protocol_version,
+                                transaction_hash,
+                                initiator_addr.clone(),
+                                authorization_keys,
+                                entity_method,
+                            ));
+                            let consumed = gas_limit;
+                            state_root_hash = scratch_state
+                                .commit(state_root_hash, entity_result.effects().clone())?;
+                            artifact_builder
+                                .with_added_consumed(consumed)
+                                .with_entity_result(entity_result)
+                                .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
+                        }
                         Err(err) => {
                             error!(
                                 %transaction_hash,

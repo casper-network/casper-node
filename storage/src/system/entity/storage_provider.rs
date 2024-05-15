@@ -4,7 +4,7 @@ use casper_types::{
 
 /// Provides functionality of a contract storage.
 pub trait StorageProvider {
-    fn read_key(&mut self, account_hash: AccountHash) -> Result<Option<Key>, Error>;
+    fn read_key(&mut self, account: AccountHash) -> Result<Option<Key>, Error>;
 
     fn read_entity(&mut self, key: &Key) -> Result<Option<AddressableEntity>, Error>;
 
