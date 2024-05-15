@@ -9,7 +9,10 @@ use std::{
     sync::Arc,
 };
 
-use casper_types::{crypto, file_utils::{read_file, ReadFileError}};
+use casper_types::{
+    crypto,
+    file_utils::{read_file, ReadFileError},
+};
 use datasize::DataSize;
 #[cfg(test)]
 use once_cell::sync::Lazy;

@@ -32,7 +32,9 @@ use std::{convert::TryFrom, path::Path};
 use serde::{Deserialize, Serialize};
 
 use casper_types::{
-    bytesrepr::Bytes, file_utils, AccountsConfig, ActivationPoint, Chainspec, ChainspecRawBytes, CoreConfig, GlobalStateUpdate, GlobalStateUpdateConfig, HighwayConfig, NetworkConfig, ProtocolConfig, ProtocolVersion, SystemConfig, TransactionConfig, VacancyConfig, WasmConfig
+    bytesrepr::Bytes, file_utils, AccountsConfig, ActivationPoint, Chainspec, ChainspecRawBytes,
+    CoreConfig, GlobalStateUpdate, GlobalStateUpdateConfig, HighwayConfig, NetworkConfig,
+    ProtocolConfig, ProtocolVersion, SystemConfig, TransactionConfig, VacancyConfig, WasmConfig,
 };
 
 use crate::utils::{
