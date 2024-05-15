@@ -4,7 +4,8 @@ use datasize::DataSize;
 use serde::Serialize;
 
 use casper_types::{
-    BlockV2, EraId, PublicKey, RewardedSignatures, Timestamp, Transaction, TransactionHash, U512,
+    BlockV2, EraId, PublicKey, RewardedSignatures, Timestamp, Transaction, TransactionCategory,
+    TransactionHash, U512,
 };
 
 use super::{FinalizedBlock, InternalEraReport};
@@ -21,16 +22,7 @@ pub struct ExecutableBlock {
     pub(crate) proposer: Box<PublicKey>,
     /// The transactions for the `FinalizedBlock`.
     pub(crate) transactions: Vec<Transaction>,
-    /// The hashes of the transfer transactions within the `FinalizedBlock`.
-    pub(crate) mint: Vec<TransactionHash>,
-    /// The hashes of the auction, native transactions within the `FinalizedBlock`.
-    pub(crate) auction: Vec<TransactionHash>,
-    /// The hashes of the entity, native transactions within the `FinalizedBlock`.
-    pub(crate) entity: Vec<TransactionHash>,
-    /// The hashes of the installer/upgrader transactions within the `FinalizedBlock`.
-    pub(crate) install_upgrade: Vec<TransactionHash>,
-    /// The hashes of all other transactions within the `FinalizedBlock`.
-    pub(crate) standard: Vec<TransactionHash>,
+    pub(crate) transaction_map: BTreeMap<u8, Vec<TransactionHash>>,
     /// `None` may indicate that the rewards have not been computed yet,
     /// or that the block is not a switch one.
     pub(crate) rewards: Option<BTreeMap<PublicKey, U512>>,
@@ -40,6 +32,41 @@ pub struct ExecutableBlock {
 }
 
 impl ExecutableBlock {
+    pub(crate) fn mint(&self) -> Vec<TransactionHash> {
+        self.transaction_map
+            .get(&(TransactionCategory::Mint as u8))
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    pub(crate) fn auction(&self) -> Vec<TransactionHash> {
+        self.transaction_map
+            .get(&(TransactionCategory::Auction as u8))
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    pub(crate) fn install_upgrade(&self) -> Vec<TransactionHash> {
+        self.transaction_map
+            .get(&(TransactionCategory::InstallUpgrade as u8))
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    pub(crate) fn standard(&self) -> Vec<TransactionHash> {
+        self.transaction_map
+            .get(&(TransactionCategory::Standard as u8))
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    pub(crate) fn entity(&self) -> Vec<TransactionHash> {
+        self.transaction_map
+            .get(&(TransactionCategory::Entity as u8))
+            .cloned()
+            .unwrap_or_default()
+    }
+
     /// Creates a new `ExecutedBlock` from a `FinalizedBlock` and its transactions.
     pub fn from_finalized_block_and_transactions(
         finalized_block: FinalizedBlock,
@@ -54,11 +81,7 @@ impl ExecutableBlock {
             height: finalized_block.height,
             proposer: finalized_block.proposer,
             transactions,
-            mint: finalized_block.mint,
-            auction: finalized_block.auction,
-            entity: finalized_block.entity,
-            install_upgrade: finalized_block.install_upgrade,
-            standard: finalized_block.standard,
+            transaction_map: finalized_block.transactions,
             rewards: None,
             next_era_gas_price: None,
         }
@@ -80,11 +103,7 @@ impl ExecutableBlock {
             height: block.height(),
             proposer: Box::new(block.proposer().clone()),
             transactions,
-            mint: block.mint().copied().collect(),
-            auction: block.auction().copied().collect(),
-            entity: block.entity().copied().collect(),
-            install_upgrade: block.install_upgrade().copied().collect(),
-            standard: block.standard().copied().collect(),
+            transaction_map: block.transactions().clone(),
             rewards: block.era_end().map(|era_end| era_end.rewards().clone()),
             next_era_gas_price: block.era_end().map(|era_end| era_end.next_era_gas_price()),
         }
@@ -100,11 +119,11 @@ impl fmt::Display for ExecutableBlock {
             self.height,
             self.era_id,
             self.timestamp,
-            self.mint.len(),
-            self.auction.len(),
-            self.install_upgrade.len(),
-            self.standard.len(),
-            self.entity.len(),
+            self.mint().len(),
+            self.auction().len(),
+            self.install_upgrade().len(),
+            self.standard().len(),
+            self.entity().len()
         )?;
         if let Some(ref ee) = self.era_report {
             write!(formatter, ", era_end: {:?}", ee)?;

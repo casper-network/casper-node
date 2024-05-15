@@ -453,7 +453,8 @@ mod tests {
         crypto, testing::TestRng, ActivationPoint, Block, BlockHash, BlockHeader,
         BlockSignaturesV2, BlockV2, ChainNameDigest, EraEndV2, EraId, FinalitySignatureV2,
         GlobalStateUpdate, ProtocolConfig, ProtocolVersion, PublicKey, SecretKey,
-        SignedBlockHeader, TestBlockBuilder, Timestamp, TransactionHash, TransactionV1Hash, U512,
+        SignedBlockHeader, TestBlockBuilder, Timestamp, TransactionCategory, TransactionHash,
+        TransactionV1Hash, U512,
     };
 
     use super::SyncLeap;
@@ -1725,7 +1726,7 @@ mod tests {
             vec![
                 first_era_validator_weights,
                 second_era_validator_weights,
-                third_era_validator_weights
+                third_era_validator_weights,
             ]
         )
     }
@@ -2335,12 +2336,12 @@ mod tests {
                 self.block.era_id()
             };
             let count = self.rng.gen_range(0..6);
-            let transfer_hashes =
+            let mint_hashes =
                 iter::repeat_with(|| TransactionHash::V1(TransactionV1Hash::random(self.rng)))
                     .take(count)
                     .collect();
             let count = self.rng.gen_range(0..6);
-            let staking_hashes =
+            let auction_hashes =
                 iter::repeat_with(|| TransactionHash::V1(TransactionV1Hash::random(self.rng)))
                     .take(count)
                     .collect();
@@ -2360,6 +2361,19 @@ mod tests {
                     .take(count)
                     .collect();
 
+            let transactions = {
+                let mut ret = BTreeMap::new();
+                ret.insert(TransactionCategory::Mint as u8, mint_hashes);
+                ret.insert(TransactionCategory::Auction as u8, auction_hashes);
+                ret.insert(
+                    TransactionCategory::InstallUpgrade as u8,
+                    install_upgrade_hashes,
+                );
+                ret.insert(TransactionCategory::Standard as u8, standard_hashes);
+                ret.insert(TransactionCategory::Entity as u8, entity_hashes);
+                ret
+            };
+
             let next = BlockV2::new(
                 *self.block.hash(),
                 *self.block.accumulated_seed(),
@@ -2371,13 +2385,10 @@ mod tests {
                 self.block.height() + 1,
                 self.protocol_version,
                 PublicKey::random(self.rng),
-                transfer_hashes,
-                staking_hashes,
-                entity_hashes,
-                install_upgrade_hashes,
-                standard_hashes,
+                transactions,
                 Default::default(),
                 gas_price,
+                Default::default(),
             );
 
             self.block = next.clone();
