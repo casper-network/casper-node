@@ -71,12 +71,9 @@ use casper_types::{
 };
 
 use crate::{
-    chainspec_config::{ChainspecConfig, CoreConfig},
     chainspec_config::{ChainspecConfig, CHAINSPEC_SYMLINK},
-    utils, ExecuteRequest, ExecuteRequestBuilder, ExecuteRequestBuilder, StepRequestBuilder,
-    StepRequestBuilder, DEFAULT_GAS_PRICE, DEFAULT_GAS_PRICE, DEFAULT_PROPOSER_ADDR,
-    DEFAULT_PROPOSER_ADDR, DEFAULT_PROTOCOL_VERSION, DEFAULT_PROTOCOL_VERSION, SYSTEM_ADDR,
-    SYSTEM_ADDR,
+    ExecuteRequest, ExecuteRequestBuilder, StepRequestBuilder, DEFAULT_GAS_PRICE,
+    DEFAULT_PROPOSER_ADDR, DEFAULT_PROTOCOL_VERSION, SYSTEM_ADDR,
 };
 
 /// LMDB initial map size is calculated based on DEFAULT_LMDB_PAGES and systems page size.
@@ -841,7 +838,7 @@ where
     /// Tries to run an [`ExecuteRequest`].
     pub fn try_exec(&mut self, mut exec_request: ExecuteRequest) -> &mut Self {
         let mut effects = Effects::new();
-        if let Some(mut payment) = execute_request.custom_payment {
+        if let Some(mut payment) = exec_request.custom_payment {
             payment.state_hash = self.post_state_hash.expect("expected post_state_hash");
             let payment_result = self
                 .execution_engine
@@ -856,12 +853,11 @@ where
                 return self;
             }
         }
-        execute_request.session.state_hash =
-            self.post_state_hash.expect("expected post_state_hash");
+        exec_request.session.state_hash = self.post_state_hash.expect("expected post_state_hash");
 
         let session_result = self
             .execution_engine
-            .execute(self.data_access_layer.as_ref(), execute_request.session);
+            .execute(self.data_access_layer.as_ref(), exec_request.session);
         // Cache transformations
         effects.append(session_result.effects().clone());
         self.effects.push(effects);

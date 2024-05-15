@@ -9,7 +9,7 @@ use std::{
     sync::Arc,
 };
 
-use casper_types::crypto;
+use casper_types::{crypto, file_utils::{read_file, ReadFileError}};
 use datasize::DataSize;
 #[cfg(test)]
 use once_cell::sync::Lazy;
@@ -20,10 +20,7 @@ use openssl::{
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use casper_types::{
-    file_utils::{read_file, ReadFileError},
-    SecretKey,
-};
+use casper_types::SecretKey;
 
 use crate::tls::{self, LoadCertError, LoadSecretKeyError};
 

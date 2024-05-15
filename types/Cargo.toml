@@ -76,7 +76,7 @@ untrusted = "0.7.1"
 json-schema = ["once_cell", "schemars", "serde-map-to-array/json-schema"]
 testing = ["proptest", "proptest-derive", "rand/default", "rand_pcg", "strum", "bincode"]
 # Includes a restricted set of std lib functionality suitable for usage e.g. in a JS environment when compiled to Wasm.
-std = ["base16/std", "derp", "getrandom/std", "humantime", "once_cell", "pem", "serde_json/preserve_order", "thiserror", "untrusted"]
+std = ["base16/std", "derp", "getrandom/std", "humantime", "libc", "once_cell", "pem", "serde_json/preserve_order", "thiserror", "untrusted"]
 # Includes a complete set of std lib functionality, including filesystem I/O operations.
 std-fs-io = ["std"]
 # DEPRECATED - use "testing" instead of "gens".

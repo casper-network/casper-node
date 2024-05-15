@@ -4,9 +4,6 @@ use alloc::{
 };
 use core::fmt::{self, Display, Formatter};
 
-use bitflags::bitflags;
-#[cfg(feature = "datasize")]
-use datasize::DataSize;
 #[cfg(any(feature = "testing", test))]
 use rand::{
     distributions::{Distribution, Standard},
@@ -15,7 +12,6 @@ use rand::{
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{bytesrepr, AddressableEntityHash, URef, URefAddr};
-use crate::{bytesrepr, Key, URef, URefAddr};
 pub use private::AccessRights;
 
 /// The number of bytes in a serialized [`AccessRights`].

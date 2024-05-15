@@ -1097,7 +1097,7 @@ impl EraSupervisor {
                             .set_timeout(Duration::from_millis(delay))
                             .await;
                     }
-                    join_2(awaitable_appendable_block, awaitable_blocks_with_metadata)
+                    join_2(awaitable_appendable_block, awaitable_blocks_with_metadata).await
                 }
                 .event(
                     move |(appendable_block, maybe_past_blocks_with_metadata)| {

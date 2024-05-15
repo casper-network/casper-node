@@ -8,7 +8,6 @@ use std::{
     ops::RangeBounds,
 };
 
-use casper_hashing::Digest;
 use casper_node::consensus::{
     highway_core::{
         finality_detector::{assigned_weight_and_latest_unit, find_max_quora},
@@ -17,7 +16,7 @@ use casper_node::consensus::{
     utils::{ValidatorIndex, ValidatorMap},
     ClContext,
 };
-use casper_types::{EraId, PublicKey, Timestamp, U512};
+use casper_types::{Digest, EraId, PublicKey, Timestamp, U512};
 
 use clap::Parser;
 use flate2::read::GzDecoder;

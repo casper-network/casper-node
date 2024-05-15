@@ -56,7 +56,7 @@ pub enum TransformKindV2 {
     /// An identity transformation that does not modify a value in the global state.
     ///
     /// Created as a result of reading from the global state.
-    [#default]
+    #[default]
     Identity,
     /// Writes a new value in the global state.
     Write(StoredValue),

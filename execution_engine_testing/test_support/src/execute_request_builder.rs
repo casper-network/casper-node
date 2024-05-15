@@ -3,10 +3,6 @@ use std::collections::BTreeSet;
 use casper_execution_engine::engine_state::{
     deploy_item::DeployItem, ExecutableItem, WasmV1Request,
 };
-use rand::Rng;
-use casper_execution_engine::core::engine_state::{
-    deploy_item::DeployItem, execute_request::ExecuteRequest,
-};
 use casper_types::{
     account::AccountHash, addressable_entity::DEFAULT_ENTRY_POINT_NAME, runtime_args,
     AddressableEntityHash, BlockTime, Digest, EntityVersion, Gas, InitiatorAddr, PackageHash,

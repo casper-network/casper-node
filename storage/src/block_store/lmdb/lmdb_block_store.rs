@@ -495,6 +495,19 @@ impl LmdbBlockStore {
         for (transaction_hash, execution_result) in execution_results.into_iter() {
             transfers.extend(successful_transfers(&execution_result));
 
+            let maybe_stored_execution_result: Option<ExecutionResult> = self
+                .checkout_ro()
+                .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?
+                .read(transaction_hash)?;
+
+            // If we have a previous execution result, we can continue if it is the same.
+            match maybe_stored_execution_result {
+                Some(stored_execution_result) if stored_execution_result == execution_result => {
+                    continue
+                }
+                Some(_) | None => (),
+            }
+
             let was_written = self
                 .execution_result_dbs
                 .put(txn, &transaction_hash, &execution_result, true)

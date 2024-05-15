@@ -661,7 +661,7 @@ impl Package {
 
     /// Adds new group to this entity.
     pub fn add_group(&mut self, group: Group, urefs: BTreeSet<URef>) {
-        let v = self.groups.0.entry(group).or_insert_with(Default::default);
+        let v = self.groups.0.entry(group).or_default();
         v.extend(urefs)
     }
 

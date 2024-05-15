@@ -13,16 +13,12 @@ use casper_types::{
     bytesrepr::{self, ToBytes},
     contract_messages::MessageTopicOperation,
     crypto, AddressableEntityHash, ApiError, EntityVersion, Gas, Group, HostFunction,
-    HostFunctionCost, Key, PackageHash, PackageStatus, StoredValue, URef,
-    DEFAULT_HOST_FUNCTION_NEW_DICTIONARY, U512, UREF_SERIALIZED_LENGTH,
+    HostFunctionCost, Key, PackageHash, PackageStatus, StoredValue, URef, U512,
+    UREF_SERIALIZED_LENGTH,
 };
 
-use super::{args::Args, Error, ExecError, Runtime};
-use crate::{
-    resolvers::v1_function_index::FunctionIndex,
-    shared::host_function_costs::{Cost, HostFunction},
-    storage::global_state::StateReader,
-};
+use super::{args::Args, ExecError, Runtime};
+use crate::resolvers::v1_function_index::FunctionIndex;
 
 impl<'a, R> Externals for Runtime<'a, R>
 where

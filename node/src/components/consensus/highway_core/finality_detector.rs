@@ -1,6 +1,7 @@
 //! Functions for detecting finality of proposed blocks and calculating rewards.
 
 mod horizon;
+mod rewards;
 
 use std::iter;
 
@@ -19,6 +20,10 @@ use crate::components::consensus::{
     utils::{ValidatorIndex, Weight},
 };
 use horizon::Horizon;
+pub use rewards::{
+    assigned_weight_and_latest_unit, compute_rewards, compute_rewards_for, find_max_quora,
+    round_participation, RoundParticipation,
+};
 
 /// An error returned if the configured fault tolerance has been exceeded.
 #[derive(Debug)]

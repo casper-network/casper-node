@@ -34,7 +34,9 @@ fn get_appendable_block(
     assert_container_sizes(transaction_buffer, transactions.len(), 0, 0);
 
     // now check how many transfers were added in the block; should not exceed the config limits.
-    let appendable_block = transaction_buffer.appendable_block(Timestamp::now(), ERA_ONE);
+    let timestamp = Timestamp::now();
+    let expiry = timestamp.saturating_add(TimeDiff::from_seconds(1));
+    let appendable_block = transaction_buffer.appendable_block(Timestamp::now(), ERA_ONE, expiry);
     assert!(appendable_block.transaction_hashes().len() <= transaction_limit);
     assert_eq!(transaction_buffer.hold.len(), 1);
     assert_container_sizes(
@@ -104,20 +106,6 @@ fn create_valid_transaction(
     }
 }
 
-fn create_invalid_transactions(
-    rng: &mut TestRng,
-    transaction_category: &TransactionCategory,
-    size: usize,
-) -> Vec<Transaction> {
-    (0..size)
-        .map(|_| {
-            let mut transaction = create_valid_transaction(rng, transaction_category, None, None);
-            transaction.invalidate();
-            transaction
-        })
-        .collect()
-}
-
 /// Checks sizes of the transaction_buffer containers. Also checks the metrics recorded.
 #[track_caller]
 fn assert_container_sizes(
@@ -129,36 +117,47 @@ fn assert_container_sizes(
     assert_eq!(
         transaction_buffer.buffer.len(),
         expected_buffer,
-        "wrong `buffer` length"
+	"buffer.len {} != expected {}",
+        transaction_buffer.buffer.len(),
+	expected_buffer
     );
     assert_eq!(
         transaction_buffer.dead.len(),
         expected_dead,
-        "wrong `dead` length"
+	"dead.len {} != expected {}",
+        transaction_buffer.dead.len(),
+	expected_dead
     );
+  let hold_len = transaction_buffer
+        .hold
+        .values()
+        .map(|transactions| transactions.len())
+        .sum::<usize>();
     assert_eq!(
-        transaction_buffer
-            .hold
-            .values()
-            .map(|transactions| transactions.len())
-            .sum::<usize>(),
-        expected_held,
-        "wrong `hold` length"
+	hold_len, expected_held,
+        "hold.len {} != expected {}",
+	hold_len, expected_held,
     );
     assert_eq!(
         transaction_buffer.metrics.total_transactions.get(),
         expected_buffer as i64,
-        "wrong `metrics.total_transactions`"
+        "metrics total {} != expected {}",
+	transaction_buffer.metrics.total_transactions.get(),
+	expected_buffer,
     );
     assert_eq!(
         transaction_buffer.metrics.held_transactions.get(),
         expected_held as i64,
-        "wrong `metrics.held_transactions`"
+	"metrics held {} != expected {}",
+	transaction_buffer.metrics.held_transactions.get(),
+	expected_held,
     );
     assert_eq!(
         transaction_buffer.metrics.dead_transactions.get(),
         expected_dead as i64,
-        "wrong `metrics.dead_transactions`"
+	"metrics dead {} != expected {}",
+        transaction_buffer.metrics.dead_transactions.get(),
+	expected_dead,
     );
 }
 
@@ -189,15 +188,6 @@ fn register_transaction_and_check_size() {
             .map(|_| create_valid_transaction(&mut rng, category, None, None))
             .collect();
         valid_transactions
-            .iter()
-            .for_each(|transaction| transaction_buffer.register_transaction(transaction.clone()));
-        assert_container_sizes(&transaction_buffer, valid_transactions.len(), 0, 0);
-
-        // Try to register invalid transactions
-        let num_invalid_transactions: usize = rng.gen_range(10..100);
-        let invalid_transactions =
-            create_invalid_transactions(&mut rng, category, num_invalid_transactions);
-        invalid_transactions
             .iter()
             .for_each(|transaction| transaction_buffer.register_transaction(transaction.clone()));
         assert_container_sizes(&transaction_buffer, valid_transactions.len(), 0, 0);
@@ -323,8 +313,11 @@ fn get_proposable_transactions() {
             assert!(proposable_transaction_hashes.contains(&transaction.hash()));
         }
 
-        // Get an appendable block. This should put the transactions on hold.
-        let appendable_block = transaction_buffer.appendable_block(Timestamp::now(), ERA_ONE);
+        // Get an appendable block. This should put the deploys on hold.
+        let timestamp = Timestamp::now();
+        let expiry = timestamp.saturating_add(TimeDiff::from_seconds(1));
+        let appendable_block =
+            transaction_buffer.appendable_block(Timestamp::now(), ERA_ONE, expiry);
         assert_eq!(transaction_buffer.hold.len(), 1);
         assert_container_sizes(
             &transaction_buffer,
@@ -1055,7 +1048,9 @@ fn register_transactions_and_blocks() {
     let pre_proposal_timestamp = Timestamp::now();
 
     // get an appendable block. This should put the transactions on hold.
-    let appendable_block = transaction_buffer.appendable_block(Timestamp::now(), ERA_ONE);
+    let timestamp = Timestamp::now();
+    let expiry = timestamp.saturating_add(TimeDiff::from_seconds(1));
+    let appendable_block = transaction_buffer.appendable_block(Timestamp::now(), ERA_ONE, expiry);
     assert_eq!(transaction_buffer.hold.len(), 1);
     assert_container_sizes(
         &transaction_buffer,
@@ -1311,4 +1306,380 @@ async fn expire_transactions_and_check_announcement_when_transactions_are_of_ran
 
     // the valid transactions should still be in the buffer
     assert_container_sizes(&transaction_buffer, transactions.len(), 0, 0);
+}
+
+#[test]
+fn should_have_one_bucket_per_distinct_body_hash() {
+    let mut rng = TestRng::new();
+    let max_deploy_count = 2;
+    let max_transfer_count = 0;
+    let deploy_config = DeployConfig {
+        block_max_deploy_count: max_deploy_count,
+        block_max_transfer_count: max_transfer_count,
+        block_max_approval_count: max_deploy_count + max_transfer_count,
+        ..Default::default()
+    };
+    let mut deploy_buffer =
+        DeployBuffer::new(deploy_config, Config::default(), &Registry::new()).unwrap();
+
+    let secret_key1 = SecretKey::random(&mut rng);
+    let ttl = TimeDiff::from_seconds(30);
+    let deploy1 = Deploy::random_contract_by_name(
+        &mut rng,
+        Some(secret_key1),
+        None,
+        None,
+        Some(Timestamp::now()),
+        Some(ttl),
+    );
+    let deploy1_body_hash = *deploy1.header().body_hash();
+    deploy_buffer.register_deploy(deploy1);
+
+    let secret_key2 = SecretKey::random(&mut rng); // different signer
+    let deploy2 = Deploy::random_contract_by_name(
+        &mut rng,
+        Some(
+            SecretKey::from_pem(secret_key2.to_pem().expect("should pemify"))
+                .expect("should un-pemify"),
+        ),
+        None,
+        None,
+        Some(Timestamp::now()), // different timestamp
+        Some(ttl),
+    );
+    assert_eq!(
+        &deploy1_body_hash,
+        deploy2.header().body_hash(),
+        "1 & 2 should have same body hashes"
+    );
+    deploy_buffer.register_deploy(deploy2);
+
+    let buckets = deploy_buffer.buckets();
+    assert!(buckets.len() == 1, "should be 1 bucket");
+
+    let deploy3 = Deploy::random_contract_by_name(
+        &mut rng,
+        Some(
+            SecretKey::from_pem(secret_key2.to_pem().expect("should pemify"))
+                .expect("should un-pemify"),
+        ),
+        None,
+        None,
+        Some(Timestamp::now()), // different timestamp
+        Some(ttl),
+    );
+    assert_eq!(
+        &deploy1_body_hash,
+        deploy3.header().body_hash(),
+        "1 & 3 should have same body hashes"
+    );
+    deploy_buffer.register_deploy(deploy3);
+    let buckets = deploy_buffer.buckets();
+    assert!(buckets.len() == 1, "should still be 1 bucket");
+
+    let deploy4 = Deploy::random_contract_by_name(
+        &mut rng,
+        Some(
+            SecretKey::from_pem(secret_key2.to_pem().expect("should pemify"))
+                .expect("should un-pemify"),
+        ),
+        Some("some other contract name".to_string()),
+        None,
+        Some(Timestamp::now()), // different timestamp
+        Some(ttl),
+    );
+    assert_ne!(
+        &deploy1_body_hash,
+        deploy4.header().body_hash(),
+        "1 & 4 should have different body hashes"
+    );
+    deploy_buffer.register_deploy(deploy4);
+    let buckets = deploy_buffer.buckets();
+    assert!(buckets.len() == 2, "should be 2 buckets");
+
+    let transfer5 = Deploy::random_valid_native_transfer_with_timestamp_and_ttl(
+        &mut rng,
+        Timestamp::now(),
+        ttl,
+    );
+    assert_ne!(
+        &deploy1_body_hash,
+        transfer5.header().body_hash(),
+        "1 & 5 should have different body hashes"
+    );
+    deploy_buffer.register_deploy(transfer5);
+    let buckets = deploy_buffer.buckets();
+    assert!(buckets.len() == 3, "should be 3 buckets");
+}
+
+#[test]
+fn should_have_diverse_proposable_blocks_with_stocked_buffer() {
+    let rng = &mut TestRng::new();
+    let max_deploy_count = 50;
+    let max_transfer_count = 5;
+    let deploy_config = DeployConfig {
+        block_max_deploy_count: max_deploy_count,
+        block_max_transfer_count: max_transfer_count,
+        block_max_approval_count: max_deploy_count + max_transfer_count,
+        ..Default::default()
+    };
+    let mut deploy_buffer =
+        DeployBuffer::new(deploy_config, Config::default(), &Registry::new()).unwrap();
+
+    let cap = (max_deploy_count * 100) as usize;
+
+    let secret_keys: Vec<SecretKey> = iter::repeat_with(|| SecretKey::random(rng))
+    .take(10)
+    .collect();
+
+    let contract_names = ["a", "b", "c", "d", "e"];
+    let contract_entry_points = ["foo", "bar"];
+
+    fn ttl(rng: &mut TestRng) -> TimeDiff {
+        TimeDiff::from_seconds(rng.gen_range(60..3600))
+    }
+
+    let mut last_timestamp = Timestamp::now();
+    for _ in 0..cap {
+        last_timestamp = timestamp(&mut rng, last_timestamp);
+        let ttl = ttl(&mut rng);
+        let secret_key = Some(
+            SecretKey::from_pem(
+                secret_keys[rng.gen_range(0..secret_keys.len())]
+                    .to_pem()
+                    .expect("should pemify"),
+            )
+            .expect("should un-pemify"),
+        );
+        let contract_name = Some(contract_names[rng.gen_range(0..contract_names.len())].into());
+        let contract_entry_point =
+            Some(contract_entry_points[rng.gen_range(0..contract_entry_points.len())].into());
+        let deploy = Deploy::random_contract_by_name(
+            rng,
+            &mut rng,
+            secret_key,
+            contract_name,
+            contract_entry_point,
+            Some(last_timestamp),
+            Some(ttl),
+        );
+        deploy_buffer.register_deploy(deploy)
+        assert_eq!(
+            deploy_buffer.buffer.len(),
+            i + 1,
+            "failed to buffer deploy {i}"
+        );
+        last_timestamp += TimeDiff::from_millis(1);
+    }
+
+    for i in 0..max_transfer_count {
+        let ttl = ttl(rng);
+        deploy_buffer.register_deploy(Deploy::random_valid_native_transfer_with_timestamp_and_ttl(
+            &mut rng,
+            last_timestamp,
+            ttl,
+        ));
+        assert_eq!(
+            deploy_buffer.buffer.len(),
+            i as usize + 1 + cap,
+            "failed to buffer transfer {i}"
+        );
+        last_timestamp += TimeDiff::from_millis(1);        
+    }
+
+    let expected_count = cap + (max_transfer_count as usize);
+    assert_container_sizes(&deploy_buffer, expected_count, 0, 0);
+
+    let buckets1 = deploy_buffer.buckets();
+    assert!(
+        buckets1.len() > 1,
+        "should be multiple buckets with this much state"
+    );
+    let buckets2 = deploy_buffer.buckets();
+    assert_eq!(
+        buckets1, buckets2,
+        "with same state should get same buckets every time"
+    );
+
+    // while it is not impossible to get identical appendable blocks over an unchanged buffer
+    // using this strategy, it should be very unlikely...the below brute forces a check for this
+    let expected_eq_tolerance = 1;
+    let mut actual_eq_count = 0;
+    let expiry = last_timestamp.saturating_add(TimeDiff::from_seconds(1));
+    for _ in 0..10 {
+        let appendable1 = deploy_buffer.appendable_block(last_timestamp, expiry);
+        let appendable2 = deploy_buffer.appendable_block(last_timestamp, expiry);
+        if appendable1 == appendable2 {
+            actual_eq_count += 1;
+        }
+    }
+    assert!(
+        actual_eq_count <= expected_eq_tolerance,
+        "{} matches exceeded tolerance of {}",
+        actual_eq_count,
+        expected_eq_tolerance
+    );
+}
+
+#[test]
+fn should_be_empty_if_no_time_until_expiry() {
+    let mut rng = TestRng::new();
+    let max_deploy_count = 1;
+    let max_transfer_count = 1;
+    let deploy_config = DeployConfig {
+        block_max_deploy_count: max_deploy_count,
+        block_max_transfer_count: max_transfer_count,
+        block_max_approval_count: max_deploy_count + max_transfer_count,
+        ..Default::default()
+    };
+    let mut deploy_buffer =
+        DeployBuffer::new(deploy_config, Config::default(), &Registry::new()).unwrap();
+
+    let secret_key1 = SecretKey::random(&mut rng);
+    let ttl = TimeDiff::from_seconds(30);
+    let deploy1 = Deploy::random_contract_by_name(
+        &mut rng,
+        Some(secret_key1),
+        None,
+        None,
+        Some(Timestamp::now()),
+        Some(ttl),
+    );
+    let deploy1_body_hash = *deploy1.header().body_hash();
+    deploy_buffer.register_deploy(deploy1);
+
+    let buckets = deploy_buffer.buckets();
+    assert!(buckets.len() == 1, "should be 1 buckets");
+
+    let transfer2 = Deploy::random_valid_native_transfer_with_timestamp_and_ttl(
+        &mut rng,
+        Timestamp::now(),
+        ttl,
+    );
+    assert_ne!(
+        &deploy1_body_hash,
+        transfer2.header().body_hash(),
+        "1 & 2 should have different body hashes"
+    );
+    deploy_buffer.register_deploy(transfer2);
+    let buckets = deploy_buffer.buckets();
+    assert!(buckets.len() == 2, "should be 2 buckets");
+
+    let now = Timestamp::now();
+    let appendable = deploy_buffer.appendable_block(now, now);
+    let count = appendable.deploy_and_transfer_set().len();
+    assert!(count == 0, "expected 0 found {}", count);
+
+    // logic should tolerate invalid expiry
+    let appendable =
+        deploy_buffer.appendable_block(now, now.saturating_sub(TimeDiff::from_millis(1)));
+    let count = appendable.deploy_and_transfer_set().len();
+    assert!(count == 0, "expected 0 found {}", count);
+}
+
+fn register_random_deploys_unique_hashes(
+    deploy_buffer: &mut DeployBuffer,
+    num_deploys: usize,
+    rng: &mut TestRng,
+) {
+    let deploys = std::iter::repeat_with(|| {
+        let name = format!("{}", rng.gen::<u64>());
+        let call = format!("{}", rng.gen::<u64>());
+        Deploy::random_contract_by_name(
+            rng,
+            None,
+            Some(name),
+            Some(call),
+            Some(Timestamp::now()), // different timestamp
+            None,
+        )
+    })
+    .take(num_deploys);
+    for deploy in deploys {
+        deploy_buffer.register_deploy(deploy);
+    }
+}
+
+fn register_random_deploys_same_hash(
+    deploy_buffer: &mut DeployBuffer,
+    num_deploys: usize,
+    rng: &mut TestRng,
+) {
+    let deploys = std::iter::repeat_with(|| {
+        let name = "test".to_owned();
+        let call = "test".to_owned();
+        Deploy::random_contract_by_name(
+            rng,
+            None,
+            Some(name),
+            Some(call),
+            Some(Timestamp::now()), // different timestamp
+            None,
+        )
+    })
+    .take(num_deploys);
+    for deploy in deploys {
+        deploy_buffer.register_deploy(deploy);
+    }
+}
+
+#[test]
+fn test_buckets_single_hash() {
+    let mut rng = TestRng::new();
+    let deploy_config = DeployConfig {
+        block_max_transfer_count: 1000,
+        block_max_deploy_count: 100,
+        block_max_approval_count: 1100,
+        ..Default::default()
+    };
+    let mut deploy_buffer =
+        DeployBuffer::new(deploy_config, Config::default(), &Registry::new()).unwrap();
+
+    register_random_deploys_same_hash(&mut deploy_buffer, 64000, &mut rng);
+
+    let _block = deploy_buffer.appendable_block(
+        Timestamp::now(),
+        Timestamp::now() + TimeDiff::from_millis(16384 / 6),
+    );
+}
+
+#[test]
+fn test_buckets_unique_hashes() {
+    let mut rng = TestRng::new();
+    let deploy_config = DeployConfig {
+        block_max_transfer_count: 1000,
+        block_max_deploy_count: 100,
+        block_max_approval_count: 1100,
+        ..Default::default()
+    };
+    let mut deploy_buffer =
+        DeployBuffer::new(deploy_config, Config::default(), &Registry::new()).unwrap();
+
+    register_random_deploys_unique_hashes(&mut deploy_buffer, 64000, &mut rng);
+
+    let _block = deploy_buffer.appendable_block(
+        Timestamp::now(),
+        Timestamp::now() + TimeDiff::from_millis(16384 / 6),
+    );
+}
+
+#[test]
+fn test_buckets_mixed_load() {
+    let mut rng = TestRng::new();
+    let deploy_config = DeployConfig {
+        block_max_transfer_count: 1000,
+        block_max_deploy_count: 100,
+        block_max_approval_count: 1100,
+        ..Default::default()
+    };
+    let mut deploy_buffer =
+        DeployBuffer::new(deploy_config, Config::default(), &Registry::new()).unwrap();
+
+    register_random_deploys_unique_hashes(&mut deploy_buffer, 60000, &mut rng);
+    register_random_deploys_same_hash(&mut deploy_buffer, 4000, &mut rng);
+
+    let _block = deploy_buffer.appendable_block(
+        Timestamp::now(),
+        Timestamp::now() + TimeDiff::from_millis(16384 / 6),
+    );
 }

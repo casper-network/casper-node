@@ -28,7 +28,6 @@ use casper_types::{
     SystemConfig, WasmConfig, U512,
 };
 
-pub use additive_map_diff::AdditiveMapDiff;
 pub use chainspec_config::{ChainspecConfig, CHAINSPEC_SYMLINK};
 pub use deploy_item_builder::DeployItemBuilder;
 pub use execute_request_builder::{ExecuteRequest, ExecuteRequestBuilder};

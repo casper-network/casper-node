@@ -9,17 +9,6 @@ use once_cell::sync::Lazy;
 use serde::Deserialize;
 
 use casper_execution_engine::engine_state::{EngineConfig, EngineConfigBuilder};
-use casper_execution_engine::{
-    core::engine_state::{
-        engine_config::{
-            EngineConfig, EngineConfigBuilder, FeeHandling, RefundHandling, DEFAULT_MAX_QUERY_DEPTH,
-        },
-        genesis::ExecConfigBuilder,
-        run_genesis_request::RunGenesisRequest,
-        ExecConfig, GenesisAccount,
-    },
-    shared::{system_config::SystemConfig, wasm_config::WasmConfig},
-};
 use casper_storage::data_access_layer::GenesisRequest;
 use casper_types::{
     system::auction::VESTING_SCHEDULE_LENGTH_MILLIS, CoreConfig, FeeHandling, GenesisAccount,
@@ -262,6 +251,7 @@ impl ChainspecConfig {
             .with_allow_unrestricted_transfers(self.core_config.allow_unrestricted_transfers)
             .with_refund_handling(self.core_config.refund_handling)
             .with_fee_handling(self.core_config.fee_handling)
+            .build()
     }
 }
 

@@ -28,12 +28,6 @@ pub use transfer_v2::TransferV2;
 const V1_TAG: u8 = 0;
 const V2_TAG: u8 = 1;
 
-impl AsRef<[u8]> for DeployHash {
-    fn as_ref(&self) -> &[u8] {
-        self.0.as_ref()
-    }
-}
-
 #[cfg(feature = "json-schema")]
 pub(super) static TRANSFER: Lazy<Transfer> = Lazy::new(|| {
     let transaction_hash = TransactionHash::V1(TransactionV1Hash::from_raw([1; 32]));

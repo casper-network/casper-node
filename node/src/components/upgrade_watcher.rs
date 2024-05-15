@@ -165,7 +165,7 @@ impl UpgradeWatcher {
 
     pub(crate) fn next_upgrade_activation_point(&self) -> Option<EraId> {
         self.next_upgrade
-            .map(|next_upgrade| next_upgrade.activation_point.era_id())
+            .map(|next_upgrade| next_upgrade.activation_point().era_id())
     }
 
     fn start_checking_for_upgrades<REv>(
@@ -586,7 +586,7 @@ mod tests {
             next_point(&current),
             chainspec_v2_0_3.protocol_config.into()
         );
-        
+
         let chainspec_v1_0_0 = install_chainspec(&mut rng, tempdir.path(), V1_0_0);
         assert_eq!(next_point(V0_9_9), chainspec_v1_0_0.protocol_config.into());
 
