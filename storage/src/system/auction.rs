@@ -188,14 +188,17 @@ pub trait Auction:
                 let delegator_bid_addr =
                     BidAddr::new_from_public_keys(&public_key, Some(&delegator_public_key));
 
-                debug!("pruning delegator bid {}", delegator_bid_addr);
-                self.prune_bid(delegator_bid_addr)
+                // Keep the bids for now - they will be pruned when the validator's unbonds get
+                // processed.
+                self.write_bid(
+                    delegator_bid_addr.into(),
+                    BidKind::Delegator(Box::new(delegator)),
+                )?;
             }
-            debug!("pruning validator bid {}", validator_bid_addr);
-            self.prune_bid(validator_bid_addr);
-        } else {
-            self.write_bid(validator_bid_key, BidKind::Validator(validator_bid))?;
         }
+
+        self.write_bid(validator_bid_key, BidKind::Validator(validator_bid))?;
+
         Ok(updated_stake)
     }
 
@@ -285,12 +288,9 @@ pub trait Auction:
             updated_stake
         );
 
-        if updated_stake.is_zero() {
-            debug!("pruning delegator bid {}", delegator_bid_addr);
-            self.prune_bid(delegator_bid_addr);
-        } else {
-            self.write_bid(delegator_bid_addr.into(), BidKind::Delegator(delegator_bid))?;
-        }
+        // Keep the bid for now - it will get pruned when the unbonds are processed.
+        self.write_bid(delegator_bid_addr.into(), BidKind::Delegator(delegator_bid))?;
+
         Ok(updated_stake)
     }
 
@@ -540,6 +540,7 @@ pub trait Auction:
                     .chain(
                         unlocked_validators
                             .into_iter()
+                            .filter(|(_, stake)| !stake.is_zero())
                             .take(remaining_auction_slots),
                     )
                     .collect()
@@ -623,7 +624,7 @@ pub trait Auction:
                 };
 
             let total_reward = Ratio::from(reward_amount);
-            let recipient = seigniorage_recipients
+            let Some(recipient) = seigniorage_recipients
                 .get(&proposer)
                 .cloned()
                 .or_else(|| {
@@ -631,9 +632,33 @@ pub trait Auction:
                     let validator_bid = read_validator_bid(self, &bid_key).ok()?;
                     seigniorage_recipient(self, &validator_bid).ok()
                 })
-                .ok_or(Error::ValidatorNotFound)?;
+                else {
+                    // If the bid doesn't exist, either, the validator has likely been slashed. In
+                    // such a case, simply don't distribute the reward to them.
+                    continue;
+                };
 
             let total_stake = recipient.total_stake().ok_or(Error::ArithmeticOverflow)?;
+
+            if total_stake.is_zero() {
+                // The validator has completely unbonded. We can't compute the delegators' part (as
+                // their stakes are also zero), so we just give the whole reward to the validator.
+                // Mint the reward into their bonding purse and increase their unbond request by the
+                // corresponding amount.
+                let validator_bonding_purse = detail::distribute_validator_rewards(
+                    self,
+                    seigniorage_allocations,
+                    validator_public_key.clone(),
+                    reward_amount,
+                )?;
+
+                // mint new token and put it to the recipients' purses
+                self.mint_into_existing_purse(reward_amount, validator_bonding_purse)
+                    .map_err(Error::from)?;
+
+                continue;
+            }
+
             let delegator_total_stake: U512 = recipient
                 .delegator_total_stake()
                 .ok_or(Error::ArithmeticOverflow)?;
