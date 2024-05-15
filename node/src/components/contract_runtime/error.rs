@@ -148,4 +148,7 @@ pub enum BlockExecutionError {
     // Error attempting to set block global data.
     #[error("Error while attempting to store block global data: {0}")]
     BlockGlobal(String),
+    #[error("No switch block header available for era: {0}")]
+    /// No switch block available
+    NoSwitchBlockHash(u64),
 }

@@ -899,7 +899,7 @@ fn get_keys_should_return_keys_in_the_account_keyspace() {
         .expect("should checkout")
         .expect("should have view");
 
-    let mut tracking_copy = TrackingCopy::new(view, DEFAULT_MAX_QUERY_DEPTH);
+    let tracking_copy = TrackingCopy::new(view, DEFAULT_MAX_QUERY_DEPTH);
 
     let key_set = tracking_copy.get_keys(&KeyTag::Account).unwrap();
 
