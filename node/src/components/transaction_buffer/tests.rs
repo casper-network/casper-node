@@ -1524,7 +1524,7 @@ fn should_have_diverse_proposable_blocks_with_stocked_buffer() {
     // using this strategy, it should be very unlikely...the below brute forces a check for this
     let expected_eq_tolerance = 1;
     let mut actual_eq_count = 0;
-    let expiry = last_timestamp.saturating_add(TimeDiff::from_seconds(1));
+    let expiry = last_timestamp.saturating_add(TimeDiff::from_seconds(120));
     for _ in 0..10 {
         let appendable1 = transaction_buffer.appendable_block(last_timestamp, ERA_ONE, expiry);
         let appendable2 = transaction_buffer.appendable_block(last_timestamp, ERA_ONE, expiry);
