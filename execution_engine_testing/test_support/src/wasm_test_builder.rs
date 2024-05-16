@@ -831,12 +831,7 @@ where
     }
 
     /// Runs an [`ExecuteRequest`].
-    pub fn exec(&mut self, exec_request: ExecuteRequest) -> &mut Self {
-        self.try_exec(exec_request).expect_success()
-    }
-
-    /// Tries to run an [`ExecuteRequest`].
-    pub fn try_exec(&mut self, mut exec_request: ExecuteRequest) -> &mut Self {
+    pub fn exec(&mut self, mut exec_request: ExecuteRequest) -> &mut Self {
         let mut effects = Effects::new();
         if let Some(mut payment) = exec_request.custom_payment {
             payment.state_hash = self.post_state_hash.expect("expected post_state_hash");

@@ -102,7 +102,7 @@ mod repeated_ffi_call_should_gas_out_quickly {
                     post_state_hash,
                 );
 
-                builder.try_exec(exec_request);
+                builder.exec(exec_request);
                 let error = builder.get_error().unwrap();
                 let _ = tx.send(error);
             });
