@@ -17,7 +17,7 @@ use crate::{
 };
 
 const ERA_ONE: EraId = EraId::new(1u64);
-const GAS_PRICE_TOLERACNE: u8 = 1;
+const GAS_PRICE_TOLERANCE: u8 = 1;
 const DEFAULT_MINIMUM_GAS_PRICE: u8 = 1;
 
 fn get_appendable_block(
@@ -1372,7 +1372,7 @@ fn should_have_one_bucket_per_distinct_body_hash() {
     );
     transaction_buffer.register_transaction(deploy2.into());
 
-    let buckets = transaction_buffer.buckets(GAS_PRICE_TOLERACNE);
+    let buckets = transaction_buffer.buckets(GAS_PRICE_TOLERANCE);
     assert!(buckets.len() == 1, "should be 1 bucket");
 
     let deploy3 = Deploy::random_contract_by_name(
@@ -1392,7 +1392,7 @@ fn should_have_one_bucket_per_distinct_body_hash() {
         "1 & 3 should have same body hashes"
     );
     transaction_buffer.register_transaction(deploy3.into());
-    let buckets = transaction_buffer.buckets(GAS_PRICE_TOLERACNE);
+    let buckets = transaction_buffer.buckets(GAS_PRICE_TOLERANCE);
     assert!(buckets.len() == 1, "should still be 1 bucket");
 
     let deploy4 = Deploy::random_contract_by_name(
@@ -1412,7 +1412,7 @@ fn should_have_one_bucket_per_distinct_body_hash() {
         "1 & 4 should have different body hashes"
     );
     transaction_buffer.register_transaction(deploy4.into());
-    let buckets = transaction_buffer.buckets(GAS_PRICE_TOLERACNE);
+    let buckets = transaction_buffer.buckets(GAS_PRICE_TOLERANCE);
     assert!(buckets.len() == 2, "should be 2 buckets");
 
     let transfer5 = Deploy::random_valid_native_transfer_with_timestamp_and_ttl(
@@ -1426,7 +1426,7 @@ fn should_have_one_bucket_per_distinct_body_hash() {
         "1 & 5 should have different body hashes"
     );
     transaction_buffer.register_transaction(transfer5.into());
-    let buckets = transaction_buffer.buckets(GAS_PRICE_TOLERACNE);
+    let buckets = transaction_buffer.buckets(GAS_PRICE_TOLERANCE);
     assert!(buckets.len() == 3, "should be 3 buckets");
 }
 
@@ -1509,12 +1509,12 @@ fn should_have_diverse_proposable_blocks_with_stocked_buffer() {
     let expected_count = cap + (max_mint_count as usize);
     assert_container_sizes(&transaction_buffer, expected_count, 0, 0);
 
-    let buckets1 = transaction_buffer.buckets(GAS_PRICE_TOLERACNE);
+    let buckets1 = transaction_buffer.buckets(GAS_PRICE_TOLERANCE);
     assert!(
         buckets1.len() > 1,
         "should be multiple buckets with this much state"
     );
-    let buckets2 = transaction_buffer.buckets(GAS_PRICE_TOLERACNE);
+    let buckets2 = transaction_buffer.buckets(GAS_PRICE_TOLERANCE);
     assert_eq!(
         buckets1, buckets2,
         "with same state should get same buckets every time"
@@ -1571,7 +1571,7 @@ fn should_be_empty_if_no_time_until_expiry() {
     let deploy1_body_hash = *deploy1.header().body_hash();
     transaction_buffer.register_transaction(deploy1.into());
 
-    let buckets = transaction_buffer.buckets(GAS_PRICE_TOLERACNE);
+    let buckets = transaction_buffer.buckets(GAS_PRICE_TOLERANCE);
     assert!(buckets.len() == 1, "should be 1 buckets");
 
     let transfer2 = Deploy::random_valid_native_transfer_with_timestamp_and_ttl(
@@ -1585,7 +1585,7 @@ fn should_be_empty_if_no_time_until_expiry() {
         "1 & 2 should have different body hashes"
     );
     transaction_buffer.register_transaction(transfer2.into());
-    let buckets = transaction_buffer.buckets(GAS_PRICE_TOLERACNE);
+    let buckets = transaction_buffer.buckets(GAS_PRICE_TOLERANCE);
     assert!(buckets.len() == 2, "should be 2 buckets");
 
     let timestamp = Timestamp::now();
