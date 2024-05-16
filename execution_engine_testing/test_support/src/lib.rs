@@ -184,8 +184,8 @@ mod tests {
 
     #[test]
     fn defaults_should_match_production_chainspec_values() {
-        // TODO: Temporarily disabled. Now that the test_support uses its own chainspec, this check may not be necessary.
-        assert!(true);
+        // TODO: Temporarily disabled. Now that the test_support uses its own chainspec, this check
+        // may not be necessary.
 
         // let production = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK).unwrap();
         // // No need to test `CoreConfig::validator_slots`.
