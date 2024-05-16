@@ -15,7 +15,7 @@ The Casper [Code of Conduct](https://github.com/casper-ecosystem/.github/blob/ma
 
 ### 1. Reporting Bugs
 
-If you encounter issues with `casper-node`, please file an issue in the repository using the specified bug report template. Providing detailed information will help expedite the resolution.
+If you encounter issues in the `casper-node` repository, please file an issue in the repository using the specified bug report template. Providing detailed information will help expedite the resolution.
 
 #### Before Submitting A Bug Report
 
@@ -44,30 +44,31 @@ Here’s how you can contribute code:
 
 #### Steps to Submit Code
 
-1. **Fork the repository**: As a contributor, you should `fork` the repository, work on your fork, and submit a pull request. The pull request will undergo review and potentially be merged into the main repository.
+- **Fork the repository**: As a contributor, you should `fork` the repository, work on your fork, and submit a pull request. The pull request will undergo review and potentially be merged into the main repository.
 
-   - **1.1** Create a fork from the `dev`, `feature`, or `release-feature` branch for your changes.
+   - Create a fork from the `dev`, `feature`, or `release-feature` branch for your changes.
    - Note that the naming convention for a Release/Feature branch includes:
      - `release-1.4.6` for Major releases (e.g., Protocol release).
      - `feat-1.5.0` for Feature releases.
 
-2. **Make your changes**: Ensure your code complies with the existing style and architecture. Keep your changes focused, and if they are broad, consider dividing them into smaller PRs for easier review.
-3. **Test your changes**: Execute existing tests and add new ones as needed. Your code should pass all existing tests, and new functionalities should come with accompanying tests.
-   - **Step 3.1:** Enable Automated Testing [Refer to GitHub’s [Automating builds and tests - GitHub Docs](https://docs.github.com/en/actions/automating-builds-and-tests) for more information].
-   - **Step 3.2:** Confirm that tests have been automatically executed.
-   - **Step 3.3:** Introduce a test that highlights a problem.
-     - **Step 3.3.1:** Report an issue on GitHub.
-     - **Step 3.3.2:** Address the broken test and proceed to Step 4.
-4. **Document your changes**: Update the documentation to reflect any new behaviors, features, or APIs.
-5. **Submit a pull request**: 
+- **Make your changes**: Ensure your code complies with the existing style and architecture. Keep your changes focused, and if they are broad, consider dividing them into smaller PRs for easier review.
+
+- **Test your changes**: Execute existing tests and add new ones as needed. Your code should pass all existing tests, and new functionalities should come with accompanying tests.
+   - Enable Automated Testing For more information refer to GitHub’s [Automating builds and tests - GitHub Docs](https://docs.github.com/en/actions/automating-builds-and-tests).
+   - Confirm that tests have been automatically executed.
+   - Introduce a test that highlights a problem.
+     - Report an issue on GitHub.
+     - Address the broken test and proceed to Step 4.
+- **Document your changes**: Update the documentation to reflect any new behaviors, features, or APIs.
+- **Submit a pull request**: 
    - Provide a concise list of what you have done. Mention relevant issue numbers, and ensure your PR description effectively communicates the problem and solution. Include any pertinent screenshots or output snippets.
    - The Casper Team will review the Pull Request and accept it if it meets the required standards of code quality, test coverage, and security.
 
-   - **Step 5.1:** Git Rules
+   - Git Rules
 
        We employ `gitchangelog` across all our repositories for maintaining change logs. It is essential to follow the specified convention when composing commit messages. Your pull request may not be approved if you do not adhere to this convention.
 
-   - **Step 5.2:** Commit Message Convention
+   - Commit Message Convention
      
        Consider organizing your commits into rough sections:
      - by purpose (e.g., new, fix, change).
@@ -81,7 +82,7 @@ Here’s how you can contribute code:
 
         **Casper Pull Request Workflow:**
 
-        Refer to the Casper Pull Request Workflow below;
+        Refer to the Casper Pull Request Workflow below.
 
         ![Casper PR Workflow](/casper-node/images/casper_pull_request_flow.png)
 
