@@ -389,7 +389,7 @@ mod tests {
     use casper_types::testing::TestRng;
 
     #[test]
-    fn bytesrepr_roundtrip() {
+    fn convert_u8_roundtrip() {
         let rng = &mut TestRng::new();
 
         let val = PayloadType::random(rng);
