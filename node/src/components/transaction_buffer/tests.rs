@@ -1604,8 +1604,7 @@ fn should_be_empty_if_no_time_until_expiry() {
     assert!(buckets.len() == 2, "should be 2 buckets");
 
     let timestamp = Timestamp::now();
-    let expiry = timestamp.saturating_add(TimeDiff::from_seconds(1));
-    let appendable = transaction_buffer.appendable_block(timestamp, ERA_ONE, expiry);
+    let appendable = transaction_buffer.appendable_block(timestamp, ERA_ONE, timestamp);
     let count = appendable.transaction_count();
     assert!(count == 0, "expected 0 found {}", count);
 
