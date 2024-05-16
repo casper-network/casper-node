@@ -10,7 +10,6 @@ use schemars::JsonSchema;
 #[cfg(test)]
 use casper_types::testing::TestRng;
 use casper_types::{
-    bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     execution::{ExecutionResult, ExecutionResultV1},
     AvailableBlockRange, BlockBody, BlockBodyV1, BlockHeader, BlockHeaderV1, BlockSignatures,
     BlockSignaturesV1, BlockSynchronizerStatus, ChainspecRawBytes, Deploy, NextUpgrade, Peers,
@@ -254,146 +253,6 @@ impl fmt::Display for PayloadType {
     }
 }
 
-const BLOCK_HEADER_V1_TAG: u8 = 0;
-const BLOCK_HEADER_TAG: u8 = 1;
-const BLOCK_BODY_V1_TAG: u8 = 2;
-const BLOCK_BODY_TAG: u8 = 3;
-const APPROVALS_HASHES_TAG: u8 = 4;
-const APPROVALS_HASHES_V1_TAG: u8 = 5;
-const BLOCK_SIGNATURES_TAG: u8 = 6;
-const BLOCK_SIGNATURES_V1_TAG: u8 = 7;
-const DEPLOY_TAG: u8 = 8;
-const TRANSACTION_TAG: u8 = 9;
-const EXECUTION_RESULT_V1_TAG: u8 = 10;
-const EXECUTION_RESULT_TAG: u8 = 11;
-const TRANSFERS_TAG: u8 = 12;
-const FINALIZED_DEPLOY_APPROVALS_TAG: u8 = 13;
-const FINALIZED_APPROVALS_TAG: u8 = 14;
-const SIGNED_BLOCK_TAG: u8 = 15;
-const TRANSACTION_WITH_EXECUTION_INFO_TAG: u8 = 16;
-const PEERS_TAG: u8 = 17;
-const UPTIME_TAG: u8 = 18;
-const LAST_PROGRESS_TAG: u8 = 19;
-const REACTOR_STATE_TAG: u8 = 20;
-const NETWORK_NAME_TAG: u8 = 21;
-const CONSENSUS_VALIDATOR_CHANGES_TAG: u8 = 22;
-const BLOCK_SYNCHRONIZER_STATUS_TAG: u8 = 23;
-const AVAILABLE_BLOCK_RANGE_TAG: u8 = 24;
-const NEXT_UPGRADE_TAG: u8 = 25;
-const CONSENSUS_STATUS_TAG: u8 = 26;
-const CHAINSPEC_RAW_BYTES_TAG: u8 = 27;
-const HIGHEST_BLOCK_SEQUENCE_CHECK_RESULT_TAG: u8 = 28;
-const SPECULATIVE_EXECUTION_RESULT_TAG: u8 = 29;
-const GLOBAL_STATE_QUERY_RESULT_TAG: u8 = 30;
-const STORED_VALUES_TAG: u8 = 31;
-const GET_TRIE_FULL_RESULT_TAG: u8 = 32;
-const NODE_STATUS_TAG: u8 = 33;
-const DICTIONARY_QUERY_RESULT_TAG: u8 = 34;
-const WASM_V1_RESULT_TAG: u8 = 35;
-const BALANCE_RESPONSE_TAG: u8 = 36;
-
-impl ToBytes for PayloadType {
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut buffer = bytesrepr::allocate_buffer(self)?;
-        self.write_bytes(&mut buffer)?;
-        Ok(buffer)
-    }
-
-    fn serialized_length(&self) -> usize {
-        U8_SERIALIZED_LENGTH
-    }
-
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        match self {
-            PayloadType::BlockHeaderV1 => BLOCK_HEADER_V1_TAG,
-            PayloadType::BlockHeader => BLOCK_HEADER_TAG,
-            PayloadType::BlockBodyV1 => BLOCK_BODY_V1_TAG,
-            PayloadType::BlockBody => BLOCK_BODY_TAG,
-            PayloadType::ApprovalsHashesV1 => APPROVALS_HASHES_V1_TAG,
-            PayloadType::ApprovalsHashes => APPROVALS_HASHES_TAG,
-            PayloadType::BlockSignaturesV1 => BLOCK_SIGNATURES_V1_TAG,
-            PayloadType::BlockSignatures => BLOCK_SIGNATURES_TAG,
-            PayloadType::Deploy => DEPLOY_TAG,
-            PayloadType::Transaction => TRANSACTION_TAG,
-            PayloadType::ExecutionResultV1 => EXECUTION_RESULT_V1_TAG,
-            PayloadType::ExecutionResult => EXECUTION_RESULT_TAG,
-            PayloadType::Transfers => TRANSFERS_TAG,
-            PayloadType::FinalizedDeployApprovals => FINALIZED_DEPLOY_APPROVALS_TAG,
-            PayloadType::FinalizedApprovals => FINALIZED_APPROVALS_TAG,
-            PayloadType::Peers => PEERS_TAG,
-            PayloadType::SignedBlock => SIGNED_BLOCK_TAG,
-            PayloadType::TransactionWithExecutionInfo => TRANSACTION_WITH_EXECUTION_INFO_TAG,
-            PayloadType::LastProgress => LAST_PROGRESS_TAG,
-            PayloadType::ReactorState => REACTOR_STATE_TAG,
-            PayloadType::NetworkName => NETWORK_NAME_TAG,
-            PayloadType::ConsensusValidatorChanges => CONSENSUS_VALIDATOR_CHANGES_TAG,
-            PayloadType::BlockSynchronizerStatus => BLOCK_SYNCHRONIZER_STATUS_TAG,
-            PayloadType::AvailableBlockRange => AVAILABLE_BLOCK_RANGE_TAG,
-            PayloadType::NextUpgrade => NEXT_UPGRADE_TAG,
-            PayloadType::ConsensusStatus => CONSENSUS_STATUS_TAG,
-            PayloadType::ChainspecRawBytes => CHAINSPEC_RAW_BYTES_TAG,
-            PayloadType::Uptime => UPTIME_TAG,
-            PayloadType::HighestBlockSequenceCheckResult => HIGHEST_BLOCK_SEQUENCE_CHECK_RESULT_TAG,
-            PayloadType::SpeculativeExecutionResult => SPECULATIVE_EXECUTION_RESULT_TAG,
-            PayloadType::GlobalStateQueryResult => GLOBAL_STATE_QUERY_RESULT_TAG,
-            PayloadType::StoredValues => STORED_VALUES_TAG,
-            PayloadType::GetTrieFullResult => GET_TRIE_FULL_RESULT_TAG,
-            PayloadType::NodeStatus => NODE_STATUS_TAG,
-            PayloadType::WasmV1Result => WASM_V1_RESULT_TAG,
-            PayloadType::DictionaryQueryResult => DICTIONARY_QUERY_RESULT_TAG,
-            PayloadType::BalanceResponse => BALANCE_RESPONSE_TAG,
-        }
-        .write_bytes(writer)
-    }
-}
-
-impl FromBytes for PayloadType {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (tag, remainder) = FromBytes::from_bytes(bytes)?;
-        let record_id = match tag {
-            BLOCK_HEADER_V1_TAG => PayloadType::BlockHeaderV1,
-            BLOCK_HEADER_TAG => PayloadType::BlockHeader,
-            BLOCK_BODY_V1_TAG => PayloadType::BlockBodyV1,
-            BLOCK_BODY_TAG => PayloadType::BlockBody,
-            APPROVALS_HASHES_V1_TAG => PayloadType::ApprovalsHashesV1,
-            APPROVALS_HASHES_TAG => PayloadType::ApprovalsHashes,
-            BLOCK_SIGNATURES_V1_TAG => PayloadType::BlockSignaturesV1,
-            BLOCK_SIGNATURES_TAG => PayloadType::BlockSignatures,
-            DEPLOY_TAG => PayloadType::Deploy,
-            TRANSACTION_TAG => PayloadType::Transaction,
-            EXECUTION_RESULT_V1_TAG => PayloadType::ExecutionResultV1,
-            EXECUTION_RESULT_TAG => PayloadType::ExecutionResult,
-            TRANSFERS_TAG => PayloadType::Transfers,
-            FINALIZED_DEPLOY_APPROVALS_TAG => PayloadType::FinalizedDeployApprovals,
-            FINALIZED_APPROVALS_TAG => PayloadType::FinalizedApprovals,
-            PEERS_TAG => PayloadType::Peers,
-            SIGNED_BLOCK_TAG => PayloadType::SignedBlock,
-            TRANSACTION_WITH_EXECUTION_INFO_TAG => PayloadType::TransactionWithExecutionInfo,
-            LAST_PROGRESS_TAG => PayloadType::LastProgress,
-            REACTOR_STATE_TAG => PayloadType::ReactorState,
-            NETWORK_NAME_TAG => PayloadType::NetworkName,
-            CONSENSUS_VALIDATOR_CHANGES_TAG => PayloadType::ConsensusValidatorChanges,
-            BLOCK_SYNCHRONIZER_STATUS_TAG => PayloadType::BlockSynchronizerStatus,
-            AVAILABLE_BLOCK_RANGE_TAG => PayloadType::AvailableBlockRange,
-            NEXT_UPGRADE_TAG => PayloadType::NextUpgrade,
-            CONSENSUS_STATUS_TAG => PayloadType::ConsensusStatus,
-            CHAINSPEC_RAW_BYTES_TAG => PayloadType::ChainspecRawBytes,
-            UPTIME_TAG => PayloadType::Uptime,
-            HIGHEST_BLOCK_SEQUENCE_CHECK_RESULT_TAG => PayloadType::HighestBlockSequenceCheckResult,
-            SPECULATIVE_EXECUTION_RESULT_TAG => PayloadType::SpeculativeExecutionResult,
-            GLOBAL_STATE_QUERY_RESULT_TAG => PayloadType::GlobalStateQueryResult,
-            STORED_VALUES_TAG => PayloadType::StoredValues,
-            GET_TRIE_FULL_RESULT_TAG => PayloadType::GetTrieFullResult,
-            NODE_STATUS_TAG => PayloadType::NodeStatus,
-            DICTIONARY_QUERY_RESULT_TAG => PayloadType::DictionaryQueryResult,
-            WASM_V1_RESULT_TAG => PayloadType::WasmV1Result,
-            BALANCE_RESPONSE_TAG => PayloadType::BalanceResponse,
-            _ => return Err(bytesrepr::Error::Formatting),
-        };
-        Ok((record_id, remainder))
-    }
-}
-
 /// Represents an entity that can be sent as a payload.
 pub trait PayloadEntity {
     /// Returns the payload type of the entity.
@@ -534,6 +393,6 @@ mod tests {
         let rng = &mut TestRng::new();
 
         let val = PayloadType::random(rng);
-        bytesrepr::test_serialization_roundtrip(&val);
+        assert_eq!(PayloadType::try_from(val as u8), Ok(val));
     }
 }
