@@ -3,7 +3,7 @@ use crate::{
     bytesrepr,
     bytesrepr::{FromBytes, ToBytes},
     system::auction::error::Error,
-    Key, KeyTag, PublicKey,
+    EraId, Key, KeyTag, PublicKey,
 };
 use alloc::vec::Vec;
 use core::fmt::{Debug, Display, Formatter};
@@ -22,6 +22,8 @@ const UNIFIED_TAG: u8 = 0;
 const VALIDATOR_TAG: u8 = 1;
 const DELEGATOR_TAG: u8 = 2;
 
+const CREDIT_TAG: u8 = 4;
+
 /// Serialization tag for BidAddr variants.
 #[derive(
     Debug, Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy, Serialize, Deserialize,
@@ -37,6 +39,9 @@ pub enum BidAddrTag {
     Validator = VALIDATOR_TAG,
     /// BidAddr for delegator bid.
     Delegator = DELEGATOR_TAG,
+
+    /// BidAddr for auction credit.
+    Credit = CREDIT_TAG,
 }
 
 impl Display for BidAddrTag {
@@ -45,6 +50,8 @@ impl Display for BidAddrTag {
             BidAddrTag::Unified => UNIFIED_TAG,
             BidAddrTag::Validator => VALIDATOR_TAG,
             BidAddrTag::Delegator => DELEGATOR_TAG,
+
+            BidAddrTag::Credit => CREDIT_TAG,
         };
         write!(f, "{}", base16::encode_lower(&[tag]))
     }
@@ -67,6 +74,10 @@ impl BidAddrTag {
             return Some(BidAddrTag::Delegator);
         }
 
+        if value == CREDIT_TAG {
+            return Some(BidAddrTag::Credit);
+        }
+
         None
     }
 }
@@ -86,6 +97,14 @@ pub enum BidAddr {
         validator: AccountHash,
         /// The delegator addr.
         delegator: AccountHash,
+    },
+
+    /// Validator credit BidAddr.
+    Credit {
+        /// The validator addr.
+        validator: AccountHash,
+        /// The era id.
+        era_id: EraId,
     },
 }
 
@@ -134,6 +153,14 @@ impl BidAddr {
         }
     }
 
+    /// Create a new instance of a [`BidAddr`].
+    pub fn new_credit(validator: &PublicKey, era_id: EraId) -> Self {
+        BidAddr::Credit {
+            validator: AccountHash::from(validator),
+            era_id,
+        }
+    }
+
     /// Returns the common prefix of all delegators to the cited validator.
     pub fn delegators_prefix(&self) -> Result<Vec<u8>, Error> {
         let validator = self.validator_account_hash();
@@ -148,15 +175,23 @@ impl BidAddr {
     pub fn validator_account_hash(&self) -> AccountHash {
         match self {
             BidAddr::Unified(account_hash) | BidAddr::Validator(account_hash) => *account_hash,
-            BidAddr::Delegator { validator, .. } => *validator,
+            BidAddr::Delegator { validator, .. } | BidAddr::Credit { validator, .. } => *validator,
         }
     }
 
     /// Delegator account hash or none.
     pub fn maybe_delegator_account_hash(&self) -> Option<AccountHash> {
         match self {
-            BidAddr::Unified(_) | BidAddr::Validator(_) => None,
+            BidAddr::Unified(_) | BidAddr::Validator(_) | BidAddr::Credit { .. } => None,
             BidAddr::Delegator { delegator, .. } => Some(*delegator),
+        }
+    }
+
+    /// Era id or none.
+    pub fn maybe_era_id(&self) -> Option<EraId> {
+        match self {
+            BidAddr::Unified(_) | BidAddr::Validator(_) | BidAddr::Delegator { .. } => None,
+            BidAddr::Credit { era_id, .. } => Some(*era_id),
         }
     }
 
@@ -164,7 +199,7 @@ impl BidAddr {
     /// Else, it is the key for a validator bid record.
     pub fn is_delegator_bid_addr(&self) -> bool {
         match self {
-            BidAddr::Unified(_) | BidAddr::Validator(_) => false,
+            BidAddr::Unified(_) | BidAddr::Validator(_) | BidAddr::Credit { .. } => false,
             BidAddr::Delegator { .. } => true,
         }
     }
@@ -179,6 +214,9 @@ impl BidAddr {
                 validator,
                 delegator,
             } => ToBytes::serialized_length(validator) + ToBytes::serialized_length(delegator) + 1,
+            BidAddr::Credit { validator, era_id } => {
+                ToBytes::serialized_length(validator) + ToBytes::serialized_length(era_id) + 1
+            }
         }
     }
 
@@ -188,6 +226,8 @@ impl BidAddr {
             BidAddr::Unified(_) => BidAddrTag::Unified,
             BidAddr::Validator(_) => BidAddrTag::Validator,
             BidAddr::Delegator { .. } => BidAddrTag::Delegator,
+
+            BidAddr::Credit { .. } => BidAddrTag::Credit,
         }
     }
 }
@@ -199,6 +239,9 @@ impl ToBytes for BidAddr {
         buffer.append(&mut self.validator_account_hash().to_bytes()?);
         if let Some(delegator) = self.maybe_delegator_account_hash() {
             buffer.append(&mut delegator.to_bytes()?);
+        }
+        if let Some(era_id) = self.maybe_era_id() {
+            buffer.append(&mut era_id.to_bytes()?);
         }
         Ok(buffer)
     }
@@ -226,6 +269,12 @@ impl FromBytes for BidAddr {
                     },
                     remainder,
                 ))
+            }
+
+            tag if tag == BidAddrTag::Credit as u8 => {
+                let (validator, remainder) = AccountHash::from_bytes(remainder)?;
+                let (era_id, remainder) = EraId::from_bytes(remainder)?;
+                Ok((BidAddr::Credit { validator, era_id }, remainder))
             }
             _ => Err(bytesrepr::Error::Formatting),
         }
@@ -267,6 +316,8 @@ impl Display for BidAddr {
                 validator,
                 delegator,
             } => write!(f, "{}{}{}", tag, validator, delegator),
+
+            BidAddr::Credit { validator, era_id } => write!(f, "{}{}{}", tag, validator, era_id),
         }
     }
 }
@@ -282,6 +333,9 @@ impl Debug for BidAddr {
             } => {
                 write!(f, "BidAddr::Delegator({:?}{:?})", validator, delegator)
             }
+            BidAddr::Credit { validator, era_id } => {
+                write!(f, "BidAddr::Delegator({:?}{:?})", validator, era_id)
+            }
         }
     }
 }
@@ -295,7 +349,7 @@ impl Distribution<BidAddr> for Standard {
 
 #[cfg(test)]
 mod tests {
-    use crate::{bytesrepr, system::auction::BidAddr};
+    use crate::{bytesrepr, system::auction::BidAddr, EraId, PublicKey, SecretKey};
 
     #[test]
     fn serialization_roundtrip() {
@@ -304,6 +358,13 @@ mod tests {
         let bid_addr = BidAddr::new_validator_addr([1; 32]);
         bytesrepr::test_serialization_roundtrip(&bid_addr);
         let bid_addr = BidAddr::new_delegator_addr(([1; 32], [2; 32]));
+        bytesrepr::test_serialization_roundtrip(&bid_addr);
+        let bid_addr = BidAddr::new_credit(
+            &PublicKey::from(
+                &SecretKey::ed25519_from_bytes([0u8; SecretKey::ED25519_LENGTH]).unwrap(),
+            ),
+            EraId::new(0),
+        );
         bytesrepr::test_serialization_roundtrip(&bid_addr);
     }
 }

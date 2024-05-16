@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, convert::TryInto};
+use std::{collections::BTreeMap, convert::TryInto, ops::Mul};
 
 use num_rational::Ratio;
 
@@ -8,8 +8,9 @@ use casper_types::{
     system::auction::{
         BidAddr, BidKind, Delegator, Error, SeigniorageAllocation, SeigniorageRecipient,
         SeigniorageRecipientsSnapshot, UnbondingPurse, UnbondingPurses, ValidatorBid,
-        ValidatorBids, AUCTION_DELAY_KEY, ERA_END_TIMESTAMP_MILLIS_KEY, ERA_ID_KEY,
-        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
+        ValidatorBids, ValidatorCredit, ValidatorCredits, AUCTION_DELAY_KEY,
+        ERA_END_TIMESTAMP_MILLIS_KEY, ERA_ID_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+        UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
     },
     ApiError, CLTyped, EraId, Key, KeyTag, PublicKey, URef, U512,
 };
@@ -50,20 +51,166 @@ where
     provider.write(uref, value)
 }
 
-pub fn get_validator_bids<P>(provider: &mut P) -> Result<ValidatorBids, Error>
+#[derive(Debug, Default)]
+pub struct ValidatorBidsDetail {
+    validator_bids: ValidatorBids,
+    validator_credits: ValidatorCredits,
+}
+
+impl ValidatorBidsDetail {
+    pub fn new() -> Self {
+        ValidatorBidsDetail {
+            validator_bids: BTreeMap::new(),
+            validator_credits: BTreeMap::new(),
+        }
+    }
+
+    /// Inserts a validator bid.
+    pub fn insert_bid(
+        &mut self,
+        validator: PublicKey,
+        validator_bid: Box<ValidatorBid>,
+    ) -> Option<Box<ValidatorBid>> {
+        self.validator_bids.insert(validator, validator_bid)
+    }
+
+    /// Inserts a validator credit.
+    pub fn insert_credit(
+        &mut self,
+        validator: PublicKey,
+        era_id: EraId,
+        validator_credit: Box<ValidatorCredit>,
+    ) {
+        let credits = &mut self.validator_credits;
+
+        credits
+            .entry(validator.clone())
+            .and_modify(|inner| {
+                inner
+                    .entry(era_id)
+                    .and_modify(|_| {
+                        warn!(
+                            ?validator,
+                            ?era_id,
+                            "multiple validator credit entries in same era"
+                        )
+                    })
+                    .or_insert(validator_credit.clone());
+            })
+            .or_insert_with(|| {
+                let mut inner = BTreeMap::new();
+                inner.insert(era_id, validator_credit);
+                inner
+            });
+    }
+
+    /// Get validator weights.
+    #[allow(clippy::too_many_arguments)]
+    pub fn validator_weights<P>(
+        &mut self,
+        provider: &mut P,
+        era_ending: EraId,
+        era_end_timestamp_millis: u64,
+        vesting_schedule_period_millis: u64,
+        locked: bool,
+        include_credits: bool,
+        cap: Ratio<U512>,
+    ) -> Result<ValidatorWeights, Error>
+    where
+        P: RuntimeProvider + ?Sized + StorageProvider,
+    {
+        let mut ret = BTreeMap::new();
+
+        for (validator_public_key, bid) in self.validator_bids.iter().filter(|(_, v)| {
+            locked
+                == v.is_locked_with_vesting_schedule(
+                    era_end_timestamp_millis,
+                    vesting_schedule_period_millis,
+                )
+                && !v.inactive()
+        }) {
+            let staked_amount = total_staked_amount(provider, bid)?;
+            let credit_amount = self.credit_amount(
+                validator_public_key,
+                era_ending,
+                staked_amount,
+                include_credits,
+                cap,
+            );
+            let total = staked_amount.saturating_add(credit_amount);
+            ret.insert(validator_public_key.clone(), total);
+        }
+
+        Ok(ret)
+    }
+
+    fn credit_amount(
+        &self,
+        validator_public_key: &PublicKey,
+        era_ending: EraId,
+        staked_amount: U512,
+        include_credit: bool,
+        cap: Ratio<U512>,
+    ) -> U512 {
+        if !include_credit {
+            return U512::zero();
+        }
+
+        if let Some(inner) = self.validator_credits.get(validator_public_key) {
+            if let Some(credit) = inner.get(&era_ending) {
+                let capped = Ratio::new_raw(staked_amount, U512::one())
+                    .mul(cap)
+                    .to_integer();
+                let credit_amount = credit.amount();
+                return credit_amount.min(capped);
+            }
+        }
+
+        U512::zero()
+    }
+
+    pub(crate) fn validator_bids_mut(&mut self) -> &mut ValidatorBids {
+        &mut self.validator_bids
+    }
+
+    /// Consume self into in underlying collections.
+    pub fn destructure(self) -> (ValidatorBids, ValidatorCredits) {
+        (self.validator_bids, self.validator_credits)
+    }
+}
+
+/// Prunes away all validator credits for the imputed era, which should be the era ending.
+///
+/// This is intended to be called at the end of an era, after calculating validator weights.
+pub fn prune_validator_credits<P>(
+    provider: &mut P,
+    era_ending: EraId,
+    validator_credits: ValidatorCredits,
+) where
+    P: StorageProvider + RuntimeProvider + ?Sized,
+{
+    for (validator_public_key, inner) in validator_credits {
+        if inner.contains_key(&era_ending) {
+            provider.prune_bid(BidAddr::new_credit(&validator_public_key, era_ending))
+        }
+    }
+}
+
+pub fn get_validator_bids<P>(provider: &mut P, era_id: EraId) -> Result<ValidatorBidsDetail, Error>
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
 {
-    // todo!("this could be optimized somewhat by adding a method to get keys with
-    //  prefix of KeyTag::Bid + BidKindTag::Validator");
     let bids_keys = provider.get_keys(&KeyTag::BidAddr)?;
 
-    let mut ret = BTreeMap::new();
+    let mut ret = ValidatorBidsDetail::new();
 
     for key in bids_keys {
         match provider.read_bid(&key)? {
             Some(BidKind::Validator(validator_bid)) => {
-                ret.insert(validator_bid.validator_public_key().clone(), validator_bid);
+                ret.insert_bid(validator_bid.validator_public_key().clone(), validator_bid);
+            }
+            Some(BidKind::Credit(credit)) => {
+                ret.insert_credit(credit.validator_public_key().clone(), era_id, credit);
             }
             Some(_) => {
                 // noop

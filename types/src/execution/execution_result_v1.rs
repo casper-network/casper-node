@@ -121,6 +121,17 @@ pub enum ExecutionResultV1 {
     },
 }
 
+impl ExecutionResultV1 {
+    /// Returns cost amount.
+    pub fn cost(&self) -> U512 {
+        match self {
+            ExecutionResultV1::Failure { cost, .. } | ExecutionResultV1::Success { cost, .. } => {
+                *cost
+            }
+        }
+    }
+}
+
 #[cfg(any(feature = "testing", test))]
 impl Distribution<ExecutionResultV1> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ExecutionResultV1 {
