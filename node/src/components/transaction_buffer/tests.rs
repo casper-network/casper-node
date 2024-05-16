@@ -515,16 +515,21 @@ fn block_fully_saturated() {
         .insert(ERA_ONE, DEFAULT_MINIMUM_GAS_PRICE);
 
     // Try to register 10 more transactions per each category as allowed by the config.
-    let (transfers, stakings, install_upgrades, standards, entities) =
-        generate_and_register_transactions(
-            &mut transaction_buffer,
-            max_transfers + 10,
-            max_staking + 10,
-            max_install_upgrade + 10,
-            max_standard + 10,
-            max_entity + 10,
-            &mut rng,
-        );
+    let RegistredTransactions {
+        transfers,
+        stakings,
+        install_upgrades,
+        standards,
+        entities,
+    } = generate_and_register_transactions(
+        &mut transaction_buffer,
+        max_transfers + 10,
+        max_staking + 10,
+        max_install_upgrade + 10,
+        max_standard + 10,
+        max_entity + 10,
+        &mut rng,
+    );
     let (
         transfers_hashes,
         stakings_hashes,
@@ -641,16 +646,21 @@ fn block_not_fully_saturated() {
     let actual_install_upgrade_count = rng.gen_range(0..MIN_COUNT - 1);
     let actual_standard_count = rng.gen_range(0..MIN_COUNT - 1);
     let actual_entity_count = rng.gen_range(0..MIN_COUNT - 1);
-    let (transfers, stakings, install_upgrades, standards, entities) =
-        generate_and_register_transactions(
-            &mut transaction_buffer,
-            actual_transfer_count,
-            actual_stakings_count,
-            actual_install_upgrade_count,
-            actual_standard_count,
-            actual_entity_count,
-            &mut rng,
-        );
+    let RegistredTransactions {
+        transfers,
+        stakings,
+        install_upgrades,
+        standards,
+        entities,
+    } = generate_and_register_transactions(
+        &mut transaction_buffer,
+        actual_transfer_count,
+        actual_stakings_count,
+        actual_install_upgrade_count,
+        actual_standard_count,
+        actual_entity_count,
+        &mut rng,
+    );
     let (
         transfers_hashes,
         stakings_hashes,
@@ -766,7 +776,7 @@ fn excess_transactions_do_not_sneak_into_transfer_bucket() {
         .insert(ERA_ONE, DEFAULT_MINIMUM_GAS_PRICE);
 
     // Saturate all buckets but transfers.
-    let (transfers, _, _, _, _) = generate_and_register_transactions(
+    let RegistredTransactions { transfers, .. } = generate_and_register_transactions(
         &mut transaction_buffer,
         max_transfers - 1,
         MAX * 3,
@@ -835,7 +845,7 @@ fn excess_transactions_do_not_sneak_into_staking_bucket() {
         .insert(ERA_ONE, DEFAULT_MINIMUM_GAS_PRICE);
 
     // Saturate all buckets but stakings.
-    let (_, stakings, _, _, _) = generate_and_register_transactions(
+    let RegistredTransactions { stakings, .. } = generate_and_register_transactions(
         &mut transaction_buffer,
         MAX * 3,
         max_staking - 1,
@@ -904,7 +914,9 @@ fn excess_transactions_do_not_sneak_into_install_upgrades_bucket() {
         .insert(ERA_ONE, DEFAULT_MINIMUM_GAS_PRICE);
 
     // Saturate all buckets but install_upgrades.
-    let (_, _, install_upgrades, _, _) = generate_and_register_transactions(
+    let RegistredTransactions {
+        install_upgrades, ..
+    } = generate_and_register_transactions(
         &mut transaction_buffer,
         MAX * 3,
         MAX * 3,
@@ -973,7 +985,7 @@ fn excess_transactions_do_not_sneak_into_standards_bucket() {
         .insert(ERA_ONE, DEFAULT_MINIMUM_GAS_PRICE);
 
     // Saturate all buckets but standards.
-    let (_, _, _, standards, _) = generate_and_register_transactions(
+    let RegistredTransactions { standards, .. } = generate_and_register_transactions(
         &mut transaction_buffer,
         MAX * 3,
         MAX * 3,
@@ -1020,6 +1032,14 @@ fn assert_bucket(
     assert_eq!(proposed, expected);
 }
 
+struct RegistredTransactions {
+    transfers: Vec<Transaction>,
+    stakings: Vec<Transaction>,
+    install_upgrades: Vec<Transaction>,
+    standards: Vec<Transaction>,
+    entities: Vec<Transaction>,
+}
+
 fn generate_and_register_transactions(
     transaction_buffer: &mut TransactionBuffer,
     transfer_count: u32,
@@ -1028,20 +1048,14 @@ fn generate_and_register_transactions(
     standard_count: u32,
     entity_count: u32,
     rng: &mut TestRng,
-) -> (
-    Vec<Transaction>,
-    Vec<Transaction>,
-    Vec<Transaction>,
-    Vec<Transaction>,
-    Vec<Transaction>,
-) {
+) -> RegistredTransactions {
     let transfers: Vec<_> = (0..transfer_count)
         .map(|_| create_valid_transaction(rng, &TransactionCategory::Mint, None, None))
         .collect();
     let stakings: Vec<_> = (0..stakings_count)
         .map(|_| create_valid_transaction(rng, &TransactionCategory::Auction, None, None))
         .collect();
-    let installs_upgrades: Vec<_> = (0..install_upgrade_count)
+    let install_upgrades: Vec<_> = (0..install_upgrade_count)
         .map(|_| create_valid_transaction(rng, &TransactionCategory::InstallUpgrade, None, None))
         .collect();
     let standards: Vec<_> = (0..standard_count)
@@ -1054,14 +1068,20 @@ fn generate_and_register_transactions(
         .iter()
         .chain(
             stakings.iter().chain(
-                installs_upgrades
+                install_upgrades
                     .iter()
                     .chain(standards.iter().chain(entities.iter())),
             ),
         )
         .for_each(|transaction| transaction_buffer.register_transaction(transaction.clone()));
 
-    (transfers, stakings, installs_upgrades, standards, entities)
+    RegistredTransactions {
+        transfers,
+        stakings,
+        install_upgrades,
+        standards,
+        entities,
+    }
 }
 
 #[test]

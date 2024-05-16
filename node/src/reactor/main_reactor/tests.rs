@@ -185,11 +185,6 @@ impl ConfigsOverride {
         self
     }
 
-    fn with_max_transfer_count(mut self, max_transfer_count: u32) -> Self {
-        self.max_transfer_count = max_transfer_count;
-        self
-    }
-
     fn with_administrators(mut self, administrators: BTreeSet<PublicKey>) -> Self {
         self.administrators = Some(administrators);
         self
@@ -2729,7 +2724,6 @@ async fn run_reward_network_highway_no_finality() {
 
 #[allow(clippy::enum_variant_names)]
 enum GasPriceScenario {
-    SlotUtilization,
     SizeUtilization(u32),
     GasConsumptionUtilization(u64),
 }
@@ -2759,7 +2753,6 @@ async fn run_gas_price_scenario(gas_price_scenario: GasPriceScenario) {
     let max_gas_price: u8 = 3;
 
     let spec_override = match gas_price_scenario {
-        GasPriceScenario::SlotUtilization => ConfigsOverride::default().with_max_transfer_count(1),
         GasPriceScenario::SizeUtilization(block_size) => {
             ConfigsOverride::default().with_block_size(block_size)
         }
@@ -2864,11 +2857,6 @@ async fn run_gas_price_scenario(gas_price_scenario: GasPriceScenario) {
     let expected_gas_price = fixture.chainspec.vacancy_config.min_gas_price;
     let actual_gas_price = fixture.get_current_era_price();
     assert_eq!(actual_gas_price, expected_gas_price);
-}
-
-async fn should_raise_gas_price_to_ceiling_and_reduce_to_floor_based_on_slot_utilization() {
-    let scenario = GasPriceScenario::SlotUtilization;
-    run_gas_price_scenario(scenario).await
 }
 
 #[tokio::test]
