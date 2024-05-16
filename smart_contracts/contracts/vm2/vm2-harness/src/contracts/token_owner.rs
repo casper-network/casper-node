@@ -1,3 +1,4 @@
+use alloc::vec::Vec;
 use borsh::{BorshDeserialize, BorshSerialize};
 use casper_macros::{casper, CasperABI, CasperSchema, Contract};
 use casper_sdk::{
@@ -27,6 +28,8 @@ impl From<CallError> for TokenOwnerError {
     }
 }
 
+pub type Data = Vec<u8>; // TODO: CasperABI does not support generic parameters and it fails to compile, we need to support this in the macro
+
 #[derive(Debug, Default, BorshSerialize, BorshDeserialize, PartialEq, CasperABI, Clone)]
 pub enum FallbackHandler {
     /// Accept tokens and do nothing.
@@ -36,6 +39,8 @@ pub enum FallbackHandler {
     RejectWithRevert,
     /// Reject tokens with trap.
     RejectWithTrap,
+    /// Reject tokens with a revert with data.
+    RejectWithData(Data),
 }
 
 #[derive(Contract, CasperSchema, BorshSerialize, BorshDeserialize, CasperABI, Debug, Default)]
@@ -130,7 +135,7 @@ impl TokenOwnerContract {
 
 impl Fallback for TokenOwnerContract {
     fn fallback(&mut self) {
-        match self.fallback_handler {
+        match std::mem::replace(&mut self.fallback_handler, FallbackHandler::AcceptTokens) {
             FallbackHandler::AcceptTokens => {
                 let value = host::get_value();
                 log!(
@@ -146,6 +151,10 @@ impl Fallback for TokenOwnerContract {
             FallbackHandler::RejectWithTrap => {
                 // This will cause a trap.
                 unreachable!("its a trap");
+            }
+            FallbackHandler::RejectWithData(data) => {
+                // This will cause a revert with data.
+                revert!(data);
             }
         }
     }

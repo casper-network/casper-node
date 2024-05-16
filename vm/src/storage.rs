@@ -1,7 +1,10 @@
 pub(crate) mod runtime;
 
 use bytes::Bytes;
-use casper_storage::global_state::{self, state::StateReader};
+use casper_storage::{
+    global_state::{self, state::StateReader},
+    tracking_copy::TrackingCopyError,
+};
 use casper_types::{Key, StoredValue};
 use vm_common::flags::EntryPointFlags;
 
@@ -46,3 +49,5 @@ pub struct CreateResult {
     pub package_address: Address,
     pub contract_address: Address,
 }
+
+const STORAGE_READ_ERROR_MSG: &str = "failed to read from storage";

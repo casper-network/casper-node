@@ -600,6 +600,7 @@ where
                             address_len,
                             amount,
                         )
+                        .map(u32_from_host_result)
                     },
                 ),
             );

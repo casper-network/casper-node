@@ -8,54 +8,84 @@ use casper_storage::{
         mint::Mint,
         runtime_native::{Config, Id, RuntimeNative},
     },
+    tracking_copy::TrackingCopyError,
     tracking_copy::{TrackingCopyExt, TrackingCopyParts},
     AddressGenerator,
 };
 use casper_types::{
     account::AccountHash,
-    addressable_entity::{NamedKeyAddr, NamedKeys},
+    addressable_entity::{self, NamedKeyAddr, NamedKeys},
     execution::Effects,
-    AddressableEntity, AddressableEntityHash, ContextAccessRights, EntityAddr, HoldsEpoch, Key,
-    Phase, ProtocolVersion, PublicKey, SystemEntityRegistry, TransactionHash, URef, U512,
+    AddressableEntity, AddressableEntityHash, CLValueError, ContextAccessRights, EntityAddr,
+    HoldsEpoch, Key, KeyTag, Phase, ProtocolVersion, PublicKey, StoredValue, StoredValueTag,
+    SystemEntityRegistry, TransactionHash, URef, U512,
 };
 use parking_lot::RwLock;
 use rand::Rng;
+use thiserror::Error;
+use tracing::{debug, error};
 
 use crate::{
     executor::{ExecuteError, ExecuteRequest, ExecuteResult, ExecutionKind, Executor},
     wasm_backend::{Caller, WasmPreparationError},
+    HostError, HostResult, TrapCode,
 };
 
 use super::{Address, GlobalStateReader, TrackingCopy};
+
+#[derive(Debug, Error)]
+enum DispatchError {
+    #[error("Tracking copy error: {0}")]
+    Storage(#[from] TrackingCopyError),
+    #[error("CLValue error: {0}")]
+    CLValue(CLValueError),
+    #[error("Registry not found")]
+    RegistryNotFound,
+    #[error("Missing addressable entity")]
+    MissingAddressableEntity,
+    #[error("Missing system contract: {0}")]
+    MissingSystemContract(&'static str),
+    #[error("Error getting named keys")]
+    GetNamedKeys(TrackingCopyError),
+    #[error("Invalid key variant")]
+    InvalidStoredValueVariant {
+        expected: StoredValueTag,
+        actual: StoredValue,
+    },
+}
 
 fn dispatch_system_contract<R: GlobalStateReader, Ret>(
     tracking_copy: &mut TrackingCopy<R>,
     transaction_hash: TransactionHash,
     address_generator: Arc<RwLock<AddressGenerator>>,
-    system_contract: &str,
+    system_contract: &'static str,
     func: impl FnOnce(RuntimeNative<R>) -> Ret,
-) -> Ret {
+) -> Result<Ret, DispatchError> {
     let system_entity_registry = {
         let stored_value = tracking_copy
-            .read(&Key::SystemEntityRegistry)
-            .expect("should read system entity registry")
-            .expect("should get system entity registry");
+            .read(&Key::SystemEntityRegistry)?
+            .ok_or(DispatchError::RegistryNotFound)?;
         stored_value
             .into_cl_value()
             .expect("should convert stored value into CLValue")
             .into_t::<SystemEntityRegistry>()
-            .expect("should get system entity registry")
+            .map_err(DispatchError::CLValue)?
     };
     let system_entity_addr = system_entity_registry
         .get(system_contract)
-        .expect("should get mint");
+        .ok_or(DispatchError::MissingSystemContract(system_contract))?;
     let entity_addr = EntityAddr::new_system(system_entity_addr.value());
-    let addressable_entity = tracking_copy
-        .read(&Key::AddressableEntity(entity_addr))
-        .expect("should read addressable entity")
-        .expect("should get addressable entity")
+    let addressable_entity_stored_value = tracking_copy
+        .read(&Key::AddressableEntity(entity_addr))?
+        .ok_or(DispatchError::MissingAddressableEntity)?;
+
+    let addressable_entity = addressable_entity_stored_value
+        .clone()
         .into_addressable_entity()
-        .expect("should convert stored value into addressable entity");
+        .ok_or_else(|| DispatchError::InvalidStoredValueVariant {
+            expected: StoredValueTag::AddressableEntity,
+            actual: addressable_entity_stored_value,
+        })?;
 
     let config = Config::default();
     let protocol_version = ProtocolVersion::V1_0_0;
@@ -65,7 +95,7 @@ fn dispatch_system_contract<R: GlobalStateReader, Ret>(
 
     let named_keys = tracking_copy
         .get_named_keys(entity_addr)
-        .expect("should get named keys");
+        .map_err(DispatchError::GetNamedKeys)?;
 
     let forked_tracking_copy = Rc::new(RefCell::new(tracking_copy.fork2()));
 
@@ -94,14 +124,16 @@ fn dispatch_system_contract<R: GlobalStateReader, Ret>(
     // SAFETY: `RuntimeNative` is dropped in the block above, we can extract the tracking copy and the effects.
     let modified_tracking_copy = Rc::try_unwrap(forked_tracking_copy)
         .ok()
-        .expect("should have no other references");
+        .expect("No other references");
+
     let modified_tracking_copy = modified_tracking_copy.into_inner();
 
     tracking_copy.merge_raw_parts(modified_tracking_copy.into_raw_parts());
 
-    ret
+    Ok(ret)
 }
 
+#[derive(Debug, Clone, Copy)]
 pub(crate) struct MintArgs {
     pub(crate) initial_balance: U512,
 }
@@ -111,14 +143,30 @@ pub(crate) fn mint_mint<R: GlobalStateReader>(
     transaction_hash: TransactionHash,
     address_generator: Arc<RwLock<AddressGenerator>>,
     args: MintArgs,
-) -> Result<URef, casper_types::system::mint::Error> {
-    dispatch_system_contract(
+) -> Result<URef, HostError> {
+    let mint_result = match dispatch_system_contract(
         tracking_copy,
         transaction_hash,
         address_generator,
         "mint",
         |mut runtime| runtime.mint(args.initial_balance),
-    )
+    ) {
+        Ok(mint_result) => mint_result,
+        Err(error) => {
+            error!(%error, ?args, "mint failed");
+            panic!("Mint failed; aborting");
+        }
+    };
+
+    match mint_result {
+        Ok(uref) => Ok(uref),
+        Err(casper_types::system::mint::Error::InsufficientFunds) => Err(HostError::CalleeReverted),
+        Err(casper_types::system::mint::Error::GasLimit) => Err(HostError::CalleeGasDepleted),
+        Err(mint_error) => {
+            error!(%mint_error, ?args, "mint transfer failed");
+            Err(HostError::CalleeTrapped(TrapCode::UnreachableCodeReached))
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -135,22 +183,41 @@ pub(crate) fn mint_transfer<R: GlobalStateReader>(
     id: TransactionHash,
     address_generator: Arc<RwLock<AddressGenerator>>,
     args: MintTransferArgs,
-) -> Result<(), casper_types::system::mint::Error> {
-    dispatch_system_contract(
-        tracking_copy,
-        id,
-        address_generator,
-        "mint",
-        |mut runtime| {
-            runtime.transfer(
-                args.maybe_to,
-                args.source,
-                args.target,
-                args.amount,
-                args.id,
-            )
-        },
-    )
+) -> HostResult {
+    let transfer_result: Result<(), casper_types::system::mint::Error> =
+        match dispatch_system_contract(
+            tracking_copy,
+            id,
+            address_generator,
+            "mint",
+            |mut runtime| {
+                runtime.transfer(
+                    args.maybe_to,
+                    args.source,
+                    args.target,
+                    args.amount,
+                    args.id,
+                )
+            },
+        ) {
+            Ok(result) => result,
+            Err(error) => {
+                error!(%error, "mint transfer failed");
+                return Err(HostError::CalleeTrapped(TrapCode::UnreachableCodeReached));
+            }
+        };
+
+    debug!(?args, ?transfer_result, "transfer");
+
+    match transfer_result {
+        Ok(()) => Ok(()),
+        Err(casper_types::system::mint::Error::InsufficientFunds) => Err(HostError::CalleeReverted),
+        Err(casper_types::system::mint::Error::GasLimit) => Err(HostError::CalleeGasDepleted),
+        Err(mint_error) => {
+            error!(%mint_error, ?args, "mint transfer failed");
+            Err(HostError::CalleeTrapped(TrapCode::UnreachableCodeReached))
+        }
+    }
 }
 
 #[cfg(test)]

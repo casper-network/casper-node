@@ -469,6 +469,40 @@ pub fn call() {
                 assert_eq!(harness_balance_before, harness_balance_after);
             }
         }
+
+        {
+            next_test(
+                &mut counter,
+                "Token owner will revert with data inside fallback while plain transfer",
+            );
+            {
+                let harness_balance_before = harness.balance();
+                token_owner
+                    .call(|contract| {
+                        contract.set_fallback_handler(FallbackHandler::RejectWithData(vec![
+                            1, 2, 3, 4, 5,
+                        ]))
+                    })
+                    .expect("Should call");
+                let harness_balance_after = harness.balance();
+                assert_eq!(harness_balance_before, harness_balance_after);
+            }
+
+            {
+                let harness_balance_before = harness.balance();
+                let withdraw_result = token_owner
+                    .call(|contract| {
+                        contract.do_withdraw(
+                            token_owner.contract_address(),
+                            harness.contract_address(),
+                            50,
+                        )
+                    })
+                    .expect("Should call");
+                let harness_balance_after = harness.balance();
+                assert_eq!(harness_balance_before, harness_balance_after);
+            }
+        }
     }
 
     log!("👋 Goodbye");

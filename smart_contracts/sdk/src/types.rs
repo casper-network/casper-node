@@ -1,3 +1,5 @@
+use std::fmt::{self, Display, Formatter};
+
 use borsh::{BorshDeserialize, BorshSerialize};
 
 use crate::abi::{CasperABI, Definition, EnumVariant};
@@ -13,6 +15,17 @@ pub enum CallError {
     CalleeTrapped,
     CalleeGasDepleted,
     CodeNotFound,
+}
+
+impl Display for CallError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            CallError::CalleeReverted => write!(f, "callee reverted"),
+            CallError::CalleeTrapped => write!(f, "callee trapped"),
+            CallError::CalleeGasDepleted => write!(f, "callee gas depleted"),
+            CallError::CodeNotFound => write!(f, "code not found"),
+        }
+    }
 }
 
 impl TryFrom<u32> for CallError {

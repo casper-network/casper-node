@@ -19,7 +19,7 @@ use crate::{
         Address, GlobalStateReader, TrackingCopy,
     },
     wasm_backend::{Context, GasUsage, WasmInstance},
-    ConfigBuilder, HostError, RevertReason, VMError, WasmEngine,
+    ConfigBuilder, HostError, VMError, WasmEngine,
 };
 
 const DEFAULT_WASM_ENTRY_POINT: &str = "call";
@@ -254,11 +254,9 @@ impl Executor for ExecutorV2 {
                                 Ok(()) => {
                                     // Transfer succeed, go on
                                 }
-                                Err(casper_types::system::mint::Error::InsufficientFunds) => {
-                                    error!(?args, "Insufficient funds to transfer to contract");
-                                    // let error_bytes = error.to_bytes().expect("should serialize");
+                                Err(error) => {
                                     return Ok(ExecuteResult {
-                                        host_error: Some(HostError::CalleeReverted),
+                                        host_error: Some(error),
                                         output: None,
                                         gas_usage: GasUsage {
                                             gas_limit,

@@ -35,7 +35,6 @@ macro_rules! for_each_host_function {
                 result_ptr: *mut $crate::CreateResult,
             ) -> u32;
             pub fn casper_call(
-                // acct_or_contract,
                 address_ptr: *const u8,
                 address_size: usize,
                 value: u64,

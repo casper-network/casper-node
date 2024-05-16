@@ -178,7 +178,7 @@ pub use phase::{Phase, PHASE_SERIALIZED_LENGTH};
 pub use protocol_version::{ProtocolVersion, VersionCheckResult};
 pub use semver::{ParseSemVerError, SemVer, SEM_VER_SERIALIZED_LENGTH};
 pub use stored_value::{
-    GlobalStateIdentifier, StoredValue, TypeMismatch as StoredValueTypeMismatch,
+    GlobalStateIdentifier, StoredValue, StoredValueTag, TypeMismatch as StoredValueTypeMismatch,
 };
 pub use tagged::Tagged;
 #[cfg(any(feature = "std", test))]

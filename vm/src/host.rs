@@ -726,65 +726,78 @@ pub(crate) fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
     entity_addr_ptr: u32,
     entity_addr_len: u32,
     amount: u64,
-) -> VMResult<u32> {
+) -> VMResult<HostResult> {
     if entity_addr_len != 32 {
-        assert!(false, "Invalid target address length");
-        return Ok(0); // fail
+        // Invalid entity address; failing to proceed with the transfer
+        return Ok(Err(HostError::NotCallable));
     }
 
     let entity_kind = match EntityKindTag::from_u32(entity_kind) {
         Some(entity_kind) => entity_kind,
         None => {
             // Unknown target entity kind; failing to proceed with the transfer
-            return Ok(0); // fail
+            return Ok(Err(HostError::NotCallable)); // fail
         }
     };
 
     let target_entity_addr = match entity_kind {
         EntityKindTag::Account => {
             let entity_addr = caller.memory_read(entity_addr_ptr, entity_addr_len as usize)?;
+            debug_assert_eq!(entity_addr.len(), 32);
+
+            // SAFETY: entity_addr is 32 bytes long
             let account_hash: AccountHash = AccountHash::new(entity_addr.try_into().unwrap());
 
             // Resolve indirection to get to the actual addressable entity
-            match caller
-                .context_mut()
-                .tracking_copy
-                .read(&Key::Account(account_hash))
-                .expect("should read account")
-            {
-                Some(StoredValue::CLValue(indirect)) => {
+            let account_key = Key::Account(account_hash);
+            match caller.context_mut().tracking_copy.read(&account_key) {
+                Ok(Some(StoredValue::CLValue(indirect))) => {
                     // is it an account?
                     let addressable_entity_key = indirect.into_t::<Key>().expect("should be key");
                     addressable_entity_key
                         .into_entity_addr()
                         .expect("should be entity addr")
                 }
-                Some(other) => panic!("should be cl value but got {other:?}"),
-                None => panic!("Expected account to exist"),
+                Ok(Some(other)) => panic!("should be cl value but got {other:?}"),
+                Ok(None) => return Ok(Err(HostError::NotCallable)),
+                Err(error) => {
+                    error!(
+                        ?error,
+                        ?account_key,
+                        "Error while reading from storage; aborting"
+                    );
+                    panic!("Error while reading from storage")
+                }
             }
         }
         EntityKindTag::Contract => {
             let entity_addr = caller.memory_read(entity_addr_ptr, entity_addr_len as usize)?;
+            debug_assert_eq!(entity_addr.len(), 32);
+
+            // SAFETY: entity_addr is 32 bytes long
             let entity_addr: Address = entity_addr.try_into().unwrap();
             EntityAddr::SmartContract(entity_addr)
         }
     };
 
     let callee_addressable_entity_key = match caller.context().callee {
-        account_key @ Key::Account(_account_hash) => {
-            match caller
-                .context_mut()
-                .tracking_copy
-                .read(&account_key)
-                .expect("should read account")
-            {
-                Some(StoredValue::CLValue(indirect)) => {
+        callee_account_key @ Key::Account(_account_hash) => {
+            match caller.context_mut().tracking_copy.read(&callee_account_key) {
+                Ok(Some(StoredValue::CLValue(indirect))) => {
                     // is it an account?
                     let addressable_entity_key = indirect.into_t::<Key>().expect("should be key");
                     addressable_entity_key
                 }
-                Some(other) => panic!("should be cl value but got {other:?}"),
-                None => panic!("Expected account to exist"),
+                Ok(Some(other)) => panic!("should be cl value but got {other:?}"),
+                Ok(None) => return Ok(Err(HostError::NotCallable)),
+                Err(error) => {
+                    error!(
+                        ?error,
+                        ?callee_account_key,
+                        "Error while reading from storage; aborting"
+                    );
+                    panic!("Error while reading from storage")
+                }
             }
         }
         addressable_entity_key @ Key::AddressableEntity(_entity_addr) => addressable_entity_key,
@@ -802,92 +815,13 @@ pub(crate) fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
         .read(&callee_addressable_entity_key)
         .expect("should read account")
         .expect("should have account");
-    let callee_stored_value = callee_stored_value
+    let callee_addressable_entity = callee_stored_value
         .into_addressable_entity()
         .expect("should be addressable entity");
-
-    // let fallback_selector = None;
-
-    // let fallback_key = Key::EntryPoint(EntryPointAddr::VmCasperV2 {
-    //     entity_addr: target_entity_addr,
-    //     selector: fallback_selector,
-    // });
-
-    // let entry_point_value: Option<EntryPointValue> =
-    //     match caller.context_mut().tracking_copy.read(&fallback_key) {
-    //         Ok(Some(StoredValue::EntryPoint(entry_point_value)))
-    //             if entity_kind == EntityKindTag::Contract =>
-    //         {
-    //             Some(entry_point_value)
-    //         }
-    //         Ok(Some(other)) => {
-    //             panic!(
-    //                 "Unexpected entry point for entity {:?} {:?}",
-    //                 entity_kind, other
-    //             )
-    //         }
-    //         Ok(None) => {
-    //             match entity_kind {
-    //                 EntityKindTag::Contract => {
-    //                     // Fallback entry point not found; failing to proceed with the transfer
-    //                     return Ok(0);
-    //                 }
-    //                 EntityKindTag::Account => {
-    //                     // Can proceed, no fallback entry point is expected for accounts.
-    //                     None
-    //                 }
-    //             }
-    //         }
-    //         Err(error) => panic!(
-    //             "Error while reading from storage; aborting key={fallback_key:?} error={error:?}"
-    //         ),
-    //     };
+    let callee_purse = callee_addressable_entity.main_purse();
 
     match entity_kind {
         EntityKindTag::Account => {
-            let callee_purse = match caller.context().callee {
-                account_key @ Key::Account(_account_hash) => {
-                    match caller
-                        .context_mut()
-                        .tracking_copy
-                        .read(&account_key)
-                        .expect("should read account")
-                    {
-                        Some(StoredValue::CLValue(indirect)) => {
-                            // is it an account?
-                            let key = indirect.into_t::<Key>().expect("should be key");
-                            let stored_value = caller
-                                .context_mut()
-                                .tracking_copy
-                                .read(&key)
-                                .expect("should read account")
-                                .expect("should have account");
-                            let addressable_entity = stored_value
-                                .into_addressable_entity()
-                                .expect("should be addressable entity");
-                            addressable_entity.main_purse()
-                        }
-                        Some(other) => panic!("should be cl value but got {other:?}"),
-                        None => panic!("Expected account to exist"),
-                    }
-                }
-                addressable_entity_key @ Key::AddressableEntity(_entity_addr) => {
-                    match caller
-                        .context_mut()
-                        .tracking_copy
-                        .read(&addressable_entity_key)
-                        .expect("should read account")
-                    {
-                        Some(StoredValue::AddressableEntity(addressable_entity)) => {
-                            addressable_entity.main_purse()
-                        }
-                        Some(other) => panic!("should be addressable entity but got {other:?}"),
-                        None => todo!(),
-                    }
-                }
-                other => panic!("should be account or addressable entity but got {other:?}"),
-            };
-
             let target_purse = match caller
                 .context_mut()
                 .tracking_copy
@@ -906,7 +840,8 @@ pub(crate) fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
                     panic!("Addressable entity not found for key={target_entity_addr:?}");
                 }
                 Err(error) => {
-                    panic!("Error while reading from storage; aborting key={target_entity_addr:?} error={error:?}")
+                    error!(?error, "Error while reading from storage; aborting");
+                    panic!("Error while reading from storage; aborting")
                 }
             };
             // We don't execute anything as it does not make sense to execute an account as there are no entry points.
@@ -920,15 +855,12 @@ pub(crate) fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
                 id: None,
             };
 
-            runtime::mint_transfer(
+            Ok(runtime::mint_transfer(
                 &mut caller.context_mut().tracking_copy,
                 transaction_hash,
                 address_generator,
                 args,
-            )
-            .expect("should mint transfer");
-
-            Ok(1) // Transfer succeeded
+            ))
         }
         EntityKindTag::Contract => {
             // let callee_purse = callee_stored_value.main_purse();
@@ -980,6 +912,7 @@ pub(crate) fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
                     tracking_copy_parts,
                 }) => {
                     caller.consume_gas(gas_usage.gas_spent());
+                    // NOTE: What to do with the output of a fallback code?
 
                     // if let Some(host_error) = host_error {
                     //     // return Ok(Err(host_error));
@@ -997,8 +930,6 @@ pub(crate) fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
                         }
                     };
 
-                    // (gas_usage, host_result)
-
                     let gas_spent = gas_usage
                         .gas_limit
                         .checked_sub(gas_usage.remaining_points)
@@ -1011,10 +942,7 @@ pub(crate) fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
                         }
                     }
 
-                    match host_result {
-                        Ok(()) => Ok(1),
-                        Err(host_error) => Ok(0), // Transfer failed, Wasm sees "false"
-                    }
+                    Ok(host_result)
                 }
                 Err(ExecuteError::WasmPreparation(preparation_error)) => {
                     // This is a bug in the EE, as it should have been caught during the preparation phase when the contract was stored in the global state.
@@ -1024,5 +952,4 @@ pub(crate) fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
         }
     }
 
-    // Ok(1)
 }

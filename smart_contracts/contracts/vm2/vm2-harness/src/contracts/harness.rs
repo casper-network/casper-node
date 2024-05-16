@@ -56,6 +56,8 @@ pub enum CustomError {
     WithBody(String),
     #[error("error with named variant name={name}; age={age}")]
     Named { name: String, age: u64 },
+    #[error("transfer error {0}")]
+    Transfer(String),
 }
 
 impl Default for Harness {
@@ -283,10 +285,15 @@ impl Harness {
         }
 
         // if this fails, the transfer will be reverted and the state will be rolled back
-        if !host::casper_transfer(&caller, amount) {
-            // TODO: transfer should probably pass CallError (i.e. reverted means mint transfer failed with error, or something like that)
-            return Err(CustomError::WithBody("Transfer failed".into()));
+        match host::casper_transfer(&caller, amount) {
+            Ok(()) => {}
+            Err(call_error) => {
+                return Err(CustomError::Transfer(call_error.to_string()));
+            }
         }
+        // TODO: transfer should probably pass CallError (i.e. reverted means mint transfer failed with error, or something like that)
+        // return Err(CustomError::WithBody("Transfer failed".into()));
+        // }
 
         let balance_after = balance_before + amount;
 

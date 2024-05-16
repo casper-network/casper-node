@@ -237,6 +237,10 @@ pub(crate) fn call_into<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
             &alloc as *const _ as *mut _,
         )
     };
+    call_result_from_code(result_code)
+}
+
+fn call_result_from_code(result_code: u32) -> Result<(), CallError> {
     if result_code == 0 {
         Ok(())
     } else {
@@ -374,9 +378,7 @@ pub fn call<T: ToCallData>(
             result: result_code,
             marker: PhantomData,
         }),
-        Err(error) => Err(CallError::CalleeTrapped),
-        Err(CallError::CalleeGasDepleted) => Err(CallError::CalleeGasDepleted),
-        Err(CallError::CodeNotFound) => Err(CallError::CodeNotFound),
+        Err(error) => Err(error),
     }
 }
 
@@ -477,11 +479,11 @@ pub fn get_value() -> u64 {
 }
 
 /// Transfer tokens from the current contract to another account or contract.
-pub fn casper_transfer(target: &Entity, amount: u64) -> bool {
-    let ret = unsafe {
+pub fn casper_transfer(target: &Entity, amount: u64) -> Result<(), CallError> {
+    let result_code = unsafe {
         casper_sdk_sys::casper_transfer(target.tag(), target.as_ptr(), target.len(), amount)
     };
-    ret == 1
+    call_result_from_code(result_code)
 }
 
 #[cfg(test)]

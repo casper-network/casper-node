@@ -8,7 +8,7 @@ use alloc::{string::String, vec::Vec};
 use borsh::{BorshDeserialize, BorshSerialize};
 use casper_macros::{casper, CasperABI, CasperSchema, Contract};
 use casper_sdk::{
-    collections::{sorted_vector::SortedVector, Map, Vector},
+    collections::{sorted_vector::SortedVector, Map},
     host::{self, Entity},
     log,
     types::Address,
