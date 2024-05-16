@@ -15,7 +15,8 @@ use crate::{
 
 /// Configuration values relevant to the `PerformanceMeter`, a component of Highway deciding when
 /// to change the round exponent.
-#[derive(Copy, Clone, DataSize, PartialEq, Eq, Serialize, Deserialize, Debug, Default)]
+#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug, Default)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 pub struct PerformanceMeterConfig {

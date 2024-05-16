@@ -13,7 +13,7 @@ use core::{
     iter,
     marker::Copy,
 };
-#[cfg(any(feature = "std", test))]
+#[cfg(any(feature = "std-fs-io", test))]
 use std::path::Path;
 
 #[cfg(feature = "datasize")]
@@ -45,12 +45,11 @@ use serde_json::json;
 #[cfg(any(feature = "std", test))]
 use untrusted::Input;
 
-#[cfg(any(feature = "testing", test))]
 #[cfg(any(feature = "std", test))]
 use crate::crypto::ErrorExt;
 #[cfg(any(feature = "std-fs-io", test))]
 use crate::file_utils::{read_file, write_file, write_private_file};
-#[cfg(any(all(feature = "std", feature = "testing"), test))]
+#[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
 use crate::{
     account::AccountHash,
