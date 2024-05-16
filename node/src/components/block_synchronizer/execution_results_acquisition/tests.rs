@@ -20,7 +20,6 @@ fn execution_results_chunks_apply_correctly() {
 
     // Create chunkable execution results
     let exec_results: Vec<ExecutionResult> = (0..NUM_TEST_EXECUTION_RESULTS)
-        .into_iter()
         .map(|_| ExecutionResult::from(ExecutionResultV2::random(rng)))
         .collect();
     let test_chunks = chunks_with_proof_from_data(&exec_results.to_bytes().unwrap());
@@ -172,7 +171,6 @@ fn cant_apply_chunk_from_different_exec_results_or_invalid_checksum() {
 
     // Create valid execution results
     let valid_exec_results: Vec<ExecutionResult> = (0..NUM_TEST_EXECUTION_RESULTS)
-        .into_iter()
         .map(|_| ExecutionResult::from(ExecutionResultV2::random(rng)))
         .collect();
     let valid_test_chunks = chunks_with_proof_from_data(&valid_exec_results.to_bytes().unwrap());
@@ -360,7 +358,6 @@ fn acquisition_pending_state_has_correct_transitions() {
 
     // Acquisition can transition from `Pending` to `Acquiring` if a single chunk is applied
     let exec_results: Vec<ExecutionResult> = (0..NUM_TEST_EXECUTION_RESULTS)
-        .into_iter()
         .map(|_| ExecutionResult::from(ExecutionResultV2::random(rng)))
         .collect();
     let test_chunks = chunks_with_proof_from_data(&exec_results.to_bytes().unwrap());
@@ -372,7 +369,6 @@ fn acquisition_pending_state_has_correct_transitions() {
         ValueOrChunk::ChunkWithProof(first_chunk.clone()),
     );
     let transaction_hashes: Vec<TransactionHash> = (0..NUM_TEST_EXECUTION_RESULTS)
-        .into_iter()
         .map(|index| DeployHash::new(Digest::hash(index.to_bytes().unwrap())).into())
         .collect();
     assert_matches!(
@@ -391,7 +387,6 @@ fn acquisition_acquiring_state_has_correct_transitions() {
 
     // Generate valid execution results that are chunkable
     let exec_results: Vec<ExecutionResult> = (0..NUM_TEST_EXECUTION_RESULTS)
-        .into_iter()
         .map(|_| ExecutionResult::from(ExecutionResultV2::random(rng)))
         .collect();
     let test_chunks = chunks_with_proof_from_data(&exec_results.to_bytes().unwrap());
@@ -431,7 +426,6 @@ fn acquisition_acquiring_state_has_correct_transitions() {
         ValueOrChunk::ChunkWithProof(last_chunk.clone()),
     );
     let transaction_hashes: Vec<TransactionHash> = (0..NUM_TEST_EXECUTION_RESULTS)
-        .into_iter()
         .map(|index| DeployHash::new(Digest::hash(index.to_bytes().unwrap())).into())
         .collect();
     acquisition = assert_matches!(

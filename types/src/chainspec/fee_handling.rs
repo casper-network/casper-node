@@ -10,7 +10,7 @@ const FEE_HANDLING_BURN_TAG: u8 = 2;
 const FEE_HANDLING_NONE_TAG: u8 = 3;
 
 /// Defines how fees are handled in the system.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(tag = "type", rename_all = "snake_case")]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 pub enum FeeHandling {
@@ -26,6 +26,10 @@ pub enum FeeHandling {
     /// Burn the fees.
     Burn,
     /// No fees.
+    // in 1.x the (implicit) default was PayToProposer
+    // FeeHandling::PayToProposer
+    // in 2.x the default is NoFee as there are no fees.
+    #[default]
     NoFee,
 }
 
@@ -66,15 +70,6 @@ impl FromBytes for FeeHandling {
             FEE_HANDLING_NONE_TAG => Ok((FeeHandling::NoFee, rem)),
             _ => Err(bytesrepr::Error::Formatting),
         }
-    }
-}
-
-impl Default for FeeHandling {
-    fn default() -> Self {
-        // in 1.x the (implicit) default was PayToProposer
-        // FeeHandling::PayToProposer
-        // in 2.x the default is NoFee as there are no fees.
-        FeeHandling::NoFee
     }
 }
 

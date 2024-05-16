@@ -374,7 +374,7 @@ impl ValidationContext {
         era: EraId,
     ) -> Self {
         self.past_blocks
-            .extend((min_height..=max_height).into_iter().map(|height| {
+            .extend((min_height..=max_height).map(|height| {
                 let block = TestBlockBuilder::new().height(height).era(era).build(rng);
                 (height, block.into())
             }));
@@ -393,7 +393,7 @@ impl ValidationContext {
         era: EraId,
     ) -> Self {
         self.delayed_blocks
-            .extend((min_height..=max_height).into_iter().map(|height| {
+            .extend((min_height..=max_height).map(|height| {
                 let block = TestBlockBuilder::new().height(height).era(era).build(rng);
                 (height, block.into())
             }));
@@ -579,7 +579,6 @@ impl ValidationContext {
             .map(|proposed_block_height| {
                 RewardedSignatures::new(
                     (1..=rewards_window)
-                        .into_iter()
                         .filter_map(|height_diff| proposed_block_height.checked_sub(height_diff))
                         .map(|height| {
                             let signing_validators = self

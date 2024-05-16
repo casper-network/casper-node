@@ -23,7 +23,6 @@ use casper_types::{
     addressable_entity::{ActionType, NamedKeys, Weight, MAX_GROUPS},
     api_error,
     bytesrepr::ToBytes,
-    contracts::{ContractHash, ContractPackageHash},
     runtime_args, AccessRights, AddressableEntityHash, ApiError, CLType, CLValue, EntryPoint,
     EntryPointAccess, EntryPointPayment, EntryPointType, EntryPoints, EraId, Key, PackageHash,
     Parameter, TransferredTo, URef, U512,

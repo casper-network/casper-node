@@ -97,26 +97,26 @@ impl FinalizedBlock {
         self.transactions
             .get(&(TransactionCategory::Mint as u8))
             .map(|transactions| transactions.to_vec())
-            .unwrap_or(vec![])
+            .unwrap_or_default()
     }
 
     pub(crate) fn auction(&self) -> Vec<TransactionHash> {
         self.transactions
             .get(&(TransactionCategory::Auction as u8))
             .map(|transactions| transactions.to_vec())
-            .unwrap_or(vec![])
+            .unwrap_or_default()
     }
     pub(crate) fn install_upgrade(&self) -> Vec<TransactionHash> {
         self.transactions
             .get(&(TransactionCategory::InstallUpgrade as u8))
             .map(|transactions| transactions.to_vec())
-            .unwrap_or(vec![])
+            .unwrap_or_default()
     }
     pub(crate) fn standard(&self) -> Vec<TransactionHash> {
         self.transactions
             .get(&(TransactionCategory::Standard as u8))
             .map(|transactions| transactions.to_vec())
-            .unwrap_or(vec![])
+            .unwrap_or_default()
     }
 
     /// The list of deploy hashes chained with the list of transfer hashes.

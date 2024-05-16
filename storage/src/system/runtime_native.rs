@@ -124,12 +124,13 @@ impl Config {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum TransferConfig {
     Administered {
         administrative_accounts: BTreeSet<AccountHash>,
         allow_unrestricted_transfers: bool,
     },
+    #[default]
     Unadministered,
 }
 
@@ -204,12 +205,6 @@ impl TransferConfig {
     /// Restricted transfer should be enforced.
     pub fn enforce_transfer_restrictions(&self, account_hash: &AccountHash) -> bool {
         !self.allow_unrestricted_transfers() && !self.is_administrator(account_hash)
-    }
-}
-
-impl Default for TransferConfig {
-    fn default() -> Self {
-        TransferConfig::Unadministered
     }
 }
 

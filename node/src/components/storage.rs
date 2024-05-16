@@ -1118,7 +1118,7 @@ impl Storage {
 
             debug!("Storage utilization at {total_size_utilization}");
 
-            let scores = vec![
+            let scores = [
                 block_utilization_score,
                 total_size_utilization,
                 total_gas_utilization,
@@ -1881,7 +1881,6 @@ impl Storage {
             let last_era_id = last_era_header.era_id();
             result.push(last_era_header);
             for era_id in (0..last_era_id.value())
-                .into_iter()
                 .rev()
                 .take(count as usize)
                 .map(EraId::new)
@@ -2044,7 +2043,7 @@ impl Storage {
             Some(utilization) => {
                 utilization.entry(block_height).or_insert(block_utilization);
 
-                let transaction_count = utilization.values().into_iter().sum();
+                let transaction_count = utilization.values().sum();
                 let block_count = utilization.keys().len() as u64;
 
                 Some((transaction_count, block_count))

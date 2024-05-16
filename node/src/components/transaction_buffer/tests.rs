@@ -28,7 +28,6 @@ fn get_appendable_block(
 ) {
     let transactions: Vec<_> = categories
         .take(transaction_limit)
-        .into_iter()
         .map(|category| create_valid_transaction(rng, category, None, None))
         .collect();
     transactions

@@ -554,7 +554,7 @@ async fn transfer_cost_classic_price_no_fee_no_refund() {
 #[should_panic = "within 10 seconds"]
 async fn transaction_with_low_threshold_should_not_get_included() {
     const TRANSFER_AMOUNT: u64 = 30_000_000_000;
-    const MAX_GAS_PRICE: u8 = MIN_GAS_PRICE * 2;
+    const _MAX_GAS_PRICE: u8 = MIN_GAS_PRICE * 2;
 
     let initial_stakes = InitialStakes::FromVec(vec![u128::MAX, 1]);
 
@@ -588,7 +588,7 @@ async fn transaction_with_low_threshold_should_not_get_included() {
 
 #[tokio::test]
 async fn native_operations_fees_are_not_refunded() {
-    const MAX_GAS_PRICE: u8 = MIN_GAS_PRICE;
+    const _MAX_GAS_PRICE: u8 = MIN_GAS_PRICE;
 
     let initial_stakes = InitialStakes::FromVec(vec![u128::MAX, 1]); // Node 0 is effectively guaranteed to be the proposer.
 
@@ -698,7 +698,7 @@ async fn native_operations_fees_are_not_refunded() {
 
 #[tokio::test]
 async fn wasm_transaction_fees_are_refunded() {
-    const MAX_GAS_PRICE: u8 = MIN_GAS_PRICE;
+    const _MAX_GAS_PRICE: u8 = MIN_GAS_PRICE;
 
     let initial_stakes = InitialStakes::FromVec(vec![u128::MAX, 1]); // Node 0 is effectively guaranteed to be the proposer.
 
@@ -1526,7 +1526,7 @@ async fn refunds_are_payed_and_fees_are_on_hold_classic_pricing() {
 
 #[tokio::test]
 async fn only_refunds_are_burnt_no_fee_custom_payment() {
-    const MAX_GAS_PRICE: u8 = MIN_GAS_PRICE;
+    const _MAX_GAS_PRICE: u8 = MIN_GAS_PRICE;
 
     let refund_ratio = Ratio::new(1, 2);
     let config = SingleTransactionTestCase::default_test_config()
@@ -1627,7 +1627,7 @@ async fn only_refunds_are_burnt_no_fee_custom_payment() {
 
 #[tokio::test]
 async fn no_refund_no_fee_custom_payment() {
-    const MAX_GAS_PRICE: u8 = MIN_GAS_PRICE;
+    const _MAX_GAS_PRICE: u8 = MIN_GAS_PRICE;
 
     let config = SingleTransactionTestCase::default_test_config()
         .with_pricing_handling(PricingHandling::Classic)

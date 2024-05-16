@@ -21,11 +21,15 @@ const HOLD_BALANCE_HANDLING_TAG_LENGTH: u8 = 1;
 /// multiple types of holds (such as Processing and Gas currently, and potentially other kinds in
 /// the future), and each type of hold can differ on how it applies to available
 /// balance calculation.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(tag = "type", rename_all = "snake_case")]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 pub enum HoldBalanceHandling {
     /// The sum of full value of all non-expired holds is used.
+    // in 2.0 the default hold balance handling is Accrued,
+    // which means a non-expired hold is applied in full to
+    // available balance calculations
+    #[default]
     Accrued,
     /// The sum of each hold is amortized over the time remaining until expiry.
     /// For instance, if 12 hours remain on a 24 hour hold, half the hold amount is applied.
@@ -96,15 +100,6 @@ impl FromBytes for HoldBalanceHandling {
             HOLD_BALANCE_AMORTIZED_TAG => Ok((HoldBalanceHandling::Amortized, rem)),
             _ => Err(bytesrepr::Error::Formatting),
         }
-    }
-}
-
-impl Default for HoldBalanceHandling {
-    fn default() -> Self {
-        // in 2.0 the default hold balance handling is Accrued,
-        // which means a non-expired hold is applied in full to
-        // available balance calculations
-        HoldBalanceHandling::Accrued
     }
 }
 

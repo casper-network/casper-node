@@ -208,7 +208,6 @@ async fn sync_global_state_request_starts_maximum_trie_fetches() {
 
     // root node would have some children that we haven't yet downloaded
     let missing_children = (0u8..255)
-        .into_iter()
         // TODO: generate random hashes when `rng.gen` works
         .map(|i| Digest::hash([i; 32]))
         .collect();
