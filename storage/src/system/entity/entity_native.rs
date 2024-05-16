@@ -24,7 +24,11 @@ where
     S: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
     fn read_key(&mut self, account: AccountHash) -> Result<Option<Key>, Error> {
-        match self.tracking_copy().borrow_mut().read(&Key::Account(account)) {
+        match self
+            .tracking_copy()
+            .borrow_mut()
+            .read(&Key::Account(account))
+        {
             Ok(Some(StoredValue::CLValue(cl_value))) => {
                 Ok(Some(cl_value.into_t().map_err(|_| Error::CLValue)?))
             }
@@ -64,10 +68,11 @@ where
         // let bytes_count = stored_value.serialized_length();
         // self.charge_gas_storage(bytes_count)?;
 
-        self.tracking_copy().borrow_mut().write(key, StoredValue::AddressableEntity(entity));
+        self.tracking_copy()
+            .borrow_mut()
+            .write(key, StoredValue::AddressableEntity(entity));
         Ok(())
     }
 }
 
-impl<S> Entity for RuntimeNative<S> where S: StateReader<Key, StoredValue, Error = GlobalStateError>
-{}
+impl<S> Entity for RuntimeNative<S> where S: StateReader<Key, StoredValue, Error = GlobalStateError> {}

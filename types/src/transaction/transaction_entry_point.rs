@@ -171,7 +171,9 @@ pub enum TransactionEntryPoint {
     ///   * "weight": `Weight`
     #[cfg_attr(
         feature = "json-schema",
-        schemars(description = "The `add_associated_key` native entry point, used to add an associated key.")
+        schemars(
+            description = "The `add_associated_key` native entry point, used to add an associated key."
+        )
     )]
     AddAssociatedKey,
 
@@ -181,7 +183,9 @@ pub enum TransactionEntryPoint {
     ///   * "account": `PublicKey`
     #[cfg_attr(
         feature = "json-schema",
-        schemars(description = "The `remove_associated_key` native entry point, used to remove an associated key.")
+        schemars(
+            description = "The `remove_associated_key` native entry point, used to remove an associated key."
+        )
     )]
     RemoveAssociatedKey,
 
@@ -192,7 +196,9 @@ pub enum TransactionEntryPoint {
     ///   * "weight": `Weight`
     #[cfg_attr(
         feature = "json-schema",
-        schemars(description = "The `update_associated_key` native entry point, used to update an associated key.")
+        schemars(
+            description = "The `update_associated_key` native entry point, used to update an associated key."
+        )
     )]
     UpdateAssociatedKey,
 }
@@ -221,10 +227,7 @@ impl TransactionEntryPoint {
     /// Does this entry point kind require holds epoch?
     pub fn requires_holds_epoch(&self) -> bool {
         match self {
-            Self::AddBid
-            | Self::Delegate
-            | Self::Custom(_)
-            | Self::Transfer => true,
+            Self::AddBid | Self::Delegate | Self::Custom(_) | Self::Transfer => true,
             Self::WithdrawBid
             | Self::Undelegate
             | Self::Redelegate
@@ -272,7 +275,7 @@ impl ToBytes for TransactionEntryPoint {
             Self::Undelegate => UNDELEGATE_TAG.write_bytes(writer),
             Self::Redelegate => REDELEGATE_TAG.write_bytes(writer),
             Self::ActivateBid => ACTIVATE_BID_TAG.write_bytes(writer),
-            Self::ChangeBidPublicKey =>  CHANGE_BID_PUBLIC_KEY_TAG.write_bytes(writer),
+            Self::ChangeBidPublicKey => CHANGE_BID_PUBLIC_KEY_TAG.write_bytes(writer),
             Self::AddAssociatedKey => ADD_ASSOCIATED_KEY_TAG.write_bytes(writer),
             Self::RemoveAssociatedKey => REMOVE_ASSOCIATED_KEY_TAG.write_bytes(writer),
             Self::UpdateAssociatedKey => UPDATE_ASSOCIATED_KEY_TAG.write_bytes(writer),
@@ -298,8 +301,8 @@ impl ToBytes for TransactionEntryPoint {
                 | Self::ActivateBid
                 | Self::ChangeBidPublicKey
                 | Self::AddAssociatedKey
-                | Self::RemoveAssociatedKey 
-                | Self::UpdateAssociatedKey  => 0,
+                | Self::RemoveAssociatedKey
+                | Self::UpdateAssociatedKey => 0,
             }
     }
 }

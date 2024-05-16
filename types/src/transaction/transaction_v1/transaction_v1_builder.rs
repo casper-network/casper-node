@@ -206,7 +206,8 @@ impl<'a> TransactionV1Builder<'a> {
         Ok(TransactionV1Builder::new(body))
     }
 
-    /// Returns a new `TransactionV1Builder` suitable for building a native remove associated key transaction.
+    /// Returns a new `TransactionV1Builder` suitable for building a native remove associated key
+    /// transaction.
     pub fn new_remove_associated_key(account: AccountHash) -> Result<Self, CLValueError> {
         let args = arg_handling::new_remove_associated_key_args(account)?;
         let body = TransactionV1Body::new(

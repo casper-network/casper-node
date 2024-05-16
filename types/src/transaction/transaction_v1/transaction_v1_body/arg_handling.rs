@@ -369,7 +369,8 @@ pub(in crate::transaction::transaction_v1) fn new_remove_associated_key_args(
     Ok(args)
 }
 
-/// Checks the given `RuntimeArgs` are suitable for use in a add or update associated key transaction.
+/// Checks the given `RuntimeArgs` are suitable for use in a add or update associated key
+/// transaction.
 pub(in crate::transaction::transaction_v1) fn has_valid_add_or_update_associated_key_args(
     args: &RuntimeArgs,
 ) -> Result<(), InvalidTransactionV1> {
@@ -378,7 +379,8 @@ pub(in crate::transaction::transaction_v1) fn has_valid_add_or_update_associated
     Ok(())
 }
 
-/// Checks the given `RuntimeArgs` are suitable for use in a remove associated key transaction.
+/// Checks the given `RuntimeArgs` are suitable for use in a remove associated key
+/// transaction.
 pub(in crate::transaction::transaction_v1) fn has_valid_remove_associated_key_args(
     args: &RuntimeArgs,
 ) -> Result<(), InvalidTransactionV1> {

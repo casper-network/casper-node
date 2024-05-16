@@ -1,6 +1,4 @@
-use casper_types::{
-    account::AccountHash, system::entity::Error, AddressableEntity, Key,
-};
+use casper_types::{account::AccountHash, system::entity::Error, AddressableEntity, Key};
 
 /// Provides functionality of a contract storage.
 pub trait StorageProvider {

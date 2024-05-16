@@ -52,9 +52,9 @@ static BLOCK_V2: Lazy<BlockV2> = Lazy::new(|| {
     let standard = vec![TransactionHash::V1(TransactionV1Hash::new(Digest::from(
         [23; Digest::LENGTH],
     )))];
-    let entity_hashes = vec![TransactionHash::V1(TransactionV1Hash::new(
-        Digest::from([24; Digest::LENGTH]),
-    ))];
+    let entity_hashes = vec![TransactionHash::V1(TransactionV1Hash::new(Digest::from(
+        [24; Digest::LENGTH],
+    )))];
     let transactions = {
         let mut ret = BTreeMap::new();
         ret.insert(TransactionCategory::Mint as u8, mint_hashes);
