@@ -37,7 +37,6 @@ mod trie;
 
 pub use addressable_entity::{AddressableEntityRequest, AddressableEntityResult};
 pub use auction::{AuctionMethod, BiddingRequest, BiddingResult};
-pub use entity::EntityMethod;
 pub use balance::{
     BalanceHolds, BalanceHoldsWithProof, BalanceIdentifier, BalanceRequest, BalanceResult,
     GasHoldBalanceHandling, ProofHandling, ProofsResult,
@@ -49,6 +48,7 @@ pub use balance_hold::{
 pub use bids::{BidsRequest, BidsResult};
 pub use block_global::{BlockGlobalKind, BlockGlobalRequest, BlockGlobalResult};
 pub use block_rewards::{BlockRewardsError, BlockRewardsRequest, BlockRewardsResult};
+pub use entity::EntityMethod;
 pub use entry_points::{EntryPointsRequest, EntryPointsResult};
 pub use era_validators::{EraValidatorsRequest, EraValidatorsResult};
 pub use execution_results_checksum::{

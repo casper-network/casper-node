@@ -179,7 +179,8 @@ impl<'a> TransactionV1Builder<'a> {
         Ok(TransactionV1Builder::new(body))
     }
 
-    /// Returns a new `TransactionV1Builder` suitable for building a native add associated key transaction.
+    /// Returns a new `TransactionV1Builder` suitable for building a native add associated key
+    /// transaction.
     pub fn new_add_associated_key(account: AccountHash, weight: u8) -> Result<Self, CLValueError> {
         let args = arg_handling::new_add_associated_key_args(account, weight)?;
         let body = TransactionV1Body::new(
@@ -191,7 +192,8 @@ impl<'a> TransactionV1Builder<'a> {
         Ok(TransactionV1Builder::new(body))
     }
 
-    /// Returns a new `TransactionV1Builder` suitable for building a native update associated key transaction.
+    /// Returns a new `TransactionV1Builder` suitable for building a native update associated key
+    /// transaction.
     pub fn new_update_associated_key(
         account: AccountHash,
         weight: u8,
