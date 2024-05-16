@@ -1173,6 +1173,9 @@ async fn expire_transactions_and_check_announcement_when_transactions_are_of_one
             &Registry::new(),
         )
         .unwrap();
+        transaction_buffer
+            .prices
+            .insert(ERA_ONE, DEFAULT_MINIMUM_GAS_PRICE);
 
         let reactor = MockReactor::new();
         let event_queue_handle = EventQueueHandle::without_shutdown(reactor.scheduler);
@@ -1250,6 +1253,9 @@ async fn expire_transactions_and_check_announcement_when_transactions_are_of_ran
         &Registry::new(),
     )
     .unwrap();
+    transaction_buffer
+        .prices
+        .insert(ERA_ONE, DEFAULT_MINIMUM_GAS_PRICE);
 
     let reactor = MockReactor::new();
     let event_queue_handle = EventQueueHandle::without_shutdown(reactor.scheduler);
@@ -1339,6 +1345,9 @@ fn should_have_one_bucket_per_distinct_body_hash() {
     });
     let mut transaction_buffer =
         TransactionBuffer::new(chainspec, Config::default(), &Registry::new()).unwrap();
+    transaction_buffer
+        .prices
+        .insert(ERA_ONE, DEFAULT_MINIMUM_GAS_PRICE);
 
     let secret_key1 = SecretKey::random(&mut rng);
     let ttl = TimeDiff::from_seconds(30);
@@ -1447,6 +1456,9 @@ fn should_have_diverse_proposable_blocks_with_stocked_buffer() {
     });
     let mut transaction_buffer =
         TransactionBuffer::new(chainspec, Config::default(), &Registry::new()).unwrap();
+    transaction_buffer
+        .prices
+        .insert(ERA_ONE, DEFAULT_MINIMUM_GAS_PRICE);
 
     let cap = (max_standard_count * 100) as usize;
 
@@ -1557,6 +1569,9 @@ fn should_be_empty_if_no_time_until_expiry() {
     });
     let mut transaction_buffer =
         TransactionBuffer::new(chainspec, Config::default(), &Registry::new()).unwrap();
+    transaction_buffer
+        .prices
+        .insert(ERA_ONE, DEFAULT_MINIMUM_GAS_PRICE);
 
     let secret_key1 = SecretKey::random(&mut rng);
     let ttl = TimeDiff::from_seconds(30);
@@ -1665,6 +1680,9 @@ fn test_buckets_single_hash() {
     });
     let mut transaction_buffer =
         TransactionBuffer::new(chainspec, Config::default(), &Registry::new()).unwrap();
+    transaction_buffer
+        .prices
+        .insert(ERA_ONE, DEFAULT_MINIMUM_GAS_PRICE);
 
     register_random_deploys_same_hash(&mut transaction_buffer, 64000, &mut rng);
 
@@ -1691,6 +1709,9 @@ fn test_buckets_unique_hashes() {
     });
     let mut transaction_buffer =
         TransactionBuffer::new(chainspec, Config::default(), &Registry::new()).unwrap();
+    transaction_buffer
+        .prices
+        .insert(ERA_ONE, DEFAULT_MINIMUM_GAS_PRICE);
 
     register_random_deploys_unique_hashes(&mut transaction_buffer, 64000, &mut rng);
 
@@ -1716,6 +1737,9 @@ fn test_buckets_mixed_load() {
     });
     let mut transaction_buffer =
         TransactionBuffer::new(chainspec, Config::default(), &Registry::new()).unwrap();
+    transaction_buffer
+        .prices
+        .insert(ERA_ONE, DEFAULT_MINIMUM_GAS_PRICE);
 
     register_random_deploys_unique_hashes(&mut transaction_buffer, 60000, &mut rng);
     register_random_deploys_same_hash(&mut transaction_buffer, 4000, &mut rng);
