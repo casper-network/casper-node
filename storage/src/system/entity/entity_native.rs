@@ -53,7 +53,7 @@ where
             Ok(None) => Ok(None),
             Err(TrackingCopyError::BytesRepr(_)) => Err(Error::Serialization),
             Err(err) => {
-                error!("StorageProvider::read_bid: {err:?}");
+                error!("StorageProvider::read_key: {err:?}");
                 Err(Error::Storage)
             }
         }

@@ -233,7 +233,7 @@ impl ExecutionArtifactBuilder {
         invalid_transaction: &InvalidTransaction,
     ) -> &mut Self {
         if self.error_message.is_none() {
-            self.error_message = Some(format!("{}", invalid_transaction));
+            self.error_message = Some(invalid_transaction.to_string());
         }
         self
     }
@@ -243,7 +243,7 @@ impl ExecutionArtifactBuilder {
         invalid_request: &InvalidWasmV1Request,
     ) -> &mut Self {
         if self.error_message.is_none() {
-            self.error_message = Some(format!("{}", invalid_request));
+            self.error_message = Some(invalid_request.to_string());
         }
         self
     }
@@ -253,7 +253,7 @@ impl ExecutionArtifactBuilder {
         auction_method_error: &AuctionMethodError,
     ) -> &mut Self {
         if self.error_message.is_none() {
-            self.error_message = Some(format!("{}", auction_method_error));
+            self.error_message = Some(auction_method_error.to_string());
         }
         self
     }
@@ -263,7 +263,7 @@ impl ExecutionArtifactBuilder {
         entity_method_error: &EntityMethodError,
     ) -> &mut Self {
         if self.error_message.is_none() {
-            self.error_message = Some(format!("{entity_method_error}"));
+            self.error_message = Some(entity_method_error.to_string());
         }
         self
     }
@@ -276,7 +276,7 @@ impl ExecutionArtifactBuilder {
             return Err(());
         }
         if let (None, TransferResult::Failure(err)) = (&self.error_message, &transfer_result) {
-            self.error_message = Some(format!("{}", err));
+            self.error_message = Some(err.to_string());
         }
         if let TransferResult::Success {
             mut transfers,
@@ -294,7 +294,7 @@ impl ExecutionArtifactBuilder {
             return Err(());
         }
         if let (None, BiddingResult::Failure(err)) = (&self.error_message, &bidding_result) {
-            self.error_message = Some(format!("{}", err));
+            self.error_message = Some(err.to_string());
         }
         if let BiddingResult::Success { effects, .. } = bidding_result {
             self.with_appended_effects(effects);
@@ -307,7 +307,7 @@ impl ExecutionArtifactBuilder {
             return Err(());
         }
         if let (None, EntityResult::Failure(err)) = (&self.error_message, &entity_result) {
-            self.error_message = Some(format!("{err}"));
+            self.error_message = Some(err.to_string());
         }
         if let EntityResult::Success { effects } = entity_result {
             self.with_appended_effects(effects);

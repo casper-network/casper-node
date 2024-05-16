@@ -10,7 +10,6 @@ use self::{runtime_provider::RuntimeProvider, storage_provider::StorageProvider}
 pub trait Entity: RuntimeProvider + StorageProvider + Sized {
     /// Adds new associated key.
     fn add_associated_key(&mut self, account: AccountHash, weight: Weight) -> Result<(), Error> {
-        // let entity_key = self.entity_key().unwrap(); // FIXME: unwrap()
         let caller = self.get_caller_new();
 
         if let Some(key) = self.read_key(caller)? {
