@@ -337,21 +337,14 @@ pub(crate) fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'stati
     };
 
     for entrypoint in entry_points {
-        let selector = if entrypoint.flags & EntryPointFlags::FALLBACK.bits() != 0 {
-            None
-        } else {
-            Some(entrypoint.selector)
-        };
-
         let key = Key::EntryPoint(EntryPointAddr::VmCasperV2 {
             entity_addr,
-            selector,
+            selector: entrypoint.selector,
         });
         let value = EntryPointValue::V2CasperVm(EntryPointV2 {
             function_index: entrypoint.fptr,
             flags: entrypoint.flags,
         });
-        dbg!(&key, &value);
         let stored_value = StoredValue::EntryPoint(value);
         caller.context_mut().tracking_copy.write(key, stored_value);
     }

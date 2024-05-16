@@ -1961,11 +1961,7 @@ mod tests {
         Key::BalanceHold(BalanceHoldAddr::new_gas([42; 32], BlockTime::new(100)));
     const ENTRY_POINT_V2: Key = Key::EntryPoint(EntryPointAddr::new_v2_entry_point_addr(
         EntityAddr::new_smart_contract([42; 32]),
-        Some(1u32),
-    ));
-    const ENTRY_POINT_V2_FALLBACK: Key = Key::EntryPoint(EntryPointAddr::new_v2_entry_point_addr(
-        EntityAddr::new_smart_contract([42; 32]),
-        None,
+        1u32,
     ));
     const KEYS: &[Key] = &[
         ACCOUNT_KEY,
@@ -1999,7 +1995,6 @@ mod tests {
         BLOCK_MESSAGE_COUNT_KEY,
         BALANCE_HOLD,
         ENTRY_POINT_V2,
-        ENTRY_POINT_V2_FALLBACK,
     ];
     const HEX_STRING: &str = "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a";
     const TOPIC_NAME_HEX_STRING: &str =

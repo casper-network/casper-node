@@ -752,8 +752,6 @@ where
             }
         }
 
-        dbg!(&entry_points_v2.len());
-
         Ok(entry_points_v2)
     }
 

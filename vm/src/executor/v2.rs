@@ -10,7 +10,8 @@ use casper_types::{
 use either::Either;
 use parking_lot::RwLock;
 use tracing::{error, warn};
-use vm_common::flags::ReturnFlags;
+use vm_common::flags::{EntryPointFlags, ReturnFlags};
+use wasmer_types::compilation::function;
 
 use super::{ExecuteError, ExecuteRequest, ExecuteResult, ExecutionKind, Executor};
 use crate::{
@@ -200,26 +201,62 @@ impl Executor for ExecutorV2 {
                             .take_bytes();
 
                         let function_index = {
-                            let entry_point_addr = EntryPointAddr::VmCasperV2 {
-                                entity_addr: *entity_addr,
-                                selector: selector.map(|selector| selector.get()),
-                            };
-                            let key = Key::EntryPoint(entry_point_addr);
+                            let maybe_function_index = match selector {
+                                Some(selector) => {
+                                    let entry_point_addr = EntryPointAddr::VmCasperV2 {
+                                        entity_addr: *entity_addr,
+                                        selector: selector.get(),
+                                    };
+                                    let key = Key::EntryPoint(entry_point_addr);
 
-                            match tracking_copy.read(&key) {
-                                Ok(Some(StoredValue::EntryPoint(EntryPointValue::V2CasperVm(
-                                    entrypoint_v2,
-                                )))) => entrypoint_v2.function_index,
-                                Ok(Some(StoredValue::EntryPoint(EntryPointValue::V1CasperVm(
-                                    entrypoint_v1,
-                                )))) => {
-                                    panic!("Unexpected V1 entry point found: {entrypoint_v1:?}");
+                                    match tracking_copy.read(&key) {
+                                        Ok(Some(StoredValue::EntryPoint(
+                                            EntryPointValue::V2CasperVm(entrypoint_v2),
+                                        ))) => Some(entrypoint_v2.function_index),
+                                        Ok(Some(StoredValue::EntryPoint(
+                                            EntryPointValue::V1CasperVm(entrypoint_v1),
+                                        ))) => {
+                                            panic!("Unexpected V1 entry point found: {entrypoint_v1:?}");
+                                        }
+                                        Ok(Some(stored_value)) => {
+                                            panic!(
+                                                "Unexpected entry point found: {stored_value:?}"
+                                            );
+                                        }
+                                        Ok(None) => {
+                                            warn!(?entry_point_addr, "No entry point found");
+                                            None
+                                        }
+                                        Err(error) => {
+                                            panic!("Error reading entry point: {error:?}")
+                                        }
+                                    }
                                 }
-                                Ok(Some(stored_value)) => {
-                                    panic!("Unexpected entry point found: {stored_value:?}");
+                                None => {
+                                    let entry_points = tracking_copy
+                                        .get_v2_entry_points(*entity_addr)
+                                        .expect("should get entry points");
+                                    let mut fallback_entrypoints = entry_points
+                                        .into_iter()
+                                        .filter_map(|(key, entry_point_v2)| {
+                                            if entry_point_v2.flags
+                                                & EntryPointFlags::FALLBACK.bits()
+                                                != 0
+                                            {
+                                                Some(entry_point_v2.function_index)
+                                            } else {
+                                                None
+                                            }
+                                        });
+
+                                    fallback_entrypoints.next()
                                 }
-                                Ok(None) => {
-                                    warn!(?entry_point_addr, "No entry point found");
+                            };
+
+                            match maybe_function_index {
+                                Some(function_index) => function_index,
+                                None => {
+                                    error!("No function index found");
                                     return Ok(ExecuteResult {
                                         host_error: Some(HostError::NotCallable),
                                         output: None,
@@ -230,7 +267,6 @@ impl Executor for ExecutorV2 {
                                         tracking_copy_parts: tracking_copy.into_raw_parts(),
                                     });
                                 }
-                                Err(error) => panic!("Error reading entry point: {error:?}"),
                             }
                         };
 

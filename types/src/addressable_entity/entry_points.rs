@@ -41,7 +41,6 @@ const V2_ENTRY_POINT_TAG: u8 = 1;
 
 const V1_ENTRY_POINT_PREFIX: &str = "entry-point-v1-";
 const V2_ENTRY_POINT_PREFIX: &str = "entry-point-v2-";
-const V2_ENTRY_POINT_FALLBACK: &str = "fallback";
 
 /// Context of method execution
 ///
@@ -658,9 +657,7 @@ pub enum EntryPointAddr {
         ///
         /// The selector is a 32-bit integer that is used to identify the function that should be called.
         /// The selector is used to index into the contract's function table and is used to determine which function should be called. The selector is unique to the contract and is determined at compile time.
-        ///
-        /// Lack of a selector means that the contract entrypoint is a fallback and can be only invoked from within host.
-        selector: Option<u32>,
+        selector: u32,
     },
 }
 
@@ -688,7 +685,7 @@ impl EntryPointAddr {
     }
 
     /// Returns a `VmCasperV2` variant of the entry point address.
-    pub const fn new_v2_entry_point_addr(entity_addr: EntityAddr, selector: Option<u32>) -> Self {
+    pub const fn new_v2_entry_point_addr(entity_addr: EntityAddr, selector: u32) -> Self {
         Self::VmCasperV2 {
             entity_addr,
             selector,
@@ -727,19 +724,13 @@ impl EntryPointAddr {
         if let Some(entry_point_v2) = input.strip_prefix(V2_ENTRY_POINT_PREFIX) {
             if let Some((entity_addr_str, selector_str)) = entry_point_v2.rsplit_once('-') {
                 let entity_addr = EntityAddr::from_formatted_str(entity_addr_str)?;
-                if selector_str == V2_ENTRY_POINT_FALLBACK {
-                    return Ok(Self::VmCasperV2 {
-                        entity_addr,
-                        selector: None,
-                    });
-                } else {
-                    let selector: u32 = from_str(selector_str)
-                        .map_err(|_| FromStrError::BytesRepr(Error::Formatting))?;
-                    return Ok(Self::VmCasperV2 {
-                        entity_addr,
-                        selector: Some(selector),
-                    });
-                }
+
+                let selector: u32 = from_str(selector_str)
+                    .map_err(|_| FromStrError::BytesRepr(Error::Formatting))?;
+                return Ok(Self::VmCasperV2 {
+                    entity_addr,
+                    selector,
+                });
             }
         }
 
@@ -834,19 +825,9 @@ impl Display for EntryPointAddr {
             }
             EntryPointAddr::VmCasperV2 {
                 entity_addr,
-                selector: Some(selector),
+                selector: selector,
             } => {
                 write!(f, "{}{}-{}", V2_ENTRY_POINT_PREFIX, entity_addr, selector)
-            }
-            EntryPointAddr::VmCasperV2 {
-                entity_addr,
-                selector: None,
-            } => {
-                write!(
-                    f,
-                    "{}{}-{}",
-                    V2_ENTRY_POINT_PREFIX, entity_addr, V2_ENTRY_POINT_FALLBACK
-                )
             }
         }
     }
@@ -971,14 +952,8 @@ mod tests {
         bytesrepr::test_serialization_roundtrip(&vm1);
         let vm2 = EntryPointAddr::VmCasperV2 {
             entity_addr: EntityAddr::new_smart_contract([42; 32]),
-            selector: Some(u32::MAX),
+            selector: u32::MAX,
         };
         bytesrepr::test_serialization_roundtrip(&vm2);
-
-        let vm2_fallback = EntryPointAddr::VmCasperV2 {
-            entity_addr: EntityAddr::new_smart_contract([42; 32]),
-            selector: None,
-        };
-        bytesrepr::test_serialization_roundtrip(&vm2_fallback);
     }
 }
