@@ -23,7 +23,7 @@ pub use transaction_v1_config::TransactionV1Config;
 pub const DEFAULT_MIN_TRANSFER_MOTES: u64 = 2_500_000_000;
 
 /// Configuration values associated with Transactions.
-#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]

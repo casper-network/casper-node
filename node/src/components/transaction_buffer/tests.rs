@@ -361,7 +361,7 @@ fn get_appendable_block_when_transfers_are_of_one_category() {
     };
 
     let chainspec = Arc::new(Chainspec {
-        transaction_config,
+        transaction_config: transaction_config.clone(),
         ..Default::default()
     });
     let mut transaction_buffer =
@@ -391,13 +391,13 @@ fn get_appendable_block_when_transfers_are_both_legacy_and_v1() {
         ..Default::default()
     };
 
-    let chainspec = Chainspec {
-        transaction_config,
+    let chainspec = Arc::new(Chainspec {
+        transaction_config: transaction_config.clone(),
         ..Default::default()
-    };
+    });
 
     let mut transaction_buffer =
-        TransactionBuffer::new(Arc::new(chainspec), Config::default(), &Registry::new()).unwrap();
+        TransactionBuffer::new(chainspec, Config::default(), &Registry::new()).unwrap();
 
     transaction_buffer
         .prices
@@ -423,12 +423,12 @@ fn get_appendable_block_when_standards_are_of_one_category() {
         ..Default::default()
     };
 
-    let chainspec = Chainspec {
-        transaction_config,
+    let chainspec = Arc::new(Chainspec {
+        transaction_config: transaction_config.clone(),
         ..Default::default()
-    };
+    });
     let mut transaction_buffer =
-        TransactionBuffer::new(Arc::new(chainspec), Config::default(), &Registry::new()).unwrap();
+        TransactionBuffer::new(chainspec, Config::default(), &Registry::new()).unwrap();
     transaction_buffer
         .prices
         .insert(ERA_ONE, DEFAULT_MINIMUM_GAS_PRICE);
@@ -452,13 +452,13 @@ fn get_appendable_block_when_standards_are_both_legacy_and_v1() {
         block_gas_limit: u64::MAX, // making sure this test does not hit gas limit first
         ..Default::default()
     };
-    let chainspec = Chainspec {
-        transaction_config,
+    let chainspec = Arc::new(Chainspec {
+        transaction_config: transaction_config.clone(),
         ..Default::default()
-    };
+    });
 
     let mut transaction_buffer =
-        TransactionBuffer::new(Arc::new(chainspec), Config::default(), &Registry::new()).unwrap();
+        TransactionBuffer::new(chainspec, Config::default(), &Registry::new()).unwrap();
 
     transaction_buffer
         .prices

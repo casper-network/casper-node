@@ -217,9 +217,12 @@ impl Chainspec {
             .saturating_sub(self.core_config.gas_hold_interval.millis())
     }
 
-    pub fn supported_categories(&self, category: u64) -> bool {
-        //TODO: Switch this to the vec, if you see this, the work is not done, lol.
-        true
+    pub fn is_supported(&self, category: u64) -> bool {
+        self.transaction_config.transaction_v1_config
+            .lanes
+            .iter()
+            .find(|lane| lane.first() == Some(&category))
+            .is_some()
     }
 }
 

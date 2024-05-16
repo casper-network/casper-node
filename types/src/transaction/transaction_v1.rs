@@ -64,18 +64,18 @@ use crate::testing::TestRng;
 /// To construct a new `TransactionV1`, use a [`TransactionV1Builder`].
 #[derive(Clone, Eq, Debug)]
 #[cfg_attr(
-    any(feature = "std", test),
-    derive(Serialize, Deserialize),
-    serde(deny_unknown_fields)
+any(feature = "std", test),
+derive(Serialize, Deserialize),
+serde(deny_unknown_fields)
 )]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(
-    feature = "json-schema",
-    derive(JsonSchema),
-    schemars(
-        description = "A unit of work sent by a client to the network, which when executed can \
+feature = "json-schema",
+derive(JsonSchema),
+schemars(
+description = "A unit of work sent by a client to the network, which when executed can \
         cause global state to be altered."
-    )
+)
 )]
 pub struct TransactionV1 {
     hash: TransactionV1Hash,
@@ -84,8 +84,8 @@ pub struct TransactionV1 {
     approvals: BTreeSet<Approval>,
     #[cfg_attr(any(all(feature = "std", feature = "once_cell"), test), serde(skip))]
     #[cfg_attr(
-        all(any(feature = "once_cell", test), feature = "datasize"),
-        data_size(skip)
+    all(any(feature = "once_cell", test), feature = "datasize"),
+    data_size(skip)
     )]
     #[cfg(any(feature = "once_cell", test))]
     is_verified: OnceCell<Result<(), InvalidTransactionV1>>,
@@ -224,9 +224,8 @@ impl TransactionV1 {
         self.body().is_install_or_upgrade()
     }
 
-    /// Returns true if this transaction goes into the misc / standard category.
-    pub fn is_standard(&self) -> bool {
-        self.body().is_standard()
+    pub fn transaction_kind(&self) -> u8 {
+        self.body.transaction_kind()
     }
 
     /// Does this transaction have wasm targeting the v1 vm.
@@ -236,7 +235,7 @@ impl TransactionV1 {
             TransactionTarget::Stored { runtime, .. }
             | TransactionTarget::Session { runtime, .. } => {
                 matches!(runtime, TransactionRuntime::VmCasperV1)
-                    && (self.is_standard() || self.is_install_or_upgrade())
+                    && (!self.is_native_mint() && !self.is_native_auction())
             }
         }
     }
@@ -360,7 +359,7 @@ impl TransactionV1 {
         timestamp_leeway: TimeDiff,
         at: Timestamp,
     ) -> Result<(), InvalidTransactionV1> {
-        let transaction_config = chainspec.transaction_config;
+        let transaction_config = chainspec.transaction_config.clone();
         self.is_valid_size(transaction_config.max_transaction_size)?;
 
         let chain_name = chainspec.network_config.name.clone();
@@ -384,16 +383,14 @@ impl TransactionV1 {
 
         match price_mode {
             PricingMode::Classic { .. } => {
-                if let PricingHandling::Classic = price_handling {
-                } else {
+                if let PricingHandling::Classic = price_handling {} else {
                     return Err(InvalidTransactionV1::InvalidPricingMode {
                         price_mode: price_mode.clone(),
                     });
                 }
             }
             PricingMode::Fixed { .. } => {
-                if let PricingHandling::Fixed = price_handling {
-                } else {
+                if let PricingHandling::Fixed = price_handling {} else {
                     return Err(InvalidTransactionV1::InvalidPricingMode {
                         price_mode: price_mode.clone(),
                     });
@@ -479,8 +476,8 @@ impl TransactionV1 {
             timestamp,
             ttl,
         )
-        .build()
-        .unwrap();
+            .build()
+            .unwrap();
         assert!(matches!(
             transaction.transaction_category(),
             TransactionCategory::Mint
@@ -504,8 +501,8 @@ impl TransactionV1 {
             timestamp,
             ttl,
         )
-        .build()
-        .unwrap();
+            .build()
+            .unwrap();
         assert!(matches!(
             transaction.transaction_category(),
             TransactionCategory::Large
@@ -529,8 +526,8 @@ impl TransactionV1 {
             timestamp,
             ttl,
         )
-        .build()
-        .unwrap();
+            .build()
+            .unwrap();
         assert!(matches!(
             transaction.transaction_category(),
             TransactionCategory::InstallUpgrade
@@ -554,8 +551,8 @@ impl TransactionV1 {
             timestamp,
             ttl,
         )
-        .build()
-        .unwrap();
+            .build()
+            .unwrap();
         assert!(matches!(
             transaction.transaction_category(),
             TransactionCategory::Auction
@@ -708,7 +705,7 @@ impl hash::Hash for TransactionV1 {
             body,
             approvals,
             #[cfg(any(feature = "once_cell", test))]
-                is_verified: _,
+            is_verified: _,
         } = self;
         hash.hash(state);
         header.hash(state);
@@ -726,7 +723,7 @@ impl PartialEq for TransactionV1 {
             body,
             approvals,
             #[cfg(any(feature = "once_cell", test))]
-                is_verified: _,
+            is_verified: _,
         } = self;
         *hash == other.hash
             && *header == other.header
@@ -744,7 +741,7 @@ impl Ord for TransactionV1 {
             body,
             approvals,
             #[cfg(any(feature = "once_cell", test))]
-                is_verified: _,
+            is_verified: _,
         } = self;
         hash.cmp(&other.hash)
             .then_with(|| header.cmp(&other.header))

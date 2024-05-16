@@ -1,4 +1,5 @@
 use std::{collections::BTreeMap, convert::TryInto, sync::Arc, time::Instant};
+use std::convert::TryFrom;
 
 use itertools::Itertools;
 use tracing::{debug, error, info, trace, warn};
@@ -304,15 +305,18 @@ pub fn execute_finalized_block(
             ProofHandling::NoProofs,
         ));
 
-        let category = transaction.category();
+        let category = transaction.transaction_kind();
 
         let allow_execution = {
             let is_not_penalized = !balance_identifier.is_penalty();
             let sufficient_balance = initial_balance_result.is_sufficient(cost);
-            let is_supported = chainspec.supported_categories(category as u64);
+            let is_supported = chainspec.is_supported(category as u64);
             trace!(%transaction_hash, ?sufficient_balance, ?is_not_penalized, ?is_supported, "payment preprocessing");
             is_not_penalized && sufficient_balance && is_supported
         };
+
+        let category = TransactionCategory::try_from(category)
+            .map_err(|_| BlockExecutionError::UnsupportedTransactionKind(category))?;
 
         if allow_execution {
             if is_standard_payment {

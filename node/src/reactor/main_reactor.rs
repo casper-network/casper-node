@@ -165,7 +165,7 @@ pub(crate) struct MainReactor {
     transaction_gossiper: Gossiper<{ Transaction::ID_IS_COMPLETE_ITEM }, Transaction>,
     block_gossiper: Gossiper<{ BlockV2::ID_IS_COMPLETE_ITEM }, BlockV2>,
     finality_signature_gossiper:
-        Gossiper<{ FinalitySignatureV2::ID_IS_COMPLETE_ITEM }, FinalitySignatureV2>,
+    Gossiper<{ FinalitySignatureV2::ID_IS_COMPLETE_ITEM }, FinalitySignatureV2>,
 
     // record retrieval
     sync_leaper: SyncLeaper,
@@ -557,9 +557,9 @@ impl reactor::Reactor for MainReactor {
                     .handle_event(effect_builder, rng, incoming.into()),
             ),
             MainEvent::BlockGossiperAnnouncement(GossiperAnnouncement::GossipReceived {
-                item_id: gossiped_block_id,
-                sender,
-            }) => reactor::wrap_effects(
+                                                     item_id: gossiped_block_id,
+                                                     sender,
+                                                 }) => reactor::wrap_effects(
                 MainEvent::BlockAccumulator,
                 self.block_accumulator.handle_event(
                     effect_builder,
@@ -572,15 +572,15 @@ impl reactor::Reactor for MainReactor {
                 ),
             ),
             MainEvent::BlockGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
-                gossiped_block_id,
-            )) => {
+                                                     gossiped_block_id,
+                                                 )) => {
                 error!(%gossiped_block_id, "gossiper should not announce new block");
                 Effects::new()
             }
             MainEvent::BlockGossiperAnnouncement(GossiperAnnouncement::NewItemBody {
-                item,
-                sender,
-            }) => reactor::wrap_effects(
+                                                     item,
+                                                     sender,
+                                                 }) => reactor::wrap_effects(
                 MainEvent::BlockAccumulator,
                 self.block_accumulator.handle_event(
                     effect_builder,
@@ -592,8 +592,8 @@ impl reactor::Reactor for MainReactor {
                 ),
             ),
             MainEvent::BlockGossiperAnnouncement(GossiperAnnouncement::FinishedGossiping(
-                _gossiped_block_id,
-            )) => Effects::new(),
+                                                     _gossiped_block_id,
+                                                 )) => Effects::new(),
             MainEvent::BlockFetcherAnnouncement(FetchedNewBlockAnnouncement { block, peer }) => {
                 // The block accumulator shouldn't concern itself with historical blocks that are
                 // being fetched. If the block is not convertible to the current version it means
@@ -724,10 +724,10 @@ impl reactor::Reactor for MainReactor {
                     .handle_event(effect_builder, rng, event),
             ),
             MainEvent::AcceptTransactionRequest(AcceptTransactionRequest {
-                transaction,
-                is_speculative,
-                responder,
-            }) => {
+                                                    transaction,
+                                                    is_speculative,
+                                                    responder,
+                                                }) => {
                 let source = if is_speculative {
                     Source::SpeculativeExec
                 } else {
@@ -816,21 +816,21 @@ impl reactor::Reactor for MainReactor {
                     .handle_event(effect_builder, rng, incoming.into()),
             ),
             MainEvent::TransactionGossiperAnnouncement(GossiperAnnouncement::GossipReceived {
-                ..
-            }) => {
+                                                           ..
+                                                       }) => {
                 // Ignore the announcement.
                 Effects::new()
             }
             MainEvent::TransactionGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
-                gossiped_transaction_id,
-            )) => {
+                                                           gossiped_transaction_id,
+                                                       )) => {
                 error!(%gossiped_transaction_id, "gossiper should not announce new transaction");
                 Effects::new()
             }
             MainEvent::TransactionGossiperAnnouncement(GossiperAnnouncement::NewItemBody {
-                item,
-                sender,
-            }) => reactor::wrap_effects(
+                                                           item,
+                                                           sender,
+                                                       }) => reactor::wrap_effects(
                 MainEvent::TransactionAcceptor,
                 self.transaction_acceptor.handle_event(
                     effect_builder,
@@ -989,7 +989,7 @@ impl reactor::Reactor for MainReactor {
                             "couldn't find validators for era {} in parent_era_validators",
                             era_to_check
                         )
-                        .ignore();
+                            .ignore();
                     }
                 };
                 // We also read the validators from the block after the upgrade itself.
@@ -1001,7 +1001,7 @@ impl reactor::Reactor for MainReactor {
                             "couldn't find validators for era {} in block_era_validators",
                             era_to_check
                         )
-                        .ignore();
+                            .ignore();
                     }
                 };
                 // Decide which validators to use for `era_id` in the validators matrix.
@@ -1016,7 +1016,7 @@ impl reactor::Reactor for MainReactor {
                                 "couldn't find validators for era {} in parent_era_validators",
                                 era_id
                             )
-                            .ignore();
+                                .ignore();
                         }
                     }
                 } else {
@@ -1114,7 +1114,7 @@ impl reactor::Reactor for MainReactor {
             chainspec.core_config.recent_era_count(),
             Some(registry),
             config.node.force_resync,
-            chainspec.transaction_config,
+            chainspec.transaction_config.clone(),
         )?;
 
         let contract_runtime = ContractRuntime::new(
@@ -1178,7 +1178,7 @@ impl reactor::Reactor for MainReactor {
             { FinalitySignatureV2::ID_IS_COMPLETE_ITEM },
             _,
         >::new(
-            "finality_signature_gossiper", config.gossip, registry
+            "finality_signature_gossiper", config.gossip, registry,
         )?;
 
         // consensus
@@ -1338,7 +1338,7 @@ impl MainReactor {
                 effect_builder,
                 "MetaBlock: block should be stored after execution or accumulation"
             )
-            .ignore();
+                .ignore();
         }
 
         let mut effects = Effects::new();
@@ -1699,7 +1699,7 @@ impl MainReactor {
             }
             MetaBlock::Historical(historical_meta_block) => {
                 for (transaction_hash, transaction_header, execution_result) in
-                    historical_meta_block.execution_results.iter()
+                historical_meta_block.execution_results.iter()
                 {
                     let event = event_stream_server::Event::TransactionProcessed {
                         transaction_hash: *transaction_hash,

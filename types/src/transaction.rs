@@ -95,11 +95,11 @@ pub(super) static TRANSACTION: Lazy<Transaction> = Lazy::new(|| {
     let source = URef::from_formatted_str(
         "uref-0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a-007",
     )
-    .unwrap();
+        .unwrap();
     let target = URef::from_formatted_str(
         "uref-1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b-000",
     )
-    .unwrap();
+        .unwrap();
     let id = Some(999);
 
     let v1_txn = TransactionV1Builder::new_transfer(30_000_000_000_u64, Some(source), target, id)
@@ -116,9 +116,9 @@ pub(super) static TRANSACTION: Lazy<Transaction> = Lazy::new(|| {
 /// A versioned wrapper for a transaction or deploy.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 #[cfg_attr(
-    any(feature = "std", test),
-    derive(Serialize, Deserialize),
-    serde(deny_unknown_fields)
+any(feature = "std", test),
+derive(Serialize, Deserialize),
+serde(deny_unknown_fields)
 )]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
@@ -373,6 +373,13 @@ impl Transaction {
         }
     }
 
+    pub fn transaction_kind(&self) -> u8 {
+        match self {
+            Transaction::Deploy(_) => TransactionCategory::Large as u8,
+            Transaction::V1(v1) => v1.transaction_kind()
+        }
+    }
+
     // This method is not intended to be used by third party crates.
     #[doc(hidden)]
     #[cfg(feature = "json-schema")]
@@ -482,9 +489,9 @@ impl ToBytes for Transaction {
     fn serialized_length(&self) -> usize {
         U8_SERIALIZED_LENGTH
             + match self {
-                Transaction::Deploy(deploy) => deploy.serialized_length(),
-                Transaction::V1(txn) => txn.serialized_length(),
-            }
+            Transaction::Deploy(deploy) => deploy.serialized_length(),
+            Transaction::V1(txn) => txn.serialized_length(),
+        }
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
@@ -537,7 +544,7 @@ pub mod gens {
 
     use super::*;
 
-    pub fn deploy_hash_arb() -> impl Strategy<Value = DeployHash> {
+    pub fn deploy_hash_arb() -> impl Strategy<Value=DeployHash> {
         array::uniform32(<u8>::arbitrary()).prop_map(DeployHash::from_raw)
     }
 }

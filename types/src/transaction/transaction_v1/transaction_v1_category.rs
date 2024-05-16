@@ -1,4 +1,5 @@
 use core::fmt::{self, Formatter};
+use core::convert::TryFrom;
 
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::testing::TestRng;
@@ -12,13 +13,13 @@ use serde::{Deserialize, Serialize};
 
 /// The category of a Transaction.
 #[derive(
-    Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug, Default,
+Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug, Default,
 )]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(
-    feature = "json-schema",
-    derive(JsonSchema),
-    schemars(description = "Session kind of a V1 Transaction.")
+feature = "json-schema",
+derive(JsonSchema),
+schemars(description = "Session kind of a V1 Transaction.")
 )]
 #[serde(deny_unknown_fields)]
 #[repr(u8)]
@@ -50,6 +51,22 @@ impl TransactionCategory {
             4 => Self::Mint,
             5 => Self::Auction,
             _ => unreachable!(),
+        }
+    }
+}
+
+impl TryFrom<u8> for TransactionCategory {
+    type Error = crate::bytesrepr::Error;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::Large),
+            1 => Ok(Self::Small),
+            2 => Ok(Self::Medium),
+            3 => Ok(Self::InstallUpgrade),
+            4 => Ok(Self::Mint),
+            5 => Ok(Self::Auction),
+            _ => Err(Self::Error::Formatting)
         }
     }
 }

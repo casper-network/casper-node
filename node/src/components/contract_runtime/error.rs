@@ -53,7 +53,7 @@ pub enum BlockExecutionError {
     /// Both the block to be executed and the execution pre-state specify the height of the next
     /// block. These must agree and this error will be thrown if they do not.
     #[error(
-        "block's height does not agree with execution pre-state. \
+    "block's height does not agree with execution pre-state. \
          block: {executable_block:?}, \
          execution pre-state: {execution_pre_state:?}"
     )]
@@ -102,7 +102,7 @@ pub enum BlockExecutionError {
     /// If one of them is not present while trying to construct an `EraEnd`, this error is
     /// produced.
     #[error(
-        "cannot create era end unless we have both an era report and next era validators. \
+    "cannot create era end unless we have both an era report and next era validators. \
          era report: {maybe_era_report:?}, \
          next era validator weights: {maybe_next_era_validator_weights:?}"
     )]
@@ -143,4 +143,7 @@ pub enum BlockExecutionError {
     #[error("No switch block header available for era: {0}")]
     /// No switch block available
     NoSwitchBlockHash(u64),
+    #[error("Unsupported execution kind: {0}")]
+    /// Unsupported execution kind
+    UnsupportedTransactionKind(u8),
 }

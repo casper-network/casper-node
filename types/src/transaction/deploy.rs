@@ -37,9 +37,9 @@ use tracing::{debug, warn};
 #[cfg(any(feature = "std", test))]
 use super::{InitiatorAddr, InitiatorAddrAndSecretKey};
 #[cfg(any(
-    all(feature = "std", feature = "testing"),
-    feature = "json-schema",
-    test
+all(feature = "std", feature = "testing"),
+feature = "json-schema",
+test
 ))]
 use crate::runtime_args;
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
@@ -126,15 +126,15 @@ static DEPLOY: Lazy<Deploy> = Lazy::new(|| {
 /// To construct a new `Deploy`, use a [`DeployBuilder`].
 #[derive(Clone, Eq, Debug)]
 #[cfg_attr(
-    any(feature = "std", test),
-    derive(Serialize, Deserialize),
-    serde(deny_unknown_fields)
+any(feature = "std", test),
+derive(Serialize, Deserialize),
+serde(deny_unknown_fields)
 )]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(
-    feature = "json-schema",
-    derive(JsonSchema),
-    schemars(description = "A signed smart contract.")
+feature = "json-schema",
+derive(JsonSchema),
+schemars(description = "A signed smart contract.")
 )]
 pub struct Deploy {
     hash: DeployHash,
@@ -144,8 +144,8 @@ pub struct Deploy {
     approvals: BTreeSet<Approval>,
     #[cfg_attr(any(all(feature = "std", feature = "once_cell"), test), serde(skip))]
     #[cfg_attr(
-        all(any(feature = "once_cell", test), feature = "datasize"),
-        data_size(skip)
+    all(any(feature = "once_cell", test), feature = "datasize"),
+    data_size(skip)
     )]
     #[cfg(any(feature = "once_cell", test))]
     is_valid: OnceCell<Result<(), InvalidDeploy>>,
@@ -1212,7 +1212,7 @@ impl hash::Hash for Deploy {
     fn hash<H: hash::Hasher>(&self, state: &mut H) {
         // Destructure to make sure we don't accidentally omit fields.
         #[cfg(any(feature = "once_cell", test))]
-        let Deploy {
+            let Deploy {
             hash,
             header,
             payment,
@@ -1221,7 +1221,7 @@ impl hash::Hash for Deploy {
             is_valid: _,
         } = self;
         #[cfg(not(any(feature = "once_cell", test)))]
-        let Deploy {
+            let Deploy {
             hash,
             header,
             payment,
@@ -1240,7 +1240,7 @@ impl PartialEq for Deploy {
     fn eq(&self, other: &Deploy) -> bool {
         // Destructure to make sure we don't accidentally omit fields.
         #[cfg(any(feature = "once_cell", test))]
-        let Deploy {
+            let Deploy {
             hash,
             header,
             payment,
@@ -1249,7 +1249,7 @@ impl PartialEq for Deploy {
             is_valid: _,
         } = self;
         #[cfg(not(any(feature = "once_cell", test)))]
-        let Deploy {
+            let Deploy {
             hash,
             header,
             payment,
@@ -1268,7 +1268,7 @@ impl Ord for Deploy {
     fn cmp(&self, other: &Deploy) -> cmp::Ordering {
         // Destructure to make sure we don't accidentally omit fields.
         #[cfg(any(feature = "once_cell", test))]
-        let Deploy {
+            let Deploy {
             hash,
             header,
             payment,
@@ -1277,7 +1277,7 @@ impl Ord for Deploy {
             is_valid: _,
         } = self;
         #[cfg(not(any(feature = "once_cell", test)))]
-        let Deploy {
+            let Deploy {
             hash,
             header,
             payment,
@@ -1581,7 +1581,7 @@ mod tests {
         let chain_name = "net-1".to_string();
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(chain_name.to_string());
-        let config = chainspec.transaction_config;
+        let config = chainspec.transaction_config.clone();
 
         let deploy = create_deploy(
             &mut rng,
@@ -1603,7 +1603,7 @@ mod tests {
 
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(expected_chain_name.to_string());
-        let config = chainspec.transaction_config;
+        let config = chainspec.transaction_config.clone();
 
         let deploy = create_deploy(
             &mut rng,
@@ -1635,7 +1635,7 @@ mod tests {
 
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(chain_name.to_string());
-        let config = chainspec.transaction_config;
+        let config = chainspec.transaction_config.clone();
 
         let dependency_count = usize::from(config.deploy_config.max_dependencies + 1);
 
@@ -1661,7 +1661,7 @@ mod tests {
 
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(chain_name.to_string());
-        let config = chainspec.transaction_config;
+        let config = chainspec.transaction_config.clone();
 
         let ttl = config.max_ttl + TimeDiff::from(Duration::from_secs(1));
 
@@ -1695,7 +1695,7 @@ mod tests {
 
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(chain_name.to_string());
-        let config = chainspec.transaction_config;
+        let config = chainspec.transaction_config.clone();
         let leeway = TimeDiff::from_seconds(2);
 
         let deploy = create_deploy(
@@ -1729,7 +1729,7 @@ mod tests {
 
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(chain_name.to_string());
-        let config = chainspec.transaction_config;
+        let config = chainspec.transaction_config.clone();
         let leeway = TimeDiff::from_seconds(2);
 
         let deploy = create_deploy(
@@ -1752,7 +1752,7 @@ mod tests {
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(chain_name.to_string());
         chainspec.with_pricing_handling(PricingHandling::Classic);
-        let config = chainspec.transaction_config;
+        let config = chainspec.transaction_config.clone();
 
         let payment = ExecutableDeployItem::ModuleBytes {
             module_bytes: Bytes::new(),
@@ -1796,7 +1796,7 @@ mod tests {
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(chain_name.to_string());
         chainspec.with_pricing_handling(PricingHandling::Classic);
-        let config = chainspec.transaction_config;
+        let config = chainspec.transaction_config.clone();
 
         let payment = ExecutableDeployItem::ModuleBytes {
             module_bytes: Bytes::new(),
@@ -1842,7 +1842,7 @@ mod tests {
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(chain_name.to_string());
         chainspec.with_pricing_handling(PricingHandling::Classic);
-        let config = chainspec.transaction_config;
+        let config = chainspec.transaction_config.clone();
         let amount = U512::from(config.block_gas_limit + 1);
 
         let payment = ExecutableDeployItem::ModuleBytes {
@@ -1894,7 +1894,7 @@ mod tests {
 
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(chain_name.to_string());
-        let config = chainspec.transaction_config;
+        let config = chainspec.transaction_config.clone();
         let amount = U512::from(config.block_gas_limit + 1);
 
         let payment = ExecutableDeployItem::ModuleBytes {
@@ -1940,7 +1940,7 @@ mod tests {
 
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(chain_name.to_string());
-        let config = chainspec.transaction_config;
+        let config = chainspec.transaction_config.clone();
         let deploy = create_deploy(
             &mut rng,
             config.max_ttl,
@@ -1968,7 +1968,7 @@ mod tests {
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(chain_name.to_string());
 
-        let config = chainspec.transaction_config;
+        let config = chainspec.transaction_config.clone();
         let mut deploy = create_deploy(
             &mut rng,
             config.max_ttl,
@@ -1996,7 +1996,7 @@ mod tests {
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(chain_name.to_string());
 
-        let config = chainspec.transaction_config;
+        let config = chainspec.transaction_config.clone();
         let mut deploy = create_deploy(
             &mut rng,
             config.max_ttl,
@@ -2028,7 +2028,7 @@ mod tests {
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(chain_name.to_string());
 
-        let config = chainspec.transaction_config;
+        let config = chainspec.transaction_config.clone();
         let mut deploy = create_deploy(
             &mut rng,
             config.max_ttl,
@@ -2069,7 +2069,7 @@ mod tests {
             .with_chain_name(chain_name.to_string())
             .with_pricing_handling(PricingHandling::Classic);
 
-        let config = chainspec.transaction_config;
+        let config = chainspec.transaction_config.clone();
 
         let payment = ExecutableDeployItem::ModuleBytes {
             module_bytes: Bytes::new(),
@@ -2127,7 +2127,7 @@ mod tests {
             .with_chain_name(chain_name.to_string())
             .with_pricing_handling(PricingHandling::Classic);
 
-        let config = chainspec.transaction_config;
+        let config = chainspec.transaction_config.clone();
 
         let payment = ExecutableDeployItem::ModuleBytes {
             module_bytes: Bytes::new(),

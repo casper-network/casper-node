@@ -422,7 +422,7 @@ impl TransactionBuffer {
 
     /// Returns a right-sized payload of transactions that can be proposed.
     fn appendable_block(&mut self, timestamp: Timestamp, era_id: EraId) -> AppendableBlock {
-        let mut ret = AppendableBlock::new(self.chainspec.transaction_config, timestamp);
+        let mut ret = AppendableBlock::new(self.chainspec.transaction_config.clone(), timestamp);
         let current_era_gas_price = match self.prices.get(&era_id) {
             Some(gas_price) => *gas_price,
             None => return ret,
@@ -742,7 +742,7 @@ impl<REv> Component<REv> for TransactionBuffer
                     match maybe_gas_price {
                         None => responder
                             .respond(AppendableBlock::new(
-                                self.chainspec.transaction_config,
+                                self.chainspec.transaction_config.clone(),
                                 timestamp,
                             ))
                             .ignore(),

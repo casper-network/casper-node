@@ -92,6 +92,7 @@ impl<'a> TransactionV1Builder<'a> {
             args,
             TransactionTarget::Native,
             TransactionEntryPoint::Transfer,
+            TransactionCategory::Mint as u8,
             Self::DEFAULT_SCHEDULING,
         );
         Ok(TransactionV1Builder::new(body))
@@ -108,6 +109,7 @@ impl<'a> TransactionV1Builder<'a> {
             args,
             TransactionTarget::Native,
             TransactionEntryPoint::AddBid,
+            TransactionCategory::Auction as u8,
             Self::DEFAULT_SCHEDULING,
         );
         Ok(TransactionV1Builder::new(body))
@@ -124,6 +126,7 @@ impl<'a> TransactionV1Builder<'a> {
             args,
             TransactionTarget::Native,
             TransactionEntryPoint::WithdrawBid,
+            TransactionCategory::Auction as u8,
             Self::DEFAULT_SCHEDULING,
         );
         Ok(TransactionV1Builder::new(body))
@@ -140,6 +143,7 @@ impl<'a> TransactionV1Builder<'a> {
             args,
             TransactionTarget::Native,
             TransactionEntryPoint::Delegate,
+            TransactionCategory::Auction as u8,
             Self::DEFAULT_SCHEDULING,
         );
         Ok(TransactionV1Builder::new(body))
@@ -156,6 +160,7 @@ impl<'a> TransactionV1Builder<'a> {
             args,
             TransactionTarget::Native,
             TransactionEntryPoint::Undelegate,
+            TransactionCategory::Auction as u8,
             Self::DEFAULT_SCHEDULING,
         );
         Ok(TransactionV1Builder::new(body))
@@ -173,6 +178,7 @@ impl<'a> TransactionV1Builder<'a> {
             args,
             TransactionTarget::Native,
             TransactionEntryPoint::Redelegate,
+            TransactionCategory::Auction as u8,
             Self::DEFAULT_SCHEDULING,
         );
         Ok(TransactionV1Builder::new(body))
@@ -190,6 +196,7 @@ impl<'a> TransactionV1Builder<'a> {
             RuntimeArgs::new(),
             target,
             TransactionEntryPoint::Custom(entry_point.into()),
+            TransactionCategory::Large as u8,
             Self::DEFAULT_SCHEDULING,
         );
         TransactionV1Builder::new(body)
@@ -253,6 +260,7 @@ impl<'a> TransactionV1Builder<'a> {
             RuntimeArgs::new(),
             target,
             TransactionEntryPoint::Custom(entry_point.into()),
+            TransactionCategory::Large as u8,
             Self::DEFAULT_SCHEDULING,
         );
         TransactionV1Builder::new(body)

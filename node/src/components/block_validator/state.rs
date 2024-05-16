@@ -132,7 +132,7 @@ impl BlockValidationState {
         }
 
         let appendable_block =
-            AppendableBlock::new(chainspec.transaction_config, proposed_block.timestamp());
+            AppendableBlock::new(chainspec.transaction_config.clone(), proposed_block.timestamp());
 
         let mut missing_transactions = HashMap::new();
 

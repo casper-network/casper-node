@@ -23,10 +23,7 @@ use super::TransactionCategory;
 use super::TransactionConfig;
 #[cfg(doc)]
 use super::TransactionV1;
-use crate::{
-    bytesrepr::{self, FromBytes, ToBytes},
-    TransactionSessionKind,
-};
+use crate::{bytesrepr::{self, FromBytes, ToBytes}, TransactionSessionKind, TransactionV1ExcessiveSizeError};
 
 #[cfg(any(feature = "std", test))]
 use crate::InvalidTransactionV1;
@@ -40,20 +37,21 @@ use crate::{
 /// The body of a [`TransactionV1`].
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
 #[cfg_attr(
-    any(feature = "std", test),
-    derive(Serialize, Deserialize),
-    serde(deny_unknown_fields)
+any(feature = "std", test),
+derive(Serialize, Deserialize),
+serde(deny_unknown_fields)
 )]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(
-    feature = "json-schema",
-    derive(JsonSchema),
-    schemars(description = "Body of a `TransactionV1`.")
+feature = "json-schema",
+derive(JsonSchema),
+schemars(description = "Body of a `TransactionV1`.")
 )]
 pub struct TransactionV1Body {
     pub(super) args: RuntimeArgs,
     pub(super) target: TransactionTarget,
     pub(super) entry_point: TransactionEntryPoint,
+    pub(super) transaction_kind: u8,
     pub(super) scheduling: TransactionScheduling,
 }
 
@@ -63,12 +61,14 @@ impl TransactionV1Body {
         args: RuntimeArgs,
         target: TransactionTarget,
         entry_point: TransactionEntryPoint,
+        transaction_kind: u8,
         scheduling: TransactionScheduling,
     ) -> Self {
         TransactionV1Body {
             args,
             target,
             entry_point,
+            transaction_kind,
             scheduling,
         }
     }
@@ -100,42 +100,28 @@ impl TransactionV1Body {
 
     /// Returns true if this transaction is a native mint interaction.
     pub fn is_native_mint(&self) -> bool {
-        TransactionTarget::Native == self.target
-            && TransactionEntryPoint::Transfer == self.entry_point
+        self.transaction_kind == TransactionCategory::Mint as u8
     }
 
     /// Returns true if this transaction is a native auction interaction.
     pub fn is_native_auction(&self) -> bool {
-        if TransactionTarget::Native != self.target {
-            return false;
-        }
-        match self.entry_point {
-            TransactionEntryPoint::Custom(_) | TransactionEntryPoint::Transfer => false,
-            TransactionEntryPoint::AddBid
-            | TransactionEntryPoint::WithdrawBid
-            | TransactionEntryPoint::ActivateBid
-            | TransactionEntryPoint::Delegate
-            | TransactionEntryPoint::Undelegate
-            | TransactionEntryPoint::Redelegate
-            | TransactionEntryPoint::ChangeBidPublicKey => true,
-        }
+        self.transaction_kind == TransactionCategory::Auction as u8
     }
 
     /// Returns true if this transaction is a smart contract installer or upgrader.
     pub fn is_install_or_upgrade(&self) -> bool {
-        match self.target() {
-            TransactionTarget::Native | TransactionTarget::Stored { .. } => false,
-            TransactionTarget::Session { kind, .. } => match kind {
-                TransactionSessionKind::Standard | TransactionSessionKind::Isolated => false,
-                TransactionSessionKind::Installer | TransactionSessionKind::Upgrader => true,
-            },
-        }
+        self.transaction_kind == TransactionCategory::InstallUpgrade as u8
     }
 
-    /// Returns true if this transaction goes into the misc / standard category.
-    pub fn is_standard(&self) -> bool {
-        !self.is_native_mint() && !self.is_native_auction() && !self.is_install_or_upgrade()
+    // /// Returns true if this transaction goes into the misc / standard category.
+    // pub fn is_standard(&self) -> bool {
+    //     !self.is_native_mint() && !self.is_native_auction() && !self.is_install_or_upgrade()
+    // }
+
+    pub fn transaction_kind(&self) -> u8 {
+        self.transaction_kind
     }
+
 
     /// Consumes `self`, returning its constituent parts.
     pub fn destructure(
@@ -151,15 +137,31 @@ impl TransactionV1Body {
 
     #[cfg(any(feature = "std", test))]
     pub(super) fn is_valid(&self, config: &TransactionConfig) -> Result<(), InvalidTransactionV1> {
+        let kind = self.transaction_kind as u64;
+        let lane_config = config.transaction_v1_config.lanes.iter()
+            .find(|lane| lane.first() == Some(&kind))
+            .ok_or(InvalidTransactionV1::InvalidTransactionKind(self.transaction_kind))?;
+
+        let max_serialized_length = lane_config[1];
+        let actual_length = self.serialized_length();
+        if actual_length > max_serialized_length as usize {
+            return Err(InvalidTransactionV1::ExcessiveSize(TransactionV1ExcessiveSizeError {
+                max_transaction_size: max_serialized_length as u32,
+                actual_transaction_size: actual_length,
+            }));
+        }
+
+        let max_args_length = lane_config[2];
+
         let args_length = self.args.serialized_length();
-        if args_length > config.transaction_v1_config.max_args_length as usize {
+        if args_length > max_args_length as usize {
             debug!(
                 args_length,
-                max_args_length = config.transaction_v1_config.max_args_length,
+                max_args_length = max_args_length,
                 "transaction runtime args excessive size"
             );
             return Err(InvalidTransactionV1::ExcessiveArgsLength {
-                max_length: config.transaction_v1_config.max_args_length as usize,
+                max_length: max_args_length as usize,
                 got: args_length,
             });
         }
@@ -271,6 +273,7 @@ impl TransactionV1Body {
             args,
             TransactionTarget::Native,
             TransactionEntryPoint::Transfer,
+            TransactionCategory::Mint as u8,
             TransactionScheduling::random(rng),
         )
     }
@@ -285,6 +288,7 @@ impl TransactionV1Body {
             RuntimeArgs::random(rng),
             target,
             TransactionEntryPoint::Custom(rng.random_string(1..11)),
+            TransactionCategory::Large as u8,
             TransactionScheduling::random(rng),
         )
     }
@@ -300,6 +304,7 @@ impl TransactionV1Body {
             RuntimeArgs::random(rng),
             target,
             TransactionEntryPoint::Custom(rng.random_string(1..11)),
+            TransactionCategory::InstallUpgrade as u8,
             TransactionScheduling::random(rng),
         )
     }
@@ -314,6 +319,7 @@ impl TransactionV1Body {
             args,
             TransactionTarget::Native,
             TransactionEntryPoint::AddBid,
+            TransactionCategory::Auction as u8,
             TransactionScheduling::random(rng),
         )
     }
@@ -335,6 +341,7 @@ impl TransactionV1Body {
                     args,
                     TransactionTarget::Native,
                     TransactionEntryPoint::Transfer,
+                    TransactionCategory::Mint as u8,
                     TransactionScheduling::random(rng),
                 )
             }
@@ -348,6 +355,7 @@ impl TransactionV1Body {
                     args,
                     TransactionTarget::Native,
                     TransactionEntryPoint::AddBid,
+                    TransactionCategory::Auction as u8,
                     TransactionScheduling::random(rng),
                 )
             }
@@ -359,6 +367,7 @@ impl TransactionV1Body {
                     args,
                     TransactionTarget::Native,
                     TransactionEntryPoint::WithdrawBid,
+                    TransactionCategory::Auction as u8,
                     TransactionScheduling::random(rng),
                 )
             }
@@ -371,6 +380,7 @@ impl TransactionV1Body {
                     args,
                     TransactionTarget::Native,
                     TransactionEntryPoint::Delegate,
+                    TransactionCategory::Auction as u8,
                     TransactionScheduling::random(rng),
                 )
             }
@@ -383,6 +393,7 @@ impl TransactionV1Body {
                     args,
                     TransactionTarget::Native,
                     TransactionEntryPoint::Undelegate,
+                    TransactionCategory::Auction as u8,
                     TransactionScheduling::random(rng),
                 )
             }
@@ -398,6 +409,7 @@ impl TransactionV1Body {
                     args,
                     TransactionTarget::Native,
                     TransactionEntryPoint::Redelegate,
+                    TransactionCategory::Auction as u8,
                     TransactionScheduling::random(rng),
                 )
             }
@@ -414,6 +426,7 @@ impl TransactionV1Body {
                     RuntimeArgs::random(rng),
                     target,
                     TransactionEntryPoint::Custom(rng.random_string(1..11)),
+                    TransactionCategory::Auction as u8,
                     TransactionScheduling::random(rng),
                 )
             }
@@ -443,6 +456,7 @@ impl ToBytes for TransactionV1Body {
         self.args.serialized_length()
             + self.target.serialized_length()
             + self.entry_point.serialized_length()
+            + self.transaction_kind.serialized_length()
             + self.scheduling.serialized_length()
     }
 
@@ -450,6 +464,7 @@ impl ToBytes for TransactionV1Body {
         self.args.write_bytes(writer)?;
         self.target.write_bytes(writer)?;
         self.entry_point.write_bytes(writer)?;
+        self.transaction_kind.write_bytes(writer)?;
         self.scheduling.write_bytes(writer)
     }
 }
@@ -459,8 +474,9 @@ impl FromBytes for TransactionV1Body {
         let (args, remainder) = RuntimeArgs::from_bytes(bytes)?;
         let (target, remainder) = TransactionTarget::from_bytes(remainder)?;
         let (entry_point, remainder) = TransactionEntryPoint::from_bytes(remainder)?;
+        let (kind, remainder) = u8::from_bytes(remainder)?;
         let (scheduling, remainder) = TransactionScheduling::from_bytes(remainder)?;
-        let body = TransactionV1Body::new(args, target, entry_point, scheduling);
+        let body = TransactionV1Body::new(args, target, entry_point, kind, scheduling);
         Ok((body, remainder))
     }
 }
@@ -481,8 +497,8 @@ mod tests {
     fn not_acceptable_due_to_excessive_args_length() {
         let rng = &mut TestRng::new();
         let mut config = TransactionConfig::default();
-        config.transaction_v1_config.max_args_length = 10;
         let mut body = TransactionV1Body::random(rng);
+        config.transaction_v1_config.lanes = vec![vec![body.transaction_kind as u64, 10, 10, 0]];
         body.args = runtime_args! {"a" => 1_u8};
 
         let expected_error = InvalidTransactionV1::ExcessiveArgsLength {
@@ -504,6 +520,7 @@ mod tests {
             args,
             TransactionTarget::Native,
             entry_point.clone(),
+            TransactionCategory::Mint as u8,
             TransactionScheduling::random(rng),
         );
 
@@ -533,12 +550,14 @@ mod tests {
                 RuntimeArgs::new(),
                 stored_target,
                 entry_point.clone(),
+                TransactionCategory::Large as u8,
                 TransactionScheduling::random(rng),
             );
             let session_body = TransactionV1Body::new(
                 RuntimeArgs::new(),
                 session_target,
                 entry_point.clone(),
+                TransactionCategory::Large as u8,
                 TransactionScheduling::random(rng),
             );
 
