@@ -20,7 +20,10 @@ use casper_sdk::{
     Contract, ContractHandle,
 };
 
-use contracts::token_owner::{self, TokenOwnerContract, TokenOwnerContractRef};
+use contracts::{
+    no_fallback,
+    token_owner::{self, TokenOwnerContract, TokenOwnerContractRef},
+};
 
 fn next_test(counter: &mut u32, name: &str) -> u32 {
     let current = *counter;
@@ -36,6 +39,7 @@ pub fn call() {
 
     use crate::contracts::{
         harness::{Harness, HarnessRef},
+        no_fallback::{NoFallback, NoFallbackRef},
         token_owner::FallbackHandler,
     };
 
@@ -503,6 +507,23 @@ pub fn call() {
                 assert_eq!(harness_balance_before, harness_balance_after);
             }
         }
+    }
+
+    {
+        let current_test = next_test(
+            &mut counter,
+            "Plain transfer to a contract does not work without fallback",
+        );
+
+        let no_fallback_contract = ContractBuilder::<NoFallback>::new()
+            .with_value(0)
+            .create(|| NoFallbackRef::initialize())
+            .expect("Should create");
+
+        assert_eq!(
+            host::casper_transfer(&no_fallback_contract.entity(), 123),
+            Err(CallError::NotCallable)
+        );
     }
 
     log!("👋 Goodbye");

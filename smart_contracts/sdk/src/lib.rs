@@ -192,6 +192,10 @@ impl<T: ContractRef> ContractHandle<T> {
         self.contract_address
     }
 
+    pub fn entity(&self) -> Entity {
+        Entity::Contract(self.contract_address)
+    }
+
     /// Returns the balance of the contract.
     pub fn balance(&self) -> u64 {
         host::get_balance_of(&Entity::Contract(self.contract_address))

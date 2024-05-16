@@ -14,7 +14,7 @@ pub enum CallError {
     CalleeReverted,
     CalleeTrapped,
     CalleeGasDepleted,
-    CodeNotFound,
+    NotCallable,
 }
 
 impl Display for CallError {
@@ -23,7 +23,7 @@ impl Display for CallError {
             CallError::CalleeReverted => write!(f, "callee reverted"),
             CallError::CalleeTrapped => write!(f, "callee trapped"),
             CallError::CalleeGasDepleted => write!(f, "callee gas depleted"),
-            CallError::CodeNotFound => write!(f, "code not found"),
+            CallError::NotCallable => write!(f, "not callable"),
         }
     }
 }
@@ -36,7 +36,7 @@ impl TryFrom<u32> for CallError {
             1 => Ok(CallError::CalleeReverted),
             2 => Ok(CallError::CalleeTrapped),
             3 => Ok(CallError::CalleeGasDepleted),
-            4 => Ok(CallError::CodeNotFound),
+            4 => Ok(CallError::NotCallable),
             _ => Err(()),
         }
     }

@@ -9,7 +9,7 @@ use casper_types::{
 };
 use either::Either;
 use parking_lot::RwLock;
-use tracing::error;
+use tracing::{error, warn};
 use vm_common::flags::ReturnFlags;
 
 use super::{ExecuteError, ExecuteRequest, ExecuteResult, ExecutionKind, Executor};
@@ -200,16 +200,12 @@ impl Executor for ExecutorV2 {
                             .take_bytes();
 
                         let function_index = {
-                            // let entry_points = tracking_copy.get_v2_entry_points(*entity_addr);
-                            // dbg!(&entry_points);
-
                             let entry_point_addr = EntryPointAddr::VmCasperV2 {
                                 entity_addr: *entity_addr,
                                 selector: selector.map(|selector| selector.get()),
                             };
-                            // dbg!(&entry_point_addr);
                             let key = Key::EntryPoint(entry_point_addr);
-                            // dbg!(&key);
+
                             match tracking_copy.read(&key) {
                                 Ok(Some(StoredValue::EntryPoint(EntryPointValue::V2CasperVm(
                                     entrypoint_v2,
@@ -223,7 +219,16 @@ impl Executor for ExecutorV2 {
                                     panic!("Unexpected entry point found: {stored_value:?}");
                                 }
                                 Ok(None) => {
-                                    panic!("No entry point found for address {key:?} and selector {selector:?}");
+                                    warn!(?entry_point_addr, "No entry point found");
+                                    return Ok(ExecuteResult {
+                                        host_error: Some(HostError::NotCallable),
+                                        output: None,
+                                        gas_usage: GasUsage {
+                                            gas_limit,
+                                            remaining_points: gas_limit,
+                                        },
+                                        tracking_copy_parts: tracking_copy.into_raw_parts(),
+                                    });
                                 }
                                 Err(error) => panic!("Error reading entry point: {error:?}"),
                             }

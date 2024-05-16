@@ -951,5 +951,4 @@ pub(crate) fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
             }
         }
     }
-
 }

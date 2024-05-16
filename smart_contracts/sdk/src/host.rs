@@ -353,9 +353,7 @@ impl<T: ToCallData> CallResult<T> {
                 let data = self.data.unwrap_or_default();
                 Ok(borsh::from_slice(&data).unwrap())
             }
-            Err(CallError::CalleeTrapped) => Err(CallError::CalleeTrapped),
-            Err(CallError::CalleeGasDepleted) => Err(CallError::CalleeGasDepleted),
-            Err(CallError::CodeNotFound) => Err(CallError::CodeNotFound),
+            Err(call_error) => Err(call_error),
         }
     }
 

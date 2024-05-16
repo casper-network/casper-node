@@ -159,13 +159,3 @@ impl Fallback for TokenOwnerContract {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use casper_contract::contract_api::runtime;
-    use casper_types::U512;
-
-    #[test]
-    fn test_token_owner_contract() {}
-}
