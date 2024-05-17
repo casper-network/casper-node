@@ -317,7 +317,13 @@ impl Display for BidAddr {
                 delegator,
             } => write!(f, "{}{}{}", tag, validator, delegator),
 
-            BidAddr::Credit { validator, era_id } => write!(f, "{}{}{}", tag, validator, era_id),
+            BidAddr::Credit { validator, era_id } => write!(
+                f,
+                "{}{}{}",
+                tag,
+                validator,
+                base16::encode_lower(&era_id.to_le_bytes())
+            ),
         }
     }
 }
