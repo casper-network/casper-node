@@ -1,7 +1,16 @@
-use std::ops::{BitXor, BitXorAssign};
+use std::{
+    num::NonZeroU32,
+    ops::{BitXor, BitXorAssign},
+};
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct Selector(u32);
+
+impl From<NonZeroU32> for Selector {
+    fn from(selector: NonZeroU32) -> Self {
+        Selector(selector.get())
+    }
+}
 
 impl BitXorAssign for Selector {
     fn bitxor_assign(&mut self, rhs: Self) {

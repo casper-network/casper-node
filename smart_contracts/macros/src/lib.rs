@@ -2,6 +2,8 @@ pub(crate) mod utils;
 
 extern crate proc_macro;
 
+use std::num::NonZeroU32;
+
 use darling::{ast, util::parse_expr, FromAttributes, FromMeta};
 use proc_macro::TokenStream;
 use proc_macro2::Span;
@@ -16,7 +18,7 @@ use vm_common::{flags::EntryPointFlags, selector::Selector};
 enum SelectorAttribute {
     #[darling(word)]
     Fallback,
-    Value(u32),
+    Value(NonZeroU32),
 }
 
 #[derive(Debug, FromAttributes)]
@@ -253,7 +255,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                             };
 
                             if let Some(selector_value) = selector_value {
-                                combined_selectors ^= Selector::new(selector_value);
+                                combined_selectors ^= Selector::from(selector_value);
                             }
 
                             let arg_names_and_types = func
@@ -289,6 +291,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
 
                             let schema_selector = match selector_value {
                                 Some(value) => {
+                                    let value = value.get();
                                     quote! {
                                         Some(#value)
                                     }
@@ -301,13 +304,9 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                             };
                             let mut flags = EntryPointFlags::empty();
 
-                            let manifest_selector = match selector_value {
-                                Some(value) => value,
-                                None => {
-                                    flags.set(EntryPointFlags::FALLBACK, true);
-                                    0
-                                }
-                            };
+                            if selector_value.is_none() {
+                                flags.set(EntryPointFlags::FALLBACK, true);
+                            }
 
                             let flags = flags.bits();
                             schema_entry_points.push(quote! {
@@ -349,6 +348,9 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                 }
                             };
 
+                            let manifest_selector =
+                                selector_value.map(|value| value.get()).unwrap_or_default();
+
                             dispatch_table.push(quote! {
                                 casper_sdk::sys::EntryPoint {
                                     selector: #manifest_selector,
@@ -384,6 +386,8 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                             };
 
                             if !is_fallback {
+                                let selector_value =
+                                    selector_value.map(|value| value.get()).unwrap_or_default();
                                 extra_code.push(quote! {
                                 fn #func_name<'a>(#self_ty #(#arg_names: #arg_types,)*) -> impl casper_sdk::ToCallData<Return<'a> = #call_data_return_lifetime> {
                                     #[derive(BorshSerialize)]
@@ -531,7 +535,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                         let method_attribute;
                         let mut flag_value = EntryPointFlags::empty();
 
-                        let selector_value: Option<u32>;
+                        let selector_value;
 
                         let func = match entry_point {
                             syn::ImplItem::Const(_) => todo!("Const"),
@@ -701,16 +705,13 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                     flag_value |= EntryPointFlags::CONSTRUCTOR;
                                 }
 
-                                let selector_value = match selector_value {
-                                    Some(value) => value,
-                                    None => {
-                                        flag_value |= EntryPointFlags::FALLBACK;
-                                        0
-                                    }
+                                if selector_value.is_none() {
+                                    flag_value |= EntryPointFlags::FALLBACK;
                                 };
 
                                 let bits = flag_value.bits();
-
+                                let selector_value =
+                                    selector_value.map(|value| value.get()).unwrap_or_default();
                                 manifest_entry_points.push(quote! {
                                 {
 
@@ -895,11 +896,14 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                         let bits = flag_value.bits();
 
                         if let Some(selector_value) = selector_value {
-                            combined_selectors ^= Selector::new(selector_value);
+                            combined_selectors ^= Selector::from(selector_value);
                         }
 
                         let schema_selector = match selector_value {
-                            Some(value) => quote! { Some(#value) },
+                            Some(value) => {
+                                let value = value.get();
+                                quote! { Some(#value) }
+                            }
                             None => quote! { None },
                         };
 

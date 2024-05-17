@@ -1,3 +1,5 @@
+use std::num::NonZeroU32;
+
 use quote::quote;
 use syn::Signature;
 
@@ -100,7 +102,7 @@ pub(crate) fn compute_selector_bytes(bytes: &[u8]) -> u32 {
     u32::from_be_bytes(selector_bytes)
 }
 
-pub(crate) fn compute_selector_value(sig: &Signature) -> u32 {
+pub(crate) fn compute_selector_value(sig: &Signature) -> NonZeroU32 {
     let preimage = selector_preimage(sig);
     let hash_bytes: blake2_rfc::blake2b::Blake2bResult = {
         let mut context = blake2_rfc::blake2b::Blake2b::new(32);
@@ -112,7 +114,9 @@ pub(crate) fn compute_selector_value(sig: &Signature) -> u32 {
 
     // Using be constructor from first 4 bytes in big endian order should basically copy first 4
     // bytes in order into the integer.
-    u32::from_be_bytes(selector_bytes)
+    let value = u32::from_be_bytes(selector_bytes);
+    // The chances of this being zero are astronomically low.
+    NonZeroU32::new(value).expect("Computed selector value should not be zero")
 }
 #[cfg(test)]
 mod tests {
