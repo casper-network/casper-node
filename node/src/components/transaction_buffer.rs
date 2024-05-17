@@ -383,22 +383,16 @@ impl TransactionBuffer {
     fn proposable(
         &self,
         current_era_gas_price: u8,
-    ) -> Vec<(TransactionHash, TransactionFootprint)> {
+    ) -> impl Iterator<Item = (&TransactionHash, &TransactionFootprint)> {
         debug!("TransactionBuffer: getting proposable transactions");
         self.buffer
             .iter()
-            .filter(|(th, _)| !self.hold.values().any(|hs| hs.contains(th)))
-            .filter(|(th, _)| !self.dead.contains(th))
-            .filter(|(_, (_, maybe_data))| match maybe_data {
-                None => false,
-                Some(footprint) => footprint.gas_price_tolerance() >= (current_era_gas_price),
+            .filter(move |(th, _)| !self.hold.values().any(|hs| hs.contains(th)))
+            .filter(move |(th, _)| !self.dead.contains(th))
+            .filter_map(|(th, (_, maybe_footprint))| {
+                maybe_footprint.as_ref().map(|footprint| (th, footprint))
             })
-            .filter_map(|(th, (_, maybe_data))| {
-                maybe_data
-                    .as_ref()
-                    .map(|footprint| (*th, footprint.clone()))
-            })
-            .collect()
+            .filter(move |(_, footprint)| footprint.gas_price_tolerance() >= current_era_gas_price)
     }
 
     fn buckets(
@@ -414,8 +408,8 @@ impl TransactionBuffer {
             let body_hash = footprint.body_hash;
             buckets
                 .entry(body_hash)
-                .and_modify(|vec| vec.push((transaction_hash, footprint.clone())))
-                .or_insert(vec![(transaction_hash, footprint)]);
+                .and_modify(|vec| vec.push((*transaction_hash, footprint.clone())))
+                .or_insert(vec![(*transaction_hash, footprint.clone())]);
         }
         buckets
     }
