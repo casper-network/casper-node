@@ -398,16 +398,13 @@ impl TransactionBuffer {
     fn buckets(
         &mut self,
         current_era_gas_price: u8,
-    ) -> HashMap<Digest, Vec<(TransactionHash, &TransactionFootprint)>> {
+    ) -> HashMap<&Digest, Vec<(TransactionHash, &TransactionFootprint)>> {
         let proposable = self.proposable(current_era_gas_price);
 
-        let mut buckets: HashMap<Digest, Vec<(TransactionHash, &TransactionFootprint)>> =
-            HashMap::new();
-
+        let mut buckets: HashMap<_, Vec<_>> = HashMap::new();
         for (transaction_hash, footprint) in proposable {
-            let body_hash = footprint.body_hash;
             buckets
-                .entry(body_hash)
+                .entry(&footprint.body_hash)
                 .and_modify(|vec| vec.push((*transaction_hash, footprint)))
                 .or_insert(vec![(*transaction_hash, footprint)]);
         }
@@ -449,7 +446,7 @@ impl TransactionBuffer {
                 );
             }
 
-            let Some((transaction_hash, footprint)) = buckets.get_mut(&body_hash).and_then(Vec::<_>::pop)
+            let Some((transaction_hash, footprint)) = buckets.get_mut(body_hash).and_then(Vec::<_>::pop)
                 else {
                     continue;
                 };
