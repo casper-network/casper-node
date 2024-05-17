@@ -432,7 +432,9 @@ pub fn process_unbond_requests<P: Auction + ?Sized>(
     // or their delegators' bids
     for validator_public_key in processed_validators {
         let validator_bid_addr = BidAddr::new_from_public_keys(&validator_public_key, None);
-        let validator_bid = read_validator_bid(provider, &validator_bid_addr.into())?;
+        let validator_bid = read_current_validator_bid(provider, validator_bid_addr.into())?;
+        let validator_public_key = validator_bid.validator_public_key().clone(); // use the current
+                                                                                 // public key
         let mut delegator_bids = read_delegator_bids(provider, &validator_public_key)?;
 
         // prune the delegators that have no stake and no remaining unbonds to be processed
