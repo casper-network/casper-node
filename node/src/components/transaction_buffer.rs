@@ -398,18 +398,18 @@ impl TransactionBuffer {
     fn buckets(
         &mut self,
         current_era_gas_price: u8,
-    ) -> HashMap<Digest, Vec<(TransactionHash, TransactionFootprint)>> {
+    ) -> HashMap<Digest, Vec<(TransactionHash, &TransactionFootprint)>> {
         let proposable = self.proposable(current_era_gas_price);
 
-        let mut buckets: HashMap<Digest, Vec<(TransactionHash, TransactionFootprint)>> =
+        let mut buckets: HashMap<Digest, Vec<(TransactionHash, &TransactionFootprint)>> =
             HashMap::new();
 
         for (transaction_hash, footprint) in proposable {
             let body_hash = footprint.body_hash;
             buckets
                 .entry(body_hash)
-                .and_modify(|vec| vec.push((*transaction_hash, footprint.clone())))
-                .or_insert(vec![(*transaction_hash, footprint.clone())]);
+                .and_modify(|vec| vec.push((*transaction_hash, footprint)))
+                .or_insert(vec![(*transaction_hash, footprint)]);
         }
         buckets
     }
@@ -422,6 +422,7 @@ impl TransactionBuffer {
             None => return ret,
         };
         let mut holds = HashSet::new();
+        let mut dead = HashSet::new();
 
         // TODO[RC]: It's error prone to use 4 different flags to track the limits. Implement a
         // proper limiter.
@@ -430,13 +431,13 @@ impl TransactionBuffer {
         let mut have_hit_install_upgrade_limit = false;
         let mut have_hit_auction_limit = false;
 
-        let mut buckets = self.buckets(current_era_gas_price);
-        let mut body_hashes_queue: VecDeque<_> = buckets.keys().cloned().collect();
-
         #[cfg(test)]
         let mut iter_counter = 0;
         #[cfg(test)]
         let iter_limit = self.buffer.len() * 4;
+
+        let mut buckets = self.buckets(current_era_gas_price);
+        let mut body_hashes_queue: VecDeque<_> = buckets.keys().cloned().collect();
 
         while let Some(body_hash) = body_hashes_queue.pop_front() {
             #[cfg(test)]
@@ -472,7 +473,7 @@ impl TransactionBuffer {
 
             // let transaction_hash = with_approvals.transaction_hash();
             let has_multiple_approvals = footprint.approvals.len() > 1;
-            match ret.add_transaction(footprint.clone()) {
+            match ret.add_transaction(footprint) {
                 Ok(_) => {
                     debug!(%transaction_hash, "TransactionBuffer: proposing transaction");
                     holds.insert(transaction_hash);
@@ -487,14 +488,14 @@ impl TransactionBuffer {
                                 ?transaction_hash,
                                 "TransactionBuffer: duplicated transaction or transfer in transaction buffer"
                             );
-                            self.dead.insert(transaction_hash);
+                            dead.insert(transaction_hash);
                         }
                         AddError::Expired => {
                             info!(
                                 ?transaction_hash,
                                 "TransactionBuffer: expired transaction or transfer in transaction buffer"
                             );
-                            self.dead.insert(transaction_hash);
+                            dead.insert(transaction_hash);
                         }
                         AddError::Count(category) => {
                             match category {
@@ -560,6 +561,7 @@ impl TransactionBuffer {
                 }
             }
         }
+        self.dead.extend(dead);
 
         // Put a hold on all proposed transactions / transfers and update metrics
         match self.hold.entry(timestamp) {
