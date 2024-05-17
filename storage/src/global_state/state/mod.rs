@@ -26,7 +26,6 @@ use casper_types::{
     system::{
         self,
         auction::SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
-        handle_payment::Error,
         mint::{
             BalanceHoldAddr, BalanceHoldAddrTag, ARG_AMOUNT, ROUND_SEIGNIORAGE_RATE_KEY,
             TOTAL_SUPPLY_KEY,
@@ -47,6 +46,7 @@ use crate::{
         era_validators::EraValidatorsResult,
         handle_fee::{HandleFeeMode, HandleFeeRequest, HandleFeeResult},
         mint::{TransferRequest, TransferRequestArgs, TransferResult},
+        prefixed_values::{PrefixedValuesRequest, PrefixedValuesResult},
         tagged_values::{TaggedValuesRequest, TaggedValuesResult},
         AddressableEntityRequest, AddressableEntityResult, AuctionMethod, BalanceHoldError,
         BalanceHoldKind, BalanceHoldMode, BalanceHoldRequest, BalanceHoldResult, BalanceIdentifier,
@@ -319,12 +319,16 @@ pub trait CommitProvider: StateProvider {
             .collect::<Vec<PublicKey>>();
         let max_delegators_per_validator = config.max_delegators_per_validator();
         let minimum_delegation_amount = config.minimum_delegation_amount();
+        let include_credits = config.include_credits();
+        let credit_cap = config.credit_cap();
 
         if let Err(err) = runtime.run_auction(
             era_end_timestamp_millis,
             evicted_validators,
             max_delegators_per_validator,
             minimum_delegation_amount,
+            include_credits,
+            credit_cap,
         ) {
             error!("{}", err);
             return StepResult::Failure(StepError::Auction);
@@ -1272,8 +1276,9 @@ pub trait StateProvider: Send + Sync {
                         refund_amount,
                         None,
                     )
-                    .map_err(|_| Error::Transfer)
-                {
+                    .map_err(|mint_err| {
+                        TrackingCopyError::SystemContract(system::Error::Mint(mint_err))
+                    }) {
                     Ok(_) => Ok(Some(refund_amount)),
                     Err(err) => Err(err),
                 }
@@ -1319,8 +1324,9 @@ pub trait StateProvider: Send + Sync {
                         refund_amount,
                         None,
                     )
-                    .map_err(|_| Error::Transfer)
-                {
+                    .map_err(|mint_err| {
+                        TrackingCopyError::SystemContract(system::Error::Mint(mint_err))
+                    }) {
                     Ok(_) => Ok(Some(U512::zero())), // return 0 in this mode
                     Err(err) => Err(err),
                 }
@@ -1356,7 +1362,9 @@ pub trait StateProvider: Send + Sync {
                 };
                 match runtime.payment_burn(source_purse, burn_amount) {
                     Ok(_) => Ok(burn_amount),
-                    Err(err) => Err(err),
+                    Err(hpe) => Err(TrackingCopyError::SystemContract(
+                        system::Error::HandlePayment(hpe),
+                    )),
                 }
             }
             HandleRefundMode::SetRefundPurse { target } => {
@@ -1366,12 +1374,16 @@ pub trait StateProvider: Send + Sync {
                 };
                 match runtime.set_refund_purse(target_purse) {
                     Ok(_) => Ok(None),
-                    Err(err) => Err(err),
+                    Err(hpe) => Err(TrackingCopyError::SystemContract(
+                        system::Error::HandlePayment(hpe),
+                    )),
                 }
             }
             HandleRefundMode::ClearRefundPurse => match runtime.clear_refund_purse() {
                 Ok(_) => Ok(None),
-                Err(err) => Err(err),
+                Err(hpe) => Err(TrackingCopyError::SystemContract(
+                    system::Error::HandlePayment(hpe),
+                )),
             },
         };
 
@@ -1379,9 +1391,7 @@ pub trait StateProvider: Send + Sync {
 
         match result {
             Ok(amount) => HandleRefundResult::Success { effects, amount },
-            Err(hpe) => HandleRefundResult::Failure(TrackingCopyError::SystemContract(
-                system::Error::HandlePayment(hpe),
-            )),
+            Err(tce) => HandleRefundResult::Failure(tce),
         }
     }
 
@@ -1423,6 +1433,16 @@ pub trait StateProvider: Send + Sync {
         };
 
         let result = match handle_fee_mode {
+            HandleFeeMode::Credit {
+                validator,
+                amount,
+                era_id,
+            } => runtime
+                .write_validator_credit(*validator, era_id, amount)
+                .map(|_| ())
+                .map_err(|auction_error| {
+                    TrackingCopyError::SystemContract(system::Error::Auction(auction_error))
+                }),
             HandleFeeMode::Pay {
                 initiator_addr,
                 amount,
@@ -1445,14 +1465,22 @@ pub trait StateProvider: Send + Sync {
                         amount,
                         None,
                     )
-                    .map_err(|_| Error::Transfer)
+                    .map_err(|mint_err| {
+                        TrackingCopyError::SystemContract(system::Error::Mint(mint_err))
+                    })
             }
             HandleFeeMode::Burn { source, amount } => {
                 let source_purse = match source.purse_uref(&mut tc.borrow_mut(), protocol_version) {
                     Ok(value) => value,
                     Err(tce) => return HandleFeeResult::Failure(tce),
                 };
-                runtime.payment_burn(source_purse, amount)
+                runtime
+                    .payment_burn(source_purse, amount)
+                    .map_err(|handle_payment_error| {
+                        TrackingCopyError::SystemContract(system::Error::HandlePayment(
+                            handle_payment_error,
+                        ))
+                    })
             }
         };
 
@@ -1460,9 +1488,7 @@ pub trait StateProvider: Send + Sync {
 
         match result {
             Ok(_) => HandleFeeResult::Success { effects },
-            Err(hpe) => HandleFeeResult::Failure(TrackingCopyError::SystemContract(
-                system::Error::HandlePayment(hpe),
-            )),
+            Err(tce) => HandleFeeResult::Failure(tce),
         }
     }
 
@@ -1960,6 +1986,33 @@ pub trait StateProvider: Send + Sync {
         TaggedValuesResult::Success {
             values,
             selection: request.selection(),
+        }
+    }
+
+    /// Gets all values under a given key prefix.
+    /// Currently, this ignores the cache and only provides values from the trie.
+    fn prefixed_values(&self, request: PrefixedValuesRequest) -> PrefixedValuesResult {
+        let mut tc = match self.tracking_copy(request.state_hash()) {
+            Ok(Some(tc)) => tc,
+            Ok(None) => return PrefixedValuesResult::RootNotFound,
+            Err(err) => return PrefixedValuesResult::Failure(TrackingCopyError::Storage(err)),
+        };
+        match tc.get_keys_by_prefix(request.key_prefix()) {
+            Ok(keys) => {
+                let mut values = Vec::with_capacity(keys.len());
+                for key in keys {
+                    match tc.get(&key) {
+                        Ok(Some(value)) => values.push(value),
+                        Ok(None) => {}
+                        Err(error) => return PrefixedValuesResult::Failure(error),
+                    }
+                }
+                PrefixedValuesResult::Success {
+                    values,
+                    key_prefix: request.key_prefix().clone(),
+                }
+            }
+            Err(error) => PrefixedValuesResult::Failure(error),
         }
     }
 

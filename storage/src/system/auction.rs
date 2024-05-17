@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 use num_rational::Ratio;
 use num_traits::{CheckedMul, CheckedSub};
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
 
 use crate::system::auction::detail::{
     process_with_vesting_schedule, read_delegator_bid, read_delegator_bids, read_validator_bid,
@@ -16,10 +16,10 @@ use casper_types::{
     account::AccountHash,
     system::auction::{
         BidAddr, BidKind, Bridge, DelegationRate, EraInfo, EraValidators, Error,
-        SeigniorageRecipients, UnbondingPurse, ValidatorBid, ValidatorWeights,
+        SeigniorageRecipients, UnbondingPurse, ValidatorBid, ValidatorCredit, ValidatorWeights,
         DELEGATION_RATE_DENOMINATOR,
     },
-    ApiError, EraId, PublicKey, U512,
+    ApiError, EraId, Key, PublicKey, U512,
 };
 
 use self::providers::{AccountProvider, MintProvider, RuntimeProvider, StorageProvider};
@@ -465,6 +465,8 @@ pub trait Auction:
         evicted_validators: Vec<PublicKey>,
         max_delegators_per_validator: u32,
         minimum_delegation_amount: u64,
+        include_credits: bool,
+        credit_cap: Ratio<U512>,
     ) -> Result<(), ApiError> {
         if self.get_caller() != PublicKey::System.to_account_hash() {
             return Err(Error::InvalidCaller.into());
@@ -483,11 +485,13 @@ pub trait Auction:
             minimum_delegation_amount,
         )?;
 
-        let mut validator_bids = detail::get_validator_bids(self)?;
+        let mut validator_bids_detail = detail::get_validator_bids(self, era_id)?;
 
         // Process bids
         let mut bids_modified = false;
-        for (validator_public_key, validator_bid) in validator_bids.iter_mut() {
+        for (validator_public_key, validator_bid) in
+            validator_bids_detail.validator_bids_mut().iter_mut()
+        {
             if process_with_vesting_schedule(
                 self,
                 validator_bid,
@@ -504,53 +508,50 @@ pub trait Auction:
 
         // Compute next auction winners
         let winners: ValidatorWeights = {
-            let locked_validators: ValidatorWeights = validator_bids
-                .iter()
-                .filter(|(_public_key, bid)| {
-                    bid.is_locked_with_vesting_schedule(
-                        era_end_timestamp_millis,
-                        vesting_schedule_period_millis,
-                    ) && !bid.inactive()
-                })
-                .map(|(public_key, bid)| {
-                    let total_staked_amount = detail::total_staked_amount(self, bid)?;
-                    Ok((public_key.clone(), total_staked_amount))
-                })
-                .collect::<Result<ValidatorWeights, Error>>()?;
+            let locked_validators = validator_bids_detail.validator_weights(
+                self,
+                era_id,
+                era_end_timestamp_millis,
+                vesting_schedule_period_millis,
+                true,
+                include_credits,
+                credit_cap,
+            )?;
 
-            // We collect these into a vec for sorting
-            let mut unlocked_validators: Vec<(PublicKey, U512)> = validator_bids
-                .iter()
-                .filter(|(_public_key, bid)| {
-                    !bid.is_locked_with_vesting_schedule(
-                        era_end_timestamp_millis,
-                        vesting_schedule_period_millis,
-                    ) && !bid.inactive()
-                })
-                .map(|(public_key, validator_bid)| {
-                    let total_staked_amount = detail::total_staked_amount(self, validator_bid)?;
-                    Ok((public_key.clone(), total_staked_amount))
-                })
-                .collect::<Result<Vec<(PublicKey, U512)>, Error>>()?;
-
-            unlocked_validators.sort_by(|(_, lhs), (_, rhs)| rhs.cmp(lhs));
-
-            // This assumes that amount of founding validators does not exceed configured validator
-            // slots. For a case where there are exactly N validators and the limit is N, only
-            // founding validators will be the in the winning set. It is advised to set
-            // `validator_slots` larger than amount of founding validators in accounts.toml to
-            // accomodate non-genesis validators.
             let remaining_auction_slots = validator_slots.saturating_sub(locked_validators.len());
+            if remaining_auction_slots > 0 {
+                let unlocked_validators = validator_bids_detail.validator_weights(
+                    self,
+                    era_id,
+                    era_end_timestamp_millis,
+                    vesting_schedule_period_millis,
+                    false,
+                    include_credits,
+                    credit_cap,
+                )?;
+                let mut unlocked_validators = unlocked_validators
+                    .iter()
+                    .map(|(public_key, validator_bid)| (public_key.clone(), *validator_bid))
+                    .collect::<Vec<(PublicKey, U512)>>();
 
-            locked_validators
-                .into_iter()
-                .chain(
-                    unlocked_validators
-                        .into_iter()
-                        .take(remaining_auction_slots),
-                )
-                .collect()
+                unlocked_validators.sort_by(|(_, lhs), (_, rhs)| rhs.cmp(lhs));
+                locked_validators
+                    .into_iter()
+                    .chain(
+                        unlocked_validators
+                            .into_iter()
+                            .take(remaining_auction_slots),
+                    )
+                    .collect()
+            } else {
+                locked_validators
+            }
         };
+
+        let (validator_bids, validator_credits) = validator_bids_detail.destructure();
+
+        // call prune BEFORE incrementing the era
+        detail::prune_validator_credits(self, era_id, validator_credits);
 
         // Increment era
         era_id = era_id.checked_add(1).ok_or(Error::ArithmeticOverflow)?;
@@ -791,5 +792,55 @@ pub trait Auction:
         }
 
         Ok(())
+    }
+
+    /// Writes a validator credit record.
+    fn write_validator_credit(
+        &mut self,
+        validator: PublicKey,
+        era_id: EraId,
+        amount: U512,
+    ) -> Result<Option<BidAddr>, Error> {
+        // only the system may use this method
+        if self.get_caller() != PublicKey::System.to_account_hash() {
+            error!("invalid caller to auction validator_credit");
+            return Err(Error::InvalidCaller);
+        }
+
+        // is imputed public key associated with a validator bid record?
+        let bid_addr = BidAddr::new_from_public_keys(&validator, None);
+        let key = Key::BidAddr(bid_addr);
+        let _ = match self.read_bid(&key)? {
+            Some(bid_kind) => bid_kind,
+            None => {
+                warn!(
+                    ?key,
+                    ?era_id,
+                    ?amount,
+                    "attempt to add a validator credit to a non-existent validator"
+                );
+                return Ok(None);
+            }
+        };
+
+        // if amount is zero, noop
+        if amount.is_zero() {
+            return Ok(None);
+        }
+
+        // write credit record
+        let credit_addr = BidAddr::new_credit(&validator, era_id);
+        let credit_key = Key::BidAddr(credit_addr);
+        let credit_bid = match self.read_bid(&credit_key)? {
+            Some(BidKind::Credit(mut existing_credit)) => {
+                existing_credit.increase(amount);
+                existing_credit
+            }
+            Some(_) => return Err(Error::UnexpectedBidVariant),
+            None => Box::new(ValidatorCredit::new(validator, era_id, amount)),
+        };
+
+        self.write_bid(credit_key, BidKind::Credit(credit_bid))
+            .map(|_| Some(credit_addr))
     }
 }

@@ -10,11 +10,13 @@ use crate::{
     },
     global_state::{error::Error as GlobalStateError, state::StateReader},
     tracking_copy::{TrackingCopy, TrackingCopyError},
+    KeyPrefix,
 };
 use casper_types::{
     account::AccountHash,
     addressable_entity::{EntryPointV2, NamedKeys},
     bytesrepr::ToBytes,
+    contracts::ContractHash,
     global_state::TrieMerkleProof,
     system::{
         mint::{
@@ -24,7 +26,7 @@ use casper_types::{
         MINT,
     },
     BlockGlobalAddr, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash, CLValue, ChecksumRegistry,
-    EntityAddr, EntryPointAddr, EntryPointValue, EntryPoints, HoldBalanceHandling, HoldsEpoch, Key,
+    Contract, EntityAddr, EntryPointValue, EntryPoints, HoldBalanceHandling, HoldsEpoch, Key,
     KeyTag, Motes, Package, PackageHash, StoredValue, StoredValueTypeMismatch,
     SystemEntityRegistry, URef, URefAddr, U512,
 };
@@ -105,6 +107,10 @@ pub trait TrackingCopyExt<R> {
 
     /// Gets a package by hash.
     fn get_package(&mut self, package_hash: PackageHash) -> Result<Package, Self::Error>;
+    fn get_legacy_contract(
+        &mut self,
+        legacy_contract: ContractHash,
+    ) -> Result<Contract, Self::Error>;
 
     /// Gets the system entity registry.
     fn get_system_entity_registry(&self) -> Result<SystemEntityRegistry, Self::Error>;
@@ -257,16 +263,15 @@ where
     ) -> Result<Vec<BalanceHoldAddr>, Self::Error> {
         let tagged_keys = {
             let mut ret: Vec<BalanceHoldAddr> = vec![];
-            let tag = BalanceHoldAddrTag::Gas;
-            let gas_prefix = tag.purse_prefix_by_tag(purse_addr)?;
+            let gas_prefix = KeyPrefix::GasBalanceHoldsByPurse(purse_addr).to_bytes()?;
             for key in self.keys_with_prefix(&gas_prefix)? {
                 let addr = key
                     .as_balance_hold()
                     .ok_or(Self::Error::UnexpectedKeyVariant(key))?;
                 ret.push(*addr);
             }
-            let tag = BalanceHoldAddrTag::Processing;
-            let processing_prefix = tag.purse_prefix_by_tag(purse_addr)?;
+            let processing_prefix =
+                KeyPrefix::ProcessingBalanceHoldsByPurse(purse_addr).to_bytes()?;
             for key in self.keys_with_prefix(&processing_prefix)? {
                 let addr = key
                     .as_balance_hold()
@@ -388,9 +393,14 @@ where
         filter: Vec<(BalanceHoldAddrTag, HoldsEpoch)>,
     ) -> Result<(), Self::Error> {
         for (tag, holds_epoch) in filter {
-            let prefix = tag.purse_prefix_by_tag(purse_addr)?;
+            let prefix = match tag {
+                BalanceHoldAddrTag::Gas => KeyPrefix::GasBalanceHoldsByPurse(purse_addr),
+                BalanceHoldAddrTag::Processing => {
+                    KeyPrefix::ProcessingBalanceHoldsByPurse(purse_addr)
+                }
+            };
             let immut: &_ = self;
-            let hold_keys = immut.keys_with_prefix(&prefix)?;
+            let hold_keys = immut.keys_with_prefix(&prefix.to_bytes()?)?;
             for hold_key in hold_keys {
                 let balance_hold_addr = hold_key
                     .as_balance_hold()
@@ -549,38 +559,11 @@ where
     }
 
     fn get_named_keys(&self, entity_addr: EntityAddr) -> Result<NamedKeys, Self::Error> {
-        let prefix = entity_addr
-            .named_keys_prefix()
-            .map_err(Self::Error::BytesRepr)?;
-
-        let mut ret: BTreeSet<Key> = BTreeSet::new();
-        let keys = self.reader.keys_with_prefix(&prefix)?;
-        let pruned = &self.cache.prunes_cached;
-        // don't include keys marked for pruning
-        for key in keys {
-            if pruned.contains(&key) {
-                continue;
-            }
-            ret.insert(key);
-        }
-
-        let cache = self.cache.get_key_tag_muts_cached(&KeyTag::NamedKey);
-
-        // there may be newly inserted keys which have not been committed yet
-        if let Some(keys) = cache {
-            for key in keys {
-                if ret.contains(&key) {
-                    continue;
-                }
-                if key.is_entry_for_base(&entity_addr) {
-                    ret.insert(key);
-                }
-            }
-        }
+        let keys = self.get_keys_by_prefix(&KeyPrefix::NamedKeysByEntity(entity_addr))?;
 
         let mut named_keys = NamedKeys::new();
 
-        for entry_key in ret.iter() {
+        for entry_key in &keys {
             match self.read(entry_key)? {
                 Some(StoredValue::NamedKey(named_key)) => {
                     let key = named_key.get_key().map_err(TrackingCopyError::CLValue)?;
@@ -613,43 +596,11 @@ where
     }
 
     fn get_v1_entry_points(&mut self, entity_addr: EntityAddr) -> Result<EntryPoints, Self::Error> {
-        let entry_points_prefix = entity_addr
-            .entry_points_v1_prefix()
-            .map_err(Self::Error::BytesRepr)?;
-
-        let mut ret: BTreeSet<Key> = BTreeSet::new();
-        let keys = self.reader.keys_with_prefix(&entry_points_prefix)?;
-        let pruned = &self.cache.prunes_cached;
-        // don't include keys marked for pruning
-        for key in keys {
-            if pruned.contains(&key) {
-                continue;
-            }
-            ret.insert(key);
-        }
-
-        let cache = self.cache.get_key_tag_muts_cached(&KeyTag::EntryPoint);
-
-        // there may be newly inserted keys which have not been committed yet
-        if let Some(keys) = cache {
-            for key in keys {
-                if ret.contains(&key) {
-                    continue;
-                }
-                if let Key::EntryPoint(entry_point_addr) = key {
-                    match entry_point_addr {
-                        EntryPointAddr::VmCasperV1 { .. } => {
-                            ret.insert(key);
-                        }
-                        EntryPointAddr::VmCasperV2 { .. } => continue,
-                    }
-                }
-            }
-        };
+        let keys = self.get_keys_by_prefix(&KeyPrefix::EntryPointsV1ByEntity(entity_addr))?;
 
         let mut entry_points_v1 = EntryPoints::new();
 
-        for entry_point_key in ret.iter() {
+        for entry_point_key in keys.iter() {
             match self.read(entry_point_key)? {
                 Some(StoredValue::EntryPoint(EntryPointValue::V1CasperVm(entry_point))) => {
                     entry_points_v1.add_entry_point(entry_point)
@@ -688,42 +639,12 @@ where
         &mut self,
         entity_addr: EntityAddr,
     ) -> Result<Vec<(Key, EntryPointV2)>, Self::Error> {
-        let entry_points_prefix = entity_addr
-            .entry_points_v2_prefix()
-            .map_err(Self::Error::BytesRepr)?;
-
-        let mut ret: BTreeSet<Key> = BTreeSet::new();
-        let keys = self.reader.keys_with_prefix(&entry_points_prefix)?;
-        let pruned = &self.cache.prunes_cached;
-        // don't include keys marked for pruning
-        for key in keys {
-            if pruned.contains(&key) {
-                continue;
-            }
-            ret.insert(key);
-        }
-
-        let cache: Option<BTreeSet<Key>> = self.cache.get_key_tag_muts_cached(&KeyTag::EntryPoint);
-
-        // there may be newly inserted keys which have not been committed yet
-        if let Some(keys) = cache {
-            for key in keys {
-                if ret.contains(&key) {
-                    continue;
-                }
-                let serialized_key = key.to_bytes()?;
-                if serialized_key.starts_with(&entry_points_prefix) {
-                    ret.insert(key);
-                }
-            }
-        };
-
+        let keys = self.get_keys_by_prefix(&KeyPrefix::EntryPointsV2ByEntity(entity_addr))?;
         let mut entry_points_v2 = Vec::new();
-
-        for entry_point_key in ret.iter() {
+        for entry_point_key in keys.iter() {
             match self.read(entry_point_key)? {
                 Some(StoredValue::EntryPoint(EntryPointValue::V2CasperVm(entry_point))) => {
-                    entry_points_v2.push((*entry_point_key, entry_point))
+                    entry_points_v2.push((*entry_point_key, entry_point));
                 }
                 Some(other) => {
                     return Err(TrackingCopyError::TypeMismatch(
@@ -735,7 +656,7 @@ where
                 }
                 None => match self.cache.reads_cached.get(entry_point_key) {
                     Some(StoredValue::EntryPoint(EntryPointValue::V2CasperVm(entry_point))) => {
-                        entry_points_v2.push((*entry_point_key, entry_point.to_owned()))
+                        entry_points_v2.push((*entry_point_key, entry_point.to_owned()));
                     }
                     Some(other) => {
                         return Err(TrackingCopyError::TypeMismatch(
@@ -751,7 +672,6 @@ where
                 },
             }
         }
-
         Ok(entry_points_v2)
     }
 
@@ -775,8 +695,23 @@ where
                 Some(other) => Err(TrackingCopyError::TypeMismatch(
                     StoredValueTypeMismatch::new("ContractPackage".to_string(), other.type_name()),
                 )),
-                None => Err(Self::Error::KeyNotFound(key)),
+                None => Err(Self::Error::ValueNotFound(key.to_formatted_string())),
             },
+        }
+    }
+
+    fn get_legacy_contract(
+        &mut self,
+        legacy_contract: ContractHash,
+    ) -> Result<Contract, Self::Error> {
+        let key = Key::Hash(legacy_contract.value());
+        match self.read(&key)? {
+            Some(StoredValue::Contract(legacy_contract)) => Ok(legacy_contract),
+            Some(other) => Err(Self::Error::TypeMismatch(StoredValueTypeMismatch::new(
+                "Contract".to_string(),
+                other.type_name(),
+            ))),
+            None => Err(Self::Error::ValueNotFound(key.to_formatted_string())),
         }
     }
 

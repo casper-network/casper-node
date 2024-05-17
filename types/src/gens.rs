@@ -40,7 +40,7 @@ use crate::{
     system::{
         auction::{
             gens::era_info_arb, Bid, BidAddr, BidKind, DelegationRate, Delegator, UnbondingPurse,
-            ValidatorBid, WithdrawPurse, DELEGATION_RATE_DENOMINATOR,
+            ValidatorBid, ValidatorCredit, WithdrawPurse, DELEGATION_RATE_DENOMINATOR,
         },
         mint::BalanceHoldAddr,
         SystemEntityType,
@@ -51,9 +51,9 @@ use crate::{
         TransferAddr,
     },
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, ByteCode, CLType, CLValue,
-    Digest, EntityKind, EntryPoint, EntryPointAccess, EntryPointPayment, EntryPointType,
-    EntryPoints, EraId, Group, Key, NamedArg, Package, Parameter, Phase, ProtocolVersion, SemVer,
-    StoredValue, TransactionRuntime, URef, U128, U256, U512,
+    Digest, EntityAddr, EntityKind, EntryPoint, EntryPointAccess, EntryPointPayment,
+    EntryPointType, EntryPoints, EraId, Group, Key, NamedArg, Package, Parameter, Phase,
+    ProtocolVersion, SemVer, StoredValue, TransactionRuntime, URef, U128, U256, U512,
 };
 
 pub fn u8_slice_32() -> impl Strategy<Value = [u8; 32]> {
@@ -137,6 +137,18 @@ pub fn colliding_key_arb() -> impl Strategy<Value = Key> {
 
 pub fn account_hash_arb() -> impl Strategy<Value = AccountHash> {
     u8_slice_32().prop_map(AccountHash::new)
+}
+
+pub fn entity_addr_arb() -> impl Strategy<Value = EntityAddr> {
+    prop_oneof![
+        u8_slice_32().prop_map(EntityAddr::System),
+        u8_slice_32().prop_map(EntityAddr::Account),
+        u8_slice_32().prop_map(EntityAddr::SmartContract),
+    ]
+}
+
+pub fn topic_name_hash_arb() -> impl Strategy<Value = TopicNameHash> {
+    u8_slice_32().prop_map(TopicNameHash::new)
 }
 
 pub fn bid_addr_validator_arb() -> impl Strategy<Value = BidAddr> {
@@ -305,7 +317,7 @@ pub fn cl_value_arb() -> impl Strategy<Value = CLValue> {
             .prop_map(|x| CLValue::from_t(x).expect("should create CLValue")),
         collection::btree_map(".*", u512_arb(), 0..100)
             .prop_map(|x| CLValue::from_t(x).expect("should create CLValue")),
-        (any::<bool>()).prop_map(|x| CLValue::from_t(x).expect("should create CLValue")),
+        any::<bool>().prop_map(|x| CLValue::from_t(x).expect("should create CLValue")),
         (any::<bool>(), any::<i32>())
             .prop_map(|x| CLValue::from_t(x).expect("should create CLValue")),
         (any::<bool>(), any::<i32>(), any::<i64>())
@@ -669,7 +681,7 @@ pub(crate) fn unified_bid_arb(
 }
 
 pub(crate) fn delegator_bid_arb() -> impl Strategy<Value = BidKind> {
-    (delegator_arb()).prop_map(|delegator| BidKind::Delegator(Box::new(delegator)))
+    delegator_arb().prop_map(|delegator| BidKind::Delegator(Box::new(delegator)))
 }
 
 pub(crate) fn validator_bid_arb() -> impl Strategy<Value = BidKind> {
@@ -701,6 +713,18 @@ pub(crate) fn validator_bid_arb() -> impl Strategy<Value = BidKind> {
                 BidKind::Validator(Box::new(validator_bid))
             },
         )
+}
+
+pub(crate) fn credit_bid_arb() -> impl Strategy<Value = BidKind> {
+    (public_key_arb_no_system(), era_id_arb(), u512_arb()).prop_map(
+        |(validator_public_key, era_id, amount)| {
+            BidKind::Credit(Box::new(ValidatorCredit::new(
+                validator_public_key,
+                era_id,
+                amount,
+            )))
+        },
+    )
 }
 
 fn withdraw_arb() -> impl Strategy<Value = WithdrawPurse> {
@@ -788,6 +812,7 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
         unified_bid_arb(0..3).prop_map(StoredValue::BidKind),
         validator_bid_arb().prop_map(StoredValue::BidKind),
         delegator_bid_arb().prop_map(StoredValue::BidKind),
+        credit_bid_arb().prop_map(StoredValue::BidKind),
         withdraws_arb(1..50).prop_map(StoredValue::Withdraw),
         unbondings_arb(1..50).prop_map(StoredValue::Unbonding),
         message_topic_summary_arb().prop_map(StoredValue::MessageTopic),

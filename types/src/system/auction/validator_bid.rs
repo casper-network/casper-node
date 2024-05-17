@@ -6,12 +6,11 @@ use alloc::vec::Vec;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     system::auction::{
-        bid::VestingSchedule, DelegationRate, Error, VESTING_SCHEDULE_LENGTH_MILLIS,
+        bid::VestingSchedule, Bid, DelegationRate, Error, VESTING_SCHEDULE_LENGTH_MILLIS,
     },
     CLType, CLTyped, PublicKey, URef, U512,
 };
 
-use crate::system::auction::Bid;
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 #[cfg(feature = "json-schema")]

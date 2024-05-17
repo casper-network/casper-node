@@ -71,7 +71,7 @@ use crate::{
     system::SystemEntityType,
     uref::{self, URef},
     AccessRights, ApiError, CLType, CLTyped, CLValue, CLValueError, ContextAccessRights, HashAddr,
-    Key, KeyTag, PackageHash, ProtocolVersion, PublicKey, Tagged, TransactionRuntime,
+    Key, PackageHash, ProtocolVersion, PublicKey, Tagged, TransactionRuntime,
     BLAKE2B_DIGEST_LENGTH, KEY_HASH_LENGTH,
 };
 
@@ -858,34 +858,6 @@ impl EntityAddr {
             | EntityAddr::Account(hash_addr)
             | EntityAddr::SmartContract(hash_addr) => *hash_addr,
         }
-    }
-
-    /// Returns the common prefix of all NamedKey entries.
-    pub fn named_keys_prefix(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut ret = Vec::with_capacity(self.serialized_length() + 1);
-        ret.push(KeyTag::NamedKey as u8);
-        self.write_bytes(&mut ret)?;
-        Ok(ret)
-    }
-
-    /// Returns the common prefix for all v1 EntryPoints.
-    pub fn entry_points_v1_prefix(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut ret = Vec::with_capacity(self.serialized_length() + 2);
-        ret.push(KeyTag::EntryPoint as u8);
-        // Current a naked u8, redo to enum
-        ret.push(0u8);
-        self.write_bytes(&mut ret)?;
-        Ok(ret)
-    }
-
-    /// Returns the common prefix for all v2 EntryPoints.
-    pub fn entry_points_v2_prefix(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut ret = Vec::with_capacity(self.serialized_length() + 2);
-        ret.push(KeyTag::EntryPoint as u8);
-        // Current a naked u8, redo to enum
-        ret.push(1u8);
-        self.write_bytes(&mut ret)?;
-        Ok(ret)
     }
 
     /// Returns the formatted String representation of the [`EntityAddr`].

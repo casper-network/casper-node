@@ -158,7 +158,7 @@ impl TestEnv {
     }
 
     fn random(rng: &mut TestRng) -> TestEnv {
-        let num_validators: usize = rng.gen_range(3..100);
+        let num_validators: usize = rng.gen_range(10..100);
         let validator_keys: Vec<_> = iter::repeat_with(|| Arc::new(SecretKey::random(rng)))
             .take(num_validators)
             .collect();
@@ -1064,7 +1064,7 @@ async fn registering_header_successfully_triggers_signatures_fetch_for_weak_fina
         effects.len(),
         min(
             test_env.validator_keys().len(),
-            MAX_SIMULTANEOUS_PEERS as usize
+            MAX_SIMULTANEOUS_PEERS as usize,
         )
     );
     for event in mock_reactor.process_effects(effects).await {
@@ -1137,7 +1137,7 @@ async fn fwd_more_signatures_are_requested_if_weak_finality_is_not_reached() {
         effects.len(),
         min(
             validators_secret_keys.len() - 1,
-            MAX_SIMULTANEOUS_PEERS as usize
+            MAX_SIMULTANEOUS_PEERS as usize,
         )
     );
     for event in mock_reactor.process_effects(effects).await {
@@ -2568,11 +2568,11 @@ async fn historical_sync_no_legacy_block() {
 
     match events.try_one() {
         Some(MockReactorEvent::ContractRuntimeRequest(
-            ContractRuntimeRequest::GetExecutionResultsChecksum {
-                state_root_hash,
-                responder,
-            },
-        )) => responder.respond(ExecutionResultsChecksumResult::Success {checksum: state_root_hash}).await,
+                 ContractRuntimeRequest::GetExecutionResultsChecksum {
+                     state_root_hash,
+                     responder,
+                 },
+             )) => responder.respond(ExecutionResultsChecksumResult::Success { checksum: state_root_hash }).await,
         other => panic!("Event should be of type `ContractRuntimeRequest(ContractRuntimeRequest::GetExecutionResultsChecksum) but it is {:?}", other),
     }
 
@@ -2796,11 +2796,11 @@ async fn historical_sync_legacy_block_strict_finality() {
 
     match events.try_one() {
         Some(MockReactorEvent::ContractRuntimeRequest(
-            ContractRuntimeRequest::GetExecutionResultsChecksum {
-                state_root_hash,
-                responder,
-            },
-             )) => responder.respond(ExecutionResultsChecksumResult::Success {checksum: state_root_hash}).await,
+                 ContractRuntimeRequest::GetExecutionResultsChecksum {
+                     state_root_hash,
+                     responder,
+                 },
+             )) => responder.respond(ExecutionResultsChecksumResult::Success { checksum: state_root_hash }).await,
         other => panic!("Event should be of type `ContractRuntimeRequest(ContractRuntimeRequest::GetExecutionResultsChecksum) but it is {:?}", other),
     }
 
@@ -2998,11 +2998,11 @@ async fn historical_sync_legacy_block_weak_finality() {
 
     match events.try_one() {
         Some(MockReactorEvent::ContractRuntimeRequest(
-            ContractRuntimeRequest::GetExecutionResultsChecksum {
-                state_root_hash,
-                responder,
-            },
-             )) => responder.respond(ExecutionResultsChecksumResult::Success {checksum: state_root_hash}).await,
+                 ContractRuntimeRequest::GetExecutionResultsChecksum {
+                     state_root_hash,
+                     responder,
+                 },
+             )) => responder.respond(ExecutionResultsChecksumResult::Success { checksum: state_root_hash }).await,
         other => panic!("Event should be of type `ContractRuntimeRequest(ContractRuntimeRequest::GetExecutionResultsChecksum) but it is {:?}", other),
     }
 
@@ -3211,11 +3211,11 @@ async fn historical_sync_legacy_block_any_finality() {
 
     match events.try_one() {
         Some(MockReactorEvent::ContractRuntimeRequest(
-            ContractRuntimeRequest::GetExecutionResultsChecksum {
-                state_root_hash,
-                responder,
-            },
-             )) => responder.respond(ExecutionResultsChecksumResult::Success {checksum: state_root_hash}).await,
+                 ContractRuntimeRequest::GetExecutionResultsChecksum {
+                     state_root_hash,
+                     responder,
+                 },
+             )) => responder.respond(ExecutionResultsChecksumResult::Success { checksum: state_root_hash }).await,
         other => panic!("Event should be of type `ContractRuntimeRequest(ContractRuntimeRequest::GetExecutionResultsChecksum) but it is {:?}", other),
     }
 
@@ -3687,7 +3687,7 @@ async fn fwd_sync_latch_should_not_decrement_for_old_responses() {
         );
     }
 
-    // Receive a deploy. This would make the synchonizer switch to HaveAllDeploys and continue
+    // Receive a deploy. This would make the synchronizer switch to HaveAllDeploys and continue
     // asking for more finality signatures in order to reach strict finality.
     {
         let effects = block_synchronizer.handle_event(
@@ -4238,7 +4238,7 @@ async fn historical_sync_latch_should_not_decrement_for_old_execution_results() 
             "Latch count should be {} since we already had the first chunk and no responses with chunks != 0 were received.",
             MAX_SIMULTANEOUS_PEERS
         )
-        .as_str(),
+            .as_str(),
     );
 
     // Receive a fetch error.

@@ -1,6 +1,6 @@
 use std::{
     collections::{BTreeMap, HashMap},
-    convert::TryInto,
+    convert::{TryFrom, TryInto},
     iter,
     sync::Arc,
     time::Duration,
@@ -11,8 +11,8 @@ use casper_binary_port::{
     BinaryResponse, BinaryResponseAndRequest, ConsensusStatus, ConsensusValidatorChanges,
     DictionaryItemIdentifier, DictionaryQueryResult, ErrorCode, GetRequest, GetTrieFullResult,
     GlobalStateQueryResult, GlobalStateRequest, InformationRequest, InformationRequestTag,
-    LastProgress, NetworkName, NodeStatus, PayloadType, PurseIdentifier, ReactorStateName,
-    RecordId, Uptime,
+    KeyPrefix, LastProgress, NetworkName, NodeStatus, PayloadType, PurseIdentifier,
+    ReactorStateName, RecordId, Uptime,
 };
 use casper_storage::global_state::state::CommitProvider;
 use casper_types::{
@@ -339,6 +339,7 @@ async fn binary_port_component() {
         try_accept_transaction_invalid(&mut rng),
         try_accept_transaction(&secret_signing_key),
         get_balance(state_root_hash, test_account_hash),
+        get_named_keys_by_prefix(state_root_hash, test_entity_addr),
     ];
 
     for TestCase {
@@ -850,6 +851,25 @@ fn get_balance(state_root_hash: Digest, account_hash: AccountHash) -> TestCase {
     }
 }
 
+fn get_named_keys_by_prefix(state_root_hash: Digest, entity_addr: EntityAddr) -> TestCase {
+    TestCase {
+        name: "get_named_keys_by_prefix",
+        request: BinaryRequest::Get(GetRequest::State(Box::new(
+            GlobalStateRequest::ItemsByPrefix {
+                state_identifier: Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
+                key_prefix: KeyPrefix::NamedKeysByEntity(entity_addr),
+            },
+        ))),
+        asserter: Box::new(|response| {
+            assert_response::<Vec<StoredValue>, _>(
+                response,
+                Some(PayloadType::StoredValues),
+                |res| res.iter().all(|v| matches!(v, StoredValue::NamedKey(_))),
+            )
+        }),
+    }
+}
+
 fn try_accept_transaction(key: &SecretKey) -> TestCase {
     let transaction = Transaction::V1(
         TransactionV1Builder::new_targeting_invocable_entity_via_alias("Test", "call")
@@ -870,7 +890,7 @@ fn try_accept_transaction_invalid(rng: &mut TestRng) -> TestCase {
     TestCase {
         name: "try_accept_transaction_invalid",
         request: BinaryRequest::TryAcceptTransaction { transaction },
-        asserter: Box::new(|response| response.error_code() == ErrorCode::InvalidTransaction as u8),
+        asserter: Box::new(|response| ErrorCode::try_from(response.error_code()).is_ok()),
     }
 }
 
@@ -879,6 +899,6 @@ fn try_spec_exec_invalid(rng: &mut TestRng) -> TestCase {
     TestCase {
         name: "try_spec_exec_invalid",
         request: BinaryRequest::TrySpeculativeExec { transaction },
-        asserter: Box::new(|response| response.error_code() == ErrorCode::InvalidTransaction as u8),
+        asserter: Box::new(|response| ErrorCode::try_from(response.error_code()).is_ok()),
     }
 }

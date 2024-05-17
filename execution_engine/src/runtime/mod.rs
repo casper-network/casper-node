@@ -22,6 +22,7 @@ use tracing::error;
 
 #[cfg(feature = "test-support")]
 use casper_wasmi::RuntimeValue;
+use num_rational::Ratio;
 
 use casper_storage::{
     global_state::{error::Error as GlobalStateError, state::StateReader},
@@ -40,6 +41,7 @@ use casper_types::{
     contract_messages::{
         Message, MessageAddr, MessagePayload, MessageTopicOperation, MessageTopicSummary,
     },
+    contracts::ContractHash,
     crypto,
     system::{
         self,
@@ -928,6 +930,8 @@ where
                         evicted_validators,
                         max_delegators_per_validator,
                         minimum_delegation_amount,
+                        true,
+                        Ratio::new_raw(U512::from(1), U512::from(5)),
                     )
                     .map_err(Self::reverter)?;
 
@@ -976,7 +980,6 @@ where
 
                 CLValue::from_t(()).map_err(Self::reverter)
             })(),
-
             auction::METHOD_CHANGE_BID_PUBLIC_KEY => (|| {
                 runtime.charge_system_contract_call(auction_costs.change_bid_public_key)?;
 
@@ -1454,7 +1457,7 @@ where
                     Key::ByteCode(ByteCodeAddr::new_wasm_addr(byte_code_addr))
                 }
                 EntityKind::SmartContract(runtime @ TransactionRuntime::VmCasperV2) => {
-                    return Err(ExecError::IncompatibleRuntime(runtime))
+                    return Err(ExecError::IncompatibleRuntime(runtime));
                 }
             };
 
@@ -1774,9 +1777,9 @@ where
             return Ok(Err(ApiError::NotAllowedToAddContractVersion));
         }
 
-        // if entry_points.contains_stored_session() {
-        //     return Err(ExecError::InvalidEntryPointType);
-        // }
+        if entry_points.contains_stored_session() {
+            return Err(ExecError::InvalidEntryPointType);
+        }
 
         let mut package = self.context.get_package(package_hash)?;
 
@@ -3367,8 +3370,12 @@ where
         contract_hash: AddressableEntityHash,
     ) -> Result<AddressableEntity, ExecError> {
         let protocol_version = self.context.protocol_version();
+        let legacy_contract = self
+            .context
+            .get_legacy_contract(ContractHash::new(contract_hash.value()))?;
+        let package_hash = legacy_contract.contract_package_hash();
         self.context
-            .migrate_contract(contract_hash, protocol_version)?;
+            .migrate_package(package_hash, protocol_version)?;
         self.context
             .read_gs_typed(&Key::contract_entity_key(contract_hash))
     }

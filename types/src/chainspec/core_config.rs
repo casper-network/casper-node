@@ -146,6 +146,11 @@ pub struct CoreConfig {
     #[cfg_attr(feature = "datasize", data_size(skip))]
     pub finality_signature_proportion: Ratio<u64>,
 
+    /// The cap for validator credits based upon a proportion of a receiving validator's total
+    /// stake.
+    #[cfg_attr(feature = "datasize", data_size(skip))]
+    pub validator_credit_cap: Ratio<u64>,
+
     /// Lookback interval indicating which past block we are looking at to reward.
     pub signature_rewards_max_delay: u64,
     /// Auction entrypoints such as "add_bid" or "delegate" are disabled if this flag is set to
@@ -265,6 +270,8 @@ impl CoreConfig {
         let migrate_legacy_accounts = false;
         let migrate_legacy_contracts = false;
 
+        let validator_credit_cap = Ratio::new(rng.gen_range(1..100), 100);
+
         CoreConfig {
             era_duration,
             minimum_era_height,
@@ -301,6 +308,7 @@ impl CoreConfig {
             gas_hold_interval,
             migrate_legacy_accounts,
             migrate_legacy_contracts,
+            validator_credit_cap,
         }
     }
 }
@@ -344,6 +352,7 @@ impl Default for CoreConfig {
             gas_hold_interval: DEFAULT_GAS_HOLD_INTERVAL,
             migrate_legacy_accounts: false,
             migrate_legacy_contracts: false,
+            validator_credit_cap: Ratio::new(1, 5),
         }
     }
 }
@@ -389,6 +398,7 @@ impl ToBytes for CoreConfig {
         buffer.extend(self.gas_hold_interval.to_bytes()?);
         buffer.extend(self.migrate_legacy_accounts.to_bytes()?);
         buffer.extend(self.migrate_legacy_contracts.to_bytes()?);
+        buffer.extend(self.validator_credit_cap.to_bytes()?);
         Ok(buffer)
     }
 
@@ -430,6 +440,7 @@ impl ToBytes for CoreConfig {
             + self.gas_hold_interval.serialized_length()
             + self.migrate_legacy_accounts.serialized_length()
             + self.migrate_legacy_contracts.serialized_length()
+            + self.validator_credit_cap.serialized_length()
     }
 }
 
@@ -471,6 +482,7 @@ impl FromBytes for CoreConfig {
         let (gas_hold_interval, remainder) = TimeDiff::from_bytes(remainder)?;
         let (migrate_legacy_accounts, remainder) = FromBytes::from_bytes(remainder)?;
         let (migrate_legacy_contracts, remainder) = FromBytes::from_bytes(remainder)?;
+        let (validator_credit_cap, remainder) = Ratio::from_bytes(remainder)?;
         let config = CoreConfig {
             era_duration,
             minimum_era_height,
@@ -507,6 +519,7 @@ impl FromBytes for CoreConfig {
             gas_hold_interval,
             migrate_legacy_accounts,
             migrate_legacy_contracts,
+            validator_credit_cap,
         };
         Ok((config, remainder))
     }

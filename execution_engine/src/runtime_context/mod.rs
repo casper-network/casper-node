@@ -29,11 +29,12 @@ use casper_types::{
     },
     bytesrepr::ToBytes,
     contract_messages::{Message, MessageAddr, MessageTopicSummary, Messages, TopicNameHash},
+    contracts::{ContractHash, ContractPackageHash},
     execution::Effects,
     handle_stored_dictionary_value,
     system::auction::EraInfo,
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, CLType, CLValue,
-    CLValueDictionary, ContextAccessRights, EntityAddr, EntryPointAddr, EntryPointType,
+    CLValueDictionary, ContextAccessRights, Contract, EntityAddr, EntryPointAddr, EntryPointType,
     EntryPointValue, EntryPoints, Gas, GrantedAccess, Key, KeyTag, Motes, Package, PackageHash,
     Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, StoredValueTypeMismatch,
     SystemEntityRegistry, TransactionHash, Transfer, URef, URefAddr,
@@ -881,14 +882,14 @@ where
         self.tracking_copy.borrow_mut().prune(key.into());
     }
 
-    pub(crate) fn migrate_contract(
+    pub(crate) fn migrate_package(
         &mut self,
-        contract_hash: AddressableEntityHash,
+        contract_package_hash: ContractPackageHash,
         protocol_version: ProtocolVersion,
     ) -> Result<(), ExecError> {
         self.tracking_copy
             .borrow_mut()
-            .migrate_contract(Key::Hash(contract_hash.value()), protocol_version)
+            .migrate_package(Key::Hash(contract_package_hash.value()), protocol_version)
             .map_err(ExecError::TrackingCopy)
     }
 
@@ -1236,6 +1237,16 @@ where
         self.tracking_copy
             .borrow_mut()
             .get_package(package_hash)
+            .map_err(Into::into)
+    }
+
+    pub(crate) fn get_legacy_contract(
+        &mut self,
+        legacy_contract: ContractHash,
+    ) -> Result<Contract, ExecError> {
+        self.tracking_copy
+            .borrow_mut()
+            .get_legacy_contract(legacy_contract)
             .map_err(Into::into)
     }
 
