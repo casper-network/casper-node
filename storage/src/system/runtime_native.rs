@@ -8,6 +8,7 @@ use casper_types::{
     ContextAccessRights, FeeHandling, Key, Phase, ProtocolVersion, PublicKey, RefundHandling,
     StoredValue, TransactionHash, Transfer, URef, U512,
 };
+use num_rational::Ratio;
 use std::{cell::RefCell, collections::BTreeSet, rc::Rc};
 use tracing::error;
 
@@ -22,6 +23,8 @@ pub struct Config {
     max_delegators_per_validator: u32,
     minimum_delegation_amount: u64,
     balance_hold_interval: u64,
+    include_credits: bool,
+    credit_cap: Ratio<U512>,
 }
 
 impl Config {
@@ -36,6 +39,8 @@ impl Config {
         max_delegators_per_validator: u32,
         minimum_delegation_amount: u64,
         balance_hold_interval: u64,
+        include_credits: bool,
+        credit_cap: Ratio<U512>,
     ) -> Self {
         Config {
             transfer_config,
@@ -47,6 +52,8 @@ impl Config {
             max_delegators_per_validator,
             minimum_delegation_amount,
             balance_hold_interval,
+            include_credits,
+            credit_cap,
         }
     }
 
@@ -60,6 +67,11 @@ impl Config {
         let max_delegators_per_validator = chainspec.core_config.max_delegators_per_validator;
         let minimum_delegation_amount = chainspec.core_config.minimum_delegation_amount;
         let balance_hold_interval = chainspec.core_config.gas_hold_interval.millis();
+        let include_credits = chainspec.core_config.fee_handling == FeeHandling::NoFee;
+        let credit_cap = Ratio::new_raw(
+            U512::from(*chainspec.core_config.validator_credit_cap.numer()),
+            U512::from(*chainspec.core_config.validator_credit_cap.denom()),
+        );
         Config::new(
             transfer_config,
             fee_handling,
@@ -70,6 +82,8 @@ impl Config {
             max_delegators_per_validator,
             minimum_delegation_amount,
             balance_hold_interval,
+            include_credits,
+            credit_cap,
         )
     }
 
@@ -109,6 +123,14 @@ impl Config {
         self.balance_hold_interval
     }
 
+    pub fn include_credits(&self) -> bool {
+        self.include_credits
+    }
+
+    pub fn credit_cap(&self) -> Ratio<U512> {
+        self.credit_cap
+    }
+
     pub fn set_transfer_config(self, transfer_config: TransferConfig) -> Self {
         Config {
             transfer_config,
@@ -120,6 +142,8 @@ impl Config {
             minimum_delegation_amount: self.minimum_delegation_amount,
             compute_rewards: self.compute_rewards,
             balance_hold_interval: self.balance_hold_interval,
+            include_credits: self.include_credits,
+            credit_cap: self.credit_cap,
         }
     }
 }

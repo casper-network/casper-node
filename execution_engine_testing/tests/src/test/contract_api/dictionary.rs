@@ -311,9 +311,12 @@ fn should_write_with_write_access_rights() {
 
     builder.exec(call_request).commit();
 
-    let contract_named_keys = builder.get_named_keys_by_contract_entity_hash(contract_hash);
+    let contract = builder
+        .get_entity_with_named_keys_by_entity_hash(contract_hash)
+        .expect("should have account");
 
-    let stored_dictionary_key = contract_named_keys
+    let stored_dictionary_key = contract
+        .named_keys()
         .get(dictionary::DICTIONARY_NAME)
         .expect("dictionary");
     let dictionary_root_uref = stored_dictionary_key.into_uref().expect("should be uref");
