@@ -17,7 +17,6 @@ use tracing::debug;
 
 use super::super::{RuntimeArgs, TransactionEntryPoint, TransactionScheduling, TransactionTarget};
 
-#[cfg(any(all(feature = "std", feature = "testing"), test))]
 use super::TransactionCategory;
 #[cfg(any(feature = "std", test))]
 use super::TransactionConfig;
@@ -143,6 +142,7 @@ impl TransactionV1Body {
             .ok_or(InvalidTransactionV1::InvalidTransactionKind(self.transaction_kind))?;
 
         let max_serialized_length = lane_config[1];
+        println!("{max_serialized_length}");
         let actual_length = self.serialized_length();
         if actual_length > max_serialized_length as usize {
             return Err(InvalidTransactionV1::ExcessiveSize(TransactionV1ExcessiveSizeError {
@@ -498,7 +498,7 @@ mod tests {
         let rng = &mut TestRng::new();
         let mut config = TransactionConfig::default();
         let mut body = TransactionV1Body::random(rng);
-        config.transaction_v1_config.lanes = vec![vec![body.transaction_kind as u64, 10, 10, 0]];
+        config.transaction_v1_config.lanes = vec![vec![body.transaction_kind as u64, 1_048_576, 10, 0]];
         body.args = runtime_args! {"a" => 1_u8};
 
         let expected_error = InvalidTransactionV1::ExcessiveArgsLength {

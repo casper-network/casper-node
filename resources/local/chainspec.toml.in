@@ -187,7 +187,11 @@ max_timestamp_leeway = '5 seconds'
 
 [transactions.v1]
 # The maximum length in bytes of runtime args per V1 transaction.
-max_args_length = 1024
+# [0] -> Transaction Kind
+# [1] -> Max transaction size
+# [2] -> Max args length
+# [3] -> Transaction gas limit
+lanes_config = [[0, 1_048_576, 1024, 2_500_000_000], [1, 1_048_576, 1024, 2_500_000_000], [2, 1_048_576, 1024, 2_500_000_000], [3, 1_048_576, 1024, 2_500_000_000], [4, 1_048_576, 1024, 2_500_000_000], [5, 1_048_576, 1024, 2_500_000_000], [6, 1_048_576, 1024, 2_500_000_000]]
 
 [transactions.deploy]
 # The maximum number of Motes allowed to be spent during payment.  0 means unlimited.
