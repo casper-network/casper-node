@@ -20,7 +20,7 @@ const DEFAULT_MINIMUM_GAS_PRICE: u8 = 1;
 fn get_appendable_block(
     rng: &mut TestRng,
     transaction_buffer: &mut TransactionBuffer,
-    categories: impl Iterator<Item = &'static TransactionCategory>,
+    categories: impl Iterator<Item=&'static TransactionCategory>,
     transaction_limit: usize,
 ) {
     let transactions: Vec<_> = categories
@@ -181,7 +181,7 @@ fn register_transaction_and_check_size() {
             Config::default(),
             &Registry::new(),
         )
-        .unwrap();
+            .unwrap();
 
         // Try to register valid transactions
         let num_valid_transactions: usize = rng.gen_range(50..500);
@@ -232,7 +232,7 @@ fn register_block_with_valid_transactions() {
             Config::default(),
             &Registry::new(),
         )
-        .unwrap();
+            .unwrap();
 
         let txns: Vec<_> = (0..10)
             .map(|_| create_valid_transaction(&mut rng, category, None, None))
@@ -262,7 +262,7 @@ fn register_finalized_block_with_valid_transactions() {
             Config::default(),
             &Registry::new(),
         )
-        .unwrap();
+            .unwrap();
 
         let txns: Vec<_> = (0..10)
             .map(|_| create_valid_transaction(&mut rng, category, None, None))
@@ -284,7 +284,7 @@ fn get_proposable_transactions() {
             Config::default(),
             &Registry::new(),
         )
-        .unwrap();
+            .unwrap();
 
         transaction_buffer
             .prices
@@ -354,7 +354,7 @@ fn get_appendable_block_when_transfers_are_of_one_category() {
         block_max_mint_count: 200,
         block_max_auction_count: 0,
         block_max_install_upgrade_count: 0,
-        block_max_standard_count: 10,
+        block_max_large_count: 10,
         block_max_approval_count: 210,
         block_gas_limit: u64::MAX, // making sure this test does not hit gas limit first
         ..Default::default()
@@ -385,7 +385,7 @@ fn get_appendable_block_when_transfers_are_both_legacy_and_v1() {
         block_max_mint_count: 200,
         block_max_auction_count: 0,
         block_max_install_upgrade_count: 0,
-        block_max_standard_count: 10,
+        block_max_large_count: 10,
         block_max_approval_count: 210,
         block_gas_limit: u64::MAX, // making sure this test does not hit gas limit first
         ..Default::default()
@@ -417,7 +417,7 @@ fn get_appendable_block_when_standards_are_of_one_category() {
         block_max_mint_count: 200,
         block_max_auction_count: 0,
         block_max_install_upgrade_count: 0,
-        block_max_standard_count: 10,
+        block_max_large_count: 10,
         block_max_approval_count: 210,
         block_gas_limit: u64::MAX, // making sure this test does not hit gas limit first
         ..Default::default()
@@ -436,7 +436,7 @@ fn get_appendable_block_when_standards_are_of_one_category() {
         &mut rng,
         &mut transaction_buffer,
         std::iter::repeat_with(|| &TransactionCategory::Large),
-        transaction_config.block_max_standard_count as usize + 50,
+        transaction_config.block_max_large_count as usize + 50,
     );
 }
 
@@ -447,7 +447,7 @@ fn get_appendable_block_when_standards_are_both_legacy_and_v1() {
         block_max_mint_count: 200,
         block_max_auction_count: 0,
         block_max_install_upgrade_count: 0,
-        block_max_standard_count: 10,
+        block_max_large_count: 10,
         block_max_approval_count: 210,
         block_gas_limit: u64::MAX, // making sure this test does not hit gas limit first
         ..Default::default()
@@ -468,7 +468,7 @@ fn get_appendable_block_when_standards_are_both_legacy_and_v1() {
         &mut rng,
         &mut transaction_buffer,
         [TransactionCategory::Large].iter().cycle(),
-        transaction_config.block_max_standard_count as usize + 5,
+        transaction_config.block_max_large_count as usize + 5,
     );
 }
 
@@ -487,7 +487,7 @@ fn block_fully_saturated() {
         block_max_mint_count: max_transfers,
         block_max_auction_count: max_staking,
         block_max_install_upgrade_count: max_install_upgrade,
-        block_max_standard_count: max_standard,
+        block_max_large_count: max_standard,
         block_max_approval_count: 210,
         block_gas_limit: u64::MAX, // making sure this test does not hit gas limit first
         ..Default::default()
@@ -588,7 +588,7 @@ fn block_not_fully_saturated() {
         block_max_mint_count: max_transfers,
         block_max_auction_count: max_staking,
         block_max_install_upgrade_count: max_install_upgrade,
-        block_max_standard_count: max_standard,
+        block_max_large_count: max_standard,
         block_max_approval_count: 210,
         block_gas_limit: u64::MAX, // making sure this test does not hit gas limit first
         ..Default::default()
@@ -693,7 +693,7 @@ fn excess_transactions_do_not_sneak_into_transfer_bucket() {
         block_max_mint_count: max_transfers,
         block_max_auction_count: max_staking,
         block_max_install_upgrade_count: max_install_upgrade,
-        block_max_standard_count: max_standard,
+        block_max_large_count: max_standard,
         block_max_approval_count: 210,
         block_gas_limit: u64::MAX, // making sure this test does not hit gas limit first
         ..Default::default()
@@ -758,7 +758,7 @@ fn excess_transactions_do_not_sneak_into_staking_bucket() {
         block_max_mint_count: max_transfers,
         block_max_auction_count: max_staking,
         block_max_install_upgrade_count: max_install_upgrade,
-        block_max_standard_count: max_standard,
+        block_max_large_count: max_standard,
         block_max_approval_count: 210,
         block_gas_limit: u64::MAX, // making sure this test does not hit gas limit first
         ..Default::default()
@@ -823,7 +823,7 @@ fn excess_transactions_do_not_sneak_into_install_upgrades_bucket() {
         block_max_mint_count: max_transfers,
         block_max_auction_count: max_staking,
         block_max_install_upgrade_count: max_install_upgrade,
-        block_max_standard_count: max_standard,
+        block_max_large_count: max_standard,
         block_max_approval_count: 210,
         block_gas_limit: u64::MAX, // making sure this test does not hit gas limit first
         ..Default::default()
@@ -888,7 +888,7 @@ fn excess_transactions_do_not_sneak_into_standards_bucket() {
         block_max_mint_count: max_transfers,
         block_max_auction_count: max_staking,
         block_max_install_upgrade_count: max_install_upgrade,
-        block_max_standard_count: max_standard,
+        block_max_large_count: max_standard,
         block_max_approval_count: 210,
         block_gas_limit: u64::MAX, // making sure this test does not hit gas limit first
         ..Default::default()
@@ -998,7 +998,7 @@ fn register_transactions_and_blocks() {
         Config::default(),
         &Registry::new(),
     )
-    .unwrap();
+        .unwrap();
 
     transaction_buffer
         .prices
@@ -1163,7 +1163,7 @@ async fn expire_transactions_and_check_announcement_when_transactions_are_of_one
             Config::default(),
             &Registry::new(),
         )
-        .unwrap();
+            .unwrap();
 
         let reactor = MockReactor::new();
         let event_queue_handle = EventQueueHandle::without_shutdown(reactor.scheduler);
@@ -1240,7 +1240,7 @@ async fn expire_transactions_and_check_announcement_when_transactions_are_of_ran
         Config::default(),
         &Registry::new(),
     )
-    .unwrap();
+        .unwrap();
 
     let reactor = MockReactor::new();
     let event_queue_handle = EventQueueHandle::without_shutdown(reactor.scheduler);

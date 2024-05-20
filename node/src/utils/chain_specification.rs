@@ -27,7 +27,7 @@ pub fn validate_chainspec(chainspec: &Chainspec) -> bool {
     // should be defined by height only.
     if chainspec.core_config.era_duration.millis() > 0
         && chainspec.core_config.era_duration
-            < chainspec.core_config.minimum_block_time * chainspec.core_config.minimum_era_height
+        < chainspec.core_config.minimum_block_time * chainspec.core_config.minimum_era_height
     {
         warn!("era duration is less than minimum era height * block time!");
     }
@@ -81,7 +81,7 @@ pub(crate) fn validate_core_config(core_config: &CoreConfig) -> bool {
     // should be defined by height only.  Warn only.
     if core_config.era_duration.millis() > 0
         && core_config.era_duration.millis()
-            < core_config.minimum_era_height * core_config.minimum_block_time.millis()
+        < core_config.minimum_era_height * core_config.minimum_block_time.millis()
     {
         warn!("era duration is less than minimum era height * round length!");
     }
@@ -133,7 +133,7 @@ pub(crate) fn validate_transaction_config(transaction_config: &TransactionConfig
         .block_max_mint_count
         .checked_add(transaction_config.block_max_auction_count)
         .and_then(|total| total.checked_add(transaction_config.block_max_install_upgrade_count))
-        .and_then(|total| total.checked_add(transaction_config.block_max_standard_count))
+        .and_then(|total| total.checked_add(transaction_config.block_max_large_count))
     {
         transaction_config.block_max_approval_count >= total_txn_slots
     } else {
@@ -398,7 +398,7 @@ mod tests {
             block_max_mint_count: 100,
             block_max_auction_count: 50,
             block_max_install_upgrade_count: 25,
-            block_max_standard_count: 25,
+            block_max_large_count: 25,
             ..Default::default()
         };
         assert!(
@@ -411,7 +411,7 @@ mod tests {
             block_max_mint_count: 100,
             block_max_auction_count: 50,
             block_max_install_upgrade_count: 25,
-            block_max_standard_count: 24,
+            block_max_large_count: 24,
             ..Default::default()
         };
         assert!(

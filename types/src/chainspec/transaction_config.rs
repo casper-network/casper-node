@@ -17,7 +17,7 @@ use crate::{
 pub use deploy_config::DeployConfig;
 #[cfg(any(feature = "testing", test))]
 pub use deploy_config::DEFAULT_MAX_PAYMENT_MOTES;
-pub use transaction_v1_config::TransactionV1Config;
+pub use transaction_v1_config::{TransactionV1Config, DEFAULT_INSTALL_UPGRADE_GAS_LIMIT, DEFAULT_LARGE_TRANSACTION_GAS_LIMIT};
 
 /// The default minimum number of motes that can be transferred.
 pub const DEFAULT_MIN_TRANSFER_MOTES: u64 = 2_500_000_000;
@@ -38,9 +38,15 @@ pub struct TransactionConfig {
     pub block_max_auction_count: u32,
     /// Maximum number of installer/upgrader transactions allowed in a block.
     pub block_max_install_upgrade_count: u32,
-    /// Maximum number of other transactions (non-transfer, non-staking, non-installer/upgrader)
+    /// Maximum number of other large sized transactions (non-transfer, non-staking, non-installer/upgrader)
     /// allowed in a block.
-    pub block_max_standard_count: u32,
+    pub block_max_large_count: u32,
+    /// Maximum number of other medium sized transactions (non-transfer, non-staking, non-installer/upgrader)
+    /// allowed in a block.
+    pub block_max_medium_count: u32,
+    /// Maximum number of other small sized transactions (non-transfer, non-staking, non-installer/upgrader)
+    /// allowed in a block.
+    pub block_max_small_count: u32,
     /// Maximum number of approvals (signatures) allowed in a block across all transactions.
     pub block_max_approval_count: u32,
     /// Maximum possible size in bytes of a block.
@@ -70,7 +76,9 @@ impl TransactionConfig {
         let block_max_mint_count = rng.gen();
         let block_max_auction_count = rng.gen();
         let block_max_install_upgrade_count = rng.gen();
-        let block_max_standard_count = rng.gen();
+        let block_max_large_count = rng.gen();
+        let block_max_medium_count = rng.gen();
+        let block_max_small_count = rng.gen();
         let block_max_approval_count = rng.gen();
         let max_block_size = rng.gen_range(1_000_000..1_000_000_000);
         let block_gas_limit = rng.gen_range(100_000_000_000..1_000_000_000_000_000);
@@ -86,7 +94,9 @@ impl TransactionConfig {
             block_max_mint_count,
             block_max_auction_count,
             block_max_install_upgrade_count,
-            block_max_standard_count,
+            block_max_large_count,
+            block_max_medium_count,
+            block_max_small_count,
             block_max_approval_count,
             max_block_size,
             block_gas_limit,
@@ -107,7 +117,9 @@ impl Default for TransactionConfig {
             block_max_mint_count: 1000,
             block_max_auction_count: 200,
             block_max_install_upgrade_count: 2,
-            block_max_standard_count: 100,
+            block_max_large_count: 100,
+            block_max_medium_count: 100,
+            block_max_small_count: 100,
             block_max_approval_count: 2600,
             max_block_size: 10_485_760,
             block_gas_limit: 10_000_000_000_000,
@@ -126,7 +138,9 @@ impl ToBytes for TransactionConfig {
         self.block_max_mint_count.write_bytes(writer)?;
         self.block_max_auction_count.write_bytes(writer)?;
         self.block_max_install_upgrade_count.write_bytes(writer)?;
-        self.block_max_standard_count.write_bytes(writer)?;
+        self.block_max_large_count.write_bytes(writer)?;
+        self.block_max_medium_count.write_bytes(writer)?;
+        self.block_max_small_count.write_bytes(writer)?;
         self.block_max_approval_count.write_bytes(writer)?;
         self.max_block_size.write_bytes(writer)?;
         self.block_gas_limit.write_bytes(writer)?;
@@ -148,7 +162,9 @@ impl ToBytes for TransactionConfig {
             + self.block_max_mint_count.serialized_length()
             + self.block_max_auction_count.serialized_length()
             + self.block_max_install_upgrade_count.serialized_length()
-            + self.block_max_standard_count.serialized_length()
+            + self.block_max_large_count.serialized_length()
+            + self.block_max_medium_count.serialized_length()
+            + self.block_max_small_count.serialized_length()
             + self.block_max_approval_count.serialized_length()
             + self.max_block_size.serialized_length()
             + self.block_gas_limit.serialized_length()
@@ -166,7 +182,9 @@ impl FromBytes for TransactionConfig {
         let (block_max_mint_count, remainder) = u32::from_bytes(remainder)?;
         let (block_max_auction_count, remainder) = u32::from_bytes(remainder)?;
         let (block_max_install_upgrade_count, remainder) = u32::from_bytes(remainder)?;
-        let (block_max_standard_count, remainder) = u32::from_bytes(remainder)?;
+        let (block_max_large_count, remainder) = u32::from_bytes(remainder)?;
+        let (block_max_medium_count, remainder) = u32::from_bytes(remainder)?;
+        let (block_max_small_count, remainder) = u32::from_bytes(remainder)?;
         let (block_max_approval_count, remainder) = u32::from_bytes(remainder)?;
         let (max_block_size, remainder) = u32::from_bytes(remainder)?;
         let (block_gas_limit, remainder) = u64::from_bytes(remainder)?;
@@ -181,7 +199,9 @@ impl FromBytes for TransactionConfig {
             block_max_mint_count,
             block_max_auction_count,
             block_max_install_upgrade_count,
-            block_max_standard_count,
+            block_max_large_count,
+            block_max_medium_count,
+            block_max_small_count,
             block_max_approval_count,
             max_block_size,
             block_gas_limit,

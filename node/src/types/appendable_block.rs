@@ -78,9 +78,9 @@ impl AppendableBlock {
             return Err(AddError::Expired);
         }
         let limit = match footprint.category {
-            TransactionCategory::Large
-            | TransactionCategory::Medium
-            | TransactionCategory::Small => self.transaction_config.block_max_standard_count,
+            TransactionCategory::Large => self.transaction_config.block_max_large_count,
+            TransactionCategory::Medium => self.transaction_config.block_max_medium_count,
+            TransactionCategory::Small => self.transaction_config.block_max_small_count,
             TransactionCategory::Mint => self.transaction_config.block_max_mint_count,
             TransactionCategory::Auction => self.transaction_config.block_max_auction_count,
             TransactionCategory::InstallUpgrade => {
@@ -198,7 +198,9 @@ impl AppendableBlock {
 
 impl Display for AppendableBlock {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        let standard_count = self.category_count(&TransactionCategory::Large);
+        let large_count = self.category_count(&TransactionCategory::Large);
+        let medium_count = self.category_count(&TransactionCategory::Medium);
+        let small_count = self.category_count(&TransactionCategory::Small);
         let mint_count = self.category_count(&TransactionCategory::Mint);
         let auction_count = self.category_count(&TransactionCategory::Auction);
         let install_upgrade_count = self.category_count(&TransactionCategory::InstallUpgrade);
@@ -215,7 +217,9 @@ impl Display for AppendableBlock {
         write!(
             formatter,
             "AppendableBlock(timestamp-{}:
-                standard: {standard_count}, \
+                large: {large_count}, \
+                medium: {medium_count}, \
+                small: {small_count}, \
                 mint: {mint_count}, \
                 auction: {auction_count}, \
                 install_upgrade: {install_upgrade_count}, \

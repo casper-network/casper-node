@@ -25,8 +25,8 @@ pub struct BlockBodyV2 {
     pub(super) rewarded_signatures: RewardedSignatures,
     #[serde(skip)]
     #[cfg_attr(
-        all(any(feature = "once_cell", test), feature = "datasize"),
-        data_size(skip)
+    all(any(feature = "once_cell", test), feature = "datasize"),
+    data_size(skip)
     )]
     #[cfg(any(feature = "once_cell", test))]
     pub(super) hash: OnceCell<Digest>,
@@ -57,26 +57,38 @@ impl BlockBodyV2 {
     }
 
     /// Returns the hashes of the mint transactions within the block.
-    pub fn mint(&self) -> impl Iterator<Item = TransactionHash> {
+    pub fn mint(&self) -> impl Iterator<Item=TransactionHash> {
         self.transaction_by_category(TransactionCategory::Mint)
             .into_iter()
     }
 
     /// Returns the hashes of the auction transactions within the block.
-    pub fn auction(&self) -> impl Iterator<Item = TransactionHash> {
+    pub fn auction(&self) -> impl Iterator<Item=TransactionHash> {
         self.transaction_by_category(TransactionCategory::Auction)
             .into_iter()
     }
 
     /// Returns the hashes of the installer/upgrader transactions within the block.
-    pub fn install_upgrade(&self) -> impl Iterator<Item = TransactionHash> {
+    pub fn install_upgrade(&self) -> impl Iterator<Item=TransactionHash> {
         self.transaction_by_category(TransactionCategory::InstallUpgrade)
             .into_iter()
     }
 
     /// Returns the hashes of all other transactions within the block.
-    pub fn standard(&self) -> impl Iterator<Item = TransactionHash> {
+    pub fn large(&self) -> impl Iterator<Item=TransactionHash> {
         self.transaction_by_category(TransactionCategory::Large)
+            .into_iter()
+    }
+
+    /// Returns the hashes of all other transactions within the block.
+    pub fn medium(&self) -> impl Iterator<Item=TransactionHash> {
+        self.transaction_by_category(TransactionCategory::Medium)
+            .into_iter()
+    }
+
+    /// Returns the hashes of all other transactions within the block.
+    pub fn small(&self) -> impl Iterator<Item=TransactionHash> {
+        self.transaction_by_category(TransactionCategory::Small)
             .into_iter()
     }
 
@@ -86,7 +98,7 @@ impl BlockBodyV2 {
     }
 
     /// Returns all of the transaction hashes in the order in which they were executed.
-    pub fn all_transactions(&self) -> impl Iterator<Item = &TransactionHash> {
+    pub fn all_transactions(&self) -> impl Iterator<Item=&TransactionHash> {
         self.transactions.values().flatten()
     }
 
@@ -116,13 +128,13 @@ impl PartialEq for BlockBodyV2 {
     fn eq(&self, other: &BlockBodyV2) -> bool {
         // Destructure to make sure we don't accidentally omit fields.
         #[cfg(any(feature = "once_cell", test))]
-        let BlockBodyV2 {
+            let BlockBodyV2 {
             transactions,
             rewarded_signatures,
             hash: _,
         } = self;
         #[cfg(not(any(feature = "once_cell", test)))]
-        let BlockBodyV2 {
+            let BlockBodyV2 {
             transactions,
             rewarded_signatures,
         } = self;
@@ -135,11 +147,13 @@ impl Display for BlockBodyV2 {
         write!(
             formatter,
             "block body, {} mint, {} auction, {} \
-            installer/upgraders, {} others",
+            installer/upgraders, {} large, {} medium, {} small",
             self.mint().count(),
             self.auction().count(),
             self.install_upgrade().count(),
-            self.standard().count()
+            self.large().count(),
+            self.medium().count(),
+            self.small().count()
         )
     }
 }

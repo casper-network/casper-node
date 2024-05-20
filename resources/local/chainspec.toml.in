@@ -173,7 +173,11 @@ block_max_auction_count = 100
 # Maximum number of installer/upgrader transactions allowed in a block.
 block_max_install_upgrade_count = 2
 # Maximum number of other transactions (non-transfer, non-staking, non-installer/upgrader) allowed in a block.
-block_max_standard_count = 50
+block_max_large_count = 50
+# Maximum number of other transactions (non-transfer, non-staking, non-installer/upgrader) allowed in a block.
+block_max_medium_count = 50
+# Maximum number of other transactions (non-transfer, non-staking, non-installer/upgrader) allowed in a block.
+block_max_small_count = 50
 # The maximum number of approvals permitted in a single block.
 block_max_approval_count = 2600
 # Maximum block size in bytes including transactions contained by the block.  0 means unlimited.

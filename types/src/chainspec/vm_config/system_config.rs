@@ -14,11 +14,6 @@ use crate::{
     chainspec::vm_config::{AuctionCosts, HandlePaymentCosts, MintCosts, StandardPaymentCosts},
 };
 
-/// Default gas limit of install / upgrade contracts
-pub const DEFAULT_INSTALL_UPGRADE_GAS_LIMIT: u64 = 3_500_000_000_000;
-
-/// Default gas limit of standard transactions
-pub const DEFAULT_STANDARD_TRANSACTION_GAS_LIMIT: u64 = 500_000_000_000;
 
 /// Definition of costs in the system.
 ///

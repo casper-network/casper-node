@@ -50,9 +50,23 @@ impl ExecutableBlock {
             .unwrap_or(vec![])
     }
 
-    pub(crate) fn standard(&self) -> Vec<TransactionHash> {
+    pub(crate) fn large(&self) -> Vec<TransactionHash> {
         self.transaction_map
             .get(&(TransactionCategory::Large as u8))
+            .cloned()
+            .unwrap_or(vec![])
+    }
+
+    pub(crate) fn medium(&self) -> Vec<TransactionHash> {
+        self.transaction_map
+            .get(&(TransactionCategory::Medium as u8))
+            .cloned()
+            .unwrap_or(vec![])
+    }
+
+    pub(crate) fn small(&self) -> Vec<TransactionHash> {
+        self.transaction_map
+            .get(&(TransactionCategory::Small as u8))
             .cloned()
             .unwrap_or(vec![])
     }
@@ -110,7 +124,7 @@ impl fmt::Display for ExecutableBlock {
             self.mint().len(),
             self.auction().len(),
             self.install_upgrade().len(),
-            self.standard().len(),
+            self.large().len(),
         )?;
         if let Some(ref ee) = self.era_report {
             write!(formatter, ", era_end: {:?}", ee)?;

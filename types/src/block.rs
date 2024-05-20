@@ -180,22 +180,22 @@ const BLOCK_V2_TAG: u8 = 1;
 /// A block after execution.
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(
-    any(feature = "std", feature = "json-schema", test),
-    derive(serde::Serialize, serde::Deserialize)
+any(feature = "std", feature = "json-schema", test),
+derive(serde::Serialize, serde::Deserialize)
 )]
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub enum Block {
     /// The legacy, initial version of the block.
     #[cfg_attr(
-        any(feature = "std", feature = "json-schema", test),
-        serde(rename = "Version1")
+    any(feature = "std", feature = "json-schema", test),
+    serde(rename = "Version1")
     )]
     V1(BlockV1),
     /// The version 2 of the block.
     #[cfg_attr(
-        any(feature = "std", feature = "json-schema", test),
-        serde(rename = "Version2")
+    any(feature = "std", feature = "json-schema", test),
+    serde(rename = "Version2")
     )]
     V2(BlockV2),
 }
@@ -412,7 +412,7 @@ impl Block {
                 let has_hit_slot_limt = self.has_hit_slot_capacity(transaction_config.clone());
                 let per_block_capacity = (transaction_config.block_max_mint_count
                     + transaction_config.block_max_auction_count
-                    + transaction_config.block_max_standard_count
+                    + transaction_config.block_max_large_count
                     + transaction_config.block_max_install_upgrade_count)
                     as u64;
 
@@ -434,11 +434,15 @@ impl Block {
             Block::V2(block_v2) => {
                 (block_v2.mint().count() as u32 >= transaction_config.block_max_mint_count)
                     || (block_v2.auction().count() as u32
-                        >= transaction_config.block_max_auction_count)
-                    || (block_v2.standard().count() as u32
-                        >= transaction_config.block_max_standard_count)
+                    >= transaction_config.block_max_auction_count)
+                    || (block_v2.large().count() as u32
+                    >= transaction_config.block_max_large_count)
+                    || (block_v2.medium().count() as u32
+                    >= transaction_config.block_max_medium_count)
+                    || (block_v2.small().count() as u32
+                    >= transaction_config.block_max_small_count)
                     || (block_v2.install_upgrade().count() as u32
-                        >= transaction_config.block_max_install_upgrade_count)
+                    >= transaction_config.block_max_install_upgrade_count)
             }
         }
     }
@@ -493,9 +497,9 @@ impl ToBytes for Block {
     fn serialized_length(&self) -> usize {
         TAG_LENGTH
             + match self {
-                Block::V1(v1) => v1.serialized_length(),
-                Block::V2(v2) => v2.serialized_length(),
-            }
+            Block::V1(v1) => v1.serialized_length(),
+            Block::V2(v2) => v2.serialized_length(),
+        }
     }
 }
 

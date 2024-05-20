@@ -8,6 +8,13 @@ use tracing::log::warn;
 use crate::bytesrepr::{self, FromBytes, ToBytes};
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
+use crate::TransactionCategory;
+
+/// Default gas limit of install / upgrade contracts
+pub const DEFAULT_INSTALL_UPGRADE_GAS_LIMIT: u64 = 3_500_000_000_000;
+
+/// Default gas limit of standard transactions
+pub const DEFAULT_LARGE_TRANSACTION_GAS_LIMIT: u64 = 500_000_000_000;
 
 /// Configuration values associated with V1 Transactions.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
@@ -80,11 +87,16 @@ impl TransactionV1Config {
 #[cfg(any(feature = "std", test))]
 impl Default for TransactionV1Config {
     fn default() -> Self {
-        let mut lanes = vec![];
-        for kind in 0..7 {
-            let lane = vec![kind as u64, 1024, 2048, 2_500_000_000];
-            lanes.push(lane)
-        }
+        let large_lane = vec![TransactionCategory::Large as u64, 1_048_576, 1024, DEFAULT_LARGE_TRANSACTION_GAS_LIMIT];
+        let medium_lane = vec![TransactionCategory::Medium as u64, 1_048_576, 1024, DEFAULT_LARGE_TRANSACTION_GAS_LIMIT / 2];
+        let small_lane = vec![TransactionCategory::Small as u64, 1_048_576, 1024, DEFAULT_LARGE_TRANSACTION_GAS_LIMIT / 10];
+
+        let install_upgrade_lane = vec![TransactionCategory::InstallUpgrade as u64, 1_048_576, 2048, DEFAULT_INSTALL_UPGRADE_GAS_LIMIT];
+
+        let mint_lane = vec![TransactionCategory::Mint as u64, 1_048_576, 2048, 2_500_000_000];
+        let auction_lane = vec![TransactionCategory::Auction as u64, 1_048_576, 2048, 2_500_000_000];
+
+        let lanes = vec![large_lane, medium_lane, small_lane, install_upgrade_lane, mint_lane, auction_lane];
 
         TransactionV1Config { lanes }
     }

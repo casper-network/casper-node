@@ -183,7 +183,7 @@ impl BlockValidationState {
         block: &ProposedBlock<ClContext>,
         config: &TransactionConfig,
     ) -> Result<(), ()> {
-        if block.standard_count() > config.block_max_standard_count as usize {
+        if block.standard_count() > config.block_max_large_count as usize {
             warn!("too many standard transactions");
             return Err(());
         }
