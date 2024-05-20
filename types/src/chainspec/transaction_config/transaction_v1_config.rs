@@ -31,8 +31,8 @@ pub struct TransactionV1Config {
     pub lanes: Vec<Vec<u64>>,
 }
 
-#[cfg(any(feature = "testing", test))]
 impl TransactionV1Config {
+    #[cfg(any(feature = "testing", test))]
     /// Generates a random instance using a `TestRng`.
     pub fn random(rng: &mut TestRng) -> Self {
         let mut lanes = vec![];
@@ -49,7 +49,8 @@ impl TransactionV1Config {
         TransactionV1Config { lanes }
     }
 
-    pub(crate) fn get_max_serialized_length(&self, category: u8) -> u64 {
+    /// Returns the max serialized length of a transaction for the given category.
+    pub fn get_max_serialized_length(&self, category: u8) -> u64 {
         let lane_config = self.lanes.iter().find(|lane| lane[0] == category as u64);
 
         match lane_config {
@@ -61,7 +62,8 @@ impl TransactionV1Config {
         }
     }
 
-    pub(crate) fn get_max_args_length(&self, category: u8) -> u64 {
+    /// Returns the max serialized args length of a transaction for the given category.
+    pub fn get_max_args_length(&self, category: u8) -> u64 {
         let lane_config = self.lanes.iter().find(|lane| lane[0] == category as u64);
 
         match lane_config {
@@ -73,7 +75,8 @@ impl TransactionV1Config {
         }
     }
 
-    pub(crate) fn get_max_gas_limit(&self, category: u8) -> u64 {
+    /// Returns the max gas limit of a transaction for the given category.
+    pub fn get_max_gas_limit(&self, category: u8) -> u64 {
         let lane_config = self.lanes.iter().find(|lane| lane[0] == category as u64);
 
         match lane_config {
