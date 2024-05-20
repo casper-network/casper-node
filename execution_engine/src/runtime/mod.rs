@@ -906,12 +906,7 @@ where
                     self.context.engine_config().max_delegators_per_validator();
 
                 let result = runtime
-                    .delegate(
-                        delegator,
-                        validator,
-                        amount,
-                        max_delegators_per_validator,
-                    )
+                    .delegate(delegator, validator, amount, max_delegators_per_validator)
                     .map_err(Self::reverter)?;
 
                 CLValue::from_t(result).map_err(Self::reverter)
