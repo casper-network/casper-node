@@ -27,7 +27,7 @@ pub fn validate_chainspec(chainspec: &Chainspec) -> bool {
     // should be defined by height only.
     if chainspec.core_config.era_duration.millis() > 0
         && chainspec.core_config.era_duration
-        < chainspec.core_config.minimum_block_time * chainspec.core_config.minimum_era_height
+            < chainspec.core_config.minimum_block_time * chainspec.core_config.minimum_era_height
     {
         warn!("era duration is less than minimum era height * block time!");
     }
@@ -81,7 +81,7 @@ pub(crate) fn validate_core_config(core_config: &CoreConfig) -> bool {
     // should be defined by height only.  Warn only.
     if core_config.era_duration.millis() > 0
         && core_config.era_duration.millis()
-        < core_config.minimum_era_height * core_config.minimum_block_time.millis()
+            < core_config.minimum_era_height * core_config.minimum_block_time.millis()
     {
         warn!("era duration is less than minimum era height * round length!");
     }

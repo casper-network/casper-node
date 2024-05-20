@@ -27,7 +27,12 @@ impl TransactionV1Config {
     pub fn random(rng: &mut TestRng) -> Self {
         let mut lanes = vec![];
         for kind in 0..7 {
-            let lane = vec![kind as u64, rng.gen_range(0..=1_048_576), rng.gen_range(0..=1024), rng.gen_range(0..=2_500_000_000)];
+            let lane = vec![
+                kind as u64,
+                rng.gen_range(0..=1_048_576),
+                rng.gen_range(0..=1024),
+                rng.gen_range(0..=2_500_000_000),
+            ];
             lanes.push(lane)
         }
 
