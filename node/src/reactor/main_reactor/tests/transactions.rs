@@ -1,6 +1,6 @@
 use super::*;
 use casper_storage::data_access_layer::{BalanceIdentifier, ProofHandling};
-use casper_types::GasLimited;
+use casper_types::{GasLimited, TransactionCategory};
 use once_cell::sync::Lazy;
 
 use casper_types::{bytesrepr::Bytes, execution::ExecutionResultV1, TransactionSessionKind};
@@ -737,8 +737,7 @@ async fn wasm_transaction_fees_are_refunded() {
 
     let expected_transaction_gas: u64 = fixture
         .chainspec
-        .system_costs_config
-        .standard_transaction_limit();
+        .get_max_gas_limit_by_kind(TransactionCategory::Large as u8);
     let expected_transaction_cost = expected_transaction_gas * MIN_GAS_PRICE as u64;
     assert_exec_result_cost(
         exec_result,
@@ -1053,8 +1052,7 @@ async fn wasm_transaction_refunds_are_burnt(txn_pricing_mode: PricingMode) {
 
     let expected_transaction_gas: u64 = gas_limit.unwrap_or(
         test.chainspec()
-            .system_costs_config
-            .standard_transaction_limit(),
+            .get_max_gas_limit_by_kind(TransactionCategory::Large as u8),
     );
     let expected_transaction_cost = expected_transaction_gas * min_gas_price as u64;
 
@@ -1155,8 +1153,7 @@ async fn only_refunds_are_burnt_no_fee(txn_pricing_mode: PricingMode) {
     // Fixed transaction pricing.
     let expected_transaction_gas: u64 = gas_limit.unwrap_or(
         test.chainspec()
-            .system_costs_config
-            .standard_transaction_limit(),
+            .get_max_gas_limit_by_kind(TransactionCategory::Large as u8),
     );
     let expected_transaction_cost = expected_transaction_gas * min_gas_price as u64;
 
@@ -1248,8 +1245,7 @@ async fn fees_and_refunds_are_burnt_separately(txn_pricing_mode: PricingMode) {
     // Fixed transaction pricing.
     let expected_transaction_gas: u64 = gas_limit.unwrap_or(
         test.chainspec()
-            .system_costs_config
-            .standard_transaction_limit(),
+            .get_max_gas_limit_by_kind(TransactionCategory::Large as u8),
     );
     let expected_transaction_cost = expected_transaction_gas * min_gas_price as u64;
 
@@ -1344,8 +1340,7 @@ async fn refunds_are_payed_and_fees_are_burnt(txn_pricing_mode: PricingMode) {
     // Fixed transaction pricing.
     let expected_transaction_gas: u64 = gas_limit.unwrap_or(
         test.chainspec()
-            .system_costs_config
-            .standard_transaction_limit(),
+            .get_max_gas_limit_by_kind(TransactionCategory::Large as u8),
     );
     let expected_transaction_cost = expected_transaction_gas * min_gas_price as u64;
 
@@ -1978,8 +1973,7 @@ async fn wasm_transaction_fees_are_refunded_to_proposer(txn_pricing_mode: Pricin
 
     let expected_transaction_gas: u64 = gas_limit.unwrap_or(
         test.chainspec()
-            .system_costs_config
-            .standard_transaction_limit(),
+            .get_max_gas_limit_by_kind(TransactionCategory::Large as u8),
     );
     let expected_transaction_cost = expected_transaction_gas * min_gas_price as u64;
 
@@ -2389,8 +2383,7 @@ async fn fee_holds_are_amortized() {
     // Fixed transaction pricing.
     let expected_transaction_gas: u64 = test
         .chainspec()
-        .system_costs_config
-        .standard_transaction_limit();
+        .get_max_gas_limit_by_kind(TransactionCategory::Large as u8);
 
     let expected_transaction_cost = expected_transaction_gas * MIN_GAS_PRICE as u64;
 

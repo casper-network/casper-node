@@ -678,9 +678,11 @@ impl GasLimited for TransactionV1 {
                         };
                         amount
                     } else if self.is_install_or_upgrade() {
-                        costs.install_upgrade_limit()
+                        let category = self.category() as u8;
+                        chainspec.get_max_gas_limit_by_kind(category)
                     } else {
-                        costs.standard_transaction_limit()
+                        let category = self.category() as u8;
+                        chainspec.get_max_gas_limit_by_kind(category)
                     }
                 };
                 Gas::new(U512::from(computation_limit))

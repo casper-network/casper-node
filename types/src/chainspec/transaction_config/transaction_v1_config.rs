@@ -3,6 +3,7 @@ use datasize::DataSize;
 #[cfg(any(feature = "testing", test))]
 use rand::Rng;
 use serde::{Deserialize, Serialize};
+use tracing::log::warn;
 
 use crate::bytesrepr::{self, FromBytes, ToBytes};
 #[cfg(any(feature = "testing", test))]
@@ -37,6 +38,42 @@ impl TransactionV1Config {
         }
 
         TransactionV1Config { lanes }
+    }
+
+    pub(crate) fn get_max_serialized_length(&self, category: u8) -> u64 {
+        let lane_config = self.lanes.iter().find(|lane| lane[0] == category as u64);
+
+        match lane_config {
+            None => {
+                warn!("no lane config found, returning 0");
+                0
+            }
+            Some(lane) => lane[1],
+        }
+    }
+
+    pub(crate) fn get_max_args_length(&self, category: u8) -> u64 {
+        let lane_config = self.lanes.iter().find(|lane| lane[0] == category as u64);
+
+        match lane_config {
+            None => {
+                warn!("no lane config found, returning 0");
+                0
+            }
+            Some(lane) => lane[2],
+        }
+    }
+
+    pub(crate) fn get_max_gas_limit(&self, category: u8) -> u64 {
+        let lane_config = self.lanes.iter().find(|lane| lane[0] == category as u64);
+
+        match lane_config {
+            None => {
+                warn!("no lane config found, returning 0");
+                0
+            }
+            Some(lane) => lane[3],
+        }
     }
 }
 

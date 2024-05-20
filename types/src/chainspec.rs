@@ -225,6 +225,27 @@ impl Chainspec {
             .iter()
             .any(|lane| lane.first() == Some(&category))
     }
+
+    /// Returns the max serialized for the given category.
+    pub fn get_max_serialized_length_by_kind(&self, category: u8) -> u64 {
+        self.transaction_config
+            .transaction_v1_config
+            .get_max_serialized_length(category)
+    }
+
+    /// Returns the max args length for the given category.
+    pub fn get_max_args_length_by_kind(&self, category: u8) -> u64 {
+        self.transaction_config
+            .transaction_v1_config
+            .get_max_args_length(category)
+    }
+
+    /// Returns the max gas limit for the given category.
+    pub fn get_max_gas_limit_by_kind(&self, category: u8) -> u64 {
+        self.transaction_config
+            .transaction_v1_config
+            .get_max_gas_limit(category)
+    }
 }
 
 #[cfg(any(feature = "testing", test))]
