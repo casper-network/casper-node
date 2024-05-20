@@ -40,7 +40,7 @@ use crate::{
     system::{
         auction::{
             gens::era_info_arb, Bid, BidAddr, BidKind, DelegationRate, Delegator, UnbondingPurse,
-            ValidatorBid, WithdrawPurse, DELEGATION_RATE_DENOMINATOR,
+            ValidatorBid, ValidatorCredit, WithdrawPurse, DELEGATION_RATE_DENOMINATOR,
         },
         mint::BalanceHoldAddr,
         SystemEntityType,
@@ -317,7 +317,7 @@ pub fn cl_value_arb() -> impl Strategy<Value = CLValue> {
             .prop_map(|x| CLValue::from_t(x).expect("should create CLValue")),
         collection::btree_map(".*", u512_arb(), 0..100)
             .prop_map(|x| CLValue::from_t(x).expect("should create CLValue")),
-        (any::<bool>()).prop_map(|x| CLValue::from_t(x).expect("should create CLValue")),
+        any::<bool>().prop_map(|x| CLValue::from_t(x).expect("should create CLValue")),
         (any::<bool>(), any::<i32>())
             .prop_map(|x| CLValue::from_t(x).expect("should create CLValue")),
         (any::<bool>(), any::<i32>(), any::<i64>())
@@ -681,7 +681,7 @@ pub(crate) fn unified_bid_arb(
 }
 
 pub(crate) fn delegator_bid_arb() -> impl Strategy<Value = BidKind> {
-    (delegator_arb()).prop_map(|delegator| BidKind::Delegator(Box::new(delegator)))
+    delegator_arb().prop_map(|delegator| BidKind::Delegator(Box::new(delegator)))
 }
 
 pub(crate) fn validator_bid_arb() -> impl Strategy<Value = BidKind> {
@@ -713,6 +713,18 @@ pub(crate) fn validator_bid_arb() -> impl Strategy<Value = BidKind> {
                 BidKind::Validator(Box::new(validator_bid))
             },
         )
+}
+
+pub(crate) fn credit_bid_arb() -> impl Strategy<Value = BidKind> {
+    (public_key_arb_no_system(), era_id_arb(), u512_arb()).prop_map(
+        |(validator_public_key, era_id, amount)| {
+            BidKind::Credit(Box::new(ValidatorCredit::new(
+                validator_public_key,
+                era_id,
+                amount,
+            )))
+        },
+    )
 }
 
 fn withdraw_arb() -> impl Strategy<Value = WithdrawPurse> {
@@ -800,6 +812,7 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
         unified_bid_arb(0..3).prop_map(StoredValue::BidKind),
         validator_bid_arb().prop_map(StoredValue::BidKind),
         delegator_bid_arb().prop_map(StoredValue::BidKind),
+        credit_bid_arb().prop_map(StoredValue::BidKind),
         withdraws_arb(1..50).prop_map(StoredValue::Withdraw),
         unbondings_arb(1..50).prop_map(StoredValue::Unbonding),
         message_topic_summary_arb().prop_map(StoredValue::MessageTopic),

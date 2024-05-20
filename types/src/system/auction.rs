@@ -11,6 +11,7 @@ mod error;
 mod seigniorage_recipient;
 mod unbonding_purse;
 mod validator_bid;
+mod validator_credit;
 mod withdraw_purse;
 
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
@@ -32,6 +33,7 @@ pub use error::Error;
 pub use seigniorage_recipient::SeigniorageRecipient;
 pub use unbonding_purse::UnbondingPurse;
 pub use validator_bid::ValidatorBid;
+pub use validator_credit::ValidatorCredit;
 pub use withdraw_purse::WithdrawPurse;
 
 #[cfg(any(feature = "testing", test))]
@@ -46,6 +48,9 @@ pub type DelegationRate = u8;
 
 /// Validators mapped to their bids.
 pub type ValidatorBids = BTreeMap<PublicKey, Box<ValidatorBid>>;
+
+/// Validators mapped to their credits by era.
+pub type ValidatorCredits = BTreeMap<PublicKey, BTreeMap<EraId, Box<ValidatorCredit>>>;
 
 /// Weights of validators. "Weight" in this context means a sum of their stakes.
 pub type ValidatorWeights = BTreeMap<PublicKey, U512>;
@@ -84,6 +89,9 @@ pub trait BidsExt {
         new_public_key: &PublicKey,
         era_id: &EraId,
     ) -> Option<Bridge>;
+
+    /// Returns ValidatorCredit matching public_key, if present.
+    fn credit(&self, public_key: &PublicKey) -> Option<ValidatorCredit>;
 
     /// Returns total validator stake, if present.
     fn validator_total_stake(&self, public_key: &PublicKey) -> Option<U512>;
@@ -130,6 +138,17 @@ impl BidsExt for Vec<BidKind> {
             .find(|x| x.is_validator() && &x.validator_public_key() == public_key)?
         {
             Some(*validator_bid.clone())
+        } else {
+            None
+        }
+    }
+
+    fn credit(&self, public_key: &PublicKey) -> Option<ValidatorCredit> {
+        if let BidKind::Credit(credit) = self
+            .iter()
+            .find(|x| x.is_credit() && &x.validator_public_key() == public_key)?
+        {
+            Some(*credit.clone())
         } else {
             None
         }
@@ -285,6 +304,14 @@ impl BidsExt for Vec<BidKind> {
                     x.is_bridge()
                         && x.validator_public_key() == bid_kind.validator_public_key()
                         && x.new_validator_public_key() == bid_kind.new_validator_public_key()
+                        && x.era_id() == bid_kind.era_id()
+                })
+                .map(|(idx, _)| idx),
+            BidKind::Credit(_) => self
+                .iter()
+                .find_position(|x| {
+                    x.validator_public_key() == bid_kind.validator_public_key()
+                        && x.tag() == bid_kind.tag()
                         && x.era_id() == bid_kind.era_id()
                 })
                 .map(|(idx, _)| idx),

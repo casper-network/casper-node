@@ -11,9 +11,12 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::{ExecutionResultV1, ExecutionResultV2};
-use crate::bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
+use crate::{
+    bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    U512,
+};
 
 const V1_TAG: u8 = 0;
 const V2_TAG: u8 = 1;
@@ -33,6 +36,14 @@ pub enum ExecutionResult {
 }
 
 impl ExecutionResult {
+    /// Returns consumed amount.
+    pub fn consumed(&self) -> U512 {
+        match self {
+            ExecutionResult::V1(result) => result.cost(),
+            ExecutionResult::V2(result) => result.consumed.value(),
+        }
+    }
+
     /// Returns a random ExecutionResult.
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {

@@ -25,6 +25,7 @@ pub const BLOCK_BODY_V2_TAG: u8 = 1;
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(any(feature = "testing", test), derive(PartialEq))]
 #[derive(Clone, Serialize, Deserialize, Debug)]
+#[allow(clippy::large_enum_variant)]
 pub enum BlockBody {
     /// The legacy, initial version of the body portion of a block.
     #[serde(rename = "Version1")]

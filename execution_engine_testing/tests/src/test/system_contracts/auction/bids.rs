@@ -10,17 +10,17 @@ use tempfile::TempDir;
 
 use casper_engine_test_support::{
     utils, ChainspecConfig, ExecuteRequestBuilder, LmdbWasmTestBuilder, StepRequestBuilder,
-    DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
+    DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_AUCTION_DELAY,
     DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_EXEC_CONFIG, DEFAULT_GENESIS_CONFIG_HASH,
     DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROTOCOL_VERSION,
-    DEFAULT_UNBONDING_DELAY, LOCAL_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR,
-    TIMESTAMP_MILLIS_INCREMENT,
+    DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_UNBONDING_DELAY, LOCAL_GENESIS_REQUEST,
+    MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
 };
 use casper_execution_engine::{
     engine_state::{self, engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, Error},
     execution::ExecError,
 };
-use casper_storage::data_access_layer::GenesisRequest;
+use casper_storage::data_access_layer::{GenesisRequest, HandleFeeMode};
 
 use casper_types::{
     self,
@@ -38,7 +38,7 @@ use casper_types::{
         },
     },
     EntityAddr, EraId, GenesisAccount, GenesisConfigBuilder, GenesisValidator, Key, Motes,
-    ProtocolVersion, PublicKey, SecretKey, U256, U512,
+    ProtocolVersion, PublicKey, SecretKey, TransactionHash, U256, U512,
 };
 
 const ARG_TARGET: &str = "target";
@@ -5001,5 +5001,134 @@ fn should_handle_excessively_long_bridge_record_chains() {
                 + UNDELEGATE_AMOUNT_2
                 + DEFAULT_MINIMUM_DELEGATION_AMOUNT
         )
+    );
+}
+
+#[ignore]
+#[test]
+fn credits_are_considered_when_determining_validators() {
+    // In this test we have 2 genesis nodes that are validators: Node 1 and Node 2; 1 has less stake
+    // than 2. We have only 2 validator slots so later we'll bid in another node with a stake
+    // slightly higher than the one of node 1.
+    // Under normal circumstances, since node 3 put in a higher bid, it should win the slot and kick
+    // out node 1. But since we add some credits for node 1 (because it was a validator and
+    // proposed blocks) it should maintain its slot.
+    let accounts = {
+        let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
+        let account_1 = GenesisAccount::account(
+            ACCOUNT_1_PK.clone(),
+            Motes::new(ACCOUNT_1_BALANCE),
+            Some(GenesisValidator::new(
+                Motes::new(ACCOUNT_1_BOND),
+                DelegationRate::zero(),
+            )),
+        );
+        let account_2 = GenesisAccount::account(
+            ACCOUNT_2_PK.clone(),
+            Motes::new(ACCOUNT_2_BALANCE),
+            Some(GenesisValidator::new(
+                Motes::new(ACCOUNT_2_BOND),
+                DelegationRate::zero(),
+            )),
+        );
+        let account_3 = GenesisAccount::account(
+            BID_ACCOUNT_1_PK.clone(),
+            Motes::new(BID_ACCOUNT_1_BALANCE),
+            None,
+        );
+        tmp.push(account_1);
+        tmp.push(account_2);
+        tmp.push(account_3);
+        tmp
+    };
+
+    let mut builder = LmdbWasmTestBuilder::default();
+    let config = GenesisConfigBuilder::default()
+        .with_accounts(accounts)
+        .with_validator_slots(2) // set up only 2 validators
+        .with_auction_delay(DEFAULT_AUCTION_DELAY)
+        .with_locked_funds_period_millis(DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS)
+        .with_round_seigniorage_rate(DEFAULT_ROUND_SEIGNIORAGE_RATE)
+        .with_unbonding_delay(DEFAULT_UNBONDING_DELAY)
+        .with_genesis_timestamp_millis(DEFAULT_GENESIS_TIMESTAMP_MILLIS)
+        .build();
+    let run_genesis_request = GenesisRequest::new(
+        DEFAULT_GENESIS_CONFIG_HASH,
+        DEFAULT_PROTOCOL_VERSION,
+        config,
+        DEFAULT_CHAINSPEC_REGISTRY.clone(),
+    );
+    builder.run_genesis(run_genesis_request);
+
+    let genesis_validator_weights = builder
+        .get_validator_weights(INITIAL_ERA_ID)
+        .expect("should have genesis validators for initial era");
+    let auction_delay = builder.get_auction_delay();
+
+    // new_era is the first era in the future where new era validator weights will be calculated
+    let new_era = INITIAL_ERA_ID + auction_delay + 1;
+    assert!(builder.get_validator_weights(new_era).is_none());
+    assert_eq!(
+        builder.get_validator_weights(new_era - 1).unwrap(),
+        builder.get_validator_weights(INITIAL_ERA_ID).unwrap()
+    );
+    // in the genesis era both node 1 and 2 are validators.
+    assert_eq!(
+        genesis_validator_weights
+            .keys()
+            .cloned()
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from_iter(vec![ACCOUNT_1_PK.clone(), ACCOUNT_2_PK.clone()])
+    );
+
+    // bid in the 3rd node with an amount just a bit more than node 1.
+    let exec_request_1 = ExecuteRequestBuilder::standard(
+        *BID_ACCOUNT_1_ADDR,
+        CONTRACT_ADD_BID,
+        runtime_args! {
+            ARG_PUBLIC_KEY => BID_ACCOUNT_1_PK.clone(),
+            ARG_AMOUNT => U512::from(ACCOUNT_1_BOND + 1),
+            ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
+        },
+    )
+    .build();
+
+    builder.exec(exec_request_1).expect_success().commit();
+
+    // Add a credit for node 1 artificially (assume it has proposed a block with a transaction and
+    // received credit).
+    let add_credit = HandleFeeMode::credit(
+        Box::new(ACCOUNT_1_PK.clone()),
+        U512::from(2001),
+        INITIAL_ERA_ID,
+    );
+    builder.handle_fee(
+        None,
+        DEFAULT_PROTOCOL_VERSION,
+        TransactionHash::from_raw([1; 32]),
+        add_credit,
+    );
+
+    // run auction and compute validators for new era
+    builder.run_auction(
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
+        Vec::new(),
+    );
+
+    let new_validator_weights: ValidatorWeights = builder
+        .get_validator_weights(new_era)
+        .expect("should have first era validator weights");
+
+    // We have only 2 slots. Node 2 should be in the set because it's the highest bidder. Node 1
+    // should keep its validator slot even though it's bid is now lower than node 3. This should
+    // have happened because there was a credit for node 1 added.
+    assert_eq!(
+        new_validator_weights.get(&ACCOUNT_2_PK),
+        Some(&U512::from(ACCOUNT_2_BOND))
+    );
+    assert!(!new_validator_weights.contains_key(&BID_ACCOUNT_1_PK));
+    assert_eq!(
+        new_validator_weights.get(&ACCOUNT_1_PK),
+        Some(&U512::from(ACCOUNT_1_BOND))
     );
 }

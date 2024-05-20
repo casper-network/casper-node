@@ -630,6 +630,7 @@
         "era_id",
         "height",
         "parent_hash",
+        "proposer",
         "protocol_version",
         "random_bit",
         "state_root_hash",
@@ -713,11 +714,30 @@
             }
           ]
         },
+        "proposer": {
+          "description": "The public key of the validator which proposed the block.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PublicKey"
+            }
+          ]
+        },
         "current_gas_price": {
           "description": "The gas price of the era",
           "type": "integer",
           "format": "uint8",
           "minimum": 0.0
+        },
+        "last_switch_block_hash": {
+          "description": "The most recent switch block hash.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/BlockHash"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       }
     },
@@ -772,48 +792,18 @@
       "description": "The body portion of a block. Version 2.",
       "type": "object",
       "required": [
-        "auction",
-        "install_upgrade",
-        "mint",
-        "proposer",
         "rewarded_signatures",
-        "standard"
+        "transactions"
       ],
       "properties": {
-        "proposer": {
-          "description": "The public key of the validator which proposed the block.",
-          "allOf": [
-            {
-              "$ref": "#/definitions/PublicKey"
+        "transactions": {
+          "description": "Map of transactions mapping categories to a list of transaction hashes.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/TransactionHash"
             }
-          ]
-        },
-        "mint": {
-          "description": "The hashes of the mint transactions within the block.",
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/TransactionHash"
-          }
-        },
-        "auction": {
-          "description": "The hashes of the auction transactions within the block.",
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/TransactionHash"
-          }
-        },
-        "install_upgrade": {
-          "description": "The hashes of the installer/upgrader transactions within the block.",
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/TransactionHash"
-          }
-        },
-        "standard": {
-          "description": "The hashes of all other transactions within the block.",
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/TransactionHash"
           }
         },
         "rewarded_signatures": {
@@ -3257,6 +3247,19 @@
             }
           },
           "additionalProperties": false
+        },
+        {
+          "description": "Credited amount.",
+          "type": "object",
+          "required": [
+            "Credit"
+          ],
+          "properties": {
+            "Credit": {
+              "$ref": "#/definitions/ValidatorCredit"
+            }
+          },
+          "additionalProperties": false
         }
       ]
     },
@@ -3349,6 +3352,42 @@
           "allOf": [
             {
               "$ref": "#/definitions/EraId"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "ValidatorCredit": {
+      "description": "Validator credit record.",
+      "type": "object",
+      "required": [
+        "amount",
+        "era_id",
+        "validator_public_key"
+      ],
+      "properties": {
+        "validator_public_key": {
+          "description": "Validator public key",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PublicKey"
+            }
+          ]
+        },
+        "era_id": {
+          "description": "The era id the credit was created.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EraId"
+            }
+          ]
+        },
+        "amount": {
+          "description": "The credit amount.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/U512"
             }
           ]
         }

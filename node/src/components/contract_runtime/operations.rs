@@ -25,9 +25,9 @@ use casper_types::{
     bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH},
     execution::{Effects, ExecutionResult, TransformKindV2, TransformV2},
     system::handle_payment::ARG_AMOUNT,
-    BlockHeader, BlockTime, BlockV2, CLValue, CategorizedTransaction, Chainspec, ChecksumRegistry,
-    Digest, EraEndV2, EraId, FeeHandling, Gas, GasLimited, Key, ProtocolVersion, PublicKey,
-    RefundHandling, Transaction, TransactionCategory, U512,
+    BlockHash, BlockHeader, BlockTime, BlockV2, CLValue, CategorizedTransaction, Chainspec,
+    ChecksumRegistry, Digest, EraEndV2, EraId, FeeHandling, Gas, GasLimited, Key, ProtocolVersion,
+    PublicKey, RefundHandling, Transaction, TransactionCategory, U512,
 };
 
 use super::{
@@ -59,6 +59,7 @@ pub fn execute_finalized_block(
     key_block_height_for_activation_point: u64,
     current_gas_price: u8,
     next_era_gas_price: Option<u8>,
+    last_switch_block_hash: Option<BlockHash>,
 ) -> Result<BlockAndExecutionArtifacts, BlockExecutionError> {
     if executable_block.height != execution_pre_state.next_block_height() {
         return Err(BlockExecutionError::WrongBlockHeight {
@@ -86,6 +87,7 @@ pub fn execute_finalized_block(
     // scrape variables from executable block
     let block_time = BlockTime::new(executable_block.timestamp.millis());
     let proposer = executable_block.proposer.clone();
+    let era_id = executable_block.era_id;
     let mut artifacts = Vec::with_capacity(executable_block.transactions.len());
 
     // set up accounting variables / settings
@@ -511,7 +513,7 @@ pub fn execute_finalized_block(
         };
 
         // handle fees per the chainspec determined setting.
-        match fee_handling {
+        let handle_fee_result = match fee_handling {
             FeeHandling::NoFee => {
                 // in this mode, a gas hold for cost - refund (if any) is placed
                 // on the payer's purse.
@@ -529,6 +531,14 @@ pub fn execute_finalized_block(
                 artifact_builder
                     .with_balance_hold_result(&hold_result)
                     .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
+                let handle_fee_request = HandleFeeRequest::new(
+                    native_runtime_config.clone(),
+                    state_root_hash,
+                    protocol_version,
+                    transaction_hash,
+                    HandleFeeMode::credit(proposer.clone(), amount, era_id),
+                );
+                scratch_state.handle_fee(handle_fee_request)
             }
             FeeHandling::Burn => {
                 // in this mode, the fee portion is burned.
@@ -540,12 +550,7 @@ pub fn execute_finalized_block(
                     transaction_hash,
                     HandleFeeMode::burn(balance_identifier, Some(amount)),
                 );
-                let handle_fee_result = scratch_state.handle_fee(handle_fee_request);
-                state_root_hash =
-                    scratch_state.commit(state_root_hash, handle_fee_result.effects().clone())?;
-                artifact_builder
-                    .with_handle_fee_result(&handle_fee_result)
-                    .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
+                scratch_state.handle_fee(handle_fee_request)
             }
             FeeHandling::PayToProposer => {
                 // in this mode, the consumed gas is paid as a fee to the block proposer
@@ -562,12 +567,7 @@ pub fn execute_finalized_block(
                         amount,
                     ),
                 );
-                let handle_fee_result = scratch_state.handle_fee(handle_fee_request);
-                state_root_hash =
-                    scratch_state.commit(state_root_hash, handle_fee_result.effects().clone())?;
-                artifact_builder
-                    .with_handle_fee_result(&handle_fee_result)
-                    .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
+                scratch_state.handle_fee(handle_fee_request)
             }
             FeeHandling::Accumulate => {
                 // in this mode, consumed gas is accumulated into a single purse
@@ -585,14 +585,14 @@ pub fn execute_finalized_block(
                         amount,
                     ),
                 );
-                let handle_fee_result = scratch_state.handle_fee(handle_fee_request);
-                state_root_hash =
-                    scratch_state.commit(state_root_hash, handle_fee_result.effects().clone())?;
-                artifact_builder
-                    .with_handle_fee_result(&handle_fee_result)
-                    .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
+                scratch_state.handle_fee(handle_fee_request)
             }
-        }
+        };
+        state_root_hash =
+            scratch_state.commit(state_root_hash, handle_fee_result.effects().clone())?;
+        artifact_builder
+            .with_handle_fee_result(&handle_fee_result)
+            .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
 
         // clear refund purse if it was set
         if refund_purse_active {
@@ -921,12 +921,10 @@ pub fn execute_finalized_block(
         executable_block.height,
         protocol_version,
         (*proposer).clone(),
-        executable_block.mint,
-        executable_block.auction,
-        executable_block.install_upgrade,
-        executable_block.standard,
+        executable_block.transaction_map,
         executable_block.rewarded_signatures,
         current_gas_price,
+        last_switch_block_hash,
     ));
 
     // TODO: this should just use the data_access_layer.query mechanism to avoid

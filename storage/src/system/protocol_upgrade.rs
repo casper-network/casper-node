@@ -170,6 +170,7 @@ where
 
     pub fn upgrade(self, pre_state_hash: Digest) -> Result<(), ProtocolUpgradeError> {
         self.check_next_protocol_version_validity()?;
+        self.handle_global_state_updates();
         let system_entity_addresses = self.handle_system_entities()?;
         self.migrate_system_account(pre_state_hash)?;
         self.create_accumulation_purse_if_required(
@@ -186,7 +187,6 @@ where
         self.handle_legacy_accounts_migration()?;
         self.handle_legacy_contracts_migration()?;
         self.handle_bids_migration()?;
-        self.handle_global_state_updates();
         self.handle_era_info_migration()
     }
 
@@ -931,8 +931,8 @@ where
         };
         let protocol_version = self.config.new_protocol_version();
         for existing_key in existing_keys {
-            if let Some(StoredValue::Contract(_)) = tc.read(&existing_key)? {
-                if let Err(tce) = tc.migrate_contract(existing_key, protocol_version) {
+            if let Some(StoredValue::ContractPackage(_)) = tc.read(&existing_key)? {
+                if let Err(tce) = tc.migrate_package(existing_key, protocol_version) {
                     return Err(ProtocolUpgradeError::TrackingCopy(tce));
                 }
             } else {
