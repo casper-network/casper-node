@@ -3,7 +3,7 @@ use datasize::DataSize;
 #[cfg(any(feature = "testing", test))]
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-use tracing::log::warn;
+use tracing::warn;
 
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
