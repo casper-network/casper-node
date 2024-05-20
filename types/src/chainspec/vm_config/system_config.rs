@@ -18,7 +18,7 @@ use crate::{
 ///
 /// This structure contains the costs of all the system contract's entry points and, additionally,
 /// it defines a wasmless mint cost.
-#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, Default)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[serde(deny_unknown_fields)]
 pub struct SystemConfig {
@@ -94,17 +94,6 @@ impl SystemConfig {
             mint_costs,
             handle_payment_costs,
             standard_payment_costs,
-        }
-    }
-}
-
-impl Default for SystemConfig {
-    fn default() -> Self {
-        Self {
-            auction_costs: AuctionCosts::default(),
-            mint_costs: MintCosts::default(),
-            handle_payment_costs: HandlePaymentCosts::default(),
-            standard_payment_costs: StandardPaymentCosts::default(),
         }
     }
 }
