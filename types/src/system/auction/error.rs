@@ -353,12 +353,18 @@ pub enum Error {
     /// assert_eq!(53, Error::BridgeRecordChainTooLong as u8);
     /// ```
     BridgeRecordChainTooLong = 53,
+    /// Unexpected bid variant.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(54, Error::UnexpectedBidVariant as u8);
+    /// ```
+    UnexpectedBidVariant = 54,
     /// The delegated amount is above the maximum allowed.
     /// ```
     /// # use casper_types::system::auction::Error;
-    /// assert_eq!(54, Error::DelegationAmountTooLarge as u8);
+    /// assert_eq!(55, Error::DelegationAmountTooLarge as u8);
     /// ```
-    DelegationAmountTooLarge = 54,
+    DelegationAmountTooLarge = 55,
 }
 
 impl Display for Error {
@@ -418,6 +424,7 @@ impl Display for Error {
             Error::MissingPurse => formatter.write_str("Missing purse"),
             Error::ValidatorBidExistsAlready => formatter.write_str("Validator bid with given public key already exists"),
             Error::BridgeRecordChainTooLong => formatter.write_str("Bridge record chain is too long to find current validator bid"),
+            Error::UnexpectedBidVariant => formatter.write_str("Unexpected bid variant"),
             Error::DelegationAmountTooLarge => formatter.write_str("The delegated amount is above the maximum allowed"),
         }
     }
@@ -506,6 +513,7 @@ impl TryFrom<u8> for Error {
                 Ok(Error::ValidatorBidExistsAlready)
             }
             d if d == Error::BridgeRecordChainTooLong as u8 => Ok(Error::BridgeRecordChainTooLong),
+            d if d == Error::UnexpectedBidVariant as u8 => Ok(Error::UnexpectedBidVariant),
             d if d == Error::DelegationAmountTooLarge as u8 => Ok(Error::DelegationAmountTooLarge),
             _ => Err(TryFromU8ForError(())),
         }

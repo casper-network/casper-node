@@ -26,12 +26,12 @@ use casper_storage::{
         AuctionMethod, BalanceIdentifier, BalanceRequest, BalanceResult, BiddingRequest,
         BiddingResult, BidsRequest, BlockRewardsRequest, BlockRewardsResult, BlockStore,
         DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, FeeRequest, FeeResult,
-        FlushRequest, FlushResult, GenesisRequest, GenesisResult, ProofHandling,
-        ProtocolUpgradeRequest, ProtocolUpgradeResult, PruneRequest, PruneResult, QueryRequest,
-        QueryResult, RoundSeigniorageRateRequest, RoundSeigniorageRateResult, StepRequest,
-        StepResult, SystemEntityRegistryPayload, SystemEntityRegistryRequest,
-        SystemEntityRegistryResult, SystemEntityRegistrySelector, TotalSupplyRequest,
-        TotalSupplyResult, TransferRequest, TrieRequest,
+        FlushRequest, FlushResult, GenesisRequest, GenesisResult, HandleFeeMode, HandleFeeRequest,
+        HandleFeeResult, ProofHandling, ProtocolUpgradeRequest, ProtocolUpgradeResult,
+        PruneRequest, PruneResult, QueryRequest, QueryResult, RoundSeigniorageRateRequest,
+        RoundSeigniorageRateResult, StepRequest, StepResult, SystemEntityRegistryPayload,
+        SystemEntityRegistryRequest, SystemEntityRegistryResult, SystemEntityRegistrySelector,
+        TotalSupplyRequest, TotalSupplyResult, TransferRequest, TrieRequest,
     },
     global_state::{
         state::{
@@ -66,10 +66,10 @@ use casper_types::{
     },
     AccessRights, AddressableEntity, AddressableEntityHash, AuctionCosts, BlockGlobalAddr,
     BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash, CLTyped, CLValue, Contract, Digest,
-    EntityAddr, EntryPoints, EraId, Gas, HandlePaymentCosts, HoldBalanceHandling, InitiatorAddr,
-    Key, KeyTag, MintCosts, Motes, Package, PackageHash, Phase, ProtocolUpgradeConfig,
-    ProtocolVersion, PublicKey, RefundHandling, StoredValue, SystemEntityRegistry, TransactionHash,
-    TransactionV1Hash, URef, OS_PAGE_SIZE, U512,
+    EntityAddr, EntryPoints, EraId, FeeHandling, Gas, HandlePaymentCosts, HoldBalanceHandling,
+    InitiatorAddr, Key, KeyTag, MintCosts, Motes, Package, PackageHash, Phase,
+    ProtocolUpgradeConfig, ProtocolVersion, PublicKey, RefundHandling, StoredValue,
+    SystemEntityRegistry, TransactionHash, TransactionV1Hash, URef, OS_PAGE_SIZE, U512,
 };
 
 use crate::{
@@ -792,7 +792,11 @@ where
         let max_delegators_per_validator = config.core_config.max_delegators_per_validator;
         let minimum_delegation_amount = config.core_config.minimum_delegation_amount;
         let balance_hold_interval = config.core_config.gas_hold_interval.millis();
-
+        let include_credits = config.core_config.fee_handling == FeeHandling::NoFee;
+        let credit_cap = Ratio::new_raw(
+            U512::from(*config.core_config.validator_credit_cap.numer()),
+            U512::from(*config.core_config.validator_credit_cap.denom()),
+        );
         let native_runtime_config = casper_storage::system::runtime_native::Config::new(
             TransferConfig::Unadministered,
             fee_handling,
@@ -803,6 +807,8 @@ where
             max_delegators_per_validator,
             minimum_delegation_amount,
             balance_hold_interval,
+            include_credits,
+            credit_cap,
         );
 
         let bidding_req = BiddingRequest::new(
@@ -949,6 +955,11 @@ where
             .collect();
         let allow_unrestricted = self.chainspec.core_config.allow_unrestricted_transfers;
         let transfer_config = TransferConfig::new(administrators, allow_unrestricted);
+        let include_credits = self.chainspec.core_config.fee_handling == FeeHandling::NoFee;
+        let credit_cap = Ratio::new_raw(
+            U512::from(*self.chainspec.core_config.validator_credit_cap.numer()),
+            U512::from(*self.chainspec.core_config.validator_credit_cap.denom()),
+        );
         NativeRuntimeConfig::new(
             transfer_config,
             self.chainspec.core_config.fee_handling,
@@ -959,6 +970,8 @@ where
             self.chainspec.core_config.max_delegators_per_validator,
             self.chainspec.core_config.minimum_delegation_amount,
             self.chainspec.core_config.gas_hold_interval.millis(),
+            include_credits,
+            credit_cap,
         )
     }
 
@@ -1048,6 +1061,31 @@ where
         }
 
         forced_undelegate_result
+    }
+
+    /// Finalizes payment for a transaction
+    pub fn handle_fee(
+        &mut self,
+        pre_state_hash: Option<Digest>,
+        protocol_version: ProtocolVersion,
+        transaction_hash: TransactionHash,
+        handle_fee_mode: HandleFeeMode,
+    ) -> HandleFeeResult {
+        let pre_state_hash = pre_state_hash.or(self.post_state_hash).unwrap();
+        let native_runtime_config = self.native_runtime_config();
+        let handle_fee_request = HandleFeeRequest::new(
+            native_runtime_config,
+            pre_state_hash,
+            protocol_version,
+            transaction_hash,
+            handle_fee_mode,
+        );
+        let handle_fee_result = self.data_access_layer.handle_fee(handle_fee_request);
+        if let HandleFeeResult::Success { effects, .. } = &handle_fee_result {
+            self.commit_transforms(pre_state_hash, effects.clone());
+        }
+
+        handle_fee_result
     }
 
     /// Expects a successful run
@@ -1412,7 +1450,7 @@ where
     ) -> Option<EntityWithNamedKeys> {
         match self.get_addressable_entity(entity_hash) {
             Some(entity) => {
-                let named_keys = self.get_named_keys_by_contract_entity_hash(entity_hash);
+                let named_keys = self.get_named_keys(entity.entity_addr(entity_hash));
                 Some(EntityWithNamedKeys::new(entity, named_keys))
             }
             None => None,
@@ -1574,15 +1612,6 @@ where
             .get_entity_hash_by_account_hash(account_hash)
             .expect("must have entity hash");
         let entity_addr = EntityAddr::new_account(entity_hash.value());
-        self.get_named_keys(entity_addr)
-    }
-
-    /// Returns named keys for an account entity by its entity hash.
-    pub fn get_named_keys_by_contract_entity_hash(
-        &self,
-        contract_hash: AddressableEntityHash,
-    ) -> NamedKeys {
-        let entity_addr = EntityAddr::new_smart_contract(contract_hash.value());
         self.get_named_keys(entity_addr)
     }
 
