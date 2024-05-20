@@ -2,7 +2,8 @@ use casper_engine_test_support::LmdbWasmTestBuilder;
 use casper_execution_engine::engine_state::engine_config::DEFAULT_PROTOCOL_VERSION;
 use casper_types::{
     account::Account, addressable_entity::NamedKeys, bytesrepr::ToBytes, system::mint,
-    AccessRights, AsymmetricType, CLTyped, CLValue, Key, PublicKey, StoredValue, URef, U512,
+    AccessRights, AsymmetricType, CLTyped, CLValue, EntityAddr, Key, PublicKey, StoredValue, URef,
+    U512,
 };
 use clap::ArgMatches;
 use rand::Rng;
@@ -86,7 +87,7 @@ pub(crate) fn generate_admins(matches: &ArgMatches<'_>) {
         let mint_contract_hash = test_builder.get_mint_contract_hash();
 
         let mint_named_keys =
-            test_builder.get_named_keys_by_contract_entity_hash(mint_contract_hash);
+            test_builder.get_named_keys(EntityAddr::new_system(mint_contract_hash.value()));
 
         mint_named_keys
             .get(mint::TOTAL_SUPPLY_KEY)

@@ -88,6 +88,7 @@ pub fn execute_finalized_block(
     // scrape variables from executable block
     let block_time = BlockTime::new(executable_block.timestamp.millis());
     let proposer = executable_block.proposer.clone();
+    let era_id = executable_block.era_id;
     let mut artifacts = Vec::with_capacity(executable_block.transactions.len());
 
     // set up accounting variables / settings
@@ -543,7 +544,7 @@ pub fn execute_finalized_block(
         };
 
         // handle fees per the chainspec determined setting.
-        match fee_handling {
+        let handle_fee_result = match fee_handling {
             FeeHandling::NoFee => {
                 // in this mode, a gas hold for cost - refund (if any) is placed
                 // on the payer's purse.
@@ -561,6 +562,14 @@ pub fn execute_finalized_block(
                 artifact_builder
                     .with_balance_hold_result(&hold_result)
                     .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
+                let handle_fee_request = HandleFeeRequest::new(
+                    native_runtime_config.clone(),
+                    state_root_hash,
+                    protocol_version,
+                    transaction_hash,
+                    HandleFeeMode::credit(proposer.clone(), amount, era_id),
+                );
+                scratch_state.handle_fee(handle_fee_request)
             }
             FeeHandling::Burn => {
                 // in this mode, the fee portion is burned.
@@ -572,12 +581,7 @@ pub fn execute_finalized_block(
                     transaction_hash,
                     HandleFeeMode::burn(balance_identifier, Some(amount)),
                 );
-                let handle_fee_result = scratch_state.handle_fee(handle_fee_request);
-                state_root_hash =
-                    scratch_state.commit(state_root_hash, handle_fee_result.effects().clone())?;
-                artifact_builder
-                    .with_handle_fee_result(&handle_fee_result)
-                    .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
+                scratch_state.handle_fee(handle_fee_request)
             }
             FeeHandling::PayToProposer => {
                 // in this mode, the consumed gas is paid as a fee to the block proposer
@@ -594,12 +598,7 @@ pub fn execute_finalized_block(
                         amount,
                     ),
                 );
-                let handle_fee_result = scratch_state.handle_fee(handle_fee_request);
-                state_root_hash =
-                    scratch_state.commit(state_root_hash, handle_fee_result.effects().clone())?;
-                artifact_builder
-                    .with_handle_fee_result(&handle_fee_result)
-                    .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
+                scratch_state.handle_fee(handle_fee_request)
             }
             FeeHandling::Accumulate => {
                 // in this mode, consumed gas is accumulated into a single purse
@@ -617,14 +616,14 @@ pub fn execute_finalized_block(
                         amount,
                     ),
                 );
-                let handle_fee_result = scratch_state.handle_fee(handle_fee_request);
-                state_root_hash =
-                    scratch_state.commit(state_root_hash, handle_fee_result.effects().clone())?;
-                artifact_builder
-                    .with_handle_fee_result(&handle_fee_result)
-                    .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
+                scratch_state.handle_fee(handle_fee_request)
             }
-        }
+        };
+        state_root_hash =
+            scratch_state.commit(state_root_hash, handle_fee_result.effects().clone())?;
+        artifact_builder
+            .with_handle_fee_result(&handle_fee_result)
+            .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
 
         // clear refund purse if it was set
         if refund_purse_active {

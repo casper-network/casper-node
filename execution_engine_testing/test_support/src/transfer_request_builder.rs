@@ -54,6 +54,8 @@ impl TransferRequestBuilder {
         0,
         500_000_000_000,
         DEFAULT_GAS_HOLD_INTERVAL.millis(),
+        false,
+        Ratio::new_raw(U512::zero(), U512::zero()),
     );
     /// The default value used for `TransferRequest::state_hash`.
     pub const DEFAULT_STATE_HASH: Digest = Digest::from_raw([1; 32]);
