@@ -20,7 +20,7 @@ const DEFAULT_MINIMUM_GAS_PRICE: u8 = 1;
 fn get_appendable_block(
     rng: &mut TestRng,
     transaction_buffer: &mut TransactionBuffer,
-    categories: impl Iterator<Item=&'static TransactionCategory>,
+    categories: impl Iterator<Item = &'static TransactionCategory>,
     transaction_limit: usize,
 ) {
     let transactions: Vec<_> = categories
@@ -181,7 +181,7 @@ fn register_transaction_and_check_size() {
             Config::default(),
             &Registry::new(),
         )
-            .unwrap();
+        .unwrap();
 
         // Try to register valid transactions
         let num_valid_transactions: usize = rng.gen_range(50..500);
@@ -232,7 +232,7 @@ fn register_block_with_valid_transactions() {
             Config::default(),
             &Registry::new(),
         )
-            .unwrap();
+        .unwrap();
 
         let txns: Vec<_> = (0..10)
             .map(|_| create_valid_transaction(&mut rng, category, None, None))
@@ -262,7 +262,7 @@ fn register_finalized_block_with_valid_transactions() {
             Config::default(),
             &Registry::new(),
         )
-            .unwrap();
+        .unwrap();
 
         let txns: Vec<_> = (0..10)
             .map(|_| create_valid_transaction(&mut rng, category, None, None))
@@ -284,7 +284,7 @@ fn get_proposable_transactions() {
             Config::default(),
             &Registry::new(),
         )
-            .unwrap();
+        .unwrap();
 
         transaction_buffer
             .prices
@@ -998,7 +998,7 @@ fn register_transactions_and_blocks() {
         Config::default(),
         &Registry::new(),
     )
-        .unwrap();
+    .unwrap();
 
     transaction_buffer
         .prices
@@ -1163,7 +1163,7 @@ async fn expire_transactions_and_check_announcement_when_transactions_are_of_one
             Config::default(),
             &Registry::new(),
         )
-            .unwrap();
+        .unwrap();
 
         let reactor = MockReactor::new();
         let event_queue_handle = EventQueueHandle::without_shutdown(reactor.scheduler);
@@ -1240,7 +1240,7 @@ async fn expire_transactions_and_check_announcement_when_transactions_are_of_ran
         Config::default(),
         &Registry::new(),
     )
-        .unwrap();
+    .unwrap();
 
     let reactor = MockReactor::new();
     let event_queue_handle = EventQueueHandle::without_shutdown(reactor.scheduler);

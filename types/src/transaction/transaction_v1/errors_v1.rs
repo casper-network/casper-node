@@ -152,6 +152,7 @@ pub enum InvalidTransaction {
         /// The pricing mode as specified by the transaction.
         price_mode: PricingMode,
     },
+    /// The transaction provided is not supported.
     InvalidTransactionKind(u8),
 }
 
@@ -271,10 +272,10 @@ impl Display for InvalidTransaction {
                 )
             }
             InvalidTransaction::UnableToCalculateGasLimit => {
-                write!(formatter, "unable to calculate gas limit", )
+                write!(formatter, "unable to calculate gas limit",)
             }
             InvalidTransaction::UnableToCalculateGasCost => {
-                write!(formatter, "unable to calculate gas cost", )
+                write!(formatter, "unable to calculate gas cost",)
             }
             InvalidTransaction::InvalidPricingMode { price_mode } => {
                 write!(

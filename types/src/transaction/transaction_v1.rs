@@ -224,6 +224,7 @@ impl TransactionV1 {
         self.body().is_install_or_upgrade()
     }
 
+    /// Returns the transaction kind.
     pub fn transaction_kind(&self) -> u8 {
         self.body.transaction_kind()
     }
@@ -952,7 +953,7 @@ mod tests {
     fn is_config_compliant() {
         let rng = &mut TestRng::new();
         let chain_name = "net-1";
-        let transaction = TransactionV1Builder::new_random(rng)
+        let transaction = TransactionV1Builder::new_random_with_category_and_timestamp_and_ttl(rng, &TransactionCategory::Large, None, None)
             .with_chain_name(chain_name)
             .build()
             .unwrap();

@@ -78,7 +78,9 @@ impl AppendableBlock {
             return Err(AddError::Expired);
         }
         let limit = match footprint.category {
-            TransactionCategory::Large | TransactionCategory::Medium | TransactionCategory::Small => self.transaction_config.block_max_standard_count,
+            TransactionCategory::Large
+            | TransactionCategory::Medium
+            | TransactionCategory::Small => self.transaction_config.block_max_standard_count,
             TransactionCategory::Mint => self.transaction_config.block_max_mint_count,
             TransactionCategory::Auction => self.transaction_config.block_max_auction_count,
             TransactionCategory::InstallUpgrade => {

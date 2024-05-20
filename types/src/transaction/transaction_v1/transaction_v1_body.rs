@@ -22,15 +22,17 @@ use super::TransactionCategory;
 use super::TransactionConfig;
 #[cfg(doc)]
 use super::TransactionV1;
-use crate::{bytesrepr::{self, FromBytes, ToBytes}, TransactionSessionKind, TransactionV1ExcessiveSizeError};
+use crate::bytesrepr::{self, FromBytes, ToBytes};
 
 #[cfg(any(feature = "std", test))]
 use crate::InvalidTransactionV1;
 
+#[cfg(any(feature = "std", test))]
+use crate::TransactionV1ExcessiveSizeError;
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::{
     bytesrepr::Bytes, testing::TestRng, PublicKey, TransactionInvocationTarget, TransactionRuntime,
-    TransferTarget,
+    TransactionSessionKind, TransferTarget,
 };
 
 /// The body of a [`TransactionV1`].
@@ -112,15 +114,10 @@ impl TransactionV1Body {
         self.transaction_kind == TransactionCategory::InstallUpgrade as u8
     }
 
-    // /// Returns true if this transaction goes into the misc / standard category.
-    // pub fn is_standard(&self) -> bool {
-    //     !self.is_native_mint() && !self.is_native_auction() && !self.is_install_or_upgrade()
-    // }
-
+    /// Returns the transaction kind.
     pub fn transaction_kind(&self) -> u8 {
         self.transaction_kind
     }
-
 
     /// Consumes `self`, returning its constituent parts.
     pub fn destructure(
@@ -137,18 +134,24 @@ impl TransactionV1Body {
     #[cfg(any(feature = "std", test))]
     pub(super) fn is_valid(&self, config: &TransactionConfig) -> Result<(), InvalidTransactionV1> {
         let kind = self.transaction_kind as u64;
-        let lane_config = config.transaction_v1_config.lanes.iter()
+        let lane_config = config
+            .transaction_v1_config
+            .lanes
+            .iter()
             .find(|lane| lane.first() == Some(&kind))
-            .ok_or(InvalidTransactionV1::InvalidTransactionKind(self.transaction_kind))?;
+            .ok_or(InvalidTransactionV1::InvalidTransactionKind(
+                self.transaction_kind,
+            ))?;
 
         let max_serialized_length = lane_config[1];
-        println!("{max_serialized_length}");
         let actual_length = self.serialized_length();
         if actual_length > max_serialized_length as usize {
-            return Err(InvalidTransactionV1::ExcessiveSize(TransactionV1ExcessiveSizeError {
-                max_transaction_size: max_serialized_length as u32,
-                actual_transaction_size: actual_length,
-            }));
+            return Err(InvalidTransactionV1::ExcessiveSize(
+                TransactionV1ExcessiveSizeError {
+                    max_transaction_size: max_serialized_length as u32,
+                    actual_transaction_size: actual_length,
+                },
+            ));
         }
 
         let max_args_length = lane_config[2];
@@ -426,7 +429,7 @@ impl TransactionV1Body {
                     RuntimeArgs::random(rng),
                     target,
                     TransactionEntryPoint::Custom(rng.random_string(1..11)),
-                    TransactionCategory::Auction as u8,
+                    TransactionCategory::Large as u8,
                     TransactionScheduling::random(rng),
                 )
             }
@@ -498,7 +501,8 @@ mod tests {
         let rng = &mut TestRng::new();
         let mut config = TransactionConfig::default();
         let mut body = TransactionV1Body::random(rng);
-        config.transaction_v1_config.lanes = vec![vec![body.transaction_kind as u64, 1_048_576, 10, 0]];
+        config.transaction_v1_config.lanes =
+            vec![vec![body.transaction_kind as u64, 1_048_576, 10, 0]];
         body.args = runtime_args! {"a" => 1_u8};
 
         let expected_error = InvalidTransactionV1::ExcessiveArgsLength {

@@ -117,7 +117,7 @@ impl TransactionBuffer {
                             "fatal block store error when attempting to read highest blocks: {}",
                             err
                         )
-                            .ignore(),
+                        .ignore(),
                     );
                 }
             };
@@ -139,7 +139,7 @@ impl TransactionBuffer {
                     "{} failed to initialize",
                     <Self as Component<MainEvent>>::name(self)
                 )
-                    .ignore(),
+                .ignore(),
             );
         }
         None
@@ -147,8 +147,8 @@ impl TransactionBuffer {
 
     /// Manages cache ejection.
     fn expire<REv>(&mut self, effect_builder: EffectBuilder<REv>) -> Effects<Event>
-        where
-            REv: From<Event> + From<TransactionBufferAnnouncement> + Send,
+    where
+        REv: From<Event> + From<TransactionBufferAnnouncement> + Send,
     {
         let now = Timestamp::now();
         let (buffer, mut freed): (HashMap<_, _>, _) = mem::take(&mut self.buffer)
@@ -212,8 +212,8 @@ impl TransactionBuffer {
         transaction_id: TransactionId,
         effect_builder: EffectBuilder<REv>,
     ) -> Effects<Event>
-        where
-            REv: From<Event> + From<StorageRequest> + Send,
+    where
+        REv: From<Event> + From<StorageRequest> + Send,
     {
         debug!(%transaction_id, "TransactionBuffer: registering gossiped transaction");
         effect_builder
@@ -230,8 +230,8 @@ impl TransactionBuffer {
         era_id: EraId,
         responder: Responder<AppendableBlock>,
     ) -> Effects<Event>
-        where
-            REv: From<ContractRuntimeRequest> + Send,
+    where
+        REv: From<ContractRuntimeRequest> + Send,
     {
         if self.prices.get(&era_id).is_none() {
             info!("Empty prices field, requesting gas price from contract runtime");
@@ -320,7 +320,7 @@ impl TransactionBuffer {
     fn register_transactions<'a>(
         &mut self,
         timestamp: Timestamp,
-        transaction_hashes: impl Iterator<Item=&'a TransactionHash>,
+        transaction_hashes: impl Iterator<Item = &'a TransactionHash>,
     ) {
         let expiry_timestamp = timestamp.saturating_add(self.chainspec.transaction_config.max_ttl);
 
@@ -442,9 +442,9 @@ impl TransactionBuffer {
         let mut body_hashes_queue: VecDeque<_> = buckets.keys().cloned().collect();
 
         #[cfg(test)]
-            let mut iter_counter = 0;
+        let mut iter_counter = 0;
         #[cfg(test)]
-            let iter_limit = self.buffer.len() * 4;
+        let iter_limit = self.buffer.len() * 4;
 
         while let Some(body_hash) = body_hashes_queue.pop_front() {
             #[cfg(test)]
@@ -521,12 +521,8 @@ impl TransactionBuffer {
                                 TransactionCategory::Large => {
                                     have_hit_large_limit = true;
                                 }
-                                TransactionCategory::Medium => {
-                                    have_hit_medium_limit = true
-                                }
-                                TransactionCategory::Small => {
-                                    have_hit_small_limit = true
-                                }
+                                TransactionCategory::Medium => have_hit_medium_limit = true,
+                                TransactionCategory::Small => have_hit_small_limit = true,
                                 TransactionCategory::InstallUpgrade => {
                                     have_hit_install_upgrade_limit = true;
                                 }
@@ -630,8 +626,8 @@ impl TransactionBuffer {
 }
 
 impl<REv> InitializedComponent<REv> for TransactionBuffer
-    where
-        REv: From<Event>
+where
+    REv: From<Event>
         + From<TransactionBufferAnnouncement>
         + From<ContractRuntimeRequest>
         + From<StorageRequest>
@@ -654,8 +650,8 @@ impl<REv> InitializedComponent<REv> for TransactionBuffer
 }
 
 impl<REv> Component<REv> for TransactionBuffer
-    where
-        REv: From<Event>
+where
+    REv: From<Event>
         + From<TransactionBufferAnnouncement>
         + From<StorageRequest>
         + From<ContractRuntimeRequest>
@@ -732,10 +728,10 @@ impl<REv> Component<REv> for TransactionBuffer
                     Effects::new()
                 }
                 Event::Request(TransactionBufferRequest::GetAppendableBlock {
-                                   timestamp,
-                                   era_id,
-                                   responder,
-                               }) => {
+                    timestamp,
+                    era_id,
+                    responder,
+                }) => {
                     self.handle_get_appendable_block(effect_builder, timestamp, era_id, responder)
                 }
                 Event::GetGasPriceResult(maybe_gas_price, era_id, timestamp, responder) => {

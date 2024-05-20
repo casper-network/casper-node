@@ -1,5 +1,7 @@
-use core::fmt::{self, Formatter};
-use core::convert::TryFrom;
+use core::{
+    convert::TryFrom,
+    fmt::{self, Formatter},
+};
 
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::testing::TestRng;
@@ -13,13 +15,13 @@ use serde::{Deserialize, Serialize};
 
 /// The category of a Transaction.
 #[derive(
-Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug, Default,
+    Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug, Default,
 )]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(
-feature = "json-schema",
-derive(JsonSchema),
-schemars(description = "Session kind of a V1 Transaction.")
+    feature = "json-schema",
+    derive(JsonSchema),
+    schemars(description = "Session kind of a V1 Transaction.")
 )]
 #[serde(deny_unknown_fields)]
 #[repr(u8)]
@@ -66,7 +68,7 @@ impl TryFrom<u8> for TransactionCategory {
             3 => Ok(Self::InstallUpgrade),
             4 => Ok(Self::Mint),
             5 => Ok(Self::Auction),
-            _ => Err(Self::Error::Formatting)
+            _ => Err(Self::Error::Formatting),
         }
     }
 }

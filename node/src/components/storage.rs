@@ -182,8 +182,8 @@ impl Display for HighestOrphanedBlockResult {
 }
 
 impl<REv> Component<REv> for Storage
-    where
-        REv: From<FatalAnnouncement> + From<NetworkRequest<Message>> + Send,
+where
+    REv: From<FatalAnnouncement> + From<NetworkRequest<Message>> + Send,
 {
     type Event = Event;
 
@@ -398,8 +398,8 @@ impl Storage {
         effect_builder: EffectBuilder<REv>,
         incoming: &NetRequestIncoming,
     ) -> Result<Effects<Event>, GetRequestError>
-        where
-            REv: From<NetworkRequest<Message>> + Send,
+    where
+        REv: From<NetworkRequest<Message>> + Send,
     {
         if self.enable_mem_deduplication {
             let unique_id = incoming.message.unique_id();
@@ -871,7 +871,7 @@ impl Storage {
                                 signature.era_id(),
                                 signature.chain_name_hash(),
                             )
-                                .into(),
+                            .into(),
                         }
                     };
                 match (&mut block_signatures, *signature) {
@@ -1047,7 +1047,7 @@ impl Storage {
     #[allow(clippy::type_complexity)]
     fn get_transactions_with_finalized_approvals<'a>(
         &self,
-        transaction_hashes: impl Iterator<Item=&'a TransactionHash>,
+        transaction_hashes: impl Iterator<Item = &'a TransactionHash>,
     ) -> Result<SmallVec<[Option<(Transaction, Option<BTreeSet<Approval>>)>; 1]>, FatalStorageError>
     {
         let mut ro_txn = self.block_store.checkout_ro()?;
@@ -1338,8 +1338,8 @@ impl Storage {
         let mut transactions = vec![];
         for (transaction, _) in (self
             .get_transactions_with_finalized_approvals(block.all_transactions())?)
-            .into_iter()
-            .flatten()
+        .into_iter()
+        .flatten()
         {
             transactions.push(transaction)
         }
@@ -1701,7 +1701,7 @@ impl Storage {
     fn get_transaction_with_finalized_approvals(
         &self,
         txn: &mut (impl DataReader<TransactionHash, Transaction>
-        + DataReader<TransactionHash, BTreeSet<Approval>>),
+                  + DataReader<TransactionHash, BTreeSet<Approval>>),
         transaction_hash: &TransactionHash,
     ) -> Result<Option<(Transaction, Option<BTreeSet<Approval>>)>, FatalStorageError> {
         let maybe_transaction: Option<Transaction> = txn.read(*transaction_hash)?;
@@ -1806,9 +1806,9 @@ impl Storage {
         serialized_id: &[u8],
         fetch_response: FetchResponse<T, T::Id>,
     ) -> Result<Effects<Event>, FatalStorageError>
-        where
-            REv: From<NetworkRequest<Message>> + Send,
-            T: FetchItem,
+    where
+        REv: From<NetworkRequest<Message>> + Send,
+        T: FetchItem,
     {
         let serialized = fetch_response
             .to_serialized()
@@ -1931,7 +1931,7 @@ impl Storage {
                 block.era_id(),
                 self.chain_name_hash,
             )
-                .into(),
+            .into(),
         }
     }
 
@@ -1998,8 +1998,8 @@ impl Storage {
     fn get_execution_results_with_transaction_headers(
         &self,
         txn: &mut (impl DataReader<BlockHash, Block>
-        + DataReader<TransactionHash, ExecutionResult>
-        + DataReader<TransactionHash, Transaction>),
+                  + DataReader<TransactionHash, ExecutionResult>
+                  + DataReader<TransactionHash, Transaction>),
         block_hash: &BlockHash,
     ) -> Result<Option<Vec<(TransactionHash, TransactionHeader, ExecutionResult)>>, FatalStorageError>
     {
@@ -2069,8 +2069,8 @@ impl Storage {
 
 /// Decodes an item's ID, typically from an incoming request.
 fn decode_item_id<T>(raw: &[u8]) -> Result<T::Id, GetRequestError>
-    where
-        T: FetchItem,
+where
+    T: FetchItem,
 {
     bincode::deserialize(raw).map_err(GetRequestError::MalformedIncomingItemId)
 }
@@ -2149,10 +2149,10 @@ fn successful_transfers(execution_result: &ExecutionResult) -> Vec<Transfer> {
             }
         }
         ExecutionResult::V2(ExecutionResultV2 {
-                                transfers,
-                                error_message,
-                                ..
-                            }) => {
+            transfers,
+            error_message,
+            ..
+        }) => {
             if error_message.is_none() {
                 for transfer in transfers {
                     all_transfers.push(transfer.clone());

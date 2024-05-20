@@ -1,5 +1,9 @@
-use std::{collections::BTreeMap, convert::TryInto, sync::Arc, time::Instant};
-use std::convert::TryFrom;
+use std::{
+    collections::BTreeMap,
+    convert::{TryFrom, TryInto},
+    sync::Arc,
+    time::Instant,
+};
 
 use itertools::Itertools;
 use tracing::{debug, error, info, trace, warn};
@@ -26,9 +30,9 @@ use casper_types::{
     bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH},
     execution::{Effects, ExecutionResult, TransformKindV2, TransformV2},
     system::handle_payment::ARG_AMOUNT,
-    BlockHash, BlockHeader, BlockTime, BlockV2, CLValue, CategorizedTransaction, Chainspec,
-    ChecksumRegistry, Digest, EraEndV2, EraId, FeeHandling, Gas, GasLimited, Key, ProtocolVersion,
-    PublicKey, RefundHandling, Transaction, TransactionCategory, U512,
+    BlockHash, BlockHeader, BlockTime, BlockV2, CLValue, Chainspec, ChecksumRegistry, Digest,
+    EraEndV2, EraId, FeeHandling, Gas, GasLimited, Key, ProtocolVersion, PublicKey, RefundHandling,
+    Transaction, TransactionCategory, U512,
 };
 
 use super::{
@@ -890,9 +894,9 @@ pub fn execute_finalized_block(
         (None, None) => None,
         (
             Some(InternalEraReport {
-                     equivocators,
-                     inactive_validators,
-                 }),
+                equivocators,
+                inactive_validators,
+            }),
             Some((next_era_validator_weights, next_era_gas_price)),
         ) => Some(EraEndV2::new(
             equivocators,
@@ -983,8 +987,8 @@ pub(super) fn speculatively_execute<S>(
     block_header: BlockHeader,
     transaction: Transaction,
 ) -> SpeculativeExecutionResult
-    where
-        S: StateProvider,
+where
+    S: StateProvider,
 {
     let state_root_hash = block_header.state_root_hash();
     let block_time = block_header
@@ -1061,14 +1065,14 @@ fn commit_step(
 /// serialized results are not greater than `ChunkWithProof::CHUNK_SIZE_BYTES`), or otherwise will
 /// be a Merkle root hash of the chunks derived from the serialized results.
 pub(crate) fn compute_execution_results_checksum<'a>(
-    execution_results_iter: impl Iterator<Item=&'a ExecutionResult> + Clone,
+    execution_results_iter: impl Iterator<Item = &'a ExecutionResult> + Clone,
 ) -> Result<Digest, BlockExecutionError> {
     // Serialize the execution results as if they were `Vec<ExecutionResult>`.
     let serialized_length = U32_SERIALIZED_LENGTH
         + execution_results_iter
-        .clone()
-        .map(|exec_result| exec_result.serialized_length())
-        .sum::<usize>();
+            .clone()
+            .map(|exec_result| exec_result.serialized_length())
+            .sum::<usize>();
     let mut serialized = vec![];
     serialized
         .try_reserve_exact(serialized_length)

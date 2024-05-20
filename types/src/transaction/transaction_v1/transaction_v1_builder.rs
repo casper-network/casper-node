@@ -15,13 +15,11 @@ use super::{
 };
 use crate::{
     bytesrepr::Bytes, AddressableEntityHash, CLValue, CLValueError, EntityVersion, PackageHash,
-    PublicKey, RuntimeArgs, SecretKey, TimeDiff, Timestamp, TransferTarget, URef, U512,
+    PublicKey, RuntimeArgs, SecretKey, TimeDiff, Timestamp, TransactionCategory, TransferTarget,
+    URef, U512,
 };
 #[cfg(any(feature = "testing", test))]
-use crate::{
-    testing::TestRng, transaction::Approval, TransactionCategory, TransactionConfig,
-    TransactionV1Hash,
-};
+use crate::{testing::TestRng, transaction::Approval, TransactionConfig, TransactionV1Hash};
 pub use error::TransactionV1BuilderError;
 
 /// A builder for constructing a [`TransactionV1`].
