@@ -17,7 +17,9 @@ use crate::{
 pub use deploy_config::DeployConfig;
 #[cfg(any(feature = "testing", test))]
 pub use deploy_config::DEFAULT_MAX_PAYMENT_MOTES;
-pub use transaction_v1_config::{TransactionV1Config, DEFAULT_INSTALL_UPGRADE_GAS_LIMIT, DEFAULT_LARGE_TRANSACTION_GAS_LIMIT};
+pub use transaction_v1_config::{
+    TransactionV1Config, DEFAULT_INSTALL_UPGRADE_GAS_LIMIT, DEFAULT_LARGE_TRANSACTION_GAS_LIMIT,
+};
 
 /// The default minimum number of motes that can be transferred.
 pub const DEFAULT_MIN_TRANSFER_MOTES: u64 = 2_500_000_000;
@@ -38,14 +40,14 @@ pub struct TransactionConfig {
     pub block_max_auction_count: u32,
     /// Maximum number of installer/upgrader transactions allowed in a block.
     pub block_max_install_upgrade_count: u32,
-    /// Maximum number of other large sized transactions (non-transfer, non-staking, non-installer/upgrader)
-    /// allowed in a block.
+    /// Maximum number of other large sized transactions (non-transfer, non-staking,
+    /// non-installer/upgrader) allowed in a block.
     pub block_max_large_count: u32,
-    /// Maximum number of other medium sized transactions (non-transfer, non-staking, non-installer/upgrader)
-    /// allowed in a block.
+    /// Maximum number of other medium sized transactions (non-transfer, non-staking,
+    /// non-installer/upgrader) allowed in a block.
     pub block_max_medium_count: u32,
-    /// Maximum number of other small sized transactions (non-transfer, non-staking, non-installer/upgrader)
-    /// allowed in a block.
+    /// Maximum number of other small sized transactions (non-transfer, non-staking,
+    /// non-installer/upgrader) allowed in a block.
     pub block_max_small_count: u32,
     /// Maximum number of approvals (signatures) allowed in a block across all transactions.
     pub block_max_approval_count: u32,

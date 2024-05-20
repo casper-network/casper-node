@@ -14,7 +14,6 @@ use crate::{
     chainspec::vm_config::{AuctionCosts, HandlePaymentCosts, MintCosts, StandardPaymentCosts},
 };
 
-
 /// Definition of costs in the system.
 ///
 /// This structure contains the costs of all the system contract's entry points and, additionally,
