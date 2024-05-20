@@ -88,6 +88,15 @@ impl<'a> DeployBuilder<'a> {
         self
     }
 
+    /// Sets the gas price in the `Deploy` to the provided amount.
+    ///
+    /// If not provided, the `Deploy` will use `DEFAULT_GAS_PRICE` (1) as the gas price for the
+    /// `deploy`
+    pub fn with_gas_price(mut self, gas_price: u64) -> Self {
+        self.gas_price = gas_price;
+        self
+    }
+
     /// Sets the secret key used to sign the `Deploy` on calling [`build`](Self::build).
     ///
     /// If not provided, the `Deploy` can still be built, but will be unsigned and will be invalid

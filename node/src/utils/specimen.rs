@@ -573,6 +573,8 @@ impl LargestSpecimen for BlockHeaderV2 {
             LargestSpecimen::largest_specimen(estimator, cache),
             LargestSpecimen::largest_specimen(estimator, cache),
             LargestSpecimen::largest_specimen(estimator, cache),
+            LargestSpecimen::largest_specimen(estimator, cache),
+            LargestSpecimen::largest_specimen(estimator, cache),
             OnceCell::with_value(LargestSpecimen::largest_specimen(estimator, cache)),
         )
     }
@@ -610,6 +612,8 @@ impl LargestSpecimen for BlockHeaderWithoutEraEnd {
             LargestSpecimen::largest_specimen(estimator, cache),
             LargestSpecimen::largest_specimen(estimator, cache),
             None,
+            LargestSpecimen::largest_specimen(estimator, cache),
+            LargestSpecimen::largest_specimen(estimator, cache),
             LargestSpecimen::largest_specimen(estimator, cache),
             LargestSpecimen::largest_specimen(estimator, cache),
             LargestSpecimen::largest_specimen(estimator, cache),
@@ -677,11 +681,11 @@ impl LargestSpecimen for BlockSignatures {
 
 impl LargestSpecimen for BlockV2 {
     fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
-        let transfer_hashes = vec![
+        let mint_hashes = vec![
             TransactionHash::largest_specimen(estimator, cache);
             estimator.parameter::<usize>("max_mint_per_block")
         ];
-        let staking_hashes = vec![
+        let auction_hashes = vec![
             TransactionHash::largest_specimen(estimator, cache);
             estimator.parameter::<usize>("max_auctions_per_block")
         ];
@@ -696,6 +700,18 @@ impl LargestSpecimen for BlockV2 {
                 .parameter::<usize>("max_standard_transactions_per_block")
         ];
 
+        let transactions = {
+            let mut ret = BTreeMap::new();
+            ret.insert(TransactionCategory::Mint as u8, mint_hashes);
+            ret.insert(TransactionCategory::Auction as u8, auction_hashes);
+            ret.insert(
+                TransactionCategory::InstallUpgrade as u8,
+                install_upgrade_hashes,
+            );
+            ret.insert(TransactionCategory::Standard as u8, standard_hashes);
+            ret
+        };
+
         BlockV2::new(
             LargestSpecimen::largest_specimen(estimator, cache),
             LargestSpecimen::largest_specimen(estimator, cache),
@@ -707,10 +723,8 @@ impl LargestSpecimen for BlockV2 {
             LargestSpecimen::largest_specimen(estimator, cache),
             LargestSpecimen::largest_specimen(estimator, cache),
             LargestSpecimen::largest_specimen(estimator, cache),
-            transfer_hashes,
-            staking_hashes,
-            install_upgrade_hashes,
-            standard_hashes,
+            transactions,
+            LargestSpecimen::largest_specimen(estimator, cache),
             LargestSpecimen::largest_specimen(estimator, cache),
             LargestSpecimen::largest_specimen(estimator, cache),
         )
