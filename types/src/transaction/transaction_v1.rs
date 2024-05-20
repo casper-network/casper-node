@@ -64,18 +64,18 @@ use crate::testing::TestRng;
 /// To construct a new `TransactionV1`, use a [`TransactionV1Builder`].
 #[derive(Clone, Eq, Debug)]
 #[cfg_attr(
-any(feature = "std", test),
-derive(Serialize, Deserialize),
-serde(deny_unknown_fields)
+    any(feature = "std", test),
+    derive(Serialize, Deserialize),
+    serde(deny_unknown_fields)
 )]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(
-feature = "json-schema",
-derive(JsonSchema),
-schemars(
-description = "A unit of work sent by a client to the network, which when executed can \
+    feature = "json-schema",
+    derive(JsonSchema),
+    schemars(
+        description = "A unit of work sent by a client to the network, which when executed can \
         cause global state to be altered."
-)
+    )
 )]
 pub struct TransactionV1 {
     hash: TransactionV1Hash,
@@ -84,8 +84,8 @@ pub struct TransactionV1 {
     approvals: BTreeSet<Approval>,
     #[cfg_attr(any(all(feature = "std", feature = "once_cell"), test), serde(skip))]
     #[cfg_attr(
-    all(any(feature = "once_cell", test), feature = "datasize"),
-    data_size(skip)
+        all(any(feature = "once_cell", test), feature = "datasize"),
+        data_size(skip)
     )]
     #[cfg(any(feature = "once_cell", test))]
     is_verified: OnceCell<Result<(), InvalidTransactionV1>>,
@@ -384,14 +384,16 @@ impl TransactionV1 {
 
         match price_mode {
             PricingMode::Classic { .. } => {
-                if let PricingHandling::Classic = price_handling {} else {
+                if let PricingHandling::Classic = price_handling {
+                } else {
                     return Err(InvalidTransactionV1::InvalidPricingMode {
                         price_mode: price_mode.clone(),
                     });
                 }
             }
             PricingMode::Fixed { .. } => {
-                if let PricingHandling::Fixed = price_handling {} else {
+                if let PricingHandling::Fixed = price_handling {
+                } else {
                     return Err(InvalidTransactionV1::InvalidPricingMode {
                         price_mode: price_mode.clone(),
                     });
@@ -477,8 +479,8 @@ impl TransactionV1 {
             timestamp,
             ttl,
         )
-            .build()
-            .unwrap();
+        .build()
+        .unwrap();
         assert!(matches!(
             transaction.transaction_category(),
             TransactionCategory::Mint
@@ -502,8 +504,8 @@ impl TransactionV1 {
             timestamp,
             ttl,
         )
-            .build()
-            .unwrap();
+        .build()
+        .unwrap();
         assert!(matches!(
             transaction.transaction_category(),
             TransactionCategory::Large
@@ -527,8 +529,8 @@ impl TransactionV1 {
             timestamp,
             ttl,
         )
-            .build()
-            .unwrap();
+        .build()
+        .unwrap();
         assert!(matches!(
             transaction.transaction_category(),
             TransactionCategory::InstallUpgrade
@@ -552,8 +554,8 @@ impl TransactionV1 {
             timestamp,
             ttl,
         )
-            .build()
-            .unwrap();
+        .build()
+        .unwrap();
         assert!(matches!(
             transaction.transaction_category(),
             TransactionCategory::Auction
@@ -705,7 +707,7 @@ impl hash::Hash for TransactionV1 {
             body,
             approvals,
             #[cfg(any(feature = "once_cell", test))]
-            is_verified: _,
+                is_verified: _,
         } = self;
         hash.hash(state);
         header.hash(state);
@@ -723,7 +725,7 @@ impl PartialEq for TransactionV1 {
             body,
             approvals,
             #[cfg(any(feature = "once_cell", test))]
-            is_verified: _,
+                is_verified: _,
         } = self;
         *hash == other.hash
             && *header == other.header
@@ -741,7 +743,7 @@ impl Ord for TransactionV1 {
             body,
             approvals,
             #[cfg(any(feature = "once_cell", test))]
-            is_verified: _,
+                is_verified: _,
         } = self;
         hash.cmp(&other.hash)
             .then_with(|| header.cmp(&other.header))
@@ -958,9 +960,9 @@ mod tests {
             None,
             None,
         )
-            .with_chain_name(chain_name)
-            .build()
-            .unwrap();
+        .with_chain_name(chain_name)
+        .build()
+        .unwrap();
         let current_timestamp = transaction.timestamp();
         let chainspec = {
             let mut ret = Chainspec::default();
