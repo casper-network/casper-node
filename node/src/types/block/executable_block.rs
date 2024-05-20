@@ -26,6 +26,9 @@ pub struct ExecutableBlock {
     /// `None` may indicate that the rewards have not been computed yet,
     /// or that the block is not a switch one.
     pub(crate) rewards: Option<BTreeMap<PublicKey, U512>>,
+    /// `None` may indicate that the next era gas has not been computed yet,
+    /// or that the block is not a switch one.
+    pub(crate) next_era_gas_price: Option<u8>,
 }
 
 impl ExecutableBlock {
@@ -87,6 +90,7 @@ impl ExecutableBlock {
             transactions,
             transaction_map: finalized_block.transactions,
             rewards: None,
+            next_era_gas_price: None,
         }
     }
 
@@ -108,6 +112,7 @@ impl ExecutableBlock {
             transactions,
             transaction_map: block.transactions().clone(),
             rewards: block.era_end().map(|era_end| era_end.rewards().clone()),
+            next_era_gas_price: block.era_end().map(|era_end| era_end.next_era_gas_price()),
         }
     }
 }
@@ -128,6 +133,9 @@ impl fmt::Display for ExecutableBlock {
         )?;
         if let Some(ref ee) = self.era_report {
             write!(formatter, ", era_end: {:?}", ee)?;
+        }
+        if let Some(ref next_era_gas_price) = self.next_era_gas_price {
+            write!(formatter, ", next_era_gas_price: {}", next_era_gas_price)?;
         }
         Ok(())
     }

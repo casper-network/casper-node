@@ -120,6 +120,7 @@ use casper_binary_port::{
 use casper_storage::{
     block_store::types::ApprovalsHashes,
     data_access_layer::{
+        prefixed_values::{PrefixedValuesRequest, PrefixedValuesResult},
         tagged_values::{TaggedValuesRequest, TaggedValuesResult},
         AddressableEntityResult, BalanceRequest, BalanceResult, EraValidatorsRequest,
         EraValidatorsResult, ExecutionResultsChecksumResult, PutTrieRequest, PutTrieResult,
@@ -166,6 +167,7 @@ use announcements::{
     PeerBehaviorAnnouncement, QueueDumpFormat, TransactionAcceptorAnnouncement,
     TransactionBufferAnnouncement, UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
 };
+use casper_storage::data_access_layer::EntryPointsResult;
 use diagnostics_port::DumpConsensusStateRequest;
 use requests::{
     AcceptTransactionRequest, BeginGossipRequest, BlockAccumulatorRequest,
@@ -2032,6 +2034,26 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Retrieves an `EntryPointValue` from under the given key in global state if present.
+    pub(crate) async fn get_entry_point_value(
+        self,
+        state_root_hash: Digest,
+        key: Key,
+    ) -> EntryPointsResult
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::GetEntryPoint {
+                state_root_hash,
+                key,
+                responder,
+            },
+            QueueKind::ContractRuntime,
+        )
+        .await
+    }
+
     /// Retrieves a `Package` from under the given key in global state if present.
     pub(crate) async fn get_package(self, state_root_hash: Digest, key: Key) -> Option<Box<Package>>
     where
@@ -2082,6 +2104,20 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| ContractRuntimeRequest::GetTaggedValues { request, responder },
+            QueueKind::ContractRuntime,
+        )
+        .await
+    }
+
+    pub(crate) async fn get_prefixed_values(
+        self,
+        request: PrefixedValuesRequest,
+    ) -> PrefixedValuesResult
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::QueryByPrefix { request, responder },
             QueueKind::ContractRuntime,
         )
         .await

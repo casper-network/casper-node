@@ -111,7 +111,7 @@ pub(super) async fn exec_or_requeue<REv>(
         });
     }
 
-    let maybe_next_era_gas_price = if is_era_end {
+    let maybe_next_era_gas_price = if is_era_end && executable_block.next_era_gas_price.is_none() {
         let block_max_large_count = chainspec.transaction_config.block_max_large_count;
         let block_max_medium_count = chainspec.transaction_config.block_max_large_count;
         let block_max_small_count = chainspec.transaction_config.block_max_large_count;
@@ -209,7 +209,6 @@ pub(super) async fn exec_or_requeue<REv>(
             }
             Some((utilization, block_count)) => {
                 let era_score = { Ratio::new(utilization, block_count).to_integer() };
-                debug!("Calculated era score {era_score}");
 
                 let new_gas_price = if era_score >= go_up {
                     let new_gas_price = current_gas_price + 1;
@@ -232,6 +231,8 @@ pub(super) async fn exec_or_requeue<REv>(
                 Some(new_gas_price)
             }
         }
+    } else if executable_block.next_era_gas_price.is_some() {
+        executable_block.next_era_gas_price
     } else {
         None
     };

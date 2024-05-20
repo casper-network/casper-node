@@ -475,6 +475,41 @@ impl TestFixture {
     }
 
     #[track_caller]
+    fn get_block_gas_price_by_public_key(&self, maybe_public_key: Option<&PublicKey>) -> u8 {
+        let node_id = match maybe_public_key {
+            None => {
+                &self
+                    .node_contexts
+                    .first()
+                    .expect("should have at least one node")
+                    .id
+            }
+            Some(public_key) => {
+                let (node_id, _) = self
+                    .network
+                    .nodes()
+                    .iter()
+                    .find(|(_, runner)| runner.main_reactor().consensus.public_key() == public_key)
+                    .expect("should have runner");
+
+                node_id
+            }
+        };
+
+        self.network
+            .nodes()
+            .get(node_id)
+            .expect("should have node 0")
+            .main_reactor()
+            .storage()
+            .get_highest_complete_block()
+            .expect("should not error reading db")
+            .expect("node 0 should have a complete block")
+            .maybe_current_gas_price()
+            .expect("must have gas price")
+    }
+
+    #[track_caller]
     fn switch_block(&self, era: EraId) -> BlockV2 {
         let node_0 = self
             .node_contexts
@@ -876,7 +911,7 @@ impl TestFixture {
             .network
             .nodes()
             .iter()
-            .next()
+            .find(|(_, runner)| runner.main_reactor().consensus.public_key() == &account_public_key)
             .expect("must have runner");
 
         let highest_block = runner
@@ -899,9 +934,14 @@ impl TestFixture {
             .data_access_layer()
             .balance(balance_request);
 
-        match balance_result.proofs_result() {
-            None => panic!("failed balance result"),
-            Some(proofs_result) => proofs_result.total_held_amount(),
+        match balance_result {
+            BalanceResult::RootNotFound => {
+                panic!("Root not found during balance query")
+            }
+            BalanceResult::Success { proofs_result, .. } => proofs_result.total_held_amount(),
+            BalanceResult::Failure(tce) => {
+                panic!("tracking copy error: {:?}", tce)
+            }
         }
     }
 
@@ -2694,14 +2734,26 @@ enum GasPriceScenario {
 }
 
 async fn run_gas_price_scenario(gas_price_scenario: GasPriceScenario) {
+    let mut rng = TestRng::new();
     let alice_stake = 200_000_000_000_u64;
     let bob_stake = 300_000_000_000_u64;
     let charlie_stake = 300_000_000_000_u64;
-    let initial_stakes = InitialStakes::FromVec(vec![
-        alice_stake.into(),
-        bob_stake.into(),
-        charlie_stake.into(),
-    ]);
+    let initial_stakes: Vec<U512> =
+        vec![alice_stake.into(), bob_stake.into(), charlie_stake.into()];
+
+    let mut secret_keys: Vec<Arc<SecretKey>> = (0..3)
+        .map(|_| Arc::new(SecretKey::random(&mut rng)))
+        .collect();
+
+    let stakes = secret_keys
+        .iter()
+        .zip(initial_stakes)
+        .map(|(secret_key, stake)| (PublicKey::from(secret_key.as_ref()), stake))
+        .collect();
+
+    let non_validating_secret_key = SecretKey::random(&mut rng);
+    let non_validating_public_key = PublicKey::from(&non_validating_secret_key);
+    secret_keys.push(Arc::new(non_validating_secret_key));
 
     let max_gas_price: u8 = 3;
 
@@ -2719,7 +2771,9 @@ async fn run_gas_price_scenario(gas_price_scenario: GasPriceScenario) {
     .with_minimum_era_height(5)
     .with_max_gas_price(max_gas_price);
 
-    let mut fixture = TestFixture::new(initial_stakes, Some(spec_override)).await;
+    let mut fixture =
+        TestFixture::new_with_keys(rng, secret_keys, stakes, Some(spec_override)).await;
+
     let alice_secret_key = Arc::clone(&fixture.node_contexts[0].secret_key);
     let alice_public_key = PublicKey::from(&*alice_secret_key);
 
@@ -2740,7 +2794,7 @@ async fn run_gas_price_scenario(gas_price_scenario: GasPriceScenario) {
                 .expect("must get builder")
                 .with_chain_name(chain_name.clone())
                 .with_secret_key(&alice_secret_key)
-                .with_ttl(TimeDiff::from_seconds(60 * 10))
+                .with_ttl(TimeDiff::from_seconds(120 * 10))
                 .with_pricing_mode(PricingMode::Fixed {
                     gas_price_tolerance: max_gas_price,
                 })
@@ -2759,6 +2813,10 @@ async fn run_gas_price_scenario(gas_price_scenario: GasPriceScenario) {
     let expected_gas_price = fixture.chainspec.vacancy_config.max_gas_price;
     let actual_gas_price = fixture.get_current_era_price();
     assert_eq!(actual_gas_price, expected_gas_price);
+    let gas_price_for_non_validating_node =
+        fixture.get_block_gas_price_by_public_key(Some(&non_validating_public_key));
+    assert_eq!(actual_gas_price, gas_price_for_non_validating_node);
+
     let target_public_key = PublicKey::random(&mut fixture.rng);
 
     let holds_before = fixture.check_account_balance_hold_at_tip(alice_public_key.clone());
@@ -2780,7 +2838,7 @@ async fn run_gas_price_scenario(gas_price_scenario: GasPriceScenario) {
 
     fixture.inject_transaction(txn).await;
     fixture
-        .run_until_executed_transaction(&txn_hash, TEN_SECS)
+        .run_until_executed_transaction(&txn_hash, Duration::from_secs(20))
         .await;
 
     let holds_after = fixture.check_account_balance_hold_at_tip(alice_public_key.clone());

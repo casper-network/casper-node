@@ -29,9 +29,9 @@ use tracing::{debug, error, info, trace};
 use casper_execution_engine::engine_state::{EngineConfigBuilder, ExecutionEngineV1};
 use casper_storage::{
     data_access_layer::{
-        AddressableEntityRequest, BlockStore, DataAccessLayer, ExecutionResultsChecksumRequest,
-        FlushRequest, FlushResult, GenesisRequest, GenesisResult, ProtocolUpgradeRequest,
-        ProtocolUpgradeResult, TrieRequest,
+        AddressableEntityRequest, BlockStore, DataAccessLayer, EntryPointsRequest,
+        ExecutionResultsChecksumRequest, FlushRequest, FlushResult, GenesisRequest, GenesisResult,
+        ProtocolUpgradeRequest, ProtocolUpgradeResult, TrieRequest,
     },
     global_state::{
         state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
@@ -321,6 +321,23 @@ impl ContractRuntime {
                 }
                 .ignore()
             }
+            ContractRuntimeRequest::QueryByPrefix {
+                request: query_request,
+                responder,
+            } => {
+                trace!(?query_request, "query by prefix");
+                let metrics = Arc::clone(&self.metrics);
+                let data_access_layer = Arc::clone(&self.data_access_layer);
+                async move {
+                    let start = Instant::now();
+
+                    let result = data_access_layer.prefixed_values(query_request);
+                    metrics.run_query.observe(start.elapsed().as_secs_f64());
+                    trace!(?result, "query by prefix result");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
             ContractRuntimeRequest::GetBalance {
                 request: balance_request,
                 responder,
@@ -389,6 +406,24 @@ impl ContractRuntime {
                     metrics
                         .addressable_entity
                         .observe(start.elapsed().as_secs_f64());
+                    trace!(?result, "get addressable entity");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
+            ContractRuntimeRequest::GetEntryPoint {
+                state_root_hash,
+                key,
+                responder,
+            } => {
+                trace!(?state_root_hash, "get entry point");
+                let metrics = Arc::clone(&self.metrics);
+                let data_access_layer = Arc::clone(&self.data_access_layer);
+                async move {
+                    let start = Instant::now();
+                    let request = EntryPointsRequest::new(state_root_hash, key);
+                    let result = data_access_layer.entry_point(request);
+                    metrics.entry_points.observe(start.elapsed().as_secs_f64());
                     trace!(?result, "get addressable entity");
                     responder.respond(result).await
                 }

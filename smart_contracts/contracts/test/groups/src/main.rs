@@ -18,7 +18,8 @@ use casper_types::{
     addressable_entity::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys},
     runtime_args,
     system::{handle_payment, standard_payment},
-    CLType, CLTyped, Key, PackageHash, Parameter, RuntimeArgs, URef, ENTITY_INITIAL_VERSION, U512,
+    CLType, CLTyped, EntryPointPayment, Key, PackageHash, Parameter, RuntimeArgs, URef,
+    ENTITY_INITIAL_VERSION, U512,
 };
 
 const PACKAGE_HASH_KEY: &str = "package_hash_key";
@@ -132,6 +133,7 @@ fn create_entry_points_1() -> EntryPoints {
         CLType::I32,
         EntryPointAccess::groups(&["Group 1"]),
         EntryPointType::Caller,
+        EntryPointPayment::Caller,
     );
     entry_points.add_entry_point(restricted_session);
 
@@ -141,6 +143,7 @@ fn create_entry_points_1() -> EntryPoints {
         CLType::I32,
         EntryPointAccess::groups(&["Group 1"]),
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     );
     entry_points.add_entry_point(restricted_contract);
 
@@ -150,6 +153,7 @@ fn create_entry_points_1() -> EntryPoints {
         CLType::I32,
         EntryPointAccess::Public,
         EntryPointType::Caller,
+        EntryPointPayment::Caller,
     );
     entry_points.add_entry_point(restricted_session_caller);
 
@@ -159,6 +163,7 @@ fn create_entry_points_1() -> EntryPoints {
         CLType::I32,
         EntryPointAccess::groups(&["Group 1"]),
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     );
     entry_points.add_entry_point(restricted_contract);
 
@@ -172,6 +177,7 @@ fn create_entry_points_1() -> EntryPoints {
         // NOTE: Public contract authorizes any contract call, because this contract has groups
         // uref in its named keys
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     );
     entry_points.add_entry_point(unrestricted_contract_caller);
 
@@ -185,6 +191,7 @@ fn create_entry_points_1() -> EntryPoints {
         // NOTE: Public contract authorizes any contract call, because this contract has groups
         // uref in its named keys
         EntryPointType::Caller,
+        EntryPointPayment::Caller,
     );
     entry_points.add_entry_point(unrestricted_contract_caller_as_session);
 
@@ -198,6 +205,7 @@ fn create_entry_points_1() -> EntryPoints {
         // NOTE: Public contract authorizes any contract call, because this contract has groups
         // uref in its named keys
         EntryPointType::Caller,
+        EntryPointPayment::Caller,
     );
     entry_points.add_entry_point(uncallable_session);
 
@@ -211,6 +219,7 @@ fn create_entry_points_1() -> EntryPoints {
         // NOTE: Public contract authorizes any contract call, because this contract has groups
         // uref in its named keys
         EntryPointType::Caller,
+        EntryPointPayment::Caller,
     );
     entry_points.add_entry_point(uncallable_contract);
 
@@ -226,6 +235,7 @@ fn create_entry_points_1() -> EntryPoints {
         // NOTE: Public contract authorizes any contract call, because this contract has groups
         // uref in its named keys
         EntryPointType::Caller,
+        EntryPointPayment::Caller,
     );
     entry_points.add_entry_point(call_restricted_entry_points);
 
@@ -238,6 +248,7 @@ fn create_entry_points_1() -> EntryPoints {
         CLType::Unit,
         EntryPointAccess::groups(&["Group 1"]),
         EntryPointType::Caller,
+        EntryPointPayment::Caller,
     );
     entry_points.add_entry_point(restricted_standard_payment);
 

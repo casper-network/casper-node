@@ -1971,6 +1971,13 @@
           "enum": [
             "VmCasperV1"
           ]
+        },
+        {
+          "description": "The Casper Version 2 Virtual Machine.",
+          "type": "string",
+          "enum": [
+            "VmCasperV2"
+          ]
         }
       ]
     },
@@ -3246,6 +3253,19 @@
             }
           },
           "additionalProperties": false
+        },
+        {
+          "description": "Credited amount.",
+          "type": "object",
+          "required": [
+            "Credit"
+          ],
+          "properties": {
+            "Credit": {
+              "$ref": "#/definitions/ValidatorCredit"
+            }
+          },
+          "additionalProperties": false
         }
       ]
     },
@@ -3338,6 +3358,42 @@
           "allOf": [
             {
               "$ref": "#/definitions/EraId"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "ValidatorCredit": {
+      "description": "Validator credit record.",
+      "type": "object",
+      "required": [
+        "amount",
+        "era_id",
+        "validator_public_key"
+      ],
+      "properties": {
+        "validator_public_key": {
+          "description": "Validator public key",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PublicKey"
+            }
+          ]
+        },
+        "era_id": {
+          "description": "The era id the credit was created.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EraId"
+            }
+          ]
+        },
+        "amount": {
+          "description": "The credit amount.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/U512"
             }
           ]
         }
@@ -3978,6 +4034,19 @@
             }
           },
           "additionalProperties": false
+        },
+        {
+          "description": "An entrypoint record.",
+          "type": "object",
+          "required": [
+            "EntryPoint"
+          ],
+          "properties": {
+            "EntryPoint": {
+              "$ref": "#/definitions/EntryPointValue"
+            }
+          },
+          "additionalProperties": false
         }
       ]
     },
@@ -4427,7 +4496,6 @@
         "associated_keys",
         "byte_code_hash",
         "entity_kind",
-        "entry_points",
         "main_purse",
         "message_topics",
         "package_hash",
@@ -4448,9 +4516,6 @@
         },
         "main_purse": {
           "$ref": "#/definitions/URef"
-        },
-        "entry_points": {
-          "$ref": "#/definitions/Array_of_NamedEntryPoint"
         },
         "associated_keys": {
           "$ref": "#/definitions/EntityAssociatedKeys"
@@ -4494,10 +4559,16 @@
         },
         {
           "description": "Packages associated with Wasm stored on chain.",
-          "type": "string",
-          "enum": [
+          "type": "object",
+          "required": [
             "SmartContract"
-          ]
+          ],
+          "properties": {
+            "SmartContract": {
+              "$ref": "#/definitions/TransactionRuntime"
+            }
+          },
+          "additionalProperties": false
         }
       ]
     },
@@ -4844,6 +4915,120 @@
         },
         "reservation_data": {
           "$ref": "#/definitions/Bytes"
+        }
+      }
+    },
+    "EntryPointValue": {
+      "description": "The encaspulated representation of entrypoints.",
+      "oneOf": [
+        {
+          "description": "Entrypoints to be executed against the V1 Casper VM.",
+          "type": "object",
+          "required": [
+            "V1CasperVm"
+          ],
+          "properties": {
+            "V1CasperVm": {
+              "$ref": "#/definitions/EntryPoint2"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Entrypoints to be executed against the V2 Casper VM.",
+          "type": "object",
+          "required": [
+            "V2CasperVm"
+          ],
+          "properties": {
+            "V2CasperVm": {
+              "$ref": "#/definitions/EntryPointV2"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "EntryPoint2": {
+      "description": "Type signature of a method. Order of arguments matter since can be referenced by index as well as name.",
+      "type": "object",
+      "required": [
+        "access",
+        "args",
+        "entry_point_payment",
+        "entry_point_type",
+        "name",
+        "ret"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Parameter"
+          }
+        },
+        "ret": {
+          "$ref": "#/definitions/CLType"
+        },
+        "access": {
+          "$ref": "#/definitions/EntryPointAccess"
+        },
+        "entry_point_type": {
+          "$ref": "#/definitions/EntryPointType"
+        },
+        "entry_point_payment": {
+          "$ref": "#/definitions/EntryPointPayment"
+        }
+      }
+    },
+    "EntryPointPayment": {
+      "description": "An enum specifying who pays for the invocation and execution of the entrypoint.",
+      "oneOf": [
+        {
+          "description": "The caller must cover cost",
+          "type": "string",
+          "enum": [
+            "Caller"
+          ]
+        },
+        {
+          "description": "Will cover cost to execute self but not cost of any subsequent invoked contracts",
+          "type": "string",
+          "enum": [
+            "SelfOnly"
+          ]
+        },
+        {
+          "description": "will cover cost to execute self and the cost of any subsequent invoked contracts",
+          "type": "string",
+          "enum": [
+            "SelfOnward"
+          ]
+        }
+      ]
+    },
+    "EntryPointV2": {
+      "description": "The entry point for the V2 Casper VM.",
+      "type": "object",
+      "required": [
+        "flags",
+        "function_index"
+      ],
+      "properties": {
+        "function_index": {
+          "description": "The selector.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "flags": {
+          "description": "The flags.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
         }
       }
     },

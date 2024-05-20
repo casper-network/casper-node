@@ -1,5 +1,5 @@
 use std::{
-    collections::{btree_map::Entry, BTreeMap, BTreeSet},
+    collections::{btree_map::Entry, BTreeMap},
     convert::TryInto,
 };
 use tracing::{error, warn};
@@ -10,10 +10,13 @@ use crate::{
     },
     global_state::{error::Error as GlobalStateError, state::StateReader},
     tracking_copy::{TrackingCopy, TrackingCopyError},
+    KeyPrefix,
 };
 use casper_types::{
     account::AccountHash,
     addressable_entity::NamedKeys,
+    bytesrepr::ToBytes,
+    contracts::ContractHash,
     global_state::TrieMerkleProof,
     system::{
         mint::{
@@ -23,8 +26,9 @@ use casper_types::{
         MINT,
     },
     BlockGlobalAddr, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash, CLValue, ChecksumRegistry,
-    EntityAddr, HoldBalanceHandling, HoldsEpoch, Key, KeyTag, Motes, Package, PackageHash,
-    StoredValue, StoredValueTypeMismatch, SystemEntityRegistry, URef, URefAddr, U512,
+    Contract, EntityAddr, EntryPointValue, EntryPoints, HoldBalanceHandling, HoldsEpoch, Key,
+    Motes, Package, PackageHash, StoredValue, StoredValueTypeMismatch, SystemEntityRegistry, URef,
+    URefAddr, U512,
 };
 
 /// Higher-level operations on the state via a `TrackingCopy`.
@@ -93,8 +97,15 @@ pub trait TrackingCopyExt<R> {
     /// Returns the collection of named keys for a given AddressableEntity.
     fn get_named_keys(&self, entity_addr: EntityAddr) -> Result<NamedKeys, Self::Error>;
 
+    /// Returns the collection of entry points for a given AddresableEntity.
+    fn get_v1_entry_points(&mut self, entity_addr: EntityAddr) -> Result<EntryPoints, Self::Error>;
+
     /// Gets a package by hash.
     fn get_package(&mut self, package_hash: PackageHash) -> Result<Package, Self::Error>;
+    fn get_legacy_contract(
+        &mut self,
+        legacy_contract: ContractHash,
+    ) -> Result<Contract, Self::Error>;
 
     /// Gets the system entity registry.
     fn get_system_entity_registry(&self) -> Result<SystemEntityRegistry, Self::Error>;
@@ -147,7 +158,7 @@ where
         };
         let (handling_key, interval_key) = match hold_kind {
             BalanceHoldAddrTag::Processing => {
-                return Ok(Some((block_time, HoldBalanceHandling::Accrued, 0)))
+                return Ok(Some((block_time, HoldBalanceHandling::Accrued, 0)));
             }
             BalanceHoldAddrTag::Gas => (MINT_GAS_HOLD_HANDLING_KEY, MINT_GAS_HOLD_INTERVAL_KEY),
         };
@@ -247,16 +258,15 @@ where
     ) -> Result<Vec<BalanceHoldAddr>, Self::Error> {
         let tagged_keys = {
             let mut ret: Vec<BalanceHoldAddr> = vec![];
-            let tag = BalanceHoldAddrTag::Gas;
-            let gas_prefix = tag.purse_prefix_by_tag(purse_addr)?;
+            let gas_prefix = KeyPrefix::GasBalanceHoldsByPurse(purse_addr).to_bytes()?;
             for key in self.keys_with_prefix(&gas_prefix)? {
                 let addr = key
                     .as_balance_hold()
                     .ok_or(Self::Error::UnexpectedKeyVariant(key))?;
                 ret.push(*addr);
             }
-            let tag = BalanceHoldAddrTag::Processing;
-            let processing_prefix = tag.purse_prefix_by_tag(purse_addr)?;
+            let processing_prefix =
+                KeyPrefix::ProcessingBalanceHoldsByPurse(purse_addr).to_bytes()?;
             for key in self.keys_with_prefix(&processing_prefix)? {
                 let addr = key
                     .as_balance_hold()
@@ -378,9 +388,14 @@ where
         filter: Vec<(BalanceHoldAddrTag, HoldsEpoch)>,
     ) -> Result<(), Self::Error> {
         for (tag, holds_epoch) in filter {
-            let prefix = tag.purse_prefix_by_tag(purse_addr)?;
+            let prefix = match tag {
+                BalanceHoldAddrTag::Gas => KeyPrefix::GasBalanceHoldsByPurse(purse_addr),
+                BalanceHoldAddrTag::Processing => {
+                    KeyPrefix::ProcessingBalanceHoldsByPurse(purse_addr)
+                }
+            };
             let immut: &_ = self;
-            let hold_keys = immut.keys_with_prefix(&prefix)?;
+            let hold_keys = immut.keys_with_prefix(&prefix.to_bytes()?)?;
             for hold_key in hold_keys {
                 let balance_hold_addr = hold_key
                     .as_balance_hold()
@@ -539,38 +554,11 @@ where
     }
 
     fn get_named_keys(&self, entity_addr: EntityAddr) -> Result<NamedKeys, Self::Error> {
-        let prefix = entity_addr
-            .named_keys_prefix()
-            .map_err(Self::Error::BytesRepr)?;
-
-        let mut ret: BTreeSet<Key> = BTreeSet::new();
-        let keys = self.reader.keys_with_prefix(&prefix)?;
-        let pruned = &self.cache.prunes_cached;
-        // don't include keys marked for pruning
-        for key in keys {
-            if pruned.contains(&key) {
-                continue;
-            }
-            ret.insert(key);
-        }
-
-        let cache = self.cache.get_key_tag_muts_cached(&KeyTag::NamedKey);
-
-        // there may be newly inserted keys which have not been committed yet
-        if let Some(keys) = cache {
-            for key in keys {
-                if ret.contains(&key) {
-                    continue;
-                }
-                if key.is_entry_for_base(&entity_addr) {
-                    ret.insert(key);
-                }
-            }
-        }
+        let keys = self.get_keys_by_prefix(&KeyPrefix::NamedKeysByEntity(entity_addr))?;
 
         let mut named_keys = NamedKeys::new();
 
-        for entry_key in ret.iter() {
+        for entry_key in &keys {
             match self.read(entry_key)? {
                 Some(StoredValue::NamedKey(named_key)) => {
                     let key = named_key.get_key().map_err(TrackingCopyError::CLValue)?;
@@ -580,7 +568,7 @@ where
                 Some(other) => {
                     return Err(TrackingCopyError::TypeMismatch(
                         StoredValueTypeMismatch::new("CLValue".to_string(), other.type_name()),
-                    ))
+                    ));
                 }
                 None => match self.cache.reads_cached.get(entry_key) {
                     Some(StoredValue::NamedKey(named_key_value)) => {
@@ -600,6 +588,46 @@ where
         }
 
         Ok(named_keys)
+    }
+
+    fn get_v1_entry_points(&mut self, entity_addr: EntityAddr) -> Result<EntryPoints, Self::Error> {
+        let keys = self.get_keys_by_prefix(&KeyPrefix::EntryPointsV1ByEntity(entity_addr))?;
+
+        let mut entry_points_v1 = EntryPoints::new();
+
+        for entry_point_key in keys.iter() {
+            match self.read(entry_point_key)? {
+                Some(StoredValue::EntryPoint(EntryPointValue::V1CasperVm(entry_point))) => {
+                    entry_points_v1.add_entry_point(entry_point)
+                }
+                Some(other) => {
+                    return Err(TrackingCopyError::TypeMismatch(
+                        StoredValueTypeMismatch::new(
+                            "EntryPointsV1".to_string(),
+                            other.type_name(),
+                        ),
+                    ));
+                }
+                None => match self.cache.reads_cached.get(entry_point_key) {
+                    Some(StoredValue::EntryPoint(EntryPointValue::V1CasperVm(entry_point))) => {
+                        entry_points_v1.add_entry_point(entry_point.to_owned())
+                    }
+                    Some(other) => {
+                        return Err(TrackingCopyError::TypeMismatch(
+                            StoredValueTypeMismatch::new(
+                                "EntryPointsV1".to_string(),
+                                other.type_name(),
+                            ),
+                        ));
+                    }
+                    None => {
+                        return Err(TrackingCopyError::KeyNotFound(*entry_point_key));
+                    }
+                },
+            }
+        }
+
+        Ok(entry_points_v1)
     }
 
     fn get_package(&mut self, package_hash: PackageHash) -> Result<Package, Self::Error> {
@@ -622,8 +650,23 @@ where
                 Some(other) => Err(TrackingCopyError::TypeMismatch(
                     StoredValueTypeMismatch::new("ContractPackage".to_string(), other.type_name()),
                 )),
-                None => Err(Self::Error::KeyNotFound(key)),
+                None => Err(Self::Error::ValueNotFound(key.to_formatted_string())),
             },
+        }
+    }
+
+    fn get_legacy_contract(
+        &mut self,
+        legacy_contract: ContractHash,
+    ) -> Result<Contract, Self::Error> {
+        let key = Key::Hash(legacy_contract.value());
+        match self.read(&key)? {
+            Some(StoredValue::Contract(legacy_contract)) => Ok(legacy_contract),
+            Some(other) => Err(Self::Error::TypeMismatch(StoredValueTypeMismatch::new(
+                "Contract".to_string(),
+                other.type_name(),
+            ))),
+            None => Err(Self::Error::ValueNotFound(key.to_formatted_string())),
         }
     }
 

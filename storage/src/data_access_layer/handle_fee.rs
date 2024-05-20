@@ -3,7 +3,8 @@ use crate::{
     tracking_copy::TrackingCopyError,
 };
 use casper_types::{
-    execution::Effects, Digest, InitiatorAddr, ProtocolVersion, TransactionHash, U512,
+    execution::Effects, Digest, EraId, InitiatorAddr, ProtocolVersion, PublicKey, TransactionHash,
+    U512,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -17,6 +18,11 @@ pub enum HandleFeeMode {
     Burn {
         source: BalanceIdentifier,
         amount: Option<U512>,
+    },
+    Credit {
+        validator: Box<PublicKey>,
+        amount: U512,
+        era_id: EraId,
     },
 }
 
@@ -41,6 +47,16 @@ impl HandleFeeMode {
     /// burned leaving a remaining balance.
     pub fn burn(source: BalanceIdentifier, amount: Option<U512>) -> Self {
         HandleFeeMode::Burn { source, amount }
+    }
+
+    /// Applies a staking credit to the imputed proposer for the imputed amount at the end
+    /// of the current era when the auction process is executed.
+    pub fn credit(validator: Box<PublicKey>, amount: U512, era_id: EraId) -> Self {
+        HandleFeeMode::Credit {
+            validator,
+            amount,
+            era_id,
+        }
     }
 }
 

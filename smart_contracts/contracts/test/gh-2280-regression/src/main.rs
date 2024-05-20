@@ -15,7 +15,7 @@ use casper_types::{
     addressable_entity::{
         EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys, Parameter,
     },
-    CLType, CLTyped, Key, U512,
+    CLType, CLTyped, EntryPointPayment, Key, U512,
 };
 
 const FAUCET_NAME: &str = "faucet";
@@ -49,6 +49,7 @@ pub extern "C" fn call() {
             CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
 
         entry_points.add_entry_point(faucet_entrypoint);

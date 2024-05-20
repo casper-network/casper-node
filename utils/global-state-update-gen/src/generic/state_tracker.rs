@@ -11,8 +11,8 @@ use casper_types::{
     addressable_entity::{ActionThresholds, AssociatedKeys, MessageTopics, Weight},
     system::auction::{BidAddr, BidKind, BidsExt, SeigniorageRecipientsSnapshot, UnbondingPurse},
     AccessRights, AddressableEntity, AddressableEntityHash, ByteCodeHash, CLValue, EntityKind,
-    EntityVersions, EntryPoints, Groups, Key, Package, PackageHash, PackageStatus, ProtocolVersion,
-    PublicKey, StoredValue, URef, U512,
+    EntityVersions, Groups, Key, Package, PackageHash, PackageStatus, ProtocolVersion, PublicKey,
+    StoredValue, URef, U512,
 };
 
 use super::{config::Transfer, state_reader::StateReader};
@@ -76,6 +76,9 @@ impl<T: StateReader> StateTracker<T> {
                 Some(delegator.delegator_public_key()),
             ),
             BidKind::Bridge(bridge) => BidAddr::from(bridge.old_validator_public_key().clone()),
+            BidKind::Credit(credit) => {
+                BidAddr::new_credit(credit.validator_public_key(), credit.era_id())
+            }
         };
 
         let _ = self
@@ -169,7 +172,6 @@ impl<T: StateReader> StateTracker<T> {
         let addressable_entity = AddressableEntity::new(
             package_hash,
             contract_wasm_hash,
-            EntryPoints::new(),
             self.protocol_version,
             main_purse,
             associated_keys,
@@ -313,8 +315,11 @@ impl<T: StateReader> StateTracker<T> {
                     }
                 }
             }
-            // avoid modifying bridge records
+            // dont modify bridge records
             BidKind::Bridge(_) => None,
+            BidKind::Credit(credit) => existing_bids
+                .credit(credit.validator_public_key())
+                .map(|existing_credit| BidKind::Credit(Box::new(existing_credit))),
         }
     }
 

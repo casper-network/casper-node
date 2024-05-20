@@ -29,14 +29,16 @@ use casper_types::{
     },
     bytesrepr::ToBytes,
     contract_messages::{Message, MessageAddr, MessageTopicSummary, Messages, TopicNameHash},
+    contracts::{ContractHash, ContractPackageHash},
     execution::Effects,
     handle_stored_dictionary_value,
     system::auction::EraInfo,
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, CLType, CLValue,
-    CLValueDictionary, ContextAccessRights, EntityAddr, EntryPointType, Gas, GrantedAccess, Key,
-    KeyTag, Motes, Package, PackageHash, Phase, ProtocolVersion, PublicKey, RuntimeArgs,
-    StoredValue, StoredValueTypeMismatch, SystemEntityRegistry, TransactionHash, Transfer, URef,
-    URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
+    CLValueDictionary, ContextAccessRights, Contract, EntityAddr, EntryPointAddr, EntryPointType,
+    EntryPointValue, EntryPoints, Gas, GrantedAccess, Key, KeyTag, Motes, Package, PackageHash,
+    Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, StoredValueTypeMismatch,
+    SystemEntityRegistry, TransactionHash, Transfer, URef, URefAddr,
+    DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
 };
 
 use crate::{engine_state::EngineConfig, execution::ExecError};
@@ -419,6 +421,42 @@ where
             .map_err(Into::into)
     }
 
+    pub(crate) fn write_entry_points(
+        &mut self,
+        entity_addr: EntityAddr,
+        entry_points: EntryPoints,
+    ) -> Result<(), ExecError> {
+        if entry_points.is_empty() {
+            return Ok(());
+        }
+
+        for entry_point in entry_points.take_entry_points() {
+            let entry_point_addr =
+                EntryPointAddr::new_v1_entry_point_addr(entity_addr, entry_point.name())?;
+            let entry_point_value =
+                StoredValue::EntryPoint(EntryPointValue::V1CasperVm(entry_point));
+            self.metered_write_gs_unsafe(Key::EntryPoint(entry_point_addr), entry_point_value)?;
+        }
+
+        Ok(())
+    }
+
+    pub(crate) fn get_casper_vm_v1_entry_point(
+        &mut self,
+        entity_key: Key,
+    ) -> Result<EntryPoints, ExecError> {
+        let entity_addr = if let Key::AddressableEntity(entity_addr) = entity_key {
+            entity_addr
+        } else {
+            return Err(ExecError::UnexpectedKeyVariant(entity_key));
+        };
+
+        self.tracking_copy
+            .borrow_mut()
+            .get_v1_entry_points(entity_addr)
+            .map_err(Into::into)
+    }
+
     #[cfg(test)]
     pub(crate) fn get_entity(&self) -> AddressableEntity {
         self.entity.clone()
@@ -653,7 +691,7 @@ where
     }
 
     /// Validates whether keys used in the `value` are not forged.
-    fn validate_value(&self, value: &StoredValue) -> Result<(), ExecError> {
+    pub(crate) fn validate_value(&self, value: &StoredValue) -> Result<(), ExecError> {
         match value {
             StoredValue::CLValue(cl_value) => self.validate_cl_value(cl_value),
             StoredValue::NamedKey(named_key_value) => {
@@ -676,7 +714,8 @@ where
             | StoredValue::ContractWasm(_)
             | StoredValue::MessageTopic(_)
             | StoredValue::Message(_)
-            | StoredValue::Reservation(_) => Ok(()),
+            | StoredValue::Reservation(_)
+            | StoredValue::EntryPoint(_) => Ok(()),
         }
     }
 
@@ -727,7 +766,7 @@ where
     }
 
     /// Validates if a [`Key`] refers to a [`URef`] and has a write bit set.
-    fn validate_writeable(&self, key: &Key) -> Result<(), ExecError> {
+    pub(crate) fn validate_writeable(&self, key: &Key) -> Result<(), ExecError> {
         if self.is_writeable(key) {
             Ok(())
         } else {
@@ -842,14 +881,14 @@ where
         self.tracking_copy.borrow_mut().prune(key.into());
     }
 
-    pub(crate) fn migrate_contract(
+    pub(crate) fn migrate_package(
         &mut self,
-        contract_hash: AddressableEntityHash,
+        contract_package_hash: ContractPackageHash,
         protocol_version: ProtocolVersion,
     ) -> Result<(), ExecError> {
         self.tracking_copy
             .borrow_mut()
-            .migrate_contract(Key::Hash(contract_hash.value()), protocol_version)
+            .migrate_package(Key::Hash(contract_package_hash.value()), protocol_version)
             .map_err(ExecError::TrackingCopy)
     }
 
@@ -1197,6 +1236,16 @@ where
         self.tracking_copy
             .borrow_mut()
             .get_package(package_hash)
+            .map_err(Into::into)
+    }
+
+    pub(crate) fn get_legacy_contract(
+        &mut self,
+        legacy_contract: ContractHash,
+    ) -> Result<Contract, ExecError> {
+        self.tracking_copy
+            .borrow_mut()
+            .get_legacy_contract(legacy_contract)
             .map_err(Into::into)
     }
 

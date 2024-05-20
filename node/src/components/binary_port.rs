@@ -12,17 +12,19 @@ use casper_binary_port::{
     BalanceResponse, BinaryMessage, BinaryMessageCodec, BinaryRequest, BinaryRequestHeader,
     BinaryRequestTag, BinaryResponse, BinaryResponseAndRequest, DictionaryItemIdentifier,
     DictionaryQueryResult, ErrorCode, GetRequest, GetTrieFullResult, GlobalStateQueryResult,
-    GlobalStateRequest, InformationRequest, InformationRequestTag, NodeStatus, PayloadType,
-    PurseIdentifier, ReactorStateName, RecordId, TransactionWithExecutionInfo,
+    GlobalStateRequest, InformationRequest, InformationRequestTag, KeyPrefix, NodeStatus,
+    PayloadType, PurseIdentifier, ReactorStateName, RecordId, TransactionWithExecutionInfo,
 };
 use casper_storage::{
     data_access_layer::{
         balance::BalanceHandling,
+        prefixed_values::{PrefixedValuesRequest, PrefixedValuesResult},
         tagged_values::{TaggedValuesRequest, TaggedValuesResult, TaggedValuesSelection},
         BalanceIdentifier, BalanceRequest, BalanceResult, ProofHandling, ProofsResult,
         QueryRequest, QueryResult, TrieRequest,
     },
     global_state::trie::TrieRaw,
+    KeyPrefix as StorageKeyPrefix,
 };
 use casper_types::{
     addressable_entity::NamedKeyAddr,
@@ -243,6 +245,49 @@ where
         }
     }
 }
+
+async fn handle_get_items_by_prefix<REv>(
+    state_identifier: Option<GlobalStateIdentifier>,
+    key_prefix: KeyPrefix,
+    effect_builder: EffectBuilder<REv>,
+    protocol_version: ProtocolVersion,
+) -> BinaryResponse
+where
+    REv: From<Event> + From<ContractRuntimeRequest> + From<StorageRequest>,
+{
+    let Some(state_root_hash) = resolve_state_root_hash(effect_builder, state_identifier).await else {
+        return BinaryResponse::new_empty(protocol_version)
+    };
+    let storage_key_prefix = match key_prefix {
+        KeyPrefix::DelegatorBidAddrsByValidator(hash) => {
+            StorageKeyPrefix::DelegatorBidAddrsByValidator(hash)
+        }
+        KeyPrefix::MessagesByEntity(addr) => StorageKeyPrefix::MessagesByEntity(addr),
+        KeyPrefix::MessagesByEntityAndTopic(addr, topic) => {
+            StorageKeyPrefix::MessagesByEntityAndTopic(addr, topic)
+        }
+        KeyPrefix::NamedKeysByEntity(addr) => StorageKeyPrefix::NamedKeysByEntity(addr),
+        KeyPrefix::GasBalanceHoldsByPurse(purse) => StorageKeyPrefix::GasBalanceHoldsByPurse(purse),
+        KeyPrefix::ProcessingBalanceHoldsByPurse(purse) => {
+            StorageKeyPrefix::ProcessingBalanceHoldsByPurse(purse)
+        }
+        KeyPrefix::EntryPointsV1ByEntity(addr) => StorageKeyPrefix::EntryPointsV1ByEntity(addr),
+        KeyPrefix::EntryPointsV2ByEntity(addr) => StorageKeyPrefix::EntryPointsV2ByEntity(addr),
+    };
+    let request = PrefixedValuesRequest::new(state_root_hash, storage_key_prefix);
+    match effect_builder.get_prefixed_values(request).await {
+        PrefixedValuesResult::Success { values, .. } => {
+            BinaryResponse::from_value(values, protocol_version)
+        }
+        PrefixedValuesResult::RootNotFound => {
+            BinaryResponse::new_error(ErrorCode::RootNotFound, protocol_version)
+        }
+        PrefixedValuesResult::Failure(_err) => {
+            BinaryResponse::new_error(ErrorCode::InternalError, protocol_version)
+        }
+    }
+}
+
 async fn handle_get_all_items<REv>(
     state_identifier: Option<GlobalStateIdentifier>,
     key_tag: casper_types::KeyTag,
@@ -261,8 +306,7 @@ where
             BinaryResponse::from_value(values, protocol_version)
         }
         TaggedValuesResult::RootNotFound => {
-            let error_code = ErrorCode::RootNotFound;
-            BinaryResponse::new_error(error_code, protocol_version)
+            BinaryResponse::new_error(ErrorCode::RootNotFound, protocol_version)
         }
         TaggedValuesResult::Failure(_err) => {
             BinaryResponse::new_error(ErrorCode::InternalError, protocol_version)
@@ -398,22 +442,7 @@ where
                 Err(err) => BinaryResponse::new_error(err, protocol_version),
             }
         }
-        GlobalStateRequest::BalanceByBlock {
-            block_identifier,
-            purse_identifier,
-        } => {
-            let Some(header) = resolve_block_header(effect_builder, block_identifier).await else {
-                return BinaryResponse::new_empty(protocol_version);
-            };
-            get_balance(
-                effect_builder,
-                *header.state_root_hash(),
-                purse_identifier,
-                protocol_version,
-            )
-            .await
-        }
-        GlobalStateRequest::BalanceByStateRoot {
+        GlobalStateRequest::Balance {
             state_identifier,
             purse_identifier,
         } => {
@@ -424,6 +453,18 @@ where
                 effect_builder,
                 state_root_hash,
                 purse_identifier,
+                protocol_version,
+            )
+            .await
+        }
+        GlobalStateRequest::ItemsByPrefix {
+            state_identifier,
+            key_prefix,
+        } => {
+            handle_get_items_by_prefix(
+                state_identifier,
+                key_prefix,
+                effect_builder,
                 protocol_version,
             )
             .await

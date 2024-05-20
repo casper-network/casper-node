@@ -9,7 +9,7 @@ use casper_contract::{
 };
 use casper_types::{
     addressable_entity::Parameters, AccessRights, CLType, CLValue, EntryPoint, EntryPointAccess,
-    EntryPointType, EntryPoints, Key, URef,
+    EntryPointPayment, EntryPointType, EntryPoints, Key, URef,
 };
 
 const DATA: &str = "data";
@@ -35,6 +35,7 @@ pub extern "C" fn call() {
             CLType::URef,
             EntryPointAccess::Public,
             EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
 
         entry_points.add_entry_point(entry_point);

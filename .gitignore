@@ -133,6 +133,8 @@ resources/production/*.wasm
 resources/node-storage/*
 resources/local/chainspec.toml
 
+execution_engine_testing/test_support/resources/chainspec.toml
+
 # CLion
 .idea/
 cmake-build-debug/

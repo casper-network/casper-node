@@ -10,25 +10,29 @@ pub(self) mod meter;
 mod tests;
 
 use std::{
-    collections::{BTreeSet, HashMap, HashSet, VecDeque},
+    borrow::Borrow,
+    collections::{BTreeMap, BTreeSet, HashSet, VecDeque},
     convert::{From, TryInto},
 };
 
 use linked_hash_map::LinkedHashMap;
 use thiserror::Error;
 
-use crate::global_state::{
-    error::Error as GlobalStateError, state::StateReader,
-    trie_store::operations::compute_state_hash, DEFAULT_MAX_QUERY_DEPTH,
+use crate::{
+    global_state::{
+        error::Error as GlobalStateError, state::StateReader,
+        trie_store::operations::compute_state_hash, DEFAULT_MAX_QUERY_DEPTH,
+    },
+    KeyPrefix,
 };
 use casper_types::{
     addressable_entity::{NamedKeyAddr, NamedKeys},
-    bytesrepr,
+    bytesrepr::{self, ToBytes},
     contract_messages::{Message, Messages},
     execution::{Effects, TransformError, TransformInstruction, TransformKindV2, TransformV2},
     global_state::TrieMerkleProof,
     handle_stored_dictionary_value, BlockGlobalAddr, CLType, CLValue, CLValueError, Digest, Key,
-    KeyTag, StoredValue, StoredValueTypeMismatch, Tagged, U512,
+    KeyTag, StoredValue, StoredValueTypeMismatch, U512,
 };
 
 use self::meter::{heap_meter::HeapSize, Meter};
@@ -171,9 +175,8 @@ pub struct TrackingCopyCache<M> {
     max_cache_size: usize,
     current_cache_size: usize,
     reads_cached: LinkedHashMap<Key, StoredValue>,
-    muts_cached: HashMap<Key, StoredValue>,
-    prunes_cached: HashSet<Key>,
-    key_tag_muts_cached: HashMap<KeyTag, BTreeSet<Key>>,
+    muts_cached: BTreeMap<KeyWithByteRepr, StoredValue>,
+    prunes_cached: BTreeSet<Key>,
     meter: M,
 }
 
@@ -187,9 +190,8 @@ impl<M: Meter<Key, StoredValue>> TrackingCopyCache<M> {
             max_cache_size,
             current_cache_size: 0,
             reads_cached: LinkedHashMap::new(),
-            muts_cached: HashMap::new(),
-            key_tag_muts_cached: HashMap::new(),
-            prunes_cached: HashSet::new(),
+            muts_cached: BTreeMap::new(),
+            prunes_cached: BTreeSet::new(),
             meter,
         }
     }
@@ -212,15 +214,9 @@ impl<M: Meter<Key, StoredValue>> TrackingCopyCache<M> {
 
     /// Inserts `key` and `value` pair to Write/Add cache.
     pub fn insert_write(&mut self, key: Key, value: StoredValue) {
+        let kb = KeyWithByteRepr::new(key);
         self.prunes_cached.remove(&key);
-        self.muts_cached.insert(key, value);
-
-        let key_set = self
-            .key_tag_muts_cached
-            .entry(key.tag())
-            .or_insert_with(BTreeSet::new);
-
-        key_set.insert(key);
+        self.muts_cached.insert(kb, value);
     }
 
     /// Inserts `key` and `value` pair to Write/Add cache.
@@ -235,27 +231,77 @@ impl<M: Meter<Key, StoredValue>> TrackingCopyCache<M> {
             // is no longer accessible.
             return None;
         }
-        if let Some(value) = self.muts_cached.get(key) {
+        let kb = KeyWithByteRepr::new(*key);
+        if let Some(value) = self.muts_cached.get(&kb) {
             return Some(value);
         };
 
         self.reads_cached.get_refresh(key).map(|v| &*v)
     }
 
-    /// Gets the set of mutated keys in the cache by `KeyTag`.
-    pub fn get_key_tag_muts_cached(&self, key_tag: &KeyTag) -> Option<BTreeSet<Key>> {
-        let pruned = &self.prunes_cached;
-        if let Some(keys) = self.key_tag_muts_cached.get(key_tag) {
-            let mut ret = BTreeSet::new();
-            for key in keys {
-                if !pruned.contains(key) {
-                    ret.insert(*key);
-                }
-            }
-            Some(ret)
-        } else {
-            None
-        }
+    fn get_muts_cached_by_byte_prefix(&self, prefix: &[u8]) -> Vec<Key> {
+        self.muts_cached
+            .range(prefix.to_vec()..)
+            .take_while(|(key, _)| key.starts_with(prefix))
+            .map(|(key, _)| key.to_key())
+            .collect()
+    }
+
+    pub fn is_pruned(&self, key: &Key) -> bool {
+        self.prunes_cached.contains(key)
+    }
+}
+
+/// A helper type for `TrackingCopyCache` that allows convenient storage and access
+/// to keys as bytes.
+/// Its equality and ordering is based on the byte representation of the key.
+struct KeyWithByteRepr(Key, Vec<u8>);
+
+impl KeyWithByteRepr {
+    #[inline]
+    fn new(key: Key) -> Self {
+        let bytes = key.to_bytes().expect("should always serialize a Key");
+        KeyWithByteRepr(key, bytes)
+    }
+
+    #[inline]
+    fn starts_with(&self, prefix: &[u8]) -> bool {
+        self.1.starts_with(prefix)
+    }
+
+    #[inline]
+    fn to_key(&self) -> Key {
+        self.0
+    }
+}
+
+impl Borrow<Vec<u8>> for KeyWithByteRepr {
+    #[inline]
+    fn borrow(&self) -> &Vec<u8> {
+        &self.1
+    }
+}
+
+impl PartialEq for KeyWithByteRepr {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.1 == other.1
+    }
+}
+
+impl Eq for KeyWithByteRepr {}
+
+impl PartialOrd for KeyWithByteRepr {
+    #[inline]
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for KeyWithByteRepr {
+    #[inline]
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.1.cmp(&other.1)
     }
 }
 
@@ -358,29 +404,34 @@ where
     }
 
     /// Gets the set of keys in the state whose tag is `key_tag`.
-    pub fn get_keys(&mut self, key_tag: &KeyTag) -> Result<BTreeSet<Key>, TrackingCopyError> {
-        let mut ret: BTreeSet<Key> = BTreeSet::new();
-        let keys = match self.reader.keys_with_prefix(&[*key_tag as u8]) {
+    pub fn get_keys(&self, key_tag: &KeyTag) -> Result<BTreeSet<Key>, TrackingCopyError> {
+        self.get_by_byte_prefix(&[*key_tag as u8])
+    }
+
+    pub fn get_keys_by_prefix(
+        &self,
+        key_prefix: &KeyPrefix,
+    ) -> Result<BTreeSet<Key>, TrackingCopyError> {
+        let byte_prefix = key_prefix
+            .to_bytes()
+            .map_err(TrackingCopyError::BytesRepr)?;
+        self.get_by_byte_prefix(&byte_prefix)
+    }
+
+    /// Gets the set of keys in the state by a byte prefix.
+    fn get_by_byte_prefix(&self, byte_prefix: &[u8]) -> Result<BTreeSet<Key>, TrackingCopyError> {
+        let keys = match self.reader.keys_with_prefix(byte_prefix) {
             Ok(ret) => ret,
             Err(err) => return Err(TrackingCopyError::Storage(err)),
         };
-        let pruned = &self.cache.prunes_cached;
-        // don't include keys marked for pruning
-        for key in keys {
-            if pruned.contains(&key) {
-                continue;
-            }
-            ret.insert(key);
-        }
-        // there may be newly inserted keys which have not been committed yet
-        if let Some(keys) = self.cache.get_key_tag_muts_cached(key_tag) {
-            for key in keys {
-                if ret.contains(&key) {
-                    continue;
-                }
-                ret.insert(key);
-            }
-        }
+
+        let ret = keys
+            .into_iter()
+            // don't include keys marked for pruning
+            .filter(|key| !self.cache.is_pruned(key))
+            // there may be newly inserted keys which have not been committed yet
+            .chain(self.cache.get_muts_cached_by_byte_prefix(byte_prefix))
+            .collect();
         Ok(ret)
     }
 
@@ -568,7 +619,7 @@ where
                     return Ok(query.into_not_found_result(&format!(
                         "Failed to retrieve dictionary value: {}",
                         error
-                    )))
+                    )));
                 }
             };
 
@@ -619,11 +670,11 @@ where
                             }
                             Err(_) => {
                                 return Ok(query
-                                    .into_not_found_result("Failed to parse CLValue as String"))
+                                    .into_not_found_result("Failed to parse CLValue as String"));
                             }
                         },
                         None if path.is_empty() => {
-                            return Ok(TrackingCopyQueryResult::Success { value, proofs })
+                            return Ok(TrackingCopyQueryResult::Success { value, proofs });
                         }
                         None => return Ok(query.into_not_found_result("No visited names")),
                     }
@@ -701,6 +752,9 @@ where
                 StoredValue::Message(_) => {
                     return Ok(query.into_not_found_result("Message value found."));
                 }
+                StoredValue::EntryPoint(_) => {
+                    return Ok(query.into_not_found_result("EntryPoint value found."));
+                }
                 // TODO: We may be interested in this value, check the logic
                 StoredValue::Reservation(_) => {
                     return Ok(query.into_not_found_result("Reservation value found."))
@@ -719,7 +773,8 @@ impl<R: StateReader<Key, StoredValue>> StateReader<Key, StoredValue> for &Tracki
     type Error = R::Error;
 
     fn read(&self, key: &Key) -> Result<Option<StoredValue>, Self::Error> {
-        if let Some(value) = self.cache.muts_cached.get(key) {
+        let kb = KeyWithByteRepr::new(*key);
+        if let Some(value) = self.cache.muts_cached.get(&kb) {
             return Ok(Some(value.to_owned()));
         }
         if let Some(value) = self.reader.read(key)? {

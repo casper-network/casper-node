@@ -156,6 +156,31 @@ fn get_balance(
         ))
 }
 
+fn get_bids(fixture: &mut TestFixture, block_height: Option<u64>) -> Option<Vec<BidKind>> {
+    let (_node_id, runner) = fixture.network.nodes().iter().next().unwrap();
+    let block_height = block_height.unwrap_or(
+        runner
+            .main_reactor()
+            .storage()
+            .highest_complete_block_height()
+            .expect("missing highest completed block"),
+    );
+    let block_header = runner
+        .main_reactor()
+        .storage()
+        .read_block_header_by_height(block_height, true)
+        .expect("failure to read block header")
+        .unwrap();
+    let state_hash = *block_header.state_root_hash();
+
+    runner
+        .main_reactor()
+        .contract_runtime()
+        .data_access_layer()
+        .bids(BidsRequest::new(state_hash))
+        .into_option()
+}
+
 fn get_payment_purse_balance(
     fixture: &mut TestFixture,
     block_height: Option<u64>,
@@ -2582,4 +2607,82 @@ async fn sufficient_balance_is_available_after_amortization() {
         charlie_balance.total.clone(),
         transfer_cost + half_transfer_cost, // two `min_transfer_amount` should have gone to Bob.
     );
+}
+
+#[tokio::test]
+async fn validator_credit_is_written_and_cleared_after_auction() {
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_pricing_handling(PricingHandling::Fixed)
+        .with_refund_handling(RefundHandling::NoRefund)
+        .with_fee_handling(FeeHandling::NoFee)
+        .with_gas_hold_balance_handling(HoldBalanceHandling::Accrued);
+
+    let mut test = SingleTransactionTestCase::new(
+        ALICE_SECRET_KEY.clone(),
+        BOB_SECRET_KEY.clone(),
+        CHARLIE_SECRET_KEY.clone(),
+        Some(config),
+    )
+    .await;
+
+    let transfer_cost: U512 =
+        U512::from(test.chainspec().system_costs_config.mint_costs().transfer) * MIN_GAS_PRICE;
+    let min_transfer_amount = U512::from(
+        test.chainspec()
+            .transaction_config
+            .native_transfer_minimum_motes,
+    );
+    let half_transfer_cost =
+        (Ratio::new(U512::from(1), U512::from(2)) * transfer_cost).to_integer();
+
+    // Fund Charlie with some token.
+    let transfer_amount = min_transfer_amount * 2 + transfer_cost + half_transfer_cost;
+    let txn = transfer_txn(
+        BOB_SECRET_KEY.clone(),
+        &CHARLIE_PUBLIC_KEY,
+        PricingMode::Fixed {
+            gas_price_tolerance: MIN_GAS_PRICE,
+        },
+        transfer_amount,
+    );
+
+    test.fixture
+        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+        .await;
+    let (_txn_hash, block_height, exec_result) = test.send_transaction(txn).await;
+    assert!(exec_result_is_success(&exec_result));
+
+    let charlie_balance = test.get_balances(Some(block_height)).2.unwrap();
+    assert_eq!(
+        charlie_balance.available.clone(),
+        charlie_balance.total.clone()
+    );
+    assert_eq!(charlie_balance.available.clone(), transfer_amount);
+
+    let bids =
+        get_bids(&mut test.fixture, Some(block_height)).expect("Expected to get some bid records.");
+
+    let _ = bids
+        .into_iter()
+        .find(|bid_kind| match bid_kind {
+            BidKind::Credit(credit) => {
+                credit.amount() == transfer_cost
+                    && credit.validator_public_key() == &*ALICE_PUBLIC_KEY // Alice is the proposer.
+            }
+            _ => false,
+        })
+        .expect("Expected to find the credit for the consumed transfer cost in the bid records.");
+
+    test.fixture
+        .run_until_consensus_in_era(
+            ERA_ONE.saturating_add(test.chainspec().core_config.auction_delay),
+            ONE_MIN,
+        )
+        .await;
+
+    // Check that the credits were cleared after the auction.
+    let bids = get_bids(&mut test.fixture, None).expect("Expected to get some bid records.");
+    assert!(!bids
+        .into_iter()
+        .any(|bid| matches!(bid, BidKind::Credit(_))));
 }

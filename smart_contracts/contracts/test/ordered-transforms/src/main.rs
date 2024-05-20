@@ -3,6 +3,7 @@
 
 #[macro_use]
 extern crate alloc;
+
 use alloc::{string::ToString, vec::Vec};
 
 use casper_contract::{
@@ -10,8 +11,8 @@ use casper_contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    addressable_entity::NamedKeys, CLType, CLTyped, EntryPoint, EntryPointAccess, EntryPointType,
-    EntryPoints, Key, Parameter, URef,
+    addressable_entity::NamedKeys, CLType, CLTyped, EntryPoint, EntryPointAccess,
+    EntryPointPayment, EntryPointType, EntryPoints, Key, Parameter, URef,
 };
 
 #[no_mangle]
@@ -26,6 +27,7 @@ pub extern "C" fn call() {
         CLType::Unit,
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     ));
 
     let n: u32 = runtime::get_named_arg("n");

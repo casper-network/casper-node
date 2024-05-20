@@ -23,8 +23,8 @@ use casper_types::{
         SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
     },
     AccessRights, AddressableEntity, AddressableEntityHash, ByteCode, ByteCodeAddr, ByteCodeHash,
-    ByteCodeKind, CLValue, CLValueError, Digest, EntityAddr, EntityVersions, EntryPoints,
-    FeeHandling, Groups, Key, KeyTag, Package, PackageHash, PackageStatus, Phase,
+    ByteCodeKind, CLValue, CLValueError, Digest, EntityAddr, EntityVersions, EntryPointAddr,
+    EntryPointValue, FeeHandling, Groups, Key, KeyTag, Package, PackageHash, PackageStatus, Phase,
     ProtocolUpgradeConfig, ProtocolVersion, PublicKey, StoredValue, SystemEntityRegistry, URef,
     U512,
 };
@@ -170,6 +170,7 @@ where
 
     pub fn upgrade(self, pre_state_hash: Digest) -> Result<(), ProtocolUpgradeError> {
         self.check_next_protocol_version_validity()?;
+        self.handle_global_state_updates();
         let system_entity_addresses = self.handle_system_entities()?;
         self.migrate_system_account(pre_state_hash)?;
         self.create_accumulation_purse_if_required(
@@ -186,7 +187,6 @@ where
         self.handle_legacy_accounts_migration()?;
         self.handle_legacy_contracts_migration()?;
         self.handle_bids_migration()?;
-        self.handle_global_state_updates();
         self.handle_era_info_migration()
     }
 
@@ -317,7 +317,6 @@ where
     ) -> Result<(), ProtocolUpgradeError> {
         debug!(%system_entity_type, "refresh system contract entry points");
         let entity_name = system_entity_type.entity_name();
-        let entry_points = system_entity_type.entry_points();
 
         let (mut entity, maybe_named_keys, must_prune) =
             match self.retrieve_system_entity(entity_hash, system_entity_type) {
@@ -340,7 +339,6 @@ where
         let new_entity = AddressableEntity::new(
             entity.package_hash(),
             ByteCodeHash::default(),
-            entry_points,
             self.config.new_protocol_version(),
             URef::default(),
             AssociatedKeys::default(),
@@ -362,9 +360,9 @@ where
             .borrow_mut()
             .write(entity_key, StoredValue::AddressableEntity(new_entity));
 
-        if let Some(named_keys) = maybe_named_keys {
-            let entity_addr = EntityAddr::new_system(entity_hash.value());
+        let entity_addr = EntityAddr::new_system(entity_hash.value());
 
+        if let Some(named_keys) = maybe_named_keys {
             for (string, key) in named_keys.into_inner().into_iter() {
                 let entry_addr = NamedKeyAddr::new_from_string(entity_addr, string.clone())
                     .map_err(|err| ProtocolUpgradeError::Bytesrepr(err.to_string()))?;
@@ -378,6 +376,20 @@ where
                     .borrow_mut()
                     .write(entry_key, StoredValue::NamedKey(named_key_value));
             }
+        }
+
+        println!("writing entry points");
+
+        let entry_points = system_entity_type.entry_points();
+
+        for entry_point in entry_points.take_entry_points() {
+            let entry_point_addr =
+                EntryPointAddr::new_v1_entry_point_addr(entity_addr, entry_point.name())
+                    .map_err(|error| ProtocolUpgradeError::Bytesrepr(error.to_string()))?;
+            self.tracking_copy.borrow_mut().write(
+                Key::EntryPoint(entry_point_addr),
+                StoredValue::EntryPoint(EntryPointValue::V1CasperVm(entry_point)),
+            );
         }
 
         package.insert_entity_version(
@@ -523,7 +535,6 @@ where
         let system_account_entity = AddressableEntity::new(
             package_hash,
             byte_code_hash,
-            EntryPoints::new(),
             self.config.new_protocol_version(),
             main_purse,
             associated_keys,
@@ -920,8 +931,8 @@ where
         };
         let protocol_version = self.config.new_protocol_version();
         for existing_key in existing_keys {
-            if let Some(StoredValue::Contract(_)) = tc.read(&existing_key)? {
-                if let Err(tce) = tc.migrate_contract(existing_key, protocol_version) {
+            if let Some(StoredValue::ContractPackage(_)) = tc.read(&existing_key)? {
+                if let Err(tce) = tc.migrate_package(existing_key, protocol_version) {
                     return Err(ProtocolUpgradeError::TrackingCopy(tce));
                 }
             } else {

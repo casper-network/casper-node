@@ -3,6 +3,7 @@
 
 #[macro_use]
 extern crate alloc;
+
 use alloc::{
     collections::BTreeMap,
     string::{String, ToString},
@@ -18,7 +19,7 @@ use casper_types::{
     addressable_entity::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys},
     api_error::ApiError,
     contract_messages::MessageTopicOperation,
-    runtime_args, CLType, CLTyped, PackageHash, Parameter, RuntimeArgs,
+    runtime_args, CLType, CLTyped, EntryPointPayment, PackageHash, Parameter, RuntimeArgs,
 };
 
 const ENTRY_POINT_INIT: &str = "init";
@@ -106,6 +107,7 @@ pub extern "C" fn call() {
         CLType::Unit,
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     ));
     emitter_entry_points.add_entry_point(EntryPoint::new(
         ENTRY_POINT_EMIT_MESSAGE,
@@ -113,6 +115,7 @@ pub extern "C" fn call() {
         CLType::Unit,
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     ));
     emitter_entry_points.add_entry_point(EntryPoint::new(
         ENTRY_POINT_EMIT_MESSAGE_FROM_EACH_VERSION,
@@ -120,6 +123,7 @@ pub extern "C" fn call() {
         CLType::Unit,
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     ));
 
     let message_emitter_package_hash: PackageHash = runtime::get_key(PACKAGE_HASH_KEY_NAME)

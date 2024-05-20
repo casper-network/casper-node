@@ -117,6 +117,8 @@ refund_handling = { type = 'no_refund' }
 #                 administrator accounts
 #   'burn': fees are burned
 fee_handling = { type = 'no_fee' }
+# If a validator would recieve a validator credit, it cannot exceed this percentage of their total stake.
+validator_credit_cap = [1, 5]
 # Defines how pricing is handled.
 #
 # Valid options are:
@@ -349,6 +351,7 @@ mint = 2_500_000_000
 reduce_total_supply = 10_000
 create = 2_500_000_000
 balance = 10_000
+burn = 10_000
 transfer = 10_000
 read_base_round_reward = 10_000
 mint_into_existing_purse = 2_500_000_000

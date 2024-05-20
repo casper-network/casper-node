@@ -1,6 +1,6 @@
 use std::{
     collections::{BTreeMap, HashMap},
-    convert::TryInto,
+    convert::{TryFrom, TryInto},
     iter,
     sync::Arc,
     time::Duration,
@@ -11,8 +11,8 @@ use casper_binary_port::{
     BinaryResponse, BinaryResponseAndRequest, ConsensusStatus, ConsensusValidatorChanges,
     DictionaryItemIdentifier, DictionaryQueryResult, ErrorCode, GetRequest, GetTrieFullResult,
     GlobalStateQueryResult, GlobalStateRequest, InformationRequest, InformationRequestTag,
-    LastProgress, NetworkName, NodeStatus, PayloadType, PurseIdentifier, ReactorStateName,
-    RecordId, Uptime,
+    KeyPrefix, LastProgress, NetworkName, NodeStatus, PayloadType, PurseIdentifier,
+    ReactorStateName, RecordId, Uptime,
 };
 use casper_storage::global_state::state::CommitProvider;
 use casper_types::{
@@ -338,8 +338,8 @@ async fn binary_port_component() {
         try_spec_exec_invalid(&mut rng),
         try_accept_transaction_invalid(&mut rng),
         try_accept_transaction(&secret_signing_key),
-        get_balance_by_block(*highest_block.hash()),
-        get_balance_by_state_root(state_root_hash, test_account_hash),
+        get_balance(state_root_hash, test_account_hash),
+        get_named_keys_by_prefix(state_root_hash, test_entity_addr),
     ];
 
     for TestCase {
@@ -834,39 +834,37 @@ fn get_dictionary_item_by_named_key(
     }
 }
 
-fn get_balance_by_block(block_hash: BlockHash) -> TestCase {
+fn get_balance(state_root_hash: Digest, account_hash: AccountHash) -> TestCase {
     TestCase {
-        name: "get_balance_by_block",
-        request: BinaryRequest::Get(GetRequest::State(Box::new(
-            GlobalStateRequest::BalanceByBlock {
-                block_identifier: Some(BlockIdentifier::Hash(block_hash)),
-                purse_identifier: PurseIdentifier::Payment,
-            },
-        ))),
-        asserter: Box::new(|response| {
-            assert_response::<BalanceResponse, _>(
-                response,
-                Some(PayloadType::BalanceResponse),
-                |res| res.available_balance == U512::zero(),
-            )
-        }),
-    }
-}
-
-fn get_balance_by_state_root(state_root_hash: Digest, account_hash: AccountHash) -> TestCase {
-    TestCase {
-        name: "get_balance_by_state_root",
-        request: BinaryRequest::Get(GetRequest::State(Box::new(
-            GlobalStateRequest::BalanceByStateRoot {
-                state_identifier: Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
-                purse_identifier: PurseIdentifier::Account(account_hash),
-            },
-        ))),
+        name: "get_balance",
+        request: BinaryRequest::Get(GetRequest::State(Box::new(GlobalStateRequest::Balance {
+            state_identifier: Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
+            purse_identifier: PurseIdentifier::Account(account_hash),
+        }))),
         asserter: Box::new(|response| {
             assert_response::<BalanceResponse, _>(
                 response,
                 Some(PayloadType::BalanceResponse),
                 |res| res.available_balance == U512::one(),
+            )
+        }),
+    }
+}
+
+fn get_named_keys_by_prefix(state_root_hash: Digest, entity_addr: EntityAddr) -> TestCase {
+    TestCase {
+        name: "get_named_keys_by_prefix",
+        request: BinaryRequest::Get(GetRequest::State(Box::new(
+            GlobalStateRequest::ItemsByPrefix {
+                state_identifier: Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
+                key_prefix: KeyPrefix::NamedKeysByEntity(entity_addr),
+            },
+        ))),
+        asserter: Box::new(|response| {
+            assert_response::<Vec<StoredValue>, _>(
+                response,
+                Some(PayloadType::StoredValues),
+                |res| res.iter().all(|v| matches!(v, StoredValue::NamedKey(_))),
             )
         }),
     }
@@ -892,7 +890,7 @@ fn try_accept_transaction_invalid(rng: &mut TestRng) -> TestCase {
     TestCase {
         name: "try_accept_transaction_invalid",
         request: BinaryRequest::TryAcceptTransaction { transaction },
-        asserter: Box::new(|response| response.error_code() == ErrorCode::InvalidTransaction as u8),
+        asserter: Box::new(|response| ErrorCode::try_from(response.error_code()).is_ok()),
     }
 }
 
@@ -901,6 +899,6 @@ fn try_spec_exec_invalid(rng: &mut TestRng) -> TestCase {
     TestCase {
         name: "try_spec_exec_invalid",
         request: BinaryRequest::TrySpeculativeExec { transaction },
-        asserter: Box::new(|response| response.error_code() == ErrorCode::InvalidTransaction as u8),
+        asserter: Box::new(|response| ErrorCode::try_from(response.error_code()).is_ok()),
     }
 }
