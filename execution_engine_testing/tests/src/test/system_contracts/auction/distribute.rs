@@ -378,27 +378,22 @@ fn should_distribute_delegation_rate_zero() {
             VALIDATOR_1.clone(),
             validator_1_actual_payout + U512::from(VALIDATOR_1_STAKE),
         );
-        assert!(get_validator_bid(&mut builder, VALIDATOR_1.clone()).is_none());
-        U512::zero()
+        get_validator_bid(&mut builder, VALIDATOR_1.clone())
+            .expect("should still have zero bid")
+            .staked_amount()
     };
     assert_eq!(validator_1_balance, U512::zero());
 
-    let delegator_1_balance = {
-        assert!(
-            get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone()).is_none(),
-            "validator withdrawing full stake also removes delegator 1 reinvested funds"
-        );
-        U512::zero()
-    };
+    let delegator_1_balance =
+        get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone())
+            .expect("validator withdrawing full stake also removes delegator 1 reinvested funds")
+            .staked_amount();
     assert_eq!(delegator_1_balance, U512::zero());
 
-    let delegator_2_balance = {
-        assert!(
-            get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_2.clone()).is_none(),
-            "validator withdrawing full stake also removes delegator 2 reinvested funds"
-        );
-        U512::zero()
-    };
+    let delegator_2_balance =
+        get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_2.clone())
+            .expect("validator withdrawing full stake also removes delegator 1 reinvested funds")
+            .staked_amount();
     assert!(delegator_2_balance.is_zero());
 
     let era_info = get_era_info(&mut builder);
@@ -656,7 +651,10 @@ fn should_withdraw_bids_after_distribute() {
             undelegate_amount,
         );
         assert!(
-            get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone()).is_none(),
+            get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone())
+                .expect("should still have zero bid")
+                .staked_amount()
+                .is_zero(),
             "delegator 1 did not unstake full expected amount"
         );
         delegator_1_actual_payout
@@ -680,7 +678,10 @@ fn should_withdraw_bids_after_distribute() {
             undelegate_amount,
         );
         assert!(
-            get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_2.clone()).is_none(),
+            get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_2.clone())
+                .expect("should still have zero bid")
+                .staked_amount()
+                .is_zero(),
             "delegator 2 did not unstake full expected amount"
         );
         delegator_2_actual_payout
@@ -703,7 +704,10 @@ fn should_withdraw_bids_after_distribute() {
             withdraw_bid_amount,
         );
 
-        assert!(get_validator_bid(&mut builder, VALIDATOR_1.clone()).is_none());
+        assert!(get_validator_bid(&mut builder, VALIDATOR_1.clone())
+            .expect("should still have zero bid")
+            .staked_amount()
+            .is_zero());
 
         withdraw_bid_amount
     };
@@ -3162,7 +3166,10 @@ fn should_not_restake_after_full_unbond() {
         U512::from(DELEGATOR_1_STAKE),
     );
     let delegator = get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone());
-    assert!(delegator.is_none());
+    assert!(delegator
+        .expect("should still have zero bid")
+        .staked_amount()
+        .is_zero());
 
     let withdraws = builder.get_unbonds();
     let unbonding_purses = withdraws
@@ -3186,10 +3193,13 @@ fn should_not_restake_after_full_unbond() {
 
     builder.advance_era();
 
-    // Delegator should not remain delegated even though they were eligible for rewards in the
+    // Delegator's stake should remain at zero even though they were eligible for rewards in the
     // second era.
     let delegator = get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone());
-    assert!(delegator.is_none());
+    assert!(delegator
+        .expect("should have zero bid")
+        .staked_amount()
+        .is_zero());
 }
 
 // In this test, we set up a delegator and a validator, the delegator delegates to the validator.
@@ -3312,7 +3322,10 @@ fn delegator_full_unbond_during_first_reward_era() {
         U512::from(DELEGATOR_1_STAKE),
     );
     let delegator = get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone());
-    assert!(delegator.is_none());
+    assert!(delegator
+        .expect("should still have zero bid")
+        .staked_amount()
+        .is_zero());
 
     let withdraws = builder.get_unbonds();
     let unbonding_purses = withdraws
@@ -3332,8 +3345,11 @@ fn delegator_full_unbond_during_first_reward_era() {
     // validator receives rewards after this step.
     builder.advance_era();
 
-    // Delegator should not remain delegated even though they were eligible for rewards in the
-    // second era.
+    // Delegator's stake should remain at zero delegated even though they were eligible for rewards
+    // in the second era.
     let delegator = get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone());
-    assert!(delegator.is_none());
+    assert!(delegator
+        .expect("should still have zero bid")
+        .staked_amount()
+        .is_zero());
 }
