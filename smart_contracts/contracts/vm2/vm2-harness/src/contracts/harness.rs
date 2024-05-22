@@ -322,4 +322,16 @@ impl Harness {
             host::get_value()
         );
     }
+
+    #[casper(ignore_state)]
+    pub fn migrate() {
+        let input = host::casper_copy_input();
+        let mut old_state: Self = casper_sdk::host::read_state().unwrap();
+        log!("This is a migration entrypoint input={input:?} old_state={old_state:?}");
+    }
+
+    pub fn perform_upgrade(&self, code: Vec<u8>, manifest_bytes: Vec<u8>) {
+        Self::upgrade(&code, &manifest_bytes);
+        // Self::upgrade(code, manifest);
+    }
 }

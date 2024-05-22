@@ -21,6 +21,7 @@ use casper_sdk::{
 };
 
 use contracts::{
+    harness::HarnessRef,
     no_fallback,
     token_owner::{self, TokenOwnerContract, TokenOwnerContractRef},
 };
@@ -524,6 +525,32 @@ pub fn call() {
             host::casper_transfer(&no_fallback_contract.entity(), 123),
             Err(CallError::NotCallable)
         );
+    }
+
+    {
+        let current_test = next_test(&mut counter, "Upgrading self should not work");
+
+        // let entry_points = HarnessRef::ENTRY_POINTS;
+
+        // host::casper_upgrade(None, manifest, selector, input_data)
+        Harness::upgrade(None, HarnessRef::migrate()).expect_err("Should fail");
+
+        // option 1
+        // * casper_upgrade(address, code, manifest, selector, input_data)
+        // * swap the code and manifest under `address`
+        // * selector is executed with `input_data``. Callee is `address` and caller is the caller.
+        // * reading from state works as caller is current address
+        // * writing state will still write to old address
+        // * if selector fails, propagate appropriate error (revert, trap, etc)
+        // * risk: selector could be anything, even normal entry points, may be security risk
+        // * solution: restrict selector to only migration entry point
+        // migrion entrypoint is defined as a special entrypoint that is only callable by the contract itself and only during upgrade process
+
+        // option 2
+        // fn upgrade() calls into casper_upgrade with code and manifest -> why not code only and keep the selector dispatching code internal to wasm?
+        // fn upgrade calls calls casper_upgrade pointing at migrate entrypoint that will deal with reading old state and writing new state (similar to opt1)
+        // result: new bytecode is written to the same address
+        // result: old state is copied to new state
     }
 
     log!("👋 Goodbye");

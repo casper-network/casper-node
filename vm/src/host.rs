@@ -907,11 +907,6 @@ pub(crate) fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
                     caller.consume_gas(gas_usage.gas_spent());
                     // NOTE: What to do with the output of a fallback code?
 
-                    // if let Some(host_error) = host_error {
-                    //     // return Ok(Err(host_error));
-                    //     // todo!("error calling fallback {:?}", host_error);
-                    // }
-
                     let host_result = match host_error {
                         Some(host_error) => Err(host_error),
                         None => {
@@ -944,4 +939,115 @@ pub(crate) fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
             }
         }
     }
+}
+
+pub(crate) fn casper_upgrade<S: GlobalStateReader, E: Executor>(
+    mut caller: impl Caller<S, E>,
+    code_ptr: u32,
+    code_size: u32,
+    manifest_ptr: u32,
+    selector: u32,
+    input_ptr: u32,
+    input_size: u32,
+    result_ptr: u32,
+) -> VMResult<HostResult> {
+    let code = if code_ptr != 0 {
+        caller
+            .memory_read(code_ptr, code_size as usize)
+            .map(Bytes::from)?
+    } else {
+        caller.bytecode()
+    };
+
+    // For calling a migration code on the new bytecode
+    let migration_selector = NonZeroU32::new(selector);
+
+    // Pass input data when calling a constructor. It's optional, as constructors aren't required
+    let input_data: Option<Bytes> = if input_ptr == 0 {
+        None
+    } else {
+        let input_data = caller.memory_read(input_ptr, input_size as _)?.into();
+        Some(input_data)
+    };
+
+    let manifest = caller.memory_read(manifest_ptr, mem::size_of::<Manifest>())?;
+    let bytes = manifest.as_slice();
+
+    let manifest = match safe_transmute::transmute_one::<Manifest>(bytes) {
+        Ok(manifest) => manifest,
+        Err(error) => {
+            todo!("handle error {:?}", error);
+        }
+    };
+
+    let entry_points_bytes = caller.memory_read(
+        manifest.entry_points_ptr,
+        (manifest.entry_points_size as usize) * mem::size_of::<EntryPoint>(),
+    )?;
+
+    let entry_points =
+        match safe_transmute::transmute_many::<EntryPoint, SingleManyGuard>(&entry_points_bytes) {
+            Ok(entry_points) => entry_points,
+            Err(error) => todo!("handle error {:?}", error),
+        };
+
+    let callee_entity_kind;
+    let callee_addressable_entity_key = match caller.context().callee {
+        callee_account_key @ Key::Account(_account_hash) => {
+            match caller.context_mut().tracking_copy.read(&callee_account_key) {
+                Ok(Some(StoredValue::CLValue(indirect))) => {
+                    // is it an account?
+                    let addressable_entity_key = indirect.into_t::<Key>().expect("should be key");
+                    callee_entity_kind = EntityKindTag::Account;
+                    addressable_entity_key
+                }
+                Ok(Some(other)) => panic!("should be cl value but got {other:?}"),
+                Ok(None) => return Ok(Err(HostError::NotCallable)),
+                Err(error) => {
+                    error!(
+                        ?error,
+                        ?callee_account_key,
+                        "Error while reading from storage; aborting"
+                    );
+                    panic!("Error while reading from storage")
+                }
+            }
+        }
+        addressable_entity_key @ Key::AddressableEntity(_entity_addr) => {
+            callee_entity_kind = EntityKindTag::Contract;
+            addressable_entity_key
+        }
+        other => panic!("should be account or addressable entity but got {other:?}"),
+    };
+
+    let callee_addressable_entity = match caller
+        .context_mut()
+        .tracking_copy
+        .read(&callee_addressable_entity_key)
+    {
+        Ok(Some(StoredValue::AddressableEntity(addressable_entity))) => addressable_entity,
+        Ok(Some(other_entity)) => {
+            panic!("Unexpected entity type: {:?}", other_entity)
+        }
+        Ok(None) => return Ok(Err(HostError::NotCallable)),
+        Err(error) => {
+            panic!("Error while reading from storage; aborting key={callee_addressable_entity_key:?} error={error:?}")
+        }
+    };
+
+    match callee_entity_kind {
+        EntityKindTag::Account => {
+            // todo!("upgrading account is not possible");
+            return Ok(Err(HostError::NotCallable));
+        }
+        EntityKindTag::Contract => {
+            todo!("perform upgrade");
+        }
+    }
+
+    // 1. Ensure that the new code is valid (maybe?)
+    // 2. Ensure that contract upgrade is invoked by the contract itself
+    // 3. Call migration selector on the new code, using old entity hash, but acting as new entity hash (TODO is that possible?)
+    // 4. Put new entity hash into the package itself
+    // 5. Pass UpgradeResult
 }

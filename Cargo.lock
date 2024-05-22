@@ -7117,6 +7117,10 @@ name = "vm-common"
 version = "0.1.0"
 dependencies = [
  "bitflags 2.4.1",
+ "borsh",
+ "casper-sdk-sys",
+ "hex",
+ "num-traits",
  "serde",
 ]
 

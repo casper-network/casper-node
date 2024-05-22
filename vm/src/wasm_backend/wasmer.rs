@@ -605,6 +605,48 @@ where
                 ),
             );
 
+            imports.define(
+                "env",
+                "casper_upgrade",
+                Function::new_typed_with_env(
+                    &mut store,
+                    &function_env,
+                    |env: FunctionEnvMut<WasmerEnv<S, E>>,
+                     code_ptr,
+                     code_size,
+                     manifest_ptr,
+                     selector,
+                     input_ptr,
+                     input_len,
+                     result_ptr|
+                     -> Result<u32, VMError> {
+                        let wasmer_caller = WasmerCaller { env };
+                        // match
+                        match host::casper_upgrade(
+                            wasmer_caller,
+                            code_ptr,
+                            code_size,
+                            manifest_ptr,
+                            selector,
+                            input_ptr,
+                            input_len,
+                            result_ptr,
+                        ) {
+                            Ok(Ok(())) => Ok(0),
+                            Ok(Err(call_error)) => Ok(call_error.into_u32()),
+                            Err(error) => Err(error),
+                        }
+                        // todo!()
+                        // {
+                        //     Ok(Ok(())) => Ok(0),
+                        //     Ok(Err(call_error)) => Ok(call_error.into_u32()),
+                        //     Err(error) => Err(error),
+                        // }
+                        // todo!()
+                    },
+                ),
+            );
+
             imports
         };
 

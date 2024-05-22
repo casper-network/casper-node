@@ -72,6 +72,7 @@ pub trait Contract {
         call_data: T,
     ) -> Result<ContractHandle<Self::Ref>, CallError>;
     fn default_create() -> Result<ContractHandle<Self::Ref>, CallError>;
+    fn upgrade<T: ToCallData>(code: Option<&[u8]>, call_data: T) -> Result<(), CallError>;
 }
 
 #[derive(Debug)]

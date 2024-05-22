@@ -272,6 +272,37 @@ pub fn casper_call(
     (output, result_code)
 }
 
+pub fn casper_upgrade(
+    code: &[u8],
+    manifest_bytes: &[u8],
+    selector: Option<Selector>,
+    input_data: Option<&[u8]>,
+) -> Result<casper_sdk_sys::UpgradeResult, CallError> {
+    // let mut result = MaybeUninit::uninit();
+
+    // let manifest: Manifest
+
+    // let call_error = unsafe {
+    //     casper_sdk_sys::casper_upgrade(
+    //         code_ptr,
+    //         code_size,
+    //         manifest_ptr.as_ptr(),
+    //         selector.map(|selector| selector.get()).unwrap_or(0),
+    //         input_data.map(|s| s.as_ptr()).unwrap_or(ptr::null()),
+    //         input_data.map(|s| s.len()).unwrap_or(0),
+    //         result.as_mut_ptr(),
+    //     )
+    // };
+
+    // if call_error == 0 {
+    //     let result = unsafe { result.assume_init() };
+    //     Ok(result.into())
+    // } else {
+    //     Err(CallError::try_from(call_error).expect("Unexpected error code"))
+    // }
+    todo!()
+}
+
 use borsh::{BorshDeserialize, BorshSerialize};
 
 use casper_sdk_sys::casper_env_caller;

@@ -27,6 +27,8 @@ struct MethodAttribute {
     #[darling(default)]
     constructor: bool,
     #[darling(default)]
+    ignore_state: bool,
+    #[darling(default)]
     revert_on_error: bool,
     /// Explicitly mark method as private so it's not externally callable.
     #[darling(default)]
@@ -91,6 +93,7 @@ pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
                 stringify!(#name)
             }
 
+
             fn create<T:casper_sdk::ToCallData>(value: u64, call_data: T) -> Result<casper_sdk::ContractHandle<Self::Ref>, casper_sdk::types::CallError> {
                 // TODO: Pass multiple manifests by ptr to avoid allocation
                 let entry_points = &<(#ref_name)>::ENTRY_POINTS;
@@ -118,6 +121,21 @@ pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
                 let create_result = casper_sdk::host::casper_create(None, &manifest, 0, None, None)?;
                 Ok(casper_sdk::ContractHandle::<Self::Ref>::from_address(create_result.contract_address))
                 // todo!()
+            }
+
+            fn upgrade<T: casper_sdk::ToCallData>(
+                new_code: Option<&[u8]>,
+                // new_manifest: &[u8],
+                call_data: T,
+            ) -> Result<(), casper_sdk::types::CallError> {
+                // let entry_points = &<(#ref_name)>::ENTRY_POINTS;
+                // let entry_points_allocated: Vec<casper_sdk::sys::EntryPoint> = entry_points.into_iter().map(|i| i.into_iter().copied()).flatten().collect();
+            // let manifest = casper_sdk::sys::Manifest {
+                //     entry_points: entry_points_allocated.as_ptr(),
+                //     entry_points_size: entry_points_allocated.len(),
+                // }; let input_data = call_data.input_data();
+                // let create_result = casper_sdk::host::casper_upgrade(code, &manifest, Some(T::SELECTOR), input_data.as_ref().map(|v| v.as_slice()))?;
+                Ok(())
             }
         }
 
@@ -371,13 +389,14 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                     Some(borsh::to_vec(&self).expect("Serialization to succeed"))
                                 }
                             };
-                            let self_ty = if method_attribute.constructor {
-                                None
-                            } else {
-                                Some(quote! {
-                                    self,
-                                })
-                            };
+                            let self_ty =
+                                if method_attribute.constructor || method_attribute.ignore_state {
+                                    None
+                                } else {
+                                    Some(quote! {
+                                        self,
+                                    })
+                                };
 
                             let is_fallback = if let Some(selector) = method_attribute.selector {
                                 matches!(selector, SelectorAttribute::Fallback)
@@ -770,7 +789,9 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                             }
                                         };
 
-                                        let self_ty = if method_attribute.constructor {
+                                        let self_ty = if method_attribute.constructor
+                                            || method_attribute.ignore_state
+                                        {
                                             None
                                         } else {
                                             Some(quote! {

@@ -44,6 +44,15 @@ macro_rules! for_each_host_function {
                 alloc: extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8, // For capturing output data
                 alloc_ctx: *const core::ffi::c_void,
             ) -> u32;
+            pub fn casper_upgrade(
+                code_ptr: *const u8,
+                code_size: usize,
+                manifest_ptr: *const $crate::Manifest,
+                selector: u32,
+                input_ptr: *const u8,
+                input_size: usize,
+                result_ptr: *mut $crate::UpgradeResult,
+            ) -> u32;
 
             #[doc = r"Obtain data from the blockchain environemnt of current wasm invocation.
 

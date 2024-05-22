@@ -41,6 +41,14 @@ pub struct CreateResult {
     pub version: u32,
 }
 
+#[repr(C)]
+#[derive(Debug)]
+pub struct UpgradeResult {
+    pub package_address: [u8; 32],
+    pub contract_address: [u8; 32],
+    pub version: u32,
+}
+
 macro_rules! visit_host_function {
     ( $( $(#[$cfg:meta])? $vis:vis fn $name:ident $(( $($arg:ident: $argty:ty,)* ))? $(-> $ret:ty)?;)+) => {
         $(
