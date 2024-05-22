@@ -886,11 +886,11 @@ where
             auction::METHOD_WITHDRAW_BID => (|| {
                 runtime.charge_system_contract_call(auction_costs.withdraw_bid)?;
 
-                let account_hash = Self::get_named_argument(runtime_args, auction::ARG_PUBLIC_KEY)?;
+                let public_key = Self::get_named_argument(runtime_args, auction::ARG_PUBLIC_KEY)?;
                 let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
 
                 let result = runtime
-                    .withdraw_bid(account_hash, amount)
+                    .withdraw_bid(public_key, amount)
                     .map_err(Self::reverter)?;
                 CLValue::from_t(result).map_err(Self::reverter)
             })(),
