@@ -23,7 +23,7 @@ use casper_types::{
     global_state::TrieMerkleProof,
     system::{
         self,
-        auction::SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+        auction::{ERA_END_TIMESTAMP_MILLIS_KEY, ERA_ID_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY},
         mint::{
             BalanceHoldAddr, BalanceHoldAddrTag, ARG_AMOUNT, ROUND_SEIGNIORAGE_RATE_KEY,
             TOTAL_SUPPLY_KEY,
@@ -1013,7 +1013,7 @@ pub trait StateProvider {
         };
 
         let source_account_hash = initiator.account_hash();
-        let (entity_addr, entity, entity_named_keys, entity_access_rights) =
+        let (entity_addr, entity, mut entity_named_keys, mut entity_access_rights) =
             match tc.borrow_mut().resolved_entity(
                 protocol_version,
                 source_account_hash,
@@ -1027,7 +1027,53 @@ pub trait StateProvider {
             };
         let entity_key = Key::AddressableEntity(entity_addr);
 
-        // IMPORTANT: this runtime _must_ use the payer's context.
+        // extend named keys with era end timestamp
+        match tc
+            .borrow_mut()
+            .get_system_contract_named_key(AUCTION, ERA_END_TIMESTAMP_MILLIS_KEY)
+        {
+            Ok(Some(k)) => {
+                match k.as_uref() {
+                    Some(uref) => entity_access_rights.extend(&[*uref]),
+                    None => {
+                        return BiddingResult::Failure(TrackingCopyError::UnexpectedKeyVariant(k))
+                    }
+                }
+                entity_named_keys.insert(ERA_END_TIMESTAMP_MILLIS_KEY.into(), k);
+            }
+            Ok(None) => {
+                return BiddingResult::Failure(TrackingCopyError::NamedKeyNotFound(
+                    ERA_END_TIMESTAMP_MILLIS_KEY.into(),
+                ))
+            }
+            Err(tce) => {
+                return BiddingResult::Failure(tce);
+            }
+        };
+        // extend named keys with era id
+        match tc
+            .borrow_mut()
+            .get_system_contract_named_key(AUCTION, ERA_ID_KEY)
+        {
+            Ok(Some(k)) => {
+                match k.as_uref() {
+                    Some(uref) => entity_access_rights.extend(&[*uref]),
+                    None => {
+                        return BiddingResult::Failure(TrackingCopyError::UnexpectedKeyVariant(k))
+                    }
+                }
+                entity_named_keys.insert(ERA_ID_KEY.into(), k);
+            }
+            Ok(None) => {
+                return BiddingResult::Failure(TrackingCopyError::NamedKeyNotFound(
+                    ERA_ID_KEY.into(),
+                ))
+            }
+            Err(tce) => {
+                return BiddingResult::Failure(tce);
+            }
+        };
+
         let mut runtime = RuntimeNative::new(
             config,
             protocol_version,
