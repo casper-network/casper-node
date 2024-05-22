@@ -439,8 +439,10 @@ fn regression_20210831_should_fail_to_activate_bid() {
     builder.exec(withdraw_bid_request).expect_success().commit();
 
     let bids = builder.get_bids();
-    let bid = bids.validator_bid(&DEFAULT_ACCOUNT_PUBLIC_KEY);
-    assert!(bid.is_none());
+    let bid = bids
+        .validator_bid(&DEFAULT_ACCOUNT_PUBLIC_KEY)
+        .expect("should have zero bid");
+    assert!(bid.staked_amount().is_zero());
 
     let sender = *ACCOUNT_2_ADDR;
     let activate_bid_args = runtime_args! {
@@ -466,7 +468,6 @@ fn regression_20210831_should_fail_to_activate_bid() {
         error_1
     );
 
-    // ACCOUNT_2 unbonds ACCOUNT_1 through a proxy
     let activate_bid_request_2 = ExecuteRequestBuilder::contract_call_by_name(
         sender,
         CONTRACT_HASH_NAME,
