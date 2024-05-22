@@ -399,11 +399,8 @@ pub fn process_unbond_requests<P: Auction + ?Sized>(
                 // remember the validator's key, so that we can later check if we can prune their
                 // bid now that the unbond has been processed
                 processed_validators.insert(unbonding_purse.validator_public_key().clone());
-                match handle_redelegation(
-                    provider,
-                    unbonding_purse,
-                    max_delegators_per_validator,
-                )? {
+                match handle_redelegation(provider, unbonding_purse, max_delegators_per_validator)?
+                {
                     UnbondRedelegationOutcome::SuccessfullyRedelegated => {
                         // noop; on successful redelegation, no actual unbond occurs
                     }
