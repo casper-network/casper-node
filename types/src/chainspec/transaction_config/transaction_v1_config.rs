@@ -229,8 +229,7 @@ impl TransactionV1Config {
                 .iter()
                 .enumerate()
                 .find(|(_, lane)| lane.first() == Some(&3))
-                .expect("must get install upgrade lane")
-                .clone();
+                .expect("must get install upgrade lane");
             let mut updated_lane = lane.clone();
             self.wasm_lanes.remove(index);
             updated_lane[MAX_TRANSACTION_COUNT] = large_limit;

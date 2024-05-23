@@ -94,7 +94,7 @@ impl BlockPayload {
     pub(crate) fn finalized_payload(&self) -> BTreeMap<u8, Vec<TransactionHash>> {
         let mut ret = BTreeMap::new();
         for (category, transactions) in self.transactions.iter() {
-            let transactions = transactions.into_iter().map(|(tx, _)| *tx).collect();
+            let transactions = transactions.iter().map(|(tx, _)| *tx).collect();
             ret.insert(*category, transactions);
         }
 
