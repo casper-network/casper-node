@@ -21,7 +21,7 @@ const KIND: usize = 0;
 const MAX_TRANSACTION_LENGTH: usize = 1;
 const MAX_TRANSACTION_ARGS_LENGTH: usize = 2;
 const MAX_TRANSACTION_GAS_LIMIT: usize = 3;
-const MAX_TRANSACTION_COUNT: usize = 5;
+const MAX_TRANSACTION_COUNT: usize = 4;
 
 /// Configuration values associated with V1 Transactions.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
@@ -59,7 +59,7 @@ impl TransactionV1Config {
     }
 
     pub fn is_native_lane(&self, lane: u8) -> bool {
-        lane as u64 == DEFAULT_NATIVE_MINT_LANE[0] || lane as u64 == DEFAULT_NATIVE_MINT_LANE[0]
+        lane as u64 == DEFAULT_NATIVE_MINT_LANE[0] || lane as u64 == DEFAULT_NATIVE_AUCTION_LANE[0]
     }
 
     /// Returns the max serialized length of a transaction for the given category.
@@ -232,6 +232,7 @@ impl Default for TransactionV1Config {
             1_048_576,
             2048,
             DEFAULT_INSTALL_UPGRADE_GAS_LIMIT,
+            2,
         ];
 
         let native_mint_lane = DEFAULT_NATIVE_MINT_LANE.to_vec();

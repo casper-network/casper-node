@@ -652,11 +652,11 @@ mod tests {
         Responder::without_shutdown(sender)
     }
 
-    // Please note: values in the following test cases must much the production chainspec.
-    const MAX_STANDARD_COUNT: u64 = 50;
+    // Please note: values in the following test cases must match the production chainspec.
+    const MAX_LARGE_COUNT: u64 = 25;
     const MAX_AUCTION_COUNT: u64 = 100;
     const MAX_INSTALL_UPGRADE_COUNT: u64 = 2;
-    const MAX_MINT_COUNT: u64 = 500;
+    const MAX_MINT_COUNT: u64 = 650;
 
     struct TestCase {
         mint_count: u64,
@@ -732,7 +732,7 @@ mod tests {
         mint_count: 0,
         auction_count: 0,
         install_upgrade_count: 0,
-        standard_count: MAX_STANDARD_COUNT,
+        standard_count: MAX_LARGE_COUNT,
         state_validator: |(state, responder)| {
             responder.is_none() && matches!(state, BlockValidationState::InProgress { .. })
         },

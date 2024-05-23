@@ -38,15 +38,15 @@ use crate::{
 /// The body of a [`TransactionV1`].
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
 #[cfg_attr(
-    any(feature = "std", test),
-    derive(Serialize, Deserialize),
-    serde(deny_unknown_fields)
+any(feature = "std", test),
+derive(Serialize, Deserialize),
+serde(deny_unknown_fields)
 )]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(
-    feature = "json-schema",
-    derive(JsonSchema),
-    schemars(description = "Body of a `TransactionV1`.")
+feature = "json-schema",
+derive(JsonSchema),
+schemars(description = "Body of a `TransactionV1`.")
 )]
 pub struct TransactionV1Body {
     pub(super) args: RuntimeArgs,
@@ -495,7 +495,7 @@ mod tests {
     fn not_acceptable_due_to_excessive_args_length() {
         let rng = &mut TestRng::new();
         let mut config = TransactionConfig::default();
-        let mut body = TransactionV1Body::random(rng);
+        let mut body = TransactionV1Body::random_standard(rng);
         config.transaction_v1_config.wasm_lanes =
             vec![vec![body.transaction_kind as u64, 1_048_576, 10, 0]];
         body.args = runtime_args! {"a" => 1_u8};
