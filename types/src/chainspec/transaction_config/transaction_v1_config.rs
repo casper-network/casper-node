@@ -6,7 +6,11 @@ use serde::{Deserialize, Serialize};
 
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
-use crate::{bytesrepr::{self, FromBytes, ToBytes}, INSTALL_UPGRADE_LANE_ID, transaction::TransactionCategory};
+use crate::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    transaction::TransactionCategory,
+    INSTALL_UPGRADE_LANE_ID,
+};
 
 /// Default gas limit of install / upgrade contracts
 pub const DEFAULT_INSTALL_UPGRADE_GAS_LIMIT: u64 = 3_500_000_000_000;
@@ -167,10 +171,10 @@ impl TransactionV1Config {
         self.native_mint_lane[MAX_TRANSACTION_COUNT]
             + self.native_auction_lane[MAX_TRANSACTION_COUNT]
             + self
-            .wasm_lanes
-            .iter()
-            .map(|lane| lane[MAX_TRANSACTION_COUNT])
-            .sum::<u64>()
+                .wasm_lanes
+                .iter()
+                .map(|lane| lane[MAX_TRANSACTION_COUNT])
+                .sum::<u64>()
     }
 
     /// Returns the maximum number of Wasm based transactions across wasm lanes.
@@ -181,7 +185,6 @@ impl TransactionV1Config {
         }
         ret
     }
-
 
     /// Returns the list of currently supported lane identifiers.
     pub fn get_supported_categories(&self) -> Vec<u8> {
@@ -195,7 +198,13 @@ impl TransactionV1Config {
 
     /// Returns the transaction v1 configuration with the specified lane limits.
     #[cfg(any(feature = "testing", test))]
-    pub fn with_count_limits(mut self, mint_count: Option<u64>, auction: Option<u64>, install: Option<u64>, large_limit: Option<u64>) -> Self {
+    pub fn with_count_limits(
+        mut self,
+        mint_count: Option<u64>,
+        auction: Option<u64>,
+        install: Option<u64>,
+        large_limit: Option<u64>,
+    ) -> Self {
         if let Some(mint_count) = mint_count {
             self.native_mint_lane[MAX_TRANSACTION_COUNT] = mint_count;
         }
@@ -203,7 +212,11 @@ impl TransactionV1Config {
             self.native_auction_lane[MAX_TRANSACTION_COUNT] = auction_count;
         }
         if let Some(install_upgrade_count) = install {
-            let (index, lane) = self.wasm_lanes.iter().enumerate().find(|(_, lane)| lane.first() == Some(&(INSTALL_UPGRADE_LANE_ID as u64)))
+            let (index, lane) = self
+                .wasm_lanes
+                .iter()
+                .enumerate()
+                .find(|(_, lane)| lane.first() == Some(&(INSTALL_UPGRADE_LANE_ID as u64)))
                 .expect("must get install upgrade lane");
             let mut updated_lane = lane.clone();
             self.wasm_lanes.remove(index);
@@ -211,8 +224,13 @@ impl TransactionV1Config {
             self.wasm_lanes.push(updated_lane);
         }
         if let Some(large_limit) = large_limit {
-            let (index, lane) = self.wasm_lanes.iter().enumerate().find(|(_, lane)| lane.first() == Some(&3))
-                .expect("must get install upgrade lane").clone();
+            let (index, lane) = self
+                .wasm_lanes
+                .iter()
+                .enumerate()
+                .find(|(_, lane)| lane.first() == Some(&3))
+                .expect("must get install upgrade lane")
+                .clone();
             let mut updated_lane = lane.clone();
             self.wasm_lanes.remove(index);
             updated_lane[MAX_TRANSACTION_COUNT] = large_limit;

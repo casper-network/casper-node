@@ -38,15 +38,15 @@ use crate::{
 /// The body of a [`TransactionV1`].
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
 #[cfg_attr(
-any(feature = "std", test),
-derive(Serialize, Deserialize),
-serde(deny_unknown_fields)
+    any(feature = "std", test),
+    derive(Serialize, Deserialize),
+    serde(deny_unknown_fields)
 )]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(
-feature = "json-schema",
-derive(JsonSchema),
-schemars(description = "Body of a `TransactionV1`.")
+    feature = "json-schema",
+    derive(JsonSchema),
+    schemars(description = "Body of a `TransactionV1`.")
 )]
 pub struct TransactionV1Body {
     pub(super) args: RuntimeArgs,

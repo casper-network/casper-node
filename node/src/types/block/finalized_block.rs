@@ -39,7 +39,7 @@ pub struct FinalizedBlock {
 
 /// `EraReport` used only internally. The one in types is a part of `EraEndV1`.
 #[derive(
-Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize, Default,
+    Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize, Default,
 )]
 pub struct InternalEraReport {
     /// The set of equivocators.
@@ -91,15 +91,14 @@ impl FinalizedBlock {
             .unwrap_or(vec![])
     }
 
-
     /// The list of deploy hashes chained with the list of transfer hashes.
-    pub(crate) fn all_transactions(&self) -> impl Iterator<Item=&TransactionHash> {
+    pub(crate) fn all_transactions(&self) -> impl Iterator<Item = &TransactionHash> {
         self.transactions.values().flatten()
     }
 
     /// Generates a random instance using a `TestRng` and includes specified deploys.
     #[cfg(test)]
-    pub(crate) fn random<'a, I: IntoIterator<Item=&'a Transaction>>(
+    pub(crate) fn random<'a, I: IntoIterator<Item = &'a Transaction>>(
         rng: &mut TestRng,
         txns_iter: I,
     ) -> Self {
@@ -121,7 +120,7 @@ impl FinalizedBlock {
     /// If `deploy` is `None`, random deploys will be generated, otherwise, the provided `deploy`
     /// will be used.
     #[cfg(test)]
-    pub(crate) fn random_with_specifics<'a, I: IntoIterator<Item=&'a Transaction>>(
+    pub(crate) fn random_with_specifics<'a, I: IntoIterator<Item = &'a Transaction>>(
         rng: &mut TestRng,
         era_id: EraId,
         height: u64,

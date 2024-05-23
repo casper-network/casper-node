@@ -53,7 +53,6 @@ impl ExecutableBlock {
             .unwrap_or(vec![])
     }
 
-
     /// Creates a new `ExecutedBlock` from a `FinalizedBlock` and its transactions.
     pub fn from_finalized_block_and_transactions(
         finalized_block: FinalizedBlock,
@@ -114,7 +113,12 @@ impl fmt::Display for ExecutableBlock {
             if *category < 3 {
                 continue;
             }
-            write!(formatter, ", category: {} with {} transactions", *category, wasm_transaction.len())?;
+            write!(
+                formatter,
+                ", category: {} with {} transactions",
+                *category,
+                wasm_transaction.len()
+            )?;
         }
         if let Some(ref ee) = self.era_report {
             write!(formatter, ", era_end: {:?}", ee)?;

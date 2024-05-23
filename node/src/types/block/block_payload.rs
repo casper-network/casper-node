@@ -20,7 +20,7 @@ use casper_types::{
 /// finalizing an order of `BlockPayload`s. Only after consensus has been reached, the block's
 /// deploys actually get executed, and the executed block gets signed.
 #[derive(
-Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize, Default,
+    Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize, Default,
 )]
 pub struct BlockPayload {
     transactions: BTreeMap<u8, Vec<(TransactionHash, BTreeSet<Approval>)>>,
@@ -45,7 +45,7 @@ impl BlockPayload {
     }
 
     /// Returns the hashes and approvals of the mint transactions within the block.
-    pub fn mint(&self) -> impl Iterator<Item=&(TransactionHash, BTreeSet<Approval>)> {
+    pub fn mint(&self) -> impl Iterator<Item = &(TransactionHash, BTreeSet<Approval>)> {
         let mut ret = vec![];
         if let Some(transactions) = self.transactions.get(&MINT_LANE_ID) {
             for transaction in transactions {
@@ -56,7 +56,7 @@ impl BlockPayload {
     }
 
     /// Returns the hashes and approvals of the auction transactions within the block.
-    pub fn auction(&self) -> impl Iterator<Item=&(TransactionHash, BTreeSet<Approval>)> {
+    pub fn auction(&self) -> impl Iterator<Item = &(TransactionHash, BTreeSet<Approval>)> {
         let mut ret = vec![];
         if let Some(transactions) = self.transactions.get(&AUCTION_LANE_ID) {
             for transaction in transactions {
@@ -67,7 +67,7 @@ impl BlockPayload {
     }
 
     /// Returns the hashes and approvals of the install / upgrade transactions within the block.
-    pub fn install_upgrade(&self) -> impl Iterator<Item=&(TransactionHash, BTreeSet<Approval>)> {
+    pub fn install_upgrade(&self) -> impl Iterator<Item = &(TransactionHash, BTreeSet<Approval>)> {
         let mut ret = vec![];
         if let Some(transactions) = self.transactions.get(&INSTALL_UPGRADE_LANE_ID) {
             for transaction in transactions {
@@ -81,7 +81,7 @@ impl BlockPayload {
     pub fn transactions_by_category(
         &self,
         category: u8,
-    ) -> impl Iterator<Item=&(TransactionHash, BTreeSet<Approval>)> {
+    ) -> impl Iterator<Item = &(TransactionHash, BTreeSet<Approval>)> {
         let mut ret = vec![];
         if let Some(transactions) = self.transactions.get(&category) {
             for transaction in transactions {
@@ -117,7 +117,7 @@ impl BlockPayload {
     }
 
     /// Returns all of the transaction hashes and approvals within the block.
-    pub fn all_transactions(&self) -> impl Iterator<Item=&(TransactionHash, BTreeSet<Approval>)> {
+    pub fn all_transactions(&self) -> impl Iterator<Item = &(TransactionHash, BTreeSet<Approval>)> {
         self.transactions.values().flatten()
     }
 
@@ -135,7 +135,7 @@ impl BlockPayload {
         &self.rewarded_signatures
     }
 
-    pub(crate) fn all_transaction_hashes(&self) -> impl Iterator<Item=TransactionHash> {
+    pub(crate) fn all_transaction_hashes(&self) -> impl Iterator<Item = TransactionHash> {
         let mut ret: Vec<TransactionHash> = vec![];
         for values in self.transactions.values() {
             for (transaction_hash, _) in values {

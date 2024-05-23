@@ -60,7 +60,7 @@ impl ProposedBlock<ClContext> {
 
     pub(crate) fn all_transactions(
         &self,
-    ) -> impl Iterator<Item=&(TransactionHash, BTreeSet<Approval>)> {
+    ) -> impl Iterator<Item = &(TransactionHash, BTreeSet<Approval>)> {
         self.value().all_transactions()
     }
 }
@@ -112,8 +112,8 @@ impl BlockValidator {
         effect_builder: EffectBuilder<REv>,
         request: BlockValidationRequest,
     ) -> MaybeHandled
-        where
-            REv: From<Event>
+    where
+        REv: From<Event>
             + From<FetcherRequest<Transaction>>
             + From<FetcherRequest<FinalitySignature>>
             + Send,
@@ -175,8 +175,8 @@ impl BlockValidator {
         effect_builder: EffectBuilder<REv>,
         request: BlockValidationRequest,
     ) -> Effects<Event>
-        where
-            REv: From<Event>
+    where
+        REv: From<Event>
             + From<FetcherRequest<Transaction>>
             + From<FetcherRequest<FinalitySignature>>
             + From<StorageRequest>
@@ -315,8 +315,8 @@ impl BlockValidator {
         past_blocks_with_metadata: Vec<Option<BlockWithMetadata>>,
         request: BlockValidationRequest,
     ) -> Effects<Event>
-        where
-            REv: From<Event>
+    where
+        REv: From<Event>
             + From<FetcherRequest<Transaction>>
             + From<FetcherRequest<FinalitySignature>>
             + From<FatalAnnouncement>
@@ -387,8 +387,8 @@ impl BlockValidator {
         effect_builder: EffectBuilder<REv>,
         stored_block_height: u64,
     ) -> Effects<Event>
-        where
-            REv: From<Event>
+    where
+        REv: From<Event>
             + From<StorageRequest>
             + From<FetcherRequest<Transaction>>
             + From<FetcherRequest<FinalitySignature>>
@@ -423,8 +423,8 @@ impl BlockValidator {
         }: BlockValidationRequest,
         missing_signatures: HashSet<FinalitySignatureId>,
     ) -> Effects<Event>
-        where
-            REv: From<Event>
+    where
+        REv: From<Event>
             + From<FetcherRequest<Transaction>>
             + From<FetcherRequest<FinalitySignature>>
             + From<FatalAnnouncement>
@@ -526,8 +526,8 @@ impl BlockValidator {
         transaction_hash: TransactionHash,
         result: FetchResult<Transaction>,
     ) -> Effects<Event>
-        where
-            REv: From<Event>
+    where
+        REv: From<Event>
             + From<FetcherRequest<Transaction>>
             + From<FetcherRequest<FinalitySignature>>
             + Send,
@@ -642,8 +642,8 @@ impl BlockValidator {
         finality_signature_id: FinalitySignatureId,
         result: FetchResult<FinalitySignature>,
     ) -> Effects<Event>
-        where
-            REv: From<Event>
+    where
+        REv: From<Event>
             + From<FetcherRequest<Transaction>>
             + From<FetcherRequest<FinalitySignature>>
             + Send,
@@ -734,8 +734,8 @@ fn fetch_transactions_and_signatures<REv>(
     missing_transactions: HashMap<TransactionHash, ApprovalsHash>,
     missing_signatures: HashSet<FinalitySignatureId>,
 ) -> Effects<Event>
-    where
-        REv: From<Event>
+where
+    REv: From<Event>
         + From<FetcherRequest<Transaction>>
         + From<FetcherRequest<FinalitySignature>>
         + Send,
@@ -778,7 +778,7 @@ fn fetch_transactions_and_signatures<REv>(
 
 fn respond(
     is_valid: bool,
-    responders: impl IntoIterator<Item=Responder<bool>>,
+    responders: impl IntoIterator<Item = Responder<bool>>,
 ) -> Effects<Event> {
     responders
         .into_iter()
@@ -787,8 +787,8 @@ fn respond(
 }
 
 impl<REv> Component<REv> for BlockValidator
-    where
-        REv: From<Event>
+where
+    REv: From<Event>
         + From<BlockValidationRequest>
         + From<FetcherRequest<Transaction>>
         + From<FetcherRequest<FinalitySignature>>

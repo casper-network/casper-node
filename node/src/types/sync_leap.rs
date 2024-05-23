@@ -43,7 +43,7 @@ pub(crate) enum SyncLeapValidationError {
     #[error("Last trusted ancestor is not a switch block.")]
     MissingAncestorSwitchBlock,
     #[error(
-    "Only the last trusted ancestor is allowed to be a switch block or the genesis block."
+        "Only the last trusted ancestor is allowed to be a switch block or the genesis block."
     )]
     UnexpectedAncestorSwitchBlock,
     #[error("Signed block headers present despite trusted_ancestor_only flag.")]
@@ -128,7 +128,7 @@ impl SyncLeap {
         &self,
         fault_tolerance_fraction: Ratio<u64>,
         protocol_config: &ProtocolConfig,
-    ) -> impl Iterator<Item=EraValidatorWeights> + '_ {
+    ) -> impl Iterator<Item = EraValidatorWeights> + '_ {
         // determine if the validator set has been updated in the
         // current protocol version through an emergency upgrade
         let validators_changed_in_current_protocol = protocol_config
@@ -242,13 +242,13 @@ impl SyncLeap {
         self.highest_block_header_and_signatures().0.block_hash()
     }
 
-    pub(crate) fn headers(&self) -> impl Iterator<Item=&BlockHeader> {
+    pub(crate) fn headers(&self) -> impl Iterator<Item = &BlockHeader> {
         iter::once(&self.trusted_block_header)
             .chain(&self.trusted_ancestor_headers)
             .chain(self.signed_block_headers.iter().map(|sh| sh.block_header()))
     }
 
-    pub(crate) fn switch_blocks_headers(&self) -> impl Iterator<Item=&BlockHeader> {
+    pub(crate) fn switch_blocks_headers(&self) -> impl Iterator<Item = &BlockHeader> {
         self.headers().filter(|header| header.is_switch_block())
     }
 }
@@ -449,7 +449,13 @@ mod tests {
     use num_rational::Ratio;
     use rand::Rng;
 
-    use casper_types::{crypto, testing::TestRng, ActivationPoint, Block, BlockHash, BlockHeader, BlockSignaturesV2, BlockV2, ChainNameDigest, EraEndV2, EraId, FinalitySignatureV2, GlobalStateUpdate, ProtocolConfig, ProtocolVersion, PublicKey, SecretKey, SignedBlockHeader, TestBlockBuilder, Timestamp, TransactionHash, TransactionV1Hash, U512, MINT_LANE_ID, AUCTION_LANE_ID, INSTALL_UPGRADE_LANE_ID};
+    use casper_types::{
+        crypto, testing::TestRng, ActivationPoint, Block, BlockHash, BlockHeader,
+        BlockSignaturesV2, BlockV2, ChainNameDigest, EraEndV2, EraId, FinalitySignatureV2,
+        GlobalStateUpdate, ProtocolConfig, ProtocolVersion, PublicKey, SecretKey,
+        SignedBlockHeader, TestBlockBuilder, Timestamp, TransactionHash, TransactionV1Hash,
+        AUCTION_LANE_ID, INSTALL_UPGRADE_LANE_ID, MINT_LANE_ID, U512,
+    };
 
     use super::SyncLeap;
     use crate::{
@@ -715,8 +721,8 @@ mod tests {
                     BlockSignaturesV2::new(*hash, height, 0.into(), chain_name_hash).into(),
                 )
             })
-                .take(generated_block_count as usize)
-                .collect(),
+            .take(generated_block_count as usize)
+            .collect(),
         };
         let result = sync_leap.validate(&validation_metadata);
         assert!(!matches!(
@@ -741,8 +747,8 @@ mod tests {
                     BlockSignaturesV2::new(*hash, height, 0.into(), chain_name_hash).into(),
                 )
             })
-                .take(generated_block_count as usize)
-                .collect(),
+            .take(generated_block_count as usize)
+            .collect(),
         };
         let result = sync_leap.validate(&validation_metadata);
         assert!(matches!(
@@ -1217,9 +1223,9 @@ mod tests {
             signed_block_2,
             signed_block_3,
         ]
-            .iter()
-            .map(|block| *block.hash())
-            .collect();
+        .iter()
+        .map(|block| *block.hash())
+        .collect();
         assert_eq!(expected_headers, actual_headers);
     }
 
@@ -1295,9 +1301,9 @@ mod tests {
             signed_block_1.clone(),
             signed_block_2.clone(),
         ]
-            .iter()
-            .map(|block| *block.hash())
-            .collect();
+        .iter()
+        .map(|block| *block.hash())
+        .collect();
         assert_eq!(expected_headers, actual_headers);
 
         // Also test when the trusted block is a switch block.
@@ -1328,9 +1334,9 @@ mod tests {
             signed_block_1,
             signed_block_2,
         ]
-            .iter()
-            .map(|block| *block.hash())
-            .collect();
+        .iter()
+        .map(|block| *block.hash())
+        .collect();
         assert_eq!(expected_headers, actual_headers);
     }
 
@@ -2253,33 +2259,33 @@ mod tests {
                 .switch_block_indices
             {
                 Some(switch_block_heights)
-                if switch_block_heights.contains(&self.block.height()) =>
-                    {
-                        let prev_height = self.block.height().saturating_sub(1);
-                        let is_successor_of_switch_block = switch_block_heights.contains(&prev_height);
-                        let is_upgrade = is_successor_of_switch_block
-                            && self
+                    if switch_block_heights.contains(&self.block.height()) =>
+                {
+                    let prev_height = self.block.height().saturating_sub(1);
+                    let is_successor_of_switch_block = switch_block_heights.contains(&prev_height);
+                    let is_upgrade = is_successor_of_switch_block
+                        && self
                             .upgrades_indices
                             .as_ref()
                             .map_or(false, |upgrades_indices| {
                                 upgrades_indices.contains(&prev_height)
                             });
-                        (
-                            is_successor_of_switch_block,
-                            is_upgrade,
-                            Some(self.validators.clone()),
-                        )
-                    }
+                    (
+                        is_successor_of_switch_block,
+                        is_upgrade,
+                        Some(self.validators.clone()),
+                    )
+                }
                 Some(switch_block_heights) => {
                     let prev_height = self.block.height().saturating_sub(1);
                     let is_successor_of_switch_block = switch_block_heights.contains(&prev_height);
                     let is_upgrade = is_successor_of_switch_block
                         && self
-                        .upgrades_indices
-                        .as_ref()
-                        .map_or(false, |upgrades_indices| {
-                            upgrades_indices.contains(&prev_height)
-                        });
+                            .upgrades_indices
+                            .as_ref()
+                            .map_or(false, |upgrades_indices| {
+                                upgrades_indices.contains(&prev_height)
+                            });
                     (is_successor_of_switch_block, is_upgrade, None)
                 }
                 None => (false, false, None),
@@ -2354,10 +2360,7 @@ mod tests {
                 let mut ret = BTreeMap::new();
                 ret.insert(MINT_LANE_ID, mint_hashes);
                 ret.insert(AUCTION_LANE_ID, auction_hashes);
-                ret.insert(
-                    INSTALL_UPGRADE_LANE_ID,
-                    install_upgrade_hashes,
-                );
+                ret.insert(INSTALL_UPGRADE_LANE_ID, install_upgrade_hashes);
                 ret.insert(3, standard_hashes);
                 ret
             };

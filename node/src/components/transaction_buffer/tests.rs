@@ -21,7 +21,7 @@ const LARGE_LANE_ID: u8 = 3;
 fn get_appendable_block(
     rng: &mut TestRng,
     transaction_buffer: &mut TransactionBuffer,
-    categories: impl Iterator<Item=u8>,
+    categories: impl Iterator<Item = u8>,
     transaction_limit: usize,
 ) {
     let transactions: Vec<_> = categories
@@ -176,7 +176,7 @@ fn register_transaction_and_check_size() {
             Config::default(),
             &Registry::new(),
         )
-            .unwrap();
+        .unwrap();
 
         // Try to register valid transactions
         let num_valid_transactions: usize = rng.gen_range(50..500);
@@ -227,7 +227,7 @@ fn register_block_with_valid_transactions() {
             Config::default(),
             &Registry::new(),
         )
-            .unwrap();
+        .unwrap();
 
         let txns: Vec<_> = (0..10)
             .map(|_| create_valid_transaction(&mut rng, category, None, None))
@@ -257,7 +257,7 @@ fn register_finalized_block_with_valid_transactions() {
             Config::default(),
             &Registry::new(),
         )
-            .unwrap();
+        .unwrap();
 
         let txns: Vec<_> = (0..10)
             .map(|_| create_valid_transaction(&mut rng, category, None, None))
@@ -279,7 +279,7 @@ fn get_proposable_transactions() {
             Config::default(),
             &Registry::new(),
         )
-            .unwrap();
+        .unwrap();
 
         transaction_buffer
             .prices
@@ -346,7 +346,8 @@ fn get_proposable_transactions() {
 fn get_appendable_block_when_transfers_are_of_one_category() {
     let mut rng = TestRng::new();
 
-    let transaction_v1_config = TransactionV1Config::default().with_count_limits(Some(200), Some(0), Some(0), Some(10));
+    let transaction_v1_config =
+        TransactionV1Config::default().with_count_limits(Some(200), Some(0), Some(0), Some(10));
 
     let transaction_config = TransactionConfig {
         block_max_approval_count: 210,
@@ -380,7 +381,8 @@ fn get_appendable_block_when_transfers_are_of_one_category() {
 fn get_appendable_block_when_transfers_are_both_legacy_and_v1() {
     let mut rng = TestRng::new();
 
-    let transaction_v1_config = TransactionV1Config::default().with_count_limits(Some(200), Some(0), Some(0), Some(10));
+    let transaction_v1_config =
+        TransactionV1Config::default().with_count_limits(Some(200), Some(0), Some(0), Some(10));
 
     let transaction_config = TransactionConfig {
         block_max_approval_count: 210,
@@ -416,7 +418,8 @@ fn get_appendable_block_when_standards_are_of_one_category() {
     let large_lane_id: u8 = 3;
     let mut rng = TestRng::new();
 
-    let transaction_v1_config = TransactionV1Config::default().with_count_limits(Some(200), Some(0), Some(0), Some(10));
+    let transaction_v1_config =
+        TransactionV1Config::default().with_count_limits(Some(200), Some(0), Some(0), Some(10));
 
     let transaction_config = TransactionConfig {
         block_max_approval_count: 210,
@@ -450,8 +453,8 @@ fn get_appendable_block_when_standards_are_both_legacy_and_v1() {
     let large_lane_id: u8 = 3;
     let mut rng = TestRng::new();
 
-
-    let transaction_v1_config = TransactionV1Config::default().with_count_limits(Some(200), Some(0), Some(0), Some(10));
+    let transaction_v1_config =
+        TransactionV1Config::default().with_count_limits(Some(200), Some(0), Some(0), Some(10));
 
     let transaction_config = TransactionConfig {
         block_max_approval_count: 210,
@@ -494,8 +497,12 @@ fn block_fully_saturated() {
 
     let total_allowed = max_transfers + max_staking + max_install_upgrade + max_standard;
 
-
-    let transaction_v1_config = TransactionV1Config::default().with_count_limits(Some(max_transfers), Some(max_staking), Some(max_install_upgrade), Some(max_standard));
+    let transaction_v1_config = TransactionV1Config::default().with_count_limits(
+        Some(max_transfers),
+        Some(max_staking),
+        Some(max_install_upgrade),
+        Some(max_standard),
+    );
 
     let transaction_config = TransactionConfig {
         transaction_v1_config,
@@ -602,9 +609,12 @@ fn block_not_fully_saturated() {
 
     let total_allowed = max_transfers + max_staking + max_install_upgrade + max_standard;
 
-
-    let transaction_v1_config = TransactionV1Config::default().with_count_limits(Some(max_transfers), Some(max_staking), Some(max_install_upgrade), Some(max_standard));
-
+    let transaction_v1_config = TransactionV1Config::default().with_count_limits(
+        Some(max_transfers),
+        Some(max_staking),
+        Some(max_install_upgrade),
+        Some(max_standard),
+    );
 
     let transaction_config = TransactionConfig {
         transaction_v1_config,
@@ -695,7 +705,6 @@ fn block_not_fully_saturated() {
     assert_eq!(proposed_standards, actual_standard_count);
 }
 
-
 fn generate_and_register_transactions(
     transaction_buffer: &mut TransactionBuffer,
     transfer_count: u64,
@@ -741,7 +750,7 @@ fn register_transactions_and_blocks() {
         Config::default(),
         &Registry::new(),
     )
-        .unwrap();
+    .unwrap();
 
     transaction_buffer
         .prices
@@ -906,7 +915,7 @@ async fn expire_transactions_and_check_announcement_when_transactions_are_of_one
             Config::default(),
             &Registry::new(),
         )
-            .unwrap();
+        .unwrap();
 
         let reactor = MockReactor::new();
         let event_queue_handle = EventQueueHandle::without_shutdown(reactor.scheduler);
@@ -983,7 +992,7 @@ async fn expire_transactions_and_check_announcement_when_transactions_are_of_ran
         Config::default(),
         &Registry::new(),
     )
-        .unwrap();
+    .unwrap();
 
     let reactor = MockReactor::new();
     let event_queue_handle = EventQueueHandle::without_shutdown(reactor.scheduler);

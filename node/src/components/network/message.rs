@@ -14,7 +14,10 @@ use strum::EnumDiscriminants;
 
 #[cfg(test)]
 use casper_types::testing::TestRng;
-use casper_types::{crypto, AsymmetricType, Chainspec, Digest, ProtocolVersion, PublicKey, SecretKey, Signature, INSTALL_UPGRADE_LANE_ID, MINT_LANE_ID, AUCTION_LANE_ID};
+use casper_types::{
+    crypto, AsymmetricType, Chainspec, Digest, ProtocolVersion, PublicKey, SecretKey, Signature,
+    AUCTION_LANE_ID, INSTALL_UPGRADE_LANE_ID, MINT_LANE_ID,
+};
 
 use super::{counting_format::ConnectionId, health::Nonce, BincodeFormat};
 use crate::{
@@ -124,8 +127,8 @@ impl<P: Payload> Message<P> {
         effect_builder: EffectBuilder<REv>,
         sender: NodeId,
     ) -> Result<(REv, BoxFuture<'static, Option<P>>), Box<Self>>
-        where
-            REv: FromIncoming<P> + Send,
+    where
+        REv: FromIncoming<P> + Send,
     {
         match self {
             Message::Handshake { .. } | Message::Ping { .. } | Message::Pong { .. } => {
@@ -264,14 +267,14 @@ impl<'de> Deserialize<'de> for ConsensusCertificate {
                     .to_lowercase()
                     .as_bytes(),
             )
-                .map_err(D::Error::custom)?;
+            .map_err(D::Error::custom)?;
             let signature = Signature::from_hex(
                 human_readable_certificate
                     .signature
                     .to_lowercase()
                     .as_bytes(),
             )
-                .map_err(D::Error::custom)?;
+            .map_err(D::Error::custom)?;
             return Ok(ConsensusCertificate {
                 public_key,
                 signature,
@@ -363,7 +366,7 @@ impl Display for MessageKind {
 /// Payloads are what is transferred across the network outside of control messages from the
 /// networking component itself.
 pub(crate) trait Payload:
-Serialize + DeserializeOwned + Clone + Debug + Display + Send + Sync + 'static
+    Serialize + DeserializeOwned + Clone + Debug + Display + Send + Sync + 'static
 {
     /// Classifies the payload based on its contents.
     fn message_kind(&self) -> MessageKind;
@@ -399,8 +402,8 @@ pub(crate) trait FromIncoming<P> {
         _sender: NodeId,
         payload: P,
     ) -> Result<(Self, BoxFuture<'static, Option<P>>), P>
-        where
-            Self: Sized + Send,
+    where
+        Self: Sized + Send,
     {
         Err(payload)
     }
@@ -451,8 +454,8 @@ mod specimen_support {
     use super::{ConsensusCertificate, Message, MessageDiscriminants};
 
     impl<P> LargestSpecimen for Message<P>
-        where
-            P: Serialize + LargestSpecimen,
+    where
+        P: Serialize + LargestSpecimen,
     {
         fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
             let largest_network_name = estimator.parameter("network_name_limit");
@@ -509,7 +512,11 @@ impl<'a> NetworkMessageEstimator<'a> {
 
     /// Returns a parameter by name as `i64`.
     fn get_parameter(&self, name: &'static str) -> Option<i64> {
-        let max_transaction_size = self.chainspec.transaction_config.transaction_v1_config.get_max_serialized_length(INSTALL_UPGRADE_LANE_ID);
+        let max_transaction_size = self
+            .chainspec
+            .transaction_config
+            .transaction_v1_config
+            .get_max_serialized_length(INSTALL_UPGRADE_LANE_ID);
         Some(match name {
             // The name limit will be larger than the actual name, so it is a safe upper bound.
             "network_name_limit" => self.chainspec.network_config.name.len() as i64,
@@ -531,23 +538,40 @@ impl<'a> NetworkMessageEstimator<'a> {
                 .millis()
                 .max(1) as i64,
             "max_transaction_size" => max_transaction_size as i64,
-            "approvals_hashes" => {
-                self.chainspec.transaction_config.transaction_v1_config.get_max_block_count()
-                    as i64
-            }
-            "max_mint_per_block" => self.chainspec.transaction_config.transaction_v1_config.get_max_transaction_count(MINT_LANE_ID) as i64,
+            "approvals_hashes" => self
+                .chainspec
+                .transaction_config
+                .transaction_v1_config
+                .get_max_block_count() as i64,
+            "max_mint_per_block" => self
+                .chainspec
+                .transaction_config
+                .transaction_v1_config
+                .get_max_transaction_count(MINT_LANE_ID) as i64,
             "max_auctions_per_block" => {
-                self.chainspec.transaction_config.transaction_v1_config.get_max_transaction_count(AUCTION_LANE_ID) as i64
+                self.chainspec
+                    .transaction_config
+                    .transaction_v1_config
+                    .get_max_transaction_count(AUCTION_LANE_ID) as i64
             }
             "max_install_upgrade_transactions_per_block" => {
-                self.chainspec.transaction_config.transaction_v1_config.get_max_transaction_count(INSTALL_UPGRADE_LANE_ID) as i64
+                self.chainspec
+                    .transaction_config
+                    .transaction_v1_config
+                    .get_max_transaction_count(INSTALL_UPGRADE_LANE_ID) as i64
             }
             "max_standard_transactions_per_block" => {
-                self.chainspec.transaction_config.transaction_v1_config.get_max_wasm_transaction_count() as i64
+                self.chainspec
+                    .transaction_config
+                    .transaction_v1_config
+                    .get_max_wasm_transaction_count() as i64
             }
             "average_approvals_per_transaction_in_block" => {
-                let max_total_txns = self.chainspec.transaction_config.transaction_v1_config.get_max_block_count()
-                    as i64;
+                let max_total_txns = self
+                    .chainspec
+                    .transaction_config
+                    .transaction_v1_config
+                    .get_max_block_count() as i64;
 
                 // Note: The +1 is to overestimate, as depending on the serialization format chosen,
                 //       spreading out the approvals can increase or decrease the size. For
@@ -580,8 +604,8 @@ impl<'a> NetworkMessageEstimator<'a> {
 ///
 /// Encodes a message in the same manner the network component would before sending it.
 fn serialize_net_message<T>(data: &T) -> Vec<u8>
-    where
-        T: Serialize,
+where
+    T: Serialize,
 {
     BincodeFormat::default()
         .serialize_arbitrary(data)
@@ -751,9 +775,9 @@ mod tests {
 
     /// Given a message `from` of type `F`, serializes it, then deserializes it as `T`.
     fn roundtrip_message<F, T>(from: &F) -> T
-        where
-            F: Serialize,
-            T: DeserializeOwned,
+    where
+        F: Serialize,
+        T: DeserializeOwned,
     {
         let serialized = serialize_message(from);
         deserialize_message(&serialized)
@@ -898,7 +922,7 @@ mod tests {
                 PublicKey::from_hex(
                     "020283c0d687933eb20a541c8540478877861ede4affaf04a68ea194b7a40046424e"
                 )
-                    .unwrap()
+                .unwrap()
             );
             assert_eq!(
                 signature,
@@ -906,7 +930,7 @@ mod tests {
                     "02cdfa333c18893d9f36035a3b7702348acff0fd5a2ae9cbc0e48e59dd085581a6015\
                         9b7fccc54dd0fa9443d2e3573378d61ea16e659d16d0009a40b7750bcceae"
                 )
-                    .unwrap()
+                .unwrap()
             );
             assert!(!is_syncing);
             assert!(chainspec_hash.is_none())
@@ -942,7 +966,7 @@ mod tests {
                 PublicKey::from_hex(
                     "020331efbf7cc3381515a7229f9c3e797030228caa189fb2a1028ade04e2970f74c5"
                 )
-                    .unwrap()
+                .unwrap()
             );
             assert_eq!(
                 signature,
@@ -950,7 +974,7 @@ mod tests {
                     "027664866794bacce441392f432dba2de67da3ba785e59c9480f126794ed78b8e5299\
                         9761c08158285580b4a67b7e343c228133c41d4250bf79d786d7c199ca977"
                 )
-                    .unwrap()
+                .unwrap()
             );
             assert!(!is_syncing);
             assert!(chainspec_hash.is_none())

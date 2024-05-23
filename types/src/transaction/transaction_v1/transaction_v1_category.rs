@@ -1,6 +1,5 @@
 use core::fmt::{self, Formatter};
 
-
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 #[cfg(feature = "json-schema")]
@@ -9,13 +8,13 @@ use serde::{Deserialize, Serialize};
 
 /// The category of a Transaction.
 #[derive(
-Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug, Default,
+    Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug, Default,
 )]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(
-feature = "json-schema",
-derive(JsonSchema),
-schemars(description = "Session kind of a V1 Transaction.")
+    feature = "json-schema",
+    derive(JsonSchema),
+    schemars(description = "Session kind of a V1 Transaction.")
 )]
 #[serde(deny_unknown_fields)]
 #[repr(u8)]

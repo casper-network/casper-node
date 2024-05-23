@@ -8,7 +8,7 @@ use casper_types::{
     bytesrepr::Bytes, runtime_args, system::standard_payment::ARG_AMOUNT, testing::TestRng, Block,
     BlockSignatures, BlockSignaturesV2, Chainspec, ChainspecRawBytes, Deploy, ExecutableDeployItem,
     FinalitySignatureV2, RuntimeArgs, SecretKey, TestBlockBuilder, TimeDiff, Transaction,
-    TransactionV1, U512, MINT_LANE_ID, AUCTION_LANE_ID, INSTALL_UPGRADE_LANE_ID,
+    TransactionV1, AUCTION_LANE_ID, INSTALL_UPGRADE_LANE_ID, MINT_LANE_ID, U512,
 };
 
 use crate::{
@@ -52,7 +52,7 @@ struct MockReactor {
 }
 
 impl MockReactor {
-    fn new<I: IntoIterator<Item=PublicKey>>(
+    fn new<I: IntoIterator<Item = PublicKey>>(
         our_secret_key: Arc<SecretKey>,
         public_keys: I,
     ) -> Self {
@@ -77,11 +77,11 @@ impl MockReactor {
         {
             match event {
                 ReactorEvent::TransactionFetcher(FetcherRequest {
-                                                     id,
-                                                     peer,
-                                                     validation_metadata: _,
-                                                     responder,
-                                                 }) => {
+                    id,
+                    peer,
+                    validation_metadata: _,
+                    responder,
+                }) => {
                     if let Some(transaction) = context.get_transaction(id) {
                         let response = FetchedData::FromPeer {
                             item: Box::new(transaction),
@@ -98,19 +98,19 @@ impl MockReactor {
                     }
                 }
                 ReactorEvent::Storage(StorageRequest::GetBlockAndMetadataByHeight {
-                                          block_height,
-                                          only_from_available_block_range: _,
-                                          responder,
-                                      }) => {
+                    block_height,
+                    only_from_available_block_range: _,
+                    responder,
+                }) => {
                     let maybe_block = context.get_block_with_metadata(block_height);
                     responder.respond(maybe_block).await;
                 }
                 ReactorEvent::FinalitySigFetcher(FetcherRequest {
-                                                     id,
-                                                     peer,
-                                                     validation_metadata: _,
-                                                     responder,
-                                                 }) => {
+                    id,
+                    peer,
+                    validation_metadata: _,
+                    responder,
+                }) => {
                     if let Some(signature) = context.get_signature(&id) {
                         let response = FetchedData::FromPeer {
                             item: Box::new(signature),
@@ -413,7 +413,7 @@ impl ValidationContext {
         heights
     }
 
-    fn with_signatures_for_block<'a, I: IntoIterator<Item=&'a PublicKey>>(
+    fn with_signatures_for_block<'a, I: IntoIterator<Item = &'a PublicKey>>(
         mut self,
         min_height: u64,
         max_height: u64,
@@ -446,7 +446,7 @@ impl ValidationContext {
         self
     }
 
-    fn with_fetchable_signatures<'a, I: IntoIterator<Item=&'a PublicKey>>(
+    fn with_fetchable_signatures<'a, I: IntoIterator<Item = &'a PublicKey>>(
         mut self,
         min_height: u64,
         max_height: u64,
@@ -473,7 +473,7 @@ impl ValidationContext {
         self
     }
 
-    fn include_signatures<'a, I: IntoIterator<Item=&'a PublicKey>>(
+    fn include_signatures<'a, I: IntoIterator<Item = &'a PublicKey>>(
         mut self,
         min_height: u64,
         max_height: u64,
@@ -526,7 +526,7 @@ impl ValidationContext {
         self
     }
 
-    fn include_transactions<I: IntoIterator<Item=(TransactionHash, BTreeSet<Approval>)>>(
+    fn include_transactions<I: IntoIterator<Item = (TransactionHash, BTreeSet<Approval>)>>(
         mut self,
         transactions: I,
     ) -> Self {
@@ -534,7 +534,7 @@ impl ValidationContext {
         self
     }
 
-    fn include_transfers<I: IntoIterator<Item=(TransactionHash, BTreeSet<Approval>)>>(
+    fn include_transfers<I: IntoIterator<Item = (TransactionHash, BTreeSet<Approval>)>>(
         mut self,
         transfers: I,
     ) -> Self {
@@ -642,9 +642,9 @@ impl ValidationContext {
         // If validity could already be determined, the effect will be the validation response.
         if !block_validator.validation_states.is_empty()
             && block_validator
-            .validation_states
-            .values()
-            .all(BlockValidationState::completed)
+                .validation_states
+                .values()
+                .all(BlockValidationState::completed)
         {
             assert_eq!(1, effects.len());
             for effect in effects {
@@ -693,9 +693,9 @@ impl ValidationContext {
         // at this point. In such a case, return the result.
         if !block_validator.validation_states.is_empty()
             && block_validator
-            .validation_states
-            .values()
-            .all(BlockValidationState::completed)
+                .validation_states
+                .values()
+                .all(BlockValidationState::completed)
         {
             assert_eq!(1, effects.len());
             for effect in effects {
@@ -731,9 +731,9 @@ impl ValidationContext {
         // should have been resolved. Return the result if it is so.
         if !block_validator.validation_states.is_empty()
             && block_validator
-            .validation_states
-            .values()
-            .all(BlockValidationState::completed)
+                .validation_states
+                .values()
+                .all(BlockValidationState::completed)
         {
             assert_eq!(1, effects.len());
             for effect in effects {
@@ -1128,8 +1128,8 @@ async fn should_fetch_from_multiple_peers() {
             assert!(validation_result.await.unwrap());
         }
     })
-        .await
-        .expect("should not hang");
+    .await
+    .expect("should not hang");
 }
 
 #[tokio::test]
