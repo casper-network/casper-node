@@ -2720,14 +2720,22 @@ async fn add_and_withdraw_bid_transaction() {
     let half_transfer_cost =
         (Ratio::new(U512::from(1), U512::from(2)) * transfer_cost).to_integer();
     let transfer_amount = min_transfer_amount * 2 + transfer_cost + half_transfer_cost;
+    let minimum_delegation_amount = test.chainspec().core_config.minimum_delegation_amount;
+    let maximum_delegation_amount = test.chainspec().core_config.maximum_delegation_amount;
 
     let mut txn = Transaction::from(
-        TransactionV1Builder::new_add_bid(PublicKey::from(&**BOB_SECRET_KEY), 0, transfer_amount)
-            .unwrap()
-            .with_chain_name(CHAIN_NAME)
-            .with_initiator_addr(PublicKey::from(&**BOB_SECRET_KEY))
-            .build()
-            .unwrap(),
+        TransactionV1Builder::new_add_bid(
+            PublicKey::from(&**BOB_SECRET_KEY),
+            0,
+            transfer_amount,
+            minimum_delegation_amount,
+            maximum_delegation_amount,
+        )
+        .unwrap()
+        .with_chain_name(CHAIN_NAME)
+        .with_initiator_addr(PublicKey::from(&**BOB_SECRET_KEY))
+        .build()
+        .unwrap(),
     );
     txn.sign(&BOB_SECRET_KEY);
 
