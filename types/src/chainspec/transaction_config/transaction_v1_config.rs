@@ -6,10 +6,7 @@ use serde::{Deserialize, Serialize};
 
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
-use crate::{
-    bytesrepr::{self, FromBytes, ToBytes},
-    transaction::TransactionCategory,
-};
+use crate::{bytesrepr::{self, FromBytes, ToBytes}, INSTALL_UPGRADE_LANE_ID, transaction::TransactionCategory};
 
 /// Default gas limit of install / upgrade contracts
 pub const DEFAULT_INSTALL_UPGRADE_GAS_LIMIT: u64 = 3_500_000_000_000;
@@ -164,10 +161,18 @@ impl TransactionV1Config {
         self.native_mint_lane[MAX_TRANSACTION_COUNT]
             + self.native_auction_lane[MAX_TRANSACTION_COUNT]
             + self
-                .wasm_lanes
-                .iter()
-                .map(|lane| lane[MAX_TRANSACTION_COUNT])
-                .sum::<u64>()
+            .wasm_lanes
+            .iter()
+            .map(|lane| lane[MAX_TRANSACTION_COUNT])
+            .sum::<u64>()
+    }
+
+    pub fn get_max_wasm_transaction_count(&self) -> u64 {
+        let mut ret = 0;
+        for lane in self.wasm_lanes.iter() {
+            ret += lane[MAX_TRANSACTION_COUNT];
+        }
+        ret
     }
 
     pub fn get_supported_categories(&self) -> Vec<u8> {
@@ -177,6 +182,23 @@ impl TransactionV1Config {
             ret.push(lane_id);
         }
         ret
+    }
+
+    #[cfg(any(feature = "testing", test))]
+    pub fn new_with_count_limits(mut self, mint_count: Option<u64>, auction: Option<u64>, install: Option<u64>, large_limit: Option<u64>) -> Self {
+        if let Some(mint_count) = mint_count {
+            self.native_mint_lane[MAX_TRANSACTION_COUNT] = mint_count;
+        }
+        if let Some(auction_count) = auction {
+            self.native_auction_lane[MAX_TRANSACTION_COUNT] = auction_count;
+        }
+        if let Some(install_upgrade_count) = install {
+            self.wasm_lanes[INSTALL_UPGRADE_LANE_ID as usize][MAX_TRANSACTION_COUNT] = install_upgrade_count;
+        }
+        if let Some(large_limit) = large_limit {
+            self.wasm_lanes[3usize][MAX_TRANSACTION_COUNT] = large_limit;
+        }
+        self
     }
 }
 

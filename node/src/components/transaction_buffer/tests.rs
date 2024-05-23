@@ -22,7 +22,7 @@ const LARGE_LANE_ID: u8 = 3;
 fn get_appendable_block(
     rng: &mut TestRng,
     transaction_buffer: &mut TransactionBuffer,
-    categories: impl Iterator<Item = u8>,
+    categories: impl Iterator<Item=u8>,
     transaction_limit: usize,
 ) {
     let transactions: Vec<_> = categories
@@ -177,7 +177,7 @@ fn register_transaction_and_check_size() {
             Config::default(),
             &Registry::new(),
         )
-        .unwrap();
+            .unwrap();
 
         // Try to register valid transactions
         let num_valid_transactions: usize = rng.gen_range(50..500);
@@ -228,7 +228,7 @@ fn register_block_with_valid_transactions() {
             Config::default(),
             &Registry::new(),
         )
-        .unwrap();
+            .unwrap();
 
         let txns: Vec<_> = (0..10)
             .map(|_| create_valid_transaction(&mut rng, category, None, None))
@@ -258,7 +258,7 @@ fn register_finalized_block_with_valid_transactions() {
             Config::default(),
             &Registry::new(),
         )
-        .unwrap();
+            .unwrap();
 
         let txns: Vec<_> = (0..10)
             .map(|_| create_valid_transaction(&mut rng, category, None, None))
@@ -280,7 +280,7 @@ fn get_proposable_transactions() {
             Config::default(),
             &Registry::new(),
         )
-        .unwrap();
+            .unwrap();
 
         transaction_buffer
             .prices
@@ -384,7 +384,7 @@ fn get_appendable_block_when_transfers_are_of_one_category() {
     get_appendable_block(
         &mut rng,
         &mut transaction_buffer,
-        std::iter::repeat_with(|| &MINT_LANE_ID),
+        std::iter::repeat_with(|| MINT_LANE_ID),
         transaction_config
             .transaction_v1_config
             .get_max_transaction_count(MINT_LANE_ID) as usize
@@ -434,7 +434,7 @@ fn get_appendable_block_when_transfers_are_both_legacy_and_v1() {
     get_appendable_block(
         &mut rng,
         &mut transaction_buffer,
-        [MINT_LANE_ID].iter().cycle(),
+        vec![MINT_LANE_ID].into_iter(),
         transaction_config
             .transaction_v1_config
             .get_max_transaction_count(MINT_LANE_ID) as usize
@@ -489,7 +489,7 @@ fn get_appendable_block_when_standards_are_of_one_category() {
     get_appendable_block(
         &mut rng,
         &mut transaction_buffer,
-        std::iter::repeat_with(|| &large_lane_id),
+        std::iter::repeat_with(|| large_lane_id),
         transaction_config
             .transaction_v1_config
             .get_max_transaction_count(large_lane_id) as usize
@@ -546,7 +546,7 @@ fn get_appendable_block_when_standards_are_both_legacy_and_v1() {
     get_appendable_block(
         &mut rng,
         &mut transaction_buffer,
-        [large_lane_id].iter().cycle(),
+        vec![MINT_LANE_ID].into_iter(),
         transaction_config
             .transaction_v1_config
             .get_max_transaction_count(large_lane_id) as usize
@@ -1229,7 +1229,7 @@ fn register_transactions_and_blocks() {
         Config::default(),
         &Registry::new(),
     )
-    .unwrap();
+        .unwrap();
 
     transaction_buffer
         .prices
@@ -1394,7 +1394,7 @@ async fn expire_transactions_and_check_announcement_when_transactions_are_of_one
             Config::default(),
             &Registry::new(),
         )
-        .unwrap();
+            .unwrap();
 
         let reactor = MockReactor::new();
         let event_queue_handle = EventQueueHandle::without_shutdown(reactor.scheduler);
@@ -1471,7 +1471,7 @@ async fn expire_transactions_and_check_announcement_when_transactions_are_of_ran
         Config::default(),
         &Registry::new(),
     )
-    .unwrap();
+        .unwrap();
 
     let reactor = MockReactor::new();
     let event_queue_handle = EventQueueHandle::without_shutdown(reactor.scheduler);
@@ -1486,8 +1486,8 @@ async fn expire_transactions_and_check_announcement_when_transactions_are_of_ran
     let num_transactions: usize = rng.gen_range(5..50);
     let expired_transactions: Vec<_> = (0..num_transactions)
         .map(|_| {
-            let random_category = all_categories().choose(&mut rng).unwrap();
-            create_valid_transaction(&mut rng, *random_category, Some(past_timestamp), Some(ttl))
+            let random_category = *all_categories().choose(&mut rng).unwrap();
+            create_valid_transaction(&mut rng, random_category, Some(past_timestamp), Some(ttl))
         })
         .collect();
 
@@ -1511,8 +1511,8 @@ async fn expire_transactions_and_check_announcement_when_transactions_are_of_ran
     // generate and register some valid transactions
     let transactions: Vec<_> = (0..num_transactions)
         .map(|_| {
-            let random_category = all_categories().choose(&mut rng).unwrap();
-            create_valid_transaction(&mut rng, *random_category, None, None)
+            let random_category = *all_categories().choose(&mut rng).unwrap();
+            create_valid_transaction(&mut rng, random_category, None, None)
         })
         .collect();
     transactions

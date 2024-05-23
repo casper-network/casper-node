@@ -108,15 +108,20 @@ impl fmt::Display for ExecutableBlock {
         write!(
             formatter,
             "executable block #{} in {}, timestamp {}, {} transfers, {} staking txns, {} \
-            install/upgrade txns, {} standard txns",
+            install/upgrade txns",
             self.height,
             self.era_id,
             self.timestamp,
             self.mint().len(),
             self.auction().len(),
             self.install_upgrade().len(),
-            self.large().len(),
         )?;
+        for (category, wasm_transaction) in self.transaction_map.iter() {
+            if *category < 3 {
+                continue;
+            }
+            write!(formatter, ", category: {} with {} transactions", *category, wasm_transaction.len())?;
+        }
         if let Some(ref ee) = self.era_report {
             write!(formatter, ", era_end: {:?}", ee)?;
         }

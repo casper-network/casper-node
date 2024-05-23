@@ -185,7 +185,7 @@ impl AppendableBlock {
     fn category_count(&self, category: u8) -> usize {
         self.transactions
             .iter()
-            .filter(|(_, f)| f.category == *category)
+            .filter(|(_, f)| f.category == category)
             .count()
     }
 }
