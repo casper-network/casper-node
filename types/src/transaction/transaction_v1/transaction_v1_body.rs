@@ -133,17 +133,14 @@ impl TransactionV1Body {
 
     #[cfg(any(feature = "std", test))]
     pub(super) fn is_valid(&self, config: &TransactionConfig) -> Result<(), InvalidTransactionV1> {
-        let kind = self.transaction_kind as u64;
-        let lane_config = config
-            .transaction_v1_config
-            .lanes
-            .iter()
-            .find(|lane| lane.first() == Some(&kind))
-            .ok_or(InvalidTransactionV1::InvalidTransactionKind(
+        let kind = self.transaction_kind;
+        if !config.transaction_v1_config.is_supported(kind) {
+            return Err(InvalidTransactionV1::InvalidTransactionKind(
                 self.transaction_kind,
-            ))?;
+            ));
+        }
 
-        let max_serialized_length = lane_config[1];
+        let max_serialized_length = config.transaction_v1_config.get_max_serialized_length(kind);
         let actual_length = self.serialized_length();
         if actual_length > max_serialized_length as usize {
             return Err(InvalidTransactionV1::ExcessiveSize(
@@ -154,7 +151,7 @@ impl TransactionV1Body {
             ));
         }
 
-        let max_args_length = lane_config[2];
+        let max_args_length = config.transaction_v1_config.get_max_args_length(kind);
 
         let args_length = self.args.serialized_length();
         if args_length > max_args_length as usize {
@@ -253,14 +250,12 @@ impl TransactionV1Body {
 
     /// Returns a random `TransactionV1Body`.
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
-    pub fn random_of_category(rng: &mut TestRng, category: &TransactionCategory) -> Self {
+    pub fn random_of_category(rng: &mut TestRng, category: u8) -> Self {
         match category {
-            TransactionCategory::InstallUpgrade => Self::random_install_upgrade(rng),
-            TransactionCategory::Large
-            | TransactionCategory::Small
-            | TransactionCategory::Medium => Self::random_standard(rng),
-            TransactionCategory::Auction => Self::random_staking(rng),
-            TransactionCategory::Mint => Self::random_transfer(rng),
+            0 => Self::random_transfer(rng),
+            1 => Self::random_staking(rng),
+            2 => Self::random_install_upgrade(rng),
+            _ => Self::random_standard(rng),
         }
     }
 
@@ -501,7 +496,7 @@ mod tests {
         let rng = &mut TestRng::new();
         let mut config = TransactionConfig::default();
         let mut body = TransactionV1Body::random(rng);
-        config.transaction_v1_config.lanes =
+        config.transaction_v1_config.wasm_lanes =
             vec![vec![body.transaction_kind as u64, 1_048_576, 10, 0]];
         body.args = runtime_args! {"a" => 1_u8};
 

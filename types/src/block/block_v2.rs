@@ -25,7 +25,7 @@ use crate::{
     PublicKey, Timestamp, TransactionHash,
 };
 #[cfg(feature = "json-schema")]
-use crate::{TransactionCategory, TransactionV1Hash};
+use crate::{transaction::TransactionCategory, TransactionV1Hash};
 
 #[cfg(feature = "json-schema")]
 static BLOCK_V2: Lazy<BlockV2> = Lazy::new(|| {

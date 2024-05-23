@@ -2,8 +2,9 @@ use prometheus::Registry;
 use rand::{seq::SliceRandom, Rng};
 
 use casper_types::{
-    testing::TestRng, Deploy, EraId, TestBlockBuilder, TimeDiff, Transaction, TransactionCategory,
-    TransactionConfig, TransactionV1,
+    testing::TestRng, Deploy, EraId, TestBlockBuilder, TimeDiff, Transaction, TransactionConfig,
+    TransactionV1, TransactionV1Config, DEFAULT_INSTALL_UPGRADE_GAS_LIMIT,
+    DEFAULT_LARGE_TRANSACTION_GAS_LIMIT,
 };
 
 use super::*;
@@ -16,11 +17,12 @@ use crate::{
 
 const ERA_ONE: EraId = EraId::new(1u64);
 const DEFAULT_MINIMUM_GAS_PRICE: u8 = 1;
+const LARGE_LANE_ID: u8 = 3;
 
 fn get_appendable_block(
     rng: &mut TestRng,
     transaction_buffer: &mut TransactionBuffer,
-    categories: impl Iterator<Item = &'static TransactionCategory>,
+    categories: impl Iterator<Item = u8>,
     transaction_limit: usize,
 ) {
     let transactions: Vec<_> = categories
@@ -48,7 +50,7 @@ fn get_appendable_block(
 // Generates valid transactions
 fn create_valid_transaction(
     rng: &mut TestRng,
-    transaction_category: &TransactionCategory,
+    transaction_category: u8,
     strict_timestamp: Option<Timestamp>,
     with_ttl: Option<TimeDiff>,
 ) -> Transaction {
@@ -62,7 +64,7 @@ fn create_valid_transaction(
     };
 
     match transaction_category {
-        TransactionCategory::Mint => {
+        transaction_category if transaction_category == MINT_LANE_ID => {
             if rng.gen() {
                 Transaction::V1(TransactionV1::random_transfer(
                     rng,
@@ -77,7 +79,13 @@ fn create_valid_transaction(
                 ))
             }
         }
-        TransactionCategory::Large | TransactionCategory::Medium | TransactionCategory::Small => {
+        transaction_category if transaction_category == INSTALL_UPGRADE_LANE_ID => Transaction::V1(
+            TransactionV1::random_install_upgrade(rng, strict_timestamp, with_ttl),
+        ),
+        transaction_category if transaction_category == AUCTION_LANE_ID => Transaction::V1(
+            TransactionV1::random_auction(rng, strict_timestamp, with_ttl),
+        ),
+        _ => {
             if rng.gen() {
                 Transaction::Deploy(match (strict_timestamp, with_ttl) {
                     (Some(timestamp), Some(ttl)) if Timestamp::now() > timestamp + ttl => {
@@ -86,27 +94,15 @@ fn create_valid_transaction(
                     _ => Deploy::random_with_valid_session_package_by_name(rng),
                 })
             } else {
-                Transaction::V1(TransactionV1::random_standard(
-                    rng,
-                    strict_timestamp,
-                    with_ttl,
-                ))
+                Transaction::V1(TransactionV1::random_wasm(rng, strict_timestamp, with_ttl))
             }
         }
-        TransactionCategory::InstallUpgrade => Transaction::V1(
-            TransactionV1::random_install_upgrade(rng, strict_timestamp, with_ttl),
-        ),
-        TransactionCategory::Auction => Transaction::V1(TransactionV1::random_staking(
-            rng,
-            strict_timestamp,
-            with_ttl,
-        )),
     }
 }
 
 fn create_invalid_transactions(
     rng: &mut TestRng,
-    transaction_category: &TransactionCategory,
+    transaction_category: u8,
     size: usize,
 ) -> Vec<Transaction> {
     (0..size)
@@ -162,12 +158,12 @@ fn assert_container_sizes(
     );
 }
 
-const fn all_categories() -> &'static [TransactionCategory] {
-    &[
-        TransactionCategory::Mint,
-        TransactionCategory::InstallUpgrade,
-        TransactionCategory::Auction,
-        TransactionCategory::Large,
+const fn all_categories() -> [u8; 4] {
+    [
+        MINT_LANE_ID,
+        INSTALL_UPGRADE_LANE_ID,
+        AUCTION_LANE_ID,
+        LARGE_LANE_ID,
     ]
 }
 
@@ -350,13 +346,28 @@ fn get_proposable_transactions() {
 #[test]
 fn get_appendable_block_when_transfers_are_of_one_category() {
     let mut rng = TestRng::new();
+    let mut transaction_v1_config = {
+        let mut ret = TransactionV1Config::default();
+        ret.native_mint_lane[5] = 200;
+        ret.native_auction_lane[5] = 0;
+        let large_lane = vec![3, 1_048_576, 1024, DEFAULT_LARGE_TRANSACTION_GAS_LIMIT, 10];
+
+        let install_upgrade_lane = vec![
+            INSTALL_UPGRADE_LANE_ID as u64,
+            1_048_576,
+            2048,
+            DEFAULT_INSTALL_UPGRADE_GAS_LIMIT,
+            0,
+        ];
+
+        let wasm_lanes = vec![large_lane, install_upgrade_lane];
+        ret.wasm_lanes = wasm_lanes;
+        ret
+    };
     let transaction_config = TransactionConfig {
-        block_max_mint_count: 200,
-        block_max_auction_count: 0,
-        block_max_install_upgrade_count: 0,
-        block_max_large_count: 10,
         block_max_approval_count: 210,
         block_gas_limit: u64::MAX, // making sure this test does not hit gas limit first
+        transaction_v1_config,
         ..Default::default()
     };
 
@@ -373,21 +384,39 @@ fn get_appendable_block_when_transfers_are_of_one_category() {
     get_appendable_block(
         &mut rng,
         &mut transaction_buffer,
-        std::iter::repeat_with(|| &TransactionCategory::Mint),
-        transaction_config.block_max_mint_count as usize + 50,
+        std::iter::repeat_with(|| &MINT_LANE_ID),
+        transaction_config
+            .transaction_v1_config
+            .get_max_transaction_count(MINT_LANE_ID) as usize
+            + 50,
     );
 }
 
 #[test]
 fn get_appendable_block_when_transfers_are_both_legacy_and_v1() {
     let mut rng = TestRng::new();
+    let mut transaction_v1_config = {
+        let mut ret = TransactionV1Config::default();
+        ret.native_mint_lane[5] = 200;
+        ret.native_auction_lane[5] = 0;
+        let large_lane = vec![3, 1_048_576, 1024, DEFAULT_LARGE_TRANSACTION_GAS_LIMIT, 10];
+
+        let install_upgrade_lane = vec![
+            INSTALL_UPGRADE_LANE_ID as u64,
+            1_048_576,
+            2048,
+            DEFAULT_INSTALL_UPGRADE_GAS_LIMIT,
+            0,
+        ];
+
+        let wasm_lanes = vec![large_lane, install_upgrade_lane];
+        ret.wasm_lanes = wasm_lanes;
+        ret
+    };
     let transaction_config = TransactionConfig {
-        block_max_mint_count: 200,
-        block_max_auction_count: 0,
-        block_max_install_upgrade_count: 0,
-        block_max_large_count: 10,
         block_max_approval_count: 210,
         block_gas_limit: u64::MAX, // making sure this test does not hit gas limit first
+        transaction_v1_config,
         ..Default::default()
     };
 
@@ -405,21 +434,46 @@ fn get_appendable_block_when_transfers_are_both_legacy_and_v1() {
     get_appendable_block(
         &mut rng,
         &mut transaction_buffer,
-        [TransactionCategory::Mint].iter().cycle(),
-        transaction_config.block_max_mint_count as usize + 50,
+        [MINT_LANE_ID].iter().cycle(),
+        transaction_config
+            .transaction_v1_config
+            .get_max_transaction_count(MINT_LANE_ID) as usize
+            + 50,
     );
 }
 
 #[test]
 fn get_appendable_block_when_standards_are_of_one_category() {
+    let large_lane_id: u8 = 3;
     let mut rng = TestRng::new();
+    let mut transaction_v1_config = {
+        let mut ret = TransactionV1Config::default();
+        ret.native_mint_lane[5] = 200;
+        ret.native_auction_lane[5] = 0;
+        let large_lane = vec![
+            large_lane_id as u64,
+            1_048_576,
+            1024,
+            DEFAULT_LARGE_TRANSACTION_GAS_LIMIT,
+            10,
+        ];
+
+        let install_upgrade_lane = vec![
+            INSTALL_UPGRADE_LANE_ID as u64,
+            1_048_576,
+            2048,
+            DEFAULT_INSTALL_UPGRADE_GAS_LIMIT,
+            0,
+        ];
+
+        let wasm_lanes = vec![large_lane, install_upgrade_lane];
+        ret.wasm_lanes = wasm_lanes;
+        ret
+    };
     let transaction_config = TransactionConfig {
-        block_max_mint_count: 200,
-        block_max_auction_count: 0,
-        block_max_install_upgrade_count: 0,
-        block_max_large_count: 10,
         block_max_approval_count: 210,
         block_gas_limit: u64::MAX, // making sure this test does not hit gas limit first
+        transaction_v1_config,
         ..Default::default()
     };
 
@@ -435,19 +489,44 @@ fn get_appendable_block_when_standards_are_of_one_category() {
     get_appendable_block(
         &mut rng,
         &mut transaction_buffer,
-        std::iter::repeat_with(|| &TransactionCategory::Large),
-        transaction_config.block_max_large_count as usize + 50,
+        std::iter::repeat_with(|| &large_lane_id),
+        transaction_config
+            .transaction_v1_config
+            .get_max_transaction_count(large_lane_id) as usize
+            + 50,
     );
 }
 
 #[test]
 fn get_appendable_block_when_standards_are_both_legacy_and_v1() {
+    let large_lane_id: u8 = 3;
     let mut rng = TestRng::new();
+    let mut transaction_v1_config = {
+        let mut ret = TransactionV1Config::default();
+        ret.native_mint_lane[5] = 200;
+        ret.native_auction_lane[5] = 0;
+        let large_lane = vec![
+            large_lane_id as u64,
+            1_048_576,
+            1024,
+            DEFAULT_LARGE_TRANSACTION_GAS_LIMIT,
+            10,
+        ];
+
+        let install_upgrade_lane = vec![
+            INSTALL_UPGRADE_LANE_ID as u64,
+            1_048_576,
+            2048,
+            DEFAULT_INSTALL_UPGRADE_GAS_LIMIT,
+            0,
+        ];
+
+        let wasm_lanes = vec![large_lane, install_upgrade_lane];
+        ret.wasm_lanes = wasm_lanes;
+        ret
+    };
     let transaction_config = TransactionConfig {
-        block_max_mint_count: 200,
-        block_max_auction_count: 0,
-        block_max_install_upgrade_count: 0,
-        block_max_large_count: 10,
+        transaction_v1_config,
         block_max_approval_count: 210,
         block_gas_limit: u64::MAX, // making sure this test does not hit gas limit first
         ..Default::default()
@@ -467,8 +546,11 @@ fn get_appendable_block_when_standards_are_both_legacy_and_v1() {
     get_appendable_block(
         &mut rng,
         &mut transaction_buffer,
-        [TransactionCategory::Large].iter().cycle(),
-        transaction_config.block_max_large_count as usize + 5,
+        [large_lane_id].iter().cycle(),
+        transaction_config
+            .transaction_v1_config
+            .get_max_transaction_count(large_lane_id) as usize
+            + 5,
     );
 }
 
@@ -483,11 +565,36 @@ fn block_fully_saturated() {
 
     let total_allowed = max_transfers + max_staking + max_install_upgrade + max_standard;
 
+    let transaction_v1_config = {
+        let native_mint_lane: Vec<u64> =
+            vec![0, 1_048_576, 1024, 2_500_000_000, max_transfers as u64];
+        let native_auction_lane: Vec<u64> =
+            vec![1, 1_048_576, 1024, 2_500_000_000, max_staking as u64];
+        let large_lane = vec![
+            3,
+            1_048_576,
+            1024,
+            DEFAULT_LARGE_TRANSACTION_GAS_LIMIT,
+            max_standard as u64,
+        ];
+
+        let install_upgrade_lane = vec![
+            INSTALL_UPGRADE_LANE_ID as u64,
+            1_048_576,
+            2048,
+            DEFAULT_INSTALL_UPGRADE_GAS_LIMIT,
+            max_install_upgrade as u64,
+        ];
+
+        TransactionV1Config {
+            native_mint_lane,
+            native_auction_lane,
+            wasm_lanes: vec![large_lane, install_upgrade_lane],
+        }
+    };
+
     let transaction_config = TransactionConfig {
-        block_max_mint_count: max_transfers,
-        block_max_auction_count: max_staking,
-        block_max_install_upgrade_count: max_install_upgrade,
-        block_max_large_count: max_standard,
+        transaction_v1_config,
         block_max_approval_count: 210,
         block_gas_limit: u64::MAX, // making sure this test does not hit gas limit first
         ..Default::default()
@@ -584,11 +691,36 @@ fn block_not_fully_saturated() {
 
     let total_allowed = max_transfers + max_staking + max_install_upgrade + max_standard;
 
+    let transaction_v1_config = {
+        let native_mint_lane: Vec<u64> =
+            vec![0, 1_048_576, 1024, 2_500_000_000, max_transfers as u64];
+        let native_auction_lane: Vec<u64> =
+            vec![1, 1_048_576, 1024, 2_500_000_000, max_staking as u64];
+        let large_lane = vec![
+            3,
+            1_048_576,
+            1024,
+            DEFAULT_LARGE_TRANSACTION_GAS_LIMIT,
+            max_standard as u64,
+        ];
+
+        let install_upgrade_lane = vec![
+            INSTALL_UPGRADE_LANE_ID as u64,
+            1_048_576,
+            2048,
+            DEFAULT_INSTALL_UPGRADE_GAS_LIMIT,
+            max_install_upgrade as u64,
+        ];
+
+        TransactionV1Config {
+            native_mint_lane,
+            native_auction_lane,
+            wasm_lanes: vec![large_lane, install_upgrade_lane],
+        }
+    };
+
     let transaction_config = TransactionConfig {
-        block_max_mint_count: max_transfers,
-        block_max_auction_count: max_staking,
-        block_max_install_upgrade_count: max_install_upgrade,
-        block_max_large_count: max_standard,
+        transaction_v1_config,
         block_max_approval_count: 210,
         block_gas_limit: u64::MAX, // making sure this test does not hit gas limit first
         ..Default::default()
@@ -689,11 +821,36 @@ fn excess_transactions_do_not_sneak_into_transfer_bucket() {
 
     let total_allowed = max_transfers + max_staking + max_install_upgrade + max_standard;
 
+    let transaction_v1_config = {
+        let native_mint_lane: Vec<u64> =
+            vec![0, 1_048_576, 1024, 2_500_000_000, max_transfers as u64];
+        let native_auction_lane: Vec<u64> =
+            vec![1, 1_048_576, 1024, 2_500_000_000, max_staking as u64];
+        let large_lane = vec![
+            3,
+            1_048_576,
+            1024,
+            DEFAULT_LARGE_TRANSACTION_GAS_LIMIT,
+            max_standard as u64,
+        ];
+
+        let install_upgrade_lane = vec![
+            INSTALL_UPGRADE_LANE_ID as u64,
+            1_048_576,
+            2048,
+            DEFAULT_INSTALL_UPGRADE_GAS_LIMIT,
+            max_install_upgrade as u64,
+        ];
+
+        TransactionV1Config {
+            native_mint_lane,
+            native_auction_lane,
+            wasm_lanes: vec![large_lane, install_upgrade_lane],
+        }
+    };
+
     let transaction_config = TransactionConfig {
-        block_max_mint_count: max_transfers,
-        block_max_auction_count: max_staking,
-        block_max_install_upgrade_count: max_install_upgrade,
-        block_max_large_count: max_standard,
+        transaction_v1_config,
         block_max_approval_count: 210,
         block_gas_limit: u64::MAX, // making sure this test does not hit gas limit first
         ..Default::default()
@@ -703,7 +860,6 @@ fn excess_transactions_do_not_sneak_into_transfer_bucket() {
         transaction_config,
         ..Default::default()
     };
-
     let mut transaction_buffer =
         TransactionBuffer::new(Arc::new(chainspec), Config::default(), &Registry::new()).unwrap();
 
@@ -754,11 +910,36 @@ fn excess_transactions_do_not_sneak_into_staking_bucket() {
 
     let total_allowed = max_transfers + max_staking + max_install_upgrade + max_standard;
 
+    let transaction_v1_config = {
+        let native_mint_lane: Vec<u64> =
+            vec![0, 1_048_576, 1024, 2_500_000_000, max_transfers as u64];
+        let native_auction_lane: Vec<u64> =
+            vec![1, 1_048_576, 1024, 2_500_000_000, max_staking as u64];
+        let large_lane = vec![
+            3,
+            1_048_576,
+            1024,
+            DEFAULT_LARGE_TRANSACTION_GAS_LIMIT,
+            max_standard as u64,
+        ];
+
+        let install_upgrade_lane = vec![
+            INSTALL_UPGRADE_LANE_ID as u64,
+            1_048_576,
+            2048,
+            DEFAULT_INSTALL_UPGRADE_GAS_LIMIT,
+            max_install_upgrade as u64,
+        ];
+
+        TransactionV1Config {
+            native_mint_lane,
+            native_auction_lane,
+            wasm_lanes: vec![large_lane, install_upgrade_lane],
+        }
+    };
+
     let transaction_config = TransactionConfig {
-        block_max_mint_count: max_transfers,
-        block_max_auction_count: max_staking,
-        block_max_install_upgrade_count: max_install_upgrade,
-        block_max_large_count: max_standard,
+        transaction_v1_config,
         block_max_approval_count: 210,
         block_gas_limit: u64::MAX, // making sure this test does not hit gas limit first
         ..Default::default()
@@ -819,11 +1000,36 @@ fn excess_transactions_do_not_sneak_into_install_upgrades_bucket() {
 
     let total_allowed = max_transfers + max_staking + max_install_upgrade + max_standard;
 
+    let transaction_v1_config = {
+        let native_mint_lane: Vec<u64> =
+            vec![0, 1_048_576, 1024, 2_500_000_000, max_transfers as u64];
+        let native_auction_lane: Vec<u64> =
+            vec![1, 1_048_576, 1024, 2_500_000_000, max_staking as u64];
+        let large_lane = vec![
+            3,
+            1_048_576,
+            1024,
+            DEFAULT_LARGE_TRANSACTION_GAS_LIMIT,
+            max_standard as u64,
+        ];
+
+        let install_upgrade_lane = vec![
+            INSTALL_UPGRADE_LANE_ID as u64,
+            1_048_576,
+            2048,
+            DEFAULT_INSTALL_UPGRADE_GAS_LIMIT,
+            max_install_upgrade as u64,
+        ];
+
+        TransactionV1Config {
+            native_mint_lane,
+            native_auction_lane,
+            wasm_lanes: vec![large_lane, install_upgrade_lane],
+        }
+    };
+
     let transaction_config = TransactionConfig {
-        block_max_mint_count: max_transfers,
-        block_max_auction_count: max_staking,
-        block_max_install_upgrade_count: max_install_upgrade,
-        block_max_large_count: max_standard,
+        transaction_v1_config,
         block_max_approval_count: 210,
         block_gas_limit: u64::MAX, // making sure this test does not hit gas limit first
         ..Default::default()
@@ -884,11 +1090,36 @@ fn excess_transactions_do_not_sneak_into_standards_bucket() {
 
     let total_allowed = max_transfers + max_staking + max_install_upgrade + max_standard;
 
+    let transaction_v1_config = {
+        let native_mint_lane: Vec<u64> =
+            vec![0, 1_048_576, 1024, 2_500_000_000, max_transfers as u64];
+        let native_auction_lane: Vec<u64> =
+            vec![1, 1_048_576, 1024, 2_500_000_000, max_staking as u64];
+        let large_lane = vec![
+            3,
+            1_048_576,
+            1024,
+            DEFAULT_LARGE_TRANSACTION_GAS_LIMIT,
+            max_standard as u64,
+        ];
+
+        let install_upgrade_lane = vec![
+            INSTALL_UPGRADE_LANE_ID as u64,
+            1_048_576,
+            2048,
+            DEFAULT_INSTALL_UPGRADE_GAS_LIMIT,
+            max_install_upgrade as u64,
+        ];
+
+        TransactionV1Config {
+            native_mint_lane,
+            native_auction_lane,
+            wasm_lanes: vec![large_lane, install_upgrade_lane],
+        }
+    };
+
     let transaction_config = TransactionConfig {
-        block_max_mint_count: max_transfers,
-        block_max_auction_count: max_staking,
-        block_max_install_upgrade_count: max_install_upgrade,
-        block_max_large_count: max_standard,
+        transaction_v1_config,
         block_max_approval_count: 210,
         block_gas_limit: u64::MAX, // making sure this test does not hit gas limit first
         ..Default::default()
@@ -967,16 +1198,16 @@ fn generate_and_register_transactions(
     Vec<Transaction>,
 ) {
     let transfers: Vec<_> = (0..transfer_count)
-        .map(|_| create_valid_transaction(rng, &TransactionCategory::Mint, None, None))
+        .map(|_| create_valid_transaction(rng, MINT_LANE_ID, None, None))
         .collect();
     let stakings: Vec<_> = (0..stakings_count)
-        .map(|_| create_valid_transaction(rng, &TransactionCategory::Auction, None, None))
+        .map(|_| create_valid_transaction(rng, AUCTION_LANE_ID, None, None))
         .collect();
     let installs_upgrades: Vec<_> = (0..install_upgrade_count)
-        .map(|_| create_valid_transaction(rng, &TransactionCategory::InstallUpgrade, None, None))
+        .map(|_| create_valid_transaction(rng, INSTALL_UPGRADE_LANE_ID, None, None))
         .collect();
     let standards: Vec<_> = (0..standard_count)
-        .map(|_| create_valid_transaction(rng, &TransactionCategory::Large, None, None))
+        .map(|_| create_valid_transaction(rng, 3, None, None))
         .collect();
     transfers
         .iter()
@@ -1006,9 +1237,9 @@ fn register_transactions_and_blocks() {
 
     // try to register valid transactions
     let num_valid_transactions: usize = rng.gen_range(50..500);
-    let category = TransactionCategory::random(&mut rng);
+    let category = rng.gen_range(0..4u8);
     let valid_transactions: Vec<_> = (0..num_valid_transactions)
-        .map(|_| create_valid_transaction(&mut rng, &category, None, None))
+        .map(|_| create_valid_transaction(&mut rng, category, None, None))
         .collect();
     valid_transactions
         .iter()
@@ -1016,9 +1247,9 @@ fn register_transactions_and_blocks() {
     assert_container_sizes(&transaction_buffer, valid_transactions.len(), 0, 0);
 
     // register a block with transactions
-    let category = TransactionCategory::random(&mut rng);
+    let category = rng.gen_range(0..4u8);
     let block_transaction: Vec<_> = (0..5)
-        .map(|_| create_valid_transaction(&mut rng, &category, None, None))
+        .map(|_| create_valid_transaction(&mut rng, category, None, None))
         .collect();
     let txns: Vec<_> = block_transaction.to_vec();
     let era = rng.gen_range(0..6);
@@ -1256,7 +1487,7 @@ async fn expire_transactions_and_check_announcement_when_transactions_are_of_ran
     let expired_transactions: Vec<_> = (0..num_transactions)
         .map(|_| {
             let random_category = all_categories().choose(&mut rng).unwrap();
-            create_valid_transaction(&mut rng, random_category, Some(past_timestamp), Some(ttl))
+            create_valid_transaction(&mut rng, *random_category, Some(past_timestamp), Some(ttl))
         })
         .collect();
 
@@ -1281,7 +1512,7 @@ async fn expire_transactions_and_check_announcement_when_transactions_are_of_ran
     let transactions: Vec<_> = (0..num_transactions)
         .map(|_| {
             let random_category = all_categories().choose(&mut rng).unwrap();
-            create_valid_transaction(&mut rng, random_category, None, None)
+            create_valid_transaction(&mut rng, *random_category, None, None)
         })
         .collect();
     transactions

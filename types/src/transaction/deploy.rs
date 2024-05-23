@@ -56,8 +56,8 @@ use crate::{
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     crypto,
-    transaction::{Approval, ApprovalsHash, Categorized},
-    Digest, DisplayIter, PublicKey, SecretKey, TimeDiff, Timestamp, TransactionCategory,
+    transaction::{Approval, ApprovalsHash, TransactionCategory},
+    Digest, DisplayIter, PublicKey, SecretKey, TimeDiff, Timestamp,
 };
 
 #[cfg(any(feature = "std", test))]
@@ -403,7 +403,10 @@ impl Deploy {
         at: Timestamp,
     ) -> Result<(), InvalidDeploy> {
         let config = &chainspec.transaction_config;
-        self.is_valid_size(config.max_transaction_size)?;
+        let max_transaction_size = config
+            .transaction_v1_config
+            .get_max_serialized_length(TransactionCategory::Large as u8);
+        self.is_valid_size(max_transaction_size as u32)?;
 
         let header = self.header();
         let chain_name = &chainspec.network_config.name;
@@ -1147,16 +1150,6 @@ impl Deploy {
     }
 }
 
-impl Categorized for Deploy {
-    fn category(&self) -> TransactionCategory {
-        if self.is_transfer() {
-            TransactionCategory::Mint
-        } else {
-            TransactionCategory::Large
-        }
-    }
-}
-
 #[cfg(any(feature = "std", test))]
 impl GasLimited for Deploy {
     type Error = InvalidDeploy;
@@ -1195,8 +1188,7 @@ impl GasLimited for Deploy {
                 let computation_limit = if self.is_transfer() {
                     costs.mint_costs().transfer as u64
                 } else {
-                    let category = self.category() as u8;
-                    chainspec.get_max_gas_limit_by_kind(category)
+                    chainspec.get_max_gas_limit_by_kind(TransactionCategory::Large as u8)
                 };
                 Gas::new(computation_limit)
             } // legacy deploys do not support reservations

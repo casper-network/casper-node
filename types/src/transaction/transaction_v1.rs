@@ -26,7 +26,7 @@ use serde::{Deserialize, Serialize};
 use tracing::debug;
 
 use super::{
-    Approval, ApprovalsHash, Categorized, InitiatorAddr, PricingMode, TransactionEntryPoint,
+    Approval, ApprovalsHash, InitiatorAddr, PricingMode, TransactionEntryPoint,
     TransactionScheduling, TransactionTarget,
 };
 #[cfg(any(feature = "std", test))]
@@ -38,7 +38,6 @@ use crate::chainspec::PricingHandling;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     crypto, Digest, DisplayIter, RuntimeArgs, SecretKey, TimeDiff, Timestamp, TransactionRuntime,
-    TransactionSessionKind,
 };
 
 #[cfg(any(feature = "std", test))]
@@ -51,7 +50,7 @@ pub use errors_v1::{
 pub use transaction_v1_body::TransactionV1Body;
 #[cfg(any(feature = "std", test))]
 pub use transaction_v1_builder::{TransactionV1Builder, TransactionV1BuilderError};
-pub use transaction_v1_category::TransactionCategory;
+pub(crate) use transaction_v1_category::TransactionCategory;
 pub use transaction_v1_hash::TransactionV1Hash;
 pub use transaction_v1_header::TransactionV1Header;
 
@@ -361,7 +360,11 @@ impl TransactionV1 {
         at: Timestamp,
     ) -> Result<(), InvalidTransactionV1> {
         let transaction_config = chainspec.transaction_config.clone();
-        self.is_valid_size(transaction_config.max_transaction_size)?;
+        self.is_valid_size(
+            transaction_config
+                .transaction_v1_config
+                .get_max_serialized_length(self.body.transaction_kind) as u32,
+        )?;
 
         let chain_name = chainspec.network_config.name.clone();
 
@@ -475,16 +478,17 @@ impl TransactionV1 {
     ) -> Self {
         let transaction = TransactionV1Builder::new_random_with_category_and_timestamp_and_ttl(
             rng,
-            &TransactionCategory::Mint,
+            TransactionCategory::Mint as u8,
             timestamp,
             ttl,
         )
         .build()
         .unwrap();
-        assert!(matches!(
+        assert_eq!(
             transaction.transaction_category(),
-            TransactionCategory::Mint
-        ));
+            TransactionCategory::Mint as u8,
+            "Required mint, incorrect category"
+        );
         transaction
     }
 
@@ -493,23 +497,24 @@ impl TransactionV1 {
     /// Note that the [`TransactionV1Builder`] can be used to create a random transaction with
     /// more specific values.
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
-    pub fn random_standard(
+    pub fn random_wasm(
         rng: &mut TestRng,
         timestamp: Option<Timestamp>,
         ttl: Option<TimeDiff>,
     ) -> Self {
         let transaction = TransactionV1Builder::new_random_with_category_and_timestamp_and_ttl(
             rng,
-            &TransactionCategory::Large,
+            TransactionCategory::Large as u8,
             timestamp,
             ttl,
         )
         .build()
         .unwrap();
-        assert!(matches!(
+        assert_eq!(
             transaction.transaction_category(),
-            TransactionCategory::Large
-        ));
+            TransactionCategory::Large as u8,
+            "Required large, incorrect category"
+        );
         transaction
     }
 
@@ -525,16 +530,17 @@ impl TransactionV1 {
     ) -> Self {
         let transaction = TransactionV1Builder::new_random_with_category_and_timestamp_and_ttl(
             rng,
-            &TransactionCategory::InstallUpgrade,
+            TransactionCategory::InstallUpgrade as u8,
             timestamp,
             ttl,
         )
         .build()
         .unwrap();
-        assert!(matches!(
+        assert_eq!(
             transaction.transaction_category(),
-            TransactionCategory::InstallUpgrade
-        ));
+            TransactionCategory::InstallUpgrade as u8,
+            "Required install/upgrade, incorrect category"
+        );
         transaction
     }
 
@@ -543,23 +549,24 @@ impl TransactionV1 {
     /// Note that the [`TransactionV1Builder`] can be used to create a random transaction with
     /// more specific values.
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
-    pub fn random_staking(
+    pub fn random_auction(
         rng: &mut TestRng,
         timestamp: Option<Timestamp>,
         ttl: Option<TimeDiff>,
     ) -> Self {
         let transaction = TransactionV1Builder::new_random_with_category_and_timestamp_and_ttl(
             rng,
-            &TransactionCategory::Auction,
+            TransactionCategory::Auction as u8,
             timestamp,
             ttl,
         )
         .build()
         .unwrap();
-        assert!(matches!(
+        assert_eq!(
             transaction.transaction_category(),
-            TransactionCategory::Auction
-        ));
+            TransactionCategory::Auction as u8,
+            "Required auction, incorrect category"
+        );
         transaction
     }
 
@@ -577,43 +584,8 @@ impl TransactionV1 {
     }
 
     /// Returns transaction category.
-    pub fn transaction_category(&self) -> TransactionCategory {
-        match self.body().target() {
-            TransactionTarget::Native => match self.body().entry_point() {
-                TransactionEntryPoint::Custom(_) => TransactionCategory::Large,
-                TransactionEntryPoint::Transfer => TransactionCategory::Mint,
-                TransactionEntryPoint::AddBid
-                | TransactionEntryPoint::WithdrawBid
-                | TransactionEntryPoint::ActivateBid
-                | TransactionEntryPoint::Delegate
-                | TransactionEntryPoint::Undelegate
-                | TransactionEntryPoint::Redelegate
-                | TransactionEntryPoint::ChangeBidPublicKey => TransactionCategory::Auction,
-            },
-            TransactionTarget::Stored { .. } => TransactionCategory::Large,
-            TransactionTarget::Session { kind, .. } => match kind {
-                TransactionSessionKind::Isolated | TransactionSessionKind::Standard => {
-                    TransactionCategory::Large
-                }
-                TransactionSessionKind::Installer | TransactionSessionKind::Upgrader => {
-                    TransactionCategory::InstallUpgrade
-                }
-            },
-        }
-    }
-}
-
-impl Categorized for TransactionV1 {
-    fn category(&self) -> TransactionCategory {
-        if self.is_native_mint() {
-            TransactionCategory::Mint
-        } else if self.is_native_auction() {
-            TransactionCategory::Auction
-        } else if self.is_install_or_upgrade() {
-            TransactionCategory::InstallUpgrade
-        } else {
-            TransactionCategory::Large
-        }
+    pub fn transaction_category(&self) -> u8 {
+        self.body.transaction_kind
     }
 }
 
@@ -678,8 +650,7 @@ impl GasLimited for TransactionV1 {
                         };
                         amount
                     } else {
-                        let category = self.category() as u8;
-                        chainspec.get_max_gas_limit_by_kind(category)
+                        chainspec.get_max_gas_limit_by_kind(self.body.transaction_kind)
                     }
                 };
                 Gas::new(U512::from(computation_limit))
@@ -956,7 +927,7 @@ mod tests {
         let chain_name = "net-1";
         let transaction = TransactionV1Builder::new_random_with_category_and_timestamp_and_ttl(
             rng,
-            &TransactionCategory::Large,
+            TransactionCategory::Large as u8,
             None,
             None,
         )

@@ -11,7 +11,8 @@ use serde::{Deserialize, Serialize};
 use crate::{
     block::RewardedSignatures,
     bytesrepr::{self, FromBytes, ToBytes},
-    Digest, TransactionCategory, TransactionHash,
+    transaction::TransactionCategory,
+    Digest, TransactionHash,
 };
 
 /// The body portion of a block. Version 2.

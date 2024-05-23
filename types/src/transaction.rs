@@ -77,10 +77,10 @@ pub use transaction_runtime::TransactionRuntime;
 pub use transaction_scheduling::TransactionScheduling;
 pub use transaction_session_kind::TransactionSessionKind;
 pub use transaction_target::TransactionTarget;
+pub(crate) use transaction_v1::TransactionCategory;
 pub use transaction_v1::{
-    InvalidTransactionV1, TransactionCategory, TransactionV1, TransactionV1Body,
-    TransactionV1DecodeFromJsonError, TransactionV1Error, TransactionV1ExcessiveSizeError,
-    TransactionV1Hash, TransactionV1Header,
+    InvalidTransactionV1, TransactionV1, TransactionV1Body, TransactionV1DecodeFromJsonError,
+    TransactionV1Error, TransactionV1ExcessiveSizeError, TransactionV1Hash, TransactionV1Header,
 };
 #[cfg(any(feature = "std", test))]
 pub use transaction_v1::{TransactionV1Builder, TransactionV1BuilderError};
@@ -395,21 +395,6 @@ impl Transaction {
             Transaction::Deploy(Deploy::random_valid_native_transfer(rng))
         } else {
             Transaction::V1(TransactionV1::random(rng))
-        }
-    }
-}
-
-/// Self discloses category.
-pub trait Categorized {
-    /// What category does this instance belong in.
-    fn category(&self) -> TransactionCategory;
-}
-
-impl Categorized for Transaction {
-    fn category(&self) -> TransactionCategory {
-        match self {
-            Transaction::Deploy(deploy) => deploy.category(),
-            Transaction::V1(v1) => v1.category(),
         }
     }
 }

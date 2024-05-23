@@ -183,21 +183,15 @@ impl BlockValidationState {
         block: &ProposedBlock<ClContext>,
         config: &TransactionConfig,
     ) -> Result<(), ()> {
-        if block.standard_count() > config.block_max_large_count as usize {
-            warn!("too many standard transactions");
-            return Err(());
-        }
-        if block.auction_count() > config.block_max_auction_count as usize {
-            warn!("too many auction transactions");
-            return Err(());
-        }
-        if block.install_upgrade_count() > config.block_max_install_upgrade_count as usize {
-            warn!("too many install_upgrade transactions");
-            return Err(());
-        }
-        if block.mint_count() > config.block_max_mint_count as usize {
-            warn!("too many mint transactions");
-            return Err(());
+        for supported_category in config.transaction_v1_config.get_supported_categories() {
+            let transactions = block.value().count(Some(supported_category));
+            let lane_count_limit = config
+                .transaction_v1_config
+                .get_max_transaction_count(supported_category);
+            if lane_count_limit < transactions as u64 {
+                warn!("too many transactions in category: {lane_count_limit}");
+                return Err(());
+            }
         }
 
         Ok(())

@@ -220,12 +220,10 @@ impl Chainspec {
     }
 
     /// Is the given transaction category supported.
-    pub fn is_supported(&self, category: u64) -> bool {
+    pub fn is_supported(&self, category: u8) -> bool {
         self.transaction_config
             .transaction_v1_config
-            .lanes
-            .iter()
-            .any(|lane| lane.first() == Some(&category))
+            .is_supported(category)
     }
 
     /// Returns the max serialized for the given category.
@@ -247,6 +245,13 @@ impl Chainspec {
         self.transaction_config
             .transaction_v1_config
             .get_max_gas_limit(category)
+    }
+
+    /// Returns the max transaction count for the given category.
+    pub fn get_max_transaction_count_by_kind(&self, category: u8) -> u64 {
+        self.transaction_config
+            .transaction_v1_config
+            .get_max_transaction_count(category)
     }
 }
 

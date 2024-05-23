@@ -23,8 +23,8 @@ use tracing::{debug, error, trace, warn};
 
 use casper_types::{
     Approval, ApprovalsHash, Chainspec, EraId, FinalitySignature, FinalitySignatureId, PublicKey,
-    RewardedSignatures, SingleBlockRewardedSignatures, Timestamp, Transaction, TransactionCategory,
-    TransactionHash, TransactionId,
+    RewardedSignatures, SingleBlockRewardedSignatures, Timestamp, Transaction, TransactionHash,
+    TransactionId, AUCTION_LANE_ID, INSTALL_UPGRADE_LANE_ID, MINT_LANE_ID,
 };
 
 use crate::{
@@ -58,25 +58,24 @@ impl ProposedBlock<ClContext> {
         self.value().count(None)
     }
 
-    /// How many standard transactions?
-    pub(crate) fn standard_count(&self) -> usize {
-        self.value().count(Some(TransactionCategory::Large))
-    }
-
     /// How many mint transactions?
     pub(crate) fn mint_count(&self) -> usize {
-        self.value().count(Some(TransactionCategory::Mint))
+        self.value().count(Some(MINT_LANE_ID))
     }
 
     /// How many auction transactions?
     pub(crate) fn auction_count(&self) -> usize {
-        self.value().count(Some(TransactionCategory::Auction))
+        self.value().count(Some(AUCTION_LANE_ID))
     }
 
     /// How many install / upgrade transactions?
     pub(crate) fn install_upgrade_count(&self) -> usize {
-        self.value()
-            .count(Some(TransactionCategory::InstallUpgrade))
+        self.value().count(Some(INSTALL_UPGRADE_LANE_ID))
+    }
+
+    /// Transaction count by category.
+    pub(crate) fn transaction_count_by_category(&self, category: u8) -> usize {
+        self.value().count(Some(category))
     }
 
     pub(crate) fn all_transactions(

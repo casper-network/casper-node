@@ -14,9 +14,9 @@ use super::{
     InitiatorAddrAndSecretKey, PricingMode, TransactionV1, TransactionV1Body,
 };
 use crate::{
-    bytesrepr::Bytes, AddressableEntityHash, CLValue, CLValueError, EntityVersion, PackageHash,
-    PublicKey, RuntimeArgs, SecretKey, TimeDiff, Timestamp, TransactionCategory, TransferTarget,
-    URef, U512,
+    bytesrepr::Bytes, transaction::TransactionCategory, AddressableEntityHash, CLValue,
+    CLValueError, EntityVersion, PackageHash, PublicKey, RuntimeArgs, SecretKey, TimeDiff,
+    Timestamp, TransferTarget, URef, U512,
 };
 #[cfg(any(feature = "testing", test))]
 use crate::{testing::TestRng, transaction::Approval, TransactionConfig, TransactionV1Hash};
@@ -299,7 +299,7 @@ impl<'a> TransactionV1Builder<'a> {
     #[cfg(any(feature = "testing", test))]
     pub fn new_random_with_category_and_timestamp_and_ttl(
         rng: &mut TestRng,
-        category: &TransactionCategory,
+        category: u8,
         timestamp: Option<Timestamp>,
         ttl: Option<TimeDiff>,
     ) -> Self {

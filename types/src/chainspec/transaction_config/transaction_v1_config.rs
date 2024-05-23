@@ -3,13 +3,12 @@ use datasize::DataSize;
 #[cfg(any(feature = "testing", test))]
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-use tracing::warn;
 
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    TransactionCategory,
+    transaction::TransactionCategory,
 };
 
 /// Default gas limit of install / upgrade contracts
@@ -18,74 +17,166 @@ pub const DEFAULT_INSTALL_UPGRADE_GAS_LIMIT: u64 = 3_500_000_000_000;
 /// Default gas limit of standard transactions
 pub const DEFAULT_LARGE_TRANSACTION_GAS_LIMIT: u64 = 500_000_000_000;
 
+const DEFAULT_NATIVE_MINT_LANE: [u64; 5] = [0, 1_048_576, 1024, 2_500_000_000, 650];
+const DEFAULT_NATIVE_AUCTION_LANE: [u64; 5] = [1, 1_048_576, 1024, 2_500_000_000, 650];
+
+const KIND: usize = 0;
+const MAX_TRANSACTION_LENGTH: usize = 1;
+const MAX_TRANSACTION_ARGS_LENGTH: usize = 2;
+const MAX_TRANSACTION_GAS_LIMIT: usize = 3;
+const MAX_TRANSACTION_COUNT: usize = 5;
+
 /// Configuration values associated with V1 Transactions.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 pub struct TransactionV1Config {
-    /// [0] -> Kind
-    /// [1] -> Max serialized length
-    /// [2] -> Max args length
-    /// [3] -> Max gas limit
-    pub lanes: Vec<Vec<u64>>,
+    pub native_mint_lane: Vec<u64>,
+    pub native_auction_lane: Vec<u64>,
+    pub wasm_lanes: Vec<Vec<u64>>,
 }
 
 impl TransactionV1Config {
     #[cfg(any(feature = "testing", test))]
     /// Generates a random instance using a `TestRng`.
     pub fn random(rng: &mut TestRng) -> Self {
-        let mut lanes = vec![];
-        for kind in 0..7 {
+        let native_mint_lane = DEFAULT_NATIVE_MINT_LANE.to_vec();
+        let native_auction_lane = DEFAULT_NATIVE_AUCTION_LANE.to_vec();
+        let mut wasm_lanes = vec![];
+        for kind in 2..7 {
             let lane = vec![
                 kind as u64,
                 rng.gen_range(0..=1_048_576),
                 rng.gen_range(0..=1024),
                 rng.gen_range(0..=2_500_000_000),
             ];
-            lanes.push(lane)
+            wasm_lanes.push(lane)
         }
 
-        TransactionV1Config { lanes }
+        TransactionV1Config {
+            native_mint_lane,
+            native_auction_lane,
+            wasm_lanes,
+        }
+    }
+
+    pub fn is_native_lane(&self, lane: u8) -> bool {
+        lane as u64 == DEFAULT_NATIVE_MINT_LANE[0] || lane as u64 == DEFAULT_NATIVE_MINT_LANE[0]
     }
 
     /// Returns the max serialized length of a transaction for the given category.
     pub fn get_max_serialized_length(&self, category: u8) -> u64 {
-        let lane_config = self.lanes.iter().find(|lane| lane[0] == category as u64);
-
-        match lane_config {
-            None => {
-                warn!("no lane config found, returning 0");
-                0
+        if !self.is_supported(category) {
+            return 0;
+        }
+        match category {
+            0 => self.native_mint_lane[MAX_TRANSACTION_LENGTH],
+            1 => self.native_auction_lane[MAX_TRANSACTION_LENGTH],
+            _ => {
+                match self
+                    .wasm_lanes
+                    .iter()
+                    .find(|lane| lane.first() == Some(&(category as u64)))
+                {
+                    Some(wasm_lane) => wasm_lane[MAX_TRANSACTION_LENGTH],
+                    None => 0,
+                }
             }
-            Some(lane) => lane[1],
         }
     }
 
     /// Returns the max serialized args length of a transaction for the given category.
     pub fn get_max_args_length(&self, category: u8) -> u64 {
-        let lane_config = self.lanes.iter().find(|lane| lane[0] == category as u64);
-
-        match lane_config {
-            None => {
-                warn!("no lane config found, returning 0");
-                0
+        if !self.is_supported(category) {
+            return 0;
+        }
+        match category {
+            0 => self.native_mint_lane[MAX_TRANSACTION_ARGS_LENGTH],
+            1 => self.native_auction_lane[MAX_TRANSACTION_ARGS_LENGTH],
+            _ => {
+                match self
+                    .wasm_lanes
+                    .iter()
+                    .find(|lane| lane.first() == Some(&(category as u64)))
+                {
+                    Some(wasm_lane) => wasm_lane[MAX_TRANSACTION_ARGS_LENGTH],
+                    None => 0,
+                }
             }
-            Some(lane) => lane[2],
         }
     }
 
     /// Returns the max gas limit of a transaction for the given category.
     pub fn get_max_gas_limit(&self, category: u8) -> u64 {
-        let lane_config = self.lanes.iter().find(|lane| lane[0] == category as u64);
-
-        match lane_config {
-            None => {
-                warn!("no lane config found, returning 0");
-                0
-            }
-            Some(lane) => lane[3],
+        if !self.is_supported(category) {
+            return 0;
         }
+        match category {
+            0 => self.native_mint_lane[MAX_TRANSACTION_GAS_LIMIT],
+            1 => self.native_auction_lane[MAX_TRANSACTION_GAS_LIMIT],
+            _ => {
+                match self
+                    .wasm_lanes
+                    .iter()
+                    .find(|lane| lane.first() == Some(&(category as u64)))
+                {
+                    Some(wasm_lane) => wasm_lane[MAX_TRANSACTION_GAS_LIMIT],
+                    None => 0,
+                }
+            }
+        }
+    }
+
+    /// Returns the max gas limit of a transaction for the given category.
+    pub fn get_max_transaction_count(&self, category: u8) -> u64 {
+        if !self.is_supported(category) {
+            return 0;
+        }
+        match category {
+            0 => self.native_mint_lane[MAX_TRANSACTION_COUNT],
+            1 => self.native_auction_lane[MAX_TRANSACTION_COUNT],
+            _ => {
+                match self
+                    .wasm_lanes
+                    .iter()
+                    .find(|lane| lane.first() == Some(&(category as u64)))
+                {
+                    Some(wasm_lane) => wasm_lane[MAX_TRANSACTION_COUNT],
+                    None => 0,
+                }
+            }
+        }
+    }
+
+    pub fn is_supported(&self, category: u8) -> bool {
+        if !self.is_native_lane(category) {
+            return self
+                .wasm_lanes
+                .iter()
+                .any(|lane| lane.first() == Some(&(category as u64)));
+        }
+
+        true
+    }
+
+    pub fn get_max_block_count(&self) -> u64 {
+        self.native_mint_lane[MAX_TRANSACTION_COUNT]
+            + self.native_auction_lane[MAX_TRANSACTION_COUNT]
+            + self
+                .wasm_lanes
+                .iter()
+                .map(|lane| lane[MAX_TRANSACTION_COUNT])
+                .sum::<u64>()
+    }
+
+    pub fn get_supported_categories(&self) -> Vec<u8> {
+        let mut ret = vec![0, 1];
+        for lane in self.wasm_lanes.iter() {
+            let lane_id = lane[KIND] as u8;
+            ret.push(lane_id);
+        }
+        ret
     }
 }
 
@@ -97,18 +188,21 @@ impl Default for TransactionV1Config {
             1_048_576,
             1024,
             DEFAULT_LARGE_TRANSACTION_GAS_LIMIT,
+            10,
         ];
         let medium_lane = vec![
             TransactionCategory::Medium as u64,
-            1_048_576,
+            524_576,
             1024,
             DEFAULT_LARGE_TRANSACTION_GAS_LIMIT / 2,
+            20,
         ];
         let small_lane = vec![
             TransactionCategory::Small as u64,
-            1_048_576,
+            148_576,
             1024,
             DEFAULT_LARGE_TRANSACTION_GAS_LIMIT / 10,
+            100,
         ];
 
         let install_upgrade_lane = vec![
@@ -118,35 +212,23 @@ impl Default for TransactionV1Config {
             DEFAULT_INSTALL_UPGRADE_GAS_LIMIT,
         ];
 
-        let mint_lane = vec![
-            TransactionCategory::Mint as u64,
-            1_048_576,
-            2048,
-            2_500_000_000,
-        ];
-        let auction_lane = vec![
-            TransactionCategory::Auction as u64,
-            1_048_576,
-            2048,
-            2_500_000_000,
-        ];
+        let native_mint_lane = DEFAULT_NATIVE_MINT_LANE.to_vec();
+        let native_auction_lane = DEFAULT_NATIVE_AUCTION_LANE.to_vec();
+        let wasm_lanes = vec![large_lane, medium_lane, small_lane, install_upgrade_lane];
 
-        let lanes = vec![
-            large_lane,
-            medium_lane,
-            small_lane,
-            install_upgrade_lane,
-            mint_lane,
-            auction_lane,
-        ];
-
-        TransactionV1Config { lanes }
+        TransactionV1Config {
+            native_mint_lane,
+            native_auction_lane,
+            wasm_lanes,
+        }
     }
 }
 
 impl ToBytes for TransactionV1Config {
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        self.lanes.write_bytes(writer)
+        self.native_mint_lane.write_bytes(writer)?;
+        self.native_auction_lane.write_bytes(writer)?;
+        self.wasm_lanes.write_bytes(writer)
     }
 
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
@@ -156,14 +238,22 @@ impl ToBytes for TransactionV1Config {
     }
 
     fn serialized_length(&self) -> usize {
-        self.lanes.serialized_length()
+        self.native_mint_lane.serialized_length()
+            + self.native_auction_lane.serialized_length()
+            + self.wasm_lanes.serialized_length()
     }
 }
 
 impl FromBytes for TransactionV1Config {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (lanes, remainder) = FromBytes::from_bytes(bytes)?;
-        let config = TransactionV1Config { lanes };
+        let (native_mint_lane, remainder) = FromBytes::from_bytes(bytes)?;
+        let (native_auction_lane, remainder) = FromBytes::from_bytes(remainder)?;
+        let (wasm_lanes, remainder) = FromBytes::from_bytes(remainder)?;
+        let config = TransactionV1Config {
+            native_mint_lane,
+            native_auction_lane,
+            wasm_lanes,
+        };
         Ok((config, remainder))
     }
 }
@@ -177,5 +267,14 @@ mod tests {
         let mut rng = TestRng::new();
         let config = TransactionV1Config::random(&mut rng);
         bytesrepr::test_serialization_roundtrip(&config);
+    }
+
+    #[test]
+    fn should_correctly_track_supported() {
+        let config = TransactionV1Config::default();
+        assert!(config.is_supported(0));
+        assert!(config.is_supported(1));
+        assert!(config.is_supported(5));
+        assert!(!config.is_supported(10));
     }
 }

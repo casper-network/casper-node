@@ -4,8 +4,8 @@ use datasize::DataSize;
 use serde::Serialize;
 
 use casper_types::{
-    BlockV2, EraId, PublicKey, RewardedSignatures, Timestamp, Transaction, TransactionCategory,
-    TransactionHash, U512,
+    BlockV2, EraId, PublicKey, RewardedSignatures, Timestamp, Transaction, TransactionHash,
+    AUCTION_LANE_ID, INSTALL_UPGRADE_LANE_ID, MINT_LANE_ID, U512,
 };
 
 use super::{FinalizedBlock, InternalEraReport};
@@ -34,42 +34,28 @@ pub struct ExecutableBlock {
 impl ExecutableBlock {
     pub(crate) fn mint(&self) -> Vec<TransactionHash> {
         self.transaction_map
-            .get(&(TransactionCategory::Mint as u8))
+            .get(&MINT_LANE_ID)
             .cloned()
             .unwrap_or(vec![])
     }
 
     pub(crate) fn auction(&self) -> Vec<TransactionHash> {
         self.transaction_map
-            .get(&(TransactionCategory::Auction as u8))
+            .get(&AUCTION_LANE_ID)
             .cloned()
             .unwrap_or(vec![])
     }
 
     pub(crate) fn install_upgrade(&self) -> Vec<TransactionHash> {
         self.transaction_map
-            .get(&(TransactionCategory::InstallUpgrade as u8))
+            .get(&INSTALL_UPGRADE_LANE_ID)
             .cloned()
             .unwrap_or(vec![])
     }
 
-    pub(crate) fn large(&self) -> Vec<TransactionHash> {
+    pub(crate) fn wasm_transaction_by_count(&self, category: u8) -> Vec<TransactionHash> {
         self.transaction_map
-            .get(&(TransactionCategory::Large as u8))
-            .cloned()
-            .unwrap_or(vec![])
-    }
-
-    pub(crate) fn medium(&self) -> Vec<TransactionHash> {
-        self.transaction_map
-            .get(&(TransactionCategory::Medium as u8))
-            .cloned()
-            .unwrap_or(vec![])
-    }
-
-    pub(crate) fn small(&self) -> Vec<TransactionHash> {
-        self.transaction_map
-            .get(&(TransactionCategory::Small as u8))
+            .get(&category)
             .cloned()
             .unwrap_or(vec![])
     }

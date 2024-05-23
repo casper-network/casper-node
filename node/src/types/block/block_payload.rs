@@ -8,7 +8,10 @@ use std::{
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-use casper_types::{Approval, PublicKey, RewardedSignatures, TransactionCategory, TransactionHash};
+use casper_types::{
+    Approval, PublicKey, RewardedSignatures, TransactionHash, AUCTION_LANE_ID,
+    INSTALL_UPGRADE_LANE_ID, MINT_LANE_ID,
+};
 
 /// The piece of information that will become the content of a future block (isn't finalized or
 /// executed yet)
@@ -20,7 +23,7 @@ use casper_types::{Approval, PublicKey, RewardedSignatures, TransactionCategory,
     Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize, Default,
 )]
 pub struct BlockPayload {
-    transactions: BTreeMap<TransactionCategory, Vec<(TransactionHash, BTreeSet<Approval>)>>,
+    transactions: BTreeMap<u8, Vec<(TransactionHash, BTreeSet<Approval>)>>,
     accusations: Vec<PublicKey>,
     rewarded_signatures: RewardedSignatures,
     random_bit: bool,
@@ -28,7 +31,7 @@ pub struct BlockPayload {
 
 impl BlockPayload {
     pub(crate) fn new(
-        transactions: BTreeMap<TransactionCategory, Vec<(TransactionHash, BTreeSet<Approval>)>>,
+        transactions: BTreeMap<u8, Vec<(TransactionHash, BTreeSet<Approval>)>>,
         accusations: Vec<PublicKey>,
         rewarded_signatures: RewardedSignatures,
         random_bit: bool,
@@ -44,7 +47,7 @@ impl BlockPayload {
     /// Returns the hashes and approvals of the mint transactions within the block.
     pub fn mint(&self) -> impl Iterator<Item = &(TransactionHash, BTreeSet<Approval>)> {
         let mut ret = vec![];
-        if let Some(transactions) = self.transactions.get(&TransactionCategory::Mint) {
+        if let Some(transactions) = self.transactions.get(&MINT_LANE_ID) {
             for transaction in transactions {
                 ret.push(transaction)
             }
@@ -55,7 +58,7 @@ impl BlockPayload {
     /// Returns the hashes and approvals of the auction transactions within the block.
     pub fn auction(&self) -> impl Iterator<Item = &(TransactionHash, BTreeSet<Approval>)> {
         let mut ret = vec![];
-        if let Some(transactions) = self.transactions.get(&TransactionCategory::Auction) {
+        if let Some(transactions) = self.transactions.get(&AUCTION_LANE_ID) {
             for transaction in transactions {
                 ret.push(transaction)
             }
@@ -66,7 +69,7 @@ impl BlockPayload {
     /// Returns the hashes and approvals of the install / upgrade transactions within the block.
     pub fn install_upgrade(&self) -> impl Iterator<Item = &(TransactionHash, BTreeSet<Approval>)> {
         let mut ret = vec![];
-        if let Some(transactions) = self.transactions.get(&TransactionCategory::InstallUpgrade) {
+        if let Some(transactions) = self.transactions.get(&INSTALL_UPGRADE_LANE_ID) {
             for transaction in transactions {
                 ret.push(transaction)
             }
@@ -74,19 +77,32 @@ impl BlockPayload {
         ret.into_iter()
     }
 
-    /// Returns the hashes and approvals of the standard transactions within the block.
-    pub fn standard(&self) -> impl Iterator<Item = &(TransactionHash, BTreeSet<Approval>)> {
+    /// Returns all of the transaction hashes and approvals within the block by category.
+    pub fn transactions_by_category(
+        &self,
+        category: u8,
+    ) -> impl Iterator<Item = &(TransactionHash, BTreeSet<Approval>)> {
         let mut ret = vec![];
-        if let Some(transactions) = self.transactions.get(&TransactionCategory::Large) {
+        if let Some(transactions) = self.transactions.get(&category) {
             for transaction in transactions {
                 ret.push(transaction)
             }
         }
         ret.into_iter()
+    }
+
+    pub(crate) fn finalized_payload(&self) -> BTreeMap<u8, Vec<TransactionHash>> {
+        let mut ret = BTreeMap::new();
+        for (category, transactions) in self.transactions.iter() {
+            let transactions = transactions.into_iter().map(|(tx, _)| tx).collect();
+            ret.insert(*category, transactions);
+        }
+
+        ret
     }
 
     /// Returns count of transactions by category.
-    pub fn count(&self, category: Option<TransactionCategory>) -> usize {
+    pub fn count(&self, category: Option<u8>) -> usize {
         match category {
             None => self
                 .transactions

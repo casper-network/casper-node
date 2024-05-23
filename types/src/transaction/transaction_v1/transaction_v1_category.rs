@@ -1,7 +1,4 @@
-use core::{
-    convert::TryFrom,
-    fmt::{self, Formatter},
-};
+use core::fmt::{self, Formatter};
 
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::testing::TestRng;
@@ -25,20 +22,20 @@ use serde::{Deserialize, Serialize};
 )]
 #[serde(deny_unknown_fields)]
 #[repr(u8)]
-pub enum TransactionCategory {
-    /// Large wasm sized transaction interactio.
+pub(crate) enum TransactionCategory {
+    /// Native mint interaction (the default).
     #[default]
-    Large = 0,
-    /// Small wasm sized transaction interaction.
-    Small = 1,
-    /// .
-    Medium = 2,
-    /// Install or Upgrade.
-    InstallUpgrade = 3,
-    /// Native mint interaction.
-    Mint = 4,
+    Mint = 0,
     /// Native auction interaction.
-    Auction = 5,
+    Auction = 1,
+    /// Install or Upgrade.
+    InstallUpgrade = 2,
+    /// A large Wasm based transaction.
+    Large = 3,
+    /// A medium Wasm based transaction.
+    Medium = 4,
+    /// A small Wasm based transaction.
+    Small = 5,
 }
 
 impl TransactionCategory {
@@ -46,29 +43,13 @@ impl TransactionCategory {
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub fn random(rng: &mut TestRng) -> Self {
         match rng.gen_range(0u32..4) {
-            0 => Self::Large,
-            1 => Self::Small,
-            2 => Self::Medium,
-            3 => Self::InstallUpgrade,
-            4 => Self::Mint,
-            5 => Self::Auction,
+            0 => Self::Mint,
+            1 => Self::Auction,
+            2 => Self::InstallUpgrade,
+            3 => Self::Large,
+            4 => Self::Medium,
+            5 => Self::Small,
             _ => unreachable!(),
-        }
-    }
-}
-
-impl TryFrom<u8> for TransactionCategory {
-    type Error = crate::bytesrepr::Error;
-
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        match value {
-            0 => Ok(Self::Large),
-            1 => Ok(Self::Small),
-            2 => Ok(Self::Medium),
-            3 => Ok(Self::InstallUpgrade),
-            4 => Ok(Self::Mint),
-            5 => Ok(Self::Auction),
-            _ => Err(Self::Error::Formatting),
         }
     }
 }
@@ -76,16 +57,12 @@ impl TryFrom<u8> for TransactionCategory {
 impl fmt::Display for TransactionCategory {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            TransactionCategory::Large => write!(f, "Large"),
             TransactionCategory::Mint => write!(f, "Mint"),
             TransactionCategory::Auction => write!(f, "Auction"),
             TransactionCategory::InstallUpgrade => write!(f, "InstallUpgrade"),
-            TransactionCategory::Small => {
-                write!(f, "Small")
-            }
-            TransactionCategory::Medium => {
-                write!(f, "Medium")
-            }
+            TransactionCategory::Large => write!(f, "Large"),
+            TransactionCategory::Medium => write!(f, "Medium"),
+            TransactionCategory::Small => write!(f, "Small"),
         }
     }
 }

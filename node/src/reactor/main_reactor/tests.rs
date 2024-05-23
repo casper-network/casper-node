@@ -28,20 +28,10 @@ use casper_storage::{
     },
     global_state::state::{StateProvider, StateReader},
 };
-use casper_types::{
-    execution::{ExecutionResult, ExecutionResultV2, TransformKindV2, TransformV2},
-    system::{
-        auction::{BidAddr, BidKind, BidsExt, DelegationRate},
-        AUCTION,
-    },
-    testing::TestRng,
-    AccountConfig, AccountsConfig, ActivationPoint, AddressableEntityHash, AvailableBlockRange,
-    Block, BlockHash, BlockHeader, BlockV2, CLValue, Chainspec, ChainspecRawBytes,
-    ConsensusProtocolName, Deploy, EraId, FeeHandling, Gas, HoldBalanceHandling, Key, Motes,
-    NextUpgrade, PricingHandling, PricingMode, ProtocolVersion, PublicKey, RefundHandling, Rewards,
-    SecretKey, StoredValue, SystemEntityRegistry, TimeDiff, Timestamp, Transaction,
-    TransactionHash, TransactionV1Builder, ValidatorConfig, U512,
-};
+use casper_types::{execution::{ExecutionResult, ExecutionResultV2, TransformKindV2, TransformV2}, system::{
+    auction::{BidAddr, BidKind, BidsExt, DelegationRate},
+    AUCTION,
+}, testing::TestRng, AccountConfig, AccountsConfig, ActivationPoint, AddressableEntityHash, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockV2, CLValue, Chainspec, ChainspecRawBytes, ConsensusProtocolName, Deploy, EraId, FeeHandling, Gas, HoldBalanceHandling, Key, Motes, NextUpgrade, PricingHandling, PricingMode, ProtocolVersion, PublicKey, RefundHandling, Rewards, SecretKey, StoredValue, SystemEntityRegistry, TimeDiff, Timestamp, Transaction, TransactionHash, TransactionV1Builder, ValidatorConfig, U512, TransactionV1Config};
 
 use crate::{
     components::{
@@ -102,10 +92,6 @@ struct ConfigsOverride {
     finality_signature_proportion: Ratio<u64>,
     signature_rewards_max_delay: u64,
     storage_multiplier: u8,
-    max_transfer_count: u32,
-    max_standard_count: u32,
-    max_staking_count: u32,
-    max_install_count: u32,
     max_gas_price: u8,
     min_gas_price: u8,
     upper_threshold: u64,
@@ -120,6 +106,7 @@ struct ConfigsOverride {
     administrators: Option<BTreeSet<PublicKey>>,
     chain_name: Option<String>,
     gas_hold_balance_handling: Option<HoldBalanceHandling>,
+    transaction_v1_override: Option<TransactionV1Config>,
 }
 
 impl ConfigsOverride {
@@ -184,11 +171,6 @@ impl ConfigsOverride {
         self
     }
 
-    fn with_max_transfer_count(mut self, max_transfer_count: u32) -> Self {
-        self.max_transfer_count = max_transfer_count;
-        self
-    }
-
     fn with_administrators(mut self, administrators: BTreeSet<PublicKey>) -> Self {
         self.administrators = Some(administrators);
         self
@@ -206,6 +188,14 @@ impl ConfigsOverride {
         self.gas_hold_balance_handling = Some(gas_hold_balance_handling);
         self
     }
+
+    fn with_transaction_v1_config(
+        mut self,
+        transaction_v1config: TransactionV1Config,
+    ) -> Self {
+        self.transaction_v1_override = Some(transaction_v1config);
+        self
+    }
 }
 
 impl Default for ConfigsOverride {
@@ -221,10 +211,6 @@ impl Default for ConfigsOverride {
             finality_signature_proportion: Ratio::new(1, 3),
             signature_rewards_max_delay: 5,
             storage_multiplier: 1,
-            max_transfer_count: 1000,
-            max_standard_count: 100,
-            max_staking_count: 200,
-            max_install_count: 2,
             max_gas_price: 3,
             min_gas_price: 1,
             upper_threshold: 90,
@@ -239,6 +225,7 @@ impl Default for ConfigsOverride {
             administrators: None,
             chain_name: None,
             gas_hold_balance_handling: None,
+            transaction_v1_override: None,
         }
     }
 }
@@ -344,10 +331,6 @@ impl TestFixture {
             finality_signature_proportion,
             signature_rewards_max_delay,
             storage_multiplier,
-            max_transfer_count,
-            max_standard_count,
-            max_staking_count,
-            max_install_count,
             max_gas_price,
             min_gas_price,
             upper_threshold,
@@ -362,6 +345,7 @@ impl TestFixture {
             administrators,
             chain_name,
             gas_hold_balance_handling,
+            transaction_v1_override,
         } = spec_override.unwrap_or_default();
         if era_duration != TimeDiff::from_millis(0) {
             chainspec.core_config.era_duration = era_duration;
@@ -380,10 +364,6 @@ impl TestFixture {
         chainspec.vacancy_config.max_gas_price = max_gas_price;
         chainspec.vacancy_config.upper_threshold = upper_threshold;
         chainspec.vacancy_config.lower_threshold = lower_threshold;
-        chainspec.transaction_config.block_max_large_count = max_standard_count;
-        chainspec.transaction_config.block_max_auction_count = max_staking_count;
-        chainspec.transaction_config.block_max_mint_count = max_transfer_count;
-        chainspec.transaction_config.block_max_install_upgrade_count = max_install_count;
         chainspec.transaction_config.block_gas_limit = block_gas_limit;
         chainspec.transaction_config.max_block_size = max_block_size;
         chainspec.highway_config.maximum_round_length =
@@ -413,6 +393,9 @@ impl TestFixture {
         }
         if let Some(gas_hold_balance_handling) = gas_hold_balance_handling {
             chainspec.core_config.gas_hold_balance_handling = gas_hold_balance_handling;
+        }
+        if let Some(transaction_v1_config) = transaction_v1_override {
+            chainspec.transaction_config.transaction_v1_config = transaction_v1_config
         }
 
         let applied_block_gas_limit = chainspec.transaction_config.block_gas_limit;
@@ -621,8 +604,8 @@ impl TestFixture {
     ///
     /// Returns an error if the condition isn't met in time.
     async fn try_run_until<F>(&mut self, condition: F, within: Duration) -> Result<(), Elapsed>
-    where
-        F: Fn(&Nodes) -> bool,
+        where
+            F: Fn(&Nodes) -> bool,
     {
         self.network
             .try_settle_on(&mut self.rng, condition, within)
@@ -633,8 +616,8 @@ impl TestFixture {
     ///
     /// Panics if the condition isn't met in time.
     async fn run_until<F>(&mut self, condition: F, within: Duration)
-    where
-        F: Fn(&Nodes) -> bool,
+        where
+            F: Fn(&Nodes) -> bool,
     {
         self.network
             .settle_on(&mut self.rng, condition, within)
@@ -663,7 +646,7 @@ impl TestFixture {
             },
             within,
         )
-        .await
+            .await
     }
 
     /// Runs the network until all nodes reach the given completed block height.
@@ -693,14 +676,14 @@ impl TestFixture {
             },
             within,
         )
-        .await
-        .unwrap_or_else(|_| {
-            panic!(
-                "should reach {} within {} seconds",
-                era_id,
-                within.as_secs_f64(),
-            )
-        })
+            .await
+            .unwrap_or_else(|_| {
+                panic!(
+                    "should reach {} within {} seconds",
+                    era_id,
+                    within.as_secs_f64(),
+                )
+            })
     }
 
     /// Runs the network until all nodes' storage components have stored the switch block header for
@@ -722,14 +705,14 @@ impl TestFixture {
             },
             within,
         )
-        .await
-        .unwrap_or_else(|_| {
-            panic!(
-                "should have stored switch block header for {} within {} seconds",
-                era_id,
-                within.as_secs_f64(),
-            )
-        })
+            .await
+            .unwrap_or_else(|_| {
+                panic!(
+                    "should have stored switch block header for {} within {} seconds",
+                    era_id,
+                    within.as_secs_f64(),
+                )
+            })
     }
 
     /// Runs the network until all nodes have executed the given transaction and stored the
@@ -772,14 +755,14 @@ impl TestFixture {
             },
             within,
         )
-        .await
-        .unwrap_or_else(|_| {
-            panic!(
-                "should have stored execution result for {} within {} seconds",
-                txn_hash,
-                within.as_secs_f64(),
-            )
-        })
+            .await
+            .unwrap_or_else(|_| {
+                panic!(
+                    "should have stored execution result for {} within {} seconds",
+                    txn_hash,
+                    within.as_secs_f64(),
+                )
+            })
     }
 
     async fn schedule_upgrade_for_era_two(&mut self) {
@@ -989,11 +972,11 @@ impl TestFixture {
         {
             ExecutionResult::V1(_) => unreachable!(),
             ExecutionResult::V2(ExecutionResultV2 {
-                effects,
-                consumed: gas,
-                error_message,
-                ..
-            }) => {
+                                    effects,
+                                    consumed: gas,
+                                    error_message,
+                                    ..
+                                }) => {
                 if error_message.is_none() {
                     effects.transforms().to_vec()
                 } else {
@@ -1014,7 +997,7 @@ impl TestFixture {
     pub fn run_until_stopped(
         self,
         rng: TestRng,
-    ) -> impl futures::Future<Output = (TestingNetwork<FilterReactor<MainReactor>>, TestRng)> {
+    ) -> impl futures::Future<Output=(TestingNetwork<FilterReactor<MainReactor>>, TestRng)> {
         self.network.crank_until_stopped(rng)
     }
 }
@@ -1685,10 +1668,10 @@ async fn empty_block_validation_regression() {
         .inner_mut()
         .set_filter(move |event| match event {
             MainEvent::Consensus(consensus::Event::NewBlockPayload(NewBlockPayload {
-                era_id,
-                block_payload: _,
-                block_context,
-            })) => {
+                                                                       era_id,
+                                                                       block_payload: _,
+                                                                       block_context,
+                                                                   })) => {
                 info!("Accusing everyone else!");
                 // We hook into the NewBlockPayload event to replace the block being proposed with
                 // an empty one that accuses all the validators, except the malicious validator.
@@ -2260,16 +2243,16 @@ async fn run_rewards_network_scenario(
             let rewarded_blocks = &blocks[rewarded_range];
             let block_reward = (Ratio::<U512>::one()
                 - fixture
-                    .chainspec
-                    .core_config
-                    .finality_signature_proportion
-                    .into_u512())
+                .chainspec
+                .core_config
+                .finality_signature_proportion
+                .into_u512())
                 * recomputed_total_supply[&(i - 1)]
                 * fixture
-                    .chainspec
-                    .core_config
-                    .round_seigniorage_rate
-                    .into_u512();
+                .chainspec
+                .core_config
+                .round_seigniorage_rate
+                .into_u512();
             let signatures_reward = fixture
                 .chainspec
                 .core_config
@@ -2277,10 +2260,10 @@ async fn run_rewards_network_scenario(
                 .into_u512()
                 * recomputed_total_supply[&(i - 1)]
                 * fixture
-                    .chainspec
-                    .core_config
-                    .round_seigniorage_rate
-                    .into_u512();
+                .chainspec
+                .core_config
+                .round_seigniorage_rate
+                .into_u512();
             let previous_signatures_reward = if switch_blocks.headers[i - 1].is_genesis() {
                 None
             } else {
@@ -2292,10 +2275,10 @@ async fn run_rewards_network_scenario(
                         .into_u512()
                         * recomputed_total_supply[&(i - 2)]
                         * fixture
-                            .chainspec
-                            .core_config
-                            .round_seigniorage_rate
-                            .into_u512(),
+                        .chainspec
+                        .core_config
+                        .round_seigniorage_rate
+                        .into_u512(),
                 )
             };
 
@@ -2443,8 +2426,8 @@ async fn run_rewards_network_scenario(
                     .get(era)
                     .expect("expected recalculated supply")
                     - recomputed_total_supply
-                        .get(&(era - 1))
-                        .expect("expected recalculated supply"),
+                    .get(&(era - 1))
+                    .expect("expected recalculated supply"),
                 "supply growth does not match rewards at era {}",
                 era
             )
@@ -2473,7 +2456,7 @@ async fn run_reward_network_zug_all_finality_small_prime_five_eras() {
             ..Default::default()
         },
     )
-    .await;
+        .await;
 }
 
 #[tokio::test]
@@ -2497,7 +2480,7 @@ async fn run_reward_network_zug_all_finality_small_prime_five_eras_no_lookback()
             ..Default::default()
         },
     )
-    .await;
+        .await;
 }
 
 #[tokio::test]
@@ -2521,7 +2504,7 @@ async fn run_reward_network_zug_no_finality_small_nominal_five_eras() {
             ..Default::default()
         },
     )
-    .await;
+        .await;
 }
 
 #[tokio::test]
@@ -2545,7 +2528,7 @@ async fn run_reward_network_zug_half_finality_half_finders_small_nominal_five_er
             ..Default::default()
         },
     )
-    .await;
+        .await;
 }
 
 #[tokio::test]
@@ -2569,7 +2552,7 @@ async fn run_reward_network_zug_half_finality_half_finders_small_nominal_five_er
             ..Default::default()
         },
     )
-    .await;
+        .await;
 }
 
 #[tokio::test]
@@ -2593,7 +2576,7 @@ async fn run_reward_network_zug_all_finality_half_finders_small_nominal_five_era
             ..Default::default()
         },
     )
-    .await;
+        .await;
 }
 
 #[tokio::test]
@@ -2619,7 +2602,7 @@ async fn run_reward_network_zug_all_finality_half_finders() {
             ..Default::default()
         },
     )
-    .await;
+        .await;
 }
 
 #[tokio::test]
@@ -2645,7 +2628,7 @@ async fn run_reward_network_zug_all_finality_half_finders_five_eras() {
             ..Default::default()
         },
     )
-    .await;
+        .await;
 }
 
 #[tokio::test]
@@ -2671,7 +2654,7 @@ async fn run_reward_network_zug_all_finality_zero_finders() {
             ..Default::default()
         },
     )
-    .await;
+        .await;
 }
 
 #[tokio::test]
@@ -2697,7 +2680,7 @@ async fn run_reward_network_highway_all_finality_zero_finders() {
             ..Default::default()
         },
     )
-    .await;
+        .await;
 }
 
 #[tokio::test]
@@ -2723,7 +2706,7 @@ async fn run_reward_network_highway_no_finality() {
             ..Default::default()
         },
     )
-    .await;
+        .await;
 }
 
 #[allow(clippy::enum_variant_names)]
@@ -2766,10 +2749,10 @@ async fn run_gas_price_scenario(gas_price_scenario: GasPriceScenario) {
             ConfigsOverride::default().with_block_gas_limit(gas_limit)
         }
     }
-    .with_lower_threshold(5u64)
-    .with_upper_threshold(10u64)
-    .with_minimum_era_height(5)
-    .with_max_gas_price(max_gas_price);
+        .with_lower_threshold(5u64)
+        .with_upper_threshold(10u64)
+        .with_minimum_era_height(5)
+        .with_max_gas_price(max_gas_price);
 
     let mut fixture =
         TestFixture::new_with_keys(rng, secret_keys, stakes, Some(spec_override)).await;

@@ -26,9 +26,9 @@ use casper_types::{
     ChunkWithProof, Deploy, DeployHash, DeployId, Digest, EraEndV1, EraEndV2, EraId, EraReport,
     ExecutableDeployItem, FinalitySignature, FinalitySignatureId, FinalitySignatureV2, PackageHash,
     ProtocolVersion, RewardedSignatures, RuntimeArgs, SecretKey, SemVer, SignedBlockHeader,
-    SingleBlockRewardedSignatures, TimeDiff, Timestamp, Transaction, TransactionCategory,
-    TransactionHash, TransactionId, TransactionSessionKind, TransactionV1, TransactionV1Builder,
-    TransactionV1Hash, URef, KEY_HASH_LENGTH, U512,
+    SingleBlockRewardedSignatures, TimeDiff, Timestamp, Transaction, TransactionHash,
+    TransactionId, TransactionSessionKind, TransactionV1, TransactionV1Builder, TransactionV1Hash,
+    URef, AUCTION_LANE_ID, INSTALL_UPGRADE_LANE_ID, KEY_HASH_LENGTH, MINT_LANE_ID, U512,
 };
 
 use crate::{
@@ -46,6 +46,8 @@ use casper_storage::block_store::types::ApprovalsHashes;
 
 /// The largest valid unicode codepoint that can be encoded to UTF-8.
 pub(crate) const HIGHEST_UNICODE_CODEPOINT: char = '\u{10FFFF}';
+
+const LARGE_LANE_ID: u8 = 3;
 
 /// A cache used for memoization, typically on a single estimator.
 #[derive(Debug, Default)]
@@ -702,13 +704,10 @@ impl LargestSpecimen for BlockV2 {
 
         let transactions = {
             let mut ret = BTreeMap::new();
-            ret.insert(TransactionCategory::Mint as u8, mint_hashes);
-            ret.insert(TransactionCategory::Auction as u8, auction_hashes);
-            ret.insert(
-                TransactionCategory::InstallUpgrade as u8,
-                install_upgrade_hashes,
-            );
-            ret.insert(TransactionCategory::Large as u8, standard_hashes);
+            ret.insert(MINT_LANE_ID, mint_hashes);
+            ret.insert(AUCTION_LANE_ID, auction_hashes);
+            ret.insert(INSTALL_UPGRADE_LANE_ID, install_upgrade_hashes);
+            ret.insert(3, standard_hashes);
             ret
         };
 
@@ -838,28 +837,28 @@ impl LargestSpecimen for BlockPayload {
 
         let mut transactions = BTreeMap::new();
         transactions.insert(
-            TransactionCategory::Mint,
+            MINT_LANE_ID,
             vec![
                 large_txn_hash_with_approvals.clone();
                 estimator.parameter::<usize>("max_mint_per_block")
             ],
         );
         transactions.insert(
-            TransactionCategory::Auction,
+            AUCTION_LANE_ID,
             vec![
                 large_txn_hash_with_approvals.clone();
                 estimator.parameter::<usize>("max_auctions_per_block")
             ],
         );
         transactions.insert(
-            TransactionCategory::Large,
+            LARGE_LANE_ID,
             vec![
                 large_txn_hash_with_approvals.clone();
                 estimator.parameter::<usize>("max_standard_transactions_per_block")
             ],
         );
         transactions.insert(
-            TransactionCategory::InstallUpgrade,
+            INSTALL_UPGRADE_LANE_ID,
             vec![
                 large_txn_hash_with_approvals;
                 estimator.parameter::<usize>("max_install_upgrade_transactions_per_block")
