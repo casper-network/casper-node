@@ -188,14 +188,23 @@ native_transfer_minimum_motes = 2_500_000_000
 max_timestamp_leeway = '5 seconds'
 
 [transactions.v1]
+# The configuration settings for the lanes of transactions including both native and Wasm based interactions.
+# Currently the node supports two native interactions the mint and auction and have the reserved identifiers of 0 and 1
+# repsectively
+# The remaining wasm based lanes specify the range of configuration settings for a given Wasm based transaction
+# within a given lane.
 # The maximum length in bytes of runtime args per V1 transaction.
-# [0] -> Transaction Kind
-# [1] -> Max transaction size
-# [2] -> Max args length
-# [3] -> Transaction gas limit
-native_mint_lane = [0, 1_048_576, 1024, 2_500_000_000, 650]
-native_auction_lane = [1, 1_048_576, 1024, 2_500_000_000, 100]
-wasm_lanes = [[2, 2_097_152, 2048, 500_000_000_00, 2], [3, 1_048_576, 1024, 5_000_000_000, 25]]
+# [0] -> Transaction lane label (apart from the reserved native identifiers these are simply labels)
+# Note: For the given mainnet implementation we specially reserve the label 2 for install and upgrades and
+# the lane must be present and defined.
+# Different casper networks may not impose such a restriction.
+# [1] -> Max transaction size in bytes for a given transaction in a certain lane
+# [2] -> Max args length size in bytes for a given transaction in a certain lane
+# [3] -> Transaction gas limit size in bytes for a given transaction in a certain lane
+# [4] -> The maximum number of transactions the lane can contain
+native_mint_lane = [0, 10_240, 1024, 65_000_000_000, 650]
+native_auction_lane = [1, 10_240, 2048, 362_500_000_000, 145]
+wasm_lanes = [[2, 1_048_576, 2048, 1_000_000_000_00, 2], [3, 262_144, 1024, 100_000_000_000, 3], [3, 131_072, 1024, 50_000_000_000, 5], [4, 8_192, 512, 1_500_000_000, 15]]
 
 [transactions.deploy]
 # The maximum number of Motes allowed to be spent during payment.  0 means unlimited.
