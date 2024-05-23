@@ -3,8 +3,7 @@ use rand::{seq::SliceRandom, Rng};
 
 use casper_types::{
     testing::TestRng, Deploy, EraId, TestBlockBuilder, TimeDiff, Transaction, TransactionConfig,
-    TransactionV1, TransactionV1Config, DEFAULT_INSTALL_UPGRADE_GAS_LIMIT,
-    DEFAULT_LARGE_TRANSACTION_GAS_LIMIT,
+    TransactionV1, TransactionV1Config,
 };
 
 use super::*;
@@ -347,9 +346,7 @@ fn get_proposable_transactions() {
 fn get_appendable_block_when_transfers_are_of_one_category() {
     let mut rng = TestRng::new();
 
-    let mut transaction_v1_config = TransactionV1Config::default();
-
-    let transaction_v1_config = transaction_v1_config.new_with_count_limits(Some(200), Some(0), Some(0), Some(10));
+    let transaction_v1_config = TransactionV1Config::default().with_count_limits(Some(200), Some(0), Some(0), Some(10));
 
     let transaction_config = TransactionConfig {
         block_max_approval_count: 210,
@@ -383,9 +380,7 @@ fn get_appendable_block_when_transfers_are_of_one_category() {
 fn get_appendable_block_when_transfers_are_both_legacy_and_v1() {
     let mut rng = TestRng::new();
 
-    let mut transaction_v1_config = TransactionV1Config::default();
-
-    let transaction_v1_config = transaction_v1_config.new_with_count_limits(Some(200), Some(0), Some(0), Some(10));
+    let transaction_v1_config = TransactionV1Config::default().with_count_limits(Some(200), Some(0), Some(0), Some(10));
 
     let transaction_config = TransactionConfig {
         block_max_approval_count: 210,
@@ -420,9 +415,8 @@ fn get_appendable_block_when_transfers_are_both_legacy_and_v1() {
 fn get_appendable_block_when_standards_are_of_one_category() {
     let large_lane_id: u8 = 3;
     let mut rng = TestRng::new();
-    let mut transaction_v1_config = TransactionV1Config::default();
 
-    let transaction_v1_config = transaction_v1_config.new_with_count_limits(Some(200), Some(0), Some(0), Some(10));
+    let transaction_v1_config = TransactionV1Config::default().with_count_limits(Some(200), Some(0), Some(0), Some(10));
 
     let transaction_config = TransactionConfig {
         block_max_approval_count: 210,
@@ -455,9 +449,9 @@ fn get_appendable_block_when_standards_are_of_one_category() {
 fn get_appendable_block_when_standards_are_both_legacy_and_v1() {
     let large_lane_id: u8 = 3;
     let mut rng = TestRng::new();
-    let mut transaction_v1_config = TransactionV1Config::default();
 
-    let transaction_v1_config = transaction_v1_config.new_with_count_limits(Some(200), Some(0), Some(0), Some(10));
+
+    let transaction_v1_config = TransactionV1Config::default().with_count_limits(Some(200), Some(0), Some(0), Some(10));
 
     let transaction_config = TransactionConfig {
         block_max_approval_count: 210,
@@ -500,8 +494,8 @@ fn block_fully_saturated() {
 
     let total_allowed = max_transfers + max_staking + max_install_upgrade + max_standard;
 
-    let mut config = TransactionV1Config::default();
-    let transaction_v1_config = config.new_with_count_limits(Some(max_transfers), Some(max_staking), Some(max_install_upgrade), Some(max_standard));
+
+    let transaction_v1_config = TransactionV1Config::default().with_count_limits(Some(max_transfers), Some(max_staking), Some(max_install_upgrade), Some(max_standard));
 
     let transaction_config = TransactionConfig {
         transaction_v1_config,
@@ -608,8 +602,8 @@ fn block_not_fully_saturated() {
 
     let total_allowed = max_transfers + max_staking + max_install_upgrade + max_standard;
 
-    let mut config = TransactionV1Config::default();
-    let transaction_v1_config = config.new_with_count_limits(Some(max_transfers), Some(max_staking), Some(max_install_upgrade), Some(max_standard));
+
+    let transaction_v1_config = TransactionV1Config::default().with_count_limits(Some(max_transfers), Some(max_staking), Some(max_install_upgrade), Some(max_standard));
 
 
     let transaction_config = TransactionConfig {
@@ -701,23 +695,6 @@ fn block_not_fully_saturated() {
     assert_eq!(proposed_standards, actual_standard_count);
 }
 
-
-fn assert_bucket(
-    appendable_block: AppendableBlock,
-    hashes_in_non_saturated_bucket: &[TransactionHash],
-    expected: u64,
-) {
-    let mut proposed = 0;
-    appendable_block
-        .transaction_hashes()
-        .iter()
-        .for_each(|transaction_hash| {
-            if hashes_in_non_saturated_bucket.contains(transaction_hash) {
-                proposed += 1;
-            }
-        });
-    assert_eq!(proposed, expected);
-}
 
 fn generate_and_register_transactions(
     transaction_buffer: &mut TransactionBuffer,

@@ -1,19 +1,19 @@
 //! Types used to allow creation of Wasm contracts and tests for use on the Casper Platform.
 
 #![cfg_attr(
-    not(any(
-        feature = "json-schema",
-        feature = "datasize",
-        feature = "std",
-        feature = "testing",
-        test,
-    )),
-    no_std
+not(any(
+feature = "json-schema",
+feature = "datasize",
+feature = "std",
+feature = "testing",
+test,
+)),
+no_std
 )]
 #![doc(html_root_url = "https://docs.rs/casper-types/5.0.0")]
 #![doc(
-    html_favicon_url = "https://raw.githubusercontent.com/casper-network/casper-node/blob/dev/images/Casper_Logo_Favicon_48.png",
-    html_logo_url = "https://raw.githubusercontent.com/casper-network/casper-node/blob/dev/images/Casper_Logo_Favicon.png"
+html_favicon_url = "https://raw.githubusercontent.com/casper-network/casper-node/blob/dev/images/Casper_Logo_Favicon_48.png",
+html_logo_url = "https://raw.githubusercontent.com/casper-network/casper-node/blob/dev/images/Casper_Logo_Favicon.png"
 )]
 #![warn(missing_docs)]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
@@ -210,8 +210,11 @@ pub use uref::{
 };
 pub use validator_change::ValidatorChange;
 
+/// The lane identifier for the native mint interaction.
 pub const MINT_LANE_ID: u8 = 0;
+/// The lane identifier for the native auction interaction.
 pub const AUCTION_LANE_ID: u8 = 1;
+/// The lane identifier for the special Wasm `install_upgrade` lane.
 pub const INSTALL_UPGRADE_LANE_ID: u8 = 2;
 
 /// OS page size.

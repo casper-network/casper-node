@@ -37,9 +37,9 @@ use tracing::{debug, warn};
 #[cfg(any(feature = "std", test))]
 use super::{InitiatorAddr, InitiatorAddrAndSecretKey};
 #[cfg(any(
-    all(feature = "std", feature = "testing"),
-    feature = "json-schema",
-    test
+all(feature = "std", feature = "testing"),
+feature = "json-schema",
+test
 ))]
 use crate::runtime_args;
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
@@ -56,12 +56,12 @@ use crate::{
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     crypto,
-    transaction::{Approval, ApprovalsHash, TransactionCategory},
+    transaction::{Approval, ApprovalsHash},
     Digest, DisplayIter, PublicKey, SecretKey, TimeDiff, Timestamp,
 };
 
 #[cfg(any(feature = "std", test))]
-use crate::{chainspec::PricingHandling, Chainspec};
+use crate::{chainspec::PricingHandling, Chainspec, transaction::TransactionCategory};
 #[cfg(any(feature = "std", test))]
 use crate::{system::auction::ARG_AMOUNT, transaction::GasLimited, Gas, Motes, U512};
 #[cfg(any(feature = "std", test))]
@@ -126,15 +126,15 @@ static DEPLOY: Lazy<Deploy> = Lazy::new(|| {
 /// To construct a new `Deploy`, use a [`DeployBuilder`].
 #[derive(Clone, Eq, Debug)]
 #[cfg_attr(
-    any(feature = "std", test),
-    derive(Serialize, Deserialize),
-    serde(deny_unknown_fields)
+any(feature = "std", test),
+derive(Serialize, Deserialize),
+serde(deny_unknown_fields)
 )]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(
-    feature = "json-schema",
-    derive(JsonSchema),
-    schemars(description = "A signed smart contract.")
+feature = "json-schema",
+derive(JsonSchema),
+schemars(description = "A signed smart contract.")
 )]
 pub struct Deploy {
     hash: DeployHash,
@@ -144,8 +144,8 @@ pub struct Deploy {
     approvals: BTreeSet<Approval>,
     #[cfg_attr(any(all(feature = "std", feature = "once_cell"), test), serde(skip))]
     #[cfg_attr(
-        all(any(feature = "once_cell", test), feature = "datasize"),
-        data_size(skip)
+    all(any(feature = "once_cell", test), feature = "datasize"),
+    data_size(skip)
     )]
     #[cfg(any(feature = "once_cell", test))]
     is_valid: OnceCell<Result<(), InvalidDeploy>>,
@@ -1205,7 +1205,7 @@ impl hash::Hash for Deploy {
     fn hash<H: hash::Hasher>(&self, state: &mut H) {
         // Destructure to make sure we don't accidentally omit fields.
         #[cfg(any(feature = "once_cell", test))]
-        let Deploy {
+            let Deploy {
             hash,
             header,
             payment,
@@ -1214,7 +1214,7 @@ impl hash::Hash for Deploy {
             is_valid: _,
         } = self;
         #[cfg(not(any(feature = "once_cell", test)))]
-        let Deploy {
+            let Deploy {
             hash,
             header,
             payment,
@@ -1233,7 +1233,7 @@ impl PartialEq for Deploy {
     fn eq(&self, other: &Deploy) -> bool {
         // Destructure to make sure we don't accidentally omit fields.
         #[cfg(any(feature = "once_cell", test))]
-        let Deploy {
+            let Deploy {
             hash,
             header,
             payment,
@@ -1242,7 +1242,7 @@ impl PartialEq for Deploy {
             is_valid: _,
         } = self;
         #[cfg(not(any(feature = "once_cell", test)))]
-        let Deploy {
+            let Deploy {
             hash,
             header,
             payment,
@@ -1261,7 +1261,7 @@ impl Ord for Deploy {
     fn cmp(&self, other: &Deploy) -> cmp::Ordering {
         // Destructure to make sure we don't accidentally omit fields.
         #[cfg(any(feature = "once_cell", test))]
-        let Deploy {
+            let Deploy {
             hash,
             header,
             payment,
@@ -1270,7 +1270,7 @@ impl Ord for Deploy {
             is_valid: _,
         } = self;
         #[cfg(not(any(feature = "once_cell", test)))]
-        let Deploy {
+            let Deploy {
             hash,
             header,
             payment,

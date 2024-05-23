@@ -53,12 +53,6 @@ impl ExecutableBlock {
             .unwrap_or(vec![])
     }
 
-    pub(crate) fn wasm_transaction_by_count(&self, category: u8) -> Vec<TransactionHash> {
-        self.transaction_map
-            .get(&category)
-            .cloned()
-            .unwrap_or(vec![])
-    }
 
     /// Creates a new `ExecutedBlock` from a `FinalizedBlock` and its transactions.
     pub fn from_finalized_block_and_transactions(

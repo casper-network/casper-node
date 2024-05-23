@@ -29,8 +29,11 @@ const MAX_TRANSACTION_COUNT: usize = 4;
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 pub struct TransactionV1Config {
+    /// Lane configuration of the native mint interaction.
     pub native_mint_lane: Vec<u64>,
+    /// Lane configuration for the native auction interaction.
     pub native_auction_lane: Vec<u64>,
+    /// Lane configurations for the Wasm based lanes.
     pub wasm_lanes: Vec<Vec<u64>>,
 }
 
@@ -58,6 +61,7 @@ impl TransactionV1Config {
         }
     }
 
+    /// Returns true if the lane identifier is for either the mint or auction.
     pub fn is_native_lane(&self, lane: u8) -> bool {
         lane as u64 == DEFAULT_NATIVE_MINT_LANE[0] || lane as u64 == DEFAULT_NATIVE_AUCTION_LANE[0]
     }
@@ -146,6 +150,7 @@ impl TransactionV1Config {
         }
     }
 
+    /// Returns true if the given category is supported.
     pub fn is_supported(&self, category: u8) -> bool {
         if !self.is_native_lane(category) {
             return self
@@ -157,6 +162,7 @@ impl TransactionV1Config {
         true
     }
 
+    /// Returns the max total count for all transactions across all lanes allowed in a block.
     pub fn get_max_block_count(&self) -> u64 {
         self.native_mint_lane[MAX_TRANSACTION_COUNT]
             + self.native_auction_lane[MAX_TRANSACTION_COUNT]
@@ -167,6 +173,7 @@ impl TransactionV1Config {
             .sum::<u64>()
     }
 
+    /// Returns the maximum number of Wasm based transactions across wasm lanes.
     pub fn get_max_wasm_transaction_count(&self) -> u64 {
         let mut ret = 0;
         for lane in self.wasm_lanes.iter() {
@@ -175,6 +182,8 @@ impl TransactionV1Config {
         ret
     }
 
+
+    /// Returns the list of currently supported lane identifiers.
     pub fn get_supported_categories(&self) -> Vec<u8> {
         let mut ret = vec![0, 1];
         for lane in self.wasm_lanes.iter() {
@@ -184,8 +193,9 @@ impl TransactionV1Config {
         ret
     }
 
+    /// Returns the transaction v1 configuration with the specified lane limits.
     #[cfg(any(feature = "testing", test))]
-    pub fn new_with_count_limits(mut self, mint_count: Option<u64>, auction: Option<u64>, install: Option<u64>, large_limit: Option<u64>) -> Self {
+    pub fn with_count_limits(mut self, mint_count: Option<u64>, auction: Option<u64>, install: Option<u64>, large_limit: Option<u64>) -> Self {
         if let Some(mint_count) = mint_count {
             self.native_mint_lane[MAX_TRANSACTION_COUNT] = mint_count;
         }
@@ -193,10 +203,20 @@ impl TransactionV1Config {
             self.native_auction_lane[MAX_TRANSACTION_COUNT] = auction_count;
         }
         if let Some(install_upgrade_count) = install {
-            self.wasm_lanes[INSTALL_UPGRADE_LANE_ID as usize][MAX_TRANSACTION_COUNT] = install_upgrade_count;
+            let (index, lane) = self.wasm_lanes.iter().enumerate().find(|(_, lane)| lane.first() == Some(&(INSTALL_UPGRADE_LANE_ID as u64)))
+                .expect("must get install upgrade lane");
+            let mut updated_lane = lane.clone();
+            self.wasm_lanes.remove(index);
+            updated_lane[MAX_TRANSACTION_COUNT] = install_upgrade_count;
+            self.wasm_lanes.push(updated_lane);
         }
         if let Some(large_limit) = large_limit {
-            self.wasm_lanes[3usize][MAX_TRANSACTION_COUNT] = large_limit;
+            let (index, lane) = self.wasm_lanes.iter().enumerate().find(|(_, lane)| lane.first() == Some(&3))
+                .expect("must get install upgrade lane").clone();
+            let mut updated_lane = lane.clone();
+            self.wasm_lanes.remove(index);
+            updated_lane[MAX_TRANSACTION_COUNT] = large_limit;
+            self.wasm_lanes.push(updated_lane);
         }
         self
     }
@@ -212,20 +232,6 @@ impl Default for TransactionV1Config {
             DEFAULT_LARGE_TRANSACTION_GAS_LIMIT,
             10,
         ];
-        let medium_lane = vec![
-            TransactionCategory::Medium as u64,
-            524_576,
-            1024,
-            DEFAULT_LARGE_TRANSACTION_GAS_LIMIT / 2,
-            20,
-        ];
-        let small_lane = vec![
-            TransactionCategory::Small as u64,
-            148_576,
-            1024,
-            DEFAULT_LARGE_TRANSACTION_GAS_LIMIT / 10,
-            100,
-        ];
 
         let install_upgrade_lane = vec![
             TransactionCategory::InstallUpgrade as u64,
@@ -237,7 +243,7 @@ impl Default for TransactionV1Config {
 
         let native_mint_lane = DEFAULT_NATIVE_MINT_LANE.to_vec();
         let native_auction_lane = DEFAULT_NATIVE_AUCTION_LANE.to_vec();
-        let wasm_lanes = vec![large_lane, medium_lane, small_lane, install_upgrade_lane];
+        let wasm_lanes = vec![large_lane, install_upgrade_lane];
 
         TransactionV1Config {
             native_mint_lane,

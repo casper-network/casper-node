@@ -2741,7 +2741,7 @@ async fn run_gas_price_scenario(gas_price_scenario: GasPriceScenario) {
     let max_gas_price: u8 = 3;
 
     let mut transaction_config = TransactionV1Config::default();
-    transaction_config.native_mint_lane[5] = 1;
+    transaction_config.native_mint_lane[4] = 1;
 
     let spec_override = match gas_price_scenario {
         GasPriceScenario::SlotUtilization => ConfigsOverride::default().with_transaction_v1_config(transaction_config),

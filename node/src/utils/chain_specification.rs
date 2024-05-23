@@ -370,7 +370,7 @@ mod tests {
     fn should_have_valid_transaction_counts() {
         let transaction_v1_config = TransactionV1Config::default();
 
-        let transaction_v1_config = transaction_v1_config.new_with_count_limits(Some(100), Some(1), None, None);
+        let transaction_v1_config = transaction_v1_config.with_count_limits(Some(100), Some(1), None, None);
 
         let transaction_config = TransactionConfig {
             block_max_approval_count: 100,
@@ -385,7 +385,7 @@ mod tests {
 
         let transaction_v1_config = TransactionV1Config::default();
 
-        let transaction_v1_config = transaction_v1_config.new_with_count_limits(Some(100), Some(50), Some(25), Some(25));
+        let transaction_v1_config = transaction_v1_config.with_count_limits(Some(100), Some(50), Some(25), Some(25));
 
         let transaction_config = TransactionConfig {
             block_max_approval_count: 200,
@@ -398,7 +398,7 @@ mod tests {
         );
 
         let transaction_v1_config = TransactionV1Config::default();
-        let transaction_v1_config = transaction_v1_config.new_with_count_limits(Some(100), Some(50), Some(25), Some(24));
+        let transaction_v1_config = transaction_v1_config.with_count_limits(Some(100), Some(50), Some(25), Some(24));
 
         let transaction_config = TransactionConfig {
             block_max_approval_count: 200,

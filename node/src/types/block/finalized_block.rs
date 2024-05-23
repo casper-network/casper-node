@@ -91,12 +91,6 @@ impl FinalizedBlock {
             .unwrap_or(vec![])
     }
 
-    pub(crate) fn transactions_by_category(&self, category: u8) -> Vec<TransactionHash> {
-        self.transactions
-            .get(&category)
-            .map(|transactions| transactions.to_vec())
-            .unwrap_or(vec![])
-    }
 
     /// The list of deploy hashes chained with the list of transfer hashes.
     pub(crate) fn all_transactions(&self) -> impl Iterator<Item=&TransactionHash> {
