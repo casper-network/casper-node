@@ -875,7 +875,7 @@ mod tests {
             let transfer_count = fixture.rng.gen_range(0..10);
             let auction_count = fixture.rng.gen_range(0..20);
             let install_upgrade_count = fixture.rng.gen_range(0..2);
-            let standard_count = fixture.rng.gen_range(0..10);
+            let standard_count = fixture.rng.gen_range(0..3);
             // Ensure at least one transaction is generated. Otherwise the state will be Valid.
             if transfer_count + auction_count + install_upgrade_count + standard_count > 0 {
                 break (
@@ -1139,7 +1139,7 @@ mod tests {
     fn state_should_change_to_validation_succeeded() {
         let mut rng = TestRng::new();
         let mut fixture = Fixture::new(&mut rng);
-        let (mut state, _maybe_responder) = fixture.new_state(2, 2, 2, 2);
+        let (mut state, _maybe_responder) = fixture.new_state(2, 2, 2, 1);
         assert!(matches!(state, BlockValidationState::InProgress { .. }));
 
         // While there is still at least one missing transaction, `try_add_transaction_footprint`

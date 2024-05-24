@@ -181,7 +181,7 @@ block_max_approval_count = 2600
 # Maximum block size in bytes including transactions contained by the block.  0 means unlimited.
 max_block_size = 5_242_880
 # The upper limit of total gas of all transactions in a block.
-block_gas_limit = 4_000_000_000_000
+block_gas_limit = 3_000_000_000_000
 # The minimum amount in motes for a valid native transfer.
 native_transfer_minimum_motes = 2_500_000_000
 # The maximum value to which `transaction_acceptor.timestamp_leeway` can be set in the config.toml file.
