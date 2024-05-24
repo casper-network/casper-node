@@ -171,10 +171,10 @@ impl TransactionV1Config {
         self.native_mint_lane[MAX_TRANSACTION_COUNT]
             + self.native_auction_lane[MAX_TRANSACTION_COUNT]
             + self
-            .wasm_lanes
-            .iter()
-            .map(|lane| lane[MAX_TRANSACTION_COUNT])
-            .sum::<u64>()
+                .wasm_lanes
+                .iter()
+                .map(|lane| lane[MAX_TRANSACTION_COUNT])
+                .sum::<u64>()
     }
 
     /// Returns the maximum number of Wasm based transactions across wasm lanes.
