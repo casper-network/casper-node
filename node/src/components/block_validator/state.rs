@@ -653,8 +653,8 @@ mod tests {
     }
 
     // Please note: values in the following test cases must match the production chainspec.
-    const MAX_LARGE_COUNT: u64 = 25;
-    const MAX_AUCTION_COUNT: u64 = 100;
+    const MAX_LARGE_COUNT: u64 = 3;
+    const MAX_AUCTION_COUNT: u64 = 145;
     const MAX_INSTALL_UPGRADE_COUNT: u64 = 2;
     const MAX_MINT_COUNT: u64 = 650;
 
