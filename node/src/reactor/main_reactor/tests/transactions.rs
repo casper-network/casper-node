@@ -1,6 +1,11 @@
 use super::*;
-use casper_storage::data_access_layer::{BalanceIdentifier, ProofHandling};
-use casper_types::GasLimited;
+use casper_storage::data_access_layer::{
+    BalanceIdentifier, ProofHandling, QueryRequest, QueryResult,
+};
+use casper_types::{
+    account::AccountHash, addressable_entity::NamedKeyAddr, runtime_args, Digest, EntityAddr,
+    GasLimited,
+};
 use once_cell::sync::Lazy;
 
 use casper_types::{bytesrepr::Bytes, execution::ExecutionResultV1, TransactionSessionKind};
@@ -212,6 +217,61 @@ fn get_payment_purse_balance(
             BalanceHandling::Available,
             ProofHandling::NoProofs,
         ))
+}
+
+fn get_entity_addr_from_account_hash(
+    fixture: &mut TestFixture,
+    state_root_hash: Digest,
+    account_hash: AccountHash,
+) -> EntityAddr {
+    let (_node_id, runner) = fixture.network.nodes().iter().next().unwrap();
+    let result = match runner
+        .main_reactor()
+        .contract_runtime()
+        .data_access_layer()
+        .query(QueryRequest::new(
+            state_root_hash,
+            Key::Account(account_hash),
+            vec![],
+        )) {
+        QueryResult::Success { value, .. } => value,
+        err => panic!("Expected QueryResult::Success but got {:?}", err),
+    };
+
+    result
+        .as_cl_value()
+        .expect("should have a CLValue")
+        .to_t::<Key>()
+        .expect("should have a Key")
+        .as_entity_addr()
+        .expect("should have an EntityAddr")
+}
+
+fn get_entity_named_key(
+    fixture: &mut TestFixture,
+    state_root_hash: Digest,
+    entity_addr: EntityAddr,
+    named_key: &str,
+) -> Key {
+    let (_node_id, runner) = fixture.network.nodes().iter().next().unwrap();
+    match runner
+        .main_reactor()
+        .contract_runtime()
+        .data_access_layer()
+        .query(QueryRequest::new(
+            state_root_hash,
+            Key::NamedKey(
+                NamedKeyAddr::new_from_string(entity_addr, named_key.to_owned())
+                    .expect("should be valid NamedKeyAddr"),
+            ),
+            vec![],
+        )) {
+        QueryResult::Success { value, .. } => match &*value {
+            StoredValue::NamedKey(named_key) => named_key.get_key().expect("should have a Key"),
+            value => panic!("Expected NamedKey but got {:?}", value),
+        },
+        err => panic!("Expected QueryResult::Success but got {:?}", err),
+    }
 }
 
 fn assert_exec_result_cost(
@@ -2813,4 +2873,128 @@ async fn delegate_and_undelegate_bid_transaction() {
 
     let (_txn_hash, _block_height, exec_result) = test.send_transaction(txn).await;
     assert!(exec_result_is_success(&exec_result));
+}
+
+#[tokio::test]
+async fn insufficient_funds_transfer_from_account() {
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_pricing_handling(PricingHandling::Fixed)
+        .with_refund_handling(RefundHandling::NoRefund)
+        .with_fee_handling(FeeHandling::NoFee)
+        .with_gas_hold_balance_handling(HoldBalanceHandling::Accrued);
+
+    let mut test = SingleTransactionTestCase::new(
+        ALICE_SECRET_KEY.clone(),
+        BOB_SECRET_KEY.clone(),
+        CHARLIE_SECRET_KEY.clone(),
+        Some(config),
+    )
+    .await;
+
+    let transfer_amount = U512::max_value();
+
+    let mut txn = Transaction::from(
+        TransactionV1Builder::new_transfer(transfer_amount, None, ALICE_PUBLIC_KEY.clone(), None)
+            .unwrap()
+            .with_chain_name(CHAIN_NAME)
+            .with_initiator_addr(PublicKey::from(&**BOB_SECRET_KEY))
+            .build()
+            .unwrap(),
+    );
+    txn.sign(&BOB_SECRET_KEY);
+
+    let (_txn_hash, _block_height, exec_result) = test.send_transaction(txn).await;
+    let ExecutionResult::V2(result) = exec_result else {
+        panic!("Expected ExecutionResult::V2 but got {:?}", exec_result);
+    };
+    let transfer_cost: U512 =
+        U512::from(test.chainspec().system_costs_config.mint_costs().transfer) * MIN_GAS_PRICE;
+
+    assert_eq!(result.error_message.as_deref(), Some("Insufficient funds"));
+    assert_eq!(result.cost, transfer_cost);
+}
+
+#[tokio::test]
+async fn insufficient_funds_transfer_from_purse() {
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_pricing_handling(PricingHandling::Fixed)
+        .with_refund_handling(RefundHandling::NoRefund)
+        .with_fee_handling(FeeHandling::NoFee)
+        .with_gas_hold_balance_handling(HoldBalanceHandling::Accrued);
+
+    let mut test = SingleTransactionTestCase::new(
+        ALICE_SECRET_KEY.clone(),
+        BOB_SECRET_KEY.clone(),
+        CHARLIE_SECRET_KEY.clone(),
+        Some(config),
+    )
+    .await;
+
+    let purse_name = "test_purse";
+
+    test.fixture
+        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+        .await;
+
+    // first we set up a purse for Bob
+    let purse_create_contract = RESOURCES_PATH
+        .join("..")
+        .join("target")
+        .join("wasm32-unknown-unknown")
+        .join("release")
+        .join("purse_holder_stored.wasm");
+    let module_bytes =
+        Bytes::from(std::fs::read(purse_create_contract).expect("cannot read module bytes"));
+
+    let mut txn = Transaction::from(
+        TransactionV1Builder::new_session(
+            TransactionSessionKind::Standard,
+            module_bytes,
+            "add_named_purse",
+        )
+        .with_runtime_args(runtime_args! { "purse_name" => purse_name  })
+        .with_chain_name(CHAIN_NAME)
+        .with_initiator_addr(BOB_PUBLIC_KEY.clone())
+        .build()
+        .unwrap(),
+    );
+    txn.sign(&BOB_SECRET_KEY);
+    let (_txn_hash, _block_height, exec_result) = test.send_transaction(txn).await;
+    assert!(exec_result_is_success(&exec_result), "{:?}", exec_result);
+
+    let state_root_hash = *test.fixture.highest_complete_block().state_root_hash();
+    let entity_addr = get_entity_addr_from_account_hash(
+        &mut test.fixture,
+        state_root_hash,
+        BOB_PUBLIC_KEY.to_account_hash(),
+    );
+    let key = get_entity_named_key(&mut test.fixture, state_root_hash, entity_addr, purse_name);
+    let uref = *key.as_uref().expect("Expected a URef");
+
+    // now we try to transfer from the purse we just created
+    let transfer_amount = U512::max_value();
+    let mut txn = Transaction::from(
+        TransactionV1Builder::new_transfer(
+            transfer_amount,
+            Some(uref),
+            ALICE_PUBLIC_KEY.clone(),
+            None,
+        )
+        .unwrap()
+        .with_chain_name(CHAIN_NAME)
+        .with_initiator_addr(PublicKey::from(&**BOB_SECRET_KEY))
+        .build()
+        .unwrap(),
+    );
+    txn.sign(&BOB_SECRET_KEY);
+
+    let (_txn_hash, _block_height, exec_result) = test.send_transaction(txn).await;
+    let ExecutionResult::V2(result) = exec_result else {
+        panic!("Expected ExecutionResult::V2 but got {:?}", exec_result);
+    };
+    let transfer_cost: U512 =
+        U512::from(test.chainspec().system_costs_config.mint_costs().transfer) * MIN_GAS_PRICE;
+
+    assert_eq!(result.error_message.as_deref(), Some("Insufficient funds"));
+    assert_eq!(result.cost, transfer_cost);
 }

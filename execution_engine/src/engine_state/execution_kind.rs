@@ -16,13 +16,25 @@ use crate::execution::ExecError;
 #[derive(Clone, Debug)]
 pub(crate) enum ExecutionKind<'a> {
     /// Standard (non-specialized) Wasm bytes related to a transaction of version 1 or later.
-    Standard(&'a Bytes),
+    Standard {
+        module_bytes: &'a Bytes,
+        entry_point: String,
+    },
     /// Wasm bytes which install a stored entity.
-    Installer(&'a Bytes),
+    Installer {
+        module_bytes: &'a Bytes,
+        entry_point: String,
+    },
     /// Wasm bytes which upgrade a stored entity.
-    Upgrader(&'a Bytes),
+    Upgrader {
+        module_bytes: &'a Bytes,
+        entry_point: String,
+    },
     /// Wasm bytes which don't call any stored entity.
-    Isolated(&'a Bytes),
+    Isolated {
+        module_bytes: &'a Bytes,
+        entry_point: String,
+    },
     /// Stored contract.
     Stored {
         /// AddressableEntity's hash.
@@ -60,19 +72,31 @@ impl<'a> ExecutionKind<'a> {
             | ExecutableItem::SessionBytes {
                 kind: TransactionSessionKind::Standard,
                 module_bytes,
-            } => Ok(ExecutionKind::Standard(module_bytes)),
+            } => Ok(ExecutionKind::Standard {
+                module_bytes,
+                entry_point,
+            }),
             ExecutableItem::SessionBytes {
                 kind: TransactionSessionKind::Installer,
                 module_bytes,
-            } => Ok(ExecutionKind::Installer(module_bytes)),
+            } => Ok(ExecutionKind::Installer {
+                module_bytes,
+                entry_point,
+            }),
             ExecutableItem::SessionBytes {
                 kind: TransactionSessionKind::Upgrader,
                 module_bytes,
-            } => Ok(ExecutionKind::Upgrader(module_bytes)),
+            } => Ok(ExecutionKind::Upgrader {
+                module_bytes,
+                entry_point,
+            }),
             ExecutableItem::SessionBytes {
                 kind: TransactionSessionKind::Isolated,
                 module_bytes,
-            } => Ok(ExecutionKind::Isolated(module_bytes)),
+            } => Ok(ExecutionKind::Isolated {
+                module_bytes,
+                entry_point,
+            }),
             ExecutableItem::LegacyDeploy(module_bytes) => Ok(ExecutionKind::Deploy(module_bytes)),
         }
     }

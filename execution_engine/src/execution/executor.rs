@@ -85,11 +85,11 @@ impl Executor {
         let entity_key = Key::addressable_entity_key(entity.kind().tag(), entity_hash);
 
         let calling_add_contract_version = match execution_kind {
-            ExecutionKind::Installer(_)
-            | ExecutionKind::Upgrader(_)
+            ExecutionKind::Installer { .. }
+            | ExecutionKind::Upgrader { .. }
             | ExecutionKind::Stored { .. }
             | ExecutionKind::Deploy(_) => CallingAddContractVersion::Allowed,
-            ExecutionKind::Standard(_) | ExecutionKind::Isolated(_) => {
+            ExecutionKind::Standard { .. } | ExecutionKind::Isolated { .. } => {
                 CallingAddContractVersion::Forbidden
             }
         };
@@ -117,12 +117,24 @@ impl Executor {
         let mut runtime = Runtime::new(context);
 
         let result = match execution_kind {
-            ExecutionKind::Standard(module_bytes)
-            | ExecutionKind::Installer(module_bytes)
-            | ExecutionKind::Upgrader(module_bytes)
-            | ExecutionKind::Isolated(module_bytes)
-            | ExecutionKind::Deploy(module_bytes) => {
-                runtime.execute_module_bytes(module_bytes, stack)
+            ExecutionKind::Standard {
+                module_bytes,
+                entry_point,
+            }
+            | ExecutionKind::Installer {
+                module_bytes,
+                entry_point,
+            }
+            | ExecutionKind::Upgrader {
+                module_bytes,
+                entry_point,
+            }
+            | ExecutionKind::Isolated {
+                module_bytes,
+                entry_point,
+            } => runtime.execute_module_bytes(module_bytes, stack, Some(entry_point)),
+            ExecutionKind::Deploy(module_bytes) => {
+                runtime.execute_module_bytes(module_bytes, stack, None)
             }
             ExecutionKind::Stored {
                 entity_hash,

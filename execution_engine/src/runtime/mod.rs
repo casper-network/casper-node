@@ -1035,6 +1035,7 @@ where
         &mut self,
         module_bytes: &Bytes,
         stack: RuntimeStack,
+        entry_point: Option<String>,
     ) -> Result<CLValue, ExecError> {
         let protocol_version = self.context.protocol_version();
         let engine_config = self.context.engine_config();
@@ -1053,7 +1054,8 @@ where
             AccessRights::WRITE,
         )?);
 
-        let result = instance.invoke_export(DEFAULT_ENTRY_POINT_NAME, &[], self);
+        let entry_point = entry_point.as_deref().unwrap_or(DEFAULT_ENTRY_POINT_NAME);
+        let result = instance.invoke_export(entry_point, &[], self);
 
         let error = match result {
             Err(error) => error,

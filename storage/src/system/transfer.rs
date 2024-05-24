@@ -255,8 +255,10 @@ impl TransferRuntimeArgsBuilder {
         let imputed_runtime_args = &self.inner;
         let arg_name = mint::ARG_SOURCE;
         match imputed_runtime_args.get(arg_name) {
-            Some(cl_value) if *cl_value.cl_type() == CLType::URef => {
-                let uref: URef = self.map_cl_value(cl_value)?;
+            Some(cl_value) if *cl_value.cl_type() == CLType::Option(CLType::URef.into()) => {
+                let Some(uref): Option<URef> = self.map_cl_value(cl_value)? else {
+                    return Ok(account.main_purse())
+                };
 
                 if account.main_purse().addr() == uref.addr() {
                     return Ok(uref);
