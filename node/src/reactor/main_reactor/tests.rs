@@ -701,13 +701,18 @@ impl TestFixture {
         self.try_run_until(
             move |nodes: &Nodes| {
                 nodes.values().all(|runner| {
+                    let available_block_range =
+                        runner.main_reactor().storage().get_available_block_range();
                     runner
                         .main_reactor()
                         .storage()
                         .read_highest_switch_block_headers(1)
                         .unwrap()
                         .last()
-                        .map_or(false, |header| header.era_id() == era_id)
+                        .map_or(false, |header| {
+                            header.era_id() == era_id
+                                && available_block_range.contains(header.height())
+                        })
                 })
             },
             within,
@@ -807,8 +812,10 @@ impl TestFixture {
         let highest_block = runner
             .main_reactor()
             .storage
-            .read_highest_block()
-            .expect("should have block");
+            .read_highest_signed_block(true)
+            .expect("should have block")
+            .into_inner()
+            .0;
         let bids_request = BidsRequest::new(*highest_block.state_root_hash());
         let bids_result = runner
             .main_reactor()
@@ -834,7 +841,7 @@ impl TestFixture {
                 }
             }
         } else {
-            panic!("network should have bids");
+            panic!("network should have bids: {:?}", bids_result);
         }
     }
 
@@ -1763,7 +1770,16 @@ async fn run_withdraw_bid_network() {
     let alice_stake = 200_000_000_000_u64;
     let initial_stakes = InitialStakes::FromVec(vec![alice_stake.into(), 10_000_000_000]);
 
-    let mut fixture = TestFixture::new(initial_stakes, None).await;
+    let unbonding_delay = 2;
+
+    let mut fixture = TestFixture::new(
+        initial_stakes,
+        Some(ConfigsOverride {
+            unbonding_delay,
+            ..Default::default()
+        }),
+    )
+    .await;
     let alice_secret_key = Arc::clone(&fixture.node_contexts[0].secret_key);
     let alice_public_key = PublicKey::from(&*alice_secret_key);
 
@@ -1792,21 +1808,36 @@ async fn run_withdraw_bid_network() {
         .run_until_executed_transaction(&txn_hash, TEN_SECS)
         .await;
 
-    // Ensure execution succeeded and that there is a Prune transform for the bid's key.
+    // Ensure execution succeeded and that there is a Write transform for the bid's key.
     let bid_key = Key::BidAddr(BidAddr::from(alice_public_key.clone()));
     fixture
         .successful_execution_transforms(&txn_hash)
         .iter()
         .find(|transform| match transform.kind() {
-            TransformKindV2::Prune(prune_key) => prune_key == &bid_key,
+            TransformKindV2::Write(StoredValue::BidKind(bid_kind)) => {
+                Key::from(bid_kind.bid_addr()) == bid_key
+            }
             _ => false,
         })
-        .expect("should have a prune record for bid");
+        .expect("should have a write record for bid");
 
     // Crank the network forward until the era ends.
     fixture
         .run_until_stored_switch_block_header(ERA_ONE, ONE_MIN)
         .await;
+
+    // The bid record should still exist for now.
+    fixture.check_bid_existence_at_tip(&alice_public_key, None, true);
+
+    // Crank the network forward until the unbonds are processed.
+    fixture
+        .run_until_stored_switch_block_header(
+            ERA_ONE.saturating_add(unbonding_delay + 1),
+            ONE_MIN * 2,
+        )
+        .await;
+
+    // The bid record should have been pruned once unbonding ran.
     fixture.check_bid_existence_at_tip(&alice_public_key, None, false);
 }
 
@@ -1816,7 +1847,16 @@ async fn run_undelegate_bid_network() {
     let bob_stake = 300_000_000_000_u64;
     let initial_stakes = InitialStakes::FromVec(vec![alice_stake.into(), bob_stake.into()]);
 
-    let mut fixture = TestFixture::new(initial_stakes, None).await;
+    let unbonding_delay = 2;
+
+    let mut fixture = TestFixture::new(
+        initial_stakes,
+        Some(ConfigsOverride {
+            unbonding_delay,
+            ..Default::default()
+        }),
+    )
+    .await;
     let alice_secret_key = Arc::clone(&fixture.node_contexts[0].secret_key);
     let alice_public_key = PublicKey::from(&*alice_secret_key);
     let bob_public_key = PublicKey::from(&*fixture.node_contexts[1].secret_key);
@@ -1894,19 +1934,34 @@ async fn run_undelegate_bid_network() {
         .run_until_executed_transaction(&txn_hash, TEN_SECS)
         .await;
 
-    // Ensure execution succeeded and that there is a Prune transform for the bid's key.
+    // Ensure execution succeeded and that there is a Write transform for the bid's key.
     fixture
         .successful_execution_transforms(&txn_hash)
         .iter()
         .find(|transform| match transform.kind() {
-            TransformKindV2::Prune(prune_key) => prune_key == &bid_key,
+            TransformKindV2::Write(StoredValue::BidKind(bid_kind)) => {
+                Key::from(bid_kind.bid_addr()) == bid_key
+            }
             _ => false,
         })
-        .expect("should have a prune record for undelegated bid");
+        .expect("should have a write record for undelegated bid");
 
     // Crank the network forward until the era ends.
     fixture
         .run_until_stored_switch_block_header(ERA_ONE, ONE_MIN)
+        .await;
+
+    // Ensure the validator records are still present.
+    fixture.check_bid_existence_at_tip(&alice_public_key, None, true);
+    fixture.check_bid_existence_at_tip(&bob_public_key, None, true);
+    fixture.check_bid_existence_at_tip(&bob_public_key, Some(&alice_public_key), true);
+
+    // Crank the network forward until the unbonds are processed.
+    fixture
+        .run_until_stored_switch_block_header(
+            ERA_ONE.saturating_add(unbonding_delay + 1),
+            ONE_MIN * 2,
+        )
         .await;
 
     // Ensure the validator records are still present but the undelegated bid is gone.
