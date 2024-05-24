@@ -342,13 +342,20 @@ async fn binary_port_component() {
         get_named_keys_by_prefix(state_root_hash, test_entity_addr),
     ];
 
-    for TestCase {
-        name,
-        request,
-        asserter,
-    } in test_cases
+    for (
+        index,
+        TestCase {
+            name,
+            request,
+            asserter,
+        },
+    ) in test_cases.iter().enumerate()
     {
-        let header = BinaryRequestHeader::new(ProtocolVersion::from_parts(2, 0, 0), request.tag());
+        let header = BinaryRequestHeader::new(
+            ProtocolVersion::from_parts(2, 0, 0),
+            request.tag(),
+            index as u64,
+        );
         let header_bytes = ToBytes::to_bytes(&header).expect("should serialize");
 
         let original_request_bytes = header_bytes
@@ -381,6 +388,7 @@ async fn binary_port_component() {
             "{}",
             name
         );
+
         assert!(asserter(binary_response_and_request.response()), "{}", name);
     }
 

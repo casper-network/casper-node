@@ -17,14 +17,16 @@ use rand::Rng;
 pub struct BinaryRequestHeader {
     protocol_version: ProtocolVersion,
     type_tag: u8,
+    id: u64,
 }
 
 impl BinaryRequestHeader {
     /// Creates new binary request header.
-    pub fn new(protocol_version: ProtocolVersion, type_tag: BinaryRequestTag) -> Self {
+    pub fn new(protocol_version: ProtocolVersion, type_tag: BinaryRequestTag, id: u64) -> Self {
         Self {
             protocol_version,
             type_tag: type_tag.into(),
+            id,
         }
     }
 
@@ -38,11 +40,17 @@ impl BinaryRequestHeader {
         self.type_tag
     }
 
+    /// Returns the request id.
+    pub fn id(&self) -> u64 {
+        self.id
+    }
+
     #[cfg(test)]
     pub(crate) fn random(rng: &mut TestRng) -> Self {
         Self {
             protocol_version: ProtocolVersion::from_parts(rng.gen(), rng.gen(), rng.gen()),
             type_tag: BinaryRequestTag::random(rng).into(),
+            id: rng.gen(),
         }
     }
 }
@@ -56,7 +64,8 @@ impl ToBytes for BinaryRequestHeader {
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         self.protocol_version.write_bytes(writer)?;
-        self.type_tag.write_bytes(writer)
+        self.type_tag.write_bytes(writer)?;
+        self.id.write_bytes(writer)
     }
 
     fn serialized_length(&self) -> usize {
@@ -67,11 +76,13 @@ impl ToBytes for BinaryRequestHeader {
 impl FromBytes for BinaryRequestHeader {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (protocol_version, remainder) = FromBytes::from_bytes(bytes)?;
-        let (type_tag, remainder) = u8::from_bytes(remainder)?;
+        let (type_tag, remainder) = FromBytes::from_bytes(remainder)?;
+        let (id, remainder) = FromBytes::from_bytes(remainder)?;
         Ok((
             BinaryRequestHeader {
                 protocol_version,
                 type_tag,
+                id,
             },
             remainder,
         ))
