@@ -345,7 +345,7 @@ impl BlockValidationState {
                 // valid.
                 let approvals = approvals_info.approvals;
                 let footprint = footprint.clone().with_approvals(approvals);
-                match appendable_block.add_transaction(footprint.clone()) {
+                match appendable_block.add_transaction(&footprint) {
                     Ok(_) => {
                         if !missing_transactions.is_empty() || !missing_signatures.is_empty() {
                             // The appendable block is still valid, but we still have missing

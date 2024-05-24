@@ -383,39 +383,30 @@ impl TransactionBuffer {
     fn proposable(
         &self,
         current_era_gas_price: u8,
-    ) -> Vec<(TransactionHash, TransactionFootprint)> {
+    ) -> impl Iterator<Item = (&TransactionHash, &TransactionFootprint)> {
         debug!("TransactionBuffer: getting proposable transactions");
         self.buffer
             .iter()
-            .filter(|(th, _)| !self.hold.values().any(|hs| hs.contains(th)))
-            .filter(|(th, _)| !self.dead.contains(th))
-            .filter(|(_, (_, maybe_data))| match maybe_data {
-                None => false,
-                Some(footprint) => footprint.gas_price_tolerance() >= (current_era_gas_price),
+            .filter(move |(th, _)| !self.hold.values().any(|hs| hs.contains(th)))
+            .filter(move |(th, _)| !self.dead.contains(th))
+            .filter_map(|(th, (_, maybe_footprint))| {
+                maybe_footprint.as_ref().map(|footprint| (th, footprint))
             })
-            .filter_map(|(th, (_, maybe_data))| {
-                maybe_data
-                    .as_ref()
-                    .map(|footprint| (*th, footprint.clone()))
-            })
-            .collect()
+            .filter(move |(_, footprint)| footprint.gas_price_tolerance() >= current_era_gas_price)
     }
 
     fn buckets(
         &mut self,
         current_era_gas_price: u8,
-    ) -> HashMap<Digest, Vec<(TransactionHash, TransactionFootprint)>> {
+    ) -> HashMap<&Digest, Vec<(TransactionHash, &TransactionFootprint)>> {
         let proposable = self.proposable(current_era_gas_price);
 
-        let mut buckets: HashMap<Digest, Vec<(TransactionHash, TransactionFootprint)>> =
-            HashMap::new();
-
+        let mut buckets: HashMap<_, Vec<_>> = HashMap::new();
         for (transaction_hash, footprint) in proposable {
-            let body_hash = footprint.body_hash;
             buckets
-                .entry(body_hash)
-                .and_modify(|vec| vec.push((transaction_hash, footprint.clone())))
-                .or_insert(vec![(transaction_hash, footprint)]);
+                .entry(&footprint.body_hash)
+                .and_modify(|vec| vec.push((*transaction_hash, footprint)))
+                .or_insert(vec![(*transaction_hash, footprint)]);
         }
         buckets
     }
@@ -428,6 +419,7 @@ impl TransactionBuffer {
             None => return ret,
         };
         let mut holds = HashSet::new();
+        let mut dead = HashSet::new();
 
         // TODO[RC]: It's error prone to use 4 different flags to track the limits. Implement a
         // proper limiter.
@@ -435,13 +427,14 @@ impl TransactionBuffer {
         let mut have_hit_wasm_limit = false;
         let mut have_hit_install_upgrade_limit = false;
         let mut have_hit_auction_limit = false;
-        let mut buckets = self.buckets(current_era_gas_price);
-        let mut body_hashes_queue: VecDeque<_> = buckets.keys().cloned().collect();
 
         #[cfg(test)]
         let mut iter_counter = 0;
         #[cfg(test)]
         let iter_limit = self.buffer.len() * 4;
+
+        let mut buckets = self.buckets(current_era_gas_price);
+        let mut body_hashes_queue: VecDeque<_> = buckets.keys().cloned().collect();
 
         while let Some(body_hash) = body_hashes_queue.pop_front() {
             #[cfg(test)]
@@ -453,7 +446,7 @@ impl TransactionBuffer {
                 );
             }
 
-            let Some((transaction_hash, footprint)) = buckets.get_mut(&body_hash).and_then(Vec::<_>::pop)
+            let Some((transaction_hash, footprint)) = buckets.get_mut(body_hash).and_then(Vec::<_>::pop)
                 else {
                     continue;
                 };
@@ -477,7 +470,7 @@ impl TransactionBuffer {
 
             // let transaction_hash = with_approvals.transaction_hash();
             let has_multiple_approvals = footprint.approvals.len() > 1;
-            match ret.add_transaction(footprint.clone()) {
+            match ret.add_transaction(footprint) {
                 Ok(_) => {
                     debug!(%transaction_hash, "TransactionBuffer: proposing transaction");
                     holds.insert(transaction_hash);
@@ -492,14 +485,14 @@ impl TransactionBuffer {
                                 ?transaction_hash,
                                 "TransactionBuffer: duplicated transaction or transfer in transaction buffer"
                             );
-                            self.dead.insert(transaction_hash);
+                            dead.insert(transaction_hash);
                         }
                         AddError::Expired => {
                             info!(
                                 ?transaction_hash,
                                 "TransactionBuffer: expired transaction or transfer in transaction buffer"
                             );
-                            self.dead.insert(transaction_hash);
+                            dead.insert(transaction_hash);
                         }
                         AddError::Count(category) => {
                             match category {
@@ -565,6 +558,7 @@ impl TransactionBuffer {
                 }
             }
         }
+        self.dead.extend(dead);
 
         // Put a hold on all proposed transactions / transfers and update metrics
         match self.hold.entry(timestamp) {

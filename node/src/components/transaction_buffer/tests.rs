@@ -310,7 +310,9 @@ fn get_proposable_transactions() {
 
         // Check which transactions are proposable. Should return the transactions that were not
         // included in the block since those should be dead.
-        let proposable = transaction_buffer.proposable(DEFAULT_MINIMUM_GAS_PRICE);
+        let proposable: Vec<_> = transaction_buffer
+            .proposable(DEFAULT_MINIMUM_GAS_PRICE)
+            .collect();
         assert_eq!(proposable.len(), transactions.len());
         let proposable_transaction_hashes: HashSet<_> =
             proposable.iter().map(|(th, _)| *th).collect();
@@ -329,15 +331,17 @@ fn get_proposable_transactions() {
         );
 
         // Check that held blocks are not proposable
-        let proposable = transaction_buffer.proposable(DEFAULT_MINIMUM_GAS_PRICE);
+        let proposable: Vec<_> = transaction_buffer
+            .proposable(DEFAULT_MINIMUM_GAS_PRICE)
+            .collect();
         assert_eq!(
             proposable.len(),
             transactions.len() - appendable_block.transaction_hashes().len()
         );
-        for transaction in proposable.iter() {
+        for transaction in proposable {
             assert!(!appendable_block
                 .transaction_hashes()
-                .contains(&transaction.0));
+                .contains(transaction.0));
         }
     }
 }
