@@ -79,13 +79,13 @@ pub const MAX_GROUPS: u8 = 10;
 /// Maximum number of URefs which can be assigned across all user groups.
 pub const MAX_TOTAL_UREFS: usize = 100;
 
-const ADDRESSABLE_ENTITY_STRING_PREFIX: &str = "addressable-entity-";
+pub const ADDRESSABLE_ENTITY_STRING_PREFIX: &str = "addressable-entity-";
 
-const ENTITY_PREFIX: &str = "entity-";
-const ACCOUNT_ENTITY_PREFIX: &str = "account-";
-const CONTRACT_ENTITY_PREFIX: &str = "contract-";
-const SYSTEM_ENTITY_PREFIX: &str = "system-";
-const NAMED_KEY_PREFIX: &str = "named-key-";
+pub const ENTITY_PREFIX: &str = "entity-";
+pub const ACCOUNT_ENTITY_PREFIX: &str = "account-";
+pub const CONTRACT_ENTITY_PREFIX: &str = "contract-";
+pub const SYSTEM_ENTITY_PREFIX: &str = "system-";
+pub const NAMED_KEY_PREFIX: &str = "named-key-";
 
 /// Set of errors which may happen when working with contract headers.
 #[derive(Debug, PartialEq, Eq)]
