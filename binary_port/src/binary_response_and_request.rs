@@ -63,7 +63,6 @@ impl FromBytes for OriginalRequestSpec {
 }
 
 /// The binary response along with the original binary request attached.
-// TODO[RC]: PartialEq needed?
 #[derive(Debug, PartialEq)]
 pub struct BinaryResponseAndRequest {
     /// The original request (as serialized bytes).
