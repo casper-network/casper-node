@@ -475,7 +475,9 @@ pub trait Auction:
         let vesting_schedule_period_millis = self.vesting_schedule_period_millis();
         let validator_slots = detail::get_validator_slots(self)?;
         let auction_delay = detail::get_auction_delay(self)?;
-        let snapshot_size = auction_delay as usize + 1;
+        // We have to store auction_delay future eras, one current era and one past era (for
+        // rewards calculations).
+        let snapshot_size = auction_delay as usize + 2;
         let mut era_id: EraId = detail::get_era_id(self)?;
 
         // Process unbond requests
