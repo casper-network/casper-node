@@ -358,6 +358,7 @@ async fn binary_port_component() {
         );
         let header_bytes = ToBytes::to_bytes(&header).expect("should serialize");
 
+        let original_request_id = header.id();
         let original_request_bytes = header_bytes
             .iter()
             .chain(
@@ -381,13 +382,16 @@ async fn binary_port_component() {
         let (binary_response_and_request, _): (BinaryResponseAndRequest, _) =
             FromBytes::from_bytes(response.payload()).expect("should deserialize response");
 
-        let mirrored_request_bytes = binary_response_and_request.original_request();
+        let mirrored_request_bytes = binary_response_and_request.original_request_bytes();
         assert_eq!(
             mirrored_request_bytes,
             original_request_bytes.as_slice(),
             "{}",
             name
         );
+
+        let mirrored_request_id = binary_response_and_request.original_request_id();
+        assert_eq!(mirrored_request_id, original_request_id, "{}", name);
 
         assert!(asserter(binary_response_and_request.response()), "{}", name);
     }

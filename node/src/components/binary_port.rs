@@ -877,10 +877,10 @@ where
         };
 
         let version = effect_builder.get_protocol_version().await;
-        let response = handle_payload(effect_builder, payload, version).await;
+        let (response, id) = handle_payload(effect_builder, payload, version).await;
         framed
             .send(BinaryMessage::new(
-                BinaryResponseAndRequest::new(response, payload).to_bytes()?,
+                BinaryResponseAndRequest::new(response, payload, id).to_bytes()?,
             ))
             .await?
     }
@@ -890,36 +890,44 @@ async fn handle_payload<REv>(
     effect_builder: EffectBuilder<REv>,
     payload: &[u8],
     protocol_version: ProtocolVersion,
-) -> BinaryResponse
+) -> (BinaryResponse, u64)
 where
     REv: From<Event>,
 {
     let Ok((header, remainder)) = BinaryRequestHeader::from_bytes(payload) else {
-        return BinaryResponse::new_error(ErrorCode::BadRequest, protocol_version);
+        return (BinaryResponse::new_error(ErrorCode::BadRequest, protocol_version), 0);
     };
+
+    let request_id = header.id();
 
     if !header
         .protocol_version()
         .is_compatible_with(&protocol_version)
     {
-        return BinaryResponse::new_error(ErrorCode::UnsupportedProtocolVersion, protocol_version);
+        return (
+            BinaryResponse::new_error(ErrorCode::UnsupportedProtocolVersion, protocol_version),
+            request_id,
+        );
     }
 
     // we might receive a request added in a minor version if we're behind
     let Ok(tag) = BinaryRequestTag::try_from(header.type_tag()) else {
-        return BinaryResponse::new_error(ErrorCode::UnsupportedRequest, protocol_version);
+        return (BinaryResponse::new_error(ErrorCode::UnsupportedRequest, protocol_version), request_id);
     };
 
     let Ok(request) = BinaryRequest::try_from((tag, remainder)) else {
-        return BinaryResponse::new_error(ErrorCode::BadRequest, protocol_version);
+        return (BinaryResponse::new_error(ErrorCode::BadRequest, protocol_version), request_id)
     };
 
-    effect_builder
-        .make_request(
-            |responder| Event::HandleRequest { request, responder },
-            QueueKind::Regular,
-        )
-        .await
+    (
+        effect_builder
+            .make_request(
+                |responder| Event::HandleRequest { request, responder },
+                QueueKind::Regular,
+            )
+            .await,
+        request_id,
+    )
 }
 
 async fn handle_client<REv>(

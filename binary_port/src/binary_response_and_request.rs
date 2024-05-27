@@ -8,21 +8,82 @@ use crate::{binary_response::BinaryResponse, payload_type::PayloadEntity, Payloa
 use crate::record_id::RecordId;
 #[cfg(test)]
 use casper_types::testing::TestRng;
+#[cfg(test)]
+use rand::Rng;
+
+// TODO[RC]: To separate file
+#[derive(Debug, PartialEq)]
+struct OriginalRequestSpec {
+    id: u64,
+    data: Vec<u8>,
+}
+
+impl OriginalRequestSpec {
+    #[cfg(test)]
+    pub(crate) fn random(rng: &mut TestRng) -> Self {
+        Self {
+            id: rng.gen(),
+            data: rng.random_vec(64..128),
+        }
+    }
+}
+
+impl ToBytes for OriginalRequestSpec {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        let OriginalRequestSpec { id, data } = self;
+
+        id.write_bytes(writer)?;
+        data.write_bytes(writer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.id.serialized_length() + self.data.serialized_length()
+    }
+}
+
+impl FromBytes for OriginalRequestSpec {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (id, remainder) = FromBytes::from_bytes(bytes)?;
+        let (data, remainder) = Bytes::from_bytes(remainder)?;
+
+        Ok((
+            OriginalRequestSpec {
+                id,
+                data: data.into(),
+            },
+            remainder,
+        ))
+    }
+}
 
 /// The binary response along with the original binary request attached.
+// TODO[RC]: PartialEq needed?
 #[derive(Debug, PartialEq)]
 pub struct BinaryResponseAndRequest {
     /// The original request (as serialized bytes).
-    original_request: Vec<u8>,
+    original_request: OriginalRequestSpec,
     /// The response.
     response: BinaryResponse,
 }
 
 impl BinaryResponseAndRequest {
     /// Creates new binary response with the original request attached.
-    pub fn new(data: BinaryResponse, original_request: &[u8]) -> Self {
+    pub fn new(
+        data: BinaryResponse,
+        original_request_payload: &[u8],
+        original_request_id: u64,
+    ) -> Self {
         Self {
-            original_request: original_request.to_vec(),
+            original_request: OriginalRequestSpec {
+                id: original_request_id,
+                data: original_request_payload.to_vec(),
+            },
             response: data,
         }
     }
@@ -38,7 +99,7 @@ impl BinaryResponseAndRequest {
             data.to_bytes().unwrap(),
             protocol_version,
         );
-        Self::new(response, &[])
+        Self::new(response, &[], 0)
     }
 
     /// Returns a new binary response with specified legacy data and no original request.
@@ -52,7 +113,7 @@ impl BinaryResponseAndRequest {
             bincode::serialize(data).unwrap(),
             protocol_version,
         );
-        Self::new(response, &[])
+        Self::new(response, &[], 0)
     }
 
     /// Returns true if response is success.
@@ -68,14 +129,19 @@ impl BinaryResponseAndRequest {
     #[cfg(test)]
     pub(crate) fn random(rng: &mut TestRng) -> Self {
         Self {
-            original_request: rng.random_vec(64..128),
+            original_request: OriginalRequestSpec::random(rng),
             response: BinaryResponse::random(rng),
         }
     }
 
     /// Returns serialized bytes representing the original request.
-    pub fn original_request(&self) -> &[u8] {
-        self.original_request.as_ref()
+    pub fn original_request_bytes(&self) -> &[u8] {
+        self.original_request.data.as_ref()
+    }
+
+    /// Returns the original request id.
+    pub fn original_request_id(&self) -> u64 {
+        self.original_request.id
     }
 
     /// Returns the inner binary response.
@@ -108,12 +174,12 @@ impl ToBytes for BinaryResponseAndRequest {
 
 impl FromBytes for BinaryResponseAndRequest {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (original_request, remainder) = Bytes::from_bytes(bytes)?;
+        let (original_request, remainder) = OriginalRequestSpec::from_bytes(bytes)?;
         let (response, remainder) = FromBytes::from_bytes(remainder)?;
 
         Ok((
             BinaryResponseAndRequest {
-                original_request: original_request.into(),
+                original_request,
                 response,
             },
             remainder,
