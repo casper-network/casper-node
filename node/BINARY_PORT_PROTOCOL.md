@@ -16,7 +16,8 @@ Request bytes can be constructed from bytesrepr-serialized `BinaryRequestHeader`
 ### Response format
 | Size in bytes   | Field           | Description                                                             |
 |-----------------|-----------------|-------------------------------------------------------------------------|
-| 4               | LengthOfRequest | Length of the request being responded to                                |
+| 2               | Request id      | Request id (u16)                                                        |
+| 4               | LengthOfRequest | Length of the request (encoded as bytes) being responded to             |
 | LengthOfRequest | RequestBytes    | The request being responded to encoded as bytes                         |
 | 12              | ProtocolVersion | Protocol version as a u32 triplet (major, minor, patch)                 |
 | 1               | ErrorCode       | Error code, where 0 indicates success                                   |
