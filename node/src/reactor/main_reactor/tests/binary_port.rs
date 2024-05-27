@@ -354,7 +354,7 @@ async fn binary_port_component() {
         let header = BinaryRequestHeader::new(
             ProtocolVersion::from_parts(2, 0, 0),
             request.tag(),
-            index as u64,
+            index as u16,
         );
         let header_bytes = ToBytes::to_bytes(&header).expect("should serialize");
 

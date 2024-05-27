@@ -6,12 +6,12 @@ use rand::Rng;
 
 #[derive(Debug, PartialEq)]
 pub(crate) struct OriginalRequestSpec {
-    id: u64,
+    id: u16,
     data: Vec<u8>,
 }
 
 impl OriginalRequestSpec {
-    pub(crate) fn new(id: u64, data: Vec<u8>) -> Self {
+    pub(crate) fn new(id: u16, data: Vec<u8>) -> Self {
         Self { id, data }
     }
 
@@ -23,7 +23,7 @@ impl OriginalRequestSpec {
         }
     }
 
-    pub(crate) fn id(&self) -> u64 {
+    pub(crate) fn id(&self) -> u16 {
         self.id
     }
 

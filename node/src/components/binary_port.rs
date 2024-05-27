@@ -890,7 +890,7 @@ async fn handle_payload<REv>(
     effect_builder: EffectBuilder<REv>,
     payload: &[u8],
     protocol_version: ProtocolVersion,
-) -> (BinaryResponse, u64)
+) -> (BinaryResponse, u16)
 where
     REv: From<Event>,
 {

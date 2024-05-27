@@ -17,12 +17,12 @@ use rand::Rng;
 pub struct BinaryRequestHeader {
     protocol_version: ProtocolVersion,
     type_tag: u8,
-    id: u64,
+    id: u16,
 }
 
 impl BinaryRequestHeader {
     /// Creates new binary request header.
-    pub fn new(protocol_version: ProtocolVersion, type_tag: BinaryRequestTag, id: u64) -> Self {
+    pub fn new(protocol_version: ProtocolVersion, type_tag: BinaryRequestTag, id: u16) -> Self {
         Self {
             protocol_version,
             type_tag: type_tag.into(),
@@ -41,7 +41,7 @@ impl BinaryRequestHeader {
     }
 
     /// Returns the request id.
-    pub fn id(&self) -> u64 {
+    pub fn id(&self) -> u16 {
         self.id
     }
 

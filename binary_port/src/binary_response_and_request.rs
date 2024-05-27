@@ -26,7 +26,7 @@ impl BinaryResponseAndRequest {
     pub fn new(
         data: BinaryResponse,
         original_request_payload: &[u8],
-        original_request_id: u64,
+        original_request_id: u16,
     ) -> Self {
         Self {
             original_request: OriginalRequestSpec::new(
@@ -89,7 +89,7 @@ impl BinaryResponseAndRequest {
     }
 
     /// Returns the original request id.
-    pub fn original_request_id(&self) -> u64 {
+    pub fn original_request_id(&self) -> u16 {
         self.original_request.id()
     }
 
