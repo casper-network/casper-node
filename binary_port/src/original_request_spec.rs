@@ -6,7 +6,9 @@ use rand::Rng;
 
 #[derive(Debug, PartialEq)]
 pub(crate) struct OriginalRequestSpec {
+    // The ID of the original request.
     id: u16,
+    // The original request (as serialized bytes).
     data: Vec<u8>,
 }
 

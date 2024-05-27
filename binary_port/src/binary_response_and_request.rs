@@ -15,7 +15,7 @@ use casper_types::testing::TestRng;
 /// The binary response along with the original binary request attached.
 #[derive(Debug, PartialEq)]
 pub struct BinaryResponseAndRequest {
-    /// The original request (as serialized bytes).
+    /// Specification of the original request.
     original_request: OriginalRequestSpec,
     /// The response.
     response: BinaryResponse,
