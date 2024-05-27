@@ -1,66 +1,16 @@
 use casper_types::{
-    bytesrepr::{self, Bytes, FromBytes, ToBytes},
+    bytesrepr::{self, FromBytes, ToBytes},
     ProtocolVersion,
 };
 
-use crate::{binary_response::BinaryResponse, payload_type::PayloadEntity, PayloadType};
+use crate::{
+    binary_response::BinaryResponse, original_request_spec::OriginalRequestSpec,
+    payload_type::PayloadEntity, PayloadType,
+};
 
 use crate::record_id::RecordId;
 #[cfg(test)]
 use casper_types::testing::TestRng;
-#[cfg(test)]
-use rand::Rng;
-
-// TODO[RC]: To separate file
-#[derive(Debug, PartialEq)]
-struct OriginalRequestSpec {
-    id: u64,
-    data: Vec<u8>,
-}
-
-impl OriginalRequestSpec {
-    #[cfg(test)]
-    pub(crate) fn random(rng: &mut TestRng) -> Self {
-        Self {
-            id: rng.gen(),
-            data: rng.random_vec(64..128),
-        }
-    }
-}
-
-impl ToBytes for OriginalRequestSpec {
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut buffer = bytesrepr::allocate_buffer(self)?;
-        self.write_bytes(&mut buffer)?;
-        Ok(buffer)
-    }
-
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        let OriginalRequestSpec { id, data } = self;
-
-        id.write_bytes(writer)?;
-        data.write_bytes(writer)
-    }
-
-    fn serialized_length(&self) -> usize {
-        self.id.serialized_length() + self.data.serialized_length()
-    }
-}
-
-impl FromBytes for OriginalRequestSpec {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (id, remainder) = FromBytes::from_bytes(bytes)?;
-        let (data, remainder) = Bytes::from_bytes(remainder)?;
-
-        Ok((
-            OriginalRequestSpec {
-                id,
-                data: data.into(),
-            },
-            remainder,
-        ))
-    }
-}
 
 /// The binary response along with the original binary request attached.
 #[derive(Debug, PartialEq)]
@@ -79,10 +29,10 @@ impl BinaryResponseAndRequest {
         original_request_id: u64,
     ) -> Self {
         Self {
-            original_request: OriginalRequestSpec {
-                id: original_request_id,
-                data: original_request_payload.to_vec(),
-            },
+            original_request: OriginalRequestSpec::new(
+                original_request_id,
+                original_request_payload.to_vec(),
+            ),
             response: data,
         }
     }
@@ -135,12 +85,12 @@ impl BinaryResponseAndRequest {
 
     /// Returns serialized bytes representing the original request.
     pub fn original_request_bytes(&self) -> &[u8] {
-        self.original_request.data.as_ref()
+        self.original_request.data()
     }
 
     /// Returns the original request id.
     pub fn original_request_id(&self) -> u64 {
-        self.original_request.id
+        self.original_request.id()
     }
 
     /// Returns the inner binary response.

@@ -15,6 +15,7 @@ mod information_request;
 mod key_prefix;
 mod minimal_block_info;
 mod node_status;
+mod original_request_spec;
 mod payload_type;
 mod purse_identifier;
 pub mod record_id;
