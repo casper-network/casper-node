@@ -58,7 +58,7 @@ impl AppendableBlock {
     /// Attempt to append transaction to block.
     pub(crate) fn add_transaction(
         &mut self,
-        footprint: TransactionFootprint,
+        footprint: &TransactionFootprint,
     ) -> Result<(), AddError> {
         if self
             .transactions
@@ -136,7 +136,7 @@ impl AppendableBlock {
             return Err(AddError::ApprovalCount);
         }
         self.transactions
-            .insert(footprint.transaction_hash, footprint);
+            .insert(footprint.transaction_hash, footprint.clone());
         Ok(())
     }
 
