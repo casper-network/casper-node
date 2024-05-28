@@ -2,7 +2,7 @@ use crate::{
     abi::{CasperABI, Declaration, Definition, Definitions, StructField},
     host::{self, read_vec},
 };
-// use casper_macros::{casper, CasperABI, CasperSchema, Contract};
+// use casper_macros::casper;
 use borsh::{self, BorshDeserialize, BorshSerialize};
 use const_fnv1a_hash::fnv1a_hash_str_64;
 use std::{cmp::Ordering, marker::PhantomData};

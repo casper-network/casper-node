@@ -19,7 +19,7 @@ members = [
     "smart_contracts/sdk-codegen",
     "smart_contracts/sdk-sys",
     "smart_contracts/macros"
-]
+, "cargo-casper"]
 
 default-members = [
     "ci/casper_updater",
@@ -46,8 +46,13 @@ default-members = [
 debug = true
 
 [profile.release]
-codegen-units = 1
-lto = true
+codegen-units=1
+opt-level="z"
+lto=true
+debug=false
+panic="abort"
+overflow-checks=true
+
 
 [profile.bench]
 codegen-units = 1

@@ -1,6 +1,6 @@
 use alloc::vec::Vec;
 use borsh::{BorshDeserialize, BorshSerialize};
-use casper_macros::{casper, CasperABI, CasperSchema, Contract};
+use casper_macros::casper;
 use casper_sdk::{
     abi::CasperABI,
     host::{self, Entity},
@@ -14,13 +14,14 @@ use crate::traits::{Fallback, FallbackExt, FallbackRef};
 use super::harness::HarnessRef;
 
 /// A contract that can't receive tokens through a plain `fallback` method.
-#[derive(Contract, CasperSchema, BorshSerialize, BorshDeserialize, CasperABI, Debug, Default)]
+#[derive(Default)]
+#[casper(state)]
 pub struct NoFallback {
     initial_balance: u64,
     received_balance: u64,
 }
 
-#[casper(contract)]
+#[casper]
 impl NoFallback {
     #[casper(constructor)]
     pub fn initialize() -> Self {

@@ -3,7 +3,7 @@ use crate::{
     traits::{CEP18Ref, CEP18State, CEP18},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
-use casper_macros::{casper, CasperABI, CasperSchema, Contract};
+use casper_macros::casper;
 use casper_sdk::host;
 use security_badge::SecurityBadge;
 use std::string::String;

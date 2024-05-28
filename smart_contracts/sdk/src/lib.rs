@@ -3,6 +3,11 @@
 // #[linkage = "--import-memory"]
 
 pub mod abi;
+#[cfg(not(target_arch = "wasm32"))]
+pub use linkme;
+
+#[cfg(feature = "__abi_generator")]
+pub mod abi_generator;
 #[cfg(feature = "cli")]
 pub mod cli;
 pub mod collections;
@@ -17,8 +22,6 @@ pub use casper_sdk_sys as sys;
 use host::{CallResult, Entity};
 use types::{Address, CallError};
 
-#[cfg(not(target_arch = "wasm32"))]
-pub use ctor::ctor;
 use vm_common::selector::Selector;
 
 #[cfg(target_arch = "wasm32")]
@@ -175,7 +178,7 @@ impl<T: ContractRef> ContractHandle<T> {
         func: impl FnOnce(T) -> CallData,
     ) -> Result<CallData::Return<'a>, CallError>
     where
-        CallData::Return<'a>: BorshDeserialize + Clone,
+        CallData::Return<'a>: BorshDeserialize,
     {
         self.build_call().call(func)
     }
@@ -246,7 +249,7 @@ impl<T: ContractRef> CallBuilder<T> {
         func: impl FnOnce(T) -> CallData,
     ) -> Result<CallData::Return<'a>, CallError>
     where
-        CallData::Return<'a>: BorshDeserialize + Clone,
+        CallData::Return<'a>: BorshDeserialize,
     {
         let inst = T::new();
         let call_data = func(inst);
@@ -307,7 +310,7 @@ mod tests {
     }
 
     impl ToCallData for DoSomethingArg {
-        const SELECTOR: Selector = Selector(1);
+        const SELECTOR: Selector = Selector::new(1);
         type Return<'a> = ();
         fn input_data(&self) -> Option<Vec<u8>> {
             Some(borsh::to_vec(self).expect("Serialization should work"))

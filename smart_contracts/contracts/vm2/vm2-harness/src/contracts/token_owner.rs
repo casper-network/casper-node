@@ -1,6 +1,6 @@
 use alloc::vec::Vec;
 use borsh::{BorshDeserialize, BorshSerialize};
-use casper_macros::{casper, CasperABI, CasperSchema, Contract};
+use casper_macros::casper;
 use casper_sdk::{
     abi::CasperABI,
     host::{self, Entity},
@@ -13,9 +13,7 @@ use crate::traits::{Fallback, FallbackExt, FallbackRef};
 
 use super::harness::HarnessRef;
 
-#[repr(u32)]
-#[derive(Debug, BorshSerialize, BorshDeserialize, PartialEq, CasperABI, Clone)]
-#[borsh(use_discriminant = true)]
+#[casper]
 pub enum TokenOwnerError {
     CallError(CallError),
     DepositError(String),
@@ -30,7 +28,8 @@ impl From<CallError> for TokenOwnerError {
 
 pub type Data = Vec<u8>; // TODO: CasperABI does not support generic parameters and it fails to compile, we need to support this in the macro
 
-#[derive(Debug, Default, BorshSerialize, BorshDeserialize, PartialEq, CasperABI, Clone)]
+#[derive(Debug, Default, PartialEq)]
+#[casper]
 pub enum FallbackHandler {
     /// Accept tokens and do nothing.
     #[default]
@@ -43,15 +42,15 @@ pub enum FallbackHandler {
     RejectWithData(Data),
 }
 
-#[derive(Contract, CasperSchema, BorshSerialize, BorshDeserialize, CasperABI, Debug, Default)]
-#[casper(impl_traits(Fallback))]
+#[derive(Default)]
+#[casper(state)]
 pub struct TokenOwnerContract {
     initial_balance: u64,
     received_tokens: u64,
     fallback_handler: FallbackHandler,
 }
 
-#[casper(contract)]
+#[casper]
 impl TokenOwnerContract {
     #[casper(constructor)]
     pub fn initialize() -> Self {

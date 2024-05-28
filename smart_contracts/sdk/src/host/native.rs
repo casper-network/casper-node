@@ -11,6 +11,7 @@ use std::{
 };
 use vm_common::flags::{EntryPointFlags, ReturnFlags};
 
+use crate::linkme::distributed_slice;
 use crate::{types::Address, Selector};
 
 use borsh::BorshSerialize;
@@ -20,8 +21,12 @@ pub struct Export {
     pub module_path: &'static str,
     pub file: &'static str,
     pub line: u32,
-    pub fptr: Box<dyn Fn() -> ()>,
+    pub fptr: fn() -> (),
 }
+
+#[distributed_slice]
+#[linkme(crate = crate::linkme)]
+pub static EXPORTS: [Export];
 
 impl std::fmt::Debug for Export {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -34,72 +39,49 @@ impl std::fmt::Debug for Export {
     }
 }
 
-const ARRAY_REPEAT_VALUE: Option<Export> = None;
-pub static mut LAZY_EXPORTS: [Option<Export>; 1024] = [ARRAY_REPEAT_VALUE; 1024];
-
-pub fn register_export(export: Export) {
-    for l in unsafe { LAZY_EXPORTS.iter_mut() } {
-        if l.is_none() {
-            *l = Some(export);
-            return;
-        }
-    }
-    assert!(false, "no more space");
-}
-
-thread_local! {
-    static EXPORTS: Lazy<HashMap<&'static str, Vec<&'static Export>>> = Lazy::new(|| {
-        let mut exports: HashMap<&'static str, Vec<&'static Export>> = HashMap::new();
-        for export in unsafe { LAZY_EXPORTS.iter() } {
-            if let Some(export) = export {
-                let entry = exports.entry(export.name).or_default();
-                entry.push(export);
-            }
-        }
-        exports
-    });
-}
-
 pub fn list_exports() -> Vec<&'static Export> {
-    EXPORTS.with(|exports| {
-        let mut all_exports = Vec::new();
-        for (_name, exports) in exports.iter() {
-            all_exports.extend(exports.iter());
-        }
-        all_exports
-    })
+    EXPORTS.iter().collect()
+    // EXPORTS.with(|exports| {
+    //     let mut all_exports = Vec::new();
+    //     for (_name, exports) in exports.iter() {
+    //         all_exports.extend(exports.iter());
+    //     }
+    //     all_exports
+    // })
 }
 
 pub fn call_export(name: &str) {
-    EXPORTS.with(|exports| match exports.get(name) {
-        Some(exports) if exports.len() == 1 => {
-            let export = exports.first().expect("Exactly one");
+    let exports_by_name: Vec<&Export> = EXPORTS
+        .iter()
+        .filter_map(|export| {
+            if export.name == name {
+                Some(export)
+            } else {
+                None
+            }
+        })
+        .collect();
 
-            (export.fptr)();
-        }
-        Some(exports) => {
-            panic!("Found multiple exports with the same name: {exports:?}");
-        }
-        None => {
-            panic!("No export found with the given name");
-        }
-    });
+    assert_eq!(exports_by_name.len(), 1);
+
+    (exports_by_name[0].fptr)();
 }
 
 pub fn call_export_by_module(module_path: &str, name: &str) {
-    EXPORTS.with(|exports| match exports.get(name) {
-        Some(exports) => {
-            let export = exports
-                .iter()
-                .find(|export| export.module_path == module_path)
-                .expect("Exactly one");
+    todo!()
+    // EXPORTS.with(|exports| match exports.get(name) {
+    //     Some(exports) => {
+    //         let export = exports
+    //             .iter()
+    //             .find(|export| export.module_path == module_path)
+    //             .expect("Exactly one");
 
-            (export.fptr)();
-        }
-        None => {
-            panic!("No export found with the given name");
-        }
-    });
+    //         (export.fptr)();
+    //     }
+    //     None => {
+    //         panic!("No export found with the given name");
+    //     }
+    // });
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -858,8 +840,6 @@ mod tests {
     fn test() {
         dispatch_with(Environment::default(), || {
             let msg = "Hello";
-            // let stub = STUB.read().unwrap();
-            // stub.casper_print(msg.as_ptr(), msg.len());
             let () = with_current_environment(|stub| stub.casper_print(msg.as_ptr(), msg.len()))
                 .expect("Ok");
         })

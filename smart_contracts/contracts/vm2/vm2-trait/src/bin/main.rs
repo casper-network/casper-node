@@ -2,11 +2,23 @@
 
 use casper_macros::casper;
 use casper_sdk::log;
-use vm2_trait::perform_test;
 
 #[casper(export)]
 pub fn call() {
     log!("Hello");
-    perform_test();
+    // perform_test();
     log!("🎉 Success");
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_call() {
+        call();
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn main() {}

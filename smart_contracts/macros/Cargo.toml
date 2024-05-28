@@ -20,3 +20,7 @@ proc-macro2 = "1.0"
 static_assertions = "1.1.0"
 
 blake2-rfc = { version = "0.2.18", default-features = false, features = ["std"] }
+
+[features]
+default = []
+__abi_generator = []

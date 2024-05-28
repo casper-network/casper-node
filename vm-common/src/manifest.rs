@@ -7,6 +7,18 @@ use crate::leb128::LEB128U;
 
 const CURRENT_MANIFEST_VERSION: u32 = 1;
 
+extern "C" fn dummy1() {}
+extern "C" fn dummy2() {}
+struct E {
+    a: u32,
+    b: usize,
+}
+
+union Transmuter {
+    from: Fptr,
+    to: usize,
+}
+
 pub struct EntryPoint(pub(crate) casper_sdk_sys::EntryPoint);
 
 impl EntryPoint {

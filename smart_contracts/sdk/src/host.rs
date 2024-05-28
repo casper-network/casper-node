@@ -324,7 +324,7 @@ pub fn read_vec(key: Keyspace) -> Option<Vec<u8>> {
     }
 }
 
-pub fn read_state<T: Default + BorshDeserialize + Contract>() -> Result<T, Error> {
+pub fn read_state<T: Default + BorshDeserialize>() -> Result<T, Error> {
     let mut vec = Vec::new();
     let read_info = casper_read(Keyspace::State, |size| reserve_vec_space(&mut vec, size))?;
     match read_info {
@@ -333,7 +333,7 @@ pub fn read_state<T: Default + BorshDeserialize + Contract>() -> Result<T, Error
     }
 }
 
-pub fn write_state<T: Contract + BorshSerialize>(state: &T) -> Result<(), Error> {
+pub fn write_state<T: BorshSerialize>(state: &T) -> Result<(), Error> {
     let new_state = borsh::to_vec(state).unwrap();
     casper_write(Keyspace::State, &new_state)?;
     Ok(())

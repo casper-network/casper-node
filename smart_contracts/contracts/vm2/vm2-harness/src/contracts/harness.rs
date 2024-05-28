@@ -1,21 +1,22 @@
 use borsh::{BorshDeserialize, BorshSerialize};
-use casper_macros::{casper, CasperABI, CasperSchema, Contract};
+use casper_macros::casper;
 use casper_sdk::{
     abi::CasperABI,
     collections::Map,
     host::{self, Entity},
     log, revert,
+    sys::Fptr,
     types::{Address, CallError},
     Contract, ContractHandle,
 };
 
-use crate::traits::{Fallback, FallbackExt, FallbackRef};
+use crate::traits::{Fallback, FallbackExt};
 
 pub(crate) const INITIAL_GREETING: &str = "This is initial data set from a constructor";
 pub(crate) const BALANCES_PREFIX: &str = "b";
 
-#[derive(Contract, CasperSchema, BorshSerialize, BorshDeserialize, CasperABI, Debug)]
-#[casper(impl_traits(Fallback))]
+#[derive(Debug)]
+#[casper(state)]
 pub struct Harness {
     counter: u64,
     greeting: String,
@@ -23,6 +24,7 @@ pub struct Harness {
     balances: Map<Entity, u64>,
 }
 
+#[casper(path = crate::traits)]
 impl Fallback for Harness {
     fn fallback(&mut self) {
         // Called when no entrypoint is matched
@@ -42,11 +44,8 @@ impl Fallback for Harness {
     }
 }
 
-#[repr(u32)]
-#[derive(
-    Debug, BorshSerialize, BorshDeserialize, PartialEq, CasperABI, Clone, thiserror::Error,
-)]
-#[borsh(use_discriminant = true)]
+#[derive(Debug, thiserror::Error)]
+#[casper]
 pub enum CustomError {
     #[error("foo")]
     Foo,
@@ -72,7 +71,7 @@ impl Default for Harness {
 }
 pub type Result2 = Result<(), CustomError>;
 
-#[casper(contract)]
+#[casper]
 impl Harness {
     #[casper(constructor)]
     pub fn constructor_with_args(who: String) -> Self {
@@ -323,15 +322,15 @@ impl Harness {
         );
     }
 
-    #[casper(ignore_state)]
-    pub fn migrate() {
-        let input = host::casper_copy_input();
-        let mut old_state: Self = casper_sdk::host::read_state().unwrap();
-        log!("This is a migration entrypoint input={input:?} old_state={old_state:?}");
-    }
+    // #[casper(ignore_state)]
+    // pub fn migrate() {
+    //     let input = host::casper_copy_input();
+    //     let mut old_state: Self = casper_sdk::host::read_state().unwrap();
+    //     log!("This is a migration entrypoint input={input:?} old_state={old_state:?}");
+    // }
 
-    pub fn perform_upgrade(&self, code: Vec<u8>, manifest_bytes: Vec<u8>) {
-        Self::upgrade(&code, &manifest_bytes);
-        // Self::upgrade(code, manifest);
-    }
+    // pub fn perform_upgrade(&self, code: Vec<u8>, manifest_bytes: Vec<u8>) {
+    //     // Self::upgrade(&code, &manifest_bytes);
+    //     // Self::upgrade(code, manifest);
+    // }
 }

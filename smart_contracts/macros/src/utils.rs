@@ -51,13 +51,15 @@ fn sanitized_type_name(ty: &syn::Type) -> String {
         }
         ty => {
             // TODO: Get other types as a string without spaces
-            quote! { #ty }.to_string()
+            let mut s = quote! { #ty }.to_string();
+            s = s.replace(" ", "");
+            s
         }
     }
 }
 
 pub(crate) fn selector_preimage(signature: &Signature) -> String {
-    let mut preimage = vec![signature.ident.to_string()];
+    let mut preimage: Vec<String> = vec![signature.ident.to_string()];
 
     let mut inputs = signature.inputs.iter();
 
@@ -133,6 +135,14 @@ mod tests {
             u32
         };
         assert_eq!(super::sanitized_type_name(&unsigned_32), "u32".to_string());
+
+        let result_ty = syn::parse_quote! {
+            Result<u32, Error>
+        };
+        assert_eq!(
+            super::sanitized_type_name(&result_ty),
+            "Result<u32, Error>".to_string()
+        );
     }
     #[test]
     fn test_selector_preimage() {
