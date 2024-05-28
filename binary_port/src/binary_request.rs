@@ -69,7 +69,9 @@ impl ToBytes for BinaryRequestHeader {
     }
 
     fn serialized_length(&self) -> usize {
-        self.protocol_version.serialized_length() + self.type_tag.serialized_length()
+        self.protocol_version.serialized_length()
+            + self.type_tag.serialized_length()
+            + self.id.serialized_length()
     }
 }
 
