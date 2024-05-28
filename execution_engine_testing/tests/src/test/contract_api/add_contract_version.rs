@@ -8,7 +8,6 @@ use casper_types::{
 };
 
 const CONTRACT: &str = "do_nothing_stored.wasm";
-const ENTRY_POINT: &str = "call";
 const CHAIN_NAME: &str = "a";
 const BLOCK_TIME: BlockTime = BlockTime::new(10);
 
@@ -32,7 +31,7 @@ fn try_add_contract_version(kind: TransactionSessionKind, should_succeed: bool) 
     let module_bytes = utils::read_wasm_file(CONTRACT);
 
     let txn = Transaction::from(
-        TransactionV1Builder::new_session(kind, module_bytes, ENTRY_POINT)
+        TransactionV1Builder::new_session(kind, module_bytes)
             .with_secret_key(&DEFAULT_ACCOUNT_SECRET_KEY)
             .with_chain_name(CHAIN_NAME)
             .build()

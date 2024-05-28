@@ -482,24 +482,39 @@ impl TryFrom<&TransactionV1> for SessionInfo {
                     v1_txn.target().to_string(),
                 ));
             }
-            TransactionTarget::Stored { id, .. } => ExecutableItem::Invocation(id.clone()),
+            TransactionTarget::Stored { id, .. } => {
+                let TransactionEntryPoint::Custom(entry_point) = v1_txn.entry_point() else {
+                    return Err(InvalidRequest::InvalidEntryPoint(transaction_hash, v1_txn.entry_point().to_string()));
+                };
+                let item = ExecutableItem::Invocation(id.clone());
+                ExecutableInfo {
+                    item,
+                    entry_point: entry_point.clone(),
+                    args,
+                }
+            }
             TransactionTarget::Session {
                 kind, module_bytes, ..
-            } => ExecutableItem::SessionBytes {
-                kind: *kind,
-                module_bytes: module_bytes.clone(),
-            },
+            } => {
+                if *v1_txn.entry_point() != TransactionEntryPoint::Call {
+                    return Err(InvalidRequest::InvalidEntryPoint(
+                        transaction_hash,
+                        v1_txn.entry_point().to_string(),
+                    ));
+                };
+                let item = ExecutableItem::SessionBytes {
+                    kind: *kind,
+                    module_bytes: module_bytes.clone(),
+                };
+                ExecutableInfo {
+                    item,
+                    entry_point: DEFAULT_ENTRY_POINT.to_owned(),
+                    args,
+                }
+            }
         };
 
-        let TransactionEntryPoint::Custom(entry_point) = v1_txn.entry_point() else {
-            return Err(InvalidRequest::InvalidEntryPoint(transaction_hash, v1_txn.entry_point().to_string()));
-        };
-
-        Ok(SessionInfo(ExecutableInfo {
-            item: session,
-            entry_point: entry_point.clone(),
-            args,
-        }))
+        Ok(SessionInfo(session))
     }
 }
 

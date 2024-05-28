@@ -85,16 +85,12 @@ async fn send_wasm_transaction(
     let chain_name = fixture.chainspec.network_config.name.clone();
 
     let mut txn = Transaction::from(
-        TransactionV1Builder::new_session(
-            TransactionSessionKind::Standard,
-            Bytes::from(vec![1]),
-            "call",
-        )
-        .with_chain_name(chain_name)
-        .with_pricing_mode(pricing)
-        .with_initiator_addr(PublicKey::from(from))
-        .build()
-        .unwrap(),
+        TransactionV1Builder::new_session(TransactionSessionKind::Standard, Bytes::from(vec![1]))
+            .with_chain_name(chain_name)
+            .with_pricing_mode(pricing)
+            .with_initiator_addr(PublicKey::from(from))
+            .build()
+            .unwrap(),
     );
 
     txn.sign(from);
@@ -1640,7 +1636,7 @@ async fn only_refunds_are_burnt_no_fee_custom_payment() {
     let expected_transaction_cost = expected_transaction_gas * MIN_GAS_PRICE as u64;
 
     let mut txn = Transaction::from(
-        TransactionV1Builder::new_session(TransactionSessionKind::Standard, module_bytes, "call")
+        TransactionV1Builder::new_session(TransactionSessionKind::Standard, module_bytes)
             .with_chain_name(CHAIN_NAME)
             .with_pricing_mode(PricingMode::Classic {
                 payment_amount: expected_transaction_gas,
@@ -1740,7 +1736,7 @@ async fn no_refund_no_fee_custom_payment() {
     let expected_transaction_cost = expected_transaction_gas * MIN_GAS_PRICE as u64;
 
     let mut txn = Transaction::from(
-        TransactionV1Builder::new_session(TransactionSessionKind::Standard, module_bytes, "call")
+        TransactionV1Builder::new_session(TransactionSessionKind::Standard, module_bytes)
             .with_chain_name(CHAIN_NAME)
             .with_pricing_mode(PricingMode::Classic {
                 payment_amount: expected_transaction_gas,
@@ -2293,16 +2289,12 @@ fn transfer_txn<A: Into<U512>>(
 
 fn invalid_wasm_txn(initiator: Arc<SecretKey>, pricing_mode: PricingMode) -> Transaction {
     let mut txn = Transaction::from(
-        TransactionV1Builder::new_session(
-            TransactionSessionKind::Standard,
-            Bytes::from(vec![1]),
-            "call",
-        )
-        .with_chain_name(CHAIN_NAME)
-        .with_pricing_mode(pricing_mode)
-        .with_initiator_addr(PublicKey::from(&*initiator))
-        .build()
-        .unwrap(),
+        TransactionV1Builder::new_session(TransactionSessionKind::Standard, Bytes::from(vec![1]))
+            .with_chain_name(CHAIN_NAME)
+            .with_pricing_mode(pricing_mode)
+            .with_initiator_addr(PublicKey::from(&*initiator))
+            .build()
+            .unwrap(),
     );
     txn.sign(&initiator);
     txn
@@ -2947,9 +2939,9 @@ async fn insufficient_funds_transfer_from_purse() {
         Bytes::from(std::fs::read(purse_create_contract).expect("cannot read module bytes"));
 
     let mut txn = Transaction::from(
-        TransactionV1Builder::new_session(TransactionSessionKind::Standard, module_bytes, "call")
+        TransactionV1Builder::new_session(TransactionSessionKind::Standard, module_bytes)
             .with_runtime_args(
-                runtime_args! { "destination" => purse_name, "amount" => U512::zero()  },
+                runtime_args! { "destination" => purse_name, "amount" => U512::zero() },
             )
             .with_chain_name(CHAIN_NAME)
             .with_initiator_addr(BOB_PUBLIC_KEY.clone())

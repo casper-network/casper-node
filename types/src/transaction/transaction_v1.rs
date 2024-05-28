@@ -580,7 +580,9 @@ impl TransactionV1 {
     pub fn transaction_category(&self) -> TransactionCategory {
         match self.body().target() {
             TransactionTarget::Native => match self.body().entry_point() {
-                TransactionEntryPoint::Custom(_) => TransactionCategory::Standard,
+                TransactionEntryPoint::Call | TransactionEntryPoint::Custom(_) => {
+                    TransactionCategory::Standard
+                }
                 TransactionEntryPoint::Transfer => TransactionCategory::Mint,
                 TransactionEntryPoint::AddBid
                 | TransactionEntryPoint::WithdrawBid
@@ -652,6 +654,9 @@ impl GasLimited for TransactionV1 {
                     } else if self.is_native_auction() {
                         let entry_point = self.body().entry_point();
                         let amount = match entry_point {
+                            TransactionEntryPoint::Call => {
+                                return Err(InvalidTransactionV1::EntryPointCannotBeCall)
+                            }
                             TransactionEntryPoint::Custom(_) | TransactionEntryPoint::Transfer => {
                                 return Err(InvalidTransactionV1::EntryPointCannotBeCustom {
                                     entry_point: entry_point.clone(),

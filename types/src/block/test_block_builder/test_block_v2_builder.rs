@@ -188,6 +188,9 @@ impl TestBlockV2Builder {
                 }
                 Transaction::V1(v1_txn) => match v1_txn.target() {
                     TransactionTarget::Native => match v1_txn.entry_point() {
+                        TransactionEntryPoint::Call => {
+                            panic!("call entry point not supported for native target")
+                        }
                         TransactionEntryPoint::Custom(_) => {
                             panic!("custom entry point not supported for native target")
                         }
