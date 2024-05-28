@@ -4,7 +4,7 @@ use casper_types::{
 };
 
 use crate::{
-    binary_response::BinaryResponse, original_request_spec::OriginalRequestSpec,
+    binary_response::BinaryResponse, original_request_context::OriginalRequestContext,
     payload_type::PayloadEntity, PayloadType,
 };
 
@@ -15,8 +15,8 @@ use casper_types::testing::TestRng;
 /// The binary response along with the original binary request attached.
 #[derive(Debug, PartialEq)]
 pub struct BinaryResponseAndRequest {
-    /// Specification of the original request.
-    original_request: OriginalRequestSpec,
+    /// Context of the original request.
+    original_request: OriginalRequestContext,
     /// The response.
     response: BinaryResponse,
 }
@@ -29,7 +29,7 @@ impl BinaryResponseAndRequest {
         original_request_id: u16,
     ) -> Self {
         Self {
-            original_request: OriginalRequestSpec::new(
+            original_request: OriginalRequestContext::new(
                 original_request_id,
                 original_request_payload.to_vec(),
             ),
@@ -78,7 +78,7 @@ impl BinaryResponseAndRequest {
     #[cfg(test)]
     pub(crate) fn random(rng: &mut TestRng) -> Self {
         Self {
-            original_request: OriginalRequestSpec::random(rng),
+            original_request: OriginalRequestContext::random(rng),
             response: BinaryResponse::random(rng),
         }
     }
@@ -123,7 +123,7 @@ impl ToBytes for BinaryResponseAndRequest {
 
 impl FromBytes for BinaryResponseAndRequest {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (original_request, remainder) = OriginalRequestSpec::from_bytes(bytes)?;
+        let (original_request, remainder) = OriginalRequestContext::from_bytes(bytes)?;
         let (response, remainder) = FromBytes::from_bytes(remainder)?;
 
         Ok((

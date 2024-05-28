@@ -5,14 +5,14 @@ use casper_types::testing::TestRng;
 use rand::Rng;
 
 #[derive(Debug, PartialEq)]
-pub(crate) struct OriginalRequestSpec {
+pub(crate) struct OriginalRequestContext {
     // The ID of the original request.
     id: u16,
     // The original request (as serialized bytes).
     data: Vec<u8>,
 }
 
-impl OriginalRequestSpec {
+impl OriginalRequestContext {
     pub(crate) fn new(id: u16, data: Vec<u8>) -> Self {
         Self { id, data }
     }
@@ -34,7 +34,7 @@ impl OriginalRequestSpec {
     }
 }
 
-impl ToBytes for OriginalRequestSpec {
+impl ToBytes for OriginalRequestContext {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         self.write_bytes(&mut buffer)?;
@@ -42,7 +42,7 @@ impl ToBytes for OriginalRequestSpec {
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        let OriginalRequestSpec { id, data } = self;
+        let OriginalRequestContext { id, data } = self;
 
         id.write_bytes(writer)?;
         data.write_bytes(writer)
@@ -53,13 +53,13 @@ impl ToBytes for OriginalRequestSpec {
     }
 }
 
-impl FromBytes for OriginalRequestSpec {
+impl FromBytes for OriginalRequestContext {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (id, remainder) = FromBytes::from_bytes(bytes)?;
         let (data, remainder) = Bytes::from_bytes(remainder)?;
 
         Ok((
-            OriginalRequestSpec {
+            OriginalRequestContext {
                 id,
                 data: data.into(),
             },
@@ -77,7 +77,7 @@ mod tests {
     fn bytesrepr_roundtrip() {
         let rng = &mut TestRng::new();
 
-        let val = OriginalRequestSpec::random(rng);
+        let val = OriginalRequestContext::random(rng);
         bytesrepr::test_serialization_roundtrip(&val);
     }
 }
