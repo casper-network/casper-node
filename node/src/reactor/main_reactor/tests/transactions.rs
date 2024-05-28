@@ -2942,21 +2942,19 @@ async fn insufficient_funds_transfer_from_purse() {
         .join("target")
         .join("wasm32-unknown-unknown")
         .join("release")
-        .join("purse_holder_stored.wasm");
+        .join("transfer_main_purse_to_new_purse.wasm");
     let module_bytes =
         Bytes::from(std::fs::read(purse_create_contract).expect("cannot read module bytes"));
 
     let mut txn = Transaction::from(
-        TransactionV1Builder::new_session(
-            TransactionSessionKind::Standard,
-            module_bytes,
-            "add_named_purse",
-        )
-        .with_runtime_args(runtime_args! { "purse_name" => purse_name  })
-        .with_chain_name(CHAIN_NAME)
-        .with_initiator_addr(BOB_PUBLIC_KEY.clone())
-        .build()
-        .unwrap(),
+        TransactionV1Builder::new_session(TransactionSessionKind::Standard, module_bytes, "call")
+            .with_runtime_args(
+                runtime_args! { "destination" => purse_name, "amount" => U512::zero()  },
+            )
+            .with_chain_name(CHAIN_NAME)
+            .with_initiator_addr(BOB_PUBLIC_KEY.clone())
+            .build()
+            .unwrap(),
     );
     txn.sign(&BOB_SECRET_KEY);
     let (_txn_hash, _block_height, exec_result) = test.send_transaction(txn).await;
