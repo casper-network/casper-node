@@ -307,7 +307,9 @@ fn get_proposable_transactions() {
 
         // Check which transactions are proposable. Should return the transactions that were not
         // included in the block since those should be dead.
-        let proposable = transaction_buffer.proposable(DEFAULT_MINIMUM_GAS_PRICE);
+        let proposable: Vec<_> = transaction_buffer
+            .proposable(DEFAULT_MINIMUM_GAS_PRICE)
+            .collect();
         assert_eq!(proposable.len(), transactions.len());
         let proposable_transaction_hashes: HashSet<_> =
             proposable.iter().map(|(th, _)| *th).collect();
@@ -329,15 +331,17 @@ fn get_proposable_transactions() {
         );
 
         // Check that held blocks are not proposable
-        let proposable = transaction_buffer.proposable(DEFAULT_MINIMUM_GAS_PRICE);
+        let proposable: Vec<_> = transaction_buffer
+            .proposable(DEFAULT_MINIMUM_GAS_PRICE)
+            .collect();
         assert_eq!(
             proposable.len(),
             transactions.len() - appendable_block.transaction_hashes().len()
         );
-        for transaction in proposable.iter() {
+        for transaction in proposable {
             assert!(!appendable_block
                 .transaction_hashes()
-                .contains(&transaction.0));
+                .contains(transaction.0));
         }
     }
 }
@@ -1521,12 +1525,37 @@ fn should_have_diverse_proposable_blocks_with_stocked_buffer() {
     let expected_count = cap + (max_mint_count as usize);
     assert_container_sizes(&transaction_buffer, expected_count, 0, 0);
 
-    let buckets1 = transaction_buffer.buckets(GAS_PRICE_TOLERANCE);
+    let buckets1: HashMap<_, _> = transaction_buffer
+        .buckets(GAS_PRICE_TOLERANCE)
+        .into_iter()
+        .map(|(digest, footprints)| {
+            (
+                *digest,
+                footprints
+                    .into_iter()
+                    .map(|(hash, footprint)| (hash, footprint.clone()))
+                    .collect_vec(),
+            )
+        })
+        .collect();
     assert!(
         buckets1.len() > 1,
         "should be multiple buckets with this much state"
     );
-    let buckets2 = transaction_buffer.buckets(GAS_PRICE_TOLERANCE);
+    let buckets2: HashMap<_, _> = transaction_buffer
+        .buckets(GAS_PRICE_TOLERANCE)
+        .into_iter()
+        .map(|(digest, footprints)| {
+            (
+                *digest,
+                footprints
+                    .into_iter()
+                    .map(|(hash, footprint)| (hash, footprint.clone()))
+                    .collect_vec(),
+            )
+        })
+        .collect();
+
     assert_eq!(
         buckets1, buckets2,
         "with same state should get same buckets every time"

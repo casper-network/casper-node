@@ -1,4 +1,8 @@
-use std::{collections::BTreeMap, convert::TryInto, ops::Mul};
+use std::{
+    collections::{BTreeMap, BTreeSet, HashSet},
+    convert::TryInto,
+    ops::Mul,
+};
 
 use num_rational::Ratio;
 
@@ -14,7 +18,7 @@ use casper_types::{
     },
     ApiError, CLTyped, EraId, Key, KeyTag, PublicKey, URef, U512,
 };
-use tracing::{error, warn};
+use tracing::{debug, error, warn};
 
 use super::{
     Auction, EraValidators, MintProvider, RuntimeProvider, StorageProvider, ValidatorWeights,
@@ -378,13 +382,20 @@ pub fn process_unbond_requests<P: Auction + ?Sized>(
 
     let unbonding_delay = get_unbonding_delay(provider)?;
 
+    let mut processed_validators = BTreeSet::new();
+    let mut still_unbonding_public_keys = HashSet::new();
+
     for unbonding_list in unbonding_purses.values_mut() {
         let mut new_unbonding_list = Vec::new();
+
         for unbonding_purse in unbonding_list.iter() {
             // Since `process_unbond_requests` is run before `run_auction`, we should check if
             // current era id + unbonding delay is equal or greater than the `era_of_creation` that
             // was calculated on `unbond` attempt.
             if current_era_id >= unbonding_purse.era_of_creation() + unbonding_delay {
+                // remember the validator's key, so that we can later check if we can prune their
+                // bid now that the unbond has been processed
+                processed_validators.insert(unbonding_purse.validator_public_key().clone());
                 match handle_redelegation(
                     provider,
                     unbonding_purse,
@@ -408,9 +419,49 @@ pub fn process_unbond_requests<P: Auction + ?Sized>(
                 }
             } else {
                 new_unbonding_list.push(unbonding_purse.clone());
+                // remember the key of the unbonder that is still not fully unbonded - so that we
+                // don't prune bids of validators that still have delegators waiting for unbonding,
+                // or the waiting delegators
+                still_unbonding_public_keys.insert(unbonding_purse.unbonder_public_key().clone());
             }
         }
         *unbonding_list = new_unbonding_list;
+    }
+
+    // revisit the validators for which we processed some unbonds and see if we can now prune their
+    // or their delegators' bids
+    for validator_public_key in processed_validators {
+        let validator_bid_addr = BidAddr::new_from_public_keys(&validator_public_key, None);
+        let validator_bid = read_current_validator_bid(provider, validator_bid_addr.into())?;
+        let validator_public_key = validator_bid.validator_public_key().clone(); // use the current
+                                                                                 // public key
+        let mut delegator_bids = read_delegator_bids(provider, &validator_public_key)?;
+
+        // prune the delegators that have no stake and no remaining unbonds to be processed
+        delegator_bids.retain(|delegator| {
+            if delegator.staked_amount().is_zero()
+                && !still_unbonding_public_keys.contains(delegator.delegator_public_key())
+            {
+                let delegator_bid_addr = BidAddr::new_from_public_keys(
+                    &validator_public_key,
+                    Some(delegator.delegator_public_key()),
+                );
+                debug!("pruning delegator bid {}", delegator_bid_addr);
+                provider.prune_bid(delegator_bid_addr);
+                false
+            } else {
+                true
+            }
+        });
+
+        // if the validator has no delegators, no stake and no remaining unbonds, prune them, too
+        if !still_unbonding_public_keys.contains(&validator_public_key)
+            && delegator_bids.is_empty()
+            && validator_bid.staked_amount().is_zero()
+        {
+            debug!("pruning validator bid {}", validator_bid_addr);
+            provider.prune_bid(validator_bid_addr);
+        }
     }
 
     set_unbonding_purses(provider, unbonding_purses)?;
@@ -509,13 +560,13 @@ where
 
         let delegator_reward_trunc = delegator_reward.to_integer();
         let delegator_bonding_purse = match read_delegator_bid(provider, &bid_key) {
-            Ok(mut delegator_bid) => {
+            Ok(mut delegator_bid) if !delegator_bid.staked_amount().is_zero() => {
                 let purse = *delegator_bid.bonding_purse();
                 delegator_bid.increase_stake(delegator_reward_trunc)?;
                 provider.write_bid(bid_key, BidKind::Delegator(delegator_bid))?;
                 purse
             }
-            Err(Error::DelegatorNotFound) => {
+            Ok(_) | Err(Error::DelegatorNotFound) => {
                 // check to see if there are unbond entries for this recipient
                 // (validator + delegator match), and if there are apply the amount
                 // to the unbond entry with the highest era.
@@ -580,13 +631,16 @@ where
 {
     let bid_key: Key = BidAddr::from(validator_public_key.clone()).into();
     let bonding_purse = match read_current_validator_bid(provider, bid_key) {
-        Ok(mut validator_bid) => {
+        Ok(mut validator_bid) if !validator_bid.staked_amount().is_zero() => {
+            // Only distribute to the bonding purse if the staked amount is not zero - an amount of
+            // zero indicates a validator that has unbonded, but whose unbonds haven't been
+            // processed yet.
             let purse = *validator_bid.bonding_purse();
             validator_bid.increase_stake(amount)?;
             provider.write_bid(bid_key, BidKind::Validator(validator_bid))?;
             purse
         }
-        Err(Error::ValidatorNotFound) => {
+        Ok(_) | Err(Error::ValidatorNotFound) => {
             // check to see if there are unbond entries for this recipient, and if there are
             // apply the amount to the unbond entry with the highest era.
             let account_hash = validator_public_key.to_account_hash();
@@ -703,7 +757,13 @@ where
 
     let validator_bid_addr = BidAddr::from(validator_public_key.clone());
     // is there such a validator?
-    let _ = read_validator_bid(provider, &validator_bid_addr.into())?;
+    let validator_bid = read_validator_bid(provider, &validator_bid_addr.into())?;
+
+    if validator_bid.staked_amount().is_zero() {
+        // The validator has unbonded, but the unbond has not yet been processed, and so an empty
+        // bid still exists. Treat this case as if there was no such validator.
+        return Err(Error::ValidatorNotFound.into());
+    }
 
     // is there already a record for this delegator?
     let delegator_bid_key =

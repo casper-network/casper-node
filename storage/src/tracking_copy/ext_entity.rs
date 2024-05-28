@@ -153,6 +153,13 @@ pub trait TrackingCopyEntityExt<R> {
         protocol_version: ProtocolVersion,
         fees_purse_handling: FeesPurseHandling,
     ) -> Result<URef, TrackingCopyError>;
+
+    /// Returns named key from selected system contract.
+    fn get_system_contract_named_key(
+        &mut self,
+        system_contract_name: &str,
+        name: &str,
+    ) -> Result<Option<Key>, Self::Error>;
 }
 
 impl<R> TrackingCopyEntityExt<R> for TrackingCopy<R>
@@ -842,5 +849,29 @@ where
                 Ok(URef::default())
             }
         }
+    }
+
+    fn get_system_contract_named_key(
+        &mut self,
+        system_contract_name: &str,
+        name: &str,
+    ) -> Result<Option<Key>, Self::Error> {
+        let system_entity_registry = self.get_system_entity_registry()?;
+        let hash = match system_entity_registry.get(system_contract_name).copied() {
+            Some(hash) => hash,
+            None => {
+                error!(
+                    "unexpected failure; system contract {} not found",
+                    system_contract_name
+                );
+                return Err(TrackingCopyError::MissingSystemContractHash(
+                    system_contract_name.to_string(),
+                ));
+            }
+        };
+        let addressable_entity = self.get_addressable_entity_by_hash(hash)?;
+        let entity_addr = addressable_entity.entity_addr(hash);
+        let named_keys = self.get_named_keys(entity_addr)?;
+        Ok(named_keys.get(name).copied())
     }
 }

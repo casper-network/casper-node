@@ -2684,3 +2684,124 @@ async fn validator_credit_is_written_and_cleared_after_auction() {
         .into_iter()
         .any(|bid| matches!(bid, BidKind::Credit(_))));
 }
+
+#[tokio::test]
+async fn add_and_withdraw_bid_transaction() {
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_pricing_handling(PricingHandling::Fixed)
+        .with_refund_handling(RefundHandling::NoRefund)
+        .with_fee_handling(FeeHandling::NoFee)
+        .with_gas_hold_balance_handling(HoldBalanceHandling::Accrued);
+
+    let mut test = SingleTransactionTestCase::new(
+        ALICE_SECRET_KEY.clone(),
+        BOB_SECRET_KEY.clone(),
+        CHARLIE_SECRET_KEY.clone(),
+        Some(config),
+    )
+    .await;
+
+    let transfer_cost: U512 =
+        U512::from(test.chainspec().system_costs_config.mint_costs().transfer) * MIN_GAS_PRICE;
+    let min_transfer_amount = U512::from(
+        test.chainspec()
+            .transaction_config
+            .native_transfer_minimum_motes,
+    );
+    let half_transfer_cost =
+        (Ratio::new(U512::from(1), U512::from(2)) * transfer_cost).to_integer();
+    let transfer_amount = min_transfer_amount * 2 + transfer_cost + half_transfer_cost;
+
+    let mut txn = Transaction::from(
+        TransactionV1Builder::new_add_bid(PublicKey::from(&**BOB_SECRET_KEY), 0, transfer_amount)
+            .unwrap()
+            .with_chain_name(CHAIN_NAME)
+            .with_initiator_addr(PublicKey::from(&**BOB_SECRET_KEY))
+            .build()
+            .unwrap(),
+    );
+    txn.sign(&BOB_SECRET_KEY);
+
+    test.fixture
+        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+        .await;
+
+    let (_, _bob_initial_balance, _) = test.get_balances(None);
+    let (_txn_hash, _block_height, exec_result) = test.send_transaction(txn).await;
+    assert!(exec_result_is_success(&exec_result));
+
+    test.fixture
+        .run_until_consensus_in_era(ERA_TWO, ONE_MIN)
+        .await;
+
+    let mut txn = Transaction::from(
+        TransactionV1Builder::new_withdraw_bid(PublicKey::from(&**BOB_SECRET_KEY), transfer_amount)
+            .unwrap()
+            .with_chain_name(CHAIN_NAME)
+            .with_initiator_addr(PublicKey::from(&**BOB_SECRET_KEY))
+            .build()
+            .unwrap(),
+    );
+    txn.sign(&BOB_SECRET_KEY);
+
+    let (_txn_hash, _block_height, exec_result) = test.send_transaction(txn).await;
+    println!("{:?}", exec_result);
+    assert!(exec_result_is_success(&exec_result));
+}
+
+#[tokio::test]
+async fn delegate_and_undelegate_bid_transaction() {
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_pricing_handling(PricingHandling::Fixed)
+        .with_refund_handling(RefundHandling::NoRefund)
+        .with_fee_handling(FeeHandling::NoFee)
+        .with_gas_hold_balance_handling(HoldBalanceHandling::Accrued);
+
+    let mut test = SingleTransactionTestCase::new(
+        ALICE_SECRET_KEY.clone(),
+        BOB_SECRET_KEY.clone(),
+        CHARLIE_SECRET_KEY.clone(),
+        Some(config),
+    )
+    .await;
+
+    let delegate_amount = U512::from(500_000_000_000u64);
+
+    let mut txn = Transaction::from(
+        TransactionV1Builder::new_delegate(
+            PublicKey::from(&**BOB_SECRET_KEY),
+            PublicKey::from(&**ALICE_SECRET_KEY),
+            delegate_amount,
+        )
+        .unwrap()
+        .with_chain_name(CHAIN_NAME)
+        .with_initiator_addr(PublicKey::from(&**BOB_SECRET_KEY))
+        .build()
+        .unwrap(),
+    );
+    txn.sign(&BOB_SECRET_KEY);
+
+    let (_txn_hash, _block_height, exec_result) = test.send_transaction(txn).await;
+    assert!(exec_result_is_success(&exec_result));
+
+    test.fixture
+        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+        .await;
+
+    let mut txn = Transaction::from(
+        TransactionV1Builder::new_undelegate(
+            PublicKey::from(&**BOB_SECRET_KEY),
+            PublicKey::from(&**ALICE_SECRET_KEY),
+            delegate_amount,
+        )
+        .unwrap()
+        .with_chain_name(CHAIN_NAME)
+        .with_initiator_addr(PublicKey::from(&**BOB_SECRET_KEY))
+        .build()
+        .unwrap(),
+    );
+    txn.sign(&BOB_SECRET_KEY);
+
+    let (_txn_hash, _block_height, exec_result) = test.send_transaction(txn).await;
+    assert!(exec_result_is_success(&exec_result));
+}

@@ -744,6 +744,15 @@ impl Key {
                     )
                     .map_err(|err| FromStrError::BidAddr(err.to_string()))?;
                     BidAddr::new_delegator_addr((validator_bytes, delegator_bytes))
+                } else if tag == BidAddrTag::Credit {
+                    let era_id = bytesrepr::deserialize_from_slice(
+                        &bytes[BidAddr::VALIDATOR_BID_ADDR_LENGTH..],
+                    )
+                    .map_err(|err| FromStrError::BidAddr(err.to_string()))?;
+                    BidAddr::Credit {
+                        validator: AccountHash::new(validator_bytes),
+                        era_id,
+                    }
                 } else {
                     return Err(FromStrError::BidAddr("invalid tag".to_string()));
                 }
@@ -2305,7 +2314,7 @@ mod tests {
     fn should_parse_delegator_bid_key_from_string() {
         let delegator_bid_addr = BidAddr::new_delegator_addr(([1; 32], [9; 32]));
         let delegator_bid_key = Key::BidAddr(delegator_bid_addr);
-        assert_eq!(delegator_bid_addr.tag(), BidAddrTag::Delegator,);
+        assert_eq!(delegator_bid_addr.tag(), BidAddrTag::Delegator);
 
         let original_string = delegator_bid_key.to_formatted_string();
 
@@ -2319,6 +2328,29 @@ mod tests {
         let translated_string = parsed_key.to_formatted_string();
         assert_eq!(original_string, translated_string);
         assert_eq!(parsed_key.as_bid_addr(), delegator_bid_key.as_bid_addr(),);
+    }
+
+    #[test]
+    fn should_parse_credit_bid_key_from_string() {
+        let credit_bid_addr = BidAddr::Credit {
+            validator: AccountHash::new([1; 32]),
+            era_id: 1.into(),
+        };
+        let delegator_bid_key = Key::BidAddr(credit_bid_addr);
+        assert_eq!(credit_bid_addr.tag(), BidAddrTag::Credit);
+
+        let original_string = delegator_bid_key.to_formatted_string();
+
+        let parsed_key =
+            Key::from_formatted_str(&original_string).expect("{string} (key = {key:?})");
+        let parsed_bid_addr = parsed_key.as_bid_addr().expect("must have bid addr");
+        assert!(parsed_key.is_bid_addr_key());
+        assert_eq!(parsed_bid_addr.tag(), credit_bid_addr.tag(),);
+        assert_eq!(*parsed_bid_addr, credit_bid_addr,);
+
+        let translated_string = parsed_key.to_formatted_string();
+        assert_eq!(original_string, translated_string);
+        assert_eq!(parsed_key.as_bid_addr(), delegator_bid_key.as_bid_addr());
     }
 
     #[test]
