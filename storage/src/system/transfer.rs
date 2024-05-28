@@ -254,45 +254,48 @@ impl TransferRuntimeArgsBuilder {
     {
         let imputed_runtime_args = &self.inner;
         let arg_name = mint::ARG_SOURCE;
-        match imputed_runtime_args.get(arg_name) {
+        let uref = match imputed_runtime_args.get(arg_name) {
+            Some(cl_value) if *cl_value.cl_type() == CLType::URef => {
+                self.map_cl_value::<URef>(cl_value)?
+            }
             Some(cl_value) if *cl_value.cl_type() == CLType::Option(CLType::URef.into()) => {
                 let Some(uref): Option<URef> = self.map_cl_value(cl_value)? else {
                     return Ok(account.main_purse())
                 };
+                uref
+            }
+            Some(_) => return Err(TransferError::InvalidArgument),
+            None => return Ok(account.main_purse()), // if no source purse passed use account main purse
+        };
+        if account.main_purse().addr() == uref.addr() {
+            return Ok(uref);
+        }
 
-                if account.main_purse().addr() == uref.addr() {
-                    return Ok(uref);
-                }
+        let normalized_uref = Key::URef(uref).normalize();
+        let maybe_named_key = named_keys
+            .keys()
+            .find(|&named_key| named_key.normalize() == normalized_uref);
 
-                let normalized_uref = Key::URef(uref).normalize();
-                let maybe_named_key = named_keys
-                    .keys()
-                    .find(|&named_key| named_key.normalize() == normalized_uref);
-
-                match maybe_named_key {
-                    Some(Key::URef(found_uref)) => {
-                        if found_uref.is_writeable() {
-                            // it is a URef and caller has access but is it a purse URef?
-                            if !self.purse_exists(found_uref.to_owned(), tracking_copy) {
-                                return Err(TransferError::InvalidPurse);
-                            }
-
-                            Ok(uref)
-                        } else {
-                            Err(TransferError::InvalidAccess {
-                                required: AccessRights::WRITE,
-                            })
-                        }
+        match maybe_named_key {
+            Some(Key::URef(found_uref)) => {
+                if found_uref.is_writeable() {
+                    // it is a URef and caller has access but is it a purse URef?
+                    if !self.purse_exists(found_uref.to_owned(), tracking_copy) {
+                        return Err(TransferError::InvalidPurse);
                     }
-                    Some(key) => Err(TransferError::TypeMismatch(StoredValueTypeMismatch::new(
-                        "Key::URef".to_string(),
-                        key.type_string(),
-                    ))),
-                    None => Err(TransferError::ForgedReference(uref)),
+
+                    Ok(uref)
+                } else {
+                    Err(TransferError::InvalidAccess {
+                        required: AccessRights::WRITE,
+                    })
                 }
             }
-            Some(_) => Err(TransferError::InvalidArgument),
-            None => Ok(account.main_purse()), // if no source purse passed use account main purse
+            Some(key) => Err(TransferError::TypeMismatch(StoredValueTypeMismatch::new(
+                "Key::URef".to_string(),
+                key.type_string(),
+            ))),
+            None => Err(TransferError::ForgedReference(uref)),
         }
     }
 
@@ -421,24 +424,23 @@ impl TransferRuntimeArgsBuilder {
     where
         R: StateReader<Key, StoredValue, Error = GlobalStateError>,
     {
-        let (to, target) = match self
-            .resolve_transfer_target_mode(protocol_version, Rc::clone(&tracking_copy))?
-        {
-            NewTransferTargetMode::ExistingAccount {
-                main_purse: purse_uref,
-                target_account_hash: target_account,
-            } => (Some(target_account), purse_uref),
-            NewTransferTargetMode::PurseExists {
-                target_account_hash,
-                purse_uref,
-            } => (target_account_hash, purse_uref),
-            NewTransferTargetMode::CreateAccount(_) => {
-                // Method "build()" is called after `resolve_transfer_target_mode` is first called
-                // and handled by creating a new account. Calling `resolve_transfer_target_mode`
-                // for the second time should never return `CreateAccount` variant.
-                return Err(TransferError::InvalidOperation);
-            }
-        };
+        let (to, target) =
+            match self.resolve_transfer_target_mode(protocol_version, Rc::clone(&tracking_copy))? {
+                NewTransferTargetMode::ExistingAccount {
+                    main_purse: purse_uref,
+                    target_account_hash: target_account,
+                } => (Some(target_account), purse_uref),
+                NewTransferTargetMode::PurseExists {
+                    target_account_hash,
+                    purse_uref,
+                } => (target_account_hash, purse_uref),
+                NewTransferTargetMode::CreateAccount(_) => {
+                    // Method "build()" is called after `resolve_transfer_target_mode` is first called
+                    // and handled by creating a new account. Calling `resolve_transfer_target_mode`
+                    // for the second time should never return `CreateAccount` variant.
+                    return Err(TransferError::InvalidOperation);
+                }
+            };
 
         let source =
             self.resolve_source_uref(from, entity_named_keys, Rc::clone(&tracking_copy))?;
