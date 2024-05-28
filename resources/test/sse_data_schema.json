@@ -778,7 +778,10 @@
           "description": "The rewards distributed to the validators.",
           "type": "object",
           "additionalProperties": {
-            "$ref": "#/definitions/U512"
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/U512"
+            }
           }
         },
         "next_era_gas_price": {

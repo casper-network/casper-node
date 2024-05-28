@@ -597,19 +597,29 @@ pub trait Auction:
     /// according to `reward_factors` returned by the consensus component.
     // TODO: rework EraInfo and other related structs, methods, etc. to report correct era-end
     // totals of per-block rewards
-    fn distribute(&mut self, rewards: BTreeMap<PublicKey, U512>) -> Result<(), Error> {
+    fn distribute(&mut self, rewards: BTreeMap<PublicKey, Vec<U512>>) -> Result<(), Error> {
         if self.get_caller() != PublicKey::System.to_account_hash() {
             error!("invalid caller to auction distribute");
             return Err(Error::InvalidCaller);
         }
 
-        let seigniorage_recipients = self.read_seigniorage_recipients()?;
+        let seigniorage_recipients_snapshot = detail::get_seigniorage_recipients_snapshot(self)?;
+        let current_era_id = detail::get_era_id(self)?;
+
         let mut era_info = EraInfo::new();
         let seigniorage_allocations = era_info.seigniorage_allocations_mut();
 
-        for (proposer, reward_amount) in rewards
+        for (proposer, reward_amount, eras_back) in rewards
             .into_iter()
-            .filter(|(key, _amount)| key != &PublicKey::System)
+            .filter(|(key, _amounts)| key != &PublicKey::System)
+            .flat_map(|(key, amounts)| {
+                amounts
+                    .into_iter()
+                    .enumerate()
+                    .map(move |(i, amount)| (key.clone(), amount, i as u64))
+            })
+            // do not process zero amounts unnecessarily
+            .filter(|(_key, amount, _eras_back)| !amount.is_zero())
         {
             // fetch most recent validator public key if public key was changed
             // or the validator withdrew their bid completely
@@ -626,19 +636,15 @@ pub trait Auction:
                 };
 
             let total_reward = Ratio::from(reward_amount);
-            let Some(recipient) = seigniorage_recipients
+            let rewarded_era = current_era_id
+                .checked_sub(eras_back)
+                .ok_or(Error::MissingSeigniorageRecipients)?;
+            let recipient = seigniorage_recipients_snapshot
+                .get(&rewarded_era)
+                .ok_or(Error::MissingSeigniorageRecipients)?
                 .get(&proposer)
-                .cloned()
-                .or_else(|| {
-                    let bid_key = BidAddr::from(proposer.clone()).into();
-                    let validator_bid = read_validator_bid(self, &bid_key).ok()?;
-                    seigniorage_recipient(self, &validator_bid).ok()
-                })
-                else {
-                    // If the bid doesn't exist, either, the validator has likely been slashed. In
-                    // such a case, simply don't distribute the reward to them.
-                    continue;
-                };
+                .ok_or(Error::ValidatorNotFound)?
+                .clone();
 
             let total_stake = recipient.total_stake().ok_or(Error::ArithmeticOverflow)?;
 

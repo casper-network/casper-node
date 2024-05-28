@@ -1007,7 +1007,7 @@ where
         &mut self,
         pre_state_hash: Option<Digest>,
         protocol_version: ProtocolVersion,
-        rewards: BTreeMap<PublicKey, U512>,
+        rewards: BTreeMap<PublicKey, Vec<U512>>,
         block_time: u64,
     ) -> BlockRewardsResult {
         let pre_state_hash = pre_state_hash.or(self.post_state_hash).unwrap();

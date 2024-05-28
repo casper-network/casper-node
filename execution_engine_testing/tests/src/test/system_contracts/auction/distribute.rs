@@ -863,7 +863,7 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
     for idx in 0..10 {
         let rewards = {
             let mut rewards = BTreeMap::new();
-            rewards.insert(VALIDATOR_1.clone(), round_reward);
+            rewards.insert(VALIDATOR_1.clone(), vec![round_reward]);
             rewards
         };
 
@@ -3006,7 +3006,7 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
     let mut rewards = BTreeMap::new();
     rewards.insert(
         VALIDATOR_1.clone(),
-        expected_total_reward_after.to_integer(),
+        vec![expected_total_reward_after.to_integer()],
     );
     assert!(
         builder

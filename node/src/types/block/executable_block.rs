@@ -25,7 +25,7 @@ pub struct ExecutableBlock {
     pub(crate) transaction_map: BTreeMap<u8, Vec<TransactionHash>>,
     /// `None` may indicate that the rewards have not been computed yet,
     /// or that the block is not a switch one.
-    pub(crate) rewards: Option<BTreeMap<PublicKey, U512>>,
+    pub(crate) rewards: Option<BTreeMap<PublicKey, Vec<U512>>>,
     /// `None` may indicate that the next era gas has not been computed yet,
     /// or that the block is not a switch one.
     pub(crate) next_era_gas_price: Option<u8>,

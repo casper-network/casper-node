@@ -635,11 +635,20 @@ impl LargestSpecimen for EraEndV1 {
 
 impl LargestSpecimen for EraEndV2 {
     fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+        let rewards = {
+            let count = estimator.parameter("validator_count");
+
+            PublicKey::large_unique_sequence(estimator, count, cache)
+                .into_iter()
+                // at most two reward amounts per validator
+                .map(|key| (key, vec_of_largest_specimen(estimator, 2, cache)))
+                .collect()
+        };
         EraEndV2::new(
             vec_prop_specimen(estimator, "validator_count", cache),
             vec_prop_specimen(estimator, "validator_count", cache),
             btree_map_distinct_from_prop(estimator, "validator_count", cache),
-            btree_map_distinct_from_prop(estimator, "validator_count", cache),
+            rewards,
             1u8,
         )
     }
