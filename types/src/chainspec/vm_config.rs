@@ -37,8 +37,4 @@ pub use opcode_costs::{
 pub use standard_payment_costs::StandardPaymentCosts;
 pub use storage_costs::StorageCosts;
 pub use system_config::SystemConfig;
-#[cfg(any(feature = "testing", test))]
-pub use system_config::{
-    DEFAULT_INSTALL_UPGRADE_GAS_LIMIT, DEFAULT_STANDARD_TRANSACTION_GAS_LIMIT,
-};
 pub use wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY};

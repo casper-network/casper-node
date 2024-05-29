@@ -966,7 +966,7 @@ impl Storage {
                 responder,
             } => {
                 let block: Block = (*block).clone().into();
-                let transaction_config = self.transaction_config;
+                let transaction_config = self.transaction_config.clone();
                 responder
                     .respond(self.put_executed_block(
                         transaction_config,
@@ -1069,8 +1069,8 @@ impl Storage {
     ) -> Result<bool, FatalStorageError> {
         let mut txn = self.block_store.checkout_rw()?;
         let era_id = block.era_id();
-        let block_utilization_score = block.block_utilization(transaction_config);
-        let has_hit_slot_limit = block.has_hit_slot_capacity(transaction_config);
+        let block_utilization_score = block.block_utilization(transaction_config.clone());
+        let has_hit_slot_limit = block.has_hit_slot_capacity(transaction_config.clone());
         let block_hash = txn.write(block)?;
         let _ = txn.write(approvals_hashes)?;
         let block_info = BlockHashHeightAndEra::new(block_hash, block.height(), block.era_id());

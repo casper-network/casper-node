@@ -856,8 +856,6 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
     let new_handle_payment_costs = HandlePaymentCosts::default();
 
     let system_costs_config = SystemConfig::new(
-        SystemConfig::default().install_upgrade_limit(),
-        SystemConfig::default().standard_transaction_limit(),
         new_auction_costs,
         new_mint_costs,
         new_handle_payment_costs,

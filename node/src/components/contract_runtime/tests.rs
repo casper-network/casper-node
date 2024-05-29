@@ -9,7 +9,7 @@ use tempfile::TempDir;
 use casper_types::{
     bytesrepr::Bytes, runtime_args, BlockHash, Chainspec, ChainspecRawBytes, Deploy, Digest, EraId,
     ExecutableDeployItem, PublicKey, SecretKey, TimeDiff, Timestamp, Transaction,
-    TransactionCategory, TransactionConfig, U512,
+    TransactionConfig, MINT_LANE_ID, U512,
 };
 
 use super::*;
@@ -26,6 +26,7 @@ use crate::{
     utils::{Loadable, WithDir, RESOURCES_PATH},
     NodeRng,
 };
+
 const RECENT_ERA_COUNT: u64 = 5;
 const MAX_TTL: TimeDiff = TimeDiff::from_seconds(86400);
 const TEST_TIMEOUT: Duration = Duration::from_secs(10);
@@ -67,8 +68,11 @@ impl<T: Unhandled> From<T> for Event {
 }
 
 impl Unhandled for ControlAnnouncement {}
+
 impl Unhandled for FatalAnnouncement {}
+
 impl Unhandled for NetworkRequest<Message> {}
+
 impl Unhandled for UnexecutedBlockAnnouncement {}
 
 struct Reactor {
@@ -335,7 +339,7 @@ async fn should_not_set_shared_pre_state_to_lower_block_height() {
             (hash, approvals)
         })
         .collect();
-    txn_set.insert(TransactionCategory::Mint, val);
+    txn_set.insert(MINT_LANE_ID, val);
     let block_payload = BlockPayload::new(txn_set, vec![], Default::default(), true);
     let block_2 = ExecutableBlock::from_finalized_block_and_transactions(
         FinalizedBlock::new(

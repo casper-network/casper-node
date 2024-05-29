@@ -24,6 +24,7 @@ static CHARLIE_PUBLIC_KEY: Lazy<PublicKey> =
 
 const MIN_GAS_PRICE: u8 = 5;
 const CHAIN_NAME: &str = "single-transaction-test-net";
+const LARGE_LANE_ID: u8 = 3;
 
 async fn transfer_to_account<A: Into<U512>>(
     fixture: &mut TestFixture,
@@ -760,10 +761,7 @@ async fn wasm_transaction_fees_are_refunded() {
 
     assert!(!exec_result_is_success(&exec_result)); // transaction should not succeed because the wasm bytes are invalid.
 
-    let expected_transaction_gas: u64 = fixture
-        .chainspec
-        .system_costs_config
-        .standard_transaction_limit();
+    let expected_transaction_gas: u64 = fixture.chainspec.get_max_gas_limit_by_kind(LARGE_LANE_ID);
     let expected_transaction_cost = expected_transaction_gas * MIN_GAS_PRICE as u64;
     assert_exec_result_cost(
         exec_result,
@@ -1076,11 +1074,8 @@ async fn wasm_transaction_refunds_are_burnt(txn_pricing_mode: PricingMode) {
 
     let (_txn_hash, block_height, exec_result) = test.send_transaction(txn).await;
 
-    let expected_transaction_gas: u64 = gas_limit.unwrap_or(
-        test.chainspec()
-            .system_costs_config
-            .standard_transaction_limit(),
-    );
+    let expected_transaction_gas: u64 =
+        gas_limit.unwrap_or(test.chainspec().get_max_gas_limit_by_kind(LARGE_LANE_ID));
     let expected_transaction_cost = expected_transaction_gas * min_gas_price as u64;
 
     assert!(!exec_result_is_success(&exec_result)); // transaction should not succeed because the wasm bytes are invalid.
@@ -1178,11 +1173,8 @@ async fn only_refunds_are_burnt_no_fee(txn_pricing_mode: PricingMode) {
     let (_txn_hash, block_height, exec_result) = test.send_transaction(txn).await;
 
     // Fixed transaction pricing.
-    let expected_transaction_gas: u64 = gas_limit.unwrap_or(
-        test.chainspec()
-            .system_costs_config
-            .standard_transaction_limit(),
-    );
+    let expected_transaction_gas: u64 =
+        gas_limit.unwrap_or(test.chainspec().get_max_gas_limit_by_kind(LARGE_LANE_ID));
     let expected_transaction_cost = expected_transaction_gas * min_gas_price as u64;
 
     assert!(!exec_result_is_success(&exec_result)); // transaction should not succeed because the wasm bytes are invalid.
@@ -1271,11 +1263,8 @@ async fn fees_and_refunds_are_burnt_separately(txn_pricing_mode: PricingMode) {
     let txn = invalid_wasm_txn(BOB_SECRET_KEY.clone(), txn_pricing_mode);
 
     // Fixed transaction pricing.
-    let expected_transaction_gas: u64 = gas_limit.unwrap_or(
-        test.chainspec()
-            .system_costs_config
-            .standard_transaction_limit(),
-    );
+    let expected_transaction_gas: u64 =
+        gas_limit.unwrap_or(test.chainspec().get_max_gas_limit_by_kind(LARGE_LANE_ID));
     let expected_transaction_cost = expected_transaction_gas * min_gas_price as u64;
 
     test.fixture
@@ -1367,11 +1356,8 @@ async fn refunds_are_payed_and_fees_are_burnt(txn_pricing_mode: PricingMode) {
     let txn = invalid_wasm_txn(BOB_SECRET_KEY.clone(), txn_pricing_mode);
 
     // Fixed transaction pricing.
-    let expected_transaction_gas: u64 = gas_limit.unwrap_or(
-        test.chainspec()
-            .system_costs_config
-            .standard_transaction_limit(),
-    );
+    let expected_transaction_gas: u64 =
+        gas_limit.unwrap_or(test.chainspec().get_max_gas_limit_by_kind(LARGE_LANE_ID));
     let expected_transaction_cost = expected_transaction_gas * min_gas_price as u64;
 
     test.fixture
@@ -2001,11 +1987,8 @@ async fn wasm_transaction_fees_are_refunded_to_proposer(txn_pricing_mode: Pricin
 
     let (_txn_hash, block_height, exec_result) = test.send_transaction(txn).await;
 
-    let expected_transaction_gas: u64 = gas_limit.unwrap_or(
-        test.chainspec()
-            .system_costs_config
-            .standard_transaction_limit(),
-    );
+    let expected_transaction_gas: u64 =
+        gas_limit.unwrap_or(test.chainspec().get_max_gas_limit_by_kind(LARGE_LANE_ID));
     let expected_transaction_cost = expected_transaction_gas * min_gas_price as u64;
 
     assert!(!exec_result_is_success(&exec_result)); // transaction should not succeed because the wasm bytes are invalid.
@@ -2412,10 +2395,7 @@ async fn fee_holds_are_amortized() {
     let (_txn_hash, block_height, exec_result) = test.send_transaction(txn).await;
 
     // Fixed transaction pricing.
-    let expected_transaction_gas: u64 = test
-        .chainspec()
-        .system_costs_config
-        .standard_transaction_limit();
+    let expected_transaction_gas: u64 = test.chainspec().get_max_gas_limit_by_kind(LARGE_LANE_ID);
 
     let expected_transaction_cost = expected_transaction_gas * MIN_GAS_PRICE as u64;
 
