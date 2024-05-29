@@ -268,6 +268,7 @@ impl FromBytes for TransactionEntryPoint {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (tag, remainder) = u8::from_bytes(bytes)?;
         match tag {
+            CALL_TAG => Ok((TransactionEntryPoint::Call, remainder)),
             CUSTOM_TAG => {
                 let (entry_point, remainder) = String::from_bytes(remainder)?;
                 Ok((TransactionEntryPoint::Custom(entry_point), remainder))
