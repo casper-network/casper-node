@@ -618,8 +618,9 @@ pub trait Auction:
                     .enumerate()
                     .map(move |(i, amount)| (key.clone(), amount, i as u64))
             })
-            // do not process zero amounts unnecessarily
-            .filter(|(_key, amount, _eras_back)| !amount.is_zero())
+            // do not process zero amounts, unless they are for the current era (we still want to
+            // record zero allocations for the current validators in EraInfo)
+            .filter(|(_key, amount, eras_back)| !amount.is_zero() || *eras_back == 0)
         {
             // fetch most recent validator public key if public key was changed
             // or the validator withdrew their bid completely
