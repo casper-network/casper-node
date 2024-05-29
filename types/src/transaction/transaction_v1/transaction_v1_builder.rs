@@ -14,14 +14,12 @@ use super::{
     InitiatorAddrAndSecretKey, PricingMode, TransactionV1, TransactionV1Body,
 };
 use crate::{
-    bytesrepr::Bytes, AddressableEntityHash, CLValue, CLValueError, EntityVersion, PackageHash,
-    PublicKey, RuntimeArgs, SecretKey, TimeDiff, Timestamp, TransferTarget, URef, U512,
+    bytesrepr::Bytes, transaction::TransactionCategory, AddressableEntityHash, CLValue,
+    CLValueError, EntityVersion, PackageHash, PublicKey, RuntimeArgs, SecretKey, TimeDiff,
+    Timestamp, TransferTarget, URef, U512,
 };
 #[cfg(any(feature = "testing", test))]
-use crate::{
-    testing::TestRng, transaction::Approval, TransactionCategory, TransactionConfig,
-    TransactionV1Hash,
-};
+use crate::{testing::TestRng, transaction::Approval, TransactionConfig, TransactionV1Hash};
 pub use error::TransactionV1BuilderError;
 
 /// A builder for constructing a [`TransactionV1`].
@@ -92,6 +90,7 @@ impl<'a> TransactionV1Builder<'a> {
             args,
             TransactionTarget::Native,
             TransactionEntryPoint::Transfer,
+            TransactionCategory::Mint as u8,
             Self::DEFAULT_SCHEDULING,
         );
         Ok(TransactionV1Builder::new(body))
@@ -108,6 +107,7 @@ impl<'a> TransactionV1Builder<'a> {
             args,
             TransactionTarget::Native,
             TransactionEntryPoint::AddBid,
+            TransactionCategory::Auction as u8,
             Self::DEFAULT_SCHEDULING,
         );
         Ok(TransactionV1Builder::new(body))
@@ -124,6 +124,7 @@ impl<'a> TransactionV1Builder<'a> {
             args,
             TransactionTarget::Native,
             TransactionEntryPoint::WithdrawBid,
+            TransactionCategory::Auction as u8,
             Self::DEFAULT_SCHEDULING,
         );
         Ok(TransactionV1Builder::new(body))
@@ -140,6 +141,7 @@ impl<'a> TransactionV1Builder<'a> {
             args,
             TransactionTarget::Native,
             TransactionEntryPoint::Delegate,
+            TransactionCategory::Auction as u8,
             Self::DEFAULT_SCHEDULING,
         );
         Ok(TransactionV1Builder::new(body))
@@ -156,6 +158,7 @@ impl<'a> TransactionV1Builder<'a> {
             args,
             TransactionTarget::Native,
             TransactionEntryPoint::Undelegate,
+            TransactionCategory::Auction as u8,
             Self::DEFAULT_SCHEDULING,
         );
         Ok(TransactionV1Builder::new(body))
@@ -173,6 +176,7 @@ impl<'a> TransactionV1Builder<'a> {
             args,
             TransactionTarget::Native,
             TransactionEntryPoint::Redelegate,
+            TransactionCategory::Auction as u8,
             Self::DEFAULT_SCHEDULING,
         );
         Ok(TransactionV1Builder::new(body))
@@ -190,6 +194,7 @@ impl<'a> TransactionV1Builder<'a> {
             RuntimeArgs::new(),
             target,
             TransactionEntryPoint::Custom(entry_point.into()),
+            TransactionCategory::Large as u8,
             Self::DEFAULT_SCHEDULING,
         );
         TransactionV1Builder::new(body)
@@ -249,6 +254,7 @@ impl<'a> TransactionV1Builder<'a> {
             RuntimeArgs::new(),
             target,
             TransactionEntryPoint::Call,
+            TransactionCategory::Large as u8,
             Self::DEFAULT_SCHEDULING,
         );
         TransactionV1Builder::new(body)
@@ -289,7 +295,7 @@ impl<'a> TransactionV1Builder<'a> {
     #[cfg(any(feature = "testing", test))]
     pub fn new_random_with_category_and_timestamp_and_ttl(
         rng: &mut TestRng,
-        category: &TransactionCategory,
+        category: u8,
         timestamp: Option<Timestamp>,
         ttl: Option<TimeDiff>,
     ) -> Self {

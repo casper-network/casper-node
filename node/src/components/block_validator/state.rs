@@ -131,8 +131,10 @@ impl BlockValidationState {
             return (state, Some(responder));
         }
 
-        let appendable_block =
-            AppendableBlock::new(chainspec.transaction_config, proposed_block.timestamp());
+        let appendable_block = AppendableBlock::new(
+            chainspec.transaction_config.clone(),
+            proposed_block.timestamp(),
+        );
 
         let mut missing_transactions = HashMap::new();
 
@@ -181,21 +183,15 @@ impl BlockValidationState {
         block: &ProposedBlock<ClContext>,
         config: &TransactionConfig,
     ) -> Result<(), ()> {
-        if block.standard_count() > config.block_max_standard_count as usize {
-            warn!("too many standard transactions");
-            return Err(());
-        }
-        if block.auction_count() > config.block_max_auction_count as usize {
-            warn!("too many auction transactions");
-            return Err(());
-        }
-        if block.install_upgrade_count() > config.block_max_install_upgrade_count as usize {
-            warn!("too many install_upgrade transactions");
-            return Err(());
-        }
-        if block.mint_count() > config.block_max_mint_count as usize {
-            warn!("too many mint transactions");
-            return Err(());
+        for supported_category in config.transaction_v1_config.get_supported_categories() {
+            let transactions = block.value().count(Some(supported_category));
+            let lane_count_limit = config
+                .transaction_v1_config
+                .get_max_transaction_count(supported_category);
+            if lane_count_limit < transactions as u64 {
+                warn!("too many transactions in category: {lane_count_limit}");
+                return Err(());
+            }
         }
 
         Ok(())
@@ -656,11 +652,11 @@ mod tests {
         Responder::without_shutdown(sender)
     }
 
-    // Please note: values in the following test cases must much the production chainspec.
-    const MAX_STANDARD_COUNT: u64 = 50;
-    const MAX_AUCTION_COUNT: u64 = 100;
+    // Please note: values in the following test cases must match the production chainspec.
+    const MAX_LARGE_COUNT: u64 = 3;
+    const MAX_AUCTION_COUNT: u64 = 145;
     const MAX_INSTALL_UPGRADE_COUNT: u64 = 2;
-    const MAX_MINT_COUNT: u64 = 500;
+    const MAX_MINT_COUNT: u64 = 650;
 
     struct TestCase {
         mint_count: u64,
@@ -736,7 +732,7 @@ mod tests {
         mint_count: 0,
         auction_count: 0,
         install_upgrade_count: 0,
-        standard_count: MAX_STANDARD_COUNT,
+        standard_count: MAX_LARGE_COUNT,
         state_validator: |(state, responder)| {
             responder.is_none() && matches!(state, BlockValidationState::InProgress { .. })
         },
@@ -879,7 +875,7 @@ mod tests {
             let transfer_count = fixture.rng.gen_range(0..10);
             let auction_count = fixture.rng.gen_range(0..20);
             let install_upgrade_count = fixture.rng.gen_range(0..2);
-            let standard_count = fixture.rng.gen_range(0..10);
+            let standard_count = fixture.rng.gen_range(0..3);
             // Ensure at least one transaction is generated. Otherwise the state will be Valid.
             if transfer_count + auction_count + install_upgrade_count + standard_count > 0 {
                 break (
@@ -1143,7 +1139,7 @@ mod tests {
     fn state_should_change_to_validation_succeeded() {
         let mut rng = TestRng::new();
         let mut fixture = Fixture::new(&mut rng);
-        let (mut state, _maybe_responder) = fixture.new_state(2, 2, 2, 2);
+        let (mut state, _maybe_responder) = fixture.new_state(2, 2, 2, 1);
         assert!(matches!(state, BlockValidationState::InProgress { .. }));
 
         // While there is still at least one missing transaction, `try_add_transaction_footprint`

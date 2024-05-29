@@ -11,7 +11,8 @@ use serde::{Deserialize, Serialize};
 use crate::{
     block::RewardedSignatures,
     bytesrepr::{self, FromBytes, ToBytes},
-    Digest, TransactionCategory, TransactionHash,
+    transaction::TransactionCategory,
+    Digest, TransactionHash,
 };
 
 /// The body portion of a block. Version 2.
@@ -75,8 +76,20 @@ impl BlockBodyV2 {
     }
 
     /// Returns the hashes of all other transactions within the block.
-    pub fn standard(&self) -> impl Iterator<Item = TransactionHash> {
-        self.transaction_by_category(TransactionCategory::Standard)
+    pub fn large(&self) -> impl Iterator<Item = TransactionHash> {
+        self.transaction_by_category(TransactionCategory::Large)
+            .into_iter()
+    }
+
+    /// Returns the hashes of all other transactions within the block.
+    pub fn medium(&self) -> impl Iterator<Item = TransactionHash> {
+        self.transaction_by_category(TransactionCategory::Medium)
+            .into_iter()
+    }
+
+    /// Returns the hashes of all other transactions within the block.
+    pub fn small(&self) -> impl Iterator<Item = TransactionHash> {
+        self.transaction_by_category(TransactionCategory::Small)
             .into_iter()
     }
 
@@ -135,11 +148,13 @@ impl Display for BlockBodyV2 {
         write!(
             formatter,
             "block body, {} mint, {} auction, {} \
-            installer/upgraders, {} others",
+            installer/upgraders, {} large, {} medium, {} small",
             self.mint().count(),
             self.auction().count(),
             self.install_upgrade().count(),
-            self.standard().count()
+            self.large().count(),
+            self.medium().count(),
+            self.small().count()
         )
     }
 }
