@@ -640,7 +640,18 @@ impl TryFrom<&TransactionV1> for PaymentInfo {
 
         let payment = match v1_txn.target() {
             TransactionTarget::Session { module_bytes, .. } => {
-                ExecutableItem::PaymentBytes(module_bytes.clone())
+                if *v1_txn.entry_point() != TransactionEntryPoint::Call {
+                    return Err(InvalidRequest::InvalidEntryPoint(
+                        transaction_hash,
+                        v1_txn.entry_point().to_string(),
+                    ));
+                };
+                let item = ExecutableItem::PaymentBytes(module_bytes.clone());
+                ExecutableInfo {
+                    item,
+                    entry_point: DEFAULT_ENTRY_POINT.to_owned(),
+                    args: v1_txn.args().clone(),
+                }
             }
             TransactionTarget::Native | TransactionTarget::Stored { .. } => {
                 return Err(InvalidRequest::InvalidTarget(
@@ -649,13 +660,7 @@ impl TryFrom<&TransactionV1> for PaymentInfo {
                 ));
             }
         };
-        let TransactionEntryPoint::Custom(entry_point) = v1_txn.entry_point().clone() else {
-            return Err(InvalidRequest::InvalidEntryPoint(transaction_hash, v1_txn.entry_point().to_string()));
-        };
-        Ok(PaymentInfo(ExecutableInfo {
-            item: payment,
-            entry_point,
-            args: v1_txn.args().clone(),
-        }))
+
+        Ok(PaymentInfo(payment))
     }
 }

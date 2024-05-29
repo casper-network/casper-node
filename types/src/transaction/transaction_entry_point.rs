@@ -190,8 +190,8 @@ impl TransactionEntryPoint {
             TransactionEntryPoint::AddBid
             | TransactionEntryPoint::Delegate
             | TransactionEntryPoint::Custom(_)
-            | TransactionEntryPoint::Call => true,
-            TransactionEntryPoint::Transfer => true,
+            | TransactionEntryPoint::Call
+            | TransactionEntryPoint::Transfer => true,
             TransactionEntryPoint::WithdrawBid
             | TransactionEntryPoint::Undelegate
             | TransactionEntryPoint::Redelegate
