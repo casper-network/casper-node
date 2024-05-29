@@ -640,12 +640,20 @@ pub trait Auction:
             let rewarded_era = current_era_id
                 .checked_sub(eras_back)
                 .ok_or(Error::MissingSeigniorageRecipients)?;
-            let recipient = seigniorage_recipients_snapshot
+            let Some(recipient) = seigniorage_recipients_snapshot
                 .get(&rewarded_era)
                 .ok_or(Error::MissingSeigniorageRecipients)?
-                .get(&proposer)
-                .ok_or(Error::ValidatorNotFound)?
-                .clone();
+                .get(&proposer).cloned()
+            else {
+                // We couldn't find the validator. If the reward amount is zero, we don't care -
+                // the validator wasn't supposed to be rewarded in this era, anyway. Otherwise,
+                // return an error.
+                if reward_amount.is_zero() {
+                    continue;
+                } else {
+                    return Err(Error::ValidatorNotFound);
+                }
+            };
 
             let total_stake = recipient.total_stake().ok_or(Error::ArithmeticOverflow)?;
 
