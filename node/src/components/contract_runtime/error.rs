@@ -151,4 +151,7 @@ pub enum BlockExecutionError {
     #[error("No switch block header available for era: {0}")]
     /// No switch block available
     NoSwitchBlockHash(u64),
+    #[error("Unsupported execution kind: {0}")]
+    /// Unsupported execution kind
+    UnsupportedTransactionKind(u8),
 }

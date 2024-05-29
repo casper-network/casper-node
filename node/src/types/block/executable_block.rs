@@ -4,8 +4,8 @@ use datasize::DataSize;
 use serde::Serialize;
 
 use casper_types::{
-    BlockV2, EraId, PublicKey, RewardedSignatures, Timestamp, Transaction, TransactionCategory,
-    TransactionHash, U512,
+    BlockV2, EraId, PublicKey, RewardedSignatures, Timestamp, Transaction, TransactionHash,
+    AUCTION_LANE_ID, INSTALL_UPGRADE_LANE_ID, MINT_LANE_ID, U512,
 };
 
 use super::{FinalizedBlock, InternalEraReport};
@@ -34,28 +34,21 @@ pub struct ExecutableBlock {
 impl ExecutableBlock {
     pub(crate) fn mint(&self) -> Vec<TransactionHash> {
         self.transaction_map
-            .get(&(TransactionCategory::Mint as u8))
+            .get(&MINT_LANE_ID)
             .cloned()
             .unwrap_or(vec![])
     }
 
     pub(crate) fn auction(&self) -> Vec<TransactionHash> {
         self.transaction_map
-            .get(&(TransactionCategory::Auction as u8))
+            .get(&AUCTION_LANE_ID)
             .cloned()
             .unwrap_or(vec![])
     }
 
     pub(crate) fn install_upgrade(&self) -> Vec<TransactionHash> {
         self.transaction_map
-            .get(&(TransactionCategory::InstallUpgrade as u8))
-            .cloned()
-            .unwrap_or(vec![])
-    }
-
-    pub(crate) fn standard(&self) -> Vec<TransactionHash> {
-        self.transaction_map
-            .get(&(TransactionCategory::Standard as u8))
+            .get(&INSTALL_UPGRADE_LANE_ID)
             .cloned()
             .unwrap_or(vec![])
     }
@@ -108,15 +101,25 @@ impl fmt::Display for ExecutableBlock {
         write!(
             formatter,
             "executable block #{} in {}, timestamp {}, {} transfers, {} staking txns, {} \
-            install/upgrade txns, {} standard txns",
+            install/upgrade txns",
             self.height,
             self.era_id,
             self.timestamp,
             self.mint().len(),
             self.auction().len(),
             self.install_upgrade().len(),
-            self.standard().len(),
         )?;
+        for (category, wasm_transaction) in self.transaction_map.iter() {
+            if *category < 3 {
+                continue;
+            }
+            write!(
+                formatter,
+                ", category: {} with {} transactions",
+                *category,
+                wasm_transaction.len()
+            )?;
+        }
         if let Some(ref ee) = self.era_report {
             write!(formatter, ", era_end: {:?}", ee)?;
         }
