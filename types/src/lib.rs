@@ -139,10 +139,10 @@ pub use chainspec::{
     DEFAULT_CONVERSION_COST, DEFAULT_CURRENT_MEMORY_COST, DEFAULT_DELEGATE_COST, DEFAULT_DIV_COST,
     DEFAULT_FEE_HANDLING, DEFAULT_GAS_HOLD_BALANCE_HANDLING, DEFAULT_GLOBAL_COST,
     DEFAULT_GROW_MEMORY_COST, DEFAULT_INSTALL_UPGRADE_GAS_LIMIT, DEFAULT_INTEGER_COMPARISON_COST,
-    DEFAULT_LOAD_COST, DEFAULT_LOCAL_COST, DEFAULT_MAX_PAYMENT_MOTES, DEFAULT_MAX_STACK_HEIGHT,
-    DEFAULT_MIN_TRANSFER_MOTES, DEFAULT_MUL_COST, DEFAULT_NEW_DICTIONARY_COST, DEFAULT_NOP_COST,
-    DEFAULT_STANDARD_TRANSACTION_GAS_LIMIT, DEFAULT_STORE_COST, DEFAULT_TRANSFER_COST,
-    DEFAULT_UNREACHABLE_COST, DEFAULT_WASM_MAX_MEMORY,
+    DEFAULT_LARGE_TRANSACTION_GAS_LIMIT, DEFAULT_LOAD_COST, DEFAULT_LOCAL_COST,
+    DEFAULT_MAX_PAYMENT_MOTES, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_MIN_TRANSFER_MOTES,
+    DEFAULT_MUL_COST, DEFAULT_NEW_DICTIONARY_COST, DEFAULT_NOP_COST, DEFAULT_STORE_COST,
+    DEFAULT_TRANSFER_COST, DEFAULT_UNREACHABLE_COST, DEFAULT_WASM_MAX_MEMORY,
 };
 pub use cl_type::{named_key_type, CLType, CLTyped};
 pub use cl_value::{
@@ -187,16 +187,15 @@ pub use timestamp::{TimeDiff, Timestamp};
 #[cfg(any(feature = "std", test))]
 pub use transaction::GasLimited;
 pub use transaction::{
-    AddressableEntityIdentifier, Approval, ApprovalsHash, Categorized as CategorizedTransaction,
-    Deploy, DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError, DeployHash,
-    DeployHeader, DeployId, ExecutableDeployItem, ExecutableDeployItemIdentifier, ExecutionInfo,
-    InitiatorAddr, InvalidDeploy, InvalidTransaction, InvalidTransactionV1, NamedArg,
-    PackageIdentifier, PricingMode, RuntimeArgs, Transaction, TransactionCategory,
-    TransactionEntryPoint, TransactionHash, TransactionHeader, TransactionId,
-    TransactionInvocationTarget, TransactionRuntime, TransactionScheduling, TransactionSessionKind,
-    TransactionTarget, TransactionV1, TransactionV1Body, TransactionV1DecodeFromJsonError,
-    TransactionV1Error, TransactionV1ExcessiveSizeError, TransactionV1Hash, TransactionV1Header,
-    TransferTarget,
+    AddressableEntityIdentifier, Approval, ApprovalsHash, Deploy, DeployDecodeFromJsonError,
+    DeployError, DeployExcessiveSizeError, DeployHash, DeployHeader, DeployId,
+    ExecutableDeployItem, ExecutableDeployItemIdentifier, ExecutionInfo, InitiatorAddr,
+    InvalidDeploy, InvalidTransaction, InvalidTransactionV1, NamedArg, PackageIdentifier,
+    PricingMode, RuntimeArgs, Transaction, TransactionEntryPoint, TransactionHash,
+    TransactionHeader, TransactionId, TransactionInvocationTarget, TransactionRuntime,
+    TransactionScheduling, TransactionSessionKind, TransactionTarget, TransactionV1,
+    TransactionV1Body, TransactionV1DecodeFromJsonError, TransactionV1Error,
+    TransactionV1ExcessiveSizeError, TransactionV1Hash, TransactionV1Header, TransferTarget,
 };
 #[cfg(any(feature = "std", test))]
 pub use transaction::{
@@ -210,6 +209,13 @@ pub use uref::{
     FromStrError as URefFromStrError, URef, URefAddr, UREF_ADDR_LENGTH, UREF_SERIALIZED_LENGTH,
 };
 pub use validator_change::ValidatorChange;
+
+/// The lane identifier for the native mint interaction.
+pub const MINT_LANE_ID: u8 = 0;
+/// The lane identifier for the native auction interaction.
+pub const AUCTION_LANE_ID: u8 = 1;
+/// The lane identifier for the special Wasm `install_upgrade` lane.
+pub const INSTALL_UPGRADE_LANE_ID: u8 = 2;
 
 /// OS page size.
 #[cfg(feature = "std")]

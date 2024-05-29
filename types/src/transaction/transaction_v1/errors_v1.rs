@@ -152,6 +152,8 @@ pub enum InvalidTransaction {
         /// The pricing mode as specified by the transaction.
         price_mode: PricingMode,
     },
+    /// The transaction provided is not supported.
+    InvalidTransactionKind(u8),
 }
 
 impl Display for InvalidTransaction {
@@ -281,6 +283,12 @@ impl Display for InvalidTransaction {
                     "received a transaction with an invalid mode {price_mode}"
                 )
             }
+            InvalidTransaction::InvalidTransactionKind(kind) => {
+                write!(
+                    formatter,
+                    "received a transaction with an invalid kind {kind}"
+                )
+            }
         }
     }
 }
@@ -316,7 +324,8 @@ impl StdError for InvalidTransaction {
             | InvalidTransaction::GasPriceConversion { .. }
             | InvalidTransaction::UnableToCalculateGasLimit
             | InvalidTransaction::UnableToCalculateGasCost
-            | InvalidTransaction::InvalidPricingMode { .. } => None,
+            | InvalidTransaction::InvalidPricingMode { .. }
+            | InvalidTransaction::InvalidTransactionKind(_) => None,
         }
     }
 }

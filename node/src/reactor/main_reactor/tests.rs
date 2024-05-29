@@ -40,7 +40,7 @@ use casper_types::{
     ConsensusProtocolName, Deploy, EraId, FeeHandling, Gas, HoldBalanceHandling, Key, Motes,
     NextUpgrade, PricingHandling, PricingMode, ProtocolVersion, PublicKey, RefundHandling, Rewards,
     SecretKey, StoredValue, SystemEntityRegistry, TimeDiff, Timestamp, Transaction,
-    TransactionHash, TransactionV1Builder, ValidatorConfig, U512,
+    TransactionHash, TransactionV1Builder, TransactionV1Config, ValidatorConfig, U512,
 };
 
 use crate::{
@@ -102,10 +102,6 @@ struct ConfigsOverride {
     finality_signature_proportion: Ratio<u64>,
     signature_rewards_max_delay: u64,
     storage_multiplier: u8,
-    max_transfer_count: u32,
-    max_standard_count: u32,
-    max_staking_count: u32,
-    max_install_count: u32,
     max_gas_price: u8,
     min_gas_price: u8,
     upper_threshold: u64,
@@ -120,6 +116,7 @@ struct ConfigsOverride {
     administrators: Option<BTreeSet<PublicKey>>,
     chain_name: Option<String>,
     gas_hold_balance_handling: Option<HoldBalanceHandling>,
+    transaction_v1_override: Option<TransactionV1Config>,
 }
 
 impl ConfigsOverride {
@@ -184,11 +181,6 @@ impl ConfigsOverride {
         self
     }
 
-    fn with_max_transfer_count(mut self, max_transfer_count: u32) -> Self {
-        self.max_transfer_count = max_transfer_count;
-        self
-    }
-
     fn with_administrators(mut self, administrators: BTreeSet<PublicKey>) -> Self {
         self.administrators = Some(administrators);
         self
@@ -206,6 +198,11 @@ impl ConfigsOverride {
         self.gas_hold_balance_handling = Some(gas_hold_balance_handling);
         self
     }
+
+    fn with_transaction_v1_config(mut self, transaction_v1config: TransactionV1Config) -> Self {
+        self.transaction_v1_override = Some(transaction_v1config);
+        self
+    }
 }
 
 impl Default for ConfigsOverride {
@@ -221,10 +218,6 @@ impl Default for ConfigsOverride {
             finality_signature_proportion: Ratio::new(1, 3),
             signature_rewards_max_delay: 5,
             storage_multiplier: 1,
-            max_transfer_count: 1000,
-            max_standard_count: 100,
-            max_staking_count: 200,
-            max_install_count: 2,
             max_gas_price: 3,
             min_gas_price: 1,
             upper_threshold: 90,
@@ -239,6 +232,7 @@ impl Default for ConfigsOverride {
             administrators: None,
             chain_name: None,
             gas_hold_balance_handling: None,
+            transaction_v1_override: None,
         }
     }
 }
@@ -344,10 +338,6 @@ impl TestFixture {
             finality_signature_proportion,
             signature_rewards_max_delay,
             storage_multiplier,
-            max_transfer_count,
-            max_standard_count,
-            max_staking_count,
-            max_install_count,
             max_gas_price,
             min_gas_price,
             upper_threshold,
@@ -362,6 +352,7 @@ impl TestFixture {
             administrators,
             chain_name,
             gas_hold_balance_handling,
+            transaction_v1_override,
         } = spec_override.unwrap_or_default();
         if era_duration != TimeDiff::from_millis(0) {
             chainspec.core_config.era_duration = era_duration;
@@ -380,10 +371,6 @@ impl TestFixture {
         chainspec.vacancy_config.max_gas_price = max_gas_price;
         chainspec.vacancy_config.upper_threshold = upper_threshold;
         chainspec.vacancy_config.lower_threshold = lower_threshold;
-        chainspec.transaction_config.block_max_standard_count = max_standard_count;
-        chainspec.transaction_config.block_max_auction_count = max_staking_count;
-        chainspec.transaction_config.block_max_mint_count = max_transfer_count;
-        chainspec.transaction_config.block_max_install_upgrade_count = max_install_count;
         chainspec.transaction_config.block_gas_limit = block_gas_limit;
         chainspec.transaction_config.max_block_size = max_block_size;
         chainspec.highway_config.maximum_round_length =
@@ -413,6 +400,9 @@ impl TestFixture {
         }
         if let Some(gas_hold_balance_handling) = gas_hold_balance_handling {
             chainspec.core_config.gas_hold_balance_handling = gas_hold_balance_handling;
+        }
+        if let Some(transaction_v1_config) = transaction_v1_override {
+            chainspec.transaction_config.transaction_v1_config = transaction_v1_config
         }
 
         let applied_block_gas_limit = chainspec.transaction_config.block_gas_limit;
@@ -2812,8 +2802,13 @@ async fn run_gas_price_scenario(gas_price_scenario: GasPriceScenario) {
 
     let max_gas_price: u8 = 3;
 
+    let mut transaction_config = TransactionV1Config::default();
+    transaction_config.native_mint_lane[4] = 1;
+
     let spec_override = match gas_price_scenario {
-        GasPriceScenario::SlotUtilization => ConfigsOverride::default().with_max_transfer_count(1),
+        GasPriceScenario::SlotUtilization => {
+            ConfigsOverride::default().with_transaction_v1_config(transaction_config)
+        }
         GasPriceScenario::SizeUtilization(block_size) => {
             ConfigsOverride::default().with_block_size(block_size)
         }

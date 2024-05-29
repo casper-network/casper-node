@@ -1750,7 +1750,8 @@
         "args",
         "entry_point",
         "scheduling",
-        "target"
+        "target",
+        "transaction_kind"
       ],
       "properties": {
         "args": {
@@ -1761,6 +1762,11 @@
         },
         "entry_point": {
           "$ref": "#/definitions/TransactionEntryPoint"
+        },
+        "transaction_kind": {
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0.0
         },
         "scheduling": {
           "$ref": "#/definitions/TransactionScheduling"

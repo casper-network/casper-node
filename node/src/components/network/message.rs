@@ -16,6 +16,7 @@ use strum::EnumDiscriminants;
 use casper_types::testing::TestRng;
 use casper_types::{
     crypto, AsymmetricType, Chainspec, Digest, ProtocolVersion, PublicKey, SecretKey, Signature,
+    AUCTION_LANE_ID, INSTALL_UPGRADE_LANE_ID, MINT_LANE_ID,
 };
 
 use super::{counting_format::ConnectionId, health::Nonce, BincodeFormat};
@@ -407,6 +408,7 @@ pub(crate) trait FromIncoming<P> {
         Err(payload)
     }
 }
+
 /// A generic configuration for payload weights.
 ///
 /// Implementors of `Payload` are free to interpret this as they see fit.
@@ -510,13 +512,18 @@ impl<'a> NetworkMessageEstimator<'a> {
 
     /// Returns a parameter by name as `i64`.
     fn get_parameter(&self, name: &'static str) -> Option<i64> {
+        let max_transaction_size = self
+            .chainspec
+            .transaction_config
+            .transaction_v1_config
+            .get_max_serialized_length(INSTALL_UPGRADE_LANE_ID);
         Some(match name {
             // The name limit will be larger than the actual name, so it is a safe upper bound.
             "network_name_limit" => self.chainspec.network_config.name.len() as i64,
             // These limits are making deploys bigger than they actually are, since many items
             // have both a `contract_name` and an `entry_point`. We accept 2X as an upper bound.
-            "contract_name_limit" => self.chainspec.transaction_config.max_transaction_size as i64,
-            "entry_point_limit" => self.chainspec.transaction_config.max_transaction_size as i64,
+            "contract_name_limit" => max_transaction_size as i64,
+            "entry_point_limit" => max_transaction_size as i64,
             "recent_era_count" => {
                 (self.chainspec.core_config.unbonding_delay
                     - self.chainspec.core_config.auction_delay) as i64
@@ -530,38 +537,41 @@ impl<'a> NetworkMessageEstimator<'a> {
                 .minimum_block_time
                 .millis()
                 .max(1) as i64,
-            "max_transaction_size" => self.chainspec.transaction_config.max_transaction_size as i64,
-            "approvals_hashes" => {
-                (self.chainspec.transaction_config.block_max_mint_count
-                    + self.chainspec.transaction_config.block_max_auction_count
-                    + self
-                        .chainspec
-                        .transaction_config
-                        .block_max_install_upgrade_count
-                    + self.chainspec.transaction_config.block_max_standard_count)
-                    as i64
-            }
-            "max_mint_per_block" => self.chainspec.transaction_config.block_max_mint_count as i64,
+            "max_transaction_size" => max_transaction_size as i64,
+            "approvals_hashes" => self
+                .chainspec
+                .transaction_config
+                .transaction_v1_config
+                .get_max_block_count() as i64,
+            "max_mint_per_block" => self
+                .chainspec
+                .transaction_config
+                .transaction_v1_config
+                .get_max_transaction_count(MINT_LANE_ID) as i64,
             "max_auctions_per_block" => {
-                self.chainspec.transaction_config.block_max_auction_count as i64
+                self.chainspec
+                    .transaction_config
+                    .transaction_v1_config
+                    .get_max_transaction_count(AUCTION_LANE_ID) as i64
             }
             "max_install_upgrade_transactions_per_block" => {
                 self.chainspec
                     .transaction_config
-                    .block_max_install_upgrade_count as i64
+                    .transaction_v1_config
+                    .get_max_transaction_count(INSTALL_UPGRADE_LANE_ID) as i64
             }
             "max_standard_transactions_per_block" => {
-                self.chainspec.transaction_config.block_max_standard_count as i64
+                self.chainspec
+                    .transaction_config
+                    .transaction_v1_config
+                    .get_max_wasm_transaction_count() as i64
             }
             "average_approvals_per_transaction_in_block" => {
-                let max_total_txns = (self.chainspec.transaction_config.block_max_mint_count
-                    + self.chainspec.transaction_config.block_max_auction_count
-                    + self
-                        .chainspec
-                        .transaction_config
-                        .block_max_install_upgrade_count
-                    + self.chainspec.transaction_config.block_max_standard_count)
-                    as i64;
+                let max_total_txns = self
+                    .chainspec
+                    .transaction_config
+                    .transaction_v1_config
+                    .get_max_block_count() as i64;
 
                 // Note: The +1 is to overestimate, as depending on the serialization format chosen,
                 //       spreading out the approvals can increase or decrease the size. For

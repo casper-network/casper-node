@@ -25,9 +25,9 @@ use casper_types::{
     bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH},
     execution::{Effects, ExecutionResult, TransformKindV2, TransformV2},
     system::handle_payment::ARG_AMOUNT,
-    BlockHash, BlockHeader, BlockTime, BlockV2, CLValue, CategorizedTransaction, Chainspec,
-    ChecksumRegistry, Digest, EraEndV2, EraId, FeeHandling, Gas, GasLimited, Key, ProtocolVersion,
-    PublicKey, RefundHandling, Transaction, TransactionCategory, U512,
+    BlockHash, BlockHeader, BlockTime, BlockV2, CLValue, Chainspec, ChecksumRegistry, Digest,
+    EraEndV2, EraId, FeeHandling, Gas, GasLimited, Key, ProtocolVersion, PublicKey, RefundHandling,
+    Transaction, AUCTION_LANE_ID, MINT_LANE_ID, U512,
 };
 
 use super::{
@@ -305,11 +305,14 @@ pub fn execute_finalized_block(
             ProofHandling::NoProofs,
         ));
 
+        let category = transaction.transaction_kind();
+
         let allow_execution = {
             let is_not_penalized = !balance_identifier.is_penalty();
             let sufficient_balance = initial_balance_result.is_sufficient(cost);
-            trace!(%transaction_hash, ?sufficient_balance, ?is_not_penalized, "payment preprocessing");
-            is_not_penalized && sufficient_balance
+            let is_supported = chainspec.is_supported(category);
+            trace!(%transaction_hash, ?sufficient_balance, ?is_not_penalized, ?is_supported, "payment preprocessing");
+            is_not_penalized && sufficient_balance && is_supported
         };
 
         if allow_execution {
@@ -331,10 +334,9 @@ pub fn execute_finalized_block(
                     .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
             }
 
-            let category = transaction.category();
             trace!(%transaction_hash, ?category, "eligible for execution");
             match category {
-                TransactionCategory::Mint => {
+                category if category == MINT_LANE_ID => {
                     let transfer_result =
                         scratch_state.transfer(TransferRequest::with_runtime_args(
                             native_runtime_config.clone(),
@@ -353,7 +355,7 @@ pub fn execute_finalized_block(
                         .with_transfer_result(transfer_result)
                         .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
                 }
-                TransactionCategory::Auction => {
+                category if category == AUCTION_LANE_ID => {
                     match AuctionMethod::from_parts(entry_point, &runtime_args, chainspec) {
                         Ok(auction_method) => {
                             let bidding_result = scratch_state.bidding(BiddingRequest::new(
@@ -383,7 +385,7 @@ pub fn execute_finalized_block(
                         }
                     };
                 }
-                TransactionCategory::Standard | TransactionCategory::InstallUpgrade => {
+                _ => {
                     let wasm_v1_start = Instant::now();
                     match WasmV1Request::new_session(
                         state_root_hash,

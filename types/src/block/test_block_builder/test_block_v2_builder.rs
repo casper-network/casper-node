@@ -4,9 +4,9 @@ use alloc::collections::BTreeMap;
 use rand::Rng;
 
 use crate::{
-    system::auction::ValidatorWeights, testing::TestRng, Block, BlockHash, BlockV2, Digest,
-    EraEndV2, EraId, ProtocolVersion, PublicKey, RewardedSignatures, Timestamp, Transaction,
-    TransactionCategory, TransactionEntryPoint, TransactionSessionKind, TransactionTarget, U512,
+    system::auction::ValidatorWeights, testing::TestRng, transaction::TransactionCategory, Block,
+    BlockHash, BlockV2, Digest, EraEndV2, EraId, ProtocolVersion, PublicKey, RewardedSignatures,
+    Timestamp, Transaction, TransactionEntryPoint, TransactionSessionKind, TransactionTarget, U512,
 };
 
 /// A helper to build the blocks with various properties required for tests.
@@ -222,7 +222,7 @@ impl TestBlockV2Builder {
                 TransactionCategory::InstallUpgrade as u8,
                 install_upgrade_hashes,
             );
-            ret.insert(TransactionCategory::Standard as u8, standard_hashes);
+            ret.insert(TransactionCategory::Large as u8, standard_hashes);
             ret
         };
         let rewarded_signatures = rewarded_signatures.unwrap_or_default();
