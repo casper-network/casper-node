@@ -13,15 +13,18 @@ use casper_engine_test_support::{
     DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_AUCTION_DELAY,
     DEFAULT_BLOCK_TIME, DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_EXEC_CONFIG,
     DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROTOCOL_VERSION, DEFAULT_ROUND_SEIGNIORAGE_RATE,
-    DEFAULT_UNBONDING_DELAY, LOCAL_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR,
+    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_MAXIMUM_DELEGATION_AMOUNT,
+    DEFAULT_PROTOCOL_VERSION, DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_UNBONDING_DELAY,
+    LOCAL_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR,
     TIMESTAMP_MILLIS_INCREMENT,
 };
 use casper_execution_engine::{
     engine_state::{self, engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, Error},
     execution::ExecError,
 };
-use casper_storage::data_access_layer::{GenesisRequest, HandleFeeMode};
+use casper_storage::data_access_layer::{
+    forced_undelegate::ForcedUndelegateResult, GenesisRequest, HandleFeeMode,
+};
 
 use casper_types::{
     self,
@@ -871,6 +874,75 @@ fn should_forcibly_undelegate_after_setting_validator_limits() {
         delegator_2_unbonding.amount(),
         &U512::from(DELEGATE_AMOUNT_2),
         "expected delegator_2 amount to match"
+    );
+}
+
+#[test]
+fn should_force_undelegate_with_genesis_delegators() {
+    assert_ne!(*ACCOUNT_1_ADDR, *ACCOUNT_2_ADDR,);
+    assert_ne!(*ACCOUNT_2_ADDR, *BID_ACCOUNT_1_ADDR,);
+    assert_ne!(*ACCOUNT_2_ADDR, *DEFAULT_ACCOUNT_ADDR,);
+    let accounts = {
+        let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
+        let genesis_validator = GenesisAccount::account(
+            ACCOUNT_1_PK.clone(),
+            Motes::new(ACCOUNT_1_BALANCE),
+            Some(GenesisValidator::new(
+                Motes::new(ACCOUNT_1_BOND),
+                DelegationRate::zero(),
+            )),
+        );
+        let genesis_delegator = GenesisAccount::delegator(
+            ACCOUNT_1_PK.clone(),
+            ACCOUNT_2_PK.clone(),
+            Motes::new(U512::zero()),
+            Motes::new(U512::from(DEFAULT_MAXIMUM_DELEGATION_AMOUNT - 1)),
+        );
+
+        tmp.push(genesis_validator);
+        tmp.push(genesis_delegator);
+        tmp
+    };
+
+    let exec_config: casper_types::GenesisConfig = GenesisConfigBuilder::new()
+        .with_accounts(accounts)
+        .with_locked_funds_period_millis(CASPER_LOCKED_FUNDS_PERIOD_MILLIS)
+        .build();
+    let run_genesis_request = GenesisRequest::new(
+        DEFAULT_GENESIS_CONFIG_HASH,
+        DEFAULT_PROTOCOL_VERSION,
+        exec_config,
+        DEFAULT_CHAINSPEC_REGISTRY.clone(),
+    );
+
+    let mut builder = LmdbWasmTestBuilder::default();
+
+    builder.run_genesis(run_genesis_request);
+
+    // set delegation limits
+    let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
+        *ACCOUNT_1_ADDR,
+        CONTRACT_ADD_BID,
+        runtime_args! {
+            ARG_PUBLIC_KEY => ACCOUNT_1_PK.clone(),
+            ARG_AMOUNT => U512::from(ACCOUNT_1_BOND),
+            ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
+            ARG_MINIMUM_DELEGATION_AMOUNT => Some(DEFAULT_MINIMUM_DELEGATION_AMOUNT),
+            ARG_MAXIMUM_DELEGATION_AMOUNT => Some(DEFAULT_MAXIMUM_DELEGATION_AMOUNT - 2),
+        },
+    )
+    .build();
+
+    builder
+        .exec(validator_1_add_bid_request)
+        .expect_success()
+        .commit();
+
+    let result = builder.forced_undelegate(None, DEFAULT_PROTOCOL_VERSION, DEFAULT_BLOCK_TIME);
+    assert!(
+        matches!(result, ForcedUndelegateResult::Success { .. }),
+        "expected success but got {:?}",
+        result
     );
 }
 
