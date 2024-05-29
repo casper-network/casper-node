@@ -4,6 +4,8 @@ pub(crate) mod host;
 pub mod storage;
 pub(crate) mod wasm_backend;
 
+use std::fmt::{self, Display, Formatter};
+
 use bytes::Bytes;
 
 use executor::Executor;
@@ -32,6 +34,17 @@ pub enum HostError {
     CalleeGasDepleted,
     /// Called contract is not callable.
     NotCallable,
+}
+
+impl Display for HostError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            HostError::CalleeReverted => write!(f, "callee reverted"),
+            HostError::CalleeTrapped(trap) => write!(f, "callee trapped: {}", trap),
+            HostError::CalleeGasDepleted => write!(f, "callee gas depleted"),
+            HostError::NotCallable => write!(f, "callee not callable"),
+        }
+    }
 }
 
 // no revert: output

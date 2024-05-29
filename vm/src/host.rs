@@ -238,7 +238,8 @@ pub(crate) fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'stati
     code_len: u32,
     manifest_ptr: u32,
     value: u64,
-    selector: u32,
+    entry_point_ptr: u32,
+    entry_point_len: u32,
     input_ptr: u32,
     input_len: u32,
     result_ptr: u32,
@@ -252,7 +253,26 @@ pub(crate) fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'stati
     };
 
     // For calling a constructor
-    let constructor_selector = NonZeroU32::new(selector);
+    let constructor_entry_point = {
+        let entry_point_ptr = NonZeroU32::new(entry_point_ptr);
+        match entry_point_ptr {
+            Some(entry_point_ptr) => {
+                let entry_point_bytes =
+                    caller.memory_read(entry_point_ptr.get(), entry_point_len as _)?;
+                match String::from_utf8(entry_point_bytes) {
+                    Ok(entry_point) => Some(entry_point),
+                    Err(utf8_error) => {
+                        error!(%utf8_error, "entry point name is not a valid utf-8 string; unable to call");
+                        return Ok(Err(HostError::NotCallable));
+                    }
+                }
+            }
+            None => {
+                // No constructor to be called
+                None
+            }
+        }
+    };
 
     // Pass input data when calling a constructor. It's optional, as constructors aren't required
     let input_data: Option<Bytes> = if input_ptr == 0 {
@@ -336,18 +356,18 @@ pub(crate) fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'stati
         }
     };
 
-    for entrypoint in entry_points {
-        let key = Key::EntryPoint(EntryPointAddr::VmCasperV2 {
-            entity_addr,
-            selector: entrypoint.selector,
-        });
-        let value = EntryPointValue::V2CasperVm(EntryPointV2 {
-            function_index: entrypoint.fptr,
-            flags: entrypoint.flags,
-        });
-        let stored_value = StoredValue::EntryPoint(value);
-        caller.context_mut().tracking_copy.write(key, stored_value);
-    }
+    // for entrypoint in entry_points {
+    //     let key = Key::EntryPoint(EntryPointAddr::VmCasperV2 {
+    //         entity_addr,
+    //         selector: entrypoint.selector,
+    //     });
+    //     let value = EntryPointValue::V2CasperVm(EntryPointV2 {
+    //         function_index: entrypoint.fptr,
+    //         flags: entrypoint.flags,
+    //     });
+    //     let stored_value = StoredValue::EntryPoint(value);
+    //     caller.context_mut().tracking_copy.write(key, stored_value);
+    // }
 
     let addressable_entity = AddressableEntity::new(
         PackageHash::new(package_hash_bytes),
@@ -365,8 +385,8 @@ pub(crate) fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'stati
         StoredValue::AddressableEntity(addressable_entity),
     );
 
-    let initial_state = match constructor_selector {
-        Some(_) => {
+    let initial_state = match constructor_entry_point {
+        Some(entry_point_name) => {
             // Take the gas spent so far and use it as a limit for the new VM.
             let gas_limit = caller
                 .gas_consumed()
@@ -380,7 +400,7 @@ pub(crate) fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'stati
                 .with_gas_limit(gas_limit)
                 .with_target(ExecutionKind::Stored {
                     address: entity_addr,
-                    selector: Some(Selector::new(selector)),
+                    entry_point: entry_point_name, //Some(Selector::new(selector)),
                 })
                 .with_input(input_data.unwrap_or_default())
                 .with_value(value)
@@ -465,7 +485,8 @@ pub(crate) fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>
     address_ptr: u32,
     address_len: u32,
     value: u64,
-    selector: u32,
+    entry_point_ptr: u32,
+    entry_point_len: u32,
     input_ptr: u32,
     input_len: u32,
     cb_alloc: u32,
@@ -486,6 +507,17 @@ pub(crate) fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>
 
     let input_data: Bytes = caller.memory_read(input_ptr, input_len as _)?.into();
 
+    let entry_point = {
+        let entry_point_bytes = caller.memory_read(entry_point_ptr, entry_point_len as _)?;
+        match String::from_utf8(entry_point_bytes) {
+            Ok(entry_point) => entry_point,
+            Err(utf8_error) => {
+                error!(%utf8_error, "entry point name is not a valid utf-8 string; unable to call");
+                return Ok(Err(HostError::NotCallable));
+            }
+        }
+    };
+
     let tracking_copy = caller.context().tracking_copy.fork2();
 
     // Take the gas spent so far and use it as a limit for the new VM.
@@ -502,7 +534,7 @@ pub(crate) fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>
         .with_gas_limit(gas_limit)
         .with_target(ExecutionKind::Stored {
             address: entity_addr,
-            selector: Some(Selector::new(selector)),
+            entry_point,
         })
         .with_value(value)
         .with_input(input_data)
@@ -883,7 +915,7 @@ pub(crate) fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
                 .with_gas_limit(gas_limit)
                 .with_target(ExecutionKind::Stored {
                     address: target_entity_addr,
-                    selector: None,
+                    entry_point: "fallback".to_string(), // TODO: Revisit selectors
                 })
                 .with_value(amount)
                 .with_input(Bytes::new())

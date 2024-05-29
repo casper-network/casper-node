@@ -8,10 +8,10 @@ edition = "2021"
 [dependencies]
 bytes = "1.4.0"
 casper-types = { path = "../types" }
-wasmer = "4.1.0"
-wasmer-compiler-singlepass = "4.1.0"
-wasmer-middlewares = "4.1.0"
-wasmer-types = "4.1.0"
+wasmer = "4.3.1"
+wasmer-compiler-singlepass = "4.3.1"
+wasmer-middlewares = "4.3.1"
+wasmer-types = "4.3.1"
 
 thiserror = "1.0.44"
 criterion = "0.5.1"

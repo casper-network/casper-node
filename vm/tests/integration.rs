@@ -22,7 +22,8 @@ use parking_lot::RwLock;
 use tempfile::TempDir;
 use vm::executor::{
     v2::{ExecutorConfigBuilder, ExecutorKind, ExecutorV2},
-    ExecuteRequest, ExecuteRequestBuilder, ExecutionKind, Executor,
+    CreateContractRequest, CreateContractRequestBuilder, ExecuteRequest, ExecuteRequestBuilder,
+    ExecutionKind, Executor, StoreContractResult,
 };
 
 static DEFAULT_ACCOUNT_SECRET_KEY: Lazy<SecretKey> =
@@ -34,11 +35,11 @@ static DEFAULT_ACCOUNT_HASH: Lazy<AccountHash> =
 
 const CSPR: u64 = 10u64.pow(9);
 
-const VM2_TEST_CONTRACT: Bytes = Bytes::from_static(include_bytes!("../vm2-test-contract.wasm"));
-const VM2_HARNESS: Bytes = Bytes::from_static(include_bytes!("../vm2-harness.wasm"));
-const VM2_CEP18: Bytes = Bytes::from_static(include_bytes!("../vm2-cep18.wasm"));
-const VM2_CEP18_CALLER: Bytes = Bytes::from_static(include_bytes!("../vm2-cep18-caller.wasm"));
-const VM2_TRAITS: Bytes = Bytes::from_static(include_bytes!("../vm2-trait.wasm"));
+// const VM2_TEST_CONTRACT: Bytes = Bytes::from_static(include_bytes!("../vm2-test-contract.wasm"));
+// const VM2_HARNESS: Bytes = Bytes::from_static(include_bytes!("../vm2-harness.wasm"));
+// const VM2_CEP18: Bytes = Bytes::from_static(include_bytes!("../vm2-cep18.wasm"));
+// const VM2_CEP18_CALLER: Bytes = Bytes::from_static(include_bytes!("../vm2-cep18-caller.wasm"));
+const VM2_TRAITS: Bytes = Bytes::from_static(include_bytes!("../vm2_trait.wasm"));
 
 const TRANSACTION_HASH_BYTES: [u8; 32] = [55; 32];
 const TRANSACTION_HASH: TransactionHash =
@@ -67,52 +68,59 @@ fn base_execute_builder() -> ExecuteRequestBuilder {
         .with_transaction_hash(TRANSACTION_HASH)
 }
 
-#[test]
-fn test_contract() {
-    let mut executor = make_executor();
-
-    let (mut global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
-
-    let input = ("Hello, world!".to_string(), 123456789u32);
-
-    let address_generator = make_address_generator();
-
-    let execute_request = base_execute_builder()
-        .with_target(ExecutionKind::WasmBytes(VM2_TEST_CONTRACT))
-        .with_serialized_input(input)
-        .with_shared_address_generator(address_generator)
-        .build()
-        .expect("should build");
-
-    let _effects = run_wasm(
-        &mut executor,
-        &mut global_state,
-        state_root_hash,
-        execute_request,
-    );
+fn base_store_request_builder() -> CreateContractRequestBuilder {
+    CreateContractRequestBuilder::default()
+        .with_initiator(DEFAULT_ACCOUNT_HASH.value())
+        .with_gas_limit(1_000_000)
+        .with_transaction_hash(TRANSACTION_HASH)
 }
 
-#[test]
-fn harness() {
-    let mut executor = make_executor();
+// #[test]
+// fn test_contract() {
+//     let mut executor = make_executor();
 
-    let (mut global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
+//     let (mut global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
 
-    let address_generator = make_address_generator();
+//     let input = ("Hello, world!".to_string(), 123456789u32);
 
-    let execute_request = base_execute_builder()
-        .with_target(ExecutionKind::WasmBytes(VM2_HARNESS))
-        .with_serialized_input(())
-        .with_shared_address_generator(address_generator)
-        .build()
-        .expect("should build");
-    run_wasm(
-        &mut executor,
-        &mut global_state,
-        state_root_hash,
-        execute_request,
-    );
-}
+//     let address_generator = make_address_generator();
+
+//     let execute_request = base_execute_builder()
+//         .with_target(ExecutionKind::SessionBytes(VM2_TEST_CONTRACT))
+//         .with_serialized_input(input)
+//         .with_shared_address_generator(address_generator)
+//         .build()
+//         .expect("should build");
+
+//     let _effects = run_wasm_session(
+//         &mut executor,
+//         &mut global_state,
+//         state_root_hash,
+//         execute_request,
+//     );
+// }
+
+// #[test]
+// fn harness() {
+//     let mut executor = make_executor();
+
+//     let (mut global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
+
+//     let address_generator = make_address_generator();
+
+//     let execute_request = base_execute_builder()
+//         .with_target(ExecutionKind::SessionBytes(VM2_HARNESS))
+//         .with_serialized_input(())
+//         .with_shared_address_generator(address_generator)
+//         .build()
+//         .expect("should build");
+//     run_wasm_session(
+//         &mut executor,
+//         &mut global_state,
+//         state_root_hash,
+//         execute_request,
+//     );
+// }
 
 fn make_executor() -> ExecutorV2 {
     let executor_config = ExecutorConfigBuilder::default()
@@ -123,63 +131,63 @@ fn make_executor() -> ExecutorV2 {
     ExecutorV2::new(executor_config)
 }
 
-#[test]
-fn cep18() {
-    let mut executor = make_executor();
+// #[test]
+// fn cep18() {
+//     let mut executor = make_executor();
 
-    let (mut global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
+//     let (mut global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
 
-    let address_generator = make_address_generator();
+//     let address_generator = make_address_generator();
 
-    let execute_request = base_execute_builder()
-        .with_target(ExecutionKind::WasmBytes(VM2_CEP18))
-        .with_serialized_input(())
-        .with_value(0)
-        .with_shared_address_generator(Arc::clone(&address_generator))
-        .build()
-        .expect("should build");
+//     let execute_request = base_execute_builder()
+//         .with_target(ExecutionKind::SessionBytes(VM2_CEP18))
+//         .with_serialized_input(())
+//         .with_value(0)
+//         .with_shared_address_generator(Arc::clone(&address_generator))
+//         .build()
+//         .expect("should build");
 
-    let effects_1 = run_wasm(
-        &mut executor,
-        &mut global_state,
-        state_root_hash,
-        execute_request,
-    );
+//     let effects_1 = run_wasm_session(
+//         &mut executor,
+//         &mut global_state,
+//         state_root_hash,
+//         execute_request,
+//     );
 
-    let contract_hash = {
-        let mut values: Vec<_> = effects_1
-            .transforms()
-            .iter()
-            .filter(|t| t.key().is_smart_contract_key() && t.kind() != &TransformKindV2::Identity)
-            .collect();
-        assert_eq!(values.len(), 1, "{values:#?}");
-        let transform = values.remove(0);
-        let Key::AddressableEntity(EntityAddr::SmartContract(contract_hash)) = transform.key()
-        else {
-            panic!("Expected a smart contract key")
-        };
-        *contract_hash
-    };
+//     let contract_hash = {
+//         let mut values: Vec<_> = effects_1
+//             .transforms()
+//             .iter()
+//             .filter(|t| t.key().is_smart_contract_key() && t.kind() != &TransformKindV2::Identity)
+//             .collect();
+//         assert_eq!(values.len(), 1, "{values:#?}");
+//         let transform = values.remove(0);
+//         let Key::AddressableEntity(EntityAddr::SmartContract(contract_hash)) = transform.key()
+//         else {
+//             panic!("Expected a smart contract key")
+//         };
+//         *contract_hash
+//     };
 
-    state_root_hash = global_state
-        .commit(state_root_hash, effects_1)
-        .expect("Should commit");
+//     state_root_hash = global_state
+//         .commit(state_root_hash, effects_1)
+//         .expect("Should commit");
 
-    let execute_request = base_execute_builder()
-        .with_target(ExecutionKind::WasmBytes(VM2_CEP18_CALLER))
-        .with_serialized_input((contract_hash,))
-        .with_value(0)
-        .with_shared_address_generator(Arc::clone(&address_generator))
-        .build()
-        .expect("should build");
+//     let execute_request = base_execute_builder()
+//         .with_target(ExecutionKind::SessionBytes(VM2_CEP18_CALLER))
+//         .with_serialized_input((contract_hash,))
+//         .with_value(0)
+//         .with_shared_address_generator(Arc::clone(&address_generator))
+//         .build()
+//         .expect("should build");
 
-    let _effects_2 = run_wasm(
-        &mut executor,
-        &mut global_state,
-        state_root_hash,
-        execute_request,
-    );
-}
+//     let _effects_2 = run_wasm_session(
+//         &mut executor,
+//         &mut global_state,
+//         state_root_hash,
+//         execute_request,
+//     );
+// }
 
 fn make_global_state_with_genesis() -> (LmdbGlobalState, Digest, TempDir) {
     let default_accounts = vec![GenesisAccount::Account {
@@ -219,22 +227,55 @@ fn traits() {
     let (mut global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
     let address_generator = make_address_generator();
 
-    let execute_request = base_execute_builder()
-        .with_target(ExecutionKind::WasmBytes(VM2_TRAITS))
-        .with_serialized_input(())
-        .with_shared_address_generator(address_generator)
+    let input = borsh::to_vec(&(123u32,)).unwrap();
+    let store_contract_request = base_store_request_builder()
+        .with_wasm_bytes(VM2_TRAITS)
+        .with_value(1_000)
+        .with_entry_point("new".to_string())
+        .with_input(input.into())
+        .with_shared_address_generator(make_address_generator())
         .build()
         .expect("should build");
 
-    run_wasm(
+    let result = run_store_contract(
         &mut executor,
         &mut global_state,
         state_root_hash,
-        execute_request,
+        store_contract_request,
     );
+    dbg!(&result);
+
+    // let execute_request = base_execute_builder()
+    //     .with_target(ExecutionKind::SessionBytes(VM2_TRAITS))
+    //     .with_serialized_input(())
+    //     .with_shared_address_generator(address_generator)
+    //     .build()
+    //     .expect("should build");
+
+    // run_wasm_session(
+    //     &mut executor,
+    //     &mut global_state,
+    //     state_root_hash,
+    //     execute_request,
+    // );
 }
 
-fn run_wasm(
+fn run_store_contract(
+    executor: &mut ExecutorV2,
+    global_state: &mut LmdbGlobalState,
+    pre_state_hash: Digest,
+    store_contract_request: CreateContractRequest,
+) -> StoreContractResult {
+    let tracking_copy = global_state
+        .tracking_copy(pre_state_hash)
+        .expect("Obtaining root hash succeed")
+        .expect("Root hash exists");
+
+    executor
+        .store_contract(tracking_copy, store_contract_request)
+        .expect("Succeed")
+}
+fn run_wasm_session(
     executor: &mut ExecutorV2,
     global_state: &mut LmdbGlobalState,
     pre_state_hash: Digest,

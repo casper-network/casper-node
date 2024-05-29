@@ -5,7 +5,11 @@ use std::sync::Arc;
 use borsh::BorshSerialize;
 use bytes::Bytes;
 use casper_storage::{tracking_copy::TrackingCopyParts, AddressGenerator};
-use casper_types::{execution::Effects, EntityAddr, Key, TransactionHash};
+use casper_types::{
+    contracts::{ContractHash, ContractPackageHash},
+    execution::Effects,
+    EntityAddr, Key, TransactionHash,
+};
 use parking_lot::RwLock;
 use thiserror::Error;
 use vm_common::selector::Selector;
@@ -15,6 +19,130 @@ use crate::{
     wasm_backend::{GasUsage, WasmPreparationError},
     HostError,
 };
+
+/// Store contract request.
+pub struct CreateContractRequest {
+    /// Initiator's address.
+    pub(crate) initiator: Address,
+    /// Gas limit.
+    pub(crate) gas_limit: u64,
+    /// Wasm bytes of the contract to be stored.
+    pub(crate) wasm_bytes: Bytes,
+    /// Constructor entry point name.
+    pub(crate) entry_point: Option<String>,
+    /// Input data for the constructor.
+    pub(crate) input: Option<Bytes>,
+    /// Value of tokens to be transferred into the constructor.
+    pub(crate) value: u64,
+    /// Transaction hash.
+    pub(crate) transaction_hash: TransactionHash,
+    /// Address generator.
+    pub(crate) address_generator: Arc<RwLock<AddressGenerator>>,
+}
+
+#[derive(Default)]
+pub struct CreateContractRequestBuilder {
+    initiator: Option<Address>,
+    gas_limit: Option<u64>,
+    wasm_bytes: Option<Bytes>,
+    entry_point: Option<String>,
+    input: Option<Bytes>,
+    value: Option<u64>,
+    transaction_hash: Option<TransactionHash>,
+    address_generator: Option<Arc<RwLock<AddressGenerator>>>,
+}
+
+impl CreateContractRequestBuilder {
+    pub fn with_initiator(mut self, initiator: Address) -> Self {
+        self.initiator = Some(initiator);
+        self
+    }
+
+    pub fn with_gas_limit(mut self, gas_limit: u64) -> Self {
+        self.gas_limit = Some(gas_limit);
+        self
+    }
+
+    pub fn with_wasm_bytes(mut self, wasm_bytes: Bytes) -> Self {
+        self.wasm_bytes = Some(wasm_bytes);
+        self
+    }
+
+    pub fn with_entry_point(mut self, entry_point: String) -> Self {
+        self.entry_point = Some(entry_point);
+        self
+    }
+
+    pub fn with_input(mut self, input: Bytes) -> Self {
+        self.input = Some(input);
+        self
+    }
+
+    pub fn with_value(mut self, value: u64) -> Self {
+        self.value = Some(value);
+        self
+    }
+
+    pub fn with_address_generator(mut self, address_generator: AddressGenerator) -> Self {
+        self.address_generator = Some(Arc::new(RwLock::new(address_generator)));
+        self
+    }
+
+    pub fn with_shared_address_generator(
+        mut self,
+        address_generator: Arc<RwLock<AddressGenerator>>,
+    ) -> Self {
+        self.address_generator = Some(address_generator);
+        self
+    }
+
+    pub fn with_transaction_hash(mut self, transaction_hash: TransactionHash) -> Self {
+        self.transaction_hash = Some(transaction_hash);
+        self
+    }
+
+    pub fn build(self) -> Result<CreateContractRequest, &'static str> {
+        let initiator = self.initiator.ok_or("Initiator not set")?;
+        let gas_limit = self.gas_limit.ok_or("Gas limit not set")?;
+        let wasm_bytes = self.wasm_bytes.ok_or("Wasm bytes not set")?;
+        let entry_point = self.entry_point;
+        let input = self.input;
+        let value = self.value.ok_or("Value not set")?;
+        let address_generator = self.address_generator.ok_or("Address generator not set")?;
+        let transaction_hash = self.transaction_hash.ok_or("Transaction hash not set")?;
+        Ok(CreateContractRequest {
+            initiator,
+            gas_limit,
+            wasm_bytes,
+            entry_point,
+            input,
+            value,
+            address_generator,
+            transaction_hash,
+        })
+    }
+}
+
+/// Result of executing a Wasm contract.
+#[derive(Debug)]
+pub struct StoreContractResult {
+    /// Contract package hash.
+    pub(crate) contract_package_hash: ContractPackageHash,
+    /// Contract hash.
+    pub(crate) contract_hash: ContractHash,
+    /// Version
+    pub(crate) version: u32,
+    /// Gas usage.
+    pub(crate) gas_usage: GasUsage,
+    /// Effects produced by the execution.
+    pub(crate) tracking_copy_parts: TrackingCopyParts,
+}
+impl StoreContractResult {
+    pub fn effects(&self) -> &Effects {
+        let (_cache, effects, _x) = &self.tracking_copy_parts;
+        effects
+    }
+}
 
 /// Request to execute a Wasm contract.
 pub struct ExecuteRequest {
@@ -186,15 +314,13 @@ impl ExecuteResult {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExecutionKind {
     /// Execute Wasm bytes directly.
-    WasmBytes(Bytes),
+    SessionBytes(Bytes),
     /// Execute a stored contract by its address.
     Stored {
         /// Address of the contract.
         address: EntityAddr,
-        /// Entry point selector.
-        ///
-        /// If `None`, fallback entry point is used (if present).
-        selector: Option<Selector>,
+        /// Entry point to call.
+        entry_point: String,
     },
 }
 
@@ -210,12 +336,30 @@ pub enum ExecuteError {
     WasmPreparation(#[from] WasmPreparationError),
 }
 
+#[derive(Debug, Error)]
+pub enum StoreContractError {
+    #[error("system contract error: {0}")]
+    SystemContract(HostError),
+
+    #[error("execute: {0}")]
+    Execute(ExecuteError),
+
+    #[error("constructor error: {host_error}")]
+    Constructor { host_error: HostError },
+}
+
 /// Executor trait.
 ///
 /// An executor is responsible for executing Wasm contracts. This implies that the executor is able to prepare Wasm instances, execute them, and handle errors that occur during execution.
 ///
 /// Trait bounds also implying that the executor has to support interior mutability, as it may need to update its internal state during execution of a single or a chain of multiple contracts.
 pub trait Executor: Clone + Send {
+    fn store_contract<R: GlobalStateReader + 'static>(
+        &self,
+        tracking_copy: TrackingCopy<R>,
+        store_request: CreateContractRequest,
+    ) -> Result<StoreContractResult, StoreContractError>;
+
     fn execute<R: GlobalStateReader + 'static>(
         &self,
         tracking_copy: TrackingCopy<R>,
