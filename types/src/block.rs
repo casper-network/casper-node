@@ -23,6 +23,7 @@ mod test_block_builder;
 
 use alloc::{boxed::Box, vec::Vec};
 use core::fmt::{self, Display, Formatter};
+use itertools::Either;
 #[cfg(feature = "json-schema")]
 use once_cell::sync::Lazy;
 #[cfg(feature = "std")]
@@ -400,15 +401,15 @@ impl Block {
     }
 
     /// Returns a list of all transaction hashes in a block.
-    pub fn all_transaction_hashes(&self) -> Box<dyn Iterator<Item = TransactionHash> + '_> {
+    pub fn all_transaction_hashes(&self) -> impl Iterator<Item = TransactionHash> + '_ {
         match self {
-            Block::V1(block) => Box::new(
+            Block::V1(block) => Either::Left(
                 block
                     .body
                     .deploy_and_transfer_hashes()
                     .map(TransactionHash::from),
             ),
-            Block::V2(block_v2) => Box::new(block_v2.all_transactions().copied()),
+            Block::V2(block_v2) => Either::Right(block_v2.all_transactions().copied()),
         }
     }
 
