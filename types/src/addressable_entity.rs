@@ -1540,6 +1540,14 @@ impl AddressableEntity {
         self.associated_keys.remove_key(&account_hash)
     }
 
+    /// Removes an associated key from an addressable entity without checking the threshold.
+    pub fn remove_associated_key_unchecked(
+        &mut self,
+        account_hash: AccountHash,
+    ) -> Result<(), RemoveKeyFailure> {
+        self.associated_keys.remove_key(&account_hash)
+    }
+
     /// Updates an associated key.
     ///
     /// Returns an error if the update would result in a violation of the key management thresholds.
@@ -1556,6 +1564,15 @@ impl AddressableEntity {
                 }
             }
         }
+        self.associated_keys.update_key(account_hash, weight)
+    }
+
+    /// Updates an associated key without checking the threshold.
+    pub fn update_associated_key_unchecked(
+        &mut self,
+        account_hash: AccountHash,
+        weight: Weight,
+    ) -> Result<(), UpdateKeyFailure> {
         self.associated_keys.update_key(account_hash, weight)
     }
 

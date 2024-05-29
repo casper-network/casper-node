@@ -51,6 +51,11 @@ pub enum Error {
     /// assert_eq!(6, Error::CLValue as u8);
     /// ```
     CLValue = 6,
+    /// ```
+    /// # use casper_types::system::entity::Error;
+    /// assert_eq!(7, Error::Threshold as u8);
+    /// ```
+    Threshold = 7,
 }
 
 impl Display for Error {
@@ -63,6 +68,7 @@ impl Display for Error {
             Self::Storage => formatter.write_str("Storage error"),
             Self::GasLimit => formatter.write_str("Execution exceeded the gas limit"),
             Self::CLValue => formatter.write_str("CLValue error"),
+            Self::Threshold => formatter.write_str("Insufficient keys threshold"),
         }
     }
 }
@@ -92,6 +98,7 @@ impl TryFrom<u8> for Error {
             d if d == Self::Storage as u8 => Ok(Self::Storage),
             d if d == Self::GasLimit as u8 => Ok(Self::GasLimit),
             d if d == Self::CLValue as u8 => Ok(Self::CLValue),
+            d if d == Self::Threshold as u8 => Ok(Self::Threshold),
             _ => Err(TryFromU8ForError(())),
         }
     }
