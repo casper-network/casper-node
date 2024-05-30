@@ -1,4 +1,5 @@
 use super::*;
+use casper_execution_engine::engine_state::MAX_PAYMENT_AMOUNT;
 use casper_storage::data_access_layer::{
     BalanceIdentifier, ProofHandling, QueryRequest, QueryResult,
 };
@@ -7,7 +8,7 @@ use casper_types::{
     addressable_entity::NamedKeyAddr,
     runtime_args,
     system::mint::{ARG_AMOUNT, ARG_TARGET},
-    Digest, EntityAddr, GasLimited,
+    AddressableEntity, Digest, EntityAddr, GasLimited,
 };
 use once_cell::sync::Lazy;
 
@@ -245,6 +246,30 @@ fn get_entity_addr_from_account_hash(
         .expect("should have a Key")
         .as_entity_addr()
         .expect("should have an EntityAddr")
+}
+
+fn get_entity(
+    fixture: &mut TestFixture,
+    state_root_hash: Digest,
+    entity_addr: EntityAddr,
+) -> AddressableEntity {
+    let (_node_id, runner) = fixture.network.nodes().iter().next().unwrap();
+    let result = match runner
+        .main_reactor()
+        .contract_runtime()
+        .data_access_layer()
+        .query(QueryRequest::new(
+            state_root_hash,
+            Key::AddressableEntity(entity_addr),
+            vec![],
+        )) {
+        QueryResult::Success { value, .. } => value,
+        err => panic!("Expected QueryResult::Success but got {:?}", err),
+    };
+
+    result
+        .into_addressable_entity()
+        .expect("should have an AddressableEntity")
 }
 
 fn get_entity_named_key(
@@ -3201,5 +3226,182 @@ async fn charge_when_session_code_runs_out_of_gas() {
         bob_current_balance.total,
         bob_initial_balance.total - fee,
         "bob should pay the fee"
+    );
+}
+
+#[tokio::test]
+async fn successful_purse_to_purse_transfer() {
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_pricing_handling(PricingHandling::Fixed)
+        .with_refund_handling(RefundHandling::NoRefund)
+        .with_fee_handling(FeeHandling::NoFee)
+        .with_gas_hold_balance_handling(HoldBalanceHandling::Accrued);
+
+    let mut test = SingleTransactionTestCase::new(
+        ALICE_SECRET_KEY.clone(),
+        BOB_SECRET_KEY.clone(),
+        CHARLIE_SECRET_KEY.clone(),
+        Some(config),
+    )
+    .await;
+
+    let purse_name = "test_purse";
+
+    test.fixture
+        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+        .await;
+
+    let (alice_initial_balance, _, _) = test.get_balances(None);
+
+    // first we set up a purse for Bob
+    let purse_create_contract = RESOURCES_PATH
+        .join("..")
+        .join("target")
+        .join("wasm32-unknown-unknown")
+        .join("release")
+        .join("transfer_main_purse_to_new_purse.wasm");
+    let module_bytes =
+        Bytes::from(std::fs::read(purse_create_contract).expect("cannot read module bytes"));
+
+    let mut txn = Transaction::from(
+        TransactionV1Builder::new_session(TransactionSessionKind::Standard, module_bytes)
+            .with_runtime_args(
+                runtime_args! { "destination" => purse_name, "amount" => U512::from(MAX_PAYMENT_AMOUNT) + U512::one() },
+            )
+            .with_chain_name(CHAIN_NAME)
+            .with_initiator_addr(BOB_PUBLIC_KEY.clone())
+            .build()
+            .unwrap(),
+    );
+    txn.sign(&BOB_SECRET_KEY);
+    let (_txn_hash, _block_height, exec_result) = test.send_transaction(txn).await;
+    assert!(exec_result_is_success(&exec_result), "{:?}", exec_result);
+
+    let state_root_hash = *test.fixture.highest_complete_block().state_root_hash();
+    let bob_addr = get_entity_addr_from_account_hash(
+        &mut test.fixture,
+        state_root_hash,
+        BOB_PUBLIC_KEY.to_account_hash(),
+    );
+    let bob_purse_key =
+        get_entity_named_key(&mut test.fixture, state_root_hash, bob_addr, purse_name);
+    let bob_purse = *bob_purse_key.as_uref().expect("Expected a URef");
+
+    let alice_addr = get_entity_addr_from_account_hash(
+        &mut test.fixture,
+        state_root_hash,
+        ALICE_PUBLIC_KEY.to_account_hash(),
+    );
+    let alice = get_entity(&mut test.fixture, state_root_hash, alice_addr);
+
+    // now we try to transfer from the purse we just created
+    let transfer_amount = 1;
+    let mut txn = Transaction::from(
+        TransactionV1Builder::new_transfer(
+            transfer_amount,
+            Some(bob_purse),
+            alice.main_purse(),
+            None,
+        )
+        .unwrap()
+        .with_chain_name(CHAIN_NAME)
+        .with_initiator_addr(PublicKey::from(&**BOB_SECRET_KEY))
+        .build()
+        .unwrap(),
+    );
+    txn.sign(&BOB_SECRET_KEY);
+
+    let (_txn_hash, block_height, exec_result) = test.send_transaction(txn).await;
+    assert!(exec_result_is_success(&exec_result), "{:?}", exec_result);
+
+    let (alice_current_balance, _, _) = test.get_balances(Some(block_height));
+    assert_eq!(
+        alice_current_balance.total,
+        alice_initial_balance.total + transfer_amount,
+    );
+}
+
+#[tokio::test]
+async fn successful_purse_to_account_transfer() {
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_pricing_handling(PricingHandling::Fixed)
+        .with_refund_handling(RefundHandling::NoRefund)
+        .with_fee_handling(FeeHandling::NoFee)
+        .with_gas_hold_balance_handling(HoldBalanceHandling::Accrued);
+
+    let mut test = SingleTransactionTestCase::new(
+        ALICE_SECRET_KEY.clone(),
+        BOB_SECRET_KEY.clone(),
+        CHARLIE_SECRET_KEY.clone(),
+        Some(config),
+    )
+    .await;
+
+    let purse_name = "test_purse";
+
+    test.fixture
+        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+        .await;
+
+    let (alice_initial_balance, _, _) = test.get_balances(None);
+
+    // first we set up a purse for Bob
+    let purse_create_contract = RESOURCES_PATH
+        .join("..")
+        .join("target")
+        .join("wasm32-unknown-unknown")
+        .join("release")
+        .join("transfer_main_purse_to_new_purse.wasm");
+    let module_bytes =
+        Bytes::from(std::fs::read(purse_create_contract).expect("cannot read module bytes"));
+
+    let mut txn = Transaction::from(
+        TransactionV1Builder::new_session(TransactionSessionKind::Standard, module_bytes)
+            .with_runtime_args(
+                runtime_args! { "destination" => purse_name, "amount" => U512::from(MAX_PAYMENT_AMOUNT) + U512::one() },
+            )
+            .with_chain_name(CHAIN_NAME)
+            .with_initiator_addr(BOB_PUBLIC_KEY.clone())
+            .build()
+            .unwrap(),
+    );
+    txn.sign(&BOB_SECRET_KEY);
+    let (_txn_hash, _block_height, exec_result) = test.send_transaction(txn).await;
+    assert!(exec_result_is_success(&exec_result), "{:?}", exec_result);
+
+    let state_root_hash = *test.fixture.highest_complete_block().state_root_hash();
+    let bob_addr = get_entity_addr_from_account_hash(
+        &mut test.fixture,
+        state_root_hash,
+        BOB_PUBLIC_KEY.to_account_hash(),
+    );
+    let bob_purse_key =
+        get_entity_named_key(&mut test.fixture, state_root_hash, bob_addr, purse_name);
+    let bob_purse = *bob_purse_key.as_uref().expect("Expected a URef");
+
+    // now we try to transfer from the purse we just created
+    let transfer_amount = 1;
+    let mut txn = Transaction::from(
+        TransactionV1Builder::new_transfer(
+            transfer_amount,
+            Some(bob_purse),
+            ALICE_PUBLIC_KEY.clone(),
+            None,
+        )
+        .unwrap()
+        .with_chain_name(CHAIN_NAME)
+        .with_initiator_addr(PublicKey::from(&**BOB_SECRET_KEY))
+        .build()
+        .unwrap(),
+    );
+    txn.sign(&BOB_SECRET_KEY);
+
+    let (_txn_hash, block_height, exec_result) = test.send_transaction(txn).await;
+    assert!(exec_result_is_success(&exec_result), "{:?}", exec_result);
+
+    let (alice_current_balance, _, _) = test.get_balances(Some(block_height));
+    assert_eq!(
+        alice_current_balance.total,
+        alice_initial_balance.total + transfer_amount,
     );
 }
