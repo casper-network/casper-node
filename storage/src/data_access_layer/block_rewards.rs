@@ -17,7 +17,7 @@ pub struct BlockRewardsRequest {
     config: Config,
     state_hash: Digest,
     protocol_version: ProtocolVersion,
-    rewards: BTreeMap<PublicKey, U512>,
+    rewards: BTreeMap<PublicKey, Vec<U512>>,
     block_time: BlockTime,
 }
 
@@ -27,7 +27,7 @@ impl BlockRewardsRequest {
         state_hash: Digest,
         protocol_version: ProtocolVersion,
         block_time: BlockTime,
-        rewards: BTreeMap<PublicKey, U512>,
+        rewards: BTreeMap<PublicKey, Vec<U512>>,
     ) -> Self {
         BlockRewardsRequest {
             config,
@@ -54,7 +54,7 @@ impl BlockRewardsRequest {
     }
 
     /// Returns rewards.
-    pub fn rewards(&self) -> &BTreeMap<PublicKey, U512> {
+    pub fn rewards(&self) -> &BTreeMap<PublicKey, Vec<U512>> {
         &self.rewards
     }
 

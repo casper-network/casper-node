@@ -69,7 +69,7 @@ pub struct EraEndV2 {
     #[serde(with = "BTreeMapToArray::<PublicKey, U512, NextEraValidatorLabels>")]
     pub(super) next_era_validator_weights: BTreeMap<PublicKey, U512>,
     /// The rewards distributed to the validators.
-    pub(super) rewards: BTreeMap<PublicKey, U512>,
+    pub(super) rewards: BTreeMap<PublicKey, Vec<U512>>,
     pub(super) next_era_gas_price: u8,
 }
 
@@ -90,7 +90,7 @@ impl EraEndV2 {
     }
 
     /// Returns the rewards distributed to the validators.
-    pub fn rewards(&self) -> &BTreeMap<PublicKey, U512> {
+    pub fn rewards(&self) -> &BTreeMap<PublicKey, Vec<U512>> {
         &self.rewards
     }
 
@@ -105,7 +105,7 @@ impl EraEndV2 {
         equivocators: Vec<PublicKey>,
         inactive_validators: Vec<PublicKey>,
         next_era_validator_weights: BTreeMap<PublicKey, U512>,
-        rewards: BTreeMap<PublicKey, U512>,
+        rewards: BTreeMap<PublicKey, Vec<U512>>,
         next_era_gas_price: u8,
     ) -> Self {
         EraEndV2 {
@@ -152,8 +152,11 @@ impl EraEndV2 {
 
         let rewards = core::iter::repeat_with(|| {
             let pub_key = PublicKey::random(rng);
-            let reward = rng.gen_range(1..=1_000_000_000);
-            (pub_key, U512::from(reward))
+            let mut rewards = vec![U512::from(rng.gen_range(1..=1_000_000_000 + 1))];
+            if rng.gen_bool(0.2) {
+                rewards.push(U512::from(rng.gen_range(1..=1_000_000_000 + 1)));
+            };
+            (pub_key, rewards)
         })
         .take(rewards_count)
         .collect();
@@ -235,7 +238,7 @@ impl fmt::Display for EraEndV2 {
         let rewards = DisplayIter::new(
             self.rewards
                 .iter()
-                .map(|(public_key, amount)| format!("{}: {}", public_key, amount)),
+                .map(|(public_key, amounts)| format!("{}: {:?}", public_key, amounts)),
         );
 
         write!(

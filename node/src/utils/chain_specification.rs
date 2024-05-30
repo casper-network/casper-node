@@ -54,6 +54,17 @@ pub fn validate_chainspec(chainspec: &Chainspec) -> bool {
         }
     }
 
+    // We don't support lookback by more than one era in the rewards scheme.
+    if chainspec.core_config.minimum_era_height < chainspec.core_config.signature_rewards_max_delay
+    {
+        error!(
+            minimum_era_height = %chainspec.core_config.minimum_era_height,
+            signature_rewards_max_delay = %chainspec.core_config.signature_rewards_max_delay,
+            "signature_rewards_max_delay must be less than minimum_era_height"
+        );
+        return false;
+    }
+
     network::within_message_size_limit_tolerance(chainspec)
         && validate_protocol_config(&chainspec.protocol_config)
         && validate_core_config(&chainspec.core_config)
