@@ -91,9 +91,11 @@ fn production_payout_increases_with_the_supply() {
 
     // Checks:
 
-    for ((recipient_1, amount_1), (recipient_2, amount_2)) in
+    for ((recipient_1, amounts_1), (recipient_2, amounts_2)) in
         iter::zip(rewards_for_era_1, rewards_for_era_2)
     {
+        let amount_1: U512 = amounts_1.into_iter().sum();
+        let amount_2: U512 = amounts_2.into_iter().sum();
         assert_eq!(
             ratio(amount_1),
             ratio(era_1_reward_per_round) * ratio(core_config.production_rewards_proportion())
@@ -168,10 +170,10 @@ fn production_payout_depends_on_the_blocks_produced() {
     assert_eq!(
         rewards,
         map! {
-            VALIDATOR_1.deref().clone() => (ratio(2 * era_1_reward_per_round) * ratio(core_config.production_rewards_proportion())).to_integer(),
-            VALIDATOR_2.deref().clone() => U512::zero(),
-            VALIDATOR_3.deref().clone() => (ratio(era_1_reward_per_round) * ratio(core_config.production_rewards_proportion())).to_integer(),
-            VALIDATOR_4.deref().clone() => U512::zero(),
+            VALIDATOR_1.deref().clone() => vec![(ratio(2 * era_1_reward_per_round) * ratio(core_config.production_rewards_proportion())).to_integer()],
+            VALIDATOR_2.deref().clone() => vec![U512::zero()],
+            VALIDATOR_3.deref().clone() => vec![(ratio(era_1_reward_per_round) * ratio(core_config.production_rewards_proportion())).to_integer()],
+            VALIDATOR_4.deref().clone() => vec![U512::zero()],
         }
     );
 
@@ -183,10 +185,10 @@ fn production_payout_depends_on_the_blocks_produced() {
     assert_eq!(
         rewards,
         map! {
-            VALIDATOR_1.deref().clone() => U512::zero(),
-            VALIDATOR_2.deref().clone() => (ratio(era_2_reward_per_round) * ratio(core_config.production_rewards_proportion())).to_integer(),
-            VALIDATOR_3.deref().clone() => (ratio(era_2_reward_per_round) * ratio(core_config.production_rewards_proportion())).to_integer(),
-            VALIDATOR_4.deref().clone() => (ratio(era_2_reward_per_round) * ratio(core_config.production_rewards_proportion())).to_integer(),
+            VALIDATOR_1.deref().clone() => vec![U512::zero()],
+            VALIDATOR_2.deref().clone() => vec![(ratio(era_2_reward_per_round) * ratio(core_config.production_rewards_proportion())).to_integer()],
+            VALIDATOR_3.deref().clone() => vec![(ratio(era_2_reward_per_round) * ratio(core_config.production_rewards_proportion())).to_integer()],
+            VALIDATOR_4.deref().clone() => vec![(ratio(era_2_reward_per_round) * ratio(core_config.production_rewards_proportion())).to_integer()],
         }
     );
 }
@@ -264,9 +266,9 @@ fn all_signatures_rewards_without_contribution_fee() {
 
     assert_eq!(
         map! {
-            VALIDATOR_1.clone() => validator_1_expected_payout.to_integer(),
-            VALIDATOR_2.clone() => validator_2_expected_payout.to_integer(),
-            VALIDATOR_3.clone() => validator_3_expected_payout.to_integer(),
+            VALIDATOR_1.clone() => vec![validator_1_expected_payout.to_integer()],
+            VALIDATOR_2.clone() => vec![validator_2_expected_payout.to_integer()],
+            VALIDATOR_3.clone() => vec![validator_3_expected_payout.to_integer()],
         },
         rewards_for_era_1,
     );
@@ -278,9 +280,13 @@ fn all_signatures_rewards_without_contribution_fee() {
 
     let validator_1_expected_payout = {
         // 1 block produced:
-        ratio(1) * ratio(era_2_reward_per_round) * ratio(core_config.production_rewards_proportion())
+        ratio(1)
+            * ratio(era_2_reward_per_round)
+            * ratio(core_config.production_rewards_proportion())
+    };
+    let validator_1_expected_payout_prev_era = {
         // All finality signature collected:
-        + ratio(era_1_reward_per_round) * ratio(core_config.collection_rewards_proportion())
+        ratio(era_1_reward_per_round) * ratio(core_config.collection_rewards_proportion())
     };
     let validator_2_expected_payout = {
         // 1 block produced:
@@ -297,9 +303,10 @@ fn all_signatures_rewards_without_contribution_fee() {
 
     assert_eq!(
         map! {
-            VALIDATOR_1.clone() => validator_1_expected_payout.to_integer(),
-            VALIDATOR_2.clone() => validator_2_expected_payout.to_integer(),
-            VALIDATOR_3.clone() => validator_3_expected_payout.to_integer(),
+            VALIDATOR_1.clone() => vec![validator_1_expected_payout.to_integer(),
+                                        validator_1_expected_payout_prev_era.to_integer()],
+            VALIDATOR_2.clone() => vec![validator_2_expected_payout.to_integer()],
+            VALIDATOR_3.clone() => vec![validator_3_expected_payout.to_integer()],
         },
         rewards_for_era_2,
     );
@@ -379,9 +386,9 @@ fn all_signatures_rewards_without_finder_fee() {
     assert_eq!(
         rewards_for_era_1,
         map! {
-            VALIDATOR_1.clone() => validator_1_expected_payout.to_integer(),
-            VALIDATOR_2.clone() => validator_2_expected_payout.to_integer(),
-            VALIDATOR_3.clone() => validator_3_expected_payout.to_integer(),
+            VALIDATOR_1.clone() => vec![validator_1_expected_payout.to_integer()],
+            VALIDATOR_2.clone() => vec![validator_2_expected_payout.to_integer()],
+            VALIDATOR_3.clone() => vec![validator_3_expected_payout.to_integer()],
         }
     );
 }
@@ -465,9 +472,9 @@ fn all_signatures_rewards() {
     assert_eq!(
         rewards_for_era_1,
         map! {
-            VALIDATOR_1.clone() => validator_1_expected_payout.to_integer(),
-            VALIDATOR_2.clone() => validator_2_expected_payout.to_integer(),
-            VALIDATOR_3.clone() => validator_3_expected_payout.to_integer(),
+            VALIDATOR_1.clone() => vec![validator_1_expected_payout.to_integer()],
+            VALIDATOR_2.clone() => vec![validator_2_expected_payout.to_integer()],
+            VALIDATOR_3.clone() => vec![validator_3_expected_payout.to_integer()],
         }
     );
 }
@@ -575,9 +582,9 @@ fn mixed_signatures_pattern() {
         assert_eq!(
             rewards_for_era_1,
             map! {
-                VALIDATOR_1.clone() => validator_1_expected_payout.to_integer(),
-                VALIDATOR_2.clone() => validator_2_expected_payout.to_integer(),
-                VALIDATOR_3.clone() => validator_3_expected_payout.to_integer(),
+                VALIDATOR_1.clone() => vec![validator_1_expected_payout.to_integer()],
+                VALIDATOR_2.clone() => vec![validator_2_expected_payout.to_integer()],
+                VALIDATOR_3.clone() => vec![validator_3_expected_payout.to_integer()],
             }
         );
     }
@@ -588,9 +595,9 @@ fn mixed_signatures_pattern() {
         let rewards_for_era_2 =
             rewards_for_era(constructor.for_era(rng, era), era, &core_config).unwrap();
 
-        let validator_1_expected_payout = {
+        let validator_1_expected_payout = vec![
             // 1 block produced:
-            production * ratio(1) * ratio(era_2_reward_per_round)
+            (production * ratio(1) * ratio(era_2_reward_per_round)
             // 2 finality signatures collected:
             + collection * {
                 ratio(1) * constructor.weight(era, VALIDATOR_1.deref())
@@ -598,30 +605,30 @@ fn mixed_signatures_pattern() {
             } * ratio(era_2_reward_per_round)
             // Finality signed:
             + contribution * {
-                // 1 in previous era:
-                ratio(1) * ratio(era_1_reward_per_round) * constructor.weight(1, VALIDATOR_1.deref())
                 // 3 in current era:
-                + ratio(3) * ratio(era_2_reward_per_round) * constructor.weight(era, VALIDATOR_1.deref())
-            }
-        };
+                ratio(3) * ratio(era_2_reward_per_round) * constructor.weight(era, VALIDATOR_1.deref())
+            }).to_integer(),
+            // 1 contributed in previous era:
+            (contribution * {
+                ratio(1) * ratio(era_1_reward_per_round) * constructor.weight(1, VALIDATOR_1.deref())
+            }).to_integer()
+        ];
 
-        let validator_2_expected_payout = {
+        let validator_2_expected_payout = vec![
             // 1 block produced:
-            ratio(1) * production * ratio(era_2_reward_per_round)
+            (ratio(1) * production * ratio(era_2_reward_per_round)
             // No finality signature collected:
             // 3 finality signed:
-            + ratio(3) * contribution * ratio(era_2_reward_per_round) * constructor.weight(era, VALIDATOR_2.deref())
-        };
+            + ratio(3) * contribution * ratio(era_2_reward_per_round) * constructor.weight(era, VALIDATOR_2.deref()))
+            .to_integer()
+        ];
 
-        let validator_3_expected_payout = {
+        let validator_3_expected_payout = vec![
             // 1 block produced:
-            ratio(1) * production * ratio(era_2_reward_per_round)
+            (ratio(1) * production * ratio(era_2_reward_per_round)
             // 2 finality signatures collected:
             + collection * {
                 (
-                    ratio(1) * constructor.weight(1, VALIDATOR_1.deref())
-                ) * ratio(era_1_reward_per_round)
-                + (
                     ratio(1) * constructor.weight(era, VALIDATOR_1.deref())
                     + ratio(1) * constructor.weight(era, VALIDATOR_2.deref())
                     + ratio(1) * constructor.weight(era, VALIDATOR_3.deref())
@@ -630,22 +637,27 @@ fn mixed_signatures_pattern() {
             }
             // Finality signed:
             + contribution * {
+                // 3 in current era:
+                ratio(3) * ratio(era_2_reward_per_round) * constructor.weight(era, VALIDATOR_3.deref())
+            }).to_integer(),
+            // for era 1
+            (collection * {
+                (
+                    ratio(1) * constructor.weight(1, VALIDATOR_1.deref())
+                ) * ratio(era_1_reward_per_round)
+            }
+            + contribution * {
                 // 1 in previous era:
                 ratio(1) * ratio(era_1_reward_per_round) * constructor.weight(1, VALIDATOR_3.deref())
-                // 3 in current era:
-                + ratio(3) * ratio(era_2_reward_per_round) * constructor.weight(era, VALIDATOR_3.deref())
-            }
-        };
+            }).to_integer()
+        ];
 
-        let validator_4_expected_payout = {
+        let validator_4_expected_payout = vec![
             // 1 block produced:
-            ratio(1) * production * ratio(era_2_reward_per_round)
+            (ratio(1) * production * ratio(era_2_reward_per_round)
             // 6 finality signatures collected:
             + collection * {
                 (
-                    ratio(1) * constructor.weight(1, VALIDATOR_3.deref())
-                ) * ratio(era_1_reward_per_round)
-                + (
                     ratio(1) * constructor.weight(era, VALIDATOR_1.deref())
                     + ratio(1) * constructor.weight(era, VALIDATOR_2.deref())
                     + ratio(2) * constructor.weight(era, VALIDATOR_3.deref())
@@ -653,16 +665,23 @@ fn mixed_signatures_pattern() {
                 ) * ratio(era_2_reward_per_round)
             }
             // 3 finality signed:
-            + ratio(2) * contribution * ratio(era_2_reward_per_round) * constructor.weight(era, VALIDATOR_4.deref())
-        };
+            + ratio(2) * contribution * ratio(era_2_reward_per_round) * constructor.weight(era, VALIDATOR_4.deref()))
+            .to_integer(),
+            // for era 1
+            (collection * {
+                (
+                    ratio(1) * constructor.weight(1, VALIDATOR_3.deref())
+                ) * ratio(era_1_reward_per_round)
+            }).to_integer()
+        ];
 
         assert_eq!(
             rewards_for_era_2,
             map! {
-                VALIDATOR_1.clone() => validator_1_expected_payout.to_integer(),
-                VALIDATOR_2.clone() => validator_2_expected_payout.to_integer(),
-                VALIDATOR_3.clone() => validator_3_expected_payout.to_integer(),
-                VALIDATOR_4.clone() => validator_4_expected_payout.to_integer(),
+                VALIDATOR_1.clone() => validator_1_expected_payout,
+                VALIDATOR_2.clone() => validator_2_expected_payout,
+                VALIDATOR_3.clone() => validator_3_expected_payout,
+                VALIDATOR_4.clone() => validator_4_expected_payout,
             }
         );
     }
