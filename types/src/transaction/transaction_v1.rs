@@ -624,6 +624,9 @@ impl GasLimited for TransactionV1 {
                     } else if self.is_native_auction() {
                         let entry_point = self.body().entry_point();
                         let amount = match entry_point {
+                            TransactionEntryPoint::Call => {
+                                return Err(InvalidTransactionV1::EntryPointCannotBeCall)
+                            }
                             TransactionEntryPoint::Custom(_) | TransactionEntryPoint::Transfer => {
                                 return Err(InvalidTransactionV1::EntryPointCannotBeCustom {
                                     entry_point: entry_point.clone(),
