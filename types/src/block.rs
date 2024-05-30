@@ -23,6 +23,7 @@ mod test_block_builder;
 
 use alloc::{boxed::Box, vec::Vec};
 use core::fmt::{self, Display, Formatter};
+use itertools::Either;
 #[cfg(feature = "json-schema")]
 use once_cell::sync::Lazy;
 #[cfg(feature = "std")]
@@ -40,9 +41,8 @@ use schemars::JsonSchema;
 use crate::TransactionConfig;
 
 use crate::{
-    bytesrepr,
-    bytesrepr::{FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    Digest, EraId, ProtocolVersion, PublicKey, Timestamp,
+    bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    Digest, EraId, ProtocolVersion, PublicKey, Timestamp, TransactionHash,
 };
 pub use available_block_range::AvailableBlockRange;
 pub use block_body::{BlockBody, BlockBodyV1, BlockBodyV2};
@@ -397,6 +397,19 @@ impl Block {
                 (block.body.deploy_hashes().len() + block.body.transfer_hashes().len()) as u64
             }
             Block::V2(block_v2) => block_v2.all_transactions().count() as u64,
+        }
+    }
+
+    /// Returns a list of all transaction hashes in a block.
+    pub fn all_transaction_hashes(&self) -> impl Iterator<Item = TransactionHash> + '_ {
+        match self {
+            Block::V1(block) => Either::Left(
+                block
+                    .body
+                    .deploy_and_transfer_hashes()
+                    .map(TransactionHash::from),
+            ),
+            Block::V2(block_v2) => Either::Right(block_v2.all_transactions().copied()),
         }
     }
 

@@ -209,6 +209,14 @@ impl BlockSignatures {
         }
     }
 
+    /// Removes a signature corresponding to the specified key.
+    pub fn remove_signature(&mut self, public_key: &PublicKey) -> Option<Signature> {
+        match self {
+            BlockSignatures::V1(block_signatures) => block_signatures.proofs.remove(public_key),
+            BlockSignatures::V2(block_signatures) => block_signatures.proofs.remove(public_key),
+        }
+    }
+
     /// Sets the era ID to its max value, rendering it and hence `self` invalid (assuming the
     /// relevant era ID for this `SignedBlockHeader` wasn't already the max value).
     #[cfg(any(feature = "testing", test))]
