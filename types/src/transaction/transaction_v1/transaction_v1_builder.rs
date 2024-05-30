@@ -65,6 +65,25 @@ impl<'a> TransactionV1Builder<'a> {
     /// The default scheduling for transactions, i.e. `Standard`.
     pub const DEFAULT_SCHEDULING: TransactionScheduling = TransactionScheduling::Standard;
 
+    /// Creates a new `TransactionV1Builder`.
+    ///
+    /// # Note
+    ///
+    /// Before calling [`build`](Self::build), you must ensure:
+    ///
+    /// - A chain name is provided by calling [`with_chain_name`](Self::with_chain_name).
+    /// - An initiator address is set by calling [`with_initiator_addr`](Self::with_initiator_addr).
+    /// - A secret key is set by calling [`with_secret_key`](Self::with_secret_key).
+    ///
+    /// This function sets the following default values:
+    ///
+    /// - `chain_name` is initialized to `None`.
+    /// - `timestamp` is set to the current time using [`Timestamp::now`](Timestamp::now).
+    /// - `ttl` is set to the default TTL value [`Self::DEFAULT_TTL`].
+    /// - `pricing_mode` is set to the default pricing mode [`Self::DEFAULT_PRICING_MODE`].
+    /// - `initiator_addr` is initialized to `None`.
+    /// - `secret_key` is initialized to `None`.
+    ///
     pub fn new(body: TransactionV1Body) -> Self {
         TransactionV1Builder {
             chain_name: None,
