@@ -1,6 +1,10 @@
 use super::*;
 use casper_storage::data_access_layer::{BalanceIdentifier, ProofHandling};
-use casper_types::GasLimited;
+use casper_types::{
+    runtime_args,
+    system::mint::{ARG_AMOUNT, ARG_TARGET},
+    GasLimited,
+};
 use once_cell::sync::Lazy;
 
 use casper_types::{bytesrepr::Bytes, execution::ExecutionResultV1, TransactionSessionKind};
@@ -2793,4 +2797,236 @@ async fn delegate_and_undelegate_bid_transaction() {
 
     let (_txn_hash, _block_height, exec_result) = test.send_transaction(txn).await;
     assert!(exec_result_is_success(&exec_result));
+}
+
+#[tokio::test]
+async fn insufficient_funds_when_caller_lacks_minimum_balance() {
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_pricing_handling(PricingHandling::Fixed)
+        .with_refund_handling(RefundHandling::NoRefund)
+        .with_fee_handling(FeeHandling::NoFee)
+        .with_gas_hold_balance_handling(HoldBalanceHandling::Accrued);
+
+    let mut test = SingleTransactionTestCase::new(
+        ALICE_SECRET_KEY.clone(),
+        BOB_SECRET_KEY.clone(),
+        CHARLIE_SECRET_KEY.clone(),
+        Some(config),
+    )
+    .await;
+
+    test.fixture
+        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+        .await;
+
+    let (_, bob_initial_balance, _) = test.get_balances(None);
+    let transfer_amount = bob_initial_balance.total - U512::one();
+    let mut txn = Transaction::from(
+        TransactionV1Builder::new_transfer(transfer_amount, None, ALICE_PUBLIC_KEY.clone(), None)
+            .unwrap()
+            .with_chain_name(CHAIN_NAME)
+            .with_initiator_addr(PublicKey::from(&**BOB_SECRET_KEY))
+            .build()
+            .unwrap(),
+    );
+    txn.sign(&BOB_SECRET_KEY);
+
+    let (_txn_hash, _block_height, exec_result) = test.send_transaction(txn).await;
+    let ExecutionResult::V2(result) = exec_result else {
+        panic!("Expected ExecutionResult::V2 but got {:?}", exec_result);
+    };
+    let transfer_cost: U512 =
+        U512::from(test.chainspec().system_costs_config.mint_costs().transfer) * MIN_GAS_PRICE;
+
+    assert_eq!(result.error_message.as_deref(), Some("Insufficient funds"));
+    assert_eq!(result.cost, transfer_cost);
+}
+
+#[tokio::test]
+async fn charge_when_session_code_succeeds() {
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_pricing_handling(PricingHandling::Fixed)
+        .with_refund_handling(RefundHandling::NoRefund)
+        .with_fee_handling(FeeHandling::PayToProposer);
+
+    let mut test = SingleTransactionTestCase::new(
+        ALICE_SECRET_KEY.clone(),
+        BOB_SECRET_KEY.clone(),
+        CHARLIE_SECRET_KEY.clone(),
+        Some(config),
+    )
+    .await;
+
+    test.fixture
+        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+        .await;
+
+    let contract = RESOURCES_PATH
+        .join("..")
+        .join("target")
+        .join("wasm32-unknown-unknown")
+        .join("release")
+        .join("transfer_purse_to_account.wasm");
+    let module_bytes = Bytes::from(std::fs::read(contract).expect("cannot read module bytes"));
+
+    let (alice_initial_balance, bob_initial_balance, _) = test.get_balances(None);
+
+    let transferred_amount = 1;
+    let mut txn = Transaction::from(
+        TransactionV1Builder::new_session(TransactionSessionKind::Standard, module_bytes, "call")
+            .with_runtime_args(runtime_args! {
+                ARG_TARGET => CHARLIE_PUBLIC_KEY.to_account_hash(),
+                ARG_AMOUNT => U512::from(transferred_amount)
+            })
+            .with_chain_name(CHAIN_NAME)
+            .with_initiator_addr(BOB_PUBLIC_KEY.clone())
+            .build()
+            .unwrap(),
+    );
+    txn.sign(&BOB_SECRET_KEY);
+    let (_txn_hash, block_height, exec_result) = test.send_transaction(txn).await;
+    assert!(exec_result_is_success(&exec_result), "{:?}", exec_result);
+
+    let (alice_current_balance, bob_current_balance, _) = test.get_balances(Some(block_height));
+    // alice should get the fee since she is the proposer.
+    let fee = alice_current_balance.total - alice_initial_balance.total;
+
+    assert!(
+        fee > U512::zero(),
+        "fee is {}, expected to be greater than 0",
+        fee
+    );
+    assert_eq!(
+        bob_current_balance.total,
+        bob_initial_balance.total - transferred_amount - fee,
+        "bob should pay the fee"
+    );
+}
+
+#[tokio::test]
+async fn charge_when_session_code_fails_with_user_error() {
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_pricing_handling(PricingHandling::Fixed)
+        .with_refund_handling(RefundHandling::NoRefund)
+        .with_fee_handling(FeeHandling::PayToProposer);
+
+    let mut test = SingleTransactionTestCase::new(
+        ALICE_SECRET_KEY.clone(),
+        BOB_SECRET_KEY.clone(),
+        CHARLIE_SECRET_KEY.clone(),
+        Some(config),
+    )
+    .await;
+
+    test.fixture
+        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+        .await;
+
+    let revert_contract = RESOURCES_PATH
+        .join("..")
+        .join("target")
+        .join("wasm32-unknown-unknown")
+        .join("release")
+        .join("revert.wasm");
+    let module_bytes =
+        Bytes::from(std::fs::read(revert_contract).expect("cannot read module bytes"));
+
+    let (alice_initial_balance, bob_initial_balance, _) = test.get_balances(None);
+
+    let mut txn = Transaction::from(
+        TransactionV1Builder::new_session(TransactionSessionKind::Standard, module_bytes, "call")
+            .with_chain_name(CHAIN_NAME)
+            .with_initiator_addr(BOB_PUBLIC_KEY.clone())
+            .build()
+            .unwrap(),
+    );
+    txn.sign(&BOB_SECRET_KEY);
+    let (_txn_hash, block_height, exec_result) = test.send_transaction(txn).await;
+    assert!(
+        matches!(
+            &exec_result,
+            ExecutionResult::V2(res) if res.error_message.as_deref() == Some("User error: 100")
+        ),
+        "{:?}",
+        exec_result
+    );
+
+    let (alice_current_balance, bob_current_balance, _) = test.get_balances(Some(block_height));
+    // alice should get the fee since she is the proposer.
+    let fee = alice_current_balance.total - alice_initial_balance.total;
+
+    assert!(
+        fee > U512::zero(),
+        "fee is {}, expected to be greater than 0",
+        fee
+    );
+    assert_eq!(
+        bob_current_balance.total,
+        bob_initial_balance.total - fee,
+        "bob should pay the fee"
+    );
+}
+
+#[tokio::test]
+async fn charge_when_session_code_runs_out_of_gas() {
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_pricing_handling(PricingHandling::Fixed)
+        .with_refund_handling(RefundHandling::NoRefund)
+        .with_fee_handling(FeeHandling::PayToProposer);
+
+    let mut test = SingleTransactionTestCase::new(
+        ALICE_SECRET_KEY.clone(),
+        BOB_SECRET_KEY.clone(),
+        CHARLIE_SECRET_KEY.clone(),
+        Some(config),
+    )
+    .await;
+
+    test.fixture
+        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+        .await;
+
+    let revert_contract = RESOURCES_PATH
+        .join("..")
+        .join("target")
+        .join("wasm32-unknown-unknown")
+        .join("release")
+        .join("endless_loop.wasm");
+    let module_bytes =
+        Bytes::from(std::fs::read(revert_contract).expect("cannot read module bytes"));
+
+    let (alice_initial_balance, bob_initial_balance, _) = test.get_balances(None);
+
+    let mut txn = Transaction::from(
+        TransactionV1Builder::new_session(TransactionSessionKind::Standard, module_bytes, "call")
+            .with_chain_name(CHAIN_NAME)
+            .with_initiator_addr(BOB_PUBLIC_KEY.clone())
+            .build()
+            .unwrap(),
+    );
+    txn.sign(&BOB_SECRET_KEY);
+    let (_txn_hash, block_height, exec_result) = test.send_transaction(txn).await;
+    assert!(
+        matches!(
+            &exec_result,
+            ExecutionResult::V2(res) if res.error_message.as_deref() == Some("Out of gas error")
+        ),
+        "{:?}",
+        exec_result
+    );
+
+    let (alice_current_balance, bob_current_balance, _) = test.get_balances(Some(block_height));
+    // alice should get the fee since she is the proposer.
+    let fee = alice_current_balance.total - alice_initial_balance.total;
+
+    assert!(
+        fee > U512::zero(),
+        "fee is {}, expected to be greater than 0",
+        fee
+    );
+    assert_eq!(
+        bob_current_balance.total,
+        bob_initial_balance.total - fee,
+        "bob should pay the fee"
+    );
 }
