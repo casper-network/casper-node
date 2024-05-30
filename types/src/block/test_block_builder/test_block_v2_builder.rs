@@ -278,8 +278,11 @@ fn gen_era_end_v2(
         .collect();
     let rewards = iter::repeat_with(|| {
         let pub_key = PublicKey::random(rng);
-        let reward = rng.gen_range(1..=1_000_000_000 + 1);
-        (pub_key, U512::from(reward))
+        let mut rewards = vec![U512::from(rng.gen_range(1..=1_000_000_000 + 1))];
+        if rng.gen_bool(0.2) {
+            rewards.push(U512::from(rng.gen_range(1..=1_000_000_000 + 1)));
+        };
+        (pub_key, rewards)
     })
     .take(rewards_count)
     .collect();

@@ -1931,10 +1931,10 @@ fn should_get_trusted_ancestor_headers() {
     let (storage, _, blocks) = create_sync_leap_test_chain(&[], false, None);
 
     let get_results = |requested_height: usize| -> Vec<u64> {
-        let mut txn = storage.block_store.checkout_ro().unwrap();
+        let txn = storage.block_store.checkout_ro().unwrap();
         let requested_block_header = blocks.get(requested_height).unwrap().clone_header();
         storage
-            .get_trusted_ancestor_headers(&mut txn, &requested_block_header)
+            .get_trusted_ancestor_headers(&txn, &requested_block_header)
             .unwrap()
             .unwrap()
             .iter()
@@ -1952,15 +1952,15 @@ fn should_get_signed_block_headers() {
     let (storage, _, blocks) = create_sync_leap_test_chain(&[], false, None);
 
     let get_results = |requested_height: usize| -> Vec<u64> {
-        let mut txn = storage.block_store.checkout_ro().unwrap();
+        let txn = storage.block_store.checkout_ro().unwrap();
         let requested_block_header = blocks.get(requested_height).unwrap().clone_header();
         let highest_block_header_with_sufficient_signatures = storage
-            .get_highest_complete_signed_block_header(&mut txn)
+            .get_highest_complete_signed_block_header(&txn)
             .unwrap()
             .unwrap();
         storage
             .get_signed_block_headers(
-                &mut txn,
+                &txn,
                 &requested_block_header,
                 &highest_block_header_with_sufficient_signatures,
             )
@@ -1995,16 +1995,16 @@ fn should_get_signed_block_headers_when_no_sufficient_finality_in_most_recent_bl
     let (storage, _, blocks) = create_sync_leap_test_chain(&[12], false, None);
 
     let get_results = |requested_height: usize| -> Vec<u64> {
-        let mut txn = storage.block_store.checkout_ro().unwrap();
+        let txn = storage.block_store.checkout_ro().unwrap();
         let requested_block_header = blocks.get(requested_height).unwrap().clone_header();
         let highest_block_header_with_sufficient_signatures = storage
-            .get_highest_complete_signed_block_header(&mut txn)
+            .get_highest_complete_signed_block_header(&txn)
             .unwrap()
             .unwrap();
 
         storage
             .get_signed_block_headers(
-                &mut txn,
+                &txn,
                 &requested_block_header,
                 &highest_block_header_with_sufficient_signatures,
             )

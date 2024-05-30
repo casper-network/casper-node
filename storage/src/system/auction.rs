@@ -475,7 +475,9 @@ pub trait Auction:
         let vesting_schedule_period_millis = self.vesting_schedule_period_millis();
         let validator_slots = detail::get_validator_slots(self)?;
         let auction_delay = detail::get_auction_delay(self)?;
-        let snapshot_size = auction_delay as usize + 1;
+        // We have to store auction_delay future eras, one current era and one past era (for
+        // rewards calculations).
+        let snapshot_size = auction_delay as usize + 2;
         let mut era_id: EraId = detail::get_era_id(self)?;
 
         // Process unbond requests
@@ -595,19 +597,30 @@ pub trait Auction:
     /// according to `reward_factors` returned by the consensus component.
     // TODO: rework EraInfo and other related structs, methods, etc. to report correct era-end
     // totals of per-block rewards
-    fn distribute(&mut self, rewards: BTreeMap<PublicKey, U512>) -> Result<(), Error> {
+    fn distribute(&mut self, rewards: BTreeMap<PublicKey, Vec<U512>>) -> Result<(), Error> {
         if self.get_caller() != PublicKey::System.to_account_hash() {
             error!("invalid caller to auction distribute");
             return Err(Error::InvalidCaller);
         }
 
-        let seigniorage_recipients = self.read_seigniorage_recipients()?;
+        let seigniorage_recipients_snapshot = detail::get_seigniorage_recipients_snapshot(self)?;
+        let current_era_id = detail::get_era_id(self)?;
+
         let mut era_info = EraInfo::new();
         let seigniorage_allocations = era_info.seigniorage_allocations_mut();
 
-        for (proposer, reward_amount) in rewards
+        for (proposer, reward_amount, eras_back) in rewards
             .into_iter()
-            .filter(|(key, _amount)| key != &PublicKey::System)
+            .filter(|(key, _amounts)| key != &PublicKey::System)
+            .flat_map(|(key, amounts)| {
+                amounts
+                    .into_iter()
+                    .enumerate()
+                    .map(move |(i, amount)| (key.clone(), amount, i as u64))
+            })
+            // do not process zero amounts, unless they are for the current era (we still want to
+            // record zero allocations for the current validators in EraInfo)
+            .filter(|(_key, amount, eras_back)| !amount.is_zero() || *eras_back == 0)
         {
             // fetch most recent validator public key if public key was changed
             // or the validator withdrew their bid completely
@@ -624,19 +637,23 @@ pub trait Auction:
                 };
 
             let total_reward = Ratio::from(reward_amount);
-            let Some(recipient) = seigniorage_recipients
-                .get(&proposer)
-                .cloned()
-                .or_else(|| {
-                    let bid_key = BidAddr::from(proposer.clone()).into();
-                    let validator_bid = read_validator_bid(self, &bid_key).ok()?;
-                    seigniorage_recipient(self, &validator_bid).ok()
-                })
-                else {
-                    // If the bid doesn't exist, either, the validator has likely been slashed. In
-                    // such a case, simply don't distribute the reward to them.
+            let rewarded_era = current_era_id
+                .checked_sub(eras_back)
+                .ok_or(Error::MissingSeigniorageRecipients)?;
+            let Some(recipient) = seigniorage_recipients_snapshot
+                .get(&rewarded_era)
+                .ok_or(Error::MissingSeigniorageRecipients)?
+                .get(&proposer).cloned()
+            else {
+                // We couldn't find the validator. If the reward amount is zero, we don't care -
+                // the validator wasn't supposed to be rewarded in this era, anyway. Otherwise,
+                // return an error.
+                if reward_amount.is_zero() {
                     continue;
-                };
+                } else {
+                    return Err(Error::ValidatorNotFound);
+                }
+            };
 
             let total_stake = recipient.total_stake().ok_or(Error::ArithmeticOverflow)?;
 

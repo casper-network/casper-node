@@ -23,7 +23,7 @@ pub trait BlockStoreTransaction {
 
 pub trait DataReader<K, T> {
     fn read(&self, key: K) -> Result<Option<T>, BlockStoreError>;
-    fn exists(&mut self, key: K) -> Result<bool, BlockStoreError>;
+    fn exists(&self, key: K) -> Result<bool, BlockStoreError>;
 }
 
 pub trait DataWriter<K, T> {

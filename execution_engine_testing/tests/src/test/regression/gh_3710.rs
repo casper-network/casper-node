@@ -180,7 +180,7 @@ fn distribute_rewards<S>(
     builder.distribute(
         None,
         ProtocolVersion::V1_0_0,
-        IntoIterator::into_iter([(proposer.clone(), amount)]).collect(),
+        IntoIterator::into_iter([(proposer.clone(), vec![amount])]).collect(),
         block_height,
     );
 }
