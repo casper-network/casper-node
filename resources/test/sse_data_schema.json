@@ -2021,6 +2021,13 @@
       "description": "Entry point of a Transaction.",
       "oneOf": [
         {
+          "description": "The standard `call` entry point used in session code.",
+          "type": "string",
+          "enum": [
+            "Call"
+          ]
+        },
+        {
           "description": "A non-native, arbitrary entry point.",
           "type": "object",
           "required": [

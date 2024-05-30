@@ -123,7 +123,9 @@ pub enum InvalidTransaction {
         attempted: U512,
     },
 
-    /// The entry point for this transaction target cannot not be `TransactionEntryPoint::Custom`.
+    /// The entry point for this transaction target cannot be `call`.
+    EntryPointCannotBeCall,
+    /// The entry point for this transaction target cannot be `TransactionEntryPoint::Custom`.
     EntryPointCannotBeCustom {
         /// The invalid entry point.
         entry_point: TransactionEntryPoint,
@@ -255,6 +257,9 @@ impl Display for InvalidTransaction {
                     "insufficient transfer amount; minimum: {minimum} attempted: {attempted}"
                 )
             }
+            InvalidTransaction::EntryPointCannotBeCall => {
+                write!(formatter, "entry point cannot be call")
+            }
             InvalidTransaction::EntryPointCannotBeCustom { entry_point } => {
                 write!(formatter, "entry point cannot be custom: {entry_point}")
             }
@@ -318,6 +323,7 @@ impl StdError for InvalidTransaction {
             | InvalidTransaction::MissingArg { .. }
             | InvalidTransaction::UnexpectedArgType { .. }
             | InvalidTransaction::InsufficientTransferAmount { .. }
+            | InvalidTransaction::EntryPointCannotBeCall
             | InvalidTransaction::EntryPointCannotBeCustom { .. }
             | InvalidTransaction::EntryPointMustBeCustom { .. }
             | InvalidTransaction::EmptyModuleBytes
