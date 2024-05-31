@@ -2915,6 +2915,53 @@ async fn insufficient_funds_transfer_from_account() {
 }
 
 #[tokio::test]
+async fn insufficient_funds_add_bid() {
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_pricing_handling(PricingHandling::Fixed)
+        .with_refund_handling(RefundHandling::NoRefund)
+        .with_fee_handling(FeeHandling::NoFee)
+        .with_gas_hold_balance_handling(HoldBalanceHandling::Accrued);
+
+    let mut test = SingleTransactionTestCase::new(
+        ALICE_SECRET_KEY.clone(),
+        BOB_SECRET_KEY.clone(),
+        CHARLIE_SECRET_KEY.clone(),
+        Some(config),
+    )
+    .await;
+
+    test.fixture
+        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+        .await;
+
+    let (_, bob_initial_balance, _) = test.get_balances(None);
+    let bid_amount = bob_initial_balance.total;
+
+    let mut txn = Transaction::from(
+        TransactionV1Builder::new_add_bid(BOB_PUBLIC_KEY.clone(), 0, bid_amount)
+            .unwrap()
+            .with_chain_name(CHAIN_NAME)
+            .with_initiator_addr(PublicKey::from(&**BOB_SECRET_KEY))
+            .build()
+            .unwrap(),
+    );
+    txn.sign(&BOB_SECRET_KEY);
+
+    let (_txn_hash, _block_height, exec_result) = test.send_transaction(txn).await;
+    let ExecutionResult::V2(result) = exec_result else {
+        panic!("Expected ExecutionResult::V2 but got {:?}", exec_result);
+    };
+    let bid_cost: U512 =
+        U512::from(test.chainspec().system_costs_config.auction_costs().add_bid) * MIN_GAS_PRICE;
+
+    assert_eq!(
+        result.error_message.as_deref(),
+        Some("ApiError::AuctionError(TransferToBidPurse) [64516]")
+    );
+    assert_eq!(result.cost, bid_cost);
+}
+
+#[tokio::test]
 async fn insufficient_funds_transfer_from_purse() {
     let config = SingleTransactionTestCase::default_test_config()
         .with_pricing_handling(PricingHandling::Fixed)
