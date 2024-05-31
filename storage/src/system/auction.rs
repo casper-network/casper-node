@@ -390,7 +390,7 @@ pub trait Auction:
         }
 
         let era_end_timestamp_millis = detail::get_era_end_timestamp_millis(self)?;
-        let era_id: EraId = detail::get_era_id(self)?;
+        let era_id = detail::get_era_id(self)?;
         let bids_detail = detail::get_validator_bids(self, era_id)?;
 
         // Forcibly undelegate bids outside a validator's delegation limits
@@ -413,8 +413,15 @@ pub trait Auction:
                         delegator.staked_amount(),
                         None,
                     )?;
-                    delegator
-                        .decrease_stake(delegator.staked_amount(), era_end_timestamp_millis)?;
+                    match delegator
+                        .decrease_stake(delegator.staked_amount(), era_end_timestamp_millis)
+                    {
+                        Ok(_) => (),
+                        // Work around the case when the locked amounts table has yet to be
+                        // initialized (likely pre-90 day mark).
+                        Err(Error::DelegatorFundsLocked) => continue,
+                        Err(err) => return Err(err),
+                    }
                     let delegator_bid_addr = BidAddr::new_from_public_keys(
                         validator_public_key,
                         Some(&delegator_public_key),
@@ -694,7 +701,8 @@ pub trait Auction:
             let Some(recipient) = seigniorage_recipients_snapshot
                 .get(&rewarded_era)
                 .ok_or(Error::MissingSeigniorageRecipients)?
-                .get(&proposer).cloned()
+                .get(&proposer)
+                .cloned()
             else {
                 // We couldn't find the validator. If the reward amount is zero, we don't care -
                 // the validator wasn't supposed to be rewarded in this era, anyway. Otherwise,

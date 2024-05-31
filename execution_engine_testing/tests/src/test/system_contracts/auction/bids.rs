@@ -22,9 +22,7 @@ use casper_execution_engine::{
     engine_state::{self, engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, Error},
     execution::ExecError,
 };
-use casper_storage::data_access_layer::{
-    forced_undelegate::ForcedUndelegateResult, GenesisRequest, HandleFeeMode,
-};
+use casper_storage::data_access_layer::{GenesisRequest, HandleFeeMode};
 
 use casper_types::{
     self,
@@ -883,7 +881,7 @@ fn should_force_undelegate_with_genesis_delegators() {
     assert_ne!(*ACCOUNT_2_ADDR, *BID_ACCOUNT_1_ADDR,);
     assert_ne!(*ACCOUNT_2_ADDR, *DEFAULT_ACCOUNT_ADDR,);
     let accounts = {
-        let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
+        let mut tmp = DEFAULT_ACCOUNTS.clone();
         let genesis_validator = GenesisAccount::account(
             ACCOUNT_1_PK.clone(),
             Motes::new(ACCOUNT_1_BALANCE),
@@ -904,7 +902,7 @@ fn should_force_undelegate_with_genesis_delegators() {
         tmp
     };
 
-    let exec_config: casper_types::GenesisConfig = GenesisConfigBuilder::new()
+    let exec_config = GenesisConfigBuilder::new()
         .with_accounts(accounts)
         .with_locked_funds_period_millis(CASPER_LOCKED_FUNDS_PERIOD_MILLIS)
         .build();
@@ -939,11 +937,7 @@ fn should_force_undelegate_with_genesis_delegators() {
         .commit();
 
     let result = builder.forced_undelegate(None, DEFAULT_PROTOCOL_VERSION, DEFAULT_BLOCK_TIME);
-    assert!(
-        matches!(result, ForcedUndelegateResult::Success { .. }),
-        "expected success but got {:?}",
-        result
-    );
+    assert!(result.is_success(), "expected success but got {:?}", result);
 }
 
 #[ignore]
