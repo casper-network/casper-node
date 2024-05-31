@@ -1,11 +1,7 @@
 use core::fmt::{self, Formatter};
 
-#[cfg(any(all(feature = "std", feature = "testing"), test))]
-use crate::testing::TestRng;
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
-#[cfg(any(all(feature = "std", feature = "testing"), test))]
-use rand::Rng;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -22,39 +18,31 @@ use serde::{Deserialize, Serialize};
 )]
 #[serde(deny_unknown_fields)]
 #[repr(u8)]
-pub enum TransactionCategory {
-    /// Standard transaction (the default).
+pub(crate) enum TransactionCategory {
+    /// Native mint interaction (the default).
     #[default]
-    Standard = 0,
-    /// Native mint interaction.
-    Mint = 1,
+    Mint = 0,
     /// Native auction interaction.
-    Auction = 2,
+    Auction = 1,
     /// Install or Upgrade.
-    InstallUpgrade = 3,
-}
-
-impl TransactionCategory {
-    /// Returns a random transaction category.
-    #[cfg(any(all(feature = "std", feature = "testing"), test))]
-    pub fn random(rng: &mut TestRng) -> Self {
-        match rng.gen_range(0u32..4) {
-            0 => Self::Mint,
-            1 => Self::Auction,
-            2 => Self::InstallUpgrade,
-            3 => Self::Standard,
-            _ => unreachable!(),
-        }
-    }
+    InstallUpgrade = 2,
+    /// A large Wasm based transaction.
+    Large = 3,
+    /// A medium Wasm based transaction.
+    Medium = 4,
+    /// A small Wasm based transaction.
+    Small = 5,
 }
 
 impl fmt::Display for TransactionCategory {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            TransactionCategory::Standard => write!(f, "Standard"),
             TransactionCategory::Mint => write!(f, "Mint"),
             TransactionCategory::Auction => write!(f, "Auction"),
             TransactionCategory::InstallUpgrade => write!(f, "InstallUpgrade"),
+            TransactionCategory::Large => write!(f, "Large"),
+            TransactionCategory::Medium => write!(f, "Medium"),
+            TransactionCategory::Small => write!(f, "Small"),
         }
     }
 }

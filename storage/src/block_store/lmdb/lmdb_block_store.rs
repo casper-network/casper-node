@@ -520,6 +520,23 @@ impl LmdbBlockStore {
         }
         Ok(was_written)
     }
+
+    pub(crate) fn delete_execution_results(
+        &self,
+        txn: &mut RwTransaction,
+        block_hash: &BlockHash,
+    ) -> Result<bool, BlockStoreError> {
+        let block = self.get_single_block(txn, block_hash)?;
+
+        if let Some(block) = block {
+            for txn_hash in block.all_transaction_hashes() {
+                self.execution_result_dbs
+                    .delete(txn, &txn_hash)
+                    .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?;
+            }
+        }
+        Ok(true)
+    }
 }
 
 pub(crate) fn new_environment(
@@ -636,7 +653,7 @@ where
         self.block_store.get_single_block(&self.txn, &key)
     }
 
-    fn exists(&mut self, key: BlockHash) -> Result<bool, BlockStoreError> {
+    fn exists(&self, key: BlockHash) -> Result<bool, BlockStoreError> {
         self.block_store.block_exists(&self.txn, &key)
     }
 }
@@ -649,7 +666,7 @@ where
         self.block_store.get_single_block_header(&self.txn, &key)
     }
 
-    fn exists(&mut self, key: BlockHash) -> Result<bool, BlockStoreError> {
+    fn exists(&self, key: BlockHash) -> Result<bool, BlockStoreError> {
         self.block_store.block_header_exists(&self.txn, &key)
     }
 }
@@ -662,7 +679,7 @@ where
         self.block_store.read_approvals_hashes(&self.txn, &key)
     }
 
-    fn exists(&mut self, key: BlockHash) -> Result<bool, BlockStoreError> {
+    fn exists(&self, key: BlockHash) -> Result<bool, BlockStoreError> {
         self.block_store.block_header_exists(&self.txn, &key)
     }
 }
@@ -675,7 +692,7 @@ where
         self.block_store.get_block_signatures(&self.txn, &key)
     }
 
-    fn exists(&mut self, key: BlockHash) -> Result<bool, BlockStoreError> {
+    fn exists(&self, key: BlockHash) -> Result<bool, BlockStoreError> {
         self.block_store.block_signatures_exist(&self.txn, &key)
     }
 }
@@ -691,7 +708,7 @@ where
             .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
     }
 
-    fn exists(&mut self, key: TransactionHash) -> Result<bool, BlockStoreError> {
+    fn exists(&self, key: TransactionHash) -> Result<bool, BlockStoreError> {
         self.block_store.transaction_exists(&self.txn, &key)
     }
 }
@@ -707,7 +724,7 @@ where
             .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
     }
 
-    fn exists(&mut self, key: TransactionHash) -> Result<bool, BlockStoreError> {
+    fn exists(&self, key: TransactionHash) -> Result<bool, BlockStoreError> {
         self.block_store
             .finalized_transaction_approvals_dbs
             .exists(&self.txn, &key)
@@ -726,7 +743,7 @@ where
             .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
     }
 
-    fn exists(&mut self, key: TransactionHash) -> Result<bool, BlockStoreError> {
+    fn exists(&self, key: TransactionHash) -> Result<bool, BlockStoreError> {
         self.block_store
             .execution_result_dbs
             .exists(&self.txn, &key)
@@ -742,7 +759,7 @@ where
         self.block_store.get_transfers(&self.txn, &key)
     }
 
-    fn exists(&mut self, key: BlockHash) -> Result<bool, BlockStoreError> {
+    fn exists(&self, key: BlockHash) -> Result<bool, BlockStoreError> {
         self.block_store.has_transfers(&self.txn, &key)
     }
 }
@@ -756,7 +773,7 @@ where
         self.block_store.read_state_store(&self.txn, &key)
     }
 
-    fn exists(&mut self, key: K) -> Result<bool, BlockStoreError> {
+    fn exists(&self, key: K) -> Result<bool, BlockStoreError> {
         self.block_store.state_store_key_exists(&self.txn, &key)
     }
 }
@@ -901,7 +918,12 @@ impl<'t> DataWriter<BlockHashHeightAndEra, BlockExecutionResults>
         Ok(data.block_info)
     }
 
-    fn delete(&mut self, _key: BlockHashHeightAndEra) -> Result<(), BlockStoreError> {
-        Err(BlockStoreError::UnsupportedOperation)
+    fn delete(&mut self, key: BlockHashHeightAndEra) -> Result<(), BlockStoreError> {
+        let block_hash = key.block_hash;
+
+        let _ = self
+            .block_store
+            .delete_execution_results(&mut self.txn, &block_hash)?;
+        Ok(())
     }
 }

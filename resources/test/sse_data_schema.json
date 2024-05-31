@@ -778,7 +778,10 @@
           "description": "The rewards distributed to the validators.",
           "type": "object",
           "additionalProperties": {
-            "$ref": "#/definitions/U512"
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/U512"
+            }
           }
         },
         "next_era_gas_price": {
@@ -1750,7 +1753,8 @@
         "args",
         "entry_point",
         "scheduling",
-        "target"
+        "target",
+        "transaction_kind"
       ],
       "properties": {
         "args": {
@@ -1761,6 +1765,11 @@
         },
         "entry_point": {
           "$ref": "#/definitions/TransactionEntryPoint"
+        },
+        "transaction_kind": {
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0.0
         },
         "scheduling": {
           "$ref": "#/definitions/TransactionScheduling"
@@ -2011,6 +2020,13 @@
     "TransactionEntryPoint": {
       "description": "Entry point of a Transaction.",
       "oneOf": [
+        {
+          "description": "The standard `call` entry point used in session code.",
+          "type": "string",
+          "enum": [
+            "Call"
+          ]
+        },
         {
           "description": "A non-native, arbitrary entry point.",
           "type": "object",
