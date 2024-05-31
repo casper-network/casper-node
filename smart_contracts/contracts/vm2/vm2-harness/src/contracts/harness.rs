@@ -5,12 +5,11 @@ use casper_sdk::{
     collections::Map,
     host::{self, Entity},
     log, revert,
-    sys::Fptr,
     types::{Address, CallError},
     Contract, ContractHandle,
 };
 
-use crate::traits::{Fallback, FallbackExt};
+use crate::traits::{Fallback, FallbackExt, FallbackRef};
 
 pub(crate) const INITIAL_GREETING: &str = "This is initial data set from a constructor";
 pub(crate) const BALANCES_PREFIX: &str = "b";
@@ -24,27 +23,27 @@ pub struct Harness {
     balances: Map<Entity, u64>,
 }
 
-#[casper(path = crate::traits)]
-impl Fallback for Harness {
-    fn fallback(&mut self) {
-        // Called when no entrypoint is matched
-        //
-        // Is invoked when
-        // a) user performs plan CSPR transfer (not a contract call)
-        //   a.1) if there's no fallback entrypoint, the transfer will fail
-        //   a.2) if there's fallback entrypoint, it will be called
-        // b) user calls a contract with no matching entrypoint
-        //   b.1) if there's no fallback entrypoint, the call will fail
-        //   b.2) if there's fallback entrypoint, it will be called and user can
+// #[casper(path = crate::traits)]
+// impl Fallback for Harness {
+//     fn fallback(&mut self) {
+//         // Called when no entrypoint is matched
+//         //
+//         // Is invoked when
+//         // a) user performs plan CSPR transfer (not a contract call)
+//         //   a.1) if there's no fallback entrypoint, the transfer will fail
+//         //   a.2) if there's fallback entrypoint, it will be called
+//         // b) user calls a contract with no matching entrypoint
+//         //   b.1) if there's no fallback entrypoint, the call will fail
+//         //   b.2) if there's fallback entrypoint, it will be called and user can
 
-        log!(
-            "Harness received fallback entrypoint value={}",
-            host::get_value()
-        );
-    }
-}
+//         log!(
+//             "Harness received fallback entrypoint value={}",
+//             host::get_value()
+//         );
+//     }
+// }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, PartialEq)]
 #[casper]
 pub enum CustomError {
     #[error("foo")]
@@ -69,6 +68,7 @@ impl Default for Harness {
         }
     }
 }
+
 pub type Result2 = Result<(), CustomError>;
 
 #[casper]
@@ -287,6 +287,7 @@ impl Harness {
         match host::casper_transfer(&caller, amount) {
             Ok(()) => {}
             Err(call_error) => {
+                log!("Unable to perform a transfer: {call_error:?}");
                 return Err(CustomError::Transfer(call_error.to_string()));
             }
         }
@@ -321,16 +322,4 @@ impl Harness {
             host::get_value()
         );
     }
-
-    // #[casper(ignore_state)]
-    // pub fn migrate() {
-    //     let input = host::casper_copy_input();
-    //     let mut old_state: Self = casper_sdk::host::read_state().unwrap();
-    //     log!("This is a migration entrypoint input={input:?} old_state={old_state:?}");
-    // }
-
-    // pub fn perform_upgrade(&self, code: Vec<u8>, manifest_bytes: Vec<u8>) {
-    //     // Self::upgrade(&code, &manifest_bytes);
-    //     // Self::upgrade(code, manifest);
-    // }
 }

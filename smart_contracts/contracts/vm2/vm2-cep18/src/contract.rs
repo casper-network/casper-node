@@ -4,14 +4,13 @@ use crate::{
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use casper_macros::casper;
-use casper_sdk::host;
+use casper_sdk::{host, log};
 use security_badge::SecurityBadge;
 use std::string::String;
 
 use crate::traits::CEP18Ext;
 
-#[derive(Contract, CasperSchema, BorshSerialize, BorshDeserialize, CasperABI, Debug, Clone)]
-#[casper(impl_traits(CEP18))]
+#[casper(state)]
 pub struct TokenContract {
     state: CEP18State,
 }
@@ -24,7 +23,7 @@ impl Default for TokenContract {
     }
 }
 
-#[casper(contract)]
+#[casper]
 impl TokenContract {
     #[casper(constructor)]
     pub fn new(token_name: String) -> Self {
@@ -37,6 +36,8 @@ impl TokenContract {
             .state
             .security_badges
             .insert(&host::get_caller(), &SecurityBadge::Admin);
+
+        log!("TokenContract created with state {:?}", &instance.state);
         instance
     }
 
@@ -48,6 +49,7 @@ impl TokenContract {
     }
 }
 
+#[casper(path = crate::traits)]
 impl CEP18 for TokenContract {
     fn state(&self) -> &CEP18State {
         &self.state

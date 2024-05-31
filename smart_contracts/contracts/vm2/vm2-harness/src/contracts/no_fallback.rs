@@ -24,7 +24,7 @@ pub struct NoFallback {
 #[casper]
 impl NoFallback {
     #[casper(constructor)]
-    pub fn initialize() -> Self {
+    pub fn no_fallback_initialize() -> Self {
         Self {
             initial_balance: host::get_value(),
             received_balance: 0,

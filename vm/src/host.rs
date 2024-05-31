@@ -22,7 +22,7 @@ use std::{cmp, collections::BTreeSet, mem, num::NonZeroU32, sync::Arc};
 use tracing::error;
 use vm_common::{
     flags::{EntryPointFlags, ReturnFlags},
-    keyspace::Keyspace,
+    keyspace::{Keyspace, KeyspaceTag},
     selector::Selector,
 };
 use wasmer_types::compilation::target;
@@ -56,17 +56,33 @@ pub(crate) fn casper_write<S: GlobalStateReader, E: Executor>(
     value_ptr: u32,
     value_size: u32,
 ) -> VMResult<i32> {
-    let key = caller.memory_read(key_ptr, key_size.try_into().unwrap())?;
-
-    let global_state_key = match Keyspace::from_raw_parts(key_space, &key) {
-        Some(keyspace) => keyspace_to_global_state_key(caller.context(), keyspace),
+    let keyspace_tag = match KeyspaceTag::from_u64(key_space) {
+        Some(keyspace_tag) => keyspace_tag,
         None => {
             // Unknown keyspace received, return error
             return Ok(1);
         }
     };
 
-    let global_state_key = match global_state_key {
+    let key_payload_bytes = caller.memory_read(key_ptr, key_size.try_into().unwrap())?;
+
+    let keyspace = match keyspace_tag {
+        KeyspaceTag::State => Keyspace::State,
+        KeyspaceTag::Context => Keyspace::Context(&key_payload_bytes),
+        KeyspaceTag::NamedKey => {
+            let key_name = match std::str::from_utf8(&key_payload_bytes) {
+                Ok(key_name) => key_name,
+                Err(_) => {
+                    // TODO: Invalid key name encoding
+                    return Ok(1);
+                }
+            };
+
+            Keyspace::NamedKey(key_name)
+        }
+    };
+
+    let global_state_key = match keyspace_to_global_state_key(caller.context(), keyspace) {
         Some(global_state_key) => global_state_key,
         None => {
             // Unknown keyspace received, return error
@@ -105,18 +121,33 @@ pub(crate) fn casper_read<S: GlobalStateReader, E: Executor>(
     cb_alloc: u32,
     alloc_ctx: u32,
 ) -> Result<i32, VMError> {
-    // TODO: Opportunity for optimization: don't read data under key_ptr if given key space does not require it.
-    let key = caller.memory_read(key_ptr, key_size.try_into().unwrap())?;
-
-    let keyspace = match Keyspace::from_raw_parts(key_tag, &key) {
-        Some(keyspace) => keyspace,
+    let keyspace_tag = match KeyspaceTag::from_u64(key_tag) {
+        Some(keyspace_tag) => keyspace_tag,
         None => {
             // Unknown keyspace received, return error
             return Ok(1);
         }
     };
 
-    // Convert keyspace to a global state `Key`
+    // TODO: Opportunity for optimization: don't read data under key_ptr if given key space does not require it.
+    let key_payload_bytes = caller.memory_read(key_ptr, key_size.try_into().unwrap())?;
+
+    let keyspace = match keyspace_tag {
+        KeyspaceTag::State => Keyspace::State,
+        KeyspaceTag::Context => Keyspace::Context(&key_payload_bytes),
+        KeyspaceTag::NamedKey => {
+            let key_name = match std::str::from_utf8(&key_payload_bytes) {
+                Ok(key_name) => key_name,
+                Err(_) => {
+                    // TODO: Invalid key name encoding
+                    return Ok(1);
+                }
+            };
+
+            Keyspace::NamedKey(key_name)
+        }
+    };
+
     let global_state_key = match keyspace_to_global_state_key(caller.context(), keyspace) {
         Some(global_state_key) => global_state_key,
         None => {
@@ -177,18 +208,21 @@ fn keyspace_to_global_state_key<'a, S: GlobalStateReader, E: Executor>(
         }
     };
 
-    let global_state_key = match keyspace {
-        Keyspace::State => Key::State(entity_addr),
+    match keyspace {
+        Keyspace::State => Some(Key::State(entity_addr)),
         Keyspace::Context(payload) => {
             let digest = Digest::hash(payload);
-            casper_types::Key::NamedKey(NamedKeyAddr::new_named_key_entry(
-                entity_addr,
-                digest.value(),
+            Some(casper_types::Key::NamedKey(
+                NamedKeyAddr::new_named_key_entry(entity_addr, digest.value()),
             ))
         }
-    };
-
-    Some(global_state_key)
+        Keyspace::NamedKey(payload) => {
+            let digest = Digest::hash(payload.as_bytes());
+            Some(casper_types::Key::NamedKey(
+                NamedKeyAddr::new_named_key_entry(entity_addr, digest.value()),
+            ))
+        }
+    }
 }
 
 pub(crate) fn casper_copy_input<S: GlobalStateReader, E: Executor>(
@@ -236,7 +270,6 @@ pub(crate) fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'stati
     mut caller: impl Caller<S, E>,
     code_ptr: u32,
     code_len: u32,
-    manifest_ptr: u32,
     value: u64,
     entry_point_ptr: u32,
     entry_point_len: u32,
@@ -282,26 +315,26 @@ pub(crate) fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'stati
         Some(input_data)
     };
 
-    let manifest = caller.memory_read(manifest_ptr, mem::size_of::<Manifest>())?;
-    let bytes = manifest.as_slice();
+    // let manifest = caller.memory_read(manifest_ptr, mem::size_of::<Manifest>())?;
+    // let bytes = manifest.as_slice();
 
-    let manifest = match safe_transmute::transmute_one::<Manifest>(bytes) {
-        Ok(manifest) => manifest,
-        Err(error) => {
-            todo!("handle error {:?}", error);
-        }
-    };
+    // let manifest = match safe_transmute::transmute_one::<Manifest>(bytes) {
+    //     Ok(manifest) => manifest,
+    //     Err(error) => {
+    //         todo!("handle error {:?}", error);
+    //     }
+    // // };
 
-    let entry_points_bytes = caller.memory_read(
-        manifest.entry_points_ptr,
-        (manifest.entry_points_size as usize) * mem::size_of::<EntryPoint>(),
-    )?;
+    // let entry_points_bytes = caller.memory_read(
+    //     manifest.entry_points_ptr,
+    //     (manifest.entry_points_size as usize) * mem::size_of::<EntryPoint>(),
+    // )?;
 
-    let entry_points =
-        match safe_transmute::transmute_many::<EntryPoint, SingleManyGuard>(&entry_points_bytes) {
-            Ok(entry_points) => entry_points,
-            Err(error) => todo!("handle error {:?}", error),
-        };
+    // let entry_points =
+    //     match safe_transmute::transmute_many::<EntryPoint, SingleManyGuard>(&entry_points_bytes) {
+    //         Ok(entry_points) => entry_points,
+    //         Err(error) => todo!("handle error {:?}", error),
+    //     };
 
     // 1. Store package hash
     let contract_package = Package::new(

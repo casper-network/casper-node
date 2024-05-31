@@ -121,8 +121,9 @@ pub fn casper_read<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
     f: F,
 ) -> Result<Option<Entry>, Error> {
     let (key_space, key_bytes) = match key {
-        Keyspace::State => (0, &[][..]),
-        Keyspace::Context(key_bytes) => (1, key_bytes),
+        Keyspace::State => (KeyspaceTag::State as u64, &[][..]),
+        Keyspace::Context(key_bytes) => (KeyspaceTag::Context as u64, key_bytes),
+        Keyspace::NamedKey(key_bytes) => (KeyspaceTag::NamedKey as u64, key_bytes.as_bytes()),
     };
 
     let mut info = casper_sdk_sys::ReadInfo {
@@ -166,8 +167,9 @@ pub fn casper_read<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
 
 pub fn casper_write(key: Keyspace, value: &[u8]) -> Result<(), Error> {
     let (key_space, key_bytes) = match key {
-        Keyspace::State => (0, &[][..]),
-        Keyspace::Context(key_bytes) => (1, key_bytes),
+        Keyspace::State => (KeyspaceTag::State as u64, &[][..]),
+        Keyspace::Context(key_bytes) => (KeyspaceTag::Context as u64, key_bytes),
+        Keyspace::NamedKey(key_bytes) => (KeyspaceTag::NamedKey as u64, key_bytes.as_bytes()),
     };
     let _ret = unsafe {
         casper_sdk_sys::casper_write(
@@ -183,9 +185,8 @@ pub fn casper_write(key: Keyspace, value: &[u8]) -> Result<(), Error> {
 
 pub fn casper_create(
     code: Option<&[u8]>,
-    manifest: &casper_sdk_sys::Manifest,
     value: u64,
-    selector: Option<Selector>,
+    constructor: Option<&str>,
     input_data: Option<&[u8]>,
 ) -> Result<casper_sdk_sys::CreateResult, CallError> {
     let (code_ptr, code_size): (*const u8, usize) = match code {
@@ -195,15 +196,13 @@ pub fn casper_create(
 
     let mut result = MaybeUninit::uninit();
 
-    let manifest_ptr = NonNull::from(manifest);
-
     let call_error = unsafe {
         casper_sdk_sys::casper_create(
             code_ptr,
             code_size,
-            manifest_ptr.as_ptr(),
             value,
-            selector.map(|selector| selector.get()).unwrap_or(0),
+            constructor.map(|s| s.as_ptr()).unwrap_or(ptr::null()),
+            constructor.map(|s| s.len()).unwrap_or(0),
             input_data.map(|s| s.as_ptr()).unwrap_or(ptr::null()),
             input_data.map(|s| s.len()).unwrap_or(0),
             result.as_mut_ptr(),
@@ -221,7 +220,7 @@ pub fn casper_create(
 pub(crate) fn call_into<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
     address: &Address,
     value: u64,
-    selector: Selector,
+    entry_point: &str,
     input_data: &[u8],
     alloc: Option<F>,
 ) -> Result<(), CallError> {
@@ -230,7 +229,8 @@ pub(crate) fn call_into<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
             address.as_ptr(),
             address.len(),
             value,
-            selector.get(),
+            entry_point.as_ptr(),
+            entry_point.len(),
             input_data.as_ptr(),
             input_data.len(),
             alloc_callback::<F>,
@@ -251,15 +251,14 @@ fn call_result_from_code(result_code: u32) -> Result<(), CallError> {
 pub fn casper_call(
     address: &Address,
     value: u64,
-    // config: &CallCofnig,
-    selector: Selector,
+    entry_point: &str,
     input_data: &[u8],
 ) -> (Option<Vec<u8>>, Result<(), CallError>) {
     let mut output = None;
     let result_code = call_into(
         address,
         value,
-        selector,
+        entry_point,
         input_data,
         Some(|size| {
             let mut vec = Vec::new();
@@ -306,7 +305,10 @@ pub fn casper_upgrade(
 use borsh::{BorshDeserialize, BorshSerialize};
 
 use casper_sdk_sys::casper_env_caller;
-use vm_common::{flags::ReturnFlags, keyspace::Keyspace};
+use vm_common::{
+    flags::ReturnFlags,
+    keyspace::{Keyspace, KeyspaceTag},
+};
 
 use crate::{
     abi::{CasperABI, EnumVariant},
@@ -400,7 +402,12 @@ pub fn call<T: ToCallData>(
 ) -> Result<CallResult<T>, CallError> {
     let input_data = call_data.input_data().unwrap_or_default();
 
-    let (maybe_data, result_code) = casper_call(contract_address, value, T::SELECTOR, &input_data);
+    let (maybe_data, result_code) = casper_call(
+        contract_address,
+        value,
+        call_data.entry_point(),
+        &input_data,
+    );
     match result_code {
         Ok(()) | Err(CallError::CalleeReverted) => Ok(CallResult::<T> {
             data: maybe_data,

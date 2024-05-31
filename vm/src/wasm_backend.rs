@@ -22,6 +22,13 @@ pub struct GasUsage {
 }
 
 impl GasUsage {
+    pub fn new(gas_limit: u64, remaining_points: u64) -> Self {
+        GasUsage {
+            gas_limit,
+            remaining_points,
+        }
+    }
+
     pub fn gas_spent(&self) -> u64 {
         debug_assert!(self.remaining_points <= self.gas_limit);
         self.gas_limit - self.remaining_points

@@ -57,8 +57,9 @@ pub trait ContractRef {
 }
 
 pub trait ToCallData {
-    const SELECTOR: Selector;
     type Return<'a>;
+
+    fn entry_point(&self) -> &str;
 
     fn input_data(&self) -> Option<Vec<u8>>;
 }
@@ -258,15 +259,17 @@ impl<T: ContractRef> CallBuilder<T> {
     }
 }
 
-pub struct ContractBuilder<T: Contract> {
+pub struct ContractBuilder<'a, T: ContractRef> {
     value: Option<u64>,
+    code: Option<&'a [u8]>,
     marker: PhantomData<T>,
 }
 
-impl<T: Contract> ContractBuilder<T> {
+impl<'a, T: ContractRef> ContractBuilder<'a, T> {
     pub fn new() -> Self {
         ContractBuilder {
             value: None,
+            code: None,
             marker: PhantomData,
         }
     }
@@ -276,24 +279,38 @@ impl<T: Contract> ContractBuilder<T> {
         self
     }
 
-    pub fn create<'a, CallData: ToCallData>(
+    pub fn with_code(mut self, code: &'a [u8]) -> Self {
+        self.code = Some(code);
+        self
+    }
+
+    pub fn create<CallData: ToCallData>(
         &self,
         func: impl FnOnce() -> CallData,
-    ) -> Result<ContractHandle<T::Ref>, CallError>
+    ) -> Result<ContractHandle<T>, CallError>
     where
         CallData::Return<'a>: BorshDeserialize,
     {
         let value = self.value.unwrap_or(0);
         let call_data = func();
-        T::create(value, call_data)
+        let input_data = call_data.input_data();
+        let create_result = host::casper_create(
+            self.code,
+            value,
+            Some(call_data.entry_point()),
+            input_data.as_ref().map(|data| data.as_slice()),
+        )?;
+        Ok(ContractHandle::from_address(create_result.contract_address))
     }
 
-    pub fn default_create<'a>(&self) -> Result<ContractHandle<T::Ref>, CallError> {
+    pub fn default_create(&self) -> Result<ContractHandle<T>, CallError> {
         if self.value.is_some() {
             panic!("Value should not be set for default create");
         }
 
-        T::default_create()
+        let value = self.value.unwrap_or(0);
+        let create_result = host::casper_create(self.code, value, None, None)?;
+        Ok(ContractHandle::from_address(create_result.contract_address))
     }
 }
 

@@ -14,6 +14,7 @@ use crate::traits::{Fallback, FallbackExt, FallbackRef};
 use super::harness::HarnessRef;
 
 #[casper]
+#[derive(Debug)]
 pub enum TokenOwnerError {
     CallError(CallError),
     DepositError(String),
@@ -28,8 +29,8 @@ impl From<CallError> for TokenOwnerError {
 
 pub type Data = Vec<u8>; // TODO: CasperABI does not support generic parameters and it fails to compile, we need to support this in the macro
 
-#[derive(Debug, Default, PartialEq)]
 #[casper]
+#[derive(Debug, Default, PartialEq)]
 pub enum FallbackHandler {
     /// Accept tokens and do nothing.
     #[default]
@@ -53,7 +54,7 @@ pub struct TokenOwnerContract {
 #[casper]
 impl TokenOwnerContract {
     #[casper(constructor)]
-    pub fn initialize() -> Self {
+    pub fn token_owner_initialize() -> Self {
         Self {
             initial_balance: host::get_value(),
             received_tokens: 0,
@@ -132,6 +133,7 @@ impl TokenOwnerContract {
     }
 }
 
+#[casper(path = crate::traits)]
 impl Fallback for TokenOwnerContract {
     fn fallback(&mut self) {
         match std::mem::replace(&mut self.fallback_handler, FallbackHandler::AcceptTokens) {

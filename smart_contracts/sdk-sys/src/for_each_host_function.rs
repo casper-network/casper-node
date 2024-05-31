@@ -27,9 +27,9 @@ macro_rules! for_each_host_function {
             pub fn casper_create(
                 code_ptr: *const u8,
                 code_size: usize,
-                manifest_ptr: *const $crate::Manifest,
                 value: u64,
-                selector: u32,
+                constructor_ptr: *const u8,
+                constructor_size: usize,
                 input_ptr: *const u8,
                 input_size: usize,
                 result_ptr: *mut $crate::CreateResult,
@@ -38,7 +38,8 @@ macro_rules! for_each_host_function {
                 address_ptr: *const u8,
                 address_size: usize,
                 value: u64,
-                selector: u32,
+                entry_point_ptr: *const u8,
+                entry_point_size: usize,
                 input_ptr: *const u8,
                 input_size: usize,
                 alloc: extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8, // For capturing output data

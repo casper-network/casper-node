@@ -7,11 +7,6 @@ edition = "2021"
 [lib]
 crate-type = ["cdylib", "rlib"]
 
-[[bin]]
-name = "vm2_trait_session"
-path = "src/bin/main.rs"
-
-
 [dependencies]
 casper-macros = { path = "../../../macros" }
 casper-sdk = { path = "../../../sdk" }

@@ -295,7 +295,7 @@ mod tests {
             |mut runtime| runtime.total_balance(uref),
         );
 
-        assert_eq!(ret, Ok(U512::from(1000u64)));
+        assert_eq!(ret, Ok(Ok(U512::from(1000u64))));
 
         let post_root_hash = global_state
             .commit(root_hash, tracking_copy.effects())

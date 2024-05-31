@@ -7345,6 +7345,7 @@ dependencies = [
  "borsh",
  "casper-sdk-sys",
  "hex",
+ "num-derive 0.4.2",
  "num-traits",
  "serde",
 ]
@@ -7394,6 +7395,7 @@ dependencies = [
  "casper-macros",
  "casper-sdk",
  "impls",
+ "serde_json",
  "thiserror",
  "vm-common",
 ]

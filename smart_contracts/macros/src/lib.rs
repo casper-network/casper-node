@@ -605,8 +605,11 @@ fn generate_impl_for_contract(
                                             }
 
                                             impl casper_sdk::ToCallData for #ident {
-                                                const SELECTOR: vm_common::selector::Selector = vm_common::selector::Selector::new(#selector_value);
+                                                // const SELECTOR: vm_common::selector::Selector = vm_common::selector::Selector::new(#selector_value);
+
                                                 type Return<'a> = #call_data_return_lifetime;
+
+                                                fn entry_point(&self) -> &str { stringify!(#name) }
 
                                                 fn input_data(&self) -> Option<Vec<u8>> {
                                                     #input_data_content
@@ -892,6 +895,7 @@ fn generate_impl_trait_for_contract(
     let ref_trait = format_ident!("{}Ext", trait_path.require_ident().unwrap());
     let ref_struct = format_ident!("{}Ref", trait_path.require_ident().unwrap());
     let ref_name = format_ident!("{self_ty}Ref");
+
     code.push(quote! {
         impl #ref_trait for #ref_name {}
     });
@@ -1129,9 +1133,11 @@ fn casper_trait_definition(
                         }
 
                         impl casper_sdk::ToCallData for CallData {
-                            const SELECTOR: vm_common::selector::Selector = vm_common::selector::Selector::new(#selector_value);
+                            // const SELECTOR: vm_common::selector::Selector = vm_common::selector::Selector::new(#selector_value);
+
                             type Return<'a> = #call_data_return_lifetime;
 
+                            fn entry_point(&self) -> &str { stringify!(#func_name) }
                             fn input_data(&self) -> Option<Vec<u8>> {
                                 #input_data_content
                             }
@@ -1161,9 +1167,7 @@ fn casper_trait_definition(
             #(#extra_code)*
         }
 
-
         #vis struct #ref_struct;
-
 
         impl #ref_struct {
             pub const SELECTOR: vm_common::selector::Selector = vm_common::selector::Selector::new(#combined_selectors);
@@ -1194,6 +1198,7 @@ fn casper_trait_definition(
 
         // #[macro_export]
         // mod #mod_name {
+        #[allow(non_snake_case, unused_macros)]
         macro_rules! #macro_name {
             ($mac:ident) => {
                 $mac! {
@@ -1236,11 +1241,11 @@ fn casper_trait_definition(
             //     }
             // }
 
-            // impl casper_sdk::ContractRef for #ref_struct {
-            //     fn new() -> Self {
-            //         #ref_struct
-            //     }
-            // }
+            impl casper_sdk::ContractRef for #ref_struct {
+                fn new() -> Self {
+                    #ref_struct
+                }
+            }
     };
     let foo = quote! {
         #item_trait

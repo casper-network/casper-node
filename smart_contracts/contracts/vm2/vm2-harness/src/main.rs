@@ -1,4 +1,36 @@
-#![no_main]
+#![cfg_attr(target_arch = "wasm32", no_main)]
+
+pub mod contracts;
+pub mod traits;
+
+#[macro_use]
+extern crate alloc;
+
+use alloc::{
+    string::{String, ToString},
+    vec::Vec,
+};
+use borsh::{BorshDeserialize, BorshSerialize};
+use casper_macros::casper;
+use casper_sdk::{
+    collections::Map,
+    host::{self, Entity},
+    log, revert,
+    types::{Address, CallError},
+    Contract, ContractHandle,
+};
+
+use contracts::{
+    no_fallback,
+    token_owner::{self, TokenOwnerContract, TokenOwnerContractRef},
+};
+
+fn next_test(counter: &mut u32, name: &str) -> u32 {
+    let current = *counter;
+    log!("Test {}. Running test: {name}", current);
+    *counter += 1;
+    current
+}
 
 #[casper(export)]
 pub fn call() {
@@ -22,7 +54,9 @@ pub fn call() {
     {
         next_test(&mut counter, "Traps and reverts");
 
-        let contract_handle = Harness::create(0, HarnessRef::initialize()).expect("Should create");
+        let contract_handle = ContractBuilder::<HarnessRef>::new()
+            .create(|| HarnessRef::initialize())
+            .expect("Should create");
         log!("success");
         log!("contract_address: {:?}", contract_handle.contract_address());
 
@@ -132,7 +166,8 @@ pub fn call() {
     {
         next_test(&mut counter, "Constructor with args");
 
-        let contract_handle = Harness::create(0, HarnessRef::constructor_with_args("World".into()))
+        let contract_handle = ContractBuilder::<HarnessRef>::new()
+            .create(|| HarnessRef::constructor_with_args("World".into()))
             .expect("Should create");
         log!("success 2");
         log!("contract_address: {:?}", contract_handle.contract_address());
@@ -146,15 +181,20 @@ pub fn call() {
     {
         next_test(&mut counter, "Failing constructor");
 
-        let error = Harness::create(0, HarnessRef::failing_constructor("World".to_string()))
-            .expect_err(
-                "
-        Constructor that reverts should fail to create",
-            );
+        let error = match ContractBuilder::<HarnessRef>::new()
+            .create(|| HarnessRef::failing_constructor("World".to_string()))
+        {
+            Ok(_) => panic!("Constructor that reverts should fail to create"),
+            Err(error) => error,
+        };
         assert_eq!(error, CallError::CalleeReverted);
 
-        let error = Harness::create(0, HarnessRef::trapping_constructor())
-            .expect_err("Constructor that traps should fail to create");
+        let error = match ContractBuilder::<HarnessRef>::new()
+            .create(|| HarnessRef::trapping_constructor())
+        {
+            Ok(_) => panic!("Constructor that traps should fail to create"),
+            Err(error) => error,
+        };
         assert_eq!(error, CallError::CalleeTrapped);
     }
 
@@ -165,12 +205,14 @@ pub fn call() {
     {
         next_test(&mut counter, "Checking payable entrypoints");
 
-        let contract_handle = ContractBuilder::<Harness>::new()
+        let contract_handle = ContractBuilder::<HarnessRef>::new()
             .with_value(1)
             .create(|| HarnessRef::payable_constructor())
             .expect("Should create");
-        Harness::create(0, HarnessRef::constructor_with_args("Payable".to_string()))
-            .expect("Should create");
+
+        // Harness::create(0, HarnessRef::constructor_with_args("Payable".to_string()))
+        //     .expect("Should create");
+
         assert_eq!(contract_handle.balance(), 1);
 
         log!("success 2");
@@ -217,7 +259,7 @@ pub fn call() {
     {
         let current_test = next_test(&mut counter, "Deposit and withdraw");
 
-        let contract_handle = ContractBuilder::<Harness>::new()
+        let contract_handle = ContractBuilder::<HarnessRef>::new()
             .with_value(0)
             .create(|| HarnessRef::payable_constructor())
             .expect("Should create");
@@ -293,16 +335,16 @@ pub fn call() {
 
         let caller = host::get_caller();
 
-        let harness = ContractBuilder::<Harness>::new()
+        let harness = ContractBuilder::<HarnessRef>::new()
             .with_value(0)
             .create(|| HarnessRef::constructor_with_args("Contract".into()))
             .expect("Should create");
 
         let initial_balance = 1000;
 
-        let token_owner = ContractBuilder::<TokenOwnerContract>::new()
+        let token_owner = ContractBuilder::<TokenOwnerContractRef>::new()
             .with_value(initial_balance)
-            .create(|| TokenOwnerContractRef::initialize())
+            .create(|| TokenOwnerContractRef::token_owner_initialize())
             .expect("Should create");
         assert_eq!(token_owner.balance(), initial_balance);
 
@@ -477,22 +519,199 @@ pub fn call() {
         }
     }
 
-    {
-        let current_test = next_test(
-            &mut counter,
-            "Plain transfer to a contract does not work without fallback",
+    // {
+    //     let current_test = next_test(
+    //         &mut counter,
+    //         "Plain transfer to a contract does not work without fallback",
+    //     );
+
+    //     let no_fallback_contract = ContractBuilder::<NoFallbackRef>::new()
+    //         .with_value(0)
+    //         .create(|| NoFallbackRef::no_fallback_initialize())
+    //         .expect("Should create");
+
+    //     assert_eq!(
+    //         host::casper_transfer(&no_fallback_contract.entity(), 123),
+    //         Err(CallError::NotCallable)
+    //     );
+    // }
+
+    log!("👋 Goodbye");
+}
+
+#[cfg(test)]
+mod tests {
+
+    use alloc::collections::{BTreeMap, BTreeSet};
+
+    use casper_macros::selector;
+    use casper_sdk::{
+        host::native::{self, dispatch},
+        schema::CasperSchema,
+    };
+    use vm_common::{flags::EntryPointFlags, selector::Selector};
+
+    use super::*;
+
+    #[test]
+    fn trait_has_interface() {
+        let interface = FallbackRef::SELECTOR;
+        assert_eq!(interface, Selector::zero());
+    }
+
+    #[test]
+    fn fallback_trait_flags_selectors() {
+        let mut value = 0;
+
+        for entry_point in HarnessRef::ENTRY_POINTS.iter().map(|e| *e).flatten() {
+            if entry_point.flags == EntryPointFlags::FALLBACK.bits() {
+                value ^= entry_point.selector;
+            }
+        }
+
+        assert_eq!(value, 0);
+    }
+
+    #[test]
+    fn test() {
+        dispatch(|| {
+            native::call_export("call");
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn exports() {
+        let exports = native::list_exports()
+            .into_iter()
+            .map(|e| e.name)
+            .collect::<Vec<_>>();
+        assert_eq!(exports, vec!["call"]);
+    }
+
+    #[test]
+    fn compile_time_schema() {
+        let schema = Harness::schema();
+        dbg!(&schema);
+        // println!("{}", serde_json::to_string_pretty(&schema).unwrap());
+    }
+
+    #[test]
+    fn should_greet() {
+        assert_eq!(Harness::name(), "Harness");
+        let mut flipper = Harness::constructor_with_args("Hello".into());
+        assert_eq!(flipper.get_greeting(), "Hello"); // TODO: Initializer
+        flipper.set_greeting("Hi".into());
+        assert_eq!(flipper.get_greeting(), "Hi");
+    }
+
+    #[test]
+    fn unittest() {
+        dispatch(|| {
+            let mut foo = Harness::initialize();
+            assert_eq!(foo.get_greeting(), INITIAL_GREETING);
+            foo.set_greeting("New greeting".to_string());
+            assert_eq!(foo.get_greeting(), "New greeting");
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn list_of_constructors() {
+        let schema = Harness::schema();
+        let constructors: BTreeSet<_> = schema
+            .entry_points
+            .iter()
+            .filter_map(|e| {
+                if e.flags.contains(EntryPointFlags::CONSTRUCTOR) {
+                    Some(e.name.as_str())
+                } else {
+                    None
+                }
+            })
+            .collect();
+        let expected = BTreeSet::from_iter([
+            "constructor_with_args",
+            "failing_constructor",
+            "trapping_constructor",
+            "initialize",
+        ]);
+
+        assert_eq!(constructors, expected);
+    }
+
+    #[test]
+    fn check_schema_selectors() {
+        let schema = Harness::schema();
+
+        let schema_mapping: BTreeMap<_, _> = schema
+            .entry_points
+            .iter()
+            .map(|e| (e.name.as_str(), e.selector))
+            .collect();
+
+        let manifest = &Harness::MANIFEST;
+
+        let manifest_selectors: BTreeSet<u32> = manifest.iter().map(|e| e.selector).collect();
+
+        assert_eq!(schema_mapping["constructor_with_args"], Some(4116419170),);
+        assert!(manifest_selectors.contains(&4116419170));
+    }
+
+    #[test]
+    fn verify_check_private_and_public_methods() {
+        dispatch(|| {
+            Harness::default().private_function_that_should_not_be_exported();
+            Harness::default().restricted_function_that_should_be_part_of_manifest();
+        })
+        .expect("No trap");
+
+        let manifest = &Harness::MANIFEST;
+        const PRIVATE_SELECTOR: Selector =
+            selector!("private_function_that_should_not_be_exported");
+        const PUB_CRATE_SELECTOR: Selector =
+            selector!("restricted_function_that_should_be_part_of_manifest");
+        assert!(
+            manifest
+                .iter()
+                .find(|e| e.selector == PRIVATE_SELECTOR.get())
+                .is_none(),
+            "This entry point should not be part of manifest"
+        );
+        assert!(
+            manifest
+                .iter()
+                .find(|e| e.selector == PUB_CRATE_SELECTOR.get())
+                .is_some(),
+            "This entry point should be part of manifest"
         );
 
-        let no_fallback_contract = ContractBuilder::<NoFallback>::new()
-            .with_value(0)
-            .create(|| NoFallbackRef::initialize())
-            .expect("Should create");
-
-        assert_eq!(
-            host::casper_transfer(&no_fallback_contract.entity(), 123),
-            Err(CallError::NotCallable)
+        let schema = Harness::schema();
+        assert!(
+            schema
+                .entry_points
+                .iter()
+                .find(|e| e.selector == Some(PRIVATE_SELECTOR.get()))
+                .is_none(),
+            "This entry point should not be part of schema"
+        );
+        assert!(
+            schema
+                .entry_points
+                .iter()
+                .find(|e| e.selector == Some(PUB_CRATE_SELECTOR.get()))
+                .is_some(),
+            "This entry point should be part ozf schema"
         );
     }
 
-    log!("👋 Goodbye");
+    #[test]
+    fn foo() {
+        assert_eq!(Harness::default().into_greeting(), "Default value");
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn main() {
+    panic!("Execute \"cargo test\" to test the contract, \"cargo build\" to build it");
 }

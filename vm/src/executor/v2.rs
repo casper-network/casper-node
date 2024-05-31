@@ -219,48 +219,62 @@ impl Executor for ExecutorV2 {
             StoredValue::AddressableEntity(addressable_entity),
         );
 
-        if let Some(entry_point_name) = entry_point {
-            let input = input.unwrap_or_default();
-            let execute_request = ExecuteRequestBuilder::default()
-                .with_initiator(initiator)
-                .with_caller_key(caller_key)
-                .with_callee_key(addressable_entity_key)
-                .with_target(ExecutionKind::Stored {
-                    address: entity_addr,
-                    entry_point: entry_point_name,
-                })
-                .with_gas_limit(gas_limit)
-                .with_input(input)
-                .with_value(value)
-                .with_transaction_hash(transaction_hash)
-                .with_shared_address_generator(address_generator)
-                .build()
-                .expect("should build");
+        let ctor_gas_usage = match entry_point {
+            Some(entry_point_name) => {
+                let input = input.unwrap_or_default();
+                let execute_request = ExecuteRequestBuilder::default()
+                    .with_initiator(initiator)
+                    .with_caller_key(caller_key)
+                    .with_callee_key(addressable_entity_key)
+                    .with_target(ExecutionKind::Stored {
+                        address: entity_addr,
+                        entry_point: entry_point_name,
+                    })
+                    .with_gas_limit(gas_limit)
+                    .with_input(input)
+                    .with_value(value)
+                    .with_transaction_hash(transaction_hash)
+                    .with_shared_address_generator(address_generator)
+                    .build()
+                    .expect("should build");
 
-            let forked_tc = tracking_copy.fork2();
-            match Self::execute(&self, tracking_copy, execute_request) {
-                Ok(ExecuteResult {
-                    host_error,
-                    output,
-                    gas_usage,
-                    tracking_copy_parts: _,
-                }) => {
-                    if let Some(host_error) = host_error {
-                        return Err(StoreContractError::Constructor { host_error });
+                let forked_tc = tracking_copy.fork2();
+
+                match Self::execute(&self, forked_tc, execute_request) {
+                    Ok(ExecuteResult {
+                        host_error,
+                        output,
+                        gas_usage,
+                        tracking_copy_parts,
+                    }) => {
+                        if let Some(host_error) = host_error {
+                            return Err(StoreContractError::Constructor { host_error });
+                        }
+                        tracking_copy.merge_raw_parts(tracking_copy_parts);
+
+                        if let Some(output) = output {
+                            warn!(?output, "unexpected output from constructor");
+                        }
+
+                        gas_usage
+                    }
+                    Err(error) => {
+                        error!(%error, "unable to execute constructor");
+                        return Err(StoreContractError::Execute(error));
                     }
                 }
-                Err(error) => {
-                    error!(%error, "unable to execute constructor");
-                    return Err(StoreContractError::Execute(error));
-                }
             }
-        }
+            None => {
+                // TODO: Calculate storage gas cost etc. and make it the base cost, then add constructor gas cost
+                GasUsage::new(gas_limit, gas_limit)
+            }
+        };
 
         Ok(StoreContractResult {
             contract_package_hash: ContractPackageHash::new(package_hash_bytes),
             contract_hash: ContractHash::new(contract_hash),
             version: 1,
-            gas_usage: todo!(),
+            gas_usage: ctor_gas_usage,
             tracking_copy_parts: tracking_copy.into_raw_parts(),
         })
     }
