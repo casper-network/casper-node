@@ -252,11 +252,7 @@ impl<'a> TransactionV1Builder<'a> {
 
     /// Returns a new `TransactionV1Builder` suitable for building a transaction for running session
     /// logic, i.e. compiled Wasm.
-    pub fn new_session<E: Into<String>>(
-        kind: TransactionSessionKind,
-        module_bytes: Bytes,
-        entry_point: E,
-    ) -> Self {
+    pub fn new_session(kind: TransactionSessionKind, module_bytes: Bytes) -> Self {
         let target = TransactionTarget::Session {
             kind,
             module_bytes,
@@ -265,7 +261,7 @@ impl<'a> TransactionV1Builder<'a> {
         let body = TransactionV1Body::new(
             RuntimeArgs::new(),
             target,
-            TransactionEntryPoint::Custom(entry_point.into()),
+            TransactionEntryPoint::Call,
             TransactionCategory::Large as u8,
             Self::DEFAULT_SCHEDULING,
         );

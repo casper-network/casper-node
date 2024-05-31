@@ -280,7 +280,7 @@ fn should_distribute_delegation_rate_zero() {
     }
 
     let mut rewards = BTreeMap::new();
-    rewards.insert(VALIDATOR_1.clone(), total_payout);
+    rewards.insert(VALIDATOR_1.clone(), vec![total_payout]);
 
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
         *SYSTEM_ADDR,
@@ -545,7 +545,7 @@ fn should_withdraw_bids_after_distribute() {
     }
 
     let mut rewards = BTreeMap::new();
-    rewards.insert(VALIDATOR_1.clone(), total_payout);
+    rewards.insert(VALIDATOR_1.clone(), vec![total_payout]);
 
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
         *SYSTEM_ADDR,
@@ -863,7 +863,7 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
     for idx in 0..10 {
         let rewards = {
             let mut rewards = BTreeMap::new();
-            rewards.insert(VALIDATOR_1.clone(), round_reward);
+            rewards.insert(VALIDATOR_1.clone(), vec![round_reward]);
             rewards
         };
 
@@ -1181,7 +1181,7 @@ fn should_distribute_delegation_rate_half() {
     }
 
     let mut rewards = BTreeMap::new();
-    rewards.insert(VALIDATOR_1.clone(), total_payout);
+    rewards.insert(VALIDATOR_1.clone(), vec![total_payout]);
 
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
         *SYSTEM_ADDR,
@@ -1402,7 +1402,7 @@ fn should_distribute_delegation_rate_full() {
     }
 
     let mut rewards = BTreeMap::new();
-    rewards.insert(VALIDATOR_1.clone(), expected_total_reward_integer);
+    rewards.insert(VALIDATOR_1.clone(), vec![expected_total_reward_integer]);
 
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
         *SYSTEM_ADDR,
@@ -1595,7 +1595,7 @@ fn should_distribute_uneven_delegation_rate_zero() {
     }
 
     let mut rewards = BTreeMap::new();
-    rewards.insert(VALIDATOR_1.clone(), total_payout);
+    rewards.insert(VALIDATOR_1.clone(), vec![total_payout]);
 
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
         *SYSTEM_ADDR,
@@ -1898,7 +1898,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
     }
 
     let mut rewards = BTreeMap::new();
-    rewards.insert(VALIDATOR_1.clone(), total_payout);
+    rewards.insert(VALIDATOR_1.clone(), vec![total_payout]);
 
     // Validator 1 distribution
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
@@ -1957,7 +1957,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
     ));
 
     let mut rewards = BTreeMap::new();
-    rewards.insert(VALIDATOR_2.clone(), total_payout);
+    rewards.insert(VALIDATOR_2.clone(), vec![total_payout]);
 
     // Validator 2 distribution
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
@@ -2003,7 +2003,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
     ));
 
     let mut rewards = BTreeMap::new();
-    rewards.insert(VALIDATOR_3.clone(), total_payout);
+    rewards.insert(VALIDATOR_3.clone(), vec![total_payout]);
 
     // Validator 3 distribution
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
@@ -2229,9 +2229,9 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
     }
 
     let mut rewards = BTreeMap::new();
-    rewards.insert(VALIDATOR_1.clone(), total_payout);
-    rewards.insert(VALIDATOR_2.clone(), total_payout);
-    rewards.insert(VALIDATOR_3.clone(), total_payout);
+    rewards.insert(VALIDATOR_1.clone(), vec![total_payout]);
+    rewards.insert(VALIDATOR_2.clone(), vec![total_payout]);
+    rewards.insert(VALIDATOR_3.clone(), vec![total_payout]);
 
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
         *SYSTEM_ADDR,
@@ -2590,9 +2590,9 @@ fn should_increase_total_supply_after_distribute() {
     let total_payout = U512::from(1_000_000_000_000_u64);
 
     let mut rewards = BTreeMap::new();
-    rewards.insert(VALIDATOR_1.clone(), total_payout);
-    rewards.insert(VALIDATOR_2.clone(), total_payout);
-    rewards.insert(VALIDATOR_3.clone(), total_payout);
+    rewards.insert(VALIDATOR_1.clone(), vec![total_payout]);
+    rewards.insert(VALIDATOR_2.clone(), vec![total_payout]);
+    rewards.insert(VALIDATOR_3.clone(), vec![total_payout]);
 
     for _ in 0..5 {
         let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
@@ -2770,7 +2770,7 @@ fn should_not_create_purses_during_distribute() {
     let total_payout = U512::from(1_000_000_000_000_u64);
 
     let mut rewards = BTreeMap::new();
-    rewards.insert(VALIDATOR_1.clone(), total_payout);
+    rewards.insert(VALIDATOR_1.clone(), vec![total_payout]);
 
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
         *SYSTEM_ADDR,
@@ -2918,7 +2918,7 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
     }
 
     let mut rewards = BTreeMap::new();
-    rewards.insert(VALIDATOR_1.clone(), expected_total_reward_integer);
+    rewards.insert(VALIDATOR_1.clone(), vec![expected_total_reward_integer]);
 
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
         *SYSTEM_ADDR,
@@ -3007,7 +3007,7 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
     let mut rewards = BTreeMap::new();
     rewards.insert(
         VALIDATOR_1.clone(),
-        expected_total_reward_after.to_integer(),
+        vec![expected_total_reward_after.to_integer()],
     );
     assert!(
         builder

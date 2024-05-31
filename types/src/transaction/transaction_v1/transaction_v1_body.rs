@@ -168,6 +168,13 @@ impl TransactionV1Body {
 
         match &self.target {
             TransactionTarget::Native => match self.entry_point {
+                TransactionEntryPoint::Call => {
+                    debug!(
+                        entry_point = %self.entry_point,
+                        "native transaction cannot have call entry point"
+                    );
+                    Err(InvalidTransactionV1::EntryPointCannotBeCall)
+                }
                 TransactionEntryPoint::Custom(_) => {
                     debug!(
                         entry_point = %self.entry_point,
@@ -203,7 +210,8 @@ impl TransactionV1Body {
             },
             TransactionTarget::Stored { .. } => match &self.entry_point {
                 TransactionEntryPoint::Custom(_) => Ok(()),
-                TransactionEntryPoint::Transfer
+                TransactionEntryPoint::Call
+                | TransactionEntryPoint::Transfer
                 | TransactionEntryPoint::AddBid
                 | TransactionEntryPoint::WithdrawBid
                 | TransactionEntryPoint::Delegate
@@ -221,7 +229,7 @@ impl TransactionV1Body {
                 }
             },
             TransactionTarget::Session { module_bytes, .. } => match &self.entry_point {
-                TransactionEntryPoint::Custom(_) => {
+                TransactionEntryPoint::Call | TransactionEntryPoint::Custom(_) => {
                     if module_bytes.is_empty() {
                         debug!("transaction with session code must not have empty module bytes");
                         return Err(InvalidTransactionV1::EmptyModuleBytes);
@@ -238,7 +246,7 @@ impl TransactionV1Body {
                 | TransactionEntryPoint::ChangeBidPublicKey => {
                     debug!(
                         entry_point = %self.entry_point,
-                        "transaction with session code must have custom entry point"
+                        "transaction with session code must use custom or default 'call' entry point"
                     );
                     Err(InvalidTransactionV1::EntryPointMustBeCustom {
                         entry_point: self.entry_point.clone(),
@@ -531,7 +539,7 @@ mod tests {
         let public_key = PublicKey::random(rng);
         let amount = rng.gen::<u64>();
         let args = arg_handling::new_withdraw_bid_args(public_key, amount).unwrap();
-        let entry_point = TransactionEntryPoint::Custom("call".to_string());
+        let entry_point = TransactionEntryPoint::Custom("custom".to_string());
         let body = TransactionV1Body::new(
             args,
             TransactionTarget::Native,
@@ -544,6 +552,27 @@ mod tests {
 
         let config = TransactionConfig::default();
         assert_eq!(body.is_valid(&config), Err(expected_error));
+    }
+
+    #[test]
+    fn not_acceptable_due_to_call_entry_point_in_native() {
+        let rng = &mut TestRng::new();
+        let public_key = PublicKey::random(rng);
+        let amount = rng.gen::<u64>();
+        let args = arg_handling::new_withdraw_bid_args(public_key, amount).unwrap();
+        let entry_point = TransactionEntryPoint::Call;
+        let body = TransactionV1Body::new(
+            args,
+            TransactionTarget::Native,
+            entry_point,
+            TransactionCategory::Mint as u8,
+            TransactionScheduling::random(rng),
+        );
+
+        let expected_error = InvalidTransactionV1::EntryPointCannotBeCall;
+
+        let config = TransactionConfig::default();
+        assert_eq!(body.is_valid(&config,), Err(expected_error));
     }
 
     #[test]
