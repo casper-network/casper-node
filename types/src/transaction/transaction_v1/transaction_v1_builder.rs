@@ -36,16 +36,16 @@ pub use error::TransactionV1BuilderError;
 /// It can be signed later (multiple times if desired) to make it valid before sending to the
 /// network for execution.
 pub struct TransactionV1Builder<'a> {
-    chain_name: Option<String>,
-    timestamp: Timestamp,
-    ttl: TimeDiff,
-    body: TransactionV1Body,
-    pricing_mode: PricingMode,
-    initiator_addr: Option<InitiatorAddr>,
+    pub chain_name: Option<String>,
+    pub timestamp: Timestamp,
+    pub ttl: TimeDiff,
+    pub body: TransactionV1Body,
+    pub pricing_mode: PricingMode,
+    pub initiator_addr: Option<InitiatorAddr>,
     #[cfg(not(any(feature = "testing", test)))]
     secret_key: Option<&'a SecretKey>,
     #[cfg(any(feature = "testing", test))]
-    secret_key: Option<SecretKey>,
+    pub secret_key: Option<SecretKey>,
     #[cfg(any(feature = "testing", test))]
     invalid_approvals: Vec<Approval>,
     _phantom_data: PhantomData<&'a ()>,
