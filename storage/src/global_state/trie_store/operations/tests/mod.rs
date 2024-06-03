@@ -1,3 +1,4 @@
+pub(crate) mod bytesrepr_utils;
 mod ee_699;
 mod keys;
 mod proptests;
