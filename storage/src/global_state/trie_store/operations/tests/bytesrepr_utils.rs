@@ -3,6 +3,12 @@ use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub(crate) struct PanickingFromBytes<T>(T);
 
+impl<T> PanickingFromBytes<T> {
+    pub(crate) fn new(inner: T) -> PanickingFromBytes<T> {
+        PanickingFromBytes(inner)
+    }
+}
+
 impl<T> FromBytes for PanickingFromBytes<T>
 where
     T: FromBytes,
