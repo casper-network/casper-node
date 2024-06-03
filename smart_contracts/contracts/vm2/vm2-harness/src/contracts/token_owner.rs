@@ -1,20 +1,18 @@
 use alloc::vec::Vec;
-use borsh::{BorshDeserialize, BorshSerialize};
 use casper_macros::casper;
 use casper_sdk::{
-    abi::CasperABI,
     host::{self, Entity},
     log, revert,
     types::{Address, CallError},
-    Contract, ContractHandle,
+    ContractHandle,
 };
 
-use crate::traits::{Fallback, FallbackExt, FallbackRef};
+use crate::traits::{Fallback, FallbackExt};
 
 use super::harness::HarnessRef;
 
+#[derive(Debug, PartialEq)]
 #[casper]
-#[derive(Debug)]
 pub enum TokenOwnerError {
     CallError(CallError),
     DepositError(String),
@@ -53,7 +51,7 @@ pub struct TokenOwnerContract {
 
 #[casper]
 impl TokenOwnerContract {
-    #[casper(constructor)]
+    #[casper(constructor, payable)]
     pub fn token_owner_initialize() -> Self {
         Self {
             initial_balance: host::get_value(),

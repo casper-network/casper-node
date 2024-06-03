@@ -143,12 +143,10 @@ fn cep18() {
         .map(Bytes::from)
         .unwrap();
 
-    dbg!(DEFAULT_ACCOUNT_HASH.value());
-
     let create_request = base_store_request_builder()
         .with_wasm_bytes(VM2_CEP18.clone())
         .with_shared_address_generator(Arc::clone(&address_generator))
-        .with_value(1_000_000)
+        .with_value(0)
         .with_entry_point("new".to_string())
         .with_input(input_data)
         .build()

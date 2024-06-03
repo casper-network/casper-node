@@ -1,11 +1,25 @@
 #[cfg(not(target_arch = "wasm32"))]
 pub mod native;
 
+use crate::serializers::borsh::{BorshDeserialize, BorshSerialize};
 use std::{
     ffi::c_void,
     marker::PhantomData,
     mem::MaybeUninit,
     ptr::{self, NonNull},
+};
+
+use casper_sdk_sys::casper_env_caller;
+use vm_common::{
+    flags::ReturnFlags,
+    keyspace::{Keyspace, KeyspaceTag},
+};
+
+use crate::{
+    abi::{CasperABI, EnumVariant},
+    reserve_vec_space,
+    types::{Address, CallError, Entry},
+    Selector, ToCallData,
 };
 
 #[derive(Debug)]
@@ -272,10 +286,10 @@ pub fn casper_call(
 }
 
 pub fn casper_upgrade(
-    code: &[u8],
-    manifest_bytes: &[u8],
-    selector: Option<Selector>,
-    input_data: Option<&[u8]>,
+    _code: &[u8],
+    _manifest_bytes: &[u8],
+    _selector: Option<Selector>,
+    _input_data: Option<&[u8]>,
 ) -> Result<casper_sdk_sys::UpgradeResult, CallError> {
     // let mut result = MaybeUninit::uninit();
 
@@ -301,21 +315,6 @@ pub fn casper_upgrade(
     // }
     todo!()
 }
-
-use borsh::{BorshDeserialize, BorshSerialize};
-
-use casper_sdk_sys::casper_env_caller;
-use vm_common::{
-    flags::ReturnFlags,
-    keyspace::{Keyspace, KeyspaceTag},
-};
-
-use crate::{
-    abi::{CasperABI, EnumVariant},
-    reserve_vec_space,
-    types::{Address, CallError, Entry},
-    Contract, Selector, ToCallData,
-};
 
 pub fn read_vec(key: Keyspace) -> Option<Vec<u8>> {
     let mut vec = Vec::new();
@@ -354,11 +353,6 @@ pub fn write_state<T: BorshSerialize>(state: &T) -> Result<(), Error> {
 /// TODO: Remove once procedural macros are improved, this is just to save the boilerplate when
 /// doing things manually.
 pub fn start<Args: BorshDeserialize, Ret: BorshSerialize>(mut func: impl FnMut(Args) -> Ret) {
-    // Set panic hook (assumes std is enabled etc.)
-    #[cfg(target_arch = "wasm32")]
-    {
-        crate::set_panic_hook();
-    }
     let input = casper_copy_input();
     let args: Args = BorshDeserialize::try_from_slice(&input).unwrap();
     let result = func(args);
@@ -369,11 +363,6 @@ pub fn start<Args: BorshDeserialize, Ret: BorshSerialize>(mut func: impl FnMut(A
 pub fn start_noret<Args: BorshDeserialize, Ret: BorshSerialize>(
     func: impl FnOnce(Args) -> Ret,
 ) -> Ret {
-    // Set panic hook (assumes std is enabled etc.)
-    #[cfg(target_arch = "wasm32")]
-    {
-        crate::set_panic_hook();
-    }
     let input = casper_copy_input();
     let args: Args = BorshDeserialize::try_from_slice(&input).unwrap();
     func(args)

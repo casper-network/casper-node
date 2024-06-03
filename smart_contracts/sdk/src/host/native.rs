@@ -1,10 +1,9 @@
 use bytes::Bytes;
 use core::slice;
-use once_cell::sync::Lazy;
 use rand::Rng;
 use std::{
     cell::RefCell,
-    collections::{BTreeMap, HashMap, VecDeque},
+    collections::{BTreeMap, VecDeque},
     convert::Infallible,
     ptr::{self, NonNull},
     sync::{Arc, RwLock},
@@ -67,7 +66,7 @@ pub fn call_export(name: &str) {
     (exports_by_name[0].fptr)();
 }
 
-pub fn call_export_by_module(module_path: &str, name: &str) {
+pub fn call_export_by_module(_module_path: &str, _name: &str) {
     todo!()
     // EXPORTS.with(|exports| match exports.get(name) {
     //     Some(exports) => {

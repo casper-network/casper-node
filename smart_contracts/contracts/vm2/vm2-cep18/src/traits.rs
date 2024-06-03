@@ -1,17 +1,14 @@
-use core::fmt;
-
-use borsh::{BorshDeserialize, BorshSerialize};
-use casper_macros::{casper, CasperABI};
+use casper_macros::casper;
 use casper_sdk::{
     collections::Map,
     host::{self, Entity},
     log,
-    types::Address,
 };
 
 use crate::{error::Cep18Error, security_badge::SecurityBadge};
 
-#[derive(BorshSerialize, BorshDeserialize, CasperABI, Debug, Clone)]
+#[derive(Debug)]
+#[casper]
 pub struct CEP18State {
     pub name: String,
     pub symbol: String,

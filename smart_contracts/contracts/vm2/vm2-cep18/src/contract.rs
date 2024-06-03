@@ -1,8 +1,7 @@
 use crate::{
     security_badge,
-    traits::{CEP18Ref, CEP18State, CEP18},
+    traits::{CEP18State, CEP18},
 };
-use borsh::{BorshDeserialize, BorshSerialize};
 use casper_macros::casper;
 use casper_sdk::{host, log};
 use security_badge::SecurityBadge;

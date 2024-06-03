@@ -16,7 +16,7 @@ pub struct Vector<T> {
 }
 
 impl<T: CasperABI> CasperABI for Vector<T> {
-    fn populate_definitions(definitions: &mut Definitions) {
+    fn populate_definitions(_definitions: &mut Definitions) {
         // definitions.insert(T::declaration(), T::definition());
     }
 

@@ -1,17 +1,5 @@
-use alloc::vec::Vec;
-use borsh::{BorshDeserialize, BorshSerialize};
 use casper_macros::casper;
-use casper_sdk::{
-    abi::CasperABI,
-    host::{self, Entity},
-    log, revert,
-    types::{Address, CallError},
-    Contract, ContractHandle,
-};
-
-use crate::traits::{Fallback, FallbackExt, FallbackRef};
-
-use super::harness::HarnessRef;
+use casper_sdk::host;
 
 /// A contract that can't receive tokens through a plain `fallback` method.
 #[derive(Default)]

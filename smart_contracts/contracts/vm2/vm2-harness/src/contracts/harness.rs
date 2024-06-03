@@ -1,15 +1,9 @@
-use borsh::{BorshDeserialize, BorshSerialize};
 use casper_macros::casper;
 use casper_sdk::{
-    abi::CasperABI,
     collections::Map,
     host::{self, Entity},
     log, revert,
-    types::{Address, CallError},
-    Contract, ContractHandle,
 };
-
-use crate::traits::{Fallback, FallbackExt, FallbackRef};
 
 pub(crate) const INITIAL_GREETING: &str = "This is initial data set from a constructor";
 pub(crate) const BALANCES_PREFIX: &str = "b";

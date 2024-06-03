@@ -5,7 +5,6 @@
 extern crate alloc;
 
 use alloc::{string::String, vec::Vec};
-use borsh::{BorshDeserialize, BorshSerialize};
 use casper_macros::casper;
 use casper_sdk::{
     collections::{sorted_vector::SortedVector, Map},

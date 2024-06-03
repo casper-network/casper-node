@@ -3,13 +3,14 @@ use crate::{
     host::{self, read_vec},
 };
 
-use borsh::{self, BorshDeserialize, BorshSerialize};
+use crate::serializers::borsh::{self, BorshDeserialize, BorshSerialize};
 use const_fnv1a_hash::fnv1a_hash_str_64;
 use vm_common::keyspace::Keyspace;
 
 use std::marker::PhantomData;
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
+#[borsh(crate = "crate::serializers::borsh")]
 pub struct Map<K, V> {
     pub(crate) name: String,
     pub(crate) _marker: PhantomData<(K, V)>,

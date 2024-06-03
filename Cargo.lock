@@ -7354,7 +7354,6 @@ dependencies = [
 name = "vm2-cep18"
 version = "0.1.0"
 dependencies = [
- "borsh",
  "casper-macros",
  "casper-sdk",
  "casper-sdk-codegen",
@@ -7386,10 +7385,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "vm2-flipper"
+version = "0.1.0"
+dependencies = [
+ "casper-macros",
+ "casper-sdk",
+]
+
+[[package]]
 name = "vm2-harness"
 version = "0.1.0"
 dependencies = [
- "borsh",
  "casper-macros",
  "casper-sdk",
  "impls",
@@ -7414,12 +7420,9 @@ name = "vm2-trait"
 version = "0.1.0"
 dependencies = [
  "base16",
- "borsh",
  "casper-macros",
  "casper-sdk",
- "impls",
  "serde_json",
- "vm-common",
 ]
 
 [[package]]

@@ -6,27 +6,6 @@ pub mod traits;
 #[macro_use]
 extern crate alloc;
 
-use alloc::{
-    string::{String, ToString},
-    vec::Vec,
-};
-use borsh::{BorshDeserialize, BorshSerialize};
-use casper_macros::casper;
-use casper_sdk::{
-    collections::Map,
-    host::{self, Entity},
-    log, revert,
-    sys::Fptr,
-    types::{Address, CallError},
-    Contract, ContractHandle,
-};
-
-// pub use contracts::{
-//     harness::*,
-//     no_fallback,
-//     token_owner::{self, TokenOwnerContract, TokenOwnerContractRef},
-// };
-
 #[cfg(test)]
 mod tests {
 

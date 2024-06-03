@@ -43,7 +43,7 @@ impl TryFrom<u32> for CallError {
 }
 
 impl CasperABI for CallError {
-    fn populate_definitions(definitions: &mut crate::abi::Definitions) {}
+    fn populate_definitions(_definitions: &mut crate::abi::Definitions) {}
 
     fn declaration() -> crate::abi::Declaration {
         "CallError".into()

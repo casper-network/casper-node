@@ -3,35 +3,6 @@ use std::num::NonZeroU32;
 use quote::quote;
 use syn::Signature;
 
-const fn zero_exists_1d(arr: &[u8]) -> bool {
-    if arr.is_empty() {
-        return false;
-    }
-
-    let mut i = 0;
-    while i < arr.len() {
-        if arr[i] == 0 {
-            return true;
-        }
-        i += 1;
-    }
-
-    false
-}
-
-const fn zero_exists_2d(arr: &[&[u8]]) -> bool {
-    let mut i = 0;
-    while i < arr.len() {
-        if zero_exists_1d(arr[i]) {
-            return true;
-        }
-        i += 1;
-    }
-    return false;
-}
-
-// const fn
-
 /// Type definition without spaces
 fn sanitized_type_name(ty: &syn::Type) -> String {
     match ty {
@@ -61,16 +32,15 @@ fn sanitized_type_name(ty: &syn::Type) -> String {
 pub(crate) fn selector_preimage(signature: &Signature) -> String {
     let mut preimage: Vec<String> = vec![signature.ident.to_string()];
 
-    let mut inputs = signature.inputs.iter();
+    let inputs = signature.inputs.iter();
 
     let inputs = inputs
         .filter_map(|input| match input {
             syn::FnArg::Receiver(_) => None,
             syn::FnArg::Typed(typed) => match typed.pat.as_ref() {
-                syn::Pat::Ident(ident) => Some(&typed.ty),
+                syn::Pat::Ident(_ident) => Some(&typed.ty),
                 _ => None,
             },
-            _ => None,
         })
         .map(|token| sanitized_type_name(&token))
         .collect::<Vec<_>>(); //.map(|tok| tok.to_string()).join(",");

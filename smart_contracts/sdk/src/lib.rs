@@ -3,6 +3,7 @@
 // #[linkage = "--import-memory"]
 
 pub mod abi;
+pub mod serializers;
 #[cfg(not(target_arch = "wasm32"))]
 pub use linkme;
 
@@ -17,12 +18,13 @@ pub mod types;
 
 use std::{io, marker::PhantomData, ptr::NonNull};
 
-use borsh::{BorshDeserialize, BorshSerialize};
+use crate::serializers::borsh::{BorshDeserialize, BorshSerialize};
 pub use casper_sdk_sys as sys;
 use host::{CallResult, Entity};
 use types::{Address, CallError};
+pub use vm_common;
 
-use vm_common::selector::Selector;
+use crate::vm_common::selector::Selector;
 
 #[cfg(target_arch = "wasm32")]
 fn hook_impl(info: &std::panic::PanicInfo) {
@@ -118,7 +120,8 @@ macro_rules! revert {
     }};
     ($arg:expr) => {{
         let value = $arg;
-        let data = borsh::to_vec(&value).expect("Revert value should serialize");
+        let data =
+            casper_sdk::serializers::borsh::to_vec(&value).expect("Revert value should serialize");
         casper_sdk::host::casper_return(
             vm_common::flags::ReturnFlags::REVERT,
             Some(data.as_slice()),

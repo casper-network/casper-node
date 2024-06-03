@@ -6,24 +6,15 @@ pub mod traits;
 #[macro_use]
 extern crate alloc;
 
-use alloc::{
-    string::{String, ToString},
-    vec::Vec,
-};
-use borsh::{BorshDeserialize, BorshSerialize};
+use alloc::string::ToString;
 use casper_macros::casper;
 use casper_sdk::{
-    collections::Map,
     host::{self, Entity},
-    log, revert,
-    types::{Address, CallError},
-    Contract, ContractHandle,
+    log,
+    types::CallError,
 };
 
-use contracts::{
-    no_fallback,
-    token_owner::{self, TokenOwnerContract, TokenOwnerContractRef},
-};
+use contracts::token_owner::TokenOwnerContractRef;
 
 fn next_test(counter: &mut u32, name: &str) -> u32 {
     let current = *counter;
@@ -37,11 +28,7 @@ pub fn call() {
     use casper_sdk::ContractBuilder;
     use contracts::harness::{CustomError, INITIAL_GREETING};
 
-    use crate::contracts::{
-        harness::{Harness, HarnessRef},
-        no_fallback::{NoFallback, NoFallbackRef},
-        token_owner::FallbackHandler,
-    };
+    use crate::contracts::{harness::HarnessRef, token_owner::FallbackHandler};
 
     log!("calling create");
 
@@ -460,6 +447,14 @@ pub fn call() {
                     .expect("Should call");
                 let harness_balance_after = harness.balance();
                 assert_eq!(harness_balance_before, harness_balance_after);
+                assert_eq!(
+                    withdraw_result,
+                    Err(
+                        crate::contracts::token_owner::TokenOwnerError::WithdrawError(
+                            "transfer error callee reverted".to_string()
+                        )
+                    )
+                );
             }
         }
 
@@ -490,6 +485,14 @@ pub fn call() {
                     .expect("Should call");
                 let harness_balance_after = harness.balance();
                 assert_eq!(harness_balance_before, harness_balance_after);
+                assert_eq!(
+                    withdraw_result,
+                    Err(
+                        crate::contracts::token_owner::TokenOwnerError::WithdrawError(
+                            "transfer error callee trapped".to_string()
+                        )
+                    )
+                );
             }
         }
 
@@ -524,26 +527,34 @@ pub fn call() {
                     .expect("Should call");
                 let harness_balance_after = harness.balance();
                 assert_eq!(harness_balance_before, harness_balance_after);
+                assert_eq!(
+                    withdraw_result,
+                    Err(
+                        crate::contracts::token_owner::TokenOwnerError::WithdrawError(
+                            "transfer error callee reverted".to_string()
+                        )
+                    )
+                );
             }
         }
     }
 
-    // {
-    //     let current_test = next_test(
-    //         &mut counter,
-    //         "Plain transfer to a contract does not work without fallback",
-    //     );
+    {
+        // let current_test = next_test(
+        //     &mut counter,
+        //     "Plain transfer to a contract does not work without fallback",
+        // );
 
-    //     let no_fallback_contract = ContractBuilder::<NoFallbackRef>::new()
-    //         .with_value(0)
-    //         .create(|| NoFallbackRef::no_fallback_initialize())
-    //         .expect("Should create");
+        // let no_fallback_contract = ContractBuilder::<NoFallbackRef>::new()
+        //     .with_value(0)
+        //     .create(|| NoFallbackRef::no_fallback_initialize())
+        //     .expect("Should create");
 
-    //     assert_eq!(
-    //         host::casper_transfer(&no_fallback_contract.entity(), 123),
-    //         Err(CallError::NotCallable)
-    //     );
-    // }
+        // assert_eq!(
+        //     host::casper_transfer(&no_fallback_contract.entity(), 123),
+        //     Err(CallError::NotCallable)
+        // );
+    }
 
     log!("👋 Goodbye");
 }

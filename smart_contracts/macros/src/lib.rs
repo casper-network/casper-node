@@ -4,13 +4,13 @@ extern crate proc_macro;
 
 use std::num::NonZeroU32;
 
-use darling::{ast, util::parse_expr, FromAttributes, FromMeta};
+use darling::{ast, FromAttributes, FromMeta};
 use proc_macro::TokenStream;
 use proc_macro2::Span;
 use quote::{format_ident, quote, ToTokens};
 use syn::{
     parse_macro_input, Data, DeriveInput, Fields, ItemEnum, ItemFn, ItemImpl, ItemStruct,
-    ItemTrait, ItemUnion, LitStr, Meta, Type,
+    ItemTrait, ItemUnion, LitStr, Type,
 };
 use vm_common::{flags::EntryPointFlags, selector::Selector};
 
@@ -280,11 +280,16 @@ fn generate_export_function(func: ItemFn) -> TokenStream {
         arg_names.push(name.clone());
         arg_types.push(ty.clone());
     }
-    let ctor_name = format_ident!("{func_name}_ctor");
+    let _ctor_name = format_ident!("{func_name}_ctor");
     quote! {
         #[cfg(target_arch = "wasm32")]
         #[no_mangle]
         pub extern "C" fn #func_name() {
+            #[cfg(target_arch = "wasm32")]
+            {
+                casper_sdk::set_panic_hook();
+            }
+
             #func
             casper_sdk::host::start(|(#(#arg_names,)*):(#(#arg_types,)*)| {
                 #func_name(#(#arg_names,)*)
@@ -453,7 +458,7 @@ fn generate_impl_for_contract(
                 } else {
                     generate_call_data_return(&func.sig.output)
                 };
-                let func_sig_output = match &func.sig.output {
+                let _func_sig_output = match &func.sig.output {
                     syn::ReturnType::Default => {
                         quote! { () }
                     }
@@ -477,13 +482,33 @@ fn generate_impl_for_contract(
                     _ => {
                         // There is a return value so call casper_return.
                         Some(quote! {
-                            let ret_bytes = borsh::to_vec(&_ret).unwrap();
+                            let ret_bytes = casper_sdk::serializers::borsh::to_vec(&_ret).unwrap();
                             casper_sdk::host::casper_return(flags, Some(&ret_bytes));
                         })
                     }
                 };
 
                 assert_eq!(arg_names.len(), arg_types.len());
+
+                let mut prelude = Vec::new();
+
+                if method_attribute.constructor {
+                    prelude.push(quote! {
+                        if casper_sdk::host::has_state().unwrap() {
+                            panic!("State of the contract is already present; unable to proceed with the constructor");
+                        }
+                    });
+                }
+
+                if !method_attribute.payable {
+                    let panic_msg =
+                        format!("Entry point {name} is not payable and does not accept tokens");
+                    prelude.push(quote! {
+                        if casper_sdk::host::get_value() != 0 {
+                            panic!(#panic_msg);
+                        }
+                    });
+                }
 
                 let handle_err;
                 let handle_call;
@@ -496,7 +521,7 @@ fn generate_impl_for_contract(
                     quote! {
                         let _ret: &Result<_, _> = &_ret;
                         if _ret.is_err() {
-                            flags |= vm_common::flags::ReturnFlags::REVERT;
+                            flags |= casper_sdk::vm_common::flags::ReturnFlags::REVERT;
                         }
 
                     }
@@ -515,13 +540,13 @@ fn generate_impl_for_contract(
                 } else {
                     if method_attribute.constructor {
                         quote! {
-                            let _ret: #struct_name = casper_sdk::host::start_noret(|(#(#arg_names,)*):(#(#arg_types,)*)| {
+                                let _ret: #struct_name = casper_sdk::host::start_noret(|(#(#arg_names,)*):(#(#arg_types,)*)| {
                                 <#struct_name>::#name(#(#arg_names,)*)
                             });
                         }
                     } else {
                         quote! {
-                            let _ret = casper_sdk::host::start_noret(|(#(#arg_names,)*):(#(#arg_types,)*)| {
+                                let _ret = casper_sdk::host::start_noret(|(#(#arg_names,)*):(#(#arg_types,)*)| {
                                 <#struct_name>::#name(#(#arg_names,)*)
                             });
                         }
@@ -535,18 +560,8 @@ fn generate_impl_for_contract(
                     flag_value |= EntryPointFlags::FALLBACK;
                 };
 
-                let bits = flag_value.bits();
-                let selector_value = selector_value.map(|value| value.get()).unwrap_or_default();
-
-                let mut prelude = Vec::new();
-
-                if method_attribute.constructor {
-                    prelude.push(quote! {
-                        if casper_sdk::host::has_state().unwrap() {
-                            panic!("State of the contract is already present; unable to proceed with the constructor");
-                        }
-                    });
-                }
+                let _bits = flag_value.bits();
+                let _selector_value = selector_value.map(|value| value.get()).unwrap_or_default();
 
                 // #[cfg(feature = "__abi_generator")]
                 // abi_generator_entry_points.push(quote! {
@@ -564,9 +579,15 @@ fn generate_impl_for_contract(
 
                     #[export_name = stringify!(#name)]
                     #vis extern "C" fn #extern_func_name() {
+                            // Set panic hook (assumes std is enabled etc.)
+                        #[cfg(target_arch = "wasm32")]
+                        {
+                            casper_sdk::set_panic_hook();
+                        }
+
                         #(#prelude;)*
 
-                        let mut flags = vm_common::flags::ReturnFlags::empty();
+                        let mut flags = casper_sdk::vm_common::flags::ReturnFlags::empty();
 
                         #handle_call;
 
@@ -609,7 +630,7 @@ fn generate_impl_for_contract(
                             }
                         } else {
                             quote! {
-                                Some(borsh::to_vec(&self).expect("Serialization to succeed"))
+                                Some(casper_sdk::serializers::borsh::to_vec(&self).expect("Serialization to succeed"))
                             }
                         };
 
@@ -631,7 +652,8 @@ fn generate_impl_for_contract(
                         if !is_fallback {
                             extra_code.push(quote! {
                                         pub fn #name<'a>(#self_ty #(#arg_names: #arg_types,)*) -> impl casper_sdk::ToCallData<Return<'a> = #call_data_return_lifetime> {
-                                            #[derive(BorshSerialize, PartialEq, Debug)]
+                                            #[derive(casper_sdk::serializers::borsh::BorshSerialize, PartialEq, Debug)]
+                                            #[borsh(crate = "casper_sdk::serializers::borsh")]
                                             struct #ident {
                                                 #(#arg_names: #arg_types,)*
                                             }
@@ -643,7 +665,7 @@ fn generate_impl_for_contract(
 
                                                 fn entry_point(&self) -> &str { stringify!(#name) }
 
-                                                fn input_data(&self) -> Option<Vec<u8>> {
+                                                fn input_data(&self) -> Option<casper_sdk::serializers::borsh::__private::maybestd::vec::Vec<u8>> {
                                                     #input_data_content
                                                 }
                                             }
@@ -667,9 +689,9 @@ fn generate_impl_for_contract(
             _ => todo!(),
         };
 
-        let func_name = &func.sig.ident;
+        let _func_name = &func.sig.ident;
 
-        let result = match &func.sig.output {
+        let _result = match &func.sig.output {
             syn::ReturnType::Default => {
                 populate_definitions.push(quote! {
                     definitions.populate_one::<()>();
@@ -739,13 +761,13 @@ fn generate_impl_for_contract(
 
         // let mut args = Vec::new();
         // for arg in &entry_point
-        let bits = flag_value.bits();
+        let _bits = flag_value.bits();
 
         if let Some(selector_value) = selector_value {
             combined_selectors ^= Selector::from(selector_value);
         }
 
-        let schema_selector = match selector_value {
+        let _schema_selector = match selector_value {
             Some(value) => {
                 let value = value.get();
                 quote! { Some(#value) }
@@ -765,7 +787,7 @@ fn generate_impl_for_contract(
                         selector: #schema_selector,
                         arguments: vec![ #(#args,)* ],
                         result: #result,
-                        flags: vm_common::flags::EntryPointFlags::from_bits(#bits).unwrap(),
+                        flags: casper_sdk::vm_common::flags::EntryPointFlags::from_bits(#bits).unwrap(),
                     }
                 }
             });
@@ -871,7 +893,7 @@ fn generate_impl_for_contract(
         }),
     };
     let ref_struct_name = format_ident!("{st_name}Ref");
-    let combined_selectors = combined_selectors.get();
+    let _combined_selectors = combined_selectors.get();
     quote! {
         #entry_points
 
@@ -948,7 +970,7 @@ fn generate_impl_trait_for_contract(
     code.push(visitor);
 
     let ref_trait = format_ident!("{}Ext", trait_path.require_ident().unwrap());
-    let ref_struct = format_ident!("{}Ref", trait_path.require_ident().unwrap());
+
     let ref_name = format_ident!("{self_ty}Ref");
 
     code.push(quote! {
@@ -1097,7 +1119,7 @@ fn casper_trait_definition(
                         selector: #schema_selector,
                         arguments: vec![ #(#args,)* ],
                         result: #result,
-                        flags: vm_common::flags::EntryPointFlags::from_bits(#flags).unwrap(),
+                        flags: casper_sdk::vm_common::flags::EntryPointFlags::from_bits(#flags).unwrap(),
                     }
                 });
 
@@ -1108,8 +1130,8 @@ fn casper_trait_definition(
                             "can't make dispatcher for private method"
                         );
                         quote! {
-                            #vis extern "C" fn #dispatch_func_name<T: #trait_name + borsh::BorshDeserialize + borsh::BorshSerialize + Default>() {
-                                let mut flags = vm_common::flags::ReturnFlags::empty();
+                            #vis extern "C" fn #dispatch_func_name<T: #trait_name + casper_sdk::serializers::borsh::BorshDeserialize + casper_sdk::serializers::borsh::BorshSerialize + Default>() {
+                                let mut flags = casper_sdk::vm_common::flags::ReturnFlags::empty();
 
                                 let mut instance: T = casper_sdk::host::read_state().unwrap();
                                 let ret = casper_sdk::host::start_noret(|(#(#arg_names,)*):(#(#arg_types,)*)| {
@@ -1117,7 +1139,7 @@ fn casper_trait_definition(
                                 });
 
                                 casper_sdk::host::write_state(&instance).unwrap();
-                                let ret_bytes = borsh::to_vec(&ret).unwrap();
+                                let ret_bytes = casper_sdk::serializers::borsh::to_vec(&ret).unwrap();
                                 casper_sdk::host::casper_return(flags, Some(&ret_bytes));
                             }
                         }
@@ -1129,7 +1151,7 @@ fn casper_trait_definition(
                             "can't make dispatcher for private static method"
                         );
                         quote! {
-                            #vis extern "C"  fn #dispatch_func_name<T: #trait_name + borsh::BorshDeserialize + borsh::BorshSerialize + Default>() {
+                            #vis extern "C"  fn #dispatch_func_name<T: #trait_name + casper_sdk::serializers::borsh::BorshDeserialize + casper_sdk::serializers::borsh::BorshSerialize + Default>() {
                                 let _ret = casper_sdk::host::start(|(#(#arg_names,)*):(#(#arg_types,)*)| {
                                     <T as #trait_name>::#func_name(#(#arg_names,)*)
                                 });
@@ -1160,7 +1182,7 @@ fn casper_trait_definition(
                     }
                 } else {
                     quote! {
-                        Some(borsh::to_vec(&self).expect("Serialization to succeed"))
+                        Some(casper_sdk::serializers::borsh::to_vec(&self).expect("Serialization to succeed"))
                     }
                 };
                 let self_ty = if method_attribute.constructor || method_attribute.ignore_state {
@@ -1178,11 +1200,12 @@ fn casper_trait_definition(
                 };
 
                 if !is_fallback {
-                    let selector_value =
+                    let _selector_value =
                         selector_value.map(|value| value.get()).unwrap_or_default();
                     extra_code.push(quote! {
                     fn #func_name<'a>(#self_ty #(#arg_names: #arg_types,)*) -> impl casper_sdk::ToCallData<Return<'a> = #call_data_return_lifetime> {
-                        #[derive(BorshSerialize)]
+                        #[derive(casper_sdk::serializers::borsh::BorshSerialize)]
+                        #[borsh(crate = "casper_sdk::serializers::borsh")]
                         struct CallData {
                             #(pub #arg_names: #arg_types,)*
                         }
@@ -1213,10 +1236,10 @@ fn casper_trait_definition(
     }
     let ref_struct = format_ident!("{trait_name}Ref");
     let ref_struct_trait = format_ident!("{trait_name}Ext");
-    let manifest_data_len = dispatch_table.len();
+
     let combined_selectors = combined_selectors.get();
     let macro_name = format_ident!("enumerate_{trait_name}_symbols");
-    let mod_name = format_ident!("{trait_name}_macros");
+
     let extension_struct = quote! {
         #vis trait #ref_struct_trait: Sized {
             #(#extra_code)*
@@ -1225,7 +1248,7 @@ fn casper_trait_definition(
         #vis struct #ref_struct;
 
         impl #ref_struct {
-            pub const SELECTOR: vm_common::selector::Selector = vm_common::selector::Selector::new(#combined_selectors);
+            pub const SELECTOR: casper_sdk::vm_common::selector::Selector = casper_sdk::vm_common::selector::Selector::new(#combined_selectors);
 
             // #[doc(hidden)]
             // #vis const fn __casper_new_trait_dispatch_table<T: #trait_name + borsh::BorshDeserialize + borsh::BorshSerialize + Default>() -> [casper_sdk::sys::EntryPoint; #manifest_data_len] {
@@ -1314,7 +1337,8 @@ fn generate_casper_state_for_struct(item_struct: ItemStruct) -> impl quote::ToTo
     let maybe_derive_abi = get_maybe_derive_abi();
 
     quote! {
-        #[derive(BorshSerialize, BorshDeserialize)]
+        #[derive(casper_sdk::serializers::borsh::BorshSerialize, casper_sdk::serializers::borsh::BorshDeserialize)]
+        #[borsh(crate = "casper_sdk::serializers::borsh")]
         #maybe_derive_abi
         #item_struct
     }
@@ -1324,9 +1348,9 @@ fn generate_casper_state_for_enum(item_enum: ItemEnum) -> impl quote::ToTokens {
     let maybe_derive_abi = get_maybe_derive_abi();
 
     quote! {
-        #[derive(BorshSerialize, BorshDeserialize)]
+        #[derive(casper_sdk::serializers::borsh::BorshSerialize, casper_sdk::serializers::borsh::BorshDeserialize)]
+        #[borsh(use_discriminant = true, crate = "casper_sdk::serializers::borsh")]
         #[repr(u32)]
-        #[borsh(use_discriminant=true)]
         #maybe_derive_abi
         #item_enum
     }
@@ -1354,7 +1378,8 @@ fn process_casper_contract_for_struct(contract_struct: ItemStruct) -> TokenStrea
     let maybe_derive_abi = get_maybe_derive_abi();
 
     quote! {
-        #[derive(BorshSerialize, BorshDeserialize)]
+        #[derive(casper_sdk::serializers::borsh::BorshSerialize, casper_sdk::serializers::borsh::BorshDeserialize)]
+        #[borsh(crate = "casper_sdk::serializers::borsh")]
         #maybe_derive_abi
         #contract_struct
 
@@ -1730,7 +1755,7 @@ pub fn selector(input: TokenStream) -> TokenStream {
     let selector_value = utils::compute_selector_bytes(bytes);
 
     TokenStream::from(quote! {
-        vm_common::selector::Selector::new(#selector_value)
+        casper_sdk::vm_common::selector::Selector::new(#selector_value)
     })
     .into()
 }

@@ -1,9 +1,8 @@
-use borsh::{BorshDeserialize, BorshSerialize};
-use casper_macros::CasperABI;
+use casper_macros::casper;
 use casper_sdk::host;
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, BorshSerialize, BorshDeserialize, CasperABI)]
-#[borsh(use_discriminant = true)]
+#[derive(PartialEq, Debug)]
+#[casper]
 pub enum SecurityBadge {
     Admin = 0,
     Minter = 1,
