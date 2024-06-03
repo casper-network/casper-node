@@ -17,7 +17,8 @@ use casper_types::{SecretKey, Transaction};
 use {casper_types::testing::TestRng, rand::Rng};
 
 use casper_types::{
-    BlockV2, EraId, PublicKey, RewardedSignatures, Timestamp, TransactionCategory, TransactionHash,
+    BlockV2, EraId, PublicKey, RewardedSignatures, Timestamp, TransactionHash, AUCTION_LANE_ID,
+    INSTALL_UPGRADE_LANE_ID, MINT_LANE_ID,
 };
 
 use super::BlockPayload;
@@ -56,30 +57,7 @@ impl FinalizedBlock {
         height: u64,
         proposer: PublicKey,
     ) -> Self {
-        let transactions = {
-            let mut ret = BTreeMap::new();
-            ret.insert(
-                TransactionCategory::Mint as u8,
-                block_payload.mint().map(|(x, _)| x).copied().collect(),
-            );
-            ret.insert(
-                TransactionCategory::Auction as u8,
-                block_payload.auction().map(|(x, _)| x).copied().collect(),
-            );
-            ret.insert(
-                TransactionCategory::Standard as u8,
-                block_payload.standard().map(|(x, _)| x).copied().collect(),
-            );
-            ret.insert(
-                TransactionCategory::InstallUpgrade as u8,
-                block_payload
-                    .install_upgrade()
-                    .map(|(x, _)| x)
-                    .copied()
-                    .collect(),
-            );
-            ret
-        };
+        let transactions = block_payload.finalized_payload();
 
         FinalizedBlock {
             transactions,
@@ -95,26 +73,20 @@ impl FinalizedBlock {
 
     pub(crate) fn mint(&self) -> Vec<TransactionHash> {
         self.transactions
-            .get(&(TransactionCategory::Mint as u8))
+            .get(&MINT_LANE_ID)
             .map(|transactions| transactions.to_vec())
             .unwrap_or_default()
     }
 
     pub(crate) fn auction(&self) -> Vec<TransactionHash> {
         self.transactions
-            .get(&(TransactionCategory::Auction as u8))
+            .get(&AUCTION_LANE_ID)
             .map(|transactions| transactions.to_vec())
             .unwrap_or_default()
     }
     pub(crate) fn install_upgrade(&self) -> Vec<TransactionHash> {
         self.transactions
-            .get(&(TransactionCategory::InstallUpgrade as u8))
-            .map(|transactions| transactions.to_vec())
-            .unwrap_or_default()
-    }
-    pub(crate) fn standard(&self) -> Vec<TransactionHash> {
-        self.transactions
-            .get(&(TransactionCategory::Standard as u8))
+            .get(&INSTALL_UPGRADE_LANE_ID)
             .map(|transactions| transactions.to_vec())
             .unwrap_or_default()
     }
@@ -161,7 +133,7 @@ impl FinalizedBlock {
         for transaction in txns_iter {
             standard.push((transaction.hash(), BTreeSet::new()));
         }
-        transactions.insert(TransactionCategory::Standard, standard);
+        transactions.insert(3, standard);
         let rewarded_signatures = Default::default();
         let random_bit = rng.gen();
         let block_payload =
@@ -209,15 +181,22 @@ impl Display for FinalizedBlock {
         write!(
             formatter,
             "finalized block #{} in {}, timestamp {}, {} transfers, {} staking txns, {} \
-            install/upgrade txns, {} standard txns",
+            install/upgrade txns,",
             self.height,
             self.era_id,
             self.timestamp,
             self.mint().len(),
             self.auction().len(),
             self.install_upgrade().len(),
-            self.standard().len(),
         )?;
+        for (category, transactions) in self.transactions.iter() {
+            write!(
+                formatter,
+                "category: {} has {} transactions",
+                category,
+                transactions.len()
+            )?;
+        }
         if let Some(ref ee) = self.era_report {
             write!(formatter, ", era_end: {:?}", ee)?;
         }
@@ -254,14 +233,15 @@ mod tests {
     fn should_convert_from_proposable_to_finalized_without_dropping_hashes() {
         let mut rng = TestRng::new();
 
+        let large_lane_id = 3;
         let standard = Transaction::Deploy(Deploy::random(&mut rng));
         let hash = standard.hash();
         let transactions = {
             let mut ret = BTreeMap::new();
-            ret.insert(TransactionCategory::Standard, vec![(hash, BTreeSet::new())]);
-            ret.insert(TransactionCategory::Mint, vec![]);
-            ret.insert(TransactionCategory::InstallUpgrade, vec![]);
-            ret.insert(TransactionCategory::Auction, vec![]);
+            ret.insert(large_lane_id, vec![(hash, BTreeSet::new())]);
+            ret.insert(MINT_LANE_ID, vec![]);
+            ret.insert(INSTALL_UPGRADE_LANE_ID, vec![]);
+            ret.insert(AUCTION_LANE_ID, vec![]);
             ret
         };
         let block_payload = BlockPayload::new(transactions, vec![], Default::default(), false);
@@ -275,10 +255,7 @@ mod tests {
             PublicKey::random(&mut rng),
         );
 
-        let transactions = fb
-            .transactions
-            .get(&(TransactionCategory::Standard as u8))
-            .unwrap();
+        let transactions = fb.transactions.get(&large_lane_id).unwrap();
         assert!(!transactions.is_empty())
     }
 }

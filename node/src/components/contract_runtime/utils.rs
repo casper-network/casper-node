@@ -112,11 +112,6 @@ pub(super) async fn exec_or_requeue<REv>(
     }
 
     let maybe_next_era_gas_price = if is_era_end && executable_block.next_era_gas_price.is_none() {
-        let block_max_standard_count = chainspec.transaction_config.block_max_standard_count;
-        let block_max_mint_count = chainspec.transaction_config.block_max_mint_count;
-        let block_max_auction_count = chainspec.transaction_config.block_max_auction_count;
-        let block_max_install_upgrade_count =
-            chainspec.transaction_config.block_max_install_upgrade_count;
         let max_block_size = chainspec.transaction_config.max_block_size as u64;
         let block_gas_limit = chainspec.transaction_config.block_gas_limit;
         let go_up = chainspec.vacancy_config.upper_threshold;
@@ -127,21 +122,23 @@ pub(super) async fn exec_or_requeue<REv>(
         let era_id = executable_block.era_id;
         let block_height = executable_block.height;
 
-        let per_block_capacity = {
-            block_max_install_upgrade_count
-                + block_max_standard_count
-                + block_max_mint_count
-                + block_max_auction_count
-        } as u64;
+        let per_block_capacity = chainspec
+            .transaction_config
+            .transaction_v1_config
+            .get_max_block_count();
 
         let switch_block_utilization_score = {
-            let has_hit_slot_limt = {
-                (executable_block.mint().len() as u32 >= block_max_mint_count)
-                    || (executable_block.auction().len() as u32 >= block_max_auction_count)
-                    || (executable_block.standard().len() as u32 >= block_max_standard_count)
-                    || (executable_block.install_upgrade().len() as u32
-                        >= block_max_install_upgrade_count)
-            };
+            let mut has_hit_slot_limt = false;
+
+            for (category, transactions) in executable_block.transaction_map.iter() {
+                let max_count = chainspec
+                    .transaction_config
+                    .transaction_v1_config
+                    .get_max_transaction_count(*category);
+                if max_count == transactions.len() as u64 {
+                    has_hit_slot_limt = true;
+                }
+            }
 
             if has_hit_slot_limt {
                 100u64

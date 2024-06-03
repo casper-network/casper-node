@@ -1119,7 +1119,7 @@ impl reactor::Reactor for MainReactor {
             chainspec.core_config.recent_era_count(),
             Some(registry),
             config.node.force_resync,
-            chainspec.transaction_config,
+            chainspec.transaction_config.clone(),
         )?;
 
         let contract_runtime = ContractRuntime::new(

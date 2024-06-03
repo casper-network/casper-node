@@ -113,9 +113,9 @@ fn should_step() {
         SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
     );
     assert!(
-        !before_auction_seigniorage
+        !after_auction_seigniorage
             .keys()
-            .all(|key| after_auction_seigniorage.contains_key(key)),
+            .all(|key| before_auction_seigniorage.contains_key(key)),
         "run auction should have changed seigniorage keys"
     );
 }

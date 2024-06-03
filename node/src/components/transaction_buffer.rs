@@ -20,8 +20,8 @@ use smallvec::smallvec;
 use tracing::{debug, error, info, warn};
 
 use casper_types::{
-    Block, BlockV2, Chainspec, Digest, DisplayIter, EraId, Timestamp, Transaction,
-    TransactionCategory, TransactionHash, TransactionId,
+    Block, BlockV2, Chainspec, Digest, DisplayIter, EraId, Timestamp, Transaction, TransactionHash,
+    TransactionId, AUCTION_LANE_ID, INSTALL_UPGRADE_LANE_ID, MINT_LANE_ID,
 };
 
 use crate::{
@@ -425,7 +425,7 @@ impl TransactionBuffer {
         era_id: EraId,
         request_expiry: Timestamp,
     ) -> AppendableBlock {
-        let mut ret = AppendableBlock::new(self.chainspec.transaction_config, timestamp);
+        let mut ret = AppendableBlock::new(self.chainspec.transaction_config.clone(), timestamp);
         if Timestamp::now() >= request_expiry {
             return ret;
         }
@@ -439,7 +439,7 @@ impl TransactionBuffer {
         // TODO[RC]: It's error prone to use 4 different flags to track the limits. Implement a
         // proper limiter.
         let mut have_hit_mint_limit = false;
-        let mut have_hit_standard_limit = false;
+        let mut have_hit_wasm_limit = false;
         let mut have_hit_install_upgrade_limit = false;
         let mut have_hit_auction_limit = false;
 
@@ -477,13 +477,13 @@ impl TransactionBuffer {
             if footprint.is_mint() && have_hit_mint_limit {
                 continue;
             }
-            if footprint.is_standard() && have_hit_standard_limit {
-                continue;
-            }
             if footprint.is_install_upgrade() && have_hit_install_upgrade_limit {
                 continue;
             }
             if footprint.is_auction() && have_hit_auction_limit {
+                continue;
+            }
+            if footprint.is_wasm_based() && have_hit_wasm_limit {
                 continue;
             }
 
@@ -514,20 +514,20 @@ impl TransactionBuffer {
                         }
                         AddError::Count(category) => {
                             match category {
-                                TransactionCategory::Mint => {
+                                category if category == MINT_LANE_ID => {
                                     have_hit_mint_limit = true;
                                 }
-                                TransactionCategory::Auction => {
+                                category if category == AUCTION_LANE_ID => {
                                     have_hit_auction_limit = true;
                                 }
-                                TransactionCategory::Standard => {
-                                    have_hit_standard_limit = true;
-                                }
-                                TransactionCategory::InstallUpgrade => {
+                                category if category == INSTALL_UPGRADE_LANE_ID => {
                                     have_hit_install_upgrade_limit = true;
                                 }
+                                _ => {
+                                    have_hit_wasm_limit = true;
+                                }
                             }
-                            if have_hit_standard_limit
+                            if have_hit_wasm_limit
                                 && have_hit_auction_limit
                                 && have_hit_install_upgrade_limit
                                 && have_hit_mint_limit
@@ -738,6 +738,7 @@ where
                     request_expiry,
                     responder,
                 ),
+
                 Event::GetGasPriceResult(
                     maybe_gas_price,
                     era_id,
@@ -747,7 +748,7 @@ where
                 ) => match maybe_gas_price {
                     None => responder
                         .respond(AppendableBlock::new(
-                            self.chainspec.transaction_config,
+                            self.chainspec.transaction_config.clone(),
                             timestamp,
                         ))
                         .ignore(),

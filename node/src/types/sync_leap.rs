@@ -453,8 +453,8 @@ mod tests {
         crypto, testing::TestRng, ActivationPoint, Block, BlockHash, BlockHeader,
         BlockSignaturesV2, BlockV2, ChainNameDigest, EraEndV2, EraId, FinalitySignatureV2,
         GlobalStateUpdate, ProtocolConfig, ProtocolVersion, PublicKey, SecretKey,
-        SignedBlockHeader, TestBlockBuilder, Timestamp, TransactionCategory, TransactionHash,
-        TransactionV1Hash, U512,
+        SignedBlockHeader, TestBlockBuilder, Timestamp, TransactionHash, TransactionV1Hash,
+        AUCTION_LANE_ID, INSTALL_UPGRADE_LANE_ID, MINT_LANE_ID, U512,
     };
 
     use super::SyncLeap;
@@ -2358,13 +2358,10 @@ mod tests {
 
             let transactions = {
                 let mut ret = BTreeMap::new();
-                ret.insert(TransactionCategory::Mint as u8, mint_hashes);
-                ret.insert(TransactionCategory::Auction as u8, auction_hashes);
-                ret.insert(
-                    TransactionCategory::InstallUpgrade as u8,
-                    install_upgrade_hashes,
-                );
-                ret.insert(TransactionCategory::Standard as u8, standard_hashes);
+                ret.insert(MINT_LANE_ID, mint_hashes);
+                ret.insert(AUCTION_LANE_ID, auction_hashes);
+                ret.insert(INSTALL_UPGRADE_LANE_ID, install_upgrade_hashes);
+                ret.insert(3, standard_hashes);
                 ret
             };
 

@@ -53,6 +53,15 @@ impl EraId {
         (current_era_id..=current_era_id + num_eras).map(EraId)
     }
 
+    /// Returns an iterator over a range of era IDs, starting from `start` and ending at `end`,
+    /// inclusive.
+    pub fn iter_range_inclusive(
+        start: EraId,
+        end: EraId,
+    ) -> impl DoubleEndedIterator<Item = EraId> {
+        (start.0..=end.0).map(EraId)
+    }
+
     /// Increments the era.
     ///
     /// For `u64::MAX`, this returns `u64::MAX` again: We want to make sure this doesn't panic, and

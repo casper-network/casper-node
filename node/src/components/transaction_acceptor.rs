@@ -18,7 +18,7 @@ use casper_types::{
     Chainspec, EntityAddr, EntityVersion, EntityVersionKey, EntryPoint, EntryPointAddr,
     ExecutableDeployItem, ExecutableDeployItemIdentifier, InitiatorAddr, Key, Package, PackageAddr,
     PackageHash, PackageIdentifier, Transaction, TransactionEntryPoint,
-    TransactionInvocationTarget, TransactionTarget, U512,
+    TransactionInvocationTarget, TransactionTarget, DEFAULT_ENTRY_POINT_NAME, U512,
 };
 
 use crate::{
@@ -575,6 +575,7 @@ impl TransactionAcceptor {
                 None
             }
             Transaction::V1(txn) => match txn.entry_point() {
+                TransactionEntryPoint::Call => Some(DEFAULT_ENTRY_POINT_NAME.to_owned()),
                 TransactionEntryPoint::Custom(name) => Some(name.clone()),
                 TransactionEntryPoint::Transfer
                 | TransactionEntryPoint::AddBid
