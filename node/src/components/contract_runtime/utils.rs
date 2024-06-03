@@ -26,7 +26,6 @@ use crate::{
     types::{ExecutableBlock, MetaBlock, MetaBlockState},
 };
 
-use crate::types::{BlockPayload, FinalizedBlock, InternalEraReport};
 use casper_binary_port::SpeculativeExecutionResult;
 use casper_execution_engine::engine_state::{ExecutionEngineV1, WasmV1Result};
 use casper_storage::{
@@ -34,11 +33,9 @@ use casper_storage::{
         DataAccessLayer, FlushRequest, FlushResult, ProtocolUpgradeRequest, ProtocolUpgradeResult,
     },
     global_state::state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
-    system::protocol_upgrade::ProtocolUpgradeError,
 };
 use casper_types::{
-    BlockHash, BlockHeader, Chainspec, Digest, EraId, GasLimited, Key, ProtocolUpgradeConfig,
-    PublicKey,
+    BlockHash, Chainspec, Digest, EraId, GasLimited, Key, ProtocolUpgradeConfig,
 };
 
 /// Maximum number of resource intensive tasks that can be run in parallel.

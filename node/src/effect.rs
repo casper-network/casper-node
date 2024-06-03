@@ -1906,7 +1906,7 @@ impl<REv> EffectBuilder<REv> {
                     parent_hash,
                     parent_seed,
                 },
-                QueueKind::ContractRuntime,
+                QueueKind::Control,
             )
             .await
     }

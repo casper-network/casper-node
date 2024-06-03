@@ -15,7 +15,7 @@ use itertools::Itertools;
 use serde::Serialize;
 
 use casper_types::{
-    execution::Effects, Block, Digest, EraId, FinalitySignature, FinalitySignatureV2, NextUpgrade,
+    execution::Effects, Block, EraId, FinalitySignature, FinalitySignatureV2, NextUpgrade,
     PublicKey, Timestamp, Transaction, TransactionHash, U512,
 };
 

@@ -1,7 +1,7 @@
 use std::time::Duration;
 use tracing::{debug, error, info, trace};
 
-use casper_storage::data_access_layer::{GenesisResult, ProtocolUpgradeResult};
+use casper_storage::data_access_layer::{GenesisResult};
 use casper_types::{BlockHash, BlockHeader, Digest, EraId, PublicKey, Timestamp};
 
 use crate::{
@@ -429,7 +429,7 @@ impl MainReactor {
             }
         };
 
-        let network_name = self.chainspec.network_config.name.clone();
+        let _network_name = self.chainspec.network_config.name.clone();
         match self.chainspec.upgrade_config_from_parts(
             *header.state_root_hash(),
             header.protocol_version(),
@@ -445,7 +445,7 @@ impl MainReactor {
                     header.block_hash(),
                     *header.accumulated_seed(),
                 ).ignore());
-                return Ok(effects);
+                Ok(effects)
                 // // apply protocol changes to global state
                 // match self.contract_runtime.commit_upgrade(cfg) {
                 //     ProtocolUpgradeResult::RootNotFound => Err("Root not found".to_string()),

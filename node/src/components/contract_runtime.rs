@@ -31,18 +31,18 @@ use casper_storage::{
     data_access_layer::{
         AddressableEntityRequest, BlockStore, DataAccessLayer, EntryPointsRequest,
         ExecutionResultsChecksumRequest, FlushRequest, FlushResult, GenesisRequest, GenesisResult,
-        ProtocolUpgradeRequest, ProtocolUpgradeResult, TrieRequest,
+        TrieRequest,
     },
     global_state::{
         state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
         transaction_source::lmdb::LmdbEnvironment,
         trie_store::lmdb::LmdbTrieStore,
     },
-    system::{genesis::GenesisError, protocol_upgrade::ProtocolUpgradeError},
+    system::{genesis::GenesisError},
     tracking_copy::TrackingCopyError,
 };
 use casper_types::{
-    ActivationPoint, Chainspec, ChainspecRawBytes, ChainspecRegistry, EraId, ProtocolUpgradeConfig,
+    ActivationPoint, Chainspec, ChainspecRawBytes, ChainspecRegistry, EraId,
     PublicKey,
 };
 
@@ -266,64 +266,6 @@ impl ContractRuntime {
         result
     }
 
-    fn handle_upgrade_task(
-        start: Instant,
-        data_access_layer: &DataAccessLayer<LmdbGlobalState>,
-        metrics: Arc<Metrics>,
-        upgrade_config: ProtocolUpgradeConfig,
-    ) -> ProtocolUpgradeResult {
-        let contract_runtime_metrics = metrics.clone();
-        let upgrade_request = ProtocolUpgradeRequest::new(upgrade_config);
-        let result = data_access_layer.protocol_upgrade(upgrade_request);
-        contract_runtime_metrics
-            .commit_upgrade
-            .observe(start.elapsed().as_secs_f64());
-        debug!(?result, "upgrade result");
-        if result.is_success() {
-            let flush_req = FlushRequest::new();
-            if let FlushResult::Failure(err) = data_access_layer.flush(flush_req) {
-                return ProtocolUpgradeResult::Failure(ProtocolUpgradeError::TrackingCopy(
-                    err.into(),
-                ));
-            }
-        }
-        result
-    }
-
-    // /// Commits protocol upgrade.
-    // pub(crate) fn commit_upgrade<REv>(
-    //     &self,
-    //     upgrade_config: ProtocolUpgradeConfig,
-    // ) -> Result<Effects<REv>, String>
-    //     where
-    //         REv: From<ContractRuntimeRequest>
-    //         + From<ContractRuntimeAnnouncement>
-    //         + From<StorageRequest>
-    //         + From<MetaBlockAnnouncement>
-    //         + From<FatalAnnouncement>
-    //         + Send,
-    // {
-    //     debug!(?upgrade_config, "upgrade");
-    //     let start = Instant::now();
-    //
-    //     let upgrade_request = ProtocolUpgradeRequest::new(upgrade_config);
-    //     let data_access_layer = Arc::clone(&self.data_access_layer);
-    //
-    //     let result = data_access_layer.protocol_upgrade(upgrade_request);
-    //     self.metrics
-    //         .commit_upgrade
-    //         .observe(start.elapsed().as_secs_f64());
-    //     debug!(?result, "upgrade result");
-    //     if result.is_success() {
-    //         let flush_req = FlushRequest::new();
-    //         if let FlushResult::Failure(err) = data_access_layer.flush(flush_req) {
-    //             return ProtocolUpgradeResult::Failure(ProtocolUpgradeError::TrackingCopy(
-    //                 err.into(),
-    //             ));
-    //         }
-    //     }
-    //     result
-    // }
 
     /// Handles a contract runtime request.
     fn handle_contract_runtime_request<REv>(
