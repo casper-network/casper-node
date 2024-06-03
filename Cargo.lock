@@ -7369,8 +7369,6 @@ dependencies = [
  "borsh",
  "casper-macros",
  "casper-sdk",
- "casper-sdk-codegen",
- "serde_json",
  "vm-common",
  "vm2-cep18",
 ]

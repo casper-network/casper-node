@@ -5,6 +5,7 @@ use casper_macros::{casper, CasperABI};
 use casper_sdk::{
     collections::Map,
     host::{self, Entity},
+    log,
     types::Address,
 };
 
@@ -78,7 +79,7 @@ impl CEP18State {
     }
 }
 
-#[casper(trait_definition)]
+#[casper]
 pub trait CEP18 {
     #[casper(private)]
     fn state(&self) -> &CEP18State;
@@ -198,6 +199,7 @@ pub trait CEP18 {
 
     #[casper(revert_on_error)]
     fn mint(&mut self, owner: Entity, amount: u64) -> Result<(), Cep18Error> {
+        log!("mint {}", self.state().name);
         if !self.state().enable_mint_burn {
             return Err(Cep18Error::MintBurnDisabled);
         }

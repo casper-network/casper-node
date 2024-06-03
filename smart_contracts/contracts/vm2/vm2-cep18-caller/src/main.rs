@@ -31,6 +31,9 @@ pub mod exports {
             .call(|contract| contract.name())
             .expect("Should call");
         log!("Name: {name_result:?}");
+
+        log!("Success");
+
         name_result
     }
 }

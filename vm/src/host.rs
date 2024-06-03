@@ -480,18 +480,18 @@ pub(crate) fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'stati
         None => None,
     };
 
-    if let Some(state) = initial_state {
-        eprintln!(
-            "Write initial state {}bytes under {contract_hash:?}",
-            state.len()
-        );
-        let smart_contract_addr = EntityAddr::SmartContract(contract_hash);
-        let key = Key::State(smart_contract_addr);
-        caller
-            .context_mut()
-            .tracking_copy
-            .write(key, StoredValue::RawBytes(state.into()));
-    }
+    // if let Some(state) = initial_state {
+    //     eprintln!(
+    //         "Write initial state {}bytes under {contract_hash:?}",
+    //         state.len()
+    //     );
+    //     let smart_contract_addr = EntityAddr::SmartContract(contract_hash);
+    //     let key = Key::State(smart_contract_addr);
+    //     caller
+    //         .context_mut()
+    //         .tracking_copy
+    //         .write(key, StoredValue::RawBytes(state.into()));
+    // }
 
     let create_result = CreateResult {
         package_address: package_hash_bytes,
@@ -687,7 +687,7 @@ pub(crate) fn casper_env_read<S: GlobalStateReader, E: Executor>(
 }
 
 pub(crate) fn casper_env_caller<S: GlobalStateReader, E: Executor>(
-    mut caller: impl Caller<S, E>,
+    caller: impl Caller<S, E>,
     dest_ptr: u32,
     dest_len: u32,
     entity_kind_ptr: u32,
@@ -933,9 +933,6 @@ pub(crate) fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
                 .gas_consumed()
                 .try_into_remaining()
                 .expect("should be remaining");
-
-            // let address = target_entity_addr.value();
-            dbg!(&target_entity_addr);
 
             let address_generator = Arc::clone(&caller.context().address_generator);
             let execute_request = ExecuteRequestBuilder::default()

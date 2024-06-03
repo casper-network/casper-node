@@ -142,6 +142,10 @@ impl StoreContractResult {
         let (_cache, effects, _x) = &self.tracking_copy_parts;
         effects
     }
+
+    pub fn contract_hash(&self) -> [u8; 32] {
+        self.contract_hash.value()
+    }
 }
 
 /// Request to execute a Wasm contract.
@@ -354,7 +358,7 @@ pub enum StoreContractError {
 ///
 /// Trait bounds also implying that the executor has to support interior mutability, as it may need to update its internal state during execution of a single or a chain of multiple contracts.
 pub trait Executor: Clone + Send {
-    fn store_contract<R: GlobalStateReader + 'static>(
+    fn create_contract<R: GlobalStateReader + 'static>(
         &self,
         tracking_copy: TrackingCopy<R>,
         store_request: CreateContractRequest,

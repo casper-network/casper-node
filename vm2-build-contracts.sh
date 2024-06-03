@@ -4,7 +4,7 @@ set -e
 VM2_BINS=(
   #"vm2-test-contract"
   "vm2-harness"
-  #"vm2-cep18-caller"
+  "vm2-cep18-caller"
 )
 
 VM2_LIBS=(

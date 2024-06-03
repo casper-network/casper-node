@@ -172,6 +172,15 @@ pub fn call() {
         log!("success 2");
         log!("contract_address: {:?}", contract_handle.contract_address());
 
+        // Calling constructor twice should fail
+        let error = match contract_handle
+            .try_call(|_| HarnessRef::constructor_with_args("World".into()))
+        {
+            Ok(_) => panic!("Constructor should fail to initialize already initialized contract"),
+            Err(error) => error,
+        };
+        assert_eq!(error, CallError::CalleeTrapped);
+
         let result = contract_handle
             .call(|harness| harness.get_greeting())
             .expect("Should call");

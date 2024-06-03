@@ -30,14 +30,19 @@ impl TokenContract {
         // TODO: If argument has same name as another entrypoint there's a compile error for some
         // reason, so can't use "name"
         let mut instance = Self::default();
+
+        let caller = host::get_caller();
+
         instance.state.name = token_name;
         instance.state.enable_mint_burn = true;
+
         instance
             .state
             .security_badges
             .insert(&host::get_caller(), &SecurityBadge::Admin);
 
         log!("TokenContract created with state {:?}", &instance.state);
+        log!("Admin is {caller:?}");
         instance
     }
 

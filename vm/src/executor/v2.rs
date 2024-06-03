@@ -119,7 +119,7 @@ impl ExecutorV2 {
 }
 
 impl Executor for ExecutorV2 {
-    fn store_contract<R: GlobalStateReader + 'static>(
+    fn create_contract<R: GlobalStateReader + 'static>(
         &self,
         mut tracking_copy: TrackingCopy<R>,
         store_request: CreateContractRequest,
@@ -250,6 +250,7 @@ impl Executor for ExecutorV2 {
                         if let Some(host_error) = host_error {
                             return Err(StoreContractError::Constructor { host_error });
                         }
+
                         tracking_copy.merge_raw_parts(tracking_copy_parts);
 
                         if let Some(output) = output {

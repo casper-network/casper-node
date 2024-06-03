@@ -38,7 +38,7 @@ const CSPR: u64 = 10u64.pow(9);
 // const VM2_TEST_CONTRACT: Bytes = Bytes::from_static(include_bytes!("../vm2-test-contract.wasm"));
 const VM2_HARNESS: Bytes = Bytes::from_static(include_bytes!("../vm2-harness.wasm"));
 const VM2_CEP18: Bytes = Bytes::from_static(include_bytes!("../vm2_cep18.wasm"));
-// const VM2_CEP18_CALLER: Bytes = Bytes::from_static(include_bytes!("../vm2-cep18-caller.wasm"));
+const VM2_CEP18_CALLER: Bytes = Bytes::from_static(include_bytes!("../vm2-cep18-caller.wasm"));
 const VM2_TRAIT: Bytes = Bytes::from_static(include_bytes!("../vm2_trait.wasm"));
 
 const TRANSACTION_HASH_BYTES: [u8; 32] = [55; 32];
@@ -142,6 +142,9 @@ fn cep18() {
     let input_data = borsh::to_vec(&("Foo Token".to_string(),))
         .map(Bytes::from)
         .unwrap();
+
+    dbg!(DEFAULT_ACCOUNT_HASH.value());
+
     let create_request = base_store_request_builder()
         .with_wasm_bytes(VM2_CEP18.clone())
         .with_shared_address_generator(Arc::clone(&address_generator))
@@ -151,61 +154,33 @@ fn cep18() {
         .build()
         .expect("should build");
 
-    run_create_contract(
+    let create_result = run_create_contract(
         &mut executor,
         &mut global_state,
         state_root_hash,
         create_request,
     );
 
-    // let execute_request = base_execute_builder()
-    //     .with_target(ExecutionKind::SessionBytes(VM2_CEP18))
-    //     .with_serialized_input(())
-    //     .with_value(0)
-    //     .with_shared_address_generator(Arc::clone(&address_generator))
-    //     .build()
-    //     .expect("should build");
+    dbg!(create_result.contract_hash());
 
-    // let effects_1 = run_wasm_session(
-    //     &mut executor,
-    //     &mut global_state,
-    //     state_root_hash,
-    //     execute_request,
-    // );
+    state_root_hash = global_state
+        .commit(state_root_hash, create_result.effects().clone())
+        .expect("Should commit");
 
-    // let contract_hash = {
-    //     let mut values: Vec<_> = effects_1
-    //         .transforms()
-    //         .iter()
-    //         .filter(|t| t.key().is_smart_contract_key() && t.kind() != &TransformKindV2::Identity)
-    //         .collect();
-    //     assert_eq!(values.len(), 1, "{values:#?}");
-    //     let transform = values.remove(0);
-    //     let Key::AddressableEntity(EntityAddr::SmartContract(contract_hash)) = transform.key()
-    //     else {
-    //         panic!("Expected a smart contract key")
-    //     };
-    //     *contract_hash
-    // };
+    let execute_request = base_execute_builder()
+        .with_target(ExecutionKind::SessionBytes(VM2_CEP18_CALLER))
+        .with_serialized_input((create_result.contract_hash(),))
+        .with_value(0)
+        .with_shared_address_generator(Arc::clone(&address_generator))
+        .build()
+        .expect("should build");
 
-    // state_root_hash = global_state
-    //     .commit(state_root_hash, effects_1)
-    //     .expect("Should commit");
-
-    // let execute_request = base_execute_builder()
-    //     .with_target(ExecutionKind::SessionBytes(VM2_CEP18_CALLER))
-    //     .with_serialized_input((contract_hash,))
-    //     .with_value(0)
-    //     .with_shared_address_generator(Arc::clone(&address_generator))
-    //     .build()
-    //     .expect("should build");
-
-    // let _effects_2 = run_wasm_session(
-    //     &mut executor,
-    //     &mut global_state,
-    //     state_root_hash,
-    //     execute_request,
-    // );
+    let _effects_2 = run_wasm_session(
+        &mut executor,
+        &mut global_state,
+        state_root_hash,
+        execute_request,
+    );
 }
 
 fn make_global_state_with_genesis() -> (LmdbGlobalState, Digest, TempDir) {
@@ -272,7 +247,7 @@ fn run_create_contract(
         .expect("Root hash exists");
 
     executor
-        .store_contract(tracking_copy, create_contract_request)
+        .create_contract(tracking_copy, create_contract_request)
         .expect("Succeed")
 }
 fn run_wasm_session(

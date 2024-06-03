@@ -326,6 +326,16 @@ pub fn read_vec(key: Keyspace) -> Option<Vec<u8>> {
     }
 }
 
+pub fn has_state() -> Result<bool, Error> {
+    // TODO: Host side optimized `casper_exists` to check if given entry exists in the global state.
+    let mut vec = Vec::new();
+    let read_info = casper_read(Keyspace::State, |size| reserve_vec_space(&mut vec, size))?;
+    match read_info {
+        Some(_input) => Ok(true),
+        None => Ok(false),
+    }
+}
+
 pub fn read_state<T: Default + BorshDeserialize>() -> Result<T, Error> {
     let mut vec = Vec::new();
     let read_info = casper_read(Keyspace::State, |size| reserve_vec_space(&mut vec, size))?;

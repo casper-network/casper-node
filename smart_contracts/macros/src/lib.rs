@@ -52,7 +52,12 @@ enum ItemFnMeta {
 
 #[derive(Debug, FromMeta)]
 struct ImplTraitForContractMeta {
+    /// Fully qualified path of the trait.
+    #[darling(default)]
     path: Option<syn::Path>,
+    /// Does not produce Wasm exports for the entry points.
+    #[darling(default)]
+    compile_as_dependency: bool,
 }
 
 #[proc_macro_derive(Contract)]
@@ -430,7 +435,15 @@ fn generate_impl_for_contract(
                     Some(syn::FnArg::Receiver(receiver)) if receiver.lifetime().is_some() => {
                         panic!("Lifetimes are currently not supported");
                     }
-                    Some(_) | None => None,
+                    Some(_) | None => {
+                        if method_attribute.constructor {
+                            Some(quote! {
+                                casper_sdk::host::write_state(&_ret).unwrap();
+                            })
+                        } else {
+                            None
+                        }
+                    }
                 };
 
                 let call_data_return_lifetime = if method_attribute.constructor {
@@ -453,6 +466,13 @@ fn generate_impl_for_contract(
                     syn::ReturnType::Default => {
                         // Do not call casper_return if there is no return value
                         None
+                    }
+                    _ if method_attribute.constructor => {
+                        // Constructor does not return serialized state but is expected to save state, or explicitly revert.
+                        // TODO: Add support for Result<Self, Error> and revert_on_error if possible.
+                        Some(quote! {
+                            let _ = flags; // hide the warning
+                        })
                     }
                     _ => {
                         // There is a return value so call casper_return.
@@ -518,6 +538,16 @@ fn generate_impl_for_contract(
                 let bits = flag_value.bits();
                 let selector_value = selector_value.map(|value| value.get()).unwrap_or_default();
 
+                let mut prelude = Vec::new();
+
+                if method_attribute.constructor {
+                    prelude.push(quote! {
+                        if casper_sdk::host::has_state().unwrap() {
+                            panic!("State of the contract is already present; unable to proceed with the constructor");
+                        }
+                    });
+                }
+
                 // #[cfg(feature = "__abi_generator")]
                 // abi_generator_entry_points.push(quote! {
                 //     #()
@@ -534,6 +564,8 @@ fn generate_impl_for_contract(
 
                     #[export_name = stringify!(#name)]
                     #vis extern "C" fn #extern_func_name() {
+                        #(#prelude;)*
+
                         let mut flags = vm_common::flags::ReturnFlags::empty();
 
                         #handle_call;
@@ -876,22 +908,45 @@ fn generate_impl_trait_for_contract(
         }
     };
 
-    code.push(quote! {
-        const _: () = {
-            macro_rules! visitor {
-                ($($vis:vis $name:ident => $dispatch:ident,)*) => {
-                    $(
-                        #[export_name = stringify!($name)]
-                        $vis extern "C" fn $name() {
-                            #path_to_macro::$dispatch::<#self_ty>();
-                        }
-                    )*
-                }
-            }
+    let visitor;
 
-            #path_to_macro::#macro_name!(visitor);
+    if impl_meta.compile_as_dependency {
+        visitor = quote! {
+            const _: () = {
+                macro_rules! visitor {
+                    ($($vis:vis $name:ident => $dispatch:ident,)*) => {
+                        $(
+                            $vis fn $name() {
+                                #path_to_macro::$dispatch::<#self_ty>();
+                            }
+                        )*
+                    }
+                }
+
+                #path_to_macro::#macro_name!(visitor);
+            };
         };
-    });
+    } else {
+        visitor = quote! {
+            const _: () = {
+                macro_rules! visitor {
+                    ($($vis:vis $name:ident => $dispatch:ident,)*) => {
+                        $(
+                            #[export_name = stringify!($name)]
+                            $vis extern "C" fn $name() {
+                                #path_to_macro::$dispatch::<#self_ty>();
+                            }
+                        )*
+                    }
+                }
+
+                #path_to_macro::#macro_name!(visitor);
+            };
+        };
+    };
+
+    code.push(visitor);
+
     let ref_trait = format_ident!("{}Ext", trait_path.require_ident().unwrap());
     let ref_struct = format_ident!("{}Ref", trait_path.require_ident().unwrap());
     let ref_name = format_ident!("{self_ty}Ref");
