@@ -36,18 +36,28 @@ pub use error::TransactionV1BuilderError;
 /// It can be signed later (multiple times if desired) to make it valid before sending to the
 /// network for execution.
 pub struct TransactionV1Builder<'a> {
+    /// The name of the blockchain network.
     pub chain_name: Option<String>,
+    /// The timestamp of the transaction.
     pub timestamp: Timestamp,
+    /// The time-to-live for the transaction.
     pub ttl: TimeDiff,
+    /// The body of the transaction.
     pub body: TransactionV1Body,
+    /// The pricing mode for the transaction.
     pub pricing_mode: PricingMode,
+    /// The address of the transaction initiator.
     pub initiator_addr: Option<InitiatorAddr>,
+    /// The secret key used for signing the transaction. Not available in testing mode.
     #[cfg(not(any(feature = "testing", test)))]
     secret_key: Option<&'a SecretKey>,
+    /// The secret key used for signing the transaction. Available in testing mode.
     #[cfg(any(feature = "testing", test))]
     pub secret_key: Option<SecretKey>,
+    /// Invalid approvals for the transaction. Only available in testing mode.
     #[cfg(any(feature = "testing", test))]
     invalid_approvals: Vec<Approval>,
+    /// Phantom data to ensure the correct lifetime for references.
     _phantom_data: PhantomData<&'a ()>,
 }
 
