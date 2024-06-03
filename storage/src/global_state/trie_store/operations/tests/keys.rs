@@ -179,7 +179,7 @@ mod keys_iterator {
     }
 
     #[test]
-    #[should_panic = "Expected a Trie::Node but received"]
+    #[should_panic = "Expected a LazilyDeserializedTrie::Node but received"]
     fn should_panic_on_leaf_after_extension() {
         let (root_hash, tries) = return_on_err!(create_invalid_extension_trie());
         test_trie(root_hash, tries);

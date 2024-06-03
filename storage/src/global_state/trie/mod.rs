@@ -1,7 +1,7 @@
 //! Core types for a Merkle Trie
 
 use std::{
-    convert::TryInto,
+    convert::{TryFrom, TryInto},
     fmt::{self, Debug, Display, Formatter},
     iter::Flatten,
     mem::MaybeUninit,
@@ -9,7 +9,6 @@ use std::{
 };
 
 use datasize::DataSize;
-use either::Either;
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::{FromPrimitive, ToPrimitive};
 use serde::{
@@ -445,40 +444,112 @@ impl<K, V> Trie<K, V> {
     }
 }
 
-pub(crate) type LazyTrieLeaf<K, V> = Either<Bytes, Trie<K, V>>;
+/// Bytes representation of a `Trie` that is a `Trie::Leaf` variant.
+/// The bytes for this trie leaf also include the `Trie::Tag`.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct TrieLeafBytes(Bytes);
 
-pub(crate) fn lazy_trie_tag(bytes: &[u8]) -> Option<TrieTag> {
-    bytes.first().copied().and_then(TrieTag::from_u8)
-}
+impl TrieLeafBytes {
+    pub(crate) fn bytes(&self) -> &Bytes {
+        &self.0
+    }
 
-pub(crate) fn lazy_trie_deserialize<K, V>(
-    bytes: Bytes,
-) -> Result<LazyTrieLeaf<K, V>, bytesrepr::Error>
-where
-    K: FromBytes,
-    V: FromBytes,
-{
-    let trie_tag = lazy_trie_tag(&bytes);
-
-    if trie_tag == Some(TrieTag::Leaf) {
-        Ok(LazyTrieLeaf::Left(bytes))
-    } else {
-        let deserialized: Trie<K, V> = bytesrepr::deserialize(bytes.into())?;
-        Ok(LazyTrieLeaf::Right(deserialized))
+    pub(crate) fn try_deserialize_leaf_key<K: FromBytes>(
+        &self,
+    ) -> Result<(K, &[u8]), bytesrepr::Error> {
+        let (tag_byte, rem) = u8::from_bytes(&self.0)?;
+        let tag = TrieTag::from_u8(tag_byte).ok_or(bytesrepr::Error::Formatting)?;
+        assert_eq!(
+            tag,
+            TrieTag::Leaf,
+            "Unexpected layout for trie leaf bytes. Expected `TrieTag::Leaf` but got {:?}",
+            tag
+        );
+        K::from_bytes(rem)
     }
 }
 
-pub(crate) fn lazy_trie_iter_children<K, V>(
-    trie_bytes: &LazyTrieLeaf<K, V>,
-) -> DescendantsIterator {
-    match trie_bytes {
-        LazyTrieLeaf::Left(_) => {
-            // Leaf bytes does not have any children
-            DescendantsIterator::ZeroOrOne(None)
+impl From<&[u8]> for TrieLeafBytes {
+    fn from(value: &[u8]) -> Self {
+        Self(value.into())
+    }
+}
+
+impl From<Vec<u8>> for TrieLeafBytes {
+    fn from(value: Vec<u8>) -> Self {
+        Self(value.into())
+    }
+}
+
+/// Like `Trie` but does not deserialize the leaf when constructed.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum LazilyDeserializedTrie {
+    /// Serialized trie leaf bytes
+    Leaf(TrieLeafBytes),
+    /// Trie node.
+    Node { pointer_block: Box<PointerBlock> },
+    /// Trie extension node.
+    Extension { affix: Bytes, pointer: Pointer },
+}
+
+impl LazilyDeserializedTrie {
+    pub(crate) fn iter_children(&self) -> DescendantsIterator {
+        match self {
+            LazilyDeserializedTrie::Leaf(_) => {
+                // Leaf bytes does not have any children
+                DescendantsIterator::ZeroOrOne(None)
+            }
+            LazilyDeserializedTrie::Node { pointer_block } => DescendantsIterator::PointerBlock {
+                iter: pointer_block.0.iter().flatten(),
+            },
+            LazilyDeserializedTrie::Extension { pointer, .. } => {
+                DescendantsIterator::ZeroOrOne(Some(pointer.into_hash()))
+            }
         }
-        LazyTrieLeaf::Right(trie) => {
-            // Trie::Node or Trie::Extension has children
-            trie.iter_children()
+    }
+}
+
+impl FromBytes for LazilyDeserializedTrie {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (tag_byte, rem) = u8::from_bytes(bytes)?;
+        let tag = TrieTag::from_u8(tag_byte).ok_or(bytesrepr::Error::Formatting)?;
+        match tag {
+            TrieTag::Leaf => Ok((LazilyDeserializedTrie::Leaf(bytes.into()), &[])),
+            TrieTag::Node => {
+                let (pointer_block, rem) = PointerBlock::from_bytes(rem)?;
+                Ok((
+                    LazilyDeserializedTrie::Node {
+                        pointer_block: Box::new(pointer_block),
+                    },
+                    rem,
+                ))
+            }
+            TrieTag::Extension => {
+                let (affix, rem) = FromBytes::from_bytes(rem)?;
+                let (pointer, rem) = Pointer::from_bytes(rem)?;
+                Ok((LazilyDeserializedTrie::Extension { affix, pointer }, rem))
+            }
+        }
+    }
+}
+
+impl<K, V> TryFrom<Trie<K, V>> for LazilyDeserializedTrie
+where
+    K: ToBytes,
+    V: ToBytes,
+{
+    type Error = bytesrepr::Error;
+
+    fn try_from(value: Trie<K, V>) -> Result<Self, Self::Error> {
+        match value {
+            Trie::Leaf { .. } => {
+                let serialized_bytes = ToBytes::to_bytes(&value)?;
+                Ok(LazilyDeserializedTrie::Leaf(serialized_bytes.into()))
+            }
+            Trie::Node { pointer_block } => Ok(LazilyDeserializedTrie::Node { pointer_block }),
+            Trie::Extension { affix, pointer } => {
+                Ok(LazilyDeserializedTrie::Extension { affix, pointer })
+            }
         }
     }
 }
@@ -571,6 +642,24 @@ impl<K: FromBytes, V: FromBytes> FromBytes for Trie<K, V> {
                 let (affix, rem) = FromBytes::from_bytes(rem)?;
                 let (pointer, rem) = Pointer::from_bytes(rem)?;
                 Ok((Trie::Extension { affix, pointer }, rem))
+            }
+        }
+    }
+}
+
+impl<K: FromBytes, V: FromBytes> TryFrom<LazilyDeserializedTrie> for Trie<K, V> {
+    type Error = bytesrepr::Error;
+
+    fn try_from(value: LazilyDeserializedTrie) -> Result<Self, Self::Error> {
+        match value {
+            LazilyDeserializedTrie::Leaf(leaf_bytes) => {
+                let (key, value_bytes) = leaf_bytes.try_deserialize_leaf_key()?;
+                let value = bytesrepr::deserialize_from_slice(value_bytes)?;
+                Ok(Self::Leaf { key, value })
+            }
+            LazilyDeserializedTrie::Node { pointer_block } => Ok(Self::Node { pointer_block }),
+            LazilyDeserializedTrie::Extension { affix, pointer } => {
+                Ok(Self::Extension { affix, pointer })
             }
         }
     }
