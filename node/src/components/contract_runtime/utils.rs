@@ -6,6 +6,7 @@ use std::{
     fmt::Debug,
     ops::Range,
     sync::{Arc, Mutex},
+    time::Instant,
 };
 use tracing::{debug, error, info, warn};
 
@@ -25,12 +26,20 @@ use crate::{
     types::{ExecutableBlock, MetaBlock, MetaBlockState},
 };
 
+use crate::types::{BlockPayload, FinalizedBlock, InternalEraReport};
 use casper_binary_port::SpeculativeExecutionResult;
 use casper_execution_engine::engine_state::{ExecutionEngineV1, WasmV1Result};
 use casper_storage::{
-    data_access_layer::DataAccessLayer, global_state::state::lmdb::LmdbGlobalState,
+    data_access_layer::{
+        DataAccessLayer, FlushRequest, FlushResult, ProtocolUpgradeRequest, ProtocolUpgradeResult,
+    },
+    global_state::state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
+    system::protocol_upgrade::ProtocolUpgradeError,
 };
-use casper_types::{BlockHash, Chainspec, EraId, GasLimited, Key};
+use casper_types::{
+    BlockHash, BlockHeader, Chainspec, Digest, EraId, GasLimited, Key, ProtocolUpgradeConfig,
+    PublicKey,
+};
 
 /// Maximum number of resource intensive tasks that can be run in parallel.
 ///
@@ -46,9 +55,9 @@ static INTENSIVE_TASKS_SEMAPHORE: Lazy<tokio::sync::Semaphore> =
 /// The task is a closure that takes no arguments and returns a value.
 /// This function returns a future for that value.
 pub(super) async fn run_intensive_task<T, V>(task: T) -> V
-where
-    T: 'static + Send + FnOnce() -> V,
-    V: 'static + Send + Debug,
+    where
+        T: 'static + Send + FnOnce() -> V,
+        V: 'static + Send + Debug,
 {
     // This will never panic since the semaphore is never closed.
     let _permit = INTENSIVE_TASKS_SEMAPHORE.acquire().await.unwrap();
@@ -78,11 +87,11 @@ pub(super) async fn exec_or_requeue<REv>(
     current_gas_price: u8,
 ) where
     REv: From<ContractRuntimeRequest>
-        + From<ContractRuntimeAnnouncement>
-        + From<StorageRequest>
-        + From<MetaBlockAnnouncement>
-        + From<FatalAnnouncement>
-        + Send,
+    + From<ContractRuntimeAnnouncement>
+    + From<StorageRequest>
+    + From<MetaBlockAnnouncement>
+    + From<FatalAnnouncement>
+    + Send,
 {
     debug!("ContractRuntime: execute_finalized_block_or_requeue");
     let contract_runtime_metrics = metrics.clone();
@@ -95,7 +104,7 @@ pub(super) async fn exec_or_requeue<REv>(
                 chainspec.as_ref(),
                 executable_block.clone(),
             )
-            .await
+                .await
             {
                 Ok(rewards) => rewards,
                 Err(e) => {
@@ -175,7 +184,7 @@ pub(super) async fn exec_or_requeue<REv>(
                     executable_block.transactions.len() as u64 * 100,
                     per_block_capacity,
                 )
-                .to_integer();
+                    .to_integer();
 
                 let uitilization_scores = vec![slot_utilization, gas_utilization, size_utilization];
 
@@ -259,7 +268,7 @@ pub(super) async fn exec_or_requeue<REv>(
             last_switch_block_hash,
         )
     })
-    .await
+        .await
     {
         Ok(ret) => ret,
         Err(error) => {
@@ -293,9 +302,9 @@ pub(super) async fn exec_or_requeue<REv>(
     let current_era_id = block.era_id();
 
     if let Some(StepOutcome {
-        step_effects,
-        mut upcoming_era_validators,
-    }) = maybe_step_outcome
+                    step_effects,
+                    mut upcoming_era_validators,
+                }) = maybe_step_outcome
     {
         effect_builder
             .announce_commit_step_success(current_era_id, step_effects)
@@ -377,15 +386,86 @@ pub(super) async fn exec_or_requeue<REv>(
 
     // We schedule the next block from the queue to be executed:
     if let Some(QueueItem {
-        executable_block,
-        meta_block_state,
-    }) = next_block
+                    executable_block,
+                    meta_block_state,
+                }) = next_block
     {
         metrics.exec_queue_size.dec();
         debug!("ContractRuntime: next block enqueue_block_for_execution");
         effect_builder
             .enqueue_block_for_execution(executable_block, meta_block_state)
             .await;
+    }
+}
+
+pub(super) async fn handle_protocol_upgrade<REv>(
+    effect_builder: EffectBuilder<REv>,
+    data_access_layer: Arc<DataAccessLayer<LmdbGlobalState>>,
+    metrics: Arc<Metrics>,
+    upgrade_config: ProtocolUpgradeConfig,
+    next_block_height: u64,
+    parent_hash: BlockHash,
+    parent_seed: Digest,
+) where
+    REv: From<ContractRuntimeRequest>
+    + From<ContractRuntimeAnnouncement>
+    + From<StorageRequest>
+    + From<MetaBlockAnnouncement>
+    + From<FatalAnnouncement>
+    + Send,
+{
+    debug!(?upgrade_config, "upgrade");
+    let start = Instant::now();
+    let upgrade_request = ProtocolUpgradeRequest::new(upgrade_config);
+
+    let result = run_intensive_task(move || {
+        let result = data_access_layer.protocol_upgrade(upgrade_request);
+        if result.is_success() {
+            info!("committed upgrade");
+            metrics
+                .commit_upgrade
+                .observe(start.elapsed().as_secs_f64());
+            let flush_req = FlushRequest::new();
+            if let FlushResult::Failure(err) = data_access_layer.flush(flush_req) {
+                return Err(format!("{:?}", err));
+            }
+        }
+
+        Ok(result)
+    })
+        .await;
+
+    match result {
+        Err(error_msg) => {
+            // The only way this happens is if there is a problem in the flushing.
+            error!(%error_msg, ":Error in post upgrade flush");
+            fatal!(effect_builder, "{}", error_msg).await;
+        }
+        Ok(result) => match result {
+            ProtocolUpgradeResult::RootNotFound => {
+                let error_msg = "Root not found for protocol upgrade";
+                error!(%error_msg);
+                fatal!(effect_builder, "{}", error_msg).await;
+            }
+            ProtocolUpgradeResult::Failure(err) => {
+                error!(%err, ": Failure in protocol upgrade");
+                fatal!(effect_builder, "{:?}", err).await;
+            }
+            ProtocolUpgradeResult::Success {
+                post_state_hash, ..
+            } => {
+                let post_upgrade_state = ExecutionPreState::new(
+                    next_block_height,
+                    post_state_hash,
+                    parent_hash,
+                    parent_seed,
+                );
+
+                effect_builder
+                    .update_contract_runtime_state(post_upgrade_state)
+                    .await
+            }
+        },
     }
 }
 

@@ -39,7 +39,7 @@ impl MainReactor {
                     tokio::time::sleep(delay).await
                 }
             }
-            .event(|_| MainEvent::ReactorCrank),
+                .event(|_| MainEvent::ReactorCrank),
         );
         effects
     }
@@ -437,42 +437,52 @@ impl MainReactor {
             self.chainspec_raw_bytes.clone(),
         ) {
             Ok(cfg) => {
-                // apply protocol changes to global state
-                match self.contract_runtime.commit_upgrade(cfg) {
-                    ProtocolUpgradeResult::RootNotFound => Err("Root not found".to_string()),
-                    ProtocolUpgradeResult::Failure(err) => Err(err.to_string()),
-                    ProtocolUpgradeResult::Success {
-                        post_state_hash, ..
-                    } => {
-                        info!(%network_name, %post_state_hash, "{:?}: committed upgrade", self.state);
-
-                        let next_block_height = header.height() + 1;
-                        self.initialize_contract_runtime(
-                            next_block_height,
-                            post_state_hash,
-                            header.block_hash(),
-                            *header.accumulated_seed(),
-                        );
-
-                        let finalized_block = FinalizedBlock::new(
-                            BlockPayload::default(),
-                            Some(InternalEraReport::default()),
-                            header.timestamp(),
-                            header.next_block_era_id(),
-                            next_block_height,
-                            PublicKey::System,
-                        );
-                        Ok(effect_builder
-                            .enqueue_block_for_execution(
-                                ExecutableBlock::from_finalized_block_and_transactions(
-                                    finalized_block,
-                                    vec![],
-                                ),
-                                MetaBlockState::new_not_to_be_gossiped(),
-                            )
-                            .ignore())
-                    }
-                }
+                let mut effects = Effects::new();
+                let next_block_height = header.height() + 1;
+                effects.extend(effect_builder.enqueue_protocol_upgrade(
+                    cfg,
+                    next_block_height,
+                    header.block_hash(),
+                    *header.accumulated_seed(),
+                ).ignore());
+                return Ok(effects);
+                // // apply protocol changes to global state
+                // match self.contract_runtime.commit_upgrade(cfg) {
+                //     ProtocolUpgradeResult::RootNotFound => Err("Root not found".to_string()),
+                //     ProtocolUpgradeResult::Failure(err) => Err(err.to_string()),
+                //     ProtocolUpgradeResult::Success {
+                //         post_state_hash, ..
+                //     } => {
+                //         info!(%network_name, %post_state_hash, "{:?}: committed upgrade",
+                // self.state);
+                //
+                //         let next_block_height = header.height() + 1;
+                //         self.initialize_contract_runtime(
+                //             next_block_height,
+                //             post_state_hash,
+                //             header.block_hash(),
+                //             *header.accumulated_seed(),
+                //         );
+                //
+                //         let finalized_block = FinalizedBlock::new(
+                //             BlockPayload::default(),
+                //             Some(InternalEraReport::default()),
+                //             header.timestamp(),
+                //             header.next_block_era_id(),
+                //             next_block_height,
+                //             PublicKey::System,
+                //         );
+                //         Ok(effect_builder
+                //             .enqueue_block_for_execution(
+                //                 ExecutableBlock::from_finalized_block_and_transactions(
+                //                     finalized_block,
+                //                     vec![],
+                //                 ),
+                //                 MetaBlockState::new_not_to_be_gossiped(),
+                //             )
+                //             .ignore())
+                //     }
+                // }
             }
             Err(msg) => Err(msg),
         }
@@ -495,8 +505,8 @@ impl MainReactor {
                 self.storage.highest_complete_block_height() == Some(block_header.height());
             return highest_block_complete
                 && self
-                    .upgrade_watcher
-                    .should_upgrade_after(block_header.era_id());
+                .upgrade_watcher
+                .should_upgrade_after(block_header.era_id());
         }
         false
     }

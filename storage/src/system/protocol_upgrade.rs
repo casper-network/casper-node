@@ -378,8 +378,6 @@ where
             }
         }
 
-        println!("writing entry points");
-
         let entry_points = system_entity_type.entry_points();
 
         for entry_point in entry_points.take_entry_points() {

@@ -1,5 +1,6 @@
 use num_rational::Ratio;
 use std::collections::BTreeMap;
+use serde::Serialize;
 
 use crate::{
     ChainspecRegistry, Digest, EraId, FeeHandling, HoldBalanceHandling, Key, ProtocolVersion,
@@ -7,7 +8,7 @@ use crate::{
 };
 
 /// Represents the configuration of a protocol upgrade.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ProtocolUpgradeConfig {
     pre_state_hash: Digest,
     current_protocol_version: ProtocolVersion,

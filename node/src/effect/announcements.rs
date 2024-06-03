@@ -15,7 +15,7 @@ use itertools::Itertools;
 use serde::Serialize;
 
 use casper_types::{
-    execution::Effects, Block, EraId, FinalitySignature, FinalitySignatureV2, NextUpgrade,
+    execution::Effects, Block, Digest, EraId, FinalitySignature, FinalitySignatureV2, NextUpgrade,
     PublicKey, Timestamp, Transaction, TransactionHash, U512,
 };
 
@@ -375,8 +375,11 @@ pub(crate) enum ContractRuntimeAnnouncement {
         /// The validators for the eras after the `era_that_is_ending` era.
         upcoming_era_validators: BTreeMap<EraId, BTreeMap<PublicKey, U512>>,
     },
+    /// New gas price for an upcoming era has been determined.
     NextEraGasPrice {
+        /// The era id for which the gas price has been determined
         era_id: EraId,
+        /// The gas price as determined by chain utilization.
         next_era_gas_price: u8,
     },
 }
