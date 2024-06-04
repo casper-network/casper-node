@@ -502,13 +502,16 @@ impl ContractRuntime {
                         next_block_height,
                         PublicKey::System,
                     );
+
+                    info!("Enqueuing block for execution post state refresh");
+
                     effect_builder.enqueue_block_for_execution(
                         ExecutableBlock::from_finalized_block_and_transactions(
                             finalized_block,
                             vec![],
                         ),
                         MetaBlockState::new_not_to_be_gossiped(),
-                    ).ignore::<REv>();
+                    ).await;
                 }.ignore()
             }
             ContractRuntimeRequest::DoProtocolUpgrade {

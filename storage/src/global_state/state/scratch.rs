@@ -255,11 +255,6 @@ impl CommitProvider for ScratchGlobalState {
             let instruction = match (cached_value, kind) {
                 (_, TransformKindV2::Identity) => {
                     // effectively a noop.
-                    debug!(
-                        ?state_hash,
-                        ?key,
-                        "scratch commit: attempt to commit a read."
-                    );
                     continue;
                 }
                 (None, TransformKindV2::Write(new_value)) => TransformInstruction::store(new_value),
@@ -274,7 +269,7 @@ impl CommitProvider for ScratchGlobalState {
                         LmdbTrieStore,
                         GlobalStateError,
                     >(
-                        &txn, self.trie_store.deref(), &state_hash, &key
+                        &txn, self.trie_store.deref(), &state_hash, &key,
                     )? {
                         ReadResult::Found(current_value) => {
                             match transform_kind.apply(current_value.clone()) {
@@ -536,7 +531,7 @@ pub(crate) mod tests {
                 DEFAULT_MAX_READERS,
                 true,
             )
-            .unwrap(),
+                .unwrap(),
         );
         let trie_store =
             Arc::new(LmdbTrieStore::new(&environment, None, DatabaseFlags::empty()).unwrap());
@@ -546,7 +541,7 @@ pub(crate) mod tests {
             trie_store,
             crate::global_state::DEFAULT_MAX_QUERY_DEPTH,
         )
-        .unwrap();
+            .unwrap();
         let mut current_root = state.empty_root_hash;
         {
             let mut txn = state.environment.create_read_write_txn().unwrap();
@@ -559,7 +554,7 @@ pub(crate) mod tests {
                     key,
                     value,
                 )
-                .unwrap()
+                    .unwrap()
                 {
                     WriteResult::Written(root_hash) => {
                         current_root = root_hash;

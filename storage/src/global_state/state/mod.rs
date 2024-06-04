@@ -563,7 +563,7 @@ pub trait CommitProvider: StateProvider {
 /// A trait expressing operations over the trie.
 pub trait StateProvider {
     /// Associated reader type for `StateProvider`.
-    type Reader: StateReader<Key, StoredValue, Error = GlobalStateError>;
+    type Reader: StateReader<Key, StoredValue, Error=GlobalStateError>;
 
     /// Flush the state provider.
     fn flush(&self, request: FlushRequest) -> FlushResult;
@@ -1036,7 +1036,7 @@ pub trait StateProvider {
                 match k.as_uref() {
                     Some(uref) => entity_access_rights.extend(&[*uref]),
                     None => {
-                        return BiddingResult::Failure(TrackingCopyError::UnexpectedKeyVariant(k))
+                        return BiddingResult::Failure(TrackingCopyError::UnexpectedKeyVariant(k));
                     }
                 }
                 entity_named_keys.insert(ERA_END_TIMESTAMP_MILLIS_KEY.into(), k);
@@ -1044,7 +1044,7 @@ pub trait StateProvider {
             Ok(None) => {
                 return BiddingResult::Failure(TrackingCopyError::NamedKeyNotFound(
                     ERA_END_TIMESTAMP_MILLIS_KEY.into(),
-                ))
+                ));
             }
             Err(tce) => {
                 return BiddingResult::Failure(tce);
@@ -1059,7 +1059,7 @@ pub trait StateProvider {
                 match k.as_uref() {
                     Some(uref) => entity_access_rights.extend(&[*uref]),
                     None => {
-                        return BiddingResult::Failure(TrackingCopyError::UnexpectedKeyVariant(k))
+                        return BiddingResult::Failure(TrackingCopyError::UnexpectedKeyVariant(k));
                     }
                 }
                 entity_named_keys.insert(ERA_ID_KEY.into(), k);
@@ -1067,7 +1067,7 @@ pub trait StateProvider {
             Ok(None) => {
                 return BiddingResult::Failure(TrackingCopyError::NamedKeyNotFound(
                     ERA_ID_KEY.into(),
-                ))
+                ));
             }
             Err(tce) => {
                 return BiddingResult::Failure(tce);
@@ -2049,11 +2049,11 @@ pub fn put_stored_values<'a, R, S, E>(
     prestate_hash: Digest,
     stored_values: BTreeMap<Key, StoredValue>,
 ) -> Result<Digest, E>
-where
-    R: TransactionSource<'a, Handle = S::Handle>,
-    S: TrieStore<Key, StoredValue>,
-    S::Error: From<R::Error>,
-    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error> + From<CommitError>,
+    where
+        R: TransactionSource<'a, Handle=S::Handle>,
+        S: TrieStore<Key, StoredValue>,
+        S::Error: From<R::Error>,
+        E: From<R::Error> + From<S::Error> + From<bytesrepr::Error> + From<CommitError>,
 {
     let mut txn = environment.create_read_write_txn()?;
     let mut state_root = prestate_hash;
@@ -2085,11 +2085,11 @@ pub fn commit<'a, R, S, E>(
     prestate_hash: Digest,
     effects: Effects,
 ) -> Result<Digest, E>
-where
-    R: TransactionSource<'a, Handle = S::Handle>,
-    S: TrieStore<Key, StoredValue>,
-    S::Error: From<R::Error>,
-    E: From<R::Error>
+    where
+        R: TransactionSource<'a, Handle=S::Handle>,
+        S: TrieStore<Key, StoredValue>,
+        S::Error: From<R::Error>,
+        E: From<R::Error>
         + From<S::Error>
         + From<bytesrepr::Error>
         + From<CommitError>
@@ -2111,7 +2111,6 @@ where
         let instruction = match (read_result, kind) {
             (_, TransformKindV2::Identity) => {
                 // effectively a noop.
-                debug!(?state_root, ?key, "commit: attempt to commit a read.");
                 continue;
             }
             (ReadResult::NotFound, TransformKindV2::Write(new_value)) => {

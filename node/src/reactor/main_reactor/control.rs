@@ -446,43 +446,6 @@ impl MainReactor {
                     *header.accumulated_seed(),
                 ).ignore());
                 Ok(effects)
-                // // apply protocol changes to global state
-                // match self.contract_runtime.commit_upgrade(cfg) {
-                //     ProtocolUpgradeResult::RootNotFound => Err("Root not found".to_string()),
-                //     ProtocolUpgradeResult::Failure(err) => Err(err.to_string()),
-                //     ProtocolUpgradeResult::Success {
-                //         post_state_hash, ..
-                //     } => {
-                //         info!(%network_name, %post_state_hash, "{:?}: committed upgrade",
-                // self.state);
-                //
-                //         let next_block_height = header.height() + 1;
-                //         self.initialize_contract_runtime(
-                //             next_block_height,
-                //             post_state_hash,
-                //             header.block_hash(),
-                //             *header.accumulated_seed(),
-                //         );
-                //
-                //         let finalized_block = FinalizedBlock::new(
-                //             BlockPayload::default(),
-                //             Some(InternalEraReport::default()),
-                //             header.timestamp(),
-                //             header.next_block_era_id(),
-                //             next_block_height,
-                //             PublicKey::System,
-                //         );
-                //         Ok(effect_builder
-                //             .enqueue_block_for_execution(
-                //                 ExecutableBlock::from_finalized_block_and_transactions(
-                //                     finalized_block,
-                //                     vec![],
-                //                 ),
-                //                 MetaBlockState::new_not_to_be_gossiped(),
-                //             )
-                //             .ignore())
-                //     }
-                // }
             }
             Err(msg) => Err(msg),
         }
