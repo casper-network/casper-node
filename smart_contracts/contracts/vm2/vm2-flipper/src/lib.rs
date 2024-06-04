@@ -36,3 +36,18 @@ impl Flipper {
         self.value
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_flipper() {
+        let mut flipper = Flipper::new(false);
+        assert_eq!(flipper.get(), false);
+        flipper.flip();
+        assert_eq!(flipper.get(), true);
+        flipper.flip();
+        assert_eq!(flipper.get(), false);
+    }
+}

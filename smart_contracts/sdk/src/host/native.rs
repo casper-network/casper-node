@@ -120,7 +120,8 @@ pub struct BorrowedTaggedValue<'a> {
 pub type Container = BTreeMap<u64, BTreeMap<Bytes, TaggedValue>>;
 
 #[derive(Clone, Debug)]
-pub struct NativeParam(String);
+#[allow(unused_variables)]
+pub struct NativeParam(pub(crate) String);
 
 impl Into<NativeParam> for &casper_sdk_sys::Param {
     fn into(self) -> NativeParam {
