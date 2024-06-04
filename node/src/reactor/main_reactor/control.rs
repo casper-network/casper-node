@@ -1,7 +1,7 @@
 use std::time::Duration;
 use tracing::{debug, error, info, trace};
 
-use casper_storage::data_access_layer::{GenesisResult};
+use casper_storage::data_access_layer::GenesisResult;
 use casper_types::{BlockHash, BlockHeader, Digest, EraId, PublicKey, Timestamp};
 
 use crate::{
@@ -39,7 +39,7 @@ impl MainReactor {
                     tokio::time::sleep(delay).await
                 }
             }
-                .event(|_| MainEvent::ReactorCrank),
+            .event(|_| MainEvent::ReactorCrank),
         );
         effects
     }
@@ -439,12 +439,16 @@ impl MainReactor {
             Ok(cfg) => {
                 let mut effects = Effects::new();
                 let next_block_height = header.height() + 1;
-                effects.extend(effect_builder.enqueue_protocol_upgrade(
-                    cfg,
-                    next_block_height,
-                    header.block_hash(),
-                    *header.accumulated_seed(),
-                ).ignore());
+                effects.extend(
+                    effect_builder
+                        .enqueue_protocol_upgrade(
+                            cfg,
+                            next_block_height,
+                            header.block_hash(),
+                            *header.accumulated_seed(),
+                        )
+                        .ignore(),
+                );
                 Ok(effects)
             }
             Err(msg) => Err(msg),
@@ -468,8 +472,8 @@ impl MainReactor {
                 self.storage.highest_complete_block_height() == Some(block_header.height());
             return highest_block_complete
                 && self
-                .upgrade_watcher
-                .should_upgrade_after(block_header.era_id());
+                    .upgrade_watcher
+                    .should_upgrade_after(block_header.era_id());
         }
         false
     }

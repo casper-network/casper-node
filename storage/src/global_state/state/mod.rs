@@ -563,7 +563,7 @@ pub trait CommitProvider: StateProvider {
 /// A trait expressing operations over the trie.
 pub trait StateProvider {
     /// Associated reader type for `StateProvider`.
-    type Reader: StateReader<Key, StoredValue, Error=GlobalStateError>;
+    type Reader: StateReader<Key, StoredValue, Error = GlobalStateError>;
 
     /// Flush the state provider.
     fn flush(&self, request: FlushRequest) -> FlushResult;
@@ -2049,11 +2049,11 @@ pub fn put_stored_values<'a, R, S, E>(
     prestate_hash: Digest,
     stored_values: BTreeMap<Key, StoredValue>,
 ) -> Result<Digest, E>
-    where
-        R: TransactionSource<'a, Handle=S::Handle>,
-        S: TrieStore<Key, StoredValue>,
-        S::Error: From<R::Error>,
-        E: From<R::Error> + From<S::Error> + From<bytesrepr::Error> + From<CommitError>,
+where
+    R: TransactionSource<'a, Handle = S::Handle>,
+    S: TrieStore<Key, StoredValue>,
+    S::Error: From<R::Error>,
+    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error> + From<CommitError>,
 {
     let mut txn = environment.create_read_write_txn()?;
     let mut state_root = prestate_hash;
@@ -2085,11 +2085,11 @@ pub fn commit<'a, R, S, E>(
     prestate_hash: Digest,
     effects: Effects,
 ) -> Result<Digest, E>
-    where
-        R: TransactionSource<'a, Handle=S::Handle>,
-        S: TrieStore<Key, StoredValue>,
-        S::Error: From<R::Error>,
-        E: From<R::Error>
+where
+    R: TransactionSource<'a, Handle = S::Handle>,
+    S: TrieStore<Key, StoredValue>,
+    S::Error: From<R::Error>,
+    E: From<R::Error>
         + From<S::Error>
         + From<bytesrepr::Error>
         + From<CommitError>

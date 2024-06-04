@@ -1,6 +1,6 @@
 use num_rational::Ratio;
-use std::collections::BTreeMap;
 use serde::Serialize;
+use std::collections::BTreeMap;
 
 use crate::{
     ChainspecRegistry, Digest, EraId, FeeHandling, HoldBalanceHandling, Key, ProtocolVersion,
