@@ -222,7 +222,12 @@ impl<T: StateReader> StateTracker<T> {
     pub fn set_bid(&mut self, public_key: PublicKey, bid: Bid, slash: bool) {
         let maybe_current_bid = self.get_bids().get(&public_key).cloned();
 
-        let new_amount = *bid.staked_amount();
+        let account_hash = public_key.to_account_hash();
+        let already_unbonded = self.already_unbonding_amount(&account_hash, &public_key);
+
+        // we need to put enough funds in the bonding purse to cover the staked amount and the
+        // amount that will be getting unbonded in the future
+        let new_amount = *bid.staked_amount() + already_unbonded;
         let old_amount = maybe_current_bid
             .as_ref()
             .map(|bid| self.get_purse_balance(*bid.bonding_purse()))
@@ -233,8 +238,6 @@ impl<T: StateReader> StateTracker<T> {
             .as_mut()
             .unwrap()
             .insert(public_key.clone(), bid.clone());
-
-        let account_hash = public_key.to_account_hash();
 
         // Replace the bid (overwrite the previous bid, if any):
         self.write_entry(Key::Bid(account_hash), bid.clone().into());
@@ -288,27 +291,27 @@ impl<T: StateReader> StateTracker<T> {
         if (slash && new_amount != old_amount) || new_amount > old_amount {
             self.set_purse_balance(*bid.bonding_purse(), new_amount);
         } else if new_amount < old_amount {
-            let already_unbonded = self.already_unbonding_amount(&account_hash, &public_key);
             self.create_unbonding_purse(
                 *bid.bonding_purse(),
                 &public_key,
                 &public_key,
-                old_amount - new_amount - already_unbonded,
+                old_amount - new_amount,
             );
         }
 
         for (delegator_public_key, delegator) in bid.delegators() {
             let old_amount = self.get_purse_balance(*delegator.bonding_purse());
-            let new_amount = *delegator.staked_amount();
+            let already_unbonded =
+                self.already_unbonding_amount(&account_hash, delegator_public_key);
+            let new_amount = *delegator.staked_amount() + already_unbonded;
             if (slash && new_amount != old_amount) || new_amount > old_amount {
-                self.set_purse_balance(*delegator.bonding_purse(), *delegator.staked_amount());
+                self.set_purse_balance(*delegator.bonding_purse(), new_amount);
             } else if new_amount < old_amount {
-                let already_unbonded = self.already_unbonding_amount(&account_hash, &public_key);
                 self.create_unbonding_purse(
                     *delegator.bonding_purse(),
                     &public_key,
                     delegator_public_key,
-                    old_amount - new_amount - already_unbonded,
+                    old_amount - new_amount,
                 );
             }
         }
@@ -316,6 +319,10 @@ impl<T: StateReader> StateTracker<T> {
 
     /// Returns the sum of already unbonding purses for the given validator account & unbonder.
     fn already_unbonding_amount(&mut self, account: &AccountHash, unbonder: &PublicKey) -> U512 {
+        let current_era = *self.read_snapshot().1.keys().next().unwrap();
+        let unbonding_delay = self.reader.get_unbonding_delay();
+        let limit_era = current_era.saturating_sub(unbonding_delay);
+
         let existing_purses = self
             .reader
             .get_unbonds()
@@ -329,7 +336,10 @@ impl<T: StateReader> StateTracker<T> {
             .cloned()
             .unwrap_or_default()
             .into_iter()
-            .map(UnbondingPurse::from);
+            .map(UnbondingPurse::from)
+            // There may be some leftover old legacy purses that haven't been purged - this is to
+            // make sure that we don't accidentally take them into account.
+            .filter(|purse| purse.era_of_creation() >= limit_era);
 
         existing_purses_legacy
             .chain(existing_purses)
