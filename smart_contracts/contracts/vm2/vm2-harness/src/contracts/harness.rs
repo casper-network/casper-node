@@ -9,7 +9,7 @@ pub(crate) const INITIAL_GREETING: &str = "This is initial data set from a const
 pub(crate) const BALANCES_PREFIX: &str = "b";
 
 #[derive(Debug)]
-#[casper(state)]
+#[casper(contract_state)]
 pub struct Harness {
     counter: u64,
     greeting: String,

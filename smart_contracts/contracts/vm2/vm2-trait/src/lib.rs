@@ -178,7 +178,7 @@ pub trait AccessControl {
     }
 }
 
-#[casper(state)]
+#[casper(contract_state)]
 #[derive(Default)]
 pub struct HasTraits {
     counter_state: CounterState,

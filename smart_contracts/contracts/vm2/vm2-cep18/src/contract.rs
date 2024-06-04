@@ -9,7 +9,7 @@ use std::string::String;
 
 use crate::traits::CEP18Ext;
 
-#[casper(state)]
+#[casper(contract_state)]
 pub struct TokenContract {
     state: CEP18State,
 }

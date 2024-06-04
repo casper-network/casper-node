@@ -42,7 +42,7 @@ struct MethodAttribute {
 #[derive(Debug, FromMeta)]
 struct StructMeta {
     #[darling(default)]
-    state: bool,
+    contract_state: bool,
 }
 
 #[derive(Debug, FromMeta)]
@@ -212,7 +212,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
 
     if let Ok(item_struct) = syn::parse::<ItemStruct>(item.clone()) {
         let struct_meta = StructMeta::from_list(&attr_args).unwrap();
-        if !struct_meta.state {
+        if !struct_meta.contract_state {
             let partial = generate_casper_state_for_struct(item_struct);
             return quote! {
                 #partial

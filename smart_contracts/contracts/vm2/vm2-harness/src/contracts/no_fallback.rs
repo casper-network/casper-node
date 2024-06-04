@@ -3,7 +3,7 @@ use casper_sdk::host;
 
 /// A contract that can't receive tokens through a plain `fallback` method.
 #[derive(Default)]
-#[casper(state)]
+#[casper(contract_state)]
 pub struct NoFallback {
     initial_balance: u64,
     received_balance: u64,

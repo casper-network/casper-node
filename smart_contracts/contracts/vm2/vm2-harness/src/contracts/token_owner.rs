@@ -42,7 +42,7 @@ pub enum FallbackHandler {
 }
 
 #[derive(Default)]
-#[casper(state)]
+#[casper(contract_state)]
 pub struct TokenOwnerContract {
     initial_balance: u64,
     received_tokens: u64,

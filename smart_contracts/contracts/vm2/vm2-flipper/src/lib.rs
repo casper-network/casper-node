@@ -4,7 +4,7 @@
 use casper_macros::casper;
 
 /// This contract implements a simple flipper.
-#[casper(state)]
+#[casper(contract_state)]
 pub struct Flipper {
     /// The current state of the flipper.
     value: bool,
