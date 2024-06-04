@@ -2,8 +2,6 @@ pub(crate) mod utils;
 
 extern crate proc_macro;
 
-use std::num::NonZeroU32;
-
 use darling::{ast, FromAttributes, FromMeta};
 use proc_macro::TokenStream;
 use proc_macro2::Span;
@@ -41,8 +39,7 @@ struct StructMeta {
 }
 
 #[derive(Debug, FromMeta)]
-struct TraitMeta {
-}
+struct TraitMeta {}
 
 #[derive(Debug, FromMeta)]
 enum ItemFnMeta {
@@ -320,7 +317,7 @@ fn generate_export_function(func: ItemFn) -> TokenStream {
 
 fn generate_impl_for_contract(
     mut entry_points: ItemImpl,
-    mut has_fallback_selector: bool,
+    _has_fallback_selector: bool,
 ) -> TokenStream {
     let mut combined_selectors = Selector::zero();
     #[cfg(feature = "__abi_generator")]
@@ -972,10 +969,9 @@ fn generate_impl_trait_for_contract(
 
 fn casper_trait_definition(
     mut item_trait: ItemTrait,
-    trait_meta: TraitMeta,
-    has_fallback_selector: &mut bool,
+    _trait_meta: TraitMeta,
+    _has_fallback_selector: &mut bool,
 ) -> TokenStream {
-
     let mut combined_selectors = Selector::zero();
     let trait_name = &item_trait.ident;
     let vis = &item_trait.vis;
@@ -997,7 +993,7 @@ fn casper_trait_definition(
                     continue;
                 }
 
-                let mut func_name = func.sig.ident.clone();
+                let func_name = func.sig.ident.clone();
 
                 if func_name.to_string().starts_with("__casper_") {
                     return TokenStream::from(
@@ -1015,7 +1011,7 @@ fn casper_trait_definition(
                     format_ident!("{}", &func_name)
                 };
 
-                let result = match &func.sig.output {
+                let _result = match &func.sig.output {
                     syn::ReturnType::Default => {
                         populate_definitions.push(quote! {
                             definitions.populate_one::<()>();
@@ -1078,9 +1074,9 @@ fn casper_trait_definition(
                     });
                 }
 
-                let mut flags = EntryPointFlags::empty();
+                let flags = EntryPointFlags::empty();
 
-                let flags = flags.bits();
+                let _flags = flags.bits();
                 // schema_entry_points.push(quote! {
                 //     casper_sdk::schema::SchemaEntryPoint {
                 //         name: stringify!(#func_name).into(),
