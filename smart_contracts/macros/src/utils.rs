@@ -90,6 +90,7 @@ pub(crate) fn compute_selector_value(sig: &Signature) -> NonZeroU32 {
     // The chances of this being zero are astronomically low.
     NonZeroU32::new(value).expect("Computed selector value should not be zero")
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;

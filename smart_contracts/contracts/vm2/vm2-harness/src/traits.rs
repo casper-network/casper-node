@@ -1,7 +1,7 @@
 use casper_macros::casper;
 
-#[casper(trait_definition)]
+#[casper]
 pub trait Fallback {
-    #[casper(selector(fallback))]
+    #[casper(fallback)]
     fn fallback(&mut self);
 }

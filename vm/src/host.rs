@@ -945,7 +945,7 @@ pub(crate) fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
                 .with_gas_limit(gas_limit)
                 .with_target(ExecutionKind::Stored {
                     address: target_entity_addr,
-                    entry_point: "fallback".to_string(), // TODO: Revisit selectors
+                    entry_point: "__casper_fallback".to_string(),
                 })
                 .with_value(amount)
                 .with_input(Bytes::new())

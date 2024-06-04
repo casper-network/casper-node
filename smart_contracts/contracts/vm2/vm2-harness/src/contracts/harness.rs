@@ -308,12 +308,4 @@ impl Harness {
         let caller = host::get_caller();
         self.balances.get(&caller).unwrap_or(0)
     }
-
-    #[casper(selector(value = 0x0B4DC0D3))]
-    pub fn fixed_selector(&mut self) {
-        log!(
-            "This is a fixed selector entrypoint with value={}",
-            host::get_value()
-        );
-    }
 }

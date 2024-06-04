@@ -18,7 +18,7 @@ pub const GREET_RETURN_VALUE: u64 = 123456789;
 
 #[casper(trait_definition)]
 pub trait HasFallback {
-    #[casper(selector(fallback))]
+    #[casper(fallback)]
     fn fallback(&self) {
         log!("Fallback called with value={}", host::get_value());
     }

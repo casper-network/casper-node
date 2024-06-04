@@ -552,9 +552,12 @@ pub fn call(flipper_address: Address) {
     }
 
     {
-
-        let _current_test = next_test(&mut counter, "Calling non-existing entrypoint does not crash");
-        let (output, result) = host::casper_call(&flipper_address, 0, "non_existing_entrypoint", &[]);
+        let _current_test = next_test(
+            &mut counter,
+            "Calling non-existing entrypoint does not crash",
+        );
+        let (output, result) =
+            host::casper_call(&flipper_address, 0, "non_existing_entrypoint", &[]);
         assert_eq!(result, Err(CallError::NotCallable));
         assert_eq!(output, None);
     }

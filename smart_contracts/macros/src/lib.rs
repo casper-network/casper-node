@@ -14,12 +14,7 @@ use syn::{
 };
 use vm_common::{flags::EntryPointFlags, selector::Selector};
 
-#[derive(Debug, FromMeta)]
-enum SelectorAttribute {
-    #[darling(word)]
-    Fallback,
-    Value(NonZeroU32),
-}
+const CASPER_RESERVED_FALLBACK_EXPORT: &str = "__casper_fallback";
 
 #[derive(Debug, FromAttributes)]
 #[darling(attributes(casper))]
@@ -36,7 +31,7 @@ struct MethodAttribute {
     #[darling(default)]
     payable: bool,
     #[darling(default)]
-    selector: Option<SelectorAttribute>,
+    fallback: bool,
 }
 
 #[derive(Debug, FromMeta)]
@@ -356,7 +351,7 @@ fn generate_impl_for_contract(
         let method_attribute;
         let mut flag_value = EntryPointFlags::empty();
 
-        let selector_value;
+        // let selector_value;
 
         let func = match entry_point {
             syn::ImplItem::Const(_) => todo!("Const"),
@@ -375,25 +370,25 @@ fn generate_impl_for_contract(
 
                 func.attrs.clear();
 
-                let name = func.sig.ident.clone();
-                names.push(name.clone());
+                let func_name = func.sig.ident.clone();
 
-                selector_value = match method_attribute.selector {
-                    Some(SelectorAttribute::Fallback) => {
-                        if has_fallback_selector {
-                            let err = syn::Error::new(
-                                Span::call_site(),
-                                "Only a single fallback entry point can be defined",
-                            );
-                            return TokenStream::from(err.to_compile_error());
-                        }
-                        has_fallback_selector = true;
-                        // Fallback entry points does not have valid selectors
-                        None
-                    }
-                    Some(SelectorAttribute::Value(selector_value)) => Some(selector_value),
-                    None => Some(utils::compute_selector_value(&func.sig)),
+                if func_name.to_string().starts_with("__casper_") {
+                    return TokenStream::from(
+                        syn::Error::new(
+                            Span::call_site(),
+                            "Function names starting with '__casper_' are reserved",
+                        )
+                        .to_compile_error(),
+                    );
+                }
+
+                let export_name = if method_attribute.fallback {
+                    format_ident!("{}", CASPER_RESERVED_FALLBACK_EXPORT)
+                } else {
+                    format_ident!("{}", &func_name)
                 };
+
+                names.push(func_name.clone());
 
                 let arg_names_and_types = func
                     .sig
@@ -501,8 +496,9 @@ fn generate_impl_for_contract(
                 }
 
                 if !method_attribute.payable {
-                    let panic_msg =
-                        format!("Entry point {name} is not payable and does not accept tokens");
+                    let panic_msg = format!(
+                        "Entry point {func_name} is not payable and does not accept tokens"
+                    );
                     prelude.push(quote! {
                         if casper_sdk::host::get_value() != 0 {
                             panic!(#panic_msg);
@@ -534,20 +530,20 @@ fn generate_impl_for_contract(
                         let mut instance: #struct_name = casper_sdk::host::read_state().unwrap();
 
                         let _ret = casper_sdk::host::start_noret(|(#(#arg_names,)*):(#(#arg_types,)*)| {
-                            instance.#name(#(#arg_names,)*)
+                            instance.#func_name(#(#arg_names,)*)
                         });
                     }
                 } else {
                     if method_attribute.constructor {
                         quote! {
                                 let _ret: #struct_name = casper_sdk::host::start_noret(|(#(#arg_names,)*):(#(#arg_types,)*)| {
-                                <#struct_name>::#name(#(#arg_names,)*)
+                                <#struct_name>::#func_name(#(#arg_names,)*)
                             });
                         }
                     } else {
                         quote! {
                                 let _ret = casper_sdk::host::start_noret(|(#(#arg_names,)*):(#(#arg_types,)*)| {
-                                <#struct_name>::#name(#(#arg_names,)*)
+                                <#struct_name>::#func_name(#(#arg_names,)*)
                             });
                         }
                     }
@@ -556,12 +552,12 @@ fn generate_impl_for_contract(
                     flag_value |= EntryPointFlags::CONSTRUCTOR;
                 }
 
-                if selector_value.is_none() {
+                if method_attribute.fallback {
                     flag_value |= EntryPointFlags::FALLBACK;
                 };
 
                 let _bits = flag_value.bits();
-                let _selector_value = selector_value.map(|value| value.get()).unwrap_or_default();
+                // let _selector_value = selector_value.map(|value| value.get()).unwrap_or_default();
 
                 // #[cfg(feature = "__abi_generator")]
                 // abi_generator_entry_points.push(quote! {
@@ -573,11 +569,11 @@ fn generate_impl_for_contract(
                 //     };
                 // });
 
-                let extern_func_name = format_ident!("__casper_export_{name}");
+                let extern_func_name = format_ident!("__casper_export_{func_name}");
 
                 extern_entry_points.push(quote! {
 
-                    #[export_name = stringify!(#name)]
+                    #[export_name = stringify!(#export_name)]
                     #vis extern "C" fn #extern_func_name() {
                             // Set panic hook (assumes std is enabled etc.)
                         #[cfg(target_arch = "wasm32")]
@@ -601,17 +597,17 @@ fn generate_impl_for_contract(
                 });
 
                 manifest_entry_point_enum_variants.push(quote! {
-                    #name {
+                    #func_name {
                         #(#arg_names: #arg_types,)*
                     }
                 });
 
                 manifest_entry_point_enum_match_name.push(quote! {
-                    #name
+                    #func_name
                 });
 
                 manifest_entry_point_input_data.push(quote! {
-                    Self::#name { #(#arg_names,)* } => {
+                    Self::#func_name { #(#arg_names,)* } => {
                         let into_tuple = (#(#arg_names,)*);
                         into_tuple.serialize(writer)
                     }
@@ -620,7 +616,7 @@ fn generate_impl_for_contract(
                 match entry_points.self_ty.as_ref() {
                     Type::Path(ref path) => {
                         let ident = syn::Ident::new(
-                            &format!("{}_{}", path.path.get_ident().unwrap(), name),
+                            &format!("{}_{}", path.path.get_ident().unwrap(), func_name),
                             Span::call_site(),
                         );
 
@@ -643,15 +639,9 @@ fn generate_impl_for_contract(
                                 })
                             };
 
-                        let is_fallback = if let Some(selector) = method_attribute.selector {
-                            matches!(selector, SelectorAttribute::Fallback)
-                        } else {
-                            false
-                        };
-
-                        if !is_fallback {
+                        if !method_attribute.fallback {
                             extra_code.push(quote! {
-                                        pub fn #name<'a>(#self_ty #(#arg_names: #arg_types,)*) -> impl casper_sdk::ToCallData<Return<'a> = #call_data_return_lifetime> {
+                                        pub fn #func_name<'a>(#self_ty #(#arg_names: #arg_types,)*) -> impl casper_sdk::ToCallData<Return<'a> = #call_data_return_lifetime> {
                                             #[derive(casper_sdk::serializers::borsh::BorshSerialize, PartialEq, Debug)]
                                             #[borsh(crate = "casper_sdk::serializers::borsh")]
                                             struct #ident {
@@ -663,7 +653,7 @@ fn generate_impl_for_contract(
 
                                                 type Return<'a> = #call_data_return_lifetime;
 
-                                                fn entry_point(&self) -> &str { stringify!(#name) }
+                                                fn entry_point(&self) -> &str { stringify!(#func_name) }
 
                                                 fn input_data(&self) -> Option<casper_sdk::serializers::borsh::__private::maybestd::vec::Vec<u8>> {
                                                     #input_data_content
@@ -763,17 +753,8 @@ fn generate_impl_for_contract(
         // for arg in &entry_point
         let _bits = flag_value.bits();
 
-        if let Some(selector_value) = selector_value {
-            combined_selectors ^= Selector::from(selector_value);
-        }
-
-        let _schema_selector = match selector_value {
-            Some(value) => {
-                let value = value.get();
-                quote! { Some(#value) }
-            }
-            None => quote! { None },
-        };
+        let selector_value = utils::compute_selector_value(&func.sig);
+        combined_selectors ^= Selector::from(selector_value);
 
         #[cfg(feature = "__abi_generator")]
         {
@@ -936,7 +917,7 @@ fn generate_impl_trait_for_contract(
         visitor = quote! {
             const _: () = {
                 macro_rules! visitor {
-                    ($($vis:vis $name:ident => $dispatch:ident,)*) => {
+                    ($($vis:vis $name:ident as $export_name:ident => $dispatch:ident,)*) => {
                         $(
                             $vis fn $name() {
                                 #path_to_macro::$dispatch::<#self_ty>();
@@ -952,9 +933,9 @@ fn generate_impl_trait_for_contract(
         visitor = quote! {
             const _: () = {
                 macro_rules! visitor {
-                    ($($vis:vis $name:ident => $dispatch:ident,)*) => {
+                    ($($vis:vis $name:ident as $export_name:ident => $dispatch:ident,)*) => {
                         $(
-                            #[export_name = stringify!($name)]
+                            #[export_name = stringify!($export_name)]
                             $vis extern "C" fn $name() {
                                 #path_to_macro::$dispatch::<#self_ty>();
                             }
@@ -993,9 +974,9 @@ fn casper_trait_definition(
     let trait_name = &item_trait.ident;
     let vis = &item_trait.vis;
     let mut dispatch_functions = Vec::new();
-    let mut dispatch_table = Vec::new();
+    // let mut dispatch_table = Vec::new();
     let mut extra_code = Vec::new();
-    let mut schema_entry_points = Vec::new();
+    // let mut schema_entry_points = Vec::new();
     let mut populate_definitions = Vec::new();
     let mut macro_symbols = Vec::new();
     for entry_point in &mut item_trait.items {
@@ -1009,6 +990,24 @@ fn casper_trait_definition(
                 if method_attribute.private {
                     continue;
                 }
+
+                let mut func_name = func.sig.ident.clone();
+
+                if func_name.to_string().starts_with("__casper_") {
+                    return TokenStream::from(
+                        syn::Error::new(
+                            Span::call_site(),
+                            "Function names starting with '__casper_' are reserved",
+                        )
+                        .to_compile_error(),
+                    );
+                }
+
+                let export_name = if method_attribute.fallback {
+                    format_ident!("{}", CASPER_RESERVED_FALLBACK_EXPORT)
+                } else {
+                    format_ident!("{}", &func_name)
+                };
 
                 let result = match &func.sig.output {
                     syn::ReturnType::Default => {
@@ -1037,31 +1036,11 @@ fn casper_trait_definition(
                 };
 
                 let call_data_return_lifetime = generate_call_data_return(&func.sig.output);
-                // let call_data
-
-                let func_name = func.sig.ident.clone();
 
                 let dispatch_func_name = format_ident!("{trait_name}_{func_name}_dispatch");
 
-                let selector_value = match method_attribute.selector {
-                    Some(SelectorAttribute::Fallback) => {
-                        if *has_fallback_selector {
-                            let err = syn::Error::new(
-                                Span::call_site(),
-                                "Only a single fallback entry point can be defined",
-                            );
-                            return TokenStream::from(err.to_compile_error());
-                        }
-                        *has_fallback_selector = true;
-                        None
-                    }
-                    Some(SelectorAttribute::Value(selector_value)) => Some(selector_value),
-                    None => Some(utils::compute_selector_value(&func.sig)),
-                };
-
-                if let Some(selector_value) = selector_value {
-                    combined_selectors ^= Selector::from(selector_value);
-                }
+                let selector_value = utils::compute_selector_value(&func.sig);
+                combined_selectors ^= Selector::from(selector_value);
 
                 let arg_names_and_types = func
                     .sig
@@ -1093,35 +1072,18 @@ fn casper_trait_definition(
                     });
                 }
 
-                let schema_selector = match selector_value {
-                    Some(value) => {
-                        let value = value.get();
-                        quote! {
-                            Some(#value)
-                        }
-                    }
-                    None => {
-                        quote! {
-                            None
-                        }
-                    }
-                };
                 let mut flags = EntryPointFlags::empty();
 
-                if selector_value.is_none() {
-                    flags.set(EntryPointFlags::FALLBACK, true);
-                }
-
                 let flags = flags.bits();
-                schema_entry_points.push(quote! {
-                    casper_sdk::schema::SchemaEntryPoint {
-                        name: stringify!(#func_name).into(),
-                        selector: #schema_selector,
-                        arguments: vec![ #(#args,)* ],
-                        result: #result,
-                        flags: casper_sdk::vm_common::flags::EntryPointFlags::from_bits(#flags).unwrap(),
-                    }
-                });
+                // schema_entry_points.push(quote! {
+                //     casper_sdk::schema::SchemaEntryPoint {
+                //         name: stringify!(#func_name).into(),
+                //         selector: #schema_selector,
+                //         arguments: vec![ #(#args,)* ],
+                //         result: #result,
+                //         flags: casper_sdk::vm_common::flags::EntryPointFlags::from_bits(#flags).unwrap(),
+                //     }
+                // });
 
                 let handle_dispatch = match func.sig.inputs.first() {
                     Some(syn::FnArg::Receiver(_receiver)) => {
@@ -1162,20 +1124,10 @@ fn casper_trait_definition(
                 };
 
                 macro_symbols.push(quote! {
-                    #vis #func_name => #dispatch_func_name
+                    #vis #func_name as #export_name => #dispatch_func_name
                 });
-
-                let manifest_selector = selector_value.map(|value| value.get()).unwrap_or_default();
 
                 dispatch_functions.push(quote! { #handle_dispatch });
-
-                dispatch_table.push(quote! {
-                    casper_sdk::sys::EntryPoint {
-                        selector: #manifest_selector,
-                        fptr: #dispatch_func_name::<T>,
-                        flags: #flags, // TODO?
-                    }
-                });
 
                 let input_data_content = if arg_names.is_empty() {
                     quote! {
@@ -1194,15 +1146,9 @@ fn casper_trait_definition(
                     })
                 };
 
-                let is_fallback = if let Some(selector) = method_attribute.selector {
-                    matches!(selector, SelectorAttribute::Fallback)
-                } else {
-                    false
-                };
+                let is_fallback = method_attribute.fallback;
 
                 if !is_fallback {
-                    let _selector_value =
-                        selector_value.map(|value| value.get()).unwrap_or_default();
                     extra_code.push(quote! {
                     fn #func_name<'a>(#self_ty #(#arg_names: #arg_types,)*) -> impl casper_sdk::ToCallData<Return<'a> = #call_data_return_lifetime> {
                         #[derive(casper_sdk::serializers::borsh::BorshSerialize)]
