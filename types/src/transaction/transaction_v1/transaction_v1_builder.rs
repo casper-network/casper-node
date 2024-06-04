@@ -93,9 +93,14 @@ impl<'a> TransactionV1Builder<'a> {
     /// - `secret_key` is initialized to `None`.
     ///
     pub fn new(body: TransactionV1Body) -> Self {
+        #[cfg(any(feature = "std-fs-io", test))]
+        let timestamp = Timestamp::now();
+        #[cfg(not(any(feature = "std-fs-io", test)))]
+        let timestamp = Timestamp::zero();
+
         TransactionV1Builder {
             chain_name: None,
-            timestamp: Timestamp::now(),
+            timestamp,
             ttl: Self::DEFAULT_TTL,
             body,
             pricing_mode: Self::DEFAULT_PRICING_MODE,
