@@ -40,6 +40,7 @@ const VM2_HARNESS: Bytes = Bytes::from_static(include_bytes!("../vm2-harness.was
 const VM2_CEP18: Bytes = Bytes::from_static(include_bytes!("../vm2_cep18.wasm"));
 const VM2_CEP18_CALLER: Bytes = Bytes::from_static(include_bytes!("../vm2-cep18-caller.wasm"));
 const VM2_TRAIT: Bytes = Bytes::from_static(include_bytes!("../vm2_trait.wasm"));
+const VM2_FLIPPER: Bytes = Bytes::from_static(include_bytes!("../vm2_flipper.wasm"));
 
 const TRANSACTION_HASH_BYTES: [u8; 32] = [55; 32];
 const TRANSACTION_HASH: TransactionHash =
@@ -104,13 +105,43 @@ fn base_store_request_builder() -> CreateContractRequestBuilder {
 fn harness() {
     let mut executor = make_executor();
 
-    let (mut global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
+    let (mut global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
 
     let address_generator = make_address_generator();
 
+    let flipper_address;
+
+    state_root_hash = {
+        let input_data = borsh::to_vec(&("Foo Token".to_string(),))
+            .map(Bytes::from)
+            .unwrap();
+
+        let create_request = base_store_request_builder()
+            .with_wasm_bytes(VM2_CEP18.clone())
+            .with_shared_address_generator(Arc::clone(&address_generator))
+            .with_value(0)
+            .with_entry_point("new".to_string())
+            .with_input(input_data)
+            .build()
+            .expect("should build");
+
+        let create_result = run_create_contract(
+            &mut executor,
+            &mut global_state,
+            state_root_hash,
+            create_request,
+        );
+
+        flipper_address = create_result.contract_hash();
+
+        global_state
+            .commit(state_root_hash, create_result.effects().clone())
+            .expect("Should commit")
+    };
+
     let execute_request = base_execute_builder()
         .with_target(ExecutionKind::SessionBytes(VM2_HARNESS))
-        .with_serialized_input(())
+        .with_serialized_input((flipper_address,))
         .with_shared_address_generator(address_generator)
         .build()
         .expect("should build");
@@ -158,8 +189,6 @@ fn cep18() {
         state_root_hash,
         create_request,
     );
-
-    dbg!(create_result.contract_hash());
 
     state_root_hash = global_state
         .commit(state_root_hash, create_result.effects().clone())

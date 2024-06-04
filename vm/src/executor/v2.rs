@@ -484,6 +484,15 @@ impl Executor for ExecutorV2 {
                 gas_usage,
                 tracking_copy_parts: initial_tracking_copy.into_raw_parts(),
             }),
+            Err(VMError::Export(export_error)) => {
+                error!(?export_error, "export error");
+                Ok(ExecuteResult {
+                    host_error: Some(HostError::NotCallable),
+                    output: None,
+                    gas_usage,
+                    tracking_copy_parts: initial_tracking_copy.into_raw_parts(),
+                })
+            }
         }
     }
 }

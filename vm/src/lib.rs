@@ -105,10 +105,10 @@ pub enum Resolver {
 pub enum ExportError {
     /// An error than occurs when the exported type and the expected type
     /// are incompatible.
-    #[error("Incompatible Export Type")]
+    #[error("incompatible type")]
     IncompatibleType,
     /// This error arises when an export is missing
-    #[error("Missing export {0}")]
+    #[error("missing export {0}")]
     Missing(String),
 }
 
@@ -157,7 +157,6 @@ pub enum TrapCode {
     #[error("unreachable")]
     UnreachableCodeReached,
 }
-
 /// The outcome of a call.
 /// We can fold all errors into this type and return it from the host functions and remove Outcome
 /// type.
@@ -169,6 +168,8 @@ pub enum VMError {
         flags: ReturnFlags,
         data: Option<Bytes>,
     },
+    #[error("export: {0}")]
+    Export(ExportError),
     #[error("Out of gas")]
     OutOfGas,
     /// Error while executing Wasm: traps, memory access errors, etc.

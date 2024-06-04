@@ -15,8 +15,8 @@ use wasmer_compiler_singlepass::Singlepass;
 use wasmer_middlewares::metering;
 
 use crate::{
-    host, storage::GlobalStateReader, u32_from_host_result, Config, Executor, TrapCode, VMResult,
-    WasmEngine,
+    host, storage::GlobalStateReader, u32_from_host_result, Config, Executor, ExportError,
+    TrapCode, VMResult, WasmEngine,
 };
 
 use self::metering_middleware::make_wasmer_metering_middleware;
@@ -62,6 +62,15 @@ impl From<wasmer_types::TrapCode> for TrapCode {
             wasmer_types::TrapCode::UnalignedAtomic => {
                 todo!("Atomic memory extension is not supported")
             }
+        }
+    }
+}
+
+impl From<wasmer::ExportError> for ExportError {
+    fn from(error: wasmer::ExportError) -> Self {
+        match error {
+            wasmer::ExportError::IncompatibleType => ExportError::IncompatibleType,
+            wasmer::ExportError::Missing(export_name) => ExportError::Missing(export_name),
         }
     }
 }
@@ -246,7 +255,9 @@ where
             .instance
             .exports
             .get_typed_function(&self.store, name)
-            .expect("Validated module has expected export");
+            .map_err(ExportError::from)
+            .map_err(VMError::Export)?;
+
         let () = exported_call_func
             .call(&mut self.store.as_store_mut())
             .map_err(handle_wasmer_runtime_error)?;

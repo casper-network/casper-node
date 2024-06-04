@@ -1134,6 +1134,7 @@ fn casper_trait_definition(
                                 let mut flags = casper_sdk::vm_common::flags::ReturnFlags::empty();
 
                                 let mut instance: T = casper_sdk::host::read_state().unwrap();
+
                                 let ret = casper_sdk::host::start_noret(|(#(#arg_names,)*):(#(#arg_types,)*)| {
                                     instance.#func_name(#(#arg_names,)*)
                                 });

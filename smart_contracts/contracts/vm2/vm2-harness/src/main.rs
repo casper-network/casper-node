@@ -11,7 +11,7 @@ use casper_macros::casper;
 use casper_sdk::{
     host::{self, Entity},
     log,
-    types::CallError,
+    types::{Address, CallError},
 };
 
 use contracts::token_owner::TokenOwnerContractRef;
@@ -24,7 +24,7 @@ fn next_test(counter: &mut u32, name: &str) -> u32 {
 }
 
 #[casper(export)]
-pub fn call() {
+pub fn call(flipper_address: Address) {
     use casper_sdk::ContractBuilder;
     use contracts::harness::{CustomError, INITIAL_GREETING};
 
@@ -540,20 +540,23 @@ pub fn call() {
     }
 
     {
-        // let current_test = next_test(
-        //     &mut counter,
-        //     "Plain transfer to a contract does not work without fallback",
-        // );
+        let _current_test = next_test(
+            &mut counter,
+            "Plain transfer to a contract does not work without fallback",
+        );
+        let flipper_address = Entity::Contract(flipper_address);
+        assert_eq!(
+            host::casper_transfer(&flipper_address, 123),
+            Err(CallError::NotCallable)
+        );
+    }
 
-        // let no_fallback_contract = ContractBuilder::<NoFallbackRef>::new()
-        //     .with_value(0)
-        //     .create(|| NoFallbackRef::no_fallback_initialize())
-        //     .expect("Should create");
+    {
 
-        // assert_eq!(
-        //     host::casper_transfer(&no_fallback_contract.entity(), 123),
-        //     Err(CallError::NotCallable)
-        // );
+        let _current_test = next_test(&mut counter, "Calling non-existing entrypoint does not crash");
+        let (output, result) = host::casper_call(&flipper_address, 0, "non_existing_entrypoint", &[]);
+        assert_eq!(result, Err(CallError::NotCallable));
+        assert_eq!(output, None);
     }
 
     log!("👋 Goodbye");
