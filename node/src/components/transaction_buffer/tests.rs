@@ -525,10 +525,10 @@ fn block_fully_saturated() {
     // Try to register 10 more transactions per each category as allowed by the config.
     let (transfers, stakings, install_upgrades, standards) = generate_and_register_transactions(
         &mut transaction_buffer,
-        max_transfers + 10,
-        max_staking + 10,
-        max_install_upgrade + 10,
-        max_standard + 10,
+        max_transfers + 20,
+        max_staking + 20,
+        max_install_upgrade + 20,
+        max_standard + 20,
         &mut rng,
     );
     let (transfers_hashes, stakings_hashes, install_upgrades_hashes, standards_hashes) = (
@@ -553,7 +553,7 @@ fn block_fully_saturated() {
     // Check that we really generated the required number of transactions.
     assert_eq!(
         transfers.len() + stakings.len() + install_upgrades.len() + standards.len(),
-        total_allowed as usize + 10 * 4
+        total_allowed as usize + 20 * 4
     );
 
     // Ensure that only 'total_allowed' transactions are proposed.
