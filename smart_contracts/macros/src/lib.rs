@@ -41,6 +41,10 @@ struct StructMeta {
 }
 
 #[derive(Debug, FromMeta)]
+struct TraitMeta {
+}
+
+#[derive(Debug, FromMeta)]
 enum ItemFnMeta {
     Export,
 }
@@ -223,11 +227,11 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
         }
         .into();
     } else if let Ok(item_trait) = syn::parse::<ItemTrait>(item.clone()) {
-        return casper_trait_definition(item_trait, &mut has_fallback_selector);
+        let trait_meta = TraitMeta::from_list(&attr_args).unwrap();
+        return casper_trait_definition(item_trait, trait_meta, &mut has_fallback_selector);
     } else if let Ok(entry_points) = syn::parse::<ItemImpl>(item.clone()) {
         if let Some((_not, trait_path, _for)) = entry_points.trait_.as_ref() {
             let impl_meta = ImplTraitForContractMeta::from_list(&attr_args).unwrap();
-
             return generate_impl_trait_for_contract(&entry_points, trait_path, impl_meta);
         } else {
             return generate_impl_for_contract(entry_points, has_fallback_selector);
@@ -968,8 +972,10 @@ fn generate_impl_trait_for_contract(
 
 fn casper_trait_definition(
     mut item_trait: ItemTrait,
+    trait_meta: TraitMeta,
     has_fallback_selector: &mut bool,
 ) -> TokenStream {
+
     let mut combined_selectors = Selector::zero();
     let trait_name = &item_trait.ident;
     let vis = &item_trait.vis;

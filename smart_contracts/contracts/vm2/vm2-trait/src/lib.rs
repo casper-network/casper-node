@@ -16,15 +16,15 @@ use casper_sdk::{
 
 pub const GREET_RETURN_VALUE: u64 = 123456789;
 
-#[casper(trait_definition)]
+#[casper]
 pub trait HasFallback {
     #[casper(fallback)]
-    fn fallback(&self) {
+    fn this_is_fallback_method(&self) {
         log!("Fallback called with value={}", host::get_value());
     }
 }
 
-#[casper(trait_definition)]
+#[casper]
 pub trait Trait1 {
     fn abstract_greet(&self);
 
@@ -42,7 +42,7 @@ pub struct CounterState {
     value: u64,
 }
 
-#[casper(trait_definition)]
+#[casper]
 pub trait Counter {
     fn increment(&mut self) {
         log!("Incrementing!");
@@ -88,7 +88,7 @@ pub enum OwnableError {
     NotAuthorized,
 }
 
-#[casper(trait_definition)]
+#[casper]
 pub trait Ownable {
     #[casper(private)]
     fn state(&self) -> &OwnableState;
@@ -139,7 +139,7 @@ impl Default for AccessControlState {
     }
 }
 
-#[casper(trait_definition)]
+#[casper]
 pub trait AccessControl {
     #[casper(private)]
     fn state(&self) -> &AccessControlState;

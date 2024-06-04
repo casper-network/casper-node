@@ -128,7 +128,7 @@ impl CEP78State {
     }
 }
 
-#[casper(trait_definition)]
+#[casper]
 pub trait CEP18 {
     #[casper(private)]
     fn state(&self) -> &CEP78State;
