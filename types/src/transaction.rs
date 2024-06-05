@@ -376,7 +376,13 @@ impl Transaction {
     /// The transaction kind.
     pub fn transaction_kind(&self) -> u8 {
         match self {
-            Transaction::Deploy(_) => TransactionCategory::Large as u8,
+            Transaction::Deploy(deploy) => {
+                if deploy.is_transfer() {
+                    TransactionCategory::Mint as u8
+                } else {
+                    TransactionCategory::Large as u8
+                }
+            }
             Transaction::V1(v1) => v1.transaction_kind(),
         }
     }

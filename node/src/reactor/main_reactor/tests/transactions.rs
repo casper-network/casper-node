@@ -1,10 +1,10 @@
 use super::*;
 use casper_storage::data_access_layer::{
-    BalanceIdentifier, ProofHandling, QueryRequest, QueryResult,
+    AddressableEntityRequest, BalanceIdentifier, ProofHandling, QueryRequest, QueryResult,
 };
 use casper_types::{
-    account::AccountHash, addressable_entity::NamedKeyAddr, runtime_args, Digest, EntityAddr,
-    GasLimited,
+    account::AccountHash, addressable_entity::NamedKeyAddr, runtime_args, AddressableEntity,
+    Digest, EntityAddr, GasLimited, U256,
 };
 use once_cell::sync::Lazy;
 
@@ -269,6 +269,29 @@ fn get_entity_named_key(
         },
         err => panic!("Expected QueryResult::Success but got {:?}", err),
     }
+}
+
+fn get_entity(
+    fixture: &mut TestFixture,
+    state_root_hash: Digest,
+    account_hash: AccountHash,
+) -> AddressableEntity {
+    let (_node_id, runner) = fixture.network.nodes().iter().next().unwrap();
+    runner
+        .main_reactor()
+        .contract_runtime()
+        .data_access_layer()
+        .addressable_entity(AddressableEntityRequest::new(
+            state_root_hash,
+            Key::Account(account_hash),
+        ))
+        .into_option()
+        .unwrap_or_else(|| {
+            panic!(
+                "Expected to find an entity: root_hash {:?}, account hash {:?}",
+                state_root_hash, account_hash
+            )
+        })
 }
 
 fn assert_exec_result_cost(
@@ -2967,4 +2990,124 @@ async fn insufficient_funds_transfer_from_purse() {
 
     assert_eq!(result.error_message.as_deref(), Some("Insufficient funds"));
     assert_eq!(result.cost, transfer_cost);
+}
+
+#[tokio::test]
+async fn native_transfer_deploy_with_source_purse_should_succeed() {
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_pricing_handling(PricingHandling::Fixed)
+        .with_refund_handling(RefundHandling::NoRefund)
+        .with_fee_handling(FeeHandling::NoFee)
+        .with_gas_hold_balance_handling(HoldBalanceHandling::Accrued);
+
+    let mut test = SingleTransactionTestCase::new(
+        ALICE_SECRET_KEY.clone(),
+        BOB_SECRET_KEY.clone(),
+        CHARLIE_SECRET_KEY.clone(),
+        Some(config),
+    )
+    .await;
+
+    test.fixture
+        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+        .await;
+
+    let state_root_hash = *test.fixture.highest_complete_block().state_root_hash();
+    let entity = get_entity(
+        &mut test.fixture,
+        state_root_hash,
+        BOB_PUBLIC_KEY.to_account_hash(),
+    );
+
+    let mut txn: Transaction = Deploy::native_transfer(
+        CHAIN_NAME.to_string(),
+        Some(entity.main_purse()),
+        BOB_PUBLIC_KEY.clone(),
+        CHARLIE_PUBLIC_KEY.clone(),
+        None,
+        Timestamp::now(),
+        TimeDiff::from_seconds(600),
+        10,
+    )
+    .into();
+    txn.sign(&BOB_SECRET_KEY);
+    let (_txn_hash, _block_height, exec_result) = test.send_transaction(txn).await;
+    assert!(exec_result_is_success(&exec_result), "{:?}", exec_result);
+}
+
+#[tokio::test]
+async fn native_transfer_deploy_without_source_purse_should_succeed() {
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_pricing_handling(PricingHandling::Fixed)
+        .with_refund_handling(RefundHandling::NoRefund)
+        .with_fee_handling(FeeHandling::NoFee)
+        .with_gas_hold_balance_handling(HoldBalanceHandling::Accrued);
+
+    let mut test = SingleTransactionTestCase::new(
+        ALICE_SECRET_KEY.clone(),
+        BOB_SECRET_KEY.clone(),
+        CHARLIE_SECRET_KEY.clone(),
+        Some(config),
+    )
+    .await;
+
+    test.fixture
+        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+        .await;
+
+    let mut txn: Transaction = Deploy::native_transfer(
+        CHAIN_NAME.to_string(),
+        None,
+        BOB_PUBLIC_KEY.clone(),
+        CHARLIE_PUBLIC_KEY.clone(),
+        None,
+        Timestamp::now(),
+        TimeDiff::from_seconds(600),
+        10,
+    )
+    .into();
+    txn.sign(&BOB_SECRET_KEY);
+    let (_txn_hash, _block_height, exec_result) = test.send_transaction(txn).await;
+    assert!(exec_result_is_success(&exec_result), "{:?}", exec_result);
+}
+
+#[tokio::test]
+async fn cep18_test() {
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_pricing_handling(PricingHandling::Fixed)
+        .with_refund_handling(RefundHandling::NoRefund)
+        .with_fee_handling(FeeHandling::NoFee)
+        .with_gas_hold_balance_handling(HoldBalanceHandling::Accrued);
+
+    let mut test = SingleTransactionTestCase::new(
+        ALICE_SECRET_KEY.clone(),
+        BOB_SECRET_KEY.clone(),
+        CHARLIE_SECRET_KEY.clone(),
+        Some(config),
+    )
+    .await;
+
+    test.fixture
+        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+        .await;
+
+    // first we set up a purse for Bob
+    let cep18_contract = RESOURCES_PATH.join("..").join("cep18.wasm");
+    let module_bytes =
+        Bytes::from(std::fs::read(cep18_contract).expect("cannot read module bytes"));
+
+    let mut txn = Transaction::from(
+        TransactionV1Builder::new_session(TransactionSessionKind::Standard, module_bytes)
+            .with_runtime_args(
+                runtime_args! { "name" => "TEST CEP18".to_string(), "symbol" => "TFT".to_string(), "decimals" => 9u8, "total_supply" => U256::from(200000000000u64), "events_mode" => 1u8, "enable_mint_burn" => 1u8 },
+            )
+            .with_chain_name(CHAIN_NAME)
+            .with_initiator_addr(BOB_PUBLIC_KEY.clone())
+            .build()
+            .unwrap(),
+    );
+    txn.sign(&BOB_SECRET_KEY);
+    let (_txn_hash, _block_height, exec_result) = test.send_transaction(txn).await;
+    println!("Exec result {:#?}", exec_result);
+    assert!(exec_result_is_success(&exec_result), "{:?}", exec_result);
 }
