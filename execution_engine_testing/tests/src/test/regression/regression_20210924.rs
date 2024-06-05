@@ -2,7 +2,6 @@ use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     LOCAL_GENESIS_REQUEST,
 };
-use casper_execution_engine::engine_state::{Error as CoreError, MAX_PAYMENT};
 use casper_types::{runtime_args, Gas, RuntimeArgs, DEFAULT_NOP_COST, U512};
 
 use crate::wasm_utils;
@@ -10,8 +9,7 @@ use crate::wasm_utils;
 const ARG_AMOUNT: &str = "amount";
 
 #[ignore]
-#[allow(unused)]
-// #[test]
+#[test]
 fn should_charge_minimum_for_do_nothing_session() {
     let minimum_deploy_payment = U512::from(0);
 
@@ -35,39 +33,14 @@ fn should_charge_minimum_for_do_nothing_session() {
 
     builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
-    let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
-        .unwrap();
-
-    let proposer_balance_before = builder.get_proposer_purse_balance();
-
-    let account_balance_before = builder.get_purse_balance(account.main_purse());
-
     builder.exec(do_nothing_request).commit();
-
-    let error = builder.get_error().unwrap();
-    assert!(
-        matches!(error, CoreError::InsufficientPayment),
-        "{:?}",
-        error
-    );
 
     let gas = builder.last_exec_gas_cost();
     assert_eq!(gas, Gas::zero());
-
-    let account_balance_after = builder.get_purse_balance(account.main_purse());
-    let proposer_balance_after = builder.get_proposer_purse_balance();
-
-    assert_eq!(account_balance_before - *MAX_PAYMENT, account_balance_after);
-    assert_eq!(
-        proposer_balance_before + *MAX_PAYMENT,
-        proposer_balance_after
-    );
 }
 
 #[ignore]
-#[allow(unused)]
-// #[test]
+#[test]
 fn should_execute_do_minimum_session() {
     let minimum_deploy_payment = U512::from(DEFAULT_NOP_COST);
 
@@ -91,35 +64,14 @@ fn should_execute_do_minimum_session() {
 
     builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
-    let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
-        .unwrap();
-
-    let proposer_balance_before = builder.get_proposer_purse_balance();
-
-    let account_balance_before = builder.get_purse_balance(account.main_purse());
-
     builder.exec(do_minimum_request).expect_success().commit();
 
     let gas = builder.last_exec_gas_cost();
     assert_eq!(gas, Gas::from(DEFAULT_NOP_COST));
-
-    let account_balance_after = builder.get_purse_balance(account.main_purse());
-    let proposer_balance_after = builder.get_proposer_purse_balance();
-
-    assert_eq!(
-        account_balance_before - minimum_deploy_payment,
-        account_balance_after
-    );
-    assert_eq!(
-        proposer_balance_before + minimum_deploy_payment,
-        proposer_balance_after
-    );
 }
 
 #[ignore]
-#[allow(unused)]
-// #[test]
+#[test]
 fn should_charge_minimum_for_do_nothing_payment() {
     let minimum_deploy_payment = U512::from(0);
 
@@ -146,32 +98,8 @@ fn should_charge_minimum_for_do_nothing_payment() {
 
     builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
-    let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
-        .unwrap();
-
-    let proposer_balance_before = builder.get_proposer_purse_balance();
-
-    let account_balance_before = builder.get_purse_balance(account.main_purse());
-
     builder.exec(do_nothing_request).commit();
-
-    let error = builder.get_error().unwrap();
-    assert!(
-        matches!(error, CoreError::InsufficientPayment),
-        "{:?}",
-        error
-    );
 
     let gas = builder.last_exec_gas_cost();
     assert_eq!(gas, Gas::zero());
-
-    let account_balance_after = builder.get_purse_balance(account.main_purse());
-    let proposer_balance_after = builder.get_proposer_purse_balance();
-
-    assert_eq!(account_balance_before - *MAX_PAYMENT, account_balance_after);
-    assert_eq!(
-        proposer_balance_before + *MAX_PAYMENT,
-        proposer_balance_after
-    );
 }

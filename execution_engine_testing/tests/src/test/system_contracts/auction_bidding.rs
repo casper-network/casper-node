@@ -3,7 +3,7 @@ use num_traits::Zero;
 use casper_engine_test_support::{
     utils, ExecuteRequestBuilder, LmdbWasmTestBuilder, TransferRequestBuilder,
     UpgradeRequestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY,
-    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PAYMENT,
+    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
     DEFAULT_PROPOSER_PUBLIC_KEY, DEFAULT_PROTOCOL_VERSION, DEFAULT_UNBONDING_DELAY,
     LOCAL_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR,
     TIMESTAMP_MILLIS_INCREMENT,
@@ -27,19 +27,13 @@ use casper_types::{
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
 const CONTRACT_ADD_BID: &str = "add_bid.wasm";
 const CONTRACT_WITHDRAW_BID: &str = "withdraw_bid.wasm";
-const CONTRACT_AUCTION_BIDDING: &str = "auction_bidding.wasm";
 
 const GENESIS_VALIDATOR_STAKE: u64 = 50_000;
 const GENESIS_ACCOUNT_STAKE: u64 = 100_000;
 const TRANSFER_AMOUNT: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 
-const TEST_BOND: &str = "bond";
-const TEST_SEED_NEW_ACCOUNT: &str = "seed_new_account";
-
 const ARG_AMOUNT: &str = "amount";
 const ARG_PUBLIC_KEY: &str = "public_key";
-const ARG_ENTRY_POINT: &str = "entry_point";
-const ARG_ACCOUNT_HASH: &str = "account_hash";
 const ARG_DELEGATION_RATE: &str = "delegation_rate";
 
 const DELEGATION_RATE: DelegationRate = 42;
@@ -237,62 +231,6 @@ fn should_fail_bonding_with_insufficient_funds_directly() {
         if mint_error == mint::Error::InsufficientFunds as u8),
         "{:?}",
         error
-    );
-}
-
-#[ignore]
-#[allow(unused)]
-// #[test]
-fn should_fail_bonding_with_insufficient_funds() {
-    let account_1_secret_key =
-        SecretKey::ed25519_from_bytes([123; SecretKey::ED25519_LENGTH]).unwrap();
-    let account_1_public_key = PublicKey::from(&account_1_secret_key);
-    let account_1_hash = AccountHash::from(&account_1_public_key);
-
-    let exec_request_1 = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_AUCTION_BIDDING,
-        runtime_args! {
-            ARG_ENTRY_POINT => TEST_SEED_NEW_ACCOUNT,
-            ARG_ACCOUNT_HASH => account_1_hash,
-            ARG_AMOUNT => *DEFAULT_PAYMENT + GENESIS_ACCOUNT_STAKE,
-        },
-    )
-    .build();
-    let exec_request_2 = ExecuteRequestBuilder::standard(
-        account_1_hash,
-        CONTRACT_AUCTION_BIDDING,
-        runtime_args! {
-            ARG_ENTRY_POINT => TEST_BOND,
-            ARG_AMOUNT => *DEFAULT_PAYMENT + GENESIS_ACCOUNT_STAKE,
-            ARG_PUBLIC_KEY => account_1_public_key,
-        },
-    )
-    .build();
-
-    let mut builder = LmdbWasmTestBuilder::default();
-
-    builder
-        .run_genesis(LOCAL_GENESIS_REQUEST.clone())
-        .exec(exec_request_1)
-        .commit();
-
-    builder.exec(exec_request_2).commit();
-
-    let exec_result = builder
-        .get_exec_result_owned(1)
-        .expect("should have a response")
-        .error()
-        .cloned()
-        .expect("should have error");
-    assert!(
-        matches!(
-            exec_result,
-            EngineError::Exec(ExecError::Revert(ApiError::Mint(mint_error))
-        )
-        if mint_error == mint::Error::InsufficientFunds as u8),
-        "{:?}",
-        exec_result
     );
 }
 

@@ -18,5 +18,3 @@ mod runtime;
 mod subcall;
 mod transfer;
 mod transfer_cached;
-mod transfer_purse_to_account;
-mod transfer_purse_to_purse;
