@@ -51,11 +51,14 @@ impl UpgradableContract {
     }
 
     pub fn perform_upgrade(&self, new_code: Vec<u8>) {
+        if host::get_caller() != self.owner {
+            panic!("Only the owner can perform upgrades");
+        }
         log!("V1: starting upgrade process current value={}", self.value);
         // let new_code = host::casper_copy_input();
         log!("New code length: {}", new_code.len());
         log!("New code first 10 bytes: {:?}", &new_code[..10]);
 
-        host::casper_upgrade(Some(&new_code), Some("migrate"), None).unwrap();
+        host::casper_upgrade(&new_code, Some("migrate"), None).unwrap();
     }
 }

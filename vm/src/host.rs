@@ -1012,13 +1012,9 @@ pub(crate) fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
     input_ptr: u32,
     input_size: u32,
 ) -> VMResult<HostResult> {
-    let code = if code_ptr != 0 {
-        caller
-            .memory_read(code_ptr, code_size as usize)
-            .map(Bytes::from)?
-    } else {
-        caller.bytecode()
-    };
+    let code = caller
+        .memory_read(code_ptr, code_size as usize)
+        .map(Bytes::from)?;
 
     let entry_point = match NonZeroU32::new(entry_point_ptr) {
         Some(entry_point_ptr) => {

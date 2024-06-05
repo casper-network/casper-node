@@ -286,12 +286,12 @@ pub fn casper_call(
 }
 
 pub fn casper_upgrade(
-    code: Option<&[u8]>,
+    code: &[u8],
     entry_point: Option<&str>,
     input_data: Option<&[u8]>,
 ) -> Result<(), CallError> {
-    let code_ptr = code.map(|s| s.as_ptr()).unwrap_or(ptr::null());
-    let code_size = code.map(|s| s.len()).unwrap_or(0);
+    let code_ptr = code.as_ptr();
+    let code_size = code.len();
     let entry_point_ptr = entry_point.map(|s| s.as_ptr()).unwrap_or(ptr::null());
     let entry_point_size = entry_point.map(|s| s.len()).unwrap_or(0);
     let input_ptr = input_data.map(|s| s.as_ptr()).unwrap_or(ptr::null());

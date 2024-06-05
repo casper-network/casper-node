@@ -71,7 +71,13 @@ impl UpgradableContractV2 {
     }
 
     pub fn increment_by(&mut self, value: u64) {
+        let old_value = self.value;
         self.value = value.wrapping_add(value);
+        log!(
+            "Incrementing value by {value} from {} to {}",
+            old_value,
+            self.value
+        );
     }
 
     pub fn get(&self) -> u64 {
@@ -98,7 +104,7 @@ impl UpgradableContractV2 {
         log!("V2: New code length: {}", new_code.len());
         log!("V2: New code first 10 bytes: {:?}", &new_code[..10]);
 
-        let upgrade_result = host::casper_upgrade(Some(&new_code), Some("migrate"), None);
+        let upgrade_result = host::casper_upgrade(&new_code, Some("migrate"), None);
         log!("{:?}", upgrade_result);
     }
 }
