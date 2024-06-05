@@ -16,7 +16,7 @@ All notable changes to this project will be documented in this file.  The format
 ### Added
 * Provide `from_chainspec_path` and `max_associated_keys` helper methods on `ChainspecConfig`.
 * Provide functions for converting from `ChainspecConfig` to `EngineConfig`.
-* Provide `try_exec` method on `WamTestBuilder` for fallible contract execution.
+* Provide `try_exec` method on `WasmTestBuilder` for fallible contract execution.
 * Provide `PRODUCTION_CHAINSPEC_PATH`: a lazy static defining the path to the production chainspec.toml file.
 
 
@@ -24,8 +24,8 @@ All notable changes to this project will be documented in this file.  The format
 ## 7.0.0
 
 ### Added
-* Provide `calculate_refund_amount` on `WamTestBuilder`.
-* Provide `upgrade_with_upgrade_request_and_config` on `WamTestBuilder`.
+* Provide `calculate_refund_amount` on `WasmTestBuilder`.
+* Provide `upgrade_with_upgrade_request_and_config` on `WasmTestBuilder`.
 
 
 
