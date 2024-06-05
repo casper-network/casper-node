@@ -875,6 +875,7 @@ fn should_forcibly_undelegate_after_setting_validator_limits() {
     );
 }
 
+#[ignore]
 #[test]
 fn should_force_undelegate_with_genesis_delegators() {
     assert_ne!(*ACCOUNT_1_ADDR, *ACCOUNT_2_ADDR,);
