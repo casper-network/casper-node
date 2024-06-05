@@ -129,7 +129,7 @@ pub(crate) enum ProtocolOutcome<C: Context> {
     CreatedRequestToRandomPeer(SerializedMessage),
     ScheduleTimer(Timestamp, TimerId),
     QueueAction(ActionId),
-    /// Request deploys for a new block, providing the necessary context.
+    /// Request transactions for a new block, providing the necessary context.
     CreateNewBlock(BlockContext<C>, Timestamp),
     /// A block was finalized.
     FinalizedBlock(FinalizedBlock<C>),
