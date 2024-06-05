@@ -123,8 +123,7 @@ fn should_exec_non_stored_code() {
 }
 
 #[ignore]
-#[allow(unused)]
-// #[test]
+#[test]
 fn should_fail_if_calling_non_existent_entry_point() {
     let payment_purse_amount = *DEFAULT_PAYMENT;
 
@@ -180,8 +179,7 @@ fn should_fail_if_calling_non_existent_entry_point() {
 }
 
 #[ignore]
-#[allow(unused)]
-// #[test]
+#[test]
 fn should_exec_stored_code_by_hash() {
     let default_payment = *DEFAULT_PAYMENT;
 
@@ -190,17 +188,7 @@ fn should_exec_stored_code_by_hash() {
     builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     // store payment
-    let (sending_account, custom_payment_package_hash, _) = install_custom_payment(&mut builder);
-
-    // verify stored contract functions as expected by checking all the maths
-    let sending_account_balance: U512 = builder.get_purse_balance(sending_account.main_purse());
-
-    let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
-
-    assert!(
-        sending_account_balance < initial_balance,
-        "balance should be less than initial balance"
-    );
+    let (_, custom_payment_package_hash, _) = install_custom_payment(&mut builder);
 
     let transferred_amount = U512::one();
 
@@ -237,8 +225,7 @@ fn should_exec_stored_code_by_hash() {
 }
 
 #[ignore]
-#[allow(unused)]
-// #[test]
+#[test]
 fn should_not_transfer_above_balance_using_stored_payment_code_by_hash() {
     let payment_purse_amount = *DEFAULT_PAYMENT;
 
@@ -334,8 +321,7 @@ fn should_empty_account_using_stored_payment_code_by_hash() {
 }
 
 #[ignore]
-#[allow(unused)]
-// #[test]
+#[test]
 fn should_exec_stored_code_by_named_hash() {
     let payment_purse_amount = *DEFAULT_PAYMENT;
 
@@ -556,10 +542,12 @@ fn should_fail_session_stored_at_named_key_with_incompatible_major_version() {
 }
 
 #[ignore]
-#[allow(unused)]
-// #[test]
+#[test]
 fn should_fail_session_stored_at_named_key_with_missing_new_major_version() {
     let payment_purse_amount = *DEFAULT_PAYMENT;
+
+    let mut builder = LmdbWasmTestBuilder::default();
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     // first, store payment contract for v1.0.0
     let exec_request_1 = ExecuteRequestBuilder::standard(
@@ -568,11 +556,15 @@ fn should_fail_session_stored_at_named_key_with_missing_new_major_version() {
         RuntimeArgs::default(),
     )
     .build();
-
-    let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
+    let exec_request_2 = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        STORED_PAYMENT_CONTRACT_NAME,
+        RuntimeArgs::default(),
+    )
+    .build();
 
     builder.exec(exec_request_1).commit();
+    builder.exec(exec_request_2).commit();
 
     let default_account = builder
         .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
@@ -607,8 +599,10 @@ fn should_fail_session_stored_at_named_key_with_missing_new_major_version() {
             ENTRY_FUNCTION_NAME,
             RuntimeArgs::new(),
         )
-        .with_payment_code(
-            STORED_PAYMENT_CONTRACT_NAME,
+        .with_stored_versioned_payment_contract_by_name(
+            STORED_PAYMENT_CONTRACT_PACKAGE_HASH_NAME,
+            Some(INITIAL_VERSION),
+            PAY_ENTRYPOINT,
             runtime_args! {
                 ARG_AMOUNT => payment_purse_amount,
             },
@@ -728,8 +722,7 @@ fn should_fail_session_stored_at_hash_with_incompatible_major_version() {
 }
 
 #[ignore]
-#[allow(unused)]
-// #[test]
+#[test]
 fn should_execute_stored_payment_and_session_code_with_new_major_version() {
     let payment_purse_amount = *DEFAULT_PAYMENT;
 

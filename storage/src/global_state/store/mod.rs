@@ -21,6 +21,24 @@ pub trait Store<K, V> {
     /// `handle` returns the underlying store.
     fn handle(&self) -> Self::Handle;
 
+    /// Deserialize a value.
+    #[inline]
+    fn deserialize_value(&self, bytes: &[u8]) -> Result<V, bytesrepr::Error>
+    where
+        V: FromBytes,
+    {
+        bytesrepr::deserialize_from_slice(bytes)
+    }
+
+    /// Serialize a value.
+    #[inline]
+    fn serialize_value(&self, value: &V) -> Result<Vec<u8>, bytesrepr::Error>
+    where
+        V: ToBytes,
+    {
+        value.to_bytes()
+    }
+
     /// Returns an optional value (may exist or not) as read through a transaction, or an error
     /// of the associated `Self::Error` variety.
     fn get<T>(&self, txn: &T, key: &K) -> Result<Option<V>, Self::Error>
@@ -33,7 +51,7 @@ pub trait Store<K, V> {
         let raw = self.get_raw(txn, key)?;
         match raw {
             Some(bytes) => {
-                let value = bytesrepr::deserialize_from_slice(bytes)?;
+                let value = self.deserialize_value(&bytes)?;
                 Ok(Some(value))
             }
             None => Ok(None),
@@ -61,7 +79,8 @@ pub trait Store<K, V> {
         V: ToBytes,
         Self::Error: From<T::Error>,
     {
-        self.put_raw(txn, key, Cow::from(value.to_bytes()?))
+        let serialized_value = self.serialize_value(value)?;
+        self.put_raw(txn, key, Cow::from(serialized_value))
     }
 
     /// Puts a raw `value` into the store at `key` within a transaction, potentially returning an
