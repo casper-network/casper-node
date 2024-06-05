@@ -20,10 +20,10 @@ cfg_if! {
 }
 
 // pub use self::format::format;
-pub use self::string::{ToString, String};
-pub use self::vec::Vec;
-pub use self::boxed::Box;
 pub use self::borrow::ToOwned;
+pub use self::boxed::Box;
+pub use self::string::{String, ToString};
+pub use self::vec::Vec;
 // pub use self::collections::btree_map::{self}
 
 #[cfg(test)]

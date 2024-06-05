@@ -381,9 +381,6 @@ impl Executor for ExecutorV2 {
                                         tracking_copy_parts: tracking_copy.into_raw_parts(),
                                     });
                                 }
-                                Err(error) => {
-                                    panic!("Error transferring funds: {error:?}");
-                                }
                             }
                         }
 
@@ -433,8 +430,9 @@ impl Executor for ExecutorV2 {
         self.push_execution_stack(execution_kind.clone());
         let (vm_result, gas_usage) = match export_or_selector {
             Either::Left(export_name) => instance.call_export(export_name),
-            Either::Right(entry_point) => todo!("Restore selectors"), //instance.call_export(&entry_point),
+            Either::Right(_entry_point) => todo!("Restore selectors"), //instance.call_export(&entry_point),
         };
+
         let top_execution_kind = self
             .pop_execution_stack()
             .expect("should have execution kind"); // SAFETY: We just pushed

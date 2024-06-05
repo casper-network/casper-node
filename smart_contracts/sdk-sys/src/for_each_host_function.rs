@@ -52,7 +52,6 @@ macro_rules! for_each_host_function {
                 entry_point_size: usize,
                 input_ptr: *const u8,
                 input_size: usize,
-                result_ptr: *mut $crate::UpgradeResult,
             ) -> u32;
 
             #[doc = r"Obtain data from the blockchain environemnt of current wasm invocation.

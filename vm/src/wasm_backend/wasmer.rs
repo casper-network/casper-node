@@ -630,8 +630,7 @@ where
                      manifest_ptr,
                      selector,
                      input_ptr,
-                     input_len,
-                     result_ptr|
+                     input_len|
                      -> Result<u32, VMError> {
                         let wasmer_caller = WasmerCaller { env };
                         // match
@@ -643,7 +642,6 @@ where
                             selector,
                             input_ptr,
                             input_len,
-                            result_ptr,
                         ) {
                             Ok(Ok(())) => Ok(0),
                             Ok(Err(call_error)) => Ok(call_error.into_u32()),

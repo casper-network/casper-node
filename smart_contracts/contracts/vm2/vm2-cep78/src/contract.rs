@@ -2,9 +2,9 @@ use crate::{
     error::NFTCoreError,
     traits::{CEP18Ref, CEP78State, CEP18},
 };
-use casper_sdk::serializers::borsh::{BorshDeserialize, BorshSerialize};
 use casper_macros::casper;
 use casper_sdk::host;
+use casper_sdk::serializers::borsh::{BorshDeserialize, BorshSerialize};
 use std::string::String;
 
 use crate::traits::CEP18Ext;

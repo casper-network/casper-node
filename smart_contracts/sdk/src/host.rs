@@ -1,13 +1,13 @@
 #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
 pub mod native;
-use crate::prelude::{Vec, String};
-use crate::serializers::borsh::{BorshDeserialize, BorshSerialize};
 use crate::prelude::{
     ffi::c_void,
     marker::PhantomData,
     mem::MaybeUninit,
     ptr::{self, NonNull},
 };
+use crate::prelude::{String, Vec};
+use crate::serializers::borsh::{BorshDeserialize, BorshSerialize};
 
 use casper_sdk_sys::casper_env_caller;
 use vm_common::{
@@ -289,15 +289,13 @@ pub fn casper_upgrade(
     code: Option<&[u8]>,
     entry_point: Option<&str>,
     input_data: Option<&[u8]>,
-) -> Result<casper_sdk_sys::UpgradeResult, CallError> {
+) -> Result<(), CallError> {
     let code_ptr = code.map(|s| s.as_ptr()).unwrap_or(ptr::null());
     let code_size = code.map(|s| s.len()).unwrap_or(0);
     let entry_point_ptr = entry_point.map(|s| s.as_ptr()).unwrap_or(ptr::null());
     let entry_point_size = entry_point.map(|s| s.len()).unwrap_or(0);
     let input_ptr = input_data.map(|s| s.as_ptr()).unwrap_or(ptr::null());
     let input_size = input_data.map(|s| s.len()).unwrap_or(0);
-    let mut result = MaybeUninit::uninit();
-    let result_ptr = result.as_mut_ptr();
 
     let result_code = unsafe {
         casper_sdk_sys::casper_upgrade(
@@ -307,11 +305,10 @@ pub fn casper_upgrade(
             entry_point_size,
             input_ptr,
             input_size,
-            result_ptr,
         )
     };
     match call_result_from_code(result_code) {
-        Ok(()) => Ok(unsafe { result.assume_init() }),
+        Ok(()) => Ok(()),
         Err(err) => Err(err),
     }
 }

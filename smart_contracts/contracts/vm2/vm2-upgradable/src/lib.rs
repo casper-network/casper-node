@@ -1,8 +1,10 @@
 #![cfg_attr(target_arch = "wasm32", no_main)]
-#![cfg_attr(target_arch = "wasm32", no_std)]
 
 use casper_macros::casper;
+use casper_sdk::prelude::*;
 use casper_sdk::{host, log};
+
+const CURRENT_VERSION: &str = "v1";
 
 /// This contract implements a simple flipper.
 #[casper(contract_state)]
@@ -39,13 +41,17 @@ impl UpgradableContract {
         self.value
     }
 
-    #[casper(ignore_state)]
-    pub fn upgrade() {
-        let new_code = host::casper_copy_input();
+    pub fn version(&self) -> &str {
+        CURRENT_VERSION
+    }
+
+    pub fn perform_upgrade(&self, new_code: Vec<u8>) {
+        log!("V1: starting upgrade process current value={}", self.value);
+        // let new_code = host::casper_copy_input();
         log!("New code length: {}", new_code.len());
         log!("New code first 10 bytes: {:?}", &new_code[..10]);
-        todo!()
-        // host::upgrade_contract(Some(&new_code));
-        // host::upgrade_contract("vm2-flipper copy")
+
+        let upgrade_result = host::casper_upgrade(Some(&new_code), Some("migrate"), None);
+        log!("{:?}", upgrade_result);
     }
 }

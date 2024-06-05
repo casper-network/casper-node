@@ -19,7 +19,7 @@ use num_traits::ToBytes;
 use rand::Rng;
 use safe_transmute::SingleManyGuard;
 use std::{cmp, collections::BTreeSet, mem, num::NonZeroU32, sync::Arc};
-use tracing::error;
+use tracing::{error, info};
 use vm_common::{
     flags::{EntryPointFlags, ReturnFlags},
     keyspace::{Keyspace, KeyspaceTag},
@@ -1011,7 +1011,6 @@ pub(crate) fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
     entry_point_size: u32,
     input_ptr: u32,
     input_size: u32,
-    result_ptr: u32,
 ) -> VMResult<HostResult> {
     let code = if code_ptr != 0 {
         caller
@@ -1090,80 +1089,79 @@ pub(crate) fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
     // 3. Execute upgrade routine (if specified)
     // this code should handle reading old state, and saving new state
 
-    let output_data = match entry_point {
-        Some(entry_point_name) => {
-            // Take the gas spent so far and use it as a limit for the new VM.
-            let gas_limit = caller
-                .gas_consumed()
-                .try_into_remaining()
-                .expect("should be remaining");
+    if let Some(entry_point_name) = entry_point {
+        // Take the gas spent so far and use it as a limit for the new VM.
+        let gas_limit = caller
+            .gas_consumed()
+            .try_into_remaining()
+            .expect("should be remaining");
 
-            let entity_addr = callee_addressable_entity_key
-                .into_entity_addr()
-                .expect("should be entity addr");
+        let entity_addr = callee_addressable_entity_key
+            .into_entity_addr()
+            .expect("should be entity addr");
 
-            let execute_request = ExecuteRequestBuilder::default()
-                .with_initiator(caller.context().initiator)
-                .with_caller_key(caller.context().callee)
-                .with_callee_key(callee_addressable_entity_key)
-                .with_gas_limit(gas_limit)
-                .with_target(ExecutionKind::Stored {
-                    address: entity_addr,
-                    entry_point: entry_point_name,
-                })
-                .with_input(input_data.unwrap_or_default())
-                // Upgrade entry point is executed with zero value as it does not seem to make sense to be able to transfer anything.
-                .with_value(0)
-                .with_transaction_hash(caller.context().transaction_hash)
-                // We're using shared address generator there as we need to preserve and advance the state of deterministic address generator across chain of calls.
-                .with_shared_address_generator(Arc::clone(&caller.context().address_generator))
-                .build()
-                .expect("should build");
+        let execute_request = ExecuteRequestBuilder::default()
+            .with_initiator(caller.context().initiator)
+            .with_caller_key(caller.context().callee)
+            .with_callee_key(callee_addressable_entity_key)
+            .with_gas_limit(gas_limit)
+            .with_target(ExecutionKind::Stored {
+                address: entity_addr,
+                entry_point: entry_point_name.clone(),
+            })
+            .with_input(input_data.unwrap_or_default())
+            // Upgrade entry point is executed with zero value as it does not seem to make sense to be able to transfer anything.
+            .with_value(0)
+            .with_transaction_hash(caller.context().transaction_hash)
+            // We're using shared address generator there as we need to preserve and advance the state of deterministic address generator across chain of calls.
+            .with_shared_address_generator(Arc::clone(&caller.context().address_generator))
+            .build()
+            .expect("should build");
 
-            let tracking_copy_for_ctor = caller.context().tracking_copy.fork2();
+        let tracking_copy_for_ctor = caller.context().tracking_copy.fork2();
 
-            match caller
-                .context()
-                .executor
-                .execute(tracking_copy_for_ctor, execute_request)
-            {
-                Ok(ExecuteResult {
-                    host_error,
-                    output,
-                    gas_usage,
-                    tracking_copy_parts,
-                }) => {
-                    // output
+        match caller
+            .context()
+            .executor
+            .execute(tracking_copy_for_ctor, execute_request)
+        {
+            Ok(ExecuteResult {
+                host_error,
+                output,
+                gas_usage,
+                tracking_copy_parts,
+            }) => {
+                // output
 
-                    caller.consume_gas(gas_usage.gas_spent());
+                caller.consume_gas(gas_usage.gas_spent());
 
-                    if let Some(host_error) = host_error {
-                        return Ok(Err(host_error));
-                    }
-
-                    caller
-                        .context_mut()
-                        .tracking_copy
-                        .merge_raw_parts(tracking_copy_parts);
-
-                    output
+                if let Some(host_error) = host_error {
+                    return Ok(Err(host_error));
                 }
-                Err(ExecuteError::WasmPreparation(preparation_error)) => {
-                    // Unable to call contract because the wasm is broken.
-                    error!(
-                        ?preparation_error,
-                        "Wasm preparation error while performing upgrade"
+
+                caller
+                    .context_mut()
+                    .tracking_copy
+                    .merge_raw_parts(tracking_copy_parts);
+
+                if let Some(output) = output {
+                    info!(
+                        ?entry_point_name,
+                        ?output,
+                        "unexpected output from migration entry point"
                     );
-                    return Ok(Err(HostError::NotCallable));
                 }
             }
+            Err(ExecuteError::WasmPreparation(preparation_error)) => {
+                // Unable to call contract because the wasm is broken.
+                error!(
+                    ?preparation_error,
+                    "Wasm preparation error while performing upgrade"
+                );
+                return Ok(Err(HostError::NotCallable));
+            }
         }
-        None => None,
-    };
+    }
 
-    // 2. Ensure that contract upgrade is invoked by the contract itself
-    // 3. Call migration selector on the new code, using old entity hash, but acting as new entity hash (TODO is that possible?)
-    // 4. Put new entity hash into the package itself
-    // 5. Pass UpgradeResult
-    todo!()
+    Ok(Ok(()))
 }

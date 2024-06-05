@@ -1,7 +1,7 @@
 use crate::serializers::borsh::{BorshDeserialize, BorshSerialize};
 
 use crate::abi::CasperABI;
-use crate::prelude::{Vec, String};
+use crate::prelude::{String, Vec};
 
 use super::Vector;
 

@@ -12,6 +12,7 @@ VM2_LIBS=(
   "vm2-cep18"
   "vm2-flipper"
   "vm2-upgradable"
+  "vm2-upgradable-v2"
 )
 
 for contract in "${VM2_BINS[@]}"
@@ -28,4 +29,9 @@ do
   pwd
   cargo build --target wasm32-unknown-unknown -p $contract --lib --release
   popd
+done
+
+echo "Stripping linked wasm"
+for wasm in vm/*.wasm; do
+  wasm-strip $wasm
 done

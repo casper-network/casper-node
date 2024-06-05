@@ -1,13 +1,13 @@
 use crate::{
     abi::{CasperABI, Declaration, Definition, Definitions, StructField},
     host::{self, read_vec},
-    prelude::{Vec, String, ToOwned},
+    prelude::{String, ToOwned, Vec},
 };
 
 // use casper_macros::casper;
+use crate::prelude::{cmp::Ordering, marker::PhantomData};
 use crate::serializers::borsh::{self, BorshDeserialize, BorshSerialize};
 use const_fnv1a_hash::fnv1a_hash_str_64;
-use crate::prelude::{cmp::Ordering, marker::PhantomData};
 use vm_common::keyspace::Keyspace;
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]

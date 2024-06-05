@@ -312,6 +312,14 @@ impl ExecuteResult {
         let (_cache, effects, _x) = &self.tracking_copy_parts;
         effects
     }
+
+    pub fn host_error(&self) -> Option<&HostError> {
+        self.host_error.as_ref()
+    }
+
+    pub fn output(&self) -> Option<&Bytes> {
+        self.output.as_ref()
+    }
 }
 
 /// Target for Wasm execution.

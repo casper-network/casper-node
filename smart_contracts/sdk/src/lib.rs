@@ -97,7 +97,6 @@ pub enum Access {
     Public,
 }
 
-
 // A println! like macro that calls `host::print` function.
 #[cfg(target_arch = "wasm32")]
 #[macro_export]

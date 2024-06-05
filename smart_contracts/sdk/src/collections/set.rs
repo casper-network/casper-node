@@ -1,9 +1,9 @@
 use crate::prelude::marker::PhantomData;
 
+use crate::host;
+use crate::prelude::String;
 use crate::serializers::borsh::BorshSerialize;
 use vm_common::keyspace::Keyspace;
-use crate::prelude::String;
-use crate::host;
 
 use super::lookup_key::{Identity, LookupKey, LookupKeyOwned};
 
