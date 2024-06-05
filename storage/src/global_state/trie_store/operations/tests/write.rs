@@ -10,8 +10,10 @@ mod empty_tries {
             let context = LmdbTestContext::new(&tries).unwrap();
             let initial_states = vec![root_hash];
 
-            writes_to_n_leaf_empty_trie_had_expected_results::<_, _, _, _, error::Error>(
+            writes_to_n_leaf_empty_trie_had_expected_results::<_, _, _, _, _, _, error::Error>(
                 &context.environment,
+                &context.environment,
+                &context.store,
                 &context.store,
                 &initial_states,
                 &TEST_LEAVES_NON_COLLIDING[..num_leaves],
@@ -27,8 +29,10 @@ mod empty_tries {
             let context = LmdbTestContext::new(&tries).unwrap();
             let initial_states = vec![root_hash];
 
-            writes_to_n_leaf_empty_trie_had_expected_results::<_, _, _, _, error::Error>(
+            writes_to_n_leaf_empty_trie_had_expected_results::<_, _, _, _, _, _, error::Error>(
                 &context.environment,
+                &context.environment,
+                &context.store,
                 &context.store,
                 &initial_states,
                 &TEST_LEAVES[..num_leaves],
@@ -41,17 +45,26 @@ mod empty_tries {
 mod partial_tries {
     use super::*;
 
-    fn noop_writes_to_n_leaf_partial_trie_had_expected_results<'a, R, S, E>(
+    fn noop_writes_to_n_leaf_partial_trie_had_expected_results<'a, R, WR, S, WS, E>(
         environment: &'a R,
+        write_environment: &'a WR,
         store: &S,
+        writable_store: &WS,
         states: &[Digest],
         num_leaves: usize,
     ) -> Result<(), E>
     where
         R: TransactionSource<'a, Handle = S::Handle>,
+        WR: TransactionSource<'a, Handle = WS::Handle>,
         S: TrieStore<TestKey, TestValue>,
+        WS: TrieStore<TestKey, PanickingFromBytes<TestValue>>,
         S::Error: From<R::Error>,
-        E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
+        WS::Error: From<WR::Error>,
+        E: From<R::Error>
+            + From<S::Error>
+            + From<bytesrepr::Error>
+            + From<WR::Error>
+            + From<WS::Error>,
     {
         // Check that the expected set of leaves is in the trie
         check_leaves::<_, _, _, _, E>(
@@ -63,9 +76,9 @@ mod partial_tries {
         )?;
 
         // Rewrite that set of leaves
-        let write_results = write_leaves::<_, _, _, _, E>(
-            environment,
-            store,
+        let write_results = write_leaves::<TestKey, _, WR, WS, E>(
+            write_environment,
+            writable_store,
             &states[0],
             &TEST_LEAVES[..num_leaves],
         )?;
@@ -91,8 +104,10 @@ mod partial_tries {
             let context = LmdbTestContext::new(&tries).unwrap();
             let states = vec![root_hash];
 
-            noop_writes_to_n_leaf_partial_trie_had_expected_results::<_, _, error::Error>(
+            noop_writes_to_n_leaf_partial_trie_had_expected_results::<_, _, _, _, error::Error>(
                 &context.environment,
+                &context.environment,
+                &context.store,
                 &context.store,
                 &states,
                 num_leaves,
@@ -101,17 +116,26 @@ mod partial_tries {
         }
     }
 
-    fn update_writes_to_n_leaf_partial_trie_had_expected_results<'a, R, S, E>(
+    fn update_writes_to_n_leaf_partial_trie_had_expected_results<'a, R, WR, S, WS, E>(
         environment: &'a R,
+        write_environment: &'a WR,
         store: &S,
+        writable_store: &WS,
         states: &[Digest],
         num_leaves: usize,
     ) -> Result<(), E>
     where
         R: TransactionSource<'a, Handle = S::Handle>,
+        WR: TransactionSource<'a, Handle = WS::Handle>,
         S: TrieStore<TestKey, TestValue>,
+        WS: TrieStore<TestKey, PanickingFromBytes<TestValue>>,
         S::Error: From<R::Error>,
-        E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
+        WS::Error: From<WR::Error>,
+        E: From<R::Error>
+            + From<S::Error>
+            + From<bytesrepr::Error>
+            + From<WR::Error>
+            + From<WS::Error>,
     {
         let mut states = states.to_owned();
 
@@ -138,8 +162,8 @@ mod partial_tries {
             let root_hash = {
                 let current_root = states.last().unwrap();
                 let results = write_leaves::<_, _, _, _, E>(
-                    environment,
-                    store,
+                    write_environment,
+                    writable_store,
                     current_root,
                     &[leaf.to_owned()],
                 )?;
@@ -172,8 +196,10 @@ mod partial_tries {
             let context = LmdbTestContext::new(&tries).unwrap();
             let initial_states = vec![root_hash];
 
-            update_writes_to_n_leaf_partial_trie_had_expected_results::<_, _, error::Error>(
+            update_writes_to_n_leaf_partial_trie_had_expected_results::<_, _, _, _, error::Error>(
                 &context.environment,
+                &context.environment,
+                &context.store,
                 &context.store,
                 &initial_states,
                 num_leaves,
@@ -186,17 +212,26 @@ mod partial_tries {
 mod full_tries {
     use super::*;
 
-    fn noop_writes_to_n_leaf_full_trie_had_expected_results<'a, R, S, E>(
+    fn noop_writes_to_n_leaf_full_trie_had_expected_results<'a, R, WR, S, WS, E>(
         environment: &'a R,
+        write_environment: &'a WR,
         store: &S,
+        write_store: &WS,
         states: &[Digest],
         index: usize,
     ) -> Result<(), E>
     where
         R: TransactionSource<'a, Handle = S::Handle>,
+        WR: TransactionSource<'a, Handle = WS::Handle>,
         S: TrieStore<TestKey, TestValue>,
+        WS: TrieStore<TestKey, PanickingFromBytes<TestValue>>,
         S::Error: From<R::Error>,
-        E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
+        WS::Error: From<WR::Error>,
+        E: From<R::Error>
+            + From<S::Error>
+            + From<bytesrepr::Error>
+            + From<WR::Error>
+            + From<WS::Error>,
     {
         // Check that the expected set of leaves is in the trie at every state reference
         for (num_leaves, state) in states[..index].iter().enumerate() {
@@ -211,8 +246,8 @@ mod full_tries {
 
         // Rewrite that set of leaves
         let write_results = write_leaves::<_, _, _, _, E>(
-            environment,
-            store,
+            write_environment,
+            write_store,
             states.last().unwrap(),
             &TEST_LEAVES[..index],
         )?;
@@ -245,8 +280,10 @@ mod full_tries {
             context.update(&tries).unwrap();
             states.push(root_hash);
 
-            noop_writes_to_n_leaf_full_trie_had_expected_results::<_, _, error::Error>(
+            noop_writes_to_n_leaf_full_trie_had_expected_results::<_, _, _, _, error::Error>(
                 &context.environment,
+                &context.environment,
+                &context.store,
                 &context.store,
                 &states,
                 index,
@@ -255,17 +292,26 @@ mod full_tries {
         }
     }
 
-    fn update_writes_to_n_leaf_full_trie_had_expected_results<'a, R, S, E>(
+    fn update_writes_to_n_leaf_full_trie_had_expected_results<'a, R, WR, S, WS, E>(
         environment: &'a R,
+        write_environment: &'a WR,
         store: &S,
+        write_store: &WS,
         states: &[Digest],
         num_leaves: usize,
     ) -> Result<(), E>
     where
         R: TransactionSource<'a, Handle = S::Handle>,
+        WR: TransactionSource<'a, Handle = WS::Handle>,
         S: TrieStore<TestKey, TestValue>,
+        WS: TrieStore<TestKey, PanickingFromBytes<TestValue>>,
         S::Error: From<R::Error>,
-        E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
+        WS::Error: From<WR::Error>,
+        E: From<R::Error>
+            + From<S::Error>
+            + From<bytesrepr::Error>
+            + From<WR::Error>
+            + From<WS::Error>,
     {
         let mut states = states.to_vec();
 
@@ -282,8 +328,8 @@ mod full_tries {
 
         // Write set of leaves to the trie
         let hashes = write_leaves::<_, _, _, _, E>(
-            environment,
-            store,
+            write_environment,
+            write_store,
             states.last().unwrap(),
             &TEST_LEAVES_UPDATED[..num_leaves],
         )?
@@ -335,8 +381,10 @@ mod full_tries {
             context.update(&tries).unwrap();
             states.push(root_hash);
 
-            update_writes_to_n_leaf_full_trie_had_expected_results::<_, _, error::Error>(
+            update_writes_to_n_leaf_full_trie_had_expected_results::<_, _, _, _, error::Error>(
                 &context.environment,
+                &context.environment,
+                &context.store,
                 &context.store,
                 &states,
                 num_leaves,
@@ -345,16 +393,25 @@ mod full_tries {
         }
     }
 
-    fn node_writes_to_5_leaf_full_trie_had_expected_results<'a, R, S, E>(
+    fn node_writes_to_5_leaf_full_trie_had_expected_results<'a, R, WR, S, WS, E>(
         environment: &'a R,
+        write_environment: &'a WR,
         store: &S,
+        write_store: &WS,
         states: &[Digest],
     ) -> Result<(), E>
     where
         R: TransactionSource<'a, Handle = S::Handle>,
+        WR: TransactionSource<'a, Handle = WS::Handle>,
         S: TrieStore<TestKey, TestValue>,
+        WS: TrieStore<TestKey, PanickingFromBytes<TestValue>>,
         S::Error: From<R::Error>,
-        E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
+        WS::Error: From<WR::Error>,
+        E: From<R::Error>
+            + From<S::Error>
+            + From<bytesrepr::Error>
+            + From<WR::Error>
+            + From<WS::Error>,
     {
         let mut states = states.to_vec();
         let num_leaves = TEST_LEAVES_LENGTH;
@@ -372,8 +429,8 @@ mod full_tries {
 
         // Write set of leaves to the trie
         let hashes = write_leaves::<_, _, _, _, E>(
-            environment,
-            store,
+            write_environment,
+            write_store,
             states.last().unwrap(),
             &TEST_LEAVES_ADJACENTS,
         )?
@@ -425,8 +482,10 @@ mod full_tries {
             states.push(root_hash);
         }
 
-        node_writes_to_5_leaf_full_trie_had_expected_results::<_, _, error::Error>(
+        node_writes_to_5_leaf_full_trie_had_expected_results::<_, _, _, _, error::Error>(
             &context.environment,
+            &context.environment,
+            &context.store,
             &context.store,
             &states,
         )

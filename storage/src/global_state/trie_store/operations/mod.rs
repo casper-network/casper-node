@@ -1,3 +1,4 @@
+pub(crate) mod store_wrappers;
 #[cfg(test)]
 mod tests;
 
@@ -5,7 +6,6 @@ mod tests;
 use std::collections::HashSet;
 use std::{borrow::Cow, cmp, collections::VecDeque, convert::TryInto, mem};
 
-use either::Either;
 use num_traits::FromPrimitive;
 use tracing::{error, warn};
 
@@ -17,10 +17,13 @@ use casper_types::{
 
 use crate::global_state::{
     error::Error as GlobalStateError,
+    store::Store,
     transaction_source::{Readable, Writable},
-    trie::{self, Parents, PointerBlock, Trie, TrieTag, RADIX, USIZE_EXCEEDS_U8},
+    trie::{LazilyDeserializedTrie, Parents, PointerBlock, Trie, TrieTag, RADIX, USIZE_EXCEEDS_U8},
     trie_store::TrieStore,
 };
+
+use self::store_wrappers::NonDeserializingStore;
 
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug, PartialEq, Eq)]
@@ -48,6 +51,8 @@ where
     E: From<S::Error> + From<bytesrepr::Error>,
 {
     let path: Vec<u8> = key.to_bytes()?;
+
+    let store = store_wrappers::OnceDeserializingStore::new(store);
 
     let mut depth: usize = 0;
     let mut current: Trie<K, V> = match store.get(txn, root)? {
@@ -282,61 +287,24 @@ where
     })
 }
 
-#[derive(Debug)]
-struct TrieScan<K, V> {
-    tip: Trie<K, V>,
-    parents: Parents<K, V>,
-}
-
-impl<K, V> TrieScan<K, V> {
-    fn new(tip: Trie<K, V>, parents: Parents<K, V>) -> Self {
-        TrieScan { tip, parents }
-    }
-}
-
-/// Returns a [`TrieScan`] from the given key at a given root in a given store.
-/// A scan consists of the deepest trie variant found at that key, a.k.a. the
-/// "tip", along with the parents of that variant. Parents are ordered by
-/// their depth from the root (shallow to deep).
-fn scan<K, V, T, S, E>(
-    txn: &T,
-    store: &S,
-    key_bytes: &[u8],
-    root: &Trie<K, V>,
-) -> Result<TrieScan<K, V>, E>
-where
-    K: ToBytes + FromBytes + Clone,
-    V: ToBytes + FromBytes + Clone,
-    T: Readable<Handle = S::Handle>,
-    S: TrieStore<K, V>,
-    S::Error: From<T::Error>,
-    E: From<S::Error> + From<bytesrepr::Error>,
-{
-    let root_bytes = root.to_bytes()?;
-    let TrieScanRaw { tip, parents } =
-        scan_raw::<K, V, T, S, E>(txn, store, key_bytes, root_bytes.into())?;
-    let tip = match tip {
-        Either::Left(trie_leaf_bytes) => bytesrepr::deserialize(trie_leaf_bytes.to_vec())?,
-        Either::Right(tip) => tip,
-    };
-    Ok(TrieScan::new(tip, parents))
-}
-
 struct TrieScanRaw<K, V> {
-    tip: Either<Bytes, Trie<K, V>>,
+    tip: LazilyDeserializedTrie,
     parents: Parents<K, V>,
 }
 
 impl<K, V> TrieScanRaw<K, V> {
-    fn new(tip: Either<Bytes, Trie<K, V>>, parents: Parents<K, V>) -> Self {
+    fn new(tip: LazilyDeserializedTrie, parents: Parents<K, V>) -> Self {
         TrieScanRaw { tip, parents }
     }
 }
 
-/// Just like scan, however we don't parse the tip.
+/// Returns a [`TrieScanRaw`] from the given key at a given root in a given store.
+/// A scan consists of the deepest trie variant found at that key, a.k.a. the
+/// "tip", along the with the parents of that variant. Parents are ordered by
+/// their depth from the root (shallow to deep). The tip is not parsed.
 fn scan_raw<K, V, T, S, E>(
     txn: &T,
-    store: &S,
+    store: &NonDeserializingStore<K, V, S>,
     key_bytes: &[u8],
     root_bytes: Bytes,
 ) -> Result<TrieScanRaw<K, V>, E>
@@ -350,24 +318,17 @@ where
 {
     let path = key_bytes;
 
-    let mut current_trie;
     let mut current = root_bytes;
     let mut depth: usize = 0;
     let mut acc: Parents<K, V> = Vec::new();
 
     loop {
-        let maybe_trie_leaf = trie::lazy_trie_deserialize(current)?;
-        current_trie = match maybe_trie_leaf {
-            leaf_bytes @ Either::Left(_) => return Ok(TrieScanRaw::new(leaf_bytes, acc)),
-            Either::Right(trie_object) => trie_object,
-        };
-        match current_trie {
-            _leaf @ Trie::Leaf { .. } => {
-                // since we are checking if this is a leaf and skipping, we do not expect to ever
-                // hit this.
-                unreachable!()
+        let maybe_trie_leaf = bytesrepr::deserialize_from_slice(&current)?;
+        match maybe_trie_leaf {
+            leaf_bytes @ LazilyDeserializedTrie::Leaf(_) => {
+                return Ok(TrieScanRaw::new(leaf_bytes, acc))
             }
-            Trie::Node { pointer_block } => {
+            LazilyDeserializedTrie::Node { pointer_block } => {
                 let index = {
                     assert!(depth < path.len(), "depth must be < {}", path.len());
                     path[depth]
@@ -381,7 +342,7 @@ where
                     Some(pointer) => pointer,
                     None => {
                         return Ok(TrieScanRaw::new(
-                            Either::Right(Trie::Node { pointer_block }),
+                            LazilyDeserializedTrie::Node { pointer_block },
                             acc,
                         ));
                     }
@@ -401,11 +362,11 @@ where
                     }
                 }
             }
-            Trie::Extension { affix, pointer } => {
+            LazilyDeserializedTrie::Extension { affix, pointer } => {
                 let sub_path = &path[depth..depth + affix.len()];
                 if sub_path != affix.as_slice() {
                     return Ok(TrieScanRaw::new(
-                        Either::Right(Trie::Extension { affix, pointer }),
+                        LazilyDeserializedTrie::Extension { affix, pointer },
                         acc,
                     ));
                 }
@@ -417,7 +378,7 @@ where
                         };
                         current = next;
                         depth += affix.len();
-                        acc.push((index, Trie::Extension { affix, pointer }))
+                        acc.push((index, Trie::extension(affix.into(), pointer)))
                     }
                     None => {
                         panic!(
@@ -455,6 +416,7 @@ where
     S::Error: From<T::Error>,
     E: From<S::Error> + From<bytesrepr::Error>,
 {
+    let store = store_wrappers::NonDeserializingStore::new(store);
     let root_trie_bytes = match store.get_raw(txn, root)? {
         None => return Ok(TriePruneResult::RootNotFound),
         Some(root_trie) => root_trie,
@@ -462,23 +424,16 @@ where
 
     let key_bytes = keys_to_prune.to_bytes()?;
     let TrieScanRaw { tip, mut parents } =
-        scan_raw::<_, _, _, _, E>(txn, store, &key_bytes, root_trie_bytes)?;
+        scan_raw::<_, _, _, _, E>(txn, &store, &key_bytes, root_trie_bytes)?;
 
     // Check that tip is a leaf
     match tip {
-        Either::Left(bytes)
+        LazilyDeserializedTrie::Leaf(leaf_bytes)
             if {
                 // Partially deserialize a key of a leaf node to ensure that we can only continue if
                 // the key matches what we're looking for.
-                let ((tag_u8, key), _rem): ((u8, K), _) = FromBytes::from_bytes(&bytes)?;
-                let trie_tag = TrieTag::from_u8(tag_u8);
                 // _rem contains bytes of serialized V, but we don't need to inspect it.
-                assert_eq!(
-                    trie_tag,
-                    Some(TrieTag::Leaf),
-                    "Tip should contain leaf bytes, but has tag {:?}",
-                    trie_tag
-                );
+                let (key, _rem) = leaf_bytes.try_deserialize_leaf_key::<K>()?;
                 key == *keys_to_prune
             } => {}
         _ => return Ok(TriePruneResult::MissingKey),
@@ -580,10 +535,8 @@ where
                             // this extension might need to be combined with a grandparent
                             // extension.
                             Trie::Node { .. } => {
-                                let new_extension: Trie<K, V> = Trie::Extension {
-                                    affix: vec![sibling_idx].into(),
-                                    pointer: sibling_pointer,
-                                };
+                                let new_extension: Trie<K, V> =
+                                    Trie::extension(vec![sibling_idx], sibling_pointer);
                                 let trie_key = new_extension.trie_hash()?;
                                 new_elements.push((trie_key, new_extension))
                             }
@@ -598,10 +551,7 @@ where
                             } => {
                                 let mut new_affix = vec![sibling_idx];
                                 new_affix.extend(Vec::<u8>::from(extension_affix));
-                                let new_extension: Trie<K, V> = Trie::Extension {
-                                    affix: new_affix.into(),
-                                    pointer,
-                                };
+                                let new_extension: Trie<K, V> = Trie::extension(new_affix, pointer);
                                 let trie_key = new_extension.trie_hash()?;
                                 new_elements.push((trie_key, new_extension))
                             }
@@ -637,10 +587,8 @@ where
                 new_affix.extend_from_slice(child_affix.as_slice());
                 *child_affix = new_affix.into();
                 *trie_key = {
-                    let new_extension: Trie<K, V> = Trie::Extension {
-                        affix: child_affix.to_owned(),
-                        pointer: pointer.to_owned(),
-                    };
+                    let new_extension: Trie<K, V> =
+                        Trie::extension(child_affix.to_owned().into(), pointer.to_owned());
                     new_extension.trie_hash()?
                 }
             }
@@ -916,57 +864,61 @@ where
     S::Error: From<T::Error>,
     E: From<S::Error> + From<bytesrepr::Error>,
 {
-    match store.get(txn, root)? {
+    let store = store_wrappers::NonDeserializingStore::new(store);
+    match store.get_raw(txn, root)? {
         None => Ok(WriteResult::RootNotFound),
-        Some(current_root) => {
+        Some(current_root_bytes) => {
             let new_leaf = Trie::Leaf {
                 key: key.to_owned(),
                 value: value.to_owned(),
             };
             let path: Vec<u8> = key.to_bytes()?;
-            let TrieScan { tip, parents } =
-                scan::<K, V, T, S, E>(txn, store, &path, &current_root)?;
+            let TrieScanRaw { tip, parents } =
+                scan_raw::<K, V, T, S, E>(txn, &store, &path, current_root_bytes)?;
             let new_elements: Vec<(Digest, Trie<K, V>)> = match tip {
-                // If the "tip" is the same as the new leaf, then the leaf
-                // is already in the Trie.
-                Trie::Leaf { .. } if new_leaf == tip => Vec::new(),
-                // If the "tip" is an existing leaf with the same key as the
-                // new leaf, but the existing leaf and new leaf have different
-                // values, then we are in the situation where we are "updating"
-                // an existing leaf.
-                Trie::Leaf {
-                    key: ref leaf_key,
-                    value: ref leaf_value,
-                } if key == leaf_key && value != leaf_value => rehash(new_leaf, parents)?,
-                // If the "tip" is an existing leaf with a different key than
-                // the new leaf, then we are in a situation where the new leaf
-                // shares some common prefix with the existing leaf.
-                Trie::Leaf {
-                    key: ref existing_leaf_key,
-                    ..
-                } if key != existing_leaf_key => {
-                    let existing_leaf_path = existing_leaf_key.to_bytes()?;
-                    let (new_node, parents) = reparent_leaf(&path, &existing_leaf_path, parents)?;
-                    let parents = add_node_to_parents(&path, new_node, parents);
-                    rehash(new_leaf, parents)?
+                LazilyDeserializedTrie::Leaf(leaf_bytes) => {
+                    let (existing_leaf_key, existing_value_bytes) =
+                        leaf_bytes.try_deserialize_leaf_key()?;
+
+                    if key != &existing_leaf_key {
+                        // If the "tip" is an existing leaf with a different key than
+                        // the new leaf, then we are in a situation where the new leaf
+                        // shares some common prefix with the existing leaf.
+                        let existing_leaf_path = existing_leaf_key.to_bytes()?;
+                        let (new_node, parents) =
+                            reparent_leaf(&path, &existing_leaf_path, parents)?;
+                        let parents = add_node_to_parents(&path, new_node, parents);
+                        rehash(new_leaf, parents)?
+                    } else {
+                        let new_value_bytes = value.to_bytes()?;
+                        if new_value_bytes != existing_value_bytes {
+                            // If the "tip" is an existing leaf with the same key as the
+                            // new leaf, but the existing leaf and new leaf have different
+                            // values, then we are in the situation where we are "updating"
+                            // an existing leaf.
+                            rehash(new_leaf, parents)?
+                        } else {
+                            // Both key and values are the same.
+                            // If the "tip" is the same as the new leaf, then the leaf
+                            // is already in the Trie.
+                            Vec::new()
+                        }
+                    }
                 }
-                // This case is unreachable, but the compiler can't figure
-                // that out.
-                Trie::Leaf { .. } => unreachable!(),
                 // If the "tip" is an existing node, then we can add a pointer
                 // to the new leaf to the node's pointer block.
-                node @ Trie::Node { .. } => {
-                    let parents = add_node_to_parents(&path, node, parents);
+                node @ LazilyDeserializedTrie::Node { .. } => {
+                    let parents = add_node_to_parents(&path, node.try_into()?, parents);
                     rehash(new_leaf, parents)?
                 }
                 // If the "tip" is an extension node, then we must modify or
                 // replace it, adding a node where necessary.
-                extension @ Trie::Extension { .. } => {
+                extension @ LazilyDeserializedTrie::Extension { .. } => {
                     let SplitResult {
                         new_node,
                         parents,
                         maybe_hashed_child_extension,
-                    } = split_extension(&path, extension, parents)?;
+                    } = split_extension(&path, extension.try_into()?, parents)?;
                     let parents = add_node_to_parents(&path, new_node, parents);
                     if let Some(hashed_extension) = maybe_hashed_child_extension {
                         let mut ret = vec![hashed_extension];
@@ -1015,16 +967,16 @@ enum KeysIteratorState<K, V, S: TrieStore<K, V>> {
     Failed,
 }
 
-struct VisitedTrieNode<K, V> {
-    trie: Trie<K, V>,
+struct VisitedTrieNode {
+    trie: LazilyDeserializedTrie,
     maybe_index: Option<usize>,
     path: Vec<u8>,
 }
 
 pub struct KeysIterator<'a, 'b, K, V, T, S: TrieStore<K, V>> {
     initial_descend: VecDeque<u8>,
-    visited: Vec<VisitedTrieNode<K, V>>,
-    store: &'a S,
+    visited: Vec<VisitedTrieNode>,
+    store: NonDeserializingStore<'a, K, V, S>,
     txn: &'b T,
     state: KeysIteratorState<K, V, S>,
 }
@@ -1056,24 +1008,37 @@ where
             mut path,
         }) = self.visited.pop()
         {
-            let mut maybe_next_trie: Option<Trie<K, V>> = None;
+            let mut maybe_next_trie: Option<LazilyDeserializedTrie> = None;
+
             match trie {
-                Trie::Leaf { key, .. } => {
-                    let key_bytes = match key.to_bytes() {
-                        Ok(bytes) => bytes,
-                        Err(e) => {
-                            self.state = KeysIteratorState::Failed;
-                            return Some(Err(e.into()));
-                        }
-                    };
-                    debug_assert!(key_bytes.starts_with(&path));
+                LazilyDeserializedTrie::Leaf(leaf_bytes) => {
+                    let leaf_bytes = leaf_bytes.bytes();
+                    if leaf_bytes.is_empty() {
+                        self.state = KeysIteratorState::Failed;
+                        return Some(Err(bytesrepr::Error::Formatting.into()));
+                    }
+
+                    let key_bytes = &leaf_bytes[1..]; // Skip `Trie::Leaf` tag
+                    debug_assert!(
+                        key_bytes.starts_with(&path),
+                        "Expected key bytes to start with the current path"
+                    );
+
                     // only return the leaf if it matches the initial descend path
                     path.extend(&self.initial_descend);
                     if key_bytes.starts_with(&path) {
+                        // Only deserializes K when we're absolutely sure the path matches.
+                        let (key, _stored_value): (K, _) = match K::from_bytes(key_bytes) {
+                            Ok(key) => key,
+                            Err(error) => {
+                                self.state = KeysIteratorState::Failed;
+                                return Some(Err(error.into()));
+                            }
+                        };
                         return Some(Ok(key));
                     }
                 }
-                Trie::Node { ref pointer_block } => {
+                LazilyDeserializedTrie::Node { ref pointer_block } => {
                     // if we are still initially descending (and initial_descend is not empty), take
                     // the first index we should descend to, otherwise take maybe_index from the
                     // visited stack
@@ -1085,14 +1050,28 @@ where
                         .unwrap_or_default();
                     while index < RADIX {
                         if let Some(ref pointer) = pointer_block[index] {
-                            maybe_next_trie = match self.store.get(self.txn, pointer.hash()) {
-                                Ok(trie) => trie,
-                                Err(e) => {
-                                    self.state = KeysIteratorState::Failed;
-                                    return Some(Err(e));
+                            maybe_next_trie = {
+                                match self.store.get_raw(self.txn, pointer.hash()) {
+                                    Ok(Some(trie_bytes)) => {
+                                        match bytesrepr::deserialize_from_slice(&trie_bytes) {
+                                            Ok(lazy_trie) => Some(lazy_trie),
+                                            Err(error) => {
+                                                self.state = KeysIteratorState::Failed;
+                                                return Some(Err(error.into()));
+                                            }
+                                        }
+                                    }
+                                    Ok(None) => None,
+                                    Err(error) => {
+                                        self.state = KeysIteratorState::Failed;
+                                        return Some(Err(error));
+                                    }
                                 }
                             };
-                            debug_assert!(maybe_next_trie.is_some());
+                            debug_assert!(
+                                maybe_next_trie.is_some(),
+                                "Trie at the pointer is expected to exist"
+                            );
                             if self.initial_descend.pop_front().is_none() {
                                 self.visited.push(VisitedTrieNode {
                                     trie,
@@ -1112,7 +1091,7 @@ where
                         index += 1;
                     }
                 }
-                Trie::Extension { affix, pointer } => {
+                LazilyDeserializedTrie::Extension { affix, pointer } => {
                     let descend_len = cmp::min(self.initial_descend.len(), affix.len());
                     let check_prefix = self
                         .initial_descend
@@ -1123,14 +1102,27 @@ where
                     // if we are not, the check_prefix will be empty, so we will enter the if
                     // anyway
                     if affix.starts_with(&check_prefix) {
-                        maybe_next_trie = match self.store.get(self.txn, pointer.hash()) {
-                            Ok(trie) => trie,
+                        maybe_next_trie = match self.store.get_raw(self.txn, pointer.hash()) {
+                            Ok(Some(trie_bytes)) => {
+                                match bytesrepr::deserialize_from_slice(&trie_bytes) {
+                                    Ok(lazy_trie) => Some(lazy_trie),
+                                    Err(error) => {
+                                        self.state = KeysIteratorState::Failed;
+                                        return Some(Err(error.into()));
+                                    }
+                                }
+                            }
+                            Ok(None) => None,
                             Err(e) => {
                                 self.state = KeysIteratorState::Failed;
                                 return Some(Err(e));
                             }
                         };
-                        debug_assert!({ matches!(&maybe_next_trie, Some(Trie::Node { .. })) });
+                        debug_assert!(
+                            matches!(&maybe_next_trie, Some(LazilyDeserializedTrie::Node { .. }),),
+                            "Expected a LazilyDeserializedTrie::Node but received {:?}",
+                            maybe_next_trie
+                        );
                         path.extend(affix);
                     }
                 }
@@ -1164,17 +1156,24 @@ where
     S: TrieStore<K, V>,
     S::Error: From<T::Error>,
 {
-    let (visited, init_state): (Vec<VisitedTrieNode<K, V>>, _) = match store.get(txn, root) {
+    let store = store_wrappers::NonDeserializingStore::new(store);
+    let (visited, init_state): (Vec<VisitedTrieNode>, _) = match store.get_raw(txn, root) {
         Ok(None) => (vec![], KeysIteratorState::Ok),
         Err(e) => (vec![], KeysIteratorState::ReturnError(e)),
-        Ok(Some(current_root)) => (
-            vec![VisitedTrieNode {
-                trie: current_root,
-                maybe_index: None,
-                path: vec![],
-            }],
-            KeysIteratorState::Ok,
-        ),
+        Ok(Some(current_root_bytes)) => match bytesrepr::deserialize_from_slice(current_root_bytes)
+        {
+            Ok(lazy_trie) => {
+                let visited = vec![VisitedTrieNode {
+                    trie: lazy_trie,
+                    maybe_index: None,
+                    path: vec![],
+                }];
+                let init_state = KeysIteratorState::Ok;
+
+                (visited, init_state)
+            }
+            Err(error) => (vec![], KeysIteratorState::ReturnError(error.into())),
+        },
     };
 
     KeysIterator {

@@ -4,7 +4,10 @@ mod partial_tries {
         trie::Trie,
         trie_store::operations::{
             self,
-            tests::{LmdbTestContext, TestKey, TestValue, TEST_LEAVES, TEST_TRIE_GENERATORS},
+            tests::{
+                bytesrepr_utils::PanickingFromBytes, LmdbTestContext, TestKey, TestValue,
+                TEST_LEAVES, TEST_TRIE_GENERATORS,
+            },
         },
     };
 
@@ -27,10 +30,13 @@ mod partial_tries {
             };
             let actual = {
                 let txn = context.environment.create_read_txn().unwrap();
-                let mut tmp =
-                    operations::keys::<TestKey, TestValue, _, _>(&txn, &context.store, &root_hash)
-                        .filter_map(Result::ok)
-                        .collect::<Vec<TestKey>>();
+                let mut tmp = operations::keys::<TestKey, PanickingFromBytes<TestValue>, _, _>(
+                    &txn,
+                    &context.store,
+                    &root_hash,
+                )
+                .filter_map(Result::ok)
+                .collect::<Vec<TestKey>>();
                 txn.commit().unwrap();
                 tmp.sort();
                 tmp
@@ -49,8 +55,8 @@ mod full_tries {
         trie_store::operations::{
             self,
             tests::{
-                LmdbTestContext, TestKey, TestValue, EMPTY_HASHED_TEST_TRIES, TEST_LEAVES,
-                TEST_TRIE_GENERATORS,
+                bytesrepr_utils::PanickingFromBytes, LmdbTestContext, TestKey, TestValue,
+                EMPTY_HASHED_TEST_TRIES, TEST_LEAVES, TEST_TRIE_GENERATORS,
             },
         },
     };
@@ -80,10 +86,13 @@ mod full_tries {
                 };
                 let actual = {
                     let txn = context.environment.create_read_txn().unwrap();
-                    let mut tmp =
-                        operations::keys::<TestKey, TestValue, _, _>(&txn, &context.store, state)
-                            .filter_map(Result::ok)
-                            .collect::<Vec<TestKey>>();
+                    let mut tmp = operations::keys::<TestKey, PanickingFromBytes<TestValue>, _, _>(
+                        &txn,
+                        &context.store,
+                        state,
+                    )
+                    .filter_map(Result::ok)
+                    .collect::<Vec<TestKey>>();
                     txn.commit().unwrap();
                     tmp.sort();
                     tmp
@@ -104,8 +113,8 @@ mod keys_iterator {
         trie_store::operations::{
             self,
             tests::{
-                hash_test_tries, HashedTestTrie, HashedTrie, LmdbTestContext, TestKey, TestValue,
-                TEST_LEAVES,
+                bytesrepr_utils::PanickingFromBytes, hash_test_tries, HashedTestTrie, HashedTrie,
+                LmdbTestContext, TestKey, TestValue, TEST_LEAVES,
             },
         },
     };
@@ -161,26 +170,30 @@ mod keys_iterator {
     fn test_trie(root_hash: Digest, tries: Vec<HashedTestTrie>) {
         let context = return_on_err!(LmdbTestContext::new(&tries));
         let txn = return_on_err!(context.environment.create_read_txn());
-        let _tmp = operations::keys::<TestKey, TestValue, _, _>(&txn, &context.store, &root_hash)
-            .collect::<Vec<_>>();
+        let _tmp = operations::keys::<TestKey, PanickingFromBytes<TestValue>, _, _>(
+            &txn,
+            &context.store,
+            &root_hash,
+        )
+        .collect::<Vec<_>>();
     }
 
     #[test]
-    #[should_panic]
+    #[should_panic = "Expected a LazilyDeserializedTrie::Node but received"]
     fn should_panic_on_leaf_after_extension() {
         let (root_hash, tries) = return_on_err!(create_invalid_extension_trie());
         test_trie(root_hash, tries);
     }
 
     #[test]
-    #[should_panic]
+    #[should_panic = "Expected key bytes to start with the current path"]
     fn should_panic_when_key_not_matching_path() {
         let (root_hash, tries) = return_on_err!(create_invalid_path_trie());
         test_trie(root_hash, tries);
     }
 
     #[test]
-    #[should_panic]
+    #[should_panic = "Trie at the pointer is expected to exist"]
     fn should_panic_on_pointer_to_nonexisting_hash() {
         let (root_hash, tries) = return_on_err!(create_invalid_hash_trie());
         test_trie(root_hash, tries);
@@ -193,7 +206,10 @@ mod keys_with_prefix_iterator {
         trie::Trie,
         trie_store::operations::{
             self,
-            tests::{create_6_leaf_trie, LmdbTestContext, TestKey, TestValue, TEST_LEAVES},
+            tests::{
+                bytesrepr_utils::PanickingFromBytes, create_6_leaf_trie, LmdbTestContext, TestKey,
+                TestValue, TEST_LEAVES,
+            },
         },
     };
 
@@ -216,14 +232,15 @@ mod keys_with_prefix_iterator {
             .create_read_txn()
             .expect("should create a read txn");
         let expected = expected_keys(prefix);
-        let mut actual = operations::keys_with_prefix::<TestKey, TestValue, _, _>(
-            &txn,
-            &context.store,
-            &root_hash,
-            prefix,
-        )
-        .filter_map(Result::ok)
-        .collect::<Vec<_>>();
+        let mut actual =
+            operations::keys_with_prefix::<TestKey, PanickingFromBytes<TestValue>, _, _>(
+                &txn,
+                &context.store,
+                &root_hash,
+                prefix,
+            )
+            .filter_map(Result::ok)
+            .collect::<Vec<_>>();
         actual.sort();
         assert_eq!(expected, actual);
     }
