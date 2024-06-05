@@ -372,6 +372,21 @@ impl ContractRuntime {
                 }
                 .ignore()
             }
+            ContractRuntimeRequest::GetSeigniorageRecipients { request, responder } => {
+                trace!(?request, "get seigniorage recipients request");
+                let metrics = Arc::clone(&self.metrics);
+                let data_access_layer = Arc::clone(&self.data_access_layer);
+                async move {
+                    let start = Instant::now();
+                    let result = data_access_layer.seigniorage_recipients(request);
+                    metrics
+                        .get_seigniorage_recipients
+                        .observe(start.elapsed().as_secs_f64());
+                    trace!(?result, "seigniorage recipients result");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
             ContractRuntimeRequest::GetExecutionResultsChecksum {
                 state_root_hash,
                 responder,

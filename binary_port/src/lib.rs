@@ -7,6 +7,7 @@ mod binary_response;
 mod binary_response_and_request;
 mod binary_response_header;
 mod dictionary_item_identifier;
+mod era_identifier;
 mod error;
 mod error_code;
 mod get_request;
@@ -29,6 +30,7 @@ pub use binary_response::BinaryResponse;
 pub use binary_response_and_request::BinaryResponseAndRequest;
 pub use binary_response_header::BinaryResponseHeader;
 pub use dictionary_item_identifier::DictionaryItemIdentifier;
+pub use era_identifier::EraIdentifier;
 pub use error::Error;
 pub use error_code::ErrorCode;
 pub use get_request::GetRequest;
@@ -44,5 +46,5 @@ pub use speculative_execution_result::SpeculativeExecutionResult;
 pub use state_request::GlobalStateRequest;
 pub use type_wrappers::{
     ConsensusStatus, ConsensusValidatorChanges, DictionaryQueryResult, GetTrieFullResult,
-    LastProgress, NetworkName, ReactorStateName, TransactionWithExecutionInfo, Uptime,
+    LastProgress, NetworkName, ReactorStateName, Reward, TransactionWithExecutionInfo, Uptime,
 };

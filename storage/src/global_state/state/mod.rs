@@ -56,10 +56,11 @@ use crate::{
         HandleRefundRequest, HandleRefundResult, InsufficientBalanceHandling, ProofHandling,
         ProofsResult, ProtocolUpgradeRequest, ProtocolUpgradeResult, PruneRequest, PruneResult,
         PutTrieRequest, PutTrieResult, QueryRequest, QueryResult, RoundSeigniorageRateRequest,
-        RoundSeigniorageRateResult, StepError, StepRequest, StepResult,
-        SystemEntityRegistryPayload, SystemEntityRegistryRequest, SystemEntityRegistryResult,
-        SystemEntityRegistrySelector, TotalSupplyRequest, TotalSupplyResult, TrieRequest,
-        TrieResult, EXECUTION_RESULTS_CHECKSUM_NAME,
+        RoundSeigniorageRateResult, SeigniorageRecipientsRequest, SeigniorageRecipientsResult,
+        StepError, StepRequest, StepResult, SystemEntityRegistryPayload,
+        SystemEntityRegistryRequest, SystemEntityRegistryResult, SystemEntityRegistrySelector,
+        TotalSupplyRequest, TotalSupplyResult, TrieRequest, TrieResult,
+        EXECUTION_RESULTS_CHECKSUM_NAME,
     },
     global_state::{
         error::Error as GlobalStateError,
@@ -899,11 +900,38 @@ pub trait StateProvider {
 
     /// Get the requested era validators.
     fn era_validators(&self, request: EraValidatorsRequest) -> EraValidatorsResult {
+        match self.seigniorage_recipients(SeigniorageRecipientsRequest::new(
+            request.state_hash(),
+            request.protocol_version(),
+        )) {
+            SeigniorageRecipientsResult::RootNotFound => EraValidatorsResult::RootNotFound,
+            SeigniorageRecipientsResult::Failure(err) => EraValidatorsResult::Failure(err),
+            SeigniorageRecipientsResult::ValueNotFound(msg) => {
+                EraValidatorsResult::ValueNotFound(msg)
+            }
+            SeigniorageRecipientsResult::AuctionNotFound => EraValidatorsResult::AuctionNotFound,
+            SeigniorageRecipientsResult::Success {
+                seigniorage_recipients,
+            } => {
+                let era_validators =
+                    auction::detail::era_validators_from_snapshot(seigniorage_recipients);
+                EraValidatorsResult::Success { era_validators }
+            }
+        }
+    }
+
+    /// Get the requested seigniorage recipients.
+    fn seigniorage_recipients(
+        &self,
+        request: SeigniorageRecipientsRequest,
+    ) -> SeigniorageRecipientsResult {
         let state_hash = request.state_hash();
         let tc = match self.tracking_copy(state_hash) {
             Ok(Some(tc)) => tc,
-            Ok(None) => return EraValidatorsResult::RootNotFound,
-            Err(err) => return EraValidatorsResult::Failure(TrackingCopyError::Storage(err)),
+            Ok(None) => return SeigniorageRecipientsResult::RootNotFound,
+            Err(err) => {
+                return SeigniorageRecipientsResult::Failure(TrackingCopyError::Storage(err))
+            }
         };
 
         let query_request = match tc.get_system_entity_registry() {
@@ -920,27 +948,27 @@ pub trait StateProvider {
                         vec![SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY.to_string()],
                     )
                 }
-                None => return EraValidatorsResult::AuctionNotFound,
+                None => return SeigniorageRecipientsResult::AuctionNotFound,
             },
-            Err(err) => return EraValidatorsResult::Failure(err),
+            Err(err) => return SeigniorageRecipientsResult::Failure(err),
         };
 
         let snapshot = match self.query(query_request) {
-            QueryResult::RootNotFound => return EraValidatorsResult::RootNotFound,
+            QueryResult::RootNotFound => return SeigniorageRecipientsResult::RootNotFound,
             QueryResult::Failure(error) => {
                 error!(?error, "unexpected tracking copy error");
-                return EraValidatorsResult::Failure(error);
+                return SeigniorageRecipientsResult::Failure(error);
             }
             QueryResult::ValueNotFound(msg) => {
                 error!(%msg, "value not found");
-                return EraValidatorsResult::ValueNotFound(msg);
+                return SeigniorageRecipientsResult::ValueNotFound(msg);
             }
             QueryResult::Success { value, proofs: _ } => {
                 let cl_value = match value.into_cl_value() {
                     Some(snapshot_cl_value) => snapshot_cl_value,
                     None => {
                         error!("unexpected query failure; seigniorage recipients snapshot is not a CLValue");
-                        return EraValidatorsResult::Failure(
+                        return SeigniorageRecipientsResult::Failure(
                             TrackingCopyError::UnexpectedStoredValueVariant,
                         );
                     }
@@ -949,14 +977,17 @@ pub trait StateProvider {
                 match cl_value.into_t() {
                     Ok(snapshot) => snapshot,
                     Err(cve) => {
-                        return EraValidatorsResult::Failure(TrackingCopyError::CLValue(cve));
+                        return SeigniorageRecipientsResult::Failure(TrackingCopyError::CLValue(
+                            cve,
+                        ));
                     }
                 }
             }
         };
 
-        let era_validators = auction::detail::era_validators_from_snapshot(snapshot);
-        EraValidatorsResult::Success { era_validators }
+        SeigniorageRecipientsResult::Success {
+            seigniorage_recipients: snapshot,
+        }
     }
 
     /// Gets the bids.

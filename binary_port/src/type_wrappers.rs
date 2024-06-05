@@ -6,7 +6,7 @@ use datasize::DataSize;
 
 use casper_types::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
-    EraId, ExecutionInfo, Key, PublicKey, TimeDiff, Timestamp, Transaction, ValidatorChange,
+    EraId, ExecutionInfo, Key, PublicKey, TimeDiff, Timestamp, Transaction, ValidatorChange, U512,
 };
 
 use super::GlobalStateQueryResult;
@@ -173,6 +173,22 @@ impl GetTrieFullResult {
     }
 }
 
+/// Type representing the reward of a validator or a delegator.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Reward(U512);
+
+impl Reward {
+    /// Constructs new reward.
+    pub fn new(value: U512) -> Self {
+        Self(value)
+    }
+
+    /// Retrieve the inner value.
+    pub fn into_inner(self) -> U512 {
+        self.0
+    }
+}
+
 /// Describes the consensus status.
 #[derive(Debug, PartialEq, Eq)]
 pub struct ConsensusStatus {
@@ -329,6 +345,7 @@ impl_bytesrepr_for_type_wrapper!(NetworkName);
 impl_bytesrepr_for_type_wrapper!(ReactorStateName);
 impl_bytesrepr_for_type_wrapper!(LastProgress);
 impl_bytesrepr_for_type_wrapper!(GetTrieFullResult);
+impl_bytesrepr_for_type_wrapper!(Reward);
 
 #[cfg(test)]
 mod tests {
@@ -378,6 +395,12 @@ mod tests {
     fn get_trie_full_result_roundtrip() {
         let rng = &mut TestRng::new();
         bytesrepr::test_serialization_roundtrip(&GetTrieFullResult::new(rng.gen()));
+    }
+
+    #[test]
+    fn reward_roundtrip() {
+        let rng = &mut TestRng::new();
+        bytesrepr::test_serialization_roundtrip(&Reward::new(U512::from(rng.gen::<u64>())));
     }
 
     #[test]
