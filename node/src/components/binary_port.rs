@@ -1162,7 +1162,7 @@ where
         }
         Some(EraIdentifier::Block(block_identifier)) => {
             let header = resolve_block_header(effect_builder, Some(block_identifier)).await?;
-            header.is_switch_block().then(|| header)
+            header.is_switch_block().then_some(header)
         }
         None => {
             effect_builder
