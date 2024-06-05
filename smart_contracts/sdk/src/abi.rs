@@ -1,6 +1,6 @@
 use impl_trait_for_tuples::impl_for_tuples;
-use std::{collections::BTreeMap, str::FromStr};
-
+use crate::prelude::{collections::BTreeMap, str::FromStr};
+use crate::prelude::{Vec, String, Box, collections};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
@@ -176,7 +176,7 @@ impl Definitions {
 
 impl IntoIterator for Definitions {
     type Item = (Declaration, Definition);
-    type IntoIter = std::collections::btree_map::IntoIter<Declaration, Definition>;
+    type IntoIter = collections::btree_map::IntoIter<Declaration, Definition>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.into_iter()
@@ -249,7 +249,7 @@ impl CasperABI for () {
     fn populate_definitions(_definitions: &mut Definitions) {}
 
     fn declaration() -> Declaration {
-        "()".to_string()
+        "()".into()
     }
 
     fn definition() -> Definition {
@@ -306,12 +306,12 @@ impl<T: CasperABI, E: CasperABI> CasperABI for Result<T, E> {
         Definition::Enum {
             items: vec![
                 EnumVariant {
-                    name: "Ok".to_string(),
+                    name: "Ok".into(),
                     discriminant: 0,
                     decl: T::declaration(),
                 },
                 EnumVariant {
-                    name: "Err".to_string(),
+                    name: "Err".into(),
                     discriminant: 1,
                     decl: E::declaration(),
                 },
@@ -328,12 +328,12 @@ impl<T: CasperABI> CasperABI for Option<T> {
         Definition::Enum {
             items: vec![
                 EnumVariant {
-                    name: "None".to_string(),
+                    name: "None".into(),
                     discriminant: 0,
                     decl: <()>::declaration(),
                 },
                 EnumVariant {
-                    name: "Some".to_string(),
+                    name: "Some".into(),
                     discriminant: 1,
                     decl: T::declaration(),
                 },

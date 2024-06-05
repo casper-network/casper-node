@@ -184,7 +184,7 @@ fn generate_call_data_return(output: &syn::ReturnType) -> proc_macro2::TokenStre
                 // ty.uses_lifetimes(options, lifetimes)
                 let mut new_ref = reference.clone();
                 new_ref.lifetime = Some(syn::Lifetime::new("'a", Span::call_site()));
-                quote! { <<#new_ref as core::ops::Deref>::Target as alloc::borrow::ToOwned>::Owned }
+                quote! { <<#new_ref as core::ops::Deref>::Target as casper_sdk::prelude::borrow::ToOwned>::Owned }
             }
             _ => {
                 quote! { #ty }

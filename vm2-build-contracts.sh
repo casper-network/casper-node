@@ -11,6 +11,7 @@ VM2_LIBS=(
   "vm2-trait"
   "vm2-cep18"
   "vm2-flipper"
+  "vm2-upgradable"
 )
 
 for contract in "${VM2_BINS[@]}"

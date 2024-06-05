@@ -3,9 +3,6 @@
 pub mod contracts;
 pub mod traits;
 
-#[macro_use]
-extern crate alloc;
-
 #[cfg(test)]
 mod tests {
 

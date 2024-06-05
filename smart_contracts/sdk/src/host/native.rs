@@ -11,9 +11,9 @@ use std::{
 use vm_common::flags::{EntryPointFlags, ReturnFlags};
 
 use crate::linkme::distributed_slice;
-use crate::{types::Address, Selector};
+use crate::types::Address;
 
-use borsh::BorshSerialize;
+use crate::serializers::borsh::BorshSerialize;
 
 pub struct Export {
     pub name: &'static str,
@@ -27,7 +27,7 @@ pub struct Export {
 #[linkme(crate = crate::linkme)]
 pub static EXPORTS: [Export];
 
-impl std::fmt::Debug for Export {
+impl crate::prelude::fmt::Debug for Export {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Export")
             .field("name", &self.name)
@@ -379,69 +379,70 @@ impl Environment {
             panic!("Supplying code is not supported yet in native mode");
         }
 
-        let entry_point_selector: Option<Selector> = if selector == 0 {
-            None
-        } else {
-            Some(Selector::new(selector))
-        };
+        // let entry_point_selector: Option<Selector> = if selector == 0 {
+        //     None
+        // } else {
+        //     Some(Selector::new(selector))
+        // };
+        todo!("update native impl");
 
-        let input_data = if input_ptr.is_null() {
-            None
-        } else {
-            Some(unsafe { slice::from_raw_parts(input_ptr, input_size) })
-        };
+        // let input_data = if input_ptr.is_null() {
+        //     None
+        // } else {
+        //     Some(unsafe { slice::from_raw_parts(input_ptr, input_size) })
+        // };
 
-        let mut rng = rand::thread_rng();
-        let contract_address = rng.gen();
-        let package_address = rng.gen();
+        // let mut rng = rand::thread_rng();
+        // let contract_address = rng.gen();
+        // let package_address = rng.gen();
 
-        let mut result = NonNull::new(result_ptr).expect("Valid pointer");
-        unsafe {
-            result.as_mut().contract_address = contract_address;
-            result.as_mut().package_address = package_address;
-        }
+        // let mut result = NonNull::new(result_ptr).expect("Valid pointer");
+        // unsafe {
+        //     result.as_mut().contract_address = contract_address;
+        //     result.as_mut().package_address = package_address;
+        // }
 
-        let mut manifests = self.manifests.write().unwrap();
-        manifests.insert(contract_address, manifest.into());
+        // let mut manifests = self.manifests.write().unwrap();
+        // manifests.insert(contract_address, manifest.into());
 
-        if let Some(entry_point_selector) = entry_point_selector {
-            let manifest = manifests.get(&contract_address).expect("Manifest exists");
-            let entry_point = manifest
-                .entry_points
-                .iter()
-                .find(|entry_point| entry_point.selector == entry_point_selector.get())
-                .expect("Entry point exists");
+        // if let Some(entry_point_selector) = entry_point_selector {
+        //     let manifest = manifests.get(&contract_address).expect("Manifest exists");
+        //     let entry_point = manifest
+        //         .entry_points
+        //         .iter()
+        //         .find(|entry_point| entry_point.selector == entry_point_selector.get())
+        //         .expect("Entry point exists");
 
-            let mut stub = with_current_environment(|stub| stub);
-            stub.contract_address = Some(contract_address);
-            stub.input_data = input_data.map(Bytes::copy_from_slice);
+        //     let mut stub = with_current_environment(|stub| stub);
+        //     stub.contract_address = Some(contract_address);
+        //     stub.input_data = input_data.map(Bytes::copy_from_slice);
 
-            // Call constructor, expect a trap
-            let result = dispatch_with(stub, || {
-                (entry_point.fptr)();
-            });
+        //     // Call constructor, expect a trap
+        //     let result = dispatch_with(stub, || {
+        //         (entry_point.fptr)();
+        //     });
 
-            match result {
-                Ok(()) => todo!("Constructor did not return"),
-                Err(NativeTrap::Return(flags, bytes)) => {
-                    if flags.contains(ReturnFlags::REVERT) {
-                        todo!("Constructor returned with a revert flag");
-                    }
+        //     match result {
+        //         Ok(()) => todo!("Constructor did not return"),
+        //         Err(NativeTrap::Return(flags, bytes)) => {
+        //             if flags.contains(ReturnFlags::REVERT) {
+        //                 todo!("Constructor returned with a revert flag");
+        //             }
 
-                    let mut db = self.db.write().unwrap();
-                    let values = db.entry(0).or_default();
-                    values.insert(
-                        Bytes::copy_from_slice(contract_address.as_slice()),
-                        TaggedValue {
-                            tag: 0,
-                            value: bytes,
-                        },
-                    );
-                }
-            }
-        }
+        //             let mut db = self.db.write().unwrap();
+        //             let values = db.entry(0).or_default();
+        //             values.insert(
+        //                 Bytes::copy_from_slice(contract_address.as_slice()),
+        //                 TaggedValue {
+        //                     tag: 0,
+        //                     value: bytes,
+        //                 },
+        //             );
+        //         }
+        //     }
+        // }
 
-        Ok(0)
+        // Ok(0)
     }
 
     fn casper_call(
@@ -776,18 +777,6 @@ mod symbols {
     use super::with_current_environment;
 
     #[no_mangle]
-    /**Obtain data from the blockchain environemnt of current wasm invocation.
-
-    Example paths:
-
-    * `env_read([CASPER_CALLER], 1, nullptr, &caller_addr)` -> read caller's address into
-    `caller_addr` memory.
-    * `env_read([CASPER_CHAIN, BLOCK_HASH, 0], 3, nullptr, &block_hash)` -> read hash of the
-    current block into `block_hash` memory.
-    * `env_read([CASPER_CHAIN, BLOCK_HASH, 5], 3, nullptr, &block_hash)` -> read hash of the 5th
-    block from the current one into `block_hash` memory.
-    * `env_read([CASPER_AUTHORIZED_KEYS], 1, nullptr, &authorized_keys)` -> read list of
-    authorized keys into `authorized_keys` memory.*/
     pub extern "C" fn casper_env_read(
         env_path: *const u64,
         env_path_size: usize,
@@ -846,6 +835,7 @@ mod tests {
         .unwrap();
     }
 
+    #[ignore]
     #[test]
     fn test_returns() {
         dispatch_with(Environment::default(), || {

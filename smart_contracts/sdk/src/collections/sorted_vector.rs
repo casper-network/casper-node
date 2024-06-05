@@ -1,10 +1,12 @@
-use borsh::{BorshDeserialize, BorshSerialize};
+use crate::serializers::borsh::{BorshDeserialize, BorshSerialize};
 
 use crate::abi::CasperABI;
+use crate::prelude::{Vec, String};
 
 use super::Vector;
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
+#[borsh(crate = "crate::serializers::borsh")]
 pub struct SortedVector<T: Ord> {
     vector: Vector<T>,
 }
@@ -78,7 +80,7 @@ where
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "std"))]
 mod tests {
     use crate::host::native::dispatch;
 

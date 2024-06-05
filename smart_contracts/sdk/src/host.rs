@@ -1,8 +1,8 @@
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
 pub mod native;
-
+use crate::prelude::{Vec, String};
 use crate::serializers::borsh::{BorshDeserialize, BorshSerialize};
-use std::{
+use crate::prelude::{
     ffi::c_void,
     marker::PhantomData,
     mem::MaybeUninit,
@@ -19,7 +19,7 @@ use crate::{
     abi::{CasperABI, EnumVariant},
     reserve_vec_space,
     types::{Address, CallError, Entry},
-    Selector, ToCallData,
+    ToCallData,
 };
 
 #[derive(Debug)]
@@ -286,34 +286,34 @@ pub fn casper_call(
 }
 
 pub fn casper_upgrade(
-    _code: &[u8],
-    _manifest_bytes: &[u8],
-    _selector: Option<Selector>,
-    _input_data: Option<&[u8]>,
+    code: Option<&[u8]>,
+    entry_point: Option<&str>,
+    input_data: Option<&[u8]>,
 ) -> Result<casper_sdk_sys::UpgradeResult, CallError> {
-    // let mut result = MaybeUninit::uninit();
+    let code_ptr = code.map(|s| s.as_ptr()).unwrap_or(ptr::null());
+    let code_size = code.map(|s| s.len()).unwrap_or(0);
+    let entry_point_ptr = entry_point.map(|s| s.as_ptr()).unwrap_or(ptr::null());
+    let entry_point_size = entry_point.map(|s| s.len()).unwrap_or(0);
+    let input_ptr = input_data.map(|s| s.as_ptr()).unwrap_or(ptr::null());
+    let input_size = input_data.map(|s| s.len()).unwrap_or(0);
+    let mut result = MaybeUninit::uninit();
+    let result_ptr = result.as_mut_ptr();
 
-    // let manifest: Manifest
-
-    // let call_error = unsafe {
-    //     casper_sdk_sys::casper_upgrade(
-    //         code_ptr,
-    //         code_size,
-    //         manifest_ptr.as_ptr(),
-    //         selector.map(|selector| selector.get()).unwrap_or(0),
-    //         input_data.map(|s| s.as_ptr()).unwrap_or(ptr::null()),
-    //         input_data.map(|s| s.len()).unwrap_or(0),
-    //         result.as_mut_ptr(),
-    //     )
-    // };
-
-    // if call_error == 0 {
-    //     let result = unsafe { result.assume_init() };
-    //     Ok(result.into())
-    // } else {
-    //     Err(CallError::try_from(call_error).expect("Unexpected error code"))
-    // }
-    todo!()
+    let result_code = unsafe {
+        casper_sdk_sys::casper_upgrade(
+            code_ptr,
+            code_size,
+            entry_point_ptr,
+            entry_point_size,
+            input_ptr,
+            input_size,
+            result_ptr,
+        )
+    };
+    match call_result_from_code(result_code) {
+        Ok(()) => Ok(unsafe { result.assume_init() }),
+        Err(err) => Err(err),
+    }
 }
 
 pub fn read_vec(key: Keyspace) -> Option<Vec<u8>> {
@@ -478,19 +478,19 @@ impl CasperABI for Entity {
     }
 
     fn declaration() -> crate::abi::Declaration {
-        "Entity".to_string()
+        "Entity".into()
     }
 
     fn definition() -> crate::abi::Definition {
         crate::abi::Definition::Enum {
             items: vec![
                 EnumVariant {
-                    name: "Account".to_string(),
+                    name: "Account".into(),
                     discriminant: 0,
                     decl: <[u8; 32] as CasperABI>::declaration(),
                 },
                 EnumVariant {
-                    name: "Contract".to_string(),
+                    name: "Contract".into(),
                     discriminant: 1,
                     decl: <[u8; 32] as CasperABI>::declaration(),
                 },
@@ -521,7 +521,7 @@ pub fn casper_transfer(target: &Entity, amount: u64) -> Result<(), CallError> {
     call_result_from_code(result_code)
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "std"))]
 mod tests {
     use bytes::Bytes;
     use vm_common::flags::ReturnFlags;

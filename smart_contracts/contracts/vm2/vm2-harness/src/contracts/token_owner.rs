@@ -1,4 +1,5 @@
-use alloc::vec::Vec;
+use casper_sdk::prelude::*;
+
 use casper_macros::casper;
 use casper_sdk::{
     host::{self, Entity},

@@ -1,8 +1,11 @@
-// #![feature(wasm_import_memory)]
+#![cfg_attr(not(feature = "std"), no_std)]
 
-// #[linkage = "--import-memory"]
+#[cfg(not(feature = "std"))]
+#[macro_use]
+extern crate alloc;
 
 pub mod abi;
+pub mod prelude;
 pub mod serializers;
 #[cfg(not(target_arch = "wasm32"))]
 pub use linkme;
@@ -13,10 +16,11 @@ pub mod abi_generator;
 pub mod cli;
 pub mod collections;
 pub mod host;
+#[cfg(feature = "std")]
 pub mod schema;
 pub mod types;
 
-use std::{io, marker::PhantomData, ptr::NonNull};
+use crate::prelude::{marker::PhantomData, ptr::NonNull};
 
 use crate::serializers::borsh::{BorshDeserialize, BorshSerialize};
 pub use casper_sdk_sys as sys;
@@ -24,22 +28,28 @@ use host::{CallResult, Entity};
 use types::{Address, CallError};
 pub use vm_common;
 
-use crate::vm_common::selector::Selector;
+use crate::prelude::Vec;
 
-#[cfg(target_arch = "wasm32")]
-fn hook_impl(info: &std::panic::PanicInfo) {
-    let msg = info.to_string();
-    host::casper_print(&msg);
-}
+use crate::prelude::ToString;
 
-#[cfg(target_arch = "wasm32")]
-#[inline]
-pub fn set_panic_hook() {
-    use std::sync::Once;
-    static SET_HOOK: Once = Once::new();
-    SET_HOOK.call_once(|| {
-        std::panic::set_hook(Box::new(hook_impl));
-    });
+cfg_if::cfg_if! {
+    if #[cfg(feature = "std")] {
+        #[inline]
+        pub fn set_panic_hook() {
+            static SET_HOOK: std::sync::Once = std::sync::Once::new();
+            SET_HOOK.call_once(|| {
+                std::panic::set_hook(Box::new(|info: &core::panic::PanicInfo| {
+                    let msg = info.to_string();
+                    host::casper_print(&msg);
+                }));
+            });
+        }
+    }
+    else {
+        pub fn set_panic_hook() {
+            // TODO: What to do?
+        }
+    }
 }
 
 pub fn reserve_vec_space(vec: &mut Vec<u8>, size: usize) -> Option<NonNull<u8>> {
@@ -63,7 +73,7 @@ pub trait ToCallData {
 
     fn entry_point(&self) -> &str;
 
-    fn input_data(&self) -> Option<Vec<u8>>;
+    fn input_data(&self) -> Option<crate::prelude::Vec<u8>>;
 }
 
 /// To derive this contract you have to use `#[casper]` macro on top of impl block.
@@ -87,20 +97,13 @@ pub enum Access {
     Public,
 }
 
-#[derive(Debug)]
-pub enum ApiError {
-    Error1,
-    Error2,
-    MissingArgument,
-    Io(io::Error),
-}
 
 // A println! like macro that calls `host::print` function.
 #[cfg(target_arch = "wasm32")]
 #[macro_export]
 macro_rules! log {
     ($($arg:tt)*) => ({
-        $crate::host::casper_print(&format!($($arg)*));
+        $crate::host::casper_print(&$crate::prelude::format!($($arg)*));
     })
 }
 
@@ -108,7 +111,7 @@ macro_rules! log {
 #[macro_export]
 macro_rules! log {
     ($($arg:tt)*) => ({
-        eprintln!("📝 {}", format!($($arg)*));
+        eprintln!("📝 {}", &$crate::prelude::format!($($arg)*));
     })
 }
 
@@ -329,20 +332,20 @@ mod tests {
         foo: u64,
     }
 
-    impl ToCallData for DoSomethingArg {
-        const SELECTOR: Selector = Selector::new(1);
-        type Return<'a> = ();
-        fn input_data(&self) -> Option<Vec<u8>> {
-            Some(borsh::to_vec(self).expect("Serialization should work"))
-        }
-    }
+    // impl ToCallData for DoSomethingArg {
+    //     const SELECTOR: Selector = Selector::new(1);
+    //     type Return<'a> = ();
+    //     fn input_data(&self) -> Option<Vec<u8>> {
+    //         Some(borsh::to_vec(self).expect("Serialization should work"))
+    //     }
+    // }
 
-    impl MyContract {
-        #[allow(dead_code)]
-        fn do_something(&mut self, foo: u64) -> impl ToCallData {
-            DoSomethingArg { foo }
-        }
-    }
+    // impl MyContract {
+    //     #[allow(dead_code)]
+    //     fn do_something(&mut self, foo: u64) -> impl ToCallData {
+    //         DoSomethingArg { foo }
+    //     }
+    // }
 
     #[test]
     fn test_call_builder() {

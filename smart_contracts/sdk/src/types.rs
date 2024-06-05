@@ -1,6 +1,6 @@
-use std::fmt::{self, Display, Formatter};
+use crate::prelude::fmt::{self, Display, Formatter};
 
-use borsh::{BorshDeserialize, BorshSerialize};
+use crate::serializers::borsh::{BorshDeserialize, BorshSerialize};
 
 use crate::abi::{CasperABI, Definition, EnumVariant};
 
@@ -10,6 +10,7 @@ pub type Address = [u8; 32];
 pub struct Entry(pub(crate) ());
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
+#[borsh(crate = "crate::serializers::borsh")]
 pub enum CallError {
     CalleeReverted,
     CalleeTrapped,

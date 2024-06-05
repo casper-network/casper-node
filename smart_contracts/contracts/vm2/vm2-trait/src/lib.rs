@@ -1,11 +1,8 @@
 #![cfg_attr(target_arch = "wasm32", no_main)]
 #![cfg_attr(target_arch = "wasm32", no_std)]
 
-#[macro_use]
-extern crate alloc;
-
-use alloc::{string::String, vec::Vec};
 use casper_macros::casper;
+use casper_sdk::prelude::*;
 use casper_sdk::{
     collections::{sorted_vector::SortedVector, Map},
     host::{self, Entity},

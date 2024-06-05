@@ -48,8 +48,8 @@ macro_rules! for_each_host_function {
             pub fn casper_upgrade(
                 code_ptr: *const u8,
                 code_size: usize,
-                manifest_ptr: *const $crate::Manifest,
-                selector: u32,
+                entry_point_ptr: *const u8,
+                entry_point_size: usize,
                 input_ptr: *const u8,
                 input_size: usize,
                 result_ptr: *mut $crate::UpgradeResult,

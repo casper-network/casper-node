@@ -1,14 +1,17 @@
 use crate::{
     abi::{CasperABI, Declaration, Definition, Definitions, StructField},
     host::{self, read_vec},
+    prelude::{Vec, String, ToOwned},
 };
+
 // use casper_macros::casper;
-use borsh::{self, BorshDeserialize, BorshSerialize};
+use crate::serializers::borsh::{self, BorshDeserialize, BorshSerialize};
 use const_fnv1a_hash::fnv1a_hash_str_64;
-use std::{cmp::Ordering, marker::PhantomData};
+use crate::prelude::{cmp::Ordering, marker::PhantomData};
 use vm_common::keyspace::Keyspace;
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
+#[borsh(crate = "crate::serializers::borsh")]
 pub struct Vector<T> {
     pub(crate) prefix: String,
     pub(crate) length: u64,
@@ -203,7 +206,7 @@ where
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "std"))]
 pub(crate) mod tests {
     use self::host::native::dispatch;
 

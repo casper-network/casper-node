@@ -1,3 +1,5 @@
+use crate::prelude::{String, Vec};
+
 pub trait CasperSchema {
     fn schema() -> Schema;
 }
@@ -79,6 +81,7 @@ pub struct EntryPoint<'a, F: Fn()> {
     pub func: F,
 }
 
+#[cfg(not(target_family = "wasm"))]
 thread_local! {
     pub static DISPATCHER: RefCell<BTreeMap<String, extern "C" fn()>> = Default::default();
 }

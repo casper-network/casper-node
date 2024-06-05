@@ -2,7 +2,7 @@ use crate::{
     error::NFTCoreError,
     traits::{CEP18Ref, CEP78State, CEP18},
 };
-use borsh::{BorshDeserialize, BorshSerialize};
+use casper_sdk::serializers::borsh::{BorshDeserialize, BorshSerialize};
 use casper_macros::casper;
 use casper_sdk::host;
 use std::string::String;
@@ -10,6 +10,7 @@ use std::string::String;
 use crate::traits::CEP18Ext;
 
 #[derive(Contract, CasperSchema, BorshSerialize, BorshDeserialize, CasperABI, Debug, Clone)]
+#[borsh(crate = "casper_sdk::serializers::borsh")]
 #[casper(impl_traits(CEP18))]
 pub struct NFTContract {
     state: CEP78State,

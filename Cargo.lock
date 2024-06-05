@@ -864,6 +864,7 @@ dependencies = [
  "borsh",
  "bytes",
  "casper-sdk-sys",
+ "cfg-if 1.0.0",
  "clap 4.4.11",
  "const-fnv1a-hash",
  "impl-trait-for-tuples",
@@ -7423,6 +7424,14 @@ dependencies = [
  "casper-macros",
  "casper-sdk",
  "serde_json",
+]
+
+[[package]]
+name = "vm2-upgradable"
+version = "0.1.0"
+dependencies = [
+ "casper-macros",
+ "casper-sdk",
 ]
 
 [[package]]

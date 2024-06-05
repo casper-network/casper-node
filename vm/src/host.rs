@@ -356,7 +356,7 @@ pub(crate) fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'stati
     // 2. Store wasm
     let bytecode_hash = Digest::hash(&code);
 
-    let bytecode = ByteCode::new(ByteCodeKind::V1CasperWasm, code.clone().into());
+    let bytecode = ByteCode::new(ByteCodeKind::V2CasperWasm, code.clone().into());
     let bytecode_addr = ByteCodeAddr::V2CasperWasm(bytecode_hash.value());
 
     caller.context_mut().tracking_copy.write(
@@ -1003,12 +1003,12 @@ pub(crate) fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
     }
 }
 
-pub(crate) fn casper_upgrade<S: GlobalStateReader, E: Executor>(
+pub(crate) fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
     mut caller: impl Caller<S, E>,
     code_ptr: u32,
     code_size: u32,
-    manifest_ptr: u32,
-    selector: u32,
+    entry_point_ptr: u32,
+    entry_point_size: u32,
     input_ptr: u32,
     input_size: u32,
     result_ptr: u32,
@@ -1021,8 +1021,24 @@ pub(crate) fn casper_upgrade<S: GlobalStateReader, E: Executor>(
         caller.bytecode()
     };
 
-    // For calling a migration code on the new bytecode
-    let migration_selector = NonZeroU32::new(selector);
+    let entry_point = match NonZeroU32::new(entry_point_ptr) {
+        Some(entry_point_ptr) => {
+            // There's upgrade entry point to be called
+            let entry_point_bytes =
+                caller.memory_read(entry_point_ptr.get(), entry_point_size as usize)?;
+            match String::from_utf8(entry_point_bytes) {
+                Ok(entry_point) => Some(entry_point),
+                Err(utf8_error) => {
+                    error!(%utf8_error, "entry point name is not a valid utf-8 string; unable to call");
+                    return Ok(Err(HostError::NotCallable));
+                }
+            }
+        }
+        None => {
+            // No constructor to be called
+            None
+        }
+    };
 
     // Pass input data when calling a constructor. It's optional, as constructors aren't required
     let input_data: Option<Bytes> = if input_ptr == 0 {
@@ -1032,53 +1048,12 @@ pub(crate) fn casper_upgrade<S: GlobalStateReader, E: Executor>(
         Some(input_data)
     };
 
-    let manifest = caller.memory_read(manifest_ptr, mem::size_of::<Manifest>())?;
-    let bytes = manifest.as_slice();
-
-    let manifest = match safe_transmute::transmute_one::<Manifest>(bytes) {
-        Ok(manifest) => manifest,
-        Err(error) => {
-            todo!("handle error {:?}", error);
-        }
-    };
-
-    let entry_points_bytes = caller.memory_read(
-        manifest.entry_points_ptr,
-        (manifest.entry_points_size as usize) * mem::size_of::<EntryPoint>(),
-    )?;
-
-    let entry_points =
-        match safe_transmute::transmute_many::<EntryPoint, SingleManyGuard>(&entry_points_bytes) {
-            Ok(entry_points) => entry_points,
-            Err(error) => todo!("handle error {:?}", error),
-        };
-
-    let callee_entity_kind;
     let callee_addressable_entity_key = match caller.context().callee {
-        callee_account_key @ Key::Account(_account_hash) => {
-            match caller.context_mut().tracking_copy.read(&callee_account_key) {
-                Ok(Some(StoredValue::CLValue(indirect))) => {
-                    // is it an account?
-                    let addressable_entity_key = indirect.into_t::<Key>().expect("should be key");
-                    callee_entity_kind = EntityKindTag::Account;
-                    addressable_entity_key
-                }
-                Ok(Some(other)) => panic!("should be cl value but got {other:?}"),
-                Ok(None) => return Ok(Err(HostError::NotCallable)),
-                Err(error) => {
-                    error!(
-                        ?error,
-                        ?callee_account_key,
-                        "Error while reading from storage; aborting"
-                    );
-                    panic!("Error while reading from storage")
-                }
-            }
+        Key::Account(_account_hash) => {
+            error!("Account upgrade is not possible");
+            return Ok(Err(HostError::NotCallable));
         }
-        addressable_entity_key @ Key::AddressableEntity(_entity_addr) => {
-            callee_entity_kind = EntityKindTag::Contract;
-            addressable_entity_key
-        }
+        addressable_entity_key @ Key::AddressableEntity(_entity_addr) => addressable_entity_key,
         other => panic!("should be account or addressable entity but got {other:?}"),
     };
 
@@ -1097,19 +1072,98 @@ pub(crate) fn casper_upgrade<S: GlobalStateReader, E: Executor>(
         }
     };
 
-    match callee_entity_kind {
-        EntityKindTag::Account => {
-            // todo!("upgrading account is not possible");
-            return Ok(Err(HostError::NotCallable));
-        }
-        EntityKindTag::Contract => {
-            todo!("perform upgrade");
-        }
-    }
-
     // 1. Ensure that the new code is valid (maybe?)
+    // TODO: Is validating new code worth it if the user pays for the storage anyway? Should we protect users against invalid code?
+
+    // 2. Update the code therefore making hash(new_code) != addressable_entity.bytecode_addr (aka hash(old_code))
+    let bytecode_key = Key::ByteCode(ByteCodeAddr::V2CasperWasm(
+        callee_addressable_entity.byte_code_addr(),
+    ));
+    caller.context_mut().tracking_copy.write(
+        bytecode_key,
+        StoredValue::ByteCode(ByteCode::new(
+            ByteCodeKind::V2CasperWasm,
+            code.clone().into(),
+        )),
+    );
+
+    // 3. Execute upgrade routine (if specified)
+    // this code should handle reading old state, and saving new state
+
+    let output_data = match entry_point {
+        Some(entry_point_name) => {
+            // Take the gas spent so far and use it as a limit for the new VM.
+            let gas_limit = caller
+                .gas_consumed()
+                .try_into_remaining()
+                .expect("should be remaining");
+
+            let entity_addr = callee_addressable_entity_key
+                .into_entity_addr()
+                .expect("should be entity addr");
+
+            let execute_request = ExecuteRequestBuilder::default()
+                .with_initiator(caller.context().initiator)
+                .with_caller_key(caller.context().callee)
+                .with_callee_key(callee_addressable_entity_key)
+                .with_gas_limit(gas_limit)
+                .with_target(ExecutionKind::Stored {
+                    address: entity_addr,
+                    entry_point: entry_point_name,
+                })
+                .with_input(input_data.unwrap_or_default())
+                // Upgrade entry point is executed with zero value as it does not seem to make sense to be able to transfer anything.
+                .with_value(0)
+                .with_transaction_hash(caller.context().transaction_hash)
+                // We're using shared address generator there as we need to preserve and advance the state of deterministic address generator across chain of calls.
+                .with_shared_address_generator(Arc::clone(&caller.context().address_generator))
+                .build()
+                .expect("should build");
+
+            let tracking_copy_for_ctor = caller.context().tracking_copy.fork2();
+
+            match caller
+                .context()
+                .executor
+                .execute(tracking_copy_for_ctor, execute_request)
+            {
+                Ok(ExecuteResult {
+                    host_error,
+                    output,
+                    gas_usage,
+                    tracking_copy_parts,
+                }) => {
+                    // output
+
+                    caller.consume_gas(gas_usage.gas_spent());
+
+                    if let Some(host_error) = host_error {
+                        return Ok(Err(host_error));
+                    }
+
+                    caller
+                        .context_mut()
+                        .tracking_copy
+                        .merge_raw_parts(tracking_copy_parts);
+
+                    output
+                }
+                Err(ExecuteError::WasmPreparation(preparation_error)) => {
+                    // Unable to call contract because the wasm is broken.
+                    error!(
+                        ?preparation_error,
+                        "Wasm preparation error while performing upgrade"
+                    );
+                    return Ok(Err(HostError::NotCallable));
+                }
+            }
+        }
+        None => None,
+    };
+
     // 2. Ensure that contract upgrade is invoked by the contract itself
     // 3. Call migration selector on the new code, using old entity hash, but acting as new entity hash (TODO is that possible?)
     // 4. Put new entity hash into the package itself
     // 5. Pass UpgradeResult
+    todo!()
 }

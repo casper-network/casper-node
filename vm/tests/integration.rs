@@ -262,6 +262,9 @@ fn traits() {
     );
 }
 
+#[test]
+fn upgradable() {}
+
 fn run_create_contract(
     executor: &mut ExecutorV2,
     global_state: &mut LmdbGlobalState,

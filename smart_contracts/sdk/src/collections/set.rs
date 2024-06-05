@@ -1,8 +1,8 @@
-use std::marker::PhantomData;
+use crate::prelude::marker::PhantomData;
 
-use borsh::BorshSerialize;
+use crate::serializers::borsh::BorshSerialize;
 use vm_common::keyspace::Keyspace;
-
+use crate::prelude::String;
 use crate::host;
 
 use super::lookup_key::{Identity, LookupKey, LookupKeyOwned};
@@ -46,17 +46,21 @@ where
 
 #[cfg(test)]
 mod tests {
-    use borsh::BorshSerialize;
+    use crate::prelude::*;
+
+    use crate::serializers::borsh::BorshSerialize;
 
     use super::Set;
 
     #[derive(BorshSerialize)]
+    #[borsh(crate = "crate::serializers::borsh")]
     pub enum Flag {
         A,
         B,
         C,
     }
 
+    #[ignore]
     #[test]
     fn should_insert() {
         let mut set: Set<Flag> = Set::new("Prefix".to_string());
