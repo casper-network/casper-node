@@ -2,7 +2,11 @@
 #![cfg_attr(target_arch = "wasm32", no_std)]
 
 use casper_macros::casper;
-use casper_sdk::{host, log, serializers::borsh::BorshDeserialize};
+use casper_sdk::{
+    host::{self, Entity},
+    log,
+    serializers::borsh::BorshDeserialize,
+};
 
 const CURRENT_VERSION: &str = "v2";
 
@@ -11,6 +15,8 @@ const CURRENT_VERSION: &str = "v2";
 pub struct UpgradableContractV1 {
     /// The current state of the flipper.
     value: u8,
+    /// The owner of the contract.
+    owner: Entity,
 }
 
 impl Default for UpgradableContractV1 {
@@ -25,12 +31,15 @@ impl Default for UpgradableContractV1 {
 pub struct UpgradableContractV2 {
     /// The current state of the flipper.
     value: u64,
+    /// The owner of the contract.
+    owner: Entity,
 }
 
 impl From<UpgradableContractV1> for UpgradableContractV2 {
     fn from(old: UpgradableContractV1) -> Self {
         Self {
             value: old.value as u64,
+            owner: old.owner,
         }
     }
 }
@@ -45,8 +54,10 @@ impl Default for UpgradableContractV2 {
 impl UpgradableContractV2 {
     #[casper(constructor)]
     pub fn new(initial_value: u64) -> Self {
+        let caller = host::get_caller();
         Self {
             value: initial_value,
+            owner: caller,
         }
     }
 

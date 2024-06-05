@@ -1,4 +1,3 @@
-#[macro_use]
 extern crate alloc;
 
 pub mod contract;

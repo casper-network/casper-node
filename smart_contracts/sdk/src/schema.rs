@@ -4,7 +4,7 @@ pub trait CasperSchema {
     fn schema() -> Schema;
 }
 
-use std::{cell::RefCell, collections::BTreeMap, fmt::LowerHex};
+use std::fmt::LowerHex;
 
 use bitflags::Flags;
 use serde::{self, Deserialize, Deserializer, Serialize, Serializer};
@@ -80,6 +80,11 @@ pub struct EntryPoint<'a, F: Fn()> {
     pub params: &'a [&'a str],
     pub func: F,
 }
+
+#[cfg(not(target_family = "wasm"))]
+use core::cell::RefCell;
+#[cfg(not(target_family = "wasm"))]
+use std::collections::BTreeMap;
 
 #[cfg(not(target_family = "wasm"))]
 thread_local! {

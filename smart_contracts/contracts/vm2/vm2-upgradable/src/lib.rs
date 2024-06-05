@@ -1,6 +1,7 @@
 #![cfg_attr(target_arch = "wasm32", no_main)]
 
 use casper_macros::casper;
+use casper_sdk::host::Entity;
 use casper_sdk::prelude::*;
 use casper_sdk::{host, log};
 
@@ -11,6 +12,8 @@ const CURRENT_VERSION: &str = "v1";
 pub struct UpgradableContract {
     /// The current state of the flipper.
     value: u8,
+    /// The owner of the contract.
+    owner: Entity,
 }
 
 impl Default for UpgradableContract {
@@ -23,8 +26,10 @@ impl Default for UpgradableContract {
 impl UpgradableContract {
     #[casper(constructor)]
     pub fn new(initial_value: u8) -> Self {
+        let caller = host::get_caller();
         Self {
             value: initial_value,
+            owner: caller,
         }
     }
 
@@ -51,7 +56,6 @@ impl UpgradableContract {
         log!("New code length: {}", new_code.len());
         log!("New code first 10 bytes: {:?}", &new_code[..10]);
 
-        let upgrade_result = host::casper_upgrade(Some(&new_code), Some("migrate"), None);
-        log!("{:?}", upgrade_result);
+        host::casper_upgrade(Some(&new_code), Some("migrate"), None).unwrap();
     }
 }

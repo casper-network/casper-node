@@ -1,6 +1,5 @@
 use bytes::Bytes;
 use core::slice;
-use rand::Rng;
 use std::{
     cell::RefCell,
     collections::{BTreeMap, VecDeque},
@@ -361,14 +360,14 @@ impl Environment {
         &self,
         code_ptr: *const u8,
         code_size: usize,
-        manifest_ptr: *const casper_sdk_sys::Manifest,
-        selector: u32,
-        input_ptr: *const u8,
-        input_size: usize,
-        result_ptr: *mut casper_sdk_sys::CreateResult,
+        _manifest_ptr: *const casper_sdk_sys::Manifest,
+        _selector: u32,
+        _input_ptr: *const u8,
+        _input_size: usize,
+        _result_ptr: *mut casper_sdk_sys::CreateResult,
     ) -> Result<u32, NativeTrap> {
-        let manifest =
-            NonNull::new(manifest_ptr as *mut casper_sdk_sys::Manifest).expect("Manifest instance");
+        // let manifest =
+        //     NonNull::new(manifest_ptr as *mut casper_sdk_sys::Manifest).expect("Manifest instance");
         let code = if code_ptr.is_null() {
             None
         } else {

@@ -402,6 +402,31 @@ fn upgradable() {
         version
     };
     assert_eq!(version_after_upgrade, "v2");
+
+    {
+        // Increment the value
+        let address = EntityAddr::new_smart_contract(upgradable_address);
+        let execute_request = base_execute_builder()
+            .with_target(ExecutionKind::Stored {
+                address,
+                entry_point: "increment_by".to_string(),
+            })
+            .with_serialized_input((10u64,))
+            .with_gas_limit(DEFAULT_GAS_LIMIT)
+            .with_value(0)
+            .with_shared_address_generator(Arc::clone(&address_generator))
+            .build()
+            .expect("should build");
+        let res = run_wasm_session(
+            &mut executor,
+            &mut global_state,
+            state_root_hash,
+            execute_request,
+        );
+        state_root_hash = global_state
+            .commit(state_root_hash, res.effects().clone())
+            .expect("Should commit");
+    };
 }
 
 fn run_create_contract(
