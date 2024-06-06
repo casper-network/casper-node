@@ -193,7 +193,10 @@ pub trait CEP18 {
 
         Ok(())
     }
+}
 
+#[casper]
+pub trait Mintable: CEP18 {
     #[casper(revert_on_error)]
     fn mint(&mut self, owner: Entity, amount: u64) -> Result<(), Cep18Error> {
         log!("mint {}", self.state().name);
@@ -214,7 +217,10 @@ pub trait CEP18 {
             .ok_or(Cep18Error::Overflow)?;
         Ok(())
     }
+}
 
+#[casper]
+pub trait Burnable: CEP18 {
     #[casper(revert_on_error)]
     fn burn(&mut self, owner: Entity, amount: u64) -> Result<(), Cep18Error> {
         if !self.state().enable_mint_burn {

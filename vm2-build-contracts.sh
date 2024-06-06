@@ -15,19 +15,20 @@ VM2_LIBS=(
   "vm2-upgradable-v2"
 )
 
-for contract in "${VM2_BINS[@]}"
-do
-  pushd smart_contracts/contracts/vm2/$contract/
-  pwd
-  cargo build --target wasm32-unknown-unknown -p $contract --bin $contract --release
-  popd
-done
 
 for contract in "${VM2_LIBS[@]}"
 do
   pushd smart_contracts/contracts/vm2/$contract/
   pwd
   cargo build --target wasm32-unknown-unknown -p $contract --lib --release
+  popd
+done
+
+for contract in "${VM2_BINS[@]}"
+do
+  pushd smart_contracts/contracts/vm2/$contract/
+  pwd
+  cargo build --target wasm32-unknown-unknown -p $contract --bin $contract --release
   popd
 done
 

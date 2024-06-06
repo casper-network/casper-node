@@ -1,6 +1,6 @@
 use crate::{
     security_badge,
-    traits::{CEP18State, CEP18},
+    traits::{Burnable, BurnableExt, CEP18State, Mintable, MintableExt, CEP18},
 };
 use casper_macros::casper;
 use casper_sdk::{host, log};
@@ -63,6 +63,12 @@ impl CEP18 for TokenContract {
         &mut self.state
     }
 }
+
+#[casper(path = crate::traits)]
+impl Mintable for TokenContract {}
+
+#[casper(path = crate::traits)]
+impl Burnable for TokenContract {}
 
 #[cfg(test)]
 mod tests {
