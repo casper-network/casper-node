@@ -11,7 +11,7 @@ use casper_types::{
 const ERA_TAG: u8 = 0;
 const BLOCK_TAG: u8 = 1;
 
-/// Identifier for balance lookup.
+/// Identifier for an era.
 #[derive(Clone, Debug, PartialEq)]
 pub enum EraIdentifier {
     Era(EraId),
