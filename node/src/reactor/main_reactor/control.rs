@@ -39,7 +39,7 @@ impl MainReactor {
                     tokio::time::sleep(delay).await
                 }
             }
-                .event(|_| MainEvent::ReactorCrank),
+            .event(|_| MainEvent::ReactorCrank),
         );
         effects
     }
@@ -471,8 +471,8 @@ impl MainReactor {
                 self.storage.highest_complete_block_height() == Some(block_header.height());
             return highest_block_complete
                 && self
-                .upgrade_watcher
-                .should_upgrade_after(block_header.era_id());
+                    .upgrade_watcher
+                    .should_upgrade_after(block_header.era_id());
         }
         false
     }
