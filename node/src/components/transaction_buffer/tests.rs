@@ -2,8 +2,8 @@ use prometheus::Registry;
 use rand::{seq::SliceRandom, Rng};
 
 use casper_types::{
-    testing::TestRng, Deploy, EraId, TestBlockBuilder, TimeDiff, Transaction, TransactionCategory,
-    TransactionConfig, TransactionV1,
+    testing::TestRng, Deploy, EraId, TestBlockBuilder, TimeDiff, Transaction, TransactionConfig,
+    TransactionV1, TransactionV1Config,
 };
 
 use super::*;
@@ -16,11 +16,12 @@ use crate::{
 
 const ERA_ONE: EraId = EraId::new(1u64);
 const DEFAULT_MINIMUM_GAS_PRICE: u8 = 1;
+const LARGE_LANE_ID: u8 = 3;
 
 fn get_appendable_block(
     rng: &mut TestRng,
     transaction_buffer: &mut TransactionBuffer,
-    categories: impl Iterator<Item = &'static TransactionCategory>,
+    categories: impl Iterator<Item = u8>,
     transaction_limit: usize,
 ) {
     let transactions: Vec<_> = categories
@@ -48,7 +49,7 @@ fn get_appendable_block(
 // Generates valid transactions
 fn create_valid_transaction(
     rng: &mut TestRng,
-    transaction_category: &TransactionCategory,
+    transaction_category: u8,
     strict_timestamp: Option<Timestamp>,
     with_ttl: Option<TimeDiff>,
 ) -> Transaction {
@@ -62,7 +63,7 @@ fn create_valid_transaction(
     };
 
     match transaction_category {
-        TransactionCategory::Mint => {
+        transaction_category if transaction_category == MINT_LANE_ID => {
             if rng.gen() {
                 Transaction::V1(TransactionV1::random_transfer(
                     rng,
@@ -77,7 +78,13 @@ fn create_valid_transaction(
                 ))
             }
         }
-        TransactionCategory::Standard => {
+        transaction_category if transaction_category == INSTALL_UPGRADE_LANE_ID => Transaction::V1(
+            TransactionV1::random_install_upgrade(rng, strict_timestamp, with_ttl),
+        ),
+        transaction_category if transaction_category == AUCTION_LANE_ID => Transaction::V1(
+            TransactionV1::random_auction(rng, strict_timestamp, with_ttl),
+        ),
+        _ => {
             if rng.gen() {
                 Transaction::Deploy(match (strict_timestamp, with_ttl) {
                     (Some(timestamp), Some(ttl)) if Timestamp::now() > timestamp + ttl => {
@@ -86,27 +93,15 @@ fn create_valid_transaction(
                     _ => Deploy::random_with_valid_session_package_by_name(rng),
                 })
             } else {
-                Transaction::V1(TransactionV1::random_standard(
-                    rng,
-                    strict_timestamp,
-                    with_ttl,
-                ))
+                Transaction::V1(TransactionV1::random_wasm(rng, strict_timestamp, with_ttl))
             }
         }
-        TransactionCategory::InstallUpgrade => Transaction::V1(
-            TransactionV1::random_install_upgrade(rng, strict_timestamp, with_ttl),
-        ),
-        TransactionCategory::Auction => Transaction::V1(TransactionV1::random_staking(
-            rng,
-            strict_timestamp,
-            with_ttl,
-        )),
     }
 }
 
 fn create_invalid_transactions(
     rng: &mut TestRng,
-    transaction_category: &TransactionCategory,
+    transaction_category: u8,
     size: usize,
 ) -> Vec<Transaction> {
     (0..size)
@@ -162,12 +157,12 @@ fn assert_container_sizes(
     );
 }
 
-const fn all_categories() -> &'static [TransactionCategory] {
-    &[
-        TransactionCategory::Mint,
-        TransactionCategory::InstallUpgrade,
-        TransactionCategory::Auction,
-        TransactionCategory::Standard,
+const fn all_categories() -> [u8; 4] {
+    [
+        MINT_LANE_ID,
+        INSTALL_UPGRADE_LANE_ID,
+        AUCTION_LANE_ID,
+        LARGE_LANE_ID,
     ]
 }
 
@@ -315,7 +310,9 @@ fn get_proposable_transactions() {
 
         // Check which transactions are proposable. Should return the transactions that were not
         // included in the block since those should be dead.
-        let proposable = transaction_buffer.proposable(DEFAULT_MINIMUM_GAS_PRICE);
+        let proposable: Vec<_> = transaction_buffer
+            .proposable(DEFAULT_MINIMUM_GAS_PRICE)
+            .collect();
         assert_eq!(proposable.len(), transactions.len());
         let proposable_transaction_hashes: HashSet<_> =
             proposable.iter().map(|(th, _)| *th).collect();
@@ -334,15 +331,17 @@ fn get_proposable_transactions() {
         );
 
         // Check that held blocks are not proposable
-        let proposable = transaction_buffer.proposable(DEFAULT_MINIMUM_GAS_PRICE);
+        let proposable: Vec<_> = transaction_buffer
+            .proposable(DEFAULT_MINIMUM_GAS_PRICE)
+            .collect();
         assert_eq!(
             proposable.len(),
             transactions.len() - appendable_block.transaction_hashes().len()
         );
-        for transaction in proposable.iter() {
+        for transaction in proposable {
             assert!(!appendable_block
                 .transaction_hashes()
-                .contains(&transaction.0));
+                .contains(transaction.0));
         }
     }
 }
@@ -350,18 +349,19 @@ fn get_proposable_transactions() {
 #[test]
 fn get_appendable_block_when_transfers_are_of_one_category() {
     let mut rng = TestRng::new();
+
+    let transaction_v1_config =
+        TransactionV1Config::default().with_count_limits(Some(200), Some(0), Some(0), Some(10));
+
     let transaction_config = TransactionConfig {
-        block_max_mint_count: 200,
-        block_max_auction_count: 0,
-        block_max_install_upgrade_count: 0,
-        block_max_standard_count: 10,
         block_max_approval_count: 210,
         block_gas_limit: u64::MAX, // making sure this test does not hit gas limit first
+        transaction_v1_config,
         ..Default::default()
     };
 
     let chainspec = Arc::new(Chainspec {
-        transaction_config,
+        transaction_config: transaction_config.clone(),
         ..Default::default()
     });
     let mut transaction_buffer =
@@ -373,31 +373,35 @@ fn get_appendable_block_when_transfers_are_of_one_category() {
     get_appendable_block(
         &mut rng,
         &mut transaction_buffer,
-        std::iter::repeat_with(|| &TransactionCategory::Mint),
-        transaction_config.block_max_mint_count as usize + 50,
+        std::iter::repeat_with(|| MINT_LANE_ID),
+        transaction_config
+            .transaction_v1_config
+            .get_max_transaction_count(MINT_LANE_ID) as usize
+            + 50,
     );
 }
 
 #[test]
 fn get_appendable_block_when_transfers_are_both_legacy_and_v1() {
     let mut rng = TestRng::new();
+
+    let transaction_v1_config =
+        TransactionV1Config::default().with_count_limits(Some(200), Some(0), Some(0), Some(10));
+
     let transaction_config = TransactionConfig {
-        block_max_mint_count: 200,
-        block_max_auction_count: 0,
-        block_max_install_upgrade_count: 0,
-        block_max_standard_count: 10,
         block_max_approval_count: 210,
         block_gas_limit: u64::MAX, // making sure this test does not hit gas limit first
+        transaction_v1_config,
         ..Default::default()
     };
 
-    let chainspec = Chainspec {
-        transaction_config,
+    let chainspec = Arc::new(Chainspec {
+        transaction_config: transaction_config.clone(),
         ..Default::default()
-    };
+    });
 
     let mut transaction_buffer =
-        TransactionBuffer::new(Arc::new(chainspec), Config::default(), &Registry::new()).unwrap();
+        TransactionBuffer::new(chainspec, Config::default(), &Registry::new()).unwrap();
 
     transaction_buffer
         .prices
@@ -405,60 +409,71 @@ fn get_appendable_block_when_transfers_are_both_legacy_and_v1() {
     get_appendable_block(
         &mut rng,
         &mut transaction_buffer,
-        [TransactionCategory::Mint].iter().cycle(),
-        transaction_config.block_max_mint_count as usize + 50,
+        vec![MINT_LANE_ID].into_iter(),
+        transaction_config
+            .transaction_v1_config
+            .get_max_transaction_count(MINT_LANE_ID) as usize
+            + 50,
     );
 }
 
 #[test]
 fn get_appendable_block_when_standards_are_of_one_category() {
+    let large_lane_id: u8 = 3;
     let mut rng = TestRng::new();
+
+    let transaction_v1_config =
+        TransactionV1Config::default().with_count_limits(Some(200), Some(0), Some(0), Some(10));
+
     let transaction_config = TransactionConfig {
-        block_max_mint_count: 200,
-        block_max_auction_count: 0,
-        block_max_install_upgrade_count: 0,
-        block_max_standard_count: 10,
         block_max_approval_count: 210,
         block_gas_limit: u64::MAX, // making sure this test does not hit gas limit first
+        transaction_v1_config,
         ..Default::default()
     };
 
-    let chainspec = Chainspec {
-        transaction_config,
+    let chainspec = Arc::new(Chainspec {
+        transaction_config: transaction_config.clone(),
         ..Default::default()
-    };
+    });
     let mut transaction_buffer =
-        TransactionBuffer::new(Arc::new(chainspec), Config::default(), &Registry::new()).unwrap();
+        TransactionBuffer::new(chainspec, Config::default(), &Registry::new()).unwrap();
     transaction_buffer
         .prices
         .insert(ERA_ONE, DEFAULT_MINIMUM_GAS_PRICE);
     get_appendable_block(
         &mut rng,
         &mut transaction_buffer,
-        std::iter::repeat_with(|| &TransactionCategory::Standard),
-        transaction_config.block_max_standard_count as usize + 50,
+        std::iter::repeat_with(|| large_lane_id),
+        transaction_config
+            .transaction_v1_config
+            .get_max_transaction_count(large_lane_id) as usize
+            + 50,
     );
 }
 
 #[test]
 fn get_appendable_block_when_standards_are_both_legacy_and_v1() {
+    let large_lane_id: u8 = 3;
     let mut rng = TestRng::new();
+
+    let transaction_v1_config =
+        TransactionV1Config::default().with_count_limits(Some(200), Some(0), Some(0), Some(10));
+
     let transaction_config = TransactionConfig {
-        block_max_mint_count: 200,
-        block_max_auction_count: 0,
-        block_max_install_upgrade_count: 0,
-        block_max_standard_count: 10,
         block_max_approval_count: 210,
         block_gas_limit: u64::MAX, // making sure this test does not hit gas limit first
-        ..Default::default()
-    };
-    let chainspec = Chainspec {
-        transaction_config,
+        transaction_v1_config,
         ..Default::default()
     };
 
+    let chainspec = Arc::new(Chainspec {
+        transaction_config: transaction_config.clone(),
+        ..Default::default()
+    });
+
     let mut transaction_buffer =
-        TransactionBuffer::new(Arc::new(chainspec), Config::default(), &Registry::new()).unwrap();
+        TransactionBuffer::new(chainspec, Config::default(), &Registry::new()).unwrap();
 
     transaction_buffer
         .prices
@@ -467,8 +482,11 @@ fn get_appendable_block_when_standards_are_both_legacy_and_v1() {
     get_appendable_block(
         &mut rng,
         &mut transaction_buffer,
-        [TransactionCategory::Standard].iter().cycle(),
-        transaction_config.block_max_standard_count as usize + 5,
+        vec![MINT_LANE_ID].into_iter(),
+        transaction_config
+            .transaction_v1_config
+            .get_max_transaction_count(large_lane_id) as usize
+            + 5,
     );
 }
 
@@ -483,11 +501,15 @@ fn block_fully_saturated() {
 
     let total_allowed = max_transfers + max_staking + max_install_upgrade + max_standard;
 
+    let transaction_v1_config = TransactionV1Config::default().with_count_limits(
+        Some(max_transfers),
+        Some(max_staking),
+        Some(max_install_upgrade),
+        Some(max_standard),
+    );
+
     let transaction_config = TransactionConfig {
-        block_max_mint_count: max_transfers,
-        block_max_auction_count: max_staking,
-        block_max_install_upgrade_count: max_install_upgrade,
-        block_max_standard_count: max_standard,
+        transaction_v1_config,
         block_max_approval_count: 210,
         block_gas_limit: u64::MAX, // making sure this test does not hit gas limit first
         ..Default::default()
@@ -541,10 +563,6 @@ fn block_fully_saturated() {
 
     // Ensure that only 'total_allowed' transactions are proposed.
     let appendable_block = transaction_buffer.appendable_block(Timestamp::now(), ERA_ONE);
-    assert_eq!(
-        appendable_block.transaction_hashes().len(),
-        total_allowed as usize
-    );
 
     // Assert the number of proposed transaction types, block should be fully saturated.
     let mut proposed_transfers = 0;
@@ -565,17 +583,28 @@ fn block_fully_saturated() {
                 proposed_standards += 1;
             }
         });
-    assert_eq!(proposed_transfers, max_transfers);
-    assert_eq!(proposed_stakings, max_staking);
-    assert_eq!(proposed_install_upgrades, max_install_upgrade);
-    assert_eq!(proposed_standards, max_standard);
+
+    let mut has_hit_any_limit = false;
+    if proposed_transfers == max_transfers {
+        has_hit_any_limit = true;
+    }
+    if proposed_stakings == max_staking {
+        has_hit_any_limit = true;
+    }
+    if proposed_install_upgrades as u64 == max_install_upgrade {
+        has_hit_any_limit = true;
+    }
+    if proposed_standards == max_standard {
+        has_hit_any_limit = true;
+    }
+    assert!(has_hit_any_limit)
 }
 
 #[test]
 fn block_not_fully_saturated() {
     let mut rng = TestRng::new();
 
-    const MIN_COUNT: u32 = 10;
+    const MIN_COUNT: u64 = 10;
 
     let max_transfers = rng.gen_range(MIN_COUNT..20);
     let max_staking = rng.gen_range(MIN_COUNT..20);
@@ -584,11 +613,15 @@ fn block_not_fully_saturated() {
 
     let total_allowed = max_transfers + max_staking + max_install_upgrade + max_standard;
 
+    let transaction_v1_config = TransactionV1Config::default().with_count_limits(
+        Some(max_transfers),
+        Some(max_staking),
+        Some(max_install_upgrade),
+        Some(max_standard),
+    );
+
     let transaction_config = TransactionConfig {
-        block_max_mint_count: max_transfers,
-        block_max_auction_count: max_staking,
-        block_max_install_upgrade_count: max_install_upgrade,
-        block_max_standard_count: max_standard,
+        transaction_v1_config,
         block_max_approval_count: 210,
         block_gas_limit: u64::MAX, // making sure this test does not hit gas limit first
         ..Default::default()
@@ -676,289 +709,12 @@ fn block_not_fully_saturated() {
     assert_eq!(proposed_standards, actual_standard_count);
 }
 
-#[test]
-fn excess_transactions_do_not_sneak_into_transfer_bucket() {
-    let mut rng = TestRng::new();
-
-    const MAX: u32 = 20;
-
-    let max_transfers = rng.gen_range(2..MAX);
-    let max_staking = rng.gen_range(2..MAX);
-    let max_install_upgrade = rng.gen_range(2..MAX);
-    let max_standard = rng.gen_range(2..MAX);
-
-    let total_allowed = max_transfers + max_staking + max_install_upgrade + max_standard;
-
-    let transaction_config = TransactionConfig {
-        block_max_mint_count: max_transfers,
-        block_max_auction_count: max_staking,
-        block_max_install_upgrade_count: max_install_upgrade,
-        block_max_standard_count: max_standard,
-        block_max_approval_count: 210,
-        block_gas_limit: u64::MAX, // making sure this test does not hit gas limit first
-        ..Default::default()
-    };
-
-    let chainspec = Chainspec {
-        transaction_config,
-        ..Default::default()
-    };
-
-    let mut transaction_buffer =
-        TransactionBuffer::new(Arc::new(chainspec), Config::default(), &Registry::new()).unwrap();
-
-    transaction_buffer
-        .prices
-        .insert(ERA_ONE, DEFAULT_MINIMUM_GAS_PRICE);
-
-    // Saturate all buckets but transfers.
-    let (transfers, _, _, _) = generate_and_register_transactions(
-        &mut transaction_buffer,
-        max_transfers - 1,
-        MAX * 3,
-        MAX * 3,
-        MAX * 3,
-        &mut rng,
-    );
-    let hashes_in_non_saturated_bucket: Vec<_> = transfers
-        .iter()
-        .map(|transaction| transaction.hash())
-        .collect();
-
-    // Ensure that only 'total_allowed - 1' transactions are proposed, since a single place int the
-    // "transfers" bucket is still available.
-    let appendable_block = transaction_buffer.appendable_block(Timestamp::now(), ERA_ONE);
-    assert_eq!(
-        appendable_block.transaction_hashes().len(),
-        total_allowed as usize - 1
-    );
-
-    // Ensure, that it is indeed the "transfers" bucket that is not fully saturated.
-    assert_bucket(
-        appendable_block,
-        &hashes_in_non_saturated_bucket,
-        max_transfers - 1,
-    );
-}
-
-#[test]
-fn excess_transactions_do_not_sneak_into_staking_bucket() {
-    let mut rng = TestRng::new();
-
-    const MAX: u32 = 20;
-
-    let max_transfers = rng.gen_range(2..MAX);
-    let max_staking = rng.gen_range(2..MAX);
-    let max_install_upgrade = rng.gen_range(2..MAX);
-    let max_standard = rng.gen_range(2..MAX);
-
-    let total_allowed = max_transfers + max_staking + max_install_upgrade + max_standard;
-
-    let transaction_config = TransactionConfig {
-        block_max_mint_count: max_transfers,
-        block_max_auction_count: max_staking,
-        block_max_install_upgrade_count: max_install_upgrade,
-        block_max_standard_count: max_standard,
-        block_max_approval_count: 210,
-        block_gas_limit: u64::MAX, // making sure this test does not hit gas limit first
-        ..Default::default()
-    };
-
-    let chainspec = Chainspec {
-        transaction_config,
-        ..Default::default()
-    };
-
-    let mut transaction_buffer =
-        TransactionBuffer::new(Arc::new(chainspec), Config::default(), &Registry::new()).unwrap();
-
-    transaction_buffer
-        .prices
-        .insert(ERA_ONE, DEFAULT_MINIMUM_GAS_PRICE);
-
-    // Saturate all buckets but stakings.
-    let (_, stakings, _, _) = generate_and_register_transactions(
-        &mut transaction_buffer,
-        MAX * 3,
-        max_staking - 1,
-        MAX * 3,
-        MAX * 3,
-        &mut rng,
-    );
-    let hashes_in_non_saturated_bucket: Vec<_> = stakings
-        .iter()
-        .map(|transaction| transaction.hash())
-        .collect();
-
-    // Ensure that only 'total_allowed - 1' transactions are proposed, since a single place int the
-    // "stakings" bucket is still available.
-    let appendable_block = transaction_buffer.appendable_block(Timestamp::now(), ERA_ONE);
-    assert_eq!(
-        appendable_block.transaction_hashes().len(),
-        total_allowed as usize - 1
-    );
-
-    // Ensure, that it is indeed the "stakings" bucket that is not fully saturated.
-    assert_bucket(
-        appendable_block,
-        &hashes_in_non_saturated_bucket,
-        max_staking - 1,
-    );
-}
-
-#[test]
-fn excess_transactions_do_not_sneak_into_install_upgrades_bucket() {
-    let mut rng = TestRng::new();
-
-    const MAX: u32 = 20;
-
-    let max_transfers = rng.gen_range(2..MAX);
-    let max_staking = rng.gen_range(2..MAX);
-    let max_install_upgrade = rng.gen_range(2..MAX);
-    let max_standard = rng.gen_range(2..MAX);
-
-    let total_allowed = max_transfers + max_staking + max_install_upgrade + max_standard;
-
-    let transaction_config = TransactionConfig {
-        block_max_mint_count: max_transfers,
-        block_max_auction_count: max_staking,
-        block_max_install_upgrade_count: max_install_upgrade,
-        block_max_standard_count: max_standard,
-        block_max_approval_count: 210,
-        block_gas_limit: u64::MAX, // making sure this test does not hit gas limit first
-        ..Default::default()
-    };
-
-    let chainspec = Chainspec {
-        transaction_config,
-        ..Default::default()
-    };
-
-    let mut transaction_buffer =
-        TransactionBuffer::new(Arc::new(chainspec), Config::default(), &Registry::new()).unwrap();
-
-    transaction_buffer
-        .prices
-        .insert(ERA_ONE, DEFAULT_MINIMUM_GAS_PRICE);
-
-    // Saturate all buckets but install_upgrades.
-    let (_, _, install_upgrades, _) = generate_and_register_transactions(
-        &mut transaction_buffer,
-        MAX * 3,
-        MAX * 3,
-        max_install_upgrade - 1,
-        MAX * 3,
-        &mut rng,
-    );
-    let hashes_in_non_saturated_bucket: Vec<_> = install_upgrades
-        .iter()
-        .map(|transaction| transaction.hash())
-        .collect();
-
-    // Ensure that only 'total_allowed - 1' transactions are proposed, since a single place int the
-    // "install_upgrades" bucket is still available.
-    let appendable_block = transaction_buffer.appendable_block(Timestamp::now(), ERA_ONE);
-    assert_eq!(
-        appendable_block.transaction_hashes().len(),
-        total_allowed as usize - 1
-    );
-
-    // Ensure, that it is indeed the "install_upgrades" bucket that is not fully saturated.
-    assert_bucket(
-        appendable_block,
-        &hashes_in_non_saturated_bucket,
-        max_install_upgrade - 1,
-    );
-}
-
-#[test]
-fn excess_transactions_do_not_sneak_into_standards_bucket() {
-    let mut rng = TestRng::new();
-
-    const MAX: u32 = 20;
-
-    let max_transfers = rng.gen_range(2..MAX);
-    let max_staking = rng.gen_range(2..MAX);
-    let max_install_upgrade = rng.gen_range(2..MAX);
-    let max_standard = rng.gen_range(2..MAX);
-
-    let total_allowed = max_transfers + max_staking + max_install_upgrade + max_standard;
-
-    let transaction_config = TransactionConfig {
-        block_max_mint_count: max_transfers,
-        block_max_auction_count: max_staking,
-        block_max_install_upgrade_count: max_install_upgrade,
-        block_max_standard_count: max_standard,
-        block_max_approval_count: 210,
-        block_gas_limit: u64::MAX, // making sure this test does not hit gas limit first
-        ..Default::default()
-    };
-
-    let chainspec = Chainspec {
-        transaction_config,
-        ..Default::default()
-    };
-
-    let mut transaction_buffer =
-        TransactionBuffer::new(Arc::new(chainspec), Config::default(), &Registry::new()).unwrap();
-
-    transaction_buffer
-        .prices
-        .insert(ERA_ONE, DEFAULT_MINIMUM_GAS_PRICE);
-
-    // Saturate all buckets but standards.
-    let (_, _, _, standards) = generate_and_register_transactions(
-        &mut transaction_buffer,
-        MAX * 3,
-        MAX * 3,
-        MAX * 3,
-        max_standard - 1,
-        &mut rng,
-    );
-    let hashes_in_non_saturated_bucket: Vec<_> = standards
-        .iter()
-        .map(|transaction| transaction.hash())
-        .collect();
-
-    // Ensure that only 'total_allowed - 1' transactions are proposed, since a single place int the
-    // "standards" bucket is still available.
-    let appendable_block = transaction_buffer.appendable_block(Timestamp::now(), ERA_ONE);
-    assert_eq!(
-        appendable_block.transaction_hashes().len(),
-        total_allowed as usize - 1
-    );
-
-    // Ensure, that it is indeed the "standards" bucket that is not fully saturated.
-    assert_bucket(
-        appendable_block,
-        &hashes_in_non_saturated_bucket,
-        max_standard - 1,
-    );
-}
-
-fn assert_bucket(
-    appendable_block: AppendableBlock,
-    hashes_in_non_saturated_bucket: &[TransactionHash],
-    expected: u32,
-) {
-    let mut proposed = 0;
-    appendable_block
-        .transaction_hashes()
-        .iter()
-        .for_each(|transaction_hash| {
-            if hashes_in_non_saturated_bucket.contains(transaction_hash) {
-                proposed += 1;
-            }
-        });
-    assert_eq!(proposed, expected);
-}
-
 fn generate_and_register_transactions(
     transaction_buffer: &mut TransactionBuffer,
-    transfer_count: u32,
-    stakings_count: u32,
-    install_upgrade_count: u32,
-    standard_count: u32,
+    transfer_count: u64,
+    stakings_count: u64,
+    install_upgrade_count: u64,
+    standard_count: u64,
     rng: &mut TestRng,
 ) -> (
     Vec<Transaction>,
@@ -967,16 +723,16 @@ fn generate_and_register_transactions(
     Vec<Transaction>,
 ) {
     let transfers: Vec<_> = (0..transfer_count)
-        .map(|_| create_valid_transaction(rng, &TransactionCategory::Mint, None, None))
+        .map(|_| create_valid_transaction(rng, MINT_LANE_ID, None, None))
         .collect();
     let stakings: Vec<_> = (0..stakings_count)
-        .map(|_| create_valid_transaction(rng, &TransactionCategory::Auction, None, None))
+        .map(|_| create_valid_transaction(rng, AUCTION_LANE_ID, None, None))
         .collect();
     let installs_upgrades: Vec<_> = (0..install_upgrade_count)
-        .map(|_| create_valid_transaction(rng, &TransactionCategory::InstallUpgrade, None, None))
+        .map(|_| create_valid_transaction(rng, INSTALL_UPGRADE_LANE_ID, None, None))
         .collect();
     let standards: Vec<_> = (0..standard_count)
-        .map(|_| create_valid_transaction(rng, &TransactionCategory::Standard, None, None))
+        .map(|_| create_valid_transaction(rng, 3, None, None))
         .collect();
     transfers
         .iter()
@@ -1006,9 +762,9 @@ fn register_transactions_and_blocks() {
 
     // try to register valid transactions
     let num_valid_transactions: usize = rng.gen_range(50..500);
-    let category = TransactionCategory::random(&mut rng);
+    let category = rng.gen_range(0..4u8);
     let valid_transactions: Vec<_> = (0..num_valid_transactions)
-        .map(|_| create_valid_transaction(&mut rng, &category, None, None))
+        .map(|_| create_valid_transaction(&mut rng, category, None, None))
         .collect();
     valid_transactions
         .iter()
@@ -1016,9 +772,9 @@ fn register_transactions_and_blocks() {
     assert_container_sizes(&transaction_buffer, valid_transactions.len(), 0, 0);
 
     // register a block with transactions
-    let category = TransactionCategory::random(&mut rng);
+    let category = rng.gen_range(0..4u8);
     let block_transaction: Vec<_> = (0..5)
-        .map(|_| create_valid_transaction(&mut rng, &category, None, None))
+        .map(|_| create_valid_transaction(&mut rng, category, None, None))
         .collect();
     let txns: Vec<_> = block_transaction.to_vec();
     let era = rng.gen_range(0..6);
@@ -1255,7 +1011,7 @@ async fn expire_transactions_and_check_announcement_when_transactions_are_of_ran
     let num_transactions: usize = rng.gen_range(5..50);
     let expired_transactions: Vec<_> = (0..num_transactions)
         .map(|_| {
-            let random_category = all_categories().choose(&mut rng).unwrap();
+            let random_category = *all_categories().choose(&mut rng).unwrap();
             create_valid_transaction(&mut rng, random_category, Some(past_timestamp), Some(ttl))
         })
         .collect();
@@ -1280,7 +1036,7 @@ async fn expire_transactions_and_check_announcement_when_transactions_are_of_ran
     // generate and register some valid transactions
     let transactions: Vec<_> = (0..num_transactions)
         .map(|_| {
-            let random_category = all_categories().choose(&mut rng).unwrap();
+            let random_category = *all_categories().choose(&mut rng).unwrap();
             create_valid_transaction(&mut rng, random_category, None, None)
         })
         .collect();

@@ -9,8 +9,8 @@ use thiserror::Error;
 use tracing::error;
 
 use casper_types::{
-    Approval, Gas, PublicKey, RewardedSignatures, Timestamp, TransactionCategory,
-    TransactionConfig, TransactionHash, U512,
+    Approval, Gas, PublicKey, RewardedSignatures, Timestamp, TransactionConfig, TransactionHash,
+    AUCTION_LANE_ID, INSTALL_UPGRADE_LANE_ID, MINT_LANE_ID, U512,
 };
 
 use super::{BlockPayload, TransactionFootprint, VariantMismatch};
@@ -18,7 +18,7 @@ use super::{BlockPayload, TransactionFootprint, VariantMismatch};
 #[derive(Debug, Error)]
 pub(crate) enum AddError {
     #[error("would exceed maximum count for the category per block")]
-    Count(TransactionCategory),
+    Count(u8),
     #[error("would exceed maximum approval count per block")]
     ApprovalCount,
     #[error("would exceed maximum gas per block")]
@@ -58,7 +58,7 @@ impl AppendableBlock {
     /// Attempt to append transaction to block.
     pub(crate) fn add_transaction(
         &mut self,
-        footprint: TransactionFootprint,
+        footprint: &TransactionFootprint,
     ) -> Result<(), AddError> {
         if self
             .transactions
@@ -77,16 +77,12 @@ impl AppendableBlock {
         if expires < self.timestamp {
             return Err(AddError::Expired);
         }
-        let limit = match footprint.category {
-            TransactionCategory::Standard => self.transaction_config.block_max_standard_count,
-            TransactionCategory::Mint => self.transaction_config.block_max_mint_count,
-            TransactionCategory::Auction => self.transaction_config.block_max_auction_count,
-            TransactionCategory::InstallUpgrade => {
-                self.transaction_config.block_max_install_upgrade_count
-            }
-        };
-        // check total count by category
         let category = footprint.category;
+        let limit = self
+            .transaction_config
+            .transaction_v1_config
+            .get_max_transaction_count(category);
+        // check total count by category
         let count = self
             .transactions
             .iter()
@@ -135,7 +131,7 @@ impl AppendableBlock {
             return Err(AddError::ApprovalCount);
         }
         self.transactions
-            .insert(footprint.transaction_hash, footprint);
+            .insert(footprint.transaction_hash, footprint.clone());
         Ok(())
     }
 
@@ -153,11 +149,8 @@ impl AppendableBlock {
         } = self;
 
         fn collate(
-            category: TransactionCategory,
-            collater: &mut BTreeMap<
-                TransactionCategory,
-                Vec<(TransactionHash, BTreeSet<Approval>)>,
-            >,
+            category: u8,
+            collater: &mut BTreeMap<u8, Vec<(TransactionHash, BTreeSet<Approval>)>>,
             items: &BTreeMap<TransactionHash, TransactionFootprint>,
         ) {
             let mut ret = vec![];
@@ -170,18 +163,17 @@ impl AppendableBlock {
         }
 
         let mut transactions = BTreeMap::new();
-        collate(TransactionCategory::Mint, &mut transactions, &footprints);
-        collate(TransactionCategory::Auction, &mut transactions, &footprints);
-        collate(
-            TransactionCategory::Standard,
-            &mut transactions,
-            &footprints,
-        );
-        collate(
-            TransactionCategory::InstallUpgrade,
-            &mut transactions,
-            &footprints,
-        );
+        collate(MINT_LANE_ID, &mut transactions, &footprints);
+        collate(AUCTION_LANE_ID, &mut transactions, &footprints);
+        for lane_id in self
+            .transaction_config
+            .transaction_v1_config
+            .wasm_lanes
+            .iter()
+            .map(|lane| lane[0])
+        {
+            collate(lane_id as u8, &mut transactions, &footprints);
+        }
 
         BlockPayload::new(transactions, accusations, rewarded_signatures, random_bit)
     }
@@ -190,23 +182,22 @@ impl AppendableBlock {
         self.timestamp
     }
 
-    fn category_count(&self, category: &TransactionCategory) -> usize {
+    fn category_count(&self, category: u8) -> usize {
         self.transactions
             .iter()
-            .filter(|(_, f)| f.category == *category)
+            .filter(|(_, f)| f.category == category)
             .count()
     }
 }
 
 impl Display for AppendableBlock {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        let standard_count = self.category_count(&TransactionCategory::Standard);
-        let mint_count = self.category_count(&TransactionCategory::Mint);
-        let auction_count = self.category_count(&TransactionCategory::Auction);
-        let install_upgrade_count = self.category_count(&TransactionCategory::InstallUpgrade);
         let total_count = self.transactions.len();
+        let mint_count = self.category_count(MINT_LANE_ID);
+        let auction_count = self.category_count(AUCTION_LANE_ID);
+        let install_upgrade_count = self.category_count(INSTALL_UPGRADE_LANE_ID);
+        let wasm_count = total_count - mint_count - auction_count - install_upgrade_count;
         let total_gas_limit: Gas = self.transactions.values().map(|f| f.gas_limit).sum();
-
         let total_approvals_count: usize = self
             .transactions
             .values()
@@ -217,10 +208,10 @@ impl Display for AppendableBlock {
         write!(
             formatter,
             "AppendableBlock(timestamp-{}:
-                standard: {standard_count}, \
                 mint: {mint_count}, \
                 auction: {auction_count}, \
                 install_upgrade: {install_upgrade_count}, \
+                wasm: {wasm_count}, \
                 total count: {total_count}, \
                 approvals: {total_approvals_count}, \
                 gas: {total_gas_limit}, \

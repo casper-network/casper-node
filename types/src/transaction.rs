@@ -77,10 +77,10 @@ pub use transaction_runtime::TransactionRuntime;
 pub use transaction_scheduling::TransactionScheduling;
 pub use transaction_session_kind::TransactionSessionKind;
 pub use transaction_target::TransactionTarget;
+pub(crate) use transaction_v1::TransactionCategory;
 pub use transaction_v1::{
-    InvalidTransactionV1, TransactionCategory, TransactionV1, TransactionV1Body,
-    TransactionV1DecodeFromJsonError, TransactionV1Error, TransactionV1ExcessiveSizeError,
-    TransactionV1Hash, TransactionV1Header,
+    InvalidTransactionV1, TransactionV1, TransactionV1Body, TransactionV1DecodeFromJsonError,
+    TransactionV1Error, TransactionV1ExcessiveSizeError, TransactionV1Hash, TransactionV1Header,
 };
 #[cfg(any(feature = "std", test))]
 pub use transaction_v1::{TransactionV1Builder, TransactionV1BuilderError};
@@ -373,6 +373,20 @@ impl Transaction {
         }
     }
 
+    /// The transaction kind.
+    pub fn transaction_kind(&self) -> u8 {
+        match self {
+            Transaction::Deploy(deploy) => {
+                if deploy.is_transfer() {
+                    TransactionCategory::Mint as u8
+                } else {
+                    TransactionCategory::Large as u8
+                }
+            }
+            Transaction::V1(v1) => v1.transaction_kind(),
+        }
+    }
+
     // This method is not intended to be used by third party crates.
     #[doc(hidden)]
     #[cfg(feature = "json-schema")]
@@ -387,21 +401,6 @@ impl Transaction {
             Transaction::Deploy(Deploy::random_valid_native_transfer(rng))
         } else {
             Transaction::V1(TransactionV1::random(rng))
-        }
-    }
-}
-
-/// Self discloses category.
-pub trait Categorized {
-    /// What category does this instance belong in.
-    fn category(&self) -> TransactionCategory;
-}
-
-impl Categorized for Transaction {
-    fn category(&self) -> TransactionCategory {
-        match self {
-            Transaction::Deploy(deploy) => deploy.category(),
-            Transaction::V1(v1) => v1.category(),
         }
     }
 }

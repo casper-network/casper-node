@@ -398,8 +398,7 @@ fn should_not_refund_to_bob_and_charge_alice() {
 }
 
 #[ignore]
-#[allow(unused)]
-// #[test]
+#[test]
 fn should_not_charge_alice_for_execution() {
     let mut builder = LmdbWasmTestBuilder::default();
 
@@ -455,8 +454,7 @@ fn should_not_charge_alice_for_execution() {
 }
 
 #[ignore]
-#[allow(unused)]
-// #[test]
+#[test]
 fn should_not_charge_for_execution_from_hardcoded_purse() {
     let mut builder = LmdbWasmTestBuilder::default();
 

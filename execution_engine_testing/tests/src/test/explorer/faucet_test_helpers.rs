@@ -6,16 +6,15 @@ use casper_engine_test_support::{
 };
 use casper_storage::data_access_layer::TransferRequest;
 use casper_types::{
-    account::AccountHash, addressable_entity::EntityKindTag, bytesrepr::FromBytes, runtime_args,
-    AddressableEntityHash, CLTyped, Key, PublicKey, URef, U512,
+    account::AccountHash, bytesrepr::FromBytes, runtime_args, AddressableEntityHash, CLTyped, Key,
+    PublicKey, URef, U512,
 };
 
 use super::{
     ARG_AMOUNT, ARG_AVAILABLE_AMOUNT, ARG_DISTRIBUTIONS_PER_INTERVAL, ARG_ID, ARG_TARGET,
-    ARG_TIME_INTERVAL, AVAILABLE_AMOUNT_NAMED_KEY, ENTRY_POINT_AUTHORIZE_TO, ENTRY_POINT_FAUCET,
-    ENTRY_POINT_SET_VARIABLES, FAUCET_CONTRACT_NAMED_KEY, FAUCET_FUND_AMOUNT, FAUCET_ID,
-    FAUCET_INSTALLER_SESSION, FAUCET_PURSE_NAMED_KEY, INSTALLER_ACCOUNT, INSTALLER_FUND_AMOUNT,
-    REMAINING_REQUESTS_NAMED_KEY,
+    ARG_TIME_INTERVAL, ENTRY_POINT_AUTHORIZE_TO, ENTRY_POINT_FAUCET, ENTRY_POINT_SET_VARIABLES,
+    FAUCET_CONTRACT_NAMED_KEY, FAUCET_FUND_AMOUNT, FAUCET_ID, FAUCET_INSTALLER_SESSION,
+    FAUCET_PURSE_NAMED_KEY, INSTALLER_ACCOUNT, INSTALLER_FUND_AMOUNT,
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -305,11 +304,6 @@ impl FaucetFundRequestBuilder {
         self
     }
 
-    pub fn with_block_time(mut self, block_time: u64) -> Self {
-        self.block_time = Some(block_time);
-        self
-    }
-
     pub fn with_payment_amount(mut self, payment_amount: U512) -> Self {
         self.payment_amount = payment_amount;
         self
@@ -413,42 +407,6 @@ pub fn get_faucet_purse(builder: &LmdbWasmTestBuilder, installer_account: Accoun
         .cloned()
         .and_then(Key::into_uref)
         .expect("failed to find faucet purse")
-}
-
-pub fn get_available_amount(
-    builder: &LmdbWasmTestBuilder,
-    faucet_contract_hash: AddressableEntityHash,
-) -> U512 {
-    builder
-        .query(
-            None,
-            Key::addressable_entity_key(EntityKindTag::SmartContract, faucet_contract_hash),
-            &[AVAILABLE_AMOUNT_NAMED_KEY.to_string()],
-        )
-        .expect("failed to find available amount named key")
-        .as_cl_value()
-        .cloned()
-        .expect("failed to convert to cl value")
-        .into_t::<U512>()
-        .expect("failed to convert into U512")
-}
-
-pub fn get_remaining_requests(
-    builder: &LmdbWasmTestBuilder,
-    faucet_contract_hash: AddressableEntityHash,
-) -> U512 {
-    builder
-        .query(
-            None,
-            Key::addressable_entity_key(EntityKindTag::SmartContract, faucet_contract_hash),
-            &[REMAINING_REQUESTS_NAMED_KEY.to_string()],
-        )
-        .expect("failed to find available amount named key")
-        .as_cl_value()
-        .cloned()
-        .expect("failed to convert to cl value")
-        .into_t::<U512>()
-        .expect("failed to convert into U512")
 }
 
 pub struct FaucetDeployHelper {

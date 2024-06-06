@@ -255,11 +255,6 @@ impl CommitProvider for ScratchGlobalState {
             let instruction = match (cached_value, kind) {
                 (_, TransformKindV2::Identity) => {
                     // effectively a noop.
-                    debug!(
-                        ?state_hash,
-                        ?key,
-                        "scratch commit: attempt to commit a read."
-                    );
                     continue;
                 }
                 (None, TransformKindV2::Write(new_value)) => TransformInstruction::store(new_value),

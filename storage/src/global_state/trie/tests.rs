@@ -92,15 +92,64 @@ mod pointer_block {
 }
 
 mod proptests {
+    use std::convert::TryInto;
+
     use proptest::prelude::*;
 
     use casper_types::{
-        bytesrepr,
+        bytesrepr::{self, deserialize_from_slice, FromBytes, ToBytes},
         gens::{blake2b_hash_arb, key_arb, trie_pointer_arb},
         Digest, Key, StoredValue,
     };
 
-    use crate::global_state::trie::{gens::*, PointerBlock, Trie};
+    use crate::global_state::trie::{gens::*, LazilyDeserializedTrie, PointerBlock, Trie};
+
+    fn test_trie_roundtrip_to_lazy_trie<K, V>(trie: &Trie<K, V>)
+    where
+        K: ToBytes + FromBytes + PartialEq + std::fmt::Debug + Clone,
+        V: ToBytes + FromBytes + PartialEq + std::fmt::Debug + Clone,
+    {
+        let serialized = ToBytes::to_bytes(trie).expect("Unable to serialize data");
+
+        let expected_lazy_trie_leaf: LazilyDeserializedTrie = (*trie)
+            .clone()
+            .try_into()
+            .expect("Cannot convert Trie<K, V> to LazilyDeserializedTrie");
+
+        let deserialized_from_slice: LazilyDeserializedTrie =
+            deserialize_from_slice(&serialized).expect("Unable to deserialize data");
+        assert_eq!(expected_lazy_trie_leaf, deserialized_from_slice);
+        assert_eq!(
+            *trie,
+            deserialized_from_slice
+                .clone()
+                .try_into()
+                .expect("Expected to be able to convert LazilyDeserializedTrie to Trie<K, V>")
+        );
+        if let LazilyDeserializedTrie::Leaf(leaf_bytes) = deserialized_from_slice {
+            let (key, _) = leaf_bytes
+                .try_deserialize_leaf_key::<K>()
+                .expect("Should have been able to deserialize key");
+            assert_eq!(key, *trie.key().unwrap());
+        };
+
+        let deserialized: LazilyDeserializedTrie =
+            bytesrepr::deserialize(serialized).expect("Unable to deserialize data");
+        assert_eq!(expected_lazy_trie_leaf, deserialized);
+        assert_eq!(
+            *trie,
+            deserialized
+                .clone()
+                .try_into()
+                .expect("Expected to be able to convert LazilyDeserializedTrie to Trie<K, V>")
+        );
+        if let LazilyDeserializedTrie::Leaf(leaf_bytes) = deserialized {
+            let (key, _) = leaf_bytes
+                .try_deserialize_leaf_key::<K>()
+                .expect("Should have been able to deserialize key");
+            assert_eq!(key, *trie.key().unwrap());
+        };
+    }
 
     proptest! {
         #[test]
@@ -121,6 +170,21 @@ mod proptests {
         #[test]
         fn bytesrepr_roundtrip_trie_leaf(trie_leaf in trie_leaf_arb()) {
             bytesrepr::test_serialization_roundtrip(&trie_leaf);
+        }
+
+        #[test]
+        fn bytesrepr_roundtrip_trie_leaf_to_lazy_trie(trie_leaf in trie_leaf_arb()) {
+            test_trie_roundtrip_to_lazy_trie(&trie_leaf)
+        }
+
+        #[test]
+        fn bytesrepr_roundtrip_trie_extension_to_lazy_trie(trie_extension in trie_extension_arb()) {
+            test_trie_roundtrip_to_lazy_trie(&trie_extension)
+        }
+
+        #[test]
+        fn bytesrepr_roundtrip_trie_node_to_lazy_trie(trie_node in trie_node_arb()) {
+            test_trie_roundtrip_to_lazy_trie(&trie_node);
         }
 
         #[test]

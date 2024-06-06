@@ -382,7 +382,7 @@ pub(crate) async fn fetch_data_and_calculate_rewards_for_era<REv: ReactorEventT>
     data_access_layer: Arc<DataAccessLayer<LmdbGlobalState>>,
     chainspec: &Chainspec,
     executable_block: ExecutableBlock,
-) -> Result<BTreeMap<PublicKey, U512>, RewardsError> {
+) -> Result<BTreeMap<PublicKey, Vec<U512>>, RewardsError> {
     let current_era_id = executable_block.era_id;
     tracing::info!(
         current_era_id = %current_era_id.value(),
@@ -419,27 +419,36 @@ pub(crate) fn rewards_for_era(
     rewards_info: RewardsInfo,
     current_era_id: EraId,
     core_config: &CoreConfig,
-) -> Result<BTreeMap<PublicKey, U512>, RewardsError> {
+) -> Result<BTreeMap<PublicKey, Vec<U512>>, RewardsError> {
     fn to_ratio_u512(ratio: Ratio<u64>) -> Ratio<U512> {
         Ratio::new(U512::from(*ratio.numer()), U512::from(*ratio.denom()))
     }
 
+    let ratio_u512_zero = Ratio::new(U512::zero(), U512::one());
+    let zero_for_current_era = {
+        let mut map = BTreeMap::new();
+        map.insert(current_era_id, ratio_u512_zero);
+        map
+    };
     let mut full_reward_for_validators: BTreeMap<_, _> = rewards_info
         .validator_keys(current_era_id)?
-        .map(|key| (key, Ratio::new(U512::zero(), U512::one())))
+        .map(|key| (key, zero_for_current_era.clone()))
         .collect();
 
-    let mut increase_value_for_key =
-        |key: PublicKey, value: Ratio<U512>| -> Result<(), RewardsError> {
+    let mut increase_value_for_key_and_era =
+        |key: PublicKey, era: EraId, value: Ratio<U512>| -> Result<(), RewardsError> {
             match full_reward_for_validators.entry(key) {
                 std::collections::btree_map::Entry::Vacant(entry) => {
-                    entry.insert(value);
+                    let mut map = BTreeMap::new();
+                    map.insert(era, value);
+                    entry.insert(map);
                 }
                 std::collections::btree_map::Entry::Occupied(mut entry) => {
-                    let new_value = (*entry.get())
+                    let old_value = entry.get().get(&era).unwrap_or(&ratio_u512_zero);
+                    let new_value = old_value
                         .checked_add(&value)
                         .ok_or(RewardsError::ArithmeticOverflow)?;
-                    *entry.get_mut() = new_value;
+                    entry.get_mut().insert(era, new_value);
                 }
             }
 
@@ -465,7 +474,7 @@ pub(crate) fn rewards_for_era(
     // Collect all rewards as a ratio:
     for block in rewards_info.blocks_from_era(current_era_id) {
         // Transfer the block production reward for this block proposer:
-        increase_value_for_key(block.proposer.clone(), production_reward)?;
+        increase_value_for_key_and_era(block.proposer.clone(), current_era_id, production_reward)?;
 
         // Now, let's compute the reward attached to each signed block reported by the block
         // we examine:
@@ -495,16 +504,43 @@ pub(crate) fn rewards_for_era(
                     .checked_mul(&rewards_info.reward(signed_block_era)?)
                     .ok_or(RewardsError::ArithmeticOverflow)?;
 
-                increase_value_for_key(signing_validator, contribution_reward)?;
-                increase_value_for_key(block.proposer.clone(), collection_reward)?;
+                increase_value_for_key_and_era(
+                    signing_validator,
+                    signed_block_era,
+                    contribution_reward,
+                )?;
+                increase_value_for_key_and_era(
+                    block.proposer.clone(),
+                    signed_block_era,
+                    collection_reward,
+                )?;
             }
         }
     }
 
+    let rewards_map_to_vec = |rewards_map: BTreeMap<EraId, Ratio<U512>>| {
+        let min_era = rewards_map
+            .iter()
+            .find(|(_era, &amount)| !amount.numer().is_zero())
+            .map(|(era, _amount)| era)
+            .copied()
+            .unwrap_or(current_era_id);
+        EraId::iter_range_inclusive(min_era, current_era_id)
+            .rev()
+            .map(|era_id| {
+                rewards_map
+                    .get(&era_id)
+                    .copied()
+                    .unwrap_or(ratio_u512_zero)
+                    .to_integer()
+            })
+            .collect()
+    };
+
     // Return the rewards as plain U512:
     Ok(full_reward_for_validators
         .into_iter()
-        .map(|(key, amount)| (key, amount.to_integer()))
+        .map(|(key, amounts)| (key, rewards_map_to_vec(amounts)))
         .collect())
 }
 

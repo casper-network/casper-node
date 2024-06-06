@@ -188,14 +188,17 @@ pub trait Auction:
                 let delegator_bid_addr =
                     BidAddr::new_from_public_keys(&public_key, Some(&delegator_public_key));
 
-                debug!("pruning delegator bid {}", delegator_bid_addr);
-                self.prune_bid(delegator_bid_addr)
+                // Keep the bids for now - they will be pruned when the validator's unbonds get
+                // processed.
+                self.write_bid(
+                    delegator_bid_addr.into(),
+                    BidKind::Delegator(Box::new(delegator)),
+                )?;
             }
-            debug!("pruning validator bid {}", validator_bid_addr);
-            self.prune_bid(validator_bid_addr);
-        } else {
-            self.write_bid(validator_bid_key, BidKind::Validator(validator_bid))?;
         }
+
+        self.write_bid(validator_bid_key, BidKind::Validator(validator_bid))?;
+
         Ok(updated_stake)
     }
 
@@ -285,12 +288,9 @@ pub trait Auction:
             updated_stake
         );
 
-        if updated_stake.is_zero() {
-            debug!("pruning delegator bid {}", delegator_bid_addr);
-            self.prune_bid(delegator_bid_addr);
-        } else {
-            self.write_bid(delegator_bid_addr.into(), BidKind::Delegator(delegator_bid))?;
-        }
+        // Keep the bid for now - it will get pruned when the unbonds are processed.
+        self.write_bid(delegator_bid_addr.into(), BidKind::Delegator(delegator_bid))?;
+
         Ok(updated_stake)
     }
 
@@ -475,7 +475,9 @@ pub trait Auction:
         let vesting_schedule_period_millis = self.vesting_schedule_period_millis();
         let validator_slots = detail::get_validator_slots(self)?;
         let auction_delay = detail::get_auction_delay(self)?;
-        let snapshot_size = auction_delay as usize + 1;
+        // We have to store auction_delay future eras, one current era and one past era (for
+        // rewards calculations).
+        let snapshot_size = auction_delay as usize + 2;
         let mut era_id: EraId = detail::get_era_id(self)?;
 
         // Process unbond requests
@@ -540,6 +542,7 @@ pub trait Auction:
                     .chain(
                         unlocked_validators
                             .into_iter()
+                            .filter(|(_, stake)| !stake.is_zero())
                             .take(remaining_auction_slots),
                     )
                     .collect()
@@ -594,19 +597,30 @@ pub trait Auction:
     /// according to `reward_factors` returned by the consensus component.
     // TODO: rework EraInfo and other related structs, methods, etc. to report correct era-end
     // totals of per-block rewards
-    fn distribute(&mut self, rewards: BTreeMap<PublicKey, U512>) -> Result<(), Error> {
+    fn distribute(&mut self, rewards: BTreeMap<PublicKey, Vec<U512>>) -> Result<(), Error> {
         if self.get_caller() != PublicKey::System.to_account_hash() {
             error!("invalid caller to auction distribute");
             return Err(Error::InvalidCaller);
         }
 
-        let seigniorage_recipients = self.read_seigniorage_recipients()?;
+        let seigniorage_recipients_snapshot = detail::get_seigniorage_recipients_snapshot(self)?;
+        let current_era_id = detail::get_era_id(self)?;
+
         let mut era_info = EraInfo::new();
         let seigniorage_allocations = era_info.seigniorage_allocations_mut();
 
-        for (proposer, reward_amount) in rewards
+        for (proposer, reward_amount, eras_back) in rewards
             .into_iter()
-            .filter(|(key, _amount)| key != &PublicKey::System)
+            .filter(|(key, _amounts)| key != &PublicKey::System)
+            .flat_map(|(key, amounts)| {
+                amounts
+                    .into_iter()
+                    .enumerate()
+                    .map(move |(i, amount)| (key.clone(), amount, i as u64))
+            })
+            // do not process zero amounts, unless they are for the current era (we still want to
+            // record zero allocations for the current validators in EraInfo)
+            .filter(|(_key, amount, eras_back)| !amount.is_zero() || *eras_back == 0)
         {
             // fetch most recent validator public key if public key was changed
             // or the validator withdrew their bid completely
@@ -623,17 +637,45 @@ pub trait Auction:
                 };
 
             let total_reward = Ratio::from(reward_amount);
-            let recipient = seigniorage_recipients
-                .get(&proposer)
-                .cloned()
-                .or_else(|| {
-                    let bid_key = BidAddr::from(proposer.clone()).into();
-                    let validator_bid = read_validator_bid(self, &bid_key).ok()?;
-                    seigniorage_recipient(self, &validator_bid).ok()
-                })
-                .ok_or(Error::ValidatorNotFound)?;
+            let rewarded_era = current_era_id
+                .checked_sub(eras_back)
+                .ok_or(Error::MissingSeigniorageRecipients)?;
+            let Some(recipient) = seigniorage_recipients_snapshot
+                .get(&rewarded_era)
+                .ok_or(Error::MissingSeigniorageRecipients)?
+                .get(&proposer).cloned()
+            else {
+                // We couldn't find the validator. If the reward amount is zero, we don't care -
+                // the validator wasn't supposed to be rewarded in this era, anyway. Otherwise,
+                // return an error.
+                if reward_amount.is_zero() {
+                    continue;
+                } else {
+                    return Err(Error::ValidatorNotFound);
+                }
+            };
 
             let total_stake = recipient.total_stake().ok_or(Error::ArithmeticOverflow)?;
+
+            if total_stake.is_zero() {
+                // The validator has completely unbonded. We can't compute the delegators' part (as
+                // their stakes are also zero), so we just give the whole reward to the validator.
+                // Mint the reward into their bonding purse and increase their unbond request by the
+                // corresponding amount.
+                let validator_bonding_purse = detail::distribute_validator_rewards(
+                    self,
+                    seigniorage_allocations,
+                    validator_public_key.clone(),
+                    reward_amount,
+                )?;
+
+                // mint new token and put it to the recipients' purses
+                self.mint_into_existing_purse(reward_amount, validator_bonding_purse)
+                    .map_err(Error::from)?;
+
+                continue;
+            }
+
             let delegator_total_stake: U512 = recipient
                 .delegator_total_stake()
                 .ok_or(Error::ArithmeticOverflow)?;

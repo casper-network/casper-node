@@ -20,10 +20,8 @@ pub fn trie_leaf_arb() -> impl Strategy<Value = Trie<Key, StoredValue>> {
 }
 
 pub fn trie_extension_arb() -> impl Strategy<Value = Trie<Key, StoredValue>> {
-    (vec(any::<u8>(), 0..32), trie_pointer_arb()).prop_map(|(affix, pointer)| Trie::Extension {
-        affix: affix.into(),
-        pointer,
-    })
+    (vec(any::<u8>(), 0..32), trie_pointer_arb())
+        .prop_map(|(affix, pointer)| Trie::extension(affix, pointer))
 }
 
 pub fn trie_node_arb() -> impl Strategy<Value = Trie<Key, StoredValue>> {
