@@ -97,6 +97,7 @@ wheelbuf = "0.2.0"
 vergen = { version = "8.2.1", default-features = false, features = ["git", "gitoxide"] }
 
 [dev-dependencies]
+casper-binary-port = { version = "1.0.0", path = "../binary_port", features = ["testing"] }
 assert-json-diff = "2.0.1"
 assert_matches = "1.5.0"
 casper-types = { path = "../types", features = ["datasize", "json-schema", "std", "testing"] }

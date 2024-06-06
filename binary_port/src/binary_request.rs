@@ -44,6 +44,10 @@ impl BinaryRequestHeader {
     pub fn id(&self) -> u16 {
         self.id
     }
+    #[cfg(any(feature = "testing", test))]
+    pub fn set_protocol_version(&mut self, protocol_version: ProtocolVersion) {
+        self.protocol_version = protocol_version;
+    }
 
     #[cfg(test)]
     pub(crate) fn random(rng: &mut TestRng) -> Self {
