@@ -359,7 +359,18 @@ async fn binary_port_component() {
         try_accept_transaction(&secret_signing_key),
         get_balance(state_root_hash, test_account_hash),
         get_named_keys_by_prefix(state_root_hash, test_entity_addr),
-        get_reward(Some(EraIdentifier::Era(ERA_ONE)), era_one_validator, None),
+        get_reward(
+            Some(EraIdentifier::Era(ERA_ONE)),
+            era_one_validator.clone(),
+            None,
+        ),
+        get_reward(
+            Some(EraIdentifier::Block(BlockIdentifier::Hash(
+                *highest_block.hash(),
+            ))),
+            era_one_validator,
+            None,
+        ),
     ];
 
     for TestCase {

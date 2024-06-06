@@ -1180,9 +1180,13 @@ where
         }
         Some(EraIdentifier::Block(block_identifier)) => {
             let header = resolve_block_header(effect_builder, Some(block_identifier)).await?;
-            effect_builder
-                .get_switch_block_header_by_era_id_from_storage(header.era_id())
-                .await
+            if header.is_switch_block() {
+                Some(header)
+            } else {
+                effect_builder
+                    .get_switch_block_header_by_era_id_from_storage(header.era_id())
+                    .await
+            }
         }
         None => {
             effect_builder
