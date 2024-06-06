@@ -21,7 +21,7 @@ Request bytes can be constructed from bytesrepr-serialized `BinaryRequestHeader`
 | 4               | LengthOfRequest | Length of the request (encoded as bytes) being responded to             |
 | LengthOfRequest | RequestBytes    | The request being responded to encoded as bytes                         |
 | 12              | ProtocolVersion | Protocol version as a u32 triplet (major, minor, patch)                 |
-| 1               | ErrorCode       | Error code, where 0 indicates success                                   |
+| 2               | ErrorCode       | Error code, where 0 indicates success                                   |
 | 1-2             | PayloadType     | Optional payload type tag (first byte being 1 indicates that it exists) |
 | ...             | Payload         | Payload to be interpreted according to `PayloadTag`                     |
 

@@ -71,7 +71,7 @@ impl BinaryResponseAndRequest {
     }
 
     /// Returns the error code.
-    pub fn error_code(&self) -> u8 {
+    pub fn error_code(&self) -> u16 {
         self.response.error_code()
     }
 

@@ -893,7 +893,7 @@ fn try_accept_transaction(key: &SecretKey) -> TestCase {
     TestCase {
         name: "try_accept_transaction",
         request: BinaryRequest::TryAcceptTransaction { transaction },
-        asserter: Box::new(|response| response.error_code() == ErrorCode::NoError as u8),
+        asserter: Box::new(|response| response.error_code() == ErrorCode::NoError as u16),
     }
 }
 
@@ -956,7 +956,7 @@ async fn binary_port_component_rejects_requests_with_invalid_header_version() {
 
     assert_eq!(
         binary_response_and_request.response().error_code(),
-        ErrorCode::BinaryPortVersionMismatch as u8
+        ErrorCode::BinaryPortVersionMismatch as u16
     );
 
     let (_net, _rng) = timeout(Duration::from_secs(10), finish_cranking)
@@ -1005,7 +1005,7 @@ async fn binary_port_component_rejects_requests_with_incompatible_protocol_versi
 
     assert_eq!(
         binary_response_and_request.response().error_code(),
-        ErrorCode::UnsupportedProtocolVersion as u8
+        ErrorCode::UnsupportedProtocolVersion as u16
     );
 
     let (_net, _rng) = timeout(Duration::from_secs(10), finish_cranking)
@@ -1054,7 +1054,7 @@ async fn binary_port_component_accepts_requests_with_compatible_but_different_pr
 
     assert_eq!(
         binary_response_and_request.response().error_code(),
-        ErrorCode::NoError as u8
+        ErrorCode::NoError as u16
     );
 
     let (_net, _rng) = timeout(Duration::from_secs(10), finish_cranking)

@@ -4,7 +4,7 @@ use casper_types::{InvalidDeploy, InvalidTransaction, InvalidTransactionV1};
 
 /// The error code indicating the result of handling the binary request.
 #[derive(Debug, Clone, thiserror::Error)]
-#[repr(u8)]
+#[repr(u16)]
 pub enum ErrorCode {
     /// Request executed correctly.
     #[error("request executed correctly")]
@@ -191,10 +191,10 @@ pub enum ErrorCode {
     BinaryPortVersionMismatch = 58,
 }
 
-impl TryFrom<u8> for ErrorCode {
+impl TryFrom<u16> for ErrorCode {
     type Error = UnknownErrorCode;
 
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
+    fn try_from(value: u16) -> Result<Self, Self::Error> {
         match value {
             0 => Ok(ErrorCode::NoError),
             1 => Ok(ErrorCode::FunctionDisabled),
