@@ -542,14 +542,6 @@ pub mod gens {
     /// It produces a proptest `Strategy` that can be used to generate arbitrary `DeployHash`
     /// values.
     ///
-    /// # Example
-    ///
-    /// ```
-    /// use casper_types::gens::deploy_hash_arb;
-    ///
-    /// let deploy_hash = deploy_hash_arb().generate().unwrap();
-    /// println!("Generated DeployHash: {:?}", deploy_hash);
-    /// ```
     pub fn deploy_hash_arb() -> impl Strategy<Value = DeployHash> {
         array::uniform32(<u8>::arbitrary()).prop_map(DeployHash::from_raw)
     }
