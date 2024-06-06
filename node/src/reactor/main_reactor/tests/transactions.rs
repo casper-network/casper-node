@@ -299,7 +299,7 @@ fn get_entity_named_key(
     }
 }
 
-fn get_entity(
+fn get_entity_by_account_hash(
     fixture: &mut TestFixture,
     state_root_hash: Digest,
     account_hash: AccountHash,
@@ -3497,7 +3497,7 @@ async fn native_transfer_deploy_with_source_purse_should_succeed() {
         .await;
 
     let state_root_hash = *test.fixture.highest_complete_block().state_root_hash();
-    let entity = get_entity(
+    let entity = get_entity_by_account_hash(
         &mut test.fixture,
         state_root_hash,
         BOB_PUBLIC_KEY.to_account_hash(),
