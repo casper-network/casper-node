@@ -4,9 +4,9 @@ use alloc::collections::BTreeMap;
 use rand::Rng;
 
 use crate::{
-    system::auction::ValidatorWeights, testing::TestRng, Block, BlockHash, BlockV2, Digest,
-    EraEndV2, EraId, ProtocolVersion, PublicKey, RewardedSignatures, Timestamp, Transaction,
-    TransactionCategory, TransactionEntryPoint, TransactionSessionKind, TransactionTarget, U512,
+    system::auction::ValidatorWeights, testing::TestRng, transaction::TransactionCategory, Block,
+    BlockHash, BlockV2, Digest, EraEndV2, EraId, ProtocolVersion, PublicKey, RewardedSignatures,
+    Timestamp, Transaction, TransactionEntryPoint, TransactionSessionKind, TransactionTarget, U512,
 };
 
 /// A helper to build the blocks with various properties required for tests.
@@ -188,6 +188,9 @@ impl TestBlockV2Builder {
                 }
                 Transaction::V1(v1_txn) => match v1_txn.target() {
                     TransactionTarget::Native => match v1_txn.entry_point() {
+                        TransactionEntryPoint::Call => {
+                            panic!("call entry point not supported for native target")
+                        }
                         TransactionEntryPoint::Custom(_) => {
                             panic!("custom entry point not supported for native target")
                         }
@@ -222,7 +225,7 @@ impl TestBlockV2Builder {
                 TransactionCategory::InstallUpgrade as u8,
                 install_upgrade_hashes,
             );
-            ret.insert(TransactionCategory::Standard as u8, standard_hashes);
+            ret.insert(TransactionCategory::Large as u8, standard_hashes);
             ret
         };
         let rewarded_signatures = rewarded_signatures.unwrap_or_default();
@@ -275,8 +278,11 @@ fn gen_era_end_v2(
         .collect();
     let rewards = iter::repeat_with(|| {
         let pub_key = PublicKey::random(rng);
-        let reward = rng.gen_range(1..=1_000_000_000 + 1);
-        (pub_key, U512::from(reward))
+        let mut rewards = vec![U512::from(rng.gen_range(1..=1_000_000_000 + 1))];
+        if rng.gen_bool(0.2) {
+            rewards.push(U512::from(rng.gen_range(1..=1_000_000_000 + 1)));
+        };
+        (pub_key, rewards)
     })
     .take(rewards_count)
     .collect();

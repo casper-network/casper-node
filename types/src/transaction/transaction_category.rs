@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     transaction::{deploy::DeployCategory, transaction_v1::TransactionCategory as V1},
-    Deploy, TransactionV1,
+    Deploy,
 };
 
 /// The category of a [`Transaction`].
@@ -33,7 +33,7 @@ use crate::{
 )]
 #[serde(deny_unknown_fields)]
 #[repr(u8)]
-pub enum TransactionCategory {
+pub(crate) enum TransactionCategory {
     /// The supported categories of transactions. This was not explicit in protocol 1.x
     /// but was made explicit in protocol 2.x. Thus V1 is introduced in protocol 2.0
     /// Older deploys are retroactively mapped into the corresponding variants to
@@ -48,7 +48,7 @@ impl From<Deploy> for TransactionCategory {
         if value.is_transfer() {
             TransactionCategory::V1(V1::Mint)
         } else {
-            TransactionCategory::V1(V1::Standard)
+            TransactionCategory::V1(V1::Large)
         }
     }
 }
@@ -58,7 +58,7 @@ impl From<DeployCategory> for TransactionCategory {
         // To hand waive away legacy issues, we just curry the implicit categories from protocol 1.x
         // forward to the corresponding protocol 2.x explicit categories.
         match value {
-            DeployCategory::Standard => TransactionCategory::V1(V1::Standard),
+            DeployCategory::Standard => TransactionCategory::V1(V1::Large),
             DeployCategory::Transfer => TransactionCategory::V1(V1::Mint),
         }
     }
@@ -67,11 +67,5 @@ impl From<DeployCategory> for TransactionCategory {
 impl From<V1> for TransactionCategory {
     fn from(value: V1) -> Self {
         TransactionCategory::V1(value)
-    }
-}
-
-impl From<TransactionV1> for TransactionCategory {
-    fn from(value: TransactionV1) -> Self {
-        TransactionCategory::V1(value.transaction_category())
     }
 }

@@ -123,7 +123,9 @@ pub enum InvalidTransaction {
         attempted: U512,
     },
 
-    /// The entry point for this transaction target cannot not be `TransactionEntryPoint::Custom`.
+    /// The entry point for this transaction target cannot be `call`.
+    EntryPointCannotBeCall,
+    /// The entry point for this transaction target cannot be `TransactionEntryPoint::Custom`.
     EntryPointCannotBeCustom {
         /// The invalid entry point.
         entry_point: TransactionEntryPoint,
@@ -152,6 +154,8 @@ pub enum InvalidTransaction {
         /// The pricing mode as specified by the transaction.
         price_mode: PricingMode,
     },
+    /// The transaction provided is not supported.
+    InvalidTransactionKind(u8),
 }
 
 impl Display for InvalidTransaction {
@@ -253,6 +257,9 @@ impl Display for InvalidTransaction {
                     "insufficient transfer amount; minimum: {minimum} attempted: {attempted}"
                 )
             }
+            InvalidTransaction::EntryPointCannotBeCall => {
+                write!(formatter, "entry point cannot be call")
+            }
             InvalidTransaction::EntryPointCannotBeCustom { entry_point } => {
                 write!(formatter, "entry point cannot be custom: {entry_point}")
             }
@@ -279,6 +286,12 @@ impl Display for InvalidTransaction {
                 write!(
                     formatter,
                     "received a transaction with an invalid mode {price_mode}"
+                )
+            }
+            InvalidTransaction::InvalidTransactionKind(kind) => {
+                write!(
+                    formatter,
+                    "received a transaction with an invalid kind {kind}"
                 )
             }
         }
@@ -310,13 +323,15 @@ impl StdError for InvalidTransaction {
             | InvalidTransaction::MissingArg { .. }
             | InvalidTransaction::UnexpectedArgType { .. }
             | InvalidTransaction::InsufficientTransferAmount { .. }
+            | InvalidTransaction::EntryPointCannotBeCall
             | InvalidTransaction::EntryPointCannotBeCustom { .. }
             | InvalidTransaction::EntryPointMustBeCustom { .. }
             | InvalidTransaction::EmptyModuleBytes
             | InvalidTransaction::GasPriceConversion { .. }
             | InvalidTransaction::UnableToCalculateGasLimit
             | InvalidTransaction::UnableToCalculateGasCost
-            | InvalidTransaction::InvalidPricingMode { .. } => None,
+            | InvalidTransaction::InvalidPricingMode { .. }
+            | InvalidTransaction::InvalidTransactionKind(_) => None,
         }
     }
 }

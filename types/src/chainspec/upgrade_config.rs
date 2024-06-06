@@ -1,4 +1,5 @@
 use num_rational::Ratio;
+use serde::Serialize;
 use std::collections::BTreeMap;
 
 use crate::{
@@ -7,7 +8,7 @@ use crate::{
 };
 
 /// Represents the configuration of a protocol upgrade.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ProtocolUpgradeConfig {
     pre_state_hash: Digest,
     current_protocol_version: ProtocolVersion,

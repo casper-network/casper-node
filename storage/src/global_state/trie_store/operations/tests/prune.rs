@@ -1,28 +1,39 @@
 use super::*;
-use crate::global_state::{transaction_source::Writable, trie_store::operations::TriePruneResult};
+use crate::global_state::trie_store::operations::TriePruneResult;
 
-fn checked_prune<K, V, T, S, E>(
-    txn: &mut T,
+fn checked_prune<'a, K, V, R, WR, S, WS, E>(
+    environment: &'a R,
+    write_environment: &'a WR,
     store: &S,
+    write_store: &WS,
     root: &Digest,
     key_to_prune: &K,
 ) -> Result<TriePruneResult, E>
 where
     K: ToBytes + FromBytes + Clone + std::fmt::Debug + Eq,
     V: ToBytes + FromBytes + Clone + std::fmt::Debug,
-    T: Readable<Handle = S::Handle> + Writable<Handle = S::Handle>,
+    R: TransactionSource<'a, Handle = S::Handle>,
+    WR: TransactionSource<'a, Handle = WS::Handle>,
     S: TrieStore<K, V>,
-    S::Error: From<T::Error>,
-    E: From<S::Error> + From<bytesrepr::Error>,
+    WS: TrieStore<K, PanickingFromBytes<V>>,
+    S::Error: From<R::Error>,
+    WS::Error: From<WR::Error>,
+    E: From<S::Error> + From<WS::Error> + From<R::Error> + From<WR::Error> + From<bytesrepr::Error>,
 {
-    let _counter = TestValue::before_operation(TestOperation::Prune);
-    let prune_result = operations::prune::<K, V, T, S, E>(txn, store, root, key_to_prune);
-    let counter = TestValue::after_operation(TestOperation::Prune);
-    assert_eq!(counter, 0, "Delete should never deserialize a value");
+    let mut txn = write_environment.create_read_write_txn()?;
+    let prune_result = operations::prune::<K, PanickingFromBytes<V>, _, WS, E>(
+        &mut txn,
+        write_store,
+        root,
+        key_to_prune,
+    );
+    txn.commit()?;
     let prune_result = prune_result?;
+    let rtxn = environment.create_read_write_txn()?;
     if let TriePruneResult::Pruned(new_root) = prune_result {
-        operations::check_integrity::<K, V, T, S, E>(txn, store, vec![new_root])?;
+        operations::check_integrity::<K, V, _, S, E>(&rtxn, store, vec![new_root])?;
     }
+    rtxn.commit()?;
     Ok(prune_result)
 }
 
@@ -30,9 +41,12 @@ mod partial_tries {
     use super::*;
     use crate::global_state::trie_store::operations::TriePruneResult;
 
-    fn prune_from_partial_trie_had_expected_results<'a, K, V, R, S, E>(
+    #[allow(clippy::too_many_arguments)]
+    fn prune_from_partial_trie_had_expected_results<'a, K, V, R, WR, S, WS, E>(
         environment: &'a R,
+        write_environment: &'a WR,
         store: &S,
+        write_store: &WS,
         root: &Digest,
         key_to_prune: &K,
         expected_root_after_prune: &Digest,
@@ -42,24 +56,40 @@ mod partial_tries {
         K: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
         V: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
         R: TransactionSource<'a, Handle = S::Handle>,
+        WR: TransactionSource<'a, Handle = WS::Handle>,
         S: TrieStore<K, V>,
+        WS: TrieStore<K, PanickingFromBytes<V>>,
         S::Error: From<R::Error>,
-        E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
+        WS::Error: From<WR::Error>,
+        E: From<R::Error>
+            + From<S::Error>
+            + From<WR::Error>
+            + From<WS::Error>
+            + From<bytesrepr::Error>,
     {
-        let mut txn = environment.create_read_write_txn()?;
+        let rtxn = environment.create_read_txn()?;
         // The assert below only works with partial tries
-        assert_eq!(store.get(&txn, expected_root_after_prune)?, None);
-        let root_after_prune =
-            match checked_prune::<K, V, _, _, E>(&mut txn, store, root, key_to_prune)? {
-                TriePruneResult::Pruned(root_after_prune) => root_after_prune,
-                TriePruneResult::MissingKey => panic!("key did not exist"),
-                TriePruneResult::RootNotFound => panic!("root should be found"),
-                TriePruneResult::Failure(err) => panic!("{:?}", err),
-            };
+        assert_eq!(store.get(&rtxn, expected_root_after_prune)?, None);
+        rtxn.commit()?;
+        let root_after_prune = match checked_prune::<K, V, _, _, _, _, E>(
+            environment,
+            write_environment,
+            store,
+            write_store,
+            root,
+            key_to_prune,
+        )? {
+            TriePruneResult::Pruned(root_after_prune) => root_after_prune,
+            TriePruneResult::MissingKey => panic!("key did not exist"),
+            TriePruneResult::RootNotFound => panic!("root should be found"),
+            TriePruneResult::Failure(err) => panic!("{:?}", err),
+        };
         assert_eq!(root_after_prune, *expected_root_after_prune);
+        let rtxn = environment.create_read_txn()?;
         for HashedTrie { hash, trie } in expected_tries_after_prune {
-            assert_eq!(store.get(&txn, hash)?, Some(trie.clone()));
+            assert_eq!(store.get(&rtxn, hash)?, Some(trie.clone()));
         }
+        rtxn.commit()?;
         Ok(())
     }
 
@@ -71,8 +101,18 @@ mod partial_tries {
             let key_to_prune = &TEST_LEAVES[i];
             let context = LmdbTestContext::new(&initial_tries).unwrap();
 
-            prune_from_partial_trie_had_expected_results::<TestKey, TestValue, _, _, error::Error>(
+            prune_from_partial_trie_had_expected_results::<
+                TestKey,
+                TestValue,
+                _,
+                _,
+                _,
+                _,
+                error::Error,
+            >(
                 &context.environment,
+                &context.environment,
+                &context.store,
                 &context.store,
                 &initial_root_hash,
                 key_to_prune.key().unwrap(),
@@ -83,9 +123,20 @@ mod partial_tries {
         }
     }
 
-    fn prune_non_existent_key_from_partial_trie_should_return_does_not_exist<'a, K, V, R, S, E>(
+    fn prune_non_existent_key_from_partial_trie_should_return_does_not_exist<
+        'a,
+        K,
+        V,
+        R,
+        WR,
+        S,
+        WS,
+        E,
+    >(
         environment: &'a R,
+        write_environment: &'a WR,
         store: &S,
+        write_store: &WS,
         root: &Digest,
         key_to_prune: &K,
     ) -> Result<(), E>
@@ -93,12 +144,25 @@ mod partial_tries {
         K: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
         V: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
         R: TransactionSource<'a, Handle = S::Handle>,
+        WR: TransactionSource<'a, Handle = WS::Handle>,
         S: TrieStore<K, V>,
+        WS: TrieStore<K, PanickingFromBytes<V>>,
         S::Error: From<R::Error>,
-        E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
+        WS::Error: From<WR::Error>,
+        E: From<R::Error>
+            + From<S::Error>
+            + From<bytesrepr::Error>
+            + From<WR::Error>
+            + From<WS::Error>,
     {
-        let mut txn = environment.create_read_write_txn()?;
-        match checked_prune::<K, V, _, _, E>(&mut txn, store, root, key_to_prune)? {
+        match checked_prune::<K, _, _, _, _, _, E>(
+            environment,
+            write_environment,
+            store,
+            write_store,
+            root,
+            key_to_prune,
+        )? {
             TriePruneResult::Pruned(_) => panic!("should not prune"),
             TriePruneResult::MissingKey => Ok(()),
             TriePruneResult::RootNotFound => panic!("root should be found"),
@@ -118,9 +182,13 @@ mod partial_tries {
                 TestValue,
                 _,
                 _,
+                _,
+                _,
                 error::Error,
             >(
                 &context.environment,
+                &context.environment,
+                &context.store,
                 &context.store,
                 &initial_root_hash,
                 key_to_prune.key().unwrap(),
@@ -131,6 +199,7 @@ mod partial_tries {
 }
 
 mod full_tries {
+    use super::*;
     use std::ops::RangeInclusive;
 
     use proptest::{collection, prelude::*};
@@ -147,7 +216,7 @@ mod full_tries {
         trie_store::{
             operations::{
                 prune,
-                tests::{LmdbTestContext, TestKey, TestOperation, TestValue, TEST_TRIE_GENERATORS},
+                tests::{LmdbTestContext, TestKey, TestValue, TEST_TRIE_GENERATORS},
                 write, TriePruneResult, WriteResult,
             },
             TrieStore,
@@ -164,17 +233,22 @@ mod full_tries {
         K: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
         V: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
         R: TransactionSource<'a, Handle = S::Handle>,
-        S: TrieStore<K, V>,
+        S: TrieStore<K, PanickingFromBytes<V>>,
         S::Error: From<R::Error>,
         E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
     {
-        let mut txn = environment.create_read_write_txn()?;
+        let mut txn: R::ReadWriteTransaction = environment.create_read_write_txn()?;
         let mut roots = Vec::new();
         // Insert the key-value pairs, keeping track of the roots as we go
         for (key, value) in pairs {
-            if let WriteResult::Written(new_root) =
-                write::<K, V, _, _, E>(&mut txn, store, roots.last().unwrap_or(root), key, value)?
-            {
+            let new_value = PanickingFromBytes::new(value.clone());
+            if let WriteResult::Written(new_root) = write::<K, PanickingFromBytes<V>, _, _, E>(
+                &mut txn,
+                store,
+                roots.last().unwrap_or(root),
+                key,
+                &new_value,
+            )? {
                 roots.push(new_root);
             } else {
                 panic!("Could not write pair")
@@ -183,10 +257,8 @@ mod full_tries {
         // Delete the key-value pairs, checking the resulting roots as we go
         let mut current_root = roots.pop().unwrap_or_else(|| root.to_owned());
         for (key, _value) in pairs.iter().rev() {
-            let _counter = TestValue::before_operation(TestOperation::Prune);
-            let prune_result = prune::<K, V, _, _, E>(&mut txn, store, &current_root, key);
-            let counter = TestValue::after_operation(TestOperation::Prune);
-            assert_eq!(counter, 0, "Delete should never deserialize a value");
+            let prune_result =
+                prune::<K, PanickingFromBytes<V>, _, _, E>(&mut txn, store, &current_root, key);
             if let TriePruneResult::Pruned(new_root) = prune_result? {
                 current_root = roots.pop().unwrap_or_else(|| root.to_owned());
                 assert_eq!(new_root, current_root);
@@ -235,27 +307,30 @@ mod full_tries {
         K: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
         V: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
         R: TransactionSource<'a, Handle = S::Handle>,
-        S: TrieStore<K, V>,
+        S: TrieStore<K, PanickingFromBytes<V>>,
         S::Error: From<R::Error>,
         E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
     {
-        let mut txn = environment.create_read_write_txn()?;
+        let mut txn: R::ReadWriteTransaction = environment.create_read_write_txn()?;
         let mut expected_root = *root;
         // Insert the key-value pairs, keeping track of the roots as we go
         for (key, value) in pairs_to_insert.iter() {
-            if let WriteResult::Written(new_root) =
-                write::<K, V, _, _, E>(&mut txn, store, &expected_root, key, value)?
-            {
+            let new_value = PanickingFromBytes::new(value.clone());
+            if let WriteResult::Written(new_root) = write::<K, PanickingFromBytes<V>, _, _, E>(
+                &mut txn,
+                store,
+                &expected_root,
+                key,
+                &new_value,
+            )? {
                 expected_root = new_root;
             } else {
                 panic!("Could not write pair")
             }
         }
         for key in keys_to_prune.iter() {
-            let _counter = TestValue::before_operation(TestOperation::Prune);
-            let prune_result = prune::<K, V, _, _, E>(&mut txn, store, &expected_root, key);
-            let counter = TestValue::after_operation(TestOperation::Prune);
-            assert_eq!(counter, 0, "Delete should never deserialize a value");
+            let prune_result =
+                prune::<K, PanickingFromBytes<V>, _, _, E>(&mut txn, store, &expected_root, key);
             match prune_result? {
                 TriePruneResult::Pruned(new_root) => {
                     expected_root = new_root;
@@ -275,9 +350,14 @@ mod full_tries {
 
         let mut actual_root = *root;
         for (key, value) in pairs_to_insert_less_pruned.iter() {
-            if let WriteResult::Written(new_root) =
-                write::<K, V, _, _, E>(&mut txn, store, &actual_root, key, value)?
-            {
+            let new_value = PanickingFromBytes::new(value.clone());
+            if let WriteResult::Written(new_root) = write::<K, PanickingFromBytes<V>, _, _, E>(
+                &mut txn,
+                store,
+                &actual_root,
+                key,
+                &new_value,
+            )? {
                 actual_root = new_root;
             } else {
                 panic!("Could not write pair")

@@ -642,7 +642,7 @@ fn should_calculate_era_validators() {
     assert!(post_era_id > EraId::from(0));
     let consensus_next_era_id: EraId = post_era_id + auction_delay + 1;
 
-    let snapshot_size = auction_delay as usize + 1;
+    let snapshot_size = auction_delay as usize + 2;
     assert_eq!(
         era_validators.len(),
         snapshot_size,
@@ -772,7 +772,7 @@ fn should_get_first_seigniorage_recipients() {
 
     let mut era_validators: EraValidators = builder.get_era_validators();
     let auction_delay = builder.get_auction_delay();
-    let snapshot_size = auction_delay as usize + 1;
+    let snapshot_size = auction_delay as usize + 2;
 
     assert_eq!(era_validators.len(), snapshot_size, "{:?}", era_validators); // eraindex==1 - ran once
 
@@ -1624,7 +1624,11 @@ fn should_undelegate_delegators_when_validator_unbonds() {
         .expect_success();
 
     let bids_after = builder.get_bids();
-    assert!(bids_after.validator_bid(&VALIDATOR_1).is_none());
+    assert!(bids_after
+        .validator_bid(&VALIDATOR_1)
+        .expect("should still have zero bid")
+        .staked_amount()
+        .is_zero());
 
     let unbonding_purses_after: UnbondingPurses = builder.get_unbonds();
     assert_ne!(unbonding_purses_after, unbonding_purses_before);
@@ -1827,7 +1831,11 @@ fn should_undelegate_delegators_when_validator_fully_unbonds() {
         .expect_success();
 
     let bids_after = builder.get_bids();
-    assert!(bids_after.validator_bid(&VALIDATOR_1).is_none());
+    assert!(bids_after
+        .validator_bid(&VALIDATOR_1)
+        .expect("should still have zero bid")
+        .staked_amount()
+        .is_zero());
 
     let unbonding_purses_before: UnbondingPurses = builder.get_unbonds();
 
@@ -1885,6 +1893,9 @@ fn should_undelegate_delegators_when_validator_fully_unbonds() {
         builder.run_auction(timestamp_millis, Vec::new());
         timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
+
+    let bids_after_2 = builder.get_bids();
+    assert!(bids_after_2.validator_bid(&VALIDATOR_1).is_none());
 
     let validator_1_balance_after = builder.get_purse_balance(validator_1.main_purse());
     let delegator_1_balance_after = builder.get_purse_balance(delegator_1.main_purse());
@@ -3872,6 +3883,9 @@ fn should_enforce_max_delegators_per_validator_cap() {
 
     assert_eq!(current_delegator_count, 1);
 
+    // Make the undelegation go through and remove the bid completely.
+    builder.advance_eras_by(DEFAULT_UNBONDING_DELAY + 1);
+
     let delegation_request_3 = ExecuteRequestBuilder::standard(
         *DELEGATOR_1_ADDR,
         CONTRACT_DELEGATE,
@@ -4676,7 +4690,7 @@ fn should_change_validator_bid_public_key() {
     let protocol_version = DEFAULT_PROTOCOL_VERSION;
     let total_payout = builder.base_round_reward(None, protocol_version);
     let mut rewards = BTreeMap::new();
-    rewards.insert(NON_FOUNDER_VALIDATOR_1_PK.clone(), total_payout);
+    rewards.insert(NON_FOUNDER_VALIDATOR_1_PK.clone(), vec![total_payout]);
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
         *SYSTEM_ADDR,
         builder.get_auction_contract_hash(),
@@ -4963,7 +4977,7 @@ fn should_handle_excessively_long_bridge_record_chains() {
     let protocol_version = DEFAULT_PROTOCOL_VERSION;
     let total_payout = builder.base_round_reward(None, protocol_version);
     let mut rewards = BTreeMap::new();
-    rewards.insert(NON_FOUNDER_VALIDATOR_1_PK.clone(), total_payout);
+    rewards.insert(NON_FOUNDER_VALIDATOR_1_PK.clone(), vec![total_payout]);
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
         *SYSTEM_ADDR,
         builder.get_auction_contract_hash(),

@@ -50,10 +50,7 @@ fn create_data() -> Vec<TestData<Bytes, Bytes>> {
     let ext_node: Trie<Bytes, Bytes> = {
         let affix = vec![1u8, 0];
         let pointer = Pointer::NodePointer(node_2_hash);
-        Trie::Extension {
-            affix: affix.into(),
-            pointer,
-        }
+        Trie::extension(affix, pointer)
     };
 
     let ext_node_hash = Digest::hash(ext_node.to_bytes().unwrap());

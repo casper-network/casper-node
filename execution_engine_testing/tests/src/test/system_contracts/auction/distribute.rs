@@ -280,7 +280,7 @@ fn should_distribute_delegation_rate_zero() {
     }
 
     let mut rewards = BTreeMap::new();
-    rewards.insert(VALIDATOR_1.clone(), total_payout);
+    rewards.insert(VALIDATOR_1.clone(), vec![total_payout]);
 
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
         *SYSTEM_ADDR,
@@ -378,27 +378,22 @@ fn should_distribute_delegation_rate_zero() {
             VALIDATOR_1.clone(),
             validator_1_actual_payout + U512::from(VALIDATOR_1_STAKE),
         );
-        assert!(get_validator_bid(&mut builder, VALIDATOR_1.clone()).is_none());
-        U512::zero()
+        get_validator_bid(&mut builder, VALIDATOR_1.clone())
+            .expect("should still have zero bid")
+            .staked_amount()
     };
     assert_eq!(validator_1_balance, U512::zero());
 
-    let delegator_1_balance = {
-        assert!(
-            get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone()).is_none(),
-            "validator withdrawing full stake also removes delegator 1 reinvested funds"
-        );
-        U512::zero()
-    };
+    let delegator_1_balance =
+        get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone())
+            .expect("validator withdrawing full stake also removes delegator 1 reinvested funds")
+            .staked_amount();
     assert_eq!(delegator_1_balance, U512::zero());
 
-    let delegator_2_balance = {
-        assert!(
-            get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_2.clone()).is_none(),
-            "validator withdrawing full stake also removes delegator 2 reinvested funds"
-        );
-        U512::zero()
-    };
+    let delegator_2_balance =
+        get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_2.clone())
+            .expect("validator withdrawing full stake also removes delegator 1 reinvested funds")
+            .staked_amount();
     assert!(delegator_2_balance.is_zero());
 
     let era_info = get_era_info(&mut builder);
@@ -550,7 +545,7 @@ fn should_withdraw_bids_after_distribute() {
     }
 
     let mut rewards = BTreeMap::new();
-    rewards.insert(VALIDATOR_1.clone(), total_payout);
+    rewards.insert(VALIDATOR_1.clone(), vec![total_payout]);
 
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
         *SYSTEM_ADDR,
@@ -656,7 +651,10 @@ fn should_withdraw_bids_after_distribute() {
             undelegate_amount,
         );
         assert!(
-            get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone()).is_none(),
+            get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone())
+                .expect("should still have zero bid")
+                .staked_amount()
+                .is_zero(),
             "delegator 1 did not unstake full expected amount"
         );
         delegator_1_actual_payout
@@ -680,7 +678,10 @@ fn should_withdraw_bids_after_distribute() {
             undelegate_amount,
         );
         assert!(
-            get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_2.clone()).is_none(),
+            get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_2.clone())
+                .expect("should still have zero bid")
+                .staked_amount()
+                .is_zero(),
             "delegator 2 did not unstake full expected amount"
         );
         delegator_2_actual_payout
@@ -703,7 +704,10 @@ fn should_withdraw_bids_after_distribute() {
             withdraw_bid_amount,
         );
 
-        assert!(get_validator_bid(&mut builder, VALIDATOR_1.clone()).is_none());
+        assert!(get_validator_bid(&mut builder, VALIDATOR_1.clone())
+            .expect("should still have zero bid")
+            .staked_amount()
+            .is_zero());
 
         withdraw_bid_amount
     };
@@ -859,7 +863,7 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
     for idx in 0..10 {
         let rewards = {
             let mut rewards = BTreeMap::new();
-            rewards.insert(VALIDATOR_1.clone(), round_reward);
+            rewards.insert(VALIDATOR_1.clone(), vec![round_reward]);
             rewards
         };
 
@@ -1176,7 +1180,7 @@ fn should_distribute_delegation_rate_half() {
     }
 
     let mut rewards = BTreeMap::new();
-    rewards.insert(VALIDATOR_1.clone(), total_payout);
+    rewards.insert(VALIDATOR_1.clone(), vec![total_payout]);
 
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
         *SYSTEM_ADDR,
@@ -1397,7 +1401,7 @@ fn should_distribute_delegation_rate_full() {
     }
 
     let mut rewards = BTreeMap::new();
-    rewards.insert(VALIDATOR_1.clone(), expected_total_reward_integer);
+    rewards.insert(VALIDATOR_1.clone(), vec![expected_total_reward_integer]);
 
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
         *SYSTEM_ADDR,
@@ -1590,7 +1594,7 @@ fn should_distribute_uneven_delegation_rate_zero() {
     }
 
     let mut rewards = BTreeMap::new();
-    rewards.insert(VALIDATOR_1.clone(), total_payout);
+    rewards.insert(VALIDATOR_1.clone(), vec![total_payout]);
 
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
         *SYSTEM_ADDR,
@@ -1893,7 +1897,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
     }
 
     let mut rewards = BTreeMap::new();
-    rewards.insert(VALIDATOR_1.clone(), total_payout);
+    rewards.insert(VALIDATOR_1.clone(), vec![total_payout]);
 
     // Validator 1 distribution
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
@@ -1952,7 +1956,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
     ));
 
     let mut rewards = BTreeMap::new();
-    rewards.insert(VALIDATOR_2.clone(), total_payout);
+    rewards.insert(VALIDATOR_2.clone(), vec![total_payout]);
 
     // Validator 2 distribution
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
@@ -1998,7 +2002,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
     ));
 
     let mut rewards = BTreeMap::new();
-    rewards.insert(VALIDATOR_3.clone(), total_payout);
+    rewards.insert(VALIDATOR_3.clone(), vec![total_payout]);
 
     // Validator 3 distribution
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
@@ -2224,9 +2228,9 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
     }
 
     let mut rewards = BTreeMap::new();
-    rewards.insert(VALIDATOR_1.clone(), total_payout);
-    rewards.insert(VALIDATOR_2.clone(), total_payout);
-    rewards.insert(VALIDATOR_3.clone(), total_payout);
+    rewards.insert(VALIDATOR_1.clone(), vec![total_payout]);
+    rewards.insert(VALIDATOR_2.clone(), vec![total_payout]);
+    rewards.insert(VALIDATOR_3.clone(), vec![total_payout]);
 
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
         *SYSTEM_ADDR,
@@ -2585,9 +2589,9 @@ fn should_increase_total_supply_after_distribute() {
     let total_payout = U512::from(1_000_000_000_000_u64);
 
     let mut rewards = BTreeMap::new();
-    rewards.insert(VALIDATOR_1.clone(), total_payout);
-    rewards.insert(VALIDATOR_2.clone(), total_payout);
-    rewards.insert(VALIDATOR_3.clone(), total_payout);
+    rewards.insert(VALIDATOR_1.clone(), vec![total_payout]);
+    rewards.insert(VALIDATOR_2.clone(), vec![total_payout]);
+    rewards.insert(VALIDATOR_3.clone(), vec![total_payout]);
 
     for _ in 0..5 {
         let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
@@ -2765,7 +2769,7 @@ fn should_not_create_purses_during_distribute() {
     let total_payout = U512::from(1_000_000_000_000_u64);
 
     let mut rewards = BTreeMap::new();
-    rewards.insert(VALIDATOR_1.clone(), total_payout);
+    rewards.insert(VALIDATOR_1.clone(), vec![total_payout]);
 
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
         *SYSTEM_ADDR,
@@ -2913,7 +2917,7 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
     }
 
     let mut rewards = BTreeMap::new();
-    rewards.insert(VALIDATOR_1.clone(), expected_total_reward_integer);
+    rewards.insert(VALIDATOR_1.clone(), vec![expected_total_reward_integer]);
 
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
         *SYSTEM_ADDR,
@@ -3002,7 +3006,7 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
     let mut rewards = BTreeMap::new();
     rewards.insert(
         VALIDATOR_1.clone(),
-        expected_total_reward_after.to_integer(),
+        vec![expected_total_reward_after.to_integer()],
     );
     assert!(
         builder
@@ -3162,7 +3166,10 @@ fn should_not_restake_after_full_unbond() {
         U512::from(DELEGATOR_1_STAKE),
     );
     let delegator = get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone());
-    assert!(delegator.is_none());
+    assert!(delegator
+        .expect("should still have zero bid")
+        .staked_amount()
+        .is_zero());
 
     let withdraws = builder.get_unbonds();
     let unbonding_purses = withdraws
@@ -3186,10 +3193,13 @@ fn should_not_restake_after_full_unbond() {
 
     builder.advance_era();
 
-    // Delegator should not remain delegated even though they were eligible for rewards in the
+    // Delegator's stake should remain at zero even though they were eligible for rewards in the
     // second era.
     let delegator = get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone());
-    assert!(delegator.is_none());
+    assert!(delegator
+        .expect("should have zero bid")
+        .staked_amount()
+        .is_zero());
 }
 
 // In this test, we set up a delegator and a validator, the delegator delegates to the validator.
@@ -3312,7 +3322,10 @@ fn delegator_full_unbond_during_first_reward_era() {
         U512::from(DELEGATOR_1_STAKE),
     );
     let delegator = get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone());
-    assert!(delegator.is_none());
+    assert!(delegator
+        .expect("should still have zero bid")
+        .staked_amount()
+        .is_zero());
 
     let withdraws = builder.get_unbonds();
     let unbonding_purses = withdraws
@@ -3332,8 +3345,11 @@ fn delegator_full_unbond_during_first_reward_era() {
     // validator receives rewards after this step.
     builder.advance_era();
 
-    // Delegator should not remain delegated even though they were eligible for rewards in the
-    // second era.
+    // Delegator's stake should remain at zero delegated even though they were eligible for rewards
+    // in the second era.
     let delegator = get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone());
-    assert!(delegator.is_none());
+    assert!(delegator
+        .expect("should still have zero bid")
+        .staked_amount()
+        .is_zero());
 }

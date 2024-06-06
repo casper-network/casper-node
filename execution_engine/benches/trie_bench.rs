@@ -51,19 +51,19 @@ fn deserialize_trie_node(b: &mut Bencher) {
 }
 
 fn serialize_trie_node_pointer(b: &mut Bencher) {
-    let node = Trie::<Key, StoredValue>::Extension {
-        affix: (0..255).collect(),
-        pointer: Pointer::NodePointer(Digest::hash([0; 32])),
-    };
+    let node = Trie::<Key, StoredValue>::extension(
+        (0..255).collect(),
+        Pointer::NodePointer(Digest::hash([0; 32])),
+    );
 
     b.iter(|| ToBytes::to_bytes(black_box(&node)));
 }
 
 fn deserialize_trie_node_pointer(b: &mut Bencher) {
-    let node = Trie::<Key, StoredValue>::Extension {
-        affix: (0..255).collect(),
-        pointer: Pointer::NodePointer(Digest::hash([0; 32])),
-    };
+    let node = Trie::<Key, StoredValue>::extension(
+        (0..255).collect(),
+        Pointer::NodePointer(Digest::hash([0; 32])),
+    );
     let node_bytes = node.to_bytes().unwrap();
 
     b.iter(|| Trie::<Key, StoredValue>::from_bytes(black_box(&node_bytes)));

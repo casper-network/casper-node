@@ -280,7 +280,6 @@ impl TestScenario {
                 let txn = TransactionV1Builder::new_session(
                     TransactionSessionKind::Standard,
                     Bytes::from(vec![1]),
-                    "call",
                 )
                 .with_chain_name("casper-example")
                 .with_timestamp(Timestamp::zero())
@@ -305,7 +304,6 @@ impl TestScenario {
                     let txn = TransactionV1Builder::new_session(
                         TransactionSessionKind::Standard,
                         Bytes::from(vec![1]),
-                        "call",
                     )
                     .with_chain_name("casper-example")
                     .with_timestamp(Timestamp::now())
@@ -324,7 +322,6 @@ impl TestScenario {
                 let txn = TransactionV1Builder::new_session(
                     TransactionSessionKind::Standard,
                     Bytes::from(vec![1]),
-                    "call",
                 )
                 .with_chain_name("casper-example")
                 .with_timestamp(Timestamp::now())
@@ -520,7 +517,6 @@ impl TestScenario {
                         let txn = TransactionV1Builder::new_session(
                             TransactionSessionKind::Standard,
                             Bytes::from(vec![1]),
-                            "call",
                         )
                         .with_chain_name("casper-example")
                         .with_timestamp(timestamp)
@@ -547,7 +543,6 @@ impl TestScenario {
                         let txn = TransactionV1Builder::new_session(
                             TransactionSessionKind::Standard,
                             Bytes::from(vec![1]),
-                            "call",
                         )
                         .with_chain_name("casper-example")
                         .with_timestamp(timestamp)

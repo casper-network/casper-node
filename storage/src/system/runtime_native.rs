@@ -416,12 +416,20 @@ where
         self.address
     }
 
+    pub fn with_address(&mut self, account_hash: AccountHash) {
+        self.address = account_hash;
+    }
+
     pub fn entity_key(&self) -> &Key {
         &self.entity_key
     }
 
     pub fn addressable_entity(&self) -> &AddressableEntity {
         &self.addressable_entity
+    }
+
+    pub fn with_addressable_entity(&mut self, entity: AddressableEntity) {
+        self.addressable_entity = entity;
     }
 
     pub fn named_keys(&self) -> &NamedKeys {
