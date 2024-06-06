@@ -91,8 +91,8 @@ pub const ACCOUNT_ENTITY_PREFIX: &str = "account-";
 /// The prefix applied to the hex-encoded `Smart contract` to produce a formatted string
 /// representation.
 pub const CONTRACT_ENTITY_PREFIX: &str = "contract-";
-/// The prefix applied to the hex-encoded `System entity account or contract` to produce a formatted string
-/// representation.
+/// The prefix applied to the hex-encoded `System entity account or contract` to produce a formatted
+///  string representation.
 pub const SYSTEM_ENTITY_PREFIX: &str = "system-";
 /// The prefix applied to the hex-encoded `Named Key` to produce a formatted string
 /// representation.

@@ -541,7 +541,6 @@ pub mod gens {
     /// This function is used to generate random `DeployHash` values for testing purposes.
     /// It produces a proptest `Strategy` that can be used to generate arbitrary `DeployHash`
     /// values.
-    ///
     pub fn deploy_hash_arb() -> impl Strategy<Value = DeployHash> {
         array::uniform32(<u8>::arbitrary()).prop_map(DeployHash::from_raw)
     }
