@@ -429,7 +429,6 @@ impl MainReactor {
             }
         };
 
-        let _network_name = self.chainspec.network_config.name.clone();
         match self.chainspec.upgrade_config_from_parts(
             *header.state_root_hash(),
             header.protocol_version(),
