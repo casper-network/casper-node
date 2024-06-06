@@ -805,12 +805,20 @@ where
             let Some(header) = resolve_era_switch_block_header(effect_builder, era_identifier).await else {
                 return BinaryResponse::new_error(ErrorCode::SwitchBlockNotFound, protocol_version);
             };
-
-            let request =
-                SeigniorageRecipientsRequest::new(*header.state_root_hash(), protocol_version);
+            let Some(previous_height) = header.height().checked_sub(1) else {
+                return BinaryResponse::new_empty(protocol_version);
+            };
+            let Some(previous_header) =
+                effect_builder.get_block_header_at_height_from_storage(previous_height, true).await else {
+                return BinaryResponse::new_error(ErrorCode::InternalError, protocol_version);
+            };
+            let snapshot_request = SeigniorageRecipientsRequest::new(
+                *previous_header.state_root_hash(),
+                protocol_version,
+            );
 
             let snapshot = match effect_builder
-                .get_seigniorage_recipients_snapshot_from_contract_runtime(request)
+                .get_seigniorage_recipients_snapshot_from_contract_runtime(snapshot_request)
                 .await
             {
                 SeigniorageRecipientsResult::Success {

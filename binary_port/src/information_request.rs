@@ -177,9 +177,7 @@ impl ToBytes for InformationRequest {
             } => {
                 era_identifier.write_bytes(writer)?;
                 validator.write_bytes(writer)?;
-                if let Some(delegator) = delegator {
-                    delegator.write_bytes(writer)?;
-                }
+                delegator.as_deref().write_bytes(writer)?;
                 Ok(())
             }
         }
