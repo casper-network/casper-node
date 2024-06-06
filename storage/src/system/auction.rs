@@ -821,23 +821,31 @@ pub fn reward(
     era_id: EraId,
     rewards: &[U512],
     seigniorage_recipients_snapshot: &SeigniorageRecipientsSnapshot,
-) -> Result<U512, Error> {
-    let reward =
-        rewards_per_validator(validator, era_id, rewards, seigniorage_recipients_snapshot)?
-            .into_iter()
-            .map(|reward_info| {
-                if let Some(delegator) = delegator {
-                    reward_info
-                        .delegator_rewards
-                        .get(delegator)
-                        .copied()
-                        .unwrap_or_default()
-                } else {
-                    reward_info.validator_reward
-                }
-            })
-            .sum();
-    Ok(reward)
+) -> Result<Option<U512>, Error> {
+    let validator_rewards =
+        match rewards_per_validator(validator, era_id, rewards, seigniorage_recipients_snapshot) {
+            Ok(rewards) => rewards,
+            Err(Error::ValidatorNotFound) => return Ok(None),
+            Err(Error::MissingSeigniorageRecipients) => return Ok(None),
+            Err(err) => return Err(err),
+        };
+
+    let reward = validator_rewards
+        .into_iter()
+        .map(|reward_info| {
+            if let Some(delegator) = delegator {
+                reward_info
+                    .delegator_rewards
+                    .get(delegator)
+                    .copied()
+                    .unwrap_or_default()
+            } else {
+                reward_info.validator_reward
+            }
+        })
+        .sum();
+
+    Ok(Some(reward))
 }
 
 fn rewards_per_validator(

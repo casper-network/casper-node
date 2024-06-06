@@ -13,8 +13,8 @@ use casper_binary_port::{
     BinaryRequestTag, BinaryResponse, BinaryResponseAndRequest, DictionaryItemIdentifier,
     DictionaryQueryResult, EraIdentifier, ErrorCode, GetRequest, GetTrieFullResult,
     GlobalStateQueryResult, GlobalStateRequest, InformationRequest, InformationRequestTag,
-    KeyPrefix, NodeStatus, PayloadType, PurseIdentifier, ReactorStateName, RecordId, Reward,
-    TransactionWithExecutionInfo,
+    KeyPrefix, NodeStatus, PayloadType, PurseIdentifier, ReactorStateName, RecordId,
+    RewardResponse, TransactionWithExecutionInfo,
 };
 use casper_storage::{
     data_access_layer::{
@@ -803,8 +803,9 @@ where
             delegator,
         } => {
             let Some(header) = resolve_era_switch_block_header(effect_builder, era_identifier).await else {
-                return BinaryResponse::new_empty(protocol_version);
+                return BinaryResponse::new_error(ErrorCode::SwitchBlockNotFound, protocol_version);
             };
+
             let request =
                 SeigniorageRecipientsRequest::new(*header.state_root_hash(), protocol_version);
 
@@ -827,12 +828,17 @@ where
                 }
             };
             let Some(era_end) = header.clone_era_end() else {
-                // switch block should have era end
+                // switch block should have an era end
                 return BinaryResponse::new_error(ErrorCode::InternalError, protocol_version);
             };
             let block_rewards = match era_end.rewards() {
                 Rewards::V2(rewards) => rewards,
-                _ => todo!(),
+                _ => {
+                    return BinaryResponse::new_error(
+                        ErrorCode::UnsupportedRewardsV1Request,
+                        protocol_version,
+                    )
+                }
             };
             let Some(validator_rewards) = block_rewards.get(&validator) else {
                 return BinaryResponse::new_empty(protocol_version);
@@ -844,7 +850,11 @@ where
                 validator_rewards,
                 &snapshot,
             ) {
-                Ok(reward) => BinaryResponse::from_value(Reward::new(reward), protocol_version),
+                Ok(Some(reward)) => {
+                    let response = RewardResponse::new(reward, header.era_id());
+                    BinaryResponse::from_value(response, protocol_version)
+                }
+                Ok(None) => BinaryResponse::new_empty(protocol_version),
                 Err(_) => BinaryResponse::new_error(ErrorCode::InternalError, protocol_version),
             }
         }
@@ -1162,7 +1172,9 @@ where
         }
         Some(EraIdentifier::Block(block_identifier)) => {
             let header = resolve_block_header(effect_builder, Some(block_identifier)).await?;
-            header.is_switch_block().then_some(header)
+            effect_builder
+                .get_switch_block_header_by_era_id_from_storage(header.era_id())
+                .await
         }
         None => {
             effect_builder

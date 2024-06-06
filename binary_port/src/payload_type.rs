@@ -22,7 +22,7 @@ use crate::{
     speculative_execution_result::SpeculativeExecutionResult,
     type_wrappers::{
         ConsensusStatus, ConsensusValidatorChanges, GetTrieFullResult, LastProgress, NetworkName,
-        ReactorStateName, Reward,
+        ReactorStateName, RewardResponse,
     },
     BalanceResponse, DictionaryQueryResult, RecordId, TransactionWithExecutionInfo, Uptime,
 };
@@ -387,7 +387,7 @@ impl PayloadEntity for BalanceResponse {
     const PAYLOAD_TYPE: PayloadType = PayloadType::BalanceResponse;
 }
 
-impl PayloadEntity for Reward {
+impl PayloadEntity for RewardResponse {
     const PAYLOAD_TYPE: PayloadType = PayloadType::Reward;
 }
 

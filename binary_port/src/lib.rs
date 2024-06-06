@@ -46,5 +46,5 @@ pub use speculative_execution_result::SpeculativeExecutionResult;
 pub use state_request::GlobalStateRequest;
 pub use type_wrappers::{
     ConsensusStatus, ConsensusValidatorChanges, DictionaryQueryResult, GetTrieFullResult,
-    LastProgress, NetworkName, ReactorStateName, Reward, TransactionWithExecutionInfo, Uptime,
+    LastProgress, NetworkName, ReactorStateName, RewardResponse, TransactionWithExecutionInfo, Uptime,
 };
