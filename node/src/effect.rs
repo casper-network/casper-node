@@ -133,8 +133,8 @@ use casper_types::{
     Approval, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures,
     BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest, EraId, ExecutionInfo,
     FinalitySignature, FinalitySignatureId, FinalitySignatureV2, Key, NextUpgrade, Package,
-    ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transaction, TransactionHash,
-    TransactionHeader, TransactionId, Transfer, U512,
+    ProtocolUpgradeConfig, ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transaction,
+    TransactionHash, TransactionHeader, TransactionId, Transfer, U512,
 };
 
 use crate::{
@@ -151,6 +151,7 @@ use crate::{
         network::{blocklist::BlocklistJustification, FromIncoming, NetworkInsights},
         transaction_acceptor,
     },
+    contract_runtime::ExecutionPreState,
     failpoints::FailpointActivation,
     reactor::{main_reactor::ReactorState, EventQueueHandle, QueueKind},
     types::{
@@ -1029,6 +1030,18 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
+    pub(crate) async fn update_contract_runtime_state(self, new_pre_state: ExecutionPreState)
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.event_queue
+            .schedule(
+                ContractRuntimeRequest::UpdatePreState { new_pre_state },
+                QueueKind::ContractRuntime,
+            )
+            .await
+    }
+
     /// Announces validators for upcoming era.
     pub(crate) async fn announce_upcoming_era_validators(
         self,
@@ -1873,6 +1886,28 @@ impl<REv> EffectBuilder<REv> {
                     meta_block_state,
                 },
                 QueueKind::ContractRuntime,
+            )
+            .await
+    }
+
+    pub(crate) async fn enqueue_protocol_upgrade(
+        self,
+        upgrade_config: ProtocolUpgradeConfig,
+        next_block_height: u64,
+        parent_hash: BlockHash,
+        parent_seed: Digest,
+    ) where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.event_queue
+            .schedule(
+                ContractRuntimeRequest::DoProtocolUpgrade {
+                    protocol_upgrade_config: upgrade_config,
+                    next_block_height,
+                    parent_hash,
+                    parent_seed,
+                },
+                QueueKind::Control,
             )
             .await
     }
