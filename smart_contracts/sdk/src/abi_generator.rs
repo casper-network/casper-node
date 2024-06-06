@@ -3,7 +3,6 @@ use std::ptr::NonNull;
 
 use crate::abi::Declaration;
 use crate::linkme::distributed_slice;
-use crate::sys::Fptr;
 
 #[derive(Debug)]
 pub struct Param {

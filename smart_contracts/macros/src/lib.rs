@@ -680,34 +680,6 @@ fn generate_impl_for_contract(
             _ => todo!(),
         };
 
-        let _func_name = &func.sig.ident;
-
-        let _result = match &func.sig.output {
-            syn::ReturnType::Default => {
-                populate_definitions.push(quote! {
-                    definitions.populate_one::<()>();
-                });
-
-                quote! { <() as casper_sdk::abi::CasperABI>::declaration() }
-            }
-            syn::ReturnType::Type(_, ty) => match ty.as_ref() {
-                Type::Never(_) => {
-                    populate_definitions.push(quote! {
-                        definitions.populate_one::<()>();
-                    });
-
-                    quote! { <() as casper_sdk::abi::CasperABI>::declaration() }
-                }
-                _ => {
-                    populate_definitions.push(quote! {
-                        definitions.populate_one::<#ty>();
-                    });
-
-                    quote! { <#ty as casper_sdk::abi::CasperABI>::declaration() }
-                }
-            },
-        };
-
         let mut args = Vec::new();
 
         for input in &func.sig.inputs {
@@ -752,13 +724,43 @@ fn generate_impl_for_contract(
 
         // let mut args = Vec::new();
         // for arg in &entry_point
-        let _bits = flag_value.bits();
 
         let selector_value = utils::compute_selector_value(&func.sig);
         combined_selectors ^= Selector::from(selector_value);
 
         #[cfg(feature = "__abi_generator")]
         {
+            let bits = flag_value.bits();
+
+            let schema_selector = 0u32; // TODO: Probably wise to remove this from schema for now.
+            let result = match &func.sig.output {
+                syn::ReturnType::Default => {
+                    populate_definitions.push(quote! {
+                        definitions.populate_one::<()>();
+                    });
+
+                    quote! { <() as casper_sdk::abi::CasperABI>::declaration() }
+                }
+                syn::ReturnType::Type(_, ty) => match ty.as_ref() {
+                    Type::Never(_) => {
+                        populate_definitions.push(quote! {
+                            definitions.populate_one::<()>();
+                        });
+
+                        quote! { <() as casper_sdk::abi::CasperABI>::declaration() }
+                    }
+                    _ => {
+                        populate_definitions.push(quote! {
+                            definitions.populate_one::<#ty>();
+                        });
+
+                        quote! { <#ty as casper_sdk::abi::CasperABI>::declaration() }
+                    }
+                },
+            };
+
+            let func_name = &func.sig.ident;
+
             let linkme_schema_entry_point_ident =
                 format_ident!("__casper_schema_entry_point_{func_name}");
 
@@ -766,7 +768,7 @@ fn generate_impl_for_contract(
                 fn #linkme_schema_entry_point_ident() -> casper_sdk::schema::SchemaEntryPoint {
                     casper_sdk::schema::SchemaEntryPoint {
                         name: stringify!(#func_name).into(),
-                        selector: #schema_selector,
+                        selector: Some(#schema_selector),
                         arguments: vec![ #(#args,)* ],
                         result: #result,
                         flags: casper_sdk::vm_common::flags::EntryPointFlags::from_bits(#bits).unwrap(),

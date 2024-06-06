@@ -9,3 +9,5 @@ clap-cargo = { version = "0.14.0", features = ["cargo_metadata"] }
 libloading = "0.8.3"
 casper-sdk-sys = { path = "../smart_contracts/sdk-sys" }
 casper-sdk = { path = "../smart_contracts/sdk", features = ["__abi_generator"] }
+tempfile = "3.10.1"
+anyhow = "1.0.86"
