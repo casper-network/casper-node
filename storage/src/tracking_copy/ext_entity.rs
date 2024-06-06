@@ -109,7 +109,7 @@ pub trait TrackingCopyEntityExt<R> {
         &mut self,
         account: Account,
         protocol_version: ProtocolVersion,
-    ) -> Result<(), Self::Error>;
+    ) -> Result<AddressableEntity, Self::Error>;
     fn migrate_package(
         &mut self,
         legacy_package_key: Key,
@@ -163,8 +163,8 @@ pub trait TrackingCopyEntityExt<R> {
 }
 
 impl<R> TrackingCopyEntityExt<R> for TrackingCopy<R>
-where
-    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
+    where
+        R: StateReader<Key, StoredValue, Error=GlobalStateError>,
 {
     type Error = TrackingCopyError;
 
@@ -232,53 +232,8 @@ where
         let entity_addr = match self.get(&account_key)? {
             Some(StoredValue::Account(account)) => {
                 // do a legacy account migration
-                let mut generator =
-                    AddressGenerator::new(account.main_purse().addr().as_ref(), Phase::System);
-
-                let byte_code_hash = ByteCodeHash::default();
-                let entity_hash = AddressableEntityHash::new(generator.new_hash_address());
-                let package_hash = PackageHash::new(generator.new_hash_address());
-
-                self.migrate_named_keys(
-                    EntityAddr::Account(entity_hash.value()),
-                    account.named_keys().clone(),
-                )?;
-
-                let entity = AddressableEntity::new(
-                    package_hash,
-                    byte_code_hash,
-                    protocol_version,
-                    account.main_purse(),
-                    account.associated_keys().clone().into(),
-                    account.action_thresholds().clone().into(),
-                    MessageTopics::default(),
-                    EntityKind::Account(account_hash),
-                );
-
-                let package = {
-                    let mut package = Package::new(
-                        EntityVersions::default(),
-                        BTreeSet::default(),
-                        Groups::default(),
-                        PackageStatus::Locked,
-                    );
-                    package.insert_entity_version(protocol_version.value().major, entity_hash);
-                    package
-                };
-
-                let entity_addr = entity.entity_addr(entity_hash);
-                let entity_key = Key::AddressableEntity(entity_addr);
-
-                self.write(entity_key, StoredValue::AddressableEntity(entity.clone()));
-                self.write(package_hash.into(), package.into());
-
-                let contract_by_account = match CLValue::from_t(entity_key) {
-                    Ok(cl_value) => cl_value,
-                    Err(error) => return Err(TrackingCopyError::CLValue(error)),
-                };
-
-                self.write(account_key, StoredValue::CLValue(contract_by_account));
-
+                let entity = self.create_addressable_entity_from_account(account, protocol_version)?;
+                let entity_addr = EntityAddr::new_account(account_hash.value());
                 return Ok((entity_addr, entity));
             }
 
@@ -320,9 +275,9 @@ where
 
         if !administrative_accounts.is_empty()
             && administrative_accounts
-                .intersection(authorization_keys)
-                .next()
-                .is_some()
+            .intersection(authorization_keys)
+            .next()
+            .is_some()
         {
             // Exit early if there's at least a single signature coming from an admin.
             return Ok((entity_record, entity_hash));
@@ -428,7 +383,8 @@ where
 
         match maybe_stored_value {
             Some(StoredValue::Account(account)) => {
-                self.create_addressable_entity_from_account(account, protocol_version)
+                let _ = self.create_addressable_entity_from_account(account, protocol_version)?;
+                Ok(())
             }
             Some(StoredValue::CLValue(_)) => Ok(()),
             // This means the Account does not exist, which we consider to be
@@ -449,7 +405,7 @@ where
         let mut generator = AddressGenerator::new(main_purse.addr().as_ref(), Phase::System);
 
         let byte_code_hash = ByteCodeHash::default();
-        let entity_hash = AddressableEntityHash::new(generator.new_hash_address());
+        let entity_hash = AddressableEntityHash::new(account_hash.value());
         let package_hash = PackageHash::new(generator.new_hash_address());
 
         let associated_keys = AssociatedKeys::new(account_hash, Weight::new(1));
@@ -499,7 +455,7 @@ where
         &mut self,
         account: Account,
         protocol_version: ProtocolVersion,
-    ) -> Result<(), Self::Error> {
+    ) -> Result<AddressableEntity, Self::Error> {
         let account_hash = account.account_hash();
         debug!("migrating account {}", account_hash);
         // carry forward the account hash to allow reverse lookup
@@ -529,7 +485,7 @@ where
         };
 
         // write entity after package
-        {
+        let entity = {
             // currently, addressable entities of account kind are not permitted to have bytecode
             // however, we intend to revisit this and potentially allow it in a future release
             // as a replacement for stored session.
@@ -542,7 +498,7 @@ where
                     Weight::new(1u8),
                     Weight::new(account_threshold.key_management.value()),
                 )
-                .map_err(Self::Error::SetThresholdFailure)?
+                    .map_err(Self::Error::SetThresholdFailure)?
             };
 
             let associated_keys = AssociatedKeys::from(account.associated_keys().clone());
@@ -563,14 +519,15 @@ where
                 Err(err) => return Err(Self::Error::CLValue(err)),
             };
 
-            self.write(entity_key, entity.into());
+            self.write(entity_key, entity.clone().into());
             self.write(
                 Key::Account(account_hash),
                 StoredValue::CLValue(contract_by_account),
             );
-        }
+            entity
+        };
 
-        Ok(())
+        Ok(entity)
     }
 
     fn migrate_package(
