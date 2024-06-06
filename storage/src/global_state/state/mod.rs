@@ -1036,7 +1036,7 @@ pub trait StateProvider {
                 match k.as_uref() {
                     Some(uref) => entity_access_rights.extend(&[*uref]),
                     None => {
-                        return BiddingResult::Failure(TrackingCopyError::UnexpectedKeyVariant(k))
+                        return BiddingResult::Failure(TrackingCopyError::UnexpectedKeyVariant(k));
                     }
                 }
                 entity_named_keys.insert(ERA_END_TIMESTAMP_MILLIS_KEY.into(), k);
@@ -1044,7 +1044,7 @@ pub trait StateProvider {
             Ok(None) => {
                 return BiddingResult::Failure(TrackingCopyError::NamedKeyNotFound(
                     ERA_END_TIMESTAMP_MILLIS_KEY.into(),
-                ))
+                ));
             }
             Err(tce) => {
                 return BiddingResult::Failure(tce);
@@ -1059,7 +1059,7 @@ pub trait StateProvider {
                 match k.as_uref() {
                     Some(uref) => entity_access_rights.extend(&[*uref]),
                     None => {
-                        return BiddingResult::Failure(TrackingCopyError::UnexpectedKeyVariant(k))
+                        return BiddingResult::Failure(TrackingCopyError::UnexpectedKeyVariant(k));
                     }
                 }
                 entity_named_keys.insert(ERA_ID_KEY.into(), k);
@@ -1067,7 +1067,7 @@ pub trait StateProvider {
             Ok(None) => {
                 return BiddingResult::Failure(TrackingCopyError::NamedKeyNotFound(
                     ERA_ID_KEY.into(),
-                ))
+                ));
             }
             Err(tce) => {
                 return BiddingResult::Failure(tce);
@@ -2111,7 +2111,6 @@ where
         let instruction = match (read_result, kind) {
             (_, TransformKindV2::Identity) => {
                 // effectively a noop.
-                debug!(?state_root, ?key, "commit: attempt to commit a read.");
                 continue;
             }
             (ReadResult::NotFound, TransformKindV2::Write(new_value)) => {
