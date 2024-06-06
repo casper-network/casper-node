@@ -8,6 +8,7 @@ This is a binary protocol which follows a simple request-response model. The pro
 | Size in bytes | Field            | Description                                               |
 |---------------|------------------|-----------------------------------------------------------|
 | 12            | ProtocolVersion  | Protocol version as a u32 triplet (major, minor, patch)   |
+| 2             | Header version   | Binary header version as single u16 number                |
 | 1             | BinaryRequestTag | Tag identifying the request                               |
 | ...           | RequestPayload   | Payload to be interpreted according to `BinaryRequestTag` |
 
@@ -40,7 +41,7 @@ Implementations of the protocol can handle requests/responses with a different *
 
 Other changes to the protocol such as changes to the format of existing requests/responses or removal of existing requests/responses are only allowed between **MAJOR** versions. Implementations of the protocol should not handle requests/responses with a different **MAJOR** version than their own and immediately respond with an error code indicating the lack of support for the given version (`ErrorCode::UnsupportedRequest`).
 
-Changes to the envelopes (the request/response headers) are not allowed.
+Changes to the envelopes (the request/response headers) are allowed, but are breaking. When such a change is required, the "Header version" should in the request header should also be changed to prevent binary port from trying to handle requests it can't process.
 
 ## Request model details
 There are currently 3 supported types of requests, but the request model can be extended with new variants according to the [versioning](#versioning) rules. The request types are:
