@@ -12,14 +12,11 @@ use std::{
     path::PathBuf,
 };
 
+use casper_types::{Chainspec, TimeDiff, Timestamp, U512};
 use datasize::DataSize;
 use itertools::Itertools;
-use num_rational::Ratio;
-use num_traits::CheckedMul;
 use rand::RngCore;
 use tracing::{debug, error, info, trace, warn};
-
-use casper_types::{system::auction::BLOCK_REWARD, Chainspec, TimeDiff, Timestamp, U512};
 
 use crate::{
     components::consensus::{
@@ -160,24 +157,8 @@ impl<C: Context + 'static> HighwayProtocol<C> {
             .saturating_mul(2)
             .min(MAX_ENDORSEMENT_EVIDENCE_LIMIT);
 
-        let block_reward = if chainspec.core_config.compute_rewards {
-            BLOCK_REWARD
-        } else {
-            // Set the block reward parameter to 0 so Highway can skip the computation.
-            0
-        };
-
-        let reduced_block_reward = match highway_config
-            .reduced_reward_multiplier
-            .checked_mul(&Ratio::from(block_reward))
-        {
-            None => u64::MAX,
-            Some(ratio) => ratio.to_integer(),
-        };
         let params = Params::new(
             seed,
-            block_reward,
-            reduced_block_reward,
             minimum_round_length,
             maximum_round_length,
             init_round_len,

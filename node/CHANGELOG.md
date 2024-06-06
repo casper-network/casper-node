@@ -22,6 +22,7 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Removed
 * Remove the JSON-RPC and speculative execution interfaces.
+* Remove chainspec setting `highway.performance_meter.blocks_to_consider` and the entire `highway.performance_meter` section.
 
 
 

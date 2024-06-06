@@ -173,10 +173,6 @@ maximum_round_length = '66 seconds'
 # Expressed as a fraction (1/5 by default).
 reduced_reward_multiplier = [1, 5]
 
-[highway.performance_meter]
-# The number of recent blocks to consider when measuring performance for the purpose of deciding the round length.
-blocks_to_consider = 10
-
 [transactions]
 # The duration after the transaction timestamp that it can be included in a block.
 max_ttl = '2 hours'
