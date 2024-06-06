@@ -91,7 +91,6 @@ impl<'a> TransactionV1Builder<'a> {
     /// - `pricing_mode` is set to the default pricing mode [`Self::DEFAULT_PRICING_MODE`].
     /// - `initiator_addr` is initialized to `None`.
     /// - `secret_key` is initialized to `None`.
-    ///
     pub fn new(body: TransactionV1Body) -> Self {
         #[cfg(any(feature = "std-fs-io", test))]
         let timestamp = Timestamp::now();
