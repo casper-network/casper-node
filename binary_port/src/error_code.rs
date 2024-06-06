@@ -186,6 +186,9 @@ pub enum ErrorCode {
     /// the case that nothing else works.
     #[error("the transaction or deploy sent to the network was invalid for an unspecified reason")]
     InvalidTransactionOrDeployUnspecified = 57,
+    /// Invalid binary port version.
+    #[error("binary port version mismatch")]
+    BinaryPortVersionMismatch = 58,
 }
 
 impl TryFrom<u8> for ErrorCode {

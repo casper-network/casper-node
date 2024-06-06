@@ -910,6 +910,14 @@ where
         );
     }
 
+    let header_version = header.version();
+    if header_version != BinaryRequestHeader::VERSION {
+        return (
+            BinaryResponse::new_error(ErrorCode::BinaryPortVersionMismatch, protocol_version),
+            request_id,
+        );
+    }
+
     // we might receive a request added in a minor version if we're behind
     let Ok(tag) = BinaryRequestTag::try_from(header.type_tag()) else {
         return (BinaryResponse::new_error(ErrorCode::UnsupportedRequest, protocol_version), request_id);

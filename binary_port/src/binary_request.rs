@@ -16,15 +16,21 @@ use rand::Rng;
 #[derive(Debug, PartialEq)]
 pub struct BinaryRequestHeader {
     protocol_version: ProtocolVersion,
+    version: u16,
     type_tag: u8,
     id: u16,
 }
 
 impl BinaryRequestHeader {
+    // Defines the current version of the header, in practice defining the current version of the
+    // binary port protocol. Requests with mismatched header version will be dropped.
+    pub const VERSION: u16 = 0;
+
     /// Creates new binary request header.
     pub fn new(protocol_version: ProtocolVersion, type_tag: BinaryRequestTag, id: u16) -> Self {
         Self {
             protocol_version,
+            version: Self::VERSION,
             type_tag: type_tag.into(),
             id,
         }
@@ -44,6 +50,17 @@ impl BinaryRequestHeader {
     pub fn id(&self) -> u16 {
         self.id
     }
+
+    /// Returns the header version.
+    pub fn version(&self) -> u16 {
+        self.version
+    }
+
+    #[cfg(any(feature = "testing", test))]
+    pub fn set_version(&mut self, version: u16) {
+        self.version = version;
+    }
+
     #[cfg(any(feature = "testing", test))]
     pub fn set_protocol_version(&mut self, protocol_version: ProtocolVersion) {
         self.protocol_version = protocol_version;
@@ -53,6 +70,7 @@ impl BinaryRequestHeader {
     pub(crate) fn random(rng: &mut TestRng) -> Self {
         Self {
             protocol_version: ProtocolVersion::from_parts(rng.gen(), rng.gen(), rng.gen()),
+            version: rng.gen(),
             type_tag: BinaryRequestTag::random(rng).into(),
             id: rng.gen(),
         }
@@ -68,12 +86,14 @@ impl ToBytes for BinaryRequestHeader {
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         self.protocol_version.write_bytes(writer)?;
+        self.version.write_bytes(writer)?;
         self.type_tag.write_bytes(writer)?;
         self.id.write_bytes(writer)
     }
 
     fn serialized_length(&self) -> usize {
         self.protocol_version.serialized_length()
+            + self.version.serialized_length()
             + self.type_tag.serialized_length()
             + self.id.serialized_length()
     }
@@ -82,11 +102,13 @@ impl ToBytes for BinaryRequestHeader {
 impl FromBytes for BinaryRequestHeader {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (protocol_version, remainder) = FromBytes::from_bytes(bytes)?;
+        let (version, remainder) = FromBytes::from_bytes(remainder)?;
         let (type_tag, remainder) = FromBytes::from_bytes(remainder)?;
         let (id, remainder) = FromBytes::from_bytes(remainder)?;
         Ok((
             BinaryRequestHeader {
                 protocol_version,
+                version,
                 type_tag,
                 id,
             },
