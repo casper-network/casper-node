@@ -63,7 +63,7 @@ impl<C: Context> RoundSuccessMeter<C> {
     fn check_proposals_success(&self, state: &State<C>, proposal_h: &C::Hash) -> bool {
         let total_w = state.total_weight();
 
-        #[allow(clippy::integer_arithmetic)] // FTT is less than 100%, so this can't overflow.
+        #[allow(clippy::arithmetic_side_effects)] // FTT is less than 100%, so this can't overflow.
         let finality_detector = FinalityDetector::<C>::new(max(
             Weight(
                 (u128::from(total_w) * *self.config.acceleration_ftt.numer() as u128
@@ -105,7 +105,8 @@ impl<C: Context> RoundSuccessMeter<C> {
     /// successful, we return a higher round length for the future.
     /// If the length shouldn't grow, and the round ID is divisible by a certain number, a lower
     /// round length is returned.
-    pub fn calculate_new_length(&mut self, state: &State<C>, now: Timestamp) -> TimeDiff {
+    pub fn calculate_new_length(&mut self, state: &State<C>) -> TimeDiff {
+        let now = Timestamp::now();
         // if the round hasn't finished, just return whatever we have now
         if state::round_id(now, self.current_round_len) <= self.current_round_id {
             return self.new_length();
@@ -136,8 +137,8 @@ impl<C: Context> RoundSuccessMeter<C> {
             self.rounds.push_front(false);
         }
 
-        self.current_round_id =
-            Timestamp::zero() + self.current_round_len.saturating_mul(new_round_index);
+        self.current_round_id = Timestamp::zero()
+            .saturating_add(self.current_round_len.saturating_mul(new_round_index));
 
         self.clean_old_rounds();
 
@@ -187,7 +188,7 @@ impl<C: Context> RoundSuccessMeter<C> {
     pub(super) fn new_length(&self) -> TimeDiff {
         let current_round_index = round_index(self.current_round_id, self.current_round_len);
         let num_failures = self.count_failures() as u64;
-        #[allow(clippy::integer_arithmetic)] // The acceleration_parameter is not zero.
+        #[allow(clippy::arithmetic_side_effects)] // The acceleration_parameter is not zero.
         if num_failures > self.config.max_failed_rounds()
             && self.current_round_len * 2 <= self.max_round_len
         {
@@ -206,7 +207,7 @@ impl<C: Context> RoundSuccessMeter<C> {
 }
 
 /// Returns the round index `i`, if `r_id` is the ID of the `i`-th round after the epoch.
-#[allow(clippy::integer_arithmetic)] // Checking for division by 0.
+#[allow(clippy::arithmetic_side_effects)] // Checking for division by 0.
 fn round_index(r_id: Timestamp, round_len: TimeDiff) -> u64 {
     if round_len.millis() == 0 {
         error!("called round_index with round_len 0.");

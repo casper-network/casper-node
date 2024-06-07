@@ -538,9 +538,7 @@ pub(crate) struct EffectBuilder<REv: 'static> {
 // Implement `Clone` and `Copy` manually, as `derive` will make it depend on `REv` otherwise.
 impl<REv> Clone for EffectBuilder<REv> {
     fn clone(&self) -> Self {
-        EffectBuilder {
-            event_queue: self.event_queue,
-        }
+        *self
     }
 }
 
@@ -1006,13 +1004,13 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Announces upgrade activation point read.
-    pub(crate) async fn announce_upgrade_activation_point_read(self, next_upgrade: NextUpgrade)
+    pub(crate) async fn upgrade_watcher_announcement(self, maybe_next_upgrade: Option<NextUpgrade>)
     where
         REv: From<UpgradeWatcherAnnouncement>,
     {
         self.event_queue
             .schedule(
-                UpgradeWatcherAnnouncement::UpgradeActivationPointRead(next_upgrade),
+                UpgradeWatcherAnnouncement(maybe_next_upgrade),
                 QueueKind::Control,
             )
             .await
@@ -1843,6 +1841,7 @@ impl<REv> EffectBuilder<REv> {
         self,
         timestamp: Timestamp,
         era_id: EraId,
+        request_expiry: Timestamp,
     ) -> AppendableBlock
     where
         REv: From<TransactionBufferRequest>,
@@ -1851,6 +1850,7 @@ impl<REv> EffectBuilder<REv> {
             |responder| TransactionBufferRequest::GetAppendableBlock {
                 timestamp,
                 era_id,
+                request_expiry,
                 responder,
             },
             QueueKind::Consensus,

@@ -15,10 +15,10 @@ use crate::components::consensus::{
     utils::{ValidatorIndex, Validators},
 };
 
-#[allow(clippy::integer_arithmetic)]
+#[allow(clippy::arithmetic_side_effects)]
 mod relaxed {
     // This module exists solely to exempt the `EnumDiscriminants` macro generated code from the
-    // module-wide `clippy::integer_arithmetic` lint.
+    // module-wide `clippy::arithmetic_side_effects` lint.
 
     use casper_types::Timestamp;
     use datasize::DataSize;

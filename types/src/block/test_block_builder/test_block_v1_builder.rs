@@ -156,7 +156,6 @@ impl TestBlockV1Builder {
         let timestamp = timestamp.unwrap_or_else(Timestamp::now);
         let era_id = era.unwrap_or(EraId::random(rng));
         let height = height.unwrap_or_else(|| era_id.value() * 10 + rng.gen_range(0..10));
-        let protocol_version = protocol_version;
         let proposer = PublicKey::random(rng);
         let deploy_hashes = deploys.iter().map(|deploy| *deploy.hash()).collect();
         let transfer_hashes = vec![];

@@ -747,7 +747,7 @@ fn get_trie(digest: Digest) -> TestCase {
             assert_response::<GetTrieFullResult, _>(
                 response,
                 Some(PayloadType::GetTrieFullResult),
-                |res| matches!(res.into_inner(), Some(_)),
+                |res| res.into_inner().is_some(),
             )
         }),
     }

@@ -1,0 +1,12 @@
+[package]
+name = "highway-rewards-analysis"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bincode = "1"
+clap = { version = "4", features = ["derive"] }
+casper-node = { path = "../../node" }
+casper-types = { path = "../../types" }
+flate2 = "1"
+serde = "1"

@@ -1,4 +1,8 @@
 [workspace]
+
+# highway-rewards-analysis and highway-state-grapher are temporarily disabled becasue
+# they use old rewards calculation logic and need to be updated.
+
 members = [
     "ci/casper_updater",
     "execution_engine",
@@ -11,7 +15,9 @@ members = [
     "types",
     "utils/global-state-update-gen",
     "utils/validation",
-    "binary_port"
+    "binary_port",
+#    "utils/highway-rewards-analysis",
+#    "utils/highway-state-grapher",
 ]
 
 default-members = [
@@ -25,7 +31,13 @@ default-members = [
     "utils/global-state-update-gen",
     "utils/validation",
     "binary_port",
+#    "utils/highway-rewards-analysis",
+#    "utils/highway-state-grapher",
 ]
+
+exclude = ["utils/nctl/remotes/casper-client-rs"]
+
+resolver = "2"
 
 # Include debug symbols in the release build of `casper-engine-tests` so that `simple-transfer` will yield useful
 # perf data.

@@ -826,9 +826,21 @@ where
     ///
     /// If the custom payment is `Some` and its execution fails, the session request is not
     /// attempted.
-    pub fn exec(&mut self, mut execute_request: ExecuteRequest) -> &mut Self {
+    pub fn exec_wasm_v1(&mut self, mut request: WasmV1Request) -> &mut Self {
+        request.state_hash = self.post_state_hash.expect("expected post_state_hash");
+        let result = self
+            .execution_engine
+            .execute(self.data_access_layer.as_ref(), request);
+        let effects = result.effects().clone();
+        self.exec_results.push(result);
+        self.effects.push(effects);
+        self
+    }
+
+    /// Runs an [`ExecuteRequest`].
+    pub fn exec(&mut self, mut exec_request: ExecuteRequest) -> &mut Self {
         let mut effects = Effects::new();
-        if let Some(mut payment) = execute_request.custom_payment {
+        if let Some(mut payment) = exec_request.custom_payment {
             payment.state_hash = self.post_state_hash.expect("expected post_state_hash");
             let payment_result = self
                 .execution_engine
@@ -843,28 +855,15 @@ where
                 return self;
             }
         }
-        execute_request.session.state_hash =
-            self.post_state_hash.expect("expected post_state_hash");
+        exec_request.session.state_hash = self.post_state_hash.expect("expected post_state_hash");
 
         let session_result = self
             .execution_engine
-            .execute(self.data_access_layer.as_ref(), execute_request.session);
+            .execute(self.data_access_layer.as_ref(), exec_request.session);
         // Cache transformations
         effects.append(session_result.effects().clone());
         self.effects.push(effects);
         self.exec_results.push(session_result);
-        self
-    }
-
-    /// Execute a `WasmV1Request`.
-    pub fn exec_wasm_v1(&mut self, mut request: WasmV1Request) -> &mut Self {
-        request.state_hash = self.post_state_hash.expect("expected post_state_hash");
-        let result = self
-            .execution_engine
-            .execute(self.data_access_layer.as_ref(), request);
-        let effects = result.effects().clone();
-        self.exec_results.push(result);
-        self.effects.push(effects);
         self
     }
 
