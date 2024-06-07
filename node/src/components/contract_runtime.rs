@@ -31,23 +31,23 @@ use casper_storage::{
     data_access_layer::{
         AddressableEntityRequest, BlockStore, DataAccessLayer, EntryPointsRequest,
         ExecutionResultsChecksumRequest, FlushRequest, FlushResult, GenesisRequest, GenesisResult,
-        ProtocolUpgradeRequest, ProtocolUpgradeResult, TrieRequest,
+        TrieRequest,
     },
     global_state::{
         state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
         transaction_source::lmdb::LmdbEnvironment,
         trie_store::lmdb::LmdbTrieStore,
     },
-    system::{genesis::GenesisError, protocol_upgrade::ProtocolUpgradeError},
+    system::genesis::GenesisError,
     tracking_copy::TrackingCopyError,
 };
 use casper_types::{
-    ActivationPoint, Chainspec, ChainspecRawBytes, ChainspecRegistry, EraId, ProtocolUpgradeConfig,
+    ActivationPoint, Chainspec, ChainspecRawBytes, ChainspecRegistry, EraId, PublicKey,
 };
 
 use crate::{
     components::{fetcher::FetchResponse, Component, ComponentState},
-    contract_runtime::types::EraPrice,
+    contract_runtime::{types::EraPrice, utils::handle_protocol_upgrade},
     effect::{
         announcements::{
             ContractRuntimeAnnouncement, FatalAnnouncement, MetaBlockAnnouncement,
@@ -59,7 +59,10 @@ use crate::{
     },
     fatal,
     protocol::Message,
-    types::{TrieOrChunk, TrieOrChunkId},
+    types::{
+        BlockPayload, ExecutableBlock, FinalizedBlock, InternalEraReport, MetaBlockState,
+        TrieOrChunk, TrieOrChunkId,
+    },
     NodeRng,
 };
 pub(crate) use config::Config;
@@ -263,32 +266,6 @@ impl ContractRuntime {
         result
     }
 
-    /// Commits protocol upgrade.
-    pub(crate) fn commit_upgrade(
-        &self,
-        upgrade_config: ProtocolUpgradeConfig,
-    ) -> ProtocolUpgradeResult {
-        debug!(?upgrade_config, "upgrade");
-        let start = Instant::now();
-
-        let upgrade_request = ProtocolUpgradeRequest::new(upgrade_config);
-        let data_access_layer = Arc::clone(&self.data_access_layer);
-        let result = data_access_layer.protocol_upgrade(upgrade_request);
-        self.metrics
-            .commit_upgrade
-            .observe(start.elapsed().as_secs_f64());
-        debug!(?result, "upgrade result");
-        if result.is_success() {
-            let flush_req = FlushRequest::new();
-            if let FlushResult::Failure(err) = data_access_layer.flush(flush_req) {
-                return ProtocolUpgradeResult::Failure(ProtocolUpgradeError::TrackingCopy(
-                    err.into(),
-                ));
-            }
-        }
-        result
-    }
-
     /// Handles a contract runtime request.
     fn handle_contract_runtime_request<REv>(
         &mut self,
@@ -485,6 +462,82 @@ impl ContractRuntime {
                     responder.respond(result).await
                 }
                 .ignore()
+            }
+            ContractRuntimeRequest::UpdatePreState { new_pre_state } => {
+                let next_block_height = new_pre_state.next_block_height();
+                self.set_initial_state(new_pre_state);
+                async move {
+                    let block_header = match effect_builder
+                        .get_highest_complete_block_header_from_storage()
+                        .await
+                    {
+                        Some(header)
+                            if header.is_switch_block()
+                                && (header.height() + 1 == next_block_height) =>
+                        {
+                            header
+                        }
+                        Some(_) => {
+                            return fatal!(
+                                effect_builder,
+                                "Latest complete block is not a switch block to update state"
+                            )
+                            .await;
+                        }
+                        None => {
+                            return fatal!(
+                                effect_builder,
+                                "No complete block header found to update post upgrade state"
+                            )
+                            .await;
+                        }
+                    };
+
+                    let finalized_block = FinalizedBlock::new(
+                        BlockPayload::default(),
+                        Some(InternalEraReport::default()),
+                        block_header.timestamp(),
+                        block_header.next_block_era_id(),
+                        next_block_height,
+                        PublicKey::System,
+                    );
+
+                    info!("Enqueuing block for execution post state refresh");
+
+                    effect_builder
+                        .enqueue_block_for_execution(
+                            ExecutableBlock::from_finalized_block_and_transactions(
+                                finalized_block,
+                                vec![],
+                            ),
+                            MetaBlockState::new_not_to_be_gossiped(),
+                        )
+                        .await;
+                }
+                .ignore()
+            }
+            ContractRuntimeRequest::DoProtocolUpgrade {
+                protocol_upgrade_config,
+                next_block_height,
+                parent_hash,
+                parent_seed,
+            } => {
+                let mut effects = Effects::new();
+                let data_access_layer = Arc::clone(&self.data_access_layer);
+                let metrics = Arc::clone(&self.metrics);
+                effects.extend(
+                    handle_protocol_upgrade(
+                        effect_builder,
+                        data_access_layer,
+                        metrics,
+                        protocol_upgrade_config,
+                        next_block_height,
+                        parent_hash,
+                        parent_seed,
+                    )
+                    .ignore(),
+                );
+                effects
             }
             ContractRuntimeRequest::EnqueueBlockForExecution {
                 executable_block,

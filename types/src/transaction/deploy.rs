@@ -51,7 +51,8 @@ use crate::{
         METHOD_REDELEGATE, METHOD_UNDELEGATE, METHOD_WITHDRAW_BID,
     },
     testing::TestRng,
-    AddressableEntityHash, RuntimeArgs, DEFAULT_MAX_PAYMENT_MOTES, DEFAULT_MIN_TRANSFER_MOTES,
+    AddressableEntityHash, RuntimeArgs, URef, DEFAULT_MAX_PAYMENT_MOTES,
+    DEFAULT_MIN_TRANSFER_MOTES,
 };
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
@@ -1111,8 +1112,10 @@ impl Deploy {
 
     /// Creates a native transfer, for testing.
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
+    #[allow(clippy::too_many_arguments)]
     pub fn native_transfer(
         chain_name: String,
+        source_purse: Option<URef>,
         sender_public_key: PublicKey,
         receiver_public_key: PublicKey,
         amount: Option<U512>,
@@ -1127,11 +1130,16 @@ impl Deploy {
             args: runtime_args! { ARG_AMOUNT => U512::from(3_000_000_000_u64) },
         };
 
-        let transfer_args = runtime_args! {
+        let mut transfer_args = runtime_args! {
             "amount" => amount,
-            "source" => sender_public_key.to_account_hash(),
             "target" => receiver_public_key.to_account_hash(),
         };
+
+        if let Some(source) = source_purse {
+            transfer_args
+                .insert("source", source)
+                .expect("should serialize source arg");
+        }
 
         let session = ExecutableDeployItem::Transfer {
             args: transfer_args,

@@ -6,6 +6,7 @@ use std::{
     fmt::Debug,
     ops::Range,
     sync::{Arc, Mutex},
+    time::Instant,
 };
 use tracing::{debug, error, info, warn};
 
@@ -28,9 +29,12 @@ use crate::{
 use casper_binary_port::SpeculativeExecutionResult;
 use casper_execution_engine::engine_state::{ExecutionEngineV1, WasmV1Result};
 use casper_storage::{
-    data_access_layer::DataAccessLayer, global_state::state::lmdb::LmdbGlobalState,
+    data_access_layer::{
+        DataAccessLayer, FlushRequest, FlushResult, ProtocolUpgradeRequest, ProtocolUpgradeResult,
+    },
+    global_state::state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
 };
-use casper_types::{BlockHash, Chainspec, EraId, GasLimited, Key};
+use casper_types::{BlockHash, Chainspec, Digest, EraId, GasLimited, Key, ProtocolUpgradeConfig};
 
 /// Maximum number of resource intensive tasks that can be run in parallel.
 ///
@@ -386,6 +390,75 @@ pub(super) async fn exec_or_requeue<REv>(
         effect_builder
             .enqueue_block_for_execution(executable_block, meta_block_state)
             .await;
+    }
+}
+
+pub(super) async fn handle_protocol_upgrade<REv>(
+    effect_builder: EffectBuilder<REv>,
+    data_access_layer: Arc<DataAccessLayer<LmdbGlobalState>>,
+    metrics: Arc<Metrics>,
+    upgrade_config: ProtocolUpgradeConfig,
+    next_block_height: u64,
+    parent_hash: BlockHash,
+    parent_seed: Digest,
+) where
+    REv: From<ContractRuntimeRequest>
+        + From<ContractRuntimeAnnouncement>
+        + From<StorageRequest>
+        + From<MetaBlockAnnouncement>
+        + From<FatalAnnouncement>
+        + Send,
+{
+    debug!(?upgrade_config, "upgrade");
+    let start = Instant::now();
+    let upgrade_request = ProtocolUpgradeRequest::new(upgrade_config);
+
+    let result = run_intensive_task(move || {
+        let result = data_access_layer.protocol_upgrade(upgrade_request);
+        if result.is_success() {
+            info!("committed upgrade");
+            metrics
+                .commit_upgrade
+                .observe(start.elapsed().as_secs_f64());
+            let flush_req = FlushRequest::new();
+            if let FlushResult::Failure(err) = data_access_layer.flush(flush_req) {
+                return Err(format!("{:?}", err));
+            }
+        }
+
+        Ok(result)
+    })
+    .await;
+
+    match result {
+        Err(error_msg) => {
+            // The only way this happens is if there is a problem in the flushing.
+            error!(%error_msg, ":Error in post upgrade flush");
+            fatal!(effect_builder, "{}", error_msg).await;
+        }
+        Ok(result) => match result {
+            ProtocolUpgradeResult::RootNotFound => {
+                let error_msg = "Root not found for protocol upgrade";
+                fatal!(effect_builder, "{}", error_msg).await;
+            }
+            ProtocolUpgradeResult::Failure(err) => {
+                fatal!(effect_builder, "{:?}", err).await;
+            }
+            ProtocolUpgradeResult::Success {
+                post_state_hash, ..
+            } => {
+                let post_upgrade_state = ExecutionPreState::new(
+                    next_block_height,
+                    post_state_hash,
+                    parent_hash,
+                    parent_seed,
+                );
+
+                effect_builder
+                    .update_contract_runtime_state(post_upgrade_state)
+                    .await
+            }
+        },
     }
 }
 
