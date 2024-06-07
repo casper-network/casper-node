@@ -186,10 +186,12 @@ pub enum ErrorCode {
     /// the case that nothing else works.
     #[error("The transaction or deploy sent to the network was invalid for an unspecified reason")]
     InvalidTransactionOrDeployUnspecified = 57,
-    #[error("Switch block not found for the provided identifier")]
+    #[error("switch block not found for the provided identifier")]
     SwitchBlockNotFound = 58,
-    #[error("Rewards v1 requests are not supported")]
-    UnsupportedRewardsV1Request = 59,
+    #[error("parent block not found for the provided switch block identifier")]
+    SwitchBlockParentNotFound = 59,
+    #[error("rewards v1 requests are not supported")]
+    UnsupportedRewardsV1Request = 60,
 }
 
 impl TryFrom<u8> for ErrorCode {
@@ -256,7 +258,8 @@ impl TryFrom<u8> for ErrorCode {
             56 => Ok(ErrorCode::InvalidTransactionUnspecified),
             57 => Ok(ErrorCode::InvalidTransactionOrDeployUnspecified),
             58 => Ok(ErrorCode::SwitchBlockNotFound),
-            59 => Ok(ErrorCode::UnsupportedRewardsV1Request),
+            59 => Ok(ErrorCode::SwitchBlockParentNotFound),
+            60 => Ok(ErrorCode::UnsupportedRewardsV1Request),
             _ => Err(UnknownErrorCode),
         }
     }
