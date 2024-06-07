@@ -34,7 +34,7 @@ force_resync = false
 shutdown_for_upgrade_timeout = '2 minutes'
 
 # Maximum time a node will wait for an upgrade to commit.
-upgrade_timeout = '30 seconds'
+upgrade_timeout = '3 hours'
 
 
 # =================================
