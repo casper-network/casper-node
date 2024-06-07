@@ -1,0 +1,93 @@
+name: Condor Release Feedback / Issue Form
+description: Please share your feedback or issues you face in incorporating Condor Release changes in your application/project.
+title: '[Condor-Release]: Specify your feedback/issue briefly'
+labels:
+  - condor-feedback
+assignees:
+  - devendran-m
+  - piotr-dziubecki
+  - sacherjj
+  - cspramit
+  - SaiProServ
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This is a feedback form, to consolidate Condor feedback and/or issues.
+  - type: dropdown
+    id: type
+    attributes:
+      label: Category
+      description: Please choose the category that best describes your needs.
+      options:
+        - Feedback
+        - Bug/Issue
+    validations:
+      required: true
+  - type: input
+    id: email
+    attributes:
+      label: Your email address
+      placeholder: john@doe.com
+    validations:
+      required: true
+  - type: input
+    id: project-name
+    attributes:
+      label: Integration Project Name(Optional)
+      placeholder: CasperWallet
+      description: Name of the project with Casper, if applicable
+    validations:
+      required: false
+  - type: dropdown
+    id: casper-network
+    attributes:
+      label: Casper Network
+      description: Please choose the network or environment related to the feedback, bug, or issue.
+      options:
+        - Devnet
+        - Integration-Test
+        - Testnet
+        - Mainnet        
+    validations:
+      required: true
+  - type: dropdown
+    id: node-functionality
+    attributes:
+      label: Node Functionality
+      description: Please specify the primary function of the node on the Casper Network related to the feedback or issue.
+      options:
+        - Node
+        - JSON RPC
+        - Execution Engine
+        - SSE
+        - NCTL
+        - CCTL
+        - Validator
+        - Consensus
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: feedback-issue
+    attributes:
+      label: Description
+      placeholder: Please elaborate your feedback/ bug or issue here.
+      description: Please provide a detailed description of your feedback, bug, or issue.
+    validations:
+      required: true
+  - type: input
+    id: date-since
+    attributes:
+      label: Date Issue Began(optional)
+      placeholder: dd/mm/yyyy
+      description: When did you first notice this issue? 
+    validations:
+      required: false
+  - type: textarea
+    id: attachments
+    attributes:
+      label: Attachments (optional)
+      description: Please attach any logs, screenshots, or links that may help with the analysis.
+    validations:
+      required: false
