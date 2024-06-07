@@ -124,7 +124,8 @@ use casper_storage::{
         tagged_values::{TaggedValuesRequest, TaggedValuesResult},
         AddressableEntityResult, BalanceRequest, BalanceResult, EraValidatorsRequest,
         EraValidatorsResult, ExecutionResultsChecksumResult, PutTrieRequest, PutTrieResult,
-        QueryRequest, QueryResult, TrieRequest, TrieResult,
+        QueryRequest, QueryResult, SeigniorageRecipientsRequest, SeigniorageRecipientsResult,
+        TrieRequest, TrieResult,
     },
     DbRawBytesSpec,
 };
@@ -2127,6 +2128,20 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| ContractRuntimeRequest::GetEraValidators { request, responder },
+            QueueKind::ContractRuntime,
+        )
+        .await
+    }
+
+    pub(crate) async fn get_seigniorage_recipients_snapshot_from_contract_runtime(
+        self,
+        request: SeigniorageRecipientsRequest,
+    ) -> SeigniorageRecipientsResult
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::GetSeigniorageRecipients { request, responder },
             QueueKind::ContractRuntime,
         )
         .await

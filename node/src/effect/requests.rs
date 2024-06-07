@@ -25,7 +25,8 @@ use casper_storage::{
         tagged_values::{TaggedValuesRequest, TaggedValuesResult},
         AddressableEntityResult, BalanceRequest, BalanceResult, EntryPointsResult,
         EraValidatorsRequest, EraValidatorsResult, ExecutionResultsChecksumResult, PutTrieRequest,
-        PutTrieResult, QueryRequest, QueryResult, TrieRequest, TrieResult,
+        PutTrieResult, QueryRequest, QueryResult, SeigniorageRecipientsRequest,
+        SeigniorageRecipientsResult, TrieRequest, TrieResult,
     },
     DbRawBytesSpec,
 };
@@ -795,6 +796,14 @@ pub(crate) enum ContractRuntimeRequest {
         /// Responder to call with the result.
         responder: Responder<EraValidatorsResult>,
     },
+    /// Returns the seigniorage recipients snapshot at the given state root hash.
+    GetSeigniorageRecipients {
+        /// Get seigniorage recipients request.
+        #[serde(skip_serializing)]
+        request: SeigniorageRecipientsRequest,
+        /// Responder to call with the result.
+        responder: Responder<SeigniorageRecipientsResult>,
+    },
     /// Return all values at a given state root hash and given key tag.
     GetTaggedValues {
         /// Get tagged values request.
@@ -889,6 +898,9 @@ impl Display for ContractRuntimeRequest {
             } => write!(formatter, "balance request: {:?}", balance_request),
             ContractRuntimeRequest::GetEraValidators { request, .. } => {
                 write!(formatter, "get era validators: {:?}", request)
+            }
+            ContractRuntimeRequest::GetSeigniorageRecipients { request, .. } => {
+                write!(formatter, "get seigniorage recipients for {:?}", request)
             }
             ContractRuntimeRequest::GetTaggedValues {
                 request: get_all_values_request,
