@@ -186,11 +186,14 @@ pub enum ErrorCode {
     /// the case that nothing else works.
     #[error("The transaction or deploy sent to the network was invalid for an unspecified reason")]
     InvalidTransactionOrDeployUnspecified = 57,
+    /// The switch block for the requested era was not found
     #[error("the switch block for the requested era was not found")]
     SwitchBlockNotFound = 58,
     #[error("the parent of the switch block for the requested era was not found")]
+    /// The parent of the switch block for the requested era was not found
     SwitchBlockParentNotFound = 59,
     #[error("cannot serve rewards stored in V1 format")]
+    /// Cannot serve rewards stored in V1 format
     UnsupportedRewardsV1Request = 60,
 }
 

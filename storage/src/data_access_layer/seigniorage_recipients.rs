@@ -1,10 +1,10 @@
-//! Support for querying era validators.
+//! Support for querying seigniorage recipients.
 
 use crate::tracking_copy::TrackingCopyError;
 use casper_types::{system::auction::SeigniorageRecipientsSnapshot, Digest, ProtocolVersion};
 use std::fmt::{Display, Formatter};
 
-/// Request for siegniorage recipients.
+/// Request for seigniorage recipients.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SeigniorageRecipientsRequest {
     state_hash: Digest,
