@@ -439,11 +439,9 @@ pub(super) async fn handle_protocol_upgrade<REv>(
         Ok(result) => match result {
             ProtocolUpgradeResult::RootNotFound => {
                 let error_msg = "Root not found for protocol upgrade";
-                error!(%error_msg);
                 fatal!(effect_builder, "{}", error_msg).await;
             }
             ProtocolUpgradeResult::Failure(err) => {
-                error!(%err, ": Failure in protocol upgrade");
                 fatal!(effect_builder, "{:?}", err).await;
             }
             ProtocolUpgradeResult::Success {
