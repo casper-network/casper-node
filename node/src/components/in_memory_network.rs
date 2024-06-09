@@ -366,7 +366,7 @@ where
     /// # Panics
     ///
     /// Panics if the internal lock has been poisoned, a network with the wrong type of message was
-    /// removed or if there was no network at at all.
+    /// removed or if there was no network at all.
     pub(crate) fn remove_active() {
         assert!(
             ACTIVE_NETWORK.with(|active_network| {
