@@ -86,7 +86,8 @@ impl<'a> TransactionV1Builder<'a> {
     /// This function sets the following default values:
     ///
     /// - `chain_name` is initialized to `None`.
-    /// - `timestamp` is set to the current time using [`Timestamp::now`](Timestamp::now).
+    /// - `timestamp` is set to the current time using [`Timestamp::now`](Timestamp::now)
+    /// or [`Timestamp::zero`](Timestamp::zero) for  `std-fs-io` feature.
     /// - `ttl` is set to the default TTL value [`Self::DEFAULT_TTL`].
     /// - `pricing_mode` is set to the default pricing mode [`Self::DEFAULT_PRICING_MODE`].
     /// - `initiator_addr` is initialized to `None`.

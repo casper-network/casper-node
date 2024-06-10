@@ -75,7 +75,7 @@ mod uint;
 mod uref;
 mod validator_change;
 
-#[cfg(all(feature = "std", any(feature = "std-fs-io", test)))]
+#[cfg(feature = "std")]
 use libc::{c_long, sysconf, _SC_PAGESIZE};
 #[cfg(feature = "std")]
 use once_cell::sync::Lazy;
