@@ -19,7 +19,6 @@ use std::convert::TryFrom;
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
-#[cfg(any(feature = "std", test))]
 use itertools::Itertools;
 #[cfg(feature = "json-schema")]
 use once_cell::sync::Lazy;
