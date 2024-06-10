@@ -21,16 +21,17 @@ use casper_execution_engine::engine_state::{
 };
 use casper_storage::{
     data_access_layer::{
-        balance::BalanceHandling, AuctionMethod, BalanceIdentifier, BalanceRequest, BalanceResult,
-        BiddingRequest, BiddingResult, BidsRequest, BlockRewardsRequest, BlockRewardsResult,
-        BlockStore, DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, FeeRequest,
-        FeeResult, FlushRequest, FlushResult, GenesisRequest, GenesisResult, HandleFeeMode,
-        HandleFeeRequest, HandleFeeResult, ProofHandling, ProtocolUpgradeRequest,
-        ProtocolUpgradeResult, PruneRequest, PruneResult, QueryRequest, QueryResult,
-        RoundSeigniorageRateRequest, RoundSeigniorageRateResult, StepRequest, StepResult,
-        SystemEntityRegistryPayload, SystemEntityRegistryRequest, SystemEntityRegistryResult,
-        SystemEntityRegistrySelector, TotalSupplyRequest, TotalSupplyResult, TransferRequest,
-        TrieRequest,
+        balance::BalanceHandling,
+        forced_undelegate::{ForcedUndelegateRequest, ForcedUndelegateResult},
+        AuctionMethod, BalanceIdentifier, BalanceRequest, BalanceResult, BiddingRequest,
+        BiddingResult, BidsRequest, BlockRewardsRequest, BlockRewardsResult, BlockStore,
+        DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, FeeRequest, FeeResult,
+        FlushRequest, FlushResult, GenesisRequest, GenesisResult, HandleFeeMode, HandleFeeRequest,
+        HandleFeeResult, ProofHandling, ProtocolUpgradeRequest, ProtocolUpgradeResult,
+        PruneRequest, PruneResult, QueryRequest, QueryResult, RoundSeigniorageRateRequest,
+        RoundSeigniorageRateResult, StepRequest, StepResult, SystemEntityRegistryPayload,
+        SystemEntityRegistryRequest, SystemEntityRegistryResult, SystemEntityRegistrySelector,
+        TotalSupplyRequest, TotalSupplyResult, TransferRequest, TrieRequest,
     },
     global_state::{
         state::{
@@ -1030,6 +1031,35 @@ where
         }
 
         distribute_block_rewards_result
+    }
+
+    /// Undelegates delegator bids violating configured delegation limits.
+    pub fn forced_undelegate(
+        &mut self,
+        pre_state_hash: Option<Digest>,
+        protocol_version: ProtocolVersion,
+        block_time: u64,
+    ) -> ForcedUndelegateResult {
+        let pre_state_hash = pre_state_hash.or(self.post_state_hash).unwrap();
+        let native_runtime_config = self.native_runtime_config();
+        let forced_undelegate_req = ForcedUndelegateRequest::new(
+            native_runtime_config,
+            pre_state_hash,
+            protocol_version,
+            BlockTime::new(block_time),
+        );
+        let forced_undelegate_result = self
+            .data_access_layer
+            .forced_undelegate(forced_undelegate_req);
+
+        if let ForcedUndelegateResult::Success {
+            post_state_hash, ..
+        } = forced_undelegate_result
+        {
+            self.post_state_hash = Some(post_state_hash);
+        }
+
+        forced_undelegate_result
     }
 
     /// Finalizes payment for a transaction

@@ -10,7 +10,10 @@ use crate::{
     Parameter, PublicKey, U512,
 };
 
-use super::{ARG_NEW_PUBLIC_KEY, ARG_REWARDS_MAP, METHOD_CHANGE_BID_PUBLIC_KEY};
+use super::{
+    ARG_MAXIMUM_DELEGATION_AMOUNT, ARG_MINIMUM_DELEGATION_AMOUNT, ARG_NEW_PUBLIC_KEY,
+    ARG_REWARDS_MAP, METHOD_CHANGE_BID_PUBLIC_KEY,
+};
 
 /// Creates auction contract entry points.
 pub fn auction_entry_points() -> EntryPoints {
@@ -32,6 +35,8 @@ pub fn auction_entry_points() -> EntryPoints {
             Parameter::new(ARG_PUBLIC_KEY, PublicKey::cl_type()),
             Parameter::new(ARG_DELEGATION_RATE, DelegationRate::cl_type()),
             Parameter::new(ARG_AMOUNT, U512::cl_type()),
+            Parameter::new(ARG_MINIMUM_DELEGATION_AMOUNT, u64::cl_type()),
+            Parameter::new(ARG_MAXIMUM_DELEGATION_AMOUNT, u64::cl_type()),
         ],
         U512::cl_type(),
         EntryPointAccess::Public,

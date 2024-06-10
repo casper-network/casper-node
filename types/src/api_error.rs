@@ -446,6 +446,12 @@ pub enum ApiError {
     /// assert_eq!(ApiError::from(48), ApiError::NotAllowedToAddContractVersion);
     /// ```
     NotAllowedToAddContractVersion,
+    /// Invalid delegation amount limits.
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(49), ApiError::InvalidDelegationAmountLimits);
+    /// ```
+    InvalidDelegationAmountLimits,
 }
 
 impl From<bytesrepr::Error> for ApiError {
@@ -610,6 +616,7 @@ impl From<ApiError> for u32 {
             ApiError::MessageTooLarge => 46,
             ApiError::MaxMessagesPerBlockExceeded => 47,
             ApiError::NotAllowedToAddContractVersion => 48,
+            ApiError::InvalidDelegationAmountLimits => 49,
             ApiError::AuctionError(value) => AUCTION_ERROR_OFFSET + u32::from(value),
             ApiError::ContractHeader(value) => HEADER_ERROR_OFFSET + u32::from(value),
             ApiError::Mint(value) => MINT_ERROR_OFFSET + u32::from(value),
@@ -670,6 +677,7 @@ impl From<u32> for ApiError {
             46 => ApiError::MessageTooLarge,
             47 => ApiError::MaxMessagesPerBlockExceeded,
             48 => ApiError::NotAllowedToAddContractVersion,
+            49 => ApiError::InvalidDelegationAmountLimits,
             USER_ERROR_MIN..=USER_ERROR_MAX => ApiError::User(value as u16),
             HP_ERROR_MIN..=HP_ERROR_MAX => ApiError::HandlePayment(value as u8),
             MINT_ERROR_MIN..=MINT_ERROR_MAX => ApiError::Mint(value as u8),
@@ -743,6 +751,9 @@ impl Debug for ApiError {
             }
             ApiError::NotAllowedToAddContractVersion => {
                 write!(f, "ApiError::NotAllowedToAddContractVersion")?
+            }
+            ApiError::InvalidDelegationAmountLimits => {
+                write!(f, "ApiError::InvalidDelegationAmountLimits")?
             }
             ApiError::ExceededRecursionDepth => write!(f, "ApiError::ExceededRecursionDepth")?,
             ApiError::AuctionError(value) => write!(
@@ -970,5 +981,6 @@ mod tests {
         round_trip(Err(ApiError::MessageTopicFull));
         round_trip(Err(ApiError::MessageTooLarge));
         round_trip(Err(ApiError::NotAllowedToAddContractVersion));
+        round_trip(Err(ApiError::InvalidDelegationAmountLimits));
     }
 }
