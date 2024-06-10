@@ -19,7 +19,7 @@ All notable changes to this project will be documented in this file.  The format
 * Remove filesystem I/O functionality from the `std` feature, and gated this behind a new feature `std-fs-io` which depends upon `std`.
 
 
-## [Unreleased] (node 1.5.4)
+## [Unreleased] (node 1.6)
 
 ### Changed
 * Remove filesystem I/O functionality from the `std` feature, and gated this behind a new feature `std-fs-io` which depends upon `std`.
