@@ -181,9 +181,9 @@ pub(super) async fn exec_or_requeue<REv>(
                 )
                 .to_integer();
 
-                let uitilization_scores = vec![slot_utilization, gas_utilization, size_utilization];
+                let utilization_scores = [slot_utilization, gas_utilization, size_utilization];
 
-                match uitilization_scores.iter().max() {
+                match utilization_scores.iter().max() {
                     Some(max_score) => *max_score,
                     None => {
                         let error = BlockExecutionError::FailedToGetNewEraGasPrice { era_id };

@@ -228,6 +228,7 @@ impl TransactionBuffer {
         effect_builder: EffectBuilder<REv>,
         timestamp: Timestamp,
         era_id: EraId,
+        request_expiry: Timestamp,
         responder: Responder<AppendableBlock>,
     ) -> Effects<Event>
     where
@@ -238,12 +239,18 @@ impl TransactionBuffer {
             return effect_builder
                 .get_current_gas_price(era_id)
                 .event(move |maybe_gas_price| {
-                    Event::GetGasPriceResult(maybe_gas_price, era_id, timestamp, responder)
+                    Event::GetGasPriceResult(
+                        maybe_gas_price,
+                        era_id,
+                        timestamp,
+                        request_expiry,
+                        responder,
+                    )
                 });
         }
 
         responder
-            .respond(self.appendable_block(timestamp, era_id))
+            .respond(self.appendable_block(timestamp, era_id, request_expiry))
             .ignore()
     }
 
@@ -412,8 +419,16 @@ impl TransactionBuffer {
     }
 
     /// Returns a right-sized payload of transactions that can be proposed.
-    fn appendable_block(&mut self, timestamp: Timestamp, era_id: EraId) -> AppendableBlock {
+    fn appendable_block(
+        &mut self,
+        timestamp: Timestamp,
+        era_id: EraId,
+        request_expiry: Timestamp,
+    ) -> AppendableBlock {
         let mut ret = AppendableBlock::new(self.chainspec.transaction_config.clone(), timestamp);
+        if Timestamp::now() >= request_expiry {
+            return ret;
+        }
         let current_era_gas_price = match self.prices.get(&era_id) {
             Some(gas_price) => *gas_price,
             None => return ret,
@@ -437,6 +452,9 @@ impl TransactionBuffer {
         let mut body_hashes_queue: VecDeque<_> = buckets.keys().cloned().collect();
 
         while let Some(body_hash) = body_hashes_queue.pop_front() {
+            if Timestamp::now() > request_expiry {
+                break;
+            }
             #[cfg(test)]
             {
                 iter_counter += 1;
@@ -446,10 +464,11 @@ impl TransactionBuffer {
                 );
             }
 
-            let Some((transaction_hash, footprint)) = buckets.get_mut(body_hash).and_then(Vec::<_>::pop)
-                else {
-                    continue;
-                };
+            let Some((transaction_hash, footprint)) =
+                buckets.get_mut(body_hash).and_then(Vec::<_>::pop)
+            else {
+                continue;
+            };
 
             // bucket wasn't empty - push the hash back into the queue to be processed again on the
             // next pass
@@ -468,7 +487,6 @@ impl TransactionBuffer {
                 continue;
             }
 
-            // let transaction_hash = with_approvals.transaction_hash();
             let has_multiple_approvals = footprint.approvals.len() > 1;
             match ret.add_transaction(footprint) {
                 Ok(_) => {
@@ -689,7 +707,7 @@ where
                     | Event::BlockFinalized(_)
                     | Event::Expire
                     | Event::UpdateEraGasPrice { .. }
-                    | Event::GetGasPriceResult(_, _, _, _) => {
+                    | Event::GetGasPriceResult(_, _, _, _, _) => {
                         warn!(
                             ?event,
                             name = <Self as Component<MainEvent>>::name(self),
@@ -712,25 +730,35 @@ where
                     timestamp,
                     era_id,
                     responder,
-                }) => {
-                    self.handle_get_appendable_block(effect_builder, timestamp, era_id, responder)
-                }
-                Event::GetGasPriceResult(maybe_gas_price, era_id, timestamp, responder) => {
-                    match maybe_gas_price {
-                        None => responder
-                            .respond(AppendableBlock::new(
-                                self.chainspec.transaction_config.clone(),
-                                timestamp,
-                            ))
-                            .ignore(),
-                        Some(gas_price) => {
-                            self.prices.insert(era_id, gas_price);
-                            responder
-                                .respond(self.appendable_block(timestamp, era_id))
-                                .ignore()
-                        }
+                    request_expiry,
+                }) => self.handle_get_appendable_block(
+                    effect_builder,
+                    timestamp,
+                    era_id,
+                    request_expiry,
+                    responder,
+                ),
+
+                Event::GetGasPriceResult(
+                    maybe_gas_price,
+                    era_id,
+                    timestamp,
+                    request_expiry,
+                    responder,
+                ) => match maybe_gas_price {
+                    None => responder
+                        .respond(AppendableBlock::new(
+                            self.chainspec.transaction_config.clone(),
+                            timestamp,
+                        ))
+                        .ignore(),
+                    Some(gas_price) => {
+                        self.prices.insert(era_id, gas_price);
+                        responder
+                            .respond(self.appendable_block(timestamp, era_id, request_expiry))
+                            .ignore()
                     }
-                }
+                },
                 Event::BlockFinalized(finalized_block) => {
                     self.register_block_finalized(&finalized_block);
                     Effects::new()

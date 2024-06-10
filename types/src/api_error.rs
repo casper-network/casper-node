@@ -748,22 +748,22 @@ impl Debug for ApiError {
             ApiError::AuctionError(value) => write!(
                 f,
                 "ApiError::AuctionError({:?})",
-                auction::Error::try_from(*value).map_err(|_err| fmt::Error::default())?
+                auction::Error::try_from(*value).map_err(|_err| fmt::Error)?
             )?,
             ApiError::ContractHeader(value) => write!(
                 f,
                 "ApiError::ContractHeader({:?})",
-                addressable_entity::Error::try_from(*value).map_err(|_err| fmt::Error::default())?
+                addressable_entity::Error::try_from(*value).map_err(|_err| fmt::Error)?
             )?,
             ApiError::Mint(value) => write!(
                 f,
                 "ApiError::Mint({:?})",
-                mint::Error::try_from(*value).map_err(|_err| fmt::Error::default())?
+                mint::Error::try_from(*value).map_err(|_err| fmt::Error)?
             )?,
             ApiError::HandlePayment(value) => write!(
                 f,
                 "ApiError::HandlePayment({:?})",
-                handle_payment::Error::try_from(*value).map_err(|_err| fmt::Error::default())?
+                handle_payment::Error::try_from(*value).map_err(|_err| fmt::Error)?
             )?,
             ApiError::User(value) => write!(f, "ApiError::User({})", value)?,
         }

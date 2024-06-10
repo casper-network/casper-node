@@ -2,7 +2,7 @@
 name = "ee-441-rng-state"
 version = "0.1.0"
 authors = ["Henry Till <henrytill@gmail.com>"]
-edition = "2018"
+edition = "2021"
 
 [[bin]]
 name = "ee_441_rng_state"

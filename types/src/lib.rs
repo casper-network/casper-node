@@ -111,6 +111,11 @@ pub use block::{
 pub use block::{TestBlockBuilder, TestBlockV1Builder};
 pub use block_time::{BlockTime, HoldsEpoch, BLOCKTIME_SERIALIZED_LENGTH};
 pub use byte_code::{ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind};
+pub use cl_type::{named_key_type, CLType, CLTyped};
+pub use cl_value::{
+    cl_value_to_json, handle_stored_dictionary_value, CLTypeMismatch, CLValue, CLValueError,
+    ChecksumRegistry, DictionaryValue as CLValueDictionary, SystemEntityRegistry,
+};
 pub use global_state::Pointer;
 
 #[cfg(any(feature = "std", test))]
@@ -144,11 +149,6 @@ pub use chainspec::{
     DEFAULT_MAX_PAYMENT_MOTES, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_MIN_TRANSFER_MOTES,
     DEFAULT_MUL_COST, DEFAULT_NEW_DICTIONARY_COST, DEFAULT_NOP_COST, DEFAULT_STORE_COST,
     DEFAULT_TRANSFER_COST, DEFAULT_UNREACHABLE_COST, DEFAULT_WASM_MAX_MEMORY,
-};
-pub use cl_type::{named_key_type, CLType, CLTyped};
-pub use cl_value::{
-    cl_value_to_json, handle_stored_dictionary_value, CLTypeMismatch, CLValue, CLValueError,
-    ChecksumRegistry, DictionaryValue as CLValueDictionary, SystemEntityRegistry,
 };
 pub use contract_wasm::ContractWasm;
 #[doc(inline)]

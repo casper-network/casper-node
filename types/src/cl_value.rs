@@ -16,6 +16,7 @@ use crate::{
 
 mod checksum_registry;
 mod dictionary;
+pub use jsonrepr::cl_value_to_json;
 mod jsonrepr;
 pub use jsonrepr::cl_value_to_json;
 mod system_entity_registry;

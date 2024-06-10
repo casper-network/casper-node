@@ -540,7 +540,7 @@ mod tests {
 
     #[test]
     fn test_hash_rfold() {
-        let hashes = vec![
+        let hashes = [
             Digest([1u8; 32]),
             Digest([2u8; 32]),
             Digest([3u8; 32]),
