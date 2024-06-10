@@ -229,6 +229,11 @@ impl ChainspecConfig {
         self
     }
 
+    /// Returns the `max_associated_keys` setting from the core config.
+    pub fn max_associated_keys(&self) -> u32 {
+        self.core_config.max_associated_keys
+    }
+
     /// Returns an engine config.
     pub fn engine_config(&self) -> EngineConfig {
         EngineConfigBuilder::new()
@@ -246,6 +251,31 @@ impl ChainspecConfig {
             .with_allow_unrestricted_transfers(self.core_config.allow_unrestricted_transfers)
             .with_refund_handling(self.core_config.refund_handling)
             .with_fee_handling(self.core_config.fee_handling)
+            .build()
+    }
+}
+
+impl From<ChainspecConfig> for EngineConfig {
+    fn from(chainspec_config: ChainspecConfig) -> Self {
+        EngineConfigBuilder::new()
+            .with_max_query_depth(DEFAULT_MAX_QUERY_DEPTH)
+            .with_max_associated_keys(chainspec_config.core_config.max_associated_keys)
+            .with_max_runtime_call_stack_height(
+                chainspec_config.core_config.max_runtime_call_stack_height,
+            )
+            .with_minimum_delegation_amount(chainspec_config.core_config.minimum_delegation_amount)
+            .with_strict_argument_checking(chainspec_config.core_config.strict_argument_checking)
+            .with_vesting_schedule_period_millis(
+                chainspec_config
+                    .core_config
+                    .vesting_schedule_period
+                    .millis(),
+            )
+            .with_max_delegators_per_validator(
+                chainspec_config.core_config.max_delegators_per_validator,
+            )
+            .with_wasm_config(chainspec_config.wasm_config)
+            .with_system_config(chainspec_config.system_costs_config)
             .build()
     }
 }

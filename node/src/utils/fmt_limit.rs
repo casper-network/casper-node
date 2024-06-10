@@ -103,7 +103,7 @@ mod tests {
 
     #[test]
     fn limit_debug_works() {
-        let collection: Vec<_> = (0..5).into_iter().collect();
+        let collection: Vec<_> = (0..5).collect();
 
         // Sanity check.
         assert_eq!(format!("{:?}", collection), "[0, 1, 2, 3, 4]");

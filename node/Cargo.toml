@@ -2,7 +2,7 @@
 name = "casper-node"
 version = "2.0.0" # when updating, also update 'html_root_url' in lib.rs
 authors = ["Marc Brinkmann <marc@casperlabs.io>", "Fraser Hutchison <fraser@casperlabs.io>"]
-edition = "2018"
+edition = "2021"
 description = "The Casper blockchain node"
 documentation = "https://docs.rs/casper-node"
 readme = "README.md"
@@ -23,9 +23,9 @@ base64 = "0.13.0"
 bincode = "1"
 bytes = "1.0.1"
 casper-binary-port = { version = "1.0.0", path = "../binary_port" }
-casper-execution-engine = { version = "7.0.0", path = "../execution_engine" }
 casper-storage = { version = "2.0.0", path = "../storage" }
-casper-types = { version = "5.0.0", path = "../types", features = ["datasize", "json-schema", "std"] }
+casper-types = { version = "5.0.0", path = "../types", features = ["datasize", "json-schema", "std-fs-io"] }
+casper-execution-engine = { version = "7.0.1", path = "../execution_engine" }
 datasize = { version = "0.2.11", features = ["detailed", "fake_clock-types", "futures-types", "smallvec-types"] }
 derive_more = "0.99.7"
 either = { version = "1", features = ["serde"] }
@@ -99,7 +99,7 @@ vergen = { version = "8.2.1", default-features = false, features = ["git", "gito
 [dev-dependencies]
 assert-json-diff = "2.0.1"
 assert_matches = "1.5.0"
-casper-types = { path = "../types", features = ["datasize", "json-schema", "std", "testing"] }
+casper-types = { path = "../types", features = ["datasize", "json-schema", "std-fs-io", "testing"] }
 fake_instant = "0.4.0"
 pnet = "0.28.0"
 pretty_assertions = "0.7.2"

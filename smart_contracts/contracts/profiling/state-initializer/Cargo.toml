@@ -2,7 +2,7 @@
 name = "state-initializer"
 version = "0.1.0"
 authors = ["Fraser Hutchison <fraser@casperlabs.io>"]
-edition = "2018"
+edition = "2021"
 
 [[bin]]
 name = "state_initializer"

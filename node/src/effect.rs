@@ -124,7 +124,8 @@ use casper_storage::{
         tagged_values::{TaggedValuesRequest, TaggedValuesResult},
         AddressableEntityResult, BalanceRequest, BalanceResult, EraValidatorsRequest,
         EraValidatorsResult, ExecutionResultsChecksumResult, PutTrieRequest, PutTrieResult,
-        QueryRequest, QueryResult, TrieRequest, TrieResult,
+        QueryRequest, QueryResult, SeigniorageRecipientsRequest, SeigniorageRecipientsResult,
+        TrieRequest, TrieResult,
     },
     DbRawBytesSpec,
 };
@@ -537,9 +538,7 @@ pub(crate) struct EffectBuilder<REv: 'static> {
 // Implement `Clone` and `Copy` manually, as `derive` will make it depend on `REv` otherwise.
 impl<REv> Clone for EffectBuilder<REv> {
     fn clone(&self) -> Self {
-        EffectBuilder {
-            event_queue: self.event_queue,
-        }
+        *self
     }
 }
 
@@ -1005,13 +1004,13 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Announces upgrade activation point read.
-    pub(crate) async fn announce_upgrade_activation_point_read(self, next_upgrade: NextUpgrade)
+    pub(crate) async fn upgrade_watcher_announcement(self, maybe_next_upgrade: Option<NextUpgrade>)
     where
         REv: From<UpgradeWatcherAnnouncement>,
     {
         self.event_queue
             .schedule(
-                UpgradeWatcherAnnouncement::UpgradeActivationPointRead(next_upgrade),
+                UpgradeWatcherAnnouncement(maybe_next_upgrade),
                 QueueKind::Control,
             )
             .await
@@ -1842,6 +1841,7 @@ impl<REv> EffectBuilder<REv> {
         self,
         timestamp: Timestamp,
         era_id: EraId,
+        request_expiry: Timestamp,
     ) -> AppendableBlock
     where
         REv: From<TransactionBufferRequest>,
@@ -1850,6 +1850,7 @@ impl<REv> EffectBuilder<REv> {
             |responder| TransactionBufferRequest::GetAppendableBlock {
                 timestamp,
                 era_id,
+                request_expiry,
                 responder,
             },
             QueueKind::Consensus,
@@ -2127,6 +2128,20 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| ContractRuntimeRequest::GetEraValidators { request, responder },
+            QueueKind::ContractRuntime,
+        )
+        .await
+    }
+
+    pub(crate) async fn get_seigniorage_recipients_snapshot_from_contract_runtime(
+        self,
+        request: SeigniorageRecipientsRequest,
+    ) -> SeigniorageRecipientsResult
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::GetSeigniorageRecipients { request, responder },
             QueueKind::ContractRuntime,
         )
         .await

@@ -203,6 +203,12 @@ impl EngineConfig {
     pub fn set_protocol_version(&mut self, protocol_version: ProtocolVersion) {
         self.protocol_version = protocol_version;
     }
+
+    /// Sets the `wasm_config.max_memory` to `new_value`.
+    #[cfg(feature = "test-support")]
+    pub fn set_max_memory(&mut self, new_value: u32) {
+        self.wasm_config.max_memory = new_value;
+    }
 }
 
 /// A builder for an [`EngineConfig`].

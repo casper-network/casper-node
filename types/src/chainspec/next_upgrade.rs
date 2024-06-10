@@ -20,7 +20,7 @@ use crate::testing::TestRng;
 /// Information about the next protocol upgrade.
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-#[derive(PartialEq, Eq, Debug, Serialize, Deserialize, Clone)]
+#[derive(PartialEq, Eq, Debug, Serialize, Deserialize, Clone, Copy)]
 pub struct NextUpgrade {
     activation_point: ActivationPoint,
     protocol_version: ProtocolVersion,

@@ -194,7 +194,7 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         let result = match event {
-            Event::StorageRequest(req) => self.handle_storage_request::<REv>(*req),
+            Event::StorageRequest(req) => self.handle_storage_request(*req),
             Event::NetRequestIncoming(ref incoming) => {
                 match self.handle_net_request_incoming::<REv>(effect_builder, incoming) {
                     Ok(effects) => Ok(effects),
@@ -551,7 +551,7 @@ impl Storage {
     }
 
     /// Handles a storage request.
-    fn handle_storage_request<REv>(
+    fn handle_storage_request(
         &mut self,
         req: StorageRequest,
     ) -> Result<Effects<Event>, FatalStorageError> {
@@ -1114,7 +1114,7 @@ impl Storage {
 
             debug!("Storage utilization at {total_size_utilization}");
 
-            let scores = vec![
+            let scores = [
                 block_utilization_score,
                 total_size_utilization,
                 total_gas_utilization,
@@ -1877,7 +1877,6 @@ impl Storage {
             let last_era_id = last_era_header.era_id();
             result.push(last_era_header);
             for era_id in (0..last_era_id.value())
-                .into_iter()
                 .rev()
                 .take(count as usize)
                 .map(EraId::new)
@@ -2040,7 +2039,7 @@ impl Storage {
             Some(utilization) => {
                 utilization.entry(block_height).or_insert(block_utilization);
 
-                let transaction_count = utilization.values().into_iter().sum();
+                let transaction_count = utilization.values().sum();
                 let block_count = utilization.keys().len() as u64;
 
                 Some((transaction_count, block_count))

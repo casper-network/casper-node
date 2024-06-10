@@ -537,19 +537,14 @@ impl FromBytes for CoreConfig {
 }
 
 /// Consensus protocol name.
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Default)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 pub enum ConsensusProtocolName {
     /// Highway.
     Highway,
     /// Zug.
+    #[default]
     Zug,
-}
-
-impl Default for ConsensusProtocolName {
-    fn default() -> Self {
-        ConsensusProtocolName::Zug
-    }
 }
 
 impl Serialize for ConsensusProtocolName {
@@ -616,7 +611,7 @@ impl Distribution<ConsensusProtocolName> for Standard {
 }
 
 /// Which finality a legacy block needs during a fast sync.
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Default)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 pub enum LegacyRequiredFinality {
     /// Strict finality: more than 2/3rd of validators.
@@ -624,6 +619,7 @@ pub enum LegacyRequiredFinality {
     /// Weak finality: more than 1/3rd of validators.
     Weak,
     /// Finality always valid.
+    #[default]
     Any,
 }
 
@@ -638,12 +634,6 @@ impl Serialize for LegacyRequiredFinality {
             LegacyRequiredFinality::Any => "Any",
         }
         .serialize(serializer)
-    }
-}
-
-impl Default for LegacyRequiredFinality {
-    fn default() -> Self {
-        LegacyRequiredFinality::Any
     }
 }
 

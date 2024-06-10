@@ -1,5 +1,3 @@
-use std::convert::TryFrom;
-
 use casper_engine_test_support::{
     ChainspecConfig, DeployItemBuilder, ExecuteRequest, ExecuteRequestBuilder, LmdbWasmTestBuilder,
     TransferRequestBuilder, DEFAULT_AUCTION_DELAY, DEFAULT_CHAINSPEC_REGISTRY,

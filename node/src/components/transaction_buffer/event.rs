@@ -27,7 +27,13 @@ pub(crate) enum Event {
     BlockFinalized(Box<FinalizedBlock>),
     Expire,
     UpdateEraGasPrice(EraId, u8),
-    GetGasPriceResult(Option<u8>, EraId, Timestamp, Responder<AppendableBlock>),
+    GetGasPriceResult(
+        Option<u8>,
+        EraId,
+        Timestamp,
+        Timestamp,
+        Responder<AppendableBlock>,
+    ),
 }
 
 impl Display for Event {
@@ -76,7 +82,7 @@ impl Display for Event {
                     next_era_gas_price, era_id
                 )
             }
-            Event::GetGasPriceResult(_, era_id, _, _) => {
+            Event::GetGasPriceResult(_, era_id, _, _, _) => {
                 write!(formatter, "retrieving gas price for era {}", era_id)
             }
         }

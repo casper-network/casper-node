@@ -14,7 +14,7 @@ const PRICING_HANDLING_TAG_LENGTH: u8 = 1;
 
 /// Defines what pricing mode a network allows. Correlates to the PricingMode of a
 /// [`crate::Transaction`]. Nodes will not accept transactions whose pricing mode does not match.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(tag = "type", rename_all = "snake_case")]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 pub enum PricingHandling {
@@ -22,6 +22,8 @@ pub enum PricingHandling {
     /// limit.
     Classic,
     /// The costs are fixed, per the cost tables.
+    // in 2.0 the default pricing handling is Fixed
+    #[default]
     Fixed,
 }
 
@@ -67,13 +69,6 @@ impl FromBytes for PricingHandling {
             PRICING_HANDLING_FIXED_TAG => Ok((PricingHandling::Fixed, rem)),
             _ => Err(bytesrepr::Error::Formatting),
         }
-    }
-}
-
-impl Default for PricingHandling {
-    fn default() -> Self {
-        // in 2.0 the default pricing handling is Fixed
-        PricingHandling::Fixed
     }
 }
 
