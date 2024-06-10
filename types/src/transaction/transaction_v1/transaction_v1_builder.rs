@@ -37,23 +37,23 @@ pub use error::TransactionV1BuilderError;
 /// network for execution.
 pub struct TransactionV1Builder<'a> {
     /// The name of the blockchain network.
-    pub chain_name: Option<String>,
+    chain_name: Option<String>,
     /// The timestamp of the transaction.
-    pub timestamp: Timestamp,
+    timestamp: Timestamp,
     /// The time-to-live for the transaction.
-    pub ttl: TimeDiff,
+    ttl: TimeDiff,
     /// The body of the transaction.
-    pub body: TransactionV1Body,
+    body: TransactionV1Body,
     /// The pricing mode for the transaction.
-    pub pricing_mode: PricingMode,
+    pricing_mode: PricingMode,
     /// The address of the transaction initiator.
-    pub initiator_addr: Option<InitiatorAddr>,
+    initiator_addr: Option<InitiatorAddr>,
     /// The secret key used for signing the transaction. Not available in testing mode.
     #[cfg(not(any(feature = "testing", test)))]
     secret_key: Option<&'a SecretKey>,
     /// The secret key used for signing the transaction. Available in testing mode.
     #[cfg(any(feature = "testing", test))]
-    pub secret_key: Option<SecretKey>,
+    secret_key: Option<SecretKey>,
     /// Invalid approvals for the transaction. Only available in testing mode.
     #[cfg(any(feature = "testing", test))]
     invalid_approvals: Vec<Approval>,
@@ -352,6 +352,18 @@ impl<'a> TransactionV1Builder<'a> {
             _phantom_data: PhantomData,
             invalid_approvals: vec![],
         }
+    }
+
+    /// Returns a reference to the `body` field of the transaction.
+    ///
+    /// This method provides access to the transaction's body, which contains
+    /// the core data of the transaction.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the `TransactionV1Body`.
+    pub fn body(&self) -> &TransactionV1Body {
+        &self.body
     }
 
     /// Sets the `chain_name` in the transaction.
