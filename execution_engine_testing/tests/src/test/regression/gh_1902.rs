@@ -14,7 +14,7 @@ use casper_types::{
         auction::{self, DelegationRate},
         standard_payment,
     },
-    AddressableEntity, FeeHandling, Gas, PublicKey, RefundHandling, SecretKey, U512,
+    FeeHandling, Gas, PublicKey, RefundHandling, SecretKey, U512,
 };
 
 const BOND_AMOUNT: u64 = 42;
@@ -52,52 +52,16 @@ fn setup() -> LmdbWasmTestBuilder {
 fn exec_and_assert_costs(
     builder: &mut LmdbWasmTestBuilder,
     exec_request: ExecuteRequest,
-    caller: AddressableEntity,
-    expected_tokens_paid: U512,
-    _payment_amount: U512,
     expected_gas_cost: Gas,
 ) {
-    let balance_before = builder.get_purse_balance(caller.main_purse());
-
-    let proposer_balance_before = builder.get_proposer_purse_balance();
-
     builder.exec(exec_request).expect_success().commit();
-
-    let balance_after = builder.get_purse_balance(caller.main_purse());
-
-    let proposer_fee = builder.get_proposer_purse_balance() - proposer_balance_before;
-
-    assert_eq!(
-        proposer_fee,
-        expected_gas_cost.value(),
-        "with PayToProposer && 100% refund of unspent, the fee should equal the gas cost"
-    );
-
-    let expected = balance_before - expected_tokens_paid - proposer_fee;
-
-    assert_eq!(
-        balance_after,
-        expected,
-        "before and after should match; off by: {}",
-        if expected > balance_after {
-            expected - balance_after
-        } else {
-            balance_after - expected
-        }
-    );
-    assert_eq!(builder.last_exec_gas_cost(), expected_gas_cost,);
+    assert_eq!(builder.last_exec_gas_cost(), expected_gas_cost);
 }
 
 #[ignore]
-#[allow(unused)]
-// #[test]
+#[test]
 fn should_not_charge_for_create_purse_in_first_time_bond() {
     let mut builder = setup();
-
-    let default_account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
-        .unwrap();
-    let account_1 = builder.get_entity_by_account_hash(*ACCOUNT_1_ADDR).unwrap();
 
     let bond_amount = U512::from(BOND_AMOUNT);
     // This amount should be enough to make first time add_bid call.
@@ -131,14 +95,7 @@ fn should_not_charge_for_create_purse_in_first_time_bond() {
 
     let add_bid_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
-    exec_and_assert_costs(
-        &mut builder,
-        add_bid_request,
-        default_account.clone(),
-        bond_amount,
-        add_bid_payment_amount,
-        Gas::from(add_bid_cost),
-    );
+    exec_and_assert_costs(&mut builder, add_bid_request, Gas::from(add_bid_cost));
 
     let delegate_cost = builder.get_auction_costs().delegate;
     let delegate_payment_amount = U512::from(delegate_cost);
@@ -167,14 +124,7 @@ fn should_not_charge_for_create_purse_in_first_time_bond() {
 
     let delegate_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
-    exec_and_assert_costs(
-        &mut builder,
-        delegate_request,
-        account_1.clone(),
-        delegate_amount,
-        delegate_payment_amount,
-        Gas::from(delegate_cost),
-    );
+    exec_and_assert_costs(&mut builder, delegate_request, Gas::from(delegate_cost));
 
     let undelegate_cost = builder.get_auction_costs().undelegate;
     let undelegate_payment_amount = U512::from(undelegate_cost);
@@ -203,14 +153,7 @@ fn should_not_charge_for_create_purse_in_first_time_bond() {
 
     let undelegate_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
-    exec_and_assert_costs(
-        &mut builder,
-        undelegate_request,
-        account_1,
-        U512::zero(), // we paid nothing in the deploy as we're unbonding
-        undelegate_payment_amount,
-        Gas::from(undelegate_cost),
-    );
+    exec_and_assert_costs(&mut builder, undelegate_request, Gas::from(undelegate_cost));
 
     let unbond_amount = bond_amount;
     // This amount should be enough to make first time add_bid call.
@@ -240,9 +183,6 @@ fn should_not_charge_for_create_purse_in_first_time_bond() {
     exec_and_assert_costs(
         &mut builder,
         withdraw_bid_request,
-        default_account,
-        U512::zero(),
-        withdraw_bid_payment_amount,
         Gas::from(withdraw_bid_cost),
     );
 }

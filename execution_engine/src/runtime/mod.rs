@@ -3429,8 +3429,7 @@ where
         }
 
         // A set of keys is converted into a vector so it can be written to a host buffer
-        let authorization_keys =
-            Vec::from_iter(self.context.authorization_keys().clone().into_iter());
+        let authorization_keys = Vec::from_iter(self.context.authorization_keys().clone());
 
         let total_keys: u32 = match authorization_keys.len().try_into() {
             Ok(value) => value,

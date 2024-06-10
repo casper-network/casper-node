@@ -23,8 +23,8 @@ use tracing::{debug, error, trace, warn};
 
 use casper_types::{
     Approval, ApprovalsHash, Chainspec, EraId, FinalitySignature, FinalitySignatureId, PublicKey,
-    RewardedSignatures, SingleBlockRewardedSignatures, Timestamp, Transaction, TransactionCategory,
-    TransactionHash, TransactionId,
+    RewardedSignatures, SingleBlockRewardedSignatures, Timestamp, Transaction, TransactionHash,
+    TransactionId,
 };
 
 use crate::{
@@ -56,32 +56,6 @@ impl ProposedBlock<ClContext> {
     /// How many transactions are being tracked?
     pub(crate) fn transaction_count(&self) -> usize {
         self.value().count(None)
-    }
-
-    /// How many standard transactions?
-    pub(crate) fn standard_count(&self) -> usize {
-        self.value().count(Some(TransactionCategory::Standard))
-    }
-
-    /// How many mint transactions?
-    pub(crate) fn mint_count(&self) -> usize {
-        self.value().count(Some(TransactionCategory::Mint))
-    }
-
-    /// How many auction transactions?
-    pub(crate) fn auction_count(&self) -> usize {
-        self.value().count(Some(TransactionCategory::Auction))
-    }
-
-    /// How many entity transactions?
-    pub(crate) fn entity_count(&self) -> usize {
-        self.value().count(Some(TransactionCategory::Entity))
-    }
-
-    /// How many install / upgrade transactions?
-    pub(crate) fn install_upgrade_count(&self) -> usize {
-        self.value()
-            .count(Some(TransactionCategory::InstallUpgrade))
     }
 
     pub(crate) fn all_transactions(

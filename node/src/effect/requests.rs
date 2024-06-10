@@ -25,7 +25,8 @@ use casper_storage::{
         tagged_values::{TaggedValuesRequest, TaggedValuesResult},
         AddressableEntityResult, BalanceRequest, BalanceResult, EntryPointsResult,
         EraValidatorsRequest, EraValidatorsResult, ExecutionResultsChecksumResult, PutTrieRequest,
-        PutTrieResult, QueryRequest, QueryResult, TrieRequest, TrieResult,
+        PutTrieResult, QueryRequest, QueryResult, SeigniorageRecipientsRequest,
+        SeigniorageRecipientsResult, TrieRequest, TrieResult,
     },
     DbRawBytesSpec,
 };
@@ -33,8 +34,8 @@ use casper_types::{
     execution::ExecutionResult, Approval, AvailableBlockRange, Block, BlockHash, BlockHeader,
     BlockSignatures, BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest,
     DisplayIter, EraId, ExecutionInfo, FinalitySignature, FinalitySignatureId, Key, NextUpgrade,
-    ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transaction, TransactionHash,
-    TransactionHeader, TransactionId, Transfer,
+    ProtocolUpgradeConfig, ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transaction,
+    TransactionHash, TransactionHeader, TransactionId, Transfer,
 };
 
 use super::{AutoClosingResponder, GossipTarget, Responder};
@@ -52,6 +53,7 @@ use crate::{
         network::NetworkInsights,
         transaction_acceptor,
     },
+    contract_runtime::ExecutionPreState,
     reactor::main_reactor::ReactorState,
     types::{
         appendable_block::AppendableBlock, BlockExecutionResultsOrChunk,
@@ -702,6 +704,7 @@ pub(crate) enum TransactionBufferRequest {
     GetAppendableBlock {
         timestamp: Timestamp,
         era_id: EraId,
+        request_expiry: Timestamp,
         responder: Responder<AppendableBlock>,
     },
 }
@@ -710,12 +713,15 @@ impl Display for TransactionBufferRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             TransactionBufferRequest::GetAppendableBlock {
-                timestamp, era_id, ..
+                timestamp,
+                era_id,
+                request_expiry,
+                ..
             } => {
                 write!(
                     formatter,
-                    "request for appendable block at instant {} for era {}",
-                    timestamp, era_id
+                    "request for appendable block at instant {} for era {} (expires at {})",
+                    timestamp, era_id, request_expiry
                 )
             }
         }
@@ -794,6 +800,14 @@ pub(crate) enum ContractRuntimeRequest {
         /// Responder to call with the result.
         responder: Responder<EraValidatorsResult>,
     },
+    /// Returns the seigniorage recipients snapshot at the given state root hash.
+    GetSeigniorageRecipients {
+        /// Get seigniorage recipients request.
+        #[serde(skip_serializing)]
+        request: SeigniorageRecipientsRequest,
+        /// Responder to call with the result.
+        responder: Responder<SeigniorageRecipientsResult>,
+    },
     /// Return all values at a given state root hash and given key tag.
     GetTaggedValues {
         /// Get tagged values request.
@@ -854,6 +868,15 @@ pub(crate) enum ContractRuntimeRequest {
         era_id: EraId,
         responder: Responder<Option<u8>>,
     },
+    DoProtocolUpgrade {
+        protocol_upgrade_config: ProtocolUpgradeConfig,
+        next_block_height: u64,
+        parent_hash: BlockHash,
+        parent_seed: Digest,
+    },
+    UpdatePreState {
+        new_pre_state: ExecutionPreState,
+    },
 }
 
 impl Display for ContractRuntimeRequest {
@@ -879,6 +902,9 @@ impl Display for ContractRuntimeRequest {
             } => write!(formatter, "balance request: {:?}", balance_request),
             ContractRuntimeRequest::GetEraValidators { request, .. } => {
                 write!(formatter, "get era validators: {:?}", request)
+            }
+            ContractRuntimeRequest::GetSeigniorageRecipients { request, .. } => {
+                write!(formatter, "get seigniorage recipients for {:?}", request)
             }
             ContractRuntimeRequest::GetTaggedValues {
                 request: get_all_values_request,
@@ -941,6 +967,23 @@ impl Display for ContractRuntimeRequest {
                     formatter,
                     "get entry point {} under {}",
                     key, state_root_hash
+                )
+            }
+            ContractRuntimeRequest::DoProtocolUpgrade {
+                protocol_upgrade_config,
+                ..
+            } => {
+                write!(
+                    formatter,
+                    "execute protocol upgrade against config: {:?}",
+                    protocol_upgrade_config
+                )
+            }
+            ContractRuntimeRequest::UpdatePreState { new_pre_state } => {
+                write!(
+                    formatter,
+                    "Updating contract runtimes execution presate: {:?}",
+                    new_pre_state
                 )
             }
         }

@@ -65,7 +65,10 @@ pub use protocol_config::ProtocolConfig;
 pub use refund_handling::RefundHandling;
 pub use transaction_config::{DeployConfig, TransactionConfig, TransactionV1Config};
 #[cfg(any(feature = "testing", test))]
-pub use transaction_config::{DEFAULT_MAX_PAYMENT_MOTES, DEFAULT_MIN_TRANSFER_MOTES};
+pub use transaction_config::{
+    DEFAULT_INSTALL_UPGRADE_GAS_LIMIT, DEFAULT_LARGE_TRANSACTION_GAS_LIMIT,
+    DEFAULT_MAX_PAYMENT_MOTES, DEFAULT_MIN_TRANSFER_MOTES,
+};
 pub use upgrade_config::ProtocolUpgradeConfig;
 pub use vacancy_config::VacancyConfig;
 pub use vm_config::{
@@ -85,10 +88,9 @@ pub use vm_config::{
     DEFAULT_CONTROL_FLOW_IF_OPCODE, DEFAULT_CONTROL_FLOW_LOOP_OPCODE,
     DEFAULT_CONTROL_FLOW_RETURN_OPCODE, DEFAULT_CONTROL_FLOW_SELECT_OPCODE,
     DEFAULT_CONVERSION_COST, DEFAULT_CURRENT_MEMORY_COST, DEFAULT_DELEGATE_COST, DEFAULT_DIV_COST,
-    DEFAULT_GLOBAL_COST, DEFAULT_GROW_MEMORY_COST, DEFAULT_INSTALL_UPGRADE_GAS_LIMIT,
-    DEFAULT_INTEGER_COMPARISON_COST, DEFAULT_LOAD_COST, DEFAULT_LOCAL_COST,
-    DEFAULT_MAX_STACK_HEIGHT, DEFAULT_MUL_COST, DEFAULT_NEW_DICTIONARY_COST, DEFAULT_NOP_COST,
-    DEFAULT_STANDARD_TRANSACTION_GAS_LIMIT, DEFAULT_STORE_COST, DEFAULT_TRANSFER_COST,
+    DEFAULT_GLOBAL_COST, DEFAULT_GROW_MEMORY_COST, DEFAULT_INTEGER_COMPARISON_COST,
+    DEFAULT_LOAD_COST, DEFAULT_LOCAL_COST, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_MUL_COST,
+    DEFAULT_NEW_DICTIONARY_COST, DEFAULT_NOP_COST, DEFAULT_STORE_COST, DEFAULT_TRANSFER_COST,
     DEFAULT_UNREACHABLE_COST, DEFAULT_WASM_MAX_MEMORY,
 };
 
@@ -215,6 +217,41 @@ impl Chainspec {
         timestamp
             .millis()
             .saturating_sub(self.core_config.gas_hold_interval.millis())
+    }
+
+    /// Is the given transaction category supported.
+    pub fn is_supported(&self, category: u8) -> bool {
+        self.transaction_config
+            .transaction_v1_config
+            .is_supported(category)
+    }
+
+    /// Returns the max serialized for the given category.
+    pub fn get_max_serialized_length_by_kind(&self, category: u8) -> u64 {
+        self.transaction_config
+            .transaction_v1_config
+            .get_max_serialized_length(category)
+    }
+
+    /// Returns the max args length for the given category.
+    pub fn get_max_args_length_by_kind(&self, category: u8) -> u64 {
+        self.transaction_config
+            .transaction_v1_config
+            .get_max_args_length(category)
+    }
+
+    /// Returns the max gas limit for the given category.
+    pub fn get_max_gas_limit_by_kind(&self, category: u8) -> u64 {
+        self.transaction_config
+            .transaction_v1_config
+            .get_max_gas_limit(category)
+    }
+
+    /// Returns the max transaction count for the given category.
+    pub fn get_max_transaction_count_by_kind(&self, category: u8) -> u64 {
+        self.transaction_config
+            .transaction_v1_config
+            .get_max_transaction_count(category)
     }
 }
 

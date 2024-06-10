@@ -4,6 +4,7 @@ pub mod providers;
 
 use std::collections::BTreeMap;
 
+use itertools::Itertools;
 use num_rational::Ratio;
 use num_traits::{CheckedMul, CheckedSub};
 use tracing::{debug, error, warn};
@@ -16,8 +17,8 @@ use casper_types::{
     account::AccountHash,
     system::auction::{
         BidAddr, BidKind, Bridge, DelegationRate, EraInfo, EraValidators, Error,
-        SeigniorageRecipients, UnbondingPurse, ValidatorBid, ValidatorCredit, ValidatorWeights,
-        DELEGATION_RATE_DENOMINATOR,
+        SeigniorageRecipients, SeigniorageRecipientsSnapshot, UnbondingPurse, ValidatorBid,
+        ValidatorCredit, ValidatorWeights, DELEGATION_RATE_DENOMINATOR,
     },
     ApiError, EraId, Key, PublicKey, U512,
 };
@@ -475,7 +476,9 @@ pub trait Auction:
         let vesting_schedule_period_millis = self.vesting_schedule_period_millis();
         let validator_slots = detail::get_validator_slots(self)?;
         let auction_delay = detail::get_auction_delay(self)?;
-        let snapshot_size = auction_delay as usize + 1;
+        // We have to store auction_delay future eras, one current era and one past era (for
+        // rewards calculations).
+        let snapshot_size = auction_delay as usize + 2;
         let mut era_id: EraId = detail::get_era_id(self)?;
 
         // Process unbond requests
@@ -595,20 +598,34 @@ pub trait Auction:
     /// according to `reward_factors` returned by the consensus component.
     // TODO: rework EraInfo and other related structs, methods, etc. to report correct era-end
     // totals of per-block rewards
-    fn distribute(&mut self, rewards: BTreeMap<PublicKey, U512>) -> Result<(), Error> {
+    fn distribute(&mut self, rewards: BTreeMap<PublicKey, Vec<U512>>) -> Result<(), Error> {
         if self.get_caller() != PublicKey::System.to_account_hash() {
             error!("invalid caller to auction distribute");
             return Err(Error::InvalidCaller);
         }
 
-        let seigniorage_recipients = self.read_seigniorage_recipients()?;
+        let seigniorage_recipients_snapshot = detail::get_seigniorage_recipients_snapshot(self)?;
+        let current_era_id = detail::get_era_id(self)?;
+
         let mut era_info = EraInfo::new();
         let seigniorage_allocations = era_info.seigniorage_allocations_mut();
 
-        for (proposer, reward_amount) in rewards
+        for item in rewards
             .into_iter()
-            .filter(|(key, _amount)| key != &PublicKey::System)
+            .filter(|(key, _amounts)| key != &PublicKey::System)
+            .map(|(proposer, amounts)| {
+                rewards_per_validator(
+                    &proposer,
+                    current_era_id,
+                    &amounts,
+                    &seigniorage_recipients_snapshot,
+                )
+                .map(|infos| infos.into_iter().map(move |info| (proposer.clone(), info)))
+            })
+            .flatten_ok()
         {
+            let (proposer, reward_info) = item?;
+
             // fetch most recent validator public key if public key was changed
             // or the validator withdrew their bid completely
             let validator_public_key =
@@ -623,95 +640,22 @@ pub trait Auction:
                     Err(err) => return Err(err),
                 };
 
-            let total_reward = Ratio::from(reward_amount);
-            let Some(recipient) = seigniorage_recipients
-                .get(&proposer)
-                .cloned()
-                .or_else(|| {
-                    let bid_key = BidAddr::from(proposer.clone()).into();
-                    let validator_bid = read_validator_bid(self, &bid_key).ok()?;
-                    seigniorage_recipient(self, &validator_bid).ok()
-                })
-                else {
-                    // If the bid doesn't exist, either, the validator has likely been slashed. In
-                    // such a case, simply don't distribute the reward to them.
-                    continue;
-                };
-
-            let total_stake = recipient.total_stake().ok_or(Error::ArithmeticOverflow)?;
-
-            if total_stake.is_zero() {
-                // The validator has completely unbonded. We can't compute the delegators' part (as
-                // their stakes are also zero), so we just give the whole reward to the validator.
-                // Mint the reward into their bonding purse and increase their unbond request by the
-                // corresponding amount.
-                let validator_bonding_purse = detail::distribute_validator_rewards(
-                    self,
-                    seigniorage_allocations,
-                    validator_public_key.clone(),
-                    reward_amount,
-                )?;
-
-                // mint new token and put it to the recipients' purses
-                self.mint_into_existing_purse(reward_amount, validator_bonding_purse)
-                    .map_err(Error::from)?;
-
-                continue;
-            }
-
-            let delegator_total_stake: U512 = recipient
-                .delegator_total_stake()
-                .ok_or(Error::ArithmeticOverflow)?;
-
-            let delegators_part: Ratio<U512> = {
-                let commission_rate = Ratio::new(
-                    U512::from(*recipient.delegation_rate()),
-                    U512::from(DELEGATION_RATE_DENOMINATOR),
-                );
-                let reward_multiplier: Ratio<U512> = Ratio::new(delegator_total_stake, total_stake);
-                let delegator_reward: Ratio<U512> = total_reward
-                    .checked_mul(&reward_multiplier)
-                    .ok_or(Error::ArithmeticOverflow)?;
-                let commission: Ratio<U512> = delegator_reward
-                    .checked_mul(&commission_rate)
-                    .ok_or(Error::ArithmeticOverflow)?;
-                delegator_reward
-                    .checked_sub(&commission)
-                    .ok_or(Error::ArithmeticOverflow)?
-            };
-
-            let delegator_rewards =
-                recipient
-                    .delegator_stake()
-                    .iter()
-                    .map(|(delegator_key, delegator_stake)| {
-                        let reward_multiplier = Ratio::new(*delegator_stake, delegator_total_stake);
-                        let reward = delegators_part * reward_multiplier;
-                        (delegator_key.clone(), reward)
-                    });
-
             let delegator_payouts = detail::distribute_delegator_rewards(
                 self,
                 seigniorage_allocations,
                 validator_public_key.clone(),
-                delegator_rewards,
+                reward_info.delegator_rewards,
             )?;
 
-            let total_delegator_payout: U512 = delegator_payouts
-                .iter()
-                .map(|(_delegator_hash, amount, _bonding_purse)| *amount)
-                .sum();
-
-            let validator_reward = reward_amount - total_delegator_payout;
             let validator_bonding_purse = detail::distribute_validator_rewards(
                 self,
                 seigniorage_allocations,
                 validator_public_key.clone(),
-                validator_reward,
+                reward_info.validator_reward,
             )?;
 
             // mint new token and put it to the recipients' purses
-            self.mint_into_existing_purse(validator_reward, validator_bonding_purse)
+            self.mint_into_existing_purse(reward_info.validator_reward, validator_bonding_purse)
                 .map_err(Error::from)?;
 
             for (_delegator_account_hash, delegator_payout, bonding_purse) in delegator_payouts {
@@ -868,4 +812,138 @@ pub trait Auction:
         self.write_bid(credit_key, BidKind::Credit(credit_bid))
             .map(|_| Some(credit_addr))
     }
+}
+
+/// Retrieves the total reward for a given validator or delegator in a given era.
+pub fn reward(
+    validator: &PublicKey,
+    delegator: Option<&PublicKey>,
+    era_id: EraId,
+    rewards: &[U512],
+    seigniorage_recipients_snapshot: &SeigniorageRecipientsSnapshot,
+) -> Result<Option<U512>, Error> {
+    let validator_rewards =
+        match rewards_per_validator(validator, era_id, rewards, seigniorage_recipients_snapshot) {
+            Ok(rewards) => rewards,
+            Err(Error::ValidatorNotFound) => return Ok(None),
+            Err(Error::MissingSeigniorageRecipients) => return Ok(None),
+            Err(err) => return Err(err),
+        };
+
+    let reward = validator_rewards
+        .into_iter()
+        .map(|reward_info| {
+            if let Some(delegator) = delegator {
+                reward_info
+                    .delegator_rewards
+                    .get(delegator)
+                    .copied()
+                    .unwrap_or_default()
+            } else {
+                reward_info.validator_reward
+            }
+        })
+        .sum();
+
+    Ok(Some(reward))
+}
+
+fn rewards_per_validator(
+    validator: &PublicKey,
+    era_id: EraId,
+    rewards: &[U512],
+    seigniorage_recipients_snapshot: &SeigniorageRecipientsSnapshot,
+) -> Result<Vec<RewardsPerValidator>, Error> {
+    let mut results = Vec::with_capacity(rewards.len());
+
+    for (reward_amount, eras_back) in rewards
+        .iter()
+        .enumerate()
+        .map(move |(i, &amount)| (amount, i as u64))
+        // do not process zero amounts, unless they are for the current era (we still want to
+        // record zero allocations for the current validators in EraInfo)
+        .filter(|(amount, eras_back)| !amount.is_zero() || *eras_back == 0)
+    {
+        let total_reward = Ratio::from(reward_amount);
+        let rewarded_era = era_id
+            .checked_sub(eras_back)
+            .ok_or(Error::MissingSeigniorageRecipients)?;
+        let Some(recipient) = seigniorage_recipients_snapshot
+            .get(&rewarded_era)
+            .ok_or(Error::MissingSeigniorageRecipients)?
+            .get(validator).cloned()
+        else {
+            // We couldn't find the validator. If the reward amount is zero, we don't care -
+            // the validator wasn't supposed to be rewarded in this era, anyway. Otherwise,
+            // return an error.
+            if reward_amount.is_zero() {
+                continue;
+            } else {
+                return Err(Error::ValidatorNotFound);
+            }
+        };
+
+        let total_stake = recipient.total_stake().ok_or(Error::ArithmeticOverflow)?;
+
+        if total_stake.is_zero() {
+            // The validator has completely unbonded. We can't compute the delegators' part (as
+            // their stakes are also zero), so we just give the whole reward to the validator.
+            // When used from `distribute`, we will mint the reward into their bonding purse
+            // and increase their unbond request by the corresponding amount.
+
+            results.push(RewardsPerValidator {
+                validator_reward: reward_amount,
+                delegator_rewards: BTreeMap::new(),
+            });
+            continue;
+        }
+
+        let delegator_total_stake: U512 = recipient
+            .delegator_total_stake()
+            .ok_or(Error::ArithmeticOverflow)?;
+
+        let delegators_part: Ratio<U512> = {
+            let commission_rate = Ratio::new(
+                U512::from(*recipient.delegation_rate()),
+                U512::from(DELEGATION_RATE_DENOMINATOR),
+            );
+            let reward_multiplier: Ratio<U512> = Ratio::new(delegator_total_stake, total_stake);
+            let delegator_reward: Ratio<U512> = total_reward
+                .checked_mul(&reward_multiplier)
+                .ok_or(Error::ArithmeticOverflow)?;
+            let commission: Ratio<U512> = delegator_reward
+                .checked_mul(&commission_rate)
+                .ok_or(Error::ArithmeticOverflow)?;
+            delegator_reward
+                .checked_sub(&commission)
+                .ok_or(Error::ArithmeticOverflow)?
+        };
+
+        let delegator_rewards: BTreeMap<PublicKey, U512> = recipient
+            .delegator_stake()
+            .iter()
+            .map(|(delegator_key, delegator_stake)| {
+                let reward_multiplier = Ratio::new(*delegator_stake, delegator_total_stake);
+                let reward = delegators_part * reward_multiplier;
+                (delegator_key.clone(), reward.to_integer())
+            })
+            .collect();
+
+        let total_delegator_payout: U512 =
+            delegator_rewards.iter().map(|(_, &amount)| amount).sum();
+
+        let validator_reward = reward_amount - total_delegator_payout;
+
+        results.push(RewardsPerValidator {
+            validator_reward,
+            delegator_rewards,
+        });
+    }
+    Ok(results)
+}
+
+#[derive(Debug, Default)]
+pub struct RewardsPerValidator {
+    validator_reward: U512,
+    delegator_rewards: BTreeMap<PublicKey, U512>,
 }

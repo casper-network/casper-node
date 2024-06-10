@@ -57,17 +57,18 @@ use crate::{
         },
     },
     testing::TestRng,
-    AddressableEntityHash, RuntimeArgs, DEFAULT_MAX_PAYMENT_MOTES, DEFAULT_MIN_TRANSFER_MOTES,
+    AddressableEntityHash, RuntimeArgs, URef, DEFAULT_MAX_PAYMENT_MOTES,
+    DEFAULT_MIN_TRANSFER_MOTES,
 };
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     crypto,
-    transaction::{Approval, ApprovalsHash, Categorized},
-    Digest, DisplayIter, PublicKey, SecretKey, TimeDiff, Timestamp, TransactionCategory,
+    transaction::{Approval, ApprovalsHash},
+    Digest, DisplayIter, PublicKey, SecretKey, TimeDiff, Timestamp,
 };
 
 #[cfg(any(feature = "std", test))]
-use crate::{chainspec::PricingHandling, Chainspec};
+use crate::{chainspec::PricingHandling, transaction::TransactionCategory, Chainspec};
 #[cfg(any(feature = "std", test))]
 use crate::{system::auction::ARG_AMOUNT, transaction::GasLimited, Gas, Motes, U512};
 #[cfg(any(feature = "std", test))]
@@ -409,7 +410,10 @@ impl Deploy {
         at: Timestamp,
     ) -> Result<(), InvalidDeploy> {
         let config = &chainspec.transaction_config;
-        self.is_valid_size(config.max_transaction_size)?;
+        let max_transaction_size = config
+            .transaction_v1_config
+            .get_max_serialized_length(TransactionCategory::Large as u8);
+        self.is_valid_size(max_transaction_size as u32)?;
 
         let header = self.header();
         let chain_name = &chainspec.network_config.name;
@@ -808,6 +812,63 @@ impl Deploy {
         Self::random_transfer_with_session(rng, session)
     }
 
+    /// Returns a random deploy with custom session specified as a stored versioned contract by
+    /// name.
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
+    pub fn random_contract_by_name(
+        rng: &mut TestRng,
+        maybe_secret_key: Option<SecretKey>,
+        maybe_contract_name: Option<String>,
+        maybe_entry_point_name: Option<String>,
+        maybe_timestamp: Option<Timestamp>,
+        maybe_ttl: Option<TimeDiff>,
+    ) -> Self {
+        let payment_args = runtime_args! {
+            "amount" => U512::from(10),
+        };
+        let payment = ExecutableDeployItem::ModuleBytes {
+            module_bytes: Bytes::new(),
+            args: payment_args,
+        };
+        let contract_name = match maybe_contract_name {
+            None => "Test".to_string(),
+            Some(contract_name) => contract_name,
+        };
+        let entry_point_name = match maybe_entry_point_name {
+            None => "Test".to_string(),
+            Some(entry_point_name) => entry_point_name,
+        };
+        let session = ExecutableDeployItem::StoredVersionedContractByName {
+            name: contract_name,
+            version: None,
+            entry_point: entry_point_name,
+            args: Default::default(),
+        };
+        let secret_key = match maybe_secret_key {
+            None => SecretKey::random(rng),
+            Some(secret_key) => secret_key,
+        };
+        let timestamp = match maybe_timestamp {
+            None => Timestamp::now(),
+            Some(timestamp) => timestamp,
+        };
+        let ttl = match maybe_ttl {
+            None => TimeDiff::from_seconds(rng.gen_range(60..3600)),
+            Some(ttl) => ttl,
+        };
+        Deploy::new(
+            timestamp,
+            ttl,
+            1,
+            vec![],
+            "test_chain".to_string(),
+            payment,
+            session,
+            &secret_key,
+            None,
+        )
+    }
+
     /// Returns a random invalid `Deploy` with custom session specified as a stored versioned
     /// contract by hash, but missing the runtime args.
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
@@ -1114,8 +1175,10 @@ impl Deploy {
 
     /// Creates a native transfer, for testing.
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
+    #[allow(clippy::too_many_arguments)]
     pub fn native_transfer(
         chain_name: String,
+        source_purse: Option<URef>,
         sender_public_key: PublicKey,
         receiver_public_key: PublicKey,
         amount: Option<U512>,
@@ -1130,11 +1193,16 @@ impl Deploy {
             args: runtime_args! { ARG_AMOUNT => U512::from(3_000_000_000_u64) },
         };
 
-        let transfer_args = runtime_args! {
+        let mut transfer_args = runtime_args! {
             "amount" => amount,
-            "source" => sender_public_key.to_account_hash(),
             "target" => receiver_public_key.to_account_hash(),
         };
+
+        if let Some(source) = source_purse {
+            transfer_args
+                .insert("source", source)
+                .expect("should serialize source arg");
+        }
 
         let session = ExecutableDeployItem::Transfer {
             args: transfer_args,
@@ -1262,16 +1330,6 @@ impl Deploy {
     }
 }
 
-impl Categorized for Deploy {
-    fn category(&self) -> TransactionCategory {
-        if self.is_transfer() {
-            TransactionCategory::Mint
-        } else {
-            TransactionCategory::Standard
-        }
-    }
-}
-
 #[cfg(any(feature = "std", test))]
 impl GasLimited for Deploy {
     type Error = InvalidDeploy;
@@ -1310,7 +1368,7 @@ impl GasLimited for Deploy {
                 let computation_limit = if self.is_transfer() {
                     costs.mint_costs().transfer as u64
                 } else {
-                    costs.standard_transaction_limit()
+                    chainspec.get_max_gas_limit_by_kind(TransactionCategory::Large as u8)
                 };
                 Gas::new(computation_limit)
             } // legacy deploys do not support reservations
@@ -1696,7 +1754,7 @@ mod tests {
         let chain_name = "net-1".to_string();
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(chain_name.to_string());
-        let config = chainspec.transaction_config;
+        let config = chainspec.transaction_config.clone();
 
         let deploy = create_deploy(
             &mut rng,
@@ -1718,7 +1776,7 @@ mod tests {
 
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(expected_chain_name.to_string());
-        let config = chainspec.transaction_config;
+        let config = chainspec.transaction_config.clone();
 
         let deploy = create_deploy(
             &mut rng,
@@ -1750,7 +1808,7 @@ mod tests {
 
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(chain_name.to_string());
-        let config = chainspec.transaction_config;
+        let config = chainspec.transaction_config.clone();
 
         let dependency_count = usize::from(config.deploy_config.max_dependencies + 1);
 
@@ -1776,7 +1834,7 @@ mod tests {
 
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(chain_name.to_string());
-        let config = chainspec.transaction_config;
+        let config = chainspec.transaction_config.clone();
 
         let ttl = config.max_ttl + TimeDiff::from(Duration::from_secs(1));
 
@@ -1810,7 +1868,7 @@ mod tests {
 
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(chain_name.to_string());
-        let config = chainspec.transaction_config;
+        let config = chainspec.transaction_config.clone();
         let leeway = TimeDiff::from_seconds(2);
 
         let deploy = create_deploy(
@@ -1844,7 +1902,7 @@ mod tests {
 
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(chain_name.to_string());
-        let config = chainspec.transaction_config;
+        let config = chainspec.transaction_config.clone();
         let leeway = TimeDiff::from_seconds(2);
 
         let deploy = create_deploy(
@@ -1867,7 +1925,7 @@ mod tests {
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(chain_name.to_string());
         chainspec.with_pricing_handling(PricingHandling::Classic);
-        let config = chainspec.transaction_config;
+        let config = chainspec.transaction_config.clone();
 
         let payment = ExecutableDeployItem::ModuleBytes {
             module_bytes: Bytes::new(),
@@ -1911,7 +1969,7 @@ mod tests {
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(chain_name.to_string());
         chainspec.with_pricing_handling(PricingHandling::Classic);
-        let config = chainspec.transaction_config;
+        let config = chainspec.transaction_config.clone();
 
         let payment = ExecutableDeployItem::ModuleBytes {
             module_bytes: Bytes::new(),
@@ -1957,7 +2015,7 @@ mod tests {
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(chain_name.to_string());
         chainspec.with_pricing_handling(PricingHandling::Classic);
-        let config = chainspec.transaction_config;
+        let config = chainspec.transaction_config.clone();
         let amount = U512::from(config.block_gas_limit + 1);
 
         let payment = ExecutableDeployItem::ModuleBytes {
@@ -2009,7 +2067,7 @@ mod tests {
 
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(chain_name.to_string());
-        let config = chainspec.transaction_config;
+        let config = chainspec.transaction_config.clone();
         let amount = U512::from(config.block_gas_limit + 1);
 
         let payment = ExecutableDeployItem::ModuleBytes {
@@ -2055,7 +2113,7 @@ mod tests {
 
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(chain_name.to_string());
-        let config = chainspec.transaction_config;
+        let config = chainspec.transaction_config.clone();
         let deploy = create_deploy(
             &mut rng,
             config.max_ttl,
@@ -2070,7 +2128,7 @@ mod tests {
         assert_eq!(
             Err(InvalidDeploy::ExcessiveApprovals {
                 got: deploy.approvals.len() as u32,
-                max_associated_keys
+                max_associated_keys,
             }),
             deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp)
         )
@@ -2083,7 +2141,7 @@ mod tests {
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(chain_name.to_string());
 
-        let config = chainspec.transaction_config;
+        let config = chainspec.transaction_config.clone();
         let mut deploy = create_deploy(
             &mut rng,
             config.max_ttl,
@@ -2111,7 +2169,7 @@ mod tests {
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(chain_name.to_string());
 
-        let config = chainspec.transaction_config;
+        let config = chainspec.transaction_config.clone();
         let mut deploy = create_deploy(
             &mut rng,
             config.max_ttl,
@@ -2143,7 +2201,7 @@ mod tests {
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(chain_name.to_string());
 
-        let config = chainspec.transaction_config;
+        let config = chainspec.transaction_config.clone();
         let mut deploy = create_deploy(
             &mut rng,
             config.max_ttl,
@@ -2184,7 +2242,7 @@ mod tests {
             .with_chain_name(chain_name.to_string())
             .with_pricing_handling(PricingHandling::Classic);
 
-        let config = chainspec.transaction_config;
+        let config = chainspec.transaction_config.clone();
 
         let payment = ExecutableDeployItem::ModuleBytes {
             module_bytes: Bytes::new(),
@@ -2242,7 +2300,7 @@ mod tests {
             .with_chain_name(chain_name.to_string())
             .with_pricing_handling(PricingHandling::Classic);
 
-        let config = chainspec.transaction_config;
+        let config = chainspec.transaction_config.clone();
 
         let payment = ExecutableDeployItem::ModuleBytes {
             module_bytes: Bytes::new(),

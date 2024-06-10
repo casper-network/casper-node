@@ -69,7 +69,7 @@ impl SingleBlockRewardedSignatures {
         all_validators: impl IntoIterator<Item = PublicKey>,
     ) -> BTreeSet<PublicKey> {
         self.unpack()
-            .zip(all_validators.into_iter())
+            .zip(all_validators)
             .filter_map(|(active, validator)| (active != 0).then_some(validator))
             .collect()
     }
@@ -346,7 +346,7 @@ mod tests {
 
         assert_eq!(past_finality_signatures.0, &[0]);
 
-        let signed = past_finality_signatures.to_validator_set(validators.into_iter());
+        let signed = past_finality_signatures.to_validator_set(validators);
 
         assert_eq!(original_signed, signed);
     }
@@ -372,7 +372,7 @@ mod tests {
 
         assert_eq!(past_finality_signatures.0, &[0b0010_0110, 0b1010_0000]);
 
-        let signed_ = past_finality_signatures.to_validator_set(validators.into_iter());
+        let signed_ = past_finality_signatures.to_validator_set(validators);
 
         assert_eq!(signed, signed_);
     }

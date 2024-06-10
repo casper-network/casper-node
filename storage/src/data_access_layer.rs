@@ -29,6 +29,7 @@ mod protocol_upgrade;
 pub mod prune;
 pub mod query;
 mod round_seigniorage;
+mod seigniorage_recipients;
 pub mod step;
 mod system_entity_registry;
 pub mod tagged_values;
@@ -66,6 +67,7 @@ pub use protocol_upgrade::{ProtocolUpgradeRequest, ProtocolUpgradeResult};
 pub use prune::{PruneRequest, PruneResult};
 pub use query::{QueryRequest, QueryResult};
 pub use round_seigniorage::{RoundSeigniorageRateRequest, RoundSeigniorageRateResult};
+pub use seigniorage_recipients::{SeigniorageRecipientsRequest, SeigniorageRecipientsResult};
 pub use step::{EvictItem, RewardItem, SlashItem, StepError, StepRequest, StepResult};
 pub use system_entity_registry::{
     SystemEntityRegistryPayload, SystemEntityRegistryRequest, SystemEntityRegistryResult,

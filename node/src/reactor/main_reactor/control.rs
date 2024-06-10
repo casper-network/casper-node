@@ -1,7 +1,7 @@
 use std::time::Duration;
 use tracing::{debug, error, info, trace};
 
-use casper_storage::data_access_layer::{GenesisResult, ProtocolUpgradeResult};
+use casper_storage::data_access_layer::GenesisResult;
 use casper_types::{BlockHash, BlockHeader, Digest, EraId, PublicKey, Timestamp};
 
 use crate::{
@@ -429,7 +429,6 @@ impl MainReactor {
             }
         };
 
-        let network_name = self.chainspec.network_config.name.clone();
         match self.chainspec.upgrade_config_from_parts(
             *header.state_root_hash(),
             header.protocol_version(),
@@ -437,42 +436,19 @@ impl MainReactor {
             self.chainspec_raw_bytes.clone(),
         ) {
             Ok(cfg) => {
-                // apply protocol changes to global state
-                match self.contract_runtime.commit_upgrade(cfg) {
-                    ProtocolUpgradeResult::RootNotFound => Err("Root not found".to_string()),
-                    ProtocolUpgradeResult::Failure(err) => Err(err.to_string()),
-                    ProtocolUpgradeResult::Success {
-                        post_state_hash, ..
-                    } => {
-                        info!(%network_name, %post_state_hash, "{:?}: committed upgrade", self.state);
-
-                        let next_block_height = header.height() + 1;
-                        self.initialize_contract_runtime(
+                let mut effects = Effects::new();
+                let next_block_height = header.height() + 1;
+                effects.extend(
+                    effect_builder
+                        .enqueue_protocol_upgrade(
+                            cfg,
                             next_block_height,
-                            post_state_hash,
                             header.block_hash(),
                             *header.accumulated_seed(),
-                        );
-
-                        let finalized_block = FinalizedBlock::new(
-                            BlockPayload::default(),
-                            Some(InternalEraReport::default()),
-                            header.timestamp(),
-                            header.next_block_era_id(),
-                            next_block_height,
-                            PublicKey::System,
-                        );
-                        Ok(effect_builder
-                            .enqueue_block_for_execution(
-                                ExecutableBlock::from_finalized_block_and_transactions(
-                                    finalized_block,
-                                    vec![],
-                                ),
-                                MetaBlockState::new_not_to_be_gossiped(),
-                            )
-                            .ignore())
-                    }
-                }
+                        )
+                        .ignore(),
+                );
+                Ok(effects)
             }
             Err(msg) => Err(msg),
         }

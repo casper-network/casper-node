@@ -6,6 +6,7 @@ use std::{
     fmt::Debug,
     ops::Range,
     sync::{Arc, Mutex},
+    time::Instant,
 };
 use tracing::{debug, error, info, warn};
 
@@ -28,9 +29,12 @@ use crate::{
 use casper_binary_port::SpeculativeExecutionResult;
 use casper_execution_engine::engine_state::{ExecutionEngineV1, WasmV1Result};
 use casper_storage::{
-    data_access_layer::DataAccessLayer, global_state::state::lmdb::LmdbGlobalState,
+    data_access_layer::{
+        DataAccessLayer, FlushRequest, FlushResult, ProtocolUpgradeRequest, ProtocolUpgradeResult,
+    },
+    global_state::state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
 };
-use casper_types::{BlockHash, Chainspec, EraId, GasLimited, Key};
+use casper_types::{BlockHash, Chainspec, Digest, EraId, GasLimited, Key, ProtocolUpgradeConfig};
 
 /// Maximum number of resource intensive tasks that can be run in parallel.
 ///
@@ -112,11 +116,6 @@ pub(super) async fn exec_or_requeue<REv>(
     }
 
     let maybe_next_era_gas_price = if is_era_end && executable_block.next_era_gas_price.is_none() {
-        let block_max_standard_count = chainspec.transaction_config.block_max_standard_count;
-        let block_max_mint_count = chainspec.transaction_config.block_max_mint_count;
-        let block_max_auction_count = chainspec.transaction_config.block_max_auction_count;
-        let block_max_install_upgrade_count =
-            chainspec.transaction_config.block_max_install_upgrade_count;
         let max_block_size = chainspec.transaction_config.max_block_size as u64;
         let block_gas_limit = chainspec.transaction_config.block_gas_limit;
         let go_up = chainspec.vacancy_config.upper_threshold;
@@ -127,21 +126,23 @@ pub(super) async fn exec_or_requeue<REv>(
         let era_id = executable_block.era_id;
         let block_height = executable_block.height;
 
-        let per_block_capacity = {
-            block_max_install_upgrade_count
-                + block_max_standard_count
-                + block_max_mint_count
-                + block_max_auction_count
-        } as u64;
+        let per_block_capacity = chainspec
+            .transaction_config
+            .transaction_v1_config
+            .get_max_block_count();
 
         let switch_block_utilization_score = {
-            let has_hit_slot_limt = {
-                (executable_block.mint().len() as u32 >= block_max_mint_count)
-                    || (executable_block.auction().len() as u32 >= block_max_auction_count)
-                    || (executable_block.standard().len() as u32 >= block_max_standard_count)
-                    || (executable_block.install_upgrade().len() as u32
-                        >= block_max_install_upgrade_count)
-            };
+            let mut has_hit_slot_limt = false;
+
+            for (category, transactions) in executable_block.transaction_map.iter() {
+                let max_count = chainspec
+                    .transaction_config
+                    .transaction_v1_config
+                    .get_max_transaction_count(*category);
+                if max_count == transactions.len() as u64 {
+                    has_hit_slot_limt = true;
+                }
+            }
 
             if has_hit_slot_limt {
                 100u64
@@ -180,9 +181,9 @@ pub(super) async fn exec_or_requeue<REv>(
                 )
                 .to_integer();
 
-                let uitilization_scores = vec![slot_utilization, gas_utilization, size_utilization];
+                let utilization_scores = [slot_utilization, gas_utilization, size_utilization];
 
-                match uitilization_scores.iter().max() {
+                match utilization_scores.iter().max() {
                     Some(max_score) => *max_score,
                     None => {
                         let error = BlockExecutionError::FailedToGetNewEraGasPrice { era_id };
@@ -389,6 +390,75 @@ pub(super) async fn exec_or_requeue<REv>(
         effect_builder
             .enqueue_block_for_execution(executable_block, meta_block_state)
             .await;
+    }
+}
+
+pub(super) async fn handle_protocol_upgrade<REv>(
+    effect_builder: EffectBuilder<REv>,
+    data_access_layer: Arc<DataAccessLayer<LmdbGlobalState>>,
+    metrics: Arc<Metrics>,
+    upgrade_config: ProtocolUpgradeConfig,
+    next_block_height: u64,
+    parent_hash: BlockHash,
+    parent_seed: Digest,
+) where
+    REv: From<ContractRuntimeRequest>
+        + From<ContractRuntimeAnnouncement>
+        + From<StorageRequest>
+        + From<MetaBlockAnnouncement>
+        + From<FatalAnnouncement>
+        + Send,
+{
+    debug!(?upgrade_config, "upgrade");
+    let start = Instant::now();
+    let upgrade_request = ProtocolUpgradeRequest::new(upgrade_config);
+
+    let result = run_intensive_task(move || {
+        let result = data_access_layer.protocol_upgrade(upgrade_request);
+        if result.is_success() {
+            info!("committed upgrade");
+            metrics
+                .commit_upgrade
+                .observe(start.elapsed().as_secs_f64());
+            let flush_req = FlushRequest::new();
+            if let FlushResult::Failure(err) = data_access_layer.flush(flush_req) {
+                return Err(format!("{:?}", err));
+            }
+        }
+
+        Ok(result)
+    })
+    .await;
+
+    match result {
+        Err(error_msg) => {
+            // The only way this happens is if there is a problem in the flushing.
+            error!(%error_msg, ":Error in post upgrade flush");
+            fatal!(effect_builder, "{}", error_msg).await;
+        }
+        Ok(result) => match result {
+            ProtocolUpgradeResult::RootNotFound => {
+                let error_msg = "Root not found for protocol upgrade";
+                fatal!(effect_builder, "{}", error_msg).await;
+            }
+            ProtocolUpgradeResult::Failure(err) => {
+                fatal!(effect_builder, "{:?}", err).await;
+            }
+            ProtocolUpgradeResult::Success {
+                post_state_hash, ..
+            } => {
+                let post_upgrade_state = ExecutionPreState::new(
+                    next_block_height,
+                    post_state_hash,
+                    parent_hash,
+                    parent_seed,
+                );
+
+                effect_builder
+                    .update_contract_runtime_state(post_upgrade_state)
+                    .await
+            }
+        },
     }
 }
 

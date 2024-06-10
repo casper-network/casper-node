@@ -194,7 +194,7 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         let result = match event {
-            Event::StorageRequest(req) => self.handle_storage_request::<REv>(*req),
+            Event::StorageRequest(req) => self.handle_storage_request(*req),
             Event::NetRequestIncoming(ref incoming) => {
                 match self.handle_net_request_incoming::<REv>(effect_builder, incoming) {
                     Ok(effects) => Ok(effects),
@@ -551,7 +551,7 @@ impl Storage {
     }
 
     /// Handles a storage request.
-    fn handle_storage_request<REv>(
+    fn handle_storage_request(
         &mut self,
         req: StorageRequest,
     ) -> Result<Effects<Event>, FatalStorageError> {
@@ -585,11 +585,9 @@ impl Storage {
                 block_hash,
                 responder,
             } => {
-                let mut txn = self.block_store.checkout_ro()?;
+                let txn = self.block_store.checkout_ro()?;
                 responder
-                    .respond(DataReader::<BlockHash, Block>::exists(
-                        &mut txn, block_hash,
-                    )?)
+                    .respond(DataReader::<BlockHash, Block>::exists(&txn, block_hash)?)
                     .ignore()
             }
             StorageRequest::GetApprovalsHashes {
@@ -624,10 +622,10 @@ impl Storage {
                 only_from_available_block_range,
                 responder,
             } => {
-                let mut txn = self.block_store.checkout_ro()?;
+                let txn = self.block_store.checkout_ro()?;
                 responder
                     .respond(self.get_single_block_header_restricted(
-                        &mut txn,
+                        &txn,
                         &block_hash,
                         only_from_available_block_range,
                     )?)
@@ -645,10 +643,8 @@ impl Storage {
                 responder,
             } => {
                 let mut rw_txn = self.block_store.checkout_rw()?;
-                if DataReader::<TransactionHash, Transaction>::exists(
-                    &mut rw_txn,
-                    transaction.hash(),
-                )? {
+                if DataReader::<TransactionHash, Transaction>::exists(&rw_txn, transaction.hash())?
+                {
                     responder.respond(false).ignore()
                 } else {
                     let _ = rw_txn.write(&*transaction)?;
@@ -673,9 +669,9 @@ impl Storage {
                 transaction_id,
                 responder,
             } => {
-                let mut ro_txn = self.block_store.checkout_ro()?;
+                let ro_txn = self.block_store.checkout_ro()?;
                 let maybe_transaction = match self.get_transaction_with_finalized_approvals(
-                    &mut ro_txn,
+                    &ro_txn,
                     &transaction_id.transaction_hash(),
                 )? {
                     None => None,
@@ -695,11 +691,11 @@ impl Storage {
                 with_finalized_approvals,
                 responder,
             } => {
-                let mut ro_txn = self.block_store.checkout_ro()?;
+                let ro_txn = self.block_store.checkout_ro()?;
 
                 let transaction = if with_finalized_approvals {
                     match self
-                        .get_transaction_with_finalized_approvals(&mut ro_txn, &transaction_hash)?
+                        .get_transaction_with_finalized_approvals(&ro_txn, &transaction_hash)?
                     {
                         Some((transaction, maybe_approvals)) => {
                             if let Some(approvals) = maybe_approvals {
@@ -738,9 +734,9 @@ impl Storage {
                 transaction_id,
                 responder,
             } => {
-                let mut txn = self.block_store.checkout_ro()?;
+                let txn = self.block_store.checkout_ro()?;
                 let has_transaction = DataReader::<TransactionHash, Transaction>::exists(
-                    &mut txn,
+                    &txn,
                     transaction_id.transaction_hash(),
                 )?;
                 responder.respond(has_transaction).ignore()
@@ -749,10 +745,10 @@ impl Storage {
                 block_hash,
                 responder,
             } => {
-                let mut txn = self.block_store.checkout_ro()?;
+                let txn = self.block_store.checkout_ro()?;
                 responder
                     .respond(
-                        self.get_execution_results_with_transaction_headers(&mut txn, &block_hash)?,
+                        self.get_execution_results_with_transaction_headers(&txn, &block_hash)?,
                     )
                     .ignore()
             }
@@ -966,7 +962,7 @@ impl Storage {
                 responder,
             } => {
                 let block: Block = (*block).clone().into();
-                let transaction_config = self.transaction_config;
+                let transaction_config = self.transaction_config.clone();
                 responder
                     .respond(self.put_executed_block(
                         transaction_config,
@@ -1050,11 +1046,11 @@ impl Storage {
         transaction_hashes: impl Iterator<Item = &'a TransactionHash>,
     ) -> Result<SmallVec<[Option<(Transaction, Option<BTreeSet<Approval>>)>; 1]>, FatalStorageError>
     {
-        let mut ro_txn = self.block_store.checkout_ro()?;
+        let ro_txn = self.block_store.checkout_ro()?;
 
         transaction_hashes
             .map(|transaction_hash| {
-                self.get_transaction_with_finalized_approvals(&mut ro_txn, transaction_hash)
+                self.get_transaction_with_finalized_approvals(&ro_txn, transaction_hash)
                     .map_err(FatalStorageError::from)
             })
             .collect()
@@ -1069,8 +1065,8 @@ impl Storage {
     ) -> Result<bool, FatalStorageError> {
         let mut txn = self.block_store.checkout_rw()?;
         let era_id = block.era_id();
-        let block_utilization_score = block.block_utilization(transaction_config);
-        let has_hit_slot_limit = block.has_hit_slot_capacity(transaction_config);
+        let block_utilization_score = block.block_utilization(transaction_config.clone());
+        let has_hit_slot_limit = block.has_hit_slot_capacity(transaction_config.clone());
         let block_hash = txn.write(block)?;
         let _ = txn.write(approvals_hashes)?;
         let block_info = BlockHashHeightAndEra::new(block_hash, block.height(), block.era_id());
@@ -1118,7 +1114,7 @@ impl Storage {
 
             debug!("Storage utilization at {total_size_utilization}");
 
-            let scores = vec![
+            let scores = [
                 block_utilization_score,
                 total_size_utilization,
                 total_gas_utilization,
@@ -1366,7 +1362,7 @@ impl Storage {
     /// LMDB error.
     fn get_highest_complete_signed_block_header(
         &self,
-        txn: &mut (impl DataReader<BlockHeight, BlockHeader> + DataReader<BlockHash, BlockSignatures>),
+        txn: &(impl DataReader<BlockHeight, BlockHeader> + DataReader<BlockHash, BlockSignatures>),
     ) -> Result<Option<SignedBlockHeader>, FatalStorageError> {
         let highest_complete_block_height = match self.completed_blocks.highest_sequence() {
             Some(sequence) => sequence.high(),
@@ -1419,7 +1415,7 @@ impl Storage {
     /// should be present in the available blocks index.
     fn get_single_block_header_restricted(
         &self,
-        txn: &mut impl DataReader<BlockHash, BlockHeader>,
+        txn: &impl DataReader<BlockHash, BlockHeader>,
         block_hash: &BlockHash,
         only_from_available_block_range: bool,
     ) -> Result<Option<BlockHeader>, FatalStorageError> {
@@ -1439,7 +1435,7 @@ impl Storage {
     /// recent switch block.
     fn get_trusted_ancestor_headers(
         &self,
-        txn: &mut impl DataReader<BlockHash, BlockHeader>,
+        txn: &impl DataReader<BlockHash, BlockHeader>,
         trusted_block_header: &BlockHeader,
     ) -> Result<Option<Vec<BlockHeader>>, FatalStorageError> {
         if trusted_block_header.is_genesis() {
@@ -1476,7 +1472,7 @@ impl Storage {
     /// highest block, with signatures, plus the signed highest block.
     fn get_signed_block_headers(
         &self,
-        txn: &mut (impl DataReader<BlockHash, BlockSignatures> + DataReader<EraId, BlockHeader>),
+        txn: &(impl DataReader<BlockHash, BlockSignatures> + DataReader<EraId, BlockHeader>),
         trusted_block_header: &BlockHeader,
         highest_signed_block_header: &SignedBlockHeader,
     ) -> Result<Option<Vec<SignedBlockHeader>>, FatalStorageError> {
@@ -1617,9 +1613,9 @@ impl Storage {
         deploy_hash: DeployHash,
     ) -> Result<Option<LegacyDeploy>, FatalStorageError> {
         let transaction_hash = TransactionHash::from(deploy_hash);
-        let mut txn = self.block_store.checkout_ro()?;
+        let txn = self.block_store.checkout_ro()?;
         let transaction =
-            match self.get_transaction_with_finalized_approvals(&mut txn, &transaction_hash)? {
+            match self.get_transaction_with_finalized_approvals(&txn, &transaction_hash)? {
                 Some((transaction, maybe_approvals)) => {
                     if let Some(approvals) = maybe_approvals {
                         transaction.with_approvals(approvals)
@@ -1700,8 +1696,8 @@ impl Storage {
     #[allow(clippy::type_complexity)]
     fn get_transaction_with_finalized_approvals(
         &self,
-        txn: &mut (impl DataReader<TransactionHash, Transaction>
-                  + DataReader<TransactionHash, BTreeSet<Approval>>),
+        txn: &(impl DataReader<TransactionHash, Transaction>
+              + DataReader<TransactionHash, BTreeSet<Approval>>),
         transaction_hash: &TransactionHash,
     ) -> Result<Option<(Transaction, Option<BTreeSet<Approval>>)>, FatalStorageError> {
         let maybe_transaction: Option<Transaction> = txn.read(*transaction_hash)?;
@@ -1722,11 +1718,11 @@ impl Storage {
     ) -> Result<FetchResponse<SyncLeap, SyncLeapIdentifier>, FatalStorageError> {
         let block_hash = sync_leap_identifier.block_hash();
 
-        let mut txn = self.block_store.checkout_ro()?;
+        let txn = self.block_store.checkout_ro()?;
 
         let only_from_available_block_range = true;
         let trusted_block_header = match self.get_single_block_header_restricted(
-            &mut txn,
+            &txn,
             &block_hash,
             only_from_available_block_range,
         )? {
@@ -1735,7 +1731,7 @@ impl Storage {
         };
 
         let trusted_ancestor_headers =
-            match self.get_trusted_ancestor_headers(&mut txn, &trusted_block_header)? {
+            match self.get_trusted_ancestor_headers(&txn, &trusted_block_header)? {
                 Some(trusted_ancestor_headers) => trusted_ancestor_headers,
                 None => return Ok(FetchResponse::NotFound(sync_leap_identifier)),
             };
@@ -1751,7 +1747,7 @@ impl Storage {
         }
 
         let highest_complete_block_header =
-            match self.get_highest_complete_signed_block_header(&mut txn)? {
+            match self.get_highest_complete_signed_block_header(&txn)? {
                 Some(highest_complete_block_header) => highest_complete_block_header,
                 None => return Ok(FetchResponse::NotFound(sync_leap_identifier)),
             };
@@ -1777,7 +1773,7 @@ impl Storage {
         // The `highest_complete_block_header` and `trusted_block_header` are both within the
         // highest complete block range, thus so are all the switch blocks between them.
         if let Some(signed_block_headers) = self.get_signed_block_headers(
-            &mut txn,
+            &txn,
             &trusted_block_header,
             &highest_complete_block_header,
         )? {
@@ -1881,7 +1877,6 @@ impl Storage {
             let last_era_id = last_era_header.era_id();
             result.push(last_era_header);
             for era_id in (0..last_era_id.value())
-                .into_iter()
                 .rev()
                 .take(count as usize)
                 .map(EraId::new)
@@ -1906,9 +1901,9 @@ impl Storage {
         &self,
         request: &BlockExecutionResultsOrChunkId,
     ) -> Result<Option<BlockExecutionResultsOrChunk>, FatalStorageError> {
-        let mut txn = self.block_store.checkout_ro()?;
+        let txn = self.block_store.checkout_ro()?;
 
-        let execution_results = match self.get_execution_results(&mut txn, request.block_hash())? {
+        let execution_results = match self.get_execution_results(&txn, request.block_hash())? {
             Some(execution_results) => execution_results
                 .into_iter()
                 .map(|(_deploy_hash, execution_result)| execution_result)
@@ -1958,7 +1953,7 @@ impl Storage {
 
     fn get_execution_results(
         &self,
-        txn: &mut (impl DataReader<BlockHash, Block> + DataReader<TransactionHash, ExecutionResult>),
+        txn: &(impl DataReader<BlockHash, Block> + DataReader<TransactionHash, ExecutionResult>),
         block_hash: &BlockHash,
     ) -> Result<Option<Vec<(TransactionHash, ExecutionResult)>>, FatalStorageError> {
         let block = txn.read(*block_hash)?;
@@ -1997,9 +1992,9 @@ impl Storage {
     #[allow(clippy::type_complexity)]
     fn get_execution_results_with_transaction_headers(
         &self,
-        txn: &mut (impl DataReader<BlockHash, Block>
-                  + DataReader<TransactionHash, ExecutionResult>
-                  + DataReader<TransactionHash, Transaction>),
+        txn: &(impl DataReader<BlockHash, Block>
+              + DataReader<TransactionHash, ExecutionResult>
+              + DataReader<TransactionHash, Transaction>),
         block_hash: &BlockHash,
     ) -> Result<Option<Vec<(TransactionHash, TransactionHeader, ExecutionResult)>>, FatalStorageError>
     {
@@ -2044,7 +2039,7 @@ impl Storage {
             Some(utilization) => {
                 utilization.entry(block_height).or_insert(block_utilization);
 
-                let transaction_count = utilization.values().into_iter().sum();
+                let transaction_count = utilization.values().sum();
                 let block_count = utilization.keys().len() as u64;
 
                 Some((transaction_count, block_count))
@@ -2180,11 +2175,11 @@ impl Storage {
         &self,
         transaction_hash: &TransactionHash,
     ) -> Option<(Transaction, Option<BTreeSet<Approval>>)> {
-        let mut txn = self
+        let txn = self
             .block_store
             .checkout_ro()
             .expect("could not create RO transaction");
-        self.get_transaction_with_finalized_approvals(&mut txn, transaction_hash)
+        self.get_transaction_with_finalized_approvals(&txn, transaction_hash)
             .expect("could not retrieve a transaction with finalized approvals from storage")
     }
 

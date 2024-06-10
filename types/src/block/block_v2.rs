@@ -25,7 +25,7 @@ use crate::{
     PublicKey, Timestamp, TransactionHash,
 };
 #[cfg(feature = "json-schema")]
-use crate::{TransactionCategory, TransactionV1Hash};
+use crate::{transaction::TransactionCategory, TransactionV1Hash};
 
 #[cfg(feature = "json-schema")]
 static BLOCK_V2: Lazy<BlockV2> = Lazy::new(|| {
@@ -63,7 +63,7 @@ static BLOCK_V2: Lazy<BlockV2> = Lazy::new(|| {
             TransactionCategory::InstallUpgrade as u8,
             installer_upgrader_hashes,
         );
-        ret.insert(TransactionCategory::Standard as u8, standard);
+        ret.insert(TransactionCategory::Large as u8, standard);
         ret.insert(TransactionCategory::Entity as u8, entity_hashes);
         ret
     };
@@ -268,9 +268,19 @@ impl BlockV2 {
         self.body.install_upgrade()
     }
 
-    /// Returns the hashes of all other transactions within the block.
-    pub fn standard(&self) -> impl Iterator<Item = TransactionHash> {
-        self.body.standard()
+    /// Returns the hashes of all other large transactions within the block.
+    pub fn large(&self) -> impl Iterator<Item = TransactionHash> {
+        self.body.large()
+    }
+
+    /// Returns the hashes of all other medium transactions within the block.
+    pub fn medium(&self) -> impl Iterator<Item = TransactionHash> {
+        self.body.medium()
+    }
+
+    /// Returns the hashes of all other small transactions within the block.
+    pub fn small(&self) -> impl Iterator<Item = TransactionHash> {
+        self.body.small()
     }
 
     /// Returns all of the transaction hashes in the order in which they were executed.

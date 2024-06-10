@@ -23,6 +23,7 @@ mod test_block_builder;
 
 use alloc::{boxed::Box, vec::Vec};
 use core::fmt::{self, Display, Formatter};
+use itertools::Either;
 #[cfg(feature = "json-schema")]
 use once_cell::sync::Lazy;
 #[cfg(feature = "std")]
@@ -40,9 +41,8 @@ use schemars::JsonSchema;
 use crate::TransactionConfig;
 
 use crate::{
-    bytesrepr,
-    bytesrepr::{FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    Digest, EraId, ProtocolVersion, PublicKey, Timestamp,
+    bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    Digest, EraId, ProtocolVersion, PublicKey, Timestamp, TransactionHash,
 };
 pub use available_block_range::AvailableBlockRange;
 pub use block_body::{BlockBody, BlockBodyV1, BlockBodyV2};
@@ -400,6 +400,19 @@ impl Block {
         }
     }
 
+    /// Returns a list of all transaction hashes in a block.
+    pub fn all_transaction_hashes(&self) -> impl Iterator<Item = TransactionHash> + '_ {
+        match self {
+            Block::V1(block) => Either::Left(
+                block
+                    .body
+                    .deploy_and_transfer_hashes()
+                    .map(TransactionHash::from),
+            ),
+            Block::V2(block_v2) => Either::Right(block_v2.all_transactions().copied()),
+        }
+    }
+
     /// Returns the utilization of the block against a given chainspec.
     #[cfg(feature = "std")]
     pub fn block_utilization(&self, transaction_config: TransactionConfig) -> u64 {
@@ -409,12 +422,10 @@ impl Block {
                 0
             }
             Block::V2(block_v2) => {
-                let has_hit_slot_limt = self.has_hit_slot_capacity(transaction_config);
-                let per_block_capacity = (transaction_config.block_max_mint_count
-                    + transaction_config.block_max_auction_count
-                    + transaction_config.block_max_standard_count
-                    + transaction_config.block_max_install_upgrade_count)
-                    as u64;
+                let has_hit_slot_limt = self.has_hit_slot_capacity(transaction_config.clone());
+                let per_block_capacity = transaction_config
+                    .transaction_v1_config
+                    .get_max_block_count();
 
                 if has_hit_slot_limt {
                     100u64
@@ -432,13 +443,31 @@ impl Block {
         match self {
             Block::V1(_) => false,
             Block::V2(block_v2) => {
-                (block_v2.mint().count() as u32 >= transaction_config.block_max_mint_count)
-                    || (block_v2.auction().count() as u32
-                        >= transaction_config.block_max_auction_count)
-                    || (block_v2.standard().count() as u32
-                        >= transaction_config.block_max_standard_count)
-                    || (block_v2.install_upgrade().count() as u32
-                        >= transaction_config.block_max_install_upgrade_count)
+                let mint_count = block_v2.mint().count();
+                if mint_count as u64 >= transaction_config.transaction_v1_config.native_mint_lane[4]
+                {
+                    return true;
+                }
+
+                let auction_count = block_v2.auction().count();
+                if auction_count as u64
+                    >= transaction_config.transaction_v1_config.native_auction_lane[4]
+                {
+                    return true;
+                }
+                for (category, transactions) in block_v2.body.transactions() {
+                    let transaction_count = transactions.len();
+                    if *category < 2 {
+                        continue;
+                    };
+                    let max_transaction_count = transaction_config
+                        .transaction_v1_config
+                        .get_max_transaction_count(*category);
+                    if transaction_count as u64 >= max_transaction_count {
+                        return true;
+                    }
+                }
+                false
             }
         }
     }

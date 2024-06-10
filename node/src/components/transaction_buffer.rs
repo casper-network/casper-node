@@ -20,8 +20,8 @@ use smallvec::smallvec;
 use tracing::{debug, error, info, warn};
 
 use casper_types::{
-    Block, BlockV2, Chainspec, Digest, DisplayIter, EraId, Timestamp, Transaction,
-    TransactionCategory, TransactionHash, TransactionId,
+    Block, BlockV2, Chainspec, Digest, DisplayIter, EraId, Timestamp, Transaction, TransactionHash,
+    TransactionId, AUCTION_LANE_ID, ENTITY_LANE_ID, INSTALL_UPGRADE_LANE_ID, MINT_LANE_ID,
 };
 
 use crate::{
@@ -228,6 +228,7 @@ impl TransactionBuffer {
         effect_builder: EffectBuilder<REv>,
         timestamp: Timestamp,
         era_id: EraId,
+        request_expiry: Timestamp,
         responder: Responder<AppendableBlock>,
     ) -> Effects<Event>
     where
@@ -238,12 +239,18 @@ impl TransactionBuffer {
             return effect_builder
                 .get_current_gas_price(era_id)
                 .event(move |maybe_gas_price| {
-                    Event::GetGasPriceResult(maybe_gas_price, era_id, timestamp, responder)
+                    Event::GetGasPriceResult(
+                        maybe_gas_price,
+                        era_id,
+                        timestamp,
+                        request_expiry,
+                        responder,
+                    )
                 });
         }
 
         responder
-            .respond(self.appendable_block(timestamp, era_id))
+            .respond(self.appendable_block(timestamp, era_id, request_expiry))
             .ignore()
     }
 
@@ -412,8 +419,16 @@ impl TransactionBuffer {
     }
 
     /// Returns a right-sized payload of transactions that can be proposed.
-    fn appendable_block(&mut self, timestamp: Timestamp, era_id: EraId) -> AppendableBlock {
-        let mut ret = AppendableBlock::new(self.chainspec.transaction_config, timestamp);
+    fn appendable_block(
+        &mut self,
+        timestamp: Timestamp,
+        era_id: EraId,
+        request_expiry: Timestamp,
+    ) -> AppendableBlock {
+        let mut ret = AppendableBlock::new(self.chainspec.transaction_config.clone(), timestamp);
+        if Timestamp::now() >= request_expiry {
+            return ret;
+        }
         let current_era_gas_price = match self.prices.get(&era_id) {
             Some(gas_price) => *gas_price,
             None => return ret,
@@ -424,7 +439,7 @@ impl TransactionBuffer {
         // TODO[RC]: It's error prone to use 4 different flags to track the limits. Implement a
         // proper limiter.
         let mut have_hit_mint_limit = false;
-        let mut have_hit_standard_limit = false;
+        let mut have_hit_wasm_limit = false;
         let mut have_hit_install_upgrade_limit = false;
         let mut have_hit_auction_limit = false;
         let mut have_hit_entity_limit = false;
@@ -438,6 +453,9 @@ impl TransactionBuffer {
         let mut body_hashes_queue: VecDeque<_> = buckets.keys().cloned().collect();
 
         while let Some(body_hash) = body_hashes_queue.pop_front() {
+            if Timestamp::now() > request_expiry {
+                break;
+            }
             #[cfg(test)]
             {
                 iter_counter += 1;
@@ -460,20 +478,16 @@ impl TransactionBuffer {
             if footprint.is_mint() && have_hit_mint_limit {
                 continue;
             }
-            if footprint.is_standard() && have_hit_standard_limit {
-                continue;
-            }
             if footprint.is_install_upgrade() && have_hit_install_upgrade_limit {
                 continue;
             }
             if footprint.is_auction() && have_hit_auction_limit {
                 continue;
             }
-            if footprint.is_entity() && have_hit_entity_limit {
+            if (footprint.is_wasm_based() || footprint.is_entity()) && have_hit_wasm_limit {
                 continue;
             }
 
-            // let transaction_hash = with_approvals.transaction_hash();
             let has_multiple_approvals = footprint.approvals.len() > 1;
             match ret.add_transaction(footprint) {
                 Ok(_) => {
@@ -501,15 +515,23 @@ impl TransactionBuffer {
                         }
                         AddError::Count(category) => {
                             match category {
-                                TransactionCategory::Mint => have_hit_mint_limit = true,
-                                TransactionCategory::Auction => have_hit_auction_limit = true,
-                                TransactionCategory::Standard => have_hit_standard_limit = true,
-                                TransactionCategory::InstallUpgrade => {
+                                category if category == MINT_LANE_ID => {
+                                    have_hit_mint_limit = true;
+                                }
+                                category if category == AUCTION_LANE_ID => {
+                                    have_hit_auction_limit = true;
+                                }
+                                category if category == INSTALL_UPGRADE_LANE_ID => {
                                     have_hit_install_upgrade_limit = true;
                                 }
-                                TransactionCategory::Entity => have_hit_entity_limit = true,
+                                category if category == ENTITY_LANE_ID => {
+                                    have_hit_entity_limit = true
+                                }
+                                _ => {
+                                    have_hit_wasm_limit = true;
+                                }
                             }
-                            if have_hit_standard_limit
+                            if have_hit_wasm_limit
                                 && have_hit_auction_limit
                                 && have_hit_install_upgrade_limit
                                 && have_hit_mint_limit
@@ -690,7 +712,7 @@ where
                     | Event::BlockFinalized(_)
                     | Event::Expire
                     | Event::UpdateEraGasPrice { .. }
-                    | Event::GetGasPriceResult(_, _, _, _) => {
+                    | Event::GetGasPriceResult(_, _, _, _, _) => {
                         warn!(
                             ?event,
                             name = <Self as Component<MainEvent>>::name(self),
@@ -713,25 +735,35 @@ where
                     timestamp,
                     era_id,
                     responder,
-                }) => {
-                    self.handle_get_appendable_block(effect_builder, timestamp, era_id, responder)
-                }
-                Event::GetGasPriceResult(maybe_gas_price, era_id, timestamp, responder) => {
-                    match maybe_gas_price {
-                        None => responder
-                            .respond(AppendableBlock::new(
-                                self.chainspec.transaction_config,
-                                timestamp,
-                            ))
-                            .ignore(),
-                        Some(gas_price) => {
-                            self.prices.insert(era_id, gas_price);
-                            responder
-                                .respond(self.appendable_block(timestamp, era_id))
-                                .ignore()
-                        }
+                    request_expiry,
+                }) => self.handle_get_appendable_block(
+                    effect_builder,
+                    timestamp,
+                    era_id,
+                    request_expiry,
+                    responder,
+                ),
+
+                Event::GetGasPriceResult(
+                    maybe_gas_price,
+                    era_id,
+                    timestamp,
+                    request_expiry,
+                    responder,
+                ) => match maybe_gas_price {
+                    None => responder
+                        .respond(AppendableBlock::new(
+                            self.chainspec.transaction_config.clone(),
+                            timestamp,
+                        ))
+                        .ignore(),
+                    Some(gas_price) => {
+                        self.prices.insert(era_id, gas_price);
+                        responder
+                            .respond(self.appendable_block(timestamp, era_id, request_expiry))
+                            .ignore()
                     }
-                }
+                },
                 Event::BlockFinalized(finalized_block) => {
                     self.register_block_finalized(&finalized_block);
                     Effects::new()

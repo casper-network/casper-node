@@ -642,7 +642,7 @@ fn should_calculate_era_validators() {
     assert!(post_era_id > EraId::from(0));
     let consensus_next_era_id: EraId = post_era_id + auction_delay + 1;
 
-    let snapshot_size = auction_delay as usize + 1;
+    let snapshot_size = auction_delay as usize + 2;
     assert_eq!(
         era_validators.len(),
         snapshot_size,
@@ -772,7 +772,7 @@ fn should_get_first_seigniorage_recipients() {
 
     let mut era_validators: EraValidators = builder.get_era_validators();
     let auction_delay = builder.get_auction_delay();
-    let snapshot_size = auction_delay as usize + 1;
+    let snapshot_size = auction_delay as usize + 2;
 
     assert_eq!(era_validators.len(), snapshot_size, "{:?}", era_validators); // eraindex==1 - ran once
 
@@ -1935,8 +1935,7 @@ fn should_handle_evictions() {
         let era_validators: EraValidators = builder.get_era_validators();
         let validators = era_validators
             .iter()
-            .rev()
-            .next()
+            .next_back()
             .map(|(_era_id, validators)| validators)
             .expect("should have validators");
         validators.keys().cloned().collect::<BTreeSet<PublicKey>>()
@@ -4690,7 +4689,7 @@ fn should_change_validator_bid_public_key() {
     let protocol_version = DEFAULT_PROTOCOL_VERSION;
     let total_payout = builder.base_round_reward(None, protocol_version);
     let mut rewards = BTreeMap::new();
-    rewards.insert(NON_FOUNDER_VALIDATOR_1_PK.clone(), total_payout);
+    rewards.insert(NON_FOUNDER_VALIDATOR_1_PK.clone(), vec![total_payout]);
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
         *SYSTEM_ADDR,
         builder.get_auction_contract_hash(),
@@ -4977,7 +4976,7 @@ fn should_handle_excessively_long_bridge_record_chains() {
     let protocol_version = DEFAULT_PROTOCOL_VERSION;
     let total_payout = builder.base_round_reward(None, protocol_version);
     let mut rewards = BTreeMap::new();
-    rewards.insert(NON_FOUNDER_VALIDATOR_1_PK.clone(), total_payout);
+    rewards.insert(NON_FOUNDER_VALIDATOR_1_PK.clone(), vec![total_payout]);
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
         *SYSTEM_ADDR,
         builder.get_auction_contract_hash(),

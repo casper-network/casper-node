@@ -28,9 +28,10 @@ const UNDELEGATE_TAG: u8 = 5;
 const REDELEGATE_TAG: u8 = 6;
 const ACTIVATE_BID_TAG: u8 = 7;
 const CHANGE_BID_PUBLIC_KEY_TAG: u8 = 8;
-const ADD_ASSOCIATED_KEY_TAG: u8 = 9;
-const REMOVE_ASSOCIATED_KEY_TAG: u8 = 10;
-const UPDATE_ASSOCIATED_KEY_TAG: u8 = 11;
+const CALL_TAG: u8 = 9;
+const ADD_ASSOCIATED_KEY_TAG: u8 = 10;
+const REMOVE_ASSOCIATED_KEY_TAG: u8 = 11;
+const UPDATE_ASSOCIATED_KEY_TAG: u8 = 12;
 
 /// The entry point of a [`Transaction`].
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
@@ -42,6 +43,8 @@ const UPDATE_ASSOCIATED_KEY_TAG: u8 = 11;
 )]
 #[serde(deny_unknown_fields)]
 pub enum TransactionEntryPoint {
+    /// The standard `call` entry point used in session code.
+    Call,
     /// A non-native, arbitrary entry point.
     Custom(String),
     /// The `transfer` native entry point, used to transfer `Motes` from a source purse to a target
@@ -207,16 +210,17 @@ impl TransactionEntryPoint {
     /// Returns a random `TransactionEntryPoint`.
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
-        match rng.gen_range(0..11) {
-            CUSTOM_TAG => Self::Custom(rng.random_string(1..21)),
-            TRANSFER_TAG => Self::Transfer,
-            ADD_BID_TAG => Self::AddBid,
-            WITHDRAW_BID_TAG => Self::WithdrawBid,
-            DELEGATE_TAG => Self::Delegate,
-            UNDELEGATE_TAG => Self::Undelegate,
-            REDELEGATE_TAG => Self::Redelegate,
-            ACTIVATE_BID_TAG => Self::ActivateBid,
+        match rng.gen_range(0..10) {
+            CUSTOM_TAG => TransactionEntryPoint::Custom(rng.random_string(1..21)),
+            TRANSFER_TAG => TransactionEntryPoint::Transfer,
+            ADD_BID_TAG => TransactionEntryPoint::AddBid,
+            WITHDRAW_BID_TAG => TransactionEntryPoint::WithdrawBid,
+            DELEGATE_TAG => TransactionEntryPoint::Delegate,
+            UNDELEGATE_TAG => TransactionEntryPoint::Undelegate,
+            REDELEGATE_TAG => TransactionEntryPoint::Redelegate,
+            ACTIVATE_BID_TAG => TransactionEntryPoint::ActivateBid,
             CHANGE_BID_PUBLIC_KEY_TAG => TransactionEntryPoint::ChangeBidPublicKey,
+            CALL_TAG => TransactionEntryPoint::Call,
             ADD_ASSOCIATED_KEY_TAG => Self::AddAssociatedKey,
             REMOVE_ASSOCIATED_KEY_TAG => Self::RemoveAssociatedKey,
             UPDATE_ASSOCIATED_KEY_TAG => Self::UpdateAssociatedKey,
@@ -227,7 +231,11 @@ impl TransactionEntryPoint {
     /// Does this entry point kind require holds epoch?
     pub fn requires_holds_epoch(&self) -> bool {
         match self {
-            Self::AddBid | Self::Delegate | Self::Custom(_) | Self::Transfer => true,
+Self::AddBid
+            | Self::Delegate
+            | Self::Custom(_)
+            | Self::Call
+            | Self::Transfer => true,
             Self::WithdrawBid
             | Self::Undelegate
             | Self::Redelegate
@@ -235,7 +243,7 @@ impl TransactionEntryPoint {
             | Self::ChangeBidPublicKey
             | Self::AddAssociatedKey
             | Self::RemoveAssociatedKey
-            | Self::UpdateAssociatedKey => false,
+            | Self::UpdateAssociatedKey  => false,
         }
     }
 }
@@ -243,6 +251,7 @@ impl TransactionEntryPoint {
 impl Display for TransactionEntryPoint {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match self {
+            Self::Call => write!(formatter, "call"),
             Self::Custom(entry_point) => {
                 write!(formatter, "custom({entry_point})")
             }
@@ -264,6 +273,7 @@ impl Display for TransactionEntryPoint {
 impl ToBytes for TransactionEntryPoint {
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         match self {
+            Self::Call => CALL_TAG.write_bytes(writer),
             Self::Custom(entry_point) => {
                 CUSTOM_TAG.write_bytes(writer)?;
                 entry_point.write_bytes(writer)
@@ -292,7 +302,8 @@ impl ToBytes for TransactionEntryPoint {
         U8_SERIALIZED_LENGTH
             + match self {
                 Self::Custom(entry_point) => entry_point.serialized_length(),
-                Self::Transfer
+                Self::Call
+                | Self::Transfer
                 | Self::AddBid
                 | Self::WithdrawBid
                 | Self::Delegate
@@ -311,6 +322,7 @@ impl FromBytes for TransactionEntryPoint {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (tag, remainder) = u8::from_bytes(bytes)?;
         match tag {
+            CALL_TAG => Ok((Self::Call, remainder)),
             CUSTOM_TAG => {
                 let (entry_point, remainder) = String::from_bytes(remainder)?;
                 Ok((Self::Custom(entry_point), remainder))
@@ -322,7 +334,7 @@ impl FromBytes for TransactionEntryPoint {
             UNDELEGATE_TAG => Ok((Self::Undelegate, remainder)),
             REDELEGATE_TAG => Ok((Self::Redelegate, remainder)),
             ACTIVATE_BID_TAG => Ok((Self::ActivateBid, remainder)),
-            CHANGE_BID_PUBLIC_KEY_TAG => Ok((TransactionEntryPoint::ChangeBidPublicKey, remainder)),
+            CHANGE_BID_PUBLIC_KEY_TAG => Ok((Self::ChangeBidPublicKey, remainder)),
             ADD_ASSOCIATED_KEY_TAG => Ok((Self::AddAssociatedKey, remainder)),
             REMOVE_ASSOCIATED_KEY_TAG => Ok((Self::RemoveAssociatedKey, remainder)),
             UPDATE_ASSOCIATED_KEY_TAG => Ok((Self::UpdateAssociatedKey, remainder)),

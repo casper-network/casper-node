@@ -82,6 +82,11 @@ impl AuctionMethod {
         chainspec: &Chainspec,
     ) -> Result<Self, AuctionMethodError> {
         match entry_point {
+            TransactionEntryPoint::Call
+            | TransactionEntryPoint::Custom(_)
+            | TransactionEntryPoint::Transfer => {
+                Err(AuctionMethodError::InvalidEntryPoint(entry_point))
+            }
             TransactionEntryPoint::ActivateBid => Self::new_activate_bid(runtime_args),
             TransactionEntryPoint::AddBid => Self::new_add_bid(runtime_args),
             TransactionEntryPoint::WithdrawBid => Self::new_withdraw_bid(runtime_args),

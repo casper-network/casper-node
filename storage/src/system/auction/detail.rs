@@ -547,18 +547,17 @@ pub fn distribute_delegator_rewards<P>(
     provider: &mut P,
     seigniorage_allocations: &mut Vec<SeigniorageAllocation>,
     validator_public_key: PublicKey,
-    rewards: impl Iterator<Item = (PublicKey, Ratio<U512>)>,
+    rewards: impl IntoIterator<Item = (PublicKey, U512)>,
 ) -> Result<Vec<(AccountHash, U512, URef)>, Error>
 where
     P: RuntimeProvider + StorageProvider,
 {
     let mut delegator_payouts = Vec::new();
-    for (delegator_public_key, delegator_reward) in rewards {
+    for (delegator_public_key, delegator_reward_trunc) in rewards {
         let bid_key =
             BidAddr::new_from_public_keys(&validator_public_key, Some(&delegator_public_key))
                 .into();
 
-        let delegator_reward_trunc = delegator_reward.to_integer();
         let delegator_bonding_purse = match read_delegator_bid(provider, &bid_key) {
             Ok(mut delegator_bid) if !delegator_bid.staked_amount().is_zero() => {
                 let purse = *delegator_bid.bonding_purse();

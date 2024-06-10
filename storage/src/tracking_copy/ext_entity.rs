@@ -662,6 +662,12 @@ where
             let entity_key = Key::contract_entity_key(entity_hash);
             self.write(entity_key, StoredValue::AddressableEntity(updated_entity));
 
+            // Prune the legacy records.
+            // Prune the legacy contract.
+            self.prune(Key::Hash(contract_hash.value()));
+            // Prune the legacy Wasm record.
+            self.prune(Key::Hash(contract_wasm_hash.value()));
+
             package.insert_entity_version(protocol_version.value().major, entity_hash);
         }
 
@@ -804,7 +810,6 @@ where
         protocol_version: ProtocolVersion,
         fees_purse_handling: FeesPurseHandling,
     ) -> Result<URef, TrackingCopyError> {
-        let protocol_version = protocol_version;
         let fee_handling = fees_purse_handling;
         match fee_handling {
             FeesPurseHandling::None(uref) => Ok(uref),

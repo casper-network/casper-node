@@ -38,10 +38,16 @@ macro_rules! make_array_newtype {
             }
         }
 
+        // impl Clone for $name {
+        //     fn clone(&self) -> $name {
+        //         let &$name(ref dat) = self;
+        //         $name(dat.clone())
+        //     }
+        // }
+
         impl Clone for $name {
             fn clone(&self) -> $name {
-                let &$name(ref dat) = self;
-                $name(dat.clone())
+                *self
             }
         }
 
@@ -411,14 +417,23 @@ mod empty_tries {
         let context = LmdbTestContext::new(&tries).unwrap();
         let initial_states = vec![root_hash];
 
-        let _states =
-            tests::writes_to_n_leaf_empty_trie_had_expected_results::<_, _, _, _, error::Error>(
-                &context.environment,
-                &context.store,
-                &initial_states,
-                &TEST_LEAVES,
-            )
-            .unwrap();
+        let _states = tests::writes_to_n_leaf_empty_trie_had_expected_results::<
+            _,
+            _,
+            _,
+            _,
+            _,
+            _,
+            error::Error,
+        >(
+            &context.environment,
+            &context.environment,
+            &context.store,
+            &context.store,
+            &initial_states,
+            &TEST_LEAVES,
+        )
+        .unwrap();
     }
 }
 

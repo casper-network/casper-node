@@ -8,7 +8,7 @@ use casper_types::{
     bytesrepr::Bytes, runtime_args, system::standard_payment::ARG_AMOUNT, testing::TestRng, Block,
     BlockSignatures, BlockSignaturesV2, Chainspec, ChainspecRawBytes, Deploy, ExecutableDeployItem,
     FinalitySignatureV2, RuntimeArgs, SecretKey, TestBlockBuilder, TimeDiff, Transaction,
-    TransactionV1, U512,
+    TransactionV1, AUCTION_LANE_ID, INSTALL_UPGRADE_LANE_ID, MINT_LANE_ID, U512,
 };
 
 use crate::{
@@ -23,6 +23,8 @@ use crate::{
 };
 
 use super::*;
+
+const LARGE_LANE_ID: u8 = 3;
 
 #[derive(Debug, From)]
 enum ReactorEvent {
@@ -147,28 +149,28 @@ pub(super) fn new_proposed_block_with_cited_signatures(
     let transactions = {
         let mut ret = BTreeMap::new();
         ret.insert(
-            TransactionCategory::Mint,
+            MINT_LANE_ID,
             transfer
                 .into_iter()
                 .map(|(txn_hash, approvals)| (txn_hash, approvals))
                 .collect(),
         );
         ret.insert(
-            TransactionCategory::Auction,
+            AUCTION_LANE_ID,
             staking
                 .into_iter()
                 .map(|(txn_hash, approvals)| (txn_hash, approvals))
                 .collect(),
         );
         ret.insert(
-            TransactionCategory::InstallUpgrade,
+            INSTALL_UPGRADE_LANE_ID,
             install_upgrade
                 .into_iter()
                 .map(|(txn_hash, approvals)| (txn_hash, approvals))
                 .collect(),
         );
         ret.insert(
-            TransactionCategory::Standard,
+            LARGE_LANE_ID,
             standard
                 .into_iter()
                 .map(|(txn_hash, approvals)| (txn_hash, approvals))
@@ -211,11 +213,11 @@ pub(super) fn new_v1_standard(
     timestamp: Timestamp,
     ttl: TimeDiff,
 ) -> TransactionV1 {
-    TransactionV1::random_standard(rng, Some(timestamp), Some(ttl))
+    TransactionV1::random_wasm(rng, Some(timestamp), Some(ttl))
 }
 
 pub(super) fn new_auction(rng: &mut TestRng, timestamp: Timestamp, ttl: TimeDiff) -> TransactionV1 {
-    TransactionV1::random_staking(rng, Some(timestamp), Some(ttl))
+    TransactionV1::random_auction(rng, Some(timestamp), Some(ttl))
 }
 
 pub(super) fn new_entity(rng: &mut TestRng, timestamp: Timestamp, ttl: TimeDiff) -> TransactionV1 {
@@ -388,7 +390,7 @@ impl ValidationContext {
         era: EraId,
     ) -> Self {
         self.past_blocks
-            .extend((min_height..=max_height).into_iter().map(|height| {
+            .extend((min_height..=max_height).map(|height| {
                 let block = TestBlockBuilder::new().height(height).era(era).build(rng);
                 (height, block.into())
             }));
@@ -407,7 +409,7 @@ impl ValidationContext {
         era: EraId,
     ) -> Self {
         self.delayed_blocks
-            .extend((min_height..=max_height).into_iter().map(|height| {
+            .extend((min_height..=max_height).map(|height| {
                 let block = TestBlockBuilder::new().height(height).era(era).build(rng);
                 (height, block.into())
             }));
@@ -593,7 +595,6 @@ impl ValidationContext {
             .map(|proposed_block_height| {
                 RewardedSignatures::new(
                     (1..=rewards_window)
-                        .into_iter()
                         .filter_map(|height_diff| proposed_block_height.checked_sub(height_diff))
                         .map(|height| {
                             let signing_validators = self

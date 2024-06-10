@@ -36,12 +36,12 @@ use casper_types::{
         AUCTION, ENTITY,
     },
     testing::TestRng,
-    AccountConfig, AccountsConfig, ActivationPoint, AddressableEntity, AddressableEntityHash,
-    AvailableBlockRange, Block, BlockHash, BlockHeader, BlockV2, CLValue, Chainspec,
-    ChainspecRawBytes, ConsensusProtocolName, Deploy, EraId, FeeHandling, Gas, HoldBalanceHandling,
-    Key, Motes, NextUpgrade, PricingHandling, PricingMode, ProtocolVersion, PublicKey,
-    RefundHandling, Rewards, SecretKey, StoredValue, SystemEntityRegistry, TimeDiff, Timestamp,
-    Transaction, TransactionHash, TransactionV1Builder, ValidatorConfig, U512,
+    AccountConfig, AccountsConfig, ActivationPoint, AddressableEntityHash, AvailableBlockRange,
+    Block, BlockHash, BlockHeader, BlockV2, CLValue, Chainspec, ChainspecRawBytes,
+    ConsensusProtocolName, Deploy, EraId, FeeHandling, Gas, HoldBalanceHandling, Key, Motes,
+    NextUpgrade, PricingHandling, PricingMode, ProtocolVersion, PublicKey, RefundHandling, Rewards,
+    SecretKey, StoredValue, SystemEntityRegistry, TimeDiff, Timestamp, Transaction,
+    TransactionHash, TransactionV1Builder, TransactionV1Config, ValidatorConfig, U512,
 };
 
 use crate::{
@@ -103,10 +103,6 @@ struct ConfigsOverride {
     finality_signature_proportion: Ratio<u64>,
     signature_rewards_max_delay: u64,
     storage_multiplier: u8,
-    max_transfer_count: u32,
-    max_standard_count: u32,
-    max_staking_count: u32,
-    max_install_count: u32,
     max_gas_price: u8,
     min_gas_price: u8,
     upper_threshold: u64,
@@ -121,6 +117,7 @@ struct ConfigsOverride {
     administrators: Option<BTreeSet<PublicKey>>,
     chain_name: Option<String>,
     gas_hold_balance_handling: Option<HoldBalanceHandling>,
+    transaction_v1_override: Option<TransactionV1Config>,
 }
 
 impl ConfigsOverride {
@@ -202,6 +199,11 @@ impl ConfigsOverride {
         self.gas_hold_balance_handling = Some(gas_hold_balance_handling);
         self
     }
+
+    fn with_transaction_v1_config(mut self, transaction_v1config: TransactionV1Config) -> Self {
+        self.transaction_v1_override = Some(transaction_v1config);
+        self
+    }
 }
 
 impl Default for ConfigsOverride {
@@ -217,10 +219,6 @@ impl Default for ConfigsOverride {
             finality_signature_proportion: Ratio::new(1, 3),
             signature_rewards_max_delay: 5,
             storage_multiplier: 1,
-            max_transfer_count: 1000,
-            max_standard_count: 100,
-            max_staking_count: 200,
-            max_install_count: 2,
             max_gas_price: 3,
             min_gas_price: 1,
             upper_threshold: 90,
@@ -235,6 +233,7 @@ impl Default for ConfigsOverride {
             administrators: None,
             chain_name: None,
             gas_hold_balance_handling: None,
+            transaction_v1_override: None,
         }
     }
 }
@@ -340,10 +339,6 @@ impl TestFixture {
             finality_signature_proportion,
             signature_rewards_max_delay,
             storage_multiplier,
-            max_transfer_count,
-            max_standard_count,
-            max_staking_count,
-            max_install_count,
             max_gas_price,
             min_gas_price,
             upper_threshold,
@@ -358,6 +353,7 @@ impl TestFixture {
             administrators,
             chain_name,
             gas_hold_balance_handling,
+            transaction_v1_override,
         } = spec_override.unwrap_or_default();
         if era_duration != TimeDiff::from_millis(0) {
             chainspec.core_config.era_duration = era_duration;
@@ -376,10 +372,6 @@ impl TestFixture {
         chainspec.vacancy_config.max_gas_price = max_gas_price;
         chainspec.vacancy_config.upper_threshold = upper_threshold;
         chainspec.vacancy_config.lower_threshold = lower_threshold;
-        chainspec.transaction_config.block_max_standard_count = max_standard_count;
-        chainspec.transaction_config.block_max_auction_count = max_staking_count;
-        chainspec.transaction_config.block_max_mint_count = max_transfer_count;
-        chainspec.transaction_config.block_max_install_upgrade_count = max_install_count;
         chainspec.transaction_config.block_gas_limit = block_gas_limit;
         chainspec.transaction_config.max_block_size = max_block_size;
         chainspec.highway_config.maximum_round_length =
@@ -409,6 +401,9 @@ impl TestFixture {
         }
         if let Some(gas_hold_balance_handling) = gas_hold_balance_handling {
             chainspec.core_config.gas_hold_balance_handling = gas_hold_balance_handling;
+        }
+        if let Some(transaction_v1_config) = transaction_v1_override {
+            chainspec.transaction_config.transaction_v1_config = transaction_v1_config
         }
 
         let applied_block_gas_limit = chainspec.transaction_config.block_gas_limit;
@@ -792,7 +787,7 @@ impl TestFixture {
                         ProtocolVersion::from_parts(999, 0, 0),
                     );
                     effect_builder
-                        .announce_upgrade_activation_point_read(upgrade)
+                        .upgrade_watcher_announcement(Some(upgrade))
                         .ignore()
                 })
                 .await;
@@ -2121,8 +2116,18 @@ async fn rewards_are_calculated() {
 
     let switch_block = fixture.switch_block(ERA_TWO);
 
-    for reward in switch_block.era_end().unwrap().rewards().values() {
-        assert_ne!(reward, &U512::zero());
+    for reward in switch_block
+        .era_end()
+        .unwrap()
+        .rewards()
+        .values()
+        .map(|amounts| {
+            amounts
+                .iter()
+                .fold(U512::zero(), |acc, amount| *amount + acc)
+        })
+    {
+        assert_ne!(reward, U512::zero());
     }
 }
 
@@ -2247,15 +2252,18 @@ async fn run_rewards_network_scenario(
     #[inline]
     fn add_to_rewards(
         recipient: PublicKey,
+        era: EraId,
         reward: Ratio<U512>,
-        rewards: &mut BTreeMap<PublicKey, Ratio<U512>>,
+        rewards: &mut BTreeMap<PublicKey, BTreeMap<EraId, Ratio<U512>>>,
     ) {
         match rewards.get_mut(&recipient) {
-            Some(value) => {
-                *value += reward;
+            Some(map) => {
+                *map.entry(era).or_insert(Ratio::zero()) += reward;
             }
             None => {
-                rewards.insert(recipient, reward);
+                let mut map = BTreeMap::new();
+                map.insert(era, reward);
+                rewards.insert(recipient, map);
             }
         }
     }
@@ -2288,20 +2296,21 @@ async fn run_rewards_network_scenario(
             let total_current_era_weights = current_era_slated_weights
                 .iter()
                 .fold(U512::zero(), move |acc, s| acc + s.1);
+            let weights_block_idx = if switch_blocks.headers[i - 1].is_genesis() {
+                i - 1
+            } else {
+                i - 2
+            };
             let (previous_era_slated_weights, total_previous_era_weights) =
-                if switch_blocks.headers[i - 1].is_genesis() {
-                    (None, None)
-                } else {
-                    match switch_blocks.headers[i - 2].clone_era_end() {
-                        Some(era_report) => {
-                            let next_weights = era_report.next_era_validator_weights().clone();
-                            let total_next_weights = next_weights
-                                .iter()
-                                .fold(U512::zero(), move |acc, s| acc + s.1);
-                            (Some(next_weights), Some(total_next_weights))
-                        }
-                        _ => panic!("unexpectedly absent era report"),
+                match switch_blocks.headers[weights_block_idx].clone_era_end() {
+                    Some(era_report) => {
+                        let next_weights = era_report.next_era_validator_weights().clone();
+                        let total_next_weights = next_weights
+                            .iter()
+                            .fold(U512::zero(), move |acc, s| acc + s.1);
+                        (next_weights, total_next_weights)
                     }
+                    _ => panic!("unexpectedly absent era report"),
                 };
 
             // TODO: Investigate whether the rewards pay out for the signatures
@@ -2332,28 +2341,32 @@ async fn run_rewards_network_scenario(
                     .core_config
                     .round_seigniorage_rate
                     .into_u512();
-            let previous_signatures_reward = if switch_blocks.headers[i - 1].is_genesis() {
-                None
+            let previous_signatures_reward_idx = if switch_blocks.headers[i - 1].is_genesis() {
+                i - 1
             } else {
-                Some(
-                    fixture
-                        .chainspec
-                        .core_config
-                        .finality_signature_proportion
-                        .into_u512()
-                        * recomputed_total_supply[&(i - 2)]
-                        * fixture
-                            .chainspec
-                            .core_config
-                            .round_seigniorage_rate
-                            .into_u512(),
-                )
+                i - 2
             };
+            let previous_signatures_reward = fixture
+                .chainspec
+                .core_config
+                .finality_signature_proportion
+                .into_u512()
+                * recomputed_total_supply[&previous_signatures_reward_idx]
+                * fixture
+                    .chainspec
+                    .core_config
+                    .round_seigniorage_rate
+                    .into_u512();
 
             rewarded_blocks.iter().for_each(|block: &Block| {
                 // Block production rewards
                 let proposer = block.proposer().clone();
-                add_to_rewards(proposer.clone(), block_reward, &mut recomputed_era_rewards);
+                add_to_rewards(
+                    proposer.clone(),
+                    block.era_id(),
+                    block_reward,
+                    &mut recomputed_era_rewards,
+                );
 
                 // Recover relevant finality signatures
                 // TODO: Deal with the implicit assumption that lookback only look backs one
@@ -2362,12 +2375,9 @@ async fn run_rewards_network_scenario(
                     |(offset, signatures_packed)| {
                         if block.height() as usize - offset - 1
                             <= previous_switch_block_height as usize
-                            && !switch_blocks.headers[i - 1].is_genesis()
                         {
                             let rewarded_contributors = signatures_packed.to_validator_set(
                                 previous_era_slated_weights
-                                    .as_ref()
-                                    .expect("expected previous era weights")
                                     .keys()
                                     .cloned()
                                     .collect::<BTreeSet<PublicKey>>(),
@@ -2375,27 +2385,26 @@ async fn run_rewards_network_scenario(
                             rewarded_contributors.iter().for_each(|contributor| {
                                 let contributor_proportion = Ratio::new(
                                     previous_era_slated_weights
-                                        .as_ref()
-                                        .expect("expected previous era weights")
                                         .get(contributor)
                                         .copied()
                                         .expect("expected current era validator"),
-                                    total_previous_era_weights
-                                        .expect("expected total previous era weight"),
+                                    total_previous_era_weights,
                                 );
                                 add_to_rewards(
                                     proposer.clone(),
+                                    switch_blocks.headers[i - 1].era_id(),
                                     fixture.chainspec.core_config.finders_fee.into_u512()
                                         * contributor_proportion
-                                        * previous_signatures_reward.unwrap(),
+                                        * previous_signatures_reward,
                                     &mut recomputed_era_rewards,
                                 );
                                 add_to_rewards(
                                     contributor.clone(),
+                                    switch_blocks.headers[i - 1].era_id(),
                                     (Ratio::<U512>::one()
                                         - fixture.chainspec.core_config.finders_fee.into_u512())
                                         * contributor_proportion
-                                        * previous_signatures_reward.unwrap(),
+                                        * previous_signatures_reward,
                                     &mut recomputed_era_rewards,
                                 )
                             });
@@ -2415,6 +2424,7 @@ async fn run_rewards_network_scenario(
                                 );
                                 add_to_rewards(
                                     proposer.clone(),
+                                    block.era_id(),
                                     fixture.chainspec.core_config.finders_fee.into_u512()
                                         * contributor_proportion
                                         * signatures_reward,
@@ -2422,6 +2432,7 @@ async fn run_rewards_network_scenario(
                                 );
                                 add_to_rewards(
                                     contributor.clone(),
+                                    block.era_id(),
                                     (Ratio::<U512>::one()
                                         - fixture.chainspec.core_config.finders_fee.into_u512())
                                         * contributor_proportion
@@ -2436,9 +2447,11 @@ async fn run_rewards_network_scenario(
 
             // Make sure we round just as we do in the real code, at the end of an era's
             // calculation, right before minting and transferring
-            recomputed_era_rewards.iter_mut().for_each(|(_, reward)| {
-                let truncated_reward = reward.trunc();
-                *reward = truncated_reward;
+            recomputed_era_rewards.iter_mut().for_each(|(_, rewards)| {
+                rewards.values_mut().for_each(|amount| {
+                    *amount = amount.trunc();
+                });
+                let truncated_reward = rewards.values().sum::<Ratio<U512>>();
                 let era_end_supply = recomputed_total_supply
                     .get_mut(&i)
                     .expect("expected supply at end of era");
@@ -2477,16 +2490,23 @@ async fn run_rewards_network_scenario(
                     .fold(U512::zero(), |acc, reward| U512::from(*reward.1) + acc),
                 Rewards::V2(v2_rewards) => v2_rewards
                     .iter()
-                    .fold(U512::zero(), |acc, reward| *reward.1 + acc),
+                    .flat_map(|(_key, amounts)| amounts)
+                    .fold(U512::zero(), |acc, reward| *reward + acc),
             };
-            let recomputed_total_rewards = rewards
-                .iter()
-                .fold(U512::zero(), |acc, x| x.1.to_integer() + acc);
+            let recomputed_total_rewards: U512 = rewards
+                .values()
+                .flat_map(|amounts| amounts.values().map(|reward| reward.to_integer()))
+                .sum();
             assert_eq!(
                 Ratio::from(recomputed_total_rewards),
                 Ratio::from(observed_total_rewards),
-                "total rewards do not match at era {}",
-                era
+                "total rewards do not match at era {}\nobserved = {:#?}\nrecomputed = {:#?}",
+                era,
+                switch_blocks.headers[*era]
+                    .clone_era_end()
+                    .expect("")
+                    .rewards(),
+                rewards,
             );
             assert_eq!(
                 Ratio::from(recomputed_total_rewards),
@@ -2807,7 +2827,13 @@ async fn run_gas_price_scenario(gas_price_scenario: GasPriceScenario) {
 
     let max_gas_price: u8 = 3;
 
+    let mut transaction_config = TransactionV1Config::default();
+    transaction_config.native_mint_lane[4] = 1;
+
     let spec_override = match gas_price_scenario {
+        GasPriceScenario::SlotUtilization => {
+            ConfigsOverride::default().with_transaction_v1_config(transaction_config)
+        }
         GasPriceScenario::SizeUtilization(block_size) => {
             ConfigsOverride::default().with_block_size(block_size)
         }

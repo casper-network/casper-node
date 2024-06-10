@@ -341,19 +341,14 @@ impl<T: GossipItem> Display for GossiperAnnouncement<T> {
     }
 }
 
-/// A chainspec loader announcement.
 #[derive(Debug, Serialize)]
-pub(crate) enum UpgradeWatcherAnnouncement {
-    /// New upgrade recognized.
-    UpgradeActivationPointRead(NextUpgrade),
-}
+pub(crate) struct UpgradeWatcherAnnouncement(pub(crate) Option<NextUpgrade>);
 
 impl Display for UpgradeWatcherAnnouncement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            UpgradeWatcherAnnouncement::UpgradeActivationPointRead(next_upgrade) => {
-                write!(f, "read {}", next_upgrade)
-            }
+        match &self.0 {
+            Some(next_upgrade) => write!(f, "read {}", next_upgrade),
+            None => write!(f, "no upgrade staged"),
         }
     }
 }
@@ -375,8 +370,11 @@ pub(crate) enum ContractRuntimeAnnouncement {
         /// The validators for the eras after the `era_that_is_ending` era.
         upcoming_era_validators: BTreeMap<EraId, BTreeMap<PublicKey, U512>>,
     },
+    /// New gas price for an upcoming era has been determined.
     NextEraGasPrice {
+        /// The era id for which the gas price has been determined
         era_id: EraId,
+        /// The gas price as determined by chain utilization.
         next_era_gas_price: u8,
     },
 }

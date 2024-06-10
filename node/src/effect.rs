@@ -124,7 +124,8 @@ use casper_storage::{
         tagged_values::{TaggedValuesRequest, TaggedValuesResult},
         AddressableEntityResult, BalanceRequest, BalanceResult, EraValidatorsRequest,
         EraValidatorsResult, ExecutionResultsChecksumResult, PutTrieRequest, PutTrieResult,
-        QueryRequest, QueryResult, TrieRequest, TrieResult,
+        QueryRequest, QueryResult, SeigniorageRecipientsRequest, SeigniorageRecipientsResult,
+        TrieRequest, TrieResult,
     },
     DbRawBytesSpec,
 };
@@ -133,8 +134,8 @@ use casper_types::{
     Approval, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures,
     BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest, EraId, ExecutionInfo,
     FinalitySignature, FinalitySignatureId, FinalitySignatureV2, Key, NextUpgrade, Package,
-    ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transaction, TransactionHash,
-    TransactionHeader, TransactionId, Transfer, U512,
+    ProtocolUpgradeConfig, ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transaction,
+    TransactionHash, TransactionHeader, TransactionId, Transfer, U512,
 };
 
 use crate::{
@@ -151,6 +152,7 @@ use crate::{
         network::{blocklist::BlocklistJustification, FromIncoming, NetworkInsights},
         transaction_acceptor,
     },
+    contract_runtime::ExecutionPreState,
     failpoints::FailpointActivation,
     reactor::{main_reactor::ReactorState, EventQueueHandle, QueueKind},
     types::{
@@ -536,9 +538,7 @@ pub(crate) struct EffectBuilder<REv: 'static> {
 // Implement `Clone` and `Copy` manually, as `derive` will make it depend on `REv` otherwise.
 impl<REv> Clone for EffectBuilder<REv> {
     fn clone(&self) -> Self {
-        EffectBuilder {
-            event_queue: self.event_queue,
-        }
+        *self
     }
 }
 
@@ -1004,13 +1004,13 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Announces upgrade activation point read.
-    pub(crate) async fn announce_upgrade_activation_point_read(self, next_upgrade: NextUpgrade)
+    pub(crate) async fn upgrade_watcher_announcement(self, maybe_next_upgrade: Option<NextUpgrade>)
     where
         REv: From<UpgradeWatcherAnnouncement>,
     {
         self.event_queue
             .schedule(
-                UpgradeWatcherAnnouncement::UpgradeActivationPointRead(next_upgrade),
+                UpgradeWatcherAnnouncement(maybe_next_upgrade),
                 QueueKind::Control,
             )
             .await
@@ -1024,6 +1024,18 @@ impl<REv> EffectBuilder<REv> {
         self.event_queue
             .schedule(
                 ContractRuntimeAnnouncement::CommitStepSuccess { era_id, effects },
+                QueueKind::ContractRuntime,
+            )
+            .await
+    }
+
+    pub(crate) async fn update_contract_runtime_state(self, new_pre_state: ExecutionPreState)
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.event_queue
+            .schedule(
+                ContractRuntimeRequest::UpdatePreState { new_pre_state },
                 QueueKind::ContractRuntime,
             )
             .await
@@ -1829,6 +1841,7 @@ impl<REv> EffectBuilder<REv> {
         self,
         timestamp: Timestamp,
         era_id: EraId,
+        request_expiry: Timestamp,
     ) -> AppendableBlock
     where
         REv: From<TransactionBufferRequest>,
@@ -1837,6 +1850,7 @@ impl<REv> EffectBuilder<REv> {
             |responder| TransactionBufferRequest::GetAppendableBlock {
                 timestamp,
                 era_id,
+                request_expiry,
                 responder,
             },
             QueueKind::Consensus,
@@ -1873,6 +1887,28 @@ impl<REv> EffectBuilder<REv> {
                     meta_block_state,
                 },
                 QueueKind::ContractRuntime,
+            )
+            .await
+    }
+
+    pub(crate) async fn enqueue_protocol_upgrade(
+        self,
+        upgrade_config: ProtocolUpgradeConfig,
+        next_block_height: u64,
+        parent_hash: BlockHash,
+        parent_seed: Digest,
+    ) where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.event_queue
+            .schedule(
+                ContractRuntimeRequest::DoProtocolUpgrade {
+                    protocol_upgrade_config: upgrade_config,
+                    next_block_height,
+                    parent_hash,
+                    parent_seed,
+                },
+                QueueKind::Control,
             )
             .await
     }
@@ -2092,6 +2128,20 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| ContractRuntimeRequest::GetEraValidators { request, responder },
+            QueueKind::ContractRuntime,
+        )
+        .await
+    }
+
+    pub(crate) async fn get_seigniorage_recipients_snapshot_from_contract_runtime(
+        self,
+        request: SeigniorageRecipientsRequest,
+    ) -> SeigniorageRecipientsResult
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::GetSeigniorageRecipients { request, responder },
             QueueKind::ContractRuntime,
         )
         .await

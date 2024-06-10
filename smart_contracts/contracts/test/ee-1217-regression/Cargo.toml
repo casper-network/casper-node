@@ -2,7 +2,7 @@
 name = "ee-1217-regression"
 version = "0.1.0"
 authors = ["Daniel Werner <dan@casperlabs.io>"]
-edition = "2018"
+edition = "2021"
 
 [[bin]]
 name = "ee_1217_regression"
