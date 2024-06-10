@@ -1658,7 +1658,7 @@ mod tests {
                 addr: addr_a,
                 error: TestDialerError { id: 12345 },
 
-                // The moment the connection attempt failed.
+                /// The moment the connection attempt failed.
                 when: clock.now(),
             })
             .is_none());

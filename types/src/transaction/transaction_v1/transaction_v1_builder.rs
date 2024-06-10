@@ -101,16 +101,8 @@ impl<'a> TransactionV1Builder<'a> {
         public_key: PublicKey,
         delegation_rate: u8,
         amount: A,
-        minimum_delegation_amount: u64,
-        maximum_delegation_amount: u64,
     ) -> Result<Self, CLValueError> {
-        let args = arg_handling::new_add_bid_args(
-            public_key,
-            delegation_rate,
-            amount,
-            minimum_delegation_amount,
-            maximum_delegation_amount,
-        )?;
+        let args = arg_handling::new_add_bid_args(public_key, delegation_rate, amount)?;
         let body = TransactionV1Body::new(
             args,
             TransactionTarget::Native,

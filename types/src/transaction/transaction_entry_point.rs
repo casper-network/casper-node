@@ -69,8 +69,6 @@ pub enum TransactionEntryPoint {
     ///   * "public_key": `PublicKey`
     ///   * "delegation_rate": `u8`
     ///   * "amount": `U512`
-    ///   * "minimum_delegation_amount": `u64`
-    ///   * "maximum_delegation_amount": `u64`
     #[cfg_attr(
         feature = "json-schema",
         schemars(

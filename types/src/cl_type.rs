@@ -552,15 +552,15 @@ mod tests {
         AccessRights, CLValue,
     };
 
-    fn round_trip<T: CLTyped + FromBytes + ToBytes + PartialEq + Debug>(value: &T) {
-        let cl_value = CLValue::from_t(value).unwrap();
+    fn round_trip<T: CLTyped + FromBytes + ToBytes + PartialEq + Debug + Clone>(value: &T) {
+        let cl_value = CLValue::from_t(value.clone()).unwrap();
 
         let serialized_cl_value = cl_value.to_bytes().unwrap();
         assert_eq!(serialized_cl_value.len(), cl_value.serialized_length());
         let parsed_cl_value: CLValue = bytesrepr::deserialize(serialized_cl_value).unwrap();
         assert_eq!(cl_value, parsed_cl_value);
 
-        let parsed_value = cl_value.into_t().unwrap();
+        let parsed_value = CLValue::into_t(cl_value).unwrap();
         assert_eq!(*value, parsed_value);
     }
 

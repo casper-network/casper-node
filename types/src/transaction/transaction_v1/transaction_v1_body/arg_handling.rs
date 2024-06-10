@@ -18,10 +18,6 @@ const TRANSFER_ARG_ID: OptionalArg<u64> = OptionalArg::new("id");
 const ADD_BID_ARG_PUBLIC_KEY: RequiredArg<PublicKey> = RequiredArg::new("public_key");
 const ADD_BID_ARG_DELEGATION_RATE: RequiredArg<u8> = RequiredArg::new("delegation_rate");
 const ADD_BID_ARG_AMOUNT: RequiredArg<U512> = RequiredArg::new("amount");
-const ADD_BID_ARG_MINIMUM_DELEGATION_AMOUNT: RequiredArg<u64> =
-    RequiredArg::new("minimum_delegation_amount");
-const ADD_BID_ARG_MAXIMUM_DELEGATION_AMOUNT: RequiredArg<u64> =
-    RequiredArg::new("maximum_delegation_amount");
 
 const WITHDRAW_BID_ARG_PUBLIC_KEY: RequiredArg<PublicKey> = RequiredArg::new("public_key");
 const WITHDRAW_BID_ARG_AMOUNT: RequiredArg<U512> = RequiredArg::new("amount");
@@ -222,15 +218,11 @@ pub(in crate::transaction::transaction_v1) fn new_add_bid_args<A: Into<U512>>(
     public_key: PublicKey,
     delegation_rate: u8,
     amount: A,
-    minimum_delegation_amount: u64,
-    maximum_delegation_amount: u64,
 ) -> Result<RuntimeArgs, CLValueError> {
     let mut args = RuntimeArgs::new();
     ADD_BID_ARG_PUBLIC_KEY.insert(&mut args, public_key)?;
     ADD_BID_ARG_DELEGATION_RATE.insert(&mut args, delegation_rate)?;
     ADD_BID_ARG_AMOUNT.insert(&mut args, amount.into())?;
-    ADD_BID_ARG_MINIMUM_DELEGATION_AMOUNT.insert(&mut args, minimum_delegation_amount)?;
-    ADD_BID_ARG_MAXIMUM_DELEGATION_AMOUNT.insert(&mut args, maximum_delegation_amount)?;
     Ok(args)
 }
 
@@ -508,18 +500,9 @@ mod tests {
     fn should_validate_add_bid_args() {
         let rng = &mut TestRng::new();
 
-        let minimum_delegation_amount = rng.gen::<u32>() as u64;
-        let maximum_delegation_amount = minimum_delegation_amount + rng.gen::<u32>() as u64;
-
         // Check random args.
-        let mut args = new_add_bid_args(
-            PublicKey::random(rng),
-            rng.gen(),
-            rng.gen::<u64>(),
-            minimum_delegation_amount,
-            maximum_delegation_amount,
-        )
-        .unwrap();
+        let mut args =
+            new_add_bid_args(PublicKey::random(rng), rng.gen(), rng.gen::<u64>()).unwrap();
         has_valid_add_bid_args(&args).unwrap();
 
         // Check with extra arg.

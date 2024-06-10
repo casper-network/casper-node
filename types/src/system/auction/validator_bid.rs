@@ -35,10 +35,6 @@ pub struct ValidatorBid {
     vesting_schedule: Option<VestingSchedule>,
     /// `true` if validator has been "evicted"
     inactive: bool,
-    /// Minimum allowed delegation amount in motes
-    minimum_delegation_amount: u64,
-    /// Maximum allowed delegation amount in motes
-    maximum_delegation_amount: u64,
 }
 
 impl ValidatorBid {
@@ -49,8 +45,6 @@ impl ValidatorBid {
         staked_amount: U512,
         delegation_rate: DelegationRate,
         release_timestamp_millis: u64,
-        minimum_delegation_amount: u64,
-        maximum_delegation_amount: u64,
     ) -> Self {
         let vesting_schedule = Some(VestingSchedule::new(release_timestamp_millis));
         let inactive = false;
@@ -61,8 +55,6 @@ impl ValidatorBid {
             delegation_rate,
             vesting_schedule,
             inactive,
-            minimum_delegation_amount,
-            maximum_delegation_amount,
         }
     }
 
@@ -72,8 +64,6 @@ impl ValidatorBid {
         bonding_purse: URef,
         staked_amount: U512,
         delegation_rate: DelegationRate,
-        minimum_delegation_amount: u64,
-        maximum_delegation_amount: u64,
     ) -> Self {
         let vesting_schedule = None;
         let inactive = false;
@@ -84,8 +74,6 @@ impl ValidatorBid {
             delegation_rate,
             vesting_schedule,
             inactive,
-            minimum_delegation_amount,
-            maximum_delegation_amount,
         }
     }
 
@@ -93,7 +81,7 @@ impl ValidatorBid {
     pub fn empty(validator_public_key: PublicKey, bonding_purse: URef) -> Self {
         let vesting_schedule = None;
         let inactive = true;
-        let staked_amount = U512::zero();
+        let staked_amount = 0.into();
         let delegation_rate = Default::default();
         Self {
             validator_public_key,
@@ -102,8 +90,6 @@ impl ValidatorBid {
             delegation_rate,
             vesting_schedule,
             inactive,
-            minimum_delegation_amount: 0,
-            maximum_delegation_amount: u64::MAX,
         }
     }
 
@@ -244,26 +230,6 @@ impl ValidatorBid {
         self.validator_public_key = validator_public_key;
         self
     }
-
-    /// Returns minimum allowed delegation amount in motes.
-    pub fn minimum_delegation_amount(&self) -> u64 {
-        self.minimum_delegation_amount
-    }
-
-    /// Returns maximum allowed delegation amount in motes.
-    pub fn maximum_delegation_amount(&self) -> u64 {
-        self.maximum_delegation_amount
-    }
-
-    /// Sets minimum and maximum delegation amounts in motes.
-    pub fn set_delegation_amount_boundaries(
-        &mut self,
-        minimum_delegation_amount: u64,
-        maximum_delegation_amount: u64,
-    ) {
-        self.minimum_delegation_amount = minimum_delegation_amount;
-        self.maximum_delegation_amount = maximum_delegation_amount;
-    }
 }
 
 impl CLTyped for ValidatorBid {
@@ -281,8 +247,6 @@ impl ToBytes for ValidatorBid {
         self.delegation_rate.write_bytes(&mut result)?;
         self.vesting_schedule.write_bytes(&mut result)?;
         self.inactive.write_bytes(&mut result)?;
-        self.minimum_delegation_amount.write_bytes(&mut result)?;
-        self.maximum_delegation_amount.write_bytes(&mut result)?;
         Ok(result)
     }
 
@@ -293,8 +257,6 @@ impl ToBytes for ValidatorBid {
             + self.delegation_rate.serialized_length()
             + self.vesting_schedule.serialized_length()
             + self.inactive.serialized_length()
-            + self.minimum_delegation_amount.serialized_length()
-            + self.maximum_delegation_amount.serialized_length()
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
@@ -304,8 +266,6 @@ impl ToBytes for ValidatorBid {
         self.delegation_rate.write_bytes(writer)?;
         self.vesting_schedule.write_bytes(writer)?;
         self.inactive.write_bytes(writer)?;
-        self.minimum_delegation_amount.write_bytes(writer)?;
-        self.maximum_delegation_amount.write_bytes(writer)?;
         Ok(())
     }
 }
@@ -318,8 +278,6 @@ impl FromBytes for ValidatorBid {
         let (delegation_rate, bytes) = FromBytes::from_bytes(bytes)?;
         let (vesting_schedule, bytes) = FromBytes::from_bytes(bytes)?;
         let (inactive, bytes) = FromBytes::from_bytes(bytes)?;
-        let (minimum_delegation_amount, bytes) = FromBytes::from_bytes(bytes)?;
-        let (maximum_delegation_amount, bytes) = FromBytes::from_bytes(bytes)?;
         Ok((
             ValidatorBid {
                 validator_public_key,
@@ -328,8 +286,6 @@ impl FromBytes for ValidatorBid {
                 delegation_rate,
                 vesting_schedule,
                 inactive,
-                minimum_delegation_amount,
-                maximum_delegation_amount,
             },
             bytes,
         ))
@@ -345,8 +301,6 @@ impl From<Bid> for ValidatorBid {
             delegation_rate: *bid.delegation_rate(),
             vesting_schedule: bid.vesting_schedule().cloned(),
             inactive: bid.inactive(),
-            minimum_delegation_amount: 0,
-            maximum_delegation_amount: u64::MAX,
         }
     }
 }
@@ -370,8 +324,6 @@ mod tests {
             delegation_rate: DelegationRate::MAX,
             vesting_schedule: Some(VestingSchedule::default()),
             inactive: false,
-            minimum_delegation_amount: 0,
-            maximum_delegation_amount: u64::MAX,
         };
         bytesrepr::test_serialization_roundtrip(&founding_validator);
     }
@@ -387,8 +339,6 @@ mod tests {
             delegation_rate: DelegationRate::max_value(),
             vesting_schedule: Some(VestingSchedule::default()),
             inactive: true,
-            minimum_delegation_amount: 0,
-            maximum_delegation_amount: u64::MAX,
         };
         bytesrepr::test_serialization_roundtrip(&founding_validator);
     }
@@ -411,8 +361,6 @@ mod tests {
             validator_staked_amount,
             validator_delegation_rate,
             validator_release_timestamp,
-            0,
-            u64::MAX,
         );
 
         assert!(!bid.is_locked_with_vesting_schedule(

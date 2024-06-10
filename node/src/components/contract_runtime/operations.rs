@@ -7,14 +7,12 @@ use casper_execution_engine::engine_state::{ExecutionEngineV1, WasmV1Request, Wa
 use casper_storage::{
     block_store::types::ApprovalsHashes,
     data_access_layer::{
-        balance::BalanceHandling,
-        forced_undelegate::{ForcedUndelegateRequest, ForcedUndelegateResult},
-        AuctionMethod, BalanceHoldKind, BalanceHoldRequest, BalanceIdentifier, BalanceRequest,
-        BiddingRequest, BlockGlobalRequest, BlockGlobalResult, BlockRewardsRequest,
-        BlockRewardsResult, DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, EvictItem,
-        FeeRequest, FeeResult, FlushRequest, HandleFeeMode, HandleFeeRequest, HandleRefundMode,
-        HandleRefundRequest, InsufficientBalanceHandling, ProofHandling, PruneRequest, PruneResult,
-        StepRequest, StepResult, TransferRequest,
+        balance::BalanceHandling, AuctionMethod, BalanceHoldKind, BalanceHoldRequest,
+        BalanceIdentifier, BalanceRequest, BiddingRequest, BlockGlobalRequest, BlockGlobalResult,
+        BlockRewardsRequest, BlockRewardsResult, DataAccessLayer, EraValidatorsRequest,
+        EraValidatorsResult, EvictItem, FeeRequest, FeeResult, FlushRequest, HandleFeeMode,
+        HandleFeeRequest, HandleRefundMode, HandleRefundRequest, InsufficientBalanceHandling,
+        ProofHandling, PruneRequest, PruneResult, StepRequest, StepResult, TransferRequest,
     },
     global_state::state::{
         lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, ScratchProvider,
@@ -726,27 +724,6 @@ pub fn execute_finalized_block(
     // if era report is some, this is a switch block. a series of end-of-era extra processing must
     // transpire before this block is entirely finished.
     let step_outcome = if let Some(era_report) = &executable_block.era_report {
-        // force undelegate delegators outside delegation limits before the auction runs
-        let forced_undelegate_req = ForcedUndelegateRequest::new(
-            native_runtime_config.clone(),
-            state_root_hash,
-            protocol_version,
-            block_time,
-        );
-        match scratch_state.forced_undelegate(forced_undelegate_req) {
-            ForcedUndelegateResult::RootNotFound => {
-                return Err(BlockExecutionError::RootNotFound(state_root_hash))
-            }
-            ForcedUndelegateResult::Failure(err) => {
-                return Err(BlockExecutionError::ForcedUndelegate(err))
-            }
-            ForcedUndelegateResult::Success {
-                post_state_hash, ..
-            } => {
-                state_root_hash = post_state_hash;
-            }
-        }
-
         // step processing starts now
         let step_processing_start = Instant::now();
         let step_effects = match commit_step(
