@@ -16,6 +16,7 @@ mod withdraw_purse;
 
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use alloc::collections::btree_map::Entry;
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
 use itertools::Itertools;
 
 use alloc::{boxed::Box, collections::BTreeMap, vec::Vec};
