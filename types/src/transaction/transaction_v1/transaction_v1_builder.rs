@@ -81,13 +81,13 @@ impl<'a> TransactionV1Builder<'a> {
     ///
     /// - A chain name is provided by calling [`with_chain_name`](Self::with_chain_name).
     /// - An initiator address is set by calling [`with_initiator_addr`](Self::with_initiator_addr).
-    /// - A secret key is set by calling [`with_secret_key`](Self::with_secret_key).
+    /// or a secret key is set by calling [`with_secret_key`](Self::with_secret_key).
     ///
     /// This function sets the following default values:
     ///
     /// - `chain_name` is initialized to `None`.
     /// - `timestamp` is set to the current time using [`Timestamp::now`](Timestamp::now)
-    /// or [`Timestamp::zero`](Timestamp::zero) without  `std-fs-io` feature.
+    /// or [`Timestamp::zero`](Timestamp::zero) without `std-fs-io` feature.
     /// - `ttl` is set to the default TTL value [`Self::DEFAULT_TTL`].
     /// - `pricing_mode` is set to the default pricing mode [`Self::DEFAULT_PRICING_MODE`].
     /// - `initiator_addr` is initialized to `None`.
