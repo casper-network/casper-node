@@ -15,8 +15,8 @@
 //! use tempfile::tempdir;
 //!
 //! // Create some leaves
-//! let leaf_1 = Trie::Leaf { key: Bytes::from(vec![0u8, 0, 0]), value: Bytes::from(b"val_1".to_vec()) };
-//! let leaf_2 = Trie::Leaf { key: Bytes::from(vec![1u8, 0, 0]), value: Bytes::from(b"val_2".to_vec()) };
+//! let leaf_1 = Trie::Leaf { key: Bytes::from([0u8, 0, 0].as_slice()), value: Bytes::from(b"val_1".as_slice()) };
+//! let leaf_2 = Trie::Leaf { key: Bytes::from([1u8, 0, 0].as_slice()), value: Bytes::from(b"val_2".as_slice()) };
 //!
 //! // Get their hashes
 //! let leaf_1_hash = Digest::hash(&leaf_1.to_bytes().unwrap());
@@ -63,7 +63,7 @@
 //!     let txn = env.create_read_txn().unwrap();
 //!
 //!     // Observe that nothing has been persisted to the store
-//!     for hash in vec![&leaf_1_hash, &leaf_2_hash, &node_hash].iter() {
+//!     for hash in [&leaf_1_hash, &leaf_2_hash, &node_hash].iter() {
 //!         // We need to use a type annotation here to help the compiler choose
 //!         // a suitable FromBytes instance
 //!         let maybe_trie: Option<Trie<Bytes, Bytes>> = store.get(&txn, hash).unwrap();

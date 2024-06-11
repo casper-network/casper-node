@@ -2,7 +2,7 @@
 name = "create-purses"
 version = "0.1.0"
 authors = ["Michał Papierski <michal@papierski.net>"]
-edition = "2018"
+edition = "2021"
 
 [[bin]]
 name = "create_purses"

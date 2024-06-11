@@ -6,7 +6,7 @@ use datasize::DataSize;
 
 use casper_types::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
-    EraId, ExecutionInfo, Key, PublicKey, TimeDiff, Timestamp, Transaction, ValidatorChange,
+    EraId, ExecutionInfo, Key, PublicKey, TimeDiff, Timestamp, Transaction, ValidatorChange, U512,
 };
 
 use super::GlobalStateQueryResult;
@@ -170,6 +170,55 @@ impl GetTrieFullResult {
     /// Returns the inner value.
     pub fn into_inner(self) -> Option<Bytes> {
         self.0
+    }
+}
+
+/// Type representing the reward of a validator or a delegator.
+#[derive(Debug, PartialEq, Eq)]
+pub struct RewardResponse {
+    amount: U512,
+    era_id: EraId,
+}
+
+impl RewardResponse {
+    /// Constructs new reward response.
+    pub fn new(amount: U512, era_id: EraId) -> Self {
+        Self { amount, era_id }
+    }
+
+    /// Returns the amount of the reward.
+    pub fn amount(&self) -> U512 {
+        self.amount
+    }
+
+    /// Returns the era ID.
+    pub fn era_id(&self) -> EraId {
+        self.era_id
+    }
+}
+
+impl ToBytes for RewardResponse {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.amount.serialized_length() + self.era_id.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.amount.write_bytes(writer)?;
+        self.era_id.write_bytes(writer)
+    }
+}
+
+impl FromBytes for RewardResponse {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (amount, remainder) = FromBytes::from_bytes(bytes)?;
+        let (era_id, remainder) = FromBytes::from_bytes(remainder)?;
+        Ok((RewardResponse::new(amount, era_id), remainder))
     }
 }
 
@@ -378,6 +427,15 @@ mod tests {
     fn get_trie_full_result_roundtrip() {
         let rng = &mut TestRng::new();
         bytesrepr::test_serialization_roundtrip(&GetTrieFullResult::new(rng.gen()));
+    }
+
+    #[test]
+    fn reward_roundtrip() {
+        let rng = &mut TestRng::new();
+        bytesrepr::test_serialization_roundtrip(&RewardResponse::new(
+            rng.gen(),
+            EraId::random(rng),
+        ));
     }
 
     #[test]

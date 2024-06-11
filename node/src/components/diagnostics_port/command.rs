@@ -23,22 +23,17 @@ pub(super) enum Error {
 }
 
 /// Output format information is sent back to the client it.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Default)]
 pub(super) enum OutputFormat {
     /// Human-readable interactive format.
     ///
     /// No string form, utilizes the `Display` implementation of types passed in.
+    #[default]
     Interactive,
     /// JSON, pretty-printed.
     Json,
     /// Binary using bincode.
     Bincode,
-}
-
-impl Default for OutputFormat {
-    fn default() -> Self {
-        OutputFormat::Interactive
-    }
 }
 
 impl Display for OutputFormat {

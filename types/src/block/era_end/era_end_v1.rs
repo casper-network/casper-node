@@ -76,7 +76,7 @@ impl EraEndV1 {
         self.era_report.inactive_validators()
     }
 
-    /// Retrieves the transfer hashes within the block.
+    /// Returns rewards for finalization of earlier blocks.
     pub fn rewards(&self) -> &BTreeMap<PublicKey, u64> {
         self.era_report.rewards()
     }

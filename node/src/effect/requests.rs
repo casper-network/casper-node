@@ -25,7 +25,8 @@ use casper_storage::{
         tagged_values::{TaggedValuesRequest, TaggedValuesResult},
         AddressableEntityResult, BalanceRequest, BalanceResult, EntryPointsResult,
         EraValidatorsRequest, EraValidatorsResult, ExecutionResultsChecksumResult, PutTrieRequest,
-        PutTrieResult, QueryRequest, QueryResult, TrieRequest, TrieResult,
+        PutTrieResult, QueryRequest, QueryResult, SeigniorageRecipientsRequest,
+        SeigniorageRecipientsResult, TrieRequest, TrieResult,
     },
     DbRawBytesSpec,
 };
@@ -703,6 +704,7 @@ pub(crate) enum TransactionBufferRequest {
     GetAppendableBlock {
         timestamp: Timestamp,
         era_id: EraId,
+        request_expiry: Timestamp,
         responder: Responder<AppendableBlock>,
     },
 }
@@ -711,12 +713,15 @@ impl Display for TransactionBufferRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             TransactionBufferRequest::GetAppendableBlock {
-                timestamp, era_id, ..
+                timestamp,
+                era_id,
+                request_expiry,
+                ..
             } => {
                 write!(
                     formatter,
-                    "request for appendable block at instant {} for era {}",
-                    timestamp, era_id
+                    "request for appendable block at instant {} for era {} (expires at {})",
+                    timestamp, era_id, request_expiry
                 )
             }
         }
@@ -794,6 +799,14 @@ pub(crate) enum ContractRuntimeRequest {
         request: EraValidatorsRequest,
         /// Responder to call with the result.
         responder: Responder<EraValidatorsResult>,
+    },
+    /// Returns the seigniorage recipients snapshot at the given state root hash.
+    GetSeigniorageRecipients {
+        /// Get seigniorage recipients request.
+        #[serde(skip_serializing)]
+        request: SeigniorageRecipientsRequest,
+        /// Responder to call with the result.
+        responder: Responder<SeigniorageRecipientsResult>,
     },
     /// Return all values at a given state root hash and given key tag.
     GetTaggedValues {
@@ -889,6 +902,9 @@ impl Display for ContractRuntimeRequest {
             } => write!(formatter, "balance request: {:?}", balance_request),
             ContractRuntimeRequest::GetEraValidators { request, .. } => {
                 write!(formatter, "get era validators: {:?}", request)
+            }
+            ContractRuntimeRequest::GetSeigniorageRecipients { request, .. } => {
+                write!(formatter, "get seigniorage recipients for {:?}", request)
             }
             ContractRuntimeRequest::GetTaggedValues {
                 request: get_all_values_request,

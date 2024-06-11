@@ -532,6 +532,22 @@ where
             .map_err(|_| ExecError::Revert(ApiError::InvalidArgument))
     }
 
+    fn try_get_named_argument<T: FromBytes + CLTyped>(
+        args: &RuntimeArgs,
+        name: &str,
+    ) -> Result<Option<T>, ExecError> {
+        match args.get(name) {
+            Some(arg) => {
+                let arg = arg
+                    .clone()
+                    .into_t()
+                    .map_err(|_| ExecError::Revert(ApiError::InvalidArgument))?;
+                Ok(Some(arg))
+            }
+            None => Ok(None),
+        }
+    }
+
     fn reverter<T: Into<ApiError>>(error: T) -> ExecError {
         let api_error: ApiError = error.into();
         // NOTE: This is special casing needed to keep the native system contracts propagate
@@ -830,8 +846,38 @@ where
                 let delegation_rate =
                     Self::get_named_argument(runtime_args, auction::ARG_DELEGATION_RATE)?;
                 let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
+
+                let global_minimum_delegation_amount =
+                    self.context.engine_config().minimum_delegation_amount();
+                let minimum_delegation_amount = Self::try_get_named_argument(
+                    runtime_args,
+                    auction::ARG_MINIMUM_DELEGATION_AMOUNT,
+                )?
+                .unwrap_or(global_minimum_delegation_amount);
+
+                let global_maximum_delegation_amount =
+                    self.context.engine_config().maximum_delegation_amount();
+                let maximum_delegation_amount = Self::try_get_named_argument(
+                    runtime_args,
+                    auction::ARG_MAXIMUM_DELEGATION_AMOUNT,
+                )?
+                .unwrap_or(global_maximum_delegation_amount);
+
+                if minimum_delegation_amount < global_minimum_delegation_amount
+                    || maximum_delegation_amount > global_maximum_delegation_amount
+                    || minimum_delegation_amount > maximum_delegation_amount
+                {
+                    return Err(ExecError::Revert(ApiError::InvalidDelegationAmountLimits));
+                }
+
                 let result = runtime
-                    .add_bid(account_hash, delegation_rate, amount)
+                    .add_bid(
+                        account_hash,
+                        delegation_rate,
+                        amount,
+                        minimum_delegation_amount,
+                        maximum_delegation_amount,
+                    )
                     .map_err(Self::reverter)?;
 
                 CLValue::from_t(result).map_err(Self::reverter)
@@ -858,16 +904,9 @@ where
 
                 let max_delegators_per_validator =
                     self.context.engine_config().max_delegators_per_validator();
-                let minimum_delegation_amount =
-                    self.context.engine_config().minimum_delegation_amount();
+
                 let result = runtime
-                    .delegate(
-                        delegator,
-                        validator,
-                        amount,
-                        max_delegators_per_validator,
-                        minimum_delegation_amount,
-                    )
+                    .delegate(delegator, validator, amount, max_delegators_per_validator)
                     .map_err(Self::reverter)?;
 
                 CLValue::from_t(result).map_err(Self::reverter)
@@ -896,17 +935,8 @@ where
                 let new_validator =
                     Self::get_named_argument(runtime_args, auction::ARG_NEW_VALIDATOR)?;
 
-                let minimum_delegation_amount =
-                    self.context.engine_config().minimum_delegation_amount();
-
                 let result = runtime
-                    .redelegate(
-                        delegator,
-                        validator,
-                        amount,
-                        new_validator,
-                        minimum_delegation_amount,
-                    )
+                    .redelegate(delegator, validator, amount, new_validator)
                     .map_err(Self::reverter)?;
 
                 CLValue::from_t(result).map_err(Self::reverter)
@@ -922,14 +952,11 @@ where
 
                 let max_delegators_per_validator =
                     self.context.engine_config().max_delegators_per_validator();
-                let minimum_delegation_amount =
-                    self.context.engine_config().minimum_delegation_amount();
                 runtime
                     .run_auction(
                         era_end_timestamp_millis,
                         evicted_validators,
                         max_delegators_per_validator,
-                        minimum_delegation_amount,
                         true,
                         Ratio::new_raw(U512::from(1), U512::from(5)),
                     )
@@ -3326,8 +3353,7 @@ where
         }
 
         // A set of keys is converted into a vector so it can be written to a host buffer
-        let authorization_keys =
-            Vec::from_iter(self.context.authorization_keys().clone().into_iter());
+        let authorization_keys = Vec::from_iter(self.context.authorization_keys().clone());
 
         let total_keys: u32 = match authorization_keys.len().try_into() {
             Ok(value) => value,
@@ -3404,7 +3430,8 @@ where
 
         // Check if the topic exists and get the summary.
         let Some(StoredValue::MessageTopic(prev_topic_summary)) =
-            self.context.read_gs(&topic_key)? else {
+            self.context.read_gs(&topic_key)?
+        else {
             return Ok(Err(ApiError::MessageTopicNotRegistered));
         };
 

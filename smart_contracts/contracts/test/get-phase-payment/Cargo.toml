@@ -2,7 +2,7 @@
 name = "get-phase-payment"
 version = "0.1.0"
 authors = ["Michael Birch <birchmd@casperlabs.io>"]
-edition = "2018"
+edition = "2021"
 
 [[bin]]
 name = "get_phase_payment"

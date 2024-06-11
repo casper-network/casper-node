@@ -87,7 +87,11 @@ test: test-rs-no-default-features test-rs test-as
 
 .PHONY: test-contracts-rs
 test-contracts-rs: build-contracts-rs
-	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) -p casper-engine-tests -- --ignored
+	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) -p casper-engine-tests -- --ignored --skip repeated_ffi_call_should_gas_out_quickly
+
+.PHONY: test-contracts-timings
+test-contracts-timings: build-contracts-rs
+	$(DISABLE_LOGGING) $(CARGO) test --release $(filter-out --release, $(CARGO_FLAGS)) -p casper-engine-tests -- --ignored --test-threads=1 repeated_ffi_call_should_gas_out_quickly
 
 .PHONY: test-contracts-as
 test-contracts-as: build-contracts-rs build-contracts-as
@@ -96,6 +100,10 @@ test-contracts-as: build-contracts-rs build-contracts-as
 
 .PHONY: test-contracts
 test-contracts: test-contracts-rs
+
+.PHONY: check-no-default-features
+check-no-default-features:
+	cd types && $(CARGO) check --all-targets --no-default-features
 
 .PHONY: check-std-features
 check-std-features:
@@ -137,7 +145,7 @@ lint-smart-contracts:
 
 .PHONY: audit-rs
 audit-rs:
-	$(CARGO) audit --ignore RUSTSEC-2024-0006 --ignore RUSTSEC-2024-0003 --ignore RUSTSEC-2024-0019 --ignore RUSTSEC-2024-0332
+	$(CARGO) audit --ignore RUSTSEC-2024-0332
 
 .PHONY: audit-as
 audit-as:
@@ -158,6 +166,7 @@ check-rs: \
 	doc \
 	lint \
 	audit \
+	check-no-default-features \
 	check-std-features \
 	check-testing-features \
 	test-rs \

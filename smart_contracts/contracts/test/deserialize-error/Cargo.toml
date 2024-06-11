@@ -2,7 +2,7 @@
 name = "deserialize-error"
 version = "0.1.0"
 authors = ["Mateusz Górski <mateusz@casperlabs.io>"]
-edition = "2018"
+edition = "2021"
 
 [[bin]]
 name = "deserialize_error"
