@@ -103,13 +103,12 @@ test-contracts: test-contracts-rs
 
 .PHONY: check-no-default-features
 check-no-default-features:
-	cd types && $(CARGO) check --all-targets
-	cd types && $(CARGO) check --lib
+	cd types && $(CARGO) check --all-targets --no-default-features
 
 .PHONY: check-std-features
 check-std-features:
+	cd types && $(CARGO) check --all-targets --no-default-features --features=std
 	cd types && $(CARGO) check --all-targets --features=std
-	cd types && $(CARGO) check --lib --features=std
 	cd smart_contracts/contract && $(CARGO) check --all-targets --no-default-features --features=std
 	cd smart_contracts/contract && $(CARGO) check --all-targets --features=std
 
@@ -118,8 +117,8 @@ check-std-fs-io-features:
 	cd types && $(CARGO) check --lib --features=std-fs-io
 
 check-testing-features:
+	cd types && $(CARGO) check --all-targets --no-default-features --features=testing
 	cd types && $(CARGO) check --all-targets --features=testing
-	cd types && $(CARGO) check --lib --features=testing
 
 .PHONY: check-format
 check-format:
@@ -133,7 +132,7 @@ lint-contracts-rs:
 	cd smart_contracts/contracts && $(CARGO) clippy $(patsubst %, -p %, $(ALL_CONTRACTS)) -- -D warnings -A renamed_and_removed_lints
 
 .PHONY: lint
-lint: lint-contracts-rs lint-default-features lint-all-features lint-smart-contracts lint-types lint-no-default-features
+lint: lint-contracts-rs lint-default-features lint-all-features lint-smart-contracts lint-no-default-features
 
 .PHONY: lint-default-features
 lint-default-features:
@@ -150,11 +149,6 @@ lint-all-features:
 .PHONY: lint-smart-contracts
 lint-smart-contracts:
 	cd smart_contracts/contract && $(CARGO) clippy --all-targets -- -D warnings -A renamed_and_removed_lints
-
-.PHONY: lint-types
-lint-types:
-	cd types && $(CARGO) clippy --all-targets --all-features -- -D warnings
-	cd types && $(CARGO) clippy --lib --all-features -- -D warnings
 
 .PHONY: audit-rs
 audit-rs:

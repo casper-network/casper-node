@@ -4,12 +4,13 @@ use datasize::DataSize;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
+#[cfg(any(feature = "testing", test))]
+use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     transaction::TransactionCategory,
+    INSTALL_UPGRADE_LANE_ID,
 };
-#[cfg(any(feature = "testing", test))]
-use crate::{testing::TestRng, INSTALL_UPGRADE_LANE_ID};
 
 /// Default gas limit of install / upgrade contracts
 pub const DEFAULT_INSTALL_UPGRADE_GAS_LIMIT: u64 = 3_500_000_000_000;

@@ -10,11 +10,6 @@ homepage = "https://casperlabs.io"
 repository = "https://github.com/CasperLabs/casper-node/tree/master/types"
 license = "Apache-2.0"
 
-[lib]
-crate-type = ["rlib"]
-name = "casper_types"
-path = "src/lib.rs"
-
 [dependencies]
 base16 = { version = "0.2.1", default-features = false, features = ["alloc"] }
 base64 = { version = "0.13.0", default-features = false }
