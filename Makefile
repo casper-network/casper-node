@@ -113,6 +113,10 @@ check-std-features:
 	cd smart_contracts/contract && $(CARGO) check --all-targets --no-default-features --features=std
 	cd smart_contracts/contract && $(CARGO) check --all-targets --features=std
 
+check-std-fs-io-features:
+	cd types && $(CARGO) check --all-targets --features=std-fs-io
+	cd types && $(CARGO) check --lib --features=std-fs-io
+
 check-testing-features:
 	cd types && $(CARGO) check --all-targets --features=testing
 	cd types && $(CARGO) check --lib --features=testing
@@ -177,6 +181,7 @@ check-rs: \
 	audit \
 	check-no-default-features \
 	check-std-features \
+	check-std-fs-io-features \
 	check-testing-features \
 	test-rs \
 	test-rs-no-default-features \
