@@ -1,4 +1,4 @@
-use alloc::vec::Vec;
+use alloc::{string::String, vec::Vec};
 use core::fmt::{self, Display, Formatter};
 
 #[cfg(feature = "datasize")]
@@ -43,6 +43,11 @@ impl DeployHash {
     /// Returns the wrapped inner digest.
     pub fn inner(&self) -> &Digest {
         &self.0
+    }
+
+    /// Hexadecimal representation of hash.
+    pub fn to_hex_string(&self) -> String {
+        hex::encode(self.inner())
     }
 
     /// Returns a new `DeployHash` directly initialized with the provided bytes; no hashing is done.
