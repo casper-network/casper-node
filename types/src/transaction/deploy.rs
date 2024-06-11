@@ -1253,7 +1253,7 @@ impl GasLimited for Deploy {
                 let computation_limit = if self.is_transfer() {
                     costs.mint_costs().transfer as u64
                 } else {
-                    chainspec.get_max_gas_limit_by_kind(TransactionCategory::Large as u8)
+                    chainspec.get_max_gas_limit_by_category(TransactionCategory::Large as u8)
                 };
                 Gas::new(computation_limit)
             } // legacy deploys do not support reservations

@@ -307,7 +307,7 @@ pub fn execute_finalized_block(
             ProofHandling::NoProofs,
         ));
 
-        let category = transaction.transaction_kind();
+        let category = transaction.transaction_category();
 
         let allow_execution = {
             let is_not_penalized = !balance_identifier.is_penalty();

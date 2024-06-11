@@ -50,7 +50,7 @@ pub use errors_v1::{
 pub use transaction_v1_body::TransactionV1Body;
 #[cfg(any(feature = "std", test))]
 pub use transaction_v1_builder::{TransactionV1Builder, TransactionV1BuilderError};
-pub(crate) use transaction_v1_category::TransactionCategory;
+pub use transaction_v1_category::TransactionCategory;
 pub use transaction_v1_hash::TransactionV1Hash;
 pub use transaction_v1_header::TransactionV1Header;
 
@@ -223,9 +223,9 @@ impl TransactionV1 {
         self.body().is_install_or_upgrade()
     }
 
-    /// Returns the transaction kind.
-    pub fn transaction_kind(&self) -> u8 {
-        self.body.transaction_kind()
+    /// Returns the transaction category.
+    pub fn transaction_category(&self) -> u8 {
+        self.body.transaction_category()
     }
 
     /// Does this transaction have wasm targeting the v1 vm.
@@ -363,7 +363,7 @@ impl TransactionV1 {
         self.is_valid_size(
             transaction_config
                 .transaction_v1_config
-                .get_max_serialized_length(self.body.transaction_kind) as u32,
+                .get_max_serialized_length(self.body.transaction_category) as u32,
         )?;
 
         let chain_name = chainspec.network_config.name.clone();
@@ -582,11 +582,6 @@ impl TransactionV1 {
     pub(super) fn apply_approvals(&mut self, approvals: Vec<Approval>) {
         self.approvals.extend(approvals);
     }
-
-    /// Returns transaction category.
-    pub fn transaction_category(&self) -> u8 {
-        self.body.transaction_kind
-    }
 }
 
 #[cfg(any(feature = "std", test))]
@@ -653,7 +648,7 @@ impl GasLimited for TransactionV1 {
                         };
                         amount
                     } else {
-                        chainspec.get_max_gas_limit_by_kind(self.body.transaction_kind)
+                        chainspec.get_max_gas_limit_by_category(self.body.transaction_category)
                     }
                 };
                 Gas::new(U512::from(computation_limit))

@@ -1658,7 +1658,7 @@
           "additionalProperties": false
         },
         {
-          "description": "The cost of the transaction is determined by the cost table, per the transaction kind.",
+          "description": "The cost of the transaction is determined by the cost table, per the transaction category.",
           "type": "object",
           "required": [
             "Fixed"
@@ -1754,7 +1754,7 @@
         "entry_point",
         "scheduling",
         "target",
-        "transaction_kind"
+        "transaction_category"
       ],
       "properties": {
         "args": {
@@ -1766,7 +1766,7 @@
         "entry_point": {
           "$ref": "#/definitions/TransactionEntryPoint"
         },
-        "transaction_kind": {
+        "transaction_category": {
           "type": "integer",
           "format": "uint8",
           "minimum": 0.0
@@ -1833,19 +1833,10 @@
             "Session": {
               "type": "object",
               "required": [
-                "kind",
                 "module_bytes",
                 "runtime"
               ],
               "properties": {
-                "kind": {
-                  "description": "The kind of session.",
-                  "allOf": [
-                    {
-                      "$ref": "#/definitions/TransactionSessionKind"
-                    }
-                  ]
-                },
                 "module_bytes": {
                   "description": "The compiled Wasm.",
                   "allOf": [
@@ -1980,39 +1971,6 @@
           "type": "string",
           "enum": [
             "VmCasperV2"
-          ]
-        }
-      ]
-    },
-    "TransactionSessionKind": {
-      "description": "Session kind of a Transaction.",
-      "oneOf": [
-        {
-          "description": "A standard (non-special-case) session.\n\nThis kind of session is not allowed to install or upgrade a stored contract, but can call stored contracts.",
-          "type": "string",
-          "enum": [
-            "Standard"
-          ]
-        },
-        {
-          "description": "A session which installs a stored contract.",
-          "type": "string",
-          "enum": [
-            "Installer"
-          ]
-        },
-        {
-          "description": "A session which upgrades a previously-installed stored contract.  Such a session must have \"package_id: PackageIdentifier\" runtime arg present.",
-          "type": "string",
-          "enum": [
-            "Upgrader"
-          ]
-        },
-        {
-          "description": "A session which doesn't call any stored contracts.\n\nThis kind of session is not allowed to install or upgrade a stored contract.",
-          "type": "string",
-          "enum": [
-            "Isolated"
           ]
         }
       ]

@@ -1,4 +1,7 @@
-use core::fmt::{self, Formatter};
+use core::{
+    convert::TryFrom,
+    fmt::{self, Formatter},
+};
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
@@ -18,7 +21,7 @@ use serde::{Deserialize, Serialize};
 )]
 #[serde(deny_unknown_fields)]
 #[repr(u8)]
-pub(crate) enum TransactionCategory {
+pub enum TransactionCategory {
     /// Native mint interaction (the default).
     #[default]
     Mint = 0,
@@ -43,6 +46,31 @@ impl fmt::Display for TransactionCategory {
             TransactionCategory::Large => write!(f, "Large"),
             TransactionCategory::Medium => write!(f, "Medium"),
             TransactionCategory::Small => write!(f, "Small"),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct TransactionCategoryConversionError(u8);
+
+impl fmt::Display for TransactionCategoryConversionError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Failed to convert {} into a TransactionCategory", self.0)
+    }
+}
+
+impl TryFrom<u8> for TransactionCategory {
+    type Error = TransactionCategoryConversionError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::Mint),
+            1 => Ok(Self::Auction),
+            2 => Ok(Self::InstallUpgrade),
+            3 => Ok(Self::Large),
+            4 => Ok(Self::Medium),
+            5 => Ok(Self::Small),
+            _ => Err(TransactionCategoryConversionError(value)),
         }
     }
 }
