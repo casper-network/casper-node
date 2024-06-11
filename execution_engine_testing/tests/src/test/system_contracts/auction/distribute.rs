@@ -105,7 +105,7 @@ fn withdraw_bid(
         auction::METHOD_WITHDRAW_BID,
         withdraw_bid_args,
     )
-    .build();
+        .build();
     builder.exec(withdraw_bid_request).expect_success().commit();
 }
 
@@ -128,7 +128,7 @@ fn undelegate(
         auction::METHOD_UNDELEGATE,
         undelegate_args,
     )
-    .build();
+        .build();
     builder.exec(undelegate_request).expect_success().commit();
 }
 
@@ -175,7 +175,7 @@ fn should_distribute_delegation_rate_zero() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     let validator_1_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -185,7 +185,7 @@ fn should_distribute_delegation_rate_zero() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     let delegator_1_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -195,7 +195,7 @@ fn should_distribute_delegation_rate_zero() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     let delegator_2_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -205,7 +205,7 @@ fn should_distribute_delegation_rate_zero() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
         *VALIDATOR_1_ADDR,
@@ -216,7 +216,7 @@ fn should_distribute_delegation_rate_zero() {
             ARG_PUBLIC_KEY => VALIDATOR_1.clone(),
         },
     )
-    .build();
+        .build();
 
     let delegator_1_delegate_request = ExecuteRequestBuilder::standard(
         *DELEGATOR_1_ADDR,
@@ -227,7 +227,7 @@ fn should_distribute_delegation_rate_zero() {
             ARG_DELEGATOR => DELEGATOR_1.clone(),
         },
     )
-    .build();
+        .build();
 
     let delegator_2_delegate_request = ExecuteRequestBuilder::standard(
         *DELEGATOR_2_ADDR,
@@ -238,7 +238,7 @@ fn should_distribute_delegation_rate_zero() {
             ARG_DELEGATOR => DELEGATOR_2.clone(),
         },
     )
-    .build();
+        .build();
 
     let post_genesis_requests = vec![
         system_fund_request,
@@ -291,7 +291,7 @@ fn should_distribute_delegation_rate_zero() {
             ARG_REWARDS_MAP => rewards
         },
     )
-    .build();
+        .build();
 
     builder.exec(distribute_request).commit().expect_success();
 
@@ -436,7 +436,7 @@ fn should_withdraw_bids_after_distribute() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     let validator_1_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -446,7 +446,7 @@ fn should_withdraw_bids_after_distribute() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     let delegator_1_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -456,7 +456,7 @@ fn should_withdraw_bids_after_distribute() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     let delegator_2_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -466,7 +466,7 @@ fn should_withdraw_bids_after_distribute() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
         *VALIDATOR_1_ADDR,
@@ -477,7 +477,7 @@ fn should_withdraw_bids_after_distribute() {
             ARG_PUBLIC_KEY => VALIDATOR_1.clone(),
         },
     )
-    .build();
+        .build();
 
     let delegator_1_delegate_request = ExecuteRequestBuilder::standard(
         *DELEGATOR_1_ADDR,
@@ -488,7 +488,7 @@ fn should_withdraw_bids_after_distribute() {
             ARG_DELEGATOR => DELEGATOR_1.clone(),
         },
     )
-    .build();
+        .build();
 
     let delegator_2_delegate_request = ExecuteRequestBuilder::standard(
         *DELEGATOR_2_ADDR,
@@ -499,7 +499,7 @@ fn should_withdraw_bids_after_distribute() {
             ARG_DELEGATOR => DELEGATOR_2.clone(),
         },
     )
-    .build();
+        .build();
 
     let post_genesis_requests = vec![
         system_fund_request,
@@ -556,7 +556,7 @@ fn should_withdraw_bids_after_distribute() {
             ARG_REWARDS_MAP => rewards
         },
     )
-    .build();
+        .build();
 
     builder.exec(distribute_request).commit().expect_success();
 
@@ -753,7 +753,7 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     let validator_1_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -763,7 +763,7 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     let delegator_1_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -773,7 +773,7 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     let delegator_2_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -783,7 +783,7 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
         *VALIDATOR_1_ADDR,
@@ -794,7 +794,7 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
             ARG_PUBLIC_KEY => VALIDATOR_1.clone(),
         },
     )
-    .build();
+        .build();
 
     let delegator_1_delegate_request = ExecuteRequestBuilder::standard(
         *DELEGATOR_1_ADDR,
@@ -805,7 +805,7 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
             ARG_DELEGATOR => DELEGATOR_1.clone(),
         },
     )
-    .build();
+        .build();
 
     let delegator_2_delegate_request = ExecuteRequestBuilder::standard(
         *DELEGATOR_2_ADDR,
@@ -816,7 +816,7 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
             ARG_DELEGATOR => DELEGATOR_2.clone(),
         },
     )
-    .build();
+        .build();
 
     let post_genesis_requests = vec![
         system_fund_request,
@@ -952,7 +952,7 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
 
         let validator_1_expected_payout = (expected_reward_rate
             - Ratio::from(delegator_1_expected_payout + delegator_2_expected_payout))
-        .to_integer();
+            .to_integer();
         assert_eq!(validator_1_actual_payout, validator_1_expected_payout);
 
         let delegator_1_actual_payout = updated_delegator_1_stake - delegator_1_stake;
@@ -1075,7 +1075,7 @@ fn should_distribute_delegation_rate_half() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     let validator_1_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -1085,7 +1085,7 @@ fn should_distribute_delegation_rate_half() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     let delegator_1_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -1095,7 +1095,7 @@ fn should_distribute_delegation_rate_half() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     let delegator_2_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -1105,7 +1105,7 @@ fn should_distribute_delegation_rate_half() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
         *VALIDATOR_1_ADDR,
@@ -1116,7 +1116,7 @@ fn should_distribute_delegation_rate_half() {
             ARG_PUBLIC_KEY => VALIDATOR_1.clone(),
         },
     )
-    .build();
+        .build();
 
     let delegator_1_delegate_request = ExecuteRequestBuilder::standard(
         *DELEGATOR_1_ADDR,
@@ -1127,7 +1127,7 @@ fn should_distribute_delegation_rate_half() {
             ARG_DELEGATOR => DELEGATOR_1.clone(),
         },
     )
-    .build();
+        .build();
 
     let delegator_2_delegate_request = ExecuteRequestBuilder::standard(
         *DELEGATOR_2_ADDR,
@@ -1138,7 +1138,7 @@ fn should_distribute_delegation_rate_half() {
             ARG_DELEGATOR => DELEGATOR_2.clone(),
         },
     )
-    .build();
+        .build();
 
     let post_genesis_requests = vec![
         system_fund_request,
@@ -1192,7 +1192,7 @@ fn should_distribute_delegation_rate_half() {
             ARG_REWARDS_MAP => rewards
         },
     )
-    .build();
+        .build();
 
     builder.exec(distribute_request).commit().expect_success();
 
@@ -1304,7 +1304,7 @@ fn should_distribute_delegation_rate_full() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     let validator_1_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -1314,7 +1314,7 @@ fn should_distribute_delegation_rate_full() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     let delegator_1_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -1324,7 +1324,7 @@ fn should_distribute_delegation_rate_full() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     let delegator_2_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -1334,7 +1334,7 @@ fn should_distribute_delegation_rate_full() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
         *VALIDATOR_1_ADDR,
@@ -1343,9 +1343,11 @@ fn should_distribute_delegation_rate_full() {
             ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
             ARG_DELEGATION_RATE => VALIDATOR_1_DELEGATION_RATE,
             ARG_PUBLIC_KEY => VALIDATOR_1.clone(),
+            auction::ARG_MINIMUM_DELEGATION_AMOUNT => 10,
+            auction::ARG_MAXIMUM_DELEGATION_AMOUNT => DELEGATOR_2_STAKE + 1,
         },
     )
-    .build();
+        .build();
 
     let delegator_1_delegate_request = ExecuteRequestBuilder::standard(
         *DELEGATOR_1_ADDR,
@@ -1356,7 +1358,7 @@ fn should_distribute_delegation_rate_full() {
             ARG_DELEGATOR => DELEGATOR_1.clone(),
         },
     )
-    .build();
+        .build();
 
     let delegator_2_delegate_request = ExecuteRequestBuilder::standard(
         *DELEGATOR_2_ADDR,
@@ -1367,7 +1369,7 @@ fn should_distribute_delegation_rate_full() {
             ARG_DELEGATOR => DELEGATOR_2.clone(),
         },
     )
-    .build();
+        .build();
 
     let post_genesis_requests = vec![
         system_fund_request,
@@ -1413,7 +1415,7 @@ fn should_distribute_delegation_rate_full() {
             ARG_REWARDS_MAP => rewards
         },
     )
-    .build();
+        .build();
 
     builder.exec(distribute_request).commit().expect_success();
 
@@ -1489,7 +1491,7 @@ fn should_distribute_uneven_delegation_rate_zero() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     let validator_1_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -1499,7 +1501,7 @@ fn should_distribute_uneven_delegation_rate_zero() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     let delegator_1_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -1509,7 +1511,7 @@ fn should_distribute_uneven_delegation_rate_zero() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     let delegator_2_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -1519,7 +1521,7 @@ fn should_distribute_uneven_delegation_rate_zero() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
         *VALIDATOR_1_ADDR,
@@ -1530,7 +1532,7 @@ fn should_distribute_uneven_delegation_rate_zero() {
             ARG_PUBLIC_KEY => VALIDATOR_1.clone(),
         },
     )
-    .build();
+        .build();
 
     let delegator_1_delegate_request = ExecuteRequestBuilder::standard(
         *DELEGATOR_1_ADDR,
@@ -1541,7 +1543,7 @@ fn should_distribute_uneven_delegation_rate_zero() {
             ARG_DELEGATOR => DELEGATOR_1.clone(),
         },
     )
-    .build();
+        .build();
 
     let delegator_2_delegate_request = ExecuteRequestBuilder::standard(
         *DELEGATOR_2_ADDR,
@@ -1552,7 +1554,7 @@ fn should_distribute_uneven_delegation_rate_zero() {
             ARG_DELEGATOR => DELEGATOR_2.clone(),
         },
     )
-    .build();
+        .build();
 
     let post_genesis_requests = vec![
         system_fund_request,
@@ -1606,7 +1608,7 @@ fn should_distribute_uneven_delegation_rate_zero() {
             ARG_REWARDS_MAP => rewards
         },
     )
-    .build();
+        .build();
 
     builder.exec(distribute_request).commit().expect_success();
 
@@ -1723,7 +1725,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     let validator_1_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -1733,7 +1735,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     let validator_2_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -1743,7 +1745,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     let validator_3_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -1753,7 +1755,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     let delegator_1_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -1763,7 +1765,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     let delegator_2_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -1773,7 +1775,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     let delegator_3_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -1783,7 +1785,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
         *VALIDATOR_1_ADDR,
@@ -1794,7 +1796,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
             ARG_PUBLIC_KEY => VALIDATOR_1.clone(),
         },
     )
-    .build();
+        .build();
 
     let validator_2_add_bid_request = ExecuteRequestBuilder::standard(
         *VALIDATOR_2_ADDR,
@@ -1805,7 +1807,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
             ARG_PUBLIC_KEY => VALIDATOR_2.clone(),
         },
     )
-    .build();
+        .build();
 
     let validator_3_add_bid_request = ExecuteRequestBuilder::standard(
         *VALIDATOR_3_ADDR,
@@ -1816,7 +1818,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
             ARG_PUBLIC_KEY => VALIDATOR_3.clone(),
         },
     )
-    .build();
+        .build();
 
     let delegator_1_delegate_request = ExecuteRequestBuilder::standard(
         *DELEGATOR_1_ADDR,
@@ -1827,7 +1829,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
             ARG_DELEGATOR => DELEGATOR_1.clone(),
         },
     )
-    .build();
+        .build();
 
     let delegator_2_delegate_request = ExecuteRequestBuilder::standard(
         *DELEGATOR_2_ADDR,
@@ -1838,7 +1840,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
             ARG_DELEGATOR => DELEGATOR_2.clone(),
         },
     )
-    .build();
+        .build();
 
     let delegator_3_delegate_request = ExecuteRequestBuilder::standard(
         *DELEGATOR_3_ADDR,
@@ -1849,7 +1851,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
             ARG_DELEGATOR => DELEGATOR_3.clone(),
         },
     )
-    .build();
+        .build();
 
     let post_genesis_requests = vec![
         system_fund_request,
@@ -1910,7 +1912,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
             ARG_REWARDS_MAP => rewards
         },
     )
-    .build();
+        .build();
 
     builder.exec(distribute_request).commit().expect_success();
 
@@ -1969,7 +1971,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
             ARG_REWARDS_MAP => rewards
         },
     )
-    .build();
+        .build();
 
     builder.exec(distribute_request).commit().expect_success();
 
@@ -2015,7 +2017,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
             ARG_REWARDS_MAP => rewards
         },
     )
-    .build();
+        .build();
 
     builder.exec(distribute_request).commit().expect_success();
 
@@ -2055,7 +2057,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     let validator_1_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -2065,7 +2067,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     let validator_2_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -2075,7 +2077,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     let validator_3_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -2085,7 +2087,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     let delegator_1_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -2095,7 +2097,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     let delegator_2_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -2105,7 +2107,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     let delegator_3_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -2115,7 +2117,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
         *VALIDATOR_1_ADDR,
@@ -2126,7 +2128,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
             ARG_PUBLIC_KEY => VALIDATOR_1.clone(),
         },
     )
-    .build();
+        .build();
 
     let validator_2_add_bid_request = ExecuteRequestBuilder::standard(
         *VALIDATOR_2_ADDR,
@@ -2137,7 +2139,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
             ARG_PUBLIC_KEY => VALIDATOR_2.clone(),
         },
     )
-    .build();
+        .build();
 
     let validator_3_add_bid_request = ExecuteRequestBuilder::standard(
         *VALIDATOR_3_ADDR,
@@ -2148,7 +2150,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
             ARG_PUBLIC_KEY => VALIDATOR_3.clone(),
         },
     )
-    .build();
+        .build();
 
     let delegator_1_validator_1_delegate_request = ExecuteRequestBuilder::standard(
         *DELEGATOR_1_ADDR,
@@ -2159,7 +2161,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
             ARG_DELEGATOR => DELEGATOR_1.clone(),
         },
     )
-    .build();
+        .build();
 
     let delegator_1_validator_2_delegate_request = ExecuteRequestBuilder::standard(
         *DELEGATOR_1_ADDR,
@@ -2170,7 +2172,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
             ARG_DELEGATOR => DELEGATOR_1.clone(),
         },
     )
-    .build();
+        .build();
 
     let delegator_1_validator_3_delegate_request = ExecuteRequestBuilder::standard(
         *DELEGATOR_1_ADDR,
@@ -2181,7 +2183,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
             ARG_DELEGATOR => DELEGATOR_1.clone(),
         },
     )
-    .build();
+        .build();
 
     let post_genesis_requests = vec![
         system_fund_request,
@@ -2242,7 +2244,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
             ARG_REWARDS_MAP => rewards
         },
     )
-    .build();
+        .build();
 
     builder.exec(distribute_request).commit().expect_success();
 
@@ -2266,7 +2268,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
             .expect("must get commission");
         delegator_reward.checked_sub(&commission).unwrap()
     }
-    .to_integer();
+        .to_integer();
 
     let validator_1_actual_payout = {
         let validator_balance_before = U512::from(VALIDATOR_1_STAKE);
@@ -2303,7 +2305,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
             .expect("must get commission");
         delegator_reward.checked_sub(&commission).unwrap()
     }
-    .to_integer();
+        .to_integer();
 
     let validator_2_actual_payout = {
         let validator_balance_before = U512::from(VALIDATOR_2_STAKE);
@@ -2339,7 +2341,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
             .expect("must get commission");
         delegator_reward.checked_sub(&commission).unwrap()
     }
-    .to_integer();
+        .to_integer();
 
     let validator_3_actual_payout = {
         let validator_balance_before = U512::from(VALIDATOR_3_STAKE);
@@ -2409,7 +2411,7 @@ fn should_increase_total_supply_after_distribute() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     let validator_1_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -2419,7 +2421,7 @@ fn should_increase_total_supply_after_distribute() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     let validator_2_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -2429,7 +2431,7 @@ fn should_increase_total_supply_after_distribute() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     let validator_3_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -2439,7 +2441,7 @@ fn should_increase_total_supply_after_distribute() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     let delegator_1_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -2449,7 +2451,7 @@ fn should_increase_total_supply_after_distribute() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     let delegator_2_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -2459,7 +2461,7 @@ fn should_increase_total_supply_after_distribute() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     let delegator_3_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -2469,7 +2471,7 @@ fn should_increase_total_supply_after_distribute() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
         *VALIDATOR_1_ADDR,
@@ -2480,7 +2482,7 @@ fn should_increase_total_supply_after_distribute() {
             ARG_PUBLIC_KEY => VALIDATOR_1.clone(),
         },
     )
-    .build();
+        .build();
 
     let validator_2_add_bid_request = ExecuteRequestBuilder::standard(
         *VALIDATOR_2_ADDR,
@@ -2491,7 +2493,7 @@ fn should_increase_total_supply_after_distribute() {
             ARG_PUBLIC_KEY => VALIDATOR_2.clone(),
         },
     )
-    .build();
+        .build();
 
     let validator_3_add_bid_request = ExecuteRequestBuilder::standard(
         *VALIDATOR_3_ADDR,
@@ -2502,7 +2504,7 @@ fn should_increase_total_supply_after_distribute() {
             ARG_PUBLIC_KEY => VALIDATOR_3.clone(),
         },
     )
-    .build();
+        .build();
 
     let delegator_1_validator_1_delegate_request = ExecuteRequestBuilder::standard(
         *DELEGATOR_1_ADDR,
@@ -2513,7 +2515,7 @@ fn should_increase_total_supply_after_distribute() {
             ARG_DELEGATOR => DELEGATOR_1.clone(),
         },
     )
-    .build();
+        .build();
 
     let delegator_1_validator_2_delegate_request = ExecuteRequestBuilder::standard(
         *DELEGATOR_1_ADDR,
@@ -2524,7 +2526,7 @@ fn should_increase_total_supply_after_distribute() {
             ARG_DELEGATOR => DELEGATOR_1.clone(),
         },
     )
-    .build();
+        .build();
 
     let delegator_1_validator_3_delegate_request = ExecuteRequestBuilder::standard(
         *DELEGATOR_1_ADDR,
@@ -2535,7 +2537,7 @@ fn should_increase_total_supply_after_distribute() {
             ARG_DELEGATOR => DELEGATOR_1.clone(),
         },
     )
-    .build();
+        .build();
 
     let post_genesis_requests = vec![
         system_fund_request,
@@ -2604,7 +2606,7 @@ fn should_increase_total_supply_after_distribute() {
                 ARG_REWARDS_MAP => rewards.clone()
             },
         )
-        .build();
+            .build();
 
         builder.exec(distribute_request).expect_success().commit();
 
@@ -2635,7 +2637,7 @@ fn should_not_create_purses_during_distribute() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     let validator_1_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -2645,7 +2647,7 @@ fn should_not_create_purses_during_distribute() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     let delegator_1_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -2655,7 +2657,7 @@ fn should_not_create_purses_during_distribute() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     let delegator_2_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -2665,7 +2667,7 @@ fn should_not_create_purses_during_distribute() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     let delegator_3_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -2675,7 +2677,7 @@ fn should_not_create_purses_during_distribute() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
         *VALIDATOR_1_ADDR,
@@ -2686,7 +2688,7 @@ fn should_not_create_purses_during_distribute() {
             ARG_PUBLIC_KEY => VALIDATOR_1.clone(),
         },
     )
-    .build();
+        .build();
 
     let delegator_1_validator_1_delegate_request = ExecuteRequestBuilder::standard(
         *DELEGATOR_1_ADDR,
@@ -2697,7 +2699,7 @@ fn should_not_create_purses_during_distribute() {
             ARG_DELEGATOR => DELEGATOR_1.clone(),
         },
     )
-    .build();
+        .build();
 
     let delegator_2_validator_1_delegate_request = ExecuteRequestBuilder::standard(
         *DELEGATOR_2_ADDR,
@@ -2708,7 +2710,7 @@ fn should_not_create_purses_during_distribute() {
             ARG_DELEGATOR => DELEGATOR_2.clone(),
         },
     )
-    .build();
+        .build();
 
     let delegator_3_validator_1_delegate_request = ExecuteRequestBuilder::standard(
         *DELEGATOR_3_ADDR,
@@ -2719,7 +2721,7 @@ fn should_not_create_purses_during_distribute() {
             ARG_DELEGATOR => DELEGATOR_3.clone(),
         },
     )
-    .build();
+        .build();
 
     let post_genesis_requests = vec![
         system_fund_request,
@@ -2781,7 +2783,7 @@ fn should_not_create_purses_during_distribute() {
             ARG_REWARDS_MAP => rewards
         },
     )
-    .build();
+        .build();
 
     let number_of_purses_before_distribute = builder.get_balance_keys().len();
 
@@ -2820,7 +2822,7 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     let validator_1_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -2830,7 +2832,7 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     let delegator_1_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -2840,7 +2842,7 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     let delegator_2_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -2850,7 +2852,7 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
         *VALIDATOR_1_ADDR,
@@ -2861,7 +2863,7 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
             ARG_PUBLIC_KEY => VALIDATOR_1.clone(),
         },
     )
-    .build();
+        .build();
 
     let delegator_1_delegate_request = ExecuteRequestBuilder::standard(
         *DELEGATOR_1_ADDR,
@@ -2872,7 +2874,7 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
             ARG_DELEGATOR => DELEGATOR_1.clone(),
         },
     )
-    .build();
+        .build();
 
     let delegator_2_delegate_request = ExecuteRequestBuilder::standard(
         *DELEGATOR_2_ADDR,
@@ -2883,7 +2885,7 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
             ARG_DELEGATOR => DELEGATOR_2.clone(),
         },
     )
-    .build();
+        .build();
 
     let post_genesis_requests = vec![
         system_fund_request,
@@ -2929,7 +2931,7 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
             ARG_REWARDS_MAP => rewards
         },
     )
-    .build();
+        .build();
 
     builder.exec(distribute_request).commit().expect_success();
 
@@ -3092,7 +3094,7 @@ fn should_not_restake_after_full_unbond() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     builder
         .exec(validator_1_fund_request)
@@ -3107,7 +3109,7 @@ fn should_not_restake_after_full_unbond() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     builder
         .exec(delegator_1_fund_request)
@@ -3123,7 +3125,7 @@ fn should_not_restake_after_full_unbond() {
             ARG_PUBLIC_KEY => VALIDATOR_1.clone(),
         },
     )
-    .build();
+        .build();
 
     builder
         .exec(validator_1_add_bid_request)
@@ -3139,7 +3141,7 @@ fn should_not_restake_after_full_unbond() {
             ARG_DELEGATOR => DELEGATOR_1.clone(),
         },
     )
-    .build();
+        .build();
 
     builder
         .exec(delegator_1_validator_1_delegate_request)
@@ -3228,7 +3230,7 @@ fn delegator_full_unbond_during_first_reward_era() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     builder
         .exec(validator_1_fund_request)
@@ -3243,7 +3245,7 @@ fn delegator_full_unbond_during_first_reward_era() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .build();
+        .build();
 
     builder
         .exec(delegator_1_fund_request)
@@ -3259,7 +3261,7 @@ fn delegator_full_unbond_during_first_reward_era() {
             ARG_PUBLIC_KEY => VALIDATOR_1.clone(),
         },
     )
-    .build();
+        .build();
 
     builder
         .exec(validator_1_add_bid_request)
@@ -3275,7 +3277,7 @@ fn delegator_full_unbond_during_first_reward_era() {
             ARG_DELEGATOR => DELEGATOR_1.clone(),
         },
     )
-    .build();
+        .build();
 
     builder
         .exec(delegator_1_validator_1_delegate_request)
