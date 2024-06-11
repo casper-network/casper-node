@@ -611,7 +611,7 @@ impl TransactionAcceptor {
                             &block_header,
                             ParameterFailure::NoSuchEntryPoint { entry_point_name },
                         );
-                        return self.reject_transaction(effect_builder, *event_metadata, error);
+                        self.reject_transaction(effect_builder, *event_metadata, error)
                     }
                 }
             }

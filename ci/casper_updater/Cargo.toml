@@ -1,7 +1,7 @@
 [package]
 authors = ["Fraser Hutchison <fraser@casperlabs.io>"]
 description = "A tool to update versions of all published Casper packages."
-edition = "2018"
+edition = "2021"
 license = "Apache-2.0"
 name = "casper-updater"
 readme = "README.md"

@@ -768,7 +768,6 @@ where
         protocol_version: ProtocolVersion,
         fees_purse_handling: FeesPurseHandling,
     ) -> Result<URef, TrackingCopyError> {
-        let protocol_version = protocol_version;
         let fee_handling = fees_purse_handling;
         match fee_handling {
             FeesPurseHandling::None(uref) => Ok(uref),

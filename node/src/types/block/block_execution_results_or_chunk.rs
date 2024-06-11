@@ -178,7 +178,6 @@ impl BlockExecutionResultsOrChunk {
         num_results: usize,
     ) -> Self {
         let execution_results: Vec<ExecutionResult> = (0..num_results)
-            .into_iter()
             .map(|_| ExecutionResultV2::random(rng).into())
             .collect();
 

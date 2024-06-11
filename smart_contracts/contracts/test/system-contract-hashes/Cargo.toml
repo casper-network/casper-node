@@ -2,7 +2,7 @@
 name = "system-contract-hashes"
 version = "0.1.0"
 authors = ["Ed Hastings <ehastings@casperlabs.io>"]
-edition = "2018"
+edition = "2021"
 
 [[bin]]
 name = "system_contract_hashes"

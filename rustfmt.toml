@@ -1,4 +1,4 @@
 wrap_comments = true
 comment_width = 100
 imports_granularity = "Crate"
-edition = "2018"
+edition = "2021"

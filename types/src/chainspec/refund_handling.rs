@@ -11,7 +11,7 @@ const REFUND_HANDLING_BURN_TAG: u8 = 1;
 const REFUND_HANDLING_NONE_TAG: u8 = 2;
 
 /// Defines how refunds are calculated.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum RefundHandling {
     /// Refund of excess payment amount goes to either a pre-defined purse, or back to the sender
@@ -33,6 +33,13 @@ pub enum RefundHandling {
         refund_ratio: Ratio<u64>,
     },
     /// No refunds.
+    // in 1.x the default was Refund
+    // RefundHandling::Refund {
+    //     refund_ratio: Ratio::new(99, 100),
+    // }
+    // in 2.0 the default payment mode is Fixed with Fee Elimination on,
+    // thus there is nothing to refund.
+    #[default]
     NoRefund,
 }
 
@@ -102,18 +109,6 @@ impl FromBytes for RefundHandling {
             REFUND_HANDLING_NONE_TAG => Ok((RefundHandling::NoRefund, rem)),
             _ => Err(bytesrepr::Error::Formatting),
         }
-    }
-}
-
-impl Default for RefundHandling {
-    fn default() -> Self {
-        // in 1.x the default was Refund
-        // RefundHandling::Refund {
-        //     refund_ratio: Ratio::new(99, 100),
-        // }
-        // in 2.0 the default payment mode is Fixed with Fee Elimination on,
-        // thus there is nothing to refund.
-        RefundHandling::NoRefund
     }
 }
 

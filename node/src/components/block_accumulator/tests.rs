@@ -668,10 +668,7 @@ fn acceptor_should_store_block() {
     let mut acceptor = BlockAcceptor::new(*block.hash(), vec![]);
 
     // Create 4 pairs of keys so we can later create 4 signatures.
-    let keys: Vec<(SecretKey, PublicKey)> = (0..4)
-        .into_iter()
-        .map(|_| generate_ed25519_keypair())
-        .collect();
+    let keys: Vec<(SecretKey, PublicKey)> = (0..4).map(|_| generate_ed25519_keypair()).collect();
     // Register the keys into the era validator weights, front loaded on the
     // first 2 with 80% weight.
     let era_validator_weights = EraValidatorWeights::new(
@@ -1047,7 +1044,7 @@ fn accumulator_should_leap() {
     }
 
     let upgrade_attempt_execution_threshold = attempt_execution_threshold * 2;
-    block_accumulator.register_activation_point(ActivationPoint::EraId(era_id.successor()));
+    block_accumulator.register_activation_point(Some(ActivationPoint::EraId(era_id.successor())));
     let offset = centurion.saturating_sub(upgrade_attempt_execution_threshold);
     for height in offset..centurion {
         expected_leap_instruction(

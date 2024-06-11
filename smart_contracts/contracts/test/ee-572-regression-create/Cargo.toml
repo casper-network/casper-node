@@ -2,7 +2,7 @@
 name = "ee-572-regression-create"
 version = "0.1.0"
 authors = ["Henry Till <henrytill@gmail.com>"]
-edition = "2018"
+edition = "2021"
 
 [[bin]]
 name = "ee_572_regression_create"

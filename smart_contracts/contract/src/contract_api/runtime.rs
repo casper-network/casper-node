@@ -55,7 +55,7 @@ pub fn call_contract<T: CLTyped + FromBytes>(
     let (contract_hash_ptr, contract_hash_size, _bytes1) = contract_api::to_ptr(contract_hash);
     let (entry_point_name_ptr, entry_point_name_size, _bytes2) =
         contract_api::to_ptr(entry_point_name);
-    let (runtime_args_ptr, runtime_args_size, _bytes2) = contract_api::to_ptr(runtime_args);
+    let (runtime_args_ptr, runtime_args_size, _bytes3) = contract_api::to_ptr(runtime_args);
 
     let bytes_written = {
         let mut bytes_written = MaybeUninit::uninit();
@@ -89,13 +89,13 @@ pub fn call_versioned_contract<T: CLTyped + FromBytes>(
     entry_point_name: &str,
     runtime_args: RuntimeArgs,
 ) -> T {
-    let (contract_package_hash_ptr, contract_package_hash_size, _bytes) =
+    let (contract_package_hash_ptr, contract_package_hash_size, _bytes1) =
         contract_api::to_ptr(contract_package_hash);
-    let (contract_version_ptr, contract_version_size, _bytes) =
+    let (contract_version_ptr, contract_version_size, _bytes2) =
         contract_api::to_ptr(contract_version);
-    let (entry_point_name_ptr, entry_point_name_size, _bytes) =
+    let (entry_point_name_ptr, entry_point_name_size, _bytes3) =
         contract_api::to_ptr(entry_point_name);
-    let (runtime_args_ptr, runtime_args_size, _bytes) = contract_api::to_ptr(runtime_args);
+    let (runtime_args_ptr, runtime_args_size, _bytes4) = contract_api::to_ptr(runtime_args);
 
     let bytes_written = {
         let mut bytes_written = MaybeUninit::uninit();
@@ -141,7 +141,7 @@ fn deserialize_contract_result<T: CLTyped + FromBytes>(bytes_written: usize) -> 
 ///
 /// This will return either Some with the size of argument if present, or None if given argument is
 /// not passed.
-pub fn get_named_arg_size(name: &str) -> Option<usize> {
+fn get_named_arg_size(name: &str) -> Option<usize> {
     let mut arg_size: usize = 0;
     let ret = unsafe {
         ext_ffi::casper_get_named_arg_size(
@@ -163,6 +163,37 @@ pub fn get_named_arg_size(name: &str) -> Option<usize> {
 /// is not invoked with any arguments.
 pub fn get_named_arg<T: FromBytes>(name: &str) -> T {
     let arg_size = get_named_arg_size(name).unwrap_or_revert_with(ApiError::MissingArgument);
+    let arg_bytes = if arg_size > 0 {
+        let res = {
+            let data_non_null_ptr = contract_api::alloc_bytes(arg_size);
+            let ret = unsafe {
+                ext_ffi::casper_get_named_arg(
+                    name.as_bytes().as_ptr(),
+                    name.len(),
+                    data_non_null_ptr.as_ptr(),
+                    arg_size,
+                )
+            };
+            let data =
+                unsafe { Vec::from_raw_parts(data_non_null_ptr.as_ptr(), arg_size, arg_size) };
+            api_error::result_from(ret).map(|_| data)
+        };
+        // Assumed to be safe as `get_named_arg_size` checks the argument already
+        res.unwrap_or_revert()
+    } else {
+        // Avoids allocation with 0 bytes and a call to get_named_arg
+        Vec::new()
+    };
+    bytesrepr::deserialize(arg_bytes).unwrap_or_revert_with(ApiError::InvalidArgument)
+}
+
+/// Returns given named argument passed to the host for the current module invocation.
+/// If the argument is not found, returns `None`.
+///
+/// Note that this is only relevant to contracts stored on-chain since a contract deployed directly
+/// is not invoked with any arguments.
+pub fn try_get_named_arg<T: FromBytes>(name: &str) -> Option<T> {
+    let arg_size = get_named_arg_size(name)?;
     let arg_bytes = if arg_size > 0 {
         let res = {
             let data_non_null_ptr = contract_api::alloc_bytes(arg_size);

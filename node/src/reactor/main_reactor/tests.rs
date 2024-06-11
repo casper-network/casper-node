@@ -786,7 +786,7 @@ impl TestFixture {
                         ProtocolVersion::from_parts(999, 0, 0),
                     );
                     effect_builder
-                        .announce_upgrade_activation_point_read(upgrade)
+                        .upgrade_watcher_announcement(Some(upgrade))
                         .ignore()
                 })
                 .await;

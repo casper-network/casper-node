@@ -483,6 +483,8 @@ impl<C: Context> State<C> {
             .map(|vidx| self.weight(*vidx))
             .sum();
         // Stake required to consider unit to be endorsed.
+        // TODO - remove `allow` once false positive ceases.
+        #[allow(clippy::arithmetic_side_effects)] // False positive on `/ 2`.
         let threshold = self.total_weight() / 2;
         if endorsed > threshold {
             info!(%uhash, "Unit endorsed by at least 1/2 of validators.");
@@ -526,7 +528,9 @@ impl<C: Context> State<C> {
     /// lengths old.
     pub(crate) fn is_online(&self, vidx: ValidatorIndex, now: Timestamp) -> bool {
         self.pings.has(vidx)
-            && self.pings[vidx] + self.params.max_round_length() * PING_TIMEOUT >= now
+            && self.pings[vidx]
+                .saturating_add(self.params.max_round_length().saturating_mul(PING_TIMEOUT))
+                >= now
     }
 
     /// Creates new `Evidence` if the new endorsements contain any that conflict with existing
@@ -626,6 +630,7 @@ impl<C: Context> State<C> {
         let maybe_block = self.maybe_block(hash);
         let value = maybe_block.map(|block| block.value.clone());
         let endorsed = unit.claims_endorsed().cloned().collect();
+        #[allow(clippy::arithmetic_side_effects)] // min_round_length is guaranteed to be > 0.
         let round_exp =
             (unit.round_len() / self.params().min_round_length()).trailing_zeros() as u8;
         let wunit = WireUnit {
@@ -688,12 +693,12 @@ impl<C: Context> State<C> {
         if block.height == height {
             return Some(hash);
         }
-        #[allow(clippy::integer_arithmetic)] // block.height > height, otherwise we returned.
+        #[allow(clippy::arithmetic_side_effects)] // block.height > height, otherwise we returned.
         let diff = block.height - height;
         // We want to make the greatest step 2^i such that 2^i <= diff.
         let max_i = log2(diff) as usize;
         // A block at height > 0 always has at least its parent entry in skip_idx.
-        #[allow(clippy::integer_arithmetic)]
+        #[allow(clippy::arithmetic_side_effects)]
         let i = max_i.min(block.skip_idx.len() - 1);
         self.find_ancestor_proposal(&block.skip_idx[i], height)
     }
@@ -711,7 +716,7 @@ impl<C: Context> State<C> {
             return Err(UnitError::Banned);
         }
         let rl_millis = self.params.min_round_length().millis();
-        #[allow(clippy::integer_arithmetic)] // We check for overflow before the left shift.
+        #[allow(clippy::arithmetic_side_effects)] // We check for overflow before the left shift.
         if wunit.round_exp as u32 > rl_millis.leading_zeros()
             || rl_millis << wunit.round_exp > self.params.max_round_length().millis()
         {
@@ -745,7 +750,7 @@ impl<C: Context> State<C> {
         if wunit.seq_number != panorama.next_seq_num(self, creator) {
             return Err(UnitError::SequenceNumber);
         }
-        #[allow(clippy::integer_arithmetic)] // We checked for overflow in pre_validate_unit.
+        #[allow(clippy::arithmetic_side_effects)] // We checked for overflow in pre_validate_unit.
         let round_len =
             TimeDiff::from_millis(self.params.min_round_length().millis() << wunit.round_exp);
         let r_id = round_id(timestamp, round_len);
@@ -755,7 +760,7 @@ impl<C: Context> State<C> {
                 // The round length must not change within a round: Even with respect to the
                 // greater of the two lengths, a round boundary must be between the units.
                 let max_rl = prev_unit.round_len().max(round_len);
-                #[allow(clippy::integer_arithmetic)] // max_rl is always greater than 0.
+                #[allow(clippy::arithmetic_side_effects)] // max_rl is always greater than 0.
                 if prev_unit.timestamp.millis() / max_rl.millis()
                     == timestamp.millis() / max_rl.millis()
                 {
@@ -842,7 +847,7 @@ impl<C: Context> State<C> {
                 let max_i = log2(diff) as usize; // Log is safe because diff is not zero.
 
                 // Diff is not zero, so the unit has a predecessor and skip_idx is not empty.
-                #[allow(clippy::integer_arithmetic)]
+                #[allow(clippy::arithmetic_side_effects)]
                 let i = max_i.min(unit.skip_idx.len() - 1);
                 self.find_in_swimlane(&unit.skip_idx[i], seq_number)
             }
@@ -1124,7 +1129,7 @@ pub(crate) fn round_id(timestamp: Timestamp, round_len: TimeDiff) -> Timestamp {
         error!("called round_id with round_len 0.");
         return timestamp;
     }
-    #[allow(clippy::integer_arithmetic)] // Checked for division by 0 above.
+    #[allow(clippy::arithmetic_side_effects)] // Checked for division by 0 above.
     Timestamp::from((timestamp.millis() / round_len.millis()) * round_len.millis())
 }
 

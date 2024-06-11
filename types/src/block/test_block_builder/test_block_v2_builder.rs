@@ -169,7 +169,6 @@ impl TestBlockV2Builder {
         let timestamp = timestamp.unwrap_or_else(Timestamp::now);
         let era_id = era.unwrap_or(EraId::random(rng));
         let height = height.unwrap_or_else(|| era_id.value() * 10 + rng.gen_range(0..10));
-        let protocol_version = protocol_version;
         let proposer = proposer.unwrap_or_else(|| PublicKey::random(rng));
 
         let mut mint_hashes = vec![];
