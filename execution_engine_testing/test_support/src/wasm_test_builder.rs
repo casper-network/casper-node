@@ -1461,7 +1461,9 @@ where
         &self,
         account_hash: AccountHash,
     ) -> Option<AddressableEntity> {
-        match self.query(None, Key::Account(account_hash), &[]).ok() {
+        let sv = self.query(None, Key::Account(account_hash), &[]).ok();
+        println!("{:?}", sv);
+        match sv {
             Some(StoredValue::CLValue(cl_value)) => {
                 let contract_key =
                     CLValue::into_t::<Key>(cl_value).expect("must have contract hash");

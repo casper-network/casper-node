@@ -22,6 +22,7 @@ use tracing::error;
 
 #[cfg(feature = "test-support")]
 use casper_wasmi::RuntimeValue;
+use itertools::Itertools;
 use num_rational::Ratio;
 
 use casper_storage::{
@@ -46,8 +47,8 @@ use casper_types::{
     system::{
         self,
         auction::{self, EraInfo},
-        handle_payment, mint, Caller, SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
-        STANDARD_PAYMENT,
+        handle_payment, mint, CallStackElement, Caller, SystemEntityType, AUCTION, HANDLE_PAYMENT,
+        MINT, STANDARD_PAYMENT,
     },
     AccessRights, ApiError, BlockGlobalAddr, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash,
     ByteCodeKind, CLTyped, CLValue, ContextAccessRights, EntityAddr, EntityKind, EntityVersion,
@@ -436,8 +437,11 @@ where
             // Exit early if the host buffer is already occupied
             return Ok(Err(ApiError::HostBufferFull));
         }
-        let call_stack = match self.try_get_stack() {
-            Ok(stack) => stack.call_stack_elements(),
+        let call_stack: Vec<CallStackElement> = match self.try_get_stack() {
+            Ok(stack) => {
+                let caller = stack.call_stack_elements();
+                caller.into_iter().map_into().collect_vec()
+            }
             Err(_error) => return Ok(Err(ApiError::Unhandled)),
         };
         let call_stack_len: u32 = match call_stack.len().try_into() {
@@ -3431,9 +3435,9 @@ where
         // Check if the topic exists and get the summary.
         let Some(StoredValue::MessageTopic(prev_topic_summary)) =
             self.context.read_gs(&topic_key)?
-        else {
-            return Ok(Err(ApiError::MessageTopicNotRegistered));
-        };
+            else {
+                return Ok(Err(ApiError::MessageTopicNotRegistered));
+            };
 
         let current_blocktime = self.context.get_blocktime();
         let topic_message_index = if prev_topic_summary.blocktime() != current_blocktime {

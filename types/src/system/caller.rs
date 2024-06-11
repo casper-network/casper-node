@@ -1,3 +1,5 @@
+pub mod call_stack_elements;
+
 use alloc::vec::Vec;
 
 use num_derive::{FromPrimitive, ToPrimitive};
@@ -9,6 +11,9 @@ use crate::{
     package::PackageHash,
     AddressableEntityHash, CLType, CLTyped,
 };
+
+use crate::contracts::{ContractHash, ContractPackageHash};
+pub use call_stack_elements::CallStackElement;
 
 /// Tag representing variants of CallerTag for purposes of serialization.
 #[derive(FromPrimitive, ToPrimitive)]
@@ -134,3 +139,34 @@ impl CLTyped for Caller {
         CLType::Any
     }
 }
+
+impl From<&Caller> for CallStackElement {
+    fn from(caller: &Caller) -> Self {
+        match caller {
+            Caller::Initiator { account_hash } => CallStackElement::Session {
+                account_hash: *account_hash,
+            },
+            Caller::Entity {
+                package_hash,
+                entity_hash,
+            } => CallStackElement::StoredContract {
+                contract_package_hash: ContractPackageHash::new(package_hash.value()),
+                contract_hash: ContractHash::new(entity_hash.value()),
+            },
+        }
+    }
+}
+
+/*
+match value {
+            CallStackElement::Session { account_hash } => Caller::Initiator { account_hash },
+            CallStackElement::StoredSession { contract_package_hash, contract_hash, .. } => Caller::Entity {
+                package_hash: PackageHash::new(contract_package_hash.value()),
+                entity_hash: AddressableEntityHash::new(contract_hash.value()),
+            },
+            CallStackElement::StoredContract {
+                contract_hash,
+                contract_package_hash,
+            } =>
+
+ */
