@@ -12,22 +12,22 @@ use rand::{Rng, RngCore};
 use schemars::JsonSchema;
 #[cfg(any(feature = "std", test))]
 use serde::{Deserialize, Serialize};
-#[cfg(any(feature = "std", test))]
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
 use tracing::debug;
 
 use super::super::{RuntimeArgs, TransactionEntryPoint, TransactionScheduling, TransactionTarget};
 
 use super::TransactionCategory;
-#[cfg(any(feature = "std", test))]
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
 use super::TransactionConfig;
 #[cfg(doc)]
 use super::TransactionV1;
 use crate::bytesrepr::{self, FromBytes, ToBytes};
 
-#[cfg(any(feature = "std", test))]
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::InvalidTransactionV1;
 
-#[cfg(any(feature = "std", test))]
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::TransactionV1ExcessiveSizeError;
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::{
@@ -131,7 +131,7 @@ impl TransactionV1Body {
         (self.args, self.target, self.entry_point, self.scheduling)
     }
 
-    #[cfg(any(feature = "std", test))]
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub(super) fn is_valid(&self, config: &TransactionConfig) -> Result<(), InvalidTransactionV1> {
         let kind = self.transaction_kind;
         if !config.transaction_v1_config.is_supported(kind) {

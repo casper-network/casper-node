@@ -33,15 +33,15 @@ use super::{
 use super::{GasLimited, InitiatorAddrAndSecretKey};
 #[cfg(any(feature = "std", test))]
 use crate::chainspec::Chainspec;
-#[cfg(any(all(feature = "std", feature = "testing"), test))]
-use crate::chainspec::PricingHandling;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     crypto, Digest, DisplayIter, RuntimeArgs, SecretKey, TimeDiff, Timestamp, TransactionRuntime,
 };
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
+use crate::{chainspec::PricingHandling, TransactionConfig};
 
 #[cfg(any(feature = "std", test))]
-use crate::{Gas, Motes, TransactionConfig, U512};
+use crate::{Gas, Motes, U512};
 pub use errors_v1::{
     DecodeFromJsonErrorV1 as TransactionV1DecodeFromJsonError, ErrorV1 as TransactionV1Error,
     ExcessiveSizeErrorV1 as TransactionV1ExcessiveSizeError,
@@ -276,7 +276,7 @@ impl TransactionV1 {
 
     /// Returns `true` if the serialized size of the transaction is not greater than
     /// `max_transaction_size`.
-    #[cfg(any(feature = "std", test))]
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
     fn is_valid_size(
         &self,
         max_transaction_size: u32,
