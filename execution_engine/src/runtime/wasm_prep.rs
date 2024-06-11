@@ -433,17 +433,20 @@ pub fn deserialize(module_bytes: &[u8]) -> Result<Module, PreprocessingError> {
             ) => PreprocessingError::Deserialize(
                 "Sign extension operations are not supported".to_string(),
             ),
-            casper_wasm::SerializationError::Other(msg) if msg == "Enable the multi_value feature to deserialize more than one function result" => {
+            casper_wasm::SerializationError::Other(
+                "Enable the multi_value feature to deserialize more than one function result",
+            ) => {
                 // Due to the way casper-wasm crate works, it's always deserializes opcodes
                 // from multi_value proposal but if the feature is not enabled, then it will
                 // error with very specific message (as compared to other extensions).
                 //
                 // That's OK since we'd prefer to not inspect deserialized bytecode. We
                 // can simply replace the error message with a more user friendly one.
-                PreprocessingError::Deserialize("Multi value extension is not supported".to_string())
+                PreprocessingError::Deserialize(
+                    "Multi value extension is not supported".to_string(),
+                )
             }
             _ => deserialize_error.into(),
-
         }
     })
 }
