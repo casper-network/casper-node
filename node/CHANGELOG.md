@@ -15,10 +15,14 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Added
 * Add `BinaryPort` interface along with the relevant config entries.
+* New seigniorage model that is independent of the details of consensus (compatible with both Highway and Zug) and based solely upon block proposals, signature generation and signature distribution by validators
+  * Added chainspec settings `finders_fee`, `finality_signature_proportion` and `signature_rewards_max_delay` to control behavior of the new seigniorage model
 
 ### Changed
 * All SSE events are emitted via the `<IP:Port>/events` endpoint. None of the previous ones (`/events/main`, `/events/deploys`, and `/events/sigs`) is available any longer.
 * `DeployBuffer` was renamed to `TransactionBuffer` along with the related metrics.
+* Switch blocks and the creation and propagation of signatures on them are now rewarded.
+* Era end reports now record rewards as motes rather than scores.
 
 ### Removed
 * Remove the JSON-RPC and speculative execution interfaces.
