@@ -1,4 +1,4 @@
-use alloc::{string::String, vec::Vec};
+use alloc::vec::Vec;
 use core::fmt::{self, Display, Formatter};
 
 #[cfg(feature = "datasize")]
