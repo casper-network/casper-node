@@ -132,6 +132,7 @@ impl ContractRuntime {
             .with_max_associated_keys(chainspec.core_config.max_associated_keys)
             .with_max_runtime_call_stack_height(chainspec.core_config.max_runtime_call_stack_height)
             .with_minimum_delegation_amount(chainspec.core_config.minimum_delegation_amount)
+            .with_maximum_delegation_amount(chainspec.core_config.maximum_delegation_amount)
             .with_strict_argument_checking(chainspec.core_config.strict_argument_checking)
             .with_vesting_schedule_period_millis(
                 chainspec.core_config.vesting_schedule_period.millis(),

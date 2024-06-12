@@ -518,6 +518,8 @@ fn create_or_update_bid<T: StateReader>(
             *bonding_purse,
             *updated_recipient.stake(),
             *updated_recipient.delegation_rate(),
+            0,
+            u64::MAX,
         );
 
         state.set_bid(
@@ -529,7 +531,7 @@ fn create_or_update_bid<T: StateReader>(
 
     // new bid
     let stake = *updated_recipient.stake();
-    if stake == U512::zero() {
+    if stake.is_zero() {
         return;
     }
 
@@ -554,6 +556,8 @@ fn create_or_update_bid<T: StateReader>(
         bonding_purse,
         stake,
         *updated_recipient.delegation_rate(),
+        0,
+        u64::MAX,
     );
     state.set_bid(
         BidKind::Validator(Box::new(validator_bid)),

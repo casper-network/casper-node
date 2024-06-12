@@ -79,6 +79,9 @@ pub const DEFAULT_MAX_QUERY_DEPTH: u64 = 5;
 pub const DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT: u32 = 12;
 /// Default value for minimum delegation amount in motes.
 pub const DEFAULT_MINIMUM_DELEGATION_AMOUNT: u64 = 500 * 1_000_000_000;
+/// Default value for maximum delegation amount in motes.
+pub const DEFAULT_MAXIMUM_DELEGATION_AMOUNT: u64 = 1_000_000_000 * 1_000_000_000;
+
 /// Default genesis config hash.
 pub const DEFAULT_GENESIS_CONFIG_HASH: Digest = Digest::from_raw([42; 32]);
 
@@ -213,6 +216,10 @@ mod tests {
         // assert_eq!(
         //     production.core_config.minimum_delegation_amount,
         //     DEFAULT_MINIMUM_DELEGATION_AMOUNT
+        // );
+        // assert_eq!(
+        //     production.core_config.maximum_delegation_amount,
+        //     DEFAULT_MAXIMUM_DELEGATION_AMOUNT
         // );
 
         // assert_eq!(production.wasm_config, WasmConfig::default());

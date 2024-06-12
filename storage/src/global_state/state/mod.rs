@@ -43,6 +43,9 @@ use crate::{
         balance::BalanceHandling,
         entity::{EntityRequest, EntityResult},
         era_validators::EraValidatorsResult,
+        forced_undelegate::{
+            ForcedUndelegateError, ForcedUndelegateRequest, ForcedUndelegateResult,
+        },
         handle_fee::{HandleFeeMode, HandleFeeRequest, HandleFeeResult},
         mint::{TransferRequest, TransferRequestArgs, TransferResult},
         prefixed_values::{PrefixedValuesRequest, PrefixedValuesResult},
@@ -315,7 +318,6 @@ pub trait CommitProvider: StateProvider {
             .map(|item| item.validator_id.clone())
             .collect::<Vec<PublicKey>>();
         let max_delegators_per_validator = config.max_delegators_per_validator();
-        let minimum_delegation_amount = config.minimum_delegation_amount();
         let include_credits = config.include_credits();
         let credit_cap = config.credit_cap();
 
@@ -323,7 +325,6 @@ pub trait CommitProvider: StateProvider {
             era_end_timestamp_millis,
             evicted_validators,
             max_delegators_per_validator,
-            minimum_delegation_amount,
             include_credits,
             credit_cap,
         ) {
@@ -508,6 +509,78 @@ pub trait CommitProvider: StateProvider {
             }
             Err(hpe) => FeeResult::Failure(FeeError::TrackingCopy(
                 TrackingCopyError::SystemContract(system::Error::HandlePayment(hpe)),
+            )),
+        }
+    }
+
+    /// Forcibly unbonds delegator bids which fall outside configured delegation limits.
+    fn forced_undelegate(&self, request: ForcedUndelegateRequest) -> ForcedUndelegateResult {
+        let state_hash = request.state_hash();
+
+        let tc = match self.tracking_copy(state_hash) {
+            Ok(Some(tc)) => Rc::new(RefCell::new(tc)),
+            Ok(None) => return ForcedUndelegateResult::RootNotFound,
+            Err(err) => {
+                return ForcedUndelegateResult::Failure(ForcedUndelegateError::TrackingCopy(
+                    TrackingCopyError::Storage(err),
+                ))
+            }
+        };
+
+        let config = request.config();
+        let protocol_version = request.protocol_version();
+        let seed = {
+            let mut bytes = match request.block_time().into_bytes() {
+                Ok(bytes) => bytes,
+                Err(bre) => {
+                    return ForcedUndelegateResult::Failure(ForcedUndelegateError::TrackingCopy(
+                        TrackingCopyError::BytesRepr(bre),
+                    ))
+                }
+            };
+            match &mut protocol_version.into_bytes() {
+                Ok(next) => bytes.append(next),
+                Err(bre) => {
+                    return ForcedUndelegateResult::Failure(ForcedUndelegateError::TrackingCopy(
+                        TrackingCopyError::BytesRepr(*bre),
+                    ))
+                }
+            };
+
+            crate::system::runtime_native::Id::Seed(bytes)
+        };
+
+        // this runtime uses the system's context
+        let mut runtime = match RuntimeNative::new_system_runtime(
+            config.clone(),
+            protocol_version,
+            seed,
+            Rc::clone(&tc),
+            Phase::Session,
+        ) {
+            Ok(rt) => rt,
+            Err(tce) => {
+                return ForcedUndelegateResult::Failure(ForcedUndelegateError::TrackingCopy(tce));
+            }
+        };
+
+        if let Err(auction_error) = runtime.forced_undelegate() {
+            error!(
+                "forced undelegation failed due to auction error {:?}",
+                auction_error
+            );
+            return ForcedUndelegateResult::Failure(ForcedUndelegateError::Auction(auction_error));
+        }
+
+        let effects = tc.borrow().effects();
+
+        match self.commit(state_hash, effects.clone()) {
+            Ok(post_state_hash) => ForcedUndelegateResult::Success {
+                post_state_hash,
+                effects,
+            },
+            Err(gse) => ForcedUndelegateResult::Failure(ForcedUndelegateError::TrackingCopy(
+                TrackingCopyError::Storage(gse),
             )),
         }
     }
@@ -1132,8 +1205,16 @@ pub trait StateProvider {
                 public_key,
                 delegation_rate,
                 amount,
+                minimum_delegation_amount,
+                maximum_delegation_amount,
             } => runtime
-                .add_bid(public_key, delegation_rate, amount)
+                .add_bid(
+                    public_key,
+                    delegation_rate,
+                    amount,
+                    minimum_delegation_amount,
+                    maximum_delegation_amount,
+                )
                 .map(AuctionMethodRet::UpdatedAmount)
                 .map_err(TrackingCopyError::Api),
             AuctionMethod::WithdrawBid { public_key, amount } => runtime
@@ -1147,15 +1228,8 @@ pub trait StateProvider {
                 validator,
                 amount,
                 max_delegators_per_validator,
-                minimum_delegation_amount,
             } => runtime
-                .delegate(
-                    delegator,
-                    validator,
-                    amount,
-                    max_delegators_per_validator,
-                    minimum_delegation_amount,
-                )
+                .delegate(delegator, validator, amount, max_delegators_per_validator)
                 .map(AuctionMethodRet::UpdatedAmount)
                 .map_err(TrackingCopyError::Api),
             AuctionMethod::Undelegate {
@@ -1173,15 +1247,8 @@ pub trait StateProvider {
                 validator,
                 amount,
                 new_validator,
-                minimum_delegation_amount,
             } => runtime
-                .redelegate(
-                    delegator,
-                    validator,
-                    amount,
-                    new_validator,
-                    minimum_delegation_amount,
-                )
+                .redelegate(delegator, validator, amount, new_validator)
                 .map(AuctionMethodRet::UpdatedAmount)
                 .map_err(|auc_err| {
                     TrackingCopyError::SystemContract(system::Error::Auction(auc_err))
