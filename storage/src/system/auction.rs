@@ -27,7 +27,7 @@ use self::providers::{AccountProvider, MintProvider, RuntimeProvider, StoragePro
 
 /// Bonding auction contract interface
 pub trait Auction:
-    StorageProvider + RuntimeProvider + MintProvider + AccountProvider + Sized
+StorageProvider + RuntimeProvider + MintProvider + AccountProvider + Sized
 {
     /// Returns active validators and auction winners for a number of future eras determined by the
     /// configured auction_delay.
@@ -129,13 +129,13 @@ pub trait Auction:
             amount,
             None,
         )
-        .map_err(|_| Error::TransferToBidPurse)?
-        .map_err(|mint_error| {
-            // Propagate mint contract's error that occured during execution of transfer
-            // entrypoint. This will improve UX in case of (for example)
-            // unapproved spending limit error.
-            ApiError::from(mint_error)
-        })?;
+            .map_err(|_| Error::TransferToBidPurse)?
+            .map_err(|mint_error| {
+                // Propagate mint contract's error that occured during execution of transfer
+                // entrypoint. This will improve UX in case of (for example)
+                // unapproved spending limit error.
+                ApiError::from(mint_error)
+            })?;
 
         let updated_amount = validator_bid.staked_amount();
         self.write_bid(validator_bid_key, BidKind::Validator(validator_bid))?;
@@ -405,13 +405,18 @@ pub trait Auction:
                 if staked_amount < minimum_delegation_amount
                     || staked_amount > maximum_delegation_amount
                 {
+                    let amount = if staked_amount < minimum_delegation_amount {
+                        staked_amount
+                    } else {
+                        staked_amount - maximum_delegation_amount
+                    };
                     let delegator_public_key = delegator.delegator_public_key().clone();
                     if let Err(error) = detail::create_unbonding_purse(
                         self,
                         validator_public_key.clone(),
                         delegator_public_key.clone(),
                         *delegator.bonding_purse(),
-                        delegator.staked_amount(),
+                        amount,
                         None,
                     ) {
                         error!("Error in creating unbonding purse: {:?}", error);
@@ -557,7 +562,7 @@ pub trait Auction:
         // Process bids
         let mut bids_modified = false;
         for (validator_public_key, validator_bid) in
-            validator_bids_detail.validator_bids_mut().iter_mut()
+        validator_bids_detail.validator_bids_mut().iter_mut()
         {
             if process_with_vesting_schedule(
                 self,
@@ -684,7 +689,7 @@ pub trait Auction:
                     &amounts,
                     &seigniorage_recipients_snapshot,
                 )
-                .map(|infos| infos.into_iter().map(move |info| (proposer.clone(), info)))
+                    .map(|infos| infos.into_iter().map(move |info| (proposer.clone(), info)))
             })
             .flatten_ok()
         {
