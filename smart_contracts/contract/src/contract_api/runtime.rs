@@ -27,7 +27,6 @@ enum CallerInformation {
     FullStack = 2,
 }
 
-
 /// Returns the given [`CLValue`] to the host, terminating the currently running module.
 ///
 /// Note this function is only relevant to contracts stored on chain which are invoked via
@@ -471,7 +470,6 @@ fn get_initiator_or_immediate(action: u8) -> Result<Caller, ApiError> {
     Ok(caller[0].clone())
 }
 
-
 /// Returns the call stack initiator
 pub fn get_call_initiator() -> Result<AccountHash, ApiError> {
     let caller = get_initiator_or_immediate(CallerInformation::Initiator as u8)?;
@@ -481,7 +479,6 @@ pub fn get_call_initiator() -> Result<AccountHash, ApiError> {
         Err(ApiError::Unhandled)
     };
 }
-
 
 /// Returns the immidiate caller within the call stack.
 pub fn get_immediate_caller() -> Result<Caller, ApiError> {

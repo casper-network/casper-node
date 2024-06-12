@@ -763,9 +763,7 @@ impl Debug for ApiError {
             ApiError::InvalidDelegationAmountLimits => {
                 write!(f, "ApiError::InvalidDelegationAmountLimits")?
             }
-            ApiError::InvalidCallerInfoRequest => {
-                write!(f, "ApiError::InvalidCallerInfoRequest")?
-            }
+            ApiError::InvalidCallerInfoRequest => write!(f, "ApiError::InvalidCallerInfoRequest")?,
             ApiError::ExceededRecursionDepth => write!(f, "ApiError::ExceededRecursionDepth")?,
             ApiError::AuctionError(value) => write!(
                 f,
@@ -808,8 +806,8 @@ impl fmt::Display for ApiError {
 // This function is not intended to be used by third party crates.
 #[doc(hidden)]
 pub fn i32_from<T>(result: Result<(), T>) -> i32
-    where
-        ApiError: From<T>,
+where
+    ApiError: From<T>,
 {
     match result {
         Ok(()) => 0,

@@ -5,11 +5,16 @@ extern crate alloc;
 
 use alloc::vec::Vec;
 
-use casper_contract::contract_api::{runtime, system};
-use casper_contract::{contract_api, ext_ffi};
-use casper_contract::unwrap_or_revert::UnwrapOrRevert;
-use casper_types::{runtime_args, system::auction, PublicKey, U512, bytesrepr, api_error, ApiError};
-use casper_types::bytesrepr::FromBytes;
+use casper_contract::{
+    contract_api,
+    contract_api::{runtime, system},
+    ext_ffi,
+    unwrap_or_revert::UnwrapOrRevert,
+};
+use casper_types::{
+    api_error, bytesrepr, bytesrepr::FromBytes, runtime_args, system::auction, ApiError, PublicKey,
+    U512,
+};
 
 fn get_named_arg_size(name: &str) -> Option<usize> {
     let mut arg_size: usize = 0;
@@ -30,9 +35,7 @@ fn get_named_arg_size(name: &str) -> Option<usize> {
 // The optional here is literal and does not co-relate to an Option enum type.
 // If the argument has been provided it is accepted, and is then turned into a Some.
 // If the argument is not provided at all, then it is considered as None.
-pub fn get_optional_named_args<T: FromBytes>(
-    name: &str,
-) -> Option<T> {
+pub fn get_optional_named_args<T: FromBytes>(name: &str) -> Option<T> {
     let arg_size = if let Some(arg_size) = get_named_arg_size(name) {
         arg_size
     } else {
@@ -62,7 +65,6 @@ pub fn get_optional_named_args<T: FromBytes>(
 
     bytesrepr::deserialize(arg_bytes).ok()
 }
-
 
 fn add_bid(
     public_key: PublicKey,
@@ -103,10 +105,8 @@ pub extern "C" fn call() {
     let bond_amount = runtime::get_named_arg(auction::ARG_AMOUNT);
     let delegation_rate = runtime::get_named_arg(auction::ARG_DELEGATION_RATE);
     // Optional arguments
-    let minimum_delegation_amount =
-        get_optional_named_args(auction::ARG_MINIMUM_DELEGATION_AMOUNT);
-    let maximum_delegation_amount =
-        get_optional_named_args(auction::ARG_MAXIMUM_DELEGATION_AMOUNT);
+    let minimum_delegation_amount = get_optional_named_args(auction::ARG_MINIMUM_DELEGATION_AMOUNT);
+    let maximum_delegation_amount = get_optional_named_args(auction::ARG_MAXIMUM_DELEGATION_AMOUNT);
 
     add_bid(
         public_key,

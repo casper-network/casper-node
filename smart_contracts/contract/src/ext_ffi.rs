@@ -670,6 +670,7 @@ extern "C" {
     /// # Arguments
     /// * `call_stack_len_ptr` - pointer to the length of the caller information.
     /// * `result_size_ptr` - pointer to the size of the serialized caller information.
+    #[deprecated]
     pub fn casper_load_call_stack(
         call_stack_len_ptr: *mut usize,
         result_size_ptr: *mut usize,

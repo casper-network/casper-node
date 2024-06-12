@@ -101,12 +101,12 @@ impl ToBytes for Caller {
     fn serialized_length(&self) -> usize {
         U8_SERIALIZED_LENGTH
             + match self {
-            Caller::Initiator { account_hash } => account_hash.serialized_length(),
-            Caller::Entity {
-                package_hash,
-                entity_hash: contract_hash,
-            } => package_hash.serialized_length() + contract_hash.serialized_length(),
-        }
+                Caller::Initiator { account_hash } => account_hash.serialized_length(),
+                Caller::Entity {
+                    package_hash,
+                    entity_hash: contract_hash,
+                } => package_hash.serialized_length() + contract_hash.serialized_length(),
+            }
     }
 }
 
