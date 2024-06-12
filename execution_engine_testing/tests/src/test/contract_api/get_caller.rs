@@ -2,8 +2,7 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT,
     LOCAL_GENESIS_REQUEST,
 };
-use casper_types::{account::AccountHash, runtime_args, CLValue, EntityAddr};
-use casper_types::system::Caller;
+use casper_types::{account::AccountHash, runtime_args, system::Caller, CLValue, EntityAddr};
 
 const CONTRACT_GET_CALLER: &str = "get_caller.wasm";
 const CONTRACT_GET_CALLER_SUBCALL: &str = "get_caller_subcall.wasm";
@@ -178,7 +177,7 @@ fn should_load_caller_information_based_on_action() {
         .expect("must have key entry for initiator");
 
     let initiator_account_hash = builder
-        .query(None, initiator, &vec![])
+        .query(None, initiator, &[])
         .expect("must have stored value")
         .as_cl_value()
         .map(|cl_val| CLValue::into_t(cl_val.clone()))
@@ -192,7 +191,7 @@ fn should_load_caller_information_based_on_action() {
         .expect("must have key entry for initiator");
 
     let caller = builder
-        .query(None, immediate, &vec![])
+        .query(None, immediate, &[])
         .expect("must have stored value")
         .as_cl_value()
         .map(|cl_val| CLValue::into_t(cl_val.clone()))
@@ -208,15 +207,15 @@ fn should_load_caller_information_based_on_action() {
         .expect("must have key entry for full call stack");
 
     let full_call_stack: Vec<Caller> = builder
-        .query(None, full, &vec![])
+        .query(None, full, &[])
         .expect("must have stored value")
         .as_cl_value()
         .map(|cl_val| CLValue::into_t(cl_val.clone()))
         .expect("must have cl value")
         .expect("must get full call stack");
 
-
-    let package_hash = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+    let package_hash = builder
+        .get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .get(LOAD_CALLER_INFO_PACKAGE_HASH)
         .expect("must get package key")
         .into_package_hash()

@@ -245,7 +245,7 @@ fn should_add_new_bid_with_limits() {
             ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
             ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
             // Below global minimum.
-            ARG_MINIMUM_DELEGATION_AMOUNT => Some(1_000_000_000u64),
+            ARG_MINIMUM_DELEGATION_AMOUNT => 1_000_000_000u64,
         },
     )
     .build();
@@ -259,8 +259,8 @@ fn should_add_new_bid_with_limits() {
             ARG_PUBLIC_KEY => BID_ACCOUNT_1_PK.clone(),
             ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
             ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
-            ARG_MINIMUM_DELEGATION_AMOUNT => Some(600_000_000_000u64),
-            ARG_MAXIMUM_DELEGATION_AMOUNT => Some(900_000_000_000u64),
+            ARG_MINIMUM_DELEGATION_AMOUNT => 600_000_000_000u64,
+            ARG_MAXIMUM_DELEGATION_AMOUNT => 900_000_000_000u64,
         },
     )
     .build();
@@ -619,8 +619,8 @@ fn should_run_delegate_with_delegation_amount_limits() {
             ARG_PUBLIC_KEY => NON_FOUNDER_VALIDATOR_1_PK.clone(),
             ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
             ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
-            ARG_MINIMUM_DELEGATION_AMOUNT => Some(DELEGATE_AMOUNT_1),
-            ARG_MAXIMUM_DELEGATION_AMOUNT => Some(DELEGATE_AMOUNT_1),
+            ARG_MINIMUM_DELEGATION_AMOUNT => DELEGATE_AMOUNT_1,
+            ARG_MAXIMUM_DELEGATION_AMOUNT => DELEGATE_AMOUNT_1,
         },
     )
     .build();
@@ -807,8 +807,8 @@ fn should_forcibly_undelegate_after_setting_validator_limits() {
             ARG_PUBLIC_KEY => NON_FOUNDER_VALIDATOR_1_PK.clone(),
             ARG_AMOUNT => U512::from(1_000),
             ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
-            ARG_MINIMUM_DELEGATION_AMOUNT => Some(DELEGATE_AMOUNT_2 + 1_000),
-            ARG_MAXIMUM_DELEGATION_AMOUNT => Some(DELEGATE_AMOUNT_1 - 1_000),
+            ARG_MINIMUM_DELEGATION_AMOUNT => DELEGATE_AMOUNT_2 + 1_000,
+            ARG_MAXIMUM_DELEGATION_AMOUNT => DELEGATE_AMOUNT_1 - 1_000,
         },
     )
     .build();
@@ -926,8 +926,8 @@ fn should_force_undelegate_with_genesis_delegators() {
             ARG_PUBLIC_KEY => ACCOUNT_1_PK.clone(),
             ARG_AMOUNT => U512::from(ACCOUNT_1_BOND),
             ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
-            ARG_MINIMUM_DELEGATION_AMOUNT => Some(DEFAULT_MINIMUM_DELEGATION_AMOUNT),
-            ARG_MAXIMUM_DELEGATION_AMOUNT => Some(DEFAULT_MAXIMUM_DELEGATION_AMOUNT - 2),
+            ARG_MINIMUM_DELEGATION_AMOUNT => DEFAULT_MINIMUM_DELEGATION_AMOUNT,
+            ARG_MAXIMUM_DELEGATION_AMOUNT => DEFAULT_MAXIMUM_DELEGATION_AMOUNT - 2,
         },
     )
     .build();
@@ -1637,7 +1637,7 @@ fn should_calculate_era_validators_multiple_new_bids() {
         .collect();
     assert_eq!(
         new_validators,
-        BTreeSet::from_iter(vec![BID_ACCOUNT_1_PK.clone(), BID_ACCOUNT_2_PK.clone(),])
+        BTreeSet::from_iter(vec![BID_ACCOUNT_1_PK.clone(), BID_ACCOUNT_2_PK.clone()])
     );
 }
 
@@ -2436,7 +2436,7 @@ fn should_handle_evictions() {
             ACCOUNT_1_PK.clone(),
             ACCOUNT_2_PK.clone(),
             BID_ACCOUNT_1_PK.clone(),
-            BID_ACCOUNT_2_PK.clone()
+            BID_ACCOUNT_2_PK.clone(),
         ])
     );
 
@@ -2449,7 +2449,7 @@ fn should_handle_evictions() {
 
     assert_eq!(
         latest_validators(&mut builder),
-        BTreeSet::from_iter(vec![ACCOUNT_1_PK.clone(), ACCOUNT_2_PK.clone(),])
+        BTreeSet::from_iter(vec![ACCOUNT_1_PK.clone(), ACCOUNT_2_PK.clone()])
     );
 
     // Activate BID_ACCOUNT_1_PK
@@ -2462,7 +2462,7 @@ fn should_handle_evictions() {
         BTreeSet::from_iter(vec![
             ACCOUNT_1_PK.clone(),
             ACCOUNT_2_PK.clone(),
-            BID_ACCOUNT_1_PK.clone()
+            BID_ACCOUNT_1_PK.clone(),
         ])
     );
 
@@ -2477,7 +2477,7 @@ fn should_handle_evictions() {
             ACCOUNT_1_PK.clone(),
             ACCOUNT_2_PK.clone(),
             BID_ACCOUNT_1_PK.clone(),
-            BID_ACCOUNT_2_PK.clone()
+            BID_ACCOUNT_2_PK.clone(),
         ])
     );
 
@@ -2512,7 +2512,7 @@ fn should_handle_evictions() {
             ACCOUNT_1_PK.clone(),
             ACCOUNT_2_PK.clone(),
             BID_ACCOUNT_1_PK.clone(),
-            BID_ACCOUNT_2_PK.clone()
+            BID_ACCOUNT_2_PK.clone(),
         ])
     );
 }
@@ -2726,7 +2726,7 @@ fn should_setup_genesis_delegators() {
     let validator_keys = key_map.keys().cloned().collect::<BTreeSet<_>>();
     assert_eq!(
         validator_keys,
-        BTreeSet::from_iter(vec![ACCOUNT_1_PK.clone(), ACCOUNT_2_PK.clone(),])
+        BTreeSet::from_iter(vec![ACCOUNT_1_PK.clone(), ACCOUNT_2_PK.clone()])
     );
 
     let account_1_bid_entry = bids

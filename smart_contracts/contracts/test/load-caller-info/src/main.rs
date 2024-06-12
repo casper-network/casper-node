@@ -3,15 +3,15 @@
 
 extern crate alloc;
 
-use alloc::{boxed::Box, format, string::ToString, vec, vec::Vec};
+use alloc::{string::ToString, vec};
 
 use casper_contract::{
     contract_api::{runtime, runtime::revert, storage},
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    runtime_args, ApiError, CLType, EntryPoint, EntryPointAccess, EntryPointPayment,
-    EntryPointType, EntryPoints, Key, Parameter, Phase, U512,
+    ApiError, CLType, EntryPoint, EntryPointAccess, EntryPointPayment,
+    EntryPointType, EntryPoints, Key,
 };
 
 const PACKAGE_NAME: &str = "load_caller_info_package";

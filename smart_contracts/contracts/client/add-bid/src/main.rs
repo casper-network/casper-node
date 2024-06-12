@@ -36,11 +36,7 @@ fn get_named_arg_size(name: &str) -> Option<usize> {
 // If the argument has been provided it is accepted, and is then turned into a Some.
 // If the argument is not provided at all, then it is considered as None.
 pub fn get_optional_named_args<T: FromBytes>(name: &str) -> Option<T> {
-    let arg_size = if let Some(arg_size) = get_named_arg_size(name) {
-        arg_size
-    } else {
-        return None;
-    };
+    let arg_size = get_named_arg_size(name)?;
     let arg_bytes = if arg_size > 0 {
         let res = {
             let data_non_null_ptr = contract_api::alloc_bytes(arg_size);

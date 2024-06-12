@@ -467,17 +467,17 @@ fn get_initiator_or_immediate(action: u8) -> Result<Caller, ApiError> {
     if caller.len() != 1 {
         return Err(ApiError::Unhandled);
     };
-    Ok(caller[0].clone())
+    Ok(caller[0])
 }
 
 /// Returns the call stack initiator
 pub fn get_call_initiator() -> Result<AccountHash, ApiError> {
     let caller = get_initiator_or_immediate(CallerInformation::Initiator as u8)?;
-    return if let Caller::Initiator { account_hash } = caller {
+    if let Caller::Initiator { account_hash } = caller {
         Ok(account_hash)
     } else {
         Err(ApiError::Unhandled)
-    };
+    }
 }
 
 /// Returns the immidiate caller within the call stack.
