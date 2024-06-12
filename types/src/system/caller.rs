@@ -26,7 +26,7 @@ pub enum CallerTag {
 }
 
 /// Identity of a calling entity.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Caller {
     /// Initiator (calling account)
     Initiator {
@@ -101,12 +101,12 @@ impl ToBytes for Caller {
     fn serialized_length(&self) -> usize {
         U8_SERIALIZED_LENGTH
             + match self {
-                Caller::Initiator { account_hash } => account_hash.serialized_length(),
-                Caller::Entity {
-                    package_hash,
-                    entity_hash: contract_hash,
-                } => package_hash.serialized_length() + contract_hash.serialized_length(),
-            }
+            Caller::Initiator { account_hash } => account_hash.serialized_length(),
+            Caller::Entity {
+                package_hash,
+                entity_hash: contract_hash,
+            } => package_hash.serialized_length() + contract_hash.serialized_length(),
+        }
     }
 }
 

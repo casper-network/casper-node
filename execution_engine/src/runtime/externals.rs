@@ -1054,7 +1054,7 @@ impl<'a, R> Externals for Runtime<'a, R>
                 let (action, call_stack_len_ptr, result_size_ptr) = Args::parse(args)?;
                 self.charge_host_function_call(
                     &HostFunction::fixed(10_000),
-                    [call_stack_len_ptr, result_size_ptr],
+                    [0, call_stack_len_ptr, result_size_ptr],
                 )?;
                 let ret = self.load_caller_information(action, call_stack_len_ptr, result_size_ptr)?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))

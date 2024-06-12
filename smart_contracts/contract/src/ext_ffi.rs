@@ -665,7 +665,11 @@ extern "C" {
         out_ptr: *mut u8,
         out_size: usize,
     ) -> i32;
+    /// Returns the elements on the call stack tracked by the runtime
     ///
+    /// # Arguments
+    /// * `call_stack_len_ptr` - pointer to the length of the caller information.
+    /// * `result_size_ptr` - pointer to the size of the serialized caller information.
     pub fn casper_load_call_stack(
         call_stack_len_ptr: *mut usize,
         result_size_ptr: *mut usize,
@@ -804,11 +808,11 @@ extern "C" {
     ///
     /// # Arguments
     /// `action`: u8 which encodes the information requested by the caller.
-    /// * `message_ptr` - pointer to the serialized caller payload.
-    /// * `message_size` - size of the serialized caller payload.
-    pub fn casper_caller_with_action(
+    /// * `call_stack_len_ptr` - pointer to the length of the caller information.
+    /// * `result_size_ptr` - pointer to the size of the serialized caller information.
+    pub fn casper_load_caller_information(
         action: u8,
-        caller_ptr: *const u8,
-        caller_len: usize,
+        call_stack_len_ptr: *mut usize,
+        result_size_ptr: *mut usize,
     ) -> i32;
 }

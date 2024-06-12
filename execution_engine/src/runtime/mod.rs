@@ -528,17 +528,17 @@ impl<'a, R> Runtime<'a, R>
         let caller = match caller_info {
             CallerInformation::Initiator => {
                 let initiator_account_hash = self.context.get_caller();
-                &vec![Caller::initiator(initiator_account_hash)]
+                vec![Caller::initiator(initiator_account_hash)]
             }
             CallerInformation::Immediate => {
                 match self.get_immediate_caller() {
-                    Some(frame) => &vec![*frame],
+                    Some(frame) => vec![*frame],
                     None => return Ok(Err(ApiError::Unhandled))
                 }
             }
             CallerInformation::FullCallChain => {
                 match self.try_get_stack() {
-                    Ok(call_stack) => call_stack.call_stack_elements(),
+                    Ok(call_stack) => call_stack.call_stack_elements().clone(),
                     Err(_) => return Ok(Err(ApiError::Unhandled)),
                 }
             }
