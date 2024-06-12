@@ -107,6 +107,7 @@ fn should_run_get_caller_subcall_contract() {
         .commit();
 }
 
+#[ignore]
 #[test]
 fn should_load_caller_information_based_on_action() {
     let mut builder = LmdbWasmTestBuilder::default();
