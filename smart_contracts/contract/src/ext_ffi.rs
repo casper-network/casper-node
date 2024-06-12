@@ -795,4 +795,20 @@ extern "C" {
         message_ptr: *const u8,
         message_size: usize,
     ) -> i32;
+
+    /// Returns information about the current call stack tracked by the runtime
+    /// based on an action
+    /// `0` => Initiator of the call chain
+    /// `1` => Immediate caller
+    /// `2` => The entire call stack
+    ///
+    /// # Arguments
+    /// `action`: u8 which encodes the information requested by the caller.
+    /// * `message_ptr` - pointer to the serialized caller payload.
+    /// * `message_size` - size of the serialized caller payload.
+    pub fn casper_caller_with_action(
+        action: u8,
+        caller_ptr: *const u8,
+        caller_len: usize,
+    ) -> i32;
 }

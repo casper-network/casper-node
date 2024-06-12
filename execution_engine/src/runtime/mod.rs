@@ -79,6 +79,27 @@ enum CallContractIdentifier {
     },
 }
 
+#[repr(u8)]
+enum CallerInformation {
+    Initiator = 0,
+    Immediate = 1,
+    FullCallChain = 2,
+}
+
+impl TryFrom<u8> for CallerInformation {
+    type Error = ApiError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(CallerInformation::Initiator),
+            1 => Ok(CallerInformation::Immediate),
+            2 => Ok(CallerInformation::FullCallChain),
+            _ => Err(ApiError::InvalidCallerInfoRequest)
+        }
+    }
+}
+
+
 /// Represents the runtime properties of a WASM execution.
 pub struct Runtime<'a, R> {
     context: RuntimeContext<'a, R>,
@@ -90,8 +111,8 @@ pub struct Runtime<'a, R> {
 }
 
 impl<'a, R> Runtime<'a, R>
-where
-    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
+    where
+        R: StateReader<Key, StoredValue, Error=GlobalStateError>,
 {
     /// Creates a new runtime instance.
     pub(crate) fn new(context: RuntimeContext<'a, R>) -> Self {
@@ -181,8 +202,8 @@ where
     /// misleading gas charges if one system contract calls other system contract (e.g. auction
     /// contract calls into mint to create new purses).
     pub(crate) fn charge_system_contract_call<T>(&mut self, amount: T) -> Result<(), ExecError>
-    where
-        T: Into<Gas>,
+        where
+            T: Into<Gas>,
     {
         if self.is_system_immediate_caller()? || self.host_function_flag.is_in_host_function_scope()
         {
@@ -485,6 +506,86 @@ where
         Ok(Ok(()))
     }
 
+    /// Returns information about the call stack based on a given action.
+    fn load_caller_information(
+        &mut self,
+        information: u8,
+        // (Output) Pointer to number of elements in the call stack.
+        call_stack_len_ptr: u32,
+        // (Output) Pointer to size in bytes of the serialized call stack.
+        result_size_ptr: u32,
+    ) -> Result<Result<(), ApiError>, Trap> {
+        if !self.can_write_to_host_buffer() {
+            // Exit early if the host buffer is already occupied
+            return Ok(Err(ApiError::HostBufferFull));
+        }
+
+        let caller_info = match CallerInformation::try_from(information) {
+            Ok(info) => info,
+            Err(error) => return Ok(Err(error)),
+        };
+
+        let caller = match caller_info {
+            CallerInformation::Initiator => {
+                let initiator_account_hash = self.context.get_caller();
+                &vec![Caller::initiator(initiator_account_hash)]
+            }
+            CallerInformation::Immediate => {
+                match self.get_immediate_caller() {
+                    Some(frame) => &vec![*frame],
+                    None => return Ok(Err(ApiError::Unhandled))
+                }
+            }
+            CallerInformation::FullCallChain => {
+                match self.try_get_stack() {
+                    Ok(call_stack) => call_stack.call_stack_elements(),
+                    Err(_) => return Ok(Err(ApiError::Unhandled)),
+                }
+            }
+        };
+
+        let call_stack_len: u32 = match caller.len().try_into() {
+            Ok(value) => value,
+            Err(_) => return Ok(Err(ApiError::OutOfMemory)),
+        };
+        let call_stack_len_bytes = call_stack_len.to_le_bytes();
+
+        if let Err(error) = self
+            .try_get_memory()?
+            .set(call_stack_len_ptr, &call_stack_len_bytes)
+        {
+            return Err(ExecError::Interpreter(error.into()).into());
+        }
+
+        if call_stack_len == 0 {
+            return Ok(Ok(()));
+        }
+
+        let call_stack_cl_value = CLValue::from_t(caller).map_err(ExecError::CLValue)?;
+
+        let call_stack_cl_value_bytes_len: u32 =
+            match call_stack_cl_value.inner_bytes().len().try_into() {
+                Ok(value) => value,
+                Err(_) => return Ok(Err(ApiError::OutOfMemory)),
+            };
+
+        if let Err(error) = self.write_host_buffer(call_stack_cl_value) {
+            return Ok(Err(error));
+        }
+
+        let call_stack_cl_value_bytes_len_bytes = call_stack_cl_value_bytes_len.to_le_bytes();
+
+        if let Err(error) = self
+            .try_get_memory()?
+            .set(result_size_ptr, &call_stack_cl_value_bytes_len_bytes)
+        {
+            return Err(ExecError::Interpreter(error.into()).into());
+        }
+
+        Ok(Ok(()))
+    }
+
+
     /// Return some bytes from the memory and terminate the current `sub_call`. Note that the return
     /// type is `Trap`, indicating that this function will always kill the current Wasm instance.
     fn ret(&mut self, value_ptr: u32, value_size: usize) -> Trap {
@@ -562,15 +663,15 @@ where
                 ExecError::GasLimit
             }
             ApiError::AuctionError(auction_error)
-                if auction_error == auction::Error::GasLimit as u8 =>
-            {
-                ExecError::GasLimit
-            }
+            if auction_error == auction::Error::GasLimit as u8 =>
+                {
+                    ExecError::GasLimit
+                }
             ApiError::HandlePayment(handle_payment_error)
-                if handle_payment_error == handle_payment::Error::GasLimit as u8 =>
-            {
-                ExecError::GasLimit
-            }
+            if handle_payment_error == handle_payment::Error::GasLimit as u8 =>
+                {
+                    ExecError::GasLimit
+                }
             api_error => ExecError::Revert(api_error),
         }
     }
@@ -857,7 +958,7 @@ where
                     runtime_args,
                     auction::ARG_MINIMUM_DELEGATION_AMOUNT,
                 )?
-                .unwrap_or(global_minimum_delegation_amount);
+                    .unwrap_or(global_minimum_delegation_amount);
 
                 let global_maximum_delegation_amount =
                     self.context.engine_config().maximum_delegation_amount();
@@ -865,7 +966,7 @@ where
                     runtime_args,
                     auction::ARG_MAXIMUM_DELEGATION_AMOUNT,
                 )?
-                .unwrap_or(global_maximum_delegation_amount);
+                    .unwrap_or(global_maximum_delegation_amount);
 
                 if minimum_delegation_amount < global_minimum_delegation_amount
                     || maximum_delegation_amount > global_maximum_delegation_amount
@@ -1071,7 +1172,7 @@ where
         let engine_config = self.context.engine_config();
         let wasm_config = engine_config.wasm_config();
         #[cfg(feature = "test-support")]
-        let max_stack_height = wasm_config.max_stack_height;
+            let max_stack_height = wasm_config.max_stack_height;
         let module = wasm_prep::preprocess(*wasm_config, module_bytes)?;
         let (instance, memory) =
             utils::instance_and_memory(module.clone(), protocol_version, engine_config)?;
@@ -2505,9 +2606,9 @@ where
         if !allow_unrestricted_transfers
             && self.context.get_caller() != PublicKey::System.to_account_hash()
             && !self
-                .context
-                .engine_config()
-                .is_administrator(&self.context.get_caller())
+            .context
+            .engine_config()
+            .is_administrator(&self.context.get_caller())
             && !self.context.engine_config().is_administrator(&target)
         {
             return Err(ExecError::DisabledUnrestrictedTransfers);
@@ -3165,8 +3266,8 @@ where
         host_function: &HostFunction<T>,
         weights: T,
     ) -> Result<(), Trap>
-    where
-        T: AsRef<[HostFunctionCost]> + Copy,
+        where
+            T: AsRef<[HostFunctionCost]> + Copy,
     {
         let cost = host_function.calculate_gas_cost(weights);
         self.gas(cost)?;
@@ -3458,7 +3559,7 @@ where
                 let (prev_block_time, prev_count): (BlockTime, u64) = CLValue::into_t(
                     CLValue::try_from(stored_value).map_err(ExecError::TypeMismatch)?,
                 )
-                .map_err(ExecError::CLValue)?;
+                    .map_err(ExecError::CLValue)?;
                 if prev_block_time == current_blocktime {
                     prev_count
                 } else {

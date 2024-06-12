@@ -21,8 +21,8 @@ use super::{args::Args, ExecError, Runtime};
 use crate::resolvers::v1_function_index::FunctionIndex;
 
 impl<'a, R> Externals for Runtime<'a, R>
-where
-    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
+    where
+        R: StateReader<Key, StoredValue, Error=GlobalStateError>,
 {
     fn invoke_index(
         &mut self,
@@ -174,7 +174,7 @@ where
 
             FunctionIndex::GetCallerIndex => {
                 // args(0) = pointer where a size of serialized bytes will be stored
-                let (output_size,) = Args::parse(args)?;
+                let (output_size, ) = Args::parse(args)?;
                 self.charge_host_function_call(&host_function_costs.get_caller, [output_size])?;
                 let ret = self.get_caller(output_size)?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
@@ -182,14 +182,14 @@ where
 
             FunctionIndex::GetBlocktimeIndex => {
                 // args(0) = pointer to Wasm memory where to write.
-                let (dest_ptr,) = Args::parse(args)?;
+                let (dest_ptr, ) = Args::parse(args)?;
                 self.charge_host_function_call(&host_function_costs.get_blocktime, [dest_ptr])?;
                 self.get_blocktime(dest_ptr)?;
                 Ok(None)
             }
 
             FunctionIndex::GasFuncIndex => {
-                let (gas_arg,): (u32,) = Args::parse(args)?;
+                let (gas_arg, ): (u32, ) = Args::parse(args)?;
                 // Gas is special cased internal host function and for accounting purposes it isn't
                 // represented in protocol data.
                 self.gas(Gas::new(gas_arg))?;
@@ -211,7 +211,7 @@ where
 
             FunctionIndex::RevertFuncIndex => {
                 // args(0) = status u32
-                let (status,) = Args::parse(args)?;
+                let (status, ) = Args::parse(args)?;
                 self.charge_host_function_call(&host_function_costs.revert, [status])?;
                 Err(self.revert(status))
             }
@@ -498,7 +498,7 @@ where
 
             FunctionIndex::GetPhaseIndex => {
                 // args(0) = pointer to Wasm memory where to write.
-                let (dest_ptr,) = Args::parse(args)?;
+                let (dest_ptr, ) = Args::parse(args)?;
                 self.charge_host_function_call(&host_function_costs.get_phase, [dest_ptr])?;
                 self.get_phase(dest_ptr)?;
                 Ok(None)
@@ -519,7 +519,7 @@ where
 
             FunctionIndex::GetMainPurseIndex => {
                 // args(0) = pointer to Wasm memory where to write.
-                let (dest_ptr,) = Args::parse(args)?;
+                let (dest_ptr, ) = Args::parse(args)?;
                 self.charge_host_function_call(&host_function_costs.get_main_purse, [dest_ptr])?;
                 self.get_main_purse(dest_ptr)?;
                 Ok(None)
@@ -668,11 +668,11 @@ where
                 // limits.
                 let message_limits = self.context.engine_config().wasm_config().messages_limits();
                 for (topic_name, _) in
-                    message_topics
-                        .iter()
-                        .filter(|(_, operation)| match operation {
-                            MessageTopicOperation::Add => true,
-                        })
+                message_topics
+                    .iter()
+                    .filter(|(_, operation)| match operation {
+                        MessageTopicOperation::Add => true,
+                    })
                 {
                     if topic_name.len() > message_limits.max_topic_name_size() as usize {
                         return Ok(Some(RuntimeValue::I32(api_error::i32_from(Err(
@@ -962,7 +962,7 @@ where
 
             FunctionIndex::NewDictionaryFuncIndex => {
                 // args(0) = pointer to output size (output param)
-                let (output_size_ptr,): (u32,) = Args::parse(args)?;
+                let (output_size_ptr, ): (u32, ) = Args::parse(args)?;
 
                 // TODO - dynamically calculate the size of the new data.  Currently using
                 //        hard-coded 33 which is correct as of now.
@@ -1044,6 +1044,19 @@ where
                     [call_stack_len_ptr, result_size_ptr],
                 )?;
                 let ret = self.load_call_stack(call_stack_len_ptr, result_size_ptr)?;
+                Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
+            }
+
+            FunctionIndex::LoadCallerInformation => {
+                // args(0) (Input) Type of action
+                // args(1) (Output) Pointer to number of elements in the call stack.
+                // args(2) (Output) Pointer to size in bytes of the serialized call stack.
+                let (action, call_stack_len_ptr, result_size_ptr) = Args::parse(args)?;
+                self.charge_host_function_call(
+                    &HostFunction::fixed(10_000),
+                    [call_stack_len_ptr, result_size_ptr],
+                )?;
+                let ret = self.load_caller_information(action, call_stack_len_ptr, result_size_ptr)?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }
 
