@@ -174,15 +174,9 @@ fn create_contract(
         runtime::put_key(&uref_name, access_uref.into());
     };
 
-    let named_keys = match named_keys {
-        Some(named_keys) => named_keys,
-        None => NamedKeys::new(),
-    };
+    let named_keys = named_keys.unwrap_or_else(|| NamedKeys::new());
 
-    let message_topics = match message_topics {
-        Some(message_topics) => message_topics,
-        None => BTreeMap::new(),
-    };
+    let message_topics = message_topics.unwrap_or_else(|| BTreeMap::new());
 
     add_contract_version(
         contract_package_hash,

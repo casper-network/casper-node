@@ -189,11 +189,8 @@ impl BuilderExt for LmdbWasmTestBuilder {
             )
             .unwrap();
 
-        let foo = cl_value.into_cl_value();
-
-        println!("{:?}", foo);
-
-        let stack_elements = foo
+        let stack_elements = cl_value
+            .into_cl_value()
             .map(CLValue::into_t::<Vec<CallStackElement>>)
             .unwrap()
             .unwrap();
