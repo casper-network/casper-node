@@ -218,10 +218,7 @@ mod tests {
 
     #[proptest]
     fn hex_roundtrip_sanity(input: Vec<u8>) {
-        prop_assert!(matches!(
-            decode(encode_iter(&input).collect::<String>()),
-            Ok(_)
-        ))
+        prop_assert!(decode(encode_iter(&input).collect::<String>()).is_ok())
     }
 
     #[proptest]

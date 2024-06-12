@@ -1,9 +1,11 @@
+use std::iter;
+
 use prometheus::Registry;
 use rand::{seq::SliceRandom, Rng};
 
 use casper_types::{
-    testing::TestRng, Deploy, EraId, TestBlockBuilder, TimeDiff, Transaction, TransactionConfig,
-    TransactionV1, TransactionV1Config,
+    testing::TestRng, Deploy, EraId, SecretKey, TestBlockBuilder, TimeDiff, Transaction,
+    TransactionConfig, TransactionV1, TransactionV1Config, DEFAULT_LARGE_TRANSACTION_GAS_LIMIT,
 };
 
 use super::*;
@@ -15,6 +17,7 @@ use crate::{
 };
 
 const ERA_ONE: EraId = EraId::new(1u64);
+const GAS_PRICE_TOLERANCE: u8 = 1;
 const DEFAULT_MINIMUM_GAS_PRICE: u8 = 1;
 const LARGE_LANE_ID: u8 = 3;
 
@@ -26,7 +29,6 @@ fn get_appendable_block(
 ) {
     let transactions: Vec<_> = categories
         .take(transaction_limit)
-        .into_iter()
         .map(|category| create_valid_transaction(rng, category, None, None))
         .collect();
     transactions
@@ -35,7 +37,9 @@ fn get_appendable_block(
     assert_container_sizes(transaction_buffer, transactions.len(), 0, 0);
 
     // now check how many transfers were added in the block; should not exceed the config limits.
-    let appendable_block = transaction_buffer.appendable_block(Timestamp::now(), ERA_ONE);
+    let timestamp = Timestamp::now();
+    let expiry = timestamp.saturating_add(TimeDiff::from_seconds(1));
+    let appendable_block = transaction_buffer.appendable_block(Timestamp::now(), ERA_ONE, expiry);
     assert!(appendable_block.transaction_hashes().len() <= transaction_limit);
     assert_eq!(transaction_buffer.hold.len(), 1);
     assert_container_sizes(
@@ -99,20 +103,6 @@ fn create_valid_transaction(
     }
 }
 
-fn create_invalid_transactions(
-    rng: &mut TestRng,
-    transaction_category: u8,
-    size: usize,
-) -> Vec<Transaction> {
-    (0..size)
-        .map(|_| {
-            let mut transaction = create_valid_transaction(rng, transaction_category, None, None);
-            transaction.invalidate();
-            transaction
-        })
-        .collect()
-}
-
 /// Checks sizes of the transaction_buffer containers. Also checks the metrics recorded.
 #[track_caller]
 fn assert_container_sizes(
@@ -124,36 +114,47 @@ fn assert_container_sizes(
     assert_eq!(
         transaction_buffer.buffer.len(),
         expected_buffer,
-        "wrong `buffer` length"
+        "buffer.len {} != expected {}",
+        transaction_buffer.buffer.len(),
+        expected_buffer
     );
     assert_eq!(
         transaction_buffer.dead.len(),
         expected_dead,
-        "wrong `dead` length"
+        "dead.len {} != expected {}",
+        transaction_buffer.dead.len(),
+        expected_dead
     );
+    let hold_len = transaction_buffer
+        .hold
+        .values()
+        .map(|transactions| transactions.len())
+        .sum::<usize>();
     assert_eq!(
-        transaction_buffer
-            .hold
-            .values()
-            .map(|transactions| transactions.len())
-            .sum::<usize>(),
-        expected_held,
-        "wrong `hold` length"
+        hold_len, expected_held,
+        "hold.len {} != expected {}",
+        hold_len, expected_held,
     );
     assert_eq!(
         transaction_buffer.metrics.total_transactions.get(),
         expected_buffer as i64,
-        "wrong `metrics.total_transactions`"
+        "metrics total {} != expected {}",
+        transaction_buffer.metrics.total_transactions.get(),
+        expected_buffer,
     );
     assert_eq!(
         transaction_buffer.metrics.held_transactions.get(),
         expected_held as i64,
-        "wrong `metrics.held_transactions`"
+        "metrics held {} != expected {}",
+        transaction_buffer.metrics.held_transactions.get(),
+        expected_held,
     );
     assert_eq!(
         transaction_buffer.metrics.dead_transactions.get(),
         expected_dead as i64,
-        "wrong `metrics.dead_transactions`"
+        "metrics dead {} != expected {}",
+        transaction_buffer.metrics.dead_transactions.get(),
+        expected_dead,
     );
 }
 
@@ -184,15 +185,6 @@ fn register_transaction_and_check_size() {
             .map(|_| create_valid_transaction(&mut rng, category, None, None))
             .collect();
         valid_transactions
-            .iter()
-            .for_each(|transaction| transaction_buffer.register_transaction(transaction.clone()));
-        assert_container_sizes(&transaction_buffer, valid_transactions.len(), 0, 0);
-
-        // Try to register invalid transactions
-        let num_invalid_transactions: usize = rng.gen_range(10..100);
-        let invalid_transactions =
-            create_invalid_transactions(&mut rng, category, num_invalid_transactions);
-        invalid_transactions
             .iter()
             .for_each(|transaction| transaction_buffer.register_transaction(transaction.clone()));
         assert_container_sizes(&transaction_buffer, valid_transactions.len(), 0, 0);
@@ -320,8 +312,11 @@ fn get_proposable_transactions() {
             assert!(proposable_transaction_hashes.contains(&transaction.hash()));
         }
 
-        // Get an appendable block. This should put the transactions on hold.
-        let appendable_block = transaction_buffer.appendable_block(Timestamp::now(), ERA_ONE);
+        // Get an appendable block. This should put the deploys on hold.
+        let timestamp = Timestamp::now();
+        let expiry = timestamp.saturating_add(TimeDiff::from_seconds(1));
+        let appendable_block =
+            transaction_buffer.appendable_block(Timestamp::now(), ERA_ONE, expiry);
         assert_eq!(transaction_buffer.hold.len(), 1);
         assert_container_sizes(
             &transaction_buffer,
@@ -530,10 +525,10 @@ fn block_fully_saturated() {
     // Try to register 10 more transactions per each category as allowed by the config.
     let (transfers, stakings, install_upgrades, standards) = generate_and_register_transactions(
         &mut transaction_buffer,
-        max_transfers + 10,
-        max_staking + 10,
-        max_install_upgrade + 10,
-        max_standard + 10,
+        max_transfers + 20,
+        max_staking + 20,
+        max_install_upgrade + 20,
+        max_standard + 20,
         &mut rng,
     );
     let (transfers_hashes, stakings_hashes, install_upgrades_hashes, standards_hashes) = (
@@ -558,11 +553,17 @@ fn block_fully_saturated() {
     // Check that we really generated the required number of transactions.
     assert_eq!(
         transfers.len() + stakings.len() + install_upgrades.len() + standards.len(),
-        total_allowed as usize + 10 * 4
+        total_allowed as usize + 20 * 4
     );
 
     // Ensure that only 'total_allowed' transactions are proposed.
-    let appendable_block = transaction_buffer.appendable_block(Timestamp::now(), ERA_ONE);
+    let timestamp = Timestamp::now();
+    let expiry = timestamp.saturating_add(TimeDiff::from_seconds(1));
+    let appendable_block = transaction_buffer.appendable_block(Timestamp::now(), ERA_ONE, expiry);
+    assert_eq!(
+        appendable_block.transaction_hashes().len(),
+        total_allowed as usize
+    );
 
     // Assert the number of proposed transaction types, block should be fully saturated.
     let mut proposed_transfers = 0;
@@ -681,7 +682,9 @@ fn block_not_fully_saturated() {
     );
 
     // Ensure that not more than 'total_allowed' transactions are proposed.
-    let appendable_block = transaction_buffer.appendable_block(Timestamp::now(), ERA_ONE);
+    let timestamp = Timestamp::now();
+    let expiry = timestamp.saturating_add(TimeDiff::from_seconds(1));
+    let appendable_block = transaction_buffer.appendable_block(Timestamp::now(), ERA_ONE, expiry);
     assert!(appendable_block.transaction_hashes().len() <= total_allowed as usize);
 
     // Assert the number of proposed transaction types, block should not be fully saturated.
@@ -811,7 +814,9 @@ fn register_transactions_and_blocks() {
     let pre_proposal_timestamp = Timestamp::now();
 
     // get an appendable block. This should put the transactions on hold.
-    let appendable_block = transaction_buffer.appendable_block(Timestamp::now(), ERA_ONE);
+    let timestamp = Timestamp::now();
+    let expiry = timestamp.saturating_add(TimeDiff::from_seconds(1));
+    let appendable_block = transaction_buffer.appendable_block(Timestamp::now(), ERA_ONE, expiry);
     assert_eq!(transaction_buffer.hold.len(), 1);
     assert_container_sizes(
         &transaction_buffer,
@@ -920,6 +925,9 @@ async fn expire_transactions_and_check_announcement_when_transactions_are_of_one
             &Registry::new(),
         )
         .unwrap();
+        transaction_buffer
+            .prices
+            .insert(ERA_ONE, DEFAULT_MINIMUM_GAS_PRICE);
 
         let reactor = MockReactor::new();
         let event_queue_handle = EventQueueHandle::without_shutdown(reactor.scheduler);
@@ -997,6 +1005,9 @@ async fn expire_transactions_and_check_announcement_when_transactions_are_of_ran
         &Registry::new(),
     )
     .unwrap();
+    transaction_buffer
+        .prices
+        .insert(ERA_ONE, DEFAULT_MINIMUM_GAS_PRICE);
 
     let reactor = MockReactor::new();
     let event_queue_handle = EventQueueHandle::without_shutdown(reactor.scheduler);
@@ -1067,4 +1078,430 @@ async fn expire_transactions_and_check_announcement_when_transactions_are_of_ran
 
     // the valid transactions should still be in the buffer
     assert_container_sizes(&transaction_buffer, transactions.len(), 0, 0);
+}
+
+fn make_test_chainspec(max_standard_count: u64, max_mint_count: u64) -> Arc<Chainspec> {
+    // These tests uses legacy deploys which always go on the Large lane
+    const WASM_LANE: u64 = 3; // Large
+    let large_lane = vec![
+        WASM_LANE,
+        1_048_576,
+        1024,
+        DEFAULT_LARGE_TRANSACTION_GAS_LIMIT,
+        max_standard_count,
+    ];
+    let transaction_v1_config = TransactionV1Config {
+        native_mint_lane: vec![0, 1024, 1024, 65_000_000_000, max_mint_count],
+        wasm_lanes: vec![large_lane],
+        ..Default::default()
+    };
+    let transaction_config = TransactionConfig {
+        transaction_v1_config,
+        block_max_approval_count: (max_standard_count + max_mint_count) as u32,
+        ..Default::default()
+    };
+    Arc::new(Chainspec {
+        transaction_config,
+        ..Default::default()
+    })
+}
+
+#[test]
+fn should_have_one_bucket_per_distinct_body_hash() {
+    let mut rng = TestRng::new();
+    let max_standard_count = 2;
+    let max_mint_count = 0;
+
+    let chainspec = make_test_chainspec(max_standard_count, max_mint_count);
+
+    let mut transaction_buffer =
+        TransactionBuffer::new(chainspec, Config::default(), &Registry::new()).unwrap();
+    transaction_buffer
+        .prices
+        .insert(ERA_ONE, DEFAULT_MINIMUM_GAS_PRICE);
+
+    let secret_key1 = SecretKey::random(&mut rng);
+    let ttl = TimeDiff::from_seconds(30);
+    let deploy1 = Deploy::random_contract_by_name(
+        &mut rng,
+        Some(secret_key1),
+        None,
+        None,
+        Some(Timestamp::now()),
+        Some(ttl),
+    );
+    let deploy1_body_hash = *deploy1.header().body_hash();
+    transaction_buffer.register_transaction(deploy1.into());
+
+    let secret_key2 = SecretKey::random(&mut rng); // different signer
+    let deploy2 = Deploy::random_contract_by_name(
+        &mut rng,
+        Some(
+            SecretKey::from_pem(secret_key2.to_pem().expect("should pemify"))
+                .expect("should un-pemify"),
+        ),
+        None,
+        None,
+        Some(Timestamp::now()), // different timestamp
+        Some(ttl),
+    );
+    assert_eq!(
+        &deploy1_body_hash,
+        deploy2.header().body_hash(),
+        "1 & 2 should have same body hashes"
+    );
+    transaction_buffer.register_transaction(deploy2.into());
+
+    let buckets = transaction_buffer.buckets(GAS_PRICE_TOLERANCE);
+    assert!(buckets.len() == 1, "should be 1 bucket");
+
+    let deploy3 = Deploy::random_contract_by_name(
+        &mut rng,
+        Some(
+            SecretKey::from_pem(secret_key2.to_pem().expect("should pemify"))
+                .expect("should un-pemify"),
+        ),
+        None,
+        None,
+        Some(Timestamp::now()), // different timestamp
+        Some(ttl),
+    );
+    assert_eq!(
+        &deploy1_body_hash,
+        deploy3.header().body_hash(),
+        "1 & 3 should have same body hashes"
+    );
+    transaction_buffer.register_transaction(deploy3.into());
+    let buckets = transaction_buffer.buckets(GAS_PRICE_TOLERANCE);
+    assert!(buckets.len() == 1, "should still be 1 bucket");
+
+    let deploy4 = Deploy::random_contract_by_name(
+        &mut rng,
+        Some(
+            SecretKey::from_pem(secret_key2.to_pem().expect("should pemify"))
+                .expect("should un-pemify"),
+        ),
+        Some("some other contract name".to_string()),
+        None,
+        Some(Timestamp::now()), // different timestamp
+        Some(ttl),
+    );
+    assert_ne!(
+        &deploy1_body_hash,
+        deploy4.header().body_hash(),
+        "1 & 4 should have different body hashes"
+    );
+    transaction_buffer.register_transaction(deploy4.into());
+    let buckets = transaction_buffer.buckets(GAS_PRICE_TOLERANCE);
+    assert!(buckets.len() == 2, "should be 2 buckets");
+
+    let transfer5 = Deploy::random_valid_native_transfer_with_timestamp_and_ttl(
+        &mut rng,
+        Timestamp::now(),
+        ttl,
+    );
+    assert_ne!(
+        &deploy1_body_hash,
+        transfer5.header().body_hash(),
+        "1 & 5 should have different body hashes"
+    );
+    transaction_buffer.register_transaction(transfer5.into());
+    let buckets = transaction_buffer.buckets(GAS_PRICE_TOLERANCE);
+    assert!(buckets.len() == 3, "should be 3 buckets");
+}
+
+#[test]
+fn should_have_diverse_proposable_blocks_with_stocked_buffer() {
+    let rng = &mut TestRng::new();
+    let max_standard_count = 50;
+    let max_mint_count = 5;
+    let chainspec = make_test_chainspec(max_standard_count, max_mint_count);
+    let mut transaction_buffer =
+        TransactionBuffer::new(chainspec, Config::default(), &Registry::new()).unwrap();
+    transaction_buffer
+        .prices
+        .insert(ERA_ONE, DEFAULT_MINIMUM_GAS_PRICE);
+
+    let cap = (max_standard_count * 100) as usize;
+
+    let secret_keys: Vec<SecretKey> = iter::repeat_with(|| SecretKey::random(rng))
+        .take(10)
+        .collect();
+
+    let contract_names = ["a", "b", "c", "d", "e"];
+    let contract_entry_points = ["foo", "bar"];
+
+    fn ttl(rng: &mut TestRng) -> TimeDiff {
+        TimeDiff::from_seconds(rng.gen_range(60..3600))
+    }
+
+    let mut last_timestamp = Timestamp::now();
+    for i in 0..cap {
+        let ttl = ttl(rng);
+        let secret_key = Some(
+            SecretKey::from_pem(
+                secret_keys[rng.gen_range(0..secret_keys.len())]
+                    .to_pem()
+                    .expect("should pemify"),
+            )
+            .expect("should un-pemify"),
+        );
+        let contract_name = Some(contract_names[rng.gen_range(0..contract_names.len())].into());
+        let contract_entry_point =
+            Some(contract_entry_points[rng.gen_range(0..contract_entry_points.len())].into());
+        let deploy = Deploy::random_contract_by_name(
+            rng,
+            secret_key,
+            contract_name,
+            contract_entry_point,
+            Some(last_timestamp),
+            Some(ttl),
+        );
+        transaction_buffer.register_transaction(deploy.into());
+        assert_eq!(
+            transaction_buffer.buffer.len(),
+            i + 1,
+            "failed to buffer deploy {i}"
+        );
+        last_timestamp += TimeDiff::from_millis(1);
+    }
+
+    for i in 0..max_mint_count {
+        let ttl = ttl(rng);
+        transaction_buffer.register_transaction(
+            Deploy::random_valid_native_transfer_with_timestamp_and_ttl(rng, last_timestamp, ttl)
+                .into(),
+        );
+        assert_eq!(
+            transaction_buffer.buffer.len(),
+            i as usize + 1 + cap,
+            "failed to buffer transfer {i}"
+        );
+        last_timestamp += TimeDiff::from_millis(1);
+    }
+
+    let expected_count = cap + (max_mint_count as usize);
+    assert_container_sizes(&transaction_buffer, expected_count, 0, 0);
+
+    let buckets1: HashMap<_, _> = transaction_buffer
+        .buckets(GAS_PRICE_TOLERANCE)
+        .into_iter()
+        .map(|(digest, footprints)| {
+            (
+                *digest,
+                footprints
+                    .into_iter()
+                    .map(|(hash, footprint)| (hash, footprint.clone()))
+                    .collect_vec(),
+            )
+        })
+        .collect();
+    assert!(
+        buckets1.len() > 1,
+        "should be multiple buckets with this much state"
+    );
+    let buckets2: HashMap<_, _> = transaction_buffer
+        .buckets(GAS_PRICE_TOLERANCE)
+        .into_iter()
+        .map(|(digest, footprints)| {
+            (
+                *digest,
+                footprints
+                    .into_iter()
+                    .map(|(hash, footprint)| (hash, footprint.clone()))
+                    .collect_vec(),
+            )
+        })
+        .collect();
+
+    assert_eq!(
+        buckets1, buckets2,
+        "with same state should get same buckets every time"
+    );
+
+    // while it is not impossible to get identical appendable blocks over an unchanged buffer
+    // using this strategy, it should be very unlikely...the below brute forces a check for this
+    let expected_eq_tolerance = 1;
+    let mut actual_eq_count = 0;
+    let expiry = last_timestamp.saturating_add(TimeDiff::from_seconds(120));
+    for _ in 0..10 {
+        let appendable1 = transaction_buffer.appendable_block(last_timestamp, ERA_ONE, expiry);
+        let appendable2 = transaction_buffer.appendable_block(last_timestamp, ERA_ONE, expiry);
+        if appendable1 == appendable2 {
+            actual_eq_count += 1;
+        }
+    }
+    assert!(
+        actual_eq_count <= expected_eq_tolerance,
+        "{} matches exceeded tolerance of {}",
+        actual_eq_count,
+        expected_eq_tolerance
+    );
+}
+
+#[test]
+fn should_be_empty_if_no_time_until_expiry() {
+    let mut rng = TestRng::new();
+    let max_standard_count = 1;
+    let max_mint_count = 1;
+    let chainspec = make_test_chainspec(max_standard_count, max_mint_count);
+    let mut transaction_buffer =
+        TransactionBuffer::new(chainspec, Config::default(), &Registry::new()).unwrap();
+    transaction_buffer
+        .prices
+        .insert(ERA_ONE, DEFAULT_MINIMUM_GAS_PRICE);
+
+    let secret_key1 = SecretKey::random(&mut rng);
+    let ttl = TimeDiff::from_seconds(30);
+    let deploy1 = Deploy::random_contract_by_name(
+        &mut rng,
+        Some(secret_key1),
+        None,
+        None,
+        Some(Timestamp::now()),
+        Some(ttl),
+    );
+    let deploy1_body_hash = *deploy1.header().body_hash();
+    transaction_buffer.register_transaction(deploy1.into());
+
+    let buckets = transaction_buffer.buckets(GAS_PRICE_TOLERANCE);
+    assert!(buckets.len() == 1, "should be 1 buckets");
+
+    let transfer2 = Deploy::random_valid_native_transfer_with_timestamp_and_ttl(
+        &mut rng,
+        Timestamp::now(),
+        ttl,
+    );
+    assert_ne!(
+        &deploy1_body_hash,
+        transfer2.header().body_hash(),
+        "1 & 2 should have different body hashes"
+    );
+    transaction_buffer.register_transaction(transfer2.into());
+    let buckets = transaction_buffer.buckets(GAS_PRICE_TOLERANCE);
+    assert!(buckets.len() == 2, "should be 2 buckets");
+
+    let timestamp = Timestamp::now();
+    let appendable = transaction_buffer.appendable_block(timestamp, ERA_ONE, timestamp);
+    let count = appendable.transaction_count();
+    assert!(count == 0, "expected 0 found {}", count);
+
+    // logic should tolerate invalid expiry
+    let appendable = transaction_buffer.appendable_block(
+        timestamp,
+        ERA_ONE,
+        timestamp.saturating_sub(TimeDiff::from_millis(1)),
+    );
+    let count = appendable.transaction_count();
+    assert!(count == 0, "expected 0 found {}", count);
+}
+
+fn register_random_deploys_unique_hashes(
+    transaction_buffer: &mut TransactionBuffer,
+    num_deploys: usize,
+    rng: &mut TestRng,
+) {
+    let deploys = std::iter::repeat_with(|| {
+        let name = format!("{}", rng.gen::<u64>());
+        let call = format!("{}", rng.gen::<u64>());
+        Deploy::random_contract_by_name(
+            rng,
+            None,
+            Some(name),
+            Some(call),
+            Some(Timestamp::now()), // different timestamp
+            None,
+        )
+    })
+    .take(num_deploys);
+    for deploy in deploys {
+        transaction_buffer.register_transaction(deploy.into());
+    }
+}
+
+fn register_random_deploys_same_hash(
+    transaction_buffer: &mut TransactionBuffer,
+    num_deploys: usize,
+    rng: &mut TestRng,
+) {
+    let deploys = std::iter::repeat_with(|| {
+        let name = "test".to_owned();
+        let call = "test".to_owned();
+        Deploy::random_contract_by_name(
+            rng,
+            None,
+            Some(name),
+            Some(call),
+            Some(Timestamp::now()), // different timestamp
+            None,
+        )
+    })
+    .take(num_deploys);
+    for deploy in deploys {
+        transaction_buffer.register_transaction(deploy.into());
+    }
+}
+
+#[test]
+fn test_buckets_single_hash() {
+    let mut rng = TestRng::new();
+    let max_standard_count = 100;
+    let max_mint_count = 1000;
+    let chainspec = make_test_chainspec(max_standard_count, max_mint_count);
+    let mut transaction_buffer =
+        TransactionBuffer::new(chainspec, Config::default(), &Registry::new()).unwrap();
+    transaction_buffer
+        .prices
+        .insert(ERA_ONE, DEFAULT_MINIMUM_GAS_PRICE);
+
+    register_random_deploys_same_hash(&mut transaction_buffer, 64000, &mut rng);
+
+    let _block = transaction_buffer.appendable_block(
+        Timestamp::now(),
+        ERA_ONE,
+        Timestamp::now() + TimeDiff::from_millis(16384 / 6),
+    );
+}
+
+#[test]
+fn test_buckets_unique_hashes() {
+    let mut rng = TestRng::new();
+    let max_standard_count = 100;
+    let max_mint_count = 1000;
+    let chainspec = make_test_chainspec(max_standard_count, max_mint_count);
+    let mut transaction_buffer =
+        TransactionBuffer::new(chainspec, Config::default(), &Registry::new()).unwrap();
+    transaction_buffer
+        .prices
+        .insert(ERA_ONE, DEFAULT_MINIMUM_GAS_PRICE);
+
+    register_random_deploys_unique_hashes(&mut transaction_buffer, 64000, &mut rng);
+
+    let _block = transaction_buffer.appendable_block(
+        Timestamp::now(),
+        ERA_ONE,
+        Timestamp::now() + TimeDiff::from_millis(16384 / 6),
+    );
+}
+
+#[test]
+fn test_buckets_mixed_load() {
+    let mut rng = TestRng::new();
+    let max_standard_count = 100;
+    let max_mint_count = 1000;
+    let chainspec = make_test_chainspec(max_standard_count, max_mint_count);
+    let mut transaction_buffer =
+        TransactionBuffer::new(chainspec, Config::default(), &Registry::new()).unwrap();
+    transaction_buffer
+        .prices
+        .insert(ERA_ONE, DEFAULT_MINIMUM_GAS_PRICE);
+
+    register_random_deploys_unique_hashes(&mut transaction_buffer, 60000, &mut rng);
+    register_random_deploys_same_hash(&mut transaction_buffer, 4000, &mut rng);
+
+    let _block = transaction_buffer.appendable_block(
+        Timestamp::now(),
+        ERA_ONE,
+        Timestamp::now() + TimeDiff::from_millis(16384 / 6),
+    );
 }

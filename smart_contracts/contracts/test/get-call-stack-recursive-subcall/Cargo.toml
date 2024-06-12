@@ -2,7 +2,7 @@
 name = "get-call-stack-recursive-subcall"
 version = "0.1.0"
 authors = ["Daniel Werner <dan@casperlabs.io>"]
-edition = "2018"
+edition = "2021"
 
 [[bin]]
 name = "get_call_stack_recursive_subcall"

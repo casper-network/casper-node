@@ -48,7 +48,7 @@ impl From<StoredValue> for TransformInstruction {
 ///
 /// Note that all arithmetic variants of `TransformKindV2` are commutative which means that a given
 /// collection of them can be executed in any order to produce the same end result.
-#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug, Default)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
@@ -56,6 +56,7 @@ pub enum TransformKindV2 {
     /// An identity transformation that does not modify a value in the global state.
     ///
     /// Created as a result of reading from the global state.
+    #[default]
     Identity,
     /// Writes a new value in the global state.
     Write(StoredValue),

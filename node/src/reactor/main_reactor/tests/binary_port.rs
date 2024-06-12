@@ -9,10 +9,10 @@ use std::{
 use casper_binary_port::{
     BalanceResponse, BinaryMessage, BinaryMessageCodec, BinaryRequest, BinaryRequestHeader,
     BinaryResponse, BinaryResponseAndRequest, ConsensusStatus, ConsensusValidatorChanges,
-    DictionaryItemIdentifier, DictionaryQueryResult, ErrorCode, GetRequest, GetTrieFullResult,
-    GlobalStateQueryResult, GlobalStateRequest, InformationRequest, InformationRequestTag,
-    KeyPrefix, LastProgress, NetworkName, NodeStatus, PayloadType, PurseIdentifier,
-    ReactorStateName, RecordId, Uptime,
+    DictionaryItemIdentifier, DictionaryQueryResult, EraIdentifier, ErrorCode, GetRequest,
+    GetTrieFullResult, GlobalStateQueryResult, GlobalStateRequest, InformationRequest,
+    InformationRequestTag, KeyPrefix, LastProgress, NetworkName, NodeStatus, PayloadType,
+    PurseIdentifier, ReactorStateName, RecordId, RewardResponse, Uptime,
 };
 use casper_storage::global_state::state::CommitProvider;
 use casper_types::{
@@ -23,8 +23,9 @@ use casper_types::{
     testing::TestRng,
     Account, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockIdentifier,
     BlockSynchronizerStatus, CLValue, CLValueDictionary, ChainspecRawBytes, DictionaryAddr, Digest,
-    EntityAddr, GlobalStateIdentifier, Key, KeyTag, NextUpgrade, Peers, ProtocolVersion, SecretKey,
-    SignedBlock, StoredValue, Transaction, TransactionV1Builder, Transfer, URef, U512,
+    EntityAddr, GlobalStateIdentifier, Key, KeyTag, NextUpgrade, Peers, ProtocolVersion, PublicKey,
+    Rewards, SecretKey, SignedBlock, StoredValue, Transaction, TransactionV1Builder, Transfer,
+    URef, U512,
 };
 use futures::{SinkExt, StreamExt};
 use rand::Rng;
@@ -39,9 +40,9 @@ use crate::{
     types::NodeId,
 };
 
-use super::{InitialStakes, TestFixture};
+use super::{InitialStakes, TestFixture, ERA_ONE};
 
-const GUARANTEED_BLOCK_HEIGHT: u64 = 2;
+const GUARANTEED_BLOCK_HEIGHT: u64 = 4;
 
 const TEST_DICT_NAME: &str = "test_dict";
 const TEST_DICT_ITEM_KEY: &str = "test_key";
@@ -56,6 +57,7 @@ struct TestData {
     test_account_hash: AccountHash,
     test_entity_addr: EntityAddr,
     test_dict_seed_uref: URef,
+    era_one_validator: PublicKey,
 }
 
 fn network_produced_blocks(
@@ -119,6 +121,17 @@ async fn setup() -> (
                 .read_highest_block()
         })
         .expect("should have highest block");
+    let era_end = first_node
+        .main_reactor()
+        .storage()
+        .get_switch_block_by_era_id(&ERA_ONE)
+        .expect("should not fail retrieving switch block")
+        .expect("should have switch block")
+        .clone_era_end()
+        .expect("should have era end");
+    let Rewards::V2(rewards) = era_end.rewards() else {
+        panic!("should have rewards V2");
+    };
 
     let effects = test_effects(&mut rng);
 
@@ -158,6 +171,11 @@ async fn setup() -> (
                 test_account_hash: effects.test_account_hash,
                 test_entity_addr: effects.test_entity_addr,
                 test_dict_seed_uref: effects.test_dict_seed_uref,
+                era_one_validator: rewards
+                    .last_key_value()
+                    .expect("should have at least one reward")
+                    .0
+                    .clone(),
             },
         ),
     )
@@ -287,6 +305,7 @@ async fn binary_port_component_handles_all_requests() {
                 test_account_hash,
                 test_entity_addr,
                 test_dict_seed_uref,
+                era_one_validator,
             },
         ),
     ) = setup().await;
@@ -301,7 +320,7 @@ async fn binary_port_component_handles_all_requests() {
         network_name(),
         consensus_validator_changes(),
         block_synchronizer_status(),
-        available_block_range(),
+        available_block_range(highest_block.height()),
         next_upgrade(),
         consensus_status(),
         chainspec_raw_bytes(network_chainspec_raw_bytes),
@@ -340,6 +359,18 @@ async fn binary_port_component_handles_all_requests() {
         try_accept_transaction(&secret_signing_key),
         get_balance(state_root_hash, test_account_hash),
         get_named_keys_by_prefix(state_root_hash, test_entity_addr),
+        get_reward(
+            Some(EraIdentifier::Era(ERA_ONE)),
+            era_one_validator.clone(),
+            None,
+        ),
+        get_reward(
+            Some(EraIdentifier::Block(BlockIdentifier::Hash(
+                *highest_block.hash(),
+            ))),
+            era_one_validator,
+            None,
+        ),
     ];
 
     for (
@@ -548,18 +579,18 @@ fn block_synchronizer_status() -> TestCase {
     }
 }
 
-fn available_block_range() -> TestCase {
+fn available_block_range(expected_height: u64) -> TestCase {
     TestCase {
         name: "available_block_range",
         request: BinaryRequest::Get(GetRequest::Information {
             info_type_tag: InformationRequestTag::AvailableBlockRange.into(),
             key: vec![],
         }),
-        asserter: Box::new(|response| {
+        asserter: Box::new(move |response| {
             assert_response::<AvailableBlockRange, _>(
                 response,
                 Some(PayloadType::AvailableBlockRange),
-                |abr| abr.low() == 0 && abr.high() >= GUARANTEED_BLOCK_HEIGHT,
+                |abr| abr.low() == 0 && abr.high() >= expected_height,
             )
         }),
     }
@@ -728,7 +759,7 @@ fn get_trie(digest: Digest) -> TestCase {
             assert_response::<GetTrieFullResult, _>(
                 response,
                 Some(PayloadType::GetTrieFullResult),
-                |res| matches!(res.into_inner(), Some(_)),
+                |res| res.into_inner().is_some(),
             )
         }),
     }
@@ -878,6 +909,31 @@ fn get_named_keys_by_prefix(state_root_hash: Digest, entity_addr: EntityAddr) ->
                 Some(PayloadType::StoredValues),
                 |res| res.iter().all(|v| matches!(v, StoredValue::NamedKey(_))),
             )
+        }),
+    }
+}
+
+fn get_reward(
+    era_identifier: Option<EraIdentifier>,
+    validator: PublicKey,
+    delegator: Option<PublicKey>,
+) -> TestCase {
+    let key = InformationRequest::Reward {
+        era_identifier,
+        validator: validator.into(),
+        delegator: delegator.map(Box::new),
+    };
+
+    TestCase {
+        name: "get_reward",
+        request: BinaryRequest::Get(GetRequest::Information {
+            info_type_tag: key.tag().into(),
+            key: key.to_bytes().expect("should serialize key"),
+        }),
+        asserter: Box::new(move |response| {
+            assert_response::<RewardResponse, _>(response, Some(PayloadType::Reward), |reward| {
+                reward.amount() > U512::zero()
+            })
         }),
     }
 }

@@ -75,20 +75,20 @@ impl FinalizedBlock {
         self.transactions
             .get(&MINT_LANE_ID)
             .map(|transactions| transactions.to_vec())
-            .unwrap_or(vec![])
+            .unwrap_or_default()
     }
 
     pub(crate) fn auction(&self) -> Vec<TransactionHash> {
         self.transactions
             .get(&AUCTION_LANE_ID)
             .map(|transactions| transactions.to_vec())
-            .unwrap_or(vec![])
+            .unwrap_or_default()
     }
     pub(crate) fn install_upgrade(&self) -> Vec<TransactionHash> {
         self.transactions
             .get(&INSTALL_UPGRADE_LANE_ID)
             .map(|transactions| transactions.to_vec())
-            .unwrap_or(vec![])
+            .unwrap_or_default()
     }
 
     /// The list of deploy hashes chained with the list of transfer hashes.

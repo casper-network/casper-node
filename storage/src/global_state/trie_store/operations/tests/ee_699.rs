@@ -38,10 +38,16 @@ macro_rules! make_array_newtype {
             }
         }
 
+        // impl Clone for $name {
+        //     fn clone(&self) -> $name {
+        //         let &$name(ref dat) = self;
+        //         $name(dat.clone())
+        //     }
+        // }
+
         impl Clone for $name {
             fn clone(&self) -> $name {
-                let &$name(ref dat) = self;
-                $name(dat.clone())
+                *self
             }
         }
 

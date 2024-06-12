@@ -22,7 +22,7 @@ use crate::{
     speculative_execution_result::SpeculativeExecutionResult,
     type_wrappers::{
         ConsensusStatus, ConsensusValidatorChanges, GetTrieFullResult, LastProgress, NetworkName,
-        ReactorStateName,
+        ReactorStateName, RewardResponse,
     },
     BalanceResponse, DictionaryQueryResult, RecordId, TransactionWithExecutionInfo, Uptime,
 };
@@ -106,6 +106,8 @@ pub enum PayloadType {
     DictionaryQueryResult,
     /// Balance query response.
     BalanceResponse,
+    /// Reward response.
+    Reward,
 }
 
 impl PayloadType {
@@ -132,7 +134,7 @@ impl PayloadType {
 
     #[cfg(test)]
     pub(crate) fn random(rng: &mut TestRng) -> Self {
-        Self::try_from(rng.gen_range(0..37)).unwrap()
+        Self::try_from(rng.gen_range(0..38)).unwrap()
     }
 }
 
@@ -196,6 +198,7 @@ impl TryFrom<u8> for PayloadType {
             }
             x if x == PayloadType::WasmV1Result as u8 => Ok(PayloadType::WasmV1Result),
             x if x == PayloadType::BalanceResponse as u8 => Ok(PayloadType::BalanceResponse),
+            x if x == PayloadType::Reward as u8 => Ok(PayloadType::Reward),
             _ => Err(()),
         }
     }
@@ -249,6 +252,7 @@ impl fmt::Display for PayloadType {
             PayloadType::WasmV1Result => write!(f, "WasmV1Result"),
             PayloadType::DictionaryQueryResult => write!(f, "DictionaryQueryResult"),
             PayloadType::BalanceResponse => write!(f, "BalanceResponse"),
+            PayloadType::Reward => write!(f, "Reward"),
         }
     }
 }
@@ -381,6 +385,10 @@ impl PayloadEntity for ConsensusStatus {
 
 impl PayloadEntity for BalanceResponse {
     const PAYLOAD_TYPE: PayloadType = PayloadType::BalanceResponse;
+}
+
+impl PayloadEntity for RewardResponse {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::Reward;
 }
 
 #[cfg(test)]

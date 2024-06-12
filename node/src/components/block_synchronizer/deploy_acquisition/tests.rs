@@ -14,7 +14,6 @@ use super::*;
 fn gen_test_transactions(rng: &mut TestRng) -> BTreeMap<TransactionHash, Transaction> {
     let num_txns = rng.gen_range(2..15);
     (0..num_txns)
-        .into_iter()
         .map(|_| {
             let transaction = Transaction::random(rng);
             (transaction.hash(), transaction)

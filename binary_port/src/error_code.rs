@@ -186,9 +186,18 @@ pub enum ErrorCode {
     /// the case that nothing else works.
     #[error("the transaction or deploy sent to the network was invalid for an unspecified reason")]
     InvalidTransactionOrDeployUnspecified = 57,
+    /// The switch block for the requested era was not found
+    #[error("the switch block for the requested era was not found")]
+    SwitchBlockNotFound = 58,
+    #[error("the parent of the switch block for the requested era was not found")]
+    /// The parent of the switch block for the requested era was not found
+    SwitchBlockParentNotFound = 59,
+    #[error("cannot serve rewards stored in V1 format")]
+    /// Cannot serve rewards stored in V1 format
+    UnsupportedRewardsV1Request = 60,
     /// Invalid binary port version.
     #[error("binary port version mismatch")]
-    BinaryPortVersionMismatch = 58,
+    BinaryPortVersionMismatch = 61,
 }
 
 impl TryFrom<u16> for ErrorCode {
@@ -254,6 +263,9 @@ impl TryFrom<u16> for ErrorCode {
             55 => Ok(ErrorCode::InvalidTransactionPricingMode),
             56 => Ok(ErrorCode::InvalidTransactionUnspecified),
             57 => Ok(ErrorCode::InvalidTransactionOrDeployUnspecified),
+            58 => Ok(ErrorCode::SwitchBlockNotFound),
+            59 => Ok(ErrorCode::SwitchBlockParentNotFound),
+            60 => Ok(ErrorCode::UnsupportedRewardsV1Request),
             _ => Err(UnknownErrorCode),
         }
     }

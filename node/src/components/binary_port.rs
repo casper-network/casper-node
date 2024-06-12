@@ -11,9 +11,10 @@ use std::{convert::TryFrom, net::SocketAddr, sync::Arc};
 use casper_binary_port::{
     BalanceResponse, BinaryMessage, BinaryMessageCodec, BinaryRequest, BinaryRequestHeader,
     BinaryRequestTag, BinaryResponse, BinaryResponseAndRequest, DictionaryItemIdentifier,
-    DictionaryQueryResult, ErrorCode, GetRequest, GetTrieFullResult, GlobalStateQueryResult,
-    GlobalStateRequest, InformationRequest, InformationRequestTag, KeyPrefix, NodeStatus,
-    PayloadType, PurseIdentifier, ReactorStateName, RecordId, TransactionWithExecutionInfo,
+    DictionaryQueryResult, EraIdentifier, ErrorCode, GetRequest, GetTrieFullResult,
+    GlobalStateQueryResult, GlobalStateRequest, InformationRequest, InformationRequestTag,
+    KeyPrefix, NodeStatus, PayloadType, PurseIdentifier, ReactorStateName, RecordId,
+    RewardResponse, TransactionWithExecutionInfo,
 };
 use casper_storage::{
     data_access_layer::{
@@ -21,16 +22,18 @@ use casper_storage::{
         prefixed_values::{PrefixedValuesRequest, PrefixedValuesResult},
         tagged_values::{TaggedValuesRequest, TaggedValuesResult, TaggedValuesSelection},
         BalanceIdentifier, BalanceRequest, BalanceResult, ProofHandling, ProofsResult,
-        QueryRequest, QueryResult, TrieRequest,
+        QueryRequest, QueryResult, SeigniorageRecipientsRequest, SeigniorageRecipientsResult,
+        TrieRequest,
     },
     global_state::trie::TrieRaw,
+    system::auction,
     KeyPrefix as StorageKeyPrefix,
 };
 use casper_types::{
     addressable_entity::NamedKeyAddr,
     bytesrepr::{self, FromBytes, ToBytes},
     BlockHeader, BlockIdentifier, Chainspec, Digest, EntityAddr, GlobalStateIdentifier, Key, Peers,
-    ProtocolVersion, SignedBlock, StoredValue, TimeDiff, Transaction,
+    ProtocolVersion, Rewards, SignedBlock, StoredValue, TimeDiff, Transaction,
 };
 
 use datasize::DataSize;
@@ -199,7 +202,8 @@ where
             };
             let Some(transfers) = effect_builder
                 .get_block_transfers_from_storage(block_hash)
-                .await else {
+                .await
+            else {
                 return BinaryResponse::new_empty(protocol_version);
             };
             let Ok(serialized) = bincode::serialize(&transfers) else {
@@ -255,8 +259,9 @@ async fn handle_get_items_by_prefix<REv>(
 where
     REv: From<Event> + From<ContractRuntimeRequest> + From<StorageRequest>,
 {
-    let Some(state_root_hash) = resolve_state_root_hash(effect_builder, state_identifier).await else {
-        return BinaryResponse::new_empty(protocol_version)
+    let Some(state_root_hash) = resolve_state_root_hash(effect_builder, state_identifier).await
+    else {
+        return BinaryResponse::new_empty(protocol_version);
     };
     let storage_key_prefix = match key_prefix {
         KeyPrefix::DelegatorBidAddrsByValidator(hash) => {
@@ -297,8 +302,9 @@ async fn handle_get_all_items<REv>(
 where
     REv: From<Event> + From<ContractRuntimeRequest> + From<StorageRequest>,
 {
-    let Some(state_root_hash) = resolve_state_root_hash(effect_builder, state_identifier).await else {
-        return BinaryResponse::new_empty(protocol_version)
+    let Some(state_root_hash) = resolve_state_root_hash(effect_builder, state_identifier).await
+    else {
+        return BinaryResponse::new_empty(protocol_version);
     };
     let request = TaggedValuesRequest::new(state_root_hash, TaggedValuesSelection::All(key_tag));
     match effect_builder.get_tagged_values(request).await {
@@ -333,7 +339,9 @@ where
             base_key,
             path,
         } => {
-            let Some(state_root_hash) = resolve_state_root_hash(effect_builder, state_identifier).await else {
+            let Some(state_root_hash) =
+                resolve_state_root_hash(effect_builder, state_identifier).await
+            else {
                 return BinaryResponse::new_empty(protocol_version);
             };
             match get_global_state_item(effect_builder, state_root_hash, base_key, path).await {
@@ -354,7 +362,7 @@ where
             }
         }
         GlobalStateRequest::Trie { trie_key } => {
-            let response = if !config.allow_request_get_trie {
+            if !config.allow_request_get_trie {
                 BinaryResponse::new_error(ErrorCode::FunctionDisabled, protocol_version)
             } else {
                 let req = TrieRequest::new(trie_key, None);
@@ -367,14 +375,15 @@ where
                         BinaryResponse::new_error(ErrorCode::InternalError, protocol_version)
                     }
                 }
-            };
-            response
+            }
         }
         GlobalStateRequest::DictionaryItem {
             state_identifier,
             identifier,
         } => {
-            let Some(state_root_hash) = resolve_state_root_hash(effect_builder, state_identifier).await else {
+            let Some(state_root_hash) =
+                resolve_state_root_hash(effect_builder, state_identifier).await
+            else {
                 return BinaryResponse::new_empty(protocol_version);
             };
             let result = match identifier {
@@ -446,7 +455,9 @@ where
             state_identifier,
             purse_identifier,
         } => {
-            let Some(state_root_hash) = resolve_state_root_hash(effect_builder, state_identifier).await else {
+            let Some(state_root_hash) =
+                resolve_state_root_hash(effect_builder, state_identifier).await
+            else {
                 return BinaryResponse::new_empty(protocol_version);
             };
             get_balance(
@@ -498,7 +509,7 @@ where
             let key = Key::dictionary(*uref, dictionary_item_key.as_bytes());
             let Some(query_result) =
                 get_global_state_item(effect_builder, state_root_hash, key, vec![]).await?
-                else {
+            else {
                 return Ok(None);
             };
 
@@ -527,7 +538,7 @@ where
     let req = QueryRequest::new(state_root_hash, Key::NamedKey(key_addr), vec![]);
     match effect_builder.query_global_state(req).await {
         QueryResult::Success { value, .. } => {
-            let StoredValue::NamedKey(key_val) = &*value  else {
+            let StoredValue::NamedKey(key_val) = &*value else {
                 return Err(ErrorCode::DictionaryURefNotFound);
             };
             let Ok(Key::URef(uref)) = key_val.get_key() else {
@@ -536,7 +547,7 @@ where
             let key = Key::dictionary(uref, dictionary_item_key.as_bytes());
             let Some(query_result) =
                 get_global_state_item(effect_builder, state_root_hash, key, vec![]).await?
-                else {
+            else {
                 return Ok(None);
             };
             Ok(Some(DictionaryQueryResult::new(key, query_result)))
@@ -590,7 +601,8 @@ where
             let ProofsResult::Proofs {
                 total_balance_proof,
                 balance_holds,
-            } = proofs_result else {
+            } = proofs_result
+            else {
                 warn!("binary port received no proofs for a balance request with proofs");
                 return BinaryResponse::new_error(ErrorCode::InternalError, protocol_version);
             };
@@ -658,7 +670,8 @@ where
             };
             let Some(block) = effect_builder
                 .get_block_at_height_with_metadata_from_storage(height, true)
-                .await else {
+                .await
+            else {
                 return BinaryResponse::new_empty(protocol_version);
             };
             BinaryResponse::from_value(
@@ -670,10 +683,10 @@ where
             hash,
             with_finalized_approvals,
         } => {
-            let Some((transaction, execution_info)) =
-                effect_builder
-                    .get_transaction_and_exec_info_from_storage(hash, with_finalized_approvals)
-                    .await else {
+            let Some((transaction, execution_info)) = effect_builder
+                .get_transaction_and_exec_info_from_storage(hash, with_finalized_approvals)
+                .await
+            else {
                 return BinaryResponse::new_empty(protocol_version);
             };
             BinaryResponse::from_value(
@@ -769,10 +782,7 @@ where
             let reactor_state = ReactorStateName::new(reactor_state);
 
             let Ok(uptime) = TimeDiff::try_from(node_uptime) else {
-                return BinaryResponse::new_error(
-                    ErrorCode::InternalError,
-                    protocol_version,
-                )
+                return BinaryResponse::new_error(ErrorCode::InternalError, protocol_version);
             };
 
             let status = NodeStatus {
@@ -793,6 +803,76 @@ where
                     .map(|header| header.block_hash()),
             };
             BinaryResponse::from_value(status, protocol_version)
+        }
+        InformationRequest::Reward {
+            era_identifier,
+            validator,
+            delegator,
+        } => {
+            let Some(header) = resolve_era_switch_block_header(effect_builder, era_identifier).await else {
+                return BinaryResponse::new_error(ErrorCode::SwitchBlockNotFound, protocol_version);
+            };
+            let Some(previous_height) = header.height().checked_sub(1) else {
+                // there's not going to be any rewards for the genesis block
+                return BinaryResponse::new_empty(protocol_version);
+            };
+            let Some(parent_header) =
+                effect_builder.get_block_header_at_height_from_storage(previous_height, true).await else {
+                return BinaryResponse::new_error(ErrorCode::SwitchBlockParentNotFound, protocol_version);
+            };
+            let snapshot_request = SeigniorageRecipientsRequest::new(
+                *parent_header.state_root_hash(),
+                protocol_version,
+            );
+
+            let snapshot = match effect_builder
+                .get_seigniorage_recipients_snapshot_from_contract_runtime(snapshot_request)
+                .await
+            {
+                SeigniorageRecipientsResult::Success {
+                    seigniorage_recipients,
+                } => seigniorage_recipients,
+                SeigniorageRecipientsResult::RootNotFound => {
+                    return BinaryResponse::new_error(ErrorCode::RootNotFound, protocol_version)
+                }
+                SeigniorageRecipientsResult::Failure(_) => {
+                    return BinaryResponse::new_error(ErrorCode::FailedQuery, protocol_version)
+                }
+                SeigniorageRecipientsResult::AuctionNotFound
+                | SeigniorageRecipientsResult::ValueNotFound(_) => {
+                    return BinaryResponse::new_error(ErrorCode::InternalError, protocol_version)
+                }
+            };
+            let Some(era_end) = header.clone_era_end() else {
+                // switch block should have an era end
+                return BinaryResponse::new_error(ErrorCode::InternalError, protocol_version);
+            };
+            let block_rewards = match era_end.rewards() {
+                Rewards::V2(rewards) => rewards,
+                _ => {
+                    return BinaryResponse::new_error(
+                        ErrorCode::UnsupportedRewardsV1Request,
+                        protocol_version,
+                    )
+                }
+            };
+            let Some(validator_rewards) = block_rewards.get(&validator) else {
+                return BinaryResponse::new_empty(protocol_version);
+            };
+            match auction::reward(
+                &validator,
+                delegator.as_deref(),
+                header.era_id(),
+                validator_rewards,
+                &snapshot,
+            ) {
+                Ok(Some(reward)) => {
+                    let response = RewardResponse::new(reward, header.era_id());
+                    BinaryResponse::from_value(response, protocol_version)
+                }
+                Ok(None) => BinaryResponse::new_empty(protocol_version),
+                Err(_) => BinaryResponse::new_error(ErrorCode::InternalError, protocol_version),
+            }
         }
     }
 }
@@ -1106,6 +1186,37 @@ where
             .get_highest_complete_block_header_from_storage()
             .await
             .map(|header| *header.state_root_hash()),
+    }
+}
+
+async fn resolve_era_switch_block_header<REv>(
+    effect_builder: EffectBuilder<REv>,
+    era_identifier: Option<EraIdentifier>,
+) -> Option<BlockHeader>
+where
+    REv: From<Event> + From<ContractRuntimeRequest> + From<StorageRequest>,
+{
+    match era_identifier {
+        Some(EraIdentifier::Era(era_id)) => {
+            effect_builder
+                .get_switch_block_header_by_era_id_from_storage(era_id)
+                .await
+        }
+        Some(EraIdentifier::Block(block_identifier)) => {
+            let header = resolve_block_header(effect_builder, Some(block_identifier)).await?;
+            if header.is_switch_block() {
+                Some(header)
+            } else {
+                effect_builder
+                    .get_switch_block_header_by_era_id_from_storage(header.era_id())
+                    .await
+            }
+        }
+        None => {
+            effect_builder
+                .get_latest_switch_block_header_from_storage()
+                .await
+        }
     }
 }
 

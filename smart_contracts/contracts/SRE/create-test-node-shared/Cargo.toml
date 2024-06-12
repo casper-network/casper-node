@@ -2,7 +2,7 @@
 name = "create-test-node-shared"
 version = "0.1.0"
 authors = ["Henry Till <henrytill@gmail.com>"]
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 base16 = { version = "0.2.1", default-features = false }
