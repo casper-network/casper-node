@@ -795,7 +795,7 @@ impl Debug for ApiError {
             ApiError::Entity(value) => write!(
                 f,
                 "ApiError::Entity({:?})",
-                handle_payment::Error::try_from(*value).map_err(|_err| fmt::Error::default())?
+                handle_payment::Error::try_from(*value).map_err(|_err| fmt::Error)?
             )?,
             ApiError::User(value) => write!(f, "ApiError::User({})", value)?,
         }

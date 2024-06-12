@@ -18,8 +18,27 @@ pub const DEFAULT_INSTALL_UPGRADE_GAS_LIMIT: u64 = 3_500_000_000_000;
 /// Default gas limit of standard transactions
 pub const DEFAULT_LARGE_TRANSACTION_GAS_LIMIT: u64 = 500_000_000_000;
 
-const DEFAULT_NATIVE_MINT_LANE: [u64; 5] = [0, 1_048_576, 1024, 2_500_000_000, 650];
-const DEFAULT_NATIVE_AUCTION_LANE: [u64; 5] = [1, 1_048_576, 1024, 2_500_000_000, 145];
+const DEFAULT_NATIVE_MINT_LANE: [u64; 5] = [
+    TransactionCategory::Mint as u64,
+    1_048_576,
+    1024,
+    2_500_000_000,
+    650,
+];
+const DEFAULT_NATIVE_AUCTION_LANE: [u64; 5] = [
+    TransactionCategory::Auction as u64,
+    1_048_576,
+    1024,
+    2_500_000_000,
+    145,
+];
+const DEFAULT_NATIVE_ENTITY_LANE: [u64; 5] = [
+    TransactionCategory::Entity as u64,
+    1_048_576,
+    1024,
+    2_500_000_000,
+    5,
+];
 
 const KIND: usize = 0;
 const MAX_TRANSACTION_LENGTH: usize = 1;
@@ -37,6 +56,8 @@ pub struct TransactionV1Config {
     pub native_mint_lane: Vec<u64>,
     /// Lane configuration for the native auction interaction.
     pub native_auction_lane: Vec<u64>,
+    /// Lane configuration for the native entity interaction.
+    pub native_entity_lane: Vec<u64>,
     /// Lane configurations for the Wasm based lanes.
     pub wasm_lanes: Vec<Vec<u64>>,
 }
@@ -47,6 +68,7 @@ impl TransactionV1Config {
     pub fn random(rng: &mut TestRng) -> Self {
         let native_mint_lane = DEFAULT_NATIVE_MINT_LANE.to_vec();
         let native_auction_lane = DEFAULT_NATIVE_AUCTION_LANE.to_vec();
+        let native_entity_lane = DEFAULT_NATIVE_AUCTION_LANE.to_vec();
         let mut wasm_lanes = vec![];
         for kind in 2..7 {
             let lane = vec![
@@ -61,13 +83,16 @@ impl TransactionV1Config {
         TransactionV1Config {
             native_mint_lane,
             native_auction_lane,
+            native_entity_lane,
             wasm_lanes,
         }
     }
 
     /// Returns true if the lane identifier is for either the mint or auction.
     pub fn is_native_lane(&self, lane: u8) -> bool {
-        lane as u64 == DEFAULT_NATIVE_MINT_LANE[0] || lane as u64 == DEFAULT_NATIVE_AUCTION_LANE[0]
+        lane as u64 == DEFAULT_NATIVE_MINT_LANE[0]
+            || lane as u64 == DEFAULT_NATIVE_AUCTION_LANE[0]
+            || lane as u64 == DEFAULT_NATIVE_ENTITY_LANE[0]
     }
 
     /// Returns the max serialized length of a transaction for the given category.
@@ -260,11 +285,13 @@ impl Default for TransactionV1Config {
 
         let native_mint_lane = DEFAULT_NATIVE_MINT_LANE.to_vec();
         let native_auction_lane = DEFAULT_NATIVE_AUCTION_LANE.to_vec();
+        let native_entity_lane = DEFAULT_NATIVE_ENTITY_LANE.to_vec();
         let wasm_lanes = vec![large_lane, install_upgrade_lane];
 
         TransactionV1Config {
             native_mint_lane,
             native_auction_lane,
+            native_entity_lane,
             wasm_lanes,
         }
     }
@@ -294,10 +321,12 @@ impl FromBytes for TransactionV1Config {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (native_mint_lane, remainder) = FromBytes::from_bytes(bytes)?;
         let (native_auction_lane, remainder) = FromBytes::from_bytes(remainder)?;
+        let (native_entity_lane, remainder) = FromBytes::from_bytes(remainder)?;
         let (wasm_lanes, remainder) = FromBytes::from_bytes(remainder)?;
         let config = TransactionV1Config {
             native_mint_lane,
             native_auction_lane,
+            native_entity_lane,
             wasm_lanes,
         };
         Ok((config, remainder))

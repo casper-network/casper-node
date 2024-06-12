@@ -36,12 +36,12 @@ use casper_types::{
         AUCTION, ENTITY,
     },
     testing::TestRng,
-    AccountConfig, AccountsConfig, ActivationPoint, AddressableEntityHash, AvailableBlockRange,
-    Block, BlockHash, BlockHeader, BlockV2, CLValue, Chainspec, ChainspecRawBytes,
-    ConsensusProtocolName, Deploy, EraId, FeeHandling, Gas, HoldBalanceHandling, Key, Motes,
-    NextUpgrade, PricingHandling, PricingMode, ProtocolVersion, PublicKey, RefundHandling, Rewards,
-    SecretKey, StoredValue, SystemEntityRegistry, TimeDiff, Timestamp, Transaction,
-    TransactionHash, TransactionV1Builder, TransactionV1Config, ValidatorConfig, U512,
+    AccountConfig, AccountsConfig, ActivationPoint, AddressableEntity, AddressableEntityHash,
+    AvailableBlockRange, Block, BlockHash, BlockHeader, BlockV2, CLValue, Chainspec,
+    ChainspecRawBytes, ConsensusProtocolName, Deploy, EraId, FeeHandling, Gas, HoldBalanceHandling,
+    Key, Motes, NextUpgrade, PricingHandling, PricingMode, ProtocolVersion, PublicKey,
+    RefundHandling, Rewards, SecretKey, StoredValue, SystemEntityRegistry, TimeDiff, Timestamp,
+    Transaction, TransactionHash, TransactionV1Builder, TransactionV1Config, ValidatorConfig, U512,
 };
 
 use crate::{
@@ -2799,6 +2799,7 @@ async fn run_reward_network_highway_no_finality() {
 
 #[allow(clippy::enum_variant_names)]
 enum GasPriceScenario {
+    SlotUtilization,
     SizeUtilization(u32),
     GasConsumptionUtilization(u64),
 }
@@ -2938,6 +2939,12 @@ async fn run_gas_price_scenario(gas_price_scenario: GasPriceScenario) {
     let expected_gas_price = fixture.chainspec.vacancy_config.min_gas_price;
     let actual_gas_price = fixture.get_current_era_price();
     assert_eq!(actual_gas_price, expected_gas_price);
+}
+
+#[tokio::test]
+async fn should_raise_gas_price_to_ceiling_and_reduce_to_floor_based_on_slot_utilization() {
+    let scenario = GasPriceScenario::SlotUtilization;
+    run_gas_price_scenario(scenario).await
 }
 
 #[tokio::test]

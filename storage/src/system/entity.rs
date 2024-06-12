@@ -66,15 +66,20 @@ pub trait Entity: RuntimeProvider + StorageProvider + Sized {
         if let Some(key) = self.read_key(caller)? {
             if let Some(mut addressable_entity) = self.read_entity(&key)? {
                 // TODO:
-                // addressable_entity.set_action_threshold_unchecked(ActionType::Deployment, deployment_threshold)?;
+                // addressable_entity.set_action_threshold_unchecked(ActionType::Deployment,
+                // deployment_threshold)?;
                 // Maybe only this one:
-                addressable_entity.set_action_threshold_unchecked(
-                    ActionType::KeyManagement,
-                    key_mangement_threshold,
-                ).map_err(|_| Error::Threshold)?;
-                // addressable_entity.set_action_threshold_unchecked(ActionType::UpgradeManagement, upgrade_mangement_threshold)?;
+                addressable_entity
+                    .set_action_threshold_unchecked(
+                        ActionType::KeyManagement,
+                        key_mangement_threshold,
+                    )
+                    .map_err(|_| Error::Threshold)?;
+                // addressable_entity.set_action_threshold_unchecked(ActionType::UpgradeManagement,
+                // upgrade_mangement_threshold)?;
 
-                // This should belong to `AddressableEntity`, but 3 different errors make it hard to implement.
+                // This should belong to `AddressableEntity`, but 3 different errors make it hard to
+                // implement.
                 for (account, weight, op) in key_list {
                     match op {
                         AssociatedKeyOp::Add => {
@@ -88,8 +93,11 @@ pub trait Entity: RuntimeProvider + StorageProvider + Sized {
                         }
                     }
                 }
-                addressable_entity.can_set_threshold(key_mangement_threshold).map_err(|_| Error::Threshold)?;
-                // if addressable_entity.can_manage_keys_with(addressable_entity.associated_keys()) {
+                addressable_entity
+                    .can_set_threshold(key_mangement_threshold)
+                    .map_err(|_| Error::Threshold)?;
+                // if addressable_entity.can_manage_keys_with(addressable_entity.associated_keys())
+                // {
                 //     self.write_entity(key, addressable_entity)?;
                 // } else {
                 //     return Err(Error::Threshold);

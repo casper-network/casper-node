@@ -32,7 +32,7 @@ pub(crate) enum TransactionCategory {
     Medium = 4,
     /// A small Wasm based transaction.
     Small = 5,
-    /// Entity
+    /// Native entity interaction.
     Entity = 6,
 }
 

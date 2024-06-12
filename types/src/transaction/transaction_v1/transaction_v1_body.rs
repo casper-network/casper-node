@@ -281,6 +281,7 @@ impl TransactionV1Body {
             0 => Self::random_transfer(rng),
             1 => Self::random_staking(rng),
             2 => Self::random_install_upgrade(rng),
+            6 => Self::random_entity(rng),
             _ => Self::random_standard(rng),
         }
     }

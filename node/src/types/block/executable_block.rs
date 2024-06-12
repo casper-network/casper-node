@@ -4,7 +4,8 @@ use datasize::DataSize;
 use serde::Serialize;
 
 use casper_types::{
-    BlockV2, EraId, PublicKey, RewardedSignatures, Timestamp, Transaction, TransactionHash, AUCTION_LANE_ID, ENTITY_LANE_ID, INSTALL_UPGRADE_LANE_ID, MINT_LANE_ID, U512
+    BlockV2, EraId, PublicKey, RewardedSignatures, Timestamp, Transaction, TransactionHash,
+    AUCTION_LANE_ID, ENTITY_LANE_ID, INSTALL_UPGRADE_LANE_ID, MINT_LANE_ID, U512,
 };
 
 use super::{FinalizedBlock, InternalEraReport};

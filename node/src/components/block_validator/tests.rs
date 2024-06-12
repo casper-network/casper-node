@@ -8,7 +8,7 @@ use casper_types::{
     bytesrepr::Bytes, runtime_args, system::standard_payment::ARG_AMOUNT, testing::TestRng, Block,
     BlockSignatures, BlockSignaturesV2, Chainspec, ChainspecRawBytes, Deploy, ExecutableDeployItem,
     FinalitySignatureV2, RuntimeArgs, SecretKey, TestBlockBuilder, TimeDiff, Transaction,
-    TransactionV1, AUCTION_LANE_ID, INSTALL_UPGRADE_LANE_ID, MINT_LANE_ID, U512,
+    TransactionV1, AUCTION_LANE_ID, ENTITY_LANE_ID, INSTALL_UPGRADE_LANE_ID, MINT_LANE_ID, U512,
 };
 
 use crate::{
@@ -177,7 +177,7 @@ pub(super) fn new_proposed_block_with_cited_signatures(
                 .collect(),
         );
         ret.insert(
-            TransactionCategory::Entity,
+            ENTITY_LANE_ID,
             entity
                 .into_iter()
                 .map(|(txn_hash, approvals)| (txn_hash, approvals))

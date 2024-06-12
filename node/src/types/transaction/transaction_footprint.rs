@@ -98,11 +98,7 @@ impl TransactionFootprint {
     }
 
     pub(crate) fn is_wasm_based(&self) -> bool {
-        if !self.is_mint() && !self.is_auction() && !self.is_install_upgrade() {
-            return true;
-        }
-
-        false
+        !self.is_mint() && !self.is_auction() && !self.is_install_upgrade()
     }
 
     pub(crate) fn gas_price_tolerance(&self) -> u8 {

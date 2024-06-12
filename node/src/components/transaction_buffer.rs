@@ -272,7 +272,7 @@ impl TransactionBuffer {
         let footprint = match TransactionFootprint::new(&self.chainspec, &transaction) {
             Ok(footprint) => footprint,
             Err(invalid_transaction_error) => {
-                error!(%transaction_hash, ?invalid_transaction_error, "TransactionBuffer: unable to created transaction footprint");
+                error!(%transaction_hash, ?invalid_transaction_error, "TransactionBuffer: unable to create transaction footprint");
                 return;
             }
         };

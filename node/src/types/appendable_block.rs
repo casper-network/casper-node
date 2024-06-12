@@ -9,7 +9,8 @@ use thiserror::Error;
 use tracing::error;
 
 use casper_types::{
-    Approval, Gas, PublicKey, RewardedSignatures, Timestamp, TransactionConfig, TransactionHash, AUCTION_LANE_ID, ENTITY_LANE_ID, INSTALL_UPGRADE_LANE_ID, MINT_LANE_ID, U512
+    Approval, Gas, PublicKey, RewardedSignatures, Timestamp, TransactionConfig, TransactionHash,
+    AUCTION_LANE_ID, ENTITY_LANE_ID, INSTALL_UPGRADE_LANE_ID, MINT_LANE_ID, U512,
 };
 
 use super::{BlockPayload, TransactionFootprint, VariantMismatch};

@@ -9,7 +9,8 @@ use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
 use casper_types::{
-    Approval, PublicKey, RewardedSignatures, TransactionHash, AUCTION_LANE_ID, ENTITY_LANE_ID, INSTALL_UPGRADE_LANE_ID, MINT_LANE_ID
+    Approval, PublicKey, RewardedSignatures, TransactionHash, AUCTION_LANE_ID, ENTITY_LANE_ID,
+    INSTALL_UPGRADE_LANE_ID, MINT_LANE_ID,
 };
 
 /// The piece of information that will become the content of a future block (isn't finalized or

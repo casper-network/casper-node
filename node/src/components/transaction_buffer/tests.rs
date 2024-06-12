@@ -527,21 +527,16 @@ fn block_fully_saturated() {
         .insert(ERA_ONE, DEFAULT_MINIMUM_GAS_PRICE);
 
     // Try to register 10 more transactions per each category as allowed by the config.
-    let RegistredTransactions {
-        transfers,
-        stakings,
-        install_upgrades,
-        standards,
-        entities,
-    } = generate_and_register_transactions(
-        &mut transaction_buffer,
-        max_transfers + 20,
-        max_staking + 20,
-        max_install_upgrade + 20,
-        max_standard + 20,
-        max_entity + 20,
-        &mut rng,
-    );
+    let (transfers, stakings, install_upgrades, standards, entities) =
+        generate_and_register_transactions(
+            &mut transaction_buffer,
+            max_transfers + 20,
+            max_staking + 20,
+            max_install_upgrade + 20,
+            max_standard + 20,
+            max_entity + 20,
+            &mut rng,
+        );
     let (
         transfers_hashes,
         stakings_hashes,
@@ -620,7 +615,7 @@ fn block_fully_saturated() {
     if proposed_stakings == max_staking {
         has_hit_any_limit = true;
     }
-    if proposed_install_upgrades as u64 == max_install_upgrade {
+    if proposed_install_upgrades == max_install_upgrade {
         has_hit_any_limit = true;
     }
     if proposed_standards == max_standard {
@@ -677,21 +672,16 @@ fn block_not_fully_saturated() {
     let actual_install_upgrade_count = rng.gen_range(0..MIN_COUNT - 1);
     let actual_standard_count = rng.gen_range(0..MIN_COUNT - 1);
     let actual_entity_count = rng.gen_range(0..MIN_COUNT - 1);
-    let RegistredTransactions {
-        transfers,
-        stakings,
-        install_upgrades,
-        standards,
-        entities,
-    } = generate_and_register_transactions(
-        &mut transaction_buffer,
-        actual_transfer_count,
-        actual_stakings_count,
-        actual_install_upgrade_count,
-        actual_standard_count,
-        actual_entity_count,
-        &mut rng,
-    );
+    let (transfers, stakings, install_upgrades, standards, entities) =
+        generate_and_register_transactions(
+            &mut transaction_buffer,
+            actual_transfer_count,
+            actual_stakings_count,
+            actual_install_upgrade_count,
+            actual_standard_count,
+            actual_entity_count,
+            &mut rng,
+        );
     let (
         transfers_hashes,
         stakings_hashes,
@@ -778,18 +768,24 @@ fn generate_and_register_transactions(
     standard_count: u64,
     entity_count: u64,
     rng: &mut TestRng,
-) -> RegistredTransactions {
+) -> (
+    Vec<Transaction>,
+    Vec<Transaction>,
+    Vec<Transaction>,
+    Vec<Transaction>,
+    Vec<Transaction>,
+) {
     let transfers: Vec<_> = (0..transfer_count)
         .map(|_| create_valid_transaction(rng, MINT_LANE_ID, None, None))
         .collect();
     let stakings: Vec<_> = (0..stakings_count)
         .map(|_| create_valid_transaction(rng, AUCTION_LANE_ID, None, None))
         .collect();
-    let installs_upgrades: Vec<_> = (0..install_upgrade_count)
+    let install_upgrades: Vec<_> = (0..install_upgrade_count)
         .map(|_| create_valid_transaction(rng, INSTALL_UPGRADE_LANE_ID, None, None))
         .collect();
     let standards: Vec<_> = (0..standard_count)
-        .map(|_| create_valid_transaction(rng, 3, None, None))
+        .map(|_| create_valid_transaction(rng, LARGE_LANE_ID, None, None))
         .collect();
     let entities: Vec<_> = (0..entity_count)
         .map(|_| create_valid_transaction(rng, ENTITY_LANE_ID, None, None))
@@ -805,13 +801,7 @@ fn generate_and_register_transactions(
         )
         .for_each(|transaction| transaction_buffer.register_transaction(transaction.clone()));
 
-    RegistredTransactions {
-        transfers,
-        stakings,
-        install_upgrades,
-        standards,
-        entities,
-    }
+    (transfers, stakings, install_upgrades, standards, entities)
 }
 
 #[test]

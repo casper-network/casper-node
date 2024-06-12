@@ -231,11 +231,7 @@ impl TransactionEntryPoint {
     /// Does this entry point kind require holds epoch?
     pub fn requires_holds_epoch(&self) -> bool {
         match self {
-Self::AddBid
-            | Self::Delegate
-            | Self::Custom(_)
-            | Self::Call
-            | Self::Transfer => true,
+            Self::AddBid | Self::Delegate | Self::Custom(_) | Self::Call | Self::Transfer => true,
             Self::WithdrawBid
             | Self::Undelegate
             | Self::Redelegate
@@ -243,7 +239,7 @@ Self::AddBid
             | Self::ChangeBidPublicKey
             | Self::AddAssociatedKey
             | Self::RemoveAssociatedKey
-            | Self::UpdateAssociatedKey  => false,
+            | Self::UpdateAssociatedKey => false,
         }
     }
 }
