@@ -10,8 +10,8 @@ use casper_contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    ApiError, CLType, EntryPoint, EntryPointAccess, EntryPointPayment,
-    EntryPointType, EntryPoints, Key,
+    ApiError, CLType, EntryPoint, EntryPointAccess, EntryPointPayment, EntryPointType, EntryPoints,
+    Key,
 };
 
 const PACKAGE_NAME: &str = "load_caller_info_package";

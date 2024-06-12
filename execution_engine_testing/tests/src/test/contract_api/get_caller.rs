@@ -23,7 +23,7 @@ fn should_run_get_caller_contract() {
                 CONTRACT_GET_CALLER,
                 runtime_args! {"account" => *DEFAULT_ACCOUNT_ADDR},
             )
-                .build(),
+            .build(),
         )
         .expect_success()
         .commit();
@@ -43,7 +43,7 @@ fn should_run_get_caller_contract_other_account() {
                 CONTRACT_TRANSFER_PURSE_TO_ACCOUNT,
                 runtime_args! {"target" => ACCOUNT_1_ADDR, "amount"=> *DEFAULT_PAYMENT},
             )
-                .build(),
+            .build(),
         )
         .expect_success()
         .commit();
@@ -55,7 +55,7 @@ fn should_run_get_caller_contract_other_account() {
                 CONTRACT_GET_CALLER,
                 runtime_args! {"account" => ACCOUNT_1_ADDR},
             )
-                .build(),
+            .build(),
         )
         .expect_success()
         .commit();
@@ -75,7 +75,7 @@ fn should_run_get_caller_subcall_contract() {
                     CONTRACT_GET_CALLER_SUBCALL,
                     runtime_args! {"account" => *DEFAULT_ACCOUNT_ADDR},
                 )
-                    .build(),
+                .build(),
             )
             .expect_success()
             .commit();
@@ -90,7 +90,7 @@ fn should_run_get_caller_subcall_contract() {
                 CONTRACT_TRANSFER_PURSE_TO_ACCOUNT,
                 runtime_args! {"target" => ACCOUNT_1_ADDR, "amount"=>*DEFAULT_PAYMENT},
             )
-                .build(),
+            .build(),
         )
         .expect_success()
         .commit();
@@ -101,7 +101,7 @@ fn should_run_get_caller_subcall_contract() {
                 CONTRACT_GET_CALLER_SUBCALL,
                 runtime_args! {"account" => ACCOUNT_1_ADDR},
             )
-                .build(),
+            .build(),
         )
         .expect_success()
         .commit();
@@ -118,7 +118,7 @@ fn should_load_caller_information_based_on_action() {
                 LOAD_CALLER_INFORMATION,
                 runtime_args! {},
             )
-                .build(),
+            .build(),
         )
         .expect_success()
         .commit();
@@ -136,7 +136,7 @@ fn should_load_caller_information_based_on_action() {
         "initiator",
         runtime_args! {},
     )
-        .build();
+    .build();
 
     builder
         .exec(initiator_call_request)
@@ -149,7 +149,7 @@ fn should_load_caller_information_based_on_action() {
         "get_immediate_caller",
         runtime_args! {},
     )
-        .build();
+    .build();
 
     builder
         .exec(immediate_call_request)
@@ -162,7 +162,7 @@ fn should_load_caller_information_based_on_action() {
         "get_full_stack",
         runtime_args! {},
     )
-        .build();
+    .build();
 
     builder
         .exec(initiator_call_request)
