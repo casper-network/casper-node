@@ -4,7 +4,6 @@ use datasize::DataSize;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
-#[cfg(any(feature = "testing", test))]
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     transaction::TransactionCategory,
