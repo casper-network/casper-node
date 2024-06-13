@@ -45,10 +45,7 @@ pub fn validate_chainspec(chainspec: &Chainspec) -> bool {
         match chainspec.highway_config.is_valid() {
             Ok(_) => return true,
             Err(msg) => {
-                error!(
-                    rrm = %chainspec.highway_config.reduced_reward_multiplier,
-                    msg,
-                );
+                error!(msg);
                 return false;
             }
         }
@@ -619,10 +616,6 @@ mod tests {
         assert_eq!(
             spec.highway_config.maximum_round_length,
             TimeDiff::from_seconds(525)
-        );
-        assert_eq!(
-            spec.highway_config.reduced_reward_multiplier,
-            Ratio::new(1, 5)
         );
 
         assert_eq!(
