@@ -1,3 +1,5 @@
+use std::collections::{BTreeSet, HashMap, LinkedList};
+
 use casper_macros::casper;
 use casper_sdk::{
     collections::Map,
@@ -307,5 +309,34 @@ impl Harness {
         }
         let caller = host::get_caller();
         self.balances.get(&caller).unwrap_or(0)
+    }
+
+    pub fn new_method(
+        &self,
+        _arg1: i32,
+        _arg2: i64,
+        _arg3: u32,
+        _arg4: u64,
+        _arg5: f32,
+        _arg6: f64,
+        _arg7: bool,
+        _arg8: i8,
+        _arg9: String,
+        _arg10: Vec<u8>,
+        _arg11: [i32; 5],
+        _arg12: Option<String>,
+        _arg13: Result<(), ()>,
+        _arg14: Box<i32>,
+        _arg15: String,
+        _arg16: i32,
+        _arg17: u64,
+        _arg18: (i32, i32),
+        _arg19: HashMap<String, i32>,
+        _arg20: BTreeSet<i32>,
+        _arg21: LinkedList<String>,
+        _arg22: String,
+        _arg23: u64,
+    ) {
+        log!("Nothing");
     }
 }

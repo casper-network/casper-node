@@ -262,7 +262,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
 fn generate_export_function(func: ItemFn) -> TokenStream {
     let func_name = &func.sig.ident;
     let mut arg_names = Vec::new();
-    let mut arg_types = Vec::new();
+    let mut args_attrs = Vec::new();
     for input in &func.sig.inputs {
         let (name, ty) = match input {
             syn::FnArg::Receiver(receiver) => {
@@ -273,8 +273,10 @@ fn generate_export_function(func: ItemFn) -> TokenStream {
                 _ => todo!("export: other typed variant"),
             },
         };
-        arg_names.push(name.clone());
-        arg_types.push(ty.clone());
+        arg_names.push(name);
+        args_attrs.push(quote! {
+            #name: #ty
+        });
     }
     let _ctor_name = format_ident!("{func_name}_ctor");
     quote! {
@@ -287,9 +289,17 @@ fn generate_export_function(func: ItemFn) -> TokenStream {
             }
 
             #func
-            casper_sdk::host::start(|(#(#arg_names,)*):(#(#arg_types,)*)| {
-                #func_name(#(#arg_names,)*)
-            });
+
+            #[derive(casper_sdk::serializers::borsh::BorshDeserialize)]
+            #[borsh(crate = "casper_sdk::serializers::borsh")]
+            struct Arguments {
+                #(#args_attrs,)*
+            }
+
+            let input = casper_sdk::host::casper_copy_input();
+            let args: Arguments = casper_sdk::serializers::borsh::from_slice(&input).unwrap();
+
+            let _ret = #func_name(#(args.#arg_names,)*);
         }
 
         #[cfg(not(target_arch = "wasm32"))]
@@ -298,9 +308,17 @@ fn generate_export_function(func: ItemFn) -> TokenStream {
         #[cfg(not(target_arch = "wasm32"))]
         const _: () = {
             fn #func_name() {
-                casper_sdk::host::start(|(#(#arg_names,)*):(#(#arg_types,)*)| {
-                    #func_name(#(#arg_names,)*)
-                });
+                #[derive(casper_sdk::serializers::borsh::BorshDeserialize)]
+                #[borsh(crate = "casper_sdk::serializers::borsh")]
+                struct Arguments {
+                    #(#args_attrs,)*
+                }
+
+
+                let input = casper_sdk::host::casper_copy_input();
+                let args: Arguments = casper_sdk::serializers::borsh::from_slice(&input).unwrap();
+
+                let _ret = #func_name(#(args.#arg_names,)*);
             }
             #[casper_sdk::linkme::distributed_slice(casper_sdk::host::native::EXPORTS)]
             #[linkme(crate = casper_sdk::linkme)]
@@ -367,6 +385,15 @@ fn generate_impl_for_contract(
                     syn::Visibility::Restricted(_restricted) => {}
                 }
 
+                // func.sig.re
+                let never_returns = match &func.sig.output {
+                    syn::ReturnType::Default => false,
+                    syn::ReturnType::Type(_, ty) => match ty.as_ref() {
+                        Type::Never(_) => true,
+                        _ => false,
+                    },
+                };
+
                 method_attribute = MethodAttribute::from_attributes(&func.attrs).unwrap();
 
                 func.attrs.clear();
@@ -407,6 +434,10 @@ fn generate_impl_for_contract(
                 let arg_names: Vec<_> =
                     arg_names_and_types.iter().map(|(name, _ty)| name).collect();
                 let arg_types: Vec<_> = arg_names_and_types.iter().map(|(_name, ty)| ty).collect();
+                let arg_attrs: Vec<_> = arg_names_and_types
+                    .iter()
+                    .map(|(name, ty)| quote! { #name: #ty })
+                    .collect();
 
                 // Entry point has &self or &mut self
                 let mut entry_point_requires_state: bool = false;
@@ -415,7 +446,7 @@ fn generate_impl_for_contract(
                     Some(syn::FnArg::Receiver(receiver)) if receiver.mutability.is_some() => {
                         entry_point_requires_state = true;
 
-                        if receiver.reference.is_some() {
+                        if !never_returns && receiver.reference.is_some() {
                             // &mut self does write updated state
                             Some(quote! {
                                 casper_sdk::host::write_state(&instance).unwrap();
@@ -437,7 +468,7 @@ fn generate_impl_for_contract(
                         panic!("Lifetimes are currently not supported");
                     }
                     Some(_) | None => {
-                        if method_attribute.constructor {
+                        if !never_returns && method_attribute.constructor {
                             Some(quote! {
                                 casper_sdk::host::write_state(&_ret).unwrap();
                             })
@@ -463,30 +494,46 @@ fn generate_impl_for_contract(
                     }
                 };
 
-                let handle_ret = match func.sig.output {
-                    syn::ReturnType::Default => {
-                        // Do not call casper_return if there is no return value
-                        None
-                    }
-                    _ if method_attribute.constructor => {
-                        // Constructor does not return serialized state but is expected to save state, or explicitly revert.
-                        // TODO: Add support for Result<Self, Error> and revert_on_error if possible.
-                        Some(quote! {
-                            let _ = flags; // hide the warning
-                        })
-                    }
-                    _ => {
-                        // There is a return value so call casper_return.
-                        Some(quote! {
-                            let ret_bytes = casper_sdk::serializers::borsh::to_vec(&_ret).unwrap();
-                            casper_sdk::host::casper_return(flags, Some(&ret_bytes));
-                        })
+                let handle_ret = if never_returns {
+                    None
+                } else {
+                    match func.sig.output {
+                        syn::ReturnType::Default => {
+                            // Do not call casper_return if there is no return value
+                            None
+                        }
+                        _ if method_attribute.constructor => {
+                            // Constructor does not return serialized state but is expected to save state, or explicitly revert.
+                            // TODO: Add support for Result<Self, Error> and revert_on_error if possible.
+                            Some(quote! {
+                                let _ = flags; // hide the warning
+                            })
+                        }
+                        _ => {
+                            // There is a return value so call casper_return.
+                            Some(quote! {
+                                let ret_bytes = casper_sdk::serializers::borsh::to_vec(&_ret).unwrap();
+                                casper_sdk::host::casper_return(flags, Some(&ret_bytes));
+                            })
+                        }
                     }
                 };
 
                 assert_eq!(arg_names.len(), arg_types.len());
 
                 let mut prelude = Vec::new();
+
+                prelude.push(quote! {
+                    #[derive(casper_sdk::serializers::borsh::BorshDeserialize)]
+                    #[borsh(crate = "casper_sdk::serializers::borsh")]
+                    struct Arguments {
+                        #(#arg_attrs,)*
+                    }
+
+
+                    let input = casper_sdk::host::casper_copy_input();
+                    let args: Arguments = casper_sdk::serializers::borsh::from_slice(&input).unwrap();
+                });
 
                 if method_attribute.constructor {
                     prelude.push(quote! {
@@ -510,7 +557,7 @@ fn generate_impl_for_contract(
                 let handle_err;
                 let handle_call;
 
-                handle_err = if method_attribute.revert_on_error {
+                handle_err = if !never_returns && method_attribute.revert_on_error {
                     if let syn::ReturnType::Default = func.sig.output {
                         panic!("Cannot revert on error if there is no return value");
                     }
@@ -529,23 +576,16 @@ fn generate_impl_for_contract(
                 handle_call = if entry_point_requires_state {
                     quote! {
                         let mut instance: #struct_name = casper_sdk::host::read_state().unwrap();
-
-                        let _ret = casper_sdk::host::start_noret(|(#(#arg_names,)*):(#(#arg_types,)*)| {
-                            instance.#func_name(#(#arg_names,)*)
-                        });
+                        let _ret = instance.#func_name(#(args.#arg_names,)*);
                     }
                 } else {
                     if method_attribute.constructor {
                         quote! {
-                                let _ret: #struct_name = casper_sdk::host::start_noret(|(#(#arg_names,)*):(#(#arg_types,)*)| {
-                                <#struct_name>::#func_name(#(#arg_names,)*)
-                            });
+                            let _ret = <#struct_name>::#func_name(#(args.#arg_names,)*);
                         }
                     } else {
                         quote! {
-                                let _ret = casper_sdk::host::start_noret(|(#(#arg_names,)*):(#(#arg_types,)*)| {
-                                <#struct_name>::#func_name(#(#arg_names,)*)
-                            });
+                            let _ret = <#struct_name>::#func_name(#(args.#arg_names,)*);
                         }
                     }
                 };
@@ -1062,6 +1102,15 @@ fn casper_trait_definition(
                 let arg_names: Vec<_> =
                     arg_names_and_types.iter().map(|(name, _ty)| name).collect();
                 let arg_types: Vec<_> = arg_names_and_types.iter().map(|(_name, ty)| ty).collect();
+                // let mut arg_pairs: Vec
+                let args_attrs: Vec<_> = arg_names_and_types
+                    .iter()
+                    .map(|(name, ty)| {
+                        quote! {
+                            #name: #ty
+                        }
+                    })
+                    .collect();
 
                 let mut args = Vec::new();
                 for (name, ty) in &arg_names_and_types {
@@ -1097,15 +1146,21 @@ fn casper_trait_definition(
                         );
                         quote! {
                             #vis extern "C" fn #dispatch_func_name<T: #trait_name + casper_sdk::serializers::borsh::BorshDeserialize + casper_sdk::serializers::borsh::BorshSerialize + Default>() {
+                                #[derive(casper_sdk::serializers::borsh::BorshDeserialize)]
+                                #[borsh(crate = "casper_sdk::serializers::borsh")]
+                                struct Arguments {
+                                    #(#args_attrs,)*
+                                }
+
                                 let mut flags = casper_sdk::vm_common::flags::ReturnFlags::empty();
-
                                 let mut instance: T = casper_sdk::host::read_state().unwrap();
+                                let input = casper_sdk::host::casper_copy_input();
+                                let args: Arguments = casper_sdk::serializers::borsh::from_slice(&input).unwrap();
 
-                                let ret = casper_sdk::host::start_noret(|(#(#arg_names,)*):(#(#arg_types,)*)| {
-                                    instance.#func_name(#(#arg_names,)*)
-                                });
+                                let ret = instance.#func_name(#(args.#arg_names,)*);
 
                                 casper_sdk::host::write_state(&instance).unwrap();
+
                                 let ret_bytes = casper_sdk::serializers::borsh::to_vec(&ret).unwrap();
                                 casper_sdk::host::casper_return(flags, Some(&ret_bytes));
                             }
@@ -1118,10 +1173,19 @@ fn casper_trait_definition(
                             "can't make dispatcher for private static method"
                         );
                         quote! {
-                            #vis extern "C"  fn #dispatch_func_name<T: #trait_name + casper_sdk::serializers::borsh::BorshDeserialize + casper_sdk::serializers::borsh::BorshSerialize + Default>() {
-                                let _ret = casper_sdk::host::start(|(#(#arg_names,)*):(#(#arg_types,)*)| {
-                                    <T as #trait_name>::#func_name(#(#arg_names,)*)
-                                });
+                            #vis extern "C"  fn #dispatch_func_name<T: #trait_name>() {
+                                #[derive(casper_sdk::serializers::borsh::BorshDeserialize)]
+                                #[borsh(crate = "casper_sdk::serializers::borsh")]
+                                struct Arguments {
+                                    #(#args_attrs,)*
+                                }
+
+
+                                let input = casper_sdk::host::casper_copy_input();
+                                let args: Arguments = casper_sdk::serializers::borsh::from_slice(&input).unwrap();
+
+
+                                let _ret = <T as #trait_name>::#func_name(#(args.#arg_names,)*);
                             }
                         }
                     }

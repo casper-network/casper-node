@@ -347,24 +347,6 @@ pub fn write_state<T: BorshSerialize>(state: &T) -> Result<(), Error> {
     Ok(())
 }
 
-/// TODO: Remove once procedural macros are improved, this is just to save the boilerplate when
-/// doing things manually.
-pub fn start<Args: BorshDeserialize, Ret: BorshSerialize>(mut func: impl FnMut(Args) -> Ret) {
-    let input = casper_copy_input();
-    let args: Args = BorshDeserialize::try_from_slice(&input).unwrap();
-    let result = func(args);
-    let serialized_result = borsh::to_vec(&result).unwrap();
-    casper_return(ReturnFlags::empty(), Some(serialized_result.as_slice()));
-}
-
-pub fn start_noret<Args: BorshDeserialize, Ret: BorshSerialize>(
-    func: impl FnOnce(Args) -> Ret,
-) -> Ret {
-    let input = casper_copy_input();
-    let args: Args = BorshDeserialize::try_from_slice(&input).unwrap();
-    func(args)
-}
-
 #[derive(Debug)]
 pub struct CallResult<T: ToCallData> {
     pub data: Option<Vec<u8>>,
