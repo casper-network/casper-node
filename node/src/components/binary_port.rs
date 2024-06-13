@@ -809,16 +809,23 @@ where
             validator,
             delegator,
         } => {
-            let Some(header) = resolve_era_switch_block_header(effect_builder, era_identifier).await else {
+            let Some(header) =
+                resolve_era_switch_block_header(effect_builder, era_identifier).await
+            else {
                 return BinaryResponse::new_error(ErrorCode::SwitchBlockNotFound, protocol_version);
             };
             let Some(previous_height) = header.height().checked_sub(1) else {
                 // there's not going to be any rewards for the genesis block
                 return BinaryResponse::new_empty(protocol_version);
             };
-            let Some(parent_header) =
-                effect_builder.get_block_header_at_height_from_storage(previous_height, true).await else {
-                return BinaryResponse::new_error(ErrorCode::SwitchBlockParentNotFound, protocol_version);
+            let Some(parent_header) = effect_builder
+                .get_block_header_at_height_from_storage(previous_height, true)
+                .await
+            else {
+                return BinaryResponse::new_error(
+                    ErrorCode::SwitchBlockParentNotFound,
+                    protocol_version,
+                );
             };
             let snapshot_request = SeigniorageRecipientsRequest::new(
                 *parent_header.state_root_hash(),
