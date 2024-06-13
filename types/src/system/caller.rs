@@ -101,12 +101,12 @@ impl ToBytes for Caller {
     fn serialized_length(&self) -> usize {
         U8_SERIALIZED_LENGTH
             + match self {
-                Caller::Initiator { account_hash } => account_hash.serialized_length(),
-                Caller::Entity {
-                    package_hash,
-                    entity_hash: contract_hash,
-                } => package_hash.serialized_length() + contract_hash.serialized_length(),
-            }
+            Caller::Initiator { account_hash } => account_hash.serialized_length(),
+            Caller::Entity {
+                package_hash,
+                entity_hash: contract_hash,
+            } => package_hash.serialized_length() + contract_hash.serialized_length(),
+        }
     }
 }
 
@@ -156,17 +156,3 @@ impl From<&Caller> for CallStackElement {
         }
     }
 }
-
-/*
-match value {
-            CallStackElement::Session { account_hash } => Caller::Initiator { account_hash },
-            CallStackElement::StoredSession { contract_package_hash, contract_hash, .. } => Caller::Entity {
-                package_hash: PackageHash::new(contract_package_hash.value()),
-                entity_hash: AddressableEntityHash::new(contract_hash.value()),
-            },
-            CallStackElement::StoredContract {
-                contract_hash,
-                contract_package_hash,
-            } =>
-
- */
