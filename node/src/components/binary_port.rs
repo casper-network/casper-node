@@ -973,6 +973,29 @@ where
     }
 }
 
+fn extract_header(payload: &[u8]) -> Result<(BinaryRequestHeader, &[u8]), ErrorCode> {
+    const BINARY_VERSION_LENGTH_BYTES: usize = std::mem::size_of::<u16>();
+
+    if payload.len() < BINARY_VERSION_LENGTH_BYTES {
+        return Err(ErrorCode::BadRequest);
+    }
+
+    let binary_protocol_version = match u16::from_bytes(payload) {
+        Ok((binary_protocol_version, _)) => binary_protocol_version,
+        Err(_) => return Err(ErrorCode::BadRequest),
+    };
+
+    if binary_protocol_version != BinaryRequestHeader::BINARY_REQUEST_VERSION {
+        return Err(ErrorCode::BinaryProtocolVersionMismatch);
+    }
+
+    let Ok((header, remainder)) = BinaryRequestHeader::from_bytes(payload) else {
+        return Err(ErrorCode::BadRequest);
+    };
+
+    Ok((header, remainder))
+}
+
 async fn handle_payload<REv>(
     effect_builder: EffectBuilder<REv>,
     payload: &[u8],
@@ -981,8 +1004,9 @@ async fn handle_payload<REv>(
 where
     REv: From<Event>,
 {
-    let Ok((header, remainder)) = BinaryRequestHeader::from_bytes(payload) else {
-        return (BinaryResponse::new_error(ErrorCode::BadRequest, protocol_version), 0);
+    let (header, remainder) = match extract_header(payload) {
+        Ok(header) => header,
+        Err(error_code) => return (BinaryResponse::new_error(error_code, protocol_version), 0),
     };
 
     let request_id = header.id();
@@ -997,21 +1021,19 @@ where
         );
     }
 
-    let header_version = header.version();
-    if header_version != BinaryRequestHeader::VERSION {
-        return (
-            BinaryResponse::new_error(ErrorCode::BinaryPortVersionMismatch, protocol_version),
-            request_id,
-        );
-    }
-
     // we might receive a request added in a minor version if we're behind
     let Ok(tag) = BinaryRequestTag::try_from(header.type_tag()) else {
-        return (BinaryResponse::new_error(ErrorCode::UnsupportedRequest, protocol_version), request_id);
+        return (
+            BinaryResponse::new_error(ErrorCode::UnsupportedRequest, protocol_version),
+            request_id,
+        );
     };
 
     let Ok(request) = BinaryRequest::try_from((tag, remainder)) else {
-        return (BinaryResponse::new_error(ErrorCode::BadRequest, protocol_version), request_id)
+        return (
+            BinaryResponse::new_error(ErrorCode::BadRequest, protocol_version),
+            request_id,
+        );
     };
 
     (

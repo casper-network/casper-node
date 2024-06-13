@@ -986,7 +986,7 @@ async fn binary_port_component_rejects_requests_with_invalid_header_version() {
         BinaryRequestHeader::new(ProtocolVersion::from_parts(2, 0, 0), request.tag(), 0);
 
     // Make the binary protocol version incompatible.
-    header.set_version(header.version() + 1);
+    header.set_binary_request_version(header.version() + 1);
 
     let header_bytes = ToBytes::to_bytes(&header).expect("should serialize");
     let original_request_bytes = header_bytes
@@ -1012,7 +1012,7 @@ async fn binary_port_component_rejects_requests_with_invalid_header_version() {
 
     assert_eq!(
         binary_response_and_request.response().error_code(),
-        ErrorCode::BinaryPortVersionMismatch as u16
+        ErrorCode::BinaryProtocolVersionMismatch as u16
     );
 
     let (_net, _rng) = timeout(Duration::from_secs(10), finish_cranking)
@@ -1035,7 +1035,7 @@ async fn binary_port_component_rejects_requests_with_incompatible_protocol_versi
         BinaryRequestHeader::new(ProtocolVersion::from_parts(2, 0, 0), request.tag(), 0);
 
     // Make the protocol version incompatible.
-    header.set_protocol_version(ProtocolVersion::from_parts(u32::MAX, u32::MAX, u32::MAX));
+    header.set_chain_protocol_version(ProtocolVersion::from_parts(u32::MAX, u32::MAX, u32::MAX));
 
     let header_bytes = ToBytes::to_bytes(&header).expect("should serialize");
     let original_request_bytes = header_bytes
@@ -1084,7 +1084,7 @@ async fn binary_port_component_accepts_requests_with_compatible_but_different_pr
         BinaryRequestHeader::new(ProtocolVersion::from_parts(2, 0, 0), request.tag(), 0);
 
     // Make the protocol different but compatible.
-    header.set_protocol_version(ProtocolVersion::from_parts(2, u32::MAX, u32::MAX));
+    header.set_chain_protocol_version(ProtocolVersion::from_parts(2, u32::MAX, u32::MAX));
 
     let header_bytes = ToBytes::to_bytes(&header).expect("should serialize");
     let original_request_bytes = header_bytes

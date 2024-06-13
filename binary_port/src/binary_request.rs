@@ -15,8 +15,8 @@ use rand::Rng;
 /// The header of a binary request.
 #[derive(Debug, PartialEq)]
 pub struct BinaryRequestHeader {
-    protocol_version: ProtocolVersion,
-    version: u16,
+    binary_request_version: u16,
+    chain_protocol_version: ProtocolVersion,
     type_tag: u8,
     id: u16,
 }
@@ -24,13 +24,13 @@ pub struct BinaryRequestHeader {
 impl BinaryRequestHeader {
     // Defines the current version of the header, in practice defining the current version of the
     // binary port protocol. Requests with mismatched header version will be dropped.
-    pub const VERSION: u16 = 0;
+    pub const BINARY_REQUEST_VERSION: u16 = 0;
 
     /// Creates new binary request header.
     pub fn new(protocol_version: ProtocolVersion, type_tag: BinaryRequestTag, id: u16) -> Self {
         Self {
-            protocol_version,
-            version: Self::VERSION,
+            chain_protocol_version: protocol_version,
+            binary_request_version: Self::BINARY_REQUEST_VERSION,
             type_tag: type_tag.into(),
             id,
         }
@@ -38,7 +38,7 @@ impl BinaryRequestHeader {
 
     /// Returns the protocol version of the request.
     pub fn protocol_version(&self) -> ProtocolVersion {
-        self.protocol_version
+        self.chain_protocol_version
     }
 
     /// Returns the type tag of the request.
@@ -53,24 +53,24 @@ impl BinaryRequestHeader {
 
     /// Returns the header version.
     pub fn version(&self) -> u16 {
-        self.version
+        self.binary_request_version
     }
 
     #[cfg(any(feature = "testing", test))]
-    pub fn set_version(&mut self, version: u16) {
-        self.version = version;
+    pub fn set_binary_request_version(&mut self, version: u16) {
+        self.binary_request_version = version;
     }
 
     #[cfg(any(feature = "testing", test))]
-    pub fn set_protocol_version(&mut self, protocol_version: ProtocolVersion) {
-        self.protocol_version = protocol_version;
+    pub fn set_chain_protocol_version(&mut self, protocol_version: ProtocolVersion) {
+        self.chain_protocol_version = protocol_version;
     }
 
     #[cfg(test)]
     pub(crate) fn random(rng: &mut TestRng) -> Self {
         Self {
-            protocol_version: ProtocolVersion::from_parts(rng.gen(), rng.gen(), rng.gen()),
-            version: rng.gen(),
+            chain_protocol_version: ProtocolVersion::from_parts(rng.gen(), rng.gen(), rng.gen()),
+            binary_request_version: rng.gen(),
             type_tag: BinaryRequestTag::random(rng).into(),
             id: rng.gen(),
         }
@@ -85,15 +85,15 @@ impl ToBytes for BinaryRequestHeader {
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        self.protocol_version.write_bytes(writer)?;
-        self.version.write_bytes(writer)?;
+        self.binary_request_version.write_bytes(writer)?;
+        self.chain_protocol_version.write_bytes(writer)?;
         self.type_tag.write_bytes(writer)?;
         self.id.write_bytes(writer)
     }
 
     fn serialized_length(&self) -> usize {
-        self.protocol_version.serialized_length()
-            + self.version.serialized_length()
+        self.binary_request_version.serialized_length()
+            + self.chain_protocol_version.serialized_length()
             + self.type_tag.serialized_length()
             + self.id.serialized_length()
     }
@@ -101,14 +101,14 @@ impl ToBytes for BinaryRequestHeader {
 
 impl FromBytes for BinaryRequestHeader {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (protocol_version, remainder) = FromBytes::from_bytes(bytes)?;
-        let (version, remainder) = FromBytes::from_bytes(remainder)?;
+        let (binary_request_version, remainder) = FromBytes::from_bytes(bytes)?;
+        let (chain_protocol_version, remainder) = FromBytes::from_bytes(remainder)?;
         let (type_tag, remainder) = FromBytes::from_bytes(remainder)?;
         let (id, remainder) = FromBytes::from_bytes(remainder)?;
         Ok((
             BinaryRequestHeader {
-                protocol_version,
-                version,
+                chain_protocol_version,
+                binary_request_version,
                 type_tag,
                 id,
             },

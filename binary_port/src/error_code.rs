@@ -196,8 +196,8 @@ pub enum ErrorCode {
     /// Cannot serve rewards stored in V1 format
     UnsupportedRewardsV1Request = 60,
     /// Invalid binary port version.
-    #[error("binary port version mismatch")]
-    BinaryPortVersionMismatch = 61,
+    #[error("binary protocol version mismatch")]
+    BinaryProtocolVersionMismatch = 61,
 }
 
 impl TryFrom<u16> for ErrorCode {
