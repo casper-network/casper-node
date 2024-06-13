@@ -54,11 +54,11 @@ impl<'a> ExecutionKind<'a> {
             ),
             ExecutableItem::PaymentBytes(module_bytes)
             | ExecutableItem::SessionBytes {
-                kind: SessionKind::GenericWasm,
+                kind: SessionKind::GenericBytecode,
                 module_bytes,
             } => Ok(ExecutionKind::Standard(module_bytes)),
             ExecutableItem::SessionBytes {
-                kind: SessionKind::InstallUpgradeWasm,
+                kind: SessionKind::InstallUpgradeBytecode,
                 module_bytes,
             } => Ok(ExecutionKind::InstallerUpgrader(module_bytes)),
             ExecutableItem::LegacyDeploy(module_bytes) => Ok(ExecutionKind::Deploy(module_bytes)),

@@ -43,8 +43,8 @@ pub enum InvalidRequest {
 
 #[derive(Debug, Clone)]
 pub enum SessionKind {
-    InstallUpgradeWasm,
-    GenericWasm,
+    InstallUpgradeBytecode,
+    GenericBytecode,
 }
 
 /// The item to be executed.
@@ -518,13 +518,13 @@ impl TryFrom<&TransactionV1> for SessionInfo {
                 })?;
                 let item = match category {
                     TransactionCategory::InstallUpgrade => ExecutableItem::SessionBytes {
-                        kind: SessionKind::InstallUpgradeWasm,
+                        kind: SessionKind::InstallUpgradeBytecode,
                         module_bytes: module_bytes.clone(),
                     },
                     TransactionCategory::Large
                     | TransactionCategory::Medium
                     | TransactionCategory::Small => ExecutableItem::SessionBytes {
-                        kind: SessionKind::GenericWasm,
+                        kind: SessionKind::GenericBytecode,
                         module_bytes: module_bytes.clone(),
                     },
                     _ => {
