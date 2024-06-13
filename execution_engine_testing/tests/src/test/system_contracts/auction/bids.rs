@@ -853,9 +853,11 @@ fn should_forcibly_undelegate_after_setting_validator_limits() {
         .find(|x| x.unbonder_public_key() == &*DELEGATOR_1)
         .expect("should have delegator_1 unbonding");
 
+    let overage = 1_000;
+
     assert_eq!(
         delegator_1_unbonding.amount(),
-        &U512::from(DELEGATE_AMOUNT_1),
+        &U512::from(overage),
         "expected delegator_1 amount to match"
     );
 
