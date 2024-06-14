@@ -32,7 +32,7 @@ impl fmt::Debug for Entries {
 
 pub(crate) fn decode_file(matches: &ArgMatches<'_>) {
     let file_name = matches.value_of("file").unwrap();
-    let mut file = File::open(&file_name).unwrap();
+    let mut file = File::open(file_name).unwrap();
 
     let mut contents = String::new();
     file.read_to_string(&mut contents).unwrap();
