@@ -673,6 +673,12 @@ pub fn execute_finalized_block(
             .collect()
     };
 
+    if let Some(metrics) = metrics.as_ref() {
+        metrics
+            .txn_approvals_hashes_calculation
+            .observe(post_processing_start.elapsed().as_secs_f64());
+    }
+
     // Pay out  ̶b̶l̶o̶c̶k̶ e͇r͇a͇ rewards
     // NOTE: despite the name, these rewards are currently paid out per ERA not per BLOCK
     // at one point, they were going to be paid out per block (and might be in the future)
@@ -680,6 +686,7 @@ pub fn execute_finalized_block(
     // thus if in future the calling logic passes rewards per block it should just work as is.
     // This auto-commits.
     if let Some(rewards) = &executable_block.rewards {
+        let block_rewards_payout_start = Instant::now();
         // Pay out block fees, if relevant. This auto-commits
         {
             let fee_req = FeeRequest::new(
@@ -721,11 +728,19 @@ pub fn execute_finalized_block(
                 state_root_hash = post_state_hash;
             }
         }
+        if let Some(metrics) = metrics.as_ref() {
+            metrics
+                .block_rewards_payout
+                .observe(block_rewards_payout_start.elapsed().as_secs_f64());
+        }
     }
 
     // if era report is some, this is a switch block. a series of end-of-era extra processing must
     // transpire before this block is entirely finished.
     let step_outcome = if let Some(era_report) = &executable_block.era_report {
+        // step processing starts now
+        let step_processing_start = Instant::now();
+
         // force undelegate delegators outside delegation limits before the auction runs
         let forced_undelegate_req = ForcedUndelegateRequest::new(
             native_runtime_config.clone(),
@@ -747,8 +762,6 @@ pub fn execute_finalized_block(
             }
         }
 
-        // step processing starts now
-        let step_processing_start = Instant::now();
         let step_effects = match commit_step(
             native_runtime_config,
             &scratch_state,
@@ -815,6 +828,8 @@ pub fn execute_finalized_block(
             previous_block_height,
             prune_batch_size,
         ) {
+            let pruning_start = Instant::now();
+
             let first_key = keys_to_prune.first().copied();
             let last_key = keys_to_prune.last().copied();
             info!(
@@ -864,10 +879,16 @@ pub fn execute_finalized_block(
                     return Err(tce.into());
                 }
             }
+            if let Some(metrics) = metrics.as_ref() {
+                metrics
+                    .pruning_time
+                    .observe(pruning_start.elapsed().as_secs_f64());
+            }
         }
     }
 
     {
+        let database_write_start = Instant::now();
         // Finally, the new state-root-hash from the cumulative changes to global state is
         // returned when they are written to LMDB.
         state_root_hash = data_access_layer.write_scratch_to_db(state_root_hash, scratch_state)?;
@@ -877,6 +898,11 @@ pub fn execute_finalized_block(
         if let Err(gse) = flush_result.as_error() {
             error!("failed to flush lmdb");
             return Err(BlockExecutionError::Lmdb(gse));
+        }
+        if let Some(metrics) = metrics.as_ref() {
+            metrics
+                .database_flush_time
+                .observe(database_write_start.elapsed().as_secs_f64());
         }
     }
 
