@@ -71,6 +71,8 @@ pub trait Auction:
         public_key: PublicKey,
         delegation_rate: DelegationRate,
         amount: U512,
+        minimum_delegation_amount: u64,
+        maximum_delegation_amount: u64,
     ) -> Result<U512, ApiError> {
         if !self.allow_auction_bids() {
             // The validator set may be closed on some side chains,
@@ -101,11 +103,21 @@ pub trait Auction:
             }
             validator_bid.increase_stake(amount)?;
             validator_bid.with_delegation_rate(delegation_rate);
+            validator_bid.set_delegation_amount_boundaries(
+                minimum_delegation_amount,
+                maximum_delegation_amount,
+            );
             (*validator_bid.bonding_purse(), validator_bid)
         } else {
             let bonding_purse = self.create_purse()?;
-            let validator_bid =
-                ValidatorBid::unlocked(public_key, bonding_purse, amount, delegation_rate);
+            let validator_bid = ValidatorBid::unlocked(
+                public_key,
+                bonding_purse,
+                amount,
+                delegation_rate,
+                minimum_delegation_amount,
+                maximum_delegation_amount,
+            );
             (bonding_purse, Box::new(validator_bid))
         };
 
@@ -215,7 +227,6 @@ pub trait Auction:
         validator_public_key: PublicKey,
         amount: U512,
         max_delegators_per_validator: u32,
-        minimum_delegation_amount: u64,
     ) -> Result<U512, ApiError> {
         if !self.allow_auction_bids() {
             // Validation set rotation might be disabled on some private chains and we should not
@@ -236,7 +247,6 @@ pub trait Auction:
             source,
             amount,
             max_delegators_per_validator,
-            minimum_delegation_amount,
         )
     }
 
@@ -317,7 +327,6 @@ pub trait Auction:
         validator_public_key: PublicKey,
         amount: U512,
         new_validator: PublicKey,
-        minimum_delegation_amount: u64,
     ) -> Result<U512, Error> {
         let delegator_account_hash =
             AccountHash::from_public_key(&delegator_public_key, |x| self.blake2b(x));
@@ -326,13 +335,15 @@ pub trait Auction:
             return Err(Error::InvalidContext);
         }
 
-        if amount < U512::from(minimum_delegation_amount) {
-            return Err(Error::DelegationAmountTooSmall);
-        }
-
         // does the validator being moved away from exist?
         let validator_addr = BidAddr::from(validator_public_key.clone());
-        let _ = read_validator_bid(self, &validator_addr.into())?;
+        let validator_bid = read_validator_bid(self, &validator_addr.into())?;
+        if amount < U512::from(validator_bid.minimum_delegation_amount()) {
+            return Err(Error::DelegationAmountTooSmall);
+        }
+        if amount > U512::from(validator_bid.maximum_delegation_amount()) {
+            return Err(Error::DelegationAmountTooLarge);
+        }
 
         let delegator_bid_addr =
             BidAddr::new_from_public_keys(&validator_public_key, Some(&delegator_public_key));
@@ -371,6 +382,58 @@ pub trait Auction:
         }
 
         Ok(updated_stake)
+    }
+
+    /// Unbond delegator bids which fall outside validator-configured delegation limits.
+    fn forced_undelegate(&mut self) -> Result<(), Error> {
+        if self.get_caller() != PublicKey::System.to_account_hash() {
+            return Err(Error::InvalidCaller);
+        }
+
+        let era_end_timestamp_millis = detail::get_era_end_timestamp_millis(self)?;
+        let era_id = detail::get_era_id(self)?;
+        let bids_detail = detail::get_validator_bids(self, era_id)?;
+
+        // Forcibly undelegate bids outside a validator's delegation limits
+        for (validator_public_key, validator_bid) in bids_detail.validator_bids().iter() {
+            let minimum_delegation_amount = U512::from(validator_bid.minimum_delegation_amount());
+            let maximum_delegation_amount = U512::from(validator_bid.maximum_delegation_amount());
+
+            let mut delegators = read_delegator_bids(self, validator_public_key)?;
+            for delegator in delegators.iter_mut() {
+                let staked_amount = delegator.staked_amount();
+                if staked_amount < minimum_delegation_amount
+                    || staked_amount > maximum_delegation_amount
+                {
+                    let delegator_public_key = delegator.delegator_public_key().clone();
+                    detail::create_unbonding_purse(
+                        self,
+                        validator_public_key.clone(),
+                        delegator_public_key.clone(),
+                        *delegator.bonding_purse(),
+                        delegator.staked_amount(),
+                        None,
+                    )?;
+                    match delegator
+                        .decrease_stake(delegator.staked_amount(), era_end_timestamp_millis)
+                    {
+                        Ok(_) => (),
+                        // Work around the case when the locked amounts table has yet to be
+                        // initialized (likely pre-90 day mark).
+                        Err(Error::DelegatorFundsLocked) => continue,
+                        Err(err) => return Err(err),
+                    }
+                    let delegator_bid_addr = BidAddr::new_from_public_keys(
+                        validator_public_key,
+                        Some(&delegator_public_key),
+                    );
+
+                    debug!("pruning delegator bid {}", delegator_bid_addr);
+                    self.prune_bid(delegator_bid_addr)
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Slashes each validator.
@@ -465,7 +528,6 @@ pub trait Auction:
         era_end_timestamp_millis: u64,
         evicted_validators: Vec<PublicKey>,
         max_delegators_per_validator: u32,
-        minimum_delegation_amount: u64,
         include_credits: bool,
         credit_cap: Ratio<U512>,
     ) -> Result<(), ApiError> {
@@ -482,11 +544,7 @@ pub trait Auction:
         let mut era_id: EraId = detail::get_era_id(self)?;
 
         // Process unbond requests
-        detail::process_unbond_requests(
-            self,
-            max_delegators_per_validator,
-            minimum_delegation_amount,
-        )?;
+        detail::process_unbond_requests(self, max_delegators_per_validator)?;
 
         let mut validator_bids_detail = detail::get_validator_bids(self, era_id)?;
 

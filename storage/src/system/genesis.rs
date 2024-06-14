@@ -416,6 +416,8 @@ where
                         staked_amount,
                         delegation_rate,
                         release_timestamp_millis,
+                        0,
+                        u64::MAX,
                     );
 
                     // Set up delegator entries attached to genesis validators
