@@ -186,7 +186,10 @@ where
         self.handle_new_round_seigniorage_rate(system_entity_addresses.mint())?;
         self.handle_legacy_accounts_migration()?;
         self.handle_legacy_contracts_migration()?;
-        self.handle_bids_migration()?;
+        self.handle_bids_migration(
+            self.config.maximum_delegation_amount(),
+            self.config.minimum_delegation_amount(),
+        )?;
         self.handle_era_info_migration()
     }
 
@@ -942,7 +945,11 @@ where
     }
 
     /// Handle bids migration.
-    pub fn handle_bids_migration(&self) -> Result<(), ProtocolUpgradeError> {
+    pub fn handle_bids_migration(
+        &self,
+        chainspec_minimum: u64,
+        chainspec_maximum: u64,
+    ) -> Result<(), ProtocolUpgradeError> {
         debug!("handle bids migration");
         let mut tc = self.tracking_copy.borrow_mut();
         let existing_bid_keys = match tc.get_keys(&KeyTag::Bid) {
@@ -970,7 +977,11 @@ where
 
                 let validator_public_key = existing_bid.validator_public_key();
                 let validator_bid_addr = BidAddr::from(validator_public_key.clone());
-                let validator_bid = ValidatorBid::from(*existing_bid.clone());
+                let validator_bid = {
+                    let validator_bid = ValidatorBid::from(*existing_bid.clone());
+                    validator_bid
+                        .with_min_max_delegation_amount(chainspec_maximum, chainspec_minimum)
+                };
                 tc.write(
                     validator_bid_addr.into(),
                     StoredValue::BidKind(BidKind::Validator(Box::new(validator_bid))),
