@@ -53,9 +53,9 @@ impl BlockHash {
         &self.0
     }
 
-    /// Hexadecimal representation of hash.
+    /// Hexadecimal representation of the hash.
     pub fn to_hex_string(&self) -> String {
-        hex::encode(self.inner())
+        base16::encode_lower(self.inner())
     }
 
     // This method is not intended to be used by third party crates.

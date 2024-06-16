@@ -45,9 +45,9 @@ impl TransactionHash {
         }
     }
 
-    /// Hexadecimal representation of hash.
+    /// Hexadecimal representation of the hash.
     pub fn to_hex_string(&self) -> String {
-        hex::encode(self.digest())
+        base16::encode_lower(&self.digest())
     }
 
     /// Returns a random `TransactionHash`.
