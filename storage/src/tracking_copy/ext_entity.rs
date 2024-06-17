@@ -236,7 +236,7 @@ where
                     AddressGenerator::new(account.main_purse().addr().as_ref(), Phase::System);
 
                 let byte_code_hash = ByteCodeHash::default();
-                let entity_hash = AddressableEntityHash::new(generator.new_hash_address());
+                let entity_hash = AddressableEntityHash::new(account_hash.value());
                 let package_hash = PackageHash::new(generator.new_hash_address());
 
                 self.migrate_named_keys(

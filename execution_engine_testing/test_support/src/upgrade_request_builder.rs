@@ -25,6 +25,8 @@ pub struct UpgradeRequestBuilder {
     fee_handling: FeeHandling,
     migrate_legacy_accounts: bool,
     migrate_legacy_contracts: bool,
+    maximum_delegation_amount: u64,
+    minimum_delegation_amount: u64,
 }
 
 impl UpgradeRequestBuilder {
@@ -135,6 +137,18 @@ impl UpgradeRequestBuilder {
         self
     }
 
+    /// Sets the maximum delegation for the validators bid during migration.
+    pub fn with_maximum_delegation_amount(mut self, maximum_delegation_amount: u64) -> Self {
+        self.maximum_delegation_amount = maximum_delegation_amount;
+        self
+    }
+
+    /// Sets the minimum delegation for the validators bid during migration.
+    pub fn with_minimum_delegation_amount(mut self, minimum_delegation_amount: u64) -> Self {
+        self.minimum_delegation_amount = minimum_delegation_amount;
+        self
+    }
+
     /// Consumes the `UpgradeRequestBuilder` and returns an [`ProtocolUpgradeConfig`].
     pub fn build(self) -> ProtocolUpgradeConfig {
         ProtocolUpgradeConfig::new(
@@ -154,6 +168,8 @@ impl UpgradeRequestBuilder {
             self.fee_handling,
             self.migrate_legacy_accounts,
             self.migrate_legacy_contracts,
+            self.maximum_delegation_amount,
+            self.minimum_delegation_amount,
         )
     }
 }
@@ -177,6 +193,8 @@ impl Default for UpgradeRequestBuilder {
             fee_handling: FeeHandling::default(),
             migrate_legacy_accounts: false,
             migrate_legacy_contracts: false,
+            maximum_delegation_amount: u64::MAX,
+            minimum_delegation_amount: 0,
         }
     }
 }

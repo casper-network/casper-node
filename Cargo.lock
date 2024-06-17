@@ -3544,6 +3544,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "load-caller-info"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "lock_api"
 version = "0.4.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -88,7 +88,11 @@ impl AuctionMethod {
                 Err(AuctionMethodError::InvalidEntryPoint(entry_point))
             }
             TransactionEntryPoint::ActivateBid => Self::new_activate_bid(runtime_args),
-            TransactionEntryPoint::AddBid => Self::new_add_bid(runtime_args),
+            TransactionEntryPoint::AddBid => Self::new_add_bid(
+                runtime_args,
+                chainspec.core_config.minimum_delegation_amount,
+                chainspec.core_config.maximum_delegation_amount,
+            ),
             TransactionEntryPoint::WithdrawBid => Self::new_withdraw_bid(runtime_args),
             TransactionEntryPoint::Delegate => Self::new_delegate(
                 runtime_args,
@@ -107,14 +111,20 @@ impl AuctionMethod {
         Ok(Self::ActivateBid { validator })
     }
 
-    fn new_add_bid(runtime_args: &RuntimeArgs) -> Result<Self, AuctionMethodError> {
+    fn new_add_bid(
+        runtime_args: &RuntimeArgs,
+        global_minimum_delegation: u64,
+        global_maximum_delegation: u64,
+    ) -> Result<Self, AuctionMethodError> {
         let public_key = Self::get_named_argument(runtime_args, auction::ARG_PUBLIC_KEY)?;
         let delegation_rate = Self::get_named_argument(runtime_args, auction::ARG_DELEGATION_RATE)?;
         let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
         let minimum_delegation_amount =
-            Self::get_named_argument(runtime_args, auction::ARG_MINIMUM_DELEGATION_AMOUNT)?;
+            Self::get_named_argument(runtime_args, auction::ARG_MINIMUM_DELEGATION_AMOUNT)
+                .unwrap_or(global_minimum_delegation);
         let maximum_delegation_amount =
-            Self::get_named_argument(runtime_args, auction::ARG_MAXIMUM_DELEGATION_AMOUNT)?;
+            Self::get_named_argument(runtime_args, auction::ARG_MAXIMUM_DELEGATION_AMOUNT)
+                .unwrap_or(global_maximum_delegation);
 
         Ok(Self::AddBid {
             public_key,

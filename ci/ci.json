@@ -1,23 +1,23 @@
 {
-    "external_deps": {
-        "casper-client-rs": {
-            "github_repo_url": "https://github.com/casper-ecosystem/casper-client-rs.git",
-            "branch": "feat-track-node-2.0"
-        },
-        "casper-node-launcher": {
-            "github_repo_url": "https://github.com/casper-network/casper-node-launcher.git",
-            "branch": "main"
-        },
-        "casper-sidecar": {
-            "github_repo_url": "https://github.com/rafal-ch/casper-sidecar",
-            "branch": "binary_port_fixes"
-        },
-        "casper-nctl": {
-            "github_repo_url": "https://github.com/casper-network/casper-nctl",
-            "branch": "dev"
-        }
+  "external_deps": {
+    "casper-client-rs": {
+      "github_repo_url": "https://github.com/casper-ecosystem/casper-client-rs.git",
+      "branch": "feat-track-node-2.0"
     },
-    "nctl_upgrade_tests": {
-        "protocol_1": "1.4.13"
+    "casper-node-launcher": {
+      "github_repo_url": "https://github.com/casper-network/casper-node-launcher.git",
+      "branch": "main"
+    },
+    "casper-sidecar": {
+      "github_repo_url": "https://github.com/casper-network/casper-sidecar",
+      "branch": "feat-2.0"
+    },
+    "casper-nctl": {
+      "github_repo_url": "https://github.com/casper-network/casper-nctl",
+      "branch": "dev"
     }
+  },
+  "nctl_upgrade_tests": {
+    "protocol_1": "1.5.6"
+  }
 }
