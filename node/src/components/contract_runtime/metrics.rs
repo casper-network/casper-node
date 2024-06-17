@@ -105,7 +105,10 @@ const BATCH_PRUNING_TIME: &str = "contract_runtime_batch_pruning_time";
 const BATCH_PRUNING_TIME_HELP: &str = "time in seconds to perform batch pruning";
 
 const DB_FLUSH_TIME: &str = "contract_runtime_db_flush_time";
-const DB_FLUSH_TIME_HELP: &str = "time in seconds to write and flush changes to the database";
+const DB_FLUSH_TIME_HELP: &str = "time in seconds to flush changes to the database";
+
+const SCRATCH_LMDB_WRITE_TIME: &str = "contract_runtime_scratch_lmdb_write_time";
+const SCRATCH_LMDB_WRITE_TIME_HELP: &str = "time in seconds to write changes to the database";
 
 /// Metrics for the contract runtime component.
 #[derive(Debug)]
@@ -144,6 +147,7 @@ pub struct Metrics {
     pub(super) block_rewards_payout: Histogram,
     pub(super) pruning_time: Histogram,
     pub(super) database_flush_time: Histogram,
+    pub(super) scratch_lmdb_write_time: Histogram,
     registry: Registry,
 }
 
@@ -334,6 +338,12 @@ impl Metrics {
                 DB_FLUSH_TIME_HELP,
                 wider_buckets.clone(),
             )?,
+            scratch_lmdb_write_time: utils::register_histogram_metric(
+                registry,
+                SCRATCH_LMDB_WRITE_TIME,
+                SCRATCH_LMDB_WRITE_TIME_HELP,
+                wider_buckets.clone(),
+            )?,
             registry: registry.clone(),
         })
     }
@@ -368,5 +378,6 @@ impl Drop for Metrics {
         unregister_metric!(self.registry, self.block_rewards_payout);
         unregister_metric!(self.registry, self.pruning_time);
         unregister_metric!(self.registry, self.database_flush_time);
+        unregister_metric!(self.registry, self.scratch_lmdb_write_time);
     }
 }

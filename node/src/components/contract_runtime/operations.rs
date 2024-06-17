@@ -695,6 +695,7 @@ pub fn execute_finalized_block(
                 protocol_version,
                 block_time,
             );
+            debug!(?fee_req, "distributing fees");
             match scratch_state.distribute_fees(fee_req) {
                 FeeResult::RootNotFound => {
                     return Err(BlockExecutionError::RootNotFound(state_root_hash));
@@ -703,6 +704,7 @@ pub fn execute_finalized_block(
                 FeeResult::Success {
                     post_state_hash, ..
                 } => {
+                    debug!("fee distribution success");
                     state_root_hash = post_state_hash;
                 }
             }
@@ -715,6 +717,7 @@ pub fn execute_finalized_block(
             block_time,
             rewards.clone(),
         );
+        debug!(?rewards_req, "distributing rewards");
         match scratch_state.distribute_block_rewards(rewards_req) {
             BlockRewardsResult::RootNotFound => {
                 return Err(BlockExecutionError::RootNotFound(state_root_hash));
@@ -725,6 +728,7 @@ pub fn execute_finalized_block(
             BlockRewardsResult::Success {
                 post_state_hash, ..
             } => {
+                debug!("rewards distribution success");
                 state_root_hash = post_state_hash;
             }
         }
@@ -892,7 +896,14 @@ pub fn execute_finalized_block(
         // Finally, the new state-root-hash from the cumulative changes to global state is
         // returned when they are written to LMDB.
         state_root_hash = data_access_layer.write_scratch_to_db(state_root_hash, scratch_state)?;
+        if let Some(metrics) = metrics.as_ref() {
+            metrics
+                .scratch_lmdb_write_time
+                .observe(database_write_start.elapsed().as_secs_f64());
+        }
+
         // Flush once, after all data mutation.
+        let database_flush_start = Instant::now();
         let flush_req = FlushRequest::new();
         let flush_result = data_access_layer.flush(flush_req);
         if let Err(gse) = flush_result.as_error() {
@@ -902,7 +913,7 @@ pub fn execute_finalized_block(
         if let Some(metrics) = metrics.as_ref() {
             metrics
                 .database_flush_time
-                .observe(database_write_start.elapsed().as_secs_f64());
+                .observe(database_flush_start.elapsed().as_secs_f64());
         }
     }
 
