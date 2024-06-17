@@ -85,13 +85,10 @@ impl Executor {
         let entity_key = Key::addressable_entity_key(entity.kind().tag(), entity_hash);
 
         let calling_add_contract_version = match execution_kind {
-            ExecutionKind::Installer(_)
-            | ExecutionKind::Upgrader(_)
+            ExecutionKind::InstallerUpgrader(_)
             | ExecutionKind::Stored { .. }
             | ExecutionKind::Deploy(_) => CallingAddContractVersion::Allowed,
-            ExecutionKind::Standard(_) | ExecutionKind::Isolated(_) => {
-                CallingAddContractVersion::Forbidden
-            }
+            ExecutionKind::Standard(_) => CallingAddContractVersion::Forbidden,
         };
 
         let context = self.create_runtime_context(
@@ -118,9 +115,7 @@ impl Executor {
 
         let result = match execution_kind {
             ExecutionKind::Standard(module_bytes)
-            | ExecutionKind::Installer(module_bytes)
-            | ExecutionKind::Upgrader(module_bytes)
-            | ExecutionKind::Isolated(module_bytes)
+            | ExecutionKind::InstallerUpgrader(module_bytes)
             | ExecutionKind::Deploy(module_bytes) => {
                 runtime.execute_module_bytes(module_bytes, stack)
             }
