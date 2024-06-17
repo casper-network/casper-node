@@ -405,18 +405,21 @@ pub trait Auction:
                 if staked_amount < minimum_delegation_amount
                     || staked_amount > maximum_delegation_amount
                 {
+                    let amount = if staked_amount < minimum_delegation_amount {
+                        staked_amount
+                    } else {
+                        staked_amount - maximum_delegation_amount
+                    };
                     let delegator_public_key = delegator.delegator_public_key().clone();
                     detail::create_unbonding_purse(
                         self,
                         validator_public_key.clone(),
                         delegator_public_key.clone(),
                         *delegator.bonding_purse(),
-                        delegator.staked_amount(),
+                        amount,
                         None,
                     )?;
-                    match delegator
-                        .decrease_stake(delegator.staked_amount(), era_end_timestamp_millis)
-                    {
+                    match delegator.decrease_stake(amount, era_end_timestamp_millis) {
                         Ok(_) => (),
                         // Work around the case when the locked amounts table has yet to be
                         // initialized (likely pre-90 day mark).
@@ -940,16 +943,16 @@ fn rewards_per_validator(
             .get(&rewarded_era)
             .ok_or(Error::MissingSeigniorageRecipients)?
             .get(validator).cloned()
-        else {
-            // We couldn't find the validator. If the reward amount is zero, we don't care -
-            // the validator wasn't supposed to be rewarded in this era, anyway. Otherwise,
-            // return an error.
-            if reward_amount.is_zero() {
-                continue;
-            } else {
-                return Err(Error::ValidatorNotFound);
-            }
-        };
+            else {
+                // We couldn't find the validator. If the reward amount is zero, we don't care -
+                // the validator wasn't supposed to be rewarded in this era, anyway. Otherwise,
+                // return an error.
+                if reward_amount.is_zero() {
+                    continue;
+                } else {
+                    return Err(Error::ValidatorNotFound);
+                }
+            };
 
         let total_stake = recipient.total_stake().ok_or(Error::ArithmeticOverflow)?;
 

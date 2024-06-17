@@ -171,9 +171,6 @@ administrators = []
 [highway]
 # Highway dynamically chooses its round length, between minimum_block_time and maximum_round_length.
 maximum_round_length = '66 seconds'
-# The factor by which rewards for a round are multiplied if the greatest summit has ≤50% quorum, i.e. no finality.
-# Expressed as a fraction (1/5 by default).
-reduced_reward_multiplier = [1, 5]
 
 [transactions]
 # The duration after the transaction timestamp that it can be included in a block.

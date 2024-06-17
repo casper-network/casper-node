@@ -58,6 +58,7 @@ pub(crate) enum FunctionIndex {
     EnableContractVersion,
     ManageMessageTopic,
     EmitMessage,
+    LoadCallerInformation,
 }
 
 impl From<FunctionIndex> for usize {

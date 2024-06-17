@@ -8,6 +8,6 @@ pub mod reservations;
 pub mod standard_payment;
 mod system_contract_type;
 
-pub use caller::{Caller, CallerTag};
+pub use caller::{CallStackElement, Caller, CallerTag};
 pub use error::Error;
 pub use system_contract_type::{SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT};

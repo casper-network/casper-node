@@ -34,7 +34,6 @@ administrators = []
 
 [highway]
 maximum_round_length = '525seconds'
-reduced_reward_multiplier = [1, 5]
 
 [transactions]
 max_ttl = '18hours'
