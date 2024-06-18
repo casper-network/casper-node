@@ -407,15 +407,20 @@ pub trait CommitProvider: StateProvider {
                 auction_error
             );
             return BlockRewardsResult::Failure(BlockRewardsError::Auction(auction_error));
+        } else {
+            debug!("rewards distribution complete");
         }
 
         let effects = tc.borrow().effects();
 
         match self.commit(state_hash, effects.clone()) {
-            Ok(post_state_hash) => BlockRewardsResult::Success {
-                post_state_hash,
-                effects,
-            },
+            Ok(post_state_hash) => {
+                debug!("reward distribution committed");
+                BlockRewardsResult::Success {
+                    post_state_hash,
+                    effects,
+                }
+            }
             Err(gse) => BlockRewardsResult::Failure(BlockRewardsError::TrackingCopy(
                 TrackingCopyError::Storage(gse),
             )),
