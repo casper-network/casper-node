@@ -37,8 +37,8 @@ use casper_types::{
     Block, BlockV2, CLValue, Chainspec, ChainspecRawBytes, Contract, Deploy, EntryPointValue,
     EraId, HashAddr, InvalidDeploy, InvalidTransaction, InvalidTransactionV1, Package, PricingMode,
     ProtocolVersion, PublicKey, SecretKey, StoredValue, TestBlockBuilder, TimeDiff, Timestamp,
-    Transaction, TransactionConfig, TransactionSessionKind, TransactionV1, TransactionV1Builder,
-    URef, U512,
+    Transaction, TransactionCategory, TransactionConfig, TransactionV1, TransactionV1Builder, URef,
+    U512,
 };
 
 use super::*;
@@ -278,7 +278,7 @@ impl TestScenario {
             TestScenario::FromPeerExpired(TxnType::V1)
             | TestScenario::FromClientExpired(TxnType::V1) => {
                 let txn = TransactionV1Builder::new_session(
-                    TransactionSessionKind::Standard,
+                    TransactionCategory::Large,
                     Bytes::from(vec![1]),
                 )
                 .with_chain_name("casper-example")
@@ -302,7 +302,7 @@ impl TestScenario {
                 TxnType::Deploy => Transaction::from(Deploy::random_valid_native_transfer(rng)),
                 TxnType::V1 => {
                     let txn = TransactionV1Builder::new_session(
-                        TransactionSessionKind::Standard,
+                        TransactionCategory::Large,
                         Bytes::from(vec![1]),
                     )
                     .with_chain_name("casper-example")
@@ -320,7 +320,7 @@ impl TestScenario {
             }
             TestScenario::FromClientSignedByAdmin(TxnType::V1) => {
                 let txn = TransactionV1Builder::new_session(
-                    TransactionSessionKind::Standard,
+                    TransactionCategory::Large,
                     Bytes::from(vec![1]),
                 )
                 .with_chain_name("casper-example")
@@ -515,7 +515,7 @@ impl TestScenario {
                     ),
                     TxnType::V1 => {
                         let txn = TransactionV1Builder::new_session(
-                            TransactionSessionKind::Standard,
+                            TransactionCategory::Large,
                             Bytes::from(vec![1]),
                         )
                         .with_chain_name("casper-example")
@@ -541,7 +541,7 @@ impl TestScenario {
                     ),
                     TxnType::V1 => {
                         let txn = TransactionV1Builder::new_session(
-                            TransactionSessionKind::Standard,
+                            TransactionCategory::Large,
                             Bytes::from(vec![1]),
                         )
                         .with_chain_name("casper-example")

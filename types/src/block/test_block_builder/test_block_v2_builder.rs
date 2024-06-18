@@ -1,3 +1,4 @@
+use core::convert::TryInto;
 use std::iter;
 
 use alloc::collections::BTreeMap;
@@ -6,7 +7,7 @@ use rand::Rng;
 use crate::{
     system::auction::ValidatorWeights, testing::TestRng, transaction::TransactionCategory, Block,
     BlockHash, BlockV2, Digest, EraEndV2, EraId, ProtocolVersion, PublicKey, RewardedSignatures,
-    Timestamp, Transaction, TransactionEntryPoint, TransactionSessionKind, TransactionTarget, U512,
+    Timestamp, Transaction, U512,
 };
 
 /// A helper to build the blocks with various properties required for tests.
@@ -174,46 +175,22 @@ impl TestBlockV2Builder {
         let mut mint_hashes = vec![];
         let mut auction_hashes = vec![];
         let mut install_upgrade_hashes = vec![];
-        let mut standard_hashes = vec![];
+        let mut large_hashes = vec![];
+        let mut medium_hashes = vec![];
+        let mut small_hashes = vec![];
         for txn in txns {
             let txn_hash = txn.hash();
-            match txn {
-                Transaction::Deploy(deploy) => {
-                    if deploy.session().is_transfer() {
-                        mint_hashes.push(txn_hash);
-                    } else {
-                        standard_hashes.push(txn_hash);
-                    }
-                }
-                Transaction::V1(v1_txn) => match v1_txn.target() {
-                    TransactionTarget::Native => match v1_txn.entry_point() {
-                        TransactionEntryPoint::Call => {
-                            panic!("call entry point not supported for native target")
-                        }
-                        TransactionEntryPoint::Custom(_) => {
-                            panic!("custom entry point not supported for native target")
-                        }
-                        TransactionEntryPoint::Transfer => mint_hashes.push(txn_hash),
-                        TransactionEntryPoint::AddBid
-                        | TransactionEntryPoint::WithdrawBid
-                        | TransactionEntryPoint::Delegate
-                        | TransactionEntryPoint::Undelegate
-                        | TransactionEntryPoint::Redelegate
-                        | TransactionEntryPoint::ActivateBid
-                        | TransactionEntryPoint::ChangeBidPublicKey => {
-                            auction_hashes.push(txn_hash)
-                        }
-                    },
-                    TransactionTarget::Stored { .. } => standard_hashes.push(txn_hash),
-                    TransactionTarget::Session { kind, .. } => match kind {
-                        TransactionSessionKind::Standard | TransactionSessionKind::Isolated => {
-                            standard_hashes.push(txn_hash)
-                        }
-                        TransactionSessionKind::Installer | TransactionSessionKind::Upgrader => {
-                            install_upgrade_hashes.push(txn_hash)
-                        }
-                    },
-                },
+            let category: TransactionCategory = txn
+                .transaction_category()
+                .try_into()
+                .expect("Expected a valid priority");
+            match category {
+                TransactionCategory::Mint => mint_hashes.push(txn_hash),
+                TransactionCategory::Auction => auction_hashes.push(txn_hash),
+                TransactionCategory::InstallUpgrade => install_upgrade_hashes.push(txn_hash),
+                TransactionCategory::Large => large_hashes.push(txn_hash),
+                TransactionCategory::Medium => medium_hashes.push(txn_hash),
+                TransactionCategory::Small => small_hashes.push(txn_hash),
             }
         }
         let transactions = {
@@ -224,7 +201,9 @@ impl TestBlockV2Builder {
                 TransactionCategory::InstallUpgrade as u8,
                 install_upgrade_hashes,
             );
-            ret.insert(TransactionCategory::Large as u8, standard_hashes);
+            ret.insert(TransactionCategory::Large as u8, large_hashes);
+            ret.insert(TransactionCategory::Medium as u8, medium_hashes);
+            ret.insert(TransactionCategory::Small as u8, small_hashes);
             ret
         };
         let rewarded_signatures = rewarded_signatures.unwrap_or_default();

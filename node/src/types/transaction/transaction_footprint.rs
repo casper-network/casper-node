@@ -38,7 +38,7 @@ impl TransactionFootprint {
     ) -> Result<Self, InvalidTransaction> {
         let gas_price_tolerance = transaction.gas_price_tolerance()?;
         let gas_limit = transaction.gas_limit(chainspec)?;
-        let category = transaction.transaction_kind();
+        let category = transaction.transaction_category();
         if !chainspec
             .transaction_config
             .transaction_v1_config
