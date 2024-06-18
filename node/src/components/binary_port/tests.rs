@@ -142,7 +142,7 @@ async fn should_return_error_for_disabled_functions() {
                 panic!("expected receiver to complete first")
             }
         };
-        assert_eq!(result.error_code(), EXPECTED_ERROR_CODE as u8)
+        assert_eq!(result.error_code(), EXPECTED_ERROR_CODE as u16)
     }
 }
 

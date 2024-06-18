@@ -1,9 +1,12 @@
 use casper_types::{
-    bytesrepr::{self, Bytes, FromBytes, ToBytes},
+    bytesrepr::{self, FromBytes, ToBytes},
     ProtocolVersion,
 };
 
-use crate::{binary_response::BinaryResponse, payload_type::PayloadEntity, PayloadType};
+use crate::{
+    binary_response::BinaryResponse, original_request_context::OriginalRequestContext,
+    payload_type::PayloadEntity, PayloadType,
+};
 
 use crate::record_id::RecordId;
 #[cfg(test)]
@@ -12,17 +15,24 @@ use casper_types::testing::TestRng;
 /// The binary response along with the original binary request attached.
 #[derive(Debug, PartialEq)]
 pub struct BinaryResponseAndRequest {
-    /// The original request (as serialized bytes).
-    original_request: Vec<u8>,
+    /// Context of the original request.
+    original_request: OriginalRequestContext,
     /// The response.
     response: BinaryResponse,
 }
 
 impl BinaryResponseAndRequest {
     /// Creates new binary response with the original request attached.
-    pub fn new(data: BinaryResponse, original_request: &[u8]) -> Self {
+    pub fn new(
+        data: BinaryResponse,
+        original_request_payload: &[u8],
+        original_request_id: u16,
+    ) -> Self {
         Self {
-            original_request: original_request.to_vec(),
+            original_request: OriginalRequestContext::new(
+                original_request_id,
+                original_request_payload.to_vec(),
+            ),
             response: data,
         }
     }
@@ -38,7 +48,7 @@ impl BinaryResponseAndRequest {
             data.to_bytes().unwrap(),
             protocol_version,
         );
-        Self::new(response, &[])
+        Self::new(response, &[], 0)
     }
 
     /// Returns a new binary response with specified legacy data and no original request.
@@ -52,7 +62,7 @@ impl BinaryResponseAndRequest {
             bincode::serialize(data).unwrap(),
             protocol_version,
         );
-        Self::new(response, &[])
+        Self::new(response, &[], 0)
     }
 
     /// Returns true if response is success.
@@ -61,21 +71,26 @@ impl BinaryResponseAndRequest {
     }
 
     /// Returns the error code.
-    pub fn error_code(&self) -> u8 {
+    pub fn error_code(&self) -> u16 {
         self.response.error_code()
     }
 
     #[cfg(test)]
     pub(crate) fn random(rng: &mut TestRng) -> Self {
         Self {
-            original_request: rng.random_vec(64..128),
+            original_request: OriginalRequestContext::random(rng),
             response: BinaryResponse::random(rng),
         }
     }
 
     /// Returns serialized bytes representing the original request.
-    pub fn original_request(&self) -> &[u8] {
-        self.original_request.as_ref()
+    pub fn original_request_bytes(&self) -> &[u8] {
+        self.original_request.data()
+    }
+
+    /// Returns the original request id.
+    pub fn original_request_id(&self) -> u16 {
+        self.original_request.id()
     }
 
     /// Returns the inner binary response.
@@ -108,12 +123,12 @@ impl ToBytes for BinaryResponseAndRequest {
 
 impl FromBytes for BinaryResponseAndRequest {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (original_request, remainder) = Bytes::from_bytes(bytes)?;
+        let (original_request, remainder) = OriginalRequestContext::from_bytes(bytes)?;
         let (response, remainder) = FromBytes::from_bytes(remainder)?;
 
         Ok((
             BinaryResponseAndRequest {
-                original_request: original_request.into(),
+                original_request,
                 response,
             },
             remainder,
