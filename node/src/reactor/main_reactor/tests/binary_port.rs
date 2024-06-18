@@ -289,7 +289,7 @@ where
 }
 
 #[tokio::test]
-async fn binary_port_component() {
+async fn binary_port_component_handles_all_requests() {
     testing::init_logging();
 
     let (
@@ -373,15 +373,23 @@ async fn binary_port_component() {
         ),
     ];
 
-    for TestCase {
-        name,
-        request,
-        asserter,
-    } in test_cases
+    for (
+        index,
+        TestCase {
+            name,
+            request,
+            asserter,
+        },
+    ) in test_cases.iter().enumerate()
     {
-        let header = BinaryRequestHeader::new(ProtocolVersion::from_parts(2, 0, 0), request.tag());
+        let header = BinaryRequestHeader::new(
+            ProtocolVersion::from_parts(2, 0, 0),
+            request.tag(),
+            index as u16,
+        );
         let header_bytes = ToBytes::to_bytes(&header).expect("should serialize");
 
+        let original_request_id = header.id();
         let original_request_bytes = header_bytes
             .iter()
             .chain(
@@ -405,13 +413,17 @@ async fn binary_port_component() {
         let (binary_response_and_request, _): (BinaryResponseAndRequest, _) =
             FromBytes::from_bytes(response.payload()).expect("should deserialize response");
 
-        let mirrored_request_bytes = binary_response_and_request.original_request();
+        let mirrored_request_bytes = binary_response_and_request.original_request_bytes();
         assert_eq!(
             mirrored_request_bytes,
             original_request_bytes.as_slice(),
             "{}",
             name
         );
+
+        let mirrored_request_id = binary_response_and_request.original_request_id();
+        assert_eq!(mirrored_request_id, original_request_id, "{}", name);
+
         assert!(asserter(binary_response_and_request.response()), "{}", name);
     }
 
@@ -937,7 +949,7 @@ fn try_accept_transaction(key: &SecretKey) -> TestCase {
     TestCase {
         name: "try_accept_transaction",
         request: BinaryRequest::TryAcceptTransaction { transaction },
-        asserter: Box::new(|response| response.error_code() == ErrorCode::NoError as u8),
+        asserter: Box::new(|response| response.error_code() == ErrorCode::NoError as u16),
     }
 }
 
@@ -957,4 +969,151 @@ fn try_spec_exec_invalid(rng: &mut TestRng) -> TestCase {
         request: BinaryRequest::TrySpeculativeExec { transaction },
         asserter: Box::new(|response| ErrorCode::try_from(response.error_code()).is_ok()),
     }
+}
+
+#[tokio::test]
+async fn binary_port_component_rejects_requests_with_invalid_header_version() {
+    testing::init_logging();
+
+    let (mut client, (finish_cranking, _)) = setup().await;
+
+    let request = BinaryRequest::Get(GetRequest::Information {
+        info_type_tag: InformationRequestTag::Uptime.into(),
+        key: vec![],
+    });
+
+    let mut header =
+        BinaryRequestHeader::new(ProtocolVersion::from_parts(2, 0, 0), request.tag(), 0);
+
+    // Make the binary protocol version incompatible.
+    header.set_binary_request_version(header.version() + 1);
+
+    let header_bytes = ToBytes::to_bytes(&header).expect("should serialize");
+    let original_request_bytes = header_bytes
+        .iter()
+        .chain(
+            ToBytes::to_bytes(&request)
+                .expect("should serialize")
+                .iter(),
+        )
+        .cloned()
+        .collect::<Vec<_>>();
+    client
+        .send(BinaryMessage::new(original_request_bytes.clone()))
+        .await
+        .expect("should send message");
+    let response = timeout(Duration::from_secs(10), client.next())
+        .await
+        .unwrap_or_else(|_| panic!("should complete without timeout"))
+        .unwrap_or_else(|| panic!("should have bytes"))
+        .unwrap_or_else(|_| panic!("should have ok response"));
+    let (binary_response_and_request, _): (BinaryResponseAndRequest, _) =
+        FromBytes::from_bytes(response.payload()).expect("should deserialize response");
+
+    assert_eq!(
+        binary_response_and_request.response().error_code(),
+        ErrorCode::BinaryProtocolVersionMismatch as u16
+    );
+
+    let (_net, _rng) = timeout(Duration::from_secs(10), finish_cranking)
+        .await
+        .unwrap_or_else(|_| panic!("should finish cranking without timeout"));
+}
+
+#[tokio::test]
+async fn binary_port_component_rejects_requests_with_incompatible_protocol_version() {
+    testing::init_logging();
+
+    let (mut client, (finish_cranking, _)) = setup().await;
+
+    let request = BinaryRequest::Get(GetRequest::Information {
+        info_type_tag: InformationRequestTag::Uptime.into(),
+        key: vec![],
+    });
+
+    let mut header =
+        BinaryRequestHeader::new(ProtocolVersion::from_parts(2, 0, 0), request.tag(), 0);
+
+    // Make the protocol version incompatible.
+    header.set_chain_protocol_version(ProtocolVersion::from_parts(u32::MAX, u32::MAX, u32::MAX));
+
+    let header_bytes = ToBytes::to_bytes(&header).expect("should serialize");
+    let original_request_bytes = header_bytes
+        .iter()
+        .chain(
+            ToBytes::to_bytes(&request)
+                .expect("should serialize")
+                .iter(),
+        )
+        .cloned()
+        .collect::<Vec<_>>();
+    client
+        .send(BinaryMessage::new(original_request_bytes.clone()))
+        .await
+        .expect("should send message");
+    let response = timeout(Duration::from_secs(10), client.next())
+        .await
+        .unwrap_or_else(|_| panic!("should complete without timeout"))
+        .unwrap_or_else(|| panic!("should have bytes"))
+        .unwrap_or_else(|_| panic!("should have ok response"));
+    let (binary_response_and_request, _): (BinaryResponseAndRequest, _) =
+        FromBytes::from_bytes(response.payload()).expect("should deserialize response");
+
+    assert_eq!(
+        binary_response_and_request.response().error_code(),
+        ErrorCode::UnsupportedProtocolVersion as u16
+    );
+
+    let (_net, _rng) = timeout(Duration::from_secs(10), finish_cranking)
+        .await
+        .unwrap_or_else(|_| panic!("should finish cranking without timeout"));
+}
+
+#[tokio::test]
+async fn binary_port_component_accepts_requests_with_compatible_but_different_protocol_version() {
+    testing::init_logging();
+
+    let (mut client, (finish_cranking, _)) = setup().await;
+
+    let request = BinaryRequest::Get(GetRequest::Information {
+        info_type_tag: InformationRequestTag::Uptime.into(),
+        key: vec![],
+    });
+
+    let mut header =
+        BinaryRequestHeader::new(ProtocolVersion::from_parts(2, 0, 0), request.tag(), 0);
+
+    // Make the protocol different but compatible.
+    header.set_chain_protocol_version(ProtocolVersion::from_parts(2, u32::MAX, u32::MAX));
+
+    let header_bytes = ToBytes::to_bytes(&header).expect("should serialize");
+    let original_request_bytes = header_bytes
+        .iter()
+        .chain(
+            ToBytes::to_bytes(&request)
+                .expect("should serialize")
+                .iter(),
+        )
+        .cloned()
+        .collect::<Vec<_>>();
+    client
+        .send(BinaryMessage::new(original_request_bytes.clone()))
+        .await
+        .expect("should send message");
+    let response = timeout(Duration::from_secs(10), client.next())
+        .await
+        .unwrap_or_else(|_| panic!("should complete without timeout"))
+        .unwrap_or_else(|| panic!("should have bytes"))
+        .unwrap_or_else(|_| panic!("should have ok response"));
+    let (binary_response_and_request, _): (BinaryResponseAndRequest, _) =
+        FromBytes::from_bytes(response.payload()).expect("should deserialize response");
+
+    assert_eq!(
+        binary_response_and_request.response().error_code(),
+        ErrorCode::NoError as u16
+    );
+
+    let (_net, _rng) = timeout(Duration::from_secs(10), finish_cranking)
+        .await
+        .unwrap_or_else(|_| panic!("should finish cranking without timeout"));
 }

@@ -665,12 +665,14 @@ pub trait Auction:
             return Err(Error::InvalidCaller);
         }
 
+        debug!("reading seigniorage recipients snapshot");
         let seigniorage_recipients_snapshot = detail::get_seigniorage_recipients_snapshot(self)?;
         let current_era_id = detail::get_era_id(self)?;
 
         let mut era_info = EraInfo::new();
         let seigniorage_allocations = era_info.seigniorage_allocations_mut();
 
+        debug!(rewards_set_size = rewards.len(), "processing rewards");
         for item in rewards
             .into_iter()
             .filter(|(key, _amounts)| key != &PublicKey::System)
@@ -701,12 +703,18 @@ pub trait Auction:
                     Err(err) => return Err(err),
                 };
 
+            debug!(?validator_public_key, "delegator payout for validator");
             let delegator_payouts = detail::distribute_delegator_rewards(
                 self,
                 seigniorage_allocations,
                 validator_public_key.clone(),
                 reward_info.delegator_rewards,
             )?;
+            debug!(
+                ?validator_public_key,
+                delegator_set_size = delegator_payouts.len(),
+                "delegator payout finished"
+            );
 
             let validator_bonding_purse = detail::distribute_validator_rewards(
                 self,
@@ -714,6 +722,7 @@ pub trait Auction:
                 validator_public_key.clone(),
                 reward_info.validator_reward,
             )?;
+            debug!(?validator_public_key, "validator payout finished");
 
             // mint new token and put it to the recipients' purses
             self.mint_into_existing_purse(reward_info.validator_reward, validator_bonding_purse)
@@ -723,6 +732,7 @@ pub trait Auction:
                 self.mint_into_existing_purse(delegator_payout, bonding_purse)
                     .map_err(Error::from)?;
             }
+            debug!("rewards minted into recipient purses");
         }
 
         // record allocations for this era for reporting purposes.
