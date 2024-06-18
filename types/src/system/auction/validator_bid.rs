@@ -42,6 +42,19 @@ pub struct ValidatorBid {
 }
 
 impl ValidatorBid {
+    /// Sets the maximum and minimum delegation amounts for a validators bid.
+    pub fn with_min_max_delegation_amount(
+        mut self,
+        maximum_delegation_amount: u64,
+        minimum_delegation_amount: u64,
+    ) -> Self {
+        self.maximum_delegation_amount = maximum_delegation_amount;
+        self.minimum_delegation_amount = minimum_delegation_amount;
+        self
+    }
+}
+
+impl ValidatorBid {
     /// Creates new instance of a bid with locked funds.
     pub fn locked(
         validator_public_key: PublicKey,
@@ -417,7 +430,7 @@ mod tests {
 
         assert!(!bid.is_locked_with_vesting_schedule(
             validator_release_timestamp,
-            vesting_schedule_period_millis
+            vesting_schedule_period_millis,
         ));
     }
 }

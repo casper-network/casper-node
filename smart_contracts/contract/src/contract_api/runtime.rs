@@ -20,6 +20,13 @@ use crate::{contract_api, ext_ffi, unwrap_or_revert::UnwrapOrRevert};
 /// Number of random bytes returned from the `random_bytes()` function.
 const RANDOM_BYTES_COUNT: usize = 32;
 
+#[repr(u8)]
+enum CallerInformation {
+    Initiator = 0,
+    Immediate = 1,
+    FullStack = 2,
+}
+
 /// Returns the given [`CLValue`] to the host, terminating the currently running module.
 ///
 /// Note this function is only relevant to contracts stored on chain which are invoked via
@@ -421,7 +428,8 @@ pub fn get_call_stack() -> Vec<Caller> {
         let mut call_stack_len: usize = 0;
         let mut result_size: usize = 0;
         let ret = unsafe {
-            ext_ffi::casper_load_call_stack(
+            ext_ffi::casper_load_caller_information(
+                CallerInformation::FullStack as u8,
                 &mut call_stack_len as *mut usize,
                 &mut result_size as *mut usize,
             )
@@ -434,6 +442,47 @@ pub fn get_call_stack() -> Vec<Caller> {
     }
     let bytes = read_host_buffer(result_size).unwrap_or_revert();
     bytesrepr::deserialize(bytes).unwrap_or_revert()
+}
+
+fn get_initiator_or_immediate(action: u8) -> Result<Caller, ApiError> {
+    let (call_stack_len, result_size) = {
+        let mut call_stack_len: usize = 0;
+        let mut result_size: usize = 0;
+        let ret = unsafe {
+            ext_ffi::casper_load_caller_information(
+                action,
+                &mut call_stack_len as *mut usize,
+                &mut result_size as *mut usize,
+            )
+        };
+        api_error::result_from(ret).unwrap_or_revert();
+        (call_stack_len, result_size)
+    };
+    if call_stack_len == 0 {
+        return Err(ApiError::InvalidCallerInfoRequest);
+    }
+    let bytes = read_host_buffer(result_size).unwrap_or_revert();
+    let caller: Vec<Caller> = bytesrepr::deserialize(bytes).unwrap_or_revert();
+
+    if caller.len() != 1 {
+        return Err(ApiError::Unhandled);
+    };
+    Ok(caller[0])
+}
+
+/// Returns the call stack initiator
+pub fn get_call_initiator() -> Result<AccountHash, ApiError> {
+    let caller = get_initiator_or_immediate(CallerInformation::Initiator as u8)?;
+    if let Caller::Initiator { account_hash } = caller {
+        Ok(account_hash)
+    } else {
+        Err(ApiError::Unhandled)
+    }
+}
+
+/// Returns the immidiate caller within the call stack.
+pub fn get_immediate_caller() -> Result<Caller, ApiError> {
+    get_initiator_or_immediate(CallerInformation::Immediate as u8)
 }
 
 /// Manages a message topic.

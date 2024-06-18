@@ -1343,6 +1343,8 @@ fn should_distribute_delegation_rate_full() {
             ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
             ARG_DELEGATION_RATE => VALIDATOR_1_DELEGATION_RATE,
             ARG_PUBLIC_KEY => VALIDATOR_1.clone(),
+            auction::ARG_MINIMUM_DELEGATION_AMOUNT => 10,
+            auction::ARG_MAXIMUM_DELEGATION_AMOUNT => DELEGATOR_2_STAKE + 1,
         },
     )
     .build();

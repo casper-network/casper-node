@@ -171,9 +171,6 @@ administrators = []
 [highway]
 # Highway dynamically chooses its round length, between minimum_block_time and maximum_round_length.
 maximum_round_length = '66 seconds'
-# The factor by which rewards for a round are multiplied if the greatest summit has ≤50% quorum, i.e. no finality.
-# Expressed as a fraction (1/5 by default).
-reduced_reward_multiplier = [1, 5]
 
 [transactions]
 # The duration after the transaction timestamp that it can be included in a block.
@@ -312,7 +309,7 @@ provision_contract_user_group_uref = { cost = 200, arguments = [0, 0, 0, 0, 0] }
 put_key = { cost = 100_000_000, arguments = [0, 120_000, 0, 120_000] }
 read_host_buffer = { cost = 3_500, arguments = [0, 310, 0] }
 read_value = { cost = 60_000, arguments = [0, 120_000, 0] }
-read_value_local = { cost = 5_500, arguments = [0, 590, 0] }
+dictionary_get = { cost = 5_500, arguments = [0, 590, 0] }
 remove_associated_key = { cost = 4_200, arguments = [0, 0] }
 remove_contract_user_group = { cost = 200, arguments = [0, 0, 0, 0] }
 remove_contract_user_group_urefs = { cost = 200, arguments = [0, 0, 0, 0, 0, 120_000] }
@@ -325,7 +322,7 @@ transfer_from_purse_to_purse = { cost = 82_000_000, arguments = [0, 0, 0, 0, 0, 
 transfer_to_account = { cost = 2_500_000_000, arguments = [0, 0, 0, 0, 0, 0, 0] }
 update_associated_key = { cost = 4_200, arguments = [0, 0, 0] }
 write = { cost = 14_000, arguments = [0, 0, 0, 980] }
-write_local = { cost = 9_500, arguments = [0, 1_800, 0, 520] }
+dictionary_put = { cost = 9_500, arguments = [0, 1_800, 0, 520] }
 enable_contract_version = { cost = 200, arguments = [0, 0, 0, 0] }
 manage_message_topic = { cost = 200, arguments = [0, 30_000, 0, 0] }
 emit_message = { cost = 200, arguments = [0, 30_000, 0, 120_000] }

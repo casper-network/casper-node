@@ -26,6 +26,8 @@ pub struct ProtocolUpgradeConfig {
     fee_handling: FeeHandling,
     migrate_legacy_accounts: bool,
     migrate_legacy_contracts: bool,
+    maximum_delegation_amount: u64,
+    minimum_delegation_amount: u64,
 }
 
 impl ProtocolUpgradeConfig {
@@ -48,6 +50,8 @@ impl ProtocolUpgradeConfig {
         fee_handling: FeeHandling,
         migrate_legacy_accounts: bool,
         migrate_legacy_contracts: bool,
+        maximum_delegation_amount: u64,
+        minimum_delegation_amount: u64,
     ) -> Self {
         ProtocolUpgradeConfig {
             pre_state_hash,
@@ -66,6 +70,8 @@ impl ProtocolUpgradeConfig {
             fee_handling,
             migrate_legacy_accounts,
             migrate_legacy_contracts,
+            maximum_delegation_amount,
+            minimum_delegation_amount,
         }
     }
 
@@ -152,5 +158,15 @@ impl ProtocolUpgradeConfig {
     /// Migrate legacy contracts.
     pub fn migrate_legacy_contracts(&self) -> bool {
         self.migrate_legacy_contracts
+    }
+
+    /// Maximum delegation amount for validator.
+    pub fn maximum_delegation_amount(&self) -> u64 {
+        self.maximum_delegation_amount
+    }
+
+    /// Minimum delegation amount for validator.
+    pub fn minimum_delegation_amount(&self) -> u64 {
+        self.minimum_delegation_amount
     }
 }

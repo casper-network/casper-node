@@ -44,11 +44,6 @@ use crate::{
     types::{self, Chunkable, ExecutableBlock, InternalEraReport},
 };
 
-const ACCOUNT_SESSION: bool = true;
-const DIRECT_CONTRACT: bool = !ACCOUNT_SESSION;
-const STANDARD_PAYMENT: bool = true;
-const CUSTOM_PAYMENT: bool = !STANDARD_PAYMENT;
-
 /// Executes a finalized block.
 #[allow(clippy::too_many_arguments)]
 pub fn execute_finalized_block(
@@ -194,7 +189,7 @@ pub fn execute_finalized_block(
         artifact_builder.with_added_cost(cost);
 
         let is_standard_payment = transaction.is_standard_payment();
-        let refund_purse_active = !is_standard_payment; //&& !refund_handling.skip_refund();
+        let refund_purse_active = !is_standard_payment;
         if refund_purse_active {
             // if custom payment  before doing any processing, initialize the initiator's main purse
             //  to be the refund purse for this transaction.
@@ -224,78 +219,52 @@ pub fn execute_finalized_block(
         }
 
         let mut balance_identifier = {
-            let is_account_session = transaction.is_account_session();
-            //  if standard payment & is session based...use account main purse
-            //  if standard payment & is targeting a contract
-            //      load contract & check entry point, if it pays use contract main purse
-            //  if custom payment, attempt execute custom payment
-            //      if custom payment fails, take remaining balance up to amount
-            //      currently contracts cannot provide custom payment, but possible future use
-            match (is_account_session, is_standard_payment) {
-                (ACCOUNT_SESSION, STANDARD_PAYMENT) => {
-                    // this is the typical scenario; the initiating account pays using its main
-                    // purse
-                    trace!(%transaction_hash, "account session with standard payment");
-                    initiator_addr.clone().into()
-                }
-                (ACCOUNT_SESSION, CUSTOM_PAYMENT) => {
-                    // the initiating account will pay, but wants to do so with a different purse or
-                    // in a custom way. If anything goes wrong, penalize the sender, do not execute
-                    let custom_payment_gas_limit = Gas::new(
-                        // TODO: this should have it's own chainspec value; in the meantime
-                        // using a multiple of a small value.
-                        chainspec.transaction_config.native_transfer_minimum_motes * 5,
-                    );
-                    let pay_result = match WasmV1Request::new_custom_payment(
-                        state_root_hash,
-                        block_time,
-                        custom_payment_gas_limit,
-                        &transaction,
-                    ) {
-                        Ok(mut pay_request) => {
-                            // We'll send a hint to the custom payment logic on the amount
-                            // it should pay for the transaction to be executed.
-                            pay_request
-                                .args
-                                .insert(ARG_AMOUNT, cost)
-                                .map_err(|e| BlockExecutionError::PaymentError(e.to_string()))?;
-                            execution_engine_v1.execute(&scratch_state, pay_request)
-                        }
-                        Err(error) => {
-                            WasmV1Result::invalid_executable_item(custom_payment_gas_limit, error)
-                        }
-                    };
-                    let balance_identifier = {
-                        if pay_result.error().is_some() {
-                            BalanceIdentifier::PenalizedAccount(initiator_addr.account_hash())
-                        } else {
-                            BalanceIdentifier::Payment
-                        }
-                    };
-                    state_root_hash =
-                        scratch_state.commit(state_root_hash, pay_result.effects().clone())?;
-                    artifact_builder
-                        .with_wasm_v1_result(pay_result)
-                        .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
-                    trace!(%transaction_hash, ?balance_identifier, "account session with custom payment");
-                    balance_identifier
-                }
-                (DIRECT_CONTRACT, STANDARD_PAYMENT) => {
-                    // TODO: get the contract, check the entry point indicated in the transaction
-                    //      if the contract pays for itself, use its main purse
-                    // <-- contracts paying for things wire up goes here -->
-                    // use scratch_state to read the contract & check it here
-                    // if the contract does not exist, the entrypoint does not exist,
-                    //      the entrypoint does not pay for itself, and every other sad path
-                    // outcome...      penalize the sender, do not execute
-                    debug!("direct contract invocation is currently unsupported; penalize the account that sent it.");
-                    BalanceIdentifier::PenalizedAccount(initiator_addr.account_hash())
-                }
-                (DIRECT_CONTRACT, CUSTOM_PAYMENT) => {
-                    // currently not supported. penalize the sender, do not execute.
-                    warn!("direct contract invocation is currently unsupported; penalize the account that sent it.");
-                    BalanceIdentifier::PenalizedAccount(initiator_addr.account_hash())
-                }
+            if is_standard_payment {
+                // this is the typical scenario; the initiating account pays using its main
+                // purse
+                trace!(%transaction_hash, "account session with standard payment");
+                initiator_addr.clone().into()
+            } else {
+                // the initiating account will pay, but wants to do so with a different purse or
+                // in a custom way. If anything goes wrong, penalize the sender, do not execute
+                let custom_payment_gas_limit = Gas::new(
+                    // TODO: this should have it's own chainspec value; in the meantime
+                    // using a multiple of a small value.
+                    chainspec.transaction_config.native_transfer_minimum_motes * 5,
+                );
+                let pay_result = match WasmV1Request::new_custom_payment(
+                    state_root_hash,
+                    block_time,
+                    custom_payment_gas_limit,
+                    &transaction,
+                ) {
+                    Ok(mut pay_request) => {
+                        // We'll send a hint to the custom payment logic on the amount
+                        // it should pay for the transaction to be executed.
+                        pay_request
+                            .args
+                            .insert(ARG_AMOUNT, cost)
+                            .map_err(|e| BlockExecutionError::PaymentError(e.to_string()))?;
+                        execution_engine_v1.execute(&scratch_state, pay_request)
+                    }
+                    Err(error) => {
+                        WasmV1Result::invalid_executable_item(custom_payment_gas_limit, error)
+                    }
+                };
+                let balance_identifier = {
+                    if pay_result.error().is_some() {
+                        BalanceIdentifier::PenalizedAccount(initiator_addr.account_hash())
+                    } else {
+                        BalanceIdentifier::Payment
+                    }
+                };
+                state_root_hash =
+                    scratch_state.commit(state_root_hash, pay_result.effects().clone())?;
+                artifact_builder
+                    .with_wasm_v1_result(pay_result)
+                    .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
+                trace!(%transaction_hash, ?balance_identifier, "account session with custom payment");
+                balance_identifier
             }
         };
 
@@ -307,7 +276,7 @@ pub fn execute_finalized_block(
             ProofHandling::NoProofs,
         ));
 
-        let category = transaction.transaction_kind();
+        let category = transaction.transaction_category();
 
         let allow_execution = {
             let is_not_penalized = !balance_identifier.is_penalty();
