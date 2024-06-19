@@ -2,7 +2,7 @@
 name = "casper-types"
 version = "5.0.0" # when updating, also update 'html_root_url' in lib.rs
 authors = ["Fraser Hutchison <fraser@casperlabs.io>"]
-edition = "2018"
+edition = "2021"
 description = "Types shared by many casper crates for use on the Casper network."
 readme = "README.md"
 documentation = "https://docs.rs/casper-types"
@@ -19,7 +19,7 @@ blake2 = { version = "0.9.0", default-features = false }
 datasize = { version = "0.2.15", optional = true }
 derp = { version = "0.0.14", optional = true }
 ed25519-dalek = { version = "2.0.0", default-features = false, features = ["alloc", "zeroize"] }
-getrandom = { version = "0.2.0", features = ["rdrand"], optional = true }
+getrandom = { version = "0.2.0", features = ["rdrand", "js"], optional = true }
 hex = { version = "0.4.2", default-features = false, features = ["alloc"] }
 hex_fmt = "0.3.0"
 humantime = { version = "2", optional = true }
@@ -74,8 +74,11 @@ untrusted = "0.7.1"
 
 [features]
 json-schema = ["once_cell", "schemars", "serde-map-to-array/json-schema"]
-std = ["base16/std", "derp", "getrandom/std", "humantime", "itertools/use_std", "libc", "once_cell", "pem", "serde_json/preserve_order", "thiserror", "untrusted"]
 testing = ["proptest", "proptest-derive", "rand/default", "rand_pcg", "strum", "bincode"]
+# Includes a restricted set of std lib functionality suitable for usage e.g. in a JS environment when compiled to Wasm.
+std = ["base16/std", "derp", "getrandom/std", "humantime", "itertools/use_std", "libc", "once_cell", "pem", "serde_json/preserve_order", "thiserror", "untrusted"]
+# Includes a complete set of std lib functionality, including filesystem I/O operations.
+std-fs-io = ["std"]
 # DEPRECATED - use "testing" instead of "gens".
 gens = ["testing"]
 

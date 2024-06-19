@@ -11,9 +11,10 @@ use std::{convert::TryFrom, net::SocketAddr, sync::Arc};
 use casper_binary_port::{
     BalanceResponse, BinaryMessage, BinaryMessageCodec, BinaryRequest, BinaryRequestHeader,
     BinaryRequestTag, BinaryResponse, BinaryResponseAndRequest, DictionaryItemIdentifier,
-    DictionaryQueryResult, ErrorCode, GetRequest, GetTrieFullResult, GlobalStateQueryResult,
-    GlobalStateRequest, InformationRequest, InformationRequestTag, KeyPrefix, NodeStatus,
-    PayloadType, PurseIdentifier, ReactorStateName, RecordId, TransactionWithExecutionInfo,
+    DictionaryQueryResult, EraIdentifier, ErrorCode, GetRequest, GetTrieFullResult,
+    GlobalStateQueryResult, GlobalStateRequest, InformationRequest, InformationRequestTag,
+    KeyPrefix, NodeStatus, PayloadType, PurseIdentifier, ReactorStateName, RecordId,
+    RewardResponse, TransactionWithExecutionInfo,
 };
 use casper_storage::{
     data_access_layer::{
@@ -21,16 +22,18 @@ use casper_storage::{
         prefixed_values::{PrefixedValuesRequest, PrefixedValuesResult},
         tagged_values::{TaggedValuesRequest, TaggedValuesResult, TaggedValuesSelection},
         BalanceIdentifier, BalanceRequest, BalanceResult, ProofHandling, ProofsResult,
-        QueryRequest, QueryResult, TrieRequest,
+        QueryRequest, QueryResult, SeigniorageRecipientsRequest, SeigniorageRecipientsResult,
+        TrieRequest,
     },
     global_state::trie::TrieRaw,
+    system::auction,
     KeyPrefix as StorageKeyPrefix,
 };
 use casper_types::{
     addressable_entity::NamedKeyAddr,
     bytesrepr::{self, FromBytes, ToBytes},
     BlockHeader, BlockIdentifier, Chainspec, Digest, EntityAddr, GlobalStateIdentifier, Key, Peers,
-    ProtocolVersion, SignedBlock, StoredValue, TimeDiff, Transaction,
+    ProtocolVersion, Rewards, SignedBlock, StoredValue, TimeDiff, Transaction,
 };
 
 use datasize::DataSize;
@@ -359,7 +362,7 @@ where
             }
         }
         GlobalStateRequest::Trie { trie_key } => {
-            let response = if !config.allow_request_get_trie {
+            if !config.allow_request_get_trie {
                 BinaryResponse::new_error(ErrorCode::FunctionDisabled, protocol_version)
             } else {
                 let req = TrieRequest::new(trie_key, None);
@@ -372,8 +375,7 @@ where
                         BinaryResponse::new_error(ErrorCode::InternalError, protocol_version)
                     }
                 }
-            };
-            response
+            }
         }
         GlobalStateRequest::DictionaryItem {
             state_identifier,
@@ -802,6 +804,83 @@ where
             };
             BinaryResponse::from_value(status, protocol_version)
         }
+        InformationRequest::Reward {
+            era_identifier,
+            validator,
+            delegator,
+        } => {
+            let Some(header) =
+                resolve_era_switch_block_header(effect_builder, era_identifier).await
+            else {
+                return BinaryResponse::new_error(ErrorCode::SwitchBlockNotFound, protocol_version);
+            };
+            let Some(previous_height) = header.height().checked_sub(1) else {
+                // there's not going to be any rewards for the genesis block
+                return BinaryResponse::new_empty(protocol_version);
+            };
+            let Some(parent_header) = effect_builder
+                .get_block_header_at_height_from_storage(previous_height, true)
+                .await
+            else {
+                return BinaryResponse::new_error(
+                    ErrorCode::SwitchBlockParentNotFound,
+                    protocol_version,
+                );
+            };
+            let snapshot_request = SeigniorageRecipientsRequest::new(
+                *parent_header.state_root_hash(),
+                protocol_version,
+            );
+
+            let snapshot = match effect_builder
+                .get_seigniorage_recipients_snapshot_from_contract_runtime(snapshot_request)
+                .await
+            {
+                SeigniorageRecipientsResult::Success {
+                    seigniorage_recipients,
+                } => seigniorage_recipients,
+                SeigniorageRecipientsResult::RootNotFound => {
+                    return BinaryResponse::new_error(ErrorCode::RootNotFound, protocol_version)
+                }
+                SeigniorageRecipientsResult::Failure(_) => {
+                    return BinaryResponse::new_error(ErrorCode::FailedQuery, protocol_version)
+                }
+                SeigniorageRecipientsResult::AuctionNotFound
+                | SeigniorageRecipientsResult::ValueNotFound(_) => {
+                    return BinaryResponse::new_error(ErrorCode::InternalError, protocol_version)
+                }
+            };
+            let Some(era_end) = header.clone_era_end() else {
+                // switch block should have an era end
+                return BinaryResponse::new_error(ErrorCode::InternalError, protocol_version);
+            };
+            let block_rewards = match era_end.rewards() {
+                Rewards::V2(rewards) => rewards,
+                _ => {
+                    return BinaryResponse::new_error(
+                        ErrorCode::UnsupportedRewardsV1Request,
+                        protocol_version,
+                    )
+                }
+            };
+            let Some(validator_rewards) = block_rewards.get(&validator) else {
+                return BinaryResponse::new_empty(protocol_version);
+            };
+            match auction::reward(
+                &validator,
+                delegator.as_deref(),
+                header.era_id(),
+                validator_rewards,
+                &snapshot,
+            ) {
+                Ok(Some(reward)) => {
+                    let response = RewardResponse::new(reward, header.era_id());
+                    BinaryResponse::from_value(response, protocol_version)
+                }
+                Ok(None) => BinaryResponse::new_empty(protocol_version),
+                Err(_) => BinaryResponse::new_error(ErrorCode::InternalError, protocol_version),
+            }
+        }
     }
 }
 
@@ -885,49 +964,87 @@ where
         };
 
         let version = effect_builder.get_protocol_version().await;
-        let response = handle_payload(effect_builder, payload, version).await;
+        let (response, id) = handle_payload(effect_builder, payload, version).await;
         framed
             .send(BinaryMessage::new(
-                BinaryResponseAndRequest::new(response, payload).to_bytes()?,
+                BinaryResponseAndRequest::new(response, payload, id).to_bytes()?,
             ))
             .await?
     }
+}
+
+fn extract_header(payload: &[u8]) -> Result<(BinaryRequestHeader, &[u8]), ErrorCode> {
+    const BINARY_VERSION_LENGTH_BYTES: usize = std::mem::size_of::<u16>();
+
+    if payload.len() < BINARY_VERSION_LENGTH_BYTES {
+        return Err(ErrorCode::BadRequest);
+    }
+
+    let binary_protocol_version = match u16::from_bytes(payload) {
+        Ok((binary_protocol_version, _)) => binary_protocol_version,
+        Err(_) => return Err(ErrorCode::BadRequest),
+    };
+
+    if binary_protocol_version != BinaryRequestHeader::BINARY_REQUEST_VERSION {
+        return Err(ErrorCode::BinaryProtocolVersionMismatch);
+    }
+
+    let Ok((header, remainder)) = BinaryRequestHeader::from_bytes(payload) else {
+        return Err(ErrorCode::BadRequest);
+    };
+
+    Ok((header, remainder))
 }
 
 async fn handle_payload<REv>(
     effect_builder: EffectBuilder<REv>,
     payload: &[u8],
     protocol_version: ProtocolVersion,
-) -> BinaryResponse
+) -> (BinaryResponse, u16)
 where
     REv: From<Event>,
 {
-    let Ok((header, remainder)) = BinaryRequestHeader::from_bytes(payload) else {
-        return BinaryResponse::new_error(ErrorCode::BadRequest, protocol_version);
+    let (header, remainder) = match extract_header(payload) {
+        Ok(header) => header,
+        Err(error_code) => return (BinaryResponse::new_error(error_code, protocol_version), 0),
     };
+
+    let request_id = header.id();
 
     if !header
         .protocol_version()
         .is_compatible_with(&protocol_version)
     {
-        return BinaryResponse::new_error(ErrorCode::UnsupportedProtocolVersion, protocol_version);
+        return (
+            BinaryResponse::new_error(ErrorCode::UnsupportedProtocolVersion, protocol_version),
+            request_id,
+        );
     }
 
     // we might receive a request added in a minor version if we're behind
     let Ok(tag) = BinaryRequestTag::try_from(header.type_tag()) else {
-        return BinaryResponse::new_error(ErrorCode::UnsupportedRequest, protocol_version);
+        return (
+            BinaryResponse::new_error(ErrorCode::UnsupportedRequest, protocol_version),
+            request_id,
+        );
     };
 
     let Ok(request) = BinaryRequest::try_from((tag, remainder)) else {
-        return BinaryResponse::new_error(ErrorCode::BadRequest, protocol_version);
+        return (
+            BinaryResponse::new_error(ErrorCode::BadRequest, protocol_version),
+            request_id,
+        );
     };
 
-    effect_builder
-        .make_request(
-            |responder| Event::HandleRequest { request, responder },
-            QueueKind::Regular,
-        )
-        .await
+    (
+        effect_builder
+            .make_request(
+                |responder| Event::HandleRequest { request, responder },
+                QueueKind::Regular,
+            )
+            .await,
+        request_id,
+    )
 }
 
 async fn handle_client<REv>(
@@ -1098,6 +1215,37 @@ where
             .get_highest_complete_block_header_from_storage()
             .await
             .map(|header| *header.state_root_hash()),
+    }
+}
+
+async fn resolve_era_switch_block_header<REv>(
+    effect_builder: EffectBuilder<REv>,
+    era_identifier: Option<EraIdentifier>,
+) -> Option<BlockHeader>
+where
+    REv: From<Event> + From<ContractRuntimeRequest> + From<StorageRequest>,
+{
+    match era_identifier {
+        Some(EraIdentifier::Era(era_id)) => {
+            effect_builder
+                .get_switch_block_header_by_era_id_from_storage(era_id)
+                .await
+        }
+        Some(EraIdentifier::Block(block_identifier)) => {
+            let header = resolve_block_header(effect_builder, Some(block_identifier)).await?;
+            if header.is_switch_block() {
+                Some(header)
+            } else {
+                effect_builder
+                    .get_switch_block_header_by_era_id_from_storage(header.era_id())
+                    .await
+            }
+        }
+        None => {
+            effect_builder
+                .get_latest_switch_block_header_from_storage()
+                .await
+        }
     }
 }
 

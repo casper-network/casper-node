@@ -44,6 +44,9 @@ use crate::{
         auction::{AuctionMethodRet, BiddingRequest, BiddingResult},
         balance::BalanceHandling,
         era_validators::EraValidatorsResult,
+        forced_undelegate::{
+            ForcedUndelegateError, ForcedUndelegateRequest, ForcedUndelegateResult,
+        },
         handle_fee::{HandleFeeMode, HandleFeeRequest, HandleFeeResult},
         mint::{TransferRequest, TransferRequestArgs, TransferResult},
         prefixed_values::{PrefixedValuesRequest, PrefixedValuesResult},
@@ -58,10 +61,11 @@ use crate::{
         HandleRefundRequest, HandleRefundResult, InsufficientBalanceHandling, ProofHandling,
         ProofsResult, ProtocolUpgradeRequest, ProtocolUpgradeResult, PruneRequest, PruneResult,
         PutTrieRequest, PutTrieResult, QueryRequest, QueryResult, RoundSeigniorageRateRequest,
-        RoundSeigniorageRateResult, StepError, StepRequest, StepResult,
-        SystemEntityRegistryPayload, SystemEntityRegistryRequest, SystemEntityRegistryResult,
-        SystemEntityRegistrySelector, TotalSupplyRequest, TotalSupplyResult, TrieRequest,
-        TrieResult, EXECUTION_RESULTS_CHECKSUM_NAME,
+        RoundSeigniorageRateResult, SeigniorageRecipientsRequest, SeigniorageRecipientsResult,
+        StepError, StepRequest, StepResult, SystemEntityRegistryPayload,
+        SystemEntityRegistryRequest, SystemEntityRegistryResult, SystemEntityRegistrySelector,
+        TotalSupplyRequest, TotalSupplyResult, TrieRequest, TrieResult,
+        EXECUTION_RESULTS_CHECKSUM_NAME,
     },
     global_state::{
         error::Error as GlobalStateError,
@@ -318,7 +322,6 @@ pub trait CommitProvider: StateProvider {
             .map(|item| item.validator_id.clone())
             .collect::<Vec<PublicKey>>();
         let max_delegators_per_validator = config.max_delegators_per_validator();
-        let minimum_delegation_amount = config.minimum_delegation_amount();
         let include_credits = config.include_credits();
         let credit_cap = config.credit_cap();
 
@@ -326,7 +329,6 @@ pub trait CommitProvider: StateProvider {
             era_end_timestamp_millis,
             evicted_validators,
             max_delegators_per_validator,
-            minimum_delegation_amount,
             include_credits,
             credit_cap,
         ) {
@@ -415,15 +417,20 @@ pub trait CommitProvider: StateProvider {
                 auction_error
             );
             return BlockRewardsResult::Failure(BlockRewardsError::Auction(auction_error));
+        } else {
+            debug!("rewards distribution complete");
         }
 
         let effects = tc.borrow().effects();
 
         match self.commit(state_hash, effects.clone()) {
-            Ok(post_state_hash) => BlockRewardsResult::Success {
-                post_state_hash,
-                effects,
-            },
+            Ok(post_state_hash) => {
+                debug!("reward distribution committed");
+                BlockRewardsResult::Success {
+                    post_state_hash,
+                    effects,
+                }
+            }
             Err(gse) => BlockRewardsResult::Failure(BlockRewardsError::TrackingCopy(
                 TrackingCopyError::Storage(gse),
             )),
@@ -518,6 +525,81 @@ pub trait CommitProvider: StateProvider {
             }
             Err(hpe) => FeeResult::Failure(FeeError::TrackingCopy(
                 TrackingCopyError::SystemContract(system::Error::HandlePayment(hpe)),
+            )),
+        }
+    }
+
+    /// Forcibly unbonds delegator bids which fall outside configured delegation limits.
+    fn forced_undelegate(&self, request: ForcedUndelegateRequest) -> ForcedUndelegateResult {
+        let state_hash = request.state_hash();
+
+        let tc = match self.tracking_copy(state_hash) {
+            Ok(Some(tc)) => Rc::new(RefCell::new(tc)),
+            Ok(None) => return ForcedUndelegateResult::RootNotFound,
+            Err(err) => {
+                return ForcedUndelegateResult::Failure(ForcedUndelegateError::TrackingCopy(
+                    TrackingCopyError::Storage(err),
+                ))
+            }
+        };
+
+        let config = request.config();
+        let protocol_version = request.protocol_version();
+        let seed = {
+            let mut bytes = match request.block_time().into_bytes() {
+                Ok(bytes) => bytes,
+                Err(bre) => {
+                    return ForcedUndelegateResult::Failure(ForcedUndelegateError::TrackingCopy(
+                        TrackingCopyError::BytesRepr(bre),
+                    ))
+                }
+            };
+            match &mut protocol_version.into_bytes() {
+                Ok(next) => bytes.append(next),
+                Err(bre) => {
+                    return ForcedUndelegateResult::Failure(ForcedUndelegateError::TrackingCopy(
+                        TrackingCopyError::BytesRepr(*bre),
+                    ))
+                }
+            };
+
+            crate::system::runtime_native::Id::Seed(bytes)
+        };
+
+        // this runtime uses the system's context
+        let phase = Phase::Session;
+        let address_generator = Arc::new(RwLock::new(AddressGenerator::new(&seed.seed(), phase)));
+        let mut runtime = match RuntimeNative::new_system_runtime(
+            config.clone(),
+            protocol_version,
+            seed,
+            address_generator,
+            Rc::clone(&tc),
+            phase,
+        ) {
+            Ok(rt) => rt,
+            Err(tce) => {
+                return ForcedUndelegateResult::Failure(ForcedUndelegateError::TrackingCopy(tce));
+            }
+        };
+
+        if let Err(auction_error) = runtime.forced_undelegate() {
+            error!(
+                "forced undelegation failed due to auction error {:?}",
+                auction_error
+            );
+            return ForcedUndelegateResult::Failure(ForcedUndelegateError::Auction(auction_error));
+        }
+
+        let effects = tc.borrow().effects();
+
+        match self.commit(state_hash, effects.clone()) {
+            Ok(post_state_hash) => ForcedUndelegateResult::Success {
+                post_state_hash,
+                effects,
+            },
+            Err(gse) => ForcedUndelegateResult::Failure(ForcedUndelegateError::TrackingCopy(
+                TrackingCopyError::Storage(gse),
             )),
         }
     }
@@ -912,11 +994,38 @@ pub trait StateProvider: Send + Sync {
 
     /// Get the requested era validators.
     fn era_validators(&self, request: EraValidatorsRequest) -> EraValidatorsResult {
+        match self.seigniorage_recipients(SeigniorageRecipientsRequest::new(
+            request.state_hash(),
+            request.protocol_version(),
+        )) {
+            SeigniorageRecipientsResult::RootNotFound => EraValidatorsResult::RootNotFound,
+            SeigniorageRecipientsResult::Failure(err) => EraValidatorsResult::Failure(err),
+            SeigniorageRecipientsResult::ValueNotFound(msg) => {
+                EraValidatorsResult::ValueNotFound(msg)
+            }
+            SeigniorageRecipientsResult::AuctionNotFound => EraValidatorsResult::AuctionNotFound,
+            SeigniorageRecipientsResult::Success {
+                seigniorage_recipients,
+            } => {
+                let era_validators =
+                    auction::detail::era_validators_from_snapshot(seigniorage_recipients);
+                EraValidatorsResult::Success { era_validators }
+            }
+        }
+    }
+
+    /// Get the requested seigniorage recipients.
+    fn seigniorage_recipients(
+        &self,
+        request: SeigniorageRecipientsRequest,
+    ) -> SeigniorageRecipientsResult {
         let state_hash = request.state_hash();
         let tc = match self.tracking_copy(state_hash) {
             Ok(Some(tc)) => tc,
-            Ok(None) => return EraValidatorsResult::RootNotFound,
-            Err(err) => return EraValidatorsResult::Failure(TrackingCopyError::Storage(err)),
+            Ok(None) => return SeigniorageRecipientsResult::RootNotFound,
+            Err(err) => {
+                return SeigniorageRecipientsResult::Failure(TrackingCopyError::Storage(err))
+            }
         };
 
         let query_request = match tc.get_system_entity_registry() {
@@ -933,27 +1042,27 @@ pub trait StateProvider: Send + Sync {
                         vec![SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY.to_string()],
                     )
                 }
-                None => return EraValidatorsResult::AuctionNotFound,
+                None => return SeigniorageRecipientsResult::AuctionNotFound,
             },
-            Err(err) => return EraValidatorsResult::Failure(err),
+            Err(err) => return SeigniorageRecipientsResult::Failure(err),
         };
 
         let snapshot = match self.query(query_request) {
-            QueryResult::RootNotFound => return EraValidatorsResult::RootNotFound,
+            QueryResult::RootNotFound => return SeigniorageRecipientsResult::RootNotFound,
             QueryResult::Failure(error) => {
                 error!(?error, "unexpected tracking copy error");
-                return EraValidatorsResult::Failure(error);
+                return SeigniorageRecipientsResult::Failure(error);
             }
             QueryResult::ValueNotFound(msg) => {
                 error!(%msg, "value not found");
-                return EraValidatorsResult::ValueNotFound(msg);
+                return SeigniorageRecipientsResult::ValueNotFound(msg);
             }
             QueryResult::Success { value, proofs: _ } => {
                 let cl_value = match value.into_cl_value() {
                     Some(snapshot_cl_value) => snapshot_cl_value,
                     None => {
                         error!("unexpected query failure; seigniorage recipients snapshot is not a CLValue");
-                        return EraValidatorsResult::Failure(
+                        return SeigniorageRecipientsResult::Failure(
                             TrackingCopyError::UnexpectedStoredValueVariant,
                         );
                     }
@@ -962,14 +1071,17 @@ pub trait StateProvider: Send + Sync {
                 match cl_value.into_t() {
                     Ok(snapshot) => snapshot,
                     Err(cve) => {
-                        return EraValidatorsResult::Failure(TrackingCopyError::CLValue(cve));
+                        return SeigniorageRecipientsResult::Failure(TrackingCopyError::CLValue(
+                            cve,
+                        ));
                     }
                 }
             }
         };
 
-        let era_validators = auction::detail::era_validators_from_snapshot(snapshot);
-        EraValidatorsResult::Success { era_validators }
+        SeigniorageRecipientsResult::Success {
+            seigniorage_recipients: snapshot,
+        }
     }
 
     /// Gets the bids.
@@ -1116,8 +1228,16 @@ pub trait StateProvider: Send + Sync {
                 public_key,
                 delegation_rate,
                 amount,
+                minimum_delegation_amount,
+                maximum_delegation_amount,
             } => runtime
-                .add_bid(public_key, delegation_rate, amount)
+                .add_bid(
+                    public_key,
+                    delegation_rate,
+                    amount,
+                    minimum_delegation_amount,
+                    maximum_delegation_amount,
+                )
                 .map(AuctionMethodRet::UpdatedAmount)
                 .map_err(TrackingCopyError::Api),
             AuctionMethod::WithdrawBid { public_key, amount } => runtime
@@ -1131,15 +1251,8 @@ pub trait StateProvider: Send + Sync {
                 validator,
                 amount,
                 max_delegators_per_validator,
-                minimum_delegation_amount,
             } => runtime
-                .delegate(
-                    delegator,
-                    validator,
-                    amount,
-                    max_delegators_per_validator,
-                    minimum_delegation_amount,
-                )
+                .delegate(delegator, validator, amount, max_delegators_per_validator)
                 .map(AuctionMethodRet::UpdatedAmount)
                 .map_err(TrackingCopyError::Api),
             AuctionMethod::Undelegate {
@@ -1157,15 +1270,8 @@ pub trait StateProvider: Send + Sync {
                 validator,
                 amount,
                 new_validator,
-                minimum_delegation_amount,
             } => runtime
-                .redelegate(
-                    delegator,
-                    validator,
-                    amount,
-                    new_validator,
-                    minimum_delegation_amount,
-                )
+                .redelegate(delegator, validator, amount, new_validator)
                 .map(AuctionMethodRet::UpdatedAmount)
                 .map_err(|auc_err| {
                     TrackingCopyError::SystemContract(system::Error::Auction(auc_err))

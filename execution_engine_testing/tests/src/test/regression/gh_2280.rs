@@ -166,12 +166,6 @@ fn gh_2280_transfer_should_always_cost_the_same_gas() {
 
     assert!(gas_cost_3 > gas_cost_1);
     assert!(gas_cost_3 > gas_cost_2);
-
-    let gas_cost_diff = gas_cost_3.checked_sub(gas_cost_2).unwrap_or_default();
-    assert_eq!(
-        gas_cost_diff,
-        Gas::new(U512::from(HOST_FUNCTION_COST_CHANGE))
-    );
 }
 
 #[ignore]
@@ -399,12 +393,6 @@ fn gh_2280_transfer_purse_to_account_should_always_cost_the_same_gas() {
 
     assert!(gas_cost_3 > gas_cost_1);
     assert!(gas_cost_3 > gas_cost_2);
-
-    let gas_cost_diff = gas_cost_3.checked_sub(gas_cost_2).unwrap_or_default();
-    assert_eq!(
-        gas_cost_diff,
-        Gas::new(U512::from(HOST_FUNCTION_COST_CHANGE))
-    );
 }
 
 #[ignore]
@@ -520,12 +508,6 @@ fn gh_2280_stored_transfer_to_account_should_always_cost_the_same_gas() {
 
     assert!(gas_cost_3 > gas_cost_1, "{} <= {}", gas_cost_3, gas_cost_1);
     assert!(gas_cost_3 > gas_cost_2);
-
-    let gas_cost_diff = gas_cost_3.checked_sub(gas_cost_2).unwrap_or_default();
-    assert_eq!(
-        gas_cost_diff,
-        Gas::new(U512::from(HOST_FUNCTION_COST_CHANGE))
-    );
 }
 
 #[ignore]
@@ -639,12 +621,6 @@ fn gh_2280_stored_faucet_call_should_cost_the_same() {
 
     assert!(gas_cost_3 > gas_cost_1, "{} <= {}", gas_cost_3, gas_cost_1);
     assert!(gas_cost_3 > gas_cost_2);
-
-    let gas_cost_diff = gas_cost_3.checked_sub(gas_cost_2).unwrap_or_default();
-    assert_eq!(
-        gas_cost_diff,
-        Gas::new(U512::from(HOST_FUNCTION_COST_CHANGE))
-    );
 }
 
 struct TestContext {

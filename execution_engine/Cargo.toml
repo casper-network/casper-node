@@ -1,8 +1,8 @@
 [package]
 name = "casper-execution-engine"
-version = "7.0.0" # when updating, also update 'html_root_url' in lib.rs
+version = "7.0.1" # when updating, also update 'html_root_url' in lib.rs
 authors = ["Henry Till <henrytill@gmail.com>", "Ed Hastings <ed@casperlabs.io>"]
-edition = "2018"
+edition = "2021"
 description = "Casper execution engine crates."
 readme = "README.md"
 documentation = "https://docs.rs/casper-execution-engine"
@@ -52,7 +52,7 @@ casper-types = { path = "../types", features = ["datasize", "json-schema", "test
 criterion = "0.3.5"
 proptest = "1.0.0"
 tempfile = "3.4.0"
-walrus = "0.19.0"
+walrus = "0.20.2"
 
 [features]
 default = ["gens"]

@@ -1,5 +1,8 @@
 [workspace]
-resolver = "1"
+
+# highway-rewards-analysis and highway-state-grapher are temporarily disabled becasue
+# they use old rewards calculation logic and need to be updated.
+
 members = [
     "ci/casper_updater",
     "execution_engine",
@@ -18,8 +21,11 @@ members = [
     "smart_contracts/sdk",
     "smart_contracts/sdk-codegen",
     "smart_contracts/sdk-sys",
-    "smart_contracts/macros"
-, "cargo-casper"]
+    "smart_contracts/macros",
+    "cargo-casper",
+#    "utils/highway-rewards-analysis",
+#    "utils/highway-state-grapher",
+]
 
 default-members = [
     "ci/casper_updater",
@@ -38,7 +44,13 @@ default-members = [
     "smart_contracts/sdk-sys",
     "smart_contracts/sdk-codegen",
     "smart_contracts/macros"
+#    "utils/highway-rewards-analysis",
+#    "utils/highway-state-grapher",
 ]
+
+exclude = ["utils/nctl/remotes/casper-client-rs"]
+
+resolver = "2"
 
 # Include debug symbols in the release build of `casper-engine-tests` so that `simple-transfer` will yield useful
 # perf data.

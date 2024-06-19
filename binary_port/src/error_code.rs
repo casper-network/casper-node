@@ -4,7 +4,7 @@ use casper_types::{InvalidDeploy, InvalidTransaction, InvalidTransactionV1};
 
 /// The error code indicating the result of handling the binary request.
 #[derive(Debug, Clone, thiserror::Error)]
-#[repr(u8)]
+#[repr(u16)]
 pub enum ErrorCode {
     /// Request executed correctly.
     #[error("request executed correctly")]
@@ -45,153 +45,165 @@ pub enum ErrorCode {
     /// This node has no complete blocks.
     #[error("no complete blocks")]
     NoCompleteBlocks = 12,
-    ///The deploy had an invalid chain name
-    #[error("The deploy had an invalid chain name")]
+    /// The deploy had an invalid chain name
+    #[error("the deploy had an invalid chain name")]
     InvalidDeployChainName = 13,
-    ///Deploy dependencies are no longer supported
-    #[error("The dependencies for this transaction are no longer supported")]
+    /// Deploy dependencies are no longer supported
+    #[error("the dependencies for this transaction are no longer supported")]
     InvalidDeployDependenciesNoLongerSupported = 14,
-    ///The deploy sent to the network had an excessive size
-    #[error("The deploy had an excessive size")]
+    /// The deploy sent to the network had an excessive size
+    #[error("the deploy had an excessive size")]
     InvalidDeployExcessiveSize = 15,
-    ///The deploy sent to the network had an excessive time to live
-    #[error("The deploy had an excessive time to live")]
+    /// The deploy sent to the network had an excessive time to live
+    #[error("the deploy had an excessive time to live")]
     InvalidDeployExcessiveTimeToLive = 16,
-    ///The deploy sent to the network had a timestamp referencing a time that has yet to occur.
-    #[error("The deploys timestamp is in the future")]
+    /// The deploy sent to the network had a timestamp referencing a time that has yet to occur.
+    #[error("the deploys timestamp is in the future")]
     InvalidDeployTimestampInFuture = 17,
-    ///The deploy sent to the network had an invalid body hash
-    #[error("The deploy had an invalid body hash")]
+    /// The deploy sent to the network had an invalid body hash
+    #[error("the deploy had an invalid body hash")]
     InvalidDeployBodyHash = 18,
-    ///The deploy sent to the network had an invalid deploy hash i.e. the provided deploy hash
+    /// The deploy sent to the network had an invalid deploy hash i.e. the provided deploy hash
     /// didn't match the derived deploy hash
-    #[error("The deploy had an invalid deploy hash")]
+    #[error("the deploy had an invalid deploy hash")]
     InvalidDeployHash = 19,
-    ///The deploy sent to the network had an empty approval set
-    #[error("The deploy had no approvals")]
+    /// The deploy sent to the network had an empty approval set
+    #[error("the deploy had no approvals")]
     InvalidDeployEmptyApprovals = 20,
-    ///The deploy sent to the network had an invalid approval
-    #[error("The deploy had an invalid approval")]
+    /// The deploy sent to the network had an invalid approval
+    #[error("the deploy had an invalid approval")]
     InvalidDeployApproval = 21,
-    ///The deploy sent to the network had an excessive session args length
-    #[error("The deploy had an excessive session args length")]
+    /// The deploy sent to the network had an excessive session args length
+    #[error("the deploy had an excessive session args length")]
     InvalidDeployExcessiveSessionArgsLength = 22,
-    ///The deploy sent to the network had an excessive payment args length
-    #[error("The deploy had an excessive payment args length")]
+    /// The deploy sent to the network had an excessive payment args length
+    #[error("the deploy had an excessive payment args length")]
     InvalidDeployExcessivePaymentArgsLength = 23,
-    ///The deploy sent to the network had a missing payment amount
-    #[error("The deploy had a missing payment amount")]
+    /// The deploy sent to the network had a missing payment amount
+    #[error("the deploy had a missing payment amount")]
     InvalidDeployMissingPaymentAmount = 24,
-    ///The deploy sent to the network had a payment amount that was not parseable
-    #[error("The deploy sent to the network had a payment amount that was unable to be parsed")]
+    /// The deploy sent to the network had a payment amount that was not parseable
+    #[error("the deploy sent to the network had a payment amount that was unable to be parsed")]
     InvalidDeployFailedToParsePaymentAmount = 25,
-    ///The deploy sent to the network exceeded the block gas limit
-    #[error("The deploy sent to the network exceeded the block gas limit")]
+    /// The deploy sent to the network exceeded the block gas limit
+    #[error("the deploy sent to the network exceeded the block gas limit")]
     InvalidDeployExceededBlockGasLimit = 26,
-    ///The deploy sent to the network was missing a transfer amount
-    #[error("The deploy sent to the network was missing a transfer amount")]
+    /// The deploy sent to the network was missing a transfer amount
+    #[error("the deploy sent to the network was missing a transfer amount")]
     InvalidDeployMissingTransferAmount = 27,
-    ///The deploy sent to the network had a transfer amount that was unable to be parseable
-    #[error("The deploy sent to the network had a transfer amount that was unable to be parsed")]
+    /// The deploy sent to the network had a transfer amount that was unable to be parseable
+    #[error("the deploy sent to the network had a transfer amount that was unable to be parsed")]
     InvalidDeployFailedToParseTransferAmount = 28,
-    ///The deploy sent to the network had a transfer amount that was insufficient
-    #[error("The deploy sent to the network had an insufficient transfer amount")]
+    /// The deploy sent to the network had a transfer amount that was insufficient
+    #[error("the deploy sent to the network had an insufficient transfer amount")]
     InvalidDeployInsufficientTransferAmount = 29,
-    ///The deploy sent to the network had excessive approvals
-    #[error("The deploy sent to the network had excessive approvals")]
+    /// The deploy sent to the network had excessive approvals
+    #[error("the deploy sent to the network had excessive approvals")]
     InvalidDeployExcessiveApprovals = 30,
-    ///The network was unable to calculate the gas limit for the deploy
-    #[error("The network was unable to calculate the gas limit associated with the deploy")]
+    /// The network was unable to calculate the gas limit for the deploy
+    #[error("the network was unable to calculate the gas limit associated with the deploy")]
     InvalidDeployUnableToCalculateGasLimit = 31,
-    ///The network was unable to calculate the gas cost for the deploy
-    #[error("The network was unable to calculate the gas cost for the deploy")]
+    /// The network was unable to calculate the gas cost for the deploy
+    #[error("the network was unable to calculate the gas cost for the deploy")]
     InvalidDeployUnableToCalculateGasCost = 32,
-    ///The deploy sent to the network was invalid for an unspecified reason
-    #[error("The deploy sent to the network was invalid for an unspecified reason")]
+    /// The deploy sent to the network was invalid for an unspecified reason
+    #[error("the deploy sent to the network was invalid for an unspecified reason")]
     InvalidDeployUnspecified = 33,
     /// The transaction sent to the network had an invalid chain name
-    #[error("The transaction sent to the network had an invalid chain name")]
+    #[error("the transaction sent to the network had an invalid chain name")]
     InvalidTransactionChainName = 34,
     /// The transaction sent to the network had an excessive size
-    #[error("The transaction sent to the network had an excessive size")]
+    #[error("the transaction sent to the network had an excessive size")]
     InvalidTransactionExcessiveSize = 35,
     /// The transaction sent to the network had an excessive time to live
-    #[error("The transaction sent to the network had an excessive time to live")]
+    #[error("the transaction sent to the network had an excessive time to live")]
     InvalidTransactionExcessiveTimeToLive = 36,
     /// The transaction sent to the network had a timestamp located in the future.
-    #[error("The transaction sent to the network had a timestamp that has not yet occurred")]
+    #[error("the transaction sent to the network had a timestamp that has not yet occurred")]
     InvalidTransactionTimestampInFuture = 37,
     /// The transaction sent to the network had a provided body hash that conflicted with hash
     /// derived by the network
-    #[error("The transaction sent to the network had an invalid body hash")]
+    #[error("the transaction sent to the network had an invalid body hash")]
     InvalidTransactionBodyHash = 38,
     /// The transaction sent to the network had a provided hash that conflicted with the hash
     /// derived by the network
-    #[error("The transaction sent to the network had an invalid hash")]
+    #[error("the transaction sent to the network had an invalid hash")]
     InvalidTransactionHash = 39,
     /// The transaction sent to the network had an empty approvals set
-    #[error("The transaction sent to the network had no approvals")]
+    #[error("the transaction sent to the network had no approvals")]
     InvalidTransactionEmptyApprovals = 40,
     /// The transaction sent to the network had an invalid approval
-    #[error("The transaction sent to the network had an invalid approval")]
+    #[error("the transaction sent to the network had an invalid approval")]
     InvalidTransactionInvalidApproval = 41,
     /// The transaction sent to the network had excessive args length
-    #[error("The transaction sent to the network had excessive args length")]
+    #[error("the transaction sent to the network had excessive args length")]
     InvalidTransactionExcessiveArgsLength = 42,
     /// The transaction sent to the network had excessive approvals
-    #[error("The transaction sent to the network had excessive approvals")]
+    #[error("the transaction sent to the network had excessive approvals")]
     InvalidTransactionExcessiveApprovals = 43,
     /// The transaction sent to the network exceeds the block gas limit
-    #[error("The transaction sent to the network exceeds the networks block gas limit")]
+    #[error("the transaction sent to the network exceeds the networks block gas limit")]
     InvalidTransactionExceedsBlockGasLimit = 44,
     /// The transaction sent to the network had a missing arg
-    #[error("The transaction sent to the network was missing an argument")]
+    #[error("the transaction sent to the network was missing an argument")]
     InvalidTransactionMissingArg = 45,
     /// The transaction sent to the network had an argument with an unexpected type
-    #[error("The transaction sent to the network had an unexpected argument type")]
+    #[error("the transaction sent to the network had an unexpected argument type")]
     InvalidTransactionUnexpectedArgType = 46,
     /// The transaction sent to the network had an invalid argument
-    #[error("The transaction sent to the network had an invalid argument")]
+    #[error("the transaction sent to the network had an invalid argument")]
     InvalidTransactionInvalidArg = 47,
     /// The transaction sent to the network had an insufficient transfer amount
-    #[error("The transaction sent to the network had an insufficient transfer amount")]
+    #[error("the transaction sent to the network had an insufficient transfer amount")]
     InvalidTransactionInsufficientTransferAmount = 48,
     /// The transaction sent to the network had a custom entry point when it should have a non
     /// custom entry point.
-    #[error("The native transaction sent to the network should not have a custom entry point")]
+    #[error("the native transaction sent to the network should not have a custom entry point")]
     InvalidTransactionEntryPointCannotBeCustom = 49,
     /// The transaction sent to the network had a standard entry point when it must be custom.
-    #[error("The non-native transaction sent to the network must have a custom entry point")]
+    #[error("the non-native transaction sent to the network must have a custom entry point")]
     InvalidTransactionEntryPointMustBeCustom = 50,
     /// The transaction sent to the network had empty module bytes
-    #[error("The transaction sent to the network had empty module bytes")]
+    #[error("the transaction sent to the network had empty module bytes")]
     InvalidTransactionEmptyModuleBytes = 51,
     /// The transaction sent to the network had an invalid gas price conversion
-    #[error("The transaction sent to the network had an invalid gas price conversion")]
+    #[error("the transaction sent to the network had an invalid gas price conversion")]
     InvalidTransactionGasPriceConversion = 52,
     /// The network was unable to calculate the gas limit for the transaction sent.
-    #[error("The network was unable to calculate the gas limit for the transaction sent")]
+    #[error("the network was unable to calculate the gas limit for the transaction sent")]
     InvalidTransactionUnableToCalculateGasLimit = 53,
     /// The network was unable to calculate the gas cost for the transaction sent.
-    #[error("The network was unable to calculate the gas cost for the transaction sent.")]
+    #[error("the network was unable to calculate the gas cost for the transaction sent.")]
     InvalidTransactionUnableToCalculateGasCost = 54,
     /// The transaction sent to the network had an invalid pricing mode
-    #[error("The transaction sent to the network had an invalid pricing mode")]
+    #[error("the transaction sent to the network had an invalid pricing mode")]
     InvalidTransactionPricingMode = 55,
     /// The transaction sent to the network was invalid for an unspecified reason
-    #[error("The transaction sent to the network was invalid for an unspecified reason")]
+    #[error("the transaction sent to the network was invalid for an unspecified reason")]
     InvalidTransactionUnspecified = 56,
-    ///As the various enums are tagged non_exhaustive, it is possible that in the future none of
+    /// As the various enums are tagged non_exhaustive, it is possible that in the future none of
     /// these previous errors cover the error that occurred, therefore we need some catchall in
     /// the case that nothing else works.
-    #[error("The transaction or deploy sent to the network was invalid for an unspecified reason")]
+    #[error("the transaction or deploy sent to the network was invalid for an unspecified reason")]
     InvalidTransactionOrDeployUnspecified = 57,
+    /// The switch block for the requested era was not found
+    #[error("the switch block for the requested era was not found")]
+    SwitchBlockNotFound = 58,
+    #[error("the parent of the switch block for the requested era was not found")]
+    /// The parent of the switch block for the requested era was not found
+    SwitchBlockParentNotFound = 59,
+    #[error("cannot serve rewards stored in V1 format")]
+    /// Cannot serve rewards stored in V1 format
+    UnsupportedRewardsV1Request = 60,
+    /// Invalid binary port version.
+    #[error("binary protocol version mismatch")]
+    BinaryProtocolVersionMismatch = 61,
 }
 
-impl TryFrom<u8> for ErrorCode {
+impl TryFrom<u16> for ErrorCode {
     type Error = UnknownErrorCode;
 
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
+    fn try_from(value: u16) -> Result<Self, Self::Error> {
         match value {
             0 => Ok(ErrorCode::NoError),
             1 => Ok(ErrorCode::FunctionDisabled),
@@ -251,6 +263,9 @@ impl TryFrom<u8> for ErrorCode {
             55 => Ok(ErrorCode::InvalidTransactionPricingMode),
             56 => Ok(ErrorCode::InvalidTransactionUnspecified),
             57 => Ok(ErrorCode::InvalidTransactionOrDeployUnspecified),
+            58 => Ok(ErrorCode::SwitchBlockNotFound),
+            59 => Ok(ErrorCode::SwitchBlockParentNotFound),
+            60 => Ok(ErrorCode::UnsupportedRewardsV1Request),
             _ => Err(UnknownErrorCode),
         }
     }

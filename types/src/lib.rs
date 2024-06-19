@@ -46,7 +46,7 @@ mod digest;
 mod display_iter;
 mod era_id;
 pub mod execution;
-#[cfg(any(feature = "std", test))]
+#[cfg(any(feature = "std-fs-io", test))]
 pub mod file_utils;
 mod gas;
 #[cfg(any(feature = "testing", feature = "gens", test))]
@@ -110,6 +110,11 @@ pub use block::{
 pub use block::{TestBlockBuilder, TestBlockV1Builder};
 pub use block_time::{BlockTime, HoldsEpoch, BLOCKTIME_SERIALIZED_LENGTH};
 pub use byte_code::{ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind};
+pub use cl_type::{named_key_type, CLType, CLTyped};
+pub use cl_value::{
+    cl_value_to_json, handle_stored_dictionary_value, CLTypeMismatch, CLValue, CLValueError,
+    ChecksumRegistry, DictionaryValue as CLValueDictionary, SystemEntityRegistry,
+};
 pub use global_state::Pointer;
 
 #[cfg(any(feature = "std", test))]
@@ -143,11 +148,6 @@ pub use chainspec::{
     DEFAULT_MAX_PAYMENT_MOTES, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_MIN_TRANSFER_MOTES,
     DEFAULT_MUL_COST, DEFAULT_NEW_DICTIONARY_COST, DEFAULT_NOP_COST, DEFAULT_STORE_COST,
     DEFAULT_TRANSFER_COST, DEFAULT_UNREACHABLE_COST, DEFAULT_WASM_MAX_MEMORY,
-};
-pub use cl_type::{named_key_type, CLType, CLTyped};
-pub use cl_value::{
-    handle_stored_dictionary_value, CLTypeMismatch, CLValue, CLValueError, ChecksumRegistry,
-    DictionaryValue as CLValueDictionary, SystemEntityRegistry,
 };
 pub use contract_wasm::ContractWasm;
 #[doc(inline)]
@@ -191,11 +191,11 @@ pub use transaction::{
     DeployError, DeployExcessiveSizeError, DeployHash, DeployHeader, DeployId,
     ExecutableDeployItem, ExecutableDeployItemIdentifier, ExecutionInfo, InitiatorAddr,
     InvalidDeploy, InvalidTransaction, InvalidTransactionV1, NamedArg, PackageIdentifier,
-    PricingMode, RuntimeArgs, Transaction, TransactionEntryPoint, TransactionHash,
-    TransactionHeader, TransactionId, TransactionInvocationTarget, TransactionRuntime,
-    TransactionScheduling, TransactionSessionKind, TransactionTarget, TransactionV1,
-    TransactionV1Body, TransactionV1DecodeFromJsonError, TransactionV1Error,
-    TransactionV1ExcessiveSizeError, TransactionV1Hash, TransactionV1Header, TransferTarget,
+    PricingMode, RuntimeArgs, Transaction, TransactionCategory, TransactionEntryPoint,
+    TransactionHash, TransactionHeader, TransactionId, TransactionInvocationTarget,
+    TransactionRuntime, TransactionScheduling, TransactionTarget, TransactionV1, TransactionV1Body,
+    TransactionV1DecodeFromJsonError, TransactionV1Error, TransactionV1ExcessiveSizeError,
+    TransactionV1Hash, TransactionV1Header, TransferTarget,
 };
 #[cfg(any(feature = "std", test))]
 pub use transaction::{

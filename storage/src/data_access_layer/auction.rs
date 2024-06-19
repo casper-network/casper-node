@@ -45,6 +45,8 @@ pub enum AuctionMethod {
         public_key: PublicKey,
         delegation_rate: DelegationRate,
         amount: U512,
+        minimum_delegation_amount: u64,
+        maximum_delegation_amount: u64,
     },
     WithdrawBid {
         public_key: PublicKey,
@@ -55,7 +57,6 @@ pub enum AuctionMethod {
         validator: PublicKey,
         amount: U512,
         max_delegators_per_validator: u32,
-        minimum_delegation_amount: u64,
     },
     Undelegate {
         delegator: PublicKey,
@@ -67,7 +68,6 @@ pub enum AuctionMethod {
         validator: PublicKey,
         amount: U512,
         new_validator: PublicKey,
-        minimum_delegation_amount: u64,
     },
     ChangeBidPublicKey {
         public_key: PublicKey,
@@ -88,18 +88,18 @@ impl AuctionMethod {
                 Err(AuctionMethodError::InvalidEntryPoint(entry_point))
             }
             TransactionEntryPoint::ActivateBid => Self::new_activate_bid(runtime_args),
-            TransactionEntryPoint::AddBid => Self::new_add_bid(runtime_args),
+            TransactionEntryPoint::AddBid => Self::new_add_bid(
+                runtime_args,
+                chainspec.core_config.minimum_delegation_amount,
+                chainspec.core_config.maximum_delegation_amount,
+            ),
             TransactionEntryPoint::WithdrawBid => Self::new_withdraw_bid(runtime_args),
             TransactionEntryPoint::Delegate => Self::new_delegate(
                 runtime_args,
                 chainspec.core_config.max_delegators_per_validator,
-                chainspec.core_config.minimum_delegation_amount,
             ),
             TransactionEntryPoint::Undelegate => Self::new_undelegate(runtime_args),
-            TransactionEntryPoint::Redelegate => Self::new_redelegate(
-                runtime_args,
-                chainspec.core_config.minimum_delegation_amount,
-            ),
+            TransactionEntryPoint::Redelegate => Self::new_redelegate(runtime_args),
             TransactionEntryPoint::ChangeBidPublicKey => {
                 Self::new_change_bid_public_key(runtime_args)
             }
@@ -111,14 +111,27 @@ impl AuctionMethod {
         Ok(Self::ActivateBid { validator })
     }
 
-    fn new_add_bid(runtime_args: &RuntimeArgs) -> Result<Self, AuctionMethodError> {
+    fn new_add_bid(
+        runtime_args: &RuntimeArgs,
+        global_minimum_delegation: u64,
+        global_maximum_delegation: u64,
+    ) -> Result<Self, AuctionMethodError> {
         let public_key = Self::get_named_argument(runtime_args, auction::ARG_PUBLIC_KEY)?;
         let delegation_rate = Self::get_named_argument(runtime_args, auction::ARG_DELEGATION_RATE)?;
         let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
+        let minimum_delegation_amount =
+            Self::get_named_argument(runtime_args, auction::ARG_MINIMUM_DELEGATION_AMOUNT)
+                .unwrap_or(global_minimum_delegation);
+        let maximum_delegation_amount =
+            Self::get_named_argument(runtime_args, auction::ARG_MAXIMUM_DELEGATION_AMOUNT)
+                .unwrap_or(global_maximum_delegation);
+
         Ok(Self::AddBid {
             public_key,
             delegation_rate,
             amount,
+            minimum_delegation_amount,
+            maximum_delegation_amount,
         })
     }
 
@@ -131,7 +144,6 @@ impl AuctionMethod {
     fn new_delegate(
         runtime_args: &RuntimeArgs,
         max_delegators_per_validator: u32,
-        minimum_delegation_amount: u64,
     ) -> Result<Self, AuctionMethodError> {
         let delegator = Self::get_named_argument(runtime_args, auction::ARG_DELEGATOR)?;
         let validator = Self::get_named_argument(runtime_args, auction::ARG_VALIDATOR)?;
@@ -142,7 +154,6 @@ impl AuctionMethod {
             validator,
             amount,
             max_delegators_per_validator,
-            minimum_delegation_amount,
         })
     }
 
@@ -158,10 +169,7 @@ impl AuctionMethod {
         })
     }
 
-    fn new_redelegate(
-        runtime_args: &RuntimeArgs,
-        minimum_delegation_amount: u64,
-    ) -> Result<Self, AuctionMethodError> {
+    fn new_redelegate(runtime_args: &RuntimeArgs) -> Result<Self, AuctionMethodError> {
         let delegator = Self::get_named_argument(runtime_args, auction::ARG_DELEGATOR)?;
         let validator = Self::get_named_argument(runtime_args, auction::ARG_VALIDATOR)?;
         let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
@@ -172,7 +180,6 @@ impl AuctionMethod {
             validator,
             amount,
             new_validator,
-            minimum_delegation_amount,
         })
     }
 

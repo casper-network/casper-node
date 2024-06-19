@@ -8,7 +8,7 @@ use rand::Rng;
 use super::{
     super::{
         InitiatorAddr, TransactionEntryPoint, TransactionInvocationTarget, TransactionRuntime,
-        TransactionScheduling, TransactionSessionKind, TransactionTarget,
+        TransactionScheduling, TransactionTarget,
     },
     transaction_v1_body::arg_handling,
     InitiatorAddrAndSecretKey, PricingMode, TransactionV1, TransactionV1Body,
@@ -101,8 +101,16 @@ impl<'a> TransactionV1Builder<'a> {
         public_key: PublicKey,
         delegation_rate: u8,
         amount: A,
+        minimum_delegation_amount: u64,
+        maximum_delegation_amount: u64,
     ) -> Result<Self, CLValueError> {
-        let args = arg_handling::new_add_bid_args(public_key, delegation_rate, amount)?;
+        let args = arg_handling::new_add_bid_args(
+            public_key,
+            delegation_rate,
+            amount,
+            minimum_delegation_amount,
+            maximum_delegation_amount,
+        )?;
         let body = TransactionV1Body::new(
             args,
             TransactionTarget::Native,
@@ -244,9 +252,8 @@ impl<'a> TransactionV1Builder<'a> {
 
     /// Returns a new `TransactionV1Builder` suitable for building a transaction for running session
     /// logic, i.e. compiled Wasm.
-    pub fn new_session(kind: TransactionSessionKind, module_bytes: Bytes) -> Self {
+    pub fn new_session(category: TransactionCategory, module_bytes: Bytes) -> Self {
         let target = TransactionTarget::Session {
-            kind,
             module_bytes,
             runtime: Self::DEFAULT_RUNTIME,
         };
@@ -254,7 +261,7 @@ impl<'a> TransactionV1Builder<'a> {
             RuntimeArgs::new(),
             target,
             TransactionEntryPoint::Call,
-            TransactionCategory::Large as u8,
+            category as u8,
             Self::DEFAULT_SCHEDULING,
         );
         TransactionV1Builder::new(body)

@@ -2,7 +2,7 @@
 name = "measure-gas-subcall"
 version = "0.1.0"
 authors = ["Bartłomiej Kamiński <bart@casperlabs.io>"]
-edition = "2018"
+edition = "2021"
 
 [[bin]]
 name = "measure_gas_subcall"

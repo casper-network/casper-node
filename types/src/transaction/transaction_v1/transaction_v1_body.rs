@@ -32,7 +32,7 @@ use crate::TransactionV1ExcessiveSizeError;
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::{
     bytesrepr::Bytes, testing::TestRng, PublicKey, TransactionInvocationTarget, TransactionRuntime,
-    TransactionSessionKind, TransferTarget,
+    TransferTarget,
 };
 
 /// The body of a [`TransactionV1`].
@@ -52,7 +52,7 @@ pub struct TransactionV1Body {
     pub(super) args: RuntimeArgs,
     pub(super) target: TransactionTarget,
     pub(super) entry_point: TransactionEntryPoint,
-    pub(super) transaction_kind: u8,
+    pub(super) transaction_category: u8,
     pub(super) scheduling: TransactionScheduling,
 }
 
@@ -62,14 +62,14 @@ impl TransactionV1Body {
         args: RuntimeArgs,
         target: TransactionTarget,
         entry_point: TransactionEntryPoint,
-        transaction_kind: u8,
+        transaction_category: u8,
         scheduling: TransactionScheduling,
     ) -> Self {
         TransactionV1Body {
             args,
             target,
             entry_point,
-            transaction_kind,
+            transaction_category,
             scheduling,
         }
     }
@@ -101,22 +101,22 @@ impl TransactionV1Body {
 
     /// Returns true if this transaction is a native mint interaction.
     pub fn is_native_mint(&self) -> bool {
-        self.transaction_kind == TransactionCategory::Mint as u8
+        self.transaction_category == TransactionCategory::Mint as u8
     }
 
     /// Returns true if this transaction is a native auction interaction.
     pub fn is_native_auction(&self) -> bool {
-        self.transaction_kind == TransactionCategory::Auction as u8
+        self.transaction_category == TransactionCategory::Auction as u8
     }
 
     /// Returns true if this transaction is a smart contract installer or upgrader.
     pub fn is_install_or_upgrade(&self) -> bool {
-        self.transaction_kind == TransactionCategory::InstallUpgrade as u8
+        self.transaction_category == TransactionCategory::InstallUpgrade as u8
     }
 
-    /// Returns the transaction kind.
-    pub fn transaction_kind(&self) -> u8 {
-        self.transaction_kind
+    /// Returns the transaction category.
+    pub fn transaction_category(&self) -> u8 {
+        self.transaction_category
     }
 
     /// Consumes `self`, returning its constituent parts.
@@ -133,10 +133,10 @@ impl TransactionV1Body {
 
     #[cfg(any(feature = "std", test))]
     pub(super) fn is_valid(&self, config: &TransactionConfig) -> Result<(), InvalidTransactionV1> {
-        let kind = self.transaction_kind;
+        let kind = self.transaction_category;
         if !config.transaction_v1_config.is_supported(kind) {
             return Err(InvalidTransactionV1::InvalidTransactionKind(
-                self.transaction_kind,
+                self.transaction_category,
             ));
         }
 
@@ -302,7 +302,6 @@ impl TransactionV1Body {
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
     fn random_install_upgrade(rng: &mut TestRng) -> Self {
         let target = TransactionTarget::Session {
-            kind: TransactionSessionKind::Upgrader,
             module_bytes: Bytes::from(rng.random_vec(0..100)),
             runtime: TransactionRuntime::VmCasperV1,
         };
@@ -320,7 +319,16 @@ impl TransactionV1Body {
         let public_key = PublicKey::random(rng);
         let delegation_rate = rng.gen();
         let amount = rng.gen::<u64>();
-        let args = arg_handling::new_add_bid_args(public_key, delegation_rate, amount).unwrap();
+        let minimum_delegation_amount = rng.gen::<u32>() as u64;
+        let maximum_delegation_amount = minimum_delegation_amount + rng.gen::<u32>() as u64;
+        let args = arg_handling::new_add_bid_args(
+            public_key,
+            delegation_rate,
+            amount,
+            minimum_delegation_amount,
+            maximum_delegation_amount,
+        )
+        .unwrap();
         TransactionV1Body::new(
             args,
             TransactionTarget::Native,
@@ -355,8 +363,16 @@ impl TransactionV1Body {
                 let public_key = PublicKey::random(rng);
                 let delegation_rate = rng.gen();
                 let amount = rng.gen::<u64>();
-                let args =
-                    arg_handling::new_add_bid_args(public_key, delegation_rate, amount).unwrap();
+                let minimum_delegation_amount = rng.gen::<u32>() as u64;
+                let maximum_delegation_amount = minimum_delegation_amount + rng.gen::<u32>() as u64;
+                let args = arg_handling::new_add_bid_args(
+                    public_key,
+                    delegation_rate,
+                    amount,
+                    minimum_delegation_amount,
+                    maximum_delegation_amount,
+                )
+                .unwrap();
                 TransactionV1Body::new(
                     args,
                     TransactionTarget::Native,
@@ -424,7 +440,6 @@ impl TransactionV1Body {
                 let mut buffer = vec![0u8; rng.gen_range(1..100)];
                 rng.fill_bytes(buffer.as_mut());
                 let target = TransactionTarget::Session {
-                    kind: TransactionSessionKind::random(rng),
                     module_bytes: Bytes::from(buffer),
                     runtime: TransactionRuntime::VmCasperV1,
                 };
@@ -462,7 +477,7 @@ impl ToBytes for TransactionV1Body {
         self.args.serialized_length()
             + self.target.serialized_length()
             + self.entry_point.serialized_length()
-            + self.transaction_kind.serialized_length()
+            + self.transaction_category.serialized_length()
             + self.scheduling.serialized_length()
     }
 
@@ -470,7 +485,7 @@ impl ToBytes for TransactionV1Body {
         self.args.write_bytes(writer)?;
         self.target.write_bytes(writer)?;
         self.entry_point.write_bytes(writer)?;
-        self.transaction_kind.write_bytes(writer)?;
+        self.transaction_category.write_bytes(writer)?;
         self.scheduling.write_bytes(writer)
     }
 }
@@ -505,7 +520,7 @@ mod tests {
         let mut config = TransactionConfig::default();
         let mut body = TransactionV1Body::random_standard(rng);
         config.transaction_v1_config.wasm_lanes =
-            vec![vec![body.transaction_kind as u64, 1_048_576, 10, 0]];
+            vec![vec![body.transaction_category as u64, 1_048_576, 10, 0]];
         body.args = runtime_args! {"a" => 1_u8};
 
         let expected_error = InvalidTransactionV1::ExcessiveArgsLength {
@@ -569,7 +584,6 @@ mod tests {
                 TransactionRuntime::VmCasperV1,
             );
             let session_target = TransactionTarget::new_session(
-                TransactionSessionKind::Standard,
                 Bytes::from(vec![1]),
                 TransactionRuntime::VmCasperV1,
             );

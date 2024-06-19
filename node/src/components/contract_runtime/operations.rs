@@ -7,12 +7,14 @@ use casper_execution_engine::engine_state::{ExecutionEngineV1, WasmV1Request, Wa
 use casper_storage::{
     block_store::types::ApprovalsHashes,
     data_access_layer::{
-        balance::BalanceHandling, AuctionMethod, BalanceHoldKind, BalanceHoldRequest,
-        BalanceIdentifier, BalanceRequest, BiddingRequest, BlockGlobalRequest, BlockGlobalResult,
-        BlockRewardsRequest, BlockRewardsResult, DataAccessLayer, EraValidatorsRequest,
-        EraValidatorsResult, EvictItem, FeeRequest, FeeResult, FlushRequest, HandleFeeMode,
-        HandleFeeRequest, HandleRefundMode, HandleRefundRequest, InsufficientBalanceHandling,
-        ProofHandling, PruneRequest, PruneResult, StepRequest, StepResult, TransferRequest,
+        balance::BalanceHandling,
+        forced_undelegate::{ForcedUndelegateRequest, ForcedUndelegateResult},
+        AuctionMethod, BalanceHoldKind, BalanceHoldRequest, BalanceIdentifier, BalanceRequest,
+        BiddingRequest, BlockGlobalRequest, BlockGlobalResult, BlockRewardsRequest,
+        BlockRewardsResult, DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, EvictItem,
+        FeeRequest, FeeResult, FlushRequest, HandleFeeMode, HandleFeeRequest, HandleRefundMode,
+        HandleRefundRequest, InsufficientBalanceHandling, ProofHandling, PruneRequest, PruneResult,
+        StepRequest, StepResult, TransferRequest,
     },
     global_state::state::{
         lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, ScratchProvider,
@@ -41,11 +43,6 @@ use crate::{
     contract_runtime::types::ExecutionArtifactBuilder,
     types::{self, Chunkable, ExecutableBlock, InternalEraReport},
 };
-
-const ACCOUNT_SESSION: bool = true;
-const DIRECT_CONTRACT: bool = !ACCOUNT_SESSION;
-const STANDARD_PAYMENT: bool = true;
-const CUSTOM_PAYMENT: bool = !STANDARD_PAYMENT;
 
 /// Executes a finalized block.
 #[allow(clippy::too_many_arguments)]
@@ -192,7 +189,7 @@ pub fn execute_finalized_block(
         artifact_builder.with_added_cost(cost);
 
         let is_standard_payment = transaction.is_standard_payment();
-        let refund_purse_active = !is_standard_payment; //&& !refund_handling.skip_refund();
+        let refund_purse_active = !is_standard_payment;
         if refund_purse_active {
             // if custom payment  before doing any processing, initialize the initiator's main purse
             //  to be the refund purse for this transaction.
@@ -222,78 +219,52 @@ pub fn execute_finalized_block(
         }
 
         let mut balance_identifier = {
-            let is_account_session = transaction.is_account_session();
-            //  if standard payment & is session based...use account main purse
-            //  if standard payment & is targeting a contract
-            //      load contract & check entry point, if it pays use contract main purse
-            //  if custom payment, attempt execute custom payment
-            //      if custom payment fails, take remaining balance up to amount
-            //      currently contracts cannot provide custom payment, but possible future use
-            match (is_account_session, is_standard_payment) {
-                (ACCOUNT_SESSION, STANDARD_PAYMENT) => {
-                    // this is the typical scenario; the initiating account pays using its main
-                    // purse
-                    trace!(%transaction_hash, "account session with standard payment");
-                    initiator_addr.clone().into()
-                }
-                (ACCOUNT_SESSION, CUSTOM_PAYMENT) => {
-                    // the initiating account will pay, but wants to do so with a different purse or
-                    // in a custom way. If anything goes wrong, penalize the sender, do not execute
-                    let custom_payment_gas_limit = Gas::new(
-                        // TODO: this should have it's own chainspec value; in the meantime
-                        // using a multiple of a small value.
-                        chainspec.transaction_config.native_transfer_minimum_motes * 5,
-                    );
-                    let pay_result = match WasmV1Request::new_custom_payment(
-                        state_root_hash,
-                        block_time,
-                        custom_payment_gas_limit,
-                        &transaction,
-                    ) {
-                        Ok(mut pay_request) => {
-                            // We'll send a hint to the custom payment logic on the amount
-                            // it should pay for the transaction to be executed.
-                            pay_request
-                                .args
-                                .insert(ARG_AMOUNT, cost)
-                                .map_err(|e| BlockExecutionError::PaymentError(e.to_string()))?;
-                            execution_engine_v1.execute(&scratch_state, pay_request)
-                        }
-                        Err(error) => {
-                            WasmV1Result::invalid_executable_item(custom_payment_gas_limit, error)
-                        }
-                    };
-                    let balance_identifier = {
-                        if pay_result.error().is_some() {
-                            BalanceIdentifier::PenalizedAccount(initiator_addr.account_hash())
-                        } else {
-                            BalanceIdentifier::Payment
-                        }
-                    };
-                    state_root_hash =
-                        scratch_state.commit(state_root_hash, pay_result.effects().clone())?;
-                    artifact_builder
-                        .with_wasm_v1_result(pay_result)
-                        .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
-                    trace!(%transaction_hash, ?balance_identifier, "account session with custom payment");
-                    balance_identifier
-                }
-                (DIRECT_CONTRACT, STANDARD_PAYMENT) => {
-                    // TODO: get the contract, check the entry point indicated in the transaction
-                    //      if the contract pays for itself, use its main purse
-                    // <-- contracts paying for things wire up goes here -->
-                    // use scratch_state to read the contract & check it here
-                    // if the contract does not exist, the entrypoint does not exist,
-                    //      the entrypoint does not pay for itself, and every other sad path
-                    // outcome...      penalize the sender, do not execute
-                    debug!("direct contract invocation is currently unsupported; penalize the account that sent it.");
-                    BalanceIdentifier::PenalizedAccount(initiator_addr.account_hash())
-                }
-                (DIRECT_CONTRACT, CUSTOM_PAYMENT) => {
-                    // currently not supported. penalize the sender, do not execute.
-                    warn!("direct contract invocation is currently unsupported; penalize the account that sent it.");
-                    BalanceIdentifier::PenalizedAccount(initiator_addr.account_hash())
-                }
+            if is_standard_payment {
+                // this is the typical scenario; the initiating account pays using its main
+                // purse
+                trace!(%transaction_hash, "account session with standard payment");
+                initiator_addr.clone().into()
+            } else {
+                // the initiating account will pay, but wants to do so with a different purse or
+                // in a custom way. If anything goes wrong, penalize the sender, do not execute
+                let custom_payment_gas_limit = Gas::new(
+                    // TODO: this should have it's own chainspec value; in the meantime
+                    // using a multiple of a small value.
+                    chainspec.transaction_config.native_transfer_minimum_motes * 5,
+                );
+                let pay_result = match WasmV1Request::new_custom_payment(
+                    state_root_hash,
+                    block_time,
+                    custom_payment_gas_limit,
+                    &transaction,
+                ) {
+                    Ok(mut pay_request) => {
+                        // We'll send a hint to the custom payment logic on the amount
+                        // it should pay for the transaction to be executed.
+                        pay_request
+                            .args
+                            .insert(ARG_AMOUNT, cost)
+                            .map_err(|e| BlockExecutionError::PaymentError(e.to_string()))?;
+                        execution_engine_v1.execute(&scratch_state, pay_request)
+                    }
+                    Err(error) => {
+                        WasmV1Result::invalid_executable_item(custom_payment_gas_limit, error)
+                    }
+                };
+                let balance_identifier = {
+                    if pay_result.error().is_some() {
+                        BalanceIdentifier::PenalizedAccount(initiator_addr.account_hash())
+                    } else {
+                        BalanceIdentifier::Payment
+                    }
+                };
+                state_root_hash =
+                    scratch_state.commit(state_root_hash, pay_result.effects().clone())?;
+                artifact_builder
+                    .with_wasm_v1_result(pay_result)
+                    .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
+                trace!(%transaction_hash, ?balance_identifier, "account session with custom payment");
+                balance_identifier
             }
         };
 
@@ -305,7 +276,7 @@ pub fn execute_finalized_block(
             ProofHandling::NoProofs,
         ));
 
-        let category = transaction.transaction_kind();
+        let category = transaction.transaction_category();
 
         let allow_execution = {
             let is_not_penalized = !balance_identifier.is_penalty();
@@ -671,6 +642,12 @@ pub fn execute_finalized_block(
             .collect()
     };
 
+    if let Some(metrics) = metrics.as_ref() {
+        metrics
+            .txn_approvals_hashes_calculation
+            .observe(post_processing_start.elapsed().as_secs_f64());
+    }
+
     // Pay out  ̶b̶l̶o̶c̶k̶ e͇r͇a͇ rewards
     // NOTE: despite the name, these rewards are currently paid out per ERA not per BLOCK
     // at one point, they were going to be paid out per block (and might be in the future)
@@ -678,6 +655,7 @@ pub fn execute_finalized_block(
     // thus if in future the calling logic passes rewards per block it should just work as is.
     // This auto-commits.
     if let Some(rewards) = &executable_block.rewards {
+        let block_rewards_payout_start = Instant::now();
         // Pay out block fees, if relevant. This auto-commits
         {
             let fee_req = FeeRequest::new(
@@ -686,6 +664,7 @@ pub fn execute_finalized_block(
                 protocol_version,
                 block_time,
             );
+            debug!(?fee_req, "distributing fees");
             match scratch_state.distribute_fees(fee_req) {
                 FeeResult::RootNotFound => {
                     return Err(BlockExecutionError::RootNotFound(state_root_hash));
@@ -694,6 +673,7 @@ pub fn execute_finalized_block(
                 FeeResult::Success {
                     post_state_hash, ..
                 } => {
+                    debug!("fee distribution success");
                     state_root_hash = post_state_hash;
                 }
             }
@@ -706,6 +686,7 @@ pub fn execute_finalized_block(
             block_time,
             rewards.clone(),
         );
+        debug!(?rewards_req, "distributing rewards");
         match scratch_state.distribute_block_rewards(rewards_req) {
             BlockRewardsResult::RootNotFound => {
                 return Err(BlockExecutionError::RootNotFound(state_root_hash));
@@ -716,8 +697,14 @@ pub fn execute_finalized_block(
             BlockRewardsResult::Success {
                 post_state_hash, ..
             } => {
+                debug!("rewards distribution success");
                 state_root_hash = post_state_hash;
             }
+        }
+        if let Some(metrics) = metrics.as_ref() {
+            metrics
+                .block_rewards_payout
+                .observe(block_rewards_payout_start.elapsed().as_secs_f64());
         }
     }
 
@@ -726,6 +713,28 @@ pub fn execute_finalized_block(
     let step_outcome = if let Some(era_report) = &executable_block.era_report {
         // step processing starts now
         let step_processing_start = Instant::now();
+
+        // force undelegate delegators outside delegation limits before the auction runs
+        let forced_undelegate_req = ForcedUndelegateRequest::new(
+            native_runtime_config.clone(),
+            state_root_hash,
+            protocol_version,
+            block_time,
+        );
+        match scratch_state.forced_undelegate(forced_undelegate_req) {
+            ForcedUndelegateResult::RootNotFound => {
+                return Err(BlockExecutionError::RootNotFound(state_root_hash))
+            }
+            ForcedUndelegateResult::Failure(err) => {
+                return Err(BlockExecutionError::ForcedUndelegate(err))
+            }
+            ForcedUndelegateResult::Success {
+                post_state_hash, ..
+            } => {
+                state_root_hash = post_state_hash;
+            }
+        }
+
         let step_effects = match commit_step(
             native_runtime_config,
             &scratch_state,
@@ -792,6 +801,8 @@ pub fn execute_finalized_block(
             previous_block_height,
             prune_batch_size,
         ) {
+            let pruning_start = Instant::now();
+
             let first_key = keys_to_prune.first().copied();
             let last_key = keys_to_prune.last().copied();
             info!(
@@ -841,19 +852,37 @@ pub fn execute_finalized_block(
                     return Err(tce.into());
                 }
             }
+            if let Some(metrics) = metrics.as_ref() {
+                metrics
+                    .pruning_time
+                    .observe(pruning_start.elapsed().as_secs_f64());
+            }
         }
     }
 
     {
+        let database_write_start = Instant::now();
         // Finally, the new state-root-hash from the cumulative changes to global state is
         // returned when they are written to LMDB.
         state_root_hash = data_access_layer.write_scratch_to_db(state_root_hash, scratch_state)?;
+        if let Some(metrics) = metrics.as_ref() {
+            metrics
+                .scratch_lmdb_write_time
+                .observe(database_write_start.elapsed().as_secs_f64());
+        }
+
         // Flush once, after all data mutation.
+        let database_flush_start = Instant::now();
         let flush_req = FlushRequest::new();
         let flush_result = data_access_layer.flush(flush_req);
         if let Err(gse) = flush_result.as_error() {
             error!("failed to flush lmdb");
             return Err(BlockExecutionError::Lmdb(gse));
+        }
+        if let Some(metrics) = metrics.as_ref() {
+            metrics
+                .database_flush_time
+                .observe(database_flush_start.elapsed().as_secs_f64());
         }
     }
 

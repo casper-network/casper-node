@@ -5,23 +5,27 @@ The specification of the protocol used to communicate between the RPC sidecar an
 This is a binary protocol which follows a simple request-response model. The protocol consists of one party (the client) sending requests to another party (the server) and the server sending responses back to the client. Both requests and responses are wrapped in envelopes containing a version and a payload type tag. The versioning scheme is based on [SemVer](https://semver.org/), see [versioning](#versioning) for more details. The payload type tags are used to interpret the contents of the payloads.
 
 ### Request format
-| Size in bytes | Field            | Description                                               |
-|---------------|------------------|-----------------------------------------------------------|
-| 12            | ProtocolVersion  | Protocol version as a u32 triplet (major, minor, patch)   |
-| 1             | BinaryRequestTag | Tag identifying the request                               |
-| ...           | RequestPayload   | Payload to be interpreted according to `BinaryRequestTag` |
+| Size in bytes | Field                             | Description                                                                                                                                                                                                                                                                                |
+|---------------|-----------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| 2             | Version of the binary port header | Version of the binary port header serialized as a single u16 number. Upon receiving the request, binary port component will first read data from this field and check it against the currently supported version. In case of version mismatch the appropriate error response will be sent. |
+| 12            | Chain protocol version            | Chain protocol version as a u32 triplet (major, minor, patch). This parameter is used to determine whether an incoming request is compatible (according to semver rules) with the current chain protocol version. If not, the appropriate error response will be sent.                     |
+| 1             | BinaryRequestTag                  | Tag identifying the request.                                                                                                                                                                                                                                                               |
+| ...           | RequestPayload                    | Payload to be interpreted according to `BinaryRequestTag`.                                                                                                                                                                                                                                 |
 
-Request bytes can be constructed from bytesrepr-serialized `BinaryRequestHeader` followed by bytesrepr-serialized `BinaryRequest`
+Request bytes can be constructed from bytesrepr-serialized `BinaryRequestHeader` followed by bytesrepr-serialized `BinaryRequest`.
+
+
 
 ### Response format
-| Size in bytes   | Field           | Description                                                             |
-|-----------------|-----------------|-------------------------------------------------------------------------|
-| 4               | LengthOfRequest | Length of the request being responded to                                |
-| LengthOfRequest | RequestBytes    | The request being responded to encoded as bytes                         |
-| 12              | ProtocolVersion | Protocol version as a u32 triplet (major, minor, patch)                 |
-| 1               | ErrorCode       | Error code, where 0 indicates success                                   |
-| 1-2             | PayloadType     | Optional payload type tag (first byte being 1 indicates that it exists) |
-| ...             | Payload         | Payload to be interpreted according to `PayloadTag`                     |
+| Size in bytes   | Field           | Description                                                              |
+|-----------------|-----------------|--------------------------------------------------------------------------|
+| 2               | Request id      | Request id (u16).                                                        |
+| 4               | LengthOfRequest | Length of the request (encoded as bytes) being responded to.             |
+| LengthOfRequest | RequestBytes    | The request being responded to encoded as bytes.                         |
+| 12              | ProtocolVersion | Protocol version as a u32 triplet (major, minor, patch).                 |
+| 2               | ErrorCode       | Error code, where 0 indicates success.                                   |
+| 1-2             | PayloadType     | Optional payload type tag (first byte being 1 indicates that it exists). |
+| ...             | Payload         | Payload to be interpreted according to `PayloadTag`.                     |
 
 `BinaryResponseAndRequest` object can be bytesrepr-deserialized from these bytes.
 
@@ -39,7 +43,7 @@ Implementations of the protocol can handle requests/responses with a different *
 
 Other changes to the protocol such as changes to the format of existing requests/responses or removal of existing requests/responses are only allowed between **MAJOR** versions. Implementations of the protocol should not handle requests/responses with a different **MAJOR** version than their own and immediately respond with an error code indicating the lack of support for the given version (`ErrorCode::UnsupportedRequest`).
 
-Changes to the envelopes (the request/response headers) are not allowed.
+Changes to the envelopes (the request/response headers) are allowed, but are breaking. When such a change is required, the "Header version" should in the request header should also be changed to prevent binary port from trying to handle requests it can't process.
 
 ## Request model details
 There are currently 3 supported types of requests, but the request model can be extended with new variants according to the [versioning](#versioning) rules. The request types are:

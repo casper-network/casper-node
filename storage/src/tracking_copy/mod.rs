@@ -5,7 +5,7 @@ mod byte_size;
 mod error;
 mod ext;
 mod ext_entity;
-pub(self) mod meter;
+mod meter;
 #[cfg(test)]
 mod tests;
 

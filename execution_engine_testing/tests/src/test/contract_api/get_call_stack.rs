@@ -1,11 +1,15 @@
 use num_traits::One;
 
-use casper_engine_test_support::{ExecuteRequest, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR};
+use casper_engine_test_support::{
+    ExecuteRequest, LmdbWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR,
+};
 use casper_execution_engine::{engine_state::Error as CoreError, execution::ExecError};
 use casper_types::{
-    addressable_entity::NamedKeys, system::Caller, AddressableEntity, AddressableEntityHash,
-    CLValue, EntityAddr, EntryPointType, HashAddr, HoldBalanceHandling, Key, PackageAddr,
-    PackageHash, StoredValue, Timestamp, U512,
+    addressable_entity::NamedKeys,
+    system::{CallStackElement, Caller},
+    AddressableEntity, AddressableEntityHash, CLValue, EntityAddr, EntryPointType, HashAddr,
+    HoldBalanceHandling, Key, PackageAddr, PackageHash, ProtocolVersion, StoredValue, Timestamp,
+    U512,
 };
 
 use crate::lmdb_fixture;
@@ -119,7 +123,7 @@ impl AccountExt for EntityWithKeys {
         self.named_keys
             .get(key)
             .cloned()
-            .and_then(Key::into_entity_hash_addr)
+            .and_then(|key| key.into_hash_addr())
             .unwrap()
     }
 
@@ -127,7 +131,7 @@ impl AccountExt for EntityWithKeys {
         self.named_keys
             .get(key)
             .cloned()
-            .and_then(Key::into_package_addr)
+            .and_then(|key| key.into_hash_addr())
             .unwrap()
     }
 }
@@ -185,16 +189,56 @@ impl BuilderExt for LmdbWasmTestBuilder {
             )
             .unwrap();
 
-        cl_value
+        let stack_elements = cl_value
             .into_cl_value()
-            .map(CLValue::into_t::<Vec<Caller>>)
+            .map(CLValue::into_t::<Vec<CallStackElement>>)
             .unwrap()
-            .unwrap()
+            .unwrap();
+
+        stack_elements
+            .into_iter()
+            .map(|elem| match elem {
+                CallStackElement::Session { account_hash } => Caller::Initiator { account_hash },
+                CallStackElement::StoredSession {
+                    contract_hash,
+                    contract_package_hash,
+                    ..
+                } => Caller::Entity {
+                    package_hash: PackageHash::new(contract_package_hash.value()),
+                    entity_hash: AddressableEntityHash::new(contract_hash.value()),
+                },
+                CallStackElement::StoredContract {
+                    contract_hash,
+                    contract_package_hash,
+                } => Caller::Entity {
+                    package_hash: PackageHash::new(contract_package_hash.value()),
+                    entity_hash: AddressableEntityHash::new(contract_hash.value()),
+                },
+            })
+            .collect()
     }
 }
 
 fn setup() -> LmdbWasmTestBuilder {
-    let (mut builder, _, _) = lmdb_fixture::builder_from_global_state_fixture(CALL_STACK_FIXTURE);
+    let (mut builder, lmdb_fixture_state, _) =
+        lmdb_fixture::builder_from_global_state_fixture(CALL_STACK_FIXTURE);
+
+    let pre_upgrade_hash = lmdb_fixture_state.post_state_hash;
+    let old_protocol_version = lmdb_fixture_state.genesis_protocol_version();
+
+    let mut upgrade_request = UpgradeRequestBuilder::new()
+        .with_pre_state_hash(pre_upgrade_hash)
+        .with_current_protocol_version(old_protocol_version)
+        .with_new_protocol_version(ProtocolVersion::V2_0_0)
+        .with_migrate_legacy_accounts(true)
+        .with_migrate_legacy_contracts(true)
+        .build();
+
+    builder
+        .upgrade(&mut upgrade_request)
+        .expect_upgrade_success()
+        .commit();
+
     builder.with_block_time(Timestamp::now().into());
     builder.with_gas_hold_config(HoldBalanceHandling::Accrued, 1200u64);
     builder

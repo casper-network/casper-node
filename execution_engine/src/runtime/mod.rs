@@ -22,6 +22,7 @@ use tracing::error;
 
 #[cfg(feature = "test-support")]
 use casper_wasmi::RuntimeValue;
+use itertools::Itertools;
 use num_rational::Ratio;
 
 use casper_storage::{
@@ -46,8 +47,8 @@ use casper_types::{
     system::{
         self,
         auction::{self, EraInfo},
-        handle_payment, mint, Caller, SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
-        STANDARD_PAYMENT,
+        handle_payment, mint, CallStackElement, Caller, SystemEntityType, AUCTION, HANDLE_PAYMENT,
+        MINT, STANDARD_PAYMENT,
     },
     AccessRights, ApiError, BlockGlobalAddr, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash,
     ByteCodeKind, CLTyped, CLValue, ContextAccessRights, EntityAddr, EntityKind, EntityVersion,
@@ -76,6 +77,26 @@ enum CallContractIdentifier {
         contract_package_hash: PackageHash,
         version: Option<EntityVersion>,
     },
+}
+
+#[repr(u8)]
+enum CallerInformation {
+    Initiator = 0,
+    Immediate = 1,
+    FullCallChain = 2,
+}
+
+impl TryFrom<u8> for CallerInformation {
+    type Error = ApiError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(CallerInformation::Initiator),
+            1 => Ok(CallerInformation::Immediate),
+            2 => Ok(CallerInformation::FullCallChain),
+            _ => Err(ApiError::InvalidCallerInfoRequest),
+        }
+    }
 }
 
 /// Represents the runtime properties of a WASM execution.
@@ -436,8 +457,11 @@ where
             // Exit early if the host buffer is already occupied
             return Ok(Err(ApiError::HostBufferFull));
         }
-        let call_stack = match self.try_get_stack() {
-            Ok(stack) => stack.call_stack_elements(),
+        let call_stack: Vec<CallStackElement> = match self.try_get_stack() {
+            Ok(stack) => {
+                let caller = stack.call_stack_elements();
+                caller.iter().map_into().collect_vec()
+            }
             Err(_error) => return Ok(Err(ApiError::Unhandled)),
         };
         let call_stack_len: u32 = match call_stack.len().try_into() {
@@ -458,6 +482,81 @@ where
         }
 
         let call_stack_cl_value = CLValue::from_t(call_stack).map_err(ExecError::CLValue)?;
+
+        let call_stack_cl_value_bytes_len: u32 =
+            match call_stack_cl_value.inner_bytes().len().try_into() {
+                Ok(value) => value,
+                Err(_) => return Ok(Err(ApiError::OutOfMemory)),
+            };
+
+        if let Err(error) = self.write_host_buffer(call_stack_cl_value) {
+            return Ok(Err(error));
+        }
+
+        let call_stack_cl_value_bytes_len_bytes = call_stack_cl_value_bytes_len.to_le_bytes();
+
+        if let Err(error) = self
+            .try_get_memory()?
+            .set(result_size_ptr, &call_stack_cl_value_bytes_len_bytes)
+        {
+            return Err(ExecError::Interpreter(error.into()).into());
+        }
+
+        Ok(Ok(()))
+    }
+
+    /// Returns information about the call stack based on a given action.
+    fn load_caller_information(
+        &mut self,
+        information: u8,
+        // (Output) Pointer to number of elements in the call stack.
+        call_stack_len_ptr: u32,
+        // (Output) Pointer to size in bytes of the serialized call stack.
+        result_size_ptr: u32,
+    ) -> Result<Result<(), ApiError>, Trap> {
+        if !self.can_write_to_host_buffer() {
+            // Exit early if the host buffer is already occupied
+            return Ok(Err(ApiError::HostBufferFull));
+        }
+
+        let caller_info = match CallerInformation::try_from(information) {
+            Ok(info) => info,
+            Err(error) => return Ok(Err(error)),
+        };
+
+        let caller = match caller_info {
+            CallerInformation::Initiator => {
+                let initiator_account_hash = self.context.get_caller();
+                vec![Caller::initiator(initiator_account_hash)]
+            }
+            CallerInformation::Immediate => match self.get_immediate_caller() {
+                Some(frame) => vec![*frame],
+                None => return Ok(Err(ApiError::Unhandled)),
+            },
+            CallerInformation::FullCallChain => match self.try_get_stack() {
+                Ok(call_stack) => call_stack.call_stack_elements().clone(),
+                Err(_) => return Ok(Err(ApiError::Unhandled)),
+            },
+        };
+
+        let call_stack_len: u32 = match caller.len().try_into() {
+            Ok(value) => value,
+            Err(_) => return Ok(Err(ApiError::OutOfMemory)),
+        };
+        let call_stack_len_bytes = call_stack_len.to_le_bytes();
+
+        if let Err(error) = self
+            .try_get_memory()?
+            .set(call_stack_len_ptr, &call_stack_len_bytes)
+        {
+            return Err(ExecError::Interpreter(error.into()).into());
+        }
+
+        if call_stack_len == 0 {
+            return Ok(Ok(()));
+        }
+
+        let call_stack_cl_value = CLValue::from_t(caller).map_err(ExecError::CLValue)?;
 
         let call_stack_cl_value_bytes_len: u32 =
             match call_stack_cl_value.inner_bytes().len().try_into() {
@@ -530,6 +629,22 @@ where
             .ok_or(ExecError::Revert(ApiError::MissingArgument))?;
         arg.into_t()
             .map_err(|_| ExecError::Revert(ApiError::InvalidArgument))
+    }
+
+    fn try_get_named_argument<T: FromBytes + CLTyped>(
+        args: &RuntimeArgs,
+        name: &str,
+    ) -> Result<Option<T>, ExecError> {
+        match args.get(name) {
+            Some(arg) => {
+                let arg = arg
+                    .clone()
+                    .into_t()
+                    .map_err(|_| ExecError::Revert(ApiError::InvalidArgument))?;
+                Ok(Some(arg))
+            }
+            None => Ok(None),
+        }
     }
 
     fn reverter<T: Into<ApiError>>(error: T) -> ExecError {
@@ -830,8 +945,38 @@ where
                 let delegation_rate =
                     Self::get_named_argument(runtime_args, auction::ARG_DELEGATION_RATE)?;
                 let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
+
+                let global_minimum_delegation_amount =
+                    self.context.engine_config().minimum_delegation_amount();
+                let minimum_delegation_amount = Self::try_get_named_argument(
+                    runtime_args,
+                    auction::ARG_MINIMUM_DELEGATION_AMOUNT,
+                )?
+                .unwrap_or(global_minimum_delegation_amount);
+
+                let global_maximum_delegation_amount =
+                    self.context.engine_config().maximum_delegation_amount();
+                let maximum_delegation_amount = Self::try_get_named_argument(
+                    runtime_args,
+                    auction::ARG_MAXIMUM_DELEGATION_AMOUNT,
+                )?
+                .unwrap_or(global_maximum_delegation_amount);
+
+                if minimum_delegation_amount < global_minimum_delegation_amount
+                    || maximum_delegation_amount > global_maximum_delegation_amount
+                    || minimum_delegation_amount > maximum_delegation_amount
+                {
+                    return Err(ExecError::Revert(ApiError::InvalidDelegationAmountLimits));
+                }
+
                 let result = runtime
-                    .add_bid(account_hash, delegation_rate, amount)
+                    .add_bid(
+                        account_hash,
+                        delegation_rate,
+                        amount,
+                        minimum_delegation_amount,
+                        maximum_delegation_amount,
+                    )
                     .map_err(Self::reverter)?;
 
                 CLValue::from_t(result).map_err(Self::reverter)
@@ -858,16 +1003,9 @@ where
 
                 let max_delegators_per_validator =
                     self.context.engine_config().max_delegators_per_validator();
-                let minimum_delegation_amount =
-                    self.context.engine_config().minimum_delegation_amount();
+
                 let result = runtime
-                    .delegate(
-                        delegator,
-                        validator,
-                        amount,
-                        max_delegators_per_validator,
-                        minimum_delegation_amount,
-                    )
+                    .delegate(delegator, validator, amount, max_delegators_per_validator)
                     .map_err(Self::reverter)?;
 
                 CLValue::from_t(result).map_err(Self::reverter)
@@ -896,17 +1034,8 @@ where
                 let new_validator =
                     Self::get_named_argument(runtime_args, auction::ARG_NEW_VALIDATOR)?;
 
-                let minimum_delegation_amount =
-                    self.context.engine_config().minimum_delegation_amount();
-
                 let result = runtime
-                    .redelegate(
-                        delegator,
-                        validator,
-                        amount,
-                        new_validator,
-                        minimum_delegation_amount,
-                    )
+                    .redelegate(delegator, validator, amount, new_validator)
                     .map_err(Self::reverter)?;
 
                 CLValue::from_t(result).map_err(Self::reverter)
@@ -922,14 +1051,11 @@ where
 
                 let max_delegators_per_validator =
                     self.context.engine_config().max_delegators_per_validator();
-                let minimum_delegation_amount =
-                    self.context.engine_config().minimum_delegation_amount();
                 runtime
                     .run_auction(
                         era_end_timestamp_millis,
                         evicted_validators,
                         max_delegators_per_validator,
-                        minimum_delegation_amount,
                         true,
                         Ratio::new_raw(U512::from(1), U512::from(5)),
                     )
@@ -3326,8 +3452,7 @@ where
         }
 
         // A set of keys is converted into a vector so it can be written to a host buffer
-        let authorization_keys =
-            Vec::from_iter(self.context.authorization_keys().clone().into_iter());
+        let authorization_keys = Vec::from_iter(self.context.authorization_keys().clone());
 
         let total_keys: u32 = match authorization_keys.len().try_into() {
             Ok(value) => value,

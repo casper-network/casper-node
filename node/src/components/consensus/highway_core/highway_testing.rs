@@ -1,4 +1,4 @@
-#![allow(clippy::integer_arithmetic)] // In tests, overflows panic anyway.
+#![allow(clippy::arithmetic_side_effects)] // In tests, overflows panic anyway.
 
 use std::{
     collections::{hash_map::DefaultHasher, HashMap, VecDeque},
@@ -59,8 +59,6 @@ impl Display for ConsensusValue {
 const TEST_MIN_ROUND_LEN: TimeDiff = TimeDiff::from_millis(1 << 12);
 const TEST_MAX_ROUND_LEN: TimeDiff = TimeDiff::from_millis(1 << 19);
 const TEST_END_HEIGHT: u64 = 100000;
-pub(crate) const TEST_BLOCK_REWARD: u64 = 1_000_000_000_000;
-pub(crate) const TEST_REDUCED_BLOCK_REWARD: u64 = 200_000_000_000;
 pub(crate) const TEST_INSTANCE_ID: u64 = 42;
 pub(crate) const TEST_ENDORSEMENT_EVIDENCE_LIMIT: u64 = 20;
 
@@ -120,7 +118,9 @@ impl From<Effect<TestContext>> for HighwayMessage {
             // validators so for them it's just `Vertex` that needs to be validated.
             Effect::NewVertex(ValidVertex(v)) => HighwayMessage::NewVertex(Box::new(v)),
             Effect::ScheduleTimer(t) => HighwayMessage::Timer(t),
-            Effect::RequestNewBlock(block_context) => HighwayMessage::RequestBlock(block_context),
+            Effect::RequestNewBlock(block_context, _expiry) => {
+                HighwayMessage::RequestBlock(block_context)
+            }
             Effect::WeAreFaulty(fault) => HighwayMessage::WeAreFaulty(Box::new(fault)),
         }
     }
@@ -716,8 +716,6 @@ impl<'a, DS: DeliveryStrategy> MutableHandle<'a, DS> {
 fn test_params() -> Params {
     Params::new(
         0, // random seed
-        TEST_BLOCK_REWARD,
-        TEST_REDUCED_BLOCK_REWARD,
         TEST_MIN_ROUND_LEN,
         TEST_MAX_ROUND_LEN,
         TEST_MIN_ROUND_LEN,

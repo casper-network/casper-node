@@ -8,7 +8,8 @@ use casper_types::{
     bytesrepr::Bytes, runtime_args, system::standard_payment::ARG_AMOUNT, testing::TestRng, Block,
     BlockSignatures, BlockSignaturesV2, Chainspec, ChainspecRawBytes, Deploy, ExecutableDeployItem,
     FinalitySignatureV2, RuntimeArgs, SecretKey, TestBlockBuilder, TimeDiff, Transaction,
-    TransactionV1, AUCTION_LANE_ID, INSTALL_UPGRADE_LANE_ID, MINT_LANE_ID, U512,
+    TransactionV1, TransactionV1Config, AUCTION_LANE_ID, INSTALL_UPGRADE_LANE_ID, MINT_LANE_ID,
+    U512,
 };
 
 use crate::{
@@ -376,7 +377,7 @@ impl ValidationContext {
         era: EraId,
     ) -> Self {
         self.past_blocks
-            .extend((min_height..=max_height).into_iter().map(|height| {
+            .extend((min_height..=max_height).map(|height| {
                 let block = TestBlockBuilder::new().height(height).era(era).build(rng);
                 (height, block.into())
             }));
@@ -395,7 +396,7 @@ impl ValidationContext {
         era: EraId,
     ) -> Self {
         self.delayed_blocks
-            .extend((min_height..=max_height).into_iter().map(|height| {
+            .extend((min_height..=max_height).map(|height| {
                 let block = TestBlockBuilder::new().height(height).era(era).build(rng);
                 (height, block.into())
             }));
@@ -581,7 +582,6 @@ impl ValidationContext {
             .map(|proposed_block_height| {
                 RewardedSignatures::new(
                     (1..=rewards_window)
-                        .into_iter()
                         .filter_map(|height_diff| proposed_block_height.checked_sub(height_diff))
                         .map(|height| {
                             let signing_validators = self
@@ -1003,7 +1003,17 @@ async fn should_fetch_from_multiple_peers() {
         let reactor = MockReactor::new(secret_key, vec![public_key]);
         let effect_builder =
             EffectBuilder::new(EventQueueHandle::without_shutdown(reactor.scheduler));
-        let (chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources("local");
+        let (mut chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources("local");
+
+        chainspec.transaction_config.block_gas_limit = 100_000_000_000_000;
+        let transaction_v1_config = TransactionV1Config::default().with_count_limits(
+            Some(3000),
+            Some(3000),
+            Some(3000),
+            Some(3000),
+        );
+        chainspec.transaction_config.transaction_v1_config = transaction_v1_config;
+
         let mut block_validator = BlockValidator::new(
             Arc::new(chainspec),
             reactor.validator_matrix.clone(),

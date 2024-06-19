@@ -20,6 +20,13 @@ use crate::{contract_api, ext_ffi, unwrap_or_revert::UnwrapOrRevert};
 /// Number of random bytes returned from the `random_bytes()` function.
 const RANDOM_BYTES_COUNT: usize = 32;
 
+#[repr(u8)]
+enum CallerInformation {
+    Initiator = 0,
+    Immediate = 1,
+    FullStack = 2,
+}
+
 /// Returns the given [`CLValue`] to the host, terminating the currently running module.
 ///
 /// Note this function is only relevant to contracts stored on chain which are invoked via
@@ -55,7 +62,7 @@ pub fn call_contract<T: CLTyped + FromBytes>(
     let (contract_hash_ptr, contract_hash_size, _bytes1) = contract_api::to_ptr(contract_hash);
     let (entry_point_name_ptr, entry_point_name_size, _bytes2) =
         contract_api::to_ptr(entry_point_name);
-    let (runtime_args_ptr, runtime_args_size, _bytes2) = contract_api::to_ptr(runtime_args);
+    let (runtime_args_ptr, runtime_args_size, _bytes3) = contract_api::to_ptr(runtime_args);
 
     let bytes_written = {
         let mut bytes_written = MaybeUninit::uninit();
@@ -89,13 +96,13 @@ pub fn call_versioned_contract<T: CLTyped + FromBytes>(
     entry_point_name: &str,
     runtime_args: RuntimeArgs,
 ) -> T {
-    let (contract_package_hash_ptr, contract_package_hash_size, _bytes) =
+    let (contract_package_hash_ptr, contract_package_hash_size, _bytes1) =
         contract_api::to_ptr(contract_package_hash);
-    let (contract_version_ptr, contract_version_size, _bytes) =
+    let (contract_version_ptr, contract_version_size, _bytes2) =
         contract_api::to_ptr(contract_version);
-    let (entry_point_name_ptr, entry_point_name_size, _bytes) =
+    let (entry_point_name_ptr, entry_point_name_size, _bytes3) =
         contract_api::to_ptr(entry_point_name);
-    let (runtime_args_ptr, runtime_args_size, _bytes) = contract_api::to_ptr(runtime_args);
+    let (runtime_args_ptr, runtime_args_size, _bytes4) = contract_api::to_ptr(runtime_args);
 
     let bytes_written = {
         let mut bytes_written = MaybeUninit::uninit();
@@ -141,7 +148,7 @@ fn deserialize_contract_result<T: CLTyped + FromBytes>(bytes_written: usize) -> 
 ///
 /// This will return either Some with the size of argument if present, or None if given argument is
 /// not passed.
-pub fn get_named_arg_size(name: &str) -> Option<usize> {
+fn get_named_arg_size(name: &str) -> Option<usize> {
     let mut arg_size: usize = 0;
     let ret = unsafe {
         ext_ffi::casper_get_named_arg_size(
@@ -163,6 +170,37 @@ pub fn get_named_arg_size(name: &str) -> Option<usize> {
 /// is not invoked with any arguments.
 pub fn get_named_arg<T: FromBytes>(name: &str) -> T {
     let arg_size = get_named_arg_size(name).unwrap_or_revert_with(ApiError::MissingArgument);
+    let arg_bytes = if arg_size > 0 {
+        let res = {
+            let data_non_null_ptr = contract_api::alloc_bytes(arg_size);
+            let ret = unsafe {
+                ext_ffi::casper_get_named_arg(
+                    name.as_bytes().as_ptr(),
+                    name.len(),
+                    data_non_null_ptr.as_ptr(),
+                    arg_size,
+                )
+            };
+            let data =
+                unsafe { Vec::from_raw_parts(data_non_null_ptr.as_ptr(), arg_size, arg_size) };
+            api_error::result_from(ret).map(|_| data)
+        };
+        // Assumed to be safe as `get_named_arg_size` checks the argument already
+        res.unwrap_or_revert()
+    } else {
+        // Avoids allocation with 0 bytes and a call to get_named_arg
+        Vec::new()
+    };
+    bytesrepr::deserialize(arg_bytes).unwrap_or_revert_with(ApiError::InvalidArgument)
+}
+
+/// Returns given named argument passed to the host for the current module invocation.
+/// If the argument is not found, returns `None`.
+///
+/// Note that this is only relevant to contracts stored on-chain since a contract deployed directly
+/// is not invoked with any arguments.
+pub fn try_get_named_arg<T: FromBytes>(name: &str) -> Option<T> {
+    let arg_size = get_named_arg_size(name)?;
     let arg_bytes = if arg_size > 0 {
         let res = {
             let data_non_null_ptr = contract_api::alloc_bytes(arg_size);
@@ -390,7 +428,8 @@ pub fn get_call_stack() -> Vec<Caller> {
         let mut call_stack_len: usize = 0;
         let mut result_size: usize = 0;
         let ret = unsafe {
-            ext_ffi::casper_load_call_stack(
+            ext_ffi::casper_load_caller_information(
+                CallerInformation::FullStack as u8,
                 &mut call_stack_len as *mut usize,
                 &mut result_size as *mut usize,
             )
@@ -403,6 +442,47 @@ pub fn get_call_stack() -> Vec<Caller> {
     }
     let bytes = read_host_buffer(result_size).unwrap_or_revert();
     bytesrepr::deserialize(bytes).unwrap_or_revert()
+}
+
+fn get_initiator_or_immediate(action: u8) -> Result<Caller, ApiError> {
+    let (call_stack_len, result_size) = {
+        let mut call_stack_len: usize = 0;
+        let mut result_size: usize = 0;
+        let ret = unsafe {
+            ext_ffi::casper_load_caller_information(
+                action,
+                &mut call_stack_len as *mut usize,
+                &mut result_size as *mut usize,
+            )
+        };
+        api_error::result_from(ret).unwrap_or_revert();
+        (call_stack_len, result_size)
+    };
+    if call_stack_len == 0 {
+        return Err(ApiError::InvalidCallerInfoRequest);
+    }
+    let bytes = read_host_buffer(result_size).unwrap_or_revert();
+    let caller: Vec<Caller> = bytesrepr::deserialize(bytes).unwrap_or_revert();
+
+    if caller.len() != 1 {
+        return Err(ApiError::Unhandled);
+    };
+    Ok(caller[0])
+}
+
+/// Returns the call stack initiator
+pub fn get_call_initiator() -> Result<AccountHash, ApiError> {
+    let caller = get_initiator_or_immediate(CallerInformation::Initiator as u8)?;
+    if let Caller::Initiator { account_hash } = caller {
+        Ok(account_hash)
+    } else {
+        Err(ApiError::Unhandled)
+    }
+}
+
+/// Returns the immidiate caller within the call stack.
+pub fn get_immediate_caller() -> Result<Caller, ApiError> {
+    get_initiator_or_immediate(CallerInformation::Immediate as u8)
 }
 
 /// Manages a message topic.

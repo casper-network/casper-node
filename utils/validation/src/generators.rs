@@ -121,6 +121,8 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
         U512::from(50_000_000_000u64),
         100,
         u64::MAX,
+        0,
+        u64::MAX,
     );
     let validator_bid_kind = BidKind::Validator(Box::new(validator_bid));
     let delegator_public_key = PublicKey::from(&delegator_secret_key);

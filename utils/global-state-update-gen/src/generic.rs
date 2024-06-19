@@ -287,7 +287,7 @@ pub fn add_and_remove_bids<T: StateReader>(
         validators_diff.removed.clone()
     };
 
-    for (pub_key, seigniorage_recipient) in new_snapshot.values().rev().next().unwrap() {
+    for (pub_key, seigniorage_recipient) in new_snapshot.values().next_back().unwrap() {
         create_or_update_bid(
             state,
             pub_key,
@@ -347,6 +347,7 @@ fn find_large_bids<T: StateReader>(
         })
         .min()
         .unwrap();
+    let new_validators: BTreeSet<_> = seigniorage_recipients.keys().collect();
 
     let mut ret = BTreeSet::new();
 
@@ -359,11 +360,16 @@ fn find_large_bids<T: StateReader>(
 
     for bid_kind in validator_bids {
         if let BidKind::Unified(bid) = bid_kind {
-            if bid.total_staked_amount().unwrap_or_default() > min_bid {
+            if bid.total_staked_amount().unwrap_or_default() > min_bid
+                && !new_validators.contains(bid.validator_public_key())
+            {
                 ret.insert(bid.validator_public_key().clone());
-                continue;
             }
         } else if let BidKind::Validator(validator_bid) = bid_kind {
+            if new_validators.contains(validator_bid.validator_public_key()) {
+                // The validator is still going to be a validator - we don't remove their bid.
+                continue;
+            }
             if validator_bid.staked_amount() > min_bid {
                 ret.insert(validator_bid.validator_public_key().clone());
                 continue;
@@ -518,6 +524,8 @@ fn create_or_update_bid<T: StateReader>(
             *bonding_purse,
             *updated_recipient.stake(),
             *updated_recipient.delegation_rate(),
+            0,
+            u64::MAX,
         );
 
         state.set_bid(
@@ -529,7 +537,7 @@ fn create_or_update_bid<T: StateReader>(
 
     // new bid
     let stake = *updated_recipient.stake();
-    if stake == U512::zero() {
+    if stake.is_zero() {
         return;
     }
 
@@ -554,6 +562,8 @@ fn create_or_update_bid<T: StateReader>(
         bonding_purse,
         stake,
         *updated_recipient.delegation_rate(),
+        0,
+        u64::MAX,
     );
     state.set_bid(
         BidKind::Validator(Box::new(validator_bid)),

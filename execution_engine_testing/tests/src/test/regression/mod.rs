@@ -60,6 +60,7 @@ mod regression_20220223;
 mod regression_20220224;
 mod regression_20220303;
 mod regression_20220727;
+mod regression_20240105;
 mod slow_input;
 pub(crate) mod test_utils;
 mod transforms_must_be_ordered;

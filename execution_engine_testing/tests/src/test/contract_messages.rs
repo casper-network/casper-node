@@ -181,16 +181,14 @@ impl<'a> ContractQueryView<'a> {
             .query(None, Key::contract_entity_key(self.contract_hash), &[])
             .expect("should query");
 
-        let entity = if let StoredValue::AddressableEntity(entity) = query_result {
+        if let StoredValue::AddressableEntity(entity) = query_result {
             entity
         } else {
             panic!(
                 "Stored value is not an adressable entity: {:?}",
                 query_result
             );
-        };
-
-        entity
+        }
     }
 
     fn message_topic(&self, topic_name_hash: TopicNameHash) -> MessageTopicSummary {
@@ -272,7 +270,7 @@ fn should_emit_messages() {
     emit_message_with_suffix(&builder, "test", &contract_hash, DEFAULT_BLOCK_TIME);
     let expected_message = MessagePayload::from(format!("{}{}", EMITTER_MESSAGE_PREFIX, "test"));
     let expected_message_hash = crypto::blake2b(
-        vec![
+        [
             0u64.to_bytes().unwrap(),
             expected_message.to_bytes().unwrap(),
         ]
@@ -293,7 +291,7 @@ fn should_emit_messages() {
     // call again to emit a new message and check that the index in the topic incremented.
     emit_message_with_suffix(&builder, "test", &contract_hash, DEFAULT_BLOCK_TIME);
     let expected_message_hash = crypto::blake2b(
-        vec![
+        [
             1u64.to_bytes().unwrap(),
             expected_message.to_bytes().unwrap(),
         ]
@@ -323,7 +321,7 @@ fn should_emit_messages() {
     let expected_message =
         MessagePayload::from(format!("{}{}", EMITTER_MESSAGE_PREFIX, "new block time"));
     let expected_message_hash = crypto::blake2b(
-        vec![
+        [
             0u64.to_bytes().unwrap(),
             expected_message.to_bytes().unwrap(),
         ]
@@ -997,7 +995,7 @@ fn should_produce_per_block_message_ordering() {
 
     let expected_message = MessagePayload::from(format!("{}{}", EMITTER_MESSAGE_PREFIX, "test 0"));
     let expected_message_hash = crypto::blake2b(
-        vec![
+        [
             0u64.to_bytes().unwrap(),
             expected_message.to_bytes().unwrap(),
         ]
@@ -1024,7 +1022,7 @@ fn should_produce_per_block_message_ordering() {
 
     let expected_message = MessagePayload::from(format!("{}{}", EMITTER_MESSAGE_PREFIX, "test 1"));
     let expected_message_hash = crypto::blake2b(
-        vec![
+        [
             1u64.to_bytes().unwrap(),
             expected_message.to_bytes().unwrap(),
         ]
@@ -1071,7 +1069,7 @@ fn should_produce_per_block_message_ordering() {
 
     let expected_message = MessagePayload::from(format!("{}{}", EMITTER_MESSAGE_PREFIX, "test 2"));
     let expected_message_hash = crypto::blake2b(
-        vec![
+        [
             2u64.to_bytes().unwrap(),
             expected_message.to_bytes().unwrap(),
         ]
@@ -1098,7 +1096,7 @@ fn should_produce_per_block_message_ordering() {
     );
     let expected_message = MessagePayload::from(format!("{}{}", EMITTER_MESSAGE_PREFIX, "test 3"));
     let expected_message_hash = crypto::blake2b(
-        vec![
+        [
             0u64.to_bytes().unwrap(),
             expected_message.to_bytes().unwrap(),
         ]

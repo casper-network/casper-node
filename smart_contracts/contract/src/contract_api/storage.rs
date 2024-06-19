@@ -174,15 +174,9 @@ fn create_contract(
         runtime::put_key(&uref_name, access_uref.into());
     };
 
-    let named_keys = match named_keys {
-        Some(named_keys) => named_keys,
-        None => NamedKeys::new(),
-    };
+    let named_keys = named_keys.unwrap_or_default();
 
-    let message_topics = match message_topics {
-        Some(message_topics) => message_topics,
-        None => BTreeMap::new(),
-    };
+    let message_topics = message_topics.unwrap_or_default();
 
     add_contract_version(
         contract_package_hash,
@@ -366,10 +360,20 @@ pub fn add_contract_version(
     (entity_hash, entity_version)
 }
 
-/// Disable a version of a contract from the contract stored at the given
-/// `Key`. That version of the contract will no longer be callable by
-/// `call_versioned_contract`. Note that this contract must have been created by
-/// `create_contract` or `create_contract_package_at_hash` first.
+/// Disables a specific version of a contract within the contract package identified by
+/// `contract_package_hash`. Once disabled, the specified version will no longer be
+/// callable by `call_versioned_contract`. Please note that the contract must have been
+/// previously created using `create_contract` or `create_contract_package_at_hash`.
+///
+/// # Arguments
+///
+/// * `contract_package_hash` - The hash of the contract package containing the version to be
+/// disabled.
+/// * `contract_hash` - The hash of the specific contract version to be disabled.
+///
+/// # Errors
+///
+/// Returns a `Result` indicating success or an `ApiError` if the operation fails.
 pub fn disable_contract_version(
     contract_package_hash: PackageHash,
     contract_hash: AddressableEntityHash,
@@ -390,10 +394,17 @@ pub fn disable_contract_version(
     api_error::result_from(result)
 }
 
-/// Enable a version of a contract from the contract stored at the given hash.
-/// That version of the contract will no longer be callable by
-/// `call_versioned_contract`. Note that this contract must have been created by
-/// [`new_contract`] or [`create_contract_package_at_hash`] first.
+/// Enables a specific version of a contract from the contract package stored at the given hash.
+/// Once enabled, that version of the contract becomes callable again by `call_versioned_contract`.
+///
+/// # Arguments
+///
+/// * `contract_package_hash` - The hash of the contract package containing the desired version.
+/// * `contract_hash` - The hash of the specific contract version to be enabled.
+///
+/// # Errors
+///
+/// Returns a `Result` indicating success or an `ApiError` if the operation fails.
 pub fn enable_contract_version(
     contract_package_hash: PackageHash,
     contract_hash: AddressableEntityHash,

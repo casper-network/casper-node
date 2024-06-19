@@ -188,6 +188,11 @@ impl AppendableBlock {
             .filter(|(_, f)| f.category == category)
             .count()
     }
+
+    #[cfg(test)]
+    pub fn transaction_count(&self) -> usize {
+        self.transactions.len()
+    }
 }
 
 impl Display for AppendableBlock {

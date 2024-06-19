@@ -1,3 +1,5 @@
+pub mod call_stack_elements;
+
 use alloc::vec::Vec;
 
 use num_derive::{FromPrimitive, ToPrimitive};
@@ -10,6 +12,9 @@ use crate::{
     AddressableEntityHash, CLType, CLTyped,
 };
 
+use crate::contracts::{ContractHash, ContractPackageHash};
+pub use call_stack_elements::CallStackElement;
+
 /// Tag representing variants of CallerTag for purposes of serialization.
 #[derive(FromPrimitive, ToPrimitive)]
 #[repr(u8)]
@@ -21,7 +26,7 @@ pub enum CallerTag {
 }
 
 /// Identity of a calling entity.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Caller {
     /// Initiator (calling account)
     Initiator {
@@ -132,5 +137,22 @@ impl FromBytes for Caller {
 impl CLTyped for Caller {
     fn cl_type() -> CLType {
         CLType::Any
+    }
+}
+
+impl From<&Caller> for CallStackElement {
+    fn from(caller: &Caller) -> Self {
+        match caller {
+            Caller::Initiator { account_hash } => CallStackElement::Session {
+                account_hash: *account_hash,
+            },
+            Caller::Entity {
+                package_hash,
+                entity_hash,
+            } => CallStackElement::StoredContract {
+                contract_package_hash: ContractPackageHash::new(package_hash.value()),
+                contract_hash: ContractHash::new(entity_hash.value()),
+            },
+        }
     }
 }

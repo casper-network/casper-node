@@ -1013,7 +1013,6 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
             (*DELEGATOR_2_ADDR).into(),
             AuctionMethod::Delegate {
                 max_delegators_per_validator: u32::MAX,
-                minimum_delegation_amount: updelegate_amount.as_u64(),
                 validator: VALIDATOR_1.clone(),
                 delegator: DELEGATOR_2.clone(),
                 amount: updelegate_amount,
@@ -1031,6 +1030,8 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
                     public_key: VALIDATOR_1.clone(),
                     amount,
                     delegation_rate: 0,
+                    minimum_delegation_amount: updelegate_amount.as_u64(),
+                    maximum_delegation_amount: updelegate_amount.as_u64(),
                 }
             } else {
                 AuctionMethod::WithdrawBid {
@@ -1342,6 +1343,8 @@ fn should_distribute_delegation_rate_full() {
             ARG_AMOUNT => U512::from(VALIDATOR_1_STAKE),
             ARG_DELEGATION_RATE => VALIDATOR_1_DELEGATION_RATE,
             ARG_PUBLIC_KEY => VALIDATOR_1.clone(),
+            auction::ARG_MINIMUM_DELEGATION_AMOUNT => 10,
+            auction::ARG_MAXIMUM_DELEGATION_AMOUNT => DELEGATOR_2_STAKE + 1,
         },
     )
     .build();
