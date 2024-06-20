@@ -11,8 +11,8 @@ use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
     system::auction::{
         BidAddr, BidKind, Delegator, Error, SeigniorageAllocation, SeigniorageRecipient,
-        SeigniorageRecipientsSnapshot, UnbondingPurse, UnbondingPurses, ValidatorBid,
-        ValidatorBids, ValidatorCredit, ValidatorCredits, AUCTION_DELAY_KEY,
+        SeigniorageRecipients, SeigniorageRecipientsSnapshot, UnbondingPurse, UnbondingPurses,
+        ValidatorBid, ValidatorBids, ValidatorCredit, ValidatorCredits, AUCTION_DELAY_KEY,
         ERA_END_TIMESTAMP_MILLIS_KEY, ERA_ID_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
         UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
     },
@@ -193,13 +193,13 @@ impl ValidatorBidsDetail {
 pub fn prune_validator_credits<P>(
     provider: &mut P,
     era_ending: EraId,
-    validator_credits: ValidatorCredits,
+    validator_credits: &ValidatorCredits,
 ) where
     P: StorageProvider + RuntimeProvider + ?Sized,
 {
     for (validator_public_key, inner) in validator_credits {
         if inner.contains_key(&era_ending) {
-            provider.prune_bid(BidAddr::new_credit(&validator_public_key, era_ending))
+            provider.prune_bid(BidAddr::new_credit(validator_public_key, era_ending))
         }
     }
 }
@@ -896,28 +896,38 @@ where
     }
 }
 
-pub fn seigniorage_recipient<P>(
+pub fn seigniorage_recipients<P>(
     provider: &mut P,
-    validator_bid: &ValidatorBid,
-) -> Result<SeigniorageRecipient, Error>
+    validator_weights: &ValidatorWeights,
+    validator_bids: &ValidatorBids,
+) -> Result<SeigniorageRecipients, Error>
 where
     P: RuntimeProvider + ?Sized + StorageProvider,
 {
-    let mut delegator_stake: BTreeMap<PublicKey, U512> = BTreeMap::new();
-    for delegator_bid in read_delegator_bids(provider, validator_bid.validator_public_key())? {
-        if delegator_bid.staked_amount().is_zero() {
-            continue;
+    let mut recipients = SeigniorageRecipients::new();
+    for (validator_public_key, validator_stake) in validator_weights {
+        let validator_bid = validator_bids
+            .get(validator_public_key)
+            .ok_or(Error::ValidatorNotFound)?;
+        let mut delegator_stake: BTreeMap<PublicKey, U512> = BTreeMap::new();
+        for delegator_bid in read_delegator_bids(provider, validator_public_key)? {
+            if delegator_bid.staked_amount().is_zero() {
+                continue;
+            }
+            delegator_stake.insert(
+                delegator_bid.delegator_public_key().clone(),
+                delegator_bid.staked_amount(),
+            );
         }
-        delegator_stake.insert(
-            delegator_bid.delegator_public_key().clone(),
-            delegator_bid.staked_amount(),
+
+        let seigniorage_recipient = SeigniorageRecipient::new(
+            *validator_stake,
+            *validator_bid.delegation_rate(),
+            delegator_stake,
         );
+        recipients.insert(validator_public_key.clone(), seigniorage_recipient);
     }
-    Ok(SeigniorageRecipient::new(
-        validator_bid.staked_amount(),
-        *validator_bid.delegation_rate(),
-        delegator_stake,
-    ))
+    Ok(recipients)
 }
 
 /// Returns the era validators from a snapshot.
