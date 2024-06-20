@@ -363,15 +363,14 @@ impl CommitProvider for ScratchGlobalState {
                 (None, transform_kind) => {
                     // It might be the case that for `Add*` operations we don't have the previous
                     // value in cache yet.
-                    let instruction = match read::<
+                    match read::<
                         Key,
                         StoredValue,
                         lmdb::RoTransaction,
                         LmdbTrieStore,
                         GlobalStateError,
-                    >(
-                        &txn, self.trie_store.deref(), &state_hash, &key
-                    )? {
+                    >(&txn, self.trie_store.deref(), &state_hash, &key)?
+                    {
                         ReadResult::Found(current_value) => {
                             match transform_kind.apply(current_value.clone()) {
                                 Ok(instruction) => instruction,
@@ -393,8 +392,7 @@ impl CommitProvider for ScratchGlobalState {
                             error!(root_hash=?state_hash, "root not found");
                             return Err(CommitError::ReadRootNotFound(state_hash).into());
                         }
-                    };
-                    instruction
+                    }
                 }
                 (Some(current_value), transform_kind) => {
                     match transform_kind.apply(current_value) {

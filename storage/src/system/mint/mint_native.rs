@@ -266,7 +266,7 @@ where
         {
             Some(StoredValue::CLValue(value)) => Ok(*value.cl_type() == U512::cl_type()),
             Some(_non_cl_value) => Err(Error::CLValue),
-            None => return Ok(false),
+            None => Ok(false),
         }
     }
 }
