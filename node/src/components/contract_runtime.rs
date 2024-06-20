@@ -21,6 +21,7 @@ use std::{
     time::Instant,
 };
 
+use casper_vm::executor::v2::{ExecutorConfigBuilder, ExecutorKind, ExecutorV2};
 use datasize::DataSize;
 use lmdb::DatabaseFlags;
 use prometheus::Registry;
@@ -92,6 +93,8 @@ pub(crate) struct ContractRuntime {
     execution_pre_state: Arc<Mutex<ExecutionPreState>>,
     #[data_size(skip)]
     execution_engine_v1: Arc<ExecutionEngineV1>,
+    #[data_size(skip)]
+    execution_engine_v2: ExecutorV2,
     metrics: Arc<Metrics>,
     /// Finalized blocks waiting for their pre-state hash to start executing.
     exec_queue: ExecQueue,
@@ -155,12 +158,22 @@ impl ContractRuntime {
 
         let execution_engine_v1 = Arc::new(ExecutionEngineV1::new(engine_config));
 
+        let executor_v2 = {
+            let executor_config = ExecutorConfigBuilder::default()
+                .with_memory_limit(17)
+                .with_executor_kind(ExecutorKind::Compiled)
+                .build()
+                .expect("Should build");
+            ExecutorV2::new(executor_config)
+        };
+
         let metrics = Arc::new(Metrics::new(registry)?);
 
         Ok(ContractRuntime {
             state: ComponentState::Initialized,
             execution_pre_state,
             execution_engine_v1,
+            execution_engine_v2: executor_v2,
             metrics,
             exec_queue: Default::default(),
             chainspec,
@@ -606,14 +619,17 @@ impl ContractRuntime {
                         );
                         let data_access_layer = Arc::clone(&self.data_access_layer);
                         let execution_engine_v1 = Arc::clone(&self.execution_engine_v1);
+                        let execution_engine_v2 = self.execution_engine_v2.clone();
                         let chainspec = Arc::clone(&self.chainspec);
                         let metrics = Arc::clone(&self.metrics);
                         let shared_pre_state = Arc::clone(&self.execution_pre_state);
                         let current_gas_price = self.current_gas_price.gas_price();
+
                         effects.extend(
                             exec_or_requeue(
                                 data_access_layer,
                                 execution_engine_v1,
+                                execution_engine_v2,
                                 chainspec,
                                 metrics,
                                 exec_queue,

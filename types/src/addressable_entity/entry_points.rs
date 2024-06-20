@@ -655,8 +655,10 @@ pub enum EntryPointAddr {
         entity_addr: EntityAddr,
         /// The selector.
         ///
-        /// The selector is a 32-bit integer that is used to identify the function that should be called.
-        /// The selector is used to index into the contract's function table and is used to determine which function should be called. The selector is unique to the contract and is determined at compile time.
+        /// The selector is a 32-bit integer that is used to identify the function that should be
+        /// called. The selector is used to index into the contract's function table and is
+        /// used to determine which function should be called. The selector is unique to the
+        /// contract and is determined at compile time.
         selector: u32,
     },
 }

@@ -17,8 +17,7 @@ mod exports {
         sys::{CreateResult, EntryPoint, Manifest, Param},
     };
     use core::ptr::NonNull;
-    use vm_common::keyspace::Keyspace;
-    use vm_common::{flags::EntryPointFlags, selector::Selector};
+    use vm_common::{flags::EntryPointFlags, keyspace::Keyspace, selector::Selector};
 
     // use crate::reserve_vec_space;
 

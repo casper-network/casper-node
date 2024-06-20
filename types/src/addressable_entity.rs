@@ -69,10 +69,10 @@ use crate::{
     contract_messages::TopicNameHash,
     contracts::{Contract, ContractHash},
     system::SystemEntityType,
+    transaction::TransactionRuntime,
     uref::{self, URef},
     AccessRights, ApiError, CLType, CLTyped, CLValue, CLValueError, ContextAccessRights, HashAddr,
-    Key, PackageHash, ProtocolVersion, PublicKey, Tagged, TransactionRuntime,
-    BLAKE2B_DIGEST_LENGTH, KEY_HASH_LENGTH,
+    Key, PackageHash, ProtocolVersion, PublicKey, Tagged, BLAKE2B_DIGEST_LENGTH, KEY_HASH_LENGTH,
 };
 
 /// Maximum number of distinct user groups.

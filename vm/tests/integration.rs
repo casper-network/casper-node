@@ -17,14 +17,14 @@ use casper_types::{
     ChainspecRegistry, Digest, EntityAddr, GenesisAccount, GenesisConfigBuilder, Key, Motes, Phase,
     ProtocolVersion, PublicKey, SecretKey, TransactionHash, TransactionV1Hash, U512,
 };
-use once_cell::sync::Lazy;
-use parking_lot::RwLock;
-use tempfile::TempDir;
-use vm::executor::{
+use casper_vm::executor::{
     v2::{ExecutorConfigBuilder, ExecutorKind, ExecutorV2},
     CreateContractRequest, CreateContractRequestBuilder, ExecuteRequest, ExecuteRequestBuilder,
     ExecuteResult, ExecutionKind, Executor, StoreContractResult,
 };
+use once_cell::sync::Lazy;
+use parking_lot::RwLock;
+use tempfile::TempDir;
 
 static DEFAULT_ACCOUNT_SECRET_KEY: Lazy<SecretKey> =
     Lazy::new(|| SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH]).unwrap());
@@ -143,7 +143,13 @@ fn harness() {
             .expect("Should commit")
     };
 
-    let execute_request = base_execute_builder()
+    let execute_request = ExecuteRequestBuilder::default()
+        .with_initiator(DEFAULT_ACCOUNT_HASH.value())
+        .with_caller_key(Key::Account(DEFAULT_ACCOUNT_HASH.clone()))
+        .with_callee_key(Key::Account(DEFAULT_ACCOUNT_HASH.clone()))
+        .with_gas_limit(DEFAULT_GAS_LIMIT)
+        .with_value(1000)
+        .with_transaction_hash(TRANSACTION_HASH)
         .with_target(ExecutionKind::SessionBytes(VM2_HARNESS))
         .with_serialized_input((flipper_address,))
         .with_shared_address_generator(address_generator)
@@ -178,7 +184,10 @@ fn cep18() {
         .map(Bytes::from)
         .unwrap();
 
-    let create_request = base_store_request_builder()
+    let create_request = CreateContractRequestBuilder::default()
+        .with_initiator(DEFAULT_ACCOUNT_HASH.value())
+        .with_gas_limit(1_000_000)
+        .with_transaction_hash(TRANSACTION_HASH)
         .with_wasm_bytes(VM2_CEP18.clone())
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_value(0)
@@ -198,7 +207,13 @@ fn cep18() {
         .commit(state_root_hash, create_result.effects().clone())
         .expect("Should commit");
 
-    let execute_request = base_execute_builder()
+    let execute_request = ExecuteRequestBuilder::default()
+        .with_initiator(DEFAULT_ACCOUNT_HASH.value())
+        .with_caller_key(Key::Account(DEFAULT_ACCOUNT_HASH.clone()))
+        .with_callee_key(Key::Account(DEFAULT_ACCOUNT_HASH.clone()))
+        .with_gas_limit(DEFAULT_GAS_LIMIT)
+        .with_value(1000)
+        .with_transaction_hash(TRANSACTION_HASH)
         .with_target(ExecutionKind::SessionBytes(VM2_CEP18_CALLER))
         .with_serialized_input((create_result.contract_hash(),))
         .with_value(0)

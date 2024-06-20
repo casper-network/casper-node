@@ -2,11 +2,11 @@
 #![cfg_attr(target_arch = "wasm32", no_std)]
 
 use casper_macros::casper;
-use casper_sdk::prelude::*;
 use casper_sdk::{
     collections::{sorted_vector::SortedVector, Map},
     host::{self, Entity},
     log,
+    prelude::*,
     types::Address,
     ContractBuilder, ContractHandle,
 };

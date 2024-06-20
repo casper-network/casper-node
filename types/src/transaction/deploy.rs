@@ -51,8 +51,8 @@ use crate::{
         METHOD_REDELEGATE, METHOD_UNDELEGATE, METHOD_WITHDRAW_BID,
     },
     testing::TestRng,
-    AddressableEntityHash, RuntimeArgs, URef, DEFAULT_MAX_PAYMENT_MOTES,
-    DEFAULT_MIN_TRANSFER_MOTES,
+    transaction::RuntimeArgs,
+    AddressableEntityHash, URef, DEFAULT_MAX_PAYMENT_MOTES, DEFAULT_MIN_TRANSFER_MOTES,
 };
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
@@ -1257,6 +1257,10 @@ impl GasLimited for Deploy {
                 };
                 Gas::new(computation_limit)
             } // legacy deploys do not support reservations
+            PricingHandling::GasLimited => {
+                // legacy deploys do not support gas limits
+                return Err(InvalidDeploy::GasLimitNotSupported);
+            }
         };
         Ok(gas_limit)
     }

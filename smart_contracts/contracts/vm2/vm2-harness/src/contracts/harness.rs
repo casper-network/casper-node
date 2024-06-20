@@ -175,7 +175,8 @@ impl Harness {
             "Reverting with data after {counter}",
             counter = self.counter
         );
-        // Here we can't use revert!() macro, as it explicitly calls `return` and does not involve writing the state again.
+        // Here we can't use revert!() macro, as it explicitly calls `return` and does not involve
+        // writing the state again.
         Err(CustomError::Bar)
     }
 
@@ -287,9 +288,9 @@ impl Harness {
                 return Err(CustomError::Transfer(call_error.to_string()));
             }
         }
-        // TODO: transfer should probably pass CallError (i.e. reverted means mint transfer failed with error, or something like that)
-        // return Err(CustomError::WithBody("Transfer failed".into()));
-        // }
+        // TODO: transfer should probably pass CallError (i.e. reverted means mint transfer failed
+        // with error, or something like that) return Err(CustomError::WithBody("Transfer
+        // failed".into())); }
 
         let balance_after = balance_before + amount;
 

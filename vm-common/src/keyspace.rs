@@ -3,11 +3,13 @@ use num_derive::{FromPrimitive, ToPrimitive};
 #[repr(u64)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, FromPrimitive, ToPrimitive)]
 pub enum KeyspaceTag {
-    /// Used for a state based storage which usually involves single dimensional data i.e. key-value pairs, etc.
+    /// Used for a state based storage which usually involves single dimensional data i.e.
+    /// key-value pairs, etc.
     ///
     /// See also [`Keyspace::State`].
     State = 0,
-    /// Used for a context based storage which usually involves multi dimensional data i.e. maps, efficient vectors, etc.
+    /// Used for a context based storage which usually involves multi dimensional data i.e. maps,
+    /// efficient vectors, etc.
     Context = 1,
     /// Used for a named key based storage which usually involves named keys.
     NamedKey = 2,

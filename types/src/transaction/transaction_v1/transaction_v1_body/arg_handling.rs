@@ -6,8 +6,8 @@ use crate::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
     system::auction::ARG_VALIDATOR,
-    CLType, CLTyped, CLValue, CLValueError, InvalidTransactionV1, PublicKey, RuntimeArgs,
-    TransferTarget, URef, U512,
+    transaction::{RuntimeArgs, TransferTarget},
+    CLType, CLTyped, CLValue, CLValueError, InvalidTransactionV1, PublicKey, URef, U512,
 };
 
 const TRANSFER_ARG_AMOUNT: RequiredArg<U512> = RequiredArg::new("amount");

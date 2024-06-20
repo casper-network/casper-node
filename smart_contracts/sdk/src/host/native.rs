@@ -9,8 +9,7 @@ use std::{
 };
 use vm_common::flags::{EntryPointFlags, ReturnFlags};
 
-use crate::linkme::distributed_slice;
-use crate::types::Address;
+use crate::{linkme::distributed_slice, types::Address};
 
 use crate::serializers::borsh::BorshSerialize;
 
@@ -95,10 +94,10 @@ pub enum NativeTrap {
 //     ( @ret !) => { Result<$crate::host::native::Never, $crate::host::native::NativeTrap> };
 //     ( @ret ) => { Result<(), $crate::host::native::NativeTrap> };
 
-//     ( $( $(#[$cfg:meta])? $vis:vis fn $name:ident $(( $($arg:ident: $argty:ty,)* ))? $(-> $ret:ty)?;)+) => {
-//         $(
-//             $(#[$cfg])? fn $name(&self $($(,$arg: $argty)*)?) -> define_trait_methods!(@ret $($ret)?);
-//         )*
+//     ( $( $(#[$cfg:meta])? $vis:vis fn $name:ident $(( $($arg:ident: $argty:ty,)* ))? $(->
+// $ret:ty)?;)+) => {         $(
+//             $(#[$cfg])? fn $name(&self $($(,$arg: $argty)*)?) -> define_trait_methods!(@ret
+// $($ret)?);         )*
 //     }
 // }
 
@@ -367,7 +366,8 @@ impl Environment {
         _result_ptr: *mut casper_sdk_sys::CreateResult,
     ) -> Result<u32, NativeTrap> {
         // let manifest =
-        //     NonNull::new(manifest_ptr as *mut casper_sdk_sys::Manifest).expect("Manifest instance");
+        //     NonNull::new(manifest_ptr as *mut casper_sdk_sys::Manifest).expect("Manifest
+        // instance");
         let code = if code_ptr.is_null() {
             None
         } else {
@@ -608,8 +608,8 @@ pub fn dispatch_with<T>(stub: Environment, f: impl FnOnce() -> T) -> Result<T, N
 //     ( @optional $ty:ty ) => { $ty };
 //     ( @optional ) => { () };
 
-//     ( $( $(#[$cfg:meta])? $vis:vis fn $name:ident $(( $($arg:ident: $argty:ty,)* ))? $(-> $ret:ty)?;)+) => {
-//         $(
+//     ( $( $(#[$cfg:meta])? $vis:vis fn $name:ident $(( $($arg:ident: $argty:ty,)* ))? $(->
+// $ret:ty)?;)+) => {         $(
 //             mod $name {
 //                 type Ret = define_symbols!(@optional $($ret)?);
 

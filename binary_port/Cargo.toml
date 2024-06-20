@@ -21,6 +21,7 @@ schemars = { version = "0.8.16", features = ["preserve_order", "impl_json_schema
 bincode = "1.3.3"
 rand = "0.8.3"
 tokio-util = { version = "0.6.4", features = ["codec"] }
+tracing = "0.1.18"
 
 [dev-dependencies]
 casper-types = { path = "../types", features = ["datasize", "json-schema", "std", "testing"] }

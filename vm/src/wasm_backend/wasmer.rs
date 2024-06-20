@@ -28,16 +28,18 @@ impl From<wasmer::MemoryAccessError> for TrapCode {
     fn from(error: wasmer::MemoryAccessError) -> Self {
         match error {
             wasmer::MemoryAccessError::HeapOutOfBounds | wasmer::MemoryAccessError::Overflow => {
-                // As according to Wasm spec section `Memory Instructions` any access to memory that is out of bounds of the memory's current size is a trap.
-                // Reference: https://webassembly.github.io/spec/core/syntax/instructions.html#memory-instructions
+                // As according to Wasm spec section `Memory Instructions` any access to memory that
+                // is out of bounds of the memory's current size is a trap. Reference: https://webassembly.github.io/spec/core/syntax/instructions.html#memory-instructions
                 TrapCode::MemoryOutOfBounds
             }
             wasmer::MemoryAccessError::NonUtf8String => {
-                // This can happen only when using wasmer's utf8 reading routines which we don't need.
+                // This can happen only when using wasmer's utf8 reading routines which we don't
+                // need.
                 unreachable!("NonUtf8String")
             }
             _ => {
-                // All errors are handled and converted to a trap code, but we have to add this as wasmer's errors are #[non_exhaustive]
+                // All errors are handled and converted to a trap code, but we have to add this as
+                // wasmer's errors are #[non_exhaustive]
                 unreachable!("Unexpected error: {:?}", error)
             }
         }

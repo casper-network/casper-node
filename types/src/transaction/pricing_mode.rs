@@ -21,6 +21,7 @@ use crate::{
 const CLASSIC_TAG: u8 = 0;
 const FIXED_TAG: u8 = 1;
 const RESERVED_TAG: u8 = 2;
+const GAS_LIMITED_TAG: u8 = 3;
 
 /// The pricing mode of a [`Transaction`].
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
@@ -58,13 +59,22 @@ pub enum PricingMode {
         /// Pre-paid receipt.
         receipt: Digest,
     },
+    /// Gas limited transaction.
+    GasLimited {
+        /// User-specified gas limit.
+        gas_limit: u64,
+        /// User-specified gas_price tolerance (minimum 1).
+        /// This is interpreted to mean "do not include this transaction in a block
+        /// if the current gas price is greater than this number"
+        gas_price_tolerance: u8,
+    },
 }
 
 impl PricingMode {
     /// Returns a random `PricingMode.
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
-        match rng.gen_range(0..3) {
+        match rng.gen_range(0..=3) {
             0 => PricingMode::Classic {
                 payment_amount: rng.gen(),
                 gas_price_tolerance: 1,
@@ -74,6 +84,10 @@ impl PricingMode {
                 gas_price_tolerance: rng.gen(),
             },
             2 => PricingMode::Reserved { receipt: rng.gen() },
+            3 => PricingMode::GasLimited {
+                gas_limit: rng.gen(),
+                gas_price_tolerance: rng.gen(),
+            },
             _ => unreachable!(),
         }
     }
@@ -97,6 +111,16 @@ impl Display for PricingMode {
             PricingMode::Fixed {
                 gas_price_tolerance,
             } => write!(formatter, "fixed pricing {}", gas_price_tolerance),
+            PricingMode::GasLimited {
+                gas_limit,
+                gas_price_tolerance,
+            } => {
+                write!(
+                    formatter,
+                    "gas limit {}, gas price multiplier {}",
+                    gas_limit, gas_price_tolerance
+                )
+            }
         }
     }
 }
@@ -124,6 +148,14 @@ impl ToBytes for PricingMode {
                 FIXED_TAG.write_bytes(writer)?;
                 gas_price_tolerance.write_bytes(writer)
             }
+            PricingMode::GasLimited {
+                gas_limit,
+                gas_price_tolerance,
+            } => {
+                GAS_LIMITED_TAG.write_bytes(writer)?;
+                gas_limit.write_bytes(writer)?;
+                gas_price_tolerance.write_bytes(writer)
+            }
         }
     }
 
@@ -149,6 +181,10 @@ impl ToBytes for PricingMode {
                 PricingMode::Fixed {
                     gas_price_tolerance,
                 } => gas_price_tolerance.serialized_length(),
+                PricingMode::GasLimited {
+                    gas_limit,
+                    gas_price_tolerance,
+                } => gas_limit.serialized_length() + gas_price_tolerance.serialized_length(),
             }
     }
 }
@@ -184,21 +220,47 @@ impl FromBytes for PricingMode {
                 let (receipt, remainder) = Digest::from_bytes(remainder)?;
                 Ok((PricingMode::Reserved { receipt }, remainder))
             }
+            GAS_LIMITED_TAG => {
+                let (gas_limit, remainder) = u64::from_bytes(remainder)?;
+                let (gas_price_tolerance, remainder) = u8::from_bytes(remainder)?;
+                Ok((
+                    PricingMode::GasLimited {
+                        gas_limit,
+                        gas_price_tolerance,
+                    },
+                    remainder,
+                ))
+            }
             _ => Err(bytesrepr::Error::Formatting),
         }
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testing::TestRng;
-
     #[test]
-    fn bytesrepr_roundtrip() {
-        let rng = &mut TestRng::new();
-        for _ in 0..10 {
-            bytesrepr::test_serialization_roundtrip(&PricingMode::random(rng));
+    fn test_to_bytes_and_from_bytes() {
+        let classic = PricingMode::Classic {
+            payment_amount: 100,
+            gas_price_tolerance: 1,
+            standard_payment: true,
+        };
+        match classic {
+            PricingMode::Classic { .. } => {}
+            PricingMode::Fixed { .. } => {}
+            PricingMode::Reserved { .. } => {}
+            PricingMode::GasLimited { .. } => {}
         }
+        bytesrepr::test_serialization_roundtrip(&classic);
+        bytesrepr::test_serialization_roundtrip(&PricingMode::Fixed {
+            gas_price_tolerance: 2,
+        });
+        bytesrepr::test_serialization_roundtrip(&PricingMode::Reserved {
+            receipt: Digest::default(),
+        });
+        bytesrepr::test_serialization_roundtrip(&PricingMode::GasLimited {
+            gas_limit: 200,
+            gas_price_tolerance: 3,
+        });
     }
 }

@@ -256,7 +256,8 @@ impl WasmEngine {
         config: Config,
     ) -> Result<impl WasmInstance<S, E>, WasmPreparationError> {
         let wasm_bytes: Bytes = wasm_bytes.into();
-        // NOTE: We can add more engines here in the future, e.g. Lucet, Wasmtime, wasmi all configurable at runtime. For now, it's ok to return `impl WasmInstance`.
+        // NOTE: We can add more engines here in the future, e.g. Lucet, Wasmtime, wasmi all
+        // configurable at runtime. For now, it's ok to return `impl WasmInstance`.
         let instance = WasmerInstance::from_wasm_bytes(wasm_bytes, context, config)?;
         Ok(instance)
     }

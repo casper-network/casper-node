@@ -13,7 +13,9 @@ use serde::Serialize;
 use super::super::TransactionEntryPoint;
 #[cfg(doc)]
 use super::TransactionV1;
-use crate::{bytesrepr, crypto, CLType, DisplayIter, PricingMode, TimeDiff, Timestamp, U512};
+use crate::{
+    bytesrepr, crypto, transaction::PricingMode, CLType, DisplayIter, TimeDiff, Timestamp, U512,
+};
 
 /// Returned when a [`TransactionV1`] fails validation.
 #[derive(Clone, Eq, PartialEq, Debug)]
@@ -97,6 +99,9 @@ pub enum InvalidTransaction {
         arg_name: String,
     },
 
+    /// Expected transaction args to be of a different type.
+    InvalidTransactionArgumentsKind,
+
     /// Given runtime arg is not one of the expected types.
     UnexpectedArgType {
         /// The name of the invalid arg.
@@ -131,6 +136,7 @@ pub enum InvalidTransaction {
         entry_point: TransactionEntryPoint,
     },
 
+    EntryPointCannotBeDefault,
     /// The entry point for this transaction target must be `TransactionEntryPoint::Custom`.
     EntryPointMustBeCustom {
         /// The invalid entry point.
@@ -294,6 +300,13 @@ impl Display for InvalidTransaction {
                     "received a transaction with an invalid kind {kind}"
                 )
             }
+            InvalidTransaction::InvalidTransactionArgumentsKind => write!(
+                formatter,
+                "received a transaction with invalid arguments kind"
+            ),
+            InvalidTransaction::EntryPointCannotBeDefault => {
+                write!(formatter, "entry point cannot be default")
+            }
         }
     }
 }
@@ -332,6 +345,8 @@ impl StdError for InvalidTransaction {
             | InvalidTransaction::UnableToCalculateGasCost
             | InvalidTransaction::InvalidPricingMode { .. }
             | InvalidTransaction::InvalidTransactionKind(_) => None,
+            InvalidTransaction::InvalidTransactionArgumentsKind => None,
+            InvalidTransaction::EntryPointCannotBeDefault => None,
         }
     }
 }

@@ -1,8 +1,6 @@
-use std::ffi::c_void;
-use std::ptr::NonNull;
+use std::{ffi::c_void, ptr::NonNull};
 
-use crate::abi::Declaration;
-use crate::linkme::distributed_slice;
+use crate::{abi::Declaration, linkme::distributed_slice};
 
 #[derive(Debug)]
 pub struct Param {

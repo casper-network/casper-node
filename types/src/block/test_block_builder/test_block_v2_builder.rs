@@ -5,9 +5,11 @@ use alloc::collections::BTreeMap;
 use rand::Rng;
 
 use crate::{
-    system::auction::ValidatorWeights, testing::TestRng, transaction::TransactionCategory, Block,
-    BlockHash, BlockV2, Digest, EraEndV2, EraId, ProtocolVersion, PublicKey, RewardedSignatures,
-    Timestamp, Transaction, U512,
+    system::auction::ValidatorWeights,
+    testing::TestRng,
+    transaction::{Transaction, TransactionCategory, TransactionTarget},
+    Block, BlockHash, BlockV2, Digest, EraEndV2, EraId, ProtocolVersion, PublicKey,
+    RewardedSignatures, Timestamp, U512,
 };
 
 /// A helper to build the blocks with various properties required for tests.

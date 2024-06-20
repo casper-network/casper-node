@@ -9,7 +9,8 @@ use serde::{Deserialize, Serialize};
 use crate::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes},
-    Gas, InitiatorAddr, TransactionHash, URef, U512,
+    transaction::TransactionHash,
+    Gas, InitiatorAddr, URef, U512,
 };
 
 /// Represents a version 2 transfer from one purse to another.

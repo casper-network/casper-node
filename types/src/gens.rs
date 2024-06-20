@@ -45,7 +45,7 @@ use crate::{
         mint::BalanceHoldAddr,
         SystemEntityType,
     },
-    transaction::gens::deploy_hash_arb,
+    transaction::{gens::deploy_hash_arb, TransactionRuntime},
     transfer::{
         gens::{transfer_v1_addr_arb, transfer_v1_arb},
         TransferAddr,
@@ -53,7 +53,7 @@ use crate::{
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, ByteCode, CLType, CLValue,
     Digest, EntityAddr, EntityKind, EntryPoint, EntryPointAccess, EntryPointPayment,
     EntryPointType, EntryPoints, EraId, Group, Key, NamedArg, Package, Parameter, Phase,
-    ProtocolVersion, SemVer, StoredValue, TransactionRuntime, URef, U128, U256, U512,
+    ProtocolVersion, SemVer, StoredValue, URef, U128, U256, U512,
 };
 
 pub fn u8_slice_32() -> impl Strategy<Value = [u8; 32]> {

@@ -172,7 +172,8 @@ pub struct ExecuteRequest {
     pub(crate) transaction_hash: TransactionHash,
     /// Address generator.
     ///
-    /// This can be either seeded and created as part of the builder or shared across chain of execution requests.
+    /// This can be either seeded and created as part of the builder or shared across chain of
+    /// execution requests.
     pub(crate) address_generator: Arc<RwLock<AddressGenerator>>,
 }
 
@@ -248,7 +249,8 @@ impl ExecuteRequestBuilder {
 
     /// Set the address generator.
     ///
-    /// This can be either seeded and created as part of the builder or shared across chain of execution requests.
+    /// This can be either seeded and created as part of the builder or shared across chain of
+    /// execution requests.
     pub fn with_address_generator(mut self, address_generator: AddressGenerator) -> Self {
         self.address_generator = Some(Arc::new(RwLock::new(address_generator)));
         self
@@ -256,7 +258,8 @@ impl ExecuteRequestBuilder {
 
     /// Set the shared address generator.
     ///
-    /// This is useful when the address generator is shared across a chain of multiple execution requests.
+    /// This is useful when the address generator is shared across a chain of multiple execution
+    /// requests.
     pub fn with_shared_address_generator(
         mut self,
         address_generator: Arc<RwLock<AddressGenerator>>,
@@ -338,7 +341,8 @@ pub enum ExecutionKind {
 
 /// Error that can occur during execution, before the Wasm virtual machine is involved.
 ///
-/// This error is returned by the `execute` function. It contains information about the error that occurred.
+/// This error is returned by the `execute` function. It contains information about the error that
+/// occurred.
 #[derive(Debug, Error)]
 pub enum ExecuteError {
     /// Error while preparing Wasm instance: export not found, validation, compilation errors, etc.
@@ -362,9 +366,11 @@ pub enum StoreContractError {
 
 /// Executor trait.
 ///
-/// An executor is responsible for executing Wasm contracts. This implies that the executor is able to prepare Wasm instances, execute them, and handle errors that occur during execution.
+/// An executor is responsible for executing Wasm contracts. This implies that the executor is able
+/// to prepare Wasm instances, execute them, and handle errors that occur during execution.
 ///
-/// Trait bounds also implying that the executor has to support interior mutability, as it may need to update its internal state during execution of a single or a chain of multiple contracts.
+/// Trait bounds also implying that the executor has to support interior mutability, as it may need
+/// to update its internal state during execution of a single or a chain of multiple contracts.
 pub trait Executor: Clone + Send {
     fn create_contract<R: GlobalStateReader + 'static>(
         &self,

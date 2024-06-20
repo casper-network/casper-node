@@ -26,7 +26,8 @@ impl From<CallError> for TokenOwnerError {
     }
 }
 
-pub type Data = Vec<u8>; // TODO: CasperABI does not support generic parameters and it fails to compile, we need to support this in the macro
+pub type Data = Vec<u8>; // TODO: CasperABI does not support generic parameters and it fails to compile, we need to support
+                         // this in the macro
 
 #[casper]
 #[derive(Debug, Default, PartialEq)]
@@ -92,9 +93,11 @@ impl TokenOwnerContract {
         let res = ContractHandle::<HarnessRef>::from_address(contract_address)
             .build_call()
             .call(|harness| {
-                // Be careful about re-entrancy here: we are calling a contract that can call back while we're still not done with this entry point.
-                // If &mut self is used, then the proc macro will save the state while the state was already saved at the end of `receive()` call.
-                // To protect against re-entrancy attacks, please use `&self` or `self`.
+                // Be careful about re-entrancy here: we are calling a contract that can call back
+                // while we're still not done with this entry point. If &mut self is
+                // used, then the proc macro will save the state while the state was already saved
+                // at the end of `receive()` call. To protect against re-entrancy
+                // attacks, please use `&self` or `self`.
                 harness.withdraw(self_balance, amount)
             });
 

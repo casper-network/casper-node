@@ -39,6 +39,8 @@ pub enum InvalidRequest {
     /// Unsupported category.
     #[error("invalid category for {0} attempting {1}")]
     InvalidCategory(TransactionHash, String),
+    #[error("unexpected transaction kind for {0} attempting {1}")]
+    UnexpectedTransactionArgs(TransactionHash, String),
 }
 
 #[derive(Debug, Clone)]
@@ -502,6 +504,12 @@ impl TryFrom<&TransactionV1> for SessionInfo {
                     ));
                 };
                 let item = ExecutableItem::Invocation(id.clone());
+                let args = args.into_named().ok_or_else(|| {
+                    InvalidRequest::UnexpectedTransactionArgs(
+                        transaction_hash,
+                        "named args".to_string(),
+                    )
+                })?;
                 ExecutableInfo {
                     item,
                     entry_point: entry_point.clone(),
@@ -537,6 +545,12 @@ impl TryFrom<&TransactionV1> for SessionInfo {
                         ))
                     }
                 };
+                let args = args.into_named().ok_or_else(|| {
+                    InvalidRequest::UnexpectedTransactionArgs(
+                        transaction_hash,
+                        "named args".to_string(),
+                    )
+                })?;
                 ExecutableInfo {
                     item,
                     entry_point: DEFAULT_ENTRY_POINT.to_owned(),
@@ -548,7 +562,6 @@ impl TryFrom<&TransactionV1> for SessionInfo {
         Ok(SessionInfo(session))
     }
 }
-
 /// New type for hanging payment specific impl's off of.
 struct PaymentInfo(ExecutableInfo);
 
@@ -667,6 +680,9 @@ impl TryFrom<&TransactionV1> for PaymentInfo {
                     mode.to_string(),
                 ));
             }
+            PricingMode::GasLimited { .. } => {
+                // This is the only supported mode for payment
+            }
         };
 
         let payment = match v1_txn.target() {
@@ -677,11 +693,17 @@ impl TryFrom<&TransactionV1> for PaymentInfo {
                         v1_txn.entry_point().to_string(),
                     ));
                 };
+                let args = v1_txn.args().clone().into_named().ok_or_else(|| {
+                    InvalidRequest::UnexpectedTransactionArgs(
+                        transaction_hash,
+                        "named args".to_string(),
+                    )
+                })?;
                 let item = ExecutableItem::PaymentBytes(module_bytes.clone());
                 ExecutableInfo {
                     item,
                     entry_point: DEFAULT_ENTRY_POINT.to_owned(),
-                    args: v1_txn.args().clone(),
+                    args,
                 }
             }
             TransactionTarget::Native | TransactionTarget::Stored { .. } => {

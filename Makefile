@@ -14,7 +14,7 @@ CARGO := $(CARGO) $(CARGO_OPTS)
 DISABLE_LOGGING = RUST_LOG=MatchesNothing
 
 # Rust Contracts
-ALL_CONTRACTS    = $(shell find ./smart_contracts/contracts/[!.]*  -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
+ALL_CONTRACTS    = $(shell find ./smart_contracts/contracts/[!.]*  -not -path "./smart_contracts/contracts/vm2*" -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
 CLIENT_CONTRACTS = $(shell find ./smart_contracts/contracts/client -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
 CARGO_HOME_REMAP = $(if $(CARGO_HOME),$(CARGO_HOME),$(HOME)/.cargo)
 RUSTC_FLAGS      = "--remap-path-prefix=$(CARGO_HOME_REMAP)=/home/cargo --remap-path-prefix=$$PWD=/dir"

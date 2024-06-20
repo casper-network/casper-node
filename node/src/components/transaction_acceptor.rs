@@ -577,6 +577,7 @@ impl TransactionAcceptor {
             Transaction::V1(txn) => match txn.entry_point() {
                 TransactionEntryPoint::Call => Some(DEFAULT_ENTRY_POINT_NAME.to_owned()),
                 TransactionEntryPoint::Custom(name) => Some(name.clone()),
+                TransactionEntryPoint::DefaultInitialize => None,
                 TransactionEntryPoint::Transfer
                 | TransactionEntryPoint::AddBid
                 | TransactionEntryPoint::WithdrawBid

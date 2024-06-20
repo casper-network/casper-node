@@ -634,6 +634,7 @@ dependencies = [
  "serde_test",
  "thiserror",
  "tokio-util 0.6.10",
+ "tracing",
 ]
 
 [[package]]
@@ -782,6 +783,7 @@ dependencies = [
  "casper-execution-engine",
  "casper-storage",
  "casper-types",
+ "casper-vm",
  "datasize",
  "derive_more",
  "either",

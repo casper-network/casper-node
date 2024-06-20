@@ -15,9 +15,8 @@ mod tests {
     };
     use vm_common::{flags::EntryPointFlags, selector::Selector};
 
-    use crate::contracts::harness::Harness;
     use crate::{
-        contracts::harness::{HarnessRef, INITIAL_GREETING},
+        contracts::harness::{Harness, HarnessRef, INITIAL_GREETING},
         traits::FallbackRef,
     };
 

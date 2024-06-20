@@ -41,6 +41,7 @@ use tracing::error;
 
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::testing::TestRng;
+pub use crate::transaction::transaction_v1::TransactionArgs;
 #[cfg(feature = "json-schema")]
 use crate::URef;
 use crate::{
@@ -314,6 +315,21 @@ impl Transaction {
         }
     }
 
+    /// Is this a transaction that should be sent to the v2 execution engine?
+    pub fn is_v2_wasm(&self) -> bool {
+        match self {
+            Transaction::Deploy(deploy) => !deploy.is_transfer(),
+            Transaction::V1(v1) => v1.is_v2_wasm(),
+        }
+    }
+
+    pub fn as_transaction_v1(&self) -> Option<&TransactionV1> {
+        match self {
+            Transaction::Deploy(_) => None,
+            Transaction::V1(v1) => Some(v1),
+        }
+    }
+
     /// Should this transaction use standard payment processing?
     pub fn is_standard_payment(&self) -> bool {
         match self {
@@ -356,10 +372,10 @@ impl Transaction {
     }
 
     /// The session args.
-    pub fn session_args(&self) -> &RuntimeArgs {
+    pub fn session_args(&self) -> Option<&RuntimeArgs> {
         match self {
-            Transaction::Deploy(deploy) => deploy.session().args(),
-            Transaction::V1(transaction_v1) => transaction_v1.body().args(),
+            Transaction::Deploy(deploy) => Some(deploy.session().args()),
+            Transaction::V1(transaction_v1) => transaction_v1.body().args().as_named(),
         }
     }
 

@@ -4,8 +4,10 @@ pub mod exports {
     use casper_macros::casper;
     use casper_sdk::{log, types::Address, ContractHandle};
 
-    use vm2_cep18::contract::TokenContractRef;
-    use vm2_cep18::traits::{CEP18Ext, MintableExt};
+    use vm2_cep18::{
+        contract::TokenContractRef,
+        traits::{CEP18Ext, MintableExt},
+    };
 
     #[casper(export)]
     pub fn call(address: Address) -> String {

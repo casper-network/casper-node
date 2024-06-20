@@ -1,9 +1,7 @@
 #![cfg_attr(target_arch = "wasm32", no_main)]
 
 use casper_macros::casper;
-use casper_sdk::host::Entity;
-use casper_sdk::prelude::*;
-use casper_sdk::{host, log};
+use casper_sdk::{host, host::Entity, log, prelude::*};
 
 const CURRENT_VERSION: &str = "v1";
 

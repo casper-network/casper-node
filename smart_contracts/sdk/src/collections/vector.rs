@@ -5,8 +5,10 @@ use crate::{
 };
 
 // use casper_macros::casper;
-use crate::prelude::{cmp::Ordering, marker::PhantomData};
-use crate::serializers::borsh::{self, BorshDeserialize, BorshSerialize};
+use crate::{
+    prelude::{cmp::Ordering, marker::PhantomData},
+    serializers::borsh::{self, BorshDeserialize, BorshSerialize},
+};
 use const_fnv1a_hash::fnv1a_hash_str_64;
 use vm_common::keyspace::Keyspace;
 

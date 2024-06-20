@@ -1,7 +1,7 @@
 #[cfg(any(feature = "std", test))]
 pub(super) mod arg_handling;
 
-use alloc::vec::Vec;
+use alloc::{string::String, vec::Vec};
 use core::fmt::{self, Display, Formatter};
 
 #[cfg(feature = "datasize")]
@@ -22,18 +22,19 @@ use super::TransactionCategory;
 use super::TransactionConfig;
 #[cfg(doc)]
 use super::TransactionV1;
-use crate::bytesrepr::{self, FromBytes, ToBytes};
+use crate::bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
 
 #[cfg(any(feature = "std", test))]
 use crate::InvalidTransactionV1;
+use crate::{CLTyped, CLValue, CLValueError};
+
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
+use crate::testing::TestRng;
 
 #[cfg(any(feature = "std", test))]
-use crate::TransactionV1ExcessiveSizeError;
+use super::TransactionV1ExcessiveSizeError;
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
-use crate::{
-    bytesrepr::Bytes, testing::TestRng, PublicKey, TransactionInvocationTarget, TransactionRuntime,
-    TransferTarget,
-};
+use crate::PublicKey;
 
 /// The body of a [`TransactionV1`].
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
@@ -49,17 +50,144 @@ use crate::{
     schemars(description = "Body of a `TransactionV1`.")
 )]
 pub struct TransactionV1Body {
-    pub(super) args: RuntimeArgs,
+    pub(super) args: TransactionArgs,
     pub(super) target: TransactionTarget,
     pub(super) entry_point: TransactionEntryPoint,
     pub(super) transaction_category: u8,
     pub(super) scheduling: TransactionScheduling,
 }
 
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
+#[cfg_attr(
+    any(feature = "std", test),
+    derive(Serialize, Deserialize),
+    serde(deny_unknown_fields)
+)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(
+    feature = "json-schema",
+    derive(JsonSchema),
+    schemars(description = "Body of a `TransactionArgs`.")
+)]
+pub enum TransactionArgs {
+    Named(RuntimeArgs),
+    Unnamed(Bytes),
+}
+
+impl TransactionArgs {
+    pub(crate) fn insert_cl_value<K: Into<String>>(&mut self, key: K, cl_value: CLValue) {
+        match self {
+            TransactionArgs::Named(args) => {
+                args.insert_cl_value(key, cl_value);
+            }
+            TransactionArgs::Unnamed(_) => panic!("Cannot insert into unnamed transaction args"),
+        }
+    }
+
+    pub(crate) fn get(&self, transfer_arg_target: &str) -> Option<&CLValue> {
+        match self {
+            TransactionArgs::Named(args) => args.get(transfer_arg_target),
+            TransactionArgs::Unnamed(_) => None,
+        }
+    }
+
+    pub fn as_named(&self) -> Option<&RuntimeArgs> {
+        match self {
+            TransactionArgs::Named(args) => Some(args),
+            TransactionArgs::Unnamed(_) => None,
+        }
+    }
+
+    pub fn into_named(self) -> Option<RuntimeArgs> {
+        match self {
+            TransactionArgs::Named(args) => Some(args),
+            TransactionArgs::Unnamed(_) => None,
+        }
+    }
+
+    pub fn insert<K, V>(&mut self, key: K, value: V) -> Result<(), CLValueError>
+    where
+        K: Into<String>,
+        V: CLTyped + ToBytes,
+    {
+        match self {
+            TransactionArgs::Named(args) => {
+                args.insert(key, value)?;
+                Ok(())
+            }
+            TransactionArgs::Unnamed(_) => {
+                Err(CLValueError::Serialization(bytesrepr::Error::Formatting))
+            }
+        }
+    }
+}
+
+impl FromBytes for TransactionArgs {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (tag, remainder) = u8::from_bytes(bytes)?;
+        match tag {
+            0 => {
+                let (args, remainder) = RuntimeArgs::from_bytes(remainder)?;
+                Ok((TransactionArgs::Named(args), remainder))
+            }
+            1 => {
+                let (bytes, remainder) = Bytes::from_bytes(remainder)?;
+                Ok((TransactionArgs::Unnamed(bytes), remainder))
+            }
+            _ => Err(bytesrepr::Error::Formatting),
+        }
+    }
+}
+
+impl ToBytes for TransactionArgs {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        match self {
+            TransactionArgs::Named(args) => args.serialized_length() + U8_SERIALIZED_LENGTH,
+            TransactionArgs::Unnamed(bytes) => bytes.serialized_length() + U8_SERIALIZED_LENGTH,
+        }
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        match self {
+            TransactionArgs::Named(args) => {
+                writer.push(0);
+                args.write_bytes(writer)
+            }
+            TransactionArgs::Unnamed(bytes) => {
+                writer.push(1);
+                bytes.write_bytes(writer)
+            }
+        }
+    }
+}
+
 impl TransactionV1Body {
     /// Returns a new `TransactionV1Body`.
     pub fn new(
         args: RuntimeArgs,
+        target: TransactionTarget,
+        entry_point: TransactionEntryPoint,
+        transaction_category: u8,
+        scheduling: TransactionScheduling,
+    ) -> Self {
+        TransactionV1Body {
+            args: TransactionArgs::Named(args),
+            target,
+            entry_point,
+            transaction_category,
+            scheduling,
+        }
+    }
+
+    /// Returns a new `TransactionV1Body`.
+    pub fn new_v2(
+        args: TransactionArgs,
         target: TransactionTarget,
         entry_point: TransactionEntryPoint,
         transaction_category: u8,
@@ -75,12 +203,12 @@ impl TransactionV1Body {
     }
 
     /// Returns the runtime args of the transaction.
-    pub fn args(&self) -> &RuntimeArgs {
+    pub fn args(&self) -> &TransactionArgs {
         &self.args
     }
 
     /// Consumes `self`, returning the runtime args of the transaction.
-    pub fn take_args(self) -> RuntimeArgs {
+    pub fn take_args(self) -> TransactionArgs {
         self.args
     }
 
@@ -123,7 +251,7 @@ impl TransactionV1Body {
     pub fn destructure(
         self,
     ) -> (
-        RuntimeArgs,
+        TransactionArgs,
         TransactionTarget,
         TransactionEntryPoint,
         TransactionScheduling,
@@ -185,28 +313,33 @@ impl TransactionV1Body {
                     })
                 }
                 TransactionEntryPoint::Transfer => arg_handling::has_valid_transfer_args(
-                    &self.args,
+                    &self.args.as_named().unwrap(),
                     config.native_transfer_minimum_motes,
                 ),
-                TransactionEntryPoint::AddBid => arg_handling::has_valid_add_bid_args(&self.args),
+                TransactionEntryPoint::AddBid => {
+                    arg_handling::has_valid_add_bid_args(&self.args.as_named().unwrap())
+                }
                 TransactionEntryPoint::WithdrawBid => {
-                    arg_handling::has_valid_withdraw_bid_args(&self.args)
+                    arg_handling::has_valid_withdraw_bid_args(&self.args.as_named().unwrap())
                 }
                 TransactionEntryPoint::Delegate => {
-                    arg_handling::has_valid_delegate_args(&self.args)
+                    arg_handling::has_valid_delegate_args(&self.args.as_named().unwrap())
                 }
                 TransactionEntryPoint::Undelegate => {
-                    arg_handling::has_valid_undelegate_args(&self.args)
+                    arg_handling::has_valid_undelegate_args(&self.args.as_named().unwrap())
                 }
                 TransactionEntryPoint::Redelegate => {
-                    arg_handling::has_valid_redelegate_args(&self.args)
+                    arg_handling::has_valid_redelegate_args(&self.args.as_named().unwrap())
                 }
                 TransactionEntryPoint::ActivateBid => {
-                    arg_handling::has_valid_activate_bid_args(&self.args)
+                    arg_handling::has_valid_activate_bid_args(&self.args.as_named().unwrap())
                 }
                 TransactionEntryPoint::ChangeBidPublicKey => {
-                    arg_handling::has_valid_change_bid_public_key_args(&self.args)
+                    arg_handling::has_valid_change_bid_public_key_args(
+                        &self.args.as_named().unwrap(),
+                    )
                 }
+                TransactionEntryPoint::DefaultInitialize => todo!(),
             },
             TransactionTarget::Stored { .. } => match &self.entry_point {
                 TransactionEntryPoint::Custom(_) => Ok(()),
@@ -226,6 +359,9 @@ impl TransactionV1Body {
                     Err(InvalidTransactionV1::EntryPointMustBeCustom {
                         entry_point: self.entry_point.clone(),
                     })
+                }
+                TransactionEntryPoint::DefaultInitialize => {
+                    Err(InvalidTransactionV1::EntryPointCannotBeDefault)
                 }
             },
             TransactionTarget::Session { module_bytes, .. } => match &self.entry_point {
@@ -252,6 +388,7 @@ impl TransactionV1Body {
                         entry_point: self.entry_point.clone(),
                     })
                 }
+                TransactionEntryPoint::DefaultInitialize => todo!(),
             },
         }
     }
@@ -269,6 +406,8 @@ impl TransactionV1Body {
 
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
     fn random_transfer(rng: &mut TestRng) -> Self {
+        use crate::transaction::TransferTarget;
+
         let amount =
             rng.gen_range(TransactionConfig::default().native_transfer_minimum_motes..=u64::MAX);
         let maybe_source = if rng.gen() { Some(rng.gen()) } else { None };
@@ -286,6 +425,8 @@ impl TransactionV1Body {
 
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
     fn random_standard(rng: &mut TestRng) -> Self {
+        use crate::transaction::{TransactionInvocationTarget, TransactionRuntime};
+
         let target = TransactionTarget::Stored {
             id: TransactionInvocationTarget::random(rng),
             runtime: TransactionRuntime::VmCasperV1,
@@ -301,6 +442,8 @@ impl TransactionV1Body {
 
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
     fn random_install_upgrade(rng: &mut TestRng) -> Self {
+        use crate::transaction::TransactionRuntime;
+
         let target = TransactionTarget::Session {
             module_bytes: Bytes::from(rng.random_vec(0..100)),
             runtime: TransactionRuntime::VmCasperV1,
@@ -341,6 +484,12 @@ impl TransactionV1Body {
     /// Returns a random `TransactionV1Body`.
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub fn random(rng: &mut TestRng) -> Self {
+        use crate::{
+            testing::TestRng,
+            transaction::{TransactionRuntime, TransferTarget},
+            PublicKey,
+        };
+
         match rng.gen_range(0..8) {
             0 => {
                 let amount = rng.gen_range(
@@ -492,12 +641,18 @@ impl ToBytes for TransactionV1Body {
 
 impl FromBytes for TransactionV1Body {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (args, remainder) = RuntimeArgs::from_bytes(bytes)?;
+        let (args, remainder) = FromBytes::from_bytes(bytes)?;
         let (target, remainder) = TransactionTarget::from_bytes(remainder)?;
         let (entry_point, remainder) = TransactionEntryPoint::from_bytes(remainder)?;
         let (kind, remainder) = u8::from_bytes(remainder)?;
         let (scheduling, remainder) = TransactionScheduling::from_bytes(remainder)?;
-        let body = TransactionV1Body::new(args, target, entry_point, kind, scheduling);
+        let body = TransactionV1Body {
+            args,
+            target,
+            entry_point,
+            transaction_category: kind,
+            scheduling,
+        };
         Ok((body, remainder))
     }
 }
@@ -505,7 +660,7 @@ impl FromBytes for TransactionV1Body {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_args;
+    use crate::{runtime_args, TransactionInvocationTarget, TransactionRuntime};
 
     #[test]
     fn bytesrepr_roundtrip() {
@@ -521,11 +676,11 @@ mod tests {
         let mut body = TransactionV1Body::random_standard(rng);
         config.transaction_v1_config.wasm_lanes =
             vec![vec![body.transaction_category as u64, 1_048_576, 10, 0]];
-        body.args = runtime_args! {"a" => 1_u8};
+        body.args = TransactionArgs::Named(runtime_args! {"a" => 1_u8});
 
         let expected_error = InvalidTransactionV1::ExcessiveArgsLength {
             max_length: 10,
-            got: 15,
+            got: 16,
         };
 
         assert_eq!(body.is_valid(&config), Err(expected_error));

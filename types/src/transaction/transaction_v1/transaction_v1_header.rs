@@ -12,13 +12,15 @@ use tracing::debug;
 
 #[cfg(doc)]
 use super::TransactionV1;
+#[cfg(any(feature = "std", test))]
+use super::TransactionV1Hash;
 use super::{InitiatorAddr, PricingMode};
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     Digest, TimeDiff, Timestamp,
 };
 #[cfg(any(feature = "std", test))]
-use crate::{InvalidTransactionV1, TransactionConfig, TransactionV1Hash};
+use crate::{InvalidTransactionV1, TransactionConfig};
 
 /// The header portion of a [`TransactionV1`].
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
@@ -166,6 +168,10 @@ impl TransactionV1Header {
                 // TODO: Change this when reserve gets implemented.
                 0u8
             }
+            PricingMode::GasLimited {
+                gas_price_tolerance,
+                ..
+            } => gas_price_tolerance,
         }
     }
 

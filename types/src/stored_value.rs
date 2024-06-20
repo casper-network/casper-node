@@ -129,7 +129,8 @@ pub enum StoredValue {
     Reservation(ReservationKind),
     /// An entrypoint record.
     EntryPoint(EntryPointValue),
-    /// Raw bytes. Similar to a [`crate::StoredValue::CLValue`] but does not incur overhead of a [`crate::CLValue`] and [`crate::CLType`].
+    /// Raw bytes. Similar to a [`crate::StoredValue::CLValue`] but does not incur overhead of a
+    /// [`crate::CLValue`] and [`crate::CLType`].
     RawBytes(Vec<u8>),
 }
 

@@ -504,7 +504,7 @@ fn validate_lnc_mixed_citations() -> Result<(), AddUnitError<TestContext>> {
     //                                    || |
     //                                    || |
     // Bob                     b0<---------+ |
-    //                          +          | |
+    //                          + | |
     //                          |          | |
     //                    +c1<--+          | |
     // Carol         c0<--+                | |
@@ -545,12 +545,12 @@ fn validate_lnc_transitive_endorsement() -> Result<(), AddUnitError<TestContext>
     // c1 doesn't have to be endorsed, it is enough that c0 is.
     //
     // Alice           a0<-----------+
-    //                 +             |
+    //                 + |
     //          b0<----+             |
     // Bob                           |
     //                               |
     //          b0'<---+             |
-    //                 +             |
+    //                 + |
     // Carol           c0<---+c1<----+
     //                               |
     //                               |
@@ -582,12 +582,12 @@ fn validate_lnc_cite_descendant_of_equivocation() -> Result<(), AddUnitError<Tes
     // This is still detected as violation of the LNC.
     //
     // Alice                  a0<----+
-    //                        +      |
+    //                        + |
     //          b0<---+b1<----+      |
     // Bob                           |
     //                               |
     //          b0'<---+             |
-    //                 +             |
+    //                 + |
     // Carol           c0            |
     //                  ^            +
     // Dan              +----------+d0

@@ -14,8 +14,7 @@ use casper_types::{
     PackageStatus, ProtocolVersion, StoredValue, TransactionRuntime, URef, U512,
 };
 use num_derive::FromPrimitive;
-use num_traits::FromPrimitive;
-use num_traits::ToBytes;
+use num_traits::{FromPrimitive, ToBytes};
 use rand::Rng;
 use safe_transmute::SingleManyGuard;
 use std::{cmp, collections::BTreeSet, mem, num::NonZeroU32, sync::Arc};
@@ -129,7 +128,8 @@ pub(crate) fn casper_read<S: GlobalStateReader, E: Executor>(
         }
     };
 
-    // TODO: Opportunity for optimization: don't read data under key_ptr if given key space does not require it.
+    // TODO: Opportunity for optimization: don't read data under key_ptr if given key space does not
+    // require it.
     let key_payload_bytes = caller.memory_read(key_ptr, key_size.try_into().unwrap())?;
 
     let keyspace = match keyspace_tag {
@@ -178,15 +178,21 @@ pub(crate) fn casper_read<S: GlobalStateReader, E: Executor>(
             Ok(0)
         }
         Ok(Some(stored_value)) => {
-            // TODO: Backwards compatibility with old EE, although it's not clear if we should do it at the storage level.
-            // Since new VM has storage isolated from the Wasm (i.e. we have Keyspace on the wasm which gets converted to a global state `Key`).
-            // I think if we were to pursue this we'd add a new `Keyspace` enum variant for each old VM supported Key types (i.e. URef, Dictionary perhaps) for some period of time, then deprecate this.
+            // TODO: Backwards compatibility with old EE, although it's not clear if we should do it
+            // at the storage level. Since new VM has storage isolated from the Wasm
+            // (i.e. we have Keyspace on the wasm which gets converted to a global state `Key`).
+            // I think if we were to pursue this we'd add a new `Keyspace` enum variant for each old
+            // VM supported Key types (i.e. URef, Dictionary perhaps) for some period of time, then
+            // deprecate this.
             todo!("Unsupported {stored_value:?}")
         }
         Ok(None) => Ok(1), // Entry does not exists
         Err(error) => {
-            // To protect the network against potential non-determinism (i.e. one validator runs out of space or just faces I/O issues that other validators may not have) we're simply aborting the process, hoping that once the node goes back online issues are resolved on the validator side.
-            // TODO: We should signal this to the contract runtime somehow, and let validator nodes skip execution.
+            // To protect the network against potential non-determinism (i.e. one validator runs out
+            // of space or just faces I/O issues that other validators may not have) we're simply
+            // aborting the process, hoping that once the node goes back online issues are resolved
+            // on the validator side. TODO: We should signal this to the contract
+            // runtime somehow, and let validator nodes skip execution.
             error!(?error, "Error while reading from storage; aborting");
             panic!("Error while reading from storage; aborting key={global_state_key:?} error={error:?}")
         }
@@ -331,8 +337,8 @@ pub(crate) fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'stati
     // )?;
 
     // let entry_points =
-    //     match safe_transmute::transmute_many::<EntryPoint, SingleManyGuard>(&entry_points_bytes) {
-    //         Ok(entry_points) => entry_points,
+    //     match safe_transmute::transmute_many::<EntryPoint, SingleManyGuard>(&entry_points_bytes)
+    // {         Ok(entry_points) => entry_points,
     //         Err(error) => todo!("handle error {:?}", error),
     //     };
 
@@ -438,7 +444,8 @@ pub(crate) fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'stati
                 .with_input(input_data.unwrap_or_default())
                 .with_value(value)
                 .with_transaction_hash(caller.context().transaction_hash)
-                // We're using shared address generator there as we need to preserve and advance the state of deterministic address generator across chain of calls.
+                // We're using shared address generator there as we need to preserve and advance the
+                // state of deterministic address generator across chain of calls.
                 .with_shared_address_generator(Arc::clone(&caller.context().address_generator))
                 .build()
                 .expect("should build");
@@ -472,7 +479,8 @@ pub(crate) fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'stati
                     output
                 }
                 Err(ExecuteError::WasmPreparation(preparation_error)) => {
-                    // This is a bug in the EE, as it should have been caught during the preparation phase when the contract was stored in the global state.
+                    // This is a bug in the EE, as it should have been caught during the preparation
+                    // phase when the contract was stored in the global state.
                     todo!()
                 }
             }
@@ -572,7 +580,8 @@ pub(crate) fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>
         .with_value(value)
         .with_input(input_data)
         .with_transaction_hash(caller.context().transaction_hash)
-        // We're using shared address generator there as we need to preserve and advance the state of deterministic address generator across chain of calls.
+        // We're using shared address generator there as we need to preserve and advance the state
+        // of deterministic address generator across chain of calls.
         .with_shared_address_generator(Arc::clone(&caller.context().address_generator))
         .build()
         .expect("should build");
@@ -615,7 +624,8 @@ pub(crate) fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>
             (gas_usage, host_result)
         }
         Err(ExecuteError::WasmPreparation(preparation_error)) => {
-            // This is a bug in the EE, as it should have been caught during the preparation phase when the contract was stored in the global state.
+            // This is a bug in the EE, as it should have been caught during the preparation phase
+            // when the contract was stored in the global state.
             unreachable!("Preparation error: {:?}", preparation_error)
         }
     };
@@ -692,7 +702,8 @@ pub(crate) fn casper_env_caller<S: GlobalStateReader, E: Executor>(
     dest_len: u32,
     entity_kind_ptr: u32,
 ) -> VMResult<u32> {
-    // TODO: Decide whether we want to return the full address and entity kind or just the 32 bytes "unified".
+    // TODO: Decide whether we want to return the full address and entity kind or just the 32 bytes
+    // "unified".
     let (entity_kind, data) = match &caller.context().caller {
         Key::Account(account_hash) => (0u32, account_hash.value()),
         Key::AddressableEntity(entity_addr) => (1u32, entity_addr.value()),
@@ -902,7 +913,8 @@ pub(crate) fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
                     panic!("Error while reading from storage; aborting")
                 }
             };
-            // We don't execute anything as it does not make sense to execute an account as there are no entry points.
+            // We don't execute anything as it does not make sense to execute an account as there
+            // are no entry points.
             let transaction_hash = caller.context().transaction_hash;
             let address_generator = Arc::clone(&caller.context().address_generator);
             let args = MintTransferArgs {
@@ -950,7 +962,8 @@ pub(crate) fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
                 .with_value(amount)
                 .with_input(Bytes::new())
                 .with_transaction_hash(transaction_hash)
-                // We're using shared address generator there as we need to preserve and advance the state of deterministic address generator across chain of calls.
+                // We're using shared address generator there as we need to preserve and advance the
+                // state of deterministic address generator across chain of calls.
                 .with_shared_address_generator(address_generator)
                 .build()
                 .expect("should build");
@@ -995,7 +1008,8 @@ pub(crate) fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
                     Ok(host_result)
                 }
                 Err(ExecuteError::WasmPreparation(preparation_error)) => {
-                    // This is a bug in the EE, as it should have been caught during the preparation phase when the contract was stored in the global state.
+                    // This is a bug in the EE, as it should have been caught during the preparation
+                    // phase when the contract was stored in the global state.
                     unreachable!("Preparation error: {:?}", preparation_error)
                 }
             }
@@ -1068,9 +1082,11 @@ pub(crate) fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
     };
 
     // 1. Ensure that the new code is valid (maybe?)
-    // TODO: Is validating new code worth it if the user pays for the storage anyway? Should we protect users against invalid code?
+    // TODO: Is validating new code worth it if the user pays for the storage anyway? Should we
+    // protect users against invalid code?
 
-    // 2. Update the code therefore making hash(new_code) != addressable_entity.bytecode_addr (aka hash(old_code))
+    // 2. Update the code therefore making hash(new_code) != addressable_entity.bytecode_addr (aka
+    //    hash(old_code))
     let bytecode_key = Key::ByteCode(ByteCodeAddr::V2CasperWasm(
         callee_addressable_entity.byte_code_addr(),
     ));
@@ -1106,10 +1122,12 @@ pub(crate) fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
                 entry_point: entry_point_name.clone(),
             })
             .with_input(input_data.unwrap_or_default())
-            // Upgrade entry point is executed with zero value as it does not seem to make sense to be able to transfer anything.
+            // Upgrade entry point is executed with zero value as it does not seem to make sense to
+            // be able to transfer anything.
             .with_value(0)
             .with_transaction_hash(caller.context().transaction_hash)
-            // We're using shared address generator there as we need to preserve and advance the state of deterministic address generator across chain of calls.
+            // We're using shared address generator there as we need to preserve and advance the
+            // state of deterministic address generator across chain of calls.
             .with_shared_address_generator(Arc::clone(&caller.context().address_generator))
             .build()
             .expect("should build");

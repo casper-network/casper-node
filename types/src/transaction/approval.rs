@@ -11,8 +11,10 @@ use serde::{Deserialize, Serialize};
 use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    crypto, PublicKey, SecretKey, Signature, TransactionHash,
+    crypto, PublicKey, SecretKey, Signature,
 };
+
+use super::TransactionHash;
 
 /// A struct containing a signature of a transaction hash and the public key of the signer.
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]

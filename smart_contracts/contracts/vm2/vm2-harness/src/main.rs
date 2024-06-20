@@ -344,8 +344,8 @@ pub fn call(flipper_address: Address) {
             .expect("Should create");
         assert_eq!(token_owner.balance(), initial_balance);
 
-        // token owner contract performs a deposit into a harness contract through `deposit` payable entrypoint
-        // caller: no change
+        // token owner contract performs a deposit into a harness contract through `deposit` payable
+        // entrypoint caller: no change
         // token owner: -50
         // harness: +50
         {
@@ -380,8 +380,8 @@ pub fn call(flipper_address: Address) {
             assert_eq!(harness.balance(), harness_balance_before + initial_deposit);
         }
 
-        // token owner contract performs a withdrawal from a harness contract through `withdraw` entrypoint
-        // caller: no change
+        // token owner contract performs a withdrawal from a harness contract through `withdraw`
+        // entrypoint caller: no change
         // token owner: +50
         // harness: -50
         {

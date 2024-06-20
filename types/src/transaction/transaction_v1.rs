@@ -26,7 +26,7 @@ use serde::{Deserialize, Serialize};
 use tracing::debug;
 
 use super::{
-    Approval, ApprovalsHash, InitiatorAddr, PricingMode, TransactionEntryPoint,
+    Approval, ApprovalsHash, InitiatorAddr, PricingMode, TransactionEntryPoint, TransactionRuntime,
     TransactionScheduling, TransactionTarget,
 };
 #[cfg(any(feature = "std", test))]
@@ -37,7 +37,7 @@ use crate::chainspec::Chainspec;
 use crate::chainspec::PricingHandling;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    crypto, Digest, DisplayIter, RuntimeArgs, SecretKey, TimeDiff, Timestamp, TransactionRuntime,
+    crypto, Digest, DisplayIter, SecretKey, TimeDiff, Timestamp,
 };
 
 #[cfg(any(feature = "std", test))]
@@ -47,7 +47,7 @@ pub use errors_v1::{
     ExcessiveSizeErrorV1 as TransactionV1ExcessiveSizeError,
     InvalidTransaction as InvalidTransactionV1,
 };
-pub use transaction_v1_body::TransactionV1Body;
+pub use transaction_v1_body::{TransactionArgs, TransactionV1Body};
 #[cfg(any(feature = "std", test))]
 pub use transaction_v1_builder::{TransactionV1Builder, TransactionV1BuilderError};
 pub use transaction_v1_category::TransactionCategory;
@@ -179,12 +179,12 @@ impl TransactionV1 {
     }
 
     /// Returns the runtime args of the transaction.
-    pub fn args(&self) -> &RuntimeArgs {
+    pub fn args(&self) -> &TransactionArgs {
         self.body.args()
     }
 
     /// Consumes `self`, returning the runtime args of the transaction.
-    pub fn take_args(self) -> RuntimeArgs {
+    pub fn take_args(self) -> TransactionArgs {
         self.body.take_args()
     }
 
@@ -235,6 +235,18 @@ impl TransactionV1 {
             TransactionTarget::Stored { runtime, .. }
             | TransactionTarget::Session { runtime, .. } => {
                 matches!(runtime, TransactionRuntime::VmCasperV1)
+                    && (!self.is_native_mint() && !self.is_native_auction())
+            }
+        }
+    }
+
+    /// Does this transaction have wasm targeting the v2 vm.
+    pub fn is_v2_wasm(&self) -> bool {
+        match self.target() {
+            TransactionTarget::Native => false,
+            TransactionTarget::Stored { runtime, .. }
+            | TransactionTarget::Session { runtime, .. } => {
+                matches!(runtime, TransactionRuntime::VmCasperV2)
                     && (!self.is_native_mint() && !self.is_native_auction())
             }
         }
@@ -406,6 +418,14 @@ impl TransactionV1 {
                 if !chainspec.core_config.allow_reservations {
                     // Currently Reserved isn't implemented and we should
                     // not be accepting transactions with this mode.
+                    return Err(InvalidTransactionV1::InvalidPricingMode {
+                        price_mode: price_mode.clone(),
+                    });
+                }
+            }
+            PricingMode::GasLimited { .. } => {
+                if let PricingHandling::GasLimited = price_handling {
+                } else {
                     return Err(InvalidTransactionV1::InvalidPricingMode {
                         price_mode: price_mode.clone(),
                     });
@@ -598,6 +618,15 @@ impl GasLimited for TransactionV1 {
             PricingMode::Reserved { .. } => {
                 Motes::zero() // prepaid
             }
+            PricingMode::GasLimited {
+                gas_limit: _,
+                gas_price_tolerance,
+            } => {
+                let gas_price = Gas::new(U512::from(gas_price));
+                let gas = Gas::new(U512::from(gas_limit.value() * gas_price.value()));
+                Motes::from_gas(gas, *gas_price_tolerance)
+                    .ok_or(InvalidTransactionV1::UnableToCalculateGasCost)?
+            }
         };
         Ok(motes)
     }
@@ -645,6 +674,9 @@ impl GasLimited for TransactionV1 {
                             TransactionEntryPoint::ChangeBidPublicKey => {
                                 costs.auction_costs().change_bid_public_key
                             }
+                            TransactionEntryPoint::DefaultInitialize => {
+                                return Err(InvalidTransactionV1::EntryPointCannotBeDefault)
+                            }
                         };
                         amount
                     } else {
@@ -657,6 +689,15 @@ impl GasLimited for TransactionV1 {
                 return Err(InvalidTransactionV1::InvalidPricingMode {
                     price_mode: PricingMode::Reserved { receipt: *receipt },
                 });
+            }
+            PricingMode::GasLimited {
+                gas_limit,
+                gas_price_tolerance,
+            } => {
+                let gas_limit = Gas::new(U512::from(*gas_limit));
+                let gas_price = Gas::new(U512::from(*gas_price_tolerance));
+                let gas = Gas::new(U512::from(gas_limit.value() * gas_price.value()));
+                gas
             }
         };
         Ok(gas)

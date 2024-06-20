@@ -199,7 +199,9 @@ impl<M: Meter<Key, StoredValue> + Copy + Default> GenericTrackingCopyCache<M> {
         }
     }
 
-    /// Creates instance of `TrackingCopyCache` with specified `max_cache_size`, above which least-recently-used elements of the cache are invalidated. Measurements of elements' "size" is done with the usage of default `Meter` instance.
+    /// Creates instance of `TrackingCopyCache` with specified `max_cache_size`, above which
+    /// least-recently-used elements of the cache are invalidated. Measurements of elements' "size"
+    /// is done with the usage of default `Meter` instance.
     pub fn new_default(max_cache_size: usize) -> GenericTrackingCopyCache<M> {
         GenericTrackingCopyCache::new(max_cache_size, M::default())
     }
@@ -381,24 +383,30 @@ where
     }
 
     /// Creates a new `TrackingCopy` using the `reader` as the interface to the state.
-    /// Returns a new `TrackingCopy` instance that is a snapshot of the current state, allowing further changes to be made.
+    /// Returns a new `TrackingCopy` instance that is a snapshot of the current state, allowing
+    /// further changes to be made.
     ///
-    /// This method creates a new `TrackingCopy` using the current instance (including its mutations) as the base state to read against.
-    /// Mutations made to the new `TrackingCopy` will not impact the original instance.
+    /// This method creates a new `TrackingCopy` using the current instance (including its
+    /// mutations) as the base state to read against. Mutations made to the new `TrackingCopy`
+    /// will not impact the original instance.
     ///
-    /// Note: Currently, there is no `join` or `merge` function to bring changes from a fork back to the main `TrackingCopy`.
-    /// Therefore, forking should be done repeatedly, which is sub-optimal and will be improved in the future.
+    /// Note: Currently, there is no `join` or `merge` function to bring changes from a fork back to
+    /// the main `TrackingCopy`. Therefore, forking should be done repeatedly, which is
+    /// sub-optimal and will be improved in the future.
     pub fn fork(&self) -> TrackingCopy<&TrackingCopy<R>> {
         TrackingCopy::new(self, self.max_query_depth)
     }
 
-    /// Returns a new `TrackingCopy` instance that is a snapshot of the current state, allowing further changes to be made.
+    /// Returns a new `TrackingCopy` instance that is a snapshot of the current state, allowing
+    /// further changes to be made.
     ///
-    /// This method creates a new `TrackingCopy` using the current instance (including its mutations) as the base state to read against.
-    /// Mutations made to the new `TrackingCopy` will not impact the original instance.
+    /// This method creates a new `TrackingCopy` using the current instance (including its
+    /// mutations) as the base state to read against. Mutations made to the new `TrackingCopy`
+    /// will not impact the original instance.
     ///
-    /// Note: Currently, there is no `join` or `merge` function to bring changes from a fork back to the main `TrackingCopy`.
-    /// This method is an alternative to the `fork` method and is provided for clarity and consistency in naming.
+    /// Note: Currently, there is no `join` or `merge` function to bring changes from a fork back to
+    /// the main `TrackingCopy`. This method is an alternative to the `fork` method and is
+    /// provided for clarity and consistency in naming.
     pub fn fork2(&self) -> Self {
         TrackingCopy {
             reader: Arc::clone(&self.reader),
@@ -847,7 +855,8 @@ impl<R: StateReader<Key, StoredValue>> StateReader<Key, StoredValue> for &Tracki
 
 /// An alias for a `TrackingCopy` that uses a `GlobalState` as the state reader.
 ///
-/// This is aliasing the `TrackingCopy` to use the `GlobalState` as the state reader without the explicit verbose generic types and bounds.
+/// This is aliasing the `TrackingCopy` to use the `GlobalState` as the state reader without the
+/// explicit verbose generic types and bounds.
 // pub trait GlobalState: StateReader<Key, StoredValue> {}
 
 // impl<R: StateReader<Key, StoredValue>> GlobalState for TrackingCopy<R> {}

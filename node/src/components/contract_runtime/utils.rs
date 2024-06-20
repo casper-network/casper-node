@@ -1,3 +1,4 @@
+use casper_vm::executor::v2::ExecutorV2;
 use num_rational::Ratio;
 use once_cell::sync::Lazy;
 use std::{
@@ -70,6 +71,7 @@ where
 pub(super) async fn exec_or_requeue<REv>(
     data_access_layer: Arc<DataAccessLayer<LmdbGlobalState>>,
     execution_engine_v1: Arc<ExecutionEngineV1>,
+    execution_engine_v2: ExecutorV2,
     chainspec: Arc<Chainspec>,
     metrics: Arc<Metrics>,
     mut exec_queue: ExecQueue,
@@ -253,6 +255,7 @@ pub(super) async fn exec_or_requeue<REv>(
         execute_finalized_block(
             data_access_layer.as_ref(),
             execution_engine_v1.as_ref(),
+            execution_engine_v2,
             chainspec.as_ref(),
             Some(contract_runtime_metrics),
             current_pre_state,

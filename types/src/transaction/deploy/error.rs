@@ -124,6 +124,9 @@ pub enum InvalidDeploy {
 
     /// Unable to calculate gas cost.
     UnableToCalculateGasCost,
+
+    /// Gas limit is not supported in legacy deploys.
+    GasLimitNotSupported,
 }
 
 impl Display for InvalidDeploy {
@@ -241,6 +244,9 @@ impl Display for InvalidDeploy {
             InvalidDeploy::UnableToCalculateGasCost => {
                 write!(formatter, "unable to calculate gas cost",)
             }
+            InvalidDeploy::GasLimitNotSupported => {
+                write!(formatter, "gas limit is not supported in legacy deploys",)
+            }
         }
     }
 }
@@ -274,7 +280,8 @@ impl StdError for InvalidDeploy {
             | InvalidDeploy::InsufficientTransferAmount { .. }
             | InvalidDeploy::ExcessiveApprovals { .. }
             | InvalidDeploy::UnableToCalculateGasLimit
-            | InvalidDeploy::UnableToCalculateGasCost => None,
+            | InvalidDeploy::UnableToCalculateGasCost
+            | InvalidDeploy::GasLimitNotSupported => None,
         }
     }
 }

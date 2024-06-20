@@ -19,13 +19,14 @@ use once_cell::sync::OnceCell;
 use super::{Block, BlockBodyV2, BlockConversionError, RewardedSignatures};
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::testing::TestRng;
+#[cfg(feature = "json-schema")]
+use crate::transaction::{TransactionCategory, TransactionV1Hash};
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
+    transaction::TransactionHash,
     BlockHash, BlockHeaderV2, BlockValidationError, Digest, EraEndV2, EraId, ProtocolVersion,
-    PublicKey, Timestamp, TransactionHash,
+    PublicKey, Timestamp,
 };
-#[cfg(feature = "json-schema")]
-use crate::{transaction::TransactionCategory, TransactionV1Hash};
 
 #[cfg(feature = "json-schema")]
 static BLOCK_V2: Lazy<BlockV2> = Lazy::new(|| {
@@ -49,9 +50,9 @@ static BLOCK_V2: Lazy<BlockV2> = Lazy::new(|| {
     let installer_upgrader_hashes = vec![TransactionHash::V1(TransactionV1Hash::new(
         Digest::from([22; Digest::LENGTH]),
     ))];
-    let standard = vec![TransactionHash::V1(TransactionV1Hash::new(Digest::from(
-        [23; Digest::LENGTH],
-    )))];
+    let standard = vec![TransactionHash::V1(
+        crate::transaction::TransactionV1Hash::new(Digest::from([23; Digest::LENGTH])),
+    )];
     let transactions = {
         let mut ret = BTreeMap::new();
         ret.insert(TransactionCategory::Mint as u8, mint_hashes);

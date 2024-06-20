@@ -1,8 +1,8 @@
-use crate::prelude::{String, Vec};
-use crate::serializers::borsh::{self, BorshDeserialize, BorshSerialize};
 use crate::{
     abi::{CasperABI, Declaration, Definition, StructField},
     host::{self, read_vec},
+    prelude::{String, Vec},
+    serializers::borsh::{self, BorshDeserialize, BorshSerialize},
 };
 use const_fnv1a_hash::fnv1a_hash_str_64;
 use vm_common::keyspace::Keyspace;

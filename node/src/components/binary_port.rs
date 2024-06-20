@@ -1004,17 +1004,21 @@ async fn handle_payload<REv>(
 where
     REv: From<Event>,
 {
+    debug!(?payload, "received payload");
     let (header, remainder) = match extract_header(payload) {
         Ok(header) => header,
         Err(error_code) => return (BinaryResponse::new_error(error_code, protocol_version), 0),
     };
+    debug!(?header, "received header");
 
     let request_id = header.id();
+    debug!(?request_id, "received request id");
 
     if !header
         .protocol_version()
         .is_compatible_with(&protocol_version)
     {
+        debug!(?protocol_version, "unsupported protocol version");
         return (
             BinaryResponse::new_error(ErrorCode::UnsupportedProtocolVersion, protocol_version),
             request_id,
@@ -1028,13 +1032,20 @@ where
             request_id,
         );
     };
+    debug!(?tag, "received request tag");
 
-    let Ok(request) = BinaryRequest::try_from((tag, remainder)) else {
-        return (
-            BinaryResponse::new_error(ErrorCode::BadRequest, protocol_version),
-            request_id,
-        );
+    let request = match BinaryRequest::try_from((tag, remainder)) {
+        Ok(request) => request,
+        Err(error) => {
+            warn!(?tag, ?error, "failed to parse request");
+            return (
+                BinaryResponse::new_error(ErrorCode::BadRequest, protocol_version),
+                request_id,
+            );
+        }
     };
+
+    debug!(?request, "received request");
 
     (
         effect_builder

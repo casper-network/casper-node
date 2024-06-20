@@ -127,7 +127,7 @@ validator_credit_cap = [1, 5]
 #   'classic': senders of transaction self-specify how much they pay.
 #   'fixed': costs are fixed, per the cost table
 #   'reserved': prepaid transaction (currently not supported)
-pricing_handling = { type = 'fixed' }
+pricing_handling = { type = 'gas_limited' }
 # Does the network allow pre-payment / reservations for future
 # execution? Currently not supported.
 #

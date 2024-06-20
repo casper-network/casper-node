@@ -8,8 +8,7 @@ use casper_storage::{
         mint::Mint,
         runtime_native::{Config, Id, RuntimeNative},
     },
-    tracking_copy::TrackingCopyError,
-    tracking_copy::{TrackingCopyExt, TrackingCopyParts},
+    tracking_copy::{TrackingCopyError, TrackingCopyExt, TrackingCopyParts},
     AddressGenerator,
 };
 use casper_types::{
@@ -121,7 +120,8 @@ fn dispatch_system_contract<R: GlobalStateReader, Ret>(
         func(runtime)
     };
 
-    // SAFETY: `RuntimeNative` is dropped in the block above, we can extract the tracking copy and the effects.
+    // SAFETY: `RuntimeNative` is dropped in the block above, we can extract the tracking copy and
+    // the effects.
     let modified_tracking_copy = Rc::try_unwrap(forked_tracking_copy)
         .ok()
         .expect("No other references");
@@ -320,8 +320,8 @@ mod tests {
 
     //     match global_state.genesis(genesis_request) {
     //         GenesisResult::Failure(failure) => panic!("Failed to run genesis: {:?}", failure),
-    //         GenesisResult::Fatal(fatal) => panic!("Fatal error while running genesis: {}", fatal),
-    //         GenesisResult::Success {
+    //         GenesisResult::Fatal(fatal) => panic!("Fatal error while running genesis: {}",
+    // fatal),         GenesisResult::Success {
     //             post_state_hash,
     //             effects: _,
     //         } => {

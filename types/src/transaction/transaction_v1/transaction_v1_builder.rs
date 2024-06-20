@@ -10,16 +10,19 @@ use super::{
         InitiatorAddr, TransactionEntryPoint, TransactionInvocationTarget, TransactionRuntime,
         TransactionScheduling, TransactionTarget,
     },
-    transaction_v1_body::arg_handling,
+    transaction_v1_body::{arg_handling, TransactionArgs},
     InitiatorAddrAndSecretKey, PricingMode, TransactionV1, TransactionV1Body,
 };
 use crate::{
-    bytesrepr::Bytes, transaction::TransactionCategory, AddressableEntityHash, CLValue,
-    CLValueError, EntityVersion, PackageHash, PublicKey, RuntimeArgs, SecretKey, TimeDiff,
-    Timestamp, TransferTarget, URef, U512,
+    bytesrepr::Bytes,
+    transaction::{RuntimeArgs, TransactionCategory, TransferTarget},
+    AddressableEntityHash, CLValue, CLValueError, EntityVersion, PackageHash, PublicKey, SecretKey,
+    TimeDiff, Timestamp, URef, U512,
 };
 #[cfg(any(feature = "testing", test))]
-use crate::{testing::TestRng, transaction::Approval, TransactionConfig, TransactionV1Hash};
+use crate::{
+    testing::TestRng, transaction::Approval, transaction::TransactionV1Hash, TransactionConfig,
+};
 pub use error::TransactionV1BuilderError;
 
 /// A builder for constructing a [`TransactionV1`].
@@ -267,6 +270,38 @@ impl<'a> TransactionV1Builder<'a> {
         TransactionV1Builder::new(body)
     }
 
+    pub fn new_instantiate(
+        module_bytes: Bytes,
+        constructor: Option<String>,
+        input_data: Option<Bytes>,
+    ) -> Self {
+        let (entry_point, input_data) = match (constructor, input_data) {
+            (None, None) => (TransactionEntryPoint::DefaultInitialize, Bytes::new()),
+            (None, Some(_)) => panic!("?"),
+            (Some(name), None) => (TransactionEntryPoint::Custom(name), Bytes::new()),
+            (Some(name), Some(input)) => (TransactionEntryPoint::Custom(name), input),
+        };
+
+        let runtime = TransactionRuntime::VmCasperV2;
+        let body = {
+            let args = TransactionArgs::Unnamed(input_data);
+            let target = TransactionTarget::Session {
+                module_bytes,
+                runtime,
+            };
+            let transaction_category = TransactionCategory::InstallUpgrade as u8;
+            let scheduling = Self::DEFAULT_SCHEDULING;
+            TransactionV1Body {
+                args,
+                target,
+                entry_point: entry_point,
+                transaction_category,
+                scheduling,
+            }
+        };
+        TransactionV1Builder::new(body)
+    }
+
     /// Returns a new `TransactionV1Builder` which will build a random, valid but possibly expired
     /// transaction.
     ///
@@ -398,7 +433,7 @@ impl<'a> TransactionV1Builder<'a> {
     /// NOTE: this overwrites any existing runtime args.  To append to existing args, use
     /// [`TransactionV1Builder::with_runtime_arg`].
     pub fn with_runtime_args(mut self, args: RuntimeArgs) -> Self {
-        self.body.args = args;
+        self.body.args = TransactionArgs::Named(args);
         self
     }
 

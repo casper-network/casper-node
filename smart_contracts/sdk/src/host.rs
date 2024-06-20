@@ -1,13 +1,15 @@
 #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
 pub mod native;
-use crate::prelude::Vec;
-use crate::prelude::{
-    ffi::c_void,
-    marker::PhantomData,
-    mem::MaybeUninit,
-    ptr::{self, NonNull},
+use crate::{
+    prelude::{
+        ffi::c_void,
+        marker::PhantomData,
+        mem::MaybeUninit,
+        ptr::{self, NonNull},
+        Vec,
+    },
+    serializers::borsh::{BorshDeserialize, BorshSerialize},
 };
-use crate::serializers::borsh::{BorshDeserialize, BorshSerialize};
 
 use casper_sdk_sys::casper_env_caller;
 use vm_common::{

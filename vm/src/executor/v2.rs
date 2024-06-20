@@ -266,7 +266,8 @@ impl Executor for ExecutorV2 {
                 }
             }
             None => {
-                // TODO: Calculate storage gas cost etc. and make it the base cost, then add constructor gas cost
+                // TODO: Calculate storage gas cost etc. and make it the base cost, then add
+                // constructor gas cost
                 GasUsage::new(gas_limit, gas_limit)
             }
         };
@@ -283,8 +284,10 @@ impl Executor for ExecutorV2 {
     /// Execute a Wasm contract.
     ///
     /// # Errors
-    /// Returns an error if the execution fails. This can happen if the Wasm instance cannot be prepared.
-    /// Otherwise, returns the result of the execution with a gas usage attached which means a successful execution (that may or may not have produced an error such as a trap, return, or out of gas).
+    /// Returns an error if the execution fails. This can happen if the Wasm instance cannot be
+    /// prepared. Otherwise, returns the result of the execution with a gas usage attached which
+    /// means a successful execution (that may or may not have produced an error such as a trap,
+    /// return, or out of gas).
     fn execute<R: GlobalStateReader + 'static>(
         &self,
         mut tracking_copy: TrackingCopy<R>,
@@ -302,8 +305,8 @@ impl Executor for ExecutorV2 {
             address_generator,
         } = execute_request;
 
-        // TODO: Purse uref does not need to be optional once value transfers to WasmBytes are supported.
-        // let caller_entity_addr = EntityAddr::new_account(caller);
+        // TODO: Purse uref does not need to be optional once value transfers to WasmBytes are
+        // supported. let caller_entity_addr = EntityAddr::new_account(caller);
         let source_purse = get_purse_for_entity(&mut tracking_copy, caller_key);
 
         let (wasm_bytes, export_or_selector): (_, Either<&str, u32>) = match &execution_kind {
@@ -335,7 +338,9 @@ impl Executor for ExecutorV2 {
                             }
                         };
 
-                        // Note: Bytecode stored in the GlobalStateReader has a "kind" option - currently we know we have a v2 bytecode as the stored contract is of "V2" variant.
+                        // Note: Bytecode stored in the GlobalStateReader has a "kind" option -
+                        // currently we know we have a v2 bytecode as the stored contract is of "V2"
+                        // variant.
                         let wasm_bytes = tracking_copy
                             .read(&wasm_key)
                             .expect("should read wasm")
@@ -430,7 +435,8 @@ impl Executor for ExecutorV2 {
         self.push_execution_stack(execution_kind.clone());
         let (vm_result, gas_usage) = match export_or_selector {
             Either::Left(export_name) => instance.call_export(export_name),
-            Either::Right(_entry_point) => todo!("Restore selectors"), //instance.call_export(&entry_point),
+            Either::Right(_entry_point) => todo!("Restore selectors"), /* instance.call_export(&
+                                                                        * entry_point), */
         };
 
         let top_execution_kind = self

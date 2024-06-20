@@ -64,8 +64,9 @@ impl Distribution<GenesisRequest> for Standard {
         // let chainspec_file_bytes: [u8; 10] = rng.gen();
         // let genesis_account_file_bytes: [u8; 15] = rng.gen();
         // let chainspec_registry =
-        //     ChainspecRegistry::new_with_genesis(&chainspec_file_bytes, &genesis_account_file_bytes);
-        // GenesisRequest::new(chainspec_hash, protocol_version, config, chainspec_registry)
+        //     ChainspecRegistry::new_with_genesis(&chainspec_file_bytes,
+        // &genesis_account_file_bytes); GenesisRequest::new(chainspec_hash,
+        // protocol_version, config, chainspec_registry)
     }
 }
 

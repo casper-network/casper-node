@@ -82,9 +82,9 @@ pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
     //         let ref_struct = format_ident!("{}Ref", path.require_ident().unwrap());
     //         dynamic_manifest.push(quote! {
     //             {
-    //                 const DISPATCH_TABLE: &[casper_sdk::sys::EntryPoint] = &(<#ref_struct>::__casper_new_trait_dispatch_table::<#name>());
-    //                 DISPATCH_TABLE
-    //             }
+    //                 const DISPATCH_TABLE: &[casper_sdk::sys::EntryPoint] =
+    // &(<#ref_struct>::__casper_new_trait_dispatch_table::<#name>());
+    // DISPATCH_TABLE             }
     //         });
 
     //         impl_for_ref.push(quote! {
@@ -503,8 +503,10 @@ fn generate_impl_for_contract(
                             None
                         }
                         _ if method_attribute.constructor => {
-                            // Constructor does not return serialized state but is expected to save state, or explicitly revert.
-                            // TODO: Add support for Result<Self, Error> and revert_on_error if possible.
+                            // Constructor does not return serialized state but is expected to save
+                            // state, or explicitly revert.
+                            // TODO: Add support for Result<Self, Error> and revert_on_error if
+                            // possible.
                             Some(quote! {
                                 let _ = flags; // hide the warning
                             })
@@ -598,7 +600,8 @@ fn generate_impl_for_contract(
                 };
 
                 let _bits = flag_value.bits();
-                // let _selector_value = selector_value.map(|value| value.get()).unwrap_or_default();
+                // let _selector_value = selector_value.map(|value|
+                // value.get()).unwrap_or_default();
 
                 // #[cfg(feature = "__abi_generator")]
                 // abi_generator_entry_points.push(quote! {
@@ -606,8 +609,8 @@ fn generate_impl_for_contract(
                 //     const _: () = {
                 //         #[casper_sdk::linkme::distributed_slice(casper_sdk::abi_generator::ENTRYPOINTS)]
                 //         #[linkme(crate = casper_sdk::linkme)]
-                //         static ENTRY_POINTS: fn() -> casper_sdk::schema::SchemaEntryPoint = <#struct_name>::__casper_entry_points;
-                //     };
+                //         static ENTRY_POINTS: fn() -> casper_sdk::schema::SchemaEntryPoint =
+                // <#struct_name>::__casper_entry_points;     };
                 // });
 
                 let extern_func_name = format_ident!("__casper_export_{func_name}");
@@ -1134,7 +1137,8 @@ fn casper_trait_definition(
                 //         selector: #schema_selector,
                 //         arguments: vec![ #(#args,)* ],
                 //         result: #result,
-                //         flags: casper_sdk::vm_common::flags::EntryPointFlags::from_bits(#flags).unwrap(),
+                //         flags:
+                // casper_sdk::vm_common::flags::EntryPointFlags::from_bits(#flags).unwrap(),
                 //     }
                 // });
 

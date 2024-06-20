@@ -1363,8 +1363,8 @@ where
         .expect("Unable to serialize data via write_bytes");
     assert_eq!(serialized, written_bytes);
 
-    let deserialized_from_slice =
-        deserialize_from_slice(&serialized).expect("Unable to deserialize data");
+    let deserialized_from_slice = deserialize_from_slice(&serialized)
+        .unwrap_or_else(|error| panic!("Unable to deserialize data: {error:?} ({t:?})"));
     assert_eq!(*t, deserialized_from_slice);
 
     let deserialized = deserialize::<T>(serialized).expect("Unable to deserialize data");

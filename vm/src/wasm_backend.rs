@@ -39,11 +39,13 @@ impl GasUsage {
 pub(crate) struct Context<S: GlobalStateReader, E: Executor> {
     /// The address of the account that initiated the contract or session code.
     pub(crate) initiator: Address,
-    /// The address of the addressable entity that is currently executing the contract or session code.
+    /// The address of the addressable entity that is currently executing the contract or session
+    /// code.
     pub(crate) caller: Key,
     /// The address of the addressable entity that is being called.
     pub(crate) callee: Key,
-    /// The state of the global state at the time of the call based on the currently executing contract or session address.
+    /// The state of the global state at the time of the call based on the currently executing
+    /// contract or session address.
     // pub(crate) state_address: Address,
     /// The amount of tokens that were send to the contract's purse at the time of the call.
     pub(crate) value: u64,

@@ -3,8 +3,10 @@ use crate::{
     traits::{CEP18Ref, CEP78State, CEP18},
 };
 use casper_macros::casper;
-use casper_sdk::host;
-use casper_sdk::serializers::borsh::{BorshDeserialize, BorshSerialize};
+use casper_sdk::{
+    host,
+    serializers::borsh::{BorshDeserialize, BorshSerialize},
+};
 use std::string::String;
 
 use crate::traits::CEP18Ext;
@@ -26,8 +28,9 @@ impl Default for NFTContract {
 impl NFTContract {
     #[casper(constructor)]
     pub fn new(collection_name: String, total_token_supply: u64) -> NFTContract {
-        // TODO: Does host needs better support for aborting execution? Currently, this would be seen as a trapped execution with a possible casper_print call coming from a panic handler.
-        // let state =
+        // TODO: Does host needs better support for aborting execution? Currently, this would be
+        // seen as a trapped execution with a possible casper_print call coming from a panic
+        // handler. let state =
         //     CEP78State::new(collection_name, total_token_supply);
         // Self { state }
         todo!()

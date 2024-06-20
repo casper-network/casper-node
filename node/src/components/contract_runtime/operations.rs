@@ -1,5 +1,6 @@
 use std::{collections::BTreeMap, convert::TryInto, sync::Arc, time::Instant};
 
+use casper_vm::executor::{v2::ExecutorV2, CreateContractRequestBuilder, ExecuteRequestBuilder};
 use itertools::Itertools;
 use tracing::{debug, error, info, trace, warn};
 
@@ -21,6 +22,7 @@ use casper_storage::{
         StateProvider, StateReader,
     },
     system::runtime_native::Config as NativeRuntimeConfig,
+    AddressGenerator, AddressGeneratorBuilder,
 };
 
 use casper_types::{
@@ -29,7 +31,7 @@ use casper_types::{
     system::handle_payment::ARG_AMOUNT,
     BlockHash, BlockHeader, BlockTime, BlockV2, CLValue, Chainspec, ChecksumRegistry, Digest,
     EraEndV2, EraId, FeeHandling, Gas, GasLimited, Key, ProtocolVersion, PublicKey, RefundHandling,
-    Transaction, AUCTION_LANE_ID, MINT_LANE_ID, U512,
+    Transaction, TransactionEntryPoint, TransactionTarget, AUCTION_LANE_ID, MINT_LANE_ID, U512,
 };
 
 use super::{
@@ -49,6 +51,7 @@ use crate::{
 pub fn execute_finalized_block(
     data_access_layer: &DataAccessLayer<LmdbGlobalState>,
     execution_engine_v1: &ExecutionEngineV1,
+    execution_engine_v2: ExecutorV2,
     chainspec: &Chainspec,
     metrics: Option<Arc<Metrics>>,
     execution_pre_state: ExecutionPreState,
@@ -176,6 +179,11 @@ pub fn execute_finalized_block(
         };
         artifact_builder.with_gas_limit(gas_limit);
 
+        // match transaction {
+        //     Transaction::Deploy(_) => todo!(),
+        //     Transaction::V1(_) => todo!(),
+        // }
+
         // NOTE: this is the actual adjusted cost that we charge for (gas limit * gas price)
         let cost = match transaction.gas_cost(chainspec, current_gas_price) {
             Ok(motes) => motes.value(),
@@ -187,6 +195,82 @@ pub fn execute_finalized_block(
             }
         };
         artifact_builder.with_added_cost(cost);
+
+        if transaction.is_v2_wasm() {
+            // let v2 = transaction.as_v2_wasm().unwrap();
+            let transaction_v1 = transaction.as_transaction_v1().unwrap();
+
+            match transaction_v1.body().target() {
+                TransactionTarget::Native => todo!(),
+                TransactionTarget::Stored { id, runtime } => todo!(),
+                TransactionTarget::Session {
+                    // kind,
+                    module_bytes,
+                    runtime,
+                } => {
+                    todo!()
+                    // match kind {
+                    //     TransactionSessionKind::Standard => {
+                    //         todo!("run standard session")
+                    //     }
+                    //     TransactionSessionKind::Installer => {
+                    //         let address_generator = AddressGeneratorBuilder::default()
+                    //             .seed_with(transaction_hash.as_ref())
+                    //             .build();
+
+                    //         let mut builder = CreateContractRequestBuilder::default();
+
+                    //         match transaction_v1.body().entry_point() {
+                    //             TransactionEntryPoint::Custom(entry_point_name) => {
+                    //                 builder = builder.with_entry_point(entry_point_name.clone());
+                    //             }
+                    //             TransactionEntryPoint::DefaultInitialize => {
+                    //                 // No entry poitn specified, uses default initialization upon
+                    //                 // first call (if possible).
+                    //             }
+                    //             _other => {
+                    //                 todo!("Not supported entry point kind")
+                    //             }
+                    //         };
+
+                    //         let request = builder
+                    //             .with_initiator(initiator_addr.account_hash().value())
+                    //             .with_gas_limit(1_000_000)
+                    //             .with_transaction_hash(transaction_hash)
+                    //
+                    // .with_wasm_bytes(module_bytes.clone().into_bytes().unwrap().into())
+                    //             .with_address_generator(address_generator)
+                    //             .with_value(0)
+                    //             // .with_input(input_data.clone().into())
+                    //             .build()
+                    //             .expect("should build");
+                    //         // todo!("run installer")
+                    //     }
+                    //     TransactionSessionKind::Upgrader => {
+                    //         todo!("upgrader is not supported under v2 engine")
+                    //     }
+                    //     TransactionSessionKind::Isolated => {
+                    //         todo!("isolated is not supported under v2 engine")
+                    //     }
+                    // }
+                }
+            }
+
+            //     let execute_request = ExecuteRequestBuilder::default()
+            //     .with_initiator(DEFAULT_ACCOUNT_HASH.value())
+            //     .with_caller_key(Key::Account(DEFAULT_ACCOUNT_HASH.clone()))
+            //     .with_callee_key(Key::Account(DEFAULT_ACCOUNT_HASH.clone()))
+            //     .with_gas_limit(DEFAULT_GAS_LIMIT)
+            //     .with_value(1000)
+            //     .with_transaction_hash(TRANSACTION_HASH)
+            // .with_target(ExecutionKind::SessionBytes(VM2_HARNESS))
+            // .with_serialized_input((flipper_address,))
+            // .with_shared_address_generator(address_generator)
+            // .build()
+            // .expect("should build");
+
+            todo!()
+        }
 
         let is_standard_payment = transaction.is_standard_payment();
         let refund_purse_active = !is_standard_payment;
@@ -286,6 +370,7 @@ pub fn execute_finalized_block(
             is_not_penalized && sufficient_balance && is_supported
         };
 
+        let runtime_args = runtime_args.cloned().expect("named args");
         if allow_execution {
             if is_standard_payment {
                 // place a processing hold on the paying account to prevent double spend.

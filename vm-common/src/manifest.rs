@@ -30,7 +30,8 @@ impl BorshSerialize for EntryPoint {
         selector.serialize(writer)?;
 
         let fptr_integer = {
-            // Be aware that this is not portable across all platforms and makes sense only under wasm32 where each function pointer is guaranteed to be part of a wasm table entry.
+            // Be aware that this is not portable across all platforms and makes sense only under
+            // wasm32 where each function pointer is guaranteed to be part of a wasm table entry.
             let fptr_integer = fptr as usize;
             LEB128U::new(fptr_integer as u64)
         };

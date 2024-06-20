@@ -46,7 +46,8 @@ fn main() -> anyhow::Result<()> {
             mut features,
         } => {
             //
-            // Stage 1: compile contract package to a native library with extra code that will produce ABI information including entrypoints, types, etc.
+            // Stage 1: compile contract package to a native library with extra code that will
+            // produce ABI information including entrypoints, types, etc.
             //
             let tempdir = tempfile::TempDir::new().expect("Failed to create tempdir");
 
@@ -138,8 +139,10 @@ fn main() -> anyhow::Result<()> {
             // Stage 2: Construct a schema object from the extracted information
             //
 
-            // Stage 3: Build the contract package again, but now using wasm32-unknown-unknown target without extra feature flags - this is the production contract wasm file.
-            // Stage 3a: Optionally (but by default) create an entrypoint in the wasm that will have embedded schema JSON file for discoverability (aka internal schema).
+            // Stage 3: Build the contract package again, but now using wasm32-unknown-unknown
+            // target without extra feature flags - this is the production contract wasm file.
+            // Stage 3a: Optionally (but by default) create an entrypoint in the wasm that will have
+            // embedded schema JSON file for discoverability (aka internal schema).
             // Stage 3b: Run wasm optimizations passes that will shrink the size of the wasm.
 
             //
