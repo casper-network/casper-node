@@ -1,6 +1,6 @@
 use lmdb::RwTransaction;
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     mem,
     ops::Deref,
     sync::{Arc, RwLock},
@@ -9,7 +9,7 @@ use std::{
 use tracing::{debug, error};
 
 use casper_types::{
-    bytesrepr::ToBytes,
+    bytesrepr::{self, ToBytes},
     execution::{Effects, TransformInstruction, TransformKindV2, TransformV2},
     global_state::TrieMerkleProof,
     Digest, Key, StoredValue,
@@ -42,6 +42,98 @@ type SharedCache = Arc<RwLock<Cache>>;
 struct Cache {
     cached_values: BTreeMap<Key, (bool, StoredValue)>,
     pruned: BTreeSet<Key>,
+    cached_keys: CacheTrie<Key>,
+}
+
+use std::collections::HashMap;
+
+struct CacheTrieNode<T> {
+    children: HashMap<u8, CacheTrieNode<T>>,
+    value: Option<T>,
+}
+
+impl<T> CacheTrieNode<T> {
+    fn new() -> Self {
+        CacheTrieNode {
+            children: HashMap::new(),
+            value: None,
+        }
+    }
+
+    fn remove(&mut self, bytes: &[u8], depth: usize) -> bool {
+        if depth == bytes.len() {
+            if self.value.is_some() {
+                self.value = None;
+                return self.children.is_empty();
+            }
+            return false;
+        }
+
+        if let Some(child_node) = self.children.get_mut(&bytes[depth]) {
+            if child_node.remove(bytes, depth + 1) {
+                self.children.remove(&bytes[depth]);
+                return self.value.is_none() && self.children.is_empty();
+            }
+        }
+        false
+    }
+}
+
+struct CacheTrie<T: Copy> {
+    root: CacheTrieNode<T>,
+}
+
+impl<T: Copy> CacheTrie<T> {
+    fn new() -> Self {
+        CacheTrie {
+            root: CacheTrieNode::new(),
+        }
+    }
+
+    fn insert(&mut self, key_bytes: &[u8], key: T) {
+        let mut current_node = &mut self.root;
+        for &byte in key_bytes {
+            current_node = current_node
+                .children
+                .entry(byte)
+                .or_insert(CacheTrieNode::new());
+        }
+        current_node.value = Some(key);
+    }
+
+    fn keys_with_prefix(&self, prefix: &[u8]) -> Vec<T> {
+        let mut current_node = &self.root;
+        let mut result = Vec::new();
+
+        for &byte in prefix {
+            match current_node.children.get(&byte) {
+                Some(node) => current_node = node,
+                None => return result,
+            }
+        }
+
+        self.collect_keys(current_node, &mut result);
+        result
+    }
+
+    fn collect_keys(&self, start_node: &CacheTrieNode<T>, result: &mut Vec<T>) {
+        let mut stack = VecDeque::new();
+        stack.push_back(start_node);
+
+        while let Some(node) = stack.pop_back() {
+            if let Some(key) = node.value {
+                result.push(key);
+            }
+
+            for child_node in node.children.values() {
+                stack.push_back(child_node);
+            }
+        }
+    }
+
+    fn remove(&mut self, key_bytes: &[u8]) -> bool {
+        self.root.remove(key_bytes, 0)
+    }
 }
 
 impl Cache {
@@ -49,6 +141,7 @@ impl Cache {
         Cache {
             cached_values: BTreeMap::new(),
             pruned: BTreeSet::new(),
+            cached_keys: CacheTrie::new(),
         }
     }
 
@@ -57,18 +150,27 @@ impl Cache {
         self.cached_values.is_empty() && self.pruned.is_empty()
     }
 
-    fn insert_write(&mut self, key: Key, value: StoredValue) {
+    fn insert_write(&mut self, key: Key, value: StoredValue) -> Result<(), bytesrepr::Error> {
         self.pruned.remove(&key);
-        self.cached_values.insert(key, (true, value));
+        if self.cached_values.insert(key, (true, value)).is_none() {
+            let key_bytes = key.to_bytes()?;
+            self.cached_keys.insert(&key_bytes, key);
+        };
+        Ok(())
     }
 
-    fn insert_read(&mut self, key: Key, value: StoredValue) {
+    fn insert_read(&mut self, key: Key, value: StoredValue) -> Result<(), bytesrepr::Error> {
+        let key_bytes = key.to_bytes()?;
+        self.cached_keys.insert(&key_bytes, key);
         self.cached_values.entry(key).or_insert((false, value));
+        Ok(())
     }
 
-    fn prune(&mut self, key: Key) {
+    fn prune(&mut self, key: Key) -> Result<(), bytesrepr::Error> {
         self.cached_values.remove(&key);
+        self.cached_keys.remove(&key.to_bytes()?);
         self.pruned.insert(key);
+        Ok(())
     }
 
     fn get(&self, key: &Key) -> Option<&StoredValue> {
@@ -175,7 +277,10 @@ impl StateReader<Key, StoredValue> for ScratchGlobalStateView {
             key,
         )? {
             ReadResult::Found(value) => {
-                self.cache.write().unwrap().insert_read(*key, value.clone());
+                self.cache
+                    .write()
+                    .expect("poisoned scratch cache lock")
+                    .insert_read(*key, value.clone())?;
                 Some(value)
             }
             ReadResult::NotFound => None,
@@ -213,13 +318,9 @@ impl StateReader<Key, StoredValue> for ScratchGlobalStateView {
 
     fn keys_with_prefix(&self, prefix: &[u8]) -> Result<Vec<Key>, Self::Error> {
         let mut ret = Vec::new();
-        let cache = self.cache.read().unwrap();
-        for cached_key in cache.cached_values.keys() {
-            let serialized_key = cached_key.to_bytes()?;
-            if serialized_key.starts_with(prefix) && !cache.pruned.contains(cached_key) {
-                ret.push(*cached_key)
-            }
-        }
+        let cache = self.cache.read().expect("poisoned scratch cache mutex");
+        let cached_keys = cache.cached_keys.keys_with_prefix(prefix);
+        ret.extend(cached_keys);
 
         let txn = self.environment.create_read_txn()?;
         let keys_iter = keys_with_prefix::<Key, StoredValue, _, _>(
@@ -250,6 +351,7 @@ impl CommitProvider for ScratchGlobalState {
     /// State hash returned is the one provided, as we do not write to lmdb with this kind of global
     /// state. Note that the state hash is NOT used, and simply passed back to the caller.
     fn commit(&self, state_hash: Digest, effects: Effects) -> Result<Digest, GlobalStateError> {
+        let txn = self.environment.create_read_txn()?;
         for (key, kind) in effects.value().into_iter().map(TransformV2::destructure) {
             let cached_value = self.cache.read().unwrap().get(&key).cloned();
             let instruction = match (cached_value, kind) {
@@ -261,7 +363,6 @@ impl CommitProvider for ScratchGlobalState {
                 (None, transform_kind) => {
                     // It might be the case that for `Add*` operations we don't have the previous
                     // value in cache yet.
-                    let txn = self.environment.create_read_txn()?;
                     let instruction = match read::<
                         Key,
                         StoredValue,
@@ -293,7 +394,6 @@ impl CommitProvider for ScratchGlobalState {
                             return Err(CommitError::ReadRootNotFound(state_hash).into());
                         }
                     };
-                    txn.commit()?;
                     instruction
                 }
                 (Some(current_value), transform_kind) => {
@@ -309,13 +409,14 @@ impl CommitProvider for ScratchGlobalState {
             let mut cache = self.cache.write().unwrap();
             match instruction {
                 TransformInstruction::Store(value) => {
-                    cache.insert_write(key, value);
+                    cache.insert_write(key, value)?;
                 }
                 TransformInstruction::Prune(key) => {
-                    cache.prune(key);
+                    cache.prune(key)?;
                 }
             }
         }
+        txn.commit()?;
         Ok(state_hash)
     }
 }
@@ -701,5 +802,84 @@ pub(crate) mod tests {
             None,
             original_checkout.read(&test_pairs_updated[2].key).unwrap()
         );
+    }
+
+    #[test]
+    fn cache_trie_basic_insert_get() {
+        let mut trie = CacheTrie::new();
+        let key_hello = Key::Hash(*b"hello...........................");
+        let key_world = Key::Hash(*b"world...........................");
+        let key_hey = Key::Hash(*b"hey.............................");
+
+        trie.insert(b"hello", key_hello);
+        trie.insert(b"world", key_world);
+        trie.insert(b"hey", key_hey);
+
+        assert_eq!(trie.keys_with_prefix(b"he"), vec![key_hello, key_hey]);
+        assert_eq!(trie.keys_with_prefix(b"wo"), vec![key_world]);
+    }
+
+    #[test]
+    fn cache_trie_overlapping_prefix() {
+        let mut trie = CacheTrie::new();
+        let key_apple = Key::Hash(*b"apple...........................");
+        let key_app = Key::Hash(*b"app.............................");
+        let key_apron = Key::Hash(*b"apron...........................");
+
+        trie.insert(b"apple", key_apple);
+        trie.insert(b"app", key_app);
+        trie.insert(b"apron", key_apron);
+
+        assert_eq!(
+            trie.keys_with_prefix(b"ap"),
+            vec![key_app, key_apple, key_apron]
+        );
+        assert_eq!(trie.keys_with_prefix(b"app"), vec![key_app, key_apple]);
+    }
+
+    #[test]
+    fn cache_trie_leaf_removal() {
+        let mut trie = CacheTrie::new();
+        let key_cat = Key::Hash(*b"cat.............................");
+        let key_category = Key::Hash(*b"category........................");
+
+        trie.insert(b"cat", key_cat);
+        trie.insert(b"category", key_category);
+
+        trie.remove(b"category");
+        assert_eq!(trie.keys_with_prefix(b"ca"), vec![key_cat]);
+    }
+
+    #[test]
+    fn cache_trie_internal_node_removal() {
+        let mut trie = CacheTrie::new();
+        let key_be = Key::Hash(*b"be..............................");
+        let key_berry = Key::Hash(*b"berry...........................");
+
+        trie.insert(b"be", key_be);
+        trie.insert(b"berry", key_berry);
+
+        trie.remove(b"be");
+        assert_eq!(trie.keys_with_prefix(b"be"), vec![key_berry]);
+    }
+
+    #[test]
+    fn cache_trie_non_existent_prefix() {
+        let mut trie = CacheTrie::new();
+
+        let key_apple = Key::Hash(*b"apple...........................");
+        let key_mango = Key::Hash(*b"mango...........................");
+
+        trie.insert(b"apple", key_apple);
+        trie.insert(b"mango", key_mango);
+
+        assert_eq!(trie.keys_with_prefix(b"b"), Vec::<Key>::new());
+    }
+
+    #[test]
+    fn cache_trie_empty_trie_search() {
+        let trie = CacheTrie::<Key>::new();
+
+        assert_eq!(trie.keys_with_prefix(b""), Vec::<Key>::new());
     }
 }
