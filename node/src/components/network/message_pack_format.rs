@@ -4,10 +4,7 @@
 //! our network decoder via `Cargo.toml`; using `tokio_serde::MessagePack` would instead tie it
 //! to the dependency specified in `tokio_serde`'s `Cargo.toml`.
 
-use std::{
-    io::{self, Cursor},
-    pin::Pin,
-};
+use std::{io, pin::Pin};
 
 use bytes::{Bytes, BytesMut};
 use serde::{Deserialize, Serialize};
@@ -41,7 +38,6 @@ where
 
     #[inline]
     fn deserialize(self: Pin<&mut Self>, src: &BytesMut) -> Result<M, Self::Error> {
-        rmp_serde::from_read(Cursor::new(src))
-            .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))
+        rmp_serde::from_read_ref(src).map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))
     }
 }

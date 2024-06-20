@@ -84,7 +84,7 @@ impl SyncLeapIdentifier {
 }
 
 impl Display for SyncLeapIdentifier {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "{} trusted_ancestor_only: {}",

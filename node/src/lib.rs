@@ -145,10 +145,7 @@ mod tests {
         let (version, sha) = prefix.split_once('-').unwrap_or((prefix, ""));
 
         assert_eq!(version, env!("CARGO_PKG_VERSION"));
-        assert_eq!(
-            sha,
-            std::env::var("NODE_GIT_SHA").unwrap_or_default().as_str()
-        );
+        assert_eq!(sha, env::var("NODE_GIT_SHA").unwrap_or_default().as_str());
         if env!("NODE_BUILD_PROFILE") == "release" {
             assert_eq!(profile, "");
         } else {
@@ -163,10 +160,7 @@ mod tests {
         let (version, sha) = prefix.split_once('-').unwrap_or((prefix, ""));
 
         assert_eq!(version, env!("CARGO_PKG_VERSION"));
-        assert_eq!(
-            sha,
-            std::env::var("NODE_GIT_SHA").unwrap_or_default().as_str()
-        );
+        assert_eq!(sha, env::var("NODE_GIT_SHA").unwrap_or_default().as_str());
         if env!("NODE_BUILD_PROFILE") == "release" {
             assert_eq!(profile, "");
         } else {

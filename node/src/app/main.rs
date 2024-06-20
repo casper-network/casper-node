@@ -25,12 +25,12 @@ fn panic_hook(info: &PanicInfo) {
 
     // Print panic info
     if let Some(s) = info.payload().downcast_ref::<&str>() {
-        eprintln!("node panicked: {}", s);
+        eprintln!("node panicked: {s}");
     // TODO - use `info.message()` once https://github.com/rust-lang/rust/issues/66745 is fixed
     // } else if let Some(message) = info.message() {
-    //     eprintln!("{}", message);
+    //     eprintln!("{message}");
     } else {
-        eprintln!("{}", info);
+        eprintln!("{info}");
     }
 
     // Abort after a panic, even if only a worker thread panicked.
@@ -55,7 +55,7 @@ fn main() -> anyhow::Result<()> {
         // Parse CLI args and run selected subcommand.
         let opts = Cli::from_args();
 
-        runtime.block_on(async { opts.run().await })?
+        runtime.block_on(opts.run())?
     };
 
     info!(%exit_code, "exiting casper-node");

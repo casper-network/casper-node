@@ -146,7 +146,7 @@ where
     Span::current().record("peer_id", &field::display(peer_id));
 
     if peer_id == context.our_id {
-        info!("incoming loopback connection");
+        info!("outgoing loopback connection");
         return OutgoingConnection::Loopback { peer_addr };
     }
 
@@ -240,7 +240,7 @@ where
 
 impl<REv> NetworkContext<REv> {
     pub(super) fn new(
-        cfg: Config,
+        cfg: &Config,
         our_identity: Identity,
         node_key_pair: Option<NodeKeyPair>,
         chain_info: ChainInfo,
@@ -608,8 +608,7 @@ pub(super) async fn server<P, REv>(
                     let handler_span = span.clone();
                     tokio::spawn(
                         async move {
-                            let incoming =
-                                handle_incoming(context.clone(), stream, peer_addr).await;
+                            let incoming = handle_incoming(context, stream, peer_addr).await;
                             event_queue
                                 .schedule(
                                     Event::IncomingConnection {

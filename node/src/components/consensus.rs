@@ -183,7 +183,7 @@ pub(crate) enum Event {
 }
 
 impl Debug for ConsensusMessage {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             ConsensusMessage::Protocol { era_id, payload: _ } => {
                 write!(f, "Protocol {{ era_id: {:?}, .. }}", era_id)
@@ -218,7 +218,7 @@ impl Display for ConsensusMessage {
 }
 
 impl Debug for ConsensusRequestMessage {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "ConsensusRequestMessage {{ era_id: {:?}, .. }}",

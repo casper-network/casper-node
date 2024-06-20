@@ -482,7 +482,7 @@ impl MainReactor {
             Ok(Some(block_header)) if block_header.is_switch_block() => {
                 block_header.is_last_block_before_activation(&self.chainspec.protocol_config)
             }
-            Ok(Some(_)) | Ok(None) => false,
+            Ok(Some(_) | None) => false,
             Err(msg) => {
                 error!("{:?}: {}", self.state, msg);
                 false

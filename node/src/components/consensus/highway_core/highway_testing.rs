@@ -71,7 +71,7 @@ enum HighwayMessage {
 }
 
 impl Debug for HighwayMessage {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             HighwayMessage::Timer(t) => f.debug_tuple("Timer").field(&t.millis()).finish(),
             HighwayMessage::RequestBlock(bc) => f
@@ -153,7 +153,7 @@ pub(crate) enum TestRunError {
 }
 
 impl Display for TestRunError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             TestRunError::NoMessages => write!(
                 f,
@@ -1024,7 +1024,7 @@ impl Debug for HashWrapper {
 }
 
 impl Display for HashWrapper {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         Debug::fmt(self, f)
     }
 }

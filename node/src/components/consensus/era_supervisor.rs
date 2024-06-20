@@ -142,7 +142,7 @@ impl EraSupervisor {
         registry: &Registry,
     ) -> Result<Self, Error> {
         let unit_files_folder = storage_dir.join("unit_files");
-        std::fs::create_dir_all(&unit_files_folder)?;
+        fs::create_dir_all(&unit_files_folder)?;
         info!(our_id = %validator_matrix.public_signing_key(), "EraSupervisor pubkey",);
         let metrics = Metrics::new(registry)?;
 

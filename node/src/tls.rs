@@ -63,7 +63,7 @@ mod big_array {
     big_array! { BigArray; }
 }
 
-/// The chosen signature algorithm (**ECDSA  with SHA512**).
+/// The chosen signature algorithm (**ECDSA with SHA512**).
 const SIGNATURE_ALGORITHM: Nid = Nid::ECDSA_WITH_SHA512;
 
 /// The underlying elliptic curve (**P-521**).
@@ -556,7 +556,7 @@ fn tls_cert_from_x509_and_key(
     ec_key: EcKey<Public>,
 ) -> Result<TlsCert, ValidationError> {
     let cert_fingerprint = cert_fingerprint(&cert)?;
-    let key_fingerprint = key_fingerprint(ec_key)?;
+    let key_fingerprint = key_fingerprint(&ec_key)?;
     Ok(TlsCert {
         x509: cert,
         cert_fingerprint,
@@ -575,7 +575,7 @@ pub(crate) fn cert_fingerprint(cert: &X509) -> Result<CertFingerprint, Validatio
 }
 
 /// Calculate a fingerprint for the public EC key.
-pub(crate) fn key_fingerprint(ec_key: EcKey<Public>) -> Result<KeyFingerprint, ValidationError> {
+pub(crate) fn key_fingerprint(ec_key: &EcKey<Public>) -> Result<KeyFingerprint, ValidationError> {
     let mut big_num_context =
         BigNumContext::new().map_err(ValidationError::BigNumContextNotAvailable)?;
     let buf = ec_key
@@ -710,7 +710,7 @@ fn generate_private_key() -> SslResult<PKey<Private>> {
     // TODO: Please verify this for accuracy!
 
     let ec_group = ec::EcGroup::from_curve_name(SIGNATURE_CURVE)?;
-    let ec_key = ec::EcKey::generate(ec_group.as_ref())?;
+    let ec_key = EcKey::generate(ec_group.as_ref())?;
 
     PKey::from_ec_key(ec_key)
 }
@@ -836,7 +836,7 @@ impl Hash for Sha512 {
         // TODO: Benchmark if this is really worthwhile over the automatic derivation.
         chunk.copy_from_slice(&self.bytes()[0..8]);
 
-        state.write_u64(u64::from_le_bytes(chunk))
+        state.write_u64(u64::from_le_bytes(chunk));
     }
 }
 

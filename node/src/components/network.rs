@@ -45,7 +45,7 @@ pub(crate) mod tasks;
 mod tests;
 
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
     io,
     net::{SocketAddr, TcpListener},
@@ -278,7 +278,7 @@ where
         );
 
         let context = Arc::new(NetworkContext::new(
-            cfg.clone(),
+            &cfg,
             our_identity,
             node_key_pair.map(NodeKeyPair::new),
             chain_info_source.into(),
@@ -421,7 +421,7 @@ where
             total_outgoing_manager_connected_peers += 1;
             if self.outgoing_limiter.is_validator_in_era(era_id, &peer_id) {
                 total_connected_validators_in_era += 1;
-                self.send_message(peer_id, msg.clone(), None)
+                self.send_message(peer_id, msg.clone(), None);
             }
         }
 
@@ -441,7 +441,7 @@ where
         msg: Arc<Message<P>>,
         gossip_target: GossipTarget,
         count: usize,
-        exclude: HashSet<NodeId>,
+        exclude: &HashSet<NodeId>,
     ) -> HashSet<NodeId> {
         let is_validator_in_era =
             |era: EraId, peer_id: &NodeId| self.outgoing_limiter.is_validator_in_era(era, peer_id);
@@ -449,7 +449,7 @@ where
             rng,
             gossip_target,
             count,
-            exclude.clone(),
+            exclude,
             self.outgoing_manager.connected_peers(),
             is_validator_in_era,
         );
@@ -556,7 +556,7 @@ where
                     if let Some(symmetries) = self.connection_symmetries.get(&peer_id) {
                         let incoming_count = symmetries
                             .incoming_addrs()
-                            .map(|addrs| addrs.len())
+                            .map(BTreeSet::len)
                             .unwrap_or_default();
 
                         if incoming_count >= self.cfg.max_incoming_peer_connections as usize {
@@ -635,12 +635,8 @@ where
         span.in_scope(|| {
             // Log the outcome.
             match result {
-                Ok(()) => {
-                    info!("regular connection closing")
-                }
-                Err(ref err) => {
-                    warn!(err = display_error(err), "connection dropped")
-                }
+                Ok(()) => info!("regular connection closing"),
+                Err(ref err) => warn!(err = display_error(err), "connection dropped"),
             }
 
             // Update the connection symmetries.
@@ -655,7 +651,6 @@ where
 
     /// Determines whether an outgoing peer should be blocked based on the connection error.
     fn is_blockable_offense_for_outgoing(
-        &self,
         error: &ConnectionError,
     ) -> Option<BlocklistJustification> {
         match error {
@@ -721,7 +716,7 @@ where
                 // We perform blocking first, to not trigger a reconnection before blocking.
                 let mut requests = Vec::new();
 
-                if let Some(justification) = self.is_blockable_offense_for_outgoing(&error) {
+                if let Some(justification) = Self::is_blockable_offense_for_outgoing(&error) {
                     requests.extend(self.outgoing_manager.block_addr(
                         peer_addr,
                         now,
@@ -853,7 +848,7 @@ where
                     Arc::new(Message::Payload(*payload)),
                     gossip_target,
                     count,
-                    exclude,
+                    &exclude,
                 );
                 auto_closing_responder.respond(sent_to).ignore()
             }
@@ -886,7 +881,7 @@ where
     {
         let mut effects = Effects::new();
 
-        for request in requests.into_iter() {
+        for request in requests {
             trace!(%request, "processing dial request");
             match request {
                 DialRequest::Dial { addr, span } => effects.extend(
@@ -901,7 +896,7 @@ where
                     // Dropping the `handle` is enough to signal the connection to shutdown.
                     span.in_scope(|| {
                         debug!("dropping connection, as requested");
-                    })
+                    });
                 }
                 DialRequest::SendPing {
                     peer_id,
@@ -989,7 +984,7 @@ where
                 ret.insert(node_id, connection.peer_addr.to_string());
             } else {
                 // This should never happen unless the state of `OutgoingManager` is corrupt.
-                warn!(%node_id, "route disappeared unexpectedly")
+                warn!(%node_id, "route disappeared unexpectedly");
             }
         }
 
@@ -1052,7 +1047,7 @@ where
                                 our_id=%self.context.our_id(),
                                 err=display_error(err),
                                 "could not join server task cleanly"
-                            )
+                            );
                         }
                     }
                 }
@@ -1074,7 +1069,7 @@ fn choose_gossip_peers<F>(
     rng: &mut NodeRng,
     gossip_target: GossipTarget,
     count: usize,
-    exclude: HashSet<NodeId>,
+    exclude: &HashSet<NodeId>,
     connected_peers: impl Iterator<Item = NodeId>,
     is_validator_in_era: F,
 ) -> HashSet<NodeId>
@@ -1442,7 +1437,7 @@ mod gossip_target_tests {
             &mut rng,
             TARGET,
             VALIDATOR_COUNT + NON_VALIDATOR_COUNT + 1,
-            HashSet::new(),
+            &HashSet::new(),
             fixture.all_peers.iter().copied(),
             fixture.is_validator_in_era(),
         );
@@ -1453,7 +1448,7 @@ mod gossip_target_tests {
             &mut rng,
             TARGET,
             VALIDATOR_COUNT + NON_VALIDATOR_COUNT,
-            HashSet::new(),
+            &HashSet::new(),
             fixture.all_peers.iter().copied(),
             fixture.is_validator_in_era(),
         );
@@ -1465,7 +1460,7 @@ mod gossip_target_tests {
             &mut rng,
             TARGET,
             2 * VALIDATOR_COUNT,
-            HashSet::new(),
+            &HashSet::new(),
             fixture.all_peers.iter().copied(),
             fixture.is_validator_in_era(),
         );
@@ -1479,7 +1474,7 @@ mod gossip_target_tests {
             &mut rng,
             TARGET,
             VALIDATOR_COUNT,
-            HashSet::new(),
+            &HashSet::new(),
             fixture.all_peers.iter().copied(),
             fixture.is_validator_in_era(),
         );
@@ -1496,7 +1491,7 @@ mod gossip_target_tests {
             &mut rng,
             TARGET,
             2,
-            HashSet::new(),
+            &HashSet::new(),
             fixture.all_peers.iter().copied(),
             fixture.is_validator_in_era(),
         );
@@ -1514,7 +1509,7 @@ mod gossip_target_tests {
                 &mut rng,
                 TARGET,
                 1,
-                HashSet::new(),
+                &HashSet::new(),
                 fixture.all_peers.iter().copied(),
                 fixture.is_validator_in_era(),
             );
@@ -1538,7 +1533,7 @@ mod gossip_target_tests {
             &mut rng,
             TARGET,
             VALIDATOR_COUNT,
-            exclude.clone(),
+            &exclude,
             fixture.all_peers.iter().copied(),
             fixture.is_validator_in_era(),
         );
@@ -1556,7 +1551,7 @@ mod gossip_target_tests {
             &mut rng,
             TARGET,
             3,
-            exclude.clone(),
+            &exclude,
             fixture.all_peers.iter().copied(),
             fixture.is_validator_in_era(),
         );
@@ -1577,7 +1572,7 @@ mod gossip_target_tests {
             &mut rng,
             TARGET,
             VALIDATOR_COUNT + NON_VALIDATOR_COUNT + 1,
-            HashSet::new(),
+            &HashSet::new(),
             fixture.all_peers.iter().copied(),
             fixture.is_validator_in_era(),
         );
@@ -1588,7 +1583,7 @@ mod gossip_target_tests {
             &mut rng,
             TARGET,
             VALIDATOR_COUNT + NON_VALIDATOR_COUNT,
-            HashSet::new(),
+            &HashSet::new(),
             fixture.all_peers.iter().copied(),
             fixture.is_validator_in_era(),
         );
@@ -1599,7 +1594,7 @@ mod gossip_target_tests {
             &mut rng,
             TARGET,
             VALIDATOR_COUNT,
-            HashSet::new(),
+            &HashSet::new(),
             fixture.validators.iter().copied(),
             fixture.is_validator_in_era(),
         );
@@ -1612,7 +1607,7 @@ mod gossip_target_tests {
             &mut rng,
             TARGET,
             VALIDATOR_COUNT,
-            HashSet::new(),
+            &HashSet::new(),
             fixture.non_validators.iter().copied(),
             fixture.is_validator_in_era(),
         );
@@ -1631,7 +1626,7 @@ mod gossip_target_tests {
             &mut rng,
             TARGET,
             VALIDATOR_COUNT,
-            exclude.clone(),
+            &exclude,
             fixture.all_peers.iter().copied(),
             fixture.is_validator_in_era(),
         );
@@ -1655,7 +1650,7 @@ mod gossip_target_tests {
                 &mut rng,
                 TARGET,
                 1,
-                exclude.clone(),
+                &exclude,
                 fixture.all_peers.iter().copied(),
                 fixture.is_validator_in_era(),
             );

@@ -673,7 +673,7 @@ mod tests {
 
         // Check same complete data from other source causes `Noop` to be returned since we still
         // have all gossip requests in flight.  Check it updates holders.
-        gossip_table.register_infection_attempt(&data_id, std::iter::once(&node_ids[0]));
+        gossip_table.register_infection_attempt(&data_id, iter::once(&node_ids[0]));
         let action = gossip_table.new_complete_data(&data_id, Some(node_ids[0]), GossipTarget::All);
         assert_eq!(GossipAction::Noop, action);
         check_holders(&node_ids[..1], &gossip_table, &data_id);

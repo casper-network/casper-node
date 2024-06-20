@@ -2126,7 +2126,7 @@ async fn block_accumulator_doesnt_purge_with_delayed_block_execution() {
     // block can be delayed. Since we would purge an acceptor if the purge interval has passed,
     // we want to simulate a situation in which the purge interval was exceeded in order to test
     // the special case that if an acceptor that had sufficient finality, it is not purged.
-    tokio::time::sleep(
+    time::sleep(
         Duration::from(runner.reactor().block_accumulator.purge_interval) + Duration::from_secs(1),
     )
     .await;

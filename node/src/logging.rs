@@ -1,6 +1,6 @@
 //! Logging via the tracing crate.
 
-use std::{env, fmt, io};
+use std::{env, fmt, io, string::ToString};
 
 use ansi_term::{Color, Style};
 use anyhow::anyhow;
@@ -284,8 +284,8 @@ impl ReloadHandle {
     /// Returns a string representation of the current [`EnvFilter`], if set.
     fn display_log_filter(&self) -> Result<String, reload::Error> {
         match self {
-            ReloadHandle::Text(handle) => handle.with_current(|env_filter| env_filter.to_string()),
-            ReloadHandle::Json(handle) => handle.with_current(|env_filter| env_filter.to_string()),
+            ReloadHandle::Text(handle) => handle.with_current(ToString::to_string),
+            ReloadHandle::Json(handle) => handle.with_current(ToString::to_string),
         }
     }
 }
@@ -311,12 +311,12 @@ pub fn display_global_env_filter() -> anyhow::Result<String> {
 }
 
 /// Type alias for the formatting function used.
-pub type FormatDebugFn = fn(&mut Writer, &Field, &dyn std::fmt::Debug) -> fmt::Result;
+pub type FormatDebugFn = fn(&mut Writer, &Field, &dyn fmt::Debug) -> fmt::Result;
 
 fn format_into_debug_writer(
     writer: &mut Writer,
     field: &Field,
-    value: &dyn std::fmt::Debug,
+    value: &dyn fmt::Debug,
 ) -> fmt::Result {
     match field.name() {
         LOG_FIELD_MESSAGE => write!(writer, "{:?}", value),
@@ -346,7 +346,7 @@ pub fn init_with_config(config: &LoggingConfig) -> anyhow::Result<()> {
         // Setup a new tracing-subscriber writing to `stdout` for logging.
         LoggingFormat::Text => {
             let builder = tracing_subscriber::fmt()
-                .with_writer(io::stdout as fn() -> std::io::Stdout)
+                .with_writer(io::stdout as fn() -> io::Stdout)
                 .with_env_filter(filter)
                 .fmt_fields(formatter)
                 .event_format(FmtEvent::new(config.color, config.abbreviate_modules))
@@ -360,7 +360,7 @@ pub fn init_with_config(config: &LoggingConfig) -> anyhow::Result<()> {
         // JSON logging writes to `stdout` as well but uses the JSON format.
         LoggingFormat::Json => {
             let builder = tracing_subscriber::fmt()
-                .with_writer(io::stdout as fn() -> std::io::Stdout)
+                .with_writer(io::stdout as fn() -> io::Stdout)
                 .with_env_filter(filter)
                 .json()
                 .with_filter_reloading();

@@ -175,7 +175,7 @@ impl SharedFlag {
 
     /// Set the flag.
     pub(crate) fn set(self) {
-        self.0.store(true, Ordering::SeqCst)
+        self.0.store(true, Ordering::SeqCst);
     }
 
     /// Returns a shared instance of the flag for testing.
@@ -287,8 +287,9 @@ impl Source {
 impl Display for Source {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Source::PeerGossiped(node_id) => Display::fmt(node_id, formatter),
-            Source::Peer(node_id) => Display::fmt(node_id, formatter),
+            Source::PeerGossiped(node_id) | Source::Peer(node_id) => {
+                Display::fmt(node_id, formatter)
+            }
             Source::Client => write!(formatter, "client"),
             Source::SpeculativeExec => write!(formatter, "client (speculative exec)"),
             Source::Ourself => write!(formatter, "ourself"),

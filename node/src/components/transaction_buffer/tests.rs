@@ -368,7 +368,7 @@ fn get_appendable_block_when_transfers_are_of_one_category() {
     get_appendable_block(
         &mut rng,
         &mut transaction_buffer,
-        std::iter::repeat_with(|| MINT_LANE_ID),
+        iter::repeat_with(|| MINT_LANE_ID),
         transaction_config
             .transaction_v1_config
             .get_max_transaction_count(MINT_LANE_ID) as usize
@@ -439,7 +439,7 @@ fn get_appendable_block_when_standards_are_of_one_category() {
     get_appendable_block(
         &mut rng,
         &mut transaction_buffer,
-        std::iter::repeat_with(|| large_lane_id),
+        iter::repeat_with(|| large_lane_id),
         transaction_config
             .transaction_v1_config
             .get_max_transaction_count(large_lane_id) as usize

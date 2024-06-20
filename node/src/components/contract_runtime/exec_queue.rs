@@ -44,7 +44,7 @@ impl ExecQueue {
 
         *locked_queue = locked_queue.split_off(&height);
 
-        core::convert::TryInto::try_into(locked_queue.len()).unwrap_or(i64::MIN)
+        TryInto::try_into(locked_queue.len()).unwrap_or(i64::MIN)
     }
 }
 
