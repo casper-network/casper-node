@@ -347,6 +347,19 @@ impl Transaction {
         }
     }
 
+    pub fn is_gas_limited(&self) -> Option<bool> {
+        match self {
+            Transaction::Deploy(_) => None,
+            Transaction::V1(v1) => {
+                if let PricingMode::GasLimited { .. } = v1.pricing_mode() {
+                    Some(true)
+                } else {
+                    Some(false)
+                }
+            }
+        }
+    }
+
     /// Should this transaction start in the initiating accounts context?
     pub fn is_account_session(&self) -> bool {
         match self {

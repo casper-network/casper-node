@@ -133,6 +133,11 @@ impl ExecutionArtifactBuilder {
         Ok(self)
     }
 
+    pub fn with_error_message(&mut self, error_message: String) -> &mut Self {
+        self.error_message = Some(error_message);
+        self
+    }
+
     pub fn with_set_refund_purse_result(
         &mut self,
         handle_refund_result: &HandleRefundResult,

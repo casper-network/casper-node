@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, convert::TryInto, sync::Arc, time::Instant};
 
-use casper_vm::executor::{v2::ExecutorV2, CreateContractRequestBuilder, ExecuteRequestBuilder};
+use casper_vm::executor::{v2::ExecutorV2, CreateContractRequestBuilder, ExecuteRequestBuilder, Executor};
 use itertools::Itertools;
 use tracing::{debug, error, info, trace, warn};
 
@@ -26,12 +26,7 @@ use casper_storage::{
 };
 
 use casper_types::{
-    bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH},
-    execution::{Effects, ExecutionResult, TransformKindV2, TransformV2},
-    system::handle_payment::ARG_AMOUNT,
-    BlockHash, BlockHeader, BlockTime, BlockV2, CLValue, Chainspec, ChecksumRegistry, Digest,
-    EraEndV2, EraId, FeeHandling, Gas, GasLimited, Key, ProtocolVersion, PublicKey, RefundHandling,
-    Transaction, TransactionEntryPoint, TransactionTarget, AUCTION_LANE_ID, MINT_LANE_ID, U512,
+    bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH}, execution::{Effects, ExecutionResult, TransformKindV2, TransformV2}, system::handle_payment::ARG_AMOUNT, BlockHash, BlockHeader, BlockTime, BlockV2, CLValue, Chainspec, ChecksumRegistry, Digest, EraEndV2, EraId, FeeHandling, Gas, GasLimited, Key, ProtocolVersion, PublicKey, RefundHandling, Transaction, TransactionCategory, TransactionEntryPoint, TransactionRuntime, TransactionTarget, AUCTION_LANE_ID, MINT_LANE_ID, U512
 };
 
 use super::{
@@ -196,83 +191,10 @@ pub fn execute_finalized_block(
         };
         artifact_builder.with_added_cost(cost);
 
-        if transaction.is_v2_wasm() {
-            // let v2 = transaction.as_v2_wasm().unwrap();
-            let transaction_v1 = transaction.as_transaction_v1().unwrap();
-
-            match transaction_v1.body().target() {
-                TransactionTarget::Native => todo!(),
-                TransactionTarget::Stored { id, runtime } => todo!(),
-                TransactionTarget::Session {
-                    // kind,
-                    module_bytes,
-                    runtime,
-                } => {
-                    todo!()
-                    // match kind {
-                    //     TransactionSessionKind::Standard => {
-                    //         todo!("run standard session")
-                    //     }
-                    //     TransactionSessionKind::Installer => {
-                    //         let address_generator = AddressGeneratorBuilder::default()
-                    //             .seed_with(transaction_hash.as_ref())
-                    //             .build();
-
-                    //         let mut builder = CreateContractRequestBuilder::default();
-
-                    //         match transaction_v1.body().entry_point() {
-                    //             TransactionEntryPoint::Custom(entry_point_name) => {
-                    //                 builder = builder.with_entry_point(entry_point_name.clone());
-                    //             }
-                    //             TransactionEntryPoint::DefaultInitialize => {
-                    //                 // No entry poitn specified, uses default initialization upon
-                    //                 // first call (if possible).
-                    //             }
-                    //             _other => {
-                    //                 todo!("Not supported entry point kind")
-                    //             }
-                    //         };
-
-                    //         let request = builder
-                    //             .with_initiator(initiator_addr.account_hash().value())
-                    //             .with_gas_limit(1_000_000)
-                    //             .with_transaction_hash(transaction_hash)
-                    //
-                    // .with_wasm_bytes(module_bytes.clone().into_bytes().unwrap().into())
-                    //             .with_address_generator(address_generator)
-                    //             .with_value(0)
-                    //             // .with_input(input_data.clone().into())
-                    //             .build()
-                    //             .expect("should build");
-                    //         // todo!("run installer")
-                    //     }
-                    //     TransactionSessionKind::Upgrader => {
-                    //         todo!("upgrader is not supported under v2 engine")
-                    //     }
-                    //     TransactionSessionKind::Isolated => {
-                    //         todo!("isolated is not supported under v2 engine")
-                    //     }
-                    // }
-                }
-            }
-
-            //     let execute_request = ExecuteRequestBuilder::default()
-            //     .with_initiator(DEFAULT_ACCOUNT_HASH.value())
-            //     .with_caller_key(Key::Account(DEFAULT_ACCOUNT_HASH.clone()))
-            //     .with_callee_key(Key::Account(DEFAULT_ACCOUNT_HASH.clone()))
-            //     .with_gas_limit(DEFAULT_GAS_LIMIT)
-            //     .with_value(1000)
-            //     .with_transaction_hash(TRANSACTION_HASH)
-            // .with_target(ExecutionKind::SessionBytes(VM2_HARNESS))
-            // .with_serialized_input((flipper_address,))
-            // .with_shared_address_generator(address_generator)
-            // .build()
-            // .expect("should build");
-
-            todo!()
-        }
 
         let is_standard_payment = transaction.is_standard_payment();
+        let is_v2_wasm = transaction.is_v2_wasm();
+        let is_gas_limited = transaction.is_gas_limited();
         let refund_purse_active = !is_standard_payment;
         if refund_purse_active {
             // if custom payment  before doing any processing, initialize the initiator's main purse
@@ -303,7 +225,23 @@ pub fn execute_finalized_block(
         }
 
         let mut balance_identifier = {
-            if is_standard_payment {
+            if is_v2_wasm {
+                match is_gas_limited {
+                    Some(true) => {
+                                // this is the typical scenario; the initiating account pays using its main
+                // purse
+                       trace!(%transaction_hash, "account session with standard payment");
+                     initiator_addr.clone().into()
+                    }
+                    Some(false) => {
+                        todo!("Need gas limited transaction for v2 wasm")
+                    }
+                    None => {
+                        todo!("Need gas limited transaction but got legacy deploy structure");
+                    }
+                }
+            }
+            else if is_standard_payment {
                 // this is the typical scenario; the initiating account pays using its main
                 // purse
                 trace!(%transaction_hash, "account session with standard payment");
@@ -370,7 +308,6 @@ pub fn execute_finalized_block(
             is_not_penalized && sufficient_balance && is_supported
         };
 
-        let runtime_args = runtime_args.cloned().expect("named args");
         if allow_execution {
             if is_standard_payment {
                 // place a processing hold on the paying account to prevent double spend.
@@ -393,6 +330,7 @@ pub fn execute_finalized_block(
             trace!(%transaction_hash, ?category, "eligible for execution");
             match category {
                 category if category == MINT_LANE_ID => {
+                    let runtime_args = runtime_args.cloned().expect("named args");
                     let transfer_result =
                         scratch_state.transfer(TransferRequest::with_runtime_args(
                             native_runtime_config.clone(),
@@ -412,6 +350,8 @@ pub fn execute_finalized_block(
                         .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
                 }
                 category if category == AUCTION_LANE_ID => {
+        let runtime_args = runtime_args.cloned().expect("named args");
+
                     match AuctionMethod::from_parts(entry_point, &runtime_args, chainspec) {
                         Ok(auction_method) => {
                             let bidding_result = scratch_state.bidding(BiddingRequest::new(
@@ -441,7 +381,88 @@ pub fn execute_finalized_block(
                         }
                     };
                 }
-                _ => {
+
+                category if category == TransactionCategory::InstallUpgrade as u8 && is_v2_wasm => {
+
+                        let address_generator = AddressGeneratorBuilder::default()
+                            .seed_with(transaction_hash.as_ref())
+                            .build();
+
+                        let mut builder = CreateContractRequestBuilder::default();
+
+                        let transaction_v1 = transaction.as_transaction_v1().expect("should be v1");
+
+                        let input_data = transaction_v1.body().args().clone().into_unnamed();
+
+                        let module_bytes = match transaction_v1.body().target() {
+                            TransactionTarget::Session { module_bytes, runtime } => {
+                                assert_eq!(*runtime, TransactionRuntime::VmCasperV2);
+
+                                module_bytes.clone()
+                            }
+                            TransactionTarget::Native => todo!("native not supported yet under v2 runtime"),
+                            TransactionTarget::Stored { id, runtime } => todo!("stored not supported yet under v2 runtime"),
+                        };
+
+                        match transaction_v1.body().entry_point() {
+                            TransactionEntryPoint::Custom(entry_point_name) => {
+
+                                builder = builder.with_entry_point(entry_point_name.clone());
+                                if let Some(input_data) = input_data {
+                                    builder = builder.with_input(input_data.clone().take_inner().into());
+
+                                }
+                            }
+                            TransactionEntryPoint::DefaultInitialize => {
+                                // No entry poitn specified, uses default initialization upon
+                                // first call (if possible).
+                                assert!(input_data.is_none(), "No arguments expected for a default initialization (got {input_data:?})");
+                            }
+                            _other => {
+                                todo!("Not supported entry point kind")
+                            }
+                        };
+
+                        let request = builder
+                            .with_initiator(initiator_addr.account_hash().value())
+                            .with_gas_limit(1_000_000)
+                            .with_transaction_hash(transaction_hash)
+                            .with_wasm_bytes(module_bytes.clone().take_inner().into())
+                            .with_address_generator(address_generator)
+                            .with_value(0)
+                            .build()
+                            .expect("should build");
+
+                        let tracking_copy = scratch_state.tracking_copy(state_root_hash).expect("should have tracking copy").expect("should have state root hash");
+
+                        match execution_engine_v2.create_contract(tracking_copy, request) {
+                            Ok(result) => {
+                                let pre_state_root_hash = state_root_hash;
+                                let post_state_root_hash = scratch_state.commit(state_root_hash, result.effects().clone()).expect("should commit");
+                                state_root_hash = post_state_root_hash;
+                                info!(?result, %pre_state_root_hash, %post_state_root_hash, "instantiate contract result");
+
+                                artifact_builder.with_added_consumed(Gas::from(result.gas_usage().gas_spent()));
+                                // TODO: Use system message to notify about contract hash
+                                // artifact_builder..with_appended_messages(&mut wasm_v1_result.messages().clone())
+                                // .with_appended_transfers(&mut wasm_v1_result.transfers().clone())
+                                artifact_builder.with_appended_effects(result.effects().clone());
+
+                            }
+                            Err(error) => {
+                                error!(?error, "create contract error");
+                                artifact_builder.with_error_message(error.to_string());
+                                // TODO: Gas consumed for failed instantiation
+                                // artifact_builder.with_added_consumed(result.gas_usage().gas_spent());
+
+
+                            }
+                        }
+                }
+                category if is_v2_wasm => {
+                    todo!("Category {category} not supported yet under v2 wasm");
+                }
+                _ if !is_v2_wasm => {
                     let wasm_v1_start = Instant::now();
                     match WasmV1Request::new_session(
                         state_root_hash,
@@ -472,6 +493,7 @@ pub fn execute_finalized_block(
                             .observe(wasm_v1_start.elapsed().as_secs_f64());
                     }
                 }
+                category => unreachable!("unknown category {category}")
             }
         } else {
             debug!(%transaction_hash, "not eligible for execution");

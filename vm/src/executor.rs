@@ -146,6 +146,10 @@ impl StoreContractResult {
     pub fn contract_hash(&self) -> [u8; 32] {
         self.contract_hash.value()
     }
+
+    pub fn gas_usage(&self) -> &GasUsage {
+        &self.gas_usage
+    }
 }
 
 /// Request to execute a Wasm contract.

@@ -105,6 +105,13 @@ impl TransactionArgs {
         }
     }
 
+    pub fn into_unnamed(self) -> Option<Bytes> {
+        match self {
+            TransactionArgs::Named(_) => None,
+            TransactionArgs::Unnamed(bytes) => Some(bytes),
+        }
+    }
+
     pub fn insert<K, V>(&mut self, key: K, value: V) -> Result<(), CLValueError>
     where
         K: Into<String>,
@@ -388,7 +395,20 @@ impl TransactionV1Body {
                         entry_point: self.entry_point.clone(),
                     })
                 }
-                TransactionEntryPoint::DefaultInitialize => todo!(),
+                TransactionEntryPoint::DefaultInitialize => {
+                    debug!("TODO: Validation");
+                    Ok(())
+                    // if self.transaction_category() != TransactionCategory::InstallUpgrade as u8 {
+                    //     debug!(
+                    //         entry_point = %self.entry_point,
+                    //         ""
+                    //     );
+                    //     return Err(InvalidTransactionV1::EntryPointMustBeCustom {
+                    //         entry_point: self.entry_point.clone(),
+                    //     });
+                    // }
+                    //  rr(InvalidTransactionV1::EntryPointCannotBeDefault)
+                },
             },
         }
     }

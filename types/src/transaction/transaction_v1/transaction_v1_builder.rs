@@ -270,6 +270,7 @@ impl<'a> TransactionV1Builder<'a> {
         TransactionV1Builder::new(body)
     }
 
+    /// Returns a new `TransactionV1Builder` suitable for building a transaction for instantiating a Wasm smart contract.
     pub fn new_instantiate(
         module_bytes: Bytes,
         constructor: Option<String>,
