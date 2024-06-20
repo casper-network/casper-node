@@ -906,21 +906,22 @@ where
                 SeigniorageRecipientsResult::RootNotFound => {
                     return BinaryResponse::new_error(ErrorCode::RootNotFound, protocol_version)
                 }
-                SeigniorageRecipientsResult::Failure(_) => {
-                    return BinaryResponse::new_error(ErrorCode::FailedQuery, protocol_version)
+                SeigniorageRecipientsResult::Failure(error) => {
+                    warn!(%error, "failed when querying for seigniorage recipients");
+                    return BinaryResponse::new_error(ErrorCode::FailedQuery, protocol_version);
                 }
                 SeigniorageRecipientsResult::AuctionNotFound => {
-                    debug!("auction not found when querying for seigniorage recipients");
+                    warn!("auction not found when querying for seigniorage recipients");
                     return BinaryResponse::new_error(ErrorCode::InternalError, protocol_version);
                 }
                 SeigniorageRecipientsResult::ValueNotFound(error) => {
-                    debug!(%error, "value not found when querying for seigniorage recipients");
+                    warn!(%error, "value not found when querying for seigniorage recipients");
                     return BinaryResponse::new_error(ErrorCode::InternalError, protocol_version);
                 }
             };
             let Some(era_end) = header.clone_era_end() else {
                 // switch block should have an era end
-                debug!(
+                warn!(
                     hash = %header.block_hash(),
                     "era end not found in the switch block retrieved from storage"
                 );
@@ -951,7 +952,7 @@ where
                 }
                 Ok(None) => BinaryResponse::new_empty(protocol_version),
                 Err(error) => {
-                    debug!(%error, "failed when calculating rewards");
+                    warn!(%error, "failed when calculating rewards");
                     BinaryResponse::new_error(ErrorCode::InternalError, protocol_version)
                 }
             }
