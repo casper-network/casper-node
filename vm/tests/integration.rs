@@ -51,12 +51,7 @@ const TRANSACTION_HASH: TransactionHash =
 const DEFAULT_GAS_LIMIT: u64 = 1_000_000;
 
 fn make_address_generator() -> Arc<RwLock<AddressGenerator>> {
-    let mut rng = rand::thread_rng();
     let id = Id::Transaction(TRANSACTION_HASH);
-    let address_generator = Arc::new(RwLock::new(AddressGenerator::new(
-        &id.seed(),
-        Phase::Session,
-    )));
     Arc::new(RwLock::new(AddressGenerator::new(
         &id.seed(),
         Phase::Session,

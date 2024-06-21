@@ -437,16 +437,17 @@ pub fn execute_finalized_block(
 
                         match execution_engine_v2.create_contract(tracking_copy, request) {
                             Ok(result) => {
+                                let effects = result.effects().clone();
                                 let pre_state_root_hash = state_root_hash;
-                                let post_state_root_hash = scratch_state.commit(state_root_hash, result.effects().clone()).expect("should commit");
+                                let post_state_root_hash = scratch_state.commit(pre_state_root_hash, effects.clone()).expect("should commit");
                                 state_root_hash = post_state_root_hash;
-                                info!(?result, %pre_state_root_hash, %post_state_root_hash, "instantiate contract result");
+                                info!(?result, %pre_state_root_hash, %post_state_root_hash, ?effects, "instantiate contract result");
 
                                 artifact_builder.with_added_consumed(Gas::from(result.gas_usage().gas_spent()));
                                 // TODO: Use system message to notify about contract hash
                                 // artifact_builder..with_appended_messages(&mut wasm_v1_result.messages().clone())
                                 // .with_appended_transfers(&mut wasm_v1_result.transfers().clone())
-                                artifact_builder.with_appended_effects(result.effects().clone());
+                                artifact_builder.with_appended_effects(effects);
 
                             }
                             Err(error) => {

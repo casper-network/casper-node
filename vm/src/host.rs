@@ -15,7 +15,6 @@ use casper_types::{
 };
 use num_derive::FromPrimitive;
 use num_traits::{FromPrimitive, ToBytes};
-use rand::Rng;
 use safe_transmute::SingleManyGuard;
 use std::{cmp, collections::BTreeSet, mem, num::NonZeroU32, sync::Arc};
 use tracing::{error, info};
@@ -350,9 +349,13 @@ pub(crate) fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'stati
         PackageStatus::Unlocked,
     );
 
-    let mut rng = rand::thread_rng(); // TODO: Deterministic random number generator
-    let package_hash_bytes: Address = rng.gen(); // TODO: Do we need packages at all in new VM?
-    let contract_hash: Address = rng.gen();
+    let package_hash_bytes: Address; // = rng.gen(); // TODO: Do we need packages at all in new VM?
+    let contract_hash: Address; // = rng.gen();
+    {
+        let mut gen = caller.context().address_generator.write();
+        package_hash_bytes = gen.create_address();
+        contract_hash = gen.create_address();
+    }
 
     caller.context_mut().tracking_copy.write(
         Key::Package(package_hash_bytes),

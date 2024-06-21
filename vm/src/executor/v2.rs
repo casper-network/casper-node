@@ -14,7 +14,6 @@ use casper_types::{
 };
 use either::Either;
 use parking_lot::RwLock;
-use rand::Rng;
 use tracing::{error, warn};
 use vm_common::flags::{EntryPointFlags, ReturnFlags};
 use wasmer_types::compilation::function;
@@ -146,9 +145,16 @@ impl Executor for ExecutorV2 {
             PackageStatus::Unlocked,
         );
 
-        let mut rng = rand::thread_rng(); // TODO: Deterministic random number generator
-        let package_hash_bytes: Address = rng.gen(); // TODO: Do we need packages at all in new VM?
-        let contract_hash: Address = rng.gen();
+        // let mut rng = rand::thread_rng(); // TODO: Deterministic random number generator
+
+        let package_hash_bytes: Address;
+        let contract_hash: Address;
+
+        {
+            let mut gen = address_generator.write();
+            package_hash_bytes = gen.create_address(); // TODO: Do we need packages at all in new VM?
+            contract_hash = gen.create_address();
+        }
 
         tracking_copy.write(
             Key::Package(package_hash_bytes),

@@ -19,7 +19,7 @@ borsh = {version = "1.2.0", features = ["derive"] }
 borsh-derive = "1.2.0"
 
 blake2 = "0.10.6"
-rand = "0.8.5"
+
 digest = "0.10.7"
 safe-transmute = "0.11.2"
 

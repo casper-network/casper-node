@@ -20,7 +20,6 @@ use casper_types::{
     SystemEntityRegistry, TransactionHash, URef, U512,
 };
 use parking_lot::RwLock;
-use rand::Rng;
 use thiserror::Error;
 use tracing::{debug, error};
 
