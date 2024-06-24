@@ -830,7 +830,7 @@ pub(crate) mod tests {
 
         assert_eq!(
             trie.keys_with_prefix(b"ap"),
-            vec![key_app, key_apple, key_apron]
+            vec![key_apron, key_app, key_apple]
         );
         assert_eq!(trie.keys_with_prefix(b"app"), vec![key_app, key_apple]);
     }
