@@ -270,11 +270,13 @@ impl<'a> TransactionV1Builder<'a> {
         TransactionV1Builder::new(body)
     }
 
-    /// Returns a new `TransactionV1Builder` suitable for building a transaction for instantiating a Wasm smart contract.
+    /// Returns a new `TransactionV1Builder` suitable for building a transaction for instantiating a
+    /// Wasm smart contract.
     pub fn new_instantiate(
         module_bytes: Bytes,
         constructor: Option<String>,
         input_data: Option<Bytes>,
+        value: u128,
     ) -> Self {
         let (entry_point, input_data) = match (constructor, input_data) {
             (None, None) => (TransactionEntryPoint::DefaultInitialize, Bytes::new()),
@@ -298,6 +300,7 @@ impl<'a> TransactionV1Builder<'a> {
                 entry_point: entry_point,
                 transaction_category,
                 scheduling,
+                value,
             }
         };
         TransactionV1Builder::new(body)

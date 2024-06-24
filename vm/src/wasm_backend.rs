@@ -48,7 +48,7 @@ pub(crate) struct Context<S: GlobalStateReader, E: Executor> {
     /// contract or session address.
     // pub(crate) state_address: Address,
     /// The amount of tokens that were send to the contract's purse at the time of the call.
-    pub(crate) value: u64,
+    pub(crate) value: u128,
     pub(crate) tracking_copy: TrackingCopy<S>,
     pub(crate) executor: E, // TODO: This could be part of the caller
     pub(crate) transaction_hash: TransactionHash,

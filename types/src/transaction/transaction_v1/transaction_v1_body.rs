@@ -55,6 +55,7 @@ pub struct TransactionV1Body {
     pub(super) entry_point: TransactionEntryPoint,
     pub(super) transaction_category: u8,
     pub(super) scheduling: TransactionScheduling,
+    pub(super) value: u128,
 }
 
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
@@ -189,6 +190,7 @@ impl TransactionV1Body {
             entry_point,
             transaction_category,
             scheduling,
+            value: 0,
         }
     }
 
@@ -199,6 +201,7 @@ impl TransactionV1Body {
         entry_point: TransactionEntryPoint,
         transaction_category: u8,
         scheduling: TransactionScheduling,
+        value: u128,
     ) -> Self {
         TransactionV1Body {
             args,
@@ -206,6 +209,7 @@ impl TransactionV1Body {
             entry_point,
             transaction_category,
             scheduling,
+            value,
         }
     }
 
@@ -408,7 +412,7 @@ impl TransactionV1Body {
                     //     });
                     // }
                     //  rr(InvalidTransactionV1::EntryPointCannotBeDefault)
-                },
+                }
             },
         }
     }
@@ -623,6 +627,10 @@ impl TransactionV1Body {
             _ => unreachable!(),
         }
     }
+
+    pub fn value(&self) -> u128 {
+        self.value
+    }
 }
 
 impl Display for TransactionV1Body {
@@ -648,6 +656,7 @@ impl ToBytes for TransactionV1Body {
             + self.entry_point.serialized_length()
             + self.transaction_category.serialized_length()
             + self.scheduling.serialized_length()
+            + self.value.serialized_length()
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
@@ -655,7 +664,9 @@ impl ToBytes for TransactionV1Body {
         self.target.write_bytes(writer)?;
         self.entry_point.write_bytes(writer)?;
         self.transaction_category.write_bytes(writer)?;
-        self.scheduling.write_bytes(writer)
+        self.scheduling.write_bytes(writer)?;
+        self.value.write_bytes(writer)?;
+        Ok(())
     }
 }
 
@@ -666,12 +677,14 @@ impl FromBytes for TransactionV1Body {
         let (entry_point, remainder) = TransactionEntryPoint::from_bytes(remainder)?;
         let (kind, remainder) = u8::from_bytes(remainder)?;
         let (scheduling, remainder) = TransactionScheduling::from_bytes(remainder)?;
+        let (value, remainder) = u128::from_bytes(remainder)?;
         let body = TransactionV1Body {
             args,
             target,
             entry_point,
             transaction_category: kind,
             scheduling,
+            value,
         };
         Ok((body, remainder))
     }

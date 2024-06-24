@@ -5,8 +5,8 @@ use casper_sdk::host;
 #[derive(Default)]
 #[casper(contract_state)]
 pub struct NoFallback {
-    initial_balance: u64,
-    received_balance: u64,
+    initial_balance: u128,
+    received_balance: u128,
 }
 
 #[casper]

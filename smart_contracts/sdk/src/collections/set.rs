@@ -1,6 +1,6 @@
 use crate::prelude::marker::PhantomData;
 
-use crate::{host, prelude::String, serializers::borsh::BorshSerialize};
+use crate::{host, serializers::borsh::BorshSerialize};
 use vm_common::keyspace::Keyspace;
 
 use super::lookup_key::{Identity, LookupKey, LookupKeyOwned};

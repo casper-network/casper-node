@@ -46,8 +46,8 @@ pub enum FallbackHandler {
 #[derive(Default)]
 #[casper(contract_state)]
 pub struct TokenOwnerContract {
-    initial_balance: u64,
-    received_tokens: u64,
+    initial_balance: u128,
+    received_tokens: u128,
     fallback_handler: FallbackHandler,
 }
 
@@ -66,7 +66,7 @@ impl TokenOwnerContract {
         &self,
         self_address: Address,
         contract_address: Address,
-        amount: u64,
+        amount: u128,
     ) -> Result<(), TokenOwnerError> {
         let self_balance = host::get_balance_of(&Entity::Contract(self_address));
         let res = ContractHandle::<HarnessRef>::from_address(contract_address)
@@ -85,7 +85,7 @@ impl TokenOwnerContract {
         &self,
         self_address: Address,
         contract_address: Address,
-        amount: u64,
+        amount: u128,
     ) -> Result<(), TokenOwnerError> {
         let self_entity = Entity::Contract(self_address);
         let self_balance = host::get_balance_of(&self_entity);
@@ -126,7 +126,7 @@ impl TokenOwnerContract {
         Ok(())
     }
 
-    pub fn total_received_tokens(&self) -> u64 {
+    pub fn total_received_tokens(&self) -> u128 {
         self.received_tokens
     }
 

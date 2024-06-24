@@ -6,17 +6,18 @@ use std::{
 };
 
 use bytes::Bytes;
+use num_traits::ToBytes;
 use wasmer::{
     AsStoreMut, AsStoreRef, CompilerConfig, Engine, Exports, Function, FunctionEnv, FunctionEnvMut,
     Imports, Instance, Memory, MemoryView, Module, RuntimeError, Store, StoreMut, Table,
-    TypedFunction,
+    TypedFunction, WasmPtr,
 };
 use wasmer_compiler_singlepass::Singlepass;
 use wasmer_middlewares::metering;
 
 use crate::{
     host, storage::GlobalStateReader, u32_from_host_result, Config, Executor, ExportError,
-    TrapCode, VMResult, WasmEngine,
+    MemoryError, TrapCode, VMResult, WasmEngine,
 };
 
 use self::metering_middleware::make_wasmer_metering_middleware;
@@ -464,13 +465,24 @@ where
                     |env: FunctionEnvMut<WasmerEnv<S, E>>,
                      code_ptr: u32,
                      code_size: u32,
-                     value: u64,
+                     value: WasmPtr<u128>,
                      entry_point_ptr: u32,
                      entry_point_len: u32,
                      input_ptr: u32,
                      input_len: u32,
                      result_ptr: u32| {
+                        let value = {
+                            let mem = &env.data().exported_runtime().memory;
+                            let binding = env.as_store_ref();
+                            let view = mem.view(&binding);
+                            value
+                                .read(&view)
+                                .map_err(|error| TrapCode::from(error))
+                                .map_err(|error| VMError::Trap(error))?
+                        };
+
                         let wasmer_caller = WasmerCaller { env };
+
                         match host::casper_create(
                             wasmer_caller,
                             code_ptr,
@@ -499,13 +511,23 @@ where
                     |env: FunctionEnvMut<WasmerEnv<S, E>>,
                      address_ptr: u32,
                      address_len: u32,
-                     value: u64,
+                     value: WasmPtr<u128>,
                      entry_point_ptr: u32,
                      entry_point_len: u32,
                      input_ptr: u32,
                      input_len: u32,
                      cb_alloc: u32,
                      cb_ctx: u32| {
+                        let value = {
+                            let mem = &env.data().exported_runtime().memory;
+                            let binding = env.as_store_ref();
+                            let view = mem.view(&binding);
+                            value
+                                .read(&view)
+                                .map_err(|error| TrapCode::from(error))
+                                .map_err(|error| VMError::Trap(error))?
+                        };
+
                         let wasmer_caller = WasmerCaller { env };
                         match host::casper_call(
                             wasmer_caller,
@@ -568,9 +590,23 @@ where
                 Function::new_typed_with_env(
                     &mut store,
                     &function_env,
-                    |env: FunctionEnvMut<WasmerEnv<S, E>>| {
+                    |env: FunctionEnvMut<WasmerEnv<S, E>>,
+                     output: WasmPtr<u128>|
+                     -> Result<(), VMError> {
                         let wasmer_caller = WasmerCaller { env };
-                        host::casper_env_value(wasmer_caller)
+                        host::casper_env_value(wasmer_caller, output.offset())?;
+
+                        // {
+                        //     // TODO: This is quick hack, there's a need for an abstract WasmPtr
+                        // type     let mem =
+                        // env.data().exported_runtime().memory;
+                        //     let binding = env.as_store_ref();
+                        //     let view = mem.view(&binding);
+                        //     output.write(&view, result).map_err(|error|
+                        // TrapCode::from(error)).map_err(|error| VMError::Trap(error))?
+                        // };
+
+                        Ok(())
                     },
                 ),
             );
@@ -584,13 +620,15 @@ where
                     |env: FunctionEnvMut<WasmerEnv<S, E>>,
                      entity_kind,
                      entity_addr,
-                     entity_addr_len| {
+                     entity_addr_len,
+                     output_ptr: WasmPtr<u128>| {
                         let wasmer_caller = WasmerCaller { env };
                         host::casper_env_balance(
                             wasmer_caller,
                             entity_kind,
                             entity_addr,
                             entity_addr_len,
+                            output_ptr.offset(), // TODO: Abstracted WasmPtr
                         )
                     },
                 ),
@@ -606,7 +644,17 @@ where
                      entity_kind,
                      address_ptr,
                      address_len,
-                     amount| {
+                     amount: WasmPtr<u128>| {
+                        let amount = {
+                            let mem = &env.data().exported_runtime().memory;
+                            let binding = env.as_store_ref();
+                            let view = mem.view(&binding);
+                            amount
+                                .read(&view)
+                                .map_err(|error| TrapCode::from(error))
+                                .map_err(|error| VMError::Trap(error))?
+                        };
+
                         let wasmer_caller = WasmerCaller { env };
                         host::casper_transfer(
                             wasmer_caller,

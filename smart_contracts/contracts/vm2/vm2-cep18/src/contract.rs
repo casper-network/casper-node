@@ -5,7 +5,6 @@ use crate::{
 use casper_macros::casper;
 use casper_sdk::{host, log};
 use security_badge::SecurityBadge;
-use std::string::String;
 
 use crate::traits::CEP18Ext;
 

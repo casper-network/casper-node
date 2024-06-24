@@ -28,10 +28,6 @@ use host::{CallResult, Entity};
 use types::{Address, CallError};
 pub use vm_common;
 
-use crate::prelude::Vec;
-
-use crate::prelude::ToString;
-
 cfg_if::cfg_if! {
     if #[cfg(feature = "std")] {
         #[inline]
@@ -207,14 +203,14 @@ impl<T: ContractRef> ContractHandle<T> {
     }
 
     /// Returns the balance of the contract.
-    pub fn balance(&self) -> u64 {
+    pub fn balance(&self) -> u128 {
         host::get_balance_of(&Entity::Contract(self.contract_address))
     }
 }
 
 pub struct CallBuilder<T: ContractRef> {
     address: Address,
-    value: Option<u64>,
+    value: Option<u128>,
     marker: PhantomData<T>,
 }
 
@@ -227,7 +223,7 @@ impl<T: ContractRef> CallBuilder<T> {
         }
     }
 
-    pub fn with_value(mut self, value: u64) -> Self {
+    pub fn with_value(mut self, value: u128) -> Self {
         self.value = Some(value);
         self
     }
@@ -265,7 +261,7 @@ impl<T: ContractRef> CallBuilder<T> {
 }
 
 pub struct ContractBuilder<'a, T: ContractRef> {
-    value: Option<u64>,
+    value: Option<u128>,
     code: Option<&'a [u8]>,
     marker: PhantomData<T>,
 }
@@ -279,7 +275,7 @@ impl<'a, T: ContractRef> ContractBuilder<'a, T> {
         }
     }
 
-    pub fn with_value(mut self, value: u64) -> Self {
+    pub fn with_value(mut self, value: u128) -> Self {
         self.value = Some(value);
         self
     }

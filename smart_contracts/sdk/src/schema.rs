@@ -1,5 +1,3 @@
-use crate::prelude::{String, Vec};
-
 pub trait CasperSchema {
     fn schema() -> Schema;
 }
@@ -7,7 +5,7 @@ pub trait CasperSchema {
 use std::fmt::LowerHex;
 
 use bitflags::Flags;
-use serde::{self, Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use vm_common::flags::EntryPointFlags;
 
 use crate::abi::{self, Declaration, Definitions};

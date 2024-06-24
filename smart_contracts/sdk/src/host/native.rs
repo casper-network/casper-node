@@ -448,7 +448,7 @@ impl Environment {
         &self,
         address_ptr: *const u8,
         address_size: usize,
-        _value: u64,
+        _value: *const core::ffi::c_void,
         selector: u32,
         input_ptr: *const u8,
         input_size: usize,
@@ -738,7 +738,7 @@ mod symbols {
     pub extern "C" fn casper_call(
         address_ptr: *const u8,
         address_size: usize,
-        value: u64,
+        value: *const c_void,
         selector: u32,
         input_ptr: *const u8,
         input_size: usize,
@@ -771,6 +771,7 @@ mod symbols {
         crate::host::native::handle_ret(_call_result)
     }
 
+    use core::ffi::c_void;
     use std::ptr;
 
     use super::with_current_environment;

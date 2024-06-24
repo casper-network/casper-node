@@ -16,7 +16,7 @@ pub struct Harness {
     counter: u64,
     greeting: String,
     address_inside_constructor: Option<Entity>,
-    balances: Map<Entity, u64>,
+    balances: Map<Entity, u128>,
 }
 
 // #[casper(path = crate::traits)]
@@ -247,7 +247,7 @@ impl Harness {
     }
 
     #[casper(payable, revert_on_error)]
-    pub fn deposit(&mut self, balance_before: u64) -> Result<(), CustomError> {
+    pub fn deposit(&mut self, balance_before: u128) -> Result<(), CustomError> {
         let caller = host::get_caller();
         let value = host::get_value();
 
@@ -272,7 +272,7 @@ impl Harness {
     }
 
     #[casper(revert_on_error)]
-    pub fn withdraw(&mut self, balance_before: u64, amount: u64) -> Result<(), CustomError> {
+    pub fn withdraw(&mut self, balance_before: u128, amount: u128) -> Result<(), CustomError> {
         let caller = host::get_caller();
         log!("Withdrawing {amount} into {caller:?}");
         let current_balance = self.balances.get(&caller).unwrap_or(0);
@@ -304,7 +304,7 @@ impl Harness {
         Ok(())
     }
 
-    pub fn balance(&self) -> u64 {
+    pub fn balance(&self) -> u128 {
         if host::get_value() != 0 {
             panic!("This function is not payable");
         }

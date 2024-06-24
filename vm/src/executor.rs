@@ -33,7 +33,7 @@ pub struct CreateContractRequest {
     /// Input data for the constructor.
     pub(crate) input: Option<Bytes>,
     /// Value of tokens to be transferred into the constructor.
-    pub(crate) value: u64,
+    pub(crate) value: u128,
     /// Transaction hash.
     pub(crate) transaction_hash: TransactionHash,
     /// Address generator.
@@ -47,7 +47,7 @@ pub struct CreateContractRequestBuilder {
     wasm_bytes: Option<Bytes>,
     entry_point: Option<String>,
     input: Option<Bytes>,
-    value: Option<u64>,
+    value: Option<u128>,
     transaction_hash: Option<TransactionHash>,
     address_generator: Option<Arc<RwLock<AddressGenerator>>>,
 }
@@ -78,7 +78,7 @@ impl CreateContractRequestBuilder {
         self
     }
 
-    pub fn with_value(mut self, value: u64) -> Self {
+    pub fn with_value(mut self, value: u128) -> Self {
         self.value = Some(value);
         self
     }
@@ -171,7 +171,7 @@ pub struct ExecuteRequest {
     /// Input data.
     pub(crate) input: Bytes,
     /// Value transferred to the contract.
-    pub(crate) value: u64,
+    pub(crate) value: u128,
     /// Transaction hash.
     pub(crate) transaction_hash: TransactionHash,
     /// Address generator.
@@ -190,7 +190,7 @@ pub struct ExecuteRequestBuilder {
     gas_limit: Option<u64>,
     target: Option<ExecutionKind>,
     input: Option<Bytes>,
-    value: Option<u64>,
+    value: Option<u128>,
     transaction_hash: Option<TransactionHash>,
     address_generator: Option<Arc<RwLock<AddressGenerator>>>,
 }
@@ -241,7 +241,7 @@ impl ExecuteRequestBuilder {
     }
 
     /// Pass value to be sent to the contract.
-    pub fn with_value(mut self, value: u64) -> Self {
+    pub fn with_value(mut self, value: u128) -> Self {
         self.value = Some(value);
         self
     }

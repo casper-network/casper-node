@@ -6,7 +6,6 @@ pub mod traits;
 #[macro_use]
 extern crate alloc;
 
-use alloc::string::ToString;
 use casper_macros::casper;
 use casper_sdk::{
     host::{self, Entity},

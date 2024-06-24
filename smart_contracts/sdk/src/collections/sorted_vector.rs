@@ -1,6 +1,6 @@
 use crate::serializers::borsh::{BorshDeserialize, BorshSerialize};
 
-use crate::{abi::CasperABI, prelude::String};
+use crate::abi::CasperABI;
 
 use super::Vector;
 

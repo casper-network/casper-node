@@ -275,7 +275,7 @@ pub(crate) fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'stati
     mut caller: impl Caller<S, E>,
     code_ptr: u32,
     code_len: u32,
-    value: u64,
+    value: u128,
     entry_point_ptr: u32,
     entry_point_len: u32,
     input_ptr: u32,
@@ -528,7 +528,7 @@ pub(crate) fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>
     mut caller: impl Caller<S, E>,
     address_ptr: u32,
     address_len: u32,
-    value: u64,
+    value: u128,
     entry_point_ptr: u32,
     entry_point_len: u32,
     input_ptr: u32,
@@ -727,8 +727,11 @@ pub(crate) fn casper_env_caller<S: GlobalStateReader, E: Executor>(
 
 pub(crate) fn casper_env_value<S: GlobalStateReader, E: Executor>(
     caller: impl Caller<S, E>,
-) -> u64 {
-    caller.context().value
+    output: u32,
+) -> Result<(), VMError> {
+    let result = caller.context().value;
+    caller.memory_write(output, &result.to_le_bytes())?;
+    Ok(())
 }
 
 pub(crate) fn casper_env_balance<S: GlobalStateReader, E: Executor>(
@@ -736,7 +739,8 @@ pub(crate) fn casper_env_balance<S: GlobalStateReader, E: Executor>(
     entity_kind: u32,
     entity_addr_ptr: u32,
     entity_addr_len: u32,
-) -> VMResult<u64> {
+    output_ptr: u32,
+) -> VMResult<u32> {
     let entity_key = match EntityKindTag::from_u32(entity_kind) {
         Some(EntityKindTag::Account) => {
             if entity_addr_len != 32 {
@@ -788,8 +792,11 @@ pub(crate) fn casper_env_balance<S: GlobalStateReader, E: Executor>(
         .get_total_balance(Key::URef(purse))
         .expect("Total balance");
     assert!(total_balance.value() <= U512::from(u64::MAX));
-    let total_balance: u64 = total_balance.value().as_u64();
-    Ok(total_balance)
+    let total_balance = total_balance.value().as_u128();
+
+    caller.memory_write(output_ptr, &total_balance.to_le_bytes())?;
+
+    Ok(1)
 }
 
 pub(crate) fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
@@ -797,7 +804,7 @@ pub(crate) fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
     entity_kind: u32,
     entity_addr_ptr: u32,
     entity_addr_len: u32,
-    amount: u64,
+    amount: u128,
 ) -> VMResult<HostResult> {
     if entity_addr_len != 32 {
         // Invalid entity address; failing to proceed with the transfer

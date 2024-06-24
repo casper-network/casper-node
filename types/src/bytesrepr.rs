@@ -418,6 +418,30 @@ impl FromBytes for u64 {
     }
 }
 
+impl ToBytes for u128 {
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        Ok(self.to_le_bytes().to_vec())
+    }
+
+    fn serialized_length(&self) -> usize {
+        U128_SERIALIZED_LENGTH
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        writer.extend_from_slice(&self.to_le_bytes());
+        Ok(())
+    }
+}
+
+impl FromBytes for u128 {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
+        let mut result = [0u8; U128_SERIALIZED_LENGTH];
+        let (bytes, remainder) = safe_split_at(bytes, U128_SERIALIZED_LENGTH)?;
+        result.copy_from_slice(bytes);
+        Ok((<u128>::from_le_bytes(result), remainder))
+    }
+}
+
 impl ToBytes for String {
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
         let bytes = self.as_bytes();
