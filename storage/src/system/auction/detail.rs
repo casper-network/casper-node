@@ -936,18 +936,6 @@ pub fn seigniorage_recipients(
             }
         }
 
-        // for delegator_bid in read_delegator_bids(provider, validator_public_key)? {
-        //     if delegator_bid.staked_amount().is_zero() {
-        //         continue;
-        //     }
-        //     let delegator_staked_amount = delegator_bid.staked_amount();
-        //     delegators_weight = delegators_weight.saturating_add(delegator_staked_amount);
-        //     delegators_stake.insert(
-        //         delegator_bid.delegator_public_key().clone(),
-        //         delegator_staked_amount,
-        //     );
-        // }
-
         // determine validator's personal stake (total weight - sum of delegators weight)
         let validator_stake = validator_total_weight.saturating_sub(delegators_weight);
         let seigniorage_recipient = SeigniorageRecipient::new(
