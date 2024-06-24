@@ -905,25 +905,32 @@ where
     P: RuntimeProvider + ?Sized + StorageProvider,
 {
     let mut recipients = SeigniorageRecipients::new();
-    for (validator_public_key, validator_stake) in validator_weights {
+    for (validator_public_key, validator_total_weight) in validator_weights {
+        // check if validator bid exists before processing.
         let validator_bid = validator_bids
             .get(validator_public_key)
             .ok_or(Error::ValidatorNotFound)?;
-        let mut delegator_stake: BTreeMap<PublicKey, U512> = BTreeMap::new();
+        // calculate delegator portion(s), if any
+        let mut delegators_weight = U512::zero();
+        let mut delegators_stake: BTreeMap<PublicKey, U512> = BTreeMap::new();
         for delegator_bid in read_delegator_bids(provider, validator_public_key)? {
             if delegator_bid.staked_amount().is_zero() {
                 continue;
             }
-            delegator_stake.insert(
+            let delegator_staked_amount = delegator_bid.staked_amount();
+            delegators_weight = delegators_weight.saturating_add(delegator_staked_amount);
+            delegators_stake.insert(
                 delegator_bid.delegator_public_key().clone(),
-                delegator_bid.staked_amount(),
+                delegator_staked_amount,
             );
         }
 
+        // determine validator's personal stake (total weight - sum of delegators weight)
+        let validator_stake = validator_total_weight.saturating_sub(delegators_weight);
         let seigniorage_recipient = SeigniorageRecipient::new(
-            *validator_stake,
+            validator_stake,
             *validator_bid.delegation_rate(),
-            delegator_stake,
+            delegators_stake,
         );
         recipients.insert(validator_public_key.clone(), seigniorage_recipient);
     }
