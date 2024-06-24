@@ -1,5 +1,6 @@
 mod admins;
 mod balances;
+mod decode;
 mod generic;
 mod system_entity_registry;
 mod utils;
@@ -9,7 +10,7 @@ use admins::generate_admins;
 use clap::{crate_version, App, Arg, SubCommand};
 
 use crate::{
-    balances::generate_balances_update, generic::generate_generic_update,
+    balances::generate_balances_update, decode::decode_file, generic::generate_generic_update,
     system_entity_registry::generate_system_entity_registry,
     validators::generate_validators_update,
 };
@@ -184,6 +185,17 @@ fn main() {
                         .number_of_values(1),
                 ),
         )
+        .subcommand(
+            SubCommand::with_name("decode")
+                .about("Decodes the global_state.toml file into a readable form")
+                .arg(
+                    Arg::with_name("file")
+                        .value_name("FILE")
+                        .index(1)
+                        .required(true)
+                        .help("The file to be decoded"),
+                ),
+        )
         .get_matches();
 
     match matches.subcommand() {
@@ -194,6 +206,7 @@ fn main() {
         }
         ("generic", Some(sub_matches)) => generate_generic_update(sub_matches),
         ("generate-admins", Some(sub_matches)) => generate_admins(sub_matches),
+        ("decode", Some(sub_matches)) => decode_file(sub_matches),
         (subcommand, _) => {
             println!("Unknown subcommand: \"{}\"", subcommand);
         }
