@@ -10,11 +10,11 @@ use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
     system::auction::{
-        BidAddr, BidKind, Delegator, Error, SeigniorageAllocation, SeigniorageRecipient,
-        SeigniorageRecipients, SeigniorageRecipientsSnapshot, UnbondingPurse, UnbondingPurses,
-        ValidatorBid, ValidatorBids, ValidatorCredit, ValidatorCredits, AUCTION_DELAY_KEY,
-        ERA_END_TIMESTAMP_MILLIS_KEY, ERA_ID_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
-        UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
+        BidAddr, BidKind, Delegator, DelegatorBids, Error, SeigniorageAllocation,
+        SeigniorageRecipient, SeigniorageRecipients, SeigniorageRecipientsSnapshot, UnbondingPurse,
+        UnbondingPurses, ValidatorBid, ValidatorBids, ValidatorCredit, ValidatorCredits,
+        AUCTION_DELAY_KEY, ERA_END_TIMESTAMP_MILLIS_KEY, ERA_ID_KEY,
+        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
     },
     ApiError, CLTyped, EraId, Key, KeyTag, PublicKey, URef, U512,
 };
@@ -59,6 +59,7 @@ where
 pub struct ValidatorBidsDetail {
     validator_bids: ValidatorBids,
     validator_credits: ValidatorCredits,
+    delegator_bids: DelegatorBids,
 }
 
 impl ValidatorBidsDetail {
@@ -66,6 +67,7 @@ impl ValidatorBidsDetail {
         ValidatorBidsDetail {
             validator_bids: BTreeMap::new(),
             validator_credits: BTreeMap::new(),
+            delegator_bids: BTreeMap::new(),
         }
     }
 
@@ -74,7 +76,9 @@ impl ValidatorBidsDetail {
         &mut self,
         validator: PublicKey,
         validator_bid: Box<ValidatorBid>,
+        delegators: Vec<Box<Delegator>>,
     ) -> Option<Box<ValidatorBid>> {
+        self.delegator_bids.insert(validator.clone(), delegators);
         self.validator_bids.insert(validator, validator_bid)
     }
 
@@ -110,19 +114,15 @@ impl ValidatorBidsDetail {
 
     /// Get validator weights.
     #[allow(clippy::too_many_arguments)]
-    pub fn validator_weights<P>(
+    pub fn validator_weights(
         &mut self,
-        provider: &mut P,
         era_ending: EraId,
         era_end_timestamp_millis: u64,
         vesting_schedule_period_millis: u64,
         locked: bool,
         include_credits: bool,
         cap: Ratio<U512>,
-    ) -> Result<ValidatorWeights, Error>
-    where
-        P: RuntimeProvider + ?Sized + StorageProvider,
-    {
+    ) -> Result<ValidatorWeights, Error> {
         let mut ret = BTreeMap::new();
 
         for (validator_public_key, bid) in self.validator_bids.iter().filter(|(_, v)| {
@@ -133,7 +133,13 @@ impl ValidatorBidsDetail {
                 )
                 && !v.inactive()
         }) {
-            let staked_amount = total_staked_amount(provider, bid)?;
+            let mut staked_amount = bid.staked_amount();
+            if let Some(delegators) = self.delegator_bids.get(validator_public_key) {
+                staked_amount = staked_amount
+                    .checked_add(delegators.iter().map(|d| d.staked_amount()).sum())
+                    .ok_or(Error::InvalidAmount)?;
+            }
+
             let credit_amount = self.credit_amount(
                 validator_public_key,
                 era_ending,
@@ -182,8 +188,12 @@ impl ValidatorBidsDetail {
     }
 
     /// Consume self into in underlying collections.
-    pub fn destructure(self) -> (ValidatorBids, ValidatorCredits) {
-        (self.validator_bids, self.validator_credits)
+    pub fn destructure(self) -> (ValidatorBids, ValidatorCredits, DelegatorBids) {
+        (
+            self.validator_bids,
+            self.validator_credits,
+            self.delegator_bids,
+        )
     }
 }
 
@@ -215,7 +225,9 @@ where
     for key in bids_keys {
         match provider.read_bid(&key)? {
             Some(BidKind::Validator(validator_bid)) => {
-                ret.insert_bid(validator_bid.validator_public_key().clone(), validator_bid);
+                let validator_public_key = validator_bid.validator_public_key();
+                let delegator_bids = delegators(provider, validator_public_key)?;
+                ret.insert_bid(validator_public_key.clone(), validator_bid, delegator_bids);
             }
             Some(BidKind::Credit(credit)) => {
                 ret.insert_credit(credit.validator_public_key().clone(), era_id, credit);
@@ -896,14 +908,11 @@ where
     }
 }
 
-pub fn seigniorage_recipients<P>(
-    provider: &mut P,
+pub fn seigniorage_recipients(
     validator_weights: &ValidatorWeights,
     validator_bids: &ValidatorBids,
-) -> Result<SeigniorageRecipients, Error>
-where
-    P: RuntimeProvider + ?Sized + StorageProvider,
-{
+    delegator_bids: &DelegatorBids,
+) -> Result<SeigniorageRecipients, Error> {
     let mut recipients = SeigniorageRecipients::new();
     for (validator_public_key, validator_total_weight) in validator_weights {
         // check if validator bid exists before processing.
@@ -913,17 +922,31 @@ where
         // calculate delegator portion(s), if any
         let mut delegators_weight = U512::zero();
         let mut delegators_stake: BTreeMap<PublicKey, U512> = BTreeMap::new();
-        for delegator_bid in read_delegator_bids(provider, validator_public_key)? {
-            if delegator_bid.staked_amount().is_zero() {
-                continue;
+        if let Some(delegators) = delegator_bids.get(validator_public_key) {
+            for delegator_bid in delegators {
+                if delegator_bid.staked_amount().is_zero() {
+                    continue;
+                }
+                let delegator_staked_amount = delegator_bid.staked_amount();
+                delegators_weight = delegators_weight.saturating_add(delegator_staked_amount);
+                delegators_stake.insert(
+                    delegator_bid.delegator_public_key().clone(),
+                    delegator_staked_amount,
+                );
             }
-            let delegator_staked_amount = delegator_bid.staked_amount();
-            delegators_weight = delegators_weight.saturating_add(delegator_staked_amount);
-            delegators_stake.insert(
-                delegator_bid.delegator_public_key().clone(),
-                delegator_staked_amount,
-            );
         }
+
+        // for delegator_bid in read_delegator_bids(provider, validator_public_key)? {
+        //     if delegator_bid.staked_amount().is_zero() {
+        //         continue;
+        //     }
+        //     let delegator_staked_amount = delegator_bid.staked_amount();
+        //     delegators_weight = delegators_weight.saturating_add(delegator_staked_amount);
+        //     delegators_stake.insert(
+        //         delegator_bid.delegator_public_key().clone(),
+        //         delegator_staked_amount,
+        //     );
+        // }
 
         // determine validator's personal stake (total weight - sum of delegators weight)
         let validator_stake = validator_total_weight.saturating_sub(delegators_weight);
@@ -1007,26 +1030,25 @@ where
     }
 }
 
-/// Returns the total staked amount of validator + all delegators
-pub fn total_staked_amount<P>(provider: &mut P, validator_bid: &ValidatorBid) -> Result<U512, Error>
+pub fn delegators<P>(
+    provider: &mut P,
+    validator_public_key: &PublicKey,
+) -> Result<Vec<Box<Delegator>>, Error>
 where
     P: RuntimeProvider + ?Sized + StorageProvider,
 {
-    let bid_addr = BidAddr::from(validator_bid.validator_public_key().clone());
+    let mut ret = vec![];
+    let bid_addr = BidAddr::from(validator_public_key.clone());
     let delegator_bid_keys = provider.get_keys_by_prefix(
         &bid_addr
             .delegators_prefix()
             .map_err(|_| Error::Serialization)?,
     )?;
 
-    let mut sum = U512::zero();
-
     for delegator_bid_key in delegator_bid_keys {
         let delegator = read_delegator_bid(provider, &delegator_bid_key)?;
-        let staked_amount = delegator.staked_amount();
-        sum += staked_amount;
+        ret.push(delegator);
     }
 
-    sum.checked_add(validator_bid.staked_amount())
-        .ok_or(Error::InvalidAmount)
+    Ok(ret)
 }

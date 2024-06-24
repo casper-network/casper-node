@@ -573,7 +573,6 @@ pub trait Auction:
         // Compute next auction winners
         let winners: ValidatorWeights = {
             let locked_validators = validator_bids_detail.validator_weights(
-                self,
                 era_id,
                 era_end_timestamp_millis,
                 vesting_schedule_period_millis,
@@ -585,7 +584,6 @@ pub trait Auction:
             let remaining_auction_slots = validator_slots.saturating_sub(locked_validators.len());
             if remaining_auction_slots > 0 {
                 let unlocked_validators = validator_bids_detail.validator_weights(
-                    self,
                     era_id,
                     era_end_timestamp_millis,
                     vesting_schedule_period_millis,
@@ -613,7 +611,8 @@ pub trait Auction:
             }
         };
 
-        let (validator_bids, validator_credits) = validator_bids_detail.destructure();
+        let (validator_bids, validator_credits, delegator_bids) =
+            validator_bids_detail.destructure();
 
         // call prune BEFORE incrementing the era
         detail::prune_validator_credits(self, era_id, &validator_credits);
@@ -628,7 +627,7 @@ pub trait Auction:
         // Update seigniorage recipients for current era
         {
             let mut snapshot = detail::get_seigniorage_recipients_snapshot(self)?;
-            let recipients = seigniorage_recipients(self, &winners, &validator_bids)?;
+            let recipients = seigniorage_recipients(&winners, &validator_bids, &delegator_bids)?;
             let previous_recipients = snapshot.insert(delayed_era, recipients);
             assert!(previous_recipients.is_none());
 
