@@ -387,8 +387,7 @@ pub fn execute_finalized_block(
                         }
                     };
                 }
-
-                category if category == TransactionCategory::InstallUpgrade as u8 && is_v2_wasm => {
+                _ if is_v2_wasm => {
                     let address_generator = AddressGeneratorBuilder::default()
                         .seed_with(transaction_hash.as_ref())
                         .build();
@@ -417,14 +416,14 @@ pub fn execute_finalized_block(
                     };
 
                     match transaction_v1.body().entry_point() {
-                        TransactionEntryPoint::Custom(entry_point_name) => {
+                        TransactionEntryPoint::Instantiate(entry_point_name) => {
                             builder = builder.with_entry_point(entry_point_name.clone());
                             if let Some(input_data) = input_data {
                                 builder =
                                     builder.with_input(input_data.clone().take_inner().into());
                             }
                         }
-                        TransactionEntryPoint::DefaultInitialize => {
+                        TransactionEntryPoint::DefaultInstantiate => {
                             // No entry poitn specified, uses default initialization upon
                             // first call (if possible).
                             assert!(input_data.is_none(), "No arguments expected for a default initialization (got {input_data:?})");
@@ -476,9 +475,6 @@ pub fn execute_finalized_block(
                             // artifact_builder.with_added_consumed(result.gas_usage().gas_spent());
                         }
                     }
-                }
-                category if is_v2_wasm => {
-                    todo!("Category {category} not supported yet under v2 wasm");
                 }
                 _ if !is_v2_wasm => {
                     let wasm_v1_start = Instant::now();

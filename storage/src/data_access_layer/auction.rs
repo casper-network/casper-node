@@ -84,7 +84,9 @@ impl AuctionMethod {
         match entry_point {
             TransactionEntryPoint::Call
             | TransactionEntryPoint::Custom(_)
-            | TransactionEntryPoint::Transfer => {
+            | TransactionEntryPoint::Transfer
+            | TransactionEntryPoint::Instantiate(_)
+            | TransactionEntryPoint::DefaultInstantiate => {
                 Err(AuctionMethodError::InvalidEntryPoint(entry_point))
             }
             TransactionEntryPoint::ActivateBid => Self::new_activate_bid(runtime_args),
@@ -103,7 +105,6 @@ impl AuctionMethod {
             TransactionEntryPoint::ChangeBidPublicKey => {
                 Self::new_change_bid_public_key(runtime_args)
             }
-            TransactionEntryPoint::DefaultInitialize => todo!(),
         }
     }
 

@@ -136,7 +136,8 @@ pub enum InvalidTransaction {
         entry_point: TransactionEntryPoint,
     },
 
-    EntryPointCannotBeDefault,
+    /// Unable to instantiate a smart contract.
+    UnableToInstantiate,
     /// The entry point for this transaction target must be `TransactionEntryPoint::Custom`.
     EntryPointMustBeCustom {
         /// The invalid entry point.
@@ -304,7 +305,7 @@ impl Display for InvalidTransaction {
                 formatter,
                 "received a transaction with invalid arguments kind"
             ),
-            InvalidTransaction::EntryPointCannotBeDefault => {
+            InvalidTransaction::UnableToInstantiate => {
                 write!(formatter, "entry point cannot be default")
             }
         }
@@ -346,7 +347,7 @@ impl StdError for InvalidTransaction {
             | InvalidTransaction::InvalidPricingMode { .. }
             | InvalidTransaction::InvalidTransactionKind(_) => None,
             InvalidTransaction::InvalidTransactionArgumentsKind => None,
-            InvalidTransaction::EntryPointCannotBeDefault => None,
+            InvalidTransaction::UnableToInstantiate => None,
         }
     }
 }

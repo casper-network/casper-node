@@ -29,7 +29,8 @@ const REDELEGATE_TAG: u8 = 6;
 const ACTIVATE_BID_TAG: u8 = 7;
 const CHANGE_BID_PUBLIC_KEY_TAG: u8 = 8;
 const CALL_TAG: u8 = 9;
-const DEFAULT_INITIALIZE_TAG: u8 = 10;
+const INSTANTIATE_TAG: u8 = 10;
+const DEFAULT_INITIALIZE_TAG: u8 = 11;
 
 /// The entry point of a [`Transaction`].
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
@@ -167,12 +168,15 @@ pub enum TransactionEntryPoint {
     )]
     ChangeBidPublicKey,
 
-    /// The default entry point used when no entry point is specified.
+    /// Constructor entrypoint name to be used when instantiating a smart contract under v2 engine.
+    Instantiate(String),
+
+    /// Instantiate contract without an explicit constructor name.
     ///
     /// This is used together with installer transaction kind that will install the contract, but
     /// will not execute any constructor and therefore will rely on a default initialization upon
     /// first contract call.
-    DefaultInitialize,
+    DefaultInstantiate,
 }
 
 impl TransactionEntryPoint {
@@ -202,7 +206,8 @@ impl TransactionEntryPoint {
             | TransactionEntryPoint::Custom(_)
             | TransactionEntryPoint::Call
             | TransactionEntryPoint::Transfer
-            | TransactionEntryPoint::DefaultInitialize => true,
+            | TransactionEntryPoint::Instantiate(_)
+            | TransactionEntryPoint::DefaultInstantiate => true,
             TransactionEntryPoint::WithdrawBid
             | TransactionEntryPoint::Undelegate
             | TransactionEntryPoint::Redelegate
@@ -227,7 +232,8 @@ impl Display for TransactionEntryPoint {
             TransactionEntryPoint::Redelegate => write!(formatter, "redelegate"),
             TransactionEntryPoint::ActivateBid => write!(formatter, "activate_bid"),
             TransactionEntryPoint::ChangeBidPublicKey => write!(formatter, "change_bid_public_key"),
-            TransactionEntryPoint::DefaultInitialize => write!(formatter, "default_initialize"),
+            TransactionEntryPoint::DefaultInstantiate => write!(formatter, "default_initialize"),
+            TransactionEntryPoint::Instantiate(_) => write!(formatter, "instantiate"),
         }
     }
 }
@@ -250,7 +256,12 @@ impl ToBytes for TransactionEntryPoint {
             TransactionEntryPoint::ChangeBidPublicKey => {
                 CHANGE_BID_PUBLIC_KEY_TAG.write_bytes(writer)
             }
-            TransactionEntryPoint::DefaultInitialize => DEFAULT_INITIALIZE_TAG.write_bytes(writer),
+            TransactionEntryPoint::Instantiate(entrypoint) => {
+                INSTANTIATE_TAG.write_bytes(writer)?;
+                entrypoint.write_bytes(writer)?;
+                Ok(())
+            }
+            TransactionEntryPoint::DefaultInstantiate => DEFAULT_INITIALIZE_TAG.write_bytes(writer),
         }
     }
 
@@ -273,7 +284,8 @@ impl ToBytes for TransactionEntryPoint {
                 | TransactionEntryPoint::Redelegate
                 | TransactionEntryPoint::ActivateBid
                 | TransactionEntryPoint::ChangeBidPublicKey
-                | TransactionEntryPoint::DefaultInitialize => 0,
+                | TransactionEntryPoint::Instantiate(_)
+                | TransactionEntryPoint::DefaultInstantiate => 0,
             }
     }
 }
@@ -295,7 +307,11 @@ impl FromBytes for TransactionEntryPoint {
             REDELEGATE_TAG => Ok((TransactionEntryPoint::Redelegate, remainder)),
             ACTIVATE_BID_TAG => Ok((TransactionEntryPoint::ActivateBid, remainder)),
             CHANGE_BID_PUBLIC_KEY_TAG => Ok((TransactionEntryPoint::ChangeBidPublicKey, remainder)),
-            DEFAULT_INITIALIZE_TAG => Ok((TransactionEntryPoint::DefaultInitialize, remainder)),
+            INSTANTIATE_TAG => {
+                let (entry_point, remainder) = String::from_bytes(remainder)?;
+                Ok((TransactionEntryPoint::Instantiate(entry_point), remainder))
+            }
+            DEFAULT_INITIALIZE_TAG => Ok((TransactionEntryPoint::DefaultInstantiate, remainder)),
             _ => Err(bytesrepr::Error::Formatting),
         }
     }

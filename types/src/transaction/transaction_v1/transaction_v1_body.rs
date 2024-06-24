@@ -350,7 +350,11 @@ impl TransactionV1Body {
                         &self.args.as_named().unwrap(),
                     )
                 }
-                TransactionEntryPoint::DefaultInitialize => todo!(),
+                TransactionEntryPoint::DefaultInstantiate
+                | TransactionEntryPoint::Instantiate(_) => {
+                    debug!("TODO: Validation");
+                    Ok(())
+                }
             },
             TransactionTarget::Stored { .. } => match &self.entry_point {
                 TransactionEntryPoint::Custom(_) => Ok(()),
@@ -371,12 +375,18 @@ impl TransactionV1Body {
                         entry_point: self.entry_point.clone(),
                     })
                 }
-                TransactionEntryPoint::DefaultInitialize => {
-                    Err(InvalidTransactionV1::EntryPointCannotBeDefault)
+                TransactionEntryPoint::DefaultInstantiate => {
+                    Err(InvalidTransactionV1::UnableToInstantiate)
+                }
+                TransactionEntryPoint::Instantiate(_) => {
+                    debug!("TODO: Validation");
+                    Ok(())
                 }
             },
             TransactionTarget::Session { module_bytes, .. } => match &self.entry_point {
-                TransactionEntryPoint::Call | TransactionEntryPoint::Custom(_) => {
+                TransactionEntryPoint::Call
+                | TransactionEntryPoint::Custom(_)
+                | TransactionEntryPoint::Instantiate(_) => {
                     if module_bytes.is_empty() {
                         debug!("transaction with session code must not have empty module bytes");
                         return Err(InvalidTransactionV1::EmptyModuleBytes);
@@ -399,7 +409,7 @@ impl TransactionV1Body {
                         entry_point: self.entry_point.clone(),
                     })
                 }
-                TransactionEntryPoint::DefaultInitialize => {
+                TransactionEntryPoint::DefaultInstantiate => {
                     debug!("TODO: Validation");
                     Ok(())
                     // if self.transaction_category() != TransactionCategory::InstallUpgrade as u8 {

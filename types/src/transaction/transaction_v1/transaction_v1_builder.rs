@@ -279,10 +279,10 @@ impl<'a> TransactionV1Builder<'a> {
         value: u128,
     ) -> Self {
         let (entry_point, input_data) = match (constructor, input_data) {
-            (None, None) => (TransactionEntryPoint::DefaultInitialize, Bytes::new()),
+            (None, None) => (TransactionEntryPoint::DefaultInstantiate, Bytes::new()),
             (None, Some(_)) => panic!("?"),
-            (Some(name), None) => (TransactionEntryPoint::Custom(name), Bytes::new()),
-            (Some(name), Some(input)) => (TransactionEntryPoint::Custom(name), input),
+            (Some(name), None) => (TransactionEntryPoint::Instantiate(name), Bytes::new()),
+            (Some(name), Some(input)) => (TransactionEntryPoint::Instantiate(name), input),
         };
 
         let runtime = TransactionRuntime::VmCasperV2;
