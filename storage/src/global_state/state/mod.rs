@@ -703,10 +703,18 @@ pub trait StateProvider {
                 };
                 let balance_holds = match request.balance_handling() {
                     BalanceHandling::Total => BTreeMap::new(),
-                    BalanceHandling::Available => match tc.get_balance_holds(purse_addr) {
-                        Ok(holds) => holds,
-                        Err(tce) => return tce.into(),
-                    },
+                    BalanceHandling::Available => {
+                        match tc.get_balance_hold_config(BalanceHoldAddrTag::Gas) {
+                            Ok(Some((block_time, _, interval))) => {
+                                match tc.get_balance_holds(purse_addr, block_time, interval) {
+                                    Ok(holds) => holds,
+                                    Err(tce) => return tce.into(),
+                                }
+                            }
+                            Ok(None) => BTreeMap::new(),
+                            Err(tce) => return tce.into(),
+                        }
+                    }
                 };
                 (total_balance, ProofsResult::NotRequested { balance_holds })
             }
@@ -2150,7 +2158,7 @@ pub fn put_stored_values<'a, R, S, E>(
     environment: &'a R,
     store: &S,
     prestate_hash: Digest,
-    stored_values: BTreeMap<Key, StoredValue>,
+    stored_values: Vec<(Key, StoredValue)>,
 ) -> Result<Digest, E>
 where
     R: TransactionSource<'a, Handle = S::Handle>,

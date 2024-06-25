@@ -285,7 +285,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
             // treat as noop
             return Ok(());
         }
-        if self.available_balance(existing_purse)?.is_none() {
+        if !self.purse_exists(existing_purse)? {
             return Err(Error::PurseNotFound);
         }
         self.add_balance(existing_purse, amount)?;
@@ -304,4 +304,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
         self.add(total_supply_uref, amount)?;
         Ok(())
     }
+
+    /// Check if a purse exists.
+    fn purse_exists(&mut self, uref: URef) -> Result<bool, Error>;
 }
