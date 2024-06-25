@@ -449,7 +449,7 @@ where
         let mut generator = AddressGenerator::new(main_purse.addr().as_ref(), Phase::System);
 
         let byte_code_hash = ByteCodeHash::default();
-        let entity_hash = AddressableEntityHash::new(generator.new_hash_address());
+        let entity_hash = AddressableEntityHash::new(account_hash.value());
         let package_hash = PackageHash::new(generator.new_hash_address());
 
         let associated_keys = AssociatedKeys::new(account_hash, Weight::new(1));

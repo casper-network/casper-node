@@ -506,7 +506,7 @@ where
         let mut address_generator = AddressGenerator::new(pre_state_hash.as_ref(), Phase::System);
 
         let byte_code_hash = ByteCodeHash::default();
-        let entity_hash = AddressableEntityHash::new(address_generator.new_hash_address());
+        let entity_hash = AddressableEntityHash::new(PublicKey::System.to_account_hash().value());
         let package_hash = PackageHash::new(address_generator.new_hash_address());
 
         let byte_code = ByteCode::new(ByteCodeKind::Empty, vec![]);
