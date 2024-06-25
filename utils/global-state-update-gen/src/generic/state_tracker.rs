@@ -163,7 +163,7 @@ impl<T: StateReader> StateTracker<T> {
 
         let mut rng = rand::thread_rng();
 
-        let entity_hash = AddressableEntityHash::new(rng.gen());
+        let entity_hash = AddressableEntityHash::new(account_hash.value());
         let package_hash = PackageHash::new(rng.gen());
         let contract_wasm_hash = ByteCodeHash::new([0u8; 32]);
 
