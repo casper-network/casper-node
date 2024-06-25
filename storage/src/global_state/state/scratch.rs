@@ -1,6 +1,6 @@
 use lmdb::RwTransaction;
 use std::{
-    collections::{BTreeMap, BTreeSet, VecDeque},
+    collections::{BTreeMap, BTreeSet, HashMap, VecDeque},
     mem,
     ops::Deref,
     sync::{Arc, RwLock},
@@ -40,22 +40,20 @@ use crate::tracking_copy::TrackingCopy;
 type SharedCache = Arc<RwLock<Cache>>;
 
 struct Cache {
-    cached_values: BTreeMap<Key, (bool, StoredValue)>,
+    cached_values: HashMap<Key, (bool, StoredValue)>,
     pruned: BTreeSet<Key>,
     cached_keys: CacheTrie<Key>,
 }
 
-use std::collections::HashMap;
-
 struct CacheTrieNode<T> {
-    children: HashMap<u8, CacheTrieNode<T>>,
+    children: BTreeMap<u8, CacheTrieNode<T>>,
     value: Option<T>,
 }
 
 impl<T> CacheTrieNode<T> {
     fn new() -> Self {
         CacheTrieNode {
-            children: HashMap::new(),
+            children: BTreeMap::new(),
             value: None,
         }
     }
@@ -139,7 +137,7 @@ impl<T: Copy> CacheTrie<T> {
 impl Cache {
     fn new() -> Self {
         Cache {
-            cached_values: BTreeMap::new(),
+            cached_values: HashMap::new(),
             pruned: BTreeSet::new(),
             cached_keys: CacheTrie::new(),
         }
@@ -182,13 +180,23 @@ impl Cache {
 
     /// Consumes self and returns only written values as values that were only read must be filtered
     /// out to prevent unnecessary writes.
-    fn into_dirty_writes(self) -> (BTreeMap<Key, StoredValue>, BTreeSet<Key>) {
-        let keys_to_prune = self.pruned;
-        let stored_values: BTreeMap<Key, StoredValue> = self
-            .cached_values
+    fn into_dirty_writes(self) -> (Vec<(Key, StoredValue)>, BTreeSet<Key>) {
+        let stored_values: Vec<(Key, StoredValue)> = self
+            .cached_keys
+            .keys_with_prefix(&[])
             .into_iter()
-            .filter_map(|(key, (dirty, value))| if dirty { Some((key, value)) } else { None })
+            .filter_map(|key| {
+                self.cached_values.get(&key).and_then(|(dirty, value)| {
+                    if *dirty {
+                        Some((key, value.clone()))
+                    } else {
+                        None
+                    }
+                })
+            })
             .collect();
+        let keys_to_prune = self.pruned;
+
         debug!(
             "Cache::into_dirty_writes prune_count: {} store_count: {}",
             keys_to_prune.len(),
@@ -250,7 +258,7 @@ impl ScratchGlobalState {
     }
 
     /// Consume self and return inner cache.
-    pub fn into_inner(self) -> (BTreeMap<Key, StoredValue>, BTreeSet<Key>) {
+    pub fn into_inner(self) -> (Vec<(Key, StoredValue)>, BTreeSet<Key>) {
         let cache = mem::replace(&mut *self.cache.write().unwrap(), Cache::new());
         cache.into_dirty_writes()
     }
@@ -706,10 +714,14 @@ pub(crate) mod tests {
         assert_eq!(all_keys.len(), stored_values.len());
 
         for key in all_keys {
-            assert!(stored_values.get(&key).is_some());
             assert_eq!(
-                stored_values.get(&key),
-                updated_checkout.read(&key).unwrap().as_ref()
+                stored_values
+                    .iter()
+                    .find(|(k, _)| k == &key)
+                    .unwrap()
+                    .1
+                    .clone(),
+                updated_checkout.read(&key).unwrap().unwrap()
             );
         }
 
@@ -813,7 +825,7 @@ pub(crate) mod tests {
         trie.insert(b"world", key_world);
         trie.insert(b"hey", key_hey);
 
-        assert_eq!(trie.keys_with_prefix(b"he"), vec![key_hello, key_hey]);
+        assert_eq!(trie.keys_with_prefix(b"he"), vec![key_hey, key_hello]);
         assert_eq!(trie.keys_with_prefix(b"wo"), vec![key_world]);
     }
 
@@ -879,5 +891,22 @@ pub(crate) mod tests {
         let trie = CacheTrie::<Key>::new();
 
         assert_eq!(trie.keys_with_prefix(b""), Vec::<Key>::new());
+    }
+
+    #[test]
+    fn cache_trie_empty_prefix_search_all_keys() {
+        let mut trie = CacheTrie::new();
+        let key_hello = Key::Hash(*b"hello...........................");
+        let key_world = Key::Hash(*b"world...........................");
+        let key_hey = Key::Hash(*b"hey.............................");
+
+        trie.insert(b"hello", key_hello);
+        trie.insert(b"world", key_world);
+        trie.insert(b"hey", key_hey);
+
+        assert_eq!(
+            trie.keys_with_prefix(b""),
+            vec![key_world, key_hey, key_hello]
+        );
     }
 }

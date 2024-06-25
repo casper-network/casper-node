@@ -2158,7 +2158,7 @@ pub fn put_stored_values<'a, R, S, E>(
     environment: &'a R,
     store: &S,
     prestate_hash: Digest,
-    stored_values: BTreeMap<Key, StoredValue>,
+    stored_values: Vec<(Key, StoredValue)>,
 ) -> Result<Digest, E>
 where
     R: TransactionSource<'a, Handle = S::Handle>,
