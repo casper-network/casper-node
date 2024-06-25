@@ -893,7 +893,7 @@ where
             };
             let snapshot_request = SeigniorageRecipientsRequest::new(
                 *parent_header.state_root_hash(),
-                protocol_version,
+                parent_header.protocol_version(),
             );
 
             let snapshot = match effect_builder
