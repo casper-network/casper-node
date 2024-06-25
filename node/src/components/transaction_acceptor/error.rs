@@ -72,7 +72,54 @@ impl From<Error> for BinaryPortErrorCode {
             Error::ExpectedDeploy => BinaryPortErrorCode::ExpectedDeploy,
             Error::ExpectedTransactionV1 => BinaryPortErrorCode::ExpectedTransaction,
             Error::Expired { .. } => BinaryPortErrorCode::TransactionExpired,
-            Error::Parameters { .. } => BinaryPortErrorCode::MissingOrIncorrectParameters,
+            Error::Parameters { failure, .. } => match failure {
+                ParameterFailure::NoSuchAddressableEntity { .. } => {
+                    BinaryPortErrorCode::NoSuchAddressableEntity
+                }
+                ParameterFailure::NoSuchContractAtHash { .. } => {
+                    BinaryPortErrorCode::NoSuchContractAtHash
+                }
+                ParameterFailure::NoSuchEntryPoint { .. } => BinaryPortErrorCode::NoSuchEntryPoint,
+                ParameterFailure::NoSuchPackageAtHash { .. } => {
+                    BinaryPortErrorCode::NoSuchPackageAtHash
+                }
+                ParameterFailure::InvalidEntityAtVersion { .. } => {
+                    BinaryPortErrorCode::InvalidEntityAtVersion
+                }
+                ParameterFailure::DisabledEntityAtVersion { .. } => {
+                    BinaryPortErrorCode::DisabledEntityAtVersion
+                }
+                ParameterFailure::MissingEntityAtVersion { .. } => {
+                    BinaryPortErrorCode::MissingEntityAtVersion
+                }
+                ParameterFailure::InvalidAssociatedKeys => {
+                    BinaryPortErrorCode::InvalidAssociatedKeys
+                }
+                ParameterFailure::InsufficientSignatureWeight => {
+                    BinaryPortErrorCode::InsufficientSignatureWeight
+                }
+                ParameterFailure::InsufficientBalance { .. } => {
+                    BinaryPortErrorCode::InsufficientBalance
+                }
+                ParameterFailure::UnknownBalance { .. } => BinaryPortErrorCode::UnknownBalance,
+                ParameterFailure::Deploy(deploy_failure) => match deploy_failure {
+                    DeployParameterFailure::InvalidPaymentVariant => {
+                        BinaryPortErrorCode::DeployInvalidPaymentVariant
+                    }
+                    DeployParameterFailure::MissingPaymentAmount => {
+                        BinaryPortErrorCode::DeployMissingPaymentAmount
+                    }
+                    DeployParameterFailure::FailedToParsePaymentAmount => {
+                        BinaryPortErrorCode::DeployFailedToParsePaymentAmount
+                    }
+                    DeployParameterFailure::MissingTransferTarget => {
+                        BinaryPortErrorCode::DeployMissingTransferTarget
+                    }
+                    DeployParameterFailure::MissingModuleBytes => {
+                        BinaryPortErrorCode::DeployMissingModuleBytes
+                    }
+                },
+            },
             Error::InvalidTransaction(invalid_transaction) => {
                 BinaryPortErrorCode::from(invalid_transaction)
             }
