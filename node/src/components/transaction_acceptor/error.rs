@@ -68,13 +68,11 @@ impl Error {
 impl From<Error> for BinaryPortErrorCode {
     fn from(err: Error) -> Self {
         match err {
-            Error::EmptyBlockchain
-            | Error::Parameters { .. }
-            | Error::Expired { .. }
-            | Error::ExpectedDeploy
-            | Error::ExpectedTransactionV1 => {
-                BinaryPortErrorCode::InvalidTransactionOrDeployUnspecified
-            }
+            Error::EmptyBlockchain => BinaryPortErrorCode::EmptyBlockchain,
+            Error::ExpectedDeploy => BinaryPortErrorCode::ExpectedDeploy,
+            Error::ExpectedTransactionV1 => BinaryPortErrorCode::ExpectedTransaction,
+            Error::Expired { .. } => BinaryPortErrorCode::TransactionExpired,
+            Error::Parameters { .. } => BinaryPortErrorCode::MissingOrIncorrectParameters,
             Error::InvalidTransaction(invalid_transaction) => {
                 BinaryPortErrorCode::from(invalid_transaction)
             }
