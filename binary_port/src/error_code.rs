@@ -265,6 +265,12 @@ pub enum ErrorCode {
     /// Missing module bytes for deploy
     #[error("missing module bytes for deploy")]
     DeployMissingModuleBytes = 82,
+    /// Entry point cannot be 'call'
+    #[error("entry point cannot be 'call'")]
+    InvalidTransactionEntryPointCannotBeCall = 83,
+    /// Invalid transaction kind
+    #[error("invalid transaction kind")]
+    InvalidTransactionInvalidTransactionKind = 84,
 }
 
 impl TryFrom<u16> for ErrorCode {
@@ -355,6 +361,8 @@ impl TryFrom<u16> for ErrorCode {
             80 => Ok(ErrorCode::DeployFailedToParsePaymentAmount),
             81 => Ok(ErrorCode::DeployMissingTransferTarget),
             82 => Ok(ErrorCode::DeployMissingModuleBytes),
+            83 => Ok(ErrorCode::InvalidTransactionEntryPointCannotBeCall),
+            84 => Ok(ErrorCode::InvalidTransactionInvalidTransactionKind),
             _ => Err(UnknownErrorCode),
         }
     }
@@ -482,6 +490,12 @@ impl From<InvalidTransactionV1> for ErrorCode {
             }
             InvalidTransactionV1::InvalidPricingMode { .. } => {
                 ErrorCode::InvalidTransactionPricingMode
+            }
+            InvalidTransactionV1::EntryPointCannotBeCall => {
+                ErrorCode::InvalidTransactionEntryPointCannotBeCall
+            }
+            InvalidTransactionV1::InvalidTransactionKind(_) => {
+                ErrorCode::InvalidTransactionInvalidTransactionKind
             }
             _ => ErrorCode::InvalidTransactionUnspecified,
         }
