@@ -111,7 +111,7 @@ pub struct Runtime<'a, R> {
 
 impl<'a, R> Runtime<'a, R>
 where
-    R: StateReader<Key, StoredValue, Error=GlobalStateError>,
+    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
     /// Creates a new runtime instance.
     pub(crate) fn new(context: RuntimeContext<'a, R>) -> Self {
@@ -657,15 +657,15 @@ where
                 ExecError::GasLimit
             }
             ApiError::AuctionError(auction_error)
-            if auction_error == auction::Error::GasLimit as u8 =>
-                {
-                    ExecError::GasLimit
-                }
+                if auction_error == auction::Error::GasLimit as u8 =>
+            {
+                ExecError::GasLimit
+            }
             ApiError::HandlePayment(handle_payment_error)
-            if handle_payment_error == handle_payment::Error::GasLimit as u8 =>
-                {
-                    ExecError::GasLimit
-                }
+                if handle_payment_error == handle_payment::Error::GasLimit as u8 =>
+            {
+                ExecError::GasLimit
+            }
             api_error => ExecError::Revert(api_error),
         }
     }
@@ -952,7 +952,7 @@ where
                     runtime_args,
                     auction::ARG_MINIMUM_DELEGATION_AMOUNT,
                 )?
-                    .unwrap_or(global_minimum_delegation_amount);
+                .unwrap_or(global_minimum_delegation_amount);
 
                 let global_maximum_delegation_amount =
                     self.context.engine_config().maximum_delegation_amount();
@@ -960,7 +960,7 @@ where
                     runtime_args,
                     auction::ARG_MAXIMUM_DELEGATION_AMOUNT,
                 )?
-                    .unwrap_or(global_maximum_delegation_amount);
+                .unwrap_or(global_maximum_delegation_amount);
 
                 if minimum_delegation_amount < global_minimum_delegation_amount
                     || maximum_delegation_amount > global_maximum_delegation_amount
@@ -2600,9 +2600,9 @@ where
         if !allow_unrestricted_transfers
             && self.context.get_caller() != PublicKey::System.to_account_hash()
             && !self
-            .context
-            .engine_config()
-            .is_administrator(&self.context.get_caller())
+                .context
+                .engine_config()
+                .is_administrator(&self.context.get_caller())
             && !self.context.engine_config().is_administrator(&target)
         {
             return Err(ExecError::DisabledUnrestrictedTransfers);
@@ -3553,7 +3553,7 @@ where
                 let (prev_block_time, prev_count): (BlockTime, u64) = CLValue::into_t(
                     CLValue::try_from(stored_value).map_err(ExecError::TypeMismatch)?,
                 )
-                    .map_err(ExecError::CLValue)?;
+                .map_err(ExecError::CLValue)?;
                 if prev_block_time == current_blocktime {
                     prev_count
                 } else {

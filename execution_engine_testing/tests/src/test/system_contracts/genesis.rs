@@ -68,7 +68,7 @@ fn should_run_genesis() {
         GENESIS_CUSTOM_ACCOUNTS.clone(),
         protocol_version,
     )
-        .expect("must create genesis request");
+    .expect("must create genesis request");
 
     let mut builder = LmdbWasmTestBuilder::default();
 

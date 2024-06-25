@@ -351,7 +351,7 @@ where
                 validators: genesis_validators.len(),
                 validator_slots: self.config.validator_slots(),
             }
-                .into());
+            .into());
         }
 
         let genesis_delegators: Vec<_> = self.config.get_bonded_delegators().collect();
@@ -364,7 +364,7 @@ where
                 return Err(GenesisError::InvalidDelegatedAmount {
                     public_key: (*delegator_public_key).clone(),
                 }
-                    .into());
+                .into());
             }
 
             let orphan_condition = genesis_validators.iter().find(|genesis_validator| {
@@ -376,7 +376,7 @@ where
                     validator_public_key: (*validator_public_key).clone(),
                     delegator_public_key: (*delegator_public_key).clone(),
                 }
-                    .into());
+                .into());
             }
         }
 
@@ -400,7 +400,7 @@ where
                         public_key,
                         delegation_rate,
                     }
-                        .into());
+                    .into());
                 }
                 debug_assert_ne!(public_key, PublicKey::System);
 
@@ -448,7 +448,7 @@ where
                                     validator_public_key: (*validator_public_key).clone(),
                                     delegator_public_key: (*delegator_public_key).clone(),
                                 }
-                                    .into());
+                                .into());
                             }
                         }
                     }
@@ -617,9 +617,9 @@ where
 
         if administrative_accounts.peek().is_some()
             && administrative_accounts
-            .duplicates_by(|admin| admin.public_key())
-            .next()
-            .is_some()
+                .duplicates_by(|admin| admin.public_key())
+                .next()
+                .is_some()
         {
             // Ensure no duplicate administrator accounts are specified as this might raise errors
             // during genesis process when administrator accounts are added to associated keys.
