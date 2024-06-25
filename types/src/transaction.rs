@@ -347,14 +347,14 @@ impl Transaction {
         }
     }
 
-    pub fn is_gas_limited(&self) -> Option<bool> {
+    pub fn is_gas_limited(&self) -> Option<u64> {
         match self {
             Transaction::Deploy(_) => None,
             Transaction::V1(v1) => {
-                if let PricingMode::GasLimited { .. } = v1.pricing_mode() {
-                    Some(true)
+                if let PricingMode::GasLimited { gas_limit, .. } = v1.pricing_mode() {
+                    Some(*gas_limit)
                 } else {
-                    Some(false)
+                    None
                 }
             }
         }

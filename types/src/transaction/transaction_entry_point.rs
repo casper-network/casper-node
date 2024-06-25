@@ -183,7 +183,7 @@ impl TransactionEntryPoint {
     /// Returns a random `TransactionEntryPoint`.
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
-        match rng.gen_range(0..10) {
+        match rng.gen_range(0..=11) {
             CUSTOM_TAG => TransactionEntryPoint::Custom(rng.random_string(1..21)),
             TRANSFER_TAG => TransactionEntryPoint::Transfer,
             ADD_BID_TAG => TransactionEntryPoint::AddBid,
@@ -194,6 +194,8 @@ impl TransactionEntryPoint {
             ACTIVATE_BID_TAG => TransactionEntryPoint::ActivateBid,
             CHANGE_BID_PUBLIC_KEY_TAG => TransactionEntryPoint::ChangeBidPublicKey,
             CALL_TAG => TransactionEntryPoint::Call,
+            INSTANTIATE_TAG => TransactionEntryPoint::Instantiate(rng.random_string(1..21)),
+            DEFAULT_INITIALIZE_TAG => TransactionEntryPoint::DefaultInstantiate,
             _ => unreachable!(),
         }
     }
@@ -274,7 +276,10 @@ impl ToBytes for TransactionEntryPoint {
     fn serialized_length(&self) -> usize {
         U8_SERIALIZED_LENGTH
             + match self {
-                TransactionEntryPoint::Custom(entry_point) => entry_point.serialized_length(),
+                TransactionEntryPoint::Custom(entry_point)
+                | TransactionEntryPoint::Instantiate(entry_point) => {
+                    entry_point.serialized_length()
+                }
                 TransactionEntryPoint::Call
                 | TransactionEntryPoint::Transfer
                 | TransactionEntryPoint::AddBid
@@ -284,7 +289,6 @@ impl ToBytes for TransactionEntryPoint {
                 | TransactionEntryPoint::Redelegate
                 | TransactionEntryPoint::ActivateBid
                 | TransactionEntryPoint::ChangeBidPublicKey
-                | TransactionEntryPoint::Instantiate(_)
                 | TransactionEntryPoint::DefaultInstantiate => 0,
             }
     }
@@ -343,6 +347,7 @@ impl From<&str> for TransactionEntryPoint {
         if value.to_lowercase() == auction::METHOD_CHANGE_BID_PUBLIC_KEY {
             return TransactionEntryPoint::ChangeBidPublicKey;
         }
+
         TransactionEntryPoint::Custom(value.to_string())
     }
 }

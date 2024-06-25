@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, convert::TryInto, sync::Arc, time::Instant};
 
 use casper_vm::executor::{
-    v2::ExecutorV2, CreateContractRequestBuilder, ExecuteRequestBuilder, Executor,
+    v2::ExecutorV2, ExecuteRequestBuilder, Executor, InstantiateContractRequestBuilder,
 };
 use itertools::Itertools;
 use tracing::{debug, error, info, trace, warn};
@@ -234,14 +234,11 @@ pub fn execute_finalized_block(
         let mut balance_identifier = {
             if is_v2_wasm {
                 match is_gas_limited {
-                    Some(true) => {
+                    Some(_value) => {
                         // this is the typical scenario; the initiating account pays using its main
                         // purse
                         trace!(%transaction_hash, "account session with standard payment");
                         initiator_addr.clone().into()
-                    }
-                    Some(false) => {
-                        todo!("Need gas limited transaction for v2 wasm")
                     }
                     None => {
                         todo!("Need gas limited transaction but got legacy deploy structure");
@@ -388,11 +385,12 @@ pub fn execute_finalized_block(
                     };
                 }
                 _ if is_v2_wasm => {
+                    let gas_limit = is_gas_limited.expect("gas limited");
                     let address_generator = AddressGeneratorBuilder::default()
                         .seed_with(transaction_hash.as_ref())
                         .build();
 
-                    let mut builder = CreateContractRequestBuilder::default();
+                    let mut builder = InstantiateContractRequestBuilder::default();
 
                     let transaction_v1 = transaction.as_transaction_v1().expect("should be v1");
 
@@ -437,7 +435,7 @@ pub fn execute_finalized_block(
 
                     let request = builder
                         .with_initiator(initiator_addr.account_hash().value())
-                        .with_gas_limit(1_000_000)
+                        .with_gas_limit(gas_limit)
                         .with_transaction_hash(transaction_hash)
                         .with_wasm_bytes(module_bytes.clone().take_inner().into())
                         .with_address_generator(address_generator)
@@ -450,7 +448,7 @@ pub fn execute_finalized_block(
                         .expect("should have tracking copy")
                         .expect("should have state root hash");
 
-                    match execution_engine_v2.create_contract(tracking_copy, request) {
+                    match execution_engine_v2.instantiate_contract(tracking_copy, request) {
                         Ok(result) => {
                             let effects = result.effects().clone();
                             let pre_state_root_hash = state_root_hash;

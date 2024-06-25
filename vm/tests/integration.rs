@@ -19,8 +19,8 @@ use casper_types::{
 };
 use casper_vm::executor::{
     v2::{ExecutorConfigBuilder, ExecutorKind, ExecutorV2},
-    CreateContractRequest, CreateContractRequestBuilder, ExecuteRequest, ExecuteRequestBuilder,
-    ExecuteResult, ExecutionKind, Executor, StoreContractResult,
+    ExecuteRequest, ExecuteRequestBuilder, ExecuteResult, ExecutionKind, Executor,
+    InstantiateContractRequest, InstantiateContractRequestBuilder, StoreContractResult,
 };
 use once_cell::sync::Lazy;
 use parking_lot::RwLock;
@@ -68,8 +68,8 @@ fn base_execute_builder() -> ExecuteRequestBuilder {
         .with_transaction_hash(TRANSACTION_HASH)
 }
 
-fn base_store_request_builder() -> CreateContractRequestBuilder {
-    CreateContractRequestBuilder::default()
+fn base_store_request_builder() -> InstantiateContractRequestBuilder {
+    InstantiateContractRequestBuilder::default()
         .with_initiator(DEFAULT_ACCOUNT_HASH.value())
         .with_gas_limit(1_000_000)
         .with_transaction_hash(TRANSACTION_HASH)
@@ -179,7 +179,7 @@ fn cep18() {
         .map(Bytes::from)
         .unwrap();
 
-    let create_request = CreateContractRequestBuilder::default()
+    let create_request = InstantiateContractRequestBuilder::default()
         .with_initiator(DEFAULT_ACCOUNT_HASH.value())
         .with_gas_limit(1_000_000)
         .with_transaction_hash(TRANSACTION_HASH)
@@ -443,7 +443,7 @@ fn run_create_contract(
     executor: &mut ExecutorV2,
     global_state: &mut LmdbGlobalState,
     pre_state_hash: Digest,
-    create_contract_request: CreateContractRequest,
+    instantiate_contract_request: InstantiateContractRequest,
 ) -> StoreContractResult {
     let tracking_copy = global_state
         .tracking_copy(pre_state_hash)
@@ -451,7 +451,7 @@ fn run_create_contract(
         .expect("Root hash exists");
 
     executor
-        .create_contract(tracking_copy, create_contract_request)
+        .instantiate_contract(tracking_copy, instantiate_contract_request)
         .expect("Succeed")
 }
 

@@ -21,7 +21,7 @@ use crate::{
 };
 
 /// Store contract request.
-pub struct CreateContractRequest {
+pub struct InstantiateContractRequest {
     /// Initiator's address.
     pub(crate) initiator: Address,
     /// Gas limit.
@@ -41,7 +41,7 @@ pub struct CreateContractRequest {
 }
 
 #[derive(Default)]
-pub struct CreateContractRequestBuilder {
+pub struct InstantiateContractRequestBuilder {
     initiator: Option<Address>,
     gas_limit: Option<u64>,
     wasm_bytes: Option<Bytes>,
@@ -52,7 +52,7 @@ pub struct CreateContractRequestBuilder {
     address_generator: Option<Arc<RwLock<AddressGenerator>>>,
 }
 
-impl CreateContractRequestBuilder {
+impl InstantiateContractRequestBuilder {
     pub fn with_initiator(mut self, initiator: Address) -> Self {
         self.initiator = Some(initiator);
         self
@@ -101,7 +101,7 @@ impl CreateContractRequestBuilder {
         self
     }
 
-    pub fn build(self) -> Result<CreateContractRequest, &'static str> {
+    pub fn build(self) -> Result<InstantiateContractRequest, &'static str> {
         let initiator = self.initiator.ok_or("Initiator not set")?;
         let gas_limit = self.gas_limit.ok_or("Gas limit not set")?;
         let wasm_bytes = self.wasm_bytes.ok_or("Wasm bytes not set")?;
@@ -110,7 +110,7 @@ impl CreateContractRequestBuilder {
         let value = self.value.ok_or("Value not set")?;
         let address_generator = self.address_generator.ok_or("Address generator not set")?;
         let transaction_hash = self.transaction_hash.ok_or("Transaction hash not set")?;
-        Ok(CreateContractRequest {
+        Ok(InstantiateContractRequest {
             initiator,
             gas_limit,
             wasm_bytes,
@@ -376,10 +376,10 @@ pub enum StoreContractError {
 /// Trait bounds also implying that the executor has to support interior mutability, as it may need
 /// to update its internal state during execution of a single or a chain of multiple contracts.
 pub trait Executor: Clone + Send {
-    fn create_contract<R: GlobalStateReader + 'static>(
+    fn instantiate_contract<R: GlobalStateReader + 'static>(
         &self,
         tracking_copy: TrackingCopy<R>,
-        store_request: CreateContractRequest,
+        store_request: InstantiateContractRequest,
     ) -> Result<StoreContractResult, StoreContractError>;
 
     fn execute<R: GlobalStateReader + 'static>(

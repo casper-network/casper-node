@@ -19,8 +19,8 @@ use vm_common::flags::{EntryPointFlags, ReturnFlags};
 use wasmer_types::compilation::function;
 
 use super::{
-    CreateContractRequest, ExecuteError, ExecuteRequest, ExecuteRequestBuilder, ExecuteResult,
-    ExecutionKind, Executor, StoreContractError, StoreContractResult,
+    ExecuteError, ExecuteRequest, ExecuteRequestBuilder, ExecuteResult, ExecutionKind, Executor,
+    InstantiateContractRequest, StoreContractError, StoreContractResult,
 };
 use crate::{
     storage::{
@@ -118,12 +118,12 @@ impl ExecutorV2 {
 }
 
 impl Executor for ExecutorV2 {
-    fn create_contract<R: GlobalStateReader + 'static>(
+    fn instantiate_contract<R: GlobalStateReader + 'static>(
         &self,
         mut tracking_copy: TrackingCopy<R>,
-        store_request: CreateContractRequest,
+        instantiate_request: InstantiateContractRequest,
     ) -> Result<StoreContractResult, StoreContractError> {
-        let CreateContractRequest {
+        let InstantiateContractRequest {
             initiator,
             gas_limit,
             wasm_bytes,
@@ -132,7 +132,7 @@ impl Executor for ExecutorV2 {
             value,
             address_generator,
             transaction_hash,
-        } = store_request;
+        } = instantiate_request;
 
         let caller_key = Key::Account(AccountHash::new(initiator.into()));
         let source_purse = get_purse_for_entity(&mut tracking_copy, caller_key);
