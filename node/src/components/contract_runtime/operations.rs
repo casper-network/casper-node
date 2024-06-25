@@ -1,7 +1,8 @@
 use std::{collections::BTreeMap, convert::TryInto, sync::Arc, time::Instant};
 
 use casper_vm::executor::{
-    v2::ExecutorV2, ExecuteRequestBuilder, Executor, InstantiateContractRequestBuilder,
+    v2::ExecutorV2, ExecuteRequestBuilder, ExecutionKind, Executor,
+    InstantiateContractRequestBuilder,
 };
 use itertools::Itertools;
 use tracing::{debug, error, info, trace, warn};
@@ -32,9 +33,10 @@ use casper_types::{
     execution::{Effects, ExecutionResult, TransformKindV2, TransformV2},
     system::handle_payment::ARG_AMOUNT,
     BlockHash, BlockHeader, BlockTime, BlockV2, CLValue, Chainspec, ChecksumRegistry, Digest,
-    EraEndV2, EraId, FeeHandling, Gas, GasLimited, Key, ProtocolVersion, PublicKey, RefundHandling,
-    Transaction, TransactionCategory, TransactionEntryPoint, TransactionRuntime, TransactionTarget,
-    AUCTION_LANE_ID, MINT_LANE_ID, U512,
+    EntityAddr, EraEndV2, EraId, FeeHandling, Gas, GasLimited, Key, ProtocolVersion, PublicKey,
+    RefundHandling, Transaction, TransactionCategory, TransactionEntryPoint,
+    TransactionInvocationTarget, TransactionRuntime, TransactionTarget, AUCTION_LANE_ID,
+    MINT_LANE_ID, U512,
 };
 
 use super::{
@@ -390,87 +392,207 @@ pub fn execute_finalized_block(
                         .seed_with(transaction_hash.as_ref())
                         .build();
 
-                    let mut builder = InstantiateContractRequestBuilder::default();
-
                     let transaction_v1 = transaction.as_transaction_v1().expect("should be v1");
 
                     let input_data = transaction_v1.body().args().clone().into_unnamed();
-
-                    let module_bytes = match transaction_v1.body().target() {
-                        TransactionTarget::Session {
-                            module_bytes,
-                            runtime,
-                        } => {
-                            assert_eq!(*runtime, TransactionRuntime::VmCasperV2);
-
-                            module_bytes.clone()
-                        }
-                        TransactionTarget::Native => {
-                            todo!("native not supported yet under v2 runtime")
-                        }
-                        TransactionTarget::Stored { id, runtime } => {
-                            todo!("stored not supported yet under v2 runtime")
-                        }
-                    };
+                    let value = transaction_v1.body().value();
 
                     match transaction_v1.body().entry_point() {
-                        TransactionEntryPoint::Instantiate(entry_point_name) => {
-                            builder = builder.with_entry_point(entry_point_name.clone());
-                            if let Some(input_data) = input_data {
+                        TransactionEntryPoint::Instantiate(_)
+                        | TransactionEntryPoint::DefaultInstantiate => {
+                            let mut builder = InstantiateContractRequestBuilder::default();
+
+                            let module_bytes = match transaction_v1.body().target() {
+                                TransactionTarget::Session {
+                                    module_bytes,
+                                    runtime,
+                                } => {
+                                    assert_eq!(*runtime, TransactionRuntime::VmCasperV2);
+
+                                    module_bytes.clone()
+                                }
+                                TransactionTarget::Native => {
+                                    todo!("native not supported yet under v2 runtime")
+                                }
+                                TransactionTarget::Stored { id, runtime } => {
+                                    todo!("unable to instantiate stored contract {id:?} under v2 runtime");
+                                }
+                            };
+
+                            match transaction_v1.body().entry_point() {
+                                TransactionEntryPoint::Instantiate(entry_point_name) => {
+                                    builder = builder.with_entry_point(entry_point_name.clone());
+                                    if let Some(input_data) = input_data {
+                                        builder = builder
+                                            .with_input(input_data.clone().take_inner().into());
+                                    }
+                                }
+                                TransactionEntryPoint::DefaultInstantiate => {
+                                    // No entry poitn specified, uses default initialization upon
+                                    // first call (if possible).
+                                    assert!(input_data.is_none(), "No arguments expected for a default initialization (got {input_data:?})");
+                                }
+                                _ => unreachable!(),
+                            }
+
+
+                            let request = builder
+                                .with_initiator(initiator_addr.account_hash().value())
+                                .with_gas_limit(gas_limit)
+                                .with_transaction_hash(transaction_hash)
+                                .with_wasm_bytes(module_bytes.clone().take_inner().into())
+                                .with_address_generator(address_generator)
+                                .with_value(value)
+                                .build()
+                                .expect("should build");
+
+                            let tracking_copy = scratch_state
+                                .tracking_copy(state_root_hash)
+                                .expect("should have tracking copy")
+                                .expect("should have state root hash");
+
+                            match execution_engine_v2.instantiate_contract(tracking_copy, request) {
+                                Ok(result) => {
+                                    let effects = result.effects().clone();
+                                    let pre_state_root_hash = state_root_hash;
+                                    let post_state_root_hash = scratch_state
+                                        .commit(pre_state_root_hash, effects.clone())
+                                        .expect("should commit");
+                                    state_root_hash = post_state_root_hash;
+                                    info!(contract_hash=base16::encode_lower(&result.contract_hash()), %pre_state_root_hash, %post_state_root_hash, ?effects, ?result, "instantiate contract result");
+
+                                    artifact_builder.with_added_consumed(Gas::from(
+                                        result.gas_usage().gas_spent(),
+                                    ));
+                                    // TODO: Use system message to notify about contract hash
+                                    // artifact_builder..with_appended_messages(&mut
+                                    // wasm_v1_result.messages().clone())
+                                    // .with_appended_transfers(&mut
+                                    // wasm_v1_result.transfers().clone())
+                                    artifact_builder.with_appended_effects(effects);
+                                }
+                                Err(error) => {
+                                    error!(?error, "create contract error");
+                                    artifact_builder.with_error_message(error.to_string());
+                                    // TODO: Gas consumed for failed instantiation
+                                    // artifact_builder.with_added_consumed(result.gas_usage().
+                                    // gas_spent());
+                                }
+                            }
+                        }
+
+                        TransactionEntryPoint::Call | TransactionEntryPoint::Custom(_) => {
+                            let mut builder = ExecuteRequestBuilder::default();
+
+                            let initiator_account_hash = &initiator_addr.account_hash();
+                            let initiator_addr_bytes = initiator_account_hash.value();
+                            let initiator_key = Key::Account(*initiator_account_hash);
+
+                            builder = builder
+                                .with_address_generator(address_generator)
+                                .with_gas_limit(gas_limit)
+                                .with_transaction_hash(transaction_hash)
+                                .with_initiator(initiator_addr_bytes)
+                                .with_caller_key(initiator_key)
+                                // TODO: Callee is unnecessary as it can be derived from the
+                                // execution target inside the executor
+                                .with_callee_key(initiator_key)
+                                .with_value(value);
+
+                            if let Some(input_data) = input_data.clone() {
                                 builder =
                                     builder.with_input(input_data.clone().take_inner().into());
                             }
+
+                            // .with_entry_point(entry_point.clone())
+
+                            match transaction_v1.body().entry_point() {
+                                TransactionEntryPoint::Call => {
+                                    let module_bytes = match transaction_v1.body().target() {
+                                        TransactionTarget::Session {
+                                            module_bytes,
+                                            runtime,
+                                        } => {
+                                            assert_eq!(*runtime, TransactionRuntime::VmCasperV2);
+
+                                            module_bytes.clone()
+                                        }
+                                        TransactionTarget::Native => {
+                                            todo!("native not supported yet under v2 runtime with a session code")
+                                        }
+                                        TransactionTarget::Stored { id, runtime } => {
+                                            todo!("unable to use stored contract {id:?} under v2 runtime as a session code");
+                                        }
+                                    };
+
+                                    // Session code
+                                    builder = builder.with_target(ExecutionKind::SessionBytes(
+                                        module_bytes.clone().take_inner().into(),
+                                    ));
+                                }
+                                TransactionEntryPoint::Custom(entry_point) => {
+                                    match transaction_v1.body().target() {
+                                        TransactionTarget::Session { runtime, .. } => {
+                                            assert_eq!(*runtime, TransactionRuntime::VmCasperV2);
+                                            todo!("session code not supported yet under v2 runtime with a custom entry point")
+                                        }
+                                        TransactionTarget::Native => {
+                                            todo!("native not supported yet under v2 runtime with a session code")
+                                        }
+                                        TransactionTarget::Stored { id, runtime } => {
+                                            // todo!("unable to use stored contract {id:?} under v2
+                                            // runtime as a session code");
+                                            match id {
+                                                TransactionInvocationTarget::ByHash(address) => {
+                                                    builder = builder.with_target(ExecutionKind::Stored {
+                                                        address: EntityAddr::SmartContract(*address),
+                                                        entry_point: entry_point.clone(),
+                                                    });
+                                                },
+                                                TransactionInvocationTarget::ByName(name) => todo!("call by {name}"),
+                                                TransactionInvocationTarget::ByPackageHash { addr, version } => todo!("ByPackageHash {addr:?} {version:?} not supported under v2 engine"),
+                                                TransactionInvocationTarget::ByPackageName { name, version } => {
+                                                    todo!("ByPackageName {name:?} {version:?} not supported under v2 engine");
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                _ => unreachable!(),
+                            };
+
+                            let request = builder.build().expect("should build");
+
+                            let tracking_copy = scratch_state
+                                .tracking_copy(state_root_hash)
+                                .expect("should have tracking copy")
+                                .expect("should have state root hash");
+
+                            match execution_engine_v2.execute(tracking_copy, request) {
+                                Ok(result) => {
+                                    let effects = result.effects().clone();
+                                    let pre_state_root_hash = state_root_hash;
+                                    let post_state_root_hash = scratch_state
+                                        .commit(pre_state_root_hash, effects.clone())
+                                        .expect("should commit");
+                                    state_root_hash = post_state_root_hash;
+                                    info!(?result, %pre_state_root_hash, %post_state_root_hash, ?effects, "execute contract result");
+
+                                    artifact_builder.with_added_consumed(Gas::from(
+                                        result.gas_usage().gas_spent(),
+                                    ));
+
+                                    artifact_builder.with_appended_effects(effects);
+                                }
+                                Err(error) => {
+                                    error!(?error, "execute contract error");
+                                    artifact_builder.with_error_message(error.to_string());
+                                }
+                            }
                         }
-                        TransactionEntryPoint::DefaultInstantiate => {
-                            // No entry poitn specified, uses default initialization upon
-                            // first call (if possible).
-                            assert!(input_data.is_none(), "No arguments expected for a default initialization (got {input_data:?})");
-                        }
+
                         _other => {
                             todo!("Not supported entry point kind")
-                        }
-                    };
-
-                    let value = transaction_v1.body().value();
-
-                    let request = builder
-                        .with_initiator(initiator_addr.account_hash().value())
-                        .with_gas_limit(gas_limit)
-                        .with_transaction_hash(transaction_hash)
-                        .with_wasm_bytes(module_bytes.clone().take_inner().into())
-                        .with_address_generator(address_generator)
-                        .with_value(value)
-                        .build()
-                        .expect("should build");
-
-                    let tracking_copy = scratch_state
-                        .tracking_copy(state_root_hash)
-                        .expect("should have tracking copy")
-                        .expect("should have state root hash");
-
-                    match execution_engine_v2.instantiate_contract(tracking_copy, request) {
-                        Ok(result) => {
-                            let effects = result.effects().clone();
-                            let pre_state_root_hash = state_root_hash;
-                            let post_state_root_hash = scratch_state
-                                .commit(pre_state_root_hash, effects.clone())
-                                .expect("should commit");
-                            state_root_hash = post_state_root_hash;
-                            info!(?result, %pre_state_root_hash, %post_state_root_hash, ?effects, "instantiate contract result");
-
-                            artifact_builder
-                                .with_added_consumed(Gas::from(result.gas_usage().gas_spent()));
-                            // TODO: Use system message to notify about contract hash
-                            // artifact_builder..with_appended_messages(&mut
-                            // wasm_v1_result.messages().clone())
-                            // .with_appended_transfers(&mut wasm_v1_result.transfers().clone())
-                            artifact_builder.with_appended_effects(effects);
-                        }
-                        Err(error) => {
-                            error!(?error, "create contract error");
-                            artifact_builder.with_error_message(error.to_string());
-                            // TODO: Gas consumed for failed instantiation
-                            // artifact_builder.with_added_consumed(result.gas_usage().gas_spent());
                         }
                     }
                 }

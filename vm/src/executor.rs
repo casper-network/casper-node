@@ -327,6 +327,10 @@ impl ExecuteResult {
     pub fn output(&self) -> Option<&Bytes> {
         self.output.as_ref()
     }
+
+    pub fn gas_usage(&self) -> &GasUsage {
+        &self.gas_usage
+    }
 }
 
 /// Target for Wasm execution.

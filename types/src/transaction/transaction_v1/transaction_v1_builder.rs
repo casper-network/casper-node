@@ -14,6 +14,7 @@ use super::{
     InitiatorAddrAndSecretKey, PricingMode, TransactionV1, TransactionV1Body,
 };
 use crate::{
+    addressable_entity,
     bytesrepr::Bytes,
     transaction::{RuntimeArgs, TransactionCategory, TransferTarget},
     AddressableEntityHash, CLValue, CLValueError, EntityVersion, PackageHash, PublicKey, SecretKey,
@@ -298,6 +299,34 @@ impl<'a> TransactionV1Builder<'a> {
                 args,
                 target,
                 entry_point: entry_point,
+                transaction_category,
+                scheduling,
+                value,
+            }
+        };
+        TransactionV1Builder::new(body)
+    }
+
+    /// Returns a new `TransactionV1Builder` suitable for building a transaction for calling a smart
+    /// contract.
+    pub fn new_call(
+        entity_address: AddressableEntityHash,
+        entry_point: String,
+        input_data: Option<Bytes>,
+        value: u128,
+    ) -> Self {
+        let body = {
+            let args = TransactionArgs::Unnamed(input_data.unwrap_or_default());
+            let target = TransactionTarget::Stored {
+                id: TransactionInvocationTarget::ByHash(entity_address.value()),
+                runtime: TransactionRuntime::VmCasperV2,
+            };
+            let transaction_category = TransactionCategory::Medium as u8;
+            let scheduling = Self::DEFAULT_SCHEDULING;
+            TransactionV1Body {
+                args,
+                target,
+                entry_point: TransactionEntryPoint::Custom(entry_point),
                 transaction_category,
                 scheduling,
                 value,

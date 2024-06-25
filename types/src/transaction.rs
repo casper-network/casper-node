@@ -323,6 +323,7 @@ impl Transaction {
         }
     }
 
+    /// Get [`TransactionV1`]
     pub fn as_transaction_v1(&self) -> Option<&TransactionV1> {
         match self {
             Transaction::Deploy(_) => None,

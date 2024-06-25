@@ -15,10 +15,11 @@ use casper_storage::data_access_layer::{balance::BalanceHandling, BalanceRequest
 use casper_types::{
     account::AccountHash, addressable_entity::AddressableEntity, contracts::ContractHash,
     system::auction::ARG_AMOUNT, AddressableEntityHash, AddressableEntityIdentifier, BlockHeader,
-    Chainspec, EntityAddr, EntityVersion, EntityVersionKey, EntryPoint, EntryPointAddr,
+    Chainspec, EntityAddr, EntityKind, EntityVersion, EntityVersionKey, EntryPoint, EntryPointAddr,
     ExecutableDeployItem, ExecutableDeployItemIdentifier, InitiatorAddr, Key, Package, PackageAddr,
     PackageHash, PackageIdentifier, Transaction, TransactionEntryPoint,
-    TransactionInvocationTarget, TransactionTarget, DEFAULT_ENTRY_POINT_NAME, U512,
+    TransactionInvocationTarget, TransactionRuntime, TransactionTarget, DEFAULT_ENTRY_POINT_NAME,
+    U512,
 };
 
 use crate::{
@@ -313,12 +314,15 @@ impl TransactionAcceptor {
                 let query_key = Key::from(ContractHash::new(contract_hash.value()));
                 effect_builder
                     .get_addressable_entity(*block_header.state_root_hash(), query_key)
-                    .event(move |result| Event::GetContractResult {
-                        event_metadata,
-                        block_header,
-                        is_payment: true,
-                        contract_hash,
-                        maybe_entity: result.into_option(),
+                    .event(move |result| {
+                        debug!(?result, "get_addressable_entity result 4");
+                        Event::GetContractResult {
+                            event_metadata,
+                            block_header,
+                            is_payment: true,
+                            contract_hash,
+                            maybe_entity: result.into_option(),
+                        }
                     })
             }
             ExecutableDeployItemIdentifier::AddressableEntity(
@@ -432,12 +436,15 @@ impl TransactionAcceptor {
                 let key = Key::from(ContractHash::new(entity_hash.value()));
                 effect_builder
                     .get_addressable_entity(*block_header.state_root_hash(), key)
-                    .event(move |result| Event::GetContractResult {
-                        event_metadata,
-                        block_header,
-                        is_payment: false,
-                        contract_hash: entity_hash,
-                        maybe_entity: result.into_option(),
+                    .event(move |result| {
+                        debug!(?result, "get_addressable_entity result 3");
+                        Event::GetContractResult {
+                            event_metadata,
+                            block_header,
+                            is_payment: false,
+                            contract_hash: entity_hash,
+                            maybe_entity: result.into_option(),
+                        }
                     })
             }
             ExecutableDeployItemIdentifier::AddressableEntity(
@@ -478,7 +485,7 @@ impl TransactionAcceptor {
         block_header: Box<BlockHeader>,
     ) -> Effects<Event> {
         enum NextStep {
-            GetContract(EntityAddr),
+            GetContract(EntityAddr, TransactionRuntime),
             GetPackage(PackageAddr, Option<EntityVersion>),
             CryptoValidation,
         }
@@ -496,9 +503,9 @@ impl TransactionAcceptor {
                 );
             }
             Transaction::V1(txn) => match txn.target() {
-                TransactionTarget::Stored { id, .. } => match id {
+                TransactionTarget::Stored { id, runtime } => match id {
                     TransactionInvocationTarget::ByHash(entity_addr) => {
-                        NextStep::GetContract(EntityAddr::SmartContract(*entity_addr))
+                        NextStep::GetContract(EntityAddr::SmartContract(*entity_addr), *runtime)
                     }
                     TransactionInvocationTarget::ByPackageHash { addr, version } => {
                         NextStep::GetPackage(*addr, *version)
@@ -515,18 +522,25 @@ impl TransactionAcceptor {
         };
 
         match next_step {
-            NextStep::GetContract(entity_addr) => {
+            NextStep::GetContract(entity_addr, runtime) => {
                 // Use `Key::Hash` variant so that we try to retrieve the entity as either an
                 // AddressableEntity, or fall back to retrieving an un-migrated Contract.
-                let key = Key::Hash(entity_addr.value());
+                let key = match runtime {
+                    TransactionRuntime::VmCasperV1 => Key::Hash(entity_addr.value()), // Is that
+                    TransactionRuntime::VmCasperV2 => Key::AddressableEntity(entity_addr),
+                };
+
                 effect_builder
                     .get_addressable_entity(*block_header.state_root_hash(), key)
-                    .event(move |result| Event::GetContractResult {
-                        event_metadata,
-                        block_header,
-                        is_payment: false,
-                        contract_hash: AddressableEntityHash::new(entity_addr.value()),
-                        maybe_entity: result.into_option(),
+                    .event(move |result| {
+                        debug!(?result, ?key, ?runtime, "get_addressable_entity result 2");
+                        Event::GetContractResult {
+                            event_metadata,
+                            block_header,
+                            is_payment: false,
+                            contract_hash: AddressableEntityHash::new(entity_addr.value()),
+                            maybe_entity: result.into_option(),
+                        }
                     })
             }
             NextStep::GetPackage(package_addr, maybe_package_version) => {
@@ -557,14 +571,16 @@ impl TransactionAcceptor {
         contract_hash: AddressableEntityHash,
         maybe_contract: Option<AddressableEntity>,
     ) -> Effects<Event> {
-        if maybe_contract.is_none() {
-            let error = Error::parameter_failure(
-                &block_header,
-                ParameterFailure::NoSuchContractAtHash { contract_hash },
-            );
-            return self.reject_transaction(effect_builder, *event_metadata, error);
-        }
-
+        let addressable_entity = match maybe_contract {
+            Some(addressable_entity) => addressable_entity,
+            None => {
+                let error = Error::parameter_failure(
+                    &block_header,
+                    ParameterFailure::NoSuchContractAtHash { contract_hash },
+                );
+                return self.reject_transaction(effect_builder, *event_metadata, error);
+            }
+        };
         let maybe_entry_point_name = match &event_metadata.transaction {
             Transaction::Deploy(deploy) if is_payment => {
                 Some(deploy.payment().entry_point_name().to_string())
@@ -607,6 +623,7 @@ impl TransactionAcceptor {
                             block_header,
                             is_payment,
                             entry_point_name,
+                            addressable_entity,
                             maybe_entry_point: entry_point_result.into_v1_entry_point(),
                         }),
                     Err(_) => {
@@ -618,6 +635,7 @@ impl TransactionAcceptor {
                     }
                 }
             }
+
             None => {
                 if is_payment {
                     return self.verify_body(effect_builder, event_metadata, block_header);
@@ -634,8 +652,16 @@ impl TransactionAcceptor {
         block_header: Box<BlockHeader>,
         is_payment: bool,
         entry_point_name: String,
+        addressable_entity: AddressableEntity,
         maybe_entry_point: Option<EntryPoint>,
     ) -> Effects<Event> {
+        if let EntityKind::SmartContract(TransactionRuntime::VmCasperV2) = addressable_entity.kind()
+        {
+            // Engine V2 does not store entrypoint information on chain and relies entirely on the
+            // Wasm itself.
+            return self.validate_transaction_cryptography(effect_builder, event_metadata);
+        }
+
         let entry_point = match maybe_entry_point {
             Some(entry_point) => entry_point,
             None => {
@@ -721,12 +747,15 @@ impl TransactionAcceptor {
                 let key = Key::from(ContractHash::new(contract_hash.value()));
                 effect_builder
                     .get_addressable_entity(*block_header.state_root_hash(), key)
-                    .event(move |result| Event::GetContractResult {
-                        event_metadata,
-                        block_header,
-                        is_payment,
-                        contract_hash,
-                        maybe_entity: result.into_option(),
+                    .event(move |result| {
+                        debug!(?result, "get_addressable_entity result 1");
+                        Event::GetContractResult {
+                            event_metadata,
+                            block_header,
+                            is_payment,
+                            contract_hash,
+                            maybe_entity: result.into_option(),
+                        }
                     })
             }
             None => {
@@ -960,6 +989,7 @@ impl<REv: ReactorEventT> Component<REv> for TransactionAcceptor {
                 block_header,
                 is_payment,
                 entry_point_name,
+                addressable_entity,
                 maybe_entry_point,
             } => self.handle_get_entry_point_result(
                 effect_builder,
@@ -967,6 +997,7 @@ impl<REv: ReactorEventT> Component<REv> for TransactionAcceptor {
                 block_header,
                 is_payment,
                 entry_point_name,
+                addressable_entity,
                 maybe_entry_point,
             ),
             Event::PutToStorageResult {
