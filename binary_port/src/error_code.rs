@@ -2,9 +2,13 @@ use core::{convert::TryFrom, fmt};
 
 use casper_types::{InvalidDeploy, InvalidTransaction, InvalidTransactionV1};
 
+#[cfg(test)]
+use strum_macros::EnumIter;
+
 /// The error code indicating the result of handling the binary request.
-#[derive(Debug, Clone, thiserror::Error)]
+#[derive(Debug, Copy, Clone, thiserror::Error, Eq, PartialEq)]
 #[repr(u16)]
+#[cfg_attr(test, derive(EnumIter))]
 pub enum ErrorCode {
     /// Request executed correctly.
     #[error("request executed correctly")]
@@ -198,6 +202,21 @@ pub enum ErrorCode {
     /// Invalid binary port version.
     #[error("binary protocol version mismatch")]
     BinaryProtocolVersionMismatch = 61,
+    /// Blockchain is empty
+    #[error("blockchain is empty")]
+    EmptyBlockchain = 62,
+    /// Expected deploy, but got transaction
+    #[error("expected deploy, got transaction")]
+    ExpectedDeploy = 63,
+    /// Expected transaction, but got deploy
+    #[error("expected transaction V1, got deploy")]
+    ExpectedTransaction = 64,
+    /// Transaction has expired
+    #[error("transaction has expired")]
+    TransactionExpired = 65,
+    /// Transactions parameters are missing or incorrect
+    #[error("missing or incorrect transaction parameters")]
+    MissingOrIncorrectParameters = 66,
 }
 
 impl TryFrom<u16> for ErrorCode {
@@ -266,6 +285,12 @@ impl TryFrom<u16> for ErrorCode {
             58 => Ok(ErrorCode::SwitchBlockNotFound),
             59 => Ok(ErrorCode::SwitchBlockParentNotFound),
             60 => Ok(ErrorCode::UnsupportedRewardsV1Request),
+            61 => Ok(ErrorCode::BinaryProtocolVersionMismatch),
+            62 => Ok(ErrorCode::EmptyBlockchain),
+            63 => Ok(ErrorCode::ExpectedDeploy),
+            64 => Ok(ErrorCode::ExpectedTransaction),
+            65 => Ok(ErrorCode::TransactionExpired),
+            66 => Ok(ErrorCode::MissingOrIncorrectParameters),
             _ => Err(UnknownErrorCode),
         }
     }
@@ -395,6 +420,28 @@ impl From<InvalidTransactionV1> for ErrorCode {
                 ErrorCode::InvalidTransactionPricingMode
             }
             _ => ErrorCode::InvalidTransactionUnspecified,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::convert::TryFrom;
+
+    use strum::IntoEnumIterator;
+
+    use crate::ErrorCode;
+
+    #[test]
+    fn try_from_decoded_all_variants() {
+        for variant in ErrorCode::iter() {
+            let as_int = variant as u16;
+            let decoded = ErrorCode::try_from(as_int);
+            assert!(
+                decoded.is_ok(),
+                "variant {} not covered by TryFrom<u16> implementation",
+                as_int
+            );
         }
     }
 }
