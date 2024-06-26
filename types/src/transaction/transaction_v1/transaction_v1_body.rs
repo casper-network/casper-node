@@ -24,6 +24,7 @@ use super::TransactionConfig;
 use super::TransactionV1;
 use crate::bytesrepr::{self, FromBytes, ToBytes};
 
+use crate::transaction::serialization::*;
 #[cfg(any(feature = "std", test))]
 use crate::InvalidTransactionV1;
 
@@ -468,37 +469,29 @@ impl Display for TransactionV1Body {
 
 impl ToBytes for TransactionV1Body {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut buffer = bytesrepr::allocate_buffer(self)?;
-        self.write_bytes(&mut buffer)?;
-        Ok(buffer)
+        serialize_transaction_body(
+            &self.args,
+            &self.target,
+            &self.entry_point,
+            &self.transaction_category,
+            &self.scheduling,
+        )
     }
 
     fn serialized_length(&self) -> usize {
-        self.args.serialized_length()
-            + self.target.serialized_length()
-            + self.entry_point.serialized_length()
-            + self.transaction_category.serialized_length()
-            + self.scheduling.serialized_length()
-    }
-
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        self.args.write_bytes(writer)?;
-        self.target.write_bytes(writer)?;
-        self.entry_point.write_bytes(writer)?;
-        self.transaction_category.write_bytes(writer)?;
-        self.scheduling.write_bytes(writer)
+        transaction_body_serialized_length(
+            &self.args,
+            &self.target,
+            &self.entry_point,
+            &self.transaction_category,
+            &self.scheduling,
+        )
     }
 }
 
 impl FromBytes for TransactionV1Body {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (args, remainder) = RuntimeArgs::from_bytes(bytes)?;
-        let (target, remainder) = TransactionTarget::from_bytes(remainder)?;
-        let (entry_point, remainder) = TransactionEntryPoint::from_bytes(remainder)?;
-        let (kind, remainder) = u8::from_bytes(remainder)?;
-        let (scheduling, remainder) = TransactionScheduling::from_bytes(remainder)?;
-        let body = TransactionV1Body::new(args, target, entry_point, kind, scheduling);
-        Ok((body, remainder))
+        deserialize_transaction_body(bytes)
     }
 }
 

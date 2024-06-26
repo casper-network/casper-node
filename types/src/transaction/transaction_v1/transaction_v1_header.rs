@@ -15,6 +15,7 @@ use super::TransactionV1;
 use super::{InitiatorAddr, PricingMode};
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
+    transaction::serialization::{TransactionV1HeaderFromBytes, TransactionV1HeaderToBytes},
     Digest, TimeDiff, Timestamp,
 };
 #[cfg(any(feature = "std", test))]
@@ -177,47 +178,42 @@ impl TransactionV1Header {
 
 impl ToBytes for TransactionV1Header {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut buffer = bytesrepr::allocate_buffer(self)?;
-        self.write_bytes(&mut buffer)?;
-        Ok(buffer)
+        TransactionV1HeaderToBytes::new(
+            &self.chain_name,
+            &self.timestamp,
+            &self.ttl,
+            &self.body_hash,
+            &self.pricing_mode,
+            &self.initiator_addr,
+        )
+        .to_bytes()
     }
 
     fn serialized_length(&self) -> usize {
-        self.chain_name.serialized_length()
-            + self.timestamp.serialized_length()
-            + self.ttl.serialized_length()
-            + self.body_hash.serialized_length()
-            + self.pricing_mode.serialized_length()
-            + self.initiator_addr.serialized_length()
-    }
-
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        self.chain_name.write_bytes(writer)?;
-        self.timestamp.write_bytes(writer)?;
-        self.ttl.write_bytes(writer)?;
-        self.body_hash.write_bytes(writer)?;
-        self.pricing_mode.write_bytes(writer)?;
-        self.initiator_addr.write_bytes(writer)
+        TransactionV1HeaderToBytes::new(
+            &self.chain_name,
+            &self.timestamp,
+            &self.ttl,
+            &self.body_hash,
+            &self.pricing_mode,
+            &self.initiator_addr,
+        )
+        .serialized_length()
     }
 }
 
 impl FromBytes for TransactionV1Header {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (chain_name, remainder) = String::from_bytes(bytes)?;
-        let (timestamp, remainder) = Timestamp::from_bytes(remainder)?;
-        let (ttl, remainder) = TimeDiff::from_bytes(remainder)?;
-        let (body_hash, remainder) = Digest::from_bytes(remainder)?;
-        let (pricing_mode, remainder) = PricingMode::from_bytes(remainder)?;
-        let (initiator_addr, remainder) = InitiatorAddr::from_bytes(remainder)?;
-        let transaction_header = TransactionV1Header {
-            chain_name,
-            timestamp,
-            ttl,
-            body_hash,
-            pricing_mode,
-            initiator_addr,
+        let (binary_header, remainder) = TransactionV1HeaderFromBytes::from_bytes(bytes)?;
+        let header = TransactionV1Header {
+            chain_name: binary_header.chain_name,
+            timestamp: binary_header.timestamp,
+            ttl: binary_header.ttl,
+            body_hash: binary_header.body_hash,
+            pricing_mode: binary_header.pricing_mode,
+            initiator_addr: binary_header.initiator_addr,
         };
-        Ok((transaction_header, remainder))
+        Ok((header, remainder))
     }
 }
 

@@ -26,6 +26,7 @@ use serde::{Deserialize, Serialize};
 use tracing::debug;
 
 use super::{
+    serialization::{TransactionV1BinaryFromBytes, TransactionV1BinaryToBytes},
     Approval, ApprovalsHash, InitiatorAddr, PricingMode, TransactionEntryPoint,
     TransactionScheduling, TransactionTarget,
 };
@@ -728,38 +729,35 @@ impl PartialOrd for TransactionV1 {
 }
 
 impl ToBytes for TransactionV1 {
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        self.hash.write_bytes(writer)?;
-        self.header.write_bytes(writer)?;
-        self.body.write_bytes(writer)?;
-        self.approvals.write_bytes(writer)
-    }
-
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut buffer = bytesrepr::allocate_buffer(self)?;
-        self.write_bytes(&mut buffer)?;
-        Ok(buffer)
+        TransactionV1BinaryToBytes::new(
+            self.hash.inner(),
+            &self.header,
+            &self.body,
+            &self.approvals,
+        )
+        .to_bytes()
     }
 
     fn serialized_length(&self) -> usize {
-        self.hash.serialized_length()
-            + self.header.serialized_length()
-            + self.body.serialized_length()
-            + self.approvals.serialized_length()
+        TransactionV1BinaryToBytes::new(
+            self.hash.inner(),
+            &self.header,
+            &self.body,
+            &self.approvals,
+        )
+        .serialized_length()
     }
 }
 
 impl FromBytes for TransactionV1 {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (hash, remainder) = TransactionV1Hash::from_bytes(bytes)?;
-        let (header, remainder) = TransactionV1Header::from_bytes(remainder)?;
-        let (body, remainder) = TransactionV1Body::from_bytes(remainder)?;
-        let (approvals, remainder) = BTreeSet::<Approval>::from_bytes(remainder)?;
+        let (binary, remainder) = TransactionV1BinaryFromBytes::from_bytes(bytes)?;
         let transaction = TransactionV1 {
-            hash,
-            header,
-            body,
-            approvals,
+            hash: TransactionV1Hash::from(binary.hash),
+            header: binary.header,
+            body: binary.body,
+            approvals: binary.approvals,
             #[cfg(any(feature = "once_cell", test))]
             is_verified: OnceCell::new(),
         };
@@ -1279,5 +1277,56 @@ mod tests {
             limit * gas_price,
             "in fixed pricing, the cost should == limit * gas_price"
         );
+    }
+}
+
+#[cfg(test)]
+mod proptests {
+    use super::gens::v1_transaction_arb;
+    use crate::bytesrepr::test_serialization_roundtrip;
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn bytesrepr_roundtrip(v1_transaction in v1_transaction_arb()) {
+            test_serialization_roundtrip(&v1_transaction);
+        }
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod gens {
+    use super::*;
+    use crate::{gens::*, PublicKey};
+    use crypto::gens::secret_key_arb_no_system;
+    use proptest::prelude::*;
+
+    pub fn v1_transaction_arb() -> impl Strategy<Value = TransactionV1> {
+        (
+            any::<String>(),
+            any::<u64>(),
+            any::<u32>(),
+            v1_transaction_body_arb(),
+            pricing_mode_arb(),
+            secret_key_arb_no_system(),
+        )
+            .prop_map(
+                |(chain_name, timestamp, ttl, body, pricing_mode, secret_key)| {
+                    let public_key = PublicKey::from(&secret_key);
+                    let initiator_addr = InitiatorAddr::PublicKey(public_key);
+                    let initiator_addr_with_secret = InitiatorAddrAndSecretKey::Both {
+                        initiator_addr,
+                        secret_key: &secret_key,
+                    };
+                    TransactionV1::build(
+                        chain_name,
+                        Timestamp::from(timestamp),
+                        TimeDiff::from_seconds(ttl),
+                        body,
+                        pricing_mode,
+                        initiator_addr_with_secret,
+                    )
+                },
+            )
     }
 }

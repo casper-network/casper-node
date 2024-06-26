@@ -1,6 +1,14 @@
 use alloc::{string::String, vec::Vec};
 use core::fmt::{self, Debug, Display, Formatter};
 
+use super::{serialization::transaction_invocation_target::*, AddressableEntityIdentifier};
+#[cfg(any(feature = "testing", test))]
+use crate::testing::TestRng;
+use crate::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    serde_helpers, AddressableEntityHash, EntityVersion, HashAddr, PackageAddr, PackageHash,
+    PackageIdentifier,
+};
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 use hex_fmt::HexFmt;
@@ -9,22 +17,6 @@ use rand::Rng;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-
-use super::AddressableEntityIdentifier;
-#[cfg(doc)]
-use super::TransactionTarget;
-#[cfg(any(feature = "testing", test))]
-use crate::testing::TestRng;
-use crate::{
-    bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    serde_helpers, AddressableEntityHash, EntityVersion, HashAddr, PackageAddr, PackageHash,
-    PackageIdentifier,
-};
-
-const INVOCABLE_ENTITY_TAG: u8 = 0;
-const INVOCABLE_ENTITY_ALIAS_TAG: u8 = 1;
-const PACKAGE_TAG: u8 = 2;
-const PACKAGE_ALIAS_TAG: u8 = 3;
 
 /// The identifier of a [`TransactionTarget::Stored`].
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize)]
@@ -221,97 +213,56 @@ impl Debug for TransactionInvocationTarget {
 }
 
 impl ToBytes for TransactionInvocationTarget {
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         match self {
-            TransactionInvocationTarget::ByHash(addr) => {
-                INVOCABLE_ENTITY_TAG.write_bytes(writer)?;
-                addr.write_bytes(writer)
-            }
-            TransactionInvocationTarget::ByName(alias) => {
-                INVOCABLE_ENTITY_ALIAS_TAG.write_bytes(writer)?;
-                alias.write_bytes(writer)
-            }
+            TransactionInvocationTarget::ByHash(addr) => serialize_by_hash(addr),
+            TransactionInvocationTarget::ByName(alias) => serialize_by_name(alias),
             TransactionInvocationTarget::ByPackageHash { addr, version } => {
-                PACKAGE_TAG.write_bytes(writer)?;
-                addr.write_bytes(writer)?;
-                version.write_bytes(writer)
+                serialize_by_package_hash(addr, version)
             }
-            TransactionInvocationTarget::ByPackageName {
-                name: alias,
-                version,
-            } => {
-                PACKAGE_ALIAS_TAG.write_bytes(writer)?;
-                alias.write_bytes(writer)?;
-                version.write_bytes(writer)
+            TransactionInvocationTarget::ByPackageName { name, version } => {
+                serialize_by_package_name(name, version)
             }
         }
     }
 
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut buffer = bytesrepr::allocate_buffer(self)?;
-        self.write_bytes(&mut buffer)?;
-        Ok(buffer)
-    }
-
     fn serialized_length(&self) -> usize {
-        U8_SERIALIZED_LENGTH
-            + match self {
-                TransactionInvocationTarget::ByHash(addr) => addr.serialized_length(),
-                TransactionInvocationTarget::ByName(alias) => alias.serialized_length(),
-                TransactionInvocationTarget::ByPackageHash { addr, version } => {
-                    addr.serialized_length() + version.serialized_length()
-                }
-                TransactionInvocationTarget::ByPackageName {
-                    name: alias,
-                    version,
-                } => alias.serialized_length() + version.serialized_length(),
+        match self {
+            TransactionInvocationTarget::ByHash(addr) => by_hash_serialized_length(addr),
+            TransactionInvocationTarget::ByName(alias) => by_name_serialized_length(alias),
+            TransactionInvocationTarget::ByPackageHash { addr, version } => {
+                by_package_hash_serialized_length(addr, version)
             }
+            TransactionInvocationTarget::ByPackageName { name, version } => {
+                by_package_name_serialized_length(name, version)
+            }
+        }
     }
 }
 
 impl FromBytes for TransactionInvocationTarget {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (tag, remainder) = u8::from_bytes(bytes)?;
-        match tag {
-            INVOCABLE_ENTITY_TAG => {
-                let (addr, remainder) = HashAddr::from_bytes(remainder)?;
-                let target = TransactionInvocationTarget::ByHash(addr);
-                Ok((target, remainder))
-            }
-            INVOCABLE_ENTITY_ALIAS_TAG => {
-                let (alias, remainder) = String::from_bytes(remainder)?;
-                let target = TransactionInvocationTarget::ByName(alias);
-                Ok((target, remainder))
-            }
-            PACKAGE_TAG => {
-                let (addr, remainder) = PackageAddr::from_bytes(remainder)?;
-                let (version, remainder) = Option::<EntityVersion>::from_bytes(remainder)?;
-                let target = TransactionInvocationTarget::ByPackageHash { addr, version };
-                Ok((target, remainder))
-            }
-            PACKAGE_ALIAS_TAG => {
-                let (alias, remainder) = String::from_bytes(remainder)?;
-                let (version, remainder) = Option::<EntityVersion>::from_bytes(remainder)?;
-                let target = TransactionInvocationTarget::ByPackageName {
-                    name: alias,
-                    version,
-                };
-                Ok((target, remainder))
-            }
-            _ => Err(bytesrepr::Error::Formatting),
-        }
+        deserialize_transaction_invocation_target(bytes)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::gens::transaction_invocation_target_arb;
+    use proptest::prelude::*;
 
     #[test]
     fn bytesrepr_roundtrip() {
         let rng = &mut TestRng::new();
         for _ in 0..10 {
             bytesrepr::test_serialization_roundtrip(&TransactionInvocationTarget::random(rng));
+        }
+    }
+    proptest! {
+        #[test]
+        fn generative_bytesrepr_roundtrip(val in transaction_invocation_target_arb()) {
+            bytesrepr::test_serialization_roundtrip(&val);
         }
     }
 }

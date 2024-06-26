@@ -1,6 +1,12 @@
 use alloc::vec::Vec;
 use core::fmt::{self, Debug, Display, Formatter};
 
+use super::{
+    serialization::transaction_target::*, TransactionInvocationTarget, TransactionRuntime,
+};
+use crate::bytesrepr::{self, Bytes, FromBytes, ToBytes};
+#[cfg(any(feature = "testing", test))]
+use crate::testing::TestRng;
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 #[cfg(any(feature = "testing", test))]
@@ -8,17 +14,6 @@ use rand::{Rng, RngCore};
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-
-#[cfg(doc)]
-use super::Transaction;
-use super::{TransactionInvocationTarget, TransactionRuntime};
-use crate::bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
-#[cfg(any(feature = "testing", test))]
-use crate::testing::TestRng;
-
-const NATIVE_TAG: u8 = 0;
-const STORED_TAG: u8 = 1;
-const SESSION_TAG: u8 = 2;
 
 /// The execution target of a [`Transaction`].
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize)]
@@ -137,77 +132,52 @@ impl Debug for TransactionTarget {
 }
 
 impl ToBytes for TransactionTarget {
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         match self {
-            TransactionTarget::Native => NATIVE_TAG.write_bytes(writer),
-            TransactionTarget::Stored { id, runtime } => {
-                STORED_TAG.write_bytes(writer)?;
-                id.write_bytes(writer)?;
-                runtime.write_bytes(writer)
-            }
+            TransactionTarget::Native => serialize_native(),
+            TransactionTarget::Stored { id, runtime } => serialize_stored(id, runtime),
             TransactionTarget::Session {
                 module_bytes,
                 runtime,
-            } => {
-                SESSION_TAG.write_bytes(writer)?;
-                module_bytes.write_bytes(writer)?;
-                runtime.write_bytes(writer)
-            }
+            } => serialize_session(module_bytes, runtime),
         }
     }
 
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut buffer = bytesrepr::allocate_buffer(self)?;
-        self.write_bytes(&mut buffer)?;
-        Ok(buffer)
-    }
-
     fn serialized_length(&self) -> usize {
-        U8_SERIALIZED_LENGTH
-            + match self {
-                TransactionTarget::Native => 0,
-                TransactionTarget::Stored { id, runtime } => {
-                    id.serialized_length() + runtime.serialized_length()
-                }
-                TransactionTarget::Session {
-                    module_bytes,
-                    runtime,
-                } => module_bytes.serialized_length() + runtime.serialized_length(),
-            }
+        match self {
+            TransactionTarget::Native => native_serialized_length(),
+            TransactionTarget::Stored { id, runtime } => stored_serialized_length(id, runtime),
+            TransactionTarget::Session {
+                module_bytes,
+                runtime,
+            } => session_serialized_length(module_bytes, runtime),
+        }
     }
 }
 
 impl FromBytes for TransactionTarget {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (tag, remainder) = u8::from_bytes(bytes)?;
-        match tag {
-            NATIVE_TAG => Ok((TransactionTarget::Native, remainder)),
-            STORED_TAG => {
-                let (id, remainder) = TransactionInvocationTarget::from_bytes(remainder)?;
-                let (runtime, remainder) = TransactionRuntime::from_bytes(remainder)?;
-                let target = TransactionTarget::new_stored(id, runtime);
-                Ok((target, remainder))
-            }
-            SESSION_TAG => {
-                let (module_bytes, remainder) = Bytes::from_bytes(remainder)?;
-                let (runtime, remainder) = TransactionRuntime::from_bytes(remainder)?;
-                let target = TransactionTarget::new_session(module_bytes, runtime);
-                Ok((target, remainder))
-            }
-            _ => Err(bytesrepr::Error::Formatting),
-        }
+        deserialize_transaction_target(bytes)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
+    use crate::gens::transaction_target_arb;
+    use proptest::prelude::*;
     #[test]
     fn bytesrepr_roundtrip() {
         let rng = &mut TestRng::new();
         for _ in 0..10 {
             bytesrepr::test_serialization_roundtrip(&TransactionTarget::random(rng));
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn generative_bytesrepr_roundtrip(val in transaction_target_arb()) {
+            bytesrepr::test_serialization_roundtrip(&val);
         }
     }
 }

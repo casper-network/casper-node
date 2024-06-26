@@ -1,16 +1,9 @@
-use alloc::vec::Vec;
-use core::fmt::{self, Debug, Display, Formatter};
-
-#[cfg(feature = "datasize")]
-use datasize::DataSize;
 #[cfg(any(feature = "testing", test))]
-use rand::Rng;
-#[cfg(feature = "json-schema")]
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
-
-#[cfg(doc)]
-use super::TransactionV1;
+use super::serialization::initiator_addr::{ACCOUNT_HASH_TAG, PUBLIC_KEY_TAG};
+use super::serialization::{
+    initiator_addr::{deserialize_initiator_addr, serialize_account_hash, serialize_public_key},
+    serialized_length_for_field_sizes,
+};
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
 use crate::{
@@ -18,9 +11,15 @@ use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     AsymmetricType, PublicKey,
 };
-
-const PUBLIC_KEY_TAG: u8 = 0;
-const ACCOUNT_HASH_TAG: u8 = 1;
+use alloc::vec::Vec;
+use core::fmt::{self, Debug, Display, Formatter};
+#[cfg(feature = "datasize")]
+use datasize::DataSize;
+#[cfg(any(feature = "testing", test))]
+use rand::Rng;
+#[cfg(feature = "json-schema")]
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
 /// The address of the initiator of a [`TransactionV1`].
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize)]
@@ -99,60 +98,51 @@ impl Debug for InitiatorAddr {
 }
 
 impl ToBytes for InitiatorAddr {
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         match self {
-            InitiatorAddr::PublicKey(public_key) => {
-                PUBLIC_KEY_TAG.write_bytes(writer)?;
-                public_key.write_bytes(writer)
-            }
-            InitiatorAddr::AccountHash(account_hash) => {
-                ACCOUNT_HASH_TAG.write_bytes(writer)?;
-                account_hash.write_bytes(writer)
-            }
+            InitiatorAddr::PublicKey(public_key) => serialize_public_key(public_key),
+            InitiatorAddr::AccountHash(account_hash) => serialize_account_hash(account_hash),
         }
     }
 
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut buffer = bytesrepr::allocate_buffer(self)?;
-        self.write_bytes(&mut buffer)?;
-        Ok(buffer)
-    }
-
     fn serialized_length(&self) -> usize {
-        U8_SERIALIZED_LENGTH
-            + match self {
-                InitiatorAddr::PublicKey(public_key) => public_key.serialized_length(),
-                InitiatorAddr::AccountHash(account_hash) => account_hash.serialized_length(),
-            }
+        match self {
+            InitiatorAddr::PublicKey(public_key) => serialized_length_for_field_sizes(vec![
+                U8_SERIALIZED_LENGTH,
+                public_key.serialized_length(),
+            ]),
+            InitiatorAddr::AccountHash(account_hash) => serialized_length_for_field_sizes(vec![
+                U8_SERIALIZED_LENGTH,
+                account_hash.serialized_length(),
+            ]),
+        }
     }
 }
 
 impl FromBytes for InitiatorAddr {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (tag, remainder) = u8::from_bytes(bytes)?;
-        match tag {
-            PUBLIC_KEY_TAG => {
-                let (public_key, remainder) = PublicKey::from_bytes(remainder)?;
-                Ok((InitiatorAddr::PublicKey(public_key), remainder))
-            }
-            ACCOUNT_HASH_TAG => {
-                let (account_hash, remainder) = AccountHash::from_bytes(remainder)?;
-                Ok((InitiatorAddr::AccountHash(account_hash), remainder))
-            }
-            _ => Err(bytesrepr::Error::Formatting),
-        }
+        deserialize_initiator_addr(bytes)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::gens::initiator_addr_arb;
+    use proptest::prelude::*;
 
     #[test]
     fn bytesrepr_roundtrip() {
         let rng = &mut TestRng::new();
         for _ in 0..10 {
             bytesrepr::test_serialization_roundtrip(&InitiatorAddr::random(rng));
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn generative_bytesrepr_roundtrip(val in initiator_addr_arb()) {
+            bytesrepr::test_serialization_roundtrip(&val);
         }
     }
 }

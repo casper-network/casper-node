@@ -1,6 +1,14 @@
 use alloc::{string::String, vec::Vec};
 use core::fmt::{self, Display, Formatter};
 
+use super::serialization::{tag_only_serialized_length, transaction_entry_point::*};
+#[cfg(any(feature = "testing", test))]
+use crate::testing::TestRng;
+use crate::{
+    alloc::string::ToString,
+    bytesrepr::{self, FromBytes, ToBytes},
+    system::{auction, mint},
+};
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 #[cfg(any(feature = "testing", test))]
@@ -8,27 +16,6 @@ use rand::Rng;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-
-#[cfg(doc)]
-use super::Transaction;
-#[cfg(any(feature = "testing", test))]
-use crate::testing::TestRng;
-use crate::{
-    alloc::string::ToString,
-    bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    system::{auction, mint},
-};
-
-const CUSTOM_TAG: u8 = 0;
-const TRANSFER_TAG: u8 = 1;
-const ADD_BID_TAG: u8 = 2;
-const WITHDRAW_BID_TAG: u8 = 3;
-const DELEGATE_TAG: u8 = 4;
-const UNDELEGATE_TAG: u8 = 5;
-const REDELEGATE_TAG: u8 = 6;
-const ACTIVATE_BID_TAG: u8 = 7;
-const CHANGE_BID_PUBLIC_KEY_TAG: u8 = 8;
-const CALL_TAG: u8 = 9;
 
 /// The entry point of a [`Transaction`].
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
@@ -223,68 +210,44 @@ impl Display for TransactionEntryPoint {
 }
 
 impl ToBytes for TransactionEntryPoint {
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         match self {
-            TransactionEntryPoint::Call => CALL_TAG.write_bytes(writer),
+            TransactionEntryPoint::Call => serialize_tag_only_variant(CALL_TAG),
             TransactionEntryPoint::Custom(entry_point) => {
-                CUSTOM_TAG.write_bytes(writer)?;
-                entry_point.write_bytes(writer)
+                serialize_custom_entry_point(CUSTOM_TAG, entry_point)
             }
-            TransactionEntryPoint::Transfer => TRANSFER_TAG.write_bytes(writer),
-            TransactionEntryPoint::AddBid => ADD_BID_TAG.write_bytes(writer),
-            TransactionEntryPoint::WithdrawBid => WITHDRAW_BID_TAG.write_bytes(writer),
-            TransactionEntryPoint::Delegate => DELEGATE_TAG.write_bytes(writer),
-            TransactionEntryPoint::Undelegate => UNDELEGATE_TAG.write_bytes(writer),
-            TransactionEntryPoint::Redelegate => REDELEGATE_TAG.write_bytes(writer),
-            TransactionEntryPoint::ActivateBid => ACTIVATE_BID_TAG.write_bytes(writer),
+            TransactionEntryPoint::Transfer => serialize_tag_only_variant(TRANSFER_TAG),
+            TransactionEntryPoint::AddBid => serialize_tag_only_variant(ADD_BID_TAG),
+            TransactionEntryPoint::WithdrawBid => serialize_tag_only_variant(WITHDRAW_BID_TAG),
+            TransactionEntryPoint::Delegate => serialize_tag_only_variant(DELEGATE_TAG),
+            TransactionEntryPoint::Undelegate => serialize_tag_only_variant(UNDELEGATE_TAG),
+            TransactionEntryPoint::Redelegate => serialize_tag_only_variant(REDELEGATE_TAG),
+            TransactionEntryPoint::ActivateBid => serialize_tag_only_variant(ACTIVATE_BID_TAG),
             TransactionEntryPoint::ChangeBidPublicKey => {
-                CHANGE_BID_PUBLIC_KEY_TAG.write_bytes(writer)
+                serialize_tag_only_variant(CHANGE_BID_PUBLIC_KEY_TAG)
             }
         }
     }
 
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut buffer = bytesrepr::allocate_buffer(self)?;
-        self.write_bytes(&mut buffer)?;
-        Ok(buffer)
-    }
-
     fn serialized_length(&self) -> usize {
-        U8_SERIALIZED_LENGTH
-            + match self {
-                TransactionEntryPoint::Custom(entry_point) => entry_point.serialized_length(),
-                TransactionEntryPoint::Call
-                | TransactionEntryPoint::Transfer
-                | TransactionEntryPoint::AddBid
-                | TransactionEntryPoint::WithdrawBid
-                | TransactionEntryPoint::Delegate
-                | TransactionEntryPoint::Undelegate
-                | TransactionEntryPoint::Redelegate
-                | TransactionEntryPoint::ActivateBid
-                | TransactionEntryPoint::ChangeBidPublicKey => 0,
-            }
+        match self {
+            TransactionEntryPoint::Custom(entry_point) => custom_serialized_length(entry_point),
+            TransactionEntryPoint::Call
+            | TransactionEntryPoint::Transfer
+            | TransactionEntryPoint::AddBid
+            | TransactionEntryPoint::WithdrawBid
+            | TransactionEntryPoint::Delegate
+            | TransactionEntryPoint::Undelegate
+            | TransactionEntryPoint::Redelegate
+            | TransactionEntryPoint::ActivateBid
+            | TransactionEntryPoint::ChangeBidPublicKey => tag_only_serialized_length(),
+        }
     }
 }
 
 impl FromBytes for TransactionEntryPoint {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (tag, remainder) = u8::from_bytes(bytes)?;
-        match tag {
-            CALL_TAG => Ok((TransactionEntryPoint::Call, remainder)),
-            CUSTOM_TAG => {
-                let (entry_point, remainder) = String::from_bytes(remainder)?;
-                Ok((TransactionEntryPoint::Custom(entry_point), remainder))
-            }
-            TRANSFER_TAG => Ok((TransactionEntryPoint::Transfer, remainder)),
-            ADD_BID_TAG => Ok((TransactionEntryPoint::AddBid, remainder)),
-            WITHDRAW_BID_TAG => Ok((TransactionEntryPoint::WithdrawBid, remainder)),
-            DELEGATE_TAG => Ok((TransactionEntryPoint::Delegate, remainder)),
-            UNDELEGATE_TAG => Ok((TransactionEntryPoint::Undelegate, remainder)),
-            REDELEGATE_TAG => Ok((TransactionEntryPoint::Redelegate, remainder)),
-            ACTIVATE_BID_TAG => Ok((TransactionEntryPoint::ActivateBid, remainder)),
-            CHANGE_BID_PUBLIC_KEY_TAG => Ok((TransactionEntryPoint::ChangeBidPublicKey, remainder)),
-            _ => Err(bytesrepr::Error::Formatting),
-        }
+        deserialize_transaction_entry_point(bytes)
     }
 }
 
@@ -321,12 +284,21 @@ impl From<&str> for TransactionEntryPoint {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{bytesrepr::test_serialization_roundtrip, gens::transaction_entry_point_arb};
+    use proptest::prelude::*;
 
     #[test]
     fn bytesrepr_roundtrip() {
         let rng = &mut TestRng::new();
         for _ in 0..10 {
-            bytesrepr::test_serialization_roundtrip(&TransactionEntryPoint::random(rng));
+            test_serialization_roundtrip(&TransactionEntryPoint::random(rng));
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn bytesrepr_roundtrip_from_arb(entry_point in transaction_entry_point_arb()) {
+            test_serialization_roundtrip(&entry_point);
         }
     }
 }

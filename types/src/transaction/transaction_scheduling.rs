@@ -1,6 +1,21 @@
+#[cfg(any(feature = "testing", test))]
+use super::serialization::transaction_scheduling::{FUTURE_ERA_TAG, FUTURE_TIMESTAMP_TAG};
+use super::serialization::{
+    tag_only_serialized_length,
+    transaction_scheduling::{
+        deserialize_transaction_scheduling, future_era_serialized_length, serialize_future_era,
+        serialize_future_timestamp, serialize_tag_only_variant, timestamp_serialized_length,
+        STANDARD_TAG,
+    },
+};
+#[cfg(any(feature = "testing", test))]
+use crate::testing::TestRng;
+use crate::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    EraId, Timestamp,
+};
 use alloc::vec::Vec;
 use core::fmt::{self, Display, Formatter};
-
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 #[cfg(any(feature = "testing", test))]
@@ -9,19 +24,6 @@ use rand::Rng;
 use schemars::JsonSchema;
 #[cfg(any(feature = "std", test))]
 use serde::{Deserialize, Serialize};
-
-#[cfg(doc)]
-use super::Transaction;
-#[cfg(any(feature = "testing", test))]
-use crate::testing::TestRng;
-use crate::{
-    bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    EraId, Timestamp,
-};
-
-const STANDARD_TAG: u8 = 0;
-const FUTURE_ERA_TAG: u8 = 1;
-const FUTURE_TIMESTAMP_TAG: u8 = 2;
 
 /// The scheduling mode of a [`Transaction`].
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
@@ -71,63 +73,51 @@ impl Display for TransactionScheduling {
 }
 
 impl ToBytes for TransactionScheduling {
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         match self {
-            TransactionScheduling::Standard => STANDARD_TAG.write_bytes(writer),
-            TransactionScheduling::FutureEra(era_id) => {
-                FUTURE_ERA_TAG.write_bytes(writer)?;
-                era_id.write_bytes(writer)
-            }
+            TransactionScheduling::Standard => serialize_tag_only_variant(STANDARD_TAG),
+            TransactionScheduling::FutureEra(era_id) => serialize_future_era(era_id),
             TransactionScheduling::FutureTimestamp(timestamp) => {
-                FUTURE_TIMESTAMP_TAG.write_bytes(writer)?;
-                timestamp.write_bytes(writer)
+                serialize_future_timestamp(timestamp)
             }
         }
     }
 
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut buffer = bytesrepr::allocate_buffer(self)?;
-        self.write_bytes(&mut buffer)?;
-        Ok(buffer)
-    }
-
     fn serialized_length(&self) -> usize {
-        U8_SERIALIZED_LENGTH
-            + match self {
-                TransactionScheduling::Standard => 0,
-                TransactionScheduling::FutureEra(era_id) => era_id.serialized_length(),
-                TransactionScheduling::FutureTimestamp(timestamp) => timestamp.serialized_length(),
+        match self {
+            TransactionScheduling::Standard => tag_only_serialized_length(),
+            TransactionScheduling::FutureEra(era_id) => future_era_serialized_length(era_id),
+            TransactionScheduling::FutureTimestamp(timestamp) => {
+                timestamp_serialized_length(timestamp)
             }
+        }
     }
 }
 
 impl FromBytes for TransactionScheduling {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (tag, remainder) = u8::from_bytes(bytes)?;
-        match tag {
-            STANDARD_TAG => Ok((TransactionScheduling::Standard, remainder)),
-            FUTURE_ERA_TAG => {
-                let (era_id, remainder) = EraId::from_bytes(remainder)?;
-                Ok((TransactionScheduling::FutureEra(era_id), remainder))
-            }
-            FUTURE_TIMESTAMP_TAG => {
-                let (timestamp, remainder) = Timestamp::from_bytes(remainder)?;
-                Ok((TransactionScheduling::FutureTimestamp(timestamp), remainder))
-            }
-            _ => Err(bytesrepr::Error::Formatting),
-        }
+        deserialize_transaction_scheduling(bytes)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::gens::transaction_scheduling_arb;
+    use proptest::prelude::*;
 
     #[test]
     fn bytesrepr_roundtrip() {
         let rng = &mut TestRng::new();
         for _ in 0..10 {
             bytesrepr::test_serialization_roundtrip(&TransactionScheduling::random(rng));
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn generative_bytesrepr_roundtrip(val in transaction_scheduling_arb()) {
+            bytesrepr::test_serialization_roundtrip(&val);
         }
     }
 }

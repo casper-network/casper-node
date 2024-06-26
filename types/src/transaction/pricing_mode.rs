@@ -9,18 +9,19 @@ use rand::Rng;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use super::serialization::pricing_mode::{
+    classic_serialized_length, deserialize_pricing_mode, fixed_serialized_length,
+    reserved_serialized_length, serialize_classic_pricing_mode, serialize_fixed_pricing_mode,
+    serialize_reserved_pricing_mode,
+};
 #[cfg(doc)]
 use super::Transaction;
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
 use crate::{
-    bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    bytesrepr::{self, FromBytes, ToBytes},
     Digest,
 };
-
-const CLASSIC_TAG: u8 = 0;
-const FIXED_TAG: u8 = 1;
-const RESERVED_TAG: u8 = 2;
 
 /// The pricing mode of a [`Transaction`].
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
@@ -102,90 +103,38 @@ impl Display for PricingMode {
 }
 
 impl ToBytes for PricingMode {
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         match self {
             PricingMode::Classic {
                 payment_amount,
                 gas_price_tolerance: gas_price,
                 standard_payment,
-            } => {
-                CLASSIC_TAG.write_bytes(writer)?;
-                payment_amount.write_bytes(writer)?;
-                gas_price.write_bytes(writer)?;
-                standard_payment.write_bytes(writer)
-            }
-            PricingMode::Reserved { receipt } => {
-                RESERVED_TAG.write_bytes(writer)?;
-                receipt.write_bytes(writer)
-            }
+            } => serialize_classic_pricing_mode(payment_amount, gas_price, standard_payment),
+            PricingMode::Reserved { receipt } => serialize_reserved_pricing_mode(receipt),
             PricingMode::Fixed {
                 gas_price_tolerance,
-            } => {
-                FIXED_TAG.write_bytes(writer)?;
-                gas_price_tolerance.write_bytes(writer)
-            }
+            } => serialize_fixed_pricing_mode(gas_price_tolerance),
         }
     }
 
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut buffer = bytesrepr::allocate_buffer(self)?;
-        self.write_bytes(&mut buffer)?;
-        Ok(buffer)
-    }
-
     fn serialized_length(&self) -> usize {
-        U8_SERIALIZED_LENGTH
-            + match self {
-                PricingMode::Classic {
-                    payment_amount,
-                    gas_price_tolerance: gas_price,
-                    standard_payment,
-                } => {
-                    payment_amount.serialized_length()
-                        + gas_price.serialized_length()
-                        + standard_payment.serialized_length()
-                }
-                PricingMode::Reserved { receipt } => receipt.serialized_length(),
-                PricingMode::Fixed {
-                    gas_price_tolerance,
-                } => gas_price_tolerance.serialized_length(),
-            }
+        match self {
+            PricingMode::Classic {
+                payment_amount,
+                gas_price_tolerance,
+                standard_payment,
+            } => classic_serialized_length(payment_amount, gas_price_tolerance, standard_payment),
+            PricingMode::Reserved { receipt } => reserved_serialized_length(receipt),
+            PricingMode::Fixed {
+                gas_price_tolerance,
+            } => fixed_serialized_length(gas_price_tolerance),
+        }
     }
 }
 
 impl FromBytes for PricingMode {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (tag, remainder) = u8::from_bytes(bytes)?;
-
-        match tag {
-            CLASSIC_TAG => {
-                let (payment_amount, remainder) = u64::from_bytes(remainder)?;
-                let (gas_price, remainder) = u8::from_bytes(remainder)?;
-                let (standard_payment, remainder) = bool::from_bytes(remainder)?;
-                Ok((
-                    PricingMode::Classic {
-                        payment_amount,
-                        gas_price_tolerance: gas_price,
-                        standard_payment,
-                    },
-                    remainder,
-                ))
-            }
-            FIXED_TAG => {
-                let (gas_price_tolerance, remainder) = u8::from_bytes(remainder)?;
-                Ok((
-                    PricingMode::Fixed {
-                        gas_price_tolerance,
-                    },
-                    remainder,
-                ))
-            }
-            RESERVED_TAG => {
-                let (receipt, remainder) = Digest::from_bytes(remainder)?;
-                Ok((PricingMode::Reserved { receipt }, remainder))
-            }
-            _ => Err(bytesrepr::Error::Formatting),
-        }
+        deserialize_pricing_mode(bytes)
     }
 }
 
@@ -199,6 +148,15 @@ mod tests {
         let rng = &mut TestRng::new();
         for _ in 0..10 {
             bytesrepr::test_serialization_roundtrip(&PricingMode::random(rng));
+        }
+    }
+
+    use crate::gens::pricing_mode_arb;
+    use proptest::prelude::*;
+    proptest! {
+        #[test]
+        fn generative_bytesrepr_roundtrip(val in pricing_mode_arb()) {
+            bytesrepr::test_serialization_roundtrip(&val);
         }
     }
 }
