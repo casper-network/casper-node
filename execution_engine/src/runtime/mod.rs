@@ -2639,7 +2639,7 @@ where
             Ok(()) => {
                 let protocol_version = self.context.protocol_version();
                 let byte_code_hash = ByteCodeHash::default();
-                let entity_hash = AddressableEntityHash::new(self.context.new_hash_address()?);
+                let entity_hash = AddressableEntityHash::new(target.value());
                 let package_hash = PackageHash::new(self.context.new_hash_address()?);
                 let main_purse = target_purse;
                 let associated_keys = AssociatedKeys::new(target, Weight::new(1));
@@ -3530,9 +3530,9 @@ where
         // Check if the topic exists and get the summary.
         let Some(StoredValue::MessageTopic(prev_topic_summary)) =
             self.context.read_gs(&topic_key)?
-            else {
-                return Ok(Err(ApiError::MessageTopicNotRegistered));
-            };
+        else {
+            return Ok(Err(ApiError::MessageTopicNotRegistered));
+        };
 
         let current_blocktime = self.context.get_blocktime();
         let topic_message_index = if prev_topic_summary.blocktime() != current_blocktime {

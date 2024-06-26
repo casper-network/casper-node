@@ -457,6 +457,8 @@ dependencies = [
  "serde-map-to-array",
  "serde_json",
  "serde_test",
+ "strum 0.26.2",
+ "strum_macros 0.26.4",
  "thiserror",
  "tokio-util 0.6.10",
 ]
@@ -565,7 +567,7 @@ dependencies = [
  "serde",
  "serde_bytes",
  "serde_json",
- "strum",
+ "strum 0.24.1",
  "tempfile",
  "thiserror",
  "tracing",
@@ -647,7 +649,7 @@ dependencies = [
  "static_assertions",
  "stats_alloc",
  "structopt",
- "strum",
+ "strum 0.24.1",
  "sys-info",
  "tempfile",
  "thiserror",
@@ -738,7 +740,7 @@ dependencies = [
  "serde_bytes",
  "serde_json",
  "serde_test",
- "strum",
+ "strum 0.24.1",
  "tempfile",
  "thiserror",
  "tracing",
@@ -3109,6 +3111,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "95505c38b4572b2d910cecb0281560f54b440a19336cbbcb27bf6ce6adc6f5a8"
 
 [[package]]
+name = "heck"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
+
+[[package]]
 name = "hello-world"
 version = "0.1.0"
 dependencies = [
@@ -5445,8 +5453,14 @@ version = "0.24.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "063e6045c0e62079840579a7e47a355ae92f60eb74daaf156fb1e84ba164e63f"
 dependencies = [
- "strum_macros",
+ "strum_macros 0.24.3",
 ]
+
+[[package]]
+name = "strum"
+version = "0.26.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5d8cec3501a5194c432b2b7976db6b7d10ec95c253208b45f83f7136aa985e29"
 
 [[package]]
 name = "strum_macros"
@@ -5459,6 +5473,19 @@ dependencies = [
  "quote 1.0.32",
  "rustversion",
  "syn 1.0.109",
+]
+
+[[package]]
+name = "strum_macros"
+version = "0.26.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4c6bee85a5a24955dc440386795aa378cd9cf82acd5f764469152d2270e581be"
+dependencies = [
+ "heck 0.5.0",
+ "proc-macro2 1.0.66",
+ "quote 1.0.32",
+ "rustversion",
+ "syn 2.0.28",
 ]
 
 [[package]]
