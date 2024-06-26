@@ -731,11 +731,19 @@ where
         } else {
             ByteCodeHash::new(self.address_generator.borrow_mut().new_hash_address())
         };
-        let entity_hash = if entity_kind.is_system_account() {
-            let entity_hash_addr = PublicKey::System.to_account_hash().value();
-            AddressableEntityHash::new(entity_hash_addr)
-        } else {
-            AddressableEntityHash::new(self.address_generator.borrow_mut().new_hash_address())
+
+        let entity_hash = match entity_kind {
+            EntityKind::System(_) | EntityKind::SmartContract(_) => {
+                AddressableEntityHash::new(self.address_generator.borrow_mut().new_hash_address())
+            }
+            EntityKind::Account(account_hash) => {
+                if entity_kind.is_system_account() {
+                    let entity_hash_addr = PublicKey::System.to_account_hash().value();
+                    AddressableEntityHash::new(entity_hash_addr)
+                } else {
+                    AddressableEntityHash::new(account_hash.value())
+                }
+            }
         };
 
         let package_hash = PackageHash::new(self.address_generator.borrow_mut().new_hash_address());
