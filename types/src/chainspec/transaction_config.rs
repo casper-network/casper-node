@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    TimeDiff,
+    TimeDiff, TransactionRuntime,
 };
 
 pub use deploy_config::DeployConfig;
@@ -47,6 +47,9 @@ pub struct TransactionConfig {
     /// Configuration values specific to Deploy transactions.
     #[serde(rename = "deploy")]
     pub deploy_config: DeployConfig,
+    /// Configuration of the transaction runtime.
+    #[serde(rename = "runtime")]
+    pub transaction_runtime: TransactionRuntime,
     /// Configuration values specific to V1 transactions.
     #[serde(rename = "v1")]
     pub transaction_v1_config: TransactionV1Config,
@@ -64,7 +67,8 @@ impl TransactionConfig {
             rng.gen_range(DEFAULT_MIN_TRANSFER_MOTES..1_000_000_000_000_000);
         let max_timestamp_leeway = TimeDiff::from_seconds(rng.gen_range(0..6));
         let deploy_config = DeployConfig::random(rng);
-        let transaction_v1_config = TransactionV1Config::random(rng);
+        let transaction_runtime = TransactionRuntime::random(rng);
+        let transaction_v1_config: TransactionV1Config = TransactionV1Config::random(rng);
 
         TransactionConfig {
             max_ttl,
@@ -74,6 +78,7 @@ impl TransactionConfig {
             native_transfer_minimum_motes,
             max_timestamp_leeway,
             deploy_config,
+            transaction_runtime,
             transaction_v1_config,
         }
     }
@@ -90,6 +95,7 @@ impl Default for TransactionConfig {
             native_transfer_minimum_motes: DEFAULT_MIN_TRANSFER_MOTES,
             max_timestamp_leeway: TimeDiff::from_seconds(5),
             deploy_config: DeployConfig::default(),
+            transaction_runtime: TransactionRuntime::VmCasperV1,
             transaction_v1_config: TransactionV1Config::default(),
         }
     }
@@ -104,6 +110,7 @@ impl ToBytes for TransactionConfig {
         self.native_transfer_minimum_motes.write_bytes(writer)?;
         self.max_timestamp_leeway.write_bytes(writer)?;
         self.deploy_config.write_bytes(writer)?;
+        self.transaction_runtime.write_bytes(writer)?;
         self.transaction_v1_config.write_bytes(writer)
     }
 
@@ -121,6 +128,7 @@ impl ToBytes for TransactionConfig {
             + self.native_transfer_minimum_motes.serialized_length()
             + self.max_timestamp_leeway.serialized_length()
             + self.deploy_config.serialized_length()
+            + self.transaction_runtime.serialized_length()
             + self.transaction_v1_config.serialized_length()
     }
 }
@@ -134,6 +142,7 @@ impl FromBytes for TransactionConfig {
         let (native_transfer_minimum_motes, remainder) = u64::from_bytes(remainder)?;
         let (max_timestamp_leeway, remainder) = TimeDiff::from_bytes(remainder)?;
         let (deploy_config, remainder) = DeployConfig::from_bytes(remainder)?;
+        let (transaction_runtime, remainder) = TransactionRuntime::from_bytes(remainder)?;
         let (transaction_v1_config, remainder) = TransactionV1Config::from_bytes(remainder)?;
 
         let config = TransactionConfig {
@@ -144,6 +153,7 @@ impl FromBytes for TransactionConfig {
             native_transfer_minimum_motes,
             max_timestamp_leeway,
             deploy_config,
+            transaction_runtime,
             transaction_v1_config,
         };
         Ok((config, remainder))

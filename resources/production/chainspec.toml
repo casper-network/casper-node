@@ -185,6 +185,8 @@ block_gas_limit = 3_000_000_000_000
 native_transfer_minimum_motes = 2_500_000_000
 # The maximum value to which `transaction_acceptor.timestamp_leeway` can be set in the config.toml file.
 max_timestamp_leeway = '5 seconds'
+# Configuration of the transaction runtime.
+runtime = "VmCasperV1"
 
 [transactions.v1]
 # The configuration settings for the lanes of transactions including both native and Wasm based interactions.
