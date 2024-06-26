@@ -828,6 +828,7 @@ where
             executor: data.context.executor.clone(),
             transaction_hash: data.context.transaction_hash,
             address_generator: Arc::clone(&data.context.address_generator),
+            chain_name: data.context.chain_name.clone(),
         }
     }
 }

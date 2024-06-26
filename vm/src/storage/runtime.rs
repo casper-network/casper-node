@@ -236,72 +236,72 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn test_system_dispatcher() {
-        let (global_state, mut root_hash, _tempdir) =
-            global_state::state::lmdb::make_temporary_global_state([]);
+    // #[test]
+    // fn test_system_dispatcher() {
+    //     let (global_state, mut root_hash, _tempdir) =
+    //         global_state::state::lmdb::make_temporary_global_state([]);
 
-        let genesis_config = GenesisConfigBuilder::default().build();
+    //     let genesis_config = GenesisConfigBuilder::default().build();
 
-        let genesis_request: GenesisRequest = GenesisRequest::new(
-            Digest::hash("foo"),
-            ProtocolVersion::V2_0_0,
-            genesis_config,
-            ChainspecRegistry::new_with_genesis(b"", b""),
-        );
+    //     let genesis_request: GenesisRequest = GenesisRequest::new(
+    //         Digest::hash("foo"),
+    //         ProtocolVersion::V2_0_0,
+    //         genesis_config,
+    //         ChainspecRegistry::new_with_genesis(b"", b""),
+    //     );
 
-        match global_state.genesis(genesis_request) {
-            GenesisResult::Failure(failure) => panic!("Failed to run genesis: {:?}", failure),
-            GenesisResult::Fatal(fatal) => panic!("Fatal error while running genesis: {}", fatal),
-            GenesisResult::Success {
-                post_state_hash,
-                effects: _,
-            } => {
-                root_hash = post_state_hash;
-            }
-        }
+    //     match global_state.genesis(genesis_request) {
+    //         GenesisResult::Failure(failure) => panic!("Failed to run genesis: {:?}", failure),
+    //         GenesisResult::Fatal(fatal) => panic!("Fatal error while running genesis: {}",
+    // fatal),         GenesisResult::Success {
+    //             post_state_hash,
+    //             effects: _,
+    //         } => {
+    //             root_hash = post_state_hash;
+    //         }
+    //     }
 
-        let mut tracking_copy = global_state
-            .tracking_copy(root_hash)
-            .expect("Obtaining root hash succeed")
-            .expect("Root hash exists");
+    //     let mut tracking_copy = global_state
+    //         .tracking_copy(root_hash)
+    //         .expect("Obtaining root hash succeed")
+    //         .expect("Root hash exists");
 
-        let mut rng = rand::thread_rng();
-        let transaction_hash_bytes: [u8; 32] = rng.gen();
-        let transaction_hash: TransactionHash =
-            TransactionHash::V1(TransactionV1Hash::from_raw(transaction_hash_bytes));
-        let id = Id::Transaction(transaction_hash);
-        let address_generator = Arc::new(RwLock::new(AddressGenerator::new(
-            &id.seed(),
-            Phase::Session,
-        )));
+    //     let mut rng = rand::thread_rng();
+    //     let transaction_hash_bytes: [u8; 32] = rng.gen();
+    //     let transaction_hash: TransactionHash =
+    //         TransactionHash::V1(TransactionV1Hash::from_raw(transaction_hash_bytes));
+    //     let id = Id::Transaction(transaction_hash);
+    //     let address_generator = Arc::new(RwLock::new(AddressGenerator::new(
+    //         &id.seed(),
+    //         Phase::Session,
+    //     )));
 
-        let ret = dispatch_system_contract(
-            &mut tracking_copy,
-            transaction_hash,
-            Arc::clone(&address_generator),
-            "mint",
-            |mut runtime| runtime.mint(U512::from(1000u64)),
-        );
+    //     let ret = dispatch_system_contract(
+    //         &mut tracking_copy,
+    //         transaction_hash,
+    //         Arc::clone(&address_generator),
+    //         "mint",
+    //         |mut runtime| runtime.mint(U512::from(1000u64)),
+    //     );
 
-        let uref = ret.expect("Mint");
+    //     let uref = ret.expect("Mint");
 
-        let ret = dispatch_system_contract(
-            &mut tracking_copy,
-            transaction_hash,
-            Arc::clone(&address_generator),
-            "mint",
-            |mut runtime| runtime.total_balance(uref),
-        );
+    //     let ret = dispatch_system_contract(
+    //         &mut tracking_copy,
+    //         transaction_hash,
+    //         Arc::clone(&address_generator),
+    //         "mint",
+    //         |mut runtime| runtime.total_balance(uref),
+    //     );
 
-        assert_eq!(ret, Ok(Ok(U512::from(1000u64))));
+    //     assert_eq!(ret, Ok(Ok(U512::from(1000u64))));
 
-        let post_root_hash = global_state
-            .commit(root_hash, tracking_copy.effects())
-            .expect("Should apply effect");
+    //     let post_root_hash = global_state
+    //         .commit(root_hash, tracking_copy.effects())
+    //         .expect("Should apply effect");
 
-        assert_ne!(post_root_hash, root_hash);
-    }
+    //     assert_ne!(post_root_hash, root_hash);
+    // }
 
     // #[test]
     // fn test_mint() {

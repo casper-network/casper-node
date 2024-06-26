@@ -49,6 +49,7 @@ const TRANSACTION_HASH: TransactionHash =
     TransactionHash::V1(TransactionV1Hash::from_raw(TRANSACTION_HASH_BYTES));
 
 const DEFAULT_GAS_LIMIT: u64 = 1_000_000;
+const DEFAULT_CHAIN_NAME: &str = "casper-test";
 
 fn make_address_generator() -> Arc<RwLock<AddressGenerator>> {
     let id = Id::Transaction(TRANSACTION_HASH);
@@ -66,6 +67,7 @@ fn base_execute_builder() -> ExecuteRequestBuilder {
         .with_gas_limit(DEFAULT_GAS_LIMIT)
         .with_value(1000)
         .with_transaction_hash(TRANSACTION_HASH)
+        .with_chain_name(DEFAULT_CHAIN_NAME)
 }
 
 fn base_store_request_builder() -> InstantiateContractRequestBuilder {
@@ -73,6 +75,7 @@ fn base_store_request_builder() -> InstantiateContractRequestBuilder {
         .with_initiator(DEFAULT_ACCOUNT_HASH.value())
         .with_gas_limit(1_000_000)
         .with_transaction_hash(TRANSACTION_HASH)
+        .with_chain_name(DEFAULT_CHAIN_NAME)
 }
 
 // #[test]
@@ -148,6 +151,7 @@ fn harness() {
         .with_target(ExecutionKind::SessionBytes(VM2_HARNESS))
         .with_serialized_input((flipper_address,))
         .with_shared_address_generator(address_generator)
+        .with_chain_name(DEFAULT_CHAIN_NAME)
         .build()
         .expect("should build");
     run_wasm_session(
@@ -188,6 +192,7 @@ fn cep18() {
         .with_value(0)
         .with_entry_point("new".to_string())
         .with_input(input_data)
+        .with_chain_name(DEFAULT_CHAIN_NAME)
         .build()
         .expect("should build");
 
@@ -213,6 +218,7 @@ fn cep18() {
         .with_serialized_input((create_result.contract_hash(),))
         .with_value(0)
         .with_shared_address_generator(Arc::clone(&address_generator))
+        .with_chain_name(DEFAULT_CHAIN_NAME)
         .build()
         .expect("should build");
 

@@ -1,4 +1,5 @@
 pub mod chain;
+pub mod chain_utils;
 pub mod executor;
 pub(crate) mod host;
 pub mod storage;

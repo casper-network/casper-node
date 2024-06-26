@@ -38,6 +38,8 @@ pub struct InstantiateContractRequest {
     pub(crate) transaction_hash: TransactionHash,
     /// Address generator.
     pub(crate) address_generator: Arc<RwLock<AddressGenerator>>,
+    /// Chain name.
+    pub(crate) chain_name: Arc<str>,
 }
 
 #[derive(Default)]
@@ -50,6 +52,7 @@ pub struct InstantiateContractRequestBuilder {
     value: Option<u128>,
     transaction_hash: Option<TransactionHash>,
     address_generator: Option<Arc<RwLock<AddressGenerator>>>,
+    chain_name: Option<Arc<str>>,
 }
 
 impl InstantiateContractRequestBuilder {
@@ -101,6 +104,11 @@ impl InstantiateContractRequestBuilder {
         self
     }
 
+    pub fn with_chain_name<T: Into<Arc<str>>>(mut self, chain_name: T) -> Self {
+        self.chain_name = Some(chain_name.into());
+        self
+    }
+
     pub fn build(self) -> Result<InstantiateContractRequest, &'static str> {
         let initiator = self.initiator.ok_or("Initiator not set")?;
         let gas_limit = self.gas_limit.ok_or("Gas limit not set")?;
@@ -110,6 +118,7 @@ impl InstantiateContractRequestBuilder {
         let value = self.value.ok_or("Value not set")?;
         let address_generator = self.address_generator.ok_or("Address generator not set")?;
         let transaction_hash = self.transaction_hash.ok_or("Transaction hash not set")?;
+        let chain_name = self.chain_name.ok_or("Chain name not set")?;
         Ok(InstantiateContractRequest {
             initiator,
             gas_limit,
@@ -119,6 +128,7 @@ impl InstantiateContractRequestBuilder {
             value,
             address_generator,
             transaction_hash,
+            chain_name,
         })
     }
 }
@@ -160,7 +170,8 @@ pub struct ExecuteRequest {
     ///
     /// Either a `[`Key::Account`]` or a `[`Key::AddressableEntity`].
     pub(crate) caller_key: Key,
-    /// Callee's address key.
+    /// Callee's address key. TODO: Remove this field as the callee is derived from the execution
+    /// kind field.
     ///
     /// Either a `[`Key::Account`]` or a `[`Key::AddressableEntity`].
     pub(crate) callee_key: Key,
@@ -179,6 +190,10 @@ pub struct ExecuteRequest {
     /// This can be either seeded and created as part of the builder or shared across chain of
     /// execution requests.
     pub(crate) address_generator: Arc<RwLock<AddressGenerator>>,
+    /// Chain name.
+    ///
+    /// This is very important ingredient for deriving contract hashes on the network.
+    pub(crate) chain_name: Arc<str>,
 }
 
 /// Builder for `ExecuteRequest`.
@@ -193,6 +208,7 @@ pub struct ExecuteRequestBuilder {
     value: Option<u128>,
     transaction_hash: Option<TransactionHash>,
     address_generator: Option<Arc<RwLock<AddressGenerator>>>,
+    chain_name: Option<Arc<str>>,
 }
 
 impl ExecuteRequestBuilder {
@@ -246,6 +262,7 @@ impl ExecuteRequestBuilder {
         self
     }
 
+    /// Set the transaction hash.
     pub fn with_transaction_hash(mut self, transaction_hash: TransactionHash) -> Self {
         self.transaction_hash = Some(transaction_hash);
         self
@@ -272,6 +289,12 @@ impl ExecuteRequestBuilder {
         self
     }
 
+    /// Set the chain name.
+    pub fn with_chain_name<T: Into<Arc<str>>>(mut self, chain_name: T) -> Self {
+        self.chain_name = Some(chain_name.into());
+        self
+    }
+
     /// Build the `ExecuteRequest`.
     pub fn build(self) -> Result<ExecuteRequest, &'static str> {
         let initiator = self.initiator.ok_or("Initiator is not set")?;
@@ -285,7 +308,7 @@ impl ExecuteRequestBuilder {
         let address_generator = self
             .address_generator
             .ok_or("Address generator is not set")?;
-
+        let chain_name = self.chain_name.ok_or("Chain name is not set")?;
         Ok(ExecuteRequest {
             initiator,
             caller_key,
@@ -296,6 +319,7 @@ impl ExecuteRequestBuilder {
             value,
             transaction_hash,
             address_generator,
+            chain_name,
         })
     }
 }

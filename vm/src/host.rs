@@ -26,6 +26,7 @@ use vm_common::{
 use wasmer_types::compilation::target;
 
 use crate::{
+    chain_utils,
     executor::{ExecuteError, ExecuteRequestBuilder, ExecuteResult, ExecutionKind},
     host::abi::{CreateResult, EntryPoint, Manifest},
     storage::{
@@ -349,8 +350,22 @@ pub(crate) fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'stati
         PackageStatus::Unlocked,
     );
 
-    let package_hash_bytes: Address; // = rng.gen(); // TODO: Do we need packages at all in new VM?
-    let contract_hash: Address; // = rng.gen();
+    let bytecode_hash = Digest::hash(&code);
+
+    // TODO: Compute predictable address based on the callee (as the owner) and include a seed.
+    // let contract_hash: Address = {
+    //     let bytecode_hash = Digest::hash(&code);
+    //     let contract_hash = chain_utils::compute_predictable_address(
+    //         caller.context().chain_name.as_bytes(),
+    //         caller.context().initiator,
+    //         bytecode_hash.into(),
+    //     );
+    //     contract_hash
+    // };
+
+    let package_hash_bytes: Address;
+    let contract_hash: Address;
+
     {
         let mut gen = caller.context().address_generator.write();
         package_hash_bytes = gen.create_address();
@@ -363,7 +378,6 @@ pub(crate) fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'stati
     );
 
     // 2. Store wasm
-    let bytecode_hash = Digest::hash(&code);
 
     let bytecode = ByteCode::new(ByteCodeKind::V2CasperWasm, code.clone().into());
     let bytecode_addr = ByteCodeAddr::V2CasperWasm(bytecode_hash.value());
@@ -450,6 +464,7 @@ pub(crate) fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'stati
                 // We're using shared address generator there as we need to preserve and advance the
                 // state of deterministic address generator across chain of calls.
                 .with_shared_address_generator(Arc::clone(&caller.context().address_generator))
+                .with_chain_name(caller.context().chain_name.clone())
                 .build()
                 .expect("should build");
 
@@ -586,6 +601,7 @@ pub(crate) fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>
         // We're using shared address generator there as we need to preserve and advance the state
         // of deterministic address generator across chain of calls.
         .with_shared_address_generator(Arc::clone(&caller.context().address_generator))
+        .with_chain_name(caller.context().chain_name.clone())
         .build()
         .expect("should build");
 
@@ -975,6 +991,7 @@ pub(crate) fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
                 // We're using shared address generator there as we need to preserve and advance the
                 // state of deterministic address generator across chain of calls.
                 .with_shared_address_generator(address_generator)
+                .with_chain_name(caller.context().chain_name.clone())
                 .build()
                 .expect("should build");
 
@@ -1139,6 +1156,7 @@ pub(crate) fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
             // We're using shared address generator there as we need to preserve and advance the
             // state of deterministic address generator across chain of calls.
             .with_shared_address_generator(Arc::clone(&caller.context().address_generator))
+            .with_chain_name(caller.context().chain_name.clone())
             .build()
             .expect("should build");
 

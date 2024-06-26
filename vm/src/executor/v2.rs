@@ -1,5 +1,6 @@
 use std::{collections::VecDeque, sync::Arc};
 
+use blake2::{Blake2b, Digest};
 use bytes::Bytes;
 use casper_storage::{address_generator, tracking_copy::TrackingCopyExt, AddressGenerator};
 use casper_types::{
@@ -8,10 +9,11 @@ use casper_types::{
     bytesrepr::ToBytes,
     contracts::{ContractHash, ContractPackageHash},
     system, AddressableEntity, AddressableEntityHash, ByteCode, ByteCodeAddr, ByteCodeHash,
-    ByteCodeKind, Digest, EntityAddr, EntityKind, EntryPointAddr, EntryPointValue, Groups,
-    HoldsEpoch, Key, Package, PackageHash, PackageStatus, ProtocolVersion, StoredValue,
-    TransactionRuntime, URef, U512,
+    ByteCodeKind, EntityAddr, EntityKind, EntryPointAddr, EntryPointValue, Groups, HoldsEpoch, Key,
+    Package, PackageHash, PackageStatus, ProtocolVersion, StoredValue, TransactionRuntime, URef,
+    U512,
 };
+use digest::consts::U32;
 use either::Either;
 use parking_lot::RwLock;
 use tracing::{error, warn};
@@ -23,6 +25,7 @@ use super::{
     InstantiateContractRequest, StoreContractError, StoreContractResult,
 };
 use crate::{
+    chain_utils,
     storage::{
         runtime::{self, MintArgs, MintTransferArgs},
         Address, GlobalStateReader, TrackingCopy,
@@ -132,6 +135,7 @@ impl Executor for ExecutorV2 {
             value,
             address_generator,
             transaction_hash,
+            chain_name,
         } = instantiate_request;
 
         let caller_key = Key::Account(AccountHash::new(initiator.into()));
@@ -145,15 +149,20 @@ impl Executor for ExecutorV2 {
             PackageStatus::Unlocked,
         );
 
-        // let mut rng = rand::thread_rng(); // TODO: Deterministic random number generator
+        let bytecode_hash = chain_utils::compute_wasm_bytecode_hash(&wasm_bytes);
 
         let package_hash_bytes: Address;
-        let contract_hash: Address;
+        let contract_hash = chain_utils::compute_predictable_address(
+            chain_name.as_bytes(),
+            initiator,
+            bytecode_hash,
+        );
 
         {
             let mut gen = address_generator.write();
-            package_hash_bytes = gen.create_address(); // TODO: Do we need packages at all in new VM?
-            contract_hash = gen.create_address();
+            package_hash_bytes = gen.create_address(); // TODO: Do we need packages at all in new
+                                                       // VM?
+                                                       // contract_hash = gen.create_address();
         }
 
         tracking_copy.write(
@@ -162,10 +171,9 @@ impl Executor for ExecutorV2 {
         );
 
         // 2. Store wasm
-        let bytecode_hash = Digest::hash(&wasm_bytes);
 
         let bytecode = ByteCode::new(ByteCodeKind::V1CasperWasm, wasm_bytes.clone().into());
-        let bytecode_addr = ByteCodeAddr::V2CasperWasm(bytecode_hash.value());
+        let bytecode_addr = ByteCodeAddr::V2CasperWasm(bytecode_hash);
 
         tracking_copy.write(
             Key::ByteCode(bytecode_addr),
@@ -196,22 +204,9 @@ impl Executor for ExecutorV2 {
             }
         };
 
-        // for entrypoint in entry_points {
-        //     let key = Key::EntryPoint(EntryPointAddr::VmCasperV2 {
-        //         entity_addr,
-        //         selector: entrypoint.selector,
-        //     });
-        //     let value = EntryPointValue::V2CasperVm(EntryPointV2 {
-        //         function_index: entrypoint.fptr,
-        //         flags: entrypoint.flags,
-        //     });
-        //     let stored_value = StoredValue::EntryPoint(value);
-        //     caller.context_mut().tracking_copy.write(key, stored_value);
-        // }
-
         let addressable_entity = AddressableEntity::new(
             PackageHash::new(package_hash_bytes),
-            ByteCodeHash::new(bytecode_hash.value()),
+            ByteCodeHash::new(bytecode_hash),
             ProtocolVersion::V2_0_0,
             main_purse,
             AssociatedKeys::default(),
@@ -241,6 +236,7 @@ impl Executor for ExecutorV2 {
                     .with_value(value)
                     .with_transaction_hash(transaction_hash)
                     .with_shared_address_generator(address_generator)
+                    .with_chain_name(chain_name)
                     .build()
                     .expect("should build");
 
@@ -309,6 +305,7 @@ impl Executor for ExecutorV2 {
             value,
             transaction_hash,
             address_generator,
+            chain_name,
         } = execute_request;
 
         // TODO: Purse uref does not need to be optional once value transfers to WasmBytes are
@@ -428,6 +425,7 @@ impl Executor for ExecutorV2 {
             executor: self.clone(),
             address_generator: Arc::clone(&address_generator),
             transaction_hash,
+            chain_name,
         };
 
         let wasm_instance_config = ConfigBuilder::new()

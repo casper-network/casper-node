@@ -435,7 +435,6 @@ pub fn execute_finalized_block(
                                 _ => unreachable!(),
                             }
 
-
                             let request = builder
                                 .with_initiator(initiator_addr.account_hash().value())
                                 .with_gas_limit(gas_limit)
@@ -443,6 +442,7 @@ pub fn execute_finalized_block(
                                 .with_wasm_bytes(module_bytes.clone().take_inner().into())
                                 .with_address_generator(address_generator)
                                 .with_value(value)
+                                .with_chain_name(chainspec.network_config.name.clone())
                                 .build()
                                 .expect("should build");
 
@@ -497,6 +497,7 @@ pub fn execute_finalized_block(
                                 // TODO: Callee is unnecessary as it can be derived from the
                                 // execution target inside the executor
                                 .with_callee_key(initiator_key)
+                                .with_chain_name(chainspec.network_config.name.clone())
                                 .with_value(value);
 
                             if let Some(input_data) = input_data.clone() {

@@ -53,6 +53,7 @@ pub(crate) struct Context<S: GlobalStateReader, E: Executor> {
     pub(crate) executor: E, // TODO: This could be part of the caller
     pub(crate) transaction_hash: TransactionHash,
     pub(crate) address_generator: Arc<RwLock<AddressGenerator>>,
+    pub(crate) chain_name: Arc<str>,
 }
 
 #[derive(Debug, Copy, Clone)]
