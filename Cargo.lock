@@ -586,6 +586,7 @@ dependencies = [
  "clap 4.4.11",
  "clap-cargo",
  "libloading",
+ "serde_json",
  "tempfile",
 ]
 

@@ -208,7 +208,7 @@ fn keyspace_to_global_state_key<'a, S: GlobalStateReader, E: Executor>(
         Key::AddressableEntity(addressable_entity_hash) => {
             EntityAddr::new_smart_contract(addressable_entity_hash.value())
         }
-        other => {
+        _ => {
             // This should never happen, as the caller is always an account or a smart contract.
             return None;
         }
