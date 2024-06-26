@@ -36,7 +36,7 @@ impl MainReactor {
         effects.extend(
             async move {
                 if !delay.is_zero() {
-                    tokio::time::sleep(delay).await
+                    tokio::time::sleep(delay).await;
                 }
             }
             .event(|_| MainEvent::ReactorCrank),

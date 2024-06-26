@@ -50,9 +50,8 @@ impl ParticipationStatus {
             {
                 if r_id.saturating_add(2) < zug.current_round {
                     return Some(ParticipationStatus::LastSeenInRound(*r_id));
-                } else {
-                    return None; // Seen recently; considered currently active.
                 }
+                return None; // Seen recently; considered currently active.
             }
         }
         Some(ParticipationStatus::Inactive)

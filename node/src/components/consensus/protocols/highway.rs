@@ -339,9 +339,8 @@ impl<C: Context + 'static> HighwayProtocol<C> {
                     });
                 }
                 return outcomes;
-            } else {
-                self.log_proposal(vertex, "proposal does not need validation");
             }
+            self.log_proposal(vertex, "proposal does not need validation");
         }
 
         // Either consensus value doesn't need validation or it's not a proposal.

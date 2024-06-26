@@ -680,7 +680,7 @@ mod tests {
 
         // Check receiving a gossip response, causes `ShouldGossip` to be returned and holders
         // updated.
-        gossip_table.register_infection_attempt(&data_id, std::iter::once(&node_ids[1]));
+        gossip_table.register_infection_attempt(&data_id, iter::once(&node_ids[1]));
         let action = gossip_table.already_infected(&data_id, node_ids[1]);
         let expected = GossipAction::ShouldGossip(ShouldGossip {
             count: 1,
@@ -691,7 +691,7 @@ mod tests {
         assert_eq!(expected, action);
         check_holders(&node_ids[..2], &gossip_table, &data_id);
 
-        gossip_table.register_infection_attempt(&data_id, std::iter::once(&node_ids[2]));
+        gossip_table.register_infection_attempt(&data_id, iter::once(&node_ids[2]));
         let action = gossip_table.new_complete_data(&data_id, Some(node_ids[2]), GossipTarget::All);
         assert_eq!(GossipAction::Noop, action);
         check_holders(&node_ids[..3], &gossip_table, &data_id);
@@ -700,7 +700,7 @@ mod tests {
         // causes `Noop` to be returned and holders cleared.
         let limit = 3 + EXPECTED_DEFAULT_INFECTION_TARGET;
         for node_id in &node_ids[3..limit] {
-            gossip_table.register_infection_attempt(&data_id, std::iter::once(node_id));
+            gossip_table.register_infection_attempt(&data_id, iter::once(node_id));
             let _ = gossip_table.we_infected(&data_id, *node_id);
         }
         let action = gossip_table.new_complete_data(&data_id, None, GossipTarget::All);
@@ -739,7 +739,7 @@ mod tests {
         let _ = gossip_table.new_complete_data(&data_id, None, GossipTarget::All);
         let limit = EXPECTED_DEFAULT_INFECTION_TARGET - 1;
         for node_id in node_ids.iter().take(limit) {
-            gossip_table.register_infection_attempt(&data_id, std::iter::once(node_id));
+            gossip_table.register_infection_attempt(&data_id, iter::once(node_id));
             let action = gossip_table.we_infected(&data_id, *node_id);
             assert_eq!(GossipAction::Noop, action);
             assert!(!gossip_table.finished.contains(&data_id));
@@ -747,7 +747,7 @@ mod tests {
 
         // Check recording an infection from an already-recorded infectee doesn't cause us to stop
         // gossiping.
-        gossip_table.register_infection_attempt(&data_id, std::iter::once(&node_ids[limit - 1]));
+        gossip_table.register_infection_attempt(&data_id, iter::once(&node_ids[limit - 1]));
         let action = gossip_table.we_infected(&data_id, node_ids[limit - 1]);
         let expected = GossipAction::ShouldGossip(ShouldGossip {
             count: 1,
@@ -759,7 +759,7 @@ mod tests {
         assert!(!gossip_table.finished.contains(&data_id));
 
         // Check third new infection does cause us to stop gossiping.
-        gossip_table.register_infection_attempt(&data_id, std::iter::once(&node_ids[limit]));
+        gossip_table.register_infection_attempt(&data_id, iter::once(&node_ids[limit]));
         let action = gossip_table.we_infected(&data_id, node_ids[limit]);
         assert_eq!(GossipAction::AnnounceFinished, action);
         assert!(gossip_table.finished.contains(&data_id));
@@ -818,7 +818,7 @@ mod tests {
         let limit = EXPECTED_DEFAULT_ATTEMPTED_TO_INFECT_LIMIT - 1;
         for node_id in node_ids.iter().take(limit) {
             let _ = gossip_table.new_complete_data(&data_id, Some(*node_id), GossipTarget::All);
-            gossip_table.register_infection_attempt(&data_id, std::iter::once(node_id));
+            gossip_table.register_infection_attempt(&data_id, iter::once(node_id));
             assert!(!gossip_table.finished.contains(&data_id));
         }
 
@@ -826,7 +826,7 @@ mod tests {
         // `finished` collection.
         gossip_table.register_infection_attempt(
             &data_id,
-            std::iter::once(&node_ids[EXPECTED_DEFAULT_ATTEMPTED_TO_INFECT_LIMIT]),
+            iter::once(&node_ids[EXPECTED_DEFAULT_ATTEMPTED_TO_INFECT_LIMIT]),
         );
         let action = gossip_table.check_timeout(
             &data_id,
@@ -875,7 +875,7 @@ mod tests {
         let _ = gossip_table.new_complete_data(&data_id, None, GossipTarget::All);
         let limit = EXPECTED_DEFAULT_ATTEMPTED_TO_INFECT_LIMIT - 1;
         for (index, node_id) in node_ids.iter().enumerate().take(limit) {
-            gossip_table.register_infection_attempt(&data_id, std::iter::once(node_id));
+            gossip_table.register_infection_attempt(&data_id, iter::once(node_id));
             let action = gossip_table.already_infected(&data_id, *node_id);
             let expected = GossipAction::ShouldGossip(ShouldGossip {
                 count: 1,
@@ -888,7 +888,7 @@ mod tests {
 
         // Check recording a non-infection from an already-recorded holder doesn't cause us to stop
         // gossiping.
-        gossip_table.register_infection_attempt(&data_id, std::iter::once(&node_ids[0]));
+        gossip_table.register_infection_attempt(&data_id, iter::once(&node_ids[0]));
         let action = gossip_table.already_infected(&data_id, node_ids[0]);
         let expected = GossipAction::ShouldGossip(ShouldGossip {
             count: 1,
@@ -899,7 +899,7 @@ mod tests {
         assert_eq!(expected, action);
 
         // Check 15th non-infection does cause us to stop gossiping.
-        gossip_table.register_infection_attempt(&data_id, std::iter::once(&node_ids[limit]));
+        gossip_table.register_infection_attempt(&data_id, iter::once(&node_ids[limit]));
         let action = gossip_table.we_infected(&data_id, node_ids[limit]);
         assert_eq!(GossipAction::AnnounceFinished, action);
     }
@@ -917,19 +917,19 @@ mod tests {
         let _ = gossip_table.new_complete_data(&data_id, None, GossipTarget::All);
         let infection_limit = EXPECTED_DEFAULT_INFECTION_TARGET - 1;
         for node_id in &node_ids[0..infection_limit] {
-            gossip_table.register_infection_attempt(&data_id, std::iter::once(node_id));
+            gossip_table.register_infection_attempt(&data_id, iter::once(node_id));
             let _ = gossip_table.we_infected(&data_id, *node_id);
         }
 
         let attempted_to_infect = EXPECTED_DEFAULT_ATTEMPTED_TO_INFECT_LIMIT - 2;
         for node_id in &node_ids[infection_limit..attempted_to_infect] {
-            gossip_table.register_infection_attempt(&data_id, std::iter::once(node_id));
+            gossip_table.register_infection_attempt(&data_id, iter::once(node_id));
             let _ = gossip_table.already_infected(&data_id, *node_id);
         }
 
         // Check adding 12th non-infection doesn't cause us to stop gossiping.
         gossip_table
-            .register_infection_attempt(&data_id, std::iter::once(&node_ids[attempted_to_infect]));
+            .register_infection_attempt(&data_id, iter::once(&node_ids[attempted_to_infect]));
         let action = gossip_table.already_infected(&data_id, node_ids[attempted_to_infect]);
         let expected = GossipAction::ShouldGossip(ShouldGossip {
             count: 1,
@@ -958,11 +958,11 @@ mod tests {
 
         // check_timeout for node 0 should return Noop, and for node 1 it should represent a timed
         // out response and return ShouldGossip.
-        gossip_table.register_infection_attempt(&data_id, std::iter::once(&node_ids[0]));
+        gossip_table.register_infection_attempt(&data_id, iter::once(&node_ids[0]));
         let action = gossip_table.check_timeout(&data_id, node_ids[0]);
         assert_eq!(GossipAction::Noop, action);
 
-        gossip_table.register_infection_attempt(&data_id, std::iter::once(&node_ids[1]));
+        gossip_table.register_infection_attempt(&data_id, iter::once(&node_ids[1]));
         let action = gossip_table.check_timeout(&data_id, node_ids[1]);
         let expected = GossipAction::ShouldGossip(ShouldGossip {
             count: 1,
