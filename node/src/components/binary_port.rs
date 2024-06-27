@@ -146,6 +146,10 @@ where
         BinaryRequest::TrySpeculativeExec { transaction } => {
             metrics.binary_port_try_speculative_exec_count.inc();
             if !config.allow_request_speculative_exec {
+                debug!(
+                    hash = %transaction.hash(),
+                    "received a request for speculative execution while the feature is disabled"
+                );
                 return BinaryResponse::new_error(ErrorCode::FunctionDisabled, protocol_version);
             }
             let response =
@@ -198,6 +202,7 @@ where
         } if RecordId::try_from(record_type_tag) == Ok(RecordId::Transfer) => {
             metrics.binary_port_get_record_count.inc();
             let Ok(block_hash) = bytesrepr::deserialize_from_slice(&key) else {
+                debug!("received an incorrectly serialized key for a transfer record");
                 return BinaryResponse::new_error(ErrorCode::BadRequest, protocol_version);
             };
             let Some(transfers) = effect_builder
@@ -236,12 +241,19 @@ where
         GetRequest::Information { info_type_tag, key } => {
             metrics.binary_port_get_info_count.inc();
             let Ok(tag) = InformationRequestTag::try_from(info_type_tag) else {
+                debug!(
+                    tag = info_type_tag,
+                    "received an unknown information request tag"
+                );
                 return BinaryResponse::new_error(ErrorCode::UnsupportedRequest, protocol_version);
             };
-            let Ok(req) = InformationRequest::try_from((tag, &key[..])) else {
-                return BinaryResponse::new_error(ErrorCode::BadRequest, protocol_version);
-            };
-            handle_info_request(req, effect_builder, protocol_version).await
+            match InformationRequest::try_from((tag, &key[..])) {
+                Ok(req) => handle_info_request(req, effect_builder, protocol_version).await,
+                Err(error) => {
+                    debug!(?tag, %error, "failed to parse an information request");
+                    BinaryResponse::new_error(ErrorCode::BadRequest, protocol_version)
+                }
+            }
         }
         GetRequest::State(req) => {
             metrics.binary_port_get_state_count.inc();
@@ -261,7 +273,7 @@ where
 {
     let Some(state_root_hash) = resolve_state_root_hash(effect_builder, state_identifier).await
     else {
-        return BinaryResponse::new_empty(protocol_version);
+        return BinaryResponse::new_error(ErrorCode::RootNotFound, protocol_version);
     };
     let storage_key_prefix = match key_prefix {
         KeyPrefix::DelegatorBidAddrsByValidator(hash) => {
@@ -287,7 +299,8 @@ where
         PrefixedValuesResult::RootNotFound => {
             BinaryResponse::new_error(ErrorCode::RootNotFound, protocol_version)
         }
-        PrefixedValuesResult::Failure(_err) => {
+        PrefixedValuesResult::Failure(error) => {
+            debug!(%error, "failed when querying for values by prefix");
             BinaryResponse::new_error(ErrorCode::InternalError, protocol_version)
         }
     }
@@ -304,7 +317,7 @@ where
 {
     let Some(state_root_hash) = resolve_state_root_hash(effect_builder, state_identifier).await
     else {
-        return BinaryResponse::new_empty(protocol_version);
+        return BinaryResponse::new_error(ErrorCode::RootNotFound, protocol_version);
     };
     let request = TaggedValuesRequest::new(state_root_hash, TaggedValuesSelection::All(key_tag));
     match effect_builder.get_tagged_values(request).await {
@@ -314,7 +327,8 @@ where
         TaggedValuesResult::RootNotFound => {
             BinaryResponse::new_error(ErrorCode::RootNotFound, protocol_version)
         }
-        TaggedValuesResult::Failure(_err) => {
+        TaggedValuesResult::Failure(error) => {
+            debug!(%error, "failed when querying for all values by tag");
             BinaryResponse::new_error(ErrorCode::InternalError, protocol_version)
         }
     }
@@ -342,7 +356,7 @@ where
             let Some(state_root_hash) =
                 resolve_state_root_hash(effect_builder, state_identifier).await
             else {
-                return BinaryResponse::new_empty(protocol_version);
+                return BinaryResponse::new_error(ErrorCode::RootNotFound, protocol_version);
             };
             match get_global_state_item(effect_builder, state_root_hash, base_key, path).await {
                 Ok(Some(result)) => BinaryResponse::from_value(result, protocol_version),
@@ -355,6 +369,7 @@ where
             key_tag,
         } => {
             if !config.allow_request_get_all_values {
+                debug!(%key_tag, "received a request for items by key tag while the feature is disabled");
                 BinaryResponse::new_error(ErrorCode::FunctionDisabled, protocol_version)
             } else {
                 handle_get_all_items(state_identifier, key_tag, effect_builder, protocol_version)
@@ -363,6 +378,7 @@ where
         }
         GlobalStateRequest::Trie { trie_key } => {
             if !config.allow_request_get_trie {
+                debug!(%trie_key, "received a trie request while the feature is disabled");
                 BinaryResponse::new_error(ErrorCode::FunctionDisabled, protocol_version)
             } else {
                 let req = TrieRequest::new(trie_key, None);
@@ -371,7 +387,8 @@ where
                         GetTrieFullResult::new(result.map(TrieRaw::into_inner)),
                         protocol_version,
                     ),
-                    Err(_err) => {
+                    Err(error) => {
+                        debug!(%error, "failed when querying for a trie");
                         BinaryResponse::new_error(ErrorCode::InternalError, protocol_version)
                     }
                 }
@@ -384,7 +401,7 @@ where
             let Some(state_root_hash) =
                 resolve_state_root_hash(effect_builder, state_identifier).await
             else {
-                return BinaryResponse::new_empty(protocol_version);
+                return BinaryResponse::new_error(ErrorCode::RootNotFound, protocol_version);
             };
             let result = match identifier {
                 DictionaryItemIdentifier::AccountNamedKey {
@@ -501,9 +518,19 @@ where
             let named_keys = match &*value {
                 StoredValue::Account(account) => account.named_keys(),
                 StoredValue::Contract(contract) => contract.named_keys(),
-                _ => return Err(ErrorCode::DictionaryURefNotFound),
+                value => {
+                    debug!(
+                        value_type = value.type_name(),
+                        "unexpected stored value found when querying for a dictionary"
+                    );
+                    return Err(ErrorCode::DictionaryURefNotFound);
+                }
             };
             let Some(uref) = named_keys.get(&dictionary_name).and_then(Key::as_uref) else {
+                debug!(
+                    dictionary_name,
+                    "dictionary seed URef not found in named keys"
+                );
                 return Err(ErrorCode::DictionaryURefNotFound);
             };
             let key = Key::dictionary(*uref, dictionary_item_key.as_bytes());
@@ -515,10 +542,18 @@ where
 
             Ok(Some(DictionaryQueryResult::new(key, query_result)))
         }
-        QueryResult::RootNotFound | QueryResult::ValueNotFound(_) => {
+        QueryResult::RootNotFound => {
+            debug!("root not found when querying for a dictionary seed URef");
             Err(ErrorCode::DictionaryURefNotFound)
         }
-        QueryResult::Failure(_) => Err(ErrorCode::FailedQuery),
+        QueryResult::ValueNotFound(error) => {
+            debug!(%error, "value not found when querying for a dictionary seed URef");
+            Err(ErrorCode::DictionaryURefNotFound)
+        }
+        QueryResult::Failure(error) => {
+            debug!(%error, "failed when querying for a dictionary seed URef");
+            Err(ErrorCode::FailedQuery)
+        }
     }
 }
 
@@ -538,11 +573,25 @@ where
     let req = QueryRequest::new(state_root_hash, Key::NamedKey(key_addr), vec![]);
     match effect_builder.query_global_state(req).await {
         QueryResult::Success { value, .. } => {
-            let StoredValue::NamedKey(key_val) = &*value else {
-                return Err(ErrorCode::DictionaryURefNotFound);
+            let key_val = match &*value {
+                StoredValue::NamedKey(key_val) => key_val,
+                value => {
+                    debug!(
+                        value_type = value.type_name(),
+                        "unexpected stored value found when querying for a dictionary"
+                    );
+                    return Err(ErrorCode::DictionaryURefNotFound);
+                }
             };
-            let Ok(Key::URef(uref)) = key_val.get_key() else {
-                return Err(ErrorCode::DictionaryURefNotFound);
+            let uref = match key_val.get_key() {
+                Ok(Key::URef(uref)) => uref,
+                result => {
+                    debug!(
+                        ?result,
+                        "unexpected named key result when querying for a dictionary"
+                    );
+                    return Err(ErrorCode::DictionaryURefNotFound);
+                }
             };
             let key = Key::dictionary(uref, dictionary_item_key.as_bytes());
             let Some(query_result) =
@@ -552,10 +601,18 @@ where
             };
             Ok(Some(DictionaryQueryResult::new(key, query_result)))
         }
-        QueryResult::RootNotFound | QueryResult::ValueNotFound(_) => {
+        QueryResult::RootNotFound => {
+            debug!("root not found when querying for a dictionary seed URef");
             Err(ErrorCode::DictionaryURefNotFound)
         }
-        QueryResult::Failure(_) => Err(ErrorCode::FailedQuery),
+        QueryResult::ValueNotFound(error) => {
+            debug!(%error, "value not found when querying for a dictionary seed URef");
+            Err(ErrorCode::DictionaryURefNotFound)
+        }
+        QueryResult::Failure(error) => {
+            debug!(%error, "failed when querying for a dictionary seed URef");
+            Err(ErrorCode::FailedQuery)
+        }
     }
 }
 
@@ -637,8 +694,14 @@ where
             Ok(Some(GlobalStateQueryResult::new(*value, proofs)))
         }
         QueryResult::RootNotFound => Err(ErrorCode::RootNotFound),
-        QueryResult::ValueNotFound(_) => Err(ErrorCode::NotFound),
-        QueryResult::Failure(_) => Err(ErrorCode::FailedQuery),
+        QueryResult::ValueNotFound(error) => {
+            debug!(%error, "value not found when querying for a global state item");
+            Err(ErrorCode::NotFound)
+        }
+        QueryResult::Failure(error) => {
+            debug!(%error, "failed when querying for a global state item");
+            Err(ErrorCode::FailedQuery)
+        }
     }
 }
 
@@ -816,6 +879,7 @@ where
             };
             let Some(previous_height) = header.height().checked_sub(1) else {
                 // there's not going to be any rewards for the genesis block
+                debug!("received a request for rewards in the genesis block");
                 return BinaryResponse::new_empty(protocol_version);
             };
             let Some(parent_header) = effect_builder
@@ -829,7 +893,7 @@ where
             };
             let snapshot_request = SeigniorageRecipientsRequest::new(
                 *parent_header.state_root_hash(),
-                protocol_version,
+                parent_header.protocol_version(),
             );
 
             let snapshot = match effect_builder
@@ -842,16 +906,25 @@ where
                 SeigniorageRecipientsResult::RootNotFound => {
                     return BinaryResponse::new_error(ErrorCode::RootNotFound, protocol_version)
                 }
-                SeigniorageRecipientsResult::Failure(_) => {
-                    return BinaryResponse::new_error(ErrorCode::FailedQuery, protocol_version)
+                SeigniorageRecipientsResult::Failure(error) => {
+                    warn!(%error, "failed when querying for seigniorage recipients");
+                    return BinaryResponse::new_error(ErrorCode::FailedQuery, protocol_version);
                 }
-                SeigniorageRecipientsResult::AuctionNotFound
-                | SeigniorageRecipientsResult::ValueNotFound(_) => {
-                    return BinaryResponse::new_error(ErrorCode::InternalError, protocol_version)
+                SeigniorageRecipientsResult::AuctionNotFound => {
+                    warn!("auction not found when querying for seigniorage recipients");
+                    return BinaryResponse::new_error(ErrorCode::InternalError, protocol_version);
+                }
+                SeigniorageRecipientsResult::ValueNotFound(error) => {
+                    warn!(%error, "value not found when querying for seigniorage recipients");
+                    return BinaryResponse::new_error(ErrorCode::InternalError, protocol_version);
                 }
             };
             let Some(era_end) = header.clone_era_end() else {
                 // switch block should have an era end
+                warn!(
+                    hash = %header.block_hash(),
+                    "era end not found in the switch block retrieved from storage"
+                );
                 return BinaryResponse::new_error(ErrorCode::InternalError, protocol_version);
             };
             let block_rewards = match era_end.rewards() {
@@ -878,7 +951,10 @@ where
                     BinaryResponse::from_value(response, protocol_version)
                 }
                 Ok(None) => BinaryResponse::new_empty(protocol_version),
-                Err(_) => BinaryResponse::new_error(ErrorCode::InternalError, protocol_version),
+                Err(error) => {
+                    warn!(%error, "failed when calculating rewards");
+                    BinaryResponse::new_error(ErrorCode::InternalError, protocol_version)
+                }
             }
         }
     }
@@ -923,8 +999,9 @@ where
         .await;
 
     match result {
-        SpeculativeExecutionResult::InvalidTransaction(ite) => {
-            BinaryResponse::new_error(ite.into(), protocol_version)
+        SpeculativeExecutionResult::InvalidTransaction(error) => {
+            debug!(%error, "invalid transaction submitted for speculative execution");
+            BinaryResponse::new_error(error.into(), protocol_version)
         }
         SpeculativeExecutionResult::WasmV1(spec_exec_result) => {
             BinaryResponse::from_value(spec_exec_result, protocol_version)
@@ -989,11 +1066,13 @@ fn extract_header(payload: &[u8]) -> Result<(BinaryRequestHeader, &[u8]), ErrorC
         return Err(ErrorCode::BinaryProtocolVersionMismatch);
     }
 
-    let Ok((header, remainder)) = BinaryRequestHeader::from_bytes(payload) else {
-        return Err(ErrorCode::BadRequest);
-    };
-
-    Ok((header, remainder))
+    match BinaryRequestHeader::from_bytes(payload) {
+        Ok((header, remainder)) => Ok((header, remainder)),
+        Err(error) => {
+            debug!(%error, "failed to parse binary request header");
+            Err(ErrorCode::BadRequest)
+        }
+    }
 }
 
 async fn handle_payload<REv>(
@@ -1029,11 +1108,15 @@ where
         );
     };
 
-    let Ok(request) = BinaryRequest::try_from((tag, remainder)) else {
-        return (
-            BinaryResponse::new_error(ErrorCode::BadRequest, protocol_version),
-            request_id,
-        );
+    let request = match BinaryRequest::try_from((tag, remainder)) {
+        Ok(request) => request,
+        Err(error) => {
+            debug!(%error, "failed to parse binary request body");
+            return (
+                BinaryResponse::new_error(ErrorCode::BadRequest, protocol_version),
+                request_id,
+            );
+        }
     };
 
     (

@@ -86,6 +86,8 @@ pub trait TrackingCopyExt<R> {
     fn get_balance_holds(
         &mut self,
         purse_addr: URefAddr,
+        block_time: BlockTime,
+        interval: u64,
     ) -> Result<BTreeMap<BlockTime, BalanceHolds>, Self::Error>;
 
     /// Gets the balance holds for a given balance, with Merkle proofs.
@@ -322,7 +324,7 @@ where
                 Some((block_time, handling, interval)) => (block_time, handling, interval),
             };
 
-        let balance_holds = self.get_balance_holds(purse_addr)?;
+        let balance_holds = self.get_balance_holds(purse_addr, block_time, interval)?;
         let gas_handling = (handling, interval).into();
         let processing_handling = ProcessingHoldBalanceHandling::new();
         match balance_holds.available_balance(
@@ -422,6 +424,8 @@ where
     fn get_balance_holds(
         &mut self,
         purse_addr: URefAddr,
+        block_time: BlockTime,
+        interval: u64,
     ) -> Result<BTreeMap<BlockTime, BalanceHolds>, Self::Error> {
         // NOTE: currently there are two kinds of holds, gas and processing.
         // Processing holds only effect one block to prevent double spend and are always
@@ -434,14 +438,7 @@ where
         // for each hold kind and process each kind discretely in order and collate the
         // non-expired hold total at the end.
         let mut ret: BTreeMap<BlockTime, BalanceHolds> = BTreeMap::new();
-        let (block_time, interval) = match self.get_balance_hold_config(BalanceHoldAddrTag::Gas)? {
-            Some((block_time, _, interval)) => (block_time.value(), interval),
-            None => {
-                // if there is no holds config at this root hash, there can't be any holds
-                return Ok(ret);
-            }
-        };
-        let holds_epoch = { HoldsEpoch::from_millis(block_time, interval) };
+        let holds_epoch = { HoldsEpoch::from_millis(block_time.value(), interval) };
         let holds = self.get_balance_hold_addresses(purse_addr)?;
         for balance_hold_addr in holds {
             let block_time = balance_hold_addr.block_time();
