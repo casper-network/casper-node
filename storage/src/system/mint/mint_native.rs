@@ -252,4 +252,21 @@ where
     }
 }
 
-impl<S> Mint for RuntimeNative<S> where S: StateReader<Key, StoredValue, Error = GlobalStateError> {}
+impl<S> Mint for RuntimeNative<S>
+where
+    S: StateReader<Key, StoredValue, Error = GlobalStateError>,
+{
+    fn purse_exists(&mut self, uref: URef) -> Result<bool, Error> {
+        let key = Key::Balance(uref.addr());
+        match self
+            .tracking_copy()
+            .borrow_mut()
+            .read(&key)
+            .map_err(|_| Error::Storage)?
+        {
+            Some(StoredValue::CLValue(value)) => Ok(*value.cl_type() == U512::cl_type()),
+            Some(_non_cl_value) => Err(Error::CLValue),
+            None => Ok(false),
+        }
+    }
+}

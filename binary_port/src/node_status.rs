@@ -8,11 +8,12 @@ use casper_types::{
 use casper_types::testing::TestRng;
 #[cfg(test)]
 use rand::Rng;
+use serde::Serialize;
 
 use crate::{minimal_block_info::MinimalBlockInfo, type_wrappers::ReactorStateName};
 
 /// Status information about the node.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize)]
 pub struct NodeStatus {
     /// The node ID and network address of each connected peer.
     pub peers: Peers,

@@ -2,9 +2,13 @@ use core::{convert::TryFrom, fmt};
 
 use casper_types::{InvalidDeploy, InvalidTransaction, InvalidTransactionV1};
 
+#[cfg(test)]
+use strum_macros::EnumIter;
+
 /// The error code indicating the result of handling the binary request.
-#[derive(Debug, Clone, thiserror::Error)]
+#[derive(Debug, Copy, Clone, thiserror::Error, Eq, PartialEq)]
 #[repr(u16)]
+#[cfg_attr(test, derive(EnumIter))]
 pub enum ErrorCode {
     /// Request executed correctly.
     #[error("request executed correctly")]
@@ -198,6 +202,75 @@ pub enum ErrorCode {
     /// Invalid binary port version.
     #[error("binary protocol version mismatch")]
     BinaryProtocolVersionMismatch = 61,
+    /// Blockchain is empty
+    #[error("blockchain is empty")]
+    EmptyBlockchain = 62,
+    /// Expected deploy, but got transaction
+    #[error("expected deploy, got transaction")]
+    ExpectedDeploy = 63,
+    /// Expected transaction, but got deploy
+    #[error("expected transaction V1, got deploy")]
+    ExpectedTransaction = 64,
+    /// Transaction has expired
+    #[error("transaction has expired")]
+    TransactionExpired = 65,
+    /// Transactions parameters are missing or incorrect
+    #[error("missing or incorrect transaction parameters")]
+    MissingOrIncorrectParameters = 66,
+    /// No such addressable entity
+    #[error("no such addressable entity")]
+    NoSuchAddressableEntity = 67,
+    // No such contract at hash
+    #[error("no such contract at hash")]
+    NoSuchContractAtHash = 68,
+    /// No such entry point
+    #[error("no such entry point")]
+    NoSuchEntryPoint = 69,
+    /// No such package at hash
+    #[error("no such package at hash")]
+    NoSuchPackageAtHash = 70,
+    /// Invalid entity at version
+    #[error("invalid entity at version")]
+    InvalidEntityAtVersion = 71,
+    /// Disabled entity at version
+    #[error("disabled entity at version")]
+    DisabledEntityAtVersion = 72,
+    /// Missing entity at version
+    #[error("missing entity at version")]
+    MissingEntityAtVersion = 73,
+    /// Invalid associated keys
+    #[error("invalid associated keys")]
+    InvalidAssociatedKeys = 74,
+    /// Insufficient signature weight
+    #[error("insufficient signature weight")]
+    InsufficientSignatureWeight = 75,
+    /// Insufficient balance
+    #[error("insufficient balance")]
+    InsufficientBalance = 76,
+    /// Unknown balance
+    #[error("unknown balance")]
+    UnknownBalance = 77,
+    /// Invalid payment variant for deploy
+    #[error("invalid payment variant for deploy")]
+    DeployInvalidPaymentVariant = 78,
+    /// Missing payment amount for deploy
+    #[error("missing payment amount for deploy")]
+    DeployMissingPaymentAmount = 79,
+    /// Failed to parse payment amount for deploy
+    #[error("failed to parse payment amount for deploy")]
+    DeployFailedToParsePaymentAmount = 80,
+    /// Missing transfer target for deploy
+    #[error("missing transfer target for deploy")]
+    DeployMissingTransferTarget = 81,
+    /// Missing module bytes for deploy
+    #[error("missing module bytes for deploy")]
+    DeployMissingModuleBytes = 82,
+    /// Entry point cannot be 'call'
+    #[error("entry point cannot be 'call'")]
+    InvalidTransactionEntryPointCannotBeCall = 83,
+    /// Invalid transaction kind
+    #[error("invalid transaction kind")]
+    InvalidTransactionInvalidTransactionKind = 84,
 }
 
 impl TryFrom<u16> for ErrorCode {
@@ -266,6 +339,30 @@ impl TryFrom<u16> for ErrorCode {
             58 => Ok(ErrorCode::SwitchBlockNotFound),
             59 => Ok(ErrorCode::SwitchBlockParentNotFound),
             60 => Ok(ErrorCode::UnsupportedRewardsV1Request),
+            61 => Ok(ErrorCode::BinaryProtocolVersionMismatch),
+            62 => Ok(ErrorCode::EmptyBlockchain),
+            63 => Ok(ErrorCode::ExpectedDeploy),
+            64 => Ok(ErrorCode::ExpectedTransaction),
+            65 => Ok(ErrorCode::TransactionExpired),
+            66 => Ok(ErrorCode::MissingOrIncorrectParameters),
+            67 => Ok(ErrorCode::NoSuchAddressableEntity),
+            68 => Ok(ErrorCode::NoSuchContractAtHash),
+            69 => Ok(ErrorCode::NoSuchEntryPoint),
+            70 => Ok(ErrorCode::NoSuchPackageAtHash),
+            71 => Ok(ErrorCode::InvalidEntityAtVersion),
+            72 => Ok(ErrorCode::DisabledEntityAtVersion),
+            73 => Ok(ErrorCode::MissingEntityAtVersion),
+            74 => Ok(ErrorCode::InvalidAssociatedKeys),
+            75 => Ok(ErrorCode::InsufficientSignatureWeight),
+            76 => Ok(ErrorCode::InsufficientBalance),
+            77 => Ok(ErrorCode::UnknownBalance),
+            78 => Ok(ErrorCode::DeployInvalidPaymentVariant),
+            79 => Ok(ErrorCode::DeployMissingPaymentAmount),
+            80 => Ok(ErrorCode::DeployFailedToParsePaymentAmount),
+            81 => Ok(ErrorCode::DeployMissingTransferTarget),
+            82 => Ok(ErrorCode::DeployMissingModuleBytes),
+            83 => Ok(ErrorCode::InvalidTransactionEntryPointCannotBeCall),
+            84 => Ok(ErrorCode::InvalidTransactionInvalidTransactionKind),
             _ => Err(UnknownErrorCode),
         }
     }
@@ -394,7 +491,35 @@ impl From<InvalidTransactionV1> for ErrorCode {
             InvalidTransactionV1::InvalidPricingMode { .. } => {
                 ErrorCode::InvalidTransactionPricingMode
             }
+            InvalidTransactionV1::EntryPointCannotBeCall => {
+                ErrorCode::InvalidTransactionEntryPointCannotBeCall
+            }
+            InvalidTransactionV1::InvalidTransactionKind(_) => {
+                ErrorCode::InvalidTransactionInvalidTransactionKind
+            }
             _ => ErrorCode::InvalidTransactionUnspecified,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::convert::TryFrom;
+
+    use strum::IntoEnumIterator;
+
+    use crate::ErrorCode;
+
+    #[test]
+    fn try_from_decoded_all_variants() {
+        for variant in ErrorCode::iter() {
+            let as_int = variant as u16;
+            let decoded = ErrorCode::try_from(as_int);
+            assert!(
+                decoded.is_ok(),
+                "variant {} not covered by TryFrom<u16> implementation",
+                as_int
+            );
         }
     }
 }
