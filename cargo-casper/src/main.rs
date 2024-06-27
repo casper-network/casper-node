@@ -73,6 +73,7 @@ fn main() -> anyhow::Result<()> {
                 "--target-dir",
                 &tempdir.path().as_os_str().to_str().expect("invalid path"),
             ]);
+            eprintln!("Running command {:?}", args);
 
             let mut output = std::process::Command::new("cargo")
                 .args(&args)
