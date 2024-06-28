@@ -71,7 +71,7 @@ fn tokenize(input: &str) -> Result<Vec<Token>, Error> {
                     } else if let Ok(value) = bool::from_str(&buffer) {
                         tokens.push(Token::Boolean(value));
                     } else {
-                        tokens.push(Token::String(buffer.clone()))
+                        tokens.push(Token::String(buffer.clone()));
                     }
 
                     buffer.clear();

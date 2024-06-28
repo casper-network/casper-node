@@ -28,7 +28,7 @@ use prometheus::IntGauge;
 use rand::Rng;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tokio::{
-    net::TcpStream,
+    net::{TcpListener, TcpStream},
     sync::{mpsc::UnboundedReceiver, watch, Semaphore},
 };
 use tokio_openssl::SslStream;
@@ -581,7 +581,7 @@ where
 /// Runs the server core acceptor loop.
 pub(super) async fn server<P, REv>(
     context: Arc<NetworkContext<REv>>,
-    listener: tokio::net::TcpListener,
+    listener: TcpListener,
     mut shutdown_receiver: watch::Receiver<()>,
 ) where
     REv: From<Event<P>> + Send,
@@ -630,8 +630,8 @@ pub(super) async fn server<P, REv>(
                 //
                 //       The code in its current state will consume 100% CPU if local resource
                 //       exhaustion happens, as no distinction is made and no delay introduced.
-                Err(ref err) => {
-                    warn!(%context.our_id, err=display_error(err), "dropping incoming connection during accept")
+                Err(err) => {
+                    warn!(%context.our_id, err=display_error(&err), "dropping incoming connection during accept")
                 }
             }
         }

@@ -49,7 +49,7 @@ impl BlockPayload {
         let mut ret = vec![];
         if let Some(transactions) = self.transactions.get(&MINT_LANE_ID) {
             for transaction in transactions {
-                ret.push(transaction)
+                ret.push(transaction);
             }
         }
         ret.into_iter()
@@ -60,7 +60,7 @@ impl BlockPayload {
         let mut ret = vec![];
         if let Some(transactions) = self.transactions.get(&AUCTION_LANE_ID) {
             for transaction in transactions {
-                ret.push(transaction)
+                ret.push(transaction);
             }
         }
         ret.into_iter()
@@ -71,7 +71,7 @@ impl BlockPayload {
         let mut ret = vec![];
         if let Some(transactions) = self.transactions.get(&INSTALL_UPGRADE_LANE_ID) {
             for transaction in transactions {
-                ret.push(transaction)
+                ret.push(transaction);
             }
         }
         ret.into_iter()
@@ -85,7 +85,7 @@ impl BlockPayload {
         let mut ret = vec![];
         if let Some(transactions) = self.transactions.get(&category) {
             for transaction in transactions {
-                ret.push(transaction)
+                ret.push(transaction);
             }
         }
         ret.into_iter()
@@ -93,7 +93,7 @@ impl BlockPayload {
 
     pub(crate) fn finalized_payload(&self) -> BTreeMap<u8, Vec<TransactionHash>> {
         let mut ret = BTreeMap::new();
-        for (category, transactions) in self.transactions.iter() {
+        for (category, transactions) in &self.transactions {
             let transactions = transactions.iter().map(|(tx, _)| *tx).collect();
             ret.insert(*category, transactions);
         }
@@ -104,11 +104,7 @@ impl BlockPayload {
     /// Returns count of transactions by category.
     pub fn count(&self, category: Option<u8>) -> usize {
         match category {
-            None => self
-                .transactions
-                .values()
-                .map(|transactions| transactions.len())
-                .sum(),
+            None => self.transactions.values().map(Vec::len).sum(),
             Some(category) => match self.transactions.get(&category) {
                 Some(values) => values.len(),
                 None => 0,

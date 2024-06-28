@@ -51,8 +51,6 @@ pub use core_config::{
     DEFAULT_GAS_HOLD_INTERVAL,
 };
 pub use fee_handling::FeeHandling;
-#[cfg(any(feature = "testing", test))]
-pub use genesis_config::DEFAULT_AUCTION_DELAY;
 #[cfg(any(feature = "std", test))]
 pub use genesis_config::{GenesisConfig, GenesisConfigBuilder};
 pub use global_state_update::{GlobalStateUpdate, GlobalStateUpdateConfig, GlobalStateUpdateError};

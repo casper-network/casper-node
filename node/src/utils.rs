@@ -15,18 +15,16 @@ pub(crate) mod specimen;
 pub(crate) mod umask;
 pub mod work_queue;
 
+#[cfg(test)]
+use std::{any, sync::Arc, time::Duration};
 use std::{
-    any,
     fmt::{self, Debug, Display, Formatter},
     io,
     net::{SocketAddr, ToSocketAddrs},
     ops::{Add, BitXorAssign, Div},
     path::{Path, PathBuf},
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
-    time::{Duration, Instant, SystemTime},
+    sync::atomic::{AtomicBool, Ordering},
+    time::{Instant, SystemTime},
 };
 
 use datasize::DataSize;
@@ -360,6 +358,7 @@ pub(crate) fn xor(lhs: &mut [u8], rhs: &[u8]) {
 ///
 /// Using this function is usually a potential architectural issue and it should be used very
 /// sparingly. Consider introducing a different access pattern for the value under `Arc`.
+#[cfg(test)]
 pub(crate) async fn wait_for_arc_drop<T>(
     arc: Arc<T>,
     attempts: usize,

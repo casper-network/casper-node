@@ -452,7 +452,7 @@ impl<C: Context> State<C> {
         }
         let idx = evidence.perpetrator();
         match self.faults.get(&idx) {
-            Some(&Fault::Banned) | Some(&Fault::Direct(_)) => return false,
+            Some(&Fault::Banned | &Fault::Direct(_)) => return false,
             None | Some(&Fault::Indirect) => (),
         }
         // TODO: Should use Display, not Debug!

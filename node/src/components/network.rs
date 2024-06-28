@@ -54,6 +54,7 @@ use std::{
 };
 
 use datasize::DataSize;
+#[cfg(test)]
 use futures::{future::BoxFuture, FutureExt};
 use itertools::Itertools;
 use prometheus::Registry;
@@ -62,13 +63,14 @@ use rand::{
     Rng,
 };
 use serde::{Deserialize, Serialize};
+#[cfg(test)]
+use tokio::task::JoinHandle;
 use tokio::{
     net::TcpStream,
     sync::{
         mpsc::{self, UnboundedSender},
         watch,
     },
-    task::JoinHandle,
 };
 use tokio_openssl::SslStream;
 use tokio_util::codec::LengthDelimitedCodec;
@@ -103,6 +105,8 @@ use self::{
     symmetry::ConnectionSymmetry,
     tasks::{MessageQueueItem, NetworkContext},
 };
+#[cfg(test)]
+use crate::reactor::Finalize;
 use crate::{
     components::{gossiper::GossipItem, Component, ComponentState, InitializedComponent},
     effect::{
@@ -110,7 +114,7 @@ use crate::{
         requests::{BeginGossipRequest, NetworkInfoRequest, NetworkRequest, StorageRequest},
         AutoClosingResponder, EffectBuilder, EffectExt, Effects, GossipTarget,
     },
-    reactor::{Finalize, ReactorEvent},
+    reactor::ReactorEvent,
     tls,
     types::{NodeId, ValidatorMatrix},
     utils::{self, display_error, Source},
@@ -119,7 +123,9 @@ use crate::{
 
 const COMPONENT_NAME: &str = "network";
 
+#[cfg(test)]
 const MAX_METRICS_DROP_ATTEMPTS: usize = 25;
+#[cfg(test)]
 const DROP_RETRY_DELAY: Duration = Duration::from_millis(100);
 
 /// How often to keep attempting to reconnect to a node before giving up. Note that reconnection
@@ -179,7 +185,7 @@ where
 
     /// Tracks nodes that have announced themselves as nodes that are syncing.
     syncing_nodes: HashSet<NodeId>,
-
+    #[data_size(skip)]
     channel_management: Option<ChannelManagement>,
 
     /// Networking metrics.
@@ -203,26 +209,24 @@ where
     state: ComponentState,
 }
 
-#[derive(DataSize)]
 struct ChannelManagement {
     /// Channel signaling a shutdown of the network.
     // Note: This channel is closed when `Network` is dropped, signalling the receivers that
     // they should cease operation.
-    #[data_size(skip)]
+    #[cfg(test)]
     shutdown_sender: Option<watch::Sender<()>>,
     /// Join handle for the server thread.
-    #[data_size(skip)]
+    #[cfg(test)]
     server_join_handle: Option<JoinHandle<()>>,
 
     /// Channel signaling a shutdown of the incoming connections.
     // Note: This channel is closed when we finished syncing, so the `Network` can close all
     // connections. When they are re-established, the proper value of the now updated `is_syncing`
     // flag will be exchanged on handshake.
-    #[data_size(skip)]
+    #[cfg(test)]
     close_incoming_sender: Option<watch::Sender<()>>,
     /// Handle used by the `message_reader` task to receive a notification that incoming
     /// connections should be closed.
-    #[data_size(skip)]
     close_incoming_receiver: watch::Receiver<()>,
 }
 
@@ -354,11 +358,11 @@ where
         // which we need to shutdown cleanly later on.
         info!(%local_addr, %public_addr, %protocol_version, "starting server background task");
 
-        let (server_shutdown_sender, server_shutdown_receiver) = watch::channel(());
-        let (close_incoming_sender, close_incoming_receiver) = watch::channel(());
+        let (_server_shutdown_sender, server_shutdown_receiver) = watch::channel(());
+        let (_close_incoming_sender, close_incoming_receiver) = watch::channel(());
 
         let context = self.context.clone();
-        let server_join_handle = tokio::spawn(
+        let _server_join_handle = tokio::spawn(
             tasks::server(
                 context,
                 tokio::net::TcpListener::from_std(listener).map_err(Error::ListenerConversion)?,
@@ -368,9 +372,12 @@ where
         );
 
         let channel_management = ChannelManagement {
-            shutdown_sender: Some(server_shutdown_sender),
-            server_join_handle: Some(server_join_handle),
-            close_incoming_sender: Some(close_incoming_sender),
+            #[cfg(test)]
+            shutdown_sender: Some(_server_shutdown_sender),
+            #[cfg(test)]
+            server_join_handle: Some(_server_join_handle),
+            #[cfg(test)]
+            close_incoming_sender: Some(_close_incoming_sender),
             close_incoming_receiver,
         };
 
@@ -1026,6 +1033,7 @@ where
     }
 }
 
+#[cfg(test)]
 impl<REv, P> Finalize for Network<REv, P>
 where
     REv: Send + 'static,

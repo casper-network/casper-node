@@ -1,6 +1,7 @@
 use std::{
     fmt::{self, Debug, Display, Formatter},
-    io, mem,
+    io,
+    mem::size_of,
     net::SocketAddr,
     sync::Arc,
 };
@@ -22,8 +23,7 @@ use crate::{
     protocol::Message as ProtocolMessage,
 };
 
-const _NETWORK_EVENT_SIZE: usize = mem::size_of::<Event<ProtocolMessage>>();
-const_assert!(_NETWORK_EVENT_SIZE < 65);
+const_assert!(size_of::<Event<ProtocolMessage>>() < 65);
 
 /// A network event.
 #[derive(Debug, From, Serialize)]

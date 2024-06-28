@@ -275,7 +275,7 @@ impl BlockSynchronizer {
             Arc::new(Chainspec::random(rng)),
             MAX_SIMULTANEOUS_PEERS,
             validator_matrix,
-            &prometheus::Registry::new(),
+            &Registry::new(),
         )
         .expect("Failed to create BlockSynchronizer");
 

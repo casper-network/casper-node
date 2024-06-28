@@ -1416,7 +1416,7 @@ where
                         let response =
                             handle_request(request, effect_builder, &config, &chainspec, &metrics)
                                 .await;
-                        responder.respond(response).await
+                        responder.respond(response).await;
                     }
                     .ignore()
                 }

@@ -543,7 +543,7 @@ impl BlockValidator {
             Err(error) => warn!(%transaction_hash, %error, "could not fetch transaction"),
         }
         match result {
-            Ok(FetchedData::FromStorage { item }) | Ok(FetchedData::FromPeer { item, .. }) => {
+            Ok(FetchedData::FromStorage { item } | FetchedData::FromPeer { item, .. }) => {
                 let item_hash = item.hash();
                 if item_hash != transaction_hash {
                     // Hard failure - change state to Invalid.
@@ -661,7 +661,7 @@ impl BlockValidator {
             }
         }
         match result {
-            Ok(FetchedData::FromStorage { .. }) | Ok(FetchedData::FromPeer { .. }) => {
+            Ok(FetchedData::FromStorage { .. } | FetchedData::FromPeer { .. }) => {
                 let mut effects = Effects::new();
                 for state in self.validation_states.values_mut() {
                     let responders = state.try_add_signature(&finality_signature_id);

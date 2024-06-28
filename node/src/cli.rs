@@ -203,8 +203,7 @@ impl Cli {
 
                 let old_root = old_config
                     .parent()
-                    .map(|path| path.to_owned())
-                    .unwrap_or_else(|| "/".into());
+                    .map_or_else(|| "/".into(), Path::to_path_buf);
                 let encoded_old_config = fs::read_to_string(&old_config)
                     .context("could not read old configuration file")
                     .with_context(|| old_config.display().to_string())?;
@@ -225,8 +224,7 @@ impl Cli {
 
                 let old_root = old_config
                     .parent()
-                    .map(|path| path.to_owned())
-                    .unwrap_or_else(|| "/".into());
+                    .map_or_else(|| "/".into(), Path::to_path_buf);
                 let encoded_old_config = fs::read_to_string(&old_config)
                     .context("could not read old configuration file")
                     .with_context(|| old_config.display().to_string())?;
@@ -251,8 +249,7 @@ impl Cli {
         // Otherwise, we default to `/`.
         let root = config
             .parent()
-            .map(|path| path.to_owned())
-            .unwrap_or_else(|| "/".into());
+            .map_or_else(|| "/".into(), Path::to_path_buf);
 
         // The app supports running without a config file, using default values.
         let encoded_config = fs::read_to_string(config)

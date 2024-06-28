@@ -136,9 +136,8 @@ impl State {
                     exclude_peers: self.attempted_to_infect.clone(),
                     is_already_held: !is_new,
                 });
-            } else {
-                return GossipAction::Noop;
             }
+            return GossipAction::Noop;
         }
 
         if is_new {

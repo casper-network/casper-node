@@ -241,10 +241,10 @@ pub(super) trait ItemFetcher<T: FetchItem + 'static> {
                 }
             }
             Err(
-                error @ Error::Absent { .. }
-                | error @ Error::Rejected { .. }
-                | error @ Error::CouldNotConstructGetRequest { .. }
-                | error @ Error::ValidationMetadataMismatch { .. },
+                error @ (Error::Absent { .. }
+                | Error::Rejected { .. }
+                | Error::CouldNotConstructGetRequest { .. }
+                | Error::ValidationMetadataMismatch { .. }),
             ) => {
                 // For all other error variants we can safely respond with failure as there's no
                 // chance for the request to succeed.

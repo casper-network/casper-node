@@ -215,7 +215,7 @@ impl<C: Context> Panorama<C> {
                 .find(|(_, unit)| unit.timestamp <= timestamp)
                 .map(|(vh, _)| *vh)
                 .map_or(Observation::None, Observation::Correct),
-            obs @ Observation::None | obs @ Observation::Faulty => obs.clone(),
+            obs @ (Observation::None | Observation::Faulty) => obs.clone(),
         };
         Panorama::from(self.iter().map(obs_cutoff).collect_vec())
     }
