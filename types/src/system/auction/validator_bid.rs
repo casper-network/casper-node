@@ -39,6 +39,8 @@ pub struct ValidatorBid {
     minimum_delegation_amount: u64,
     /// Maximum allowed delegation amount in motes
     maximum_delegation_amount: u64,
+    /// Spots reserved for specific delegators
+    whitelist_size: u32,
 }
 
 impl ValidatorBid {
@@ -63,6 +65,7 @@ impl ValidatorBid {
             inactive,
             minimum_delegation_amount,
             maximum_delegation_amount,
+            whitelist_size: 0,
         }
     }
 
@@ -86,6 +89,7 @@ impl ValidatorBid {
             inactive,
             minimum_delegation_amount,
             maximum_delegation_amount,
+            whitelist_size: 0,
         }
     }
 
@@ -104,6 +108,7 @@ impl ValidatorBid {
             inactive,
             minimum_delegation_amount: 0,
             maximum_delegation_amount: u64::MAX,
+            whitelist_size: 0,
         }
     }
 
@@ -330,6 +335,7 @@ impl FromBytes for ValidatorBid {
                 inactive,
                 minimum_delegation_amount,
                 maximum_delegation_amount,
+                whitelist_size: 0,
             },
             bytes,
         ))
@@ -347,6 +353,7 @@ impl From<Bid> for ValidatorBid {
             inactive: bid.inactive(),
             minimum_delegation_amount: 0,
             maximum_delegation_amount: u64::MAX,
+            whitelist_size: 0,
         }
     }
 }
@@ -372,6 +379,7 @@ mod tests {
             inactive: false,
             minimum_delegation_amount: 0,
             maximum_delegation_amount: u64::MAX,
+            whitelist_size: 0,
         };
         bytesrepr::test_serialization_roundtrip(&founding_validator);
     }
@@ -389,6 +397,7 @@ mod tests {
             inactive: true,
             minimum_delegation_amount: 0,
             maximum_delegation_amount: u64::MAX,
+            whitelist_size: 0,
         };
         bytesrepr::test_serialization_roundtrip(&founding_validator);
     }
