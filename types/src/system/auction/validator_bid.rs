@@ -288,6 +288,7 @@ impl ToBytes for ValidatorBid {
         self.inactive.write_bytes(&mut result)?;
         self.minimum_delegation_amount.write_bytes(&mut result)?;
         self.maximum_delegation_amount.write_bytes(&mut result)?;
+        self.whitelist_size.write_bytes(&mut result)?;
         Ok(result)
     }
 
@@ -300,6 +301,7 @@ impl ToBytes for ValidatorBid {
             + self.inactive.serialized_length()
             + self.minimum_delegation_amount.serialized_length()
             + self.maximum_delegation_amount.serialized_length()
+            + self.whitelist_size.serialized_length()
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
@@ -311,6 +313,7 @@ impl ToBytes for ValidatorBid {
         self.inactive.write_bytes(writer)?;
         self.minimum_delegation_amount.write_bytes(writer)?;
         self.maximum_delegation_amount.write_bytes(writer)?;
+        self.whitelist_size.write_bytes(writer)?;
         Ok(())
     }
 }
@@ -325,6 +328,7 @@ impl FromBytes for ValidatorBid {
         let (inactive, bytes) = FromBytes::from_bytes(bytes)?;
         let (minimum_delegation_amount, bytes) = FromBytes::from_bytes(bytes)?;
         let (maximum_delegation_amount, bytes) = FromBytes::from_bytes(bytes)?;
+        let (whitelist_size, bytes) = FromBytes::from_bytes(bytes)?;
         Ok((
             ValidatorBid {
                 validator_public_key,
@@ -335,7 +339,7 @@ impl FromBytes for ValidatorBid {
                 inactive,
                 minimum_delegation_amount,
                 maximum_delegation_amount,
-                whitelist_size: 0,
+                whitelist_size,
             },
             bytes,
         ))
