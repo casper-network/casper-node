@@ -582,8 +582,7 @@ where
 pub(super) async fn server<P, REv>(
     context: Arc<NetworkContext<REv>>,
     listener: TcpListener,
-    #[cfg(test)]
-    mut shutdown_receiver: watch::Receiver<()>,
+    #[cfg(test)] mut shutdown_receiver: watch::Receiver<()>,
 ) where
     REv: From<Event<P>> + Send,
     P: Payload,
