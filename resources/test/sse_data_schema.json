@@ -3289,7 +3289,8 @@
         "maximum_delegation_amount",
         "minimum_delegation_amount",
         "staked_amount",
-        "validator_public_key"
+        "validator_public_key",
+        "whitelist_size"
       ],
       "properties": {
         "validator_public_key": {
@@ -3347,6 +3348,12 @@
           "description": "Maximum allowed delegation amount in motes",
           "type": "integer",
           "format": "uint64",
+          "minimum": 0.0
+        },
+        "whitelist_size": {
+          "description": "Spots reserved for specific delegators",
+          "type": "integer",
+          "format": "uint32",
           "minimum": 0.0
         }
       },
