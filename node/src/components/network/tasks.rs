@@ -582,6 +582,7 @@ where
 pub(super) async fn server<P, REv>(
     context: Arc<NetworkContext<REv>>,
     listener: TcpListener,
+    #[cfg(test)]
     mut shutdown_receiver: watch::Receiver<()>,
 ) where
     REv: From<Event<P>> + Send,
@@ -637,16 +638,22 @@ pub(super) async fn server<P, REv>(
         }
     };
 
-    let shutdown_messages = async move { while shutdown_receiver.changed().await.is_ok() {} };
+    #[cfg(not(test))]
+    accept_connections.await;
 
-    // Now we can wait for either the `shutdown` channel's remote end to do be dropped or the
-    // infinite loop to terminate, which never happens.
-    match future::select(Box::pin(shutdown_messages), Box::pin(accept_connections)).await {
-        Either::Left(_) => info!(
-            %context.our_id,
-            "shutting down socket, no longer accepting incoming connections"
-        ),
-        Either::Right(_) => unreachable!(),
+    #[cfg(test)]
+    {
+        let shutdown_messages = async move { while shutdown_receiver.changed().await.is_ok() {} };
+
+        // Now we can wait for either the `shutdown` channel's remote end to do be dropped or the
+        // infinite loop to terminate, which never happens.
+        match future::select(Box::pin(shutdown_messages), Box::pin(accept_connections)).await {
+            Either::Left(_) => info!(
+                %context.our_id,
+                "shutting down socket, no longer accepting incoming connections"
+            ),
+            Either::Right(_) => unreachable!(),
+        }
     }
 }
 

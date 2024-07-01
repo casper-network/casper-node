@@ -223,7 +223,6 @@ struct ChannelManagement {
     // Note: This channel is closed when we finished syncing, so the `Network` can close all
     // connections. When they are re-established, the proper value of the now updated `is_syncing`
     // flag will be exchanged on handshake.
-    #[cfg(test)]
     close_incoming_sender: Option<watch::Sender<()>>,
     /// Handle used by the `message_reader` task to receive a notification that incoming
     /// connections should be closed.
@@ -358,14 +357,16 @@ where
         // which we need to shutdown cleanly later on.
         info!(%local_addr, %public_addr, %protocol_version, "starting server background task");
 
-        let (_server_shutdown_sender, server_shutdown_receiver) = watch::channel(());
-        let (_close_incoming_sender, close_incoming_receiver) = watch::channel(());
+        #[cfg(test)]
+        let (server_shutdown_sender, server_shutdown_receiver) = watch::channel(());
+        let (close_incoming_sender, close_incoming_receiver) = watch::channel(());
 
         let context = self.context.clone();
         let _server_join_handle = tokio::spawn(
             tasks::server(
                 context,
                 tokio::net::TcpListener::from_std(listener).map_err(Error::ListenerConversion)?,
+                #[cfg(test)]
                 server_shutdown_receiver,
             )
             .in_current_span(),
@@ -373,11 +374,10 @@ where
 
         let channel_management = ChannelManagement {
             #[cfg(test)]
-            shutdown_sender: Some(_server_shutdown_sender),
+            shutdown_sender: Some(server_shutdown_sender),
             #[cfg(test)]
             server_join_handle: Some(_server_join_handle),
-            #[cfg(test)]
-            close_incoming_sender: Some(_close_incoming_sender),
+            close_incoming_sender: Some(close_incoming_sender),
             close_incoming_receiver,
         };
 
