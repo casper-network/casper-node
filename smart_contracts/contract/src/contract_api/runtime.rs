@@ -199,8 +199,11 @@ pub fn get_named_arg<T: FromBytes>(name: &str) -> T {
 ///
 /// Note that this is only relevant to contracts stored on-chain since a contract deployed directly
 /// is not invoked with any arguments.
-pub fn try_get_named_arg<T: FromBytes>(name: &str) -> Option<T> {
-    let arg_size = get_named_arg_size(name)?;
+pub fn try_get_named_arg<T: FromBytes>(name: &str) -> Result<T, ApiError> {
+    let arg_size = match get_named_arg_size(name) {
+        Some(size) => size,
+        _ => 0,
+    };
     let arg_bytes = if arg_size > 0 {
         let res = {
             let data_non_null_ptr = contract_api::alloc_bytes(arg_size);
@@ -222,7 +225,10 @@ pub fn try_get_named_arg<T: FromBytes>(name: &str) -> Option<T> {
         // Avoids allocation with 0 bytes and a call to get_named_arg
         Vec::new()
     };
-    bytesrepr::deserialize(arg_bytes).ok()
+    match bytesrepr::deserialize(arg_bytes) {
+        Ok(value) => Ok(value),
+        Err(_) => Err(ApiError::InvalidArgument),
+    }
 }
 
 /// Returns the caller of the current context, i.e. the [`AccountHash`] of the account which made
