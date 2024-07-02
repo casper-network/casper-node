@@ -29,9 +29,9 @@ use tracing::{debug, error, info, trace};
 use casper_execution_engine::engine_state::{EngineConfigBuilder, ExecutionEngineV1};
 use casper_storage::{
     data_access_layer::{
-        AddressableEntityRequest, BlockStore, DataAccessLayer, EntryPointsRequest,
-        ExecutionResultsChecksumRequest, FlushRequest, FlushResult, GenesisRequest, GenesisResult,
-        TrieRequest,
+        AddressableEntityRequest, AddressableEntityResult, BlockStore, DataAccessLayer,
+        EntryPointsRequest, ExecutionResultsChecksumRequest, FlushRequest, FlushResult,
+        GenesisRequest, GenesisResult, TrieRequest,
     },
     global_state::{
         state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
@@ -42,7 +42,8 @@ use casper_storage::{
     tracking_copy::TrackingCopyError,
 };
 use casper_types::{
-    ActivationPoint, Chainspec, ChainspecRawBytes, ChainspecRegistry, EraId, PublicKey,
+    account::AccountHash, ActivationPoint, Chainspec, ChainspecRawBytes, ChainspecRegistry,
+    EntityAddr, EraId, Key, PublicKey,
 };
 
 use crate::{
@@ -386,7 +387,7 @@ impl ContractRuntime {
             }
             ContractRuntimeRequest::GetAddressableEntity {
                 state_root_hash,
-                key,
+                entity_addr,
                 responder,
             } => {
                 trace!(?state_root_hash, "get addressable entity");
@@ -394,8 +395,29 @@ impl ContractRuntime {
                 let data_access_layer = Arc::clone(&self.data_access_layer);
                 async move {
                     let start = Instant::now();
-                    let request = AddressableEntityRequest::new(state_root_hash, key);
+                    let entity_key = match entity_addr {
+                        EntityAddr::SmartContract(_)|EntityAddr::System(_) => Key::AddressableEntity(entity_addr),
+                        EntityAddr::Account(account) => Key::Account(AccountHash::new(account)),
+                    };
+                    let request = AddressableEntityRequest::new(state_root_hash, entity_key);
                     let result = data_access_layer.addressable_entity(request);
+                    let result = match &result {
+                        AddressableEntityResult::ValueNotFound(msg) => {
+                            if entity_addr.is_contract() {
+                                trace!(%msg, "can not read addressable entity by Key::AddressableEntity or Key::Account, will try by Key::Hash");
+                                let entity_key = Key::Hash(entity_addr.value());
+                                let request = AddressableEntityRequest::new(state_root_hash, entity_key);
+                                data_access_layer.addressable_entity(request)
+                            }
+                            else {
+                                result
+                            }
+                        },
+                        AddressableEntityResult::RootNotFound |
+                        AddressableEntityResult::Success { .. } |
+                        AddressableEntityResult::Failure(_) => result,
+                    };
+
                     metrics
                         .addressable_entity
                         .observe(start.elapsed().as_secs_f64());

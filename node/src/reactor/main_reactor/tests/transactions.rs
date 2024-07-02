@@ -311,7 +311,7 @@ fn get_entity_by_account_hash(
         .data_access_layer()
         .addressable_entity(AddressableEntityRequest::new(
             state_root_hash,
-            Key::Account(account_hash),
+            Key::AddressableEntity(EntityAddr::Account(account_hash.value())),
         ))
         .into_option()
         .unwrap_or_else(|| {
