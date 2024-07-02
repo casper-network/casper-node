@@ -2339,6 +2339,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "gh-4771-regression"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "gimli"
 version = "0.26.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
