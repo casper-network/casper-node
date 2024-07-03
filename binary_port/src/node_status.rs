@@ -1,7 +1,7 @@
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    AvailableBlockRange, BlockHash, BlockSynchronizerStatus, Digest, NextUpgrade, Peers, PublicKey,
-    TimeDiff, Timestamp,
+    AvailableBlockRange, BlockHash, BlockSynchronizerStatus, Digest, NextUpgrade, Peers,
+    ProtocolVersion, PublicKey, TimeDiff, Timestamp,
 };
 
 #[cfg(test)]
@@ -15,6 +15,8 @@ use crate::{minimal_block_info::MinimalBlockInfo, type_wrappers::ReactorStateNam
 /// Status information about the node.
 #[derive(Debug, PartialEq, Serialize)]
 pub struct NodeStatus {
+    /// The current protocol version.
+    pub protocol_version: ProtocolVersion,
     /// The node ID and network address of each connected peer.
     pub peers: Peers,
     /// The compiled node version.
@@ -49,6 +51,7 @@ impl NodeStatus {
     #[cfg(test)]
     pub(crate) fn random(rng: &mut TestRng) -> Self {
         Self {
+            protocol_version: ProtocolVersion::from_parts(rng.gen(), rng.gen(), rng.gen()),
             peers: Peers::random(rng),
             build_version: rng.random_string(5..10),
             chainspec_name: rng.random_string(5..10),
@@ -71,7 +74,8 @@ impl NodeStatus {
 
 impl FromBytes for NodeStatus {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (peers, remainder) = FromBytes::from_bytes(bytes)?;
+        let (protocol_version, remainder) = ProtocolVersion::from_bytes(bytes)?;
+        let (peers, remainder) = Peers::from_bytes(remainder)?;
         let (build_version, remainder) = String::from_bytes(remainder)?;
         let (chainspec_name, remainder) = String::from_bytes(remainder)?;
         let (starting_state_root_hash, remainder) = Digest::from_bytes(remainder)?;
@@ -87,6 +91,7 @@ impl FromBytes for NodeStatus {
         let (latest_switch_block_hash, remainder) = Option::<BlockHash>::from_bytes(remainder)?;
         Ok((
             NodeStatus {
+                protocol_version,
                 peers,
                 build_version,
                 chainspec_name,
@@ -116,6 +121,7 @@ impl ToBytes for NodeStatus {
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         let NodeStatus {
+            protocol_version,
             peers,
             build_version,
             chainspec_name,
@@ -131,6 +137,7 @@ impl ToBytes for NodeStatus {
             block_sync,
             latest_switch_block_hash,
         } = self;
+        protocol_version.write_bytes(writer)?;
         peers.write_bytes(writer)?;
         build_version.write_bytes(writer)?;
         chainspec_name.write_bytes(writer)?;
@@ -148,7 +155,8 @@ impl ToBytes for NodeStatus {
     }
 
     fn serialized_length(&self) -> usize {
-        self.peers.serialized_length()
+        self.protocol_version.serialized_length()
+            + self.peers.serialized_length()
             + self.build_version.serialized_length()
             + self.chainspec_name.serialized_length()
             + self.starting_state_root_hash.serialized_length()
