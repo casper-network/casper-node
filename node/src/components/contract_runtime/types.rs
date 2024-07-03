@@ -125,6 +125,8 @@ impl ExecutionArtifactBuilder {
         }
         if let (None, Some(err)) = (&self.error_message, wasm_v1_result.error()) {
             self.error_message = Some(format!("{}", err));
+            self.with_added_consumed(wasm_v1_result.consumed());
+            return Ok(self);
         }
         self.with_added_consumed(wasm_v1_result.consumed())
             .with_appended_messages(&mut wasm_v1_result.messages().clone())
