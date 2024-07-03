@@ -396,7 +396,7 @@ impl ContractRuntime {
                 async move {
                     let start = Instant::now();
                     let entity_key = match entity_addr {
-                        EntityAddr::SmartContract(_)|EntityAddr::System(_) => Key::AddressableEntity(entity_addr),
+                        EntityAddr::SmartContract(_) | EntityAddr::System(_) => Key::AddressableEntity(entity_addr),
                         EntityAddr::Account(account) => Key::Account(AccountHash::new(account)),
                     };
                     let request = AddressableEntityRequest::new(state_root_hash, entity_key);
