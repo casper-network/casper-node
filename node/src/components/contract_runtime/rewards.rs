@@ -15,6 +15,7 @@ use futures::stream::{self, StreamExt as _, TryStreamExt as _};
 use itertools::Itertools;
 use num_rational::Ratio;
 use num_traits::{CheckedAdd, CheckedMul};
+use tracing::trace;
 
 use crate::{
     effect::{
@@ -474,6 +475,12 @@ pub(crate) fn rewards_for_era(
     // Collect all rewards as a ratio:
     for block in rewards_info.blocks_from_era(current_era_id) {
         // Transfer the block production reward for this block proposer:
+        trace!(
+            proposer=?block.proposer,
+            amount=%production_reward.to_integer(),
+            block=%block.height,
+            "proposer reward"
+        );
         increase_value_for_key_and_era(block.proposer.clone(), current_era_id, production_reward)?;
 
         // Now, let's compute the reward attached to each signed block reported by the block
@@ -504,6 +511,21 @@ pub(crate) fn rewards_for_era(
                     .checked_mul(&rewards_info.reward(signed_block_era)?)
                     .ok_or(RewardsError::ArithmeticOverflow)?;
 
+                trace!(
+                    signer=?signing_validator,
+                    amount=%contribution_reward.to_integer(),
+                    block=%block.height,
+                    signed_block=%signed_block_height,
+                    "signature contribution reward"
+                );
+                trace!(
+                    collector=?block.proposer,
+                    signer=?signing_validator,
+                    amount=%collection_reward.to_integer(),
+                    block=%block.height,
+                    signed_block=%signed_block_height,
+                    "signature collection reward"
+                );
                 increase_value_for_key_and_era(
                     signing_validator,
                     signed_block_era,
