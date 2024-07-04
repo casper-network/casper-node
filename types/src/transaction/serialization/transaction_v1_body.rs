@@ -9,11 +9,11 @@ use super::{
     consume_field, deserialize_fields_map, serialize_fields_map, serialized_length_for_field_sizes,
 };
 
-const ARGS_FIELD_META_INDEX: u16 = 1;
-const TARGET_FIELD_META_INDEX: u16 = 2;
-const ENTRY_POINT_FIELD_META_INDEX: u16 = 3;
-const TRANSACTION_CATEGORY_FIELD_META_INDEX: u16 = 4;
-const SCHEDULING_FIELD_META_INDEX: u16 = 5;
+const ARGS_FIELD_META_INDEX: u16 = 0;
+const TARGET_FIELD_META_INDEX: u16 = 1;
+const ENTRY_POINT_FIELD_META_INDEX: u16 = 2;
+const TRANSACTION_CATEGORY_FIELD_META_INDEX: u16 = 3;
+const SCHEDULING_FIELD_META_INDEX: u16 = 4;
 
 pub fn serialize_transaction_body(
     args: &RuntimeArgs,

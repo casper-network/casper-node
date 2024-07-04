@@ -12,9 +12,13 @@ use datasize::DataSize;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use super::serialization::{
+    tag_only_serialized_length,
+    transaction_runtime::{deserialize_transaction_runtime, serialize_transaction_runtime},
+};
 #[cfg(doc)]
 use super::Transaction;
-use crate::bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
+use crate::bytesrepr::{self, FromBytes, ToBytes};
 
 /// The runtime used to execute a [`Transaction`].
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
@@ -25,7 +29,6 @@ use crate::bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
     schemars(description = "Runtime used to execute a Transaction.")
 )]
 #[serde(deny_unknown_fields)]
-#[repr(u8)]
 pub enum TransactionRuntime {
     /// The Casper Version 1 Virtual Machine.
     VmCasperV1,
@@ -43,33 +46,18 @@ impl Display for TransactionRuntime {
 }
 
 impl ToBytes for TransactionRuntime {
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        (*self as u8).write_bytes(writer)
-    }
-
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut buffer = bytesrepr::allocate_buffer(self)?;
-        self.write_bytes(&mut buffer)?;
-        Ok(buffer)
+        serialize_transaction_runtime(self)
     }
 
     fn serialized_length(&self) -> usize {
-        U8_SERIALIZED_LENGTH
+        tag_only_serialized_length()
     }
 }
 
 impl FromBytes for TransactionRuntime {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (tag, remainder) = u8::from_bytes(bytes)?;
-        match tag {
-            v if v == TransactionRuntime::VmCasperV1 as u8 => {
-                Ok((TransactionRuntime::VmCasperV1, remainder))
-            }
-            v if v == TransactionRuntime::VmCasperV2 as u8 => {
-                Ok((TransactionRuntime::VmCasperV2, remainder))
-            }
-            _ => Err(bytesrepr::Error::Formatting),
-        }
+        deserialize_transaction_runtime(bytes)
     }
 }
 

@@ -9,9 +9,9 @@ use alloc::{collections::BTreeMap, vec::Vec};
 pub const PUBLIC_KEY_TAG: u8 = 0;
 pub const ACCOUNT_HASH_TAG: u8 = 1;
 
-const TAG_FIELD_META_INDEX: u16 = 1;
-const PUBLIC_KEY_META_INDEX: u16 = 2;
-const ACCOUNT_HASH_META_INDEX: u16 = 3;
+const TAG_FIELD_META_INDEX: u16 = 0;
+const PUBLIC_KEY_META_INDEX: u16 = 1;
+const ACCOUNT_HASH_META_INDEX: u16 = 2;
 
 pub fn serialize_public_key(public_key: &PublicKey) -> Result<Vec<u8>, Error> {
     let mut fields = BTreeMap::new();

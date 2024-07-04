@@ -14,8 +14,6 @@ use crate::{
     crypto, PublicKey, SecretKey, Signature, TransactionHash,
 };
 
-use super::serialization::approval::*;
-
 /// A struct containing a signature of a transaction hash and the public key of the signer.
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
@@ -65,18 +63,28 @@ impl Display for Approval {
 }
 
 impl ToBytes for Approval {
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.signer.write_bytes(writer)?;
+        self.signature.write_bytes(writer)
+    }
+
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        serialize_approval(&self.signer, &self.signature)
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
     }
 
     fn serialized_length(&self) -> usize {
-        approval_serialized_size(&self.signer, &self.signature)
+        self.signer.serialized_length() + self.signature.serialized_length()
     }
 }
 
 impl FromBytes for Approval {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        deserialize_approval(bytes)
+        let (signer, remainder) = PublicKey::from_bytes(bytes)?;
+        let (signature, remainder) = Signature::from_bytes(remainder)?;
+        let approval = Approval { signer, signature };
+        Ok((approval, remainder))
     }
 }
 

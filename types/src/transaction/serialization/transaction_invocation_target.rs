@@ -2,10 +2,11 @@ use crate::{
     bytesrepr::{self, Bytes, Error, ToBytes, U8_SERIALIZED_LENGTH},
     EntityVersion, HashAddr, PackageAddr, TransactionInvocationTarget,
 };
-use alloc::{collections::BTreeMap, string::String, vec::Vec};
+use alloc::{string::String, vec::Vec};
 
 use super::{
     consume_field, deserialize_fields_map, serialize_fields_map, serialized_length_for_field_sizes,
+    tag_only_fields_map,
 };
 
 pub const INVOCABLE_ENTITY_TAG: u8 = 0;
@@ -13,23 +14,16 @@ pub const INVOCABLE_ENTITY_ALIAS_TAG: u8 = 1;
 pub const PACKAGE_TAG: u8 = 2;
 pub const PACKAGE_ALIAS_TAG: u8 = 3;
 
-const TAG_FIELD_META_INDEX: u16 = 1;
-const INVOCABLE_ENTITY_HASH_META_INDEX: u16 = 2;
-const INVOCABLE_ENTITY_ALIAS_META_INDEX: u16 = 3;
-const PACKAGE_HASH_ADDR_META_INDEX: u16 = 4;
-const PACKAGE_HASH_VERSION_META_INDEX: u16 = 5;
-const PACKAGE_NAME_NAME_META_INDEX: u16 = 6;
-const PACKAGE_NAME_VERSION_META_INDEX: u16 = 7;
-
-fn tag_only_fields_map(variant_tag: u8) -> Result<BTreeMap<u16, Bytes>, Error> {
-    let mut fields = BTreeMap::new();
-    let variant_tag_bytes = variant_tag.to_bytes()?;
-    fields.insert(TAG_FIELD_META_INDEX, Bytes::from(variant_tag_bytes));
-    Ok(fields)
-}
+const TAG_FIELD_META_INDEX: u16 = 0;
+const INVOCABLE_ENTITY_HASH_META_INDEX: u16 = 1;
+const INVOCABLE_ENTITY_ALIAS_META_INDEX: u16 = 2;
+const PACKAGE_HASH_ADDR_META_INDEX: u16 = 3;
+const PACKAGE_HASH_VERSION_META_INDEX: u16 = 4;
+const PACKAGE_NAME_NAME_META_INDEX: u16 = 5;
+const PACKAGE_NAME_VERSION_META_INDEX: u16 = 6;
 
 pub fn serialize_by_hash(hash_value: &HashAddr) -> Result<Vec<u8>, bytesrepr::Error> {
-    let mut fields = tag_only_fields_map(INVOCABLE_ENTITY_TAG)?;
+    let mut fields = tag_only_fields_map(TAG_FIELD_META_INDEX, INVOCABLE_ENTITY_TAG)?;
     let hash_value_bytes = hash_value.to_bytes()?;
     fields.insert(
         INVOCABLE_ENTITY_HASH_META_INDEX,
@@ -39,7 +33,7 @@ pub fn serialize_by_hash(hash_value: &HashAddr) -> Result<Vec<u8>, bytesrepr::Er
 }
 
 pub fn serialize_by_name(name: &str) -> Result<Vec<u8>, bytesrepr::Error> {
-    let mut fields = tag_only_fields_map(INVOCABLE_ENTITY_ALIAS_TAG)?;
+    let mut fields = tag_only_fields_map(TAG_FIELD_META_INDEX, INVOCABLE_ENTITY_ALIAS_TAG)?;
     let name_bytes = name.to_bytes()?;
     fields.insert(INVOCABLE_ENTITY_ALIAS_META_INDEX, Bytes::from(name_bytes));
     serialize_fields_map(fields)
@@ -49,7 +43,7 @@ pub fn serialize_by_package_hash(
     addr: &PackageAddr,
     version: &Option<EntityVersion>,
 ) -> Result<Vec<u8>, bytesrepr::Error> {
-    let mut fields = tag_only_fields_map(PACKAGE_TAG)?;
+    let mut fields = tag_only_fields_map(TAG_FIELD_META_INDEX, PACKAGE_TAG)?;
     let addr_bytes = addr.to_bytes()?;
     fields.insert(PACKAGE_HASH_ADDR_META_INDEX, Bytes::from(addr_bytes));
     let version_bytes = version.to_bytes()?;
@@ -61,7 +55,7 @@ pub fn serialize_by_package_name(
     name: &str,
     version: &Option<EntityVersion>,
 ) -> Result<Vec<u8>, bytesrepr::Error> {
-    let mut fields = tag_only_fields_map(PACKAGE_ALIAS_TAG)?;
+    let mut fields = tag_only_fields_map(TAG_FIELD_META_INDEX, PACKAGE_ALIAS_TAG)?;
     let name_bytes = name.to_bytes()?;
     fields.insert(PACKAGE_NAME_NAME_META_INDEX, Bytes::from(name_bytes));
     let version_bytes = version.to_bytes()?;

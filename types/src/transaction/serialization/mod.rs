@@ -1,8 +1,8 @@
-pub mod approval;
 pub mod initiator_addr;
 pub mod pricing_mode;
 pub mod transaction_entry_point;
 pub mod transaction_invocation_target;
+pub mod transaction_runtime;
 pub mod transaction_scheduling;
 pub mod transaction_target;
 pub mod transaction_v1;
@@ -62,4 +62,14 @@ pub fn deserialize_fields_map(bytes: &[u8]) -> Result<(BTreeMap<u16, Bytes>, &[u
 
 pub fn serialize_fields_map(fields: BTreeMap<u16, Bytes>) -> Result<Vec<u8>, Error> {
     fields.to_bytes()
+}
+
+fn tag_only_fields_map(
+    tag_field_index: u16,
+    variant_tag: u8,
+) -> Result<BTreeMap<u16, Bytes>, Error> {
+    let mut fields = BTreeMap::new();
+    let variant_tag_bytes = variant_tag.to_bytes()?;
+    fields.insert(tag_field_index, Bytes::from(variant_tag_bytes));
+    Ok(fields)
 }

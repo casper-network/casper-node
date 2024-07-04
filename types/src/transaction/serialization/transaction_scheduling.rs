@@ -1,33 +1,34 @@
 use super::{
     consume_field, deserialize_fields_map, serialize_fields_map, serialized_length_for_field_sizes,
+    tag_only_fields_map,
 };
 use crate::{
     bytesrepr::{self, Bytes, ToBytes, U8_SERIALIZED_LENGTH},
     EraId, Timestamp, TransactionScheduling,
 };
-use alloc::{collections::BTreeMap, vec::Vec};
+use alloc::vec::Vec;
 
 pub const STANDARD_TAG: u8 = 0;
 pub const FUTURE_ERA_TAG: u8 = 1;
 pub const FUTURE_TIMESTAMP_TAG: u8 = 2;
 
-const TAG_FIELD_META_INDEX: u16 = 1;
-const ERA_ID_META_INDEX: u16 = 2;
+const TAG_FIELD_META_INDEX: u16 = 0;
+const ERA_ID_META_INDEX: u16 = 1;
 const TIMESTAMP_META_INDEX: u16 = 2;
 
 pub fn serialize_tag_only_variant(variant_tag: u8) -> Result<Vec<u8>, bytesrepr::Error> {
-    tag_only_fields_map(variant_tag)?.to_bytes()
+    tag_only_fields_map(TAG_FIELD_META_INDEX, variant_tag)?.to_bytes()
 }
 
 pub fn serialize_future_era(era_id: &EraId) -> Result<Vec<u8>, bytesrepr::Error> {
-    let mut fields = tag_only_fields_map(FUTURE_ERA_TAG)?;
+    let mut fields = tag_only_fields_map(TAG_FIELD_META_INDEX, FUTURE_ERA_TAG)?;
     let era_id_bytes = era_id.to_bytes()?;
     fields.insert(ERA_ID_META_INDEX, Bytes::from(era_id_bytes));
     serialize_fields_map(fields)
 }
 
 pub fn serialize_future_timestamp(timestamp: &Timestamp) -> Result<Vec<u8>, bytesrepr::Error> {
-    let mut fields = tag_only_fields_map(FUTURE_TIMESTAMP_TAG)?;
+    let mut fields = tag_only_fields_map(TAG_FIELD_META_INDEX, FUTURE_TIMESTAMP_TAG)?;
     let timestamp_bytes = timestamp.to_bytes()?;
     fields.insert(TIMESTAMP_META_INDEX, Bytes::from(timestamp_bytes));
     serialize_fields_map(fields)
@@ -39,13 +40,6 @@ pub fn future_era_serialized_length(era_id: &EraId) -> usize {
 
 pub fn timestamp_serialized_length(timestamp: &Timestamp) -> usize {
     serialized_length_for_field_sizes(vec![U8_SERIALIZED_LENGTH, timestamp.serialized_length()])
-}
-
-fn tag_only_fields_map(variant_tag: u8) -> Result<BTreeMap<u16, Bytes>, bytesrepr::Error> {
-    let mut fields = BTreeMap::new();
-    let variant_tag_bytes = variant_tag.to_bytes()?;
-    fields.insert(TAG_FIELD_META_INDEX, Bytes::from(variant_tag_bytes));
-    Ok(fields)
 }
 
 pub fn deserialize_transaction_scheduling(

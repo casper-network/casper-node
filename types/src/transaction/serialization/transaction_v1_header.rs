@@ -7,12 +7,12 @@ use crate::{
 };
 use alloc::{collections::BTreeMap, string::String, vec::Vec};
 
-const CHAIN_NAME_FIELD_META_INDEX: u16 = 1;
-const TIMESTAMP_FIELD_META_INDEX: u16 = 2;
-const TTL_FIELD_META_INDEX: u16 = 3;
-const BODY_HASH_FIELD_META_INDEX: u16 = 4;
-const PRICING_MODE_FIELD_META_INDEX: u16 = 5;
-const INITIATOR_ADDR_FIELD_META_INDEX: u16 = 6;
+const CHAIN_NAME_FIELD_META_INDEX: u16 = 0;
+const TIMESTAMP_FIELD_META_INDEX: u16 = 1;
+const TTL_FIELD_META_INDEX: u16 = 2;
+const BODY_HASH_FIELD_META_INDEX: u16 = 3;
+const PRICING_MODE_FIELD_META_INDEX: u16 = 4;
+const INITIATOR_ADDR_FIELD_META_INDEX: u16 = 5;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct TransactionV1HeaderFromBytes {

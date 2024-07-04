@@ -12,10 +12,10 @@ pub const NATIVE_TAG: u8 = 0;
 pub const STORED_TAG: u8 = 1;
 pub const SESSION_TAG: u8 = 2;
 
-const TAG_FIELD_META_INDEX: u16 = 1;
-const ID_FIELD_META_INDEX: u16 = 2;
-const RUNTIME_FIELD_META_INDEX: u16 = 3;
-const MODULE_BYTES_FIELD_META_INDEX: u16 = 4;
+const TAG_FIELD_META_INDEX: u16 = 0;
+const ID_FIELD_META_INDEX: u16 = 1;
+const RUNTIME_FIELD_META_INDEX: u16 = 2;
+const MODULE_BYTES_FIELD_META_INDEX: u16 = 3;
 
 pub fn native_serialized_length() -> usize {
     serialized_length_for_field_sizes(vec![U8_SERIALIZED_LENGTH])

@@ -1,11 +1,12 @@
 use super::{
     consume_field, deserialize_fields_map, serialize_fields_map, serialized_length_for_field_sizes,
+    tag_only_fields_map,
 };
 use crate::{
     bytesrepr::{self, Bytes, ToBytes, U8_SERIALIZED_LENGTH},
     TransactionEntryPoint,
 };
-use alloc::{collections::BTreeMap, string::String, vec::Vec};
+use alloc::{string::String, vec::Vec};
 
 pub const CUSTOM_TAG: u8 = 0;
 pub const TRANSFER_TAG: u8 = 1;
@@ -18,18 +19,11 @@ pub const ACTIVATE_BID_TAG: u8 = 7;
 pub const CHANGE_BID_PUBLIC_KEY_TAG: u8 = 8;
 pub const CALL_TAG: u8 = 9;
 
-const TAG_FIELD_META_INDEX: u16 = 1;
-const ENTRY_POINT_META_INDEX: u16 = 2;
+const TAG_FIELD_META_INDEX: u16 = 0;
+const ENTRY_POINT_META_INDEX: u16 = 1;
 
 pub fn serialize_tag_only_variant(variant_tag: u8) -> Result<Vec<u8>, bytesrepr::Error> {
-    tag_only_fields_map(variant_tag)?.to_bytes()
-}
-
-fn tag_only_fields_map(variant_tag: u8) -> Result<BTreeMap<u16, Bytes>, bytesrepr::Error> {
-    let mut fields = BTreeMap::new();
-    let variant_tag_bytes = variant_tag.to_bytes()?;
-    fields.insert(TAG_FIELD_META_INDEX, Bytes::from(variant_tag_bytes));
-    Ok(fields)
+    tag_only_fields_map(TAG_FIELD_META_INDEX, variant_tag)?.to_bytes()
 }
 
 pub fn custom_serialized_length(name: &str) -> usize {
@@ -40,7 +34,7 @@ pub fn serialize_custom_entry_point(
     variant_tag: u8,
     custom_name: &str,
 ) -> Result<Vec<u8>, bytesrepr::Error> {
-    let mut fields = tag_only_fields_map(variant_tag)?;
+    let mut fields = tag_only_fields_map(TAG_FIELD_META_INDEX, variant_tag)?;
     let custom_name_bytes = custom_name.to_bytes()?;
     fields.insert(ENTRY_POINT_META_INDEX, Bytes::from(custom_name_bytes));
     serialize_fields_map(fields)
