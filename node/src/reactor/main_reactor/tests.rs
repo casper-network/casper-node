@@ -1842,6 +1842,89 @@ async fn run_withdraw_bid_network() {
 }
 
 #[tokio::test]
+async fn node_should_rejoin_after_ejection() {
+    let initial_stakes = InitialStakes::AllEqual {
+        count: 5,
+        stake: 1_000_000_000,
+    };
+    let minimum_era_height = 4;
+    let configs_override = ConfigsOverride {
+        minimum_era_height,
+        minimum_block_time: "4096 ms".parse().unwrap(),
+        round_seigniorage_rate: Ratio::new(1, 1_000_000_000_000),
+        ..Default::default()
+    };
+    let mut fixture = TestFixture::new(initial_stakes, Some(configs_override)).await;
+
+    // Run through the first era.
+    fixture
+        .run_until_block_height(minimum_era_height, ONE_MIN)
+        .await;
+
+    let stopped_node = fixture.remove_and_stop_node(1);
+    let stopped_secret_key = Arc::clone(&stopped_node.secret_key);
+    let stopped_public_key = PublicKey::from(&*stopped_secret_key);
+
+    // Wait until the stopped node is ejected and removed from the validators set.
+    fixture
+        .run_until_consensus_in_era(
+            (fixture.chainspec.core_config.auction_delay + 3).into(),
+            ONE_MIN,
+        )
+        .await;
+
+    // Restart the node.
+    // Use the hash of the current highest complete block as the trusted hash.
+    let mut config = stopped_node.config;
+    config.node.trusted_hash = Some(*fixture.highest_complete_block().hash());
+    fixture
+        .add_node(stopped_node.secret_key, config, stopped_node.storage_dir)
+        .await;
+
+    // Create & sign deploy to reactivate the stopped node's bid.
+    // The bid amount will make sure that the rejoining validator proposes soon after it rejoins.
+    let mut deploy = Deploy::add_bid(
+        fixture.chainspec.network_config.name.clone(),
+        fixture.system_contract_hash(AUCTION),
+        stopped_public_key.clone(),
+        1_000_000_000_000_000_000_u64.into(),
+        10,
+        Timestamp::now(),
+        TimeDiff::from_seconds(60),
+    );
+    deploy.sign(&stopped_secret_key);
+    let txn = Transaction::Deploy(deploy);
+    let txn_hash = txn.hash();
+
+    // Inject the transaction and run the network until executed.
+    fixture.inject_transaction(txn).await;
+    fixture
+        .run_until_executed_transaction(&txn_hash, TEN_SECS)
+        .await;
+
+    // Ensure execution succeeded and that there is a Write transform for the bid's key.
+    let bid_key = Key::BidAddr(BidAddr::from(stopped_public_key.clone()));
+    fixture
+        .successful_execution_transforms(&txn_hash)
+        .iter()
+        .find(|transform| match transform.kind() {
+            TransformKindV2::Write(StoredValue::BidKind(bid_kind)) => {
+                Key::from(bid_kind.bid_addr()) == bid_key
+            }
+            _ => false,
+        })
+        .expect("should have a write record for bid");
+
+    // Wait until the auction delay passes, plus one era for a margin of error.
+    fixture
+        .run_until_consensus_in_era(
+            (2 * fixture.chainspec.core_config.auction_delay + 6).into(),
+            ONE_MIN,
+        )
+        .await;
+}
+
+#[tokio::test]
 async fn run_undelegate_bid_network() {
     let alice_stake = 200_000_000_000_u64;
     let bob_stake = 300_000_000_000_u64;
