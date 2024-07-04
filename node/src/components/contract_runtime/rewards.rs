@@ -533,7 +533,7 @@ pub(crate) fn rewards_for_era(
                 )?;
                 increase_value_for_key_and_era(
                     block.proposer.clone(),
-                    signed_block_era,
+                    current_era_id,
                     collection_reward,
                 )?;
             }
