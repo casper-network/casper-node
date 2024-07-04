@@ -608,7 +608,7 @@ impl Storage {
             } => {
                 let mut era_ids = HashSet::new();
                 let txn = self.block_store.checkout_ro()?;
-                for transaction_hash in transaction_hashes.iter() {
+                for transaction_hash in &transaction_hashes {
                     let maybe_block_info: Option<BlockHashHeightAndEra> =
                         txn.read(*transaction_hash)?;
                     if let Some(block_info) = maybe_block_info {
@@ -670,7 +670,7 @@ impl Storage {
                 responder,
             } => {
                 let ro_txn = self.block_store.checkout_ro()?;
-                let maybe_transaction = match self.get_transaction_with_finalized_approvals(
+                let maybe_transaction = match Self::get_transaction_with_finalized_approvals(
                     &ro_txn,
                     &transaction_id.transaction_hash(),
                 )? {
@@ -694,9 +694,10 @@ impl Storage {
                 let ro_txn = self.block_store.checkout_ro()?;
 
                 let transaction = if with_finalized_approvals {
-                    match self
-                        .get_transaction_with_finalized_approvals(&ro_txn, &transaction_hash)?
-                    {
+                    match Self::get_transaction_with_finalized_approvals(
+                        &ro_txn,
+                        &transaction_hash,
+                    )? {
                         Some((transaction, maybe_approvals)) => {
                             if let Some(approvals) = maybe_approvals {
                                 transaction.with_approvals(approvals)
@@ -747,9 +748,10 @@ impl Storage {
             } => {
                 let txn = self.block_store.checkout_ro()?;
                 responder
-                    .respond(
-                        self.get_execution_results_with_transaction_headers(&txn, &block_hash)?,
-                    )
+                    .respond(Self::get_execution_results_with_transaction_headers(
+                        &txn,
+                        &block_hash,
+                    )?)
                     .ignore()
             }
             StorageRequest::GetBlockExecutionResultsOrChunk { id, responder } => responder
@@ -793,7 +795,7 @@ impl Storage {
                 only_from_available_block_range,
                 responder,
             } => {
-                if !(self.should_return_block(block_height, only_from_available_block_range)?) {
+                if !(self.should_return_block(block_height, only_from_available_block_range)) {
                     return Ok(responder.respond(None).ignore());
                 }
 
@@ -1023,7 +1025,7 @@ impl Storage {
         block_height: u64,
         only_from_available_block_range: bool,
     ) -> Result<Option<BlockHeader>, FatalStorageError> {
-        if !(self.should_return_block(block_height, only_from_available_block_range)?) {
+        if !(self.should_return_block(block_height, only_from_available_block_range)) {
             Ok(None)
         } else {
             let txn = self.block_store.checkout_ro()?;
@@ -1050,7 +1052,7 @@ impl Storage {
 
         transaction_hashes
             .map(|transaction_hash| {
-                self.get_transaction_with_finalized_approvals(&ro_txn, transaction_hash)
+                Self::get_transaction_with_finalized_approvals(&ro_txn, transaction_hash)
                     .map_err(FatalStorageError::from)
             })
             .collect()
@@ -1202,9 +1204,7 @@ impl Storage {
 
     /// Retrieves the height of the highest complete block (if any).
     pub(crate) fn highest_complete_block_height(&self) -> Option<u64> {
-        self.completed_blocks
-            .highest_sequence()
-            .map(|sequence| sequence.high())
+        self.completed_blocks.highest_sequence().map(Sequence::high)
     }
 
     /// Retrieves the contiguous segment of the block chain starting at the highest known switch
@@ -1337,7 +1337,7 @@ impl Storage {
         .into_iter()
         .flatten()
         {
-            transactions.push(transaction)
+            transactions.push(transaction);
         }
 
         Ok(Some((block, transactions)))
@@ -1424,7 +1424,7 @@ impl Storage {
             None => return Ok(None),
         };
 
-        if !(self.should_return_block(block_header.height(), only_from_available_block_range)?) {
+        if !(self.should_return_block(block_header.height(), only_from_available_block_range)) {
             return Ok(None);
         }
 
@@ -1506,7 +1506,7 @@ impl Storage {
                             )),
                         },
                     };
-                    result.push(SignedBlockHeader::new(block_header, block_signatures))
+                    result.push(SignedBlockHeader::new(block_header, block_signatures));
                 }
                 None => return Ok(None),
             }
@@ -1615,7 +1615,7 @@ impl Storage {
         let transaction_hash = TransactionHash::from(deploy_hash);
         let txn = self.block_store.checkout_ro()?;
         let transaction =
-            match self.get_transaction_with_finalized_approvals(&txn, &transaction_hash)? {
+            match Self::get_transaction_with_finalized_approvals(&txn, &transaction_hash)? {
                 Some((transaction, maybe_approvals)) => {
                     if let Some(approvals) = maybe_approvals {
                         transaction.with_approvals(approvals)
@@ -1695,7 +1695,6 @@ impl Storage {
     /// Retrieves a single transaction along with its finalized approvals.
     #[allow(clippy::type_complexity)]
     fn get_transaction_with_finalized_approvals(
-        &self,
         txn: &(impl DataReader<TransactionHash, Transaction>
               + DataReader<TransactionHash, BTreeSet<Approval>>),
         transaction_hash: &TransactionHash,
@@ -1827,11 +1826,11 @@ impl Storage {
         &self,
         block_height: u64,
         only_from_available_block_range: bool,
-    ) -> Result<bool, FatalStorageError> {
+    ) -> bool {
         if only_from_available_block_range {
-            Ok(self.get_available_block_range().contains(block_height))
+            self.get_available_block_range().contains(block_height)
         } else {
-            Ok(true)
+            true
         }
     }
 
@@ -1903,7 +1902,7 @@ impl Storage {
     ) -> Result<Option<BlockExecutionResultsOrChunk>, FatalStorageError> {
         let txn = self.block_store.checkout_ro()?;
 
-        let execution_results = match self.get_execution_results(&txn, request.block_hash())? {
+        let execution_results = match Self::get_execution_results(&txn, request.block_hash())? {
             Some(execution_results) => execution_results
                 .into_iter()
                 .map(|(_deploy_hash, execution_result)| execution_result)
@@ -1952,7 +1951,6 @@ impl Storage {
     }
 
     fn get_execution_results(
-        &self,
         txn: &(impl DataReader<BlockHash, Block> + DataReader<TransactionHash, ExecutionResult>),
         block_hash: &BlockHash,
     ) -> Result<Option<Vec<(TransactionHash, ExecutionResult)>>, FatalStorageError> {
@@ -1991,14 +1989,13 @@ impl Storage {
 
     #[allow(clippy::type_complexity)]
     fn get_execution_results_with_transaction_headers(
-        &self,
         txn: &(impl DataReader<BlockHash, Block>
               + DataReader<TransactionHash, ExecutionResult>
               + DataReader<TransactionHash, Transaction>),
         block_hash: &BlockHash,
     ) -> Result<Option<Vec<(TransactionHash, TransactionHeader, ExecutionResult)>>, FatalStorageError>
     {
-        let execution_results = match self.get_execution_results(txn, block_hash)? {
+        let execution_results = match Self::get_execution_results(txn, block_hash)? {
             Some(execution_results) => execution_results,
             None => return Ok(None),
         };
@@ -2077,14 +2074,15 @@ fn should_move_storage_files_to_network_subdir(
     let mut files_found = vec![];
     let mut files_not_found = vec![];
 
-    file_names.iter().for_each(|file_name| {
+    for file_name in file_names {
         let file_path = root.join(file_name);
 
-        match file_path.exists() {
-            true => files_found.push(file_path),
-            false => files_not_found.push(file_path),
+        if file_path.exists() {
+            files_found.push(file_path);
+        } else {
+            files_not_found.push(file_path);
         }
-    });
+    }
 
     let should_move_files = files_found.len() == file_names.len();
 
@@ -2179,7 +2177,7 @@ impl Storage {
             .block_store
             .checkout_ro()
             .expect("could not create RO transaction");
-        self.get_transaction_with_finalized_approvals(&txn, transaction_hash)
+        Self::get_transaction_with_finalized_approvals(&txn, transaction_hash)
             .expect("could not retrieve a transaction with finalized approvals from storage")
     }
 
@@ -2281,10 +2279,7 @@ impl Storage {
             .expect("should create ro txn");
         let block: Block = ro_txn.read(block_hash).expect("should read block")?;
 
-        if !(self
-            .should_return_block(block.height(), only_from_available_block_range)
-            .expect("should check if block is in range"))
-        {
+        if !(self.should_return_block(block.height(), only_from_available_block_range)) {
             return None;
         }
         if block_hash != *block.hash() {
@@ -2313,10 +2308,7 @@ impl Storage {
         height: u64,
         only_from_available_block_range: bool,
     ) -> Option<SignedBlock> {
-        if !(self
-            .should_return_block(height, only_from_available_block_range)
-            .expect("should check if block is in range"))
-        {
+        if !(self.should_return_block(height, only_from_available_block_range)) {
             return None;
         }
         let ro_txn = self

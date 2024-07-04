@@ -631,7 +631,7 @@ pub(super) async fn server<P, REv>(
                 //       The code in its current state will consume 100% CPU if local resource
                 //       exhaustion happens, as no distinction is made and no delay introduced.
                 Err(err) => {
-                    warn!(%context.our_id, err=display_error(&err), "dropping incoming connection during accept")
+                    warn!(%context.our_id, err=display_error(&err), "dropping incoming connection during accept");
                 }
             }
         }

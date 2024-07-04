@@ -2147,51 +2147,23 @@ fn should_restrict_returned_blocks() {
 
     // Without restriction, the node should attempt to return any requested block
     // regardless if it is in the disjoint sequences.
-    assert!(storage
-        .should_return_block(0, false)
-        .expect("should return block failed"));
-    assert!(storage
-        .should_return_block(1, false)
-        .expect("should return block failed"));
-    assert!(storage
-        .should_return_block(2, false)
-        .expect("should return block failed"));
-    assert!(storage
-        .should_return_block(3, false)
-        .expect("should return block failed"));
-    assert!(storage
-        .should_return_block(4, false)
-        .expect("should return block failed"));
-    assert!(storage
-        .should_return_block(5, false)
-        .expect("should return block failed"));
-    assert!(storage
-        .should_return_block(6, false)
-        .expect("should return block failed"));
+    assert!(storage.should_return_block(0, false));
+    assert!(storage.should_return_block(1, false));
+    assert!(storage.should_return_block(2, false));
+    assert!(storage.should_return_block(3, false));
+    assert!(storage.should_return_block(4, false));
+    assert!(storage.should_return_block(5, false));
+    assert!(storage.should_return_block(6, false));
 
     // With restriction, the node should attempt to return only the blocks that are
     // on the highest disjoint sequence, i.e blocks 4 and 5 only.
-    assert!(!storage
-        .should_return_block(0, true)
-        .expect("should return block failed"));
-    assert!(!storage
-        .should_return_block(1, true)
-        .expect("should return block failed"));
-    assert!(!storage
-        .should_return_block(2, true)
-        .expect("should return block failed"));
-    assert!(!storage
-        .should_return_block(3, true)
-        .expect("should return block failed"));
-    assert!(storage
-        .should_return_block(4, true)
-        .expect("should return block failed"));
-    assert!(storage
-        .should_return_block(5, true)
-        .expect("should return block failed"));
-    assert!(!storage
-        .should_return_block(6, true)
-        .expect("should return block failed"));
+    assert!(!storage.should_return_block(0, true));
+    assert!(!storage.should_return_block(1, true));
+    assert!(!storage.should_return_block(2, true));
+    assert!(!storage.should_return_block(3, true));
+    assert!(storage.should_return_block(4, true));
+    assert!(storage.should_return_block(5, true));
+    assert!(!storage.should_return_block(6, true));
 }
 
 #[test]

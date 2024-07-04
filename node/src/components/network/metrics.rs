@@ -474,11 +474,11 @@ impl Metrics {
                 }
                 MessageKind::BlockGossip => {
                     metrics.out_bytes_block_gossip.inc_by(size);
-                    metrics.out_count_block_gossip.inc()
+                    metrics.out_count_block_gossip.inc();
                 }
                 MessageKind::FinalitySignatureGossip => {
                     metrics.out_bytes_finality_signature_gossip.inc_by(size);
-                    metrics.out_count_finality_signature_gossip.inc()
+                    metrics.out_count_finality_signature_gossip.inc();
                 }
                 MessageKind::AddressGossip => {
                     metrics.out_bytes_address_gossip.inc_by(size);

@@ -45,7 +45,10 @@ pub(crate) mod tasks;
 mod tests;
 
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
+    collections::{
+        hash_map::{Entry, HashMap},
+        BTreeMap, BTreeSet, HashSet,
+    },
     fmt::{self, Debug, Display, Formatter},
     io,
     net::{SocketAddr, TcpListener},
@@ -223,7 +226,7 @@ struct ChannelManagement {
     // Note: This channel is closed when we finished syncing, so the `Network` can close all
     // connections. When they are re-established, the proper value of the now updated `is_syncing`
     // flag will be exchanged on handshake.
-    close_incoming_sender: Option<watch::Sender<()>>,
+    _close_incoming_sender: Option<watch::Sender<()>>,
     /// Handle used by the `message_reader` task to receive a notification that incoming
     /// connections should be closed.
     close_incoming_receiver: watch::Receiver<()>,
@@ -359,7 +362,7 @@ where
 
         #[cfg(test)]
         let (server_shutdown_sender, server_shutdown_receiver) = watch::channel(());
-        let (close_incoming_sender, close_incoming_receiver) = watch::channel(());
+        let (_close_incoming_sender, close_incoming_receiver) = watch::channel(());
 
         let context = self.context.clone();
         let _server_join_handle = tokio::spawn(
@@ -377,7 +380,7 @@ where
             shutdown_sender: Some(server_shutdown_sender),
             #[cfg(test)]
             server_join_handle: Some(_server_join_handle),
-            close_incoming_sender: Some(close_incoming_sender),
+            _close_incoming_sender: Some(_close_incoming_sender),
             close_incoming_receiver,
         };
 
@@ -647,10 +650,11 @@ where
             }
 
             // Update the connection symmetries.
-            self.connection_symmetries
-                .entry(peer_id)
-                .or_default()
-                .remove_incoming(peer_addr, Instant::now());
+            if let Entry::Occupied(mut entry) = self.connection_symmetries.entry(peer_id) {
+                if entry.get_mut().remove_incoming(peer_addr, Instant::now()) {
+                    entry.remove();
+                }
+            }
 
             Effects::new()
         })
@@ -871,10 +875,11 @@ where
             .outgoing_manager
             .handle_connection_drop(peer_addr, Instant::now());
 
-        self.connection_symmetries
-            .entry(peer_id)
-            .or_default()
-            .unmark_outgoing(Instant::now());
+        if let Entry::Occupied(mut entry) = self.connection_symmetries.entry(peer_id) {
+            if entry.get_mut().unmark_outgoing(Instant::now()) {
+                entry.remove();
+            }
+        }
 
         self.outgoing_limiter.remove_connected_validator(&peer_id);
 
@@ -1044,7 +1049,7 @@ where
             if let Some(mut channel_management) = self.channel_management.take() {
                 // Close the shutdown socket, causing the server to exit.
                 drop(channel_management.shutdown_sender.take());
-                drop(channel_management.close_incoming_sender.take());
+                drop(channel_management._close_incoming_sender.take());
 
                 // Wait for the server to exit cleanly.
                 if let Some(join_handle) = channel_management.server_join_handle.take() {
