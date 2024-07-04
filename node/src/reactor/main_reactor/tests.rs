@@ -2472,9 +2472,11 @@ async fn run_rewards_network_scenario(
                                         .expect("expected current era validator"),
                                     total_previous_era_weights,
                                 );
+                                // collection always goes to the era in which the block citing the
+                                // reward was created
                                 add_to_rewards(
                                     proposer.clone(),
-                                    switch_blocks.headers[i - 1].era_id(),
+                                    block.era_id(),
                                     fixture.chainspec.core_config.finders_fee.into_u512()
                                         * contributor_proportion
                                         * previous_signatures_reward,
