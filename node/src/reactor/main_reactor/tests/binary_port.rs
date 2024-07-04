@@ -365,9 +365,7 @@ async fn binary_port_component_handles_all_requests() {
             None,
         ),
         get_reward(
-            Some(EraIdentifier::Block(BlockIdentifier::Hash(
-                *highest_block.hash(),
-            ))),
+            Some(EraIdentifier::Block(BlockIdentifier::Height(1))),
             era_one_validator,
             None,
         ),
@@ -932,7 +930,8 @@ fn get_reward(
         }),
         asserter: Box::new(move |response| {
             assert_response::<RewardResponse, _>(response, Some(PayloadType::Reward), |reward| {
-                reward.amount() > U512::zero()
+                // test fixture sets delegation rate to 0
+                reward.amount() > U512::zero() && reward.delegation_rate() == 0
             })
         }),
     }

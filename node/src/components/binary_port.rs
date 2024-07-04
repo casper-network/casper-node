@@ -939,22 +939,31 @@ where
             let Some(validator_rewards) = block_rewards.get(&validator) else {
                 return BinaryResponse::new_empty(protocol_version);
             };
-            match auction::reward(
+
+            let seigniorage_recipient = snapshot
+                .get(&header.era_id())
+                .and_then(|era| era.get(&validator));
+            let reward = auction::reward(
                 &validator,
                 delegator.as_deref(),
                 header.era_id(),
                 validator_rewards,
                 &snapshot,
-            ) {
-                Ok(Some(reward)) => {
-                    let response = RewardResponse::new(reward, header.era_id());
+            );
+            match (reward, seigniorage_recipient) {
+                (Ok(Some(reward)), Some(seigniorage_recipient)) => {
+                    let response = RewardResponse::new(
+                        reward,
+                        header.era_id(),
+                        *seigniorage_recipient.delegation_rate(),
+                    );
                     BinaryResponse::from_value(response, protocol_version)
                 }
-                Ok(None) => BinaryResponse::new_empty(protocol_version),
-                Err(error) => {
+                (Err(error), _) => {
                     warn!(%error, "failed when calculating rewards");
                     BinaryResponse::new_error(ErrorCode::InternalError, protocol_version)
                 }
+                _ => BinaryResponse::new_empty(protocol_version),
             }
         }
     }
