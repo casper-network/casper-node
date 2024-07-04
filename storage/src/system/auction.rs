@@ -11,7 +11,7 @@ use tracing::{debug, error, warn};
 
 use crate::system::auction::detail::{
     process_with_vesting_schedule, read_delegator_bid, read_delegator_bids, read_validator_bid,
-    seigniorage_recipient,
+    seigniorage_recipients,
 };
 use casper_types::{
     account::AccountHash,
@@ -573,7 +573,6 @@ pub trait Auction:
         // Compute next auction winners
         let winners: ValidatorWeights = {
             let locked_validators = validator_bids_detail.validator_weights(
-                self,
                 era_id,
                 era_end_timestamp_millis,
                 vesting_schedule_period_millis,
@@ -585,7 +584,6 @@ pub trait Auction:
             let remaining_auction_slots = validator_slots.saturating_sub(locked_validators.len());
             if remaining_auction_slots > 0 {
                 let unlocked_validators = validator_bids_detail.validator_weights(
-                    self,
                     era_id,
                     era_end_timestamp_millis,
                     vesting_schedule_period_millis,
@@ -613,10 +611,11 @@ pub trait Auction:
             }
         };
 
-        let (validator_bids, validator_credits) = validator_bids_detail.destructure();
+        let (validator_bids, validator_credits, delegator_bids) =
+            validator_bids_detail.destructure();
 
         // call prune BEFORE incrementing the era
-        detail::prune_validator_credits(self, era_id, validator_credits);
+        detail::prune_validator_credits(self, era_id, &validator_credits);
 
         // Increment era
         era_id = era_id.checked_add(1).ok_or(Error::ArithmeticOverflow)?;
@@ -628,16 +627,7 @@ pub trait Auction:
         // Update seigniorage recipients for current era
         {
             let mut snapshot = detail::get_seigniorage_recipients_snapshot(self)?;
-            let mut recipients = SeigniorageRecipients::new();
-
-            for era_validator in winners.keys() {
-                let seigniorage_recipient = match validator_bids.get(era_validator) {
-                    Some(validator_bid) => seigniorage_recipient(self, validator_bid)?,
-                    None => return Err(Error::BidNotFound.into()),
-                };
-                recipients.insert(era_validator.clone(), seigniorage_recipient);
-            }
-
+            let recipients = seigniorage_recipients(&winners, &validator_bids, &delegator_bids)?;
             let previous_recipients = snapshot.insert(delayed_era, recipients);
             assert!(previous_recipients.is_none());
 
@@ -942,17 +932,18 @@ fn rewards_per_validator(
         let Some(recipient) = seigniorage_recipients_snapshot
             .get(&rewarded_era)
             .ok_or(Error::MissingSeigniorageRecipients)?
-            .get(validator).cloned()
-            else {
-                // We couldn't find the validator. If the reward amount is zero, we don't care -
-                // the validator wasn't supposed to be rewarded in this era, anyway. Otherwise,
-                // return an error.
-                if reward_amount.is_zero() {
-                    continue;
-                } else {
-                    return Err(Error::ValidatorNotFound);
-                }
-            };
+            .get(validator)
+            .cloned()
+        else {
+            // We couldn't find the validator. If the reward amount is zero, we don't care -
+            // the validator wasn't supposed to be rewarded in this era, anyway. Otherwise,
+            // return an error.
+            if reward_amount.is_zero() {
+                continue;
+            } else {
+                return Err(Error::ValidatorNotFound);
+            }
+        };
 
         let total_stake = recipient.total_stake().ok_or(Error::ArithmeticOverflow)?;
 

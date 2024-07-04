@@ -5536,9 +5536,10 @@ fn credits_are_considered_when_determining_validators() {
 
     // Add a credit for node 1 artificially (assume it has proposed a block with a transaction and
     // received credit).
+    let credit_amount = U512::from(2001);
     let add_credit = HandleFeeMode::credit(
         Box::new(ACCOUNT_1_PK.clone()),
-        U512::from(2001),
+        credit_amount,
         INITIAL_ERA_ID,
     );
     builder.handle_fee(
@@ -5566,8 +5567,9 @@ fn credits_are_considered_when_determining_validators() {
         Some(&U512::from(ACCOUNT_2_BOND))
     );
     assert!(!new_validator_weights.contains_key(&BID_ACCOUNT_1_PK));
+    let expected_amount = credit_amount.saturating_add(U512::from(ACCOUNT_1_BOND));
     assert_eq!(
         new_validator_weights.get(&ACCOUNT_1_PK),
-        Some(&U512::from(ACCOUNT_1_BOND))
+        Some(&expected_amount)
     );
 }
