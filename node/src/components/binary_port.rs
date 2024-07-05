@@ -849,6 +849,7 @@ where
             };
 
             let status = NodeStatus {
+                protocol_version,
                 peers: Peers::from(peers),
                 build_version: crate::VERSION_STRING.clone(),
                 chainspec_name: network_name.into(),
