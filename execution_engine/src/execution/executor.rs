@@ -130,15 +130,15 @@ impl Executor {
             }
         };
 
-        let err = match result {
-            Ok(_) => None,
-            Err(error) => Some(error.into()),
+        let (err, effects) = match result {
+            Ok(_) => (None, runtime.context().effects()),
+            Err(error) => (Some(error.into()), Effects::new()),
         };
 
         return WasmV1Result::new(
             gas_limit,
             runtime.context().gas_counter(),
-            runtime.context().effects(),
+            effects,
             runtime.context().transfers().to_owned(),
             runtime.context().messages(),
             err,
