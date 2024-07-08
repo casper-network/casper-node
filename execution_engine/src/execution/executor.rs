@@ -6,9 +6,10 @@ use casper_storage::{
     AddressGenerator,
 };
 use casper_types::{
-    account::AccountHash, addressable_entity::NamedKeys, execution::Effects, AddressableEntity,
-    AddressableEntityHash, BlockTime, ContextAccessRights, EntryPointType, Gas, Key, Phase,
-    ProtocolVersion, RuntimeArgs, StoredValue, Tagged, TransactionHash, U512,
+    account::AccountHash, addressable_entity::NamedKeys, contract_messages::Messages,
+    execution::Effects, AddressableEntity, AddressableEntityHash, BlockTime, ContextAccessRights,
+    EntryPointType, Gas, Key, Phase, ProtocolVersion, RuntimeArgs, StoredValue, Tagged,
+    TransactionHash, U512,
 };
 
 use crate::{
@@ -130,19 +131,24 @@ impl Executor {
             }
         };
 
-        let (err, effects) = match result {
-            Ok(_) => (None, runtime.context().effects()),
-            Err(error) => (Some(error.into()), Effects::new()),
-        };
-
-        return WasmV1Result::new(
-            gas_limit,
-            runtime.context().gas_counter(),
-            effects,
-            runtime.context().transfers().to_owned(),
-            runtime.context().messages(),
-            err,
-        );
+        match result {
+            Ok(_) => WasmV1Result::new(
+                gas_limit,
+                runtime.context().gas_counter(),
+                runtime.context().effects(),
+                runtime.context().transfers().to_owned(),
+                runtime.context().messages(),
+                None,
+            ),
+            Err(error) => WasmV1Result::new(
+                gas_limit,
+                runtime.context().gas_counter(),
+                Effects::new(),
+                vec![],
+                Messages::new(),
+                Some(error.into()),
+            ),
+        }
     }
 
     /// Creates new runtime context.
