@@ -373,6 +373,7 @@ async fn binary_port_component_handles_all_requests() {
             era_one_validator,
             None,
         ),
+        get_protocol_version(protocol_version),
     ];
 
     for (
@@ -938,6 +939,25 @@ fn get_reward(
                 // test fixture sets delegation rate to 0
                 reward.amount() > U512::zero() && reward.delegation_rate() == 0
             })
+        }),
+    }
+}
+
+fn get_protocol_version(expected: ProtocolVersion) -> TestCase {
+    let key = InformationRequest::ProtocolVersion;
+
+    TestCase {
+        name: "get_protocol_version",
+        request: BinaryRequest::Get(GetRequest::Information {
+            info_type_tag: key.tag().into(),
+            key: vec![],
+        }),
+        asserter: Box::new(move |response| {
+            assert_response::<ProtocolVersion, _>(
+                response,
+                Some(PayloadType::ProtocolVersion),
+                |version| expected == version,
+            )
         }),
     }
 }
