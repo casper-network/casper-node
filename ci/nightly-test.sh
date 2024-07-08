@@ -130,6 +130,7 @@ run_test_and_count 'start_run_teardown "swap_validator_set.sh"'
 run_test_and_count 'start_run_teardown "sync_upgrade_test.sh node=6 era=5 timeout=500"'
 run_test_and_count 'start_run_teardown "validators_disconnect.sh"'
 run_test_and_count 'start_run_teardown "event_stream.sh"'
+run_test_and_count 'start_run_teardown "regression_4771.sh"'
 # Without start_run_teardown - these ones perform their own assets setup, network start and teardown
 run_test_and_count 'source "$SCENARIOS_DIR/upgrade_after_emergency_upgrade_test_pre_1.5.sh"'
 run_test_and_count 'source "$SCENARIOS_DIR/regression_3976.sh"'
