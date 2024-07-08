@@ -3613,7 +3613,7 @@ async fn out_of_gas_txn_does_not_produce_effects() {
         .join("target")
         .join("wasm32-unknown-unknown")
         .join("release")
-        .join("endless_loop.wasm");
+        .join("endless_loop_with_effects.wasm");
     let module_bytes =
         Bytes::from(std::fs::read(revert_contract).expect("cannot read module bytes"));
 
