@@ -967,6 +967,9 @@ where
                 _ => BinaryResponse::new_empty(protocol_version),
             }
         }
+        InformationRequest::ProtocolVersion => {
+            BinaryResponse::from_value(protocol_version, protocol_version)
+        }
     }
 }
 
