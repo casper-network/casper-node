@@ -9,23 +9,23 @@ All notable changes to this project will be documented in this file.  The format
 [comment]: <> (Fixed:      any bug fixes)
 [comment]: <> (Security:   in case of vulnerabilities)
 
-
-
 ## Unreleased (2.0.0)
 
 ### Added
 * Add `BinaryPort` interface along with the relevant config entries.
+* Added chainspec settings `finders_fee`, `finality_signature_proportion` and `signature_rewards_max_delay` to control behavior of the new seigniorage model.
 
 ### Changed
 * All SSE events are emitted via the `<IP:Port>/events` endpoint. None of the previous ones (`/events/main`, `/events/deploys`, and `/events/sigs`) is available any longer.
 * `DeployBuffer` was renamed to `TransactionBuffer` along with the related metrics.
+* Switch blocks and the creation and propagation of signatures on them are now rewarded.
+* Era end reports now record rewards as motes rather than scores.
+* Seigniorage model is now independent of the details of consensus (and compatible with both Highway and Zug) and based solely upon block proposals, signature generation and signature distribution by validators.
 
 ### Removed
 * Remove the JSON-RPC and speculative execution interfaces.
 * Remove chainspec setting `highway.performance_meter.blocks_to_consider` and the entire `highway.performance_meter` section.
 * Remove chainspec setting `highway.reduced_reward_multiplier`
-
-
 
 ## 1.5.6
 
@@ -34,14 +34,10 @@ All notable changes to this project will be documented in this file.  The format
 * If an upgrade with the same activation point as the current one is detected on startup, the node will immediately shut down for upgrade.
 * Reduce chainspec setting `deploys.max_ttl` from 18 hours to 2 hours.
 
-
-
 ## 1.5.5
 
 ### Added
 * New chainspec setting `highway.performance_meter.blocks_to_consider` with a value of 10, meaning that nodes will take 10 most recent blocks into account when determining their performance in Highway for the purpose of choosing their round lengths.
-
-
 
 ## 1.5.4
 
