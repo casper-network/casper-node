@@ -283,10 +283,8 @@ fn all_signatures_rewards_without_contribution_fee() {
         ratio(1)
             * ratio(era_2_reward_per_round)
             * ratio(core_config.production_rewards_proportion())
-    };
-    let validator_1_expected_payout_prev_era = {
-        // All finality signature collected:
-        ratio(era_1_reward_per_round) * ratio(core_config.collection_rewards_proportion())
+        // All finality signature collected (paid out in era 2):
+        + ratio(era_1_reward_per_round) * ratio(core_config.collection_rewards_proportion())
     };
     let validator_2_expected_payout = {
         // 1 block produced:
@@ -303,8 +301,7 @@ fn all_signatures_rewards_without_contribution_fee() {
 
     assert_eq!(
         map! {
-            VALIDATOR_1.clone() => vec![validator_1_expected_payout.to_integer(),
-                                        validator_1_expected_payout_prev_era.to_integer()],
+            VALIDATOR_1.clone() => vec![validator_1_expected_payout.to_integer()],
             VALIDATOR_2.clone() => vec![validator_2_expected_payout.to_integer()],
             VALIDATOR_3.clone() => vec![validator_3_expected_payout.to_integer()],
         },
@@ -634,6 +631,10 @@ fn mixed_signatures_pattern() {
                     + ratio(1) * constructor.weight(era, VALIDATOR_3.deref())
                     + ratio(1) * constructor.weight(era, VALIDATOR_4.deref())
                 ) * ratio(era_2_reward_per_round)
+                // collected one signature from era 1
+                + (
+                    ratio(1) * constructor.weight(1, VALIDATOR_1.deref())
+                ) * ratio(era_1_reward_per_round)
             }
             // Finality signed:
             + contribution * {
@@ -641,12 +642,7 @@ fn mixed_signatures_pattern() {
                 ratio(3) * ratio(era_2_reward_per_round) * constructor.weight(era, VALIDATOR_3.deref())
             }).to_integer(),
             // for era 1
-            (collection * {
-                (
-                    ratio(1) * constructor.weight(1, VALIDATOR_1.deref())
-                ) * ratio(era_1_reward_per_round)
-            }
-            + contribution * {
+            (contribution * {
                 // 1 in previous era:
                 ratio(1) * ratio(era_1_reward_per_round) * constructor.weight(1, VALIDATOR_3.deref())
             }).to_integer()
@@ -663,16 +659,14 @@ fn mixed_signatures_pattern() {
                     + ratio(2) * constructor.weight(era, VALIDATOR_3.deref())
                     + ratio(1) * constructor.weight(era, VALIDATOR_4.deref())
                 ) * ratio(era_2_reward_per_round)
+                // collected one signature from era 1
+                + (
+                    ratio(1) * constructor.weight(1, VALIDATOR_3.deref())
+                ) * ratio(era_1_reward_per_round)
             }
             // 3 finality signed:
             + ratio(2) * contribution * ratio(era_2_reward_per_round) * constructor.weight(era, VALIDATOR_4.deref()))
             .to_integer(),
-            // for era 1
-            (collection * {
-                (
-                    ratio(1) * constructor.weight(1, VALIDATOR_3.deref())
-                ) * ratio(era_1_reward_per_round)
-            }).to_integer()
         ];
 
         assert_eq!(
