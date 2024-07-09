@@ -464,6 +464,24 @@ impl TestFixture {
             .expect("node 0 should have a complete block")
     }
 
+    /// Get block by height
+    fn get_block_by_height(&self, block_height: u64) -> Block {
+        let node_0 = self
+            .node_contexts
+            .first()
+            .expect("should have at least one node")
+            .id;
+
+        self.network
+            .nodes()
+            .get(&node_0)
+            .expect("should have node 0")
+            .main_reactor()
+            .storage()
+            .read_block_by_height(block_height)
+            .expect("failure to read block at height")
+    }
+
     #[track_caller]
     fn get_block_gas_price_by_public_key(&self, maybe_public_key: Option<&PublicKey>) -> u8 {
         let node_id = match maybe_public_key {

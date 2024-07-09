@@ -277,25 +277,37 @@ fn get_entity_named_key(
     state_root_hash: Digest,
     entity_addr: EntityAddr,
     named_key: &str,
-) -> Key {
+) -> Option<Key> {
+    let key = Key::NamedKey(
+        NamedKeyAddr::new_from_string(entity_addr, named_key.to_owned())
+            .expect("should be valid NamedKeyAddr"),
+    );
+
+    match query_global_state(fixture, state_root_hash, key) {
+        Some(val) => match &*val {
+            StoredValue::NamedKey(named_key) => {
+                Some(named_key.get_key().expect("should have a Key"))
+            }
+            value => panic!("Expected NamedKey but got {:?}", value),
+        },
+        None => None,
+    }
+}
+
+fn query_global_state(
+    fixture: &mut TestFixture,
+    state_root_hash: Digest,
+    key: Key,
+) -> Option<Box<StoredValue>> {
     let (_node_id, runner) = fixture.network.nodes().iter().next().unwrap();
     match runner
         .main_reactor()
         .contract_runtime()
         .data_access_layer()
-        .query(QueryRequest::new(
-            state_root_hash,
-            Key::NamedKey(
-                NamedKeyAddr::new_from_string(entity_addr, named_key.to_owned())
-                    .expect("should be valid NamedKeyAddr"),
-            ),
-            vec![],
-        )) {
-        QueryResult::Success { value, .. } => match &*value {
-            StoredValue::NamedKey(named_key) => named_key.get_key().expect("should have a Key"),
-            value => panic!("Expected NamedKey but got {:?}", value),
-        },
-        err => panic!("Expected QueryResult::Success but got {:?}", err),
+        .query(QueryRequest::new(state_root_hash, key, vec![]))
+    {
+        QueryResult::Success { value, .. } => Some(value),
+        _err => None,
     }
 }
 
@@ -3053,7 +3065,8 @@ async fn insufficient_funds_transfer_from_purse() {
         state_root_hash,
         BOB_PUBLIC_KEY.to_account_hash(),
     );
-    let key = get_entity_named_key(&mut test.fixture, state_root_hash, entity_addr, purse_name);
+    let key = get_entity_named_key(&mut test.fixture, state_root_hash, entity_addr, purse_name)
+        .expect("expected a key");
     let uref = *key.as_uref().expect("Expected a URef");
 
     // now we try to transfer from the purse we just created
@@ -3371,7 +3384,8 @@ async fn successful_purse_to_purse_transfer() {
         BOB_PUBLIC_KEY.to_account_hash(),
     );
     let bob_purse_key =
-        get_entity_named_key(&mut test.fixture, state_root_hash, bob_addr, purse_name);
+        get_entity_named_key(&mut test.fixture, state_root_hash, bob_addr, purse_name)
+            .expect("expected a key");
     let bob_purse = *bob_purse_key.as_uref().expect("Expected a URef");
 
     let alice_addr = get_entity_addr_from_account_hash(
@@ -3463,7 +3477,8 @@ async fn successful_purse_to_account_transfer() {
         BOB_PUBLIC_KEY.to_account_hash(),
     );
     let bob_purse_key =
-        get_entity_named_key(&mut test.fixture, state_root_hash, bob_addr, purse_name);
+        get_entity_named_key(&mut test.fixture, state_root_hash, bob_addr, purse_name)
+            .expect("expected a key");
     let bob_purse = *bob_purse_key.as_uref().expect("Expected a URef");
 
     // now we try to transfer from the purse we just created
@@ -3570,4 +3585,68 @@ async fn native_transfer_deploy_without_source_purse_should_succeed() {
     txn.sign(&BOB_SECRET_KEY);
     let (_txn_hash, _block_height, exec_result) = test.send_transaction(txn).await;
     assert!(exec_result_is_success(&exec_result), "{:?}", exec_result);
+}
+
+#[tokio::test]
+async fn out_of_gas_txn_does_not_produce_effects() {
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_pricing_handling(PricingHandling::Fixed)
+        .with_refund_handling(RefundHandling::NoRefund)
+        .with_fee_handling(FeeHandling::PayToProposer);
+
+    let mut test = SingleTransactionTestCase::new(
+        ALICE_SECRET_KEY.clone(),
+        BOB_SECRET_KEY.clone(),
+        CHARLIE_SECRET_KEY.clone(),
+        Some(config),
+    )
+    .await;
+
+    test.fixture
+        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+        .await;
+
+    // This WASM creates named key called "new_key". Then it would loop endlessly trying to write a
+    // value to storage. Eventually it will run out of gas and it should exit causing a revert.
+    let revert_contract = RESOURCES_PATH
+        .join("..")
+        .join("target")
+        .join("wasm32-unknown-unknown")
+        .join("release")
+        .join("endless_loop_with_effects.wasm");
+    let module_bytes =
+        Bytes::from(std::fs::read(revert_contract).expect("cannot read module bytes"));
+
+    let mut txn = Transaction::from(
+        TransactionV1Builder::new_session(TransactionCategory::Large, module_bytes)
+            .with_chain_name(CHAIN_NAME)
+            .with_initiator_addr(BOB_PUBLIC_KEY.clone())
+            .build()
+            .unwrap(),
+    );
+    txn.sign(&BOB_SECRET_KEY);
+    let (_txn_hash, block_height, exec_result) = test.send_transaction(txn).await;
+    assert!(
+        matches!(
+            &exec_result,
+            ExecutionResult::V2(res) if res.error_message.as_deref() == Some("Out of gas error")
+        ),
+        "{:?}",
+        exec_result
+    );
+
+    let state_root_hash = *test
+        .fixture
+        .get_block_by_height(block_height)
+        .state_root_hash();
+    let bob_addr = get_entity_addr_from_account_hash(
+        &mut test.fixture,
+        state_root_hash,
+        BOB_PUBLIC_KEY.to_account_hash(),
+    );
+
+    // Named key should not exist since the execution was reverted because it was out of gas.
+    assert!(
+        get_entity_named_key(&mut test.fixture, state_root_hash, bob_addr, "new_key").is_none()
+    );
 }
