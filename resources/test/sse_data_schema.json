@@ -3290,7 +3290,7 @@
         "minimum_delegation_amount",
         "staked_amount",
         "validator_public_key",
-        "whitelist_size"
+        "reserved_spots"
       ],
       "properties": {
         "validator_public_key": {
@@ -3350,7 +3350,7 @@
           "format": "uint64",
           "minimum": 0.0
         },
-        "whitelist_size": {
+        "reserved_spots": {
           "description": "Spots reserved for specific delegators",
           "type": "integer",
           "format": "uint32",
