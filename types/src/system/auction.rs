@@ -49,6 +49,9 @@ pub type DelegationRate = u8;
 /// Validators mapped to their bids.
 pub type ValidatorBids = BTreeMap<PublicKey, Box<ValidatorBid>>;
 
+/// Delegator bids mapped to their validator.
+pub type DelegatorBids = BTreeMap<PublicKey, Vec<Box<Delegator>>>;
+
 /// Validators mapped to their credits by era.
 pub type ValidatorCredits = BTreeMap<PublicKey, BTreeMap<EraId, Box<ValidatorCredit>>>;
 

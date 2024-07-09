@@ -50,6 +50,7 @@ const MESSAGE_SIZE: u32 = 1024 * 1024 * 10;
 
 struct TestData {
     rng: TestRng,
+    protocol_version: ProtocolVersion,
     chainspec_raw_bytes: ChainspecRawBytes,
     highest_block: Block,
     secret_signing_key: Arc<SecretKey>,
@@ -149,6 +150,7 @@ async fn setup() -> (
         .bind_address()
         .expect("should be bound");
 
+    let protocol_version = first_node.main_reactor().chainspec.protocol_version();
     // We let the entire network run in the background, until our request completes.
     let finish_cranking = fixture.run_until_stopped(rng.create_child());
 
@@ -164,6 +166,7 @@ async fn setup() -> (
             finish_cranking,
             TestData {
                 rng,
+                protocol_version,
                 chainspec_raw_bytes,
                 highest_block,
                 secret_signing_key,
@@ -298,6 +301,7 @@ async fn binary_port_component_handles_all_requests() {
             finish_cranking,
             TestData {
                 mut rng,
+                protocol_version,
                 chainspec_raw_bytes: network_chainspec_raw_bytes,
                 highest_block,
                 secret_signing_key,
@@ -325,7 +329,7 @@ async fn binary_port_component_handles_all_requests() {
         consensus_status(),
         chainspec_raw_bytes(network_chainspec_raw_bytes),
         latest_switch_block_header(),
-        node_status(),
+        node_status(protocol_version),
         get_block_header(highest_block.clone_header()),
         get_block_transfers(highest_block.clone_header()),
         get_era_summary(state_root_hash),
@@ -365,9 +369,7 @@ async fn binary_port_component_handles_all_requests() {
             None,
         ),
         get_reward(
-            Some(EraIdentifier::Block(BlockIdentifier::Hash(
-                *highest_block.hash(),
-            ))),
+            Some(EraIdentifier::Block(BlockIdentifier::Height(1))),
             era_one_validator,
             None,
         ),
@@ -656,7 +658,7 @@ fn latest_switch_block_header() -> TestCase {
     }
 }
 
-fn node_status() -> TestCase {
+fn node_status(expected_version: ProtocolVersion) -> TestCase {
     TestCase {
         name: "node_status",
         request: BinaryRequest::Get(GetRequest::Information {
@@ -668,7 +670,8 @@ fn node_status() -> TestCase {
                 response,
                 Some(PayloadType::NodeStatus),
                 |node_status| {
-                    !node_status.peers.into_inner().is_empty()
+                    node_status.protocol_version == expected_version
+                        && !node_status.peers.into_inner().is_empty()
                         && node_status.chainspec_name == "casper-example"
                         && node_status.last_added_block_info.is_some()
                         && node_status.our_public_signing_key.is_some()
@@ -932,7 +935,8 @@ fn get_reward(
         }),
         asserter: Box::new(move |response| {
             assert_response::<RewardResponse, _>(response, Some(PayloadType::Reward), |reward| {
-                reward.amount() > U512::zero()
+                // test fixture sets delegation rate to 0
+                reward.amount() > U512::zero() && reward.delegation_rate() == 0
             })
         }),
     }

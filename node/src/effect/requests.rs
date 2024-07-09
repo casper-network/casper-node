@@ -33,9 +33,9 @@ use casper_storage::{
 use casper_types::{
     execution::ExecutionResult, Approval, AvailableBlockRange, Block, BlockHash, BlockHeader,
     BlockSignatures, BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest,
-    DisplayIter, EraId, ExecutionInfo, FinalitySignature, FinalitySignatureId, Key, NextUpgrade,
-    ProtocolUpgradeConfig, ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transaction,
-    TransactionHash, TransactionHeader, TransactionId, Transfer,
+    DisplayIter, EntityAddr, EraId, ExecutionInfo, FinalitySignature, FinalitySignatureId, Key,
+    NextUpgrade, ProtocolUpgradeConfig, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
+    Transaction, TransactionHash, TransactionHeader, TransactionId, Transfer,
 };
 
 use super::{AutoClosingResponder, GossipTarget, Responder};
@@ -822,13 +822,13 @@ pub(crate) enum ContractRuntimeRequest {
         state_root_hash: Digest,
         responder: Responder<ExecutionResultsChecksumResult>,
     },
-    /// Returns an `AddressableEntity` if found under the given key.  If a legacy `Account`
+    /// Returns an `AddressableEntity` if found under the given entity_addr.  If a legacy `Account`
     /// or contract exists under the given key, it will be migrated to an `AddressableEntity`
     /// and returned. However, global state is not altered and the migrated record does not
     /// actually exist.
     GetAddressableEntity {
         state_root_hash: Digest,
-        key: Key,
+        entity_addr: EntityAddr,
         responder: Responder<AddressableEntityResult>,
     },
     /// Returns a singular entry point based under the given state root hash and entry
@@ -925,13 +925,13 @@ impl Display for ContractRuntimeRequest {
             ),
             ContractRuntimeRequest::GetAddressableEntity {
                 state_root_hash,
-                key,
+                entity_addr,
                 ..
             } => {
                 write!(
                     formatter,
                     "get addressable_entity {} under {}",
-                    key, state_root_hash
+                    entity_addr, state_root_hash
                 )
             }
             ContractRuntimeRequest::GetTrie { request, .. } => {

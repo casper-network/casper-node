@@ -866,6 +866,16 @@ impl EntityAddr {
             || self.value() == PublicKey::System.to_account_hash().value()
     }
 
+    /// Is this a contract entity address?
+    pub fn is_contract(&self) -> bool {
+        self.tag() == EntityKindTag::SmartContract
+    }
+
+    /// Is this an account entity address?
+    pub fn is_account(&self) -> bool {
+        self.tag() == EntityKindTag::Account
+    }
+
     /// Returns the 32 bytes of the [`EntityAddr`].
     pub fn value(&self) -> HashAddr {
         match self {
