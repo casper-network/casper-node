@@ -869,8 +869,11 @@ where
                 {
                     return Err(ExecError::Revert(ApiError::InvalidDelegationAmountLimits));
                 }
-                let reserved_spots =
-                    Self::get_named_argument(runtime_args, auction::ARG_RESERVED_SPOTS)?;
+                let reserved_spots = Self::try_get_named_argument(
+                    runtime_args,
+                    auction::ARG_RESERVED_SPOTS,
+                )?
+                .unwrap_or(0);
 
                 let result = runtime
                     .add_bid(
