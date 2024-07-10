@@ -877,6 +877,7 @@ where
                         amount,
                         minimum_delegation_amount,
                         maximum_delegation_amount,
+                        0,
                     )
                     .map_err(Self::reverter)?;
 

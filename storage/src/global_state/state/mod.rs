@@ -1212,6 +1212,7 @@ pub trait StateProvider {
                     amount,
                     minimum_delegation_amount,
                     maximum_delegation_amount,
+                    0,
                 )
                 .map(AuctionMethodRet::UpdatedAmount)
                 .map_err(TrackingCopyError::Api),
