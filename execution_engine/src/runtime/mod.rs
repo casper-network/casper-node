@@ -1026,6 +1026,8 @@ where
 
                 CLValue::from_t(()).map_err(Self::reverter)
             })(),
+            auction::METHOD_ADD_RESERVATION => todo!(),
+            auction::METHOD_CANCEL_RESERVATION => todo!(),
 
             _ => CLValue::from_t(()).map_err(Self::reverter),
         };
