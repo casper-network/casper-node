@@ -89,6 +89,10 @@ pub const METHOD_READ_ERA_ID: &str = "read_era_id";
 pub const METHOD_ACTIVATE_BID: &str = "activate_bid";
 /// Named constant for method `change_bid_public_key`.
 pub const METHOD_CHANGE_BID_PUBLIC_KEY: &str = " change_bid_public_key";
+/// Named constant for method `add_reservation`.
+pub const METHOD_ADD_RESERVATION: &str = "add_reservation";
+/// Named constant for method `cancel_reservation`.
+pub const METHOD_CANCEL_RESERVATION: &str = "cancel_reservation";
 
 /// Storage for `EraId`.
 pub const ERA_ID_KEY: &str = "era_id";

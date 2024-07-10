@@ -35,6 +35,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "add-reservation"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "add-update-associated-key"
 version = "0.1.0"
 dependencies = [
@@ -437,6 +445,14 @@ checksum = "89b2fd2a0dcf38d7971e2194b6b6eebab45ae01067456a7fd93d5547a61b70be"
 
 [[package]]
 name = "call-contract"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
+name = "cancel-reservation"
 version = "0.1.0"
 dependencies = [
  "casper-contract",
