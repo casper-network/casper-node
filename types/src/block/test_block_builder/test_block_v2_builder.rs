@@ -202,6 +202,9 @@ impl TestBlockV2Builder {
                         | TransactionEntryPoint::ActivateBid
                         | TransactionEntryPoint::ChangeBidPublicKey => {
                             auction_hashes.push(txn_hash)
+                        },
+                        TransactionEntryPoint::AddReservation | TransactionEntryPoint::CancelReservation => {
+                            todo!()
                         }
                     },
                     TransactionTarget::Stored { .. } => standard_hashes.push(txn_hash),
