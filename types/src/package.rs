@@ -216,6 +216,11 @@ impl EntityVersions {
             None
         }
     }
+
+    /// The number of versions present in the package.
+    pub fn version_count(&self) -> usize {
+        self.0.len()
+    }
 }
 
 impl ToBytes for EntityVersions {

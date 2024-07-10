@@ -986,6 +986,16 @@ fn call_and_migrate_purse_holder_contract(migration_scenario: MigrationScenario)
         .map(PackageHash::new)
         .unwrap();
 
+    // There is only one version present, post migration there should also
+    // be only one.
+    let version_count = builder
+        .get_package(package_hash)
+        .expect("must have package")
+        .versions()
+        .version_count();
+
+    assert_eq!(version_count, 1usize);
+
     let execute_request = match migration_scenario {
         MigrationScenario::ByPackageName(maybe_contract_version) => {
             ExecuteRequestBuilder::versioned_contract_call_by_name(
@@ -1057,6 +1067,15 @@ fn call_and_migrate_purse_holder_contract(migration_scenario: MigrationScenario)
     if let MigrationScenario::ByUpgrader = migration_scenario {
         let expect_associated_keys = AssociatedKeys::new(*DEFAULT_ACCOUNT_ADDR, Weight::new(1));
         assert_eq!(actual_associated_keys, &expect_associated_keys);
+        // Post migration by upgrade there should be previous + 1 versions
+        // present in the package. (previous = 1)
+        let version_count = builder
+            .get_package(package_hash)
+            .expect("must have package")
+            .versions()
+            .version_count();
+
+        assert_eq!(version_count, 2usize);
     } else {
         assert_eq!(actual_associated_keys, &AssociatedKeys::default());
     }

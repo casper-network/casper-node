@@ -592,7 +592,7 @@ where
         let access_uref = legacy_package.access_key();
         let mut generator = AddressGenerator::new(access_uref.addr().as_ref(), Phase::System);
 
-        let mut package: Package = legacy_package.into();
+        let package: Package = legacy_package.into();
 
         for (_, contract_hash) in legacy_versions.into_iter() {
             let legacy_contract = match self.read(&Key::Hash(contract_hash.value()))? {
