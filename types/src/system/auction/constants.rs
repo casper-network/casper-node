@@ -62,8 +62,8 @@ pub const ARG_ENTRY_POINT: &str = "entry_point";
 pub const ARG_MINIMUM_DELEGATION_AMOUNT: &str = "minimum_delegation_amount";
 /// Named constrant for `maximum_delegation_amount`.
 pub const ARG_MAXIMUM_DELEGATION_AMOUNT: &str = "maximum_delegation_amount";
-/// Named constant for `reserved_spots`.
-pub const ARG_RESERVED_SPOTS: &str = "reserved_spots";
+/// Named constant for `reserved_slots`.
+pub const ARG_RESERVED_SLOTS: &str = "reserved_slots";
 
 /// Named constant for method `get_era_validators`.
 pub const METHOD_GET_ERA_VALIDATORS: &str = "get_era_validators";

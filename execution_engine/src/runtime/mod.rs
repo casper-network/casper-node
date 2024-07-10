@@ -869,9 +869,9 @@ where
                 {
                     return Err(ExecError::Revert(ApiError::InvalidDelegationAmountLimits));
                 }
-                let reserved_spots = Self::try_get_named_argument(
+                let reserved_slots = Self::try_get_named_argument(
                     runtime_args,
-                    auction::ARG_RESERVED_SPOTS,
+                    auction::ARG_RESERVED_SLOTS,
                 )?
                 .unwrap_or(0);
 
@@ -882,7 +882,7 @@ where
                         amount,
                         minimum_delegation_amount,
                         maximum_delegation_amount,
-                        reserved_spots,
+                        reserved_slots,
                     )
                     .map_err(Self::reverter)?;
 

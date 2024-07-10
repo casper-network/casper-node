@@ -39,8 +39,8 @@ pub struct ValidatorBid {
     minimum_delegation_amount: u64,
     /// Maximum allowed delegation amount in motes
     maximum_delegation_amount: u64,
-    /// Spots reserved for specific delegators
-    reserved_spots: u32,
+    /// Slots reserved for specific delegators
+    reserved_slots: u32,
 }
 
 impl ValidatorBid {
@@ -65,7 +65,7 @@ impl ValidatorBid {
             inactive,
             minimum_delegation_amount,
             maximum_delegation_amount,
-            reserved_spots: 0,
+            reserved_slots: 0,
         }
     }
 
@@ -89,7 +89,7 @@ impl ValidatorBid {
             inactive,
             minimum_delegation_amount,
             maximum_delegation_amount,
-            reserved_spots: 0,
+            reserved_slots: 0,
         }
     }
 
@@ -108,7 +108,7 @@ impl ValidatorBid {
             inactive,
             minimum_delegation_amount: 0,
             maximum_delegation_amount: u64::MAX,
-            reserved_spots: 0,
+            reserved_slots: 0,
         }
     }
 
@@ -288,7 +288,7 @@ impl ToBytes for ValidatorBid {
         self.inactive.write_bytes(&mut result)?;
         self.minimum_delegation_amount.write_bytes(&mut result)?;
         self.maximum_delegation_amount.write_bytes(&mut result)?;
-        self.reserved_spots.write_bytes(&mut result)?;
+        self.reserved_slots.write_bytes(&mut result)?;
         Ok(result)
     }
 
@@ -301,7 +301,7 @@ impl ToBytes for ValidatorBid {
             + self.inactive.serialized_length()
             + self.minimum_delegation_amount.serialized_length()
             + self.maximum_delegation_amount.serialized_length()
-            + self.reserved_spots.serialized_length()
+            + self.reserved_slots.serialized_length()
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
@@ -313,7 +313,7 @@ impl ToBytes for ValidatorBid {
         self.inactive.write_bytes(writer)?;
         self.minimum_delegation_amount.write_bytes(writer)?;
         self.maximum_delegation_amount.write_bytes(writer)?;
-        self.reserved_spots.write_bytes(writer)?;
+        self.reserved_slots.write_bytes(writer)?;
         Ok(())
     }
 }
@@ -328,7 +328,7 @@ impl FromBytes for ValidatorBid {
         let (inactive, bytes) = FromBytes::from_bytes(bytes)?;
         let (minimum_delegation_amount, bytes) = FromBytes::from_bytes(bytes)?;
         let (maximum_delegation_amount, bytes) = FromBytes::from_bytes(bytes)?;
-        let (reserved_spots, bytes) = FromBytes::from_bytes(bytes)?;
+        let (reserved_slots, bytes) = FromBytes::from_bytes(bytes)?;
         Ok((
             ValidatorBid {
                 validator_public_key,
@@ -339,7 +339,7 @@ impl FromBytes for ValidatorBid {
                 inactive,
                 minimum_delegation_amount,
                 maximum_delegation_amount,
-                reserved_spots,
+                reserved_slots,
             },
             bytes,
         ))
@@ -357,7 +357,7 @@ impl From<Bid> for ValidatorBid {
             inactive: bid.inactive(),
             minimum_delegation_amount: 0,
             maximum_delegation_amount: u64::MAX,
-            reserved_spots: 0,
+            reserved_slots: 0,
         }
     }
 }
@@ -383,7 +383,7 @@ mod tests {
             inactive: false,
             minimum_delegation_amount: 0,
             maximum_delegation_amount: u64::MAX,
-            reserved_spots: 0,
+            reserved_slots: 0,
         };
         bytesrepr::test_serialization_roundtrip(&founding_validator);
     }
@@ -401,7 +401,7 @@ mod tests {
             inactive: true,
             minimum_delegation_amount: 0,
             maximum_delegation_amount: u64::MAX,
-            reserved_spots: 0,
+            reserved_slots: 0,
         };
         bytesrepr::test_serialization_roundtrip(&founding_validator);
     }

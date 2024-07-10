@@ -229,7 +229,6 @@ impl TransactionEntryPoint {
             | TransactionEntryPoint::Redelegate
             | TransactionEntryPoint::ActivateBid
             | TransactionEntryPoint::ChangeBidPublicKey
-            // TODO(jck): make sure this is correct
             | TransactionEntryPoint::AddReservation
             | TransactionEntryPoint::CancelReservation => false
         }
