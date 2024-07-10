@@ -667,8 +667,6 @@ where
             self.prune(Key::Hash(contract_hash.value()));
             // Prune the legacy Wasm record.
             self.prune(Key::Hash(contract_wasm_hash.value()));
-
-            package.insert_entity_version(protocol_version.value().major, entity_hash);
         }
 
         let access_key_value = CLValue::from_t(access_uref).map_err(Self::Error::CLValue)?;
