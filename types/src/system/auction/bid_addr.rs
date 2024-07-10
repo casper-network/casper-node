@@ -23,6 +23,7 @@ const VALIDATOR_TAG: u8 = 1;
 const DELEGATOR_TAG: u8 = 2;
 
 const CREDIT_TAG: u8 = 4;
+const RESERVATION_TAG: u8 = 5;
 
 /// Serialization tag for BidAddr variants.
 #[derive(
@@ -42,6 +43,9 @@ pub enum BidAddrTag {
 
     /// BidAddr for auction credit.
     Credit = CREDIT_TAG,
+
+    /// BidAddr for reservation bid.
+    Reservation = RESERVATION_TAG,
 }
 
 impl Display for BidAddrTag {
@@ -52,6 +56,7 @@ impl Display for BidAddrTag {
             BidAddrTag::Delegator => DELEGATOR_TAG,
 
             BidAddrTag::Credit => CREDIT_TAG,
+            BidAddrTag::Reservation => RESERVATION_TAG,
         };
         write!(f, "{}", base16::encode_lower(&[tag]))
     }
@@ -76,6 +81,9 @@ impl BidAddrTag {
 
         if value == CREDIT_TAG {
             return Some(BidAddrTag::Credit);
+        }
+        if value == RESERVATION_TAG {
+            return Some(BidAddrTag::Reservation);
         }
 
         None
@@ -105,6 +113,13 @@ pub enum BidAddr {
         validator: AccountHash,
         /// The era id.
         era_id: EraId,
+    },
+    /// Reservation BidAddr
+    Reservation {
+        /// The validator addr.
+        validator: AccountHash,
+        /// The delegator addr.
+        delegator: AccountHash,
     },
 }
 
@@ -175,7 +190,9 @@ impl BidAddr {
     pub fn validator_account_hash(&self) -> AccountHash {
         match self {
             BidAddr::Unified(account_hash) | BidAddr::Validator(account_hash) => *account_hash,
-            BidAddr::Delegator { validator, .. } | BidAddr::Credit { validator, .. } => *validator,
+            BidAddr::Delegator { validator, .. }
+            | BidAddr::Credit { validator, .. }
+            | BidAddr::Reservation { validator, .. } => *validator,
         }
     }
 
@@ -183,14 +200,19 @@ impl BidAddr {
     pub fn maybe_delegator_account_hash(&self) -> Option<AccountHash> {
         match self {
             BidAddr::Unified(_) | BidAddr::Validator(_) | BidAddr::Credit { .. } => None,
-            BidAddr::Delegator { delegator, .. } => Some(*delegator),
+            BidAddr::Delegator { delegator, .. } | BidAddr::Reservation { delegator, .. } => {
+                Some(*delegator)
+            }
         }
     }
 
     /// Era id or none.
     pub fn maybe_era_id(&self) -> Option<EraId> {
         match self {
-            BidAddr::Unified(_) | BidAddr::Validator(_) | BidAddr::Delegator { .. } => None,
+            BidAddr::Unified(_)
+            | BidAddr::Validator(_)
+            | BidAddr::Delegator { .. }
+            | BidAddr::Reservation { .. } => None,
             BidAddr::Credit { era_id, .. } => Some(*era_id),
         }
     }
@@ -199,7 +221,7 @@ impl BidAddr {
     /// Else, it is the key for a validator bid record.
     pub fn is_delegator_bid_addr(&self) -> bool {
         match self {
-            BidAddr::Unified(_) | BidAddr::Validator(_) | BidAddr::Credit { .. } => false,
+            BidAddr::Unified(_) | BidAddr::Validator(_) | BidAddr::Credit { .. } | BidAddr::Reservation { .. } => false,
             BidAddr::Delegator { .. } => true,
         }
     }
@@ -217,6 +239,10 @@ impl BidAddr {
             BidAddr::Credit { validator, era_id } => {
                 ToBytes::serialized_length(validator) + ToBytes::serialized_length(era_id) + 1
             }
+            BidAddr::Reservation {
+                validator,
+                delegator,
+            } => ToBytes::serialized_length(validator) + ToBytes::serialized_length(delegator) + 1,
         }
     }
 
@@ -228,6 +254,7 @@ impl BidAddr {
             BidAddr::Delegator { .. } => BidAddrTag::Delegator,
 
             BidAddr::Credit { .. } => BidAddrTag::Credit,
+            BidAddr::Reservation { .. } => BidAddrTag::Reservation,
         }
     }
 }
@@ -324,6 +351,10 @@ impl Display for BidAddr {
                 validator,
                 base16::encode_lower(&era_id.to_le_bytes())
             ),
+            BidAddr::Reservation {
+                validator,
+                delegator,
+            } => write!(f, "{}{}{}", tag, validator, delegator),
         }
     }
 }
@@ -340,7 +371,13 @@ impl Debug for BidAddr {
                 write!(f, "BidAddr::Delegator({:?}{:?})", validator, delegator)
             }
             BidAddr::Credit { validator, era_id } => {
-                write!(f, "BidAddr::Delegator({:?}{:?})", validator, era_id)
+                write!(f, "BidAddr::Credit({:?}{:?})", validator, era_id)
+            }
+            BidAddr::Reservation {
+                validator,
+                delegator,
+            } => {
+                write!(f, "BidAddr::Reservation({:?}{:?})", validator, delegator)
             }
         }
     }
