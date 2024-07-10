@@ -228,7 +228,10 @@ impl TransactionEntryPoint {
             | TransactionEntryPoint::Undelegate
             | TransactionEntryPoint::Redelegate
             | TransactionEntryPoint::ActivateBid
-            | TransactionEntryPoint::ChangeBidPublicKey => false,
+            | TransactionEntryPoint::ChangeBidPublicKey
+            // TODO(jck): make sure this is correct
+            | TransactionEntryPoint::AddReservation
+            | TransactionEntryPoint::CancelReservation => false
         }
     }
 }
