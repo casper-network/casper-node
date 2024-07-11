@@ -2095,6 +2095,20 @@
           "enum": [
             "ChangeBidPublicKey"
           ]
+        },
+        {
+          "description": "The `add_reservation` native entry point, used to add delegator to validator's reserve list",
+          "type": "string",
+          "enum": [
+            "AddReservation"
+          ]
+        },
+        {
+          "description": "The `cancel_reservation` native entry point, used to remove delegator from validator's reserve list",
+          "type": "string",
+          "enum": [
+            "CancelReservation"
+          ]
         }
       ]
     },
@@ -3288,9 +3302,9 @@
         "inactive",
         "maximum_delegation_amount",
         "minimum_delegation_amount",
+        "reserved_slots",
         "staked_amount",
-        "validator_public_key",
-        "reserved_slots"
+        "validator_public_key"
       ],
       "properties": {
         "validator_public_key": {
