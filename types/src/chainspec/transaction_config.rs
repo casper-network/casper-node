@@ -81,9 +81,9 @@ impl TransactionConfig {
 
 impl Default for TransactionConfig {
     fn default() -> Self {
-        let eighteeen_hours = TimeDiff::from_seconds(18 * 60 * 60);
+        let eighteen_hours = TimeDiff::from_seconds(18 * 60 * 60);
         TransactionConfig {
-            max_ttl: eighteeen_hours,
+            max_ttl: eighteen_hours,
             block_max_approval_count: 2600,
             max_block_size: 10_485_760,
             block_gas_limit: 10_000_000_000_000,

@@ -195,7 +195,7 @@ impl Update {
         unbonder_key: &PublicKey,
         amount: u64,
     ) {
-        let account_hash = validator_key.to_account_hash();
+        let account_hash = unbonder_key.to_account_hash();
         let unbonds = self
             .entries
             .get(&Key::Unbond(account_hash))

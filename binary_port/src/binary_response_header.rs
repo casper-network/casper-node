@@ -13,7 +13,7 @@ use rand::Rng;
 #[derive(Debug, PartialEq)]
 pub struct BinaryResponseHeader {
     protocol_version: ProtocolVersion,
-    error: u8,
+    error: u16,
     returned_data_type_tag: Option<u8>,
 }
 
@@ -22,7 +22,7 @@ impl BinaryResponseHeader {
     pub fn new(returned_data_type: Option<PayloadType>, protocol_version: ProtocolVersion) -> Self {
         Self {
             protocol_version,
-            error: ErrorCode::NoError as u8,
+            error: ErrorCode::NoError as u16,
             returned_data_type_tag: returned_data_type.map(|ty| ty as u8),
         }
     }
@@ -31,7 +31,7 @@ impl BinaryResponseHeader {
     pub fn new_error(error: ErrorCode, protocol_version: ProtocolVersion) -> Self {
         Self {
             protocol_version,
-            error: error as u8,
+            error: error as u16,
             returned_data_type_tag: None,
         }
     }
@@ -42,18 +42,18 @@ impl BinaryResponseHeader {
     }
 
     /// Returns the error code.
-    pub fn error_code(&self) -> u8 {
+    pub fn error_code(&self) -> u16 {
         self.error
     }
 
     /// Returns true if the response represents success.
     pub fn is_success(&self) -> bool {
-        self.error == ErrorCode::NoError as u8
+        self.error == ErrorCode::NoError as u16
     }
 
     /// Returns true if the response indicates the data was not found.
     pub fn is_not_found(&self) -> bool {
-        self.error == ErrorCode::NotFound as u8
+        self.error == ErrorCode::NotFound as u16
     }
 
     /// Returns the protocol version.

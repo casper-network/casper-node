@@ -6,10 +6,10 @@ use casper_storage::{
 };
 use casper_types::{
     addressable_entity::NamedKeys, bytesrepr::Bytes, AddressableEntityHash, EntityVersionKey, Key,
-    PackageHash, ProtocolVersion, StoredValue, TransactionInvocationTarget, TransactionSessionKind,
+    PackageHash, ProtocolVersion, StoredValue, TransactionInvocationTarget,
 };
 
-use super::{Error, ExecutableItem};
+use super::{wasm_v1::SessionKind, Error, ExecutableItem};
 use crate::execution::ExecError;
 
 /// The type of execution about to be performed.
@@ -17,12 +17,8 @@ use crate::execution::ExecError;
 pub(crate) enum ExecutionKind<'a> {
     /// Standard (non-specialized) Wasm bytes related to a transaction of version 1 or later.
     Standard(&'a Bytes),
-    /// Wasm bytes which install a stored entity.
-    Installer(&'a Bytes),
-    /// Wasm bytes which upgrade a stored entity.
-    Upgrader(&'a Bytes),
-    /// Wasm bytes which don't call any stored entity.
-    Isolated(&'a Bytes),
+    /// Wasm bytes which install or upgrade a stored entity.
+    InstallerUpgrader(&'a Bytes),
     /// Stored contract.
     Stored {
         /// AddressableEntity's hash.
@@ -58,21 +54,13 @@ impl<'a> ExecutionKind<'a> {
             ),
             ExecutableItem::PaymentBytes(module_bytes)
             | ExecutableItem::SessionBytes {
-                kind: TransactionSessionKind::Standard,
+                kind: SessionKind::GenericBytecode,
                 module_bytes,
             } => Ok(ExecutionKind::Standard(module_bytes)),
             ExecutableItem::SessionBytes {
-                kind: TransactionSessionKind::Installer,
+                kind: SessionKind::InstallUpgradeBytecode,
                 module_bytes,
-            } => Ok(ExecutionKind::Installer(module_bytes)),
-            ExecutableItem::SessionBytes {
-                kind: TransactionSessionKind::Upgrader,
-                module_bytes,
-            } => Ok(ExecutionKind::Upgrader(module_bytes)),
-            ExecutableItem::SessionBytes {
-                kind: TransactionSessionKind::Isolated,
-                module_bytes,
-            } => Ok(ExecutionKind::Isolated(module_bytes)),
+            } => Ok(ExecutionKind::InstallerUpgrader(module_bytes)),
             ExecutableItem::LegacyDeploy(module_bytes) => Ok(ExecutionKind::Deploy(module_bytes)),
         }
     }

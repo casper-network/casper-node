@@ -1047,6 +1047,20 @@ where
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }
 
+            FunctionIndex::LoadCallerInformation => {
+                // args(0) (Input) Type of action
+                // args(1) (Output) Pointer to number of elements in the call stack.
+                // args(2) (Output) Pointer to size in bytes of the serialized call stack.
+                let (action, call_stack_len_ptr, result_size_ptr) = Args::parse(args)?;
+                self.charge_host_function_call(
+                    &HostFunction::fixed(10_000),
+                    [0, call_stack_len_ptr, result_size_ptr],
+                )?;
+                let ret =
+                    self.load_caller_information(action, call_stack_len_ptr, result_size_ptr)?;
+                Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
+            }
+
             FunctionIndex::LoadAuthorizationKeys => {
                 // args(0) (Output) Pointer to number of authorization keys.
                 // args(1) (Output) Pointer to size in bytes of the total bytes.

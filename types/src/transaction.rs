@@ -18,7 +18,6 @@ mod transaction_id;
 mod transaction_invocation_target;
 mod transaction_runtime;
 mod transaction_scheduling;
-mod transaction_session_kind;
 mod transaction_target;
 mod transaction_v1;
 mod transfer_target;
@@ -75,12 +74,11 @@ pub use transaction_id::TransactionId;
 pub use transaction_invocation_target::TransactionInvocationTarget;
 pub use transaction_runtime::TransactionRuntime;
 pub use transaction_scheduling::TransactionScheduling;
-pub use transaction_session_kind::TransactionSessionKind;
 pub use transaction_target::TransactionTarget;
-pub(crate) use transaction_v1::TransactionCategory;
 pub use transaction_v1::{
-    InvalidTransactionV1, TransactionV1, TransactionV1Body, TransactionV1DecodeFromJsonError,
-    TransactionV1Error, TransactionV1ExcessiveSizeError, TransactionV1Hash, TransactionV1Header,
+    InvalidTransactionV1, TransactionCategory, TransactionV1, TransactionV1Body,
+    TransactionV1DecodeFromJsonError, TransactionV1Error, TransactionV1ExcessiveSizeError,
+    TransactionV1Hash, TransactionV1Header,
 };
 #[cfg(any(feature = "std", test))]
 pub use transaction_v1::{TransactionV1Builder, TransactionV1BuilderError};
@@ -373,8 +371,8 @@ impl Transaction {
         }
     }
 
-    /// The transaction kind.
-    pub fn transaction_kind(&self) -> u8 {
+    /// The transaction category.
+    pub fn transaction_category(&self) -> u8 {
         match self {
             Transaction::Deploy(deploy) => {
                 if deploy.is_transfer() {
@@ -383,7 +381,7 @@ impl Transaction {
                     TransactionCategory::Large as u8
                 }
             }
-            Transaction::V1(v1) => v1.transaction_kind(),
+            Transaction::V1(v1) => v1.transaction_category(),
         }
     }
 

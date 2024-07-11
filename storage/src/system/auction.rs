@@ -11,7 +11,7 @@ use tracing::{debug, error, warn};
 
 use crate::system::auction::detail::{
     process_with_vesting_schedule, read_delegator_bid, read_delegator_bids, read_validator_bid,
-    seigniorage_recipient,
+    seigniorage_recipients,
 };
 use casper_types::{
     account::AccountHash,
@@ -407,18 +407,21 @@ pub trait Auction:
                 if staked_amount < minimum_delegation_amount
                     || staked_amount > maximum_delegation_amount
                 {
+                    let amount = if staked_amount < minimum_delegation_amount {
+                        staked_amount
+                    } else {
+                        staked_amount - maximum_delegation_amount
+                    };
                     let delegator_public_key = delegator.delegator_public_key().clone();
                     detail::create_unbonding_purse(
                         self,
                         validator_public_key.clone(),
                         delegator_public_key.clone(),
                         *delegator.bonding_purse(),
-                        delegator.staked_amount(),
+                        amount,
                         None,
                     )?;
-                    match delegator
-                        .decrease_stake(delegator.staked_amount(), era_end_timestamp_millis)
-                    {
+                    match delegator.decrease_stake(amount, era_end_timestamp_millis) {
                         Ok(_) => (),
                         // Work around the case when the locked amounts table has yet to be
                         // initialized (likely pre-90 day mark).
@@ -572,7 +575,6 @@ pub trait Auction:
         // Compute next auction winners
         let winners: ValidatorWeights = {
             let locked_validators = validator_bids_detail.validator_weights(
-                self,
                 era_id,
                 era_end_timestamp_millis,
                 vesting_schedule_period_millis,
@@ -584,7 +586,6 @@ pub trait Auction:
             let remaining_auction_slots = validator_slots.saturating_sub(locked_validators.len());
             if remaining_auction_slots > 0 {
                 let unlocked_validators = validator_bids_detail.validator_weights(
-                    self,
                     era_id,
                     era_end_timestamp_millis,
                     vesting_schedule_period_millis,
@@ -612,10 +613,11 @@ pub trait Auction:
             }
         };
 
-        let (validator_bids, validator_credits) = validator_bids_detail.destructure();
+        let (validator_bids, validator_credits, delegator_bids) =
+            validator_bids_detail.destructure();
 
         // call prune BEFORE incrementing the era
-        detail::prune_validator_credits(self, era_id, validator_credits);
+        detail::prune_validator_credits(self, era_id, &validator_credits);
 
         // Increment era
         era_id = era_id.checked_add(1).ok_or(Error::ArithmeticOverflow)?;
@@ -627,16 +629,7 @@ pub trait Auction:
         // Update seigniorage recipients for current era
         {
             let mut snapshot = detail::get_seigniorage_recipients_snapshot(self)?;
-            let mut recipients = SeigniorageRecipients::new();
-
-            for era_validator in winners.keys() {
-                let seigniorage_recipient = match validator_bids.get(era_validator) {
-                    Some(validator_bid) => seigniorage_recipient(self, validator_bid)?,
-                    None => return Err(Error::BidNotFound.into()),
-                };
-                recipients.insert(era_validator.clone(), seigniorage_recipient);
-            }
-
+            let recipients = seigniorage_recipients(&winners, &validator_bids, &delegator_bids)?;
             let previous_recipients = snapshot.insert(delayed_era, recipients);
             assert!(previous_recipients.is_none());
 
@@ -664,12 +657,14 @@ pub trait Auction:
             return Err(Error::InvalidCaller);
         }
 
+        debug!("reading seigniorage recipients snapshot");
         let seigniorage_recipients_snapshot = detail::get_seigniorage_recipients_snapshot(self)?;
         let current_era_id = detail::get_era_id(self)?;
 
         let mut era_info = EraInfo::new();
         let seigniorage_allocations = era_info.seigniorage_allocations_mut();
 
+        debug!(rewards_set_size = rewards.len(), "processing rewards");
         for item in rewards
             .into_iter()
             .filter(|(key, _amounts)| key != &PublicKey::System)
@@ -700,12 +695,18 @@ pub trait Auction:
                     Err(err) => return Err(err),
                 };
 
+            debug!(?validator_public_key, "delegator payout for validator");
             let delegator_payouts = detail::distribute_delegator_rewards(
                 self,
                 seigniorage_allocations,
                 validator_public_key.clone(),
                 reward_info.delegator_rewards,
             )?;
+            debug!(
+                ?validator_public_key,
+                delegator_set_size = delegator_payouts.len(),
+                "delegator payout finished"
+            );
 
             let validator_bonding_purse = detail::distribute_validator_rewards(
                 self,
@@ -713,6 +714,7 @@ pub trait Auction:
                 validator_public_key.clone(),
                 reward_info.validator_reward,
             )?;
+            debug!(?validator_public_key, "validator payout finished");
 
             // mint new token and put it to the recipients' purses
             self.mint_into_existing_purse(reward_info.validator_reward, validator_bonding_purse)
@@ -722,6 +724,7 @@ pub trait Auction:
                 self.mint_into_existing_purse(delegator_payout, bonding_purse)
                     .map_err(Error::from)?;
             }
+            debug!("rewards minted into recipient purses");
         }
 
         // record allocations for this era for reporting purposes.
@@ -931,7 +934,8 @@ fn rewards_per_validator(
         let Some(recipient) = seigniorage_recipients_snapshot
             .get(&rewarded_era)
             .ok_or(Error::MissingSeigniorageRecipients)?
-            .get(validator).cloned()
+            .get(validator)
+            .cloned()
         else {
             // We couldn't find the validator. If the reward amount is zero, we don't care -
             // the validator wasn't supposed to be rewarded in this era, anyway. Otherwise,

@@ -37,8 +37,8 @@ use casper_types::{
     Block, BlockV2, CLValue, Chainspec, ChainspecRawBytes, Contract, Deploy, EntryPointValue,
     EraId, HashAddr, InvalidDeploy, InvalidTransaction, InvalidTransactionV1, Package, PricingMode,
     ProtocolVersion, PublicKey, SecretKey, StoredValue, TestBlockBuilder, TimeDiff, Timestamp,
-    Transaction, TransactionConfig, TransactionSessionKind, TransactionV1, TransactionV1Builder,
-    URef, U512,
+    Transaction, TransactionCategory, TransactionConfig, TransactionV1, TransactionV1Builder, URef,
+    U512,
 };
 
 use super::*;
@@ -278,7 +278,7 @@ impl TestScenario {
             TestScenario::FromPeerExpired(TxnType::V1)
             | TestScenario::FromClientExpired(TxnType::V1) => {
                 let txn = TransactionV1Builder::new_session(
-                    TransactionSessionKind::Standard,
+                    TransactionCategory::Large,
                     Bytes::from(vec![1]),
                 )
                 .with_chain_name("casper-example")
@@ -302,7 +302,7 @@ impl TestScenario {
                 TxnType::Deploy => Transaction::from(Deploy::random_valid_native_transfer(rng)),
                 TxnType::V1 => {
                     let txn = TransactionV1Builder::new_session(
-                        TransactionSessionKind::Standard,
+                        TransactionCategory::Large,
                         Bytes::from(vec![1]),
                     )
                     .with_chain_name("casper-example")
@@ -320,7 +320,7 @@ impl TestScenario {
             }
             TestScenario::FromClientSignedByAdmin(TxnType::V1) => {
                 let txn = TransactionV1Builder::new_session(
-                    TransactionSessionKind::Standard,
+                    TransactionCategory::Large,
                     Bytes::from(vec![1]),
                 )
                 .with_chain_name("casper-example")
@@ -515,7 +515,7 @@ impl TestScenario {
                     ),
                     TxnType::V1 => {
                         let txn = TransactionV1Builder::new_session(
-                            TransactionSessionKind::Standard,
+                            TransactionCategory::Large,
                             Bytes::from(vec![1]),
                         )
                         .with_chain_name("casper-example")
@@ -541,7 +541,7 @@ impl TestScenario {
                     ),
                     TxnType::V1 => {
                         let txn = TransactionV1Builder::new_session(
-                            TransactionSessionKind::Standard,
+                            TransactionCategory::Large,
                             Bytes::from(vec![1]),
                         )
                         .with_chain_name("casper-example")
@@ -841,7 +841,7 @@ impl reactor::Reactor for Reactor {
                 }
                 ContractRuntimeRequest::GetAddressableEntity {
                     state_root_hash: _,
-                    key,
+                    entity_addr,
                     responder,
                 } => {
                     let result = if matches!(
@@ -852,12 +852,13 @@ impl reactor::Reactor for Reactor {
                         TestScenario::FromPeerMissingAccount(_)
                     ) {
                         AddressableEntityResult::ValueNotFound("missing account".to_string())
-                    } else if let Key::Account(account_hash) = key {
-                        let account = create_account(account_hash, self.test_scenario);
+                    } else if let EntityAddr::Account(account_hash) = entity_addr {
+                        let account =
+                            create_account(AccountHash::new(account_hash), self.test_scenario);
                         AddressableEntityResult::Success {
                             entity: AddressableEntity::from(account),
                         }
-                    } else if let Key::Hash(..) = key {
+                    } else if let EntityAddr::SmartContract(..) = entity_addr {
                         match self.test_scenario {
                             TestScenario::FromPeerCustomPaymentContract(
                                 ContractScenario::MissingContractAtHash,
@@ -894,10 +895,12 @@ impl reactor::Reactor for Reactor {
                                     entity: AddressableEntity::from(contract),
                                 }
                             }
-                            _ => panic!("unexpected GetAddressableEntity: {:?}", key),
+                            _ => panic!("unexpected GetAddressableEntity: {:?}", entity_addr),
                         }
                     } else {
-                        panic!("should GetAddressableEntity using Key's Account or Hash variant");
+                        panic!(
+                            "should GetAddressableEntity using Account or SmartContract variant"
+                        );
                     };
                     responder.respond(result).ignore()
                 }

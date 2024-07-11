@@ -8,11 +8,11 @@ use casper_types::{
     addressable_entity::NamedKeyAddr,
     runtime_args,
     system::mint::{ARG_AMOUNT, ARG_TARGET},
-    AddressableEntity, Digest, EntityAddr, GasLimited,
+    AddressableEntity, Digest, EntityAddr, GasLimited, TransactionCategory,
 };
 use once_cell::sync::Lazy;
 
-use casper_types::{bytesrepr::Bytes, execution::ExecutionResultV1, TransactionSessionKind};
+use casper_types::{bytesrepr::Bytes, execution::ExecutionResultV1};
 
 static ALICE_SECRET_KEY: Lazy<Arc<SecretKey>> = Lazy::new(|| {
     Arc::new(SecretKey::ed25519_from_bytes([0xAA; SecretKey::ED25519_LENGTH]).unwrap())
@@ -90,7 +90,7 @@ async fn send_wasm_transaction(
     let chain_name = fixture.chainspec.network_config.name.clone();
 
     let mut txn = Transaction::from(
-        TransactionV1Builder::new_session(TransactionSessionKind::Standard, Bytes::from(vec![1]))
+        TransactionV1Builder::new_session(TransactionCategory::Large, Bytes::from(vec![1]))
             .with_chain_name(chain_name)
             .with_pricing_mode(pricing)
             .with_initiator_addr(PublicKey::from(from))
@@ -277,25 +277,37 @@ fn get_entity_named_key(
     state_root_hash: Digest,
     entity_addr: EntityAddr,
     named_key: &str,
-) -> Key {
+) -> Option<Key> {
+    let key = Key::NamedKey(
+        NamedKeyAddr::new_from_string(entity_addr, named_key.to_owned())
+            .expect("should be valid NamedKeyAddr"),
+    );
+
+    match query_global_state(fixture, state_root_hash, key) {
+        Some(val) => match &*val {
+            StoredValue::NamedKey(named_key) => {
+                Some(named_key.get_key().expect("should have a Key"))
+            }
+            value => panic!("Expected NamedKey but got {:?}", value),
+        },
+        None => None,
+    }
+}
+
+fn query_global_state(
+    fixture: &mut TestFixture,
+    state_root_hash: Digest,
+    key: Key,
+) -> Option<Box<StoredValue>> {
     let (_node_id, runner) = fixture.network.nodes().iter().next().unwrap();
     match runner
         .main_reactor()
         .contract_runtime()
         .data_access_layer()
-        .query(QueryRequest::new(
-            state_root_hash,
-            Key::NamedKey(
-                NamedKeyAddr::new_from_string(entity_addr, named_key.to_owned())
-                    .expect("should be valid NamedKeyAddr"),
-            ),
-            vec![],
-        )) {
-        QueryResult::Success { value, .. } => match &*value {
-            StoredValue::NamedKey(named_key) => named_key.get_key().expect("should have a Key"),
-            value => panic!("Expected NamedKey but got {:?}", value),
-        },
-        err => panic!("Expected QueryResult::Success but got {:?}", err),
+        .query(QueryRequest::new(state_root_hash, key, vec![]))
+    {
+        QueryResult::Success { value, .. } => Some(value),
+        _err => None,
     }
 }
 
@@ -311,7 +323,7 @@ fn get_entity_by_account_hash(
         .data_access_layer()
         .addressable_entity(AddressableEntityRequest::new(
             state_root_hash,
-            Key::Account(account_hash),
+            Key::AddressableEntity(EntityAddr::Account(account_hash.value())),
         ))
         .into_option()
         .unwrap_or_else(|| {
@@ -863,7 +875,9 @@ async fn wasm_transaction_fees_are_refunded() {
 
     assert!(!exec_result_is_success(&exec_result)); // transaction should not succeed because the wasm bytes are invalid.
 
-    let expected_transaction_gas: u64 = fixture.chainspec.get_max_gas_limit_by_kind(LARGE_LANE_ID);
+    let expected_transaction_gas: u64 = fixture
+        .chainspec
+        .get_max_gas_limit_by_category(LARGE_LANE_ID);
     let expected_transaction_cost = expected_transaction_gas * MIN_GAS_PRICE as u64;
     assert_exec_result_cost(
         exec_result,
@@ -1176,8 +1190,10 @@ async fn wasm_transaction_refunds_are_burnt(txn_pricing_mode: PricingMode) {
 
     let (_txn_hash, block_height, exec_result) = test.send_transaction(txn).await;
 
-    let expected_transaction_gas: u64 =
-        gas_limit.unwrap_or(test.chainspec().get_max_gas_limit_by_kind(LARGE_LANE_ID));
+    let expected_transaction_gas: u64 = gas_limit.unwrap_or(
+        test.chainspec()
+            .get_max_gas_limit_by_category(LARGE_LANE_ID),
+    );
     let expected_transaction_cost = expected_transaction_gas * min_gas_price as u64;
 
     assert!(!exec_result_is_success(&exec_result)); // transaction should not succeed because the wasm bytes are invalid.
@@ -1275,8 +1291,10 @@ async fn only_refunds_are_burnt_no_fee(txn_pricing_mode: PricingMode) {
     let (_txn_hash, block_height, exec_result) = test.send_transaction(txn).await;
 
     // Fixed transaction pricing.
-    let expected_transaction_gas: u64 =
-        gas_limit.unwrap_or(test.chainspec().get_max_gas_limit_by_kind(LARGE_LANE_ID));
+    let expected_transaction_gas: u64 = gas_limit.unwrap_or(
+        test.chainspec()
+            .get_max_gas_limit_by_category(LARGE_LANE_ID),
+    );
     let expected_transaction_cost = expected_transaction_gas * min_gas_price as u64;
 
     assert!(!exec_result_is_success(&exec_result)); // transaction should not succeed because the wasm bytes are invalid.
@@ -1365,8 +1383,10 @@ async fn fees_and_refunds_are_burnt_separately(txn_pricing_mode: PricingMode) {
     let txn = invalid_wasm_txn(BOB_SECRET_KEY.clone(), txn_pricing_mode);
 
     // Fixed transaction pricing.
-    let expected_transaction_gas: u64 =
-        gas_limit.unwrap_or(test.chainspec().get_max_gas_limit_by_kind(LARGE_LANE_ID));
+    let expected_transaction_gas: u64 = gas_limit.unwrap_or(
+        test.chainspec()
+            .get_max_gas_limit_by_category(LARGE_LANE_ID),
+    );
     let expected_transaction_cost = expected_transaction_gas * min_gas_price as u64;
 
     test.fixture
@@ -1458,8 +1478,10 @@ async fn refunds_are_payed_and_fees_are_burnt(txn_pricing_mode: PricingMode) {
     let txn = invalid_wasm_txn(BOB_SECRET_KEY.clone(), txn_pricing_mode);
 
     // Fixed transaction pricing.
-    let expected_transaction_gas: u64 =
-        gas_limit.unwrap_or(test.chainspec().get_max_gas_limit_by_kind(LARGE_LANE_ID));
+    let expected_transaction_gas: u64 = gas_limit.unwrap_or(
+        test.chainspec()
+            .get_max_gas_limit_by_category(LARGE_LANE_ID),
+    );
     let expected_transaction_cost = expected_transaction_gas * min_gas_price as u64;
 
     test.fixture
@@ -1666,7 +1688,7 @@ async fn only_refunds_are_burnt_no_fee_custom_payment() {
     let expected_transaction_cost = expected_transaction_gas * MIN_GAS_PRICE as u64;
 
     let mut txn = Transaction::from(
-        TransactionV1Builder::new_session(TransactionSessionKind::Standard, module_bytes)
+        TransactionV1Builder::new_session(TransactionCategory::Large, module_bytes)
             .with_chain_name(CHAIN_NAME)
             .with_pricing_mode(PricingMode::Classic {
                 payment_amount: expected_transaction_gas,
@@ -1764,7 +1786,7 @@ async fn no_refund_no_fee_custom_payment() {
     let expected_transaction_cost = expected_transaction_gas * MIN_GAS_PRICE as u64;
 
     let mut txn = Transaction::from(
-        TransactionV1Builder::new_session(TransactionSessionKind::Standard, module_bytes)
+        TransactionV1Builder::new_session(TransactionCategory::Large, module_bytes)
             .with_chain_name(CHAIN_NAME)
             .with_pricing_mode(PricingMode::Classic {
                 payment_amount: expected_transaction_gas,
@@ -2085,8 +2107,10 @@ async fn wasm_transaction_fees_are_refunded_to_proposer(txn_pricing_mode: Pricin
 
     let (_txn_hash, block_height, exec_result) = test.send_transaction(txn).await;
 
-    let expected_transaction_gas: u64 =
-        gas_limit.unwrap_or(test.chainspec().get_max_gas_limit_by_kind(LARGE_LANE_ID));
+    let expected_transaction_gas: u64 = gas_limit.unwrap_or(
+        test.chainspec()
+            .get_max_gas_limit_by_category(LARGE_LANE_ID),
+    );
     let expected_transaction_cost = expected_transaction_gas * min_gas_price as u64;
 
     assert!(!exec_result_is_success(&exec_result)); // transaction should not succeed because the wasm bytes are invalid.
@@ -2314,7 +2338,7 @@ fn transfer_txn<A: Into<U512>>(
 
 fn invalid_wasm_txn(initiator: Arc<SecretKey>, pricing_mode: PricingMode) -> Transaction {
     let mut txn = Transaction::from(
-        TransactionV1Builder::new_session(TransactionSessionKind::Standard, Bytes::from(vec![1]))
+        TransactionV1Builder::new_session(TransactionCategory::Large, Bytes::from(vec![1]))
             .with_chain_name(CHAIN_NAME)
             .with_pricing_mode(pricing_mode)
             .with_initiator_addr(PublicKey::from(&*initiator))
@@ -2489,7 +2513,9 @@ async fn fee_holds_are_amortized() {
     let (_txn_hash, block_height, exec_result) = test.send_transaction(txn).await;
 
     // Fixed transaction pricing.
-    let expected_transaction_gas: u64 = test.chainspec().get_max_gas_limit_by_kind(LARGE_LANE_ID);
+    let expected_transaction_gas: u64 = test
+        .chainspec()
+        .get_max_gas_limit_by_category(LARGE_LANE_ID);
 
     let expected_transaction_cost = expected_transaction_gas * MIN_GAS_PRICE as u64;
 
@@ -3020,7 +3046,7 @@ async fn insufficient_funds_transfer_from_purse() {
         Bytes::from(std::fs::read(purse_create_contract).expect("cannot read module bytes"));
 
     let mut txn = Transaction::from(
-        TransactionV1Builder::new_session(TransactionSessionKind::Standard, module_bytes)
+        TransactionV1Builder::new_session(TransactionCategory::Large, module_bytes)
             .with_runtime_args(
                 runtime_args! { "destination" => purse_name, "amount" => U512::zero() },
             )
@@ -3039,7 +3065,8 @@ async fn insufficient_funds_transfer_from_purse() {
         state_root_hash,
         BOB_PUBLIC_KEY.to_account_hash(),
     );
-    let key = get_entity_named_key(&mut test.fixture, state_root_hash, entity_addr, purse_name);
+    let key = get_entity_named_key(&mut test.fixture, state_root_hash, entity_addr, purse_name)
+        .expect("expected a key");
     let uref = *key.as_uref().expect("Expected a URef");
 
     // now we try to transfer from the purse we just created
@@ -3144,7 +3171,7 @@ async fn charge_when_session_code_succeeds() {
 
     let transferred_amount = 1;
     let mut txn = Transaction::from(
-        TransactionV1Builder::new_session(TransactionSessionKind::Standard, module_bytes)
+        TransactionV1Builder::new_session(TransactionCategory::Large, module_bytes)
             .with_runtime_args(runtime_args! {
                 ARG_TARGET => CHARLIE_PUBLIC_KEY.to_account_hash(),
                 ARG_AMOUNT => U512::from(transferred_amount)
@@ -3205,7 +3232,7 @@ async fn charge_when_session_code_fails_with_user_error() {
     let (alice_initial_balance, bob_initial_balance, _) = test.get_balances(None);
 
     let mut txn = Transaction::from(
-        TransactionV1Builder::new_session(TransactionSessionKind::Standard, module_bytes)
+        TransactionV1Builder::new_session(TransactionCategory::Large, module_bytes)
             .with_chain_name(CHAIN_NAME)
             .with_initiator_addr(BOB_PUBLIC_KEY.clone())
             .build()
@@ -3269,7 +3296,7 @@ async fn charge_when_session_code_runs_out_of_gas() {
     let (alice_initial_balance, bob_initial_balance, _) = test.get_balances(None);
 
     let mut txn = Transaction::from(
-        TransactionV1Builder::new_session(TransactionSessionKind::Standard, module_bytes)
+        TransactionV1Builder::new_session(TransactionCategory::Large, module_bytes)
             .with_chain_name(CHAIN_NAME)
             .with_initiator_addr(BOB_PUBLIC_KEY.clone())
             .build()
@@ -3337,7 +3364,7 @@ async fn successful_purse_to_purse_transfer() {
         Bytes::from(std::fs::read(purse_create_contract).expect("cannot read module bytes"));
 
     let mut txn = Transaction::from(
-        TransactionV1Builder::new_session(TransactionSessionKind::Standard, module_bytes)
+        TransactionV1Builder::new_session(TransactionCategory::Large, module_bytes)
             .with_runtime_args(
                 runtime_args! { "destination" => purse_name, "amount" => U512::from(MAX_PAYMENT_AMOUNT) + U512::one() },
             )
@@ -3357,7 +3384,8 @@ async fn successful_purse_to_purse_transfer() {
         BOB_PUBLIC_KEY.to_account_hash(),
     );
     let bob_purse_key =
-        get_entity_named_key(&mut test.fixture, state_root_hash, bob_addr, purse_name);
+        get_entity_named_key(&mut test.fixture, state_root_hash, bob_addr, purse_name)
+            .expect("expected a key");
     let bob_purse = *bob_purse_key.as_uref().expect("Expected a URef");
 
     let alice_addr = get_entity_addr_from_account_hash(
@@ -3429,7 +3457,7 @@ async fn successful_purse_to_account_transfer() {
         Bytes::from(std::fs::read(purse_create_contract).expect("cannot read module bytes"));
 
     let mut txn = Transaction::from(
-        TransactionV1Builder::new_session(TransactionSessionKind::Standard, module_bytes)
+        TransactionV1Builder::new_session(TransactionCategory::Large, module_bytes)
             .with_runtime_args(
                 runtime_args! { "destination" => purse_name, "amount" => U512::from(MAX_PAYMENT_AMOUNT) + U512::one() },
             )
@@ -3449,7 +3477,8 @@ async fn successful_purse_to_account_transfer() {
         BOB_PUBLIC_KEY.to_account_hash(),
     );
     let bob_purse_key =
-        get_entity_named_key(&mut test.fixture, state_root_hash, bob_addr, purse_name);
+        get_entity_named_key(&mut test.fixture, state_root_hash, bob_addr, purse_name)
+            .expect("expected a key");
     let bob_purse = *bob_purse_key.as_uref().expect("Expected a URef");
 
     // now we try to transfer from the purse we just created
@@ -3556,4 +3585,68 @@ async fn native_transfer_deploy_without_source_purse_should_succeed() {
     txn.sign(&BOB_SECRET_KEY);
     let (_txn_hash, _block_height, exec_result) = test.send_transaction(txn).await;
     assert!(exec_result_is_success(&exec_result), "{:?}", exec_result);
+}
+
+#[tokio::test]
+async fn out_of_gas_txn_does_not_produce_effects() {
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_pricing_handling(PricingHandling::Fixed)
+        .with_refund_handling(RefundHandling::NoRefund)
+        .with_fee_handling(FeeHandling::PayToProposer);
+
+    let mut test = SingleTransactionTestCase::new(
+        ALICE_SECRET_KEY.clone(),
+        BOB_SECRET_KEY.clone(),
+        CHARLIE_SECRET_KEY.clone(),
+        Some(config),
+    )
+    .await;
+
+    test.fixture
+        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+        .await;
+
+    // This WASM creates named key called "new_key". Then it would loop endlessly trying to write a
+    // value to storage. Eventually it will run out of gas and it should exit causing a revert.
+    let revert_contract = RESOURCES_PATH
+        .join("..")
+        .join("target")
+        .join("wasm32-unknown-unknown")
+        .join("release")
+        .join("endless_loop_with_effects.wasm");
+    let module_bytes =
+        Bytes::from(std::fs::read(revert_contract).expect("cannot read module bytes"));
+
+    let mut txn = Transaction::from(
+        TransactionV1Builder::new_session(TransactionCategory::Large, module_bytes)
+            .with_chain_name(CHAIN_NAME)
+            .with_initiator_addr(BOB_PUBLIC_KEY.clone())
+            .build()
+            .unwrap(),
+    );
+    txn.sign(&BOB_SECRET_KEY);
+    let (_txn_hash, block_height, exec_result) = test.send_transaction(txn).await;
+    assert!(
+        matches!(
+            &exec_result,
+            ExecutionResult::V2(res) if res.error_message.as_deref() == Some("Out of gas error")
+        ),
+        "{:?}",
+        exec_result
+    );
+
+    let state_root_hash = *test
+        .fixture
+        .get_block_by_height(block_height)
+        .state_root_hash();
+    let bob_addr = get_entity_addr_from_account_hash(
+        &mut test.fixture,
+        state_root_hash,
+        BOB_PUBLIC_KEY.to_account_hash(),
+    );
+
+    // Named key should not exist since the execution was reverted because it was out of gas.
+    assert!(
+        get_entity_named_key(&mut test.fixture, state_root_hash, bob_addr, "new_key").is_none()
+    );
 }

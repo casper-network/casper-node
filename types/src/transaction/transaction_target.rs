@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 
 #[cfg(doc)]
 use super::Transaction;
-use super::{TransactionInvocationTarget, TransactionRuntime, TransactionSessionKind};
+use super::{TransactionInvocationTarget, TransactionRuntime};
 use crate::bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
@@ -41,8 +41,6 @@ pub enum TransactionTarget {
     },
     /// The execution target is the included module bytes, i.e. compiled Wasm.
     Session {
-        /// The kind of session.
-        kind: TransactionSessionKind,
         /// The compiled Wasm.
         module_bytes: Bytes,
         /// The execution runtime to use.
@@ -62,13 +60,8 @@ impl TransactionTarget {
     }
 
     /// Returns a new `TransactionTarget::Session`.
-    pub fn new_session(
-        kind: TransactionSessionKind,
-        module_bytes: Bytes,
-        runtime: TransactionRuntime,
-    ) -> Self {
+    pub fn new_session(module_bytes: Bytes, runtime: TransactionRuntime) -> Self {
         TransactionTarget::Session {
-            kind,
             module_bytes,
             runtime,
         }
@@ -86,11 +79,7 @@ impl TransactionTarget {
             SESSION_TAG => {
                 let mut buffer = vec![0u8; rng.gen_range(0..100)];
                 rng.fill_bytes(buffer.as_mut());
-                TransactionTarget::new_session(
-                    TransactionSessionKind::random(rng),
-                    Bytes::from(buffer),
-                    TransactionRuntime::VmCasperV1,
-                )
+                TransactionTarget::new_session(Bytes::from(buffer), TransactionRuntime::VmCasperV1)
             }
             _ => unreachable!(),
         }
@@ -105,13 +94,11 @@ impl Display for TransactionTarget {
                 write!(formatter, "stored({}, {})", id, runtime)
             }
             TransactionTarget::Session {
-                kind,
                 module_bytes,
                 runtime,
             } => write!(
                 formatter,
-                "session({}, {} module bytes, {})",
-                kind,
+                "session({} module bytes, {})",
                 module_bytes.len(),
                 runtime
             ),
@@ -129,7 +116,6 @@ impl Debug for TransactionTarget {
                 .field("runtime", runtime)
                 .finish(),
             TransactionTarget::Session {
-                kind,
                 module_bytes,
                 runtime,
             } => {
@@ -142,7 +128,6 @@ impl Debug for TransactionTarget {
 
                 formatter
                     .debug_struct("Session")
-                    .field("kind", kind)
                     .field("module_bytes", &BytesLen(module_bytes.len()))
                     .field("runtime", runtime)
                     .finish()
@@ -161,12 +146,10 @@ impl ToBytes for TransactionTarget {
                 runtime.write_bytes(writer)
             }
             TransactionTarget::Session {
-                kind,
                 module_bytes,
                 runtime,
             } => {
                 SESSION_TAG.write_bytes(writer)?;
-                kind.write_bytes(writer)?;
                 module_bytes.write_bytes(writer)?;
                 runtime.write_bytes(writer)
             }
@@ -187,14 +170,9 @@ impl ToBytes for TransactionTarget {
                     id.serialized_length() + runtime.serialized_length()
                 }
                 TransactionTarget::Session {
-                    kind,
                     module_bytes,
                     runtime,
-                } => {
-                    kind.serialized_length()
-                        + module_bytes.serialized_length()
-                        + runtime.serialized_length()
-                }
+                } => module_bytes.serialized_length() + runtime.serialized_length(),
             }
     }
 }
@@ -211,10 +189,9 @@ impl FromBytes for TransactionTarget {
                 Ok((target, remainder))
             }
             SESSION_TAG => {
-                let (kind, remainder) = TransactionSessionKind::from_bytes(remainder)?;
                 let (module_bytes, remainder) = Bytes::from_bytes(remainder)?;
                 let (runtime, remainder) = TransactionRuntime::from_bytes(remainder)?;
-                let target = TransactionTarget::new_session(kind, module_bytes, runtime);
+                let target = TransactionTarget::new_session(module_bytes, runtime);
                 Ok((target, remainder))
             }
             _ => Err(bytesrepr::Error::Formatting),

@@ -1,5 +1,5 @@
 use itertools::Itertools;
-use std::{collections::BTreeMap, ops::Deref, sync::Arc};
+use std::{ops::Deref, sync::Arc};
 
 use lmdb::{DatabaseFlags, RwTransaction};
 
@@ -118,7 +118,7 @@ impl LmdbGlobalState {
     pub fn put_stored_values(
         &self,
         prestate_hash: Digest,
-        stored_values: BTreeMap<Key, StoredValue>,
+        stored_values: Vec<(Key, StoredValue)>,
     ) -> Result<Digest, GlobalStateError> {
         let scratch_trie = self.get_scratch_store();
         let new_state_root = put_stored_values::<_, _, GlobalStateError>(

@@ -452,6 +452,12 @@ pub enum ApiError {
     /// assert_eq!(ApiError::from(49), ApiError::InvalidDelegationAmountLimits);
     /// ```
     InvalidDelegationAmountLimits,
+    /// Invalid action for caller information.
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(50), ApiError::InvalidCallerInfoRequest);
+    /// ```
+    InvalidCallerInfoRequest,
 }
 
 impl From<bytesrepr::Error> for ApiError {
@@ -617,6 +623,7 @@ impl From<ApiError> for u32 {
             ApiError::MaxMessagesPerBlockExceeded => 47,
             ApiError::NotAllowedToAddContractVersion => 48,
             ApiError::InvalidDelegationAmountLimits => 49,
+            ApiError::InvalidCallerInfoRequest => 50,
             ApiError::AuctionError(value) => AUCTION_ERROR_OFFSET + u32::from(value),
             ApiError::ContractHeader(value) => HEADER_ERROR_OFFSET + u32::from(value),
             ApiError::Mint(value) => MINT_ERROR_OFFSET + u32::from(value),
@@ -678,6 +685,7 @@ impl From<u32> for ApiError {
             47 => ApiError::MaxMessagesPerBlockExceeded,
             48 => ApiError::NotAllowedToAddContractVersion,
             49 => ApiError::InvalidDelegationAmountLimits,
+            50 => ApiError::InvalidCallerInfoRequest,
             USER_ERROR_MIN..=USER_ERROR_MAX => ApiError::User(value as u16),
             HP_ERROR_MIN..=HP_ERROR_MAX => ApiError::HandlePayment(value as u8),
             MINT_ERROR_MIN..=MINT_ERROR_MAX => ApiError::Mint(value as u8),
@@ -755,6 +763,7 @@ impl Debug for ApiError {
             ApiError::InvalidDelegationAmountLimits => {
                 write!(f, "ApiError::InvalidDelegationAmountLimits")?
             }
+            ApiError::InvalidCallerInfoRequest => write!(f, "ApiError::InvalidCallerInfoRequest")?,
             ApiError::ExceededRecursionDepth => write!(f, "ApiError::ExceededRecursionDepth")?,
             ApiError::AuctionError(value) => write!(
                 f,
@@ -885,6 +894,7 @@ mod tests {
             )
         );
     }
+
     #[test]
     fn error_descriptions_handle_payment_display() {
         assert_eq!(

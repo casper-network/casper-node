@@ -189,4 +189,19 @@ where
     }
 }
 
-impl<'a, R> Mint for Runtime<'a, R> where R: StateReader<Key, StoredValue, Error = GlobalStateError> {}
+impl<'a, R> Mint for Runtime<'a, R>
+where
+    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
+{
+    fn purse_exists(&mut self, uref: URef) -> Result<bool, Error> {
+        let maybe_value = self
+            .context
+            .read_gs(&Key::Balance(uref.addr()))
+            .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))?;
+        match maybe_value {
+            Some(StoredValue::CLValue(value)) => Ok(*value.cl_type() == U512::cl_type()),
+            Some(_non_cl_value) => Err(Error::CLValue),
+            None => Ok(false),
+        }
+    }
+}

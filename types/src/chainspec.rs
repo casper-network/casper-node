@@ -190,6 +190,8 @@ impl Chainspec {
         let fee_handling = self.core_config.fee_handling;
         let migrate_legacy_accounts = self.core_config.migrate_legacy_accounts;
         let migrate_legacy_contracts = self.core_config.migrate_legacy_contracts;
+        let maximum_delegation_amount = self.core_config.maximum_delegation_amount;
+        let minimum_delegation_amount = self.core_config.minimum_delegation_amount;
 
         Ok(ProtocolUpgradeConfig::new(
             pre_state_hash,
@@ -208,6 +210,8 @@ impl Chainspec {
             fee_handling,
             migrate_legacy_accounts,
             migrate_legacy_contracts,
+            maximum_delegation_amount,
+            minimum_delegation_amount,
         ))
     }
 
@@ -227,28 +231,28 @@ impl Chainspec {
     }
 
     /// Returns the max serialized for the given category.
-    pub fn get_max_serialized_length_by_kind(&self, category: u8) -> u64 {
+    pub fn get_max_serialized_length_by_category(&self, category: u8) -> u64 {
         self.transaction_config
             .transaction_v1_config
             .get_max_serialized_length(category)
     }
 
     /// Returns the max args length for the given category.
-    pub fn get_max_args_length_by_kind(&self, category: u8) -> u64 {
+    pub fn get_max_args_length_by_category(&self, category: u8) -> u64 {
         self.transaction_config
             .transaction_v1_config
             .get_max_args_length(category)
     }
 
     /// Returns the max gas limit for the given category.
-    pub fn get_max_gas_limit_by_kind(&self, category: u8) -> u64 {
+    pub fn get_max_gas_limit_by_category(&self, category: u8) -> u64 {
         self.transaction_config
             .transaction_v1_config
             .get_max_gas_limit(category)
     }
 
     /// Returns the max transaction count for the given category.
-    pub fn get_max_transaction_count_by_kind(&self, category: u8) -> u64 {
+    pub fn get_max_transaction_count_by_category(&self, category: u8) -> u64 {
         self.transaction_config
             .transaction_v1_config
             .get_max_transaction_count(category)

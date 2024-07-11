@@ -45,7 +45,7 @@ pub enum PricingMode {
         standard_payment: bool,
     },
     /// The cost of the transaction is determined by the cost table, per the
-    /// transaction kind.
+    /// transaction category.
     Fixed {
         /// User-specified gas_price tolerance (minimum 1).
         /// This is interpreted to mean "do not include this transaction in a block

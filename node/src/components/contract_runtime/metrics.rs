@@ -94,6 +94,22 @@ const EXEC_QUEUE_SIZE_NAME: &str = "execution_queue_size";
 const EXEC_QUEUE_SIZE_HELP: &str =
     "number of blocks that are currently enqueued and waiting for execution";
 
+const TXN_APPROVALS_HASHES: &str = "contract_runtime_txn_approvals_hashes_calculation";
+const TXN_APPROVALS_HASHES_HELP: &str =
+    "time in seconds to get calculate approvals hashes for executed transactions";
+
+const BLOCK_REWARDS_PAYOUT: &str = "contract_runtime_block_rewards_payout";
+const BLOCK_REWARDS_PAYOUT_HELP: &str = "time in seconds to get process rewards payouts";
+
+const BATCH_PRUNING_TIME: &str = "contract_runtime_batch_pruning_time";
+const BATCH_PRUNING_TIME_HELP: &str = "time in seconds to perform batch pruning";
+
+const DB_FLUSH_TIME: &str = "contract_runtime_db_flush_time";
+const DB_FLUSH_TIME_HELP: &str = "time in seconds to flush changes to the database";
+
+const SCRATCH_LMDB_WRITE_TIME: &str = "contract_runtime_scratch_lmdb_write_time";
+const SCRATCH_LMDB_WRITE_TIME_HELP: &str = "time in seconds to write changes to the database";
+
 /// Metrics for the contract runtime component.
 #[derive(Debug)]
 pub struct Metrics {
@@ -127,6 +143,11 @@ pub struct Metrics {
     pub(super) get_trie: Histogram,
     pub(super) latest_commit_step: Gauge,
     pub(super) exec_queue_size: IntGauge,
+    pub(super) txn_approvals_hashes_calculation: Histogram,
+    pub(super) block_rewards_payout: Histogram,
+    pub(super) pruning_time: Histogram,
+    pub(super) database_flush_time: Histogram,
+    pub(super) scratch_lmdb_write_time: Histogram,
     registry: Registry,
 }
 
@@ -139,7 +160,14 @@ impl Metrics {
             EXPONENTIAL_BUCKET_COUNT,
         )?;
 
-        // Start from 1 millsecond
+        // make wider buckets for operations that might take longer
+        let wider_buckets = prometheus::exponential_buckets(
+            EXPONENTIAL_BUCKET_START * 8.0,
+            EXPONENTIAL_BUCKET_FACTOR,
+            EXPONENTIAL_BUCKET_COUNT,
+        )?;
+
+        // Start from 1 millisecond
         // Factor by 2
         // After 10 elements we get to 1s.
         // Anything above that should be a warning signal.
@@ -186,7 +214,7 @@ impl Metrics {
                 registry,
                 EXEC_BLOCK_TOTAL_NAME,
                 EXEC_BLOCK_TOTAL_HELP,
-                common_buckets.clone(),
+                wider_buckets.clone(),
             )?,
             run_query: utils::register_histogram_metric(
                 registry,
@@ -270,7 +298,7 @@ impl Metrics {
                 registry,
                 ENTRY_POINT_NAME,
                 ENTRY_POINT_HELP,
-                common_buckets,
+                common_buckets.clone(),
             )?,
             get_trie: utils::register_histogram_metric(
                 registry,
@@ -286,6 +314,36 @@ impl Metrics {
             )?,
             latest_commit_step,
             exec_queue_size,
+            txn_approvals_hashes_calculation: utils::register_histogram_metric(
+                registry,
+                TXN_APPROVALS_HASHES,
+                TXN_APPROVALS_HASHES_HELP,
+                common_buckets.clone(),
+            )?,
+            block_rewards_payout: utils::register_histogram_metric(
+                registry,
+                BLOCK_REWARDS_PAYOUT,
+                BLOCK_REWARDS_PAYOUT_HELP,
+                wider_buckets.clone(),
+            )?,
+            pruning_time: utils::register_histogram_metric(
+                registry,
+                BATCH_PRUNING_TIME,
+                BATCH_PRUNING_TIME_HELP,
+                common_buckets.clone(),
+            )?,
+            database_flush_time: utils::register_histogram_metric(
+                registry,
+                DB_FLUSH_TIME,
+                DB_FLUSH_TIME_HELP,
+                wider_buckets.clone(),
+            )?,
+            scratch_lmdb_write_time: utils::register_histogram_metric(
+                registry,
+                SCRATCH_LMDB_WRITE_TIME,
+                SCRATCH_LMDB_WRITE_TIME_HELP,
+                wider_buckets.clone(),
+            )?,
             registry: registry.clone(),
         })
     }
@@ -316,5 +374,10 @@ impl Drop for Metrics {
         unregister_metric!(self.registry, self.latest_commit_step);
         unregister_metric!(self.registry, self.exec_queue_size);
         unregister_metric!(self.registry, self.entry_points);
+        unregister_metric!(self.registry, self.txn_approvals_hashes_calculation);
+        unregister_metric!(self.registry, self.block_rewards_payout);
+        unregister_metric!(self.registry, self.pruning_time);
+        unregister_metric!(self.registry, self.database_flush_time);
+        unregister_metric!(self.registry, self.scratch_lmdb_write_time);
     }
 }

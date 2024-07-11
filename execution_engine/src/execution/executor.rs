@@ -6,9 +6,10 @@ use casper_storage::{
     AddressGenerator,
 };
 use casper_types::{
-    account::AccountHash, addressable_entity::NamedKeys, execution::Effects, AddressableEntity,
-    AddressableEntityHash, BlockTime, ContextAccessRights, EntryPointType, Gas, Key, Phase,
-    ProtocolVersion, RuntimeArgs, StoredValue, Tagged, TransactionHash, U512,
+    account::AccountHash, addressable_entity::NamedKeys, contract_messages::Messages,
+    execution::Effects, AddressableEntity, AddressableEntityHash, BlockTime, ContextAccessRights,
+    EntryPointType, Gas, Key, Phase, ProtocolVersion, RuntimeArgs, StoredValue, Tagged,
+    TransactionHash, U512,
 };
 
 use crate::{
@@ -85,13 +86,10 @@ impl Executor {
         let entity_key = Key::addressable_entity_key(entity.kind().tag(), entity_hash);
 
         let calling_add_contract_version = match execution_kind {
-            ExecutionKind::Installer(_)
-            | ExecutionKind::Upgrader(_)
+            ExecutionKind::InstallerUpgrader(_)
             | ExecutionKind::Stored { .. }
             | ExecutionKind::Deploy(_) => CallingAddContractVersion::Allowed,
-            ExecutionKind::Standard(_) | ExecutionKind::Isolated(_) => {
-                CallingAddContractVersion::Forbidden
-            }
+            ExecutionKind::Standard(_) => CallingAddContractVersion::Forbidden,
         };
 
         let context = self.create_runtime_context(
@@ -118,9 +116,7 @@ impl Executor {
 
         let result = match execution_kind {
             ExecutionKind::Standard(module_bytes)
-            | ExecutionKind::Installer(module_bytes)
-            | ExecutionKind::Upgrader(module_bytes)
-            | ExecutionKind::Isolated(module_bytes)
+            | ExecutionKind::InstallerUpgrader(module_bytes)
             | ExecutionKind::Deploy(module_bytes) => {
                 runtime.execute_module_bytes(module_bytes, stack)
             }
@@ -135,19 +131,24 @@ impl Executor {
             }
         };
 
-        let err = match result {
-            Ok(_) => None,
-            Err(error) => Some(error.into()),
-        };
-
-        return WasmV1Result::new(
-            gas_limit,
-            runtime.context().gas_counter(),
-            runtime.context().effects(),
-            runtime.context().transfers().to_owned(),
-            runtime.context().messages(),
-            err,
-        );
+        match result {
+            Ok(_) => WasmV1Result::new(
+                gas_limit,
+                runtime.context().gas_counter(),
+                runtime.context().effects(),
+                runtime.context().transfers().to_owned(),
+                runtime.context().messages(),
+                None,
+            ),
+            Err(error) => WasmV1Result::new(
+                gas_limit,
+                runtime.context().gas_counter(),
+                Effects::new(),
+                vec![],
+                Messages::new(),
+                Some(error.into()),
+            ),
+        }
     }
 
     /// Creates new runtime context.
