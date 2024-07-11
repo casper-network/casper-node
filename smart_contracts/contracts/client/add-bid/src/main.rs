@@ -111,7 +111,7 @@ pub extern "C" fn call() {
     // Optional arguments
     let minimum_delegation_amount = get_optional_named_args(auction::ARG_MINIMUM_DELEGATION_AMOUNT);
     let maximum_delegation_amount = get_optional_named_args(auction::ARG_MAXIMUM_DELEGATION_AMOUNT);
-    let reserved_slots = runtime::get_optional_named_args(auction::ARG_RESERVED_SLOTS);
+    let reserved_slots = get_optional_named_args(auction::ARG_RESERVED_SLOTS);
 
     add_bid(
         public_key,
