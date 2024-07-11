@@ -186,7 +186,7 @@ pub enum TransactionEntryPoint {
     ///
     /// Requires the following runtime args:
     ///   * "validator": `PublicKey`
-    ///   * "delegator": `&[PublicKey]`
+    ///   * "delegators": `&[PublicKey]`
     #[cfg_attr(
         feature = "json-schema",
         schemars(
