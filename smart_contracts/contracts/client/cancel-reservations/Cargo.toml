@@ -1,11 +1,11 @@
 [package]
-name = "cancel-reservation"
+name = "cancel-reservations"
 version = "0.1.0"
 authors = ["Jacek Chmielewski <jchmielewski@teonite.com>"]
 edition = "2021"
 
 [[bin]]
-name = "cancel_reservation"
+name = "cancel_reservations"
 path = "src/main.rs"
 bench = false
 doctest = false

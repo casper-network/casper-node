@@ -1,11 +1,11 @@
 [package]
-name = "add-reservation"
+name = "add-reservations"
 version = "0.1.0"
 authors = ["Jacek Chmielewski <jchmielewski@teonite.com>"]
 edition = "2021"
 
 [[bin]]
-name = "add_reservation"
+name = "add_reservations"
 path = "src/main.rs"
 bench = false
 doctest = false

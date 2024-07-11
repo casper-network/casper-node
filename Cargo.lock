@@ -35,7 +35,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "add-reservation"
+name = "add-reservations"
 version = "0.1.0"
 dependencies = [
  "casper-contract",
@@ -452,7 +452,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "cancel-reservation"
+name = "cancel-reservations"
 version = "0.1.0"
 dependencies = [
  "casper-contract",
