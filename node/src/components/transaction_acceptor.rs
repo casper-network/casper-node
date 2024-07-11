@@ -579,8 +579,8 @@ impl TransactionAcceptor {
                 | TransactionEntryPoint::Redelegate
                 | TransactionEntryPoint::ActivateBid
                 | TransactionEntryPoint::ChangeBidPublicKey
-                | TransactionEntryPoint::AddReservation
-                | TransactionEntryPoint::CancelReservation => None
+                | TransactionEntryPoint::AddReservations
+                | TransactionEntryPoint::CancelReservations => None
             },
         };
 

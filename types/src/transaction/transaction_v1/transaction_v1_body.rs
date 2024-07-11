@@ -207,10 +207,10 @@ impl TransactionV1Body {
                 TransactionEntryPoint::ChangeBidPublicKey => {
                     arg_handling::has_valid_change_bid_public_key_args(&self.args)
                 }
-                TransactionEntryPoint::AddReservation => {
+                TransactionEntryPoint::AddReservations => {
                     todo!()
                 }
-                TransactionEntryPoint::CancelReservation => {
+                TransactionEntryPoint::CancelReservations => {
                     todo!()
                 }
             },
@@ -225,8 +225,8 @@ impl TransactionV1Body {
                 | TransactionEntryPoint::Redelegate
                 | TransactionEntryPoint::ActivateBid
                 | TransactionEntryPoint::ChangeBidPublicKey
-                | TransactionEntryPoint::AddReservation
-                | TransactionEntryPoint::CancelReservation => {
+                | TransactionEntryPoint::AddReservations
+                | TransactionEntryPoint::CancelReservations => {
                     debug!(
                         entry_point = %self.entry_point,
                         "transaction targeting stored entity/package must have custom entry point"
@@ -252,8 +252,8 @@ impl TransactionV1Body {
                 | TransactionEntryPoint::Redelegate
                 | TransactionEntryPoint::ActivateBid
                 | TransactionEntryPoint::ChangeBidPublicKey
-                | TransactionEntryPoint::AddReservation
-                | TransactionEntryPoint::CancelReservation => {
+                | TransactionEntryPoint::AddReservations
+                | TransactionEntryPoint::CancelReservations => {
                     debug!(
                         entry_point = %self.entry_point,
                         "transaction with session code must use custom or default 'call' entry point"

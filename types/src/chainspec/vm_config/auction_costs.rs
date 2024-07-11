@@ -40,10 +40,10 @@ pub const DEFAULT_READ_ERA_ID_COST: u32 = 10_000;
 pub const DEFAULT_ACTIVATE_BID_COST: u32 = 10_000;
 /// Default cost of the `change_bid_public_key` auction entry point.
 pub const DEFAULT_CHANGE_BID_PUBLIC_KEY_COST: u64 = 5_000_000_000;
-/// Default cost of the `add_reservation` auction entry point.
-pub const DEFAULT_ADD_RESERVATION_COST: u32 = DEFAULT_ADD_BID_COST;
-/// Default cost of the `cancel_reservation` auction entry point.
-pub const DEFAULT_CANCEL_RESERVATION_COST: u32 = DEFAULT_ADD_BID_COST;
+/// Default cost of the `add_reservations` auction entry point.
+pub const DEFAULT_ADD_RESERVATIONS_COST: u32 = DEFAULT_ADD_BID_COST;
+/// Default cost of the `cancel_reservations` auction entry point.
+pub const DEFAULT_CANCEL_RESERVATIONS_COST: u32 = DEFAULT_ADD_BID_COST;
 
 /// Description of the costs of calling auction entrypoints.
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug)]
@@ -80,10 +80,10 @@ pub struct AuctionCosts {
     pub redelegate: u32,
     /// Cost of calling the `change_bid_public_key` entry point.
     pub change_bid_public_key: u64,
-    /// Cost of calling the `add_reservation` entry point.
-    pub add_reservation: u32,
-    /// Cost of calling the `cancel_reservation` entry point.
-    pub cancel_reservation: u32,
+    /// Cost of calling the `add_reservations` entry point.
+    pub add_reservations: u32,
+    /// Cost of calling the `cancel_reservations` entry point.
+    pub cancel_reservations: u32,
 }
 
 impl Default for AuctionCosts {
@@ -104,8 +104,8 @@ impl Default for AuctionCosts {
             activate_bid: DEFAULT_ACTIVATE_BID_COST,
             redelegate: DEFAULT_REDELEGATE_COST,
             change_bid_public_key: DEFAULT_CHANGE_BID_PUBLIC_KEY_COST,
-            add_reservation: DEFAULT_ADD_RESERVATION_COST,
-            cancel_reservation: DEFAULT_CANCEL_RESERVATION_COST,
+            add_reservations: DEFAULT_ADD_RESERVATIONS_COST,
+            cancel_reservations: DEFAULT_CANCEL_RESERVATIONS_COST,
         }
     }
 }
@@ -130,8 +130,8 @@ impl ToBytes for AuctionCosts {
             activate_bid,
             redelegate,
             change_bid_public_key,
-            add_reservation,
-            cancel_reservation,
+            add_reservations,
+            cancel_reservations,
         } = self;
 
         ret.append(&mut get_era_validators.to_bytes()?);
@@ -149,8 +149,8 @@ impl ToBytes for AuctionCosts {
         ret.append(&mut activate_bid.to_bytes()?);
         ret.append(&mut redelegate.to_bytes()?);
         ret.append(&mut change_bid_public_key.to_bytes()?);
-        ret.append(&mut add_reservation.to_bytes()?);
-        ret.append(&mut cancel_reservation.to_bytes()?);
+        ret.append(&mut add_reservations.to_bytes()?);
+        ret.append(&mut cancel_reservations.to_bytes()?);
 
         Ok(ret)
     }
@@ -172,8 +172,8 @@ impl ToBytes for AuctionCosts {
             activate_bid,
             redelegate,
             change_bid_public_key,
-            add_reservation,
-            cancel_reservation,
+            add_reservations,
+            cancel_reservations,
         } = self;
 
         get_era_validators.serialized_length()
@@ -191,8 +191,8 @@ impl ToBytes for AuctionCosts {
             + activate_bid.serialized_length()
             + redelegate.serialized_length()
             + change_bid_public_key.serialized_length()
-            + add_reservation.serialized_length()
-            + cancel_reservation.serialized_length()
+            + add_reservations.serialized_length()
+            + cancel_reservations.serialized_length()
     }
 }
 
@@ -213,8 +213,8 @@ impl FromBytes for AuctionCosts {
         let (activate_bid, rem) = FromBytes::from_bytes(rem)?;
         let (redelegate, rem) = FromBytes::from_bytes(rem)?;
         let (change_bid_public_key, rem) = FromBytes::from_bytes(rem)?;
-        let (add_reservation, rem) = FromBytes::from_bytes(rem)?;
-        let (cancel_reservation, rem) = FromBytes::from_bytes(rem)?;
+        let (add_reservations, rem) = FromBytes::from_bytes(rem)?;
+        let (cancel_reservations, rem) = FromBytes::from_bytes(rem)?;
         Ok((
             Self {
                 get_era_validators,
@@ -232,8 +232,8 @@ impl FromBytes for AuctionCosts {
                 activate_bid,
                 redelegate,
                 change_bid_public_key,
-                add_reservation,
-                cancel_reservation,
+                add_reservations,
+                cancel_reservations,
             },
             rem,
         ))
@@ -263,8 +263,8 @@ impl Distribution<AuctionCosts> for Standard {
             activate_bid: rng.gen(),
             redelegate: rng.gen(),
             change_bid_public_key,
-            add_reservation: rng.gen(),
-            cancel_reservation: rng.gen(),
+            add_reservations: rng.gen(),
+            cancel_reservations: rng.gen(),
         }
     }
 }
@@ -293,8 +293,8 @@ pub mod gens {
             activate_bid in num::u32::ANY,
             redelegate in num::u32::ANY,
             change_bid_public_key in num::u64::ANY,
-            add_reservation in num::u32::ANY,
-            cancel_reservation in num::u32::ANY,
+            add_reservations in num::u32::ANY,
+            cancel_reservations in num::u32::ANY,
         ) -> AuctionCosts {
             AuctionCosts {
                 get_era_validators,
@@ -312,8 +312,8 @@ pub mod gens {
                 activate_bid,
                 redelegate,
                 change_bid_public_key,
-                add_reservation,
-                cancel_reservation,
+                add_reservations,
+                cancel_reservations,
             }
         }
     }

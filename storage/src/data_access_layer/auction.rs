@@ -103,7 +103,7 @@ impl AuctionMethod {
             TransactionEntryPoint::ChangeBidPublicKey => {
                 Self::new_change_bid_public_key(runtime_args)
             }
-            TransactionEntryPoint::AddReservation | TransactionEntryPoint::CancelReservation => {
+            TransactionEntryPoint::AddReservations | TransactionEntryPoint::CancelReservations => {
                 todo!()
             }
         }

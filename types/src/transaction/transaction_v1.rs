@@ -645,11 +645,11 @@ impl GasLimited for TransactionV1 {
                             TransactionEntryPoint::ChangeBidPublicKey => {
                                 costs.auction_costs().change_bid_public_key
                             }
-                            TransactionEntryPoint::AddReservation => {
-                                costs.auction_costs().add_reservation.into()
+                            TransactionEntryPoint::AddReservations => {
+                                costs.auction_costs().add_reservations.into()
                             }
-                            TransactionEntryPoint::CancelReservation => {
-                                costs.auction_costs().cancel_reservation.into()
+                            TransactionEntryPoint::CancelReservations => {
+                                costs.auction_costs().cancel_reservations.into()
                             }
                         };
                         amount

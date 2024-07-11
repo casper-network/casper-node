@@ -2055,17 +2055,17 @@
           ]
         },
         {
-          "description": "The `add_reservation` native entry point, used to add delegator to validator's reserve list",
+          "description": "The `add_reservations` native entry point, used to add delegator to validator's reserve list",
           "type": "string",
           "enum": [
-            "AddReservation"
+            "AddReservations"
           ]
         },
         {
-          "description": "The `cancel_reservation` native entry point, used to remove delegator from validator's reserve list",
+          "description": "The `cancel_reservations` native entry point, used to remove delegator from validator's reserve list",
           "type": "string",
           "enum": [
-            "CancelReservation"
+            "CancelReservations"
           ]
         }
       ]

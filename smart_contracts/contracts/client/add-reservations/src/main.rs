@@ -16,7 +16,7 @@ fn add_reservations(validator: PublicKey, delegators: &[PublicKey]) {
 // Add delegators to validator's reserved list.
 //
 // Accepts delegators' and validator's public keys.
-// Issues an add_reservation request to the auction contract.
+// Issues an add_reservations request to the auction contract.
 #[no_mangle]
 pub extern "C" fn call() {
     let delegators: Vec<PublicKey> = runtime::get_named_arg(auction::ARG_DELEGATORS);
