@@ -344,6 +344,8 @@ read_era_id = 10_000
 activate_bid = 10_000
 redelegate = 2_500_000_000
 change_bid_public_key = 5_000_000_000
+add_reservation = 2_500_000_000
+cancel_reservation = 2_500_000_000
 
 [system_costs.mint_costs]
 mint = 2_500_000_000
