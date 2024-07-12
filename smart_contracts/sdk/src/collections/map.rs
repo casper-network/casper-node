@@ -3,8 +3,8 @@ use crate::{
     host::{self, read_vec},
     serializers::borsh::{BorshDeserialize, BorshSerialize},
 };
+use casper_executor_wasm_common::keyspace::Keyspace;
 use const_fnv1a_hash::fnv1a_hash_str_64;
-use vm_common::keyspace::Keyspace;
 
 use crate::prelude::marker::PhantomData;
 

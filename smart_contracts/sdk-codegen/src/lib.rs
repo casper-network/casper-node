@@ -2,6 +2,7 @@ pub mod support;
 
 use casper_sdk::{
     abi::{Declaration, Definition, Primitive},
+    casper_executor_wasm_common::flags::EntryPointFlags,
     schema::{Schema, SchemaType},
 };
 use codegen::{Field, Scope, Type};
@@ -12,7 +13,6 @@ use std::{
     iter,
     str::FromStr,
 };
-use vm_common::flags::EntryPointFlags;
 
 const DEFAULT_DERIVED_TRAITS: &[&str] = &[
     "Clone",

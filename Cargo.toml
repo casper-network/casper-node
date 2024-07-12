@@ -16,8 +16,6 @@ members = [
     "utils/global-state-update-gen",
     "utils/validation",
     "binary_port",
-    "vm",
-    "vm-common",
     "smart_contracts/sdk",
     "smart_contracts/sdk-codegen",
     "smart_contracts/sdk-sys",
@@ -25,6 +23,11 @@ members = [
     "cargo-casper",
 #    "utils/highway-rewards-analysis",
 #    "utils/highway-state-grapher",
+    "executor/wasm-common",
+    "executor/wasm-interface",
+    "executor/wasm-host",
+    "executor/wasmer-backend",
+    "executor/wasm",
 ]
 
 default-members = [
@@ -38,8 +41,6 @@ default-members = [
     "utils/global-state-update-gen",
     "utils/validation",
     "binary_port",
-    "vm",
-    "vm-common",
     "smart_contracts/sdk",
     "smart_contracts/sdk-sys",
     "smart_contracts/sdk-codegen",

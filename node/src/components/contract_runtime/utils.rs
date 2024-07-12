@@ -1,4 +1,4 @@
-use casper_vm::executor::v2::ExecutorV2;
+use casper_executor_wasm::ExecutorV2;
 use num_rational::Ratio;
 use once_cell::sync::Lazy;
 use std::{

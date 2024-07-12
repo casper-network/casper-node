@@ -1,0 +1,24 @@
+[package]
+name = "casper-executor-wasm"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+blake2 = "0.10.6"
+borsh = {version = "1.2.0", features = ["derive"] }
+bytes = "1.4.0"
+casper-executor-wasm-common = { path = "../wasm-common" }
+casper-executor-wasm-host  = { path = "../wasm-host" }
+casper-executor-wasm-interface = { path = "../wasm-interface" }
+casper-executor-wasmer-backend = { path = "../wasmer-backend" }
+casper-storage = { path = "../../storage" }
+casper-types = { path = "../../types" }
+digest = "0.10.7"
+either = "1.10"
+parking_lot = "0.12.1"
+thiserror = "1.0.44"
+tracing = "0.1.40"
+
+[dev-dependencies]
+tempfile = "3.10.1"
+once_cell = "1.19.0"

@@ -23,10 +23,10 @@ pub mod types;
 use crate::prelude::{marker::PhantomData, ptr::NonNull};
 
 use crate::serializers::borsh::{BorshDeserialize, BorshSerialize};
+pub use casper_executor_wasm_common;
 pub use casper_sdk_sys as sys;
 use host::{CallResult, Entity};
 use types::{Address, CallError};
-pub use vm_common;
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "std")] {
@@ -113,15 +113,18 @@ macro_rules! log {
 #[macro_export]
 macro_rules! revert {
     () => {{
-        casper_sdk::host::casper_return(vm_common::flags::ReturnFlags::REVERT, None);
+        $crate::host::casper_return(
+            $crate::casper_executor_wasm_common::flags::ReturnFlags::REVERT,
+            None,
+        );
         unreachable!()
     }};
     ($arg:expr) => {{
         let value = $arg;
         let data =
-            casper_sdk::serializers::borsh::to_vec(&value).expect("Revert value should serialize");
-        casper_sdk::host::casper_return(
-            vm_common::flags::ReturnFlags::REVERT,
+            $crate::serializers::borsh::to_vec(&value).expect("Revert value should serialize");
+        $crate::host::casper_return(
+            $crate::casper_executor_wasm_common::flags::ReturnFlags::REVERT,
             Some(data.as_slice()),
         );
         #[allow(unreachable_code)]
@@ -143,7 +146,7 @@ where
         self.unwrap_or_else(|error| {
             let error_data = borsh::to_vec(&error).expect("Revert value should serialize");
             host::casper_return(
-                vm_common::flags::ReturnFlags::REVERT,
+                casper_executor_wasm_common::flags::ReturnFlags::REVERT,
                 Some(error_data.as_slice()),
             );
             unreachable!("Support for unwrap_or_revert")

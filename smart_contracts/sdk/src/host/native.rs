@@ -1,4 +1,5 @@
 use bytes::Bytes;
+use casper_executor_wasm_common::flags::{EntryPointFlags, ReturnFlags};
 use core::slice;
 use std::{
     cell::RefCell,
@@ -7,7 +8,6 @@ use std::{
     ptr::{self, NonNull},
     sync::{Arc, RwLock},
 };
-use vm_common::flags::{EntryPointFlags, ReturnFlags};
 
 use crate::{linkme::distributed_slice, types::Address};
 

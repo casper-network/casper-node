@@ -10,8 +10,8 @@ use syn::{
     parse_macro_input, Data, DeriveInput, Fields, ItemEnum, ItemFn, ItemImpl, ItemStruct,
     ItemTrait, ItemUnion, LitStr, Type,
 };
-use vm_common::{flags::EntryPointFlags, selector::Selector};
 
+use casper_sdk::casper_executor_wasm_common::{flags::EntryPointFlags, selector::Selector};
 const CASPER_RESERVED_FALLBACK_EXPORT: &str = "__casper_fallback";
 
 #[derive(Debug, FromAttributes)]
@@ -567,7 +567,7 @@ fn generate_impl_for_contract(
                     quote! {
                         let _ret: &Result<_, _> = &_ret;
                         if _ret.is_err() {
-                            flags |= casper_sdk::vm_common::flags::ReturnFlags::REVERT;
+                            flags |= casper_sdk::casper_executor_wasm_common::flags::ReturnFlags::REVERT;
                         }
 
                     }
@@ -627,7 +627,7 @@ fn generate_impl_for_contract(
 
                         #(#prelude;)*
 
-                        let mut flags = casper_sdk::vm_common::flags::ReturnFlags::empty();
+                        let mut flags = casper_sdk::casper_executor_wasm_common::flags::ReturnFlags::empty();
 
                         #handle_call;
 
@@ -814,7 +814,7 @@ fn generate_impl_for_contract(
                         selector: Some(#schema_selector),
                         arguments: vec![ #(#args,)* ],
                         result: #result,
-                        flags: casper_sdk::vm_common::flags::EntryPointFlags::from_bits(#bits).unwrap(),
+                        flags: casper_sdk::casper_executor_wasm_common::flags::EntryPointFlags::from_bits(#bits).unwrap(),
                     }
                 }
             });
@@ -1138,8 +1138,8 @@ fn casper_trait_definition(
                 //         arguments: vec![ #(#args,)* ],
                 //         result: #result,
                 //         flags:
-                // casper_sdk::vm_common::flags::EntryPointFlags::from_bits(#flags).unwrap(),
-                //     }
+                // casper_sdk::casper_executor_wasm_common::flags::EntryPointFlags::from_bits(#
+                // flags).unwrap(),     }
                 // });
 
                 let handle_dispatch = match func.sig.inputs.first() {
@@ -1156,7 +1156,7 @@ fn casper_trait_definition(
                                     #(#args_attrs,)*
                                 }
 
-                                let mut flags = casper_sdk::vm_common::flags::ReturnFlags::empty();
+                                let mut flags = casper_sdk::casper_executor_wasm_common::flags::ReturnFlags::empty();
                                 let mut instance: T = casper_sdk::host::read_state().unwrap();
                                 let input = casper_sdk::host::casper_copy_input();
                                 let args: Arguments = casper_sdk::serializers::borsh::from_slice(&input).unwrap();
@@ -1267,7 +1267,7 @@ fn casper_trait_definition(
         #vis struct #ref_struct;
 
         impl #ref_struct {
-            pub const SELECTOR: casper_sdk::vm_common::selector::Selector = casper_sdk::vm_common::selector::Selector::new(#combined_selectors);
+            pub const SELECTOR: casper_sdk::casper_executor_wasm_common::selector::Selector = casper_sdk::casper_executor_wasm_common::selector::Selector::new(#combined_selectors);
 
             // #[doc(hidden)]
             // #vis const fn __casper_new_trait_dispatch_table<T: #trait_name + borsh::BorshDeserialize + borsh::BorshSerialize + Default>() -> [casper_sdk::sys::EntryPoint; #manifest_data_len] {
@@ -1774,7 +1774,7 @@ pub fn selector(input: TokenStream) -> TokenStream {
     let selector_value = utils::compute_selector_bytes(bytes);
 
     TokenStream::from(quote! {
-        casper_sdk::vm_common::selector::Selector::new(#selector_value)
+        casper_sdk::casper_executor_wasm_common::selector::Selector::new(#selector_value)
     })
     .into()
 }

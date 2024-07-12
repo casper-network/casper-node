@@ -1,0 +1,13 @@
+[package]
+name = "casper-executor-wasm-interface"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bytes = "1.6.0"
+thiserror = "1.0.61"
+casper-executor-wasm-common = { path = "../wasm-common" }
+casper-storage = { path = "../../storage" }
+borsh = { version = "1.5.1", features = ["derive"] }
+parking_lot = "0.12.3"
+casper-types = { path = "../../types" }

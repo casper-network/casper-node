@@ -1,7 +1,7 @@
 use crate::prelude::marker::PhantomData;
 
 use crate::{host, serializers::borsh::BorshSerialize};
-use vm_common::keyspace::Keyspace;
+use casper_executor_wasm_common::keyspace::Keyspace;
 
 use super::lookup_key::{Identity, LookupKey, LookupKeyOwned};
 

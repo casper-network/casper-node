@@ -10,11 +10,11 @@ use crate::{
     serializers::borsh::{BorshDeserialize, BorshSerialize},
 };
 
-use casper_sdk_sys::casper_env_caller;
-use vm_common::{
+use casper_executor_wasm_common::{
     flags::ReturnFlags,
     keyspace::{Keyspace, KeyspaceTag},
 };
+use casper_sdk_sys::casper_env_caller;
 
 use crate::{
     abi::{CasperABI, EnumVariant},
@@ -36,35 +36,6 @@ pub fn casper_print(msg: &str) {
 pub enum Alloc<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>> {
     Callback(F),
     Static(ptr::NonNull<u8>),
-}
-
-pub fn casper_env_read<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
-    env_path: &[u64],
-    func: F,
-) -> Option<NonNull<u8>> {
-    let ret = unsafe {
-        casper_sdk_sys::casper_env_read(
-            env_path.as_ptr(),
-            env_path.len(),
-            Some(alloc_callback::<F>),
-            &func as *const _ as *mut c_void,
-        )
-    };
-
-    NonNull::<u8>::new(ret)
-}
-
-pub fn casper_env_read_into(env_path: &[u64], dest: &mut [u8]) -> Option<NonNull<u8>> {
-    let ret = unsafe {
-        casper_sdk_sys::casper_env_read(
-            env_path.as_ptr(),
-            env_path.len(),
-            None,
-            dest.as_mut_ptr() as *mut c_void,
-        )
-    };
-
-    NonNull::<u8>::new(ret)
 }
 
 extern "C" fn alloc_callback<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(

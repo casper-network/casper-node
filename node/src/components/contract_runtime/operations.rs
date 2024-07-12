@@ -1,13 +1,11 @@
 use std::{collections::BTreeMap, convert::TryInto, sync::Arc, time::Instant};
 
-use casper_vm::executor::{
-    v2::ExecutorV2, ExecuteRequestBuilder, ExecutionKind, Executor,
-    InstantiateContractRequestBuilder,
-};
+use casper_executor_wasm::{install::InstallContractRequestBuilder, ExecutorV2};
 use itertools::Itertools;
 use tracing::{debug, error, info, trace, warn};
 
 use casper_execution_engine::engine_state::{ExecutionEngineV1, WasmV1Request, WasmV1Result};
+use casper_executor_wasm_interface::executor::{ExecuteRequestBuilder, ExecutionKind, Executor};
 use casper_storage::{
     block_store::types::ApprovalsHashes,
     data_access_layer::{
@@ -400,7 +398,7 @@ pub fn execute_finalized_block(
                     match transaction_v1.body().entry_point() {
                         TransactionEntryPoint::Instantiate(_)
                         | TransactionEntryPoint::DefaultInstantiate => {
-                            let mut builder = InstantiateContractRequestBuilder::default();
+                            let mut builder = InstallContractRequestBuilder::default();
 
                             let module_bytes = match transaction_v1.body().target() {
                                 TransactionTarget::Session {
@@ -436,7 +434,7 @@ pub fn execute_finalized_block(
                             }
 
                             let request = builder
-                                .with_initiator(initiator_addr.account_hash().value())
+                                .with_initiator(initiator_addr.account_hash())
                                 .with_gas_limit(gas_limit)
                                 .with_transaction_hash(transaction_hash)
                                 .with_wasm_bytes(module_bytes.clone().take_inner().into())
@@ -451,7 +449,7 @@ pub fn execute_finalized_block(
                                 .expect("should have tracking copy")
                                 .expect("should have state root hash");
 
-                            match execution_engine_v2.instantiate_contract(tracking_copy, request) {
+                            match execution_engine_v2.install_contract(tracking_copy, request) {
                                 Ok(result) => {
                                     let effects = result.effects().clone();
                                     let pre_state_root_hash = state_root_hash;
@@ -485,14 +483,14 @@ pub fn execute_finalized_block(
                             let mut builder = ExecuteRequestBuilder::default();
 
                             let initiator_account_hash = &initiator_addr.account_hash();
-                            let initiator_addr_bytes = initiator_account_hash.value();
+
                             let initiator_key = Key::Account(*initiator_account_hash);
 
                             builder = builder
                                 .with_address_generator(address_generator)
                                 .with_gas_limit(gas_limit)
                                 .with_transaction_hash(transaction_hash)
-                                .with_initiator(initiator_addr_bytes)
+                                .with_initiator(*initiator_account_hash)
                                 .with_caller_key(initiator_key)
                                 // TODO: Callee is unnecessary as it can be derived from the
                                 // execution target inside the executor

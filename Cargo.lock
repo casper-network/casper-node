@@ -105,12 +105,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "anes"
-version = "0.1.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4b46cbb362ab8752921c97e041f5e366ee6297bd428a31275b9fcf1e380f7299"
-
-[[package]]
 name = "ansi_term"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -436,9 +430,9 @@ dependencies = [
 
 [[package]]
 name = "borsh"
-version = "1.3.0"
+version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "26d4d6dafc1a3bb54687538972158f07b2c948bc57d5890df22c0739098b3028"
+checksum = "a6362ed55def622cddc70a4746a68554d7b687713770de539e59a739b249f8ed"
 dependencies = [
  "borsh-derive",
  "cfg_aliases",
@@ -446,9 +440,9 @@ dependencies = [
 
 [[package]]
 name = "borsh-derive"
-version = "1.3.0"
+version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf4918709cc4dd777ad2b6303ed03cb37f3ca0ccede8c1b0d28ac6db8f4710e0"
+checksum = "c3ef8005764f53cd4dca619f5bf64cafd4664dada50ece25e4d81de54c80cc0b"
 dependencies = [
  "once_cell",
  "proc-macro-crate",
@@ -543,9 +537,9 @@ checksum = "14c189c53d098945499cdfa7ecc63567cf3886b3332b312a5b4585d8d3a6a610"
 
 [[package]]
 name = "bytes"
-version = "1.4.0"
+version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "89b2fd2a0dcf38d7971e2194b6b6eebab45ae01067456a7fd93d5547a61b70be"
+checksum = "514de17de45fdb8dc022b1a7975556c53c86f9f0aa5f534b98977b171857c2c9"
 dependencies = [
  "serde",
 ]
@@ -678,7 +672,7 @@ dependencies = [
  "casper-types",
  "casper-wasm",
  "clap 2.34.0",
- "criterion 0.3.6",
+ "criterion",
  "dictionary",
  "dictionary-call",
  "fs_extra",
@@ -713,7 +707,7 @@ dependencies = [
  "casper-wasm",
  "casper-wasm-utils",
  "casper-wasmi",
- "criterion 0.3.6",
+ "criterion",
  "datasize",
  "either",
  "hex-buffer-serde 0.2.2",
@@ -745,10 +739,91 @@ dependencies = [
 ]
 
 [[package]]
+name = "casper-executor-wasm"
+version = "0.1.0"
+dependencies = [
+ "blake2 0.10.6",
+ "borsh",
+ "bytes",
+ "casper-executor-wasm-common",
+ "casper-executor-wasm-host",
+ "casper-executor-wasm-interface",
+ "casper-executor-wasmer-backend",
+ "casper-storage",
+ "casper-types",
+ "digest 0.10.7",
+ "either",
+ "once_cell",
+ "parking_lot 0.12.3",
+ "tempfile",
+ "thiserror",
+ "tracing",
+]
+
+[[package]]
+name = "casper-executor-wasm-common"
+version = "0.1.0"
+dependencies = [
+ "bitflags 2.4.1",
+ "borsh",
+ "casper-sdk-sys",
+ "hex",
+ "num-derive 0.4.2",
+ "num-traits",
+ "serde",
+]
+
+[[package]]
+name = "casper-executor-wasm-host"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "casper-executor-wasm-common",
+ "casper-executor-wasm-interface",
+ "casper-storage",
+ "casper-types",
+ "num-derive 0.4.2",
+ "num-traits",
+ "parking_lot 0.12.3",
+ "safe-transmute",
+ "thiserror",
+ "tracing",
+]
+
+[[package]]
+name = "casper-executor-wasm-interface"
+version = "0.1.0"
+dependencies = [
+ "borsh",
+ "bytes",
+ "casper-executor-wasm-common",
+ "casper-storage",
+ "casper-types",
+ "parking_lot 0.12.3",
+ "thiserror",
+]
+
+[[package]]
+name = "casper-executor-wasmer-backend"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "casper-executor-wasm-host",
+ "casper-executor-wasm-interface",
+ "casper-sdk-sys",
+ "casper-storage",
+ "wasmer",
+ "wasmer-compiler-singlepass",
+ "wasmer-middlewares",
+ "wasmer-types",
+]
+
+[[package]]
 name = "casper-macros"
 version = "0.1.0"
 dependencies = [
  "blake2-rfc",
+ "casper-sdk",
  "casper-sdk-sys",
  "darling 0.20.9",
  "paste",
@@ -756,7 +831,6 @@ dependencies = [
  "quote 1.0.35",
  "static_assertions",
  "syn 2.0.52",
- "vm-common",
 ]
 
 [[package]]
@@ -776,9 +850,10 @@ dependencies = [
  "bytes",
  "casper-binary-port",
  "casper-execution-engine",
+ "casper-executor-wasm",
+ "casper-executor-wasm-interface",
  "casper-storage",
  "casper-types",
- "casper-vm",
  "datasize",
  "derive_more",
  "either",
@@ -862,6 +937,7 @@ dependencies = [
  "bitflags 2.4.1",
  "borsh",
  "bytes",
+ "casper-executor-wasm-common",
  "casper-sdk-sys",
  "cfg-if 1.0.0",
  "clap 4.4.11",
@@ -873,7 +949,6 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
- "vm-common",
 ]
 
 [[package]]
@@ -889,7 +964,6 @@ dependencies = [
  "syn 2.0.52",
  "tempfile",
  "trybuild",
- "vm-common",
 ]
 
 [[package]]
@@ -915,7 +989,7 @@ dependencies = [
  "num-rational",
  "num-traits",
  "once_cell",
- "parking_lot 0.12.1",
+ "parking_lot 0.12.3",
  "proptest",
  "rand",
  "rand_chacha",
@@ -936,7 +1010,7 @@ dependencies = [
  "bincode",
  "bitflags 1.3.2",
  "blake2 0.9.2",
- "criterion 0.3.6",
+ "criterion",
  "datasize",
  "derive_more",
  "derp",
@@ -999,35 +1073,6 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
-]
-
-[[package]]
-name = "casper-vm"
-version = "0.1.0"
-dependencies = [
- "blake2 0.10.6",
- "borsh",
- "borsh-derive",
- "bytes",
- "casper-storage",
- "casper-types",
- "criterion 0.5.1",
- "digest 0.10.7",
- "either",
- "num-derive 0.4.2",
- "num-traits",
- "once_cell",
- "parking_lot 0.12.1",
- "rand",
- "safe-transmute",
- "tempfile",
- "thiserror",
- "tracing",
- "vm-common",
- "wasmer",
- "wasmer-compiler-singlepass",
- "wasmer-middlewares",
- "wasmer-types",
 ]
 
 [[package]]
@@ -1109,9 +1154,9 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
 name = "cfg_aliases"
-version = "0.1.1"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fd16c4719339c4530435d38e511904438d07cce7950afa3718a84ac36c10e89e"
+checksum = "613afe47fcd5fac7ccf1db93babcb082c5994d996f20b8b159f2ad1658eb5724"
 
 [[package]]
 name = "change_bid_public_key"
@@ -1119,33 +1164,6 @@ version = "0.1.0"
 dependencies = [
  "casper-contract",
  "casper-types",
-]
-
-[[package]]
-name = "ciborium"
-version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "42e69ffd6f0917f5c029256a24d0161db17cea3997d185db0d35926308770f0e"
-dependencies = [
- "ciborium-io",
- "ciborium-ll",
- "serde",
-]
-
-[[package]]
-name = "ciborium-io"
-version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "05afea1e0a06c9be33d539b876f1ce3692f4afea2cb41f740e7743225ed1c757"
-
-[[package]]
-name = "ciborium-ll"
-version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "57663b653d948a338bfb3eeba9bb2fd5fcfaecb9e199e87e1eda4d9e8b240fd9"
-dependencies = [
- "ciborium-io",
- "half 2.4.1",
 ]
 
 [[package]]
@@ -1482,7 +1500,7 @@ dependencies = [
  "atty",
  "cast",
  "clap 2.34.0",
- "criterion-plot 0.4.5",
+ "criterion-plot",
  "csv",
  "itertools 0.10.5",
  "lazy_static",
@@ -1500,46 +1518,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "criterion"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f2b12d017a929603d80db1831cd3a24082f8137ce19c69e6447f54f5fc8d692f"
-dependencies = [
- "anes",
- "cast",
- "ciborium",
- "clap 4.4.11",
- "criterion-plot 0.5.0",
- "is-terminal",
- "itertools 0.10.5",
- "num-traits",
- "once_cell",
- "oorandom",
- "plotters",
- "rayon",
- "regex",
- "serde",
- "serde_derive",
- "serde_json",
- "tinytemplate",
- "walkdir",
-]
-
-[[package]]
 name = "criterion-plot"
 version = "0.4.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2673cc8207403546f45f5fd319a974b1e6983ad1a3ee7e6041650013be041876"
-dependencies = [
- "cast",
- "itertools 0.10.5",
-]
-
-[[package]]
-name = "criterion-plot"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6b50826342786a51a89e2da3a28f1c32b06e387201bc2d19791f622c673706b1"
 dependencies = [
  "cast",
  "itertools 0.10.5",
@@ -3213,7 +3195,7 @@ checksum = "385f4ce6ecf3692d313ca3aa9bd3b3d8490de53368d6d94bedff3af8b6d9c58d"
 dependencies = [
  "gix-hash",
  "hashbrown 0.14.3",
- "parking_lot 0.12.1",
+ "parking_lot 0.12.3",
 ]
 
 [[package]]
@@ -3323,7 +3305,7 @@ dependencies = [
  "gix-pack",
  "gix-path",
  "gix-quote",
- "parking_lot 0.12.1",
+ "parking_lot 0.12.3",
  "tempfile",
  "thiserror",
 ]
@@ -3345,7 +3327,7 @@ dependencies = [
  "gix-tempfile",
  "gix-traverse",
  "memmap2 0.7.1",
- "parking_lot 0.12.1",
+ "parking_lot 0.12.3",
  "smallvec",
  "thiserror",
 ]
@@ -3371,7 +3353,7 @@ checksum = "2c22decaf4a063ccae2b2108820c8630c01bd6756656df3fe464b32b8958a5ea"
 dependencies = [
  "gix-command",
  "gix-config-value",
- "parking_lot 0.12.1",
+ "parking_lot 0.12.3",
  "rustix",
  "thiserror",
 ]
@@ -3473,7 +3455,7 @@ dependencies = [
  "gix-fs 0.4.1",
  "libc",
  "once_cell",
- "parking_lot 0.12.1",
+ "parking_lot 0.12.3",
  "signal-hook",
  "signal-hook-registry",
  "tempfile",
@@ -3628,16 +3610,6 @@ name = "half"
 version = "1.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "eabb4a44450da02c90444cf74558da904edde8fb4e9035a9a6a4e15445af0bd7"
-
-[[package]]
-name = "half"
-version = "2.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6dd08c532ae367adf81c312a4580bc67f1d0fe8bc9c460520283f4c0ff277888"
-dependencies = [
- "cfg-if 1.0.0",
- "crunchy",
-]
 
 [[package]]
 name = "hashbrown"
@@ -4765,9 +4737,9 @@ dependencies = [
 
 [[package]]
 name = "parking_lot"
-version = "0.12.1"
+version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3742b2c103b9f06bc9fff0a37ff4912935851bee6d36f3c02bcc755bcfec228f"
+checksum = "f1bf18183cf54e8d6059647fc3063646a1801cf30896933ec2311622cc4b9a27"
 dependencies = [
  "lock_api",
  "parking_lot_core 0.9.8",
@@ -5013,11 +4985,11 @@ dependencies = [
 
 [[package]]
 name = "proc-macro-crate"
-version = "2.0.0"
+version = "3.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7e8366a6159044a37876a2b9817124296703c586a5c92e2c53751fa06d8d43e8"
+checksum = "6d37c51ca738a55da99dc0c4a34860fd675453b8b36209178c2249bb13651284"
 dependencies = [
- "toml_edit 0.20.7",
+ "toml_edit 0.21.0",
 ]
 
 [[package]]
@@ -5930,7 +5902,7 @@ version = "0.11.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2bef2ebfde456fb76bbcf9f59315333decc4fda0b2b44b420243c11e0f5ec1f5"
 dependencies = [
- "half 1.8.2",
+ "half",
  "serde",
 ]
 
@@ -6451,18 +6423,18 @@ checksum = "222a222a5bfe1bba4a77b45ec488a741b3cb8872e5e499451fd7d0129c9c7c3d"
 
 [[package]]
 name = "thiserror"
-version = "1.0.58"
+version = "1.0.61"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "03468839009160513471e86a034bb2c5c0e4baae3b43f79ffc55c4a5427b3297"
+checksum = "c546c80d6be4bc6a00c0f01730c08df82eaa7a7a61f11d656526506112cc1709"
 dependencies = [
  "thiserror-impl",
 ]
 
 [[package]]
 name = "thiserror-impl"
-version = "1.0.58"
+version = "1.0.61"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c61f3ba182994efc43764a46c018c347bc492c79f024e705f46567b418f6d4f7"
+checksum = "46c3384250002a6d5af4d114f2845d37b57521033f30d5c3f46c4d70e1197533"
 dependencies = [
  "proc-macro2 1.0.78",
  "quote 1.0.35",
@@ -6703,17 +6675,6 @@ dependencies = [
  "indexmap 2.2.6",
  "serde",
  "serde_spanned",
- "toml_datetime",
- "winnow 0.5.40",
-]
-
-[[package]]
-name = "toml_edit"
-version = "0.20.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "70f427fce4d84c72b5b732388bf4a9f4531b53f74e2887e3ecb2481f68f66d81"
-dependencies = [
- "indexmap 2.2.6",
  "toml_datetime",
  "winnow 0.5.40",
 ]
@@ -7244,19 +7205,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
 
 [[package]]
-name = "vm-common"
-version = "0.1.0"
-dependencies = [
- "bitflags 2.4.1",
- "borsh",
- "casper-sdk-sys",
- "hex",
- "num-derive 0.4.2",
- "num-traits",
- "serde",
-]
-
-[[package]]
 name = "vm2-cep18"
 version = "0.1.0"
 dependencies = [
@@ -7264,7 +7212,6 @@ dependencies = [
  "casper-sdk",
  "casper-sdk-codegen",
  "serde_json",
- "vm-common",
 ]
 
 [[package]]
@@ -7274,7 +7221,6 @@ dependencies = [
  "borsh",
  "casper-macros",
  "casper-sdk",
- "vm-common",
  "vm2-cep18",
 ]
 
@@ -7287,7 +7233,6 @@ dependencies = [
  "casper-sdk",
  "casper-sdk-codegen",
  "serde_json",
- "vm-common",
 ]
 
 [[package]]
@@ -7307,7 +7252,6 @@ dependencies = [
  "impls",
  "serde_json",
  "thiserror",
- "vm-common",
 ]
 
 [[package]]
@@ -7318,7 +7262,6 @@ dependencies = [
  "casper-macros",
  "casper-sdk",
  "serde_json",
- "vm-common",
 ]
 
 [[package]]

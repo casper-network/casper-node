@@ -21,7 +21,7 @@ use std::{
     time::Instant,
 };
 
-use casper_vm::executor::v2::{ExecutorConfigBuilder, ExecutorKind, ExecutorV2};
+use casper_executor_wasm::{ExecutorConfigBuilder, ExecutorKind, ExecutorV2};
 use datasize::DataSize;
 use lmdb::DatabaseFlags;
 use prometheus::Registry;

@@ -5,8 +5,8 @@ pub trait CasperSchema {
 use std::fmt::LowerHex;
 
 use bitflags::Flags;
+use casper_executor_wasm_common::flags::EntryPointFlags;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use vm_common::flags::EntryPointFlags;
 
 use crate::abi::{self, Declaration, Definitions};
 
