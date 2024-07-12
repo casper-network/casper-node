@@ -192,7 +192,7 @@ pub use transaction::{
     DeployError, DeployExcessiveSizeError, DeployHash, DeployHeader, DeployId,
     ExecutableDeployItem, ExecutableDeployItemIdentifier, ExecutionInfo, InitiatorAddr,
     InvalidDeploy, InvalidTransaction, InvalidTransactionV1, NamedArg, PackageIdentifier,
-    PricingMode, RuntimeArgs, Transaction, Transaction, TransactionCategory, TransactionEntryPoint,
+    PricingMode, RuntimeArgs, Transaction, TransactionCategory, TransactionEntryPoint,
     TransactionHash, TransactionHeader, TransactionId, TransactionInvocationTarget,
     TransactionRuntime, TransactionScheduling, TransactionTarget, TransactionV1, TransactionV1Body,
     TransactionV1DecodeFromJsonError, TransactionV1Error, TransactionV1ExcessiveSizeError,
