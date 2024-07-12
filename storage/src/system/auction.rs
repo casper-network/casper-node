@@ -11,7 +11,7 @@ use tracing::{debug, error, warn};
 
 use crate::system::auction::detail::{
     process_with_vesting_schedule, read_delegator_bid, read_delegator_bids, read_validator_bid,
-    seigniorage_recipient,
+    seigniorage_recipients,
 };
 use casper_types::{
     account::AccountHash,
@@ -399,9 +399,14 @@ pub trait Auction:
             let minimum_delegation_amount = U512::from(validator_bid.minimum_delegation_amount());
             let maximum_delegation_amount = U512::from(validator_bid.maximum_delegation_amount());
 
-            let mut delegators = read_delegator_bids(self, validator_public_key)?;
-            for delegator in delegators.iter_mut() {
+            let delegators = read_delegator_bids(self, validator_public_key)?;
+            for mut delegator in delegators {
                 let staked_amount = delegator.staked_amount();
+                if staked_amount.is_zero() {
+                    // A delegator who has unbonded - nothing to do here, this will be removed when
+                    // unbonding is processed.
+                    continue;
+                }
                 if staked_amount < minimum_delegation_amount
                     || staked_amount > maximum_delegation_amount
                 {
@@ -419,20 +424,29 @@ pub trait Auction:
                         amount,
                         None,
                     )?;
-                    match delegator.decrease_stake(amount, era_end_timestamp_millis) {
-                        Ok(_) => (),
-                        // Work around the case when the locked amounts table has yet to be
-                        // initialized (likely pre-90 day mark).
-                        Err(Error::DelegatorFundsLocked) => continue,
-                        Err(err) => return Err(err),
-                    }
+                    let updated_stake =
+                        match delegator.decrease_stake(amount, era_end_timestamp_millis) {
+                            Ok(updated_stake) => updated_stake,
+                            // Work around the case when the locked amounts table has yet to be
+                            // initialized (likely pre-90 day mark).
+                            Err(Error::DelegatorFundsLocked) => continue,
+                            Err(err) => return Err(err),
+                        };
                     let delegator_bid_addr = BidAddr::new_from_public_keys(
                         validator_public_key,
                         Some(&delegator_public_key),
                     );
 
-                    debug!("pruning delegator bid {}", delegator_bid_addr);
-                    self.prune_bid(delegator_bid_addr)
+                    debug!(
+                        "forced undelegation for {} reducing {} by {} to {}",
+                        delegator_bid_addr, staked_amount, amount, updated_stake
+                    );
+
+                    // Keep the bid for now - it will get pruned when the unbonds are processed.
+                    self.write_bid(
+                        delegator_bid_addr.into(),
+                        BidKind::Delegator(Box::new(delegator)),
+                    )?;
                 }
             }
         }
@@ -573,7 +587,6 @@ pub trait Auction:
         // Compute next auction winners
         let winners: ValidatorWeights = {
             let locked_validators = validator_bids_detail.validator_weights(
-                self,
                 era_id,
                 era_end_timestamp_millis,
                 vesting_schedule_period_millis,
@@ -585,7 +598,6 @@ pub trait Auction:
             let remaining_auction_slots = validator_slots.saturating_sub(locked_validators.len());
             if remaining_auction_slots > 0 {
                 let unlocked_validators = validator_bids_detail.validator_weights(
-                    self,
                     era_id,
                     era_end_timestamp_millis,
                     vesting_schedule_period_millis,
@@ -613,10 +625,11 @@ pub trait Auction:
             }
         };
 
-        let (validator_bids, validator_credits) = validator_bids_detail.destructure();
+        let (validator_bids, validator_credits, delegator_bids) =
+            validator_bids_detail.destructure();
 
         // call prune BEFORE incrementing the era
-        detail::prune_validator_credits(self, era_id, validator_credits);
+        detail::prune_validator_credits(self, era_id, &validator_credits);
 
         // Increment era
         era_id = era_id.checked_add(1).ok_or(Error::ArithmeticOverflow)?;
@@ -628,16 +641,7 @@ pub trait Auction:
         // Update seigniorage recipients for current era
         {
             let mut snapshot = detail::get_seigniorage_recipients_snapshot(self)?;
-            let mut recipients = SeigniorageRecipients::new();
-
-            for era_validator in winners.keys() {
-                let seigniorage_recipient = match validator_bids.get(era_validator) {
-                    Some(validator_bid) => seigniorage_recipient(self, validator_bid)?,
-                    None => return Err(Error::BidNotFound.into()),
-                };
-                recipients.insert(era_validator.clone(), seigniorage_recipient);
-            }
-
+            let recipients = seigniorage_recipients(&winners, &validator_bids, &delegator_bids)?;
             let previous_recipients = snapshot.insert(delayed_era, recipients);
             assert!(previous_recipients.is_none());
 

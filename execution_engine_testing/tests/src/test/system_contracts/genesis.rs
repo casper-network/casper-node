@@ -78,6 +78,12 @@ fn should_run_genesis() {
         .get_entity_by_account_hash(PublicKey::System.to_account_hash())
         .expect("system account should exist");
 
+    let account_1_addr = builder
+        .get_entity_hash_by_account_hash(*ACCOUNT_1_ADDR)
+        .expect("must get addr for entity account 1");
+
+    assert_eq!(account_1_addr.value(), ACCOUNT_1_ADDR.value());
+
     let account_1 = builder
         .get_entity_by_account_hash(*ACCOUNT_1_ADDR)
         .expect("account 1 should exist");

@@ -13,13 +13,7 @@ use tracing::{debug, error, trace};
 use casper_execution_engine::engine_state::MAX_PAYMENT;
 use casper_storage::data_access_layer::{balance::BalanceHandling, BalanceRequest, ProofHandling};
 use casper_types::{
-    account::AccountHash, addressable_entity::AddressableEntity, contracts::ContractHash,
-    system::auction::ARG_AMOUNT, AddressableEntityHash, AddressableEntityIdentifier, BlockHeader,
-    Chainspec, EntityAddr, EntityKind, EntityVersion, EntityVersionKey, EntryPoint, EntryPointAddr,
-    ExecutableDeployItem, ExecutableDeployItemIdentifier, InitiatorAddr, Key, Package, PackageAddr,
-    PackageHash, PackageIdentifier, Transaction, TransactionEntryPoint,
-    TransactionInvocationTarget, TransactionRuntime, TransactionTarget, DEFAULT_ENTRY_POINT_NAME,
-    U512,
+    account::AccountHash, addressable_entity::AddressableEntity, system::auction::ARG_AMOUNT, AddressableEntityHash, AddressableEntityIdentifier, BlockHeader, Chainspec, EntityAddr, EntityKind, EntityVersion, EntityVersionKey, EntryPoint, EntryPointAddr, ExecutableDeployItem, ExecutableDeployItemIdentifier, InitiatorAddr, Key, Package, PackageAddr, PackageHash, PackageIdentifier, Transaction, TransactionEntryPoint, TransactionInvocationTarget, TransactionRuntime, TransactionTarget, DEFAULT_ENTRY_POINT_NAME, U512
 };
 
 use crate::{
@@ -178,12 +172,13 @@ impl TransactionAcceptor {
         };
 
         if event_metadata.source.is_client() {
-            let account_key = match event_metadata.transaction.initiator_addr() {
-                InitiatorAddr::PublicKey(public_key) => Key::from(public_key.to_account_hash()),
-                InitiatorAddr::AccountHash(account_hash) => Key::from(account_hash),
+            let account_hash = match event_metadata.transaction.initiator_addr() {
+                InitiatorAddr::PublicKey(public_key) => public_key.to_account_hash(),
+                InitiatorAddr::AccountHash(account_hash) => account_hash,
             };
+            let entity_addr = EntityAddr::Account(account_hash.value());
             effect_builder
-                .get_addressable_entity(*block_header.state_root_hash(), account_key)
+                .get_addressable_entity(*block_header.state_root_hash(), entity_addr)
                 .event(move |result| Event::GetAddressableEntityResult {
                     event_metadata,
                     maybe_entity: result.into_option(),
@@ -311,32 +306,26 @@ impl TransactionAcceptor {
             ExecutableDeployItemIdentifier::AddressableEntity(
                 AddressableEntityIdentifier::Hash(contract_hash),
             ) => {
-                let query_key = Key::from(ContractHash::new(contract_hash.value()));
+                let entity_addr = EntityAddr::SmartContract(contract_hash.value());
                 effect_builder
-                    .get_addressable_entity(*block_header.state_root_hash(), query_key)
-                    .event(move |result| {
-                        debug!(?result, "get_addressable_entity result 4");
-                        Event::GetContractResult {
-                            event_metadata,
-                            block_header,
-                            is_payment: true,
-                            contract_hash,
-                            maybe_entity: result.into_option(),
-                        }
+                    .get_addressable_entity(*block_header.state_root_hash(), entity_addr)
+                    .event(move |result| Event::GetContractResult {
+                        event_metadata,
+                        block_header,
+                        is_payment: true,
+                        contract_hash,
+                        maybe_entity: result.into_option(),
                     })
             }
             ExecutableDeployItemIdentifier::AddressableEntity(
                 AddressableEntityIdentifier::Addr(entity_addr),
-            ) => {
-                let query_key = Key::AddressableEntity(entity_addr);
-                effect_builder
-                    .get_addressable_entity(*block_header.state_root_hash(), query_key)
-                    .event(move |result| Event::GetAddressableEntityResult {
-                        event_metadata,
-                        block_header,
-                        maybe_entity: result.into_option(),
-                    })
-            }
+            ) => effect_builder
+                .get_addressable_entity(*block_header.state_root_hash(), entity_addr)
+                .event(move |result| Event::GetAddressableEntityResult {
+                    event_metadata,
+                    block_header,
+                    maybe_entity: result.into_option(),
+                }),
             ExecutableDeployItemIdentifier::Package(
                 ref contract_package_identifier @ PackageIdentifier::Hash { package_hash, .. },
             ) => {
@@ -433,32 +422,26 @@ impl TransactionAcceptor {
             ExecutableDeployItemIdentifier::AddressableEntity(
                 AddressableEntityIdentifier::Hash(entity_hash),
             ) => {
-                let key = Key::from(ContractHash::new(entity_hash.value()));
+                let entity_addr = EntityAddr::SmartContract(entity_hash.value());
                 effect_builder
-                    .get_addressable_entity(*block_header.state_root_hash(), key)
-                    .event(move |result| {
-                        debug!(?result, "get_addressable_entity result 3");
-                        Event::GetContractResult {
-                            event_metadata,
-                            block_header,
-                            is_payment: false,
-                            contract_hash: entity_hash,
-                            maybe_entity: result.into_option(),
-                        }
+                    .get_addressable_entity(*block_header.state_root_hash(), entity_addr)
+                    .event(move |result| Event::GetContractResult {
+                        event_metadata,
+                        block_header,
+                        is_payment: false,
+                        contract_hash: entity_hash,
+                        maybe_entity: result.into_option(),
                     })
             }
             ExecutableDeployItemIdentifier::AddressableEntity(
                 AddressableEntityIdentifier::Addr(entity_addr),
-            ) => {
-                let key = Key::AddressableEntity(entity_addr);
-                effect_builder
-                    .get_addressable_entity(*block_header.state_root_hash(), key)
-                    .event(move |result| Event::GetAddressableEntityResult {
-                        event_metadata,
-                        block_header,
-                        maybe_entity: result.into_option(),
-                    })
-            }
+            ) => effect_builder
+                .get_addressable_entity(*block_header.state_root_hash(), entity_addr)
+                .event(move |result| Event::GetAddressableEntityResult {
+                    event_metadata,
+                    block_header,
+                    maybe_entity: result.into_option(),
+                }),
             ExecutableDeployItemIdentifier::Package(
                 ref package_identifier @ PackageIdentifier::Hash { package_hash, .. },
             ) => {
@@ -525,22 +508,14 @@ impl TransactionAcceptor {
             NextStep::GetContract(entity_addr, runtime) => {
                 // Use `Key::Hash` variant so that we try to retrieve the entity as either an
                 // AddressableEntity, or fall back to retrieving an un-migrated Contract.
-                let key = match runtime {
-                    TransactionRuntime::VmCasperV1 => Key::Hash(entity_addr.value()), // Is that
-                    TransactionRuntime::VmCasperV2 => Key::AddressableEntity(entity_addr),
-                };
-
                 effect_builder
-                    .get_addressable_entity(*block_header.state_root_hash(), key)
-                    .event(move |result| {
-                        debug!(?result, ?key, ?runtime, "get_addressable_entity result 2");
-                        Event::GetContractResult {
-                            event_metadata,
-                            block_header,
-                            is_payment: false,
-                            contract_hash: AddressableEntityHash::new(entity_addr.value()),
-                            maybe_entity: result.into_option(),
-                        }
+                    .get_addressable_entity(*block_header.state_root_hash(), entity_addr)
+                    .event(move |result| Event::GetContractResult {
+                        event_metadata,
+                        block_header,
+                        is_payment: false,
+                        contract_hash: AddressableEntityHash::new(entity_addr.value()),
+                        maybe_entity: result.into_option(),
                     })
             }
             NextStep::GetPackage(package_addr, maybe_package_version) => {
@@ -744,18 +719,15 @@ impl TransactionAcceptor {
 
         match package.lookup_entity_hash(entity_version_key) {
             Some(&contract_hash) => {
-                let key = Key::from(ContractHash::new(contract_hash.value()));
+                let entity_addr = EntityAddr::SmartContract(contract_hash.value());
                 effect_builder
-                    .get_addressable_entity(*block_header.state_root_hash(), key)
-                    .event(move |result| {
-                        debug!(?result, "get_addressable_entity result 1");
-                        Event::GetContractResult {
-                            event_metadata,
-                            block_header,
-                            is_payment,
-                            contract_hash,
-                            maybe_entity: result.into_option(),
-                        }
+                    .get_addressable_entity(*block_header.state_root_hash(), entity_addr)
+                    .event(move |result| Event::GetContractResult {
+                        event_metadata,
+                        block_header,
+                        is_payment,
+                        contract_hash,
+                        maybe_entity: result.into_option(),
                     })
             }
             None => {

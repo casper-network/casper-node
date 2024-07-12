@@ -46,8 +46,8 @@ use crate::runtime_args;
 use crate::{
     bytesrepr::Bytes,
     system::auction::{
-        ARG_AMOUNT as ARG_AUCTION_AMOUNT, ARG_DELEGATOR, ARG_NEW_VALIDATOR,
-        ARG_PUBLIC_KEY as ARG_AUCTION_PUBLIC_KEY, ARG_VALIDATOR, METHOD_DELEGATE,
+        ARG_AMOUNT as ARG_AUCTION_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_NEW_VALIDATOR,
+        ARG_PUBLIC_KEY as ARG_AUCTION_PUBLIC_KEY, ARG_VALIDATOR, METHOD_ADD_BID, METHOD_DELEGATE,
         METHOD_REDELEGATE, METHOD_UNDELEGATE, METHOD_WITHDRAW_BID,
     },
     testing::TestRng,
@@ -1005,6 +1005,44 @@ impl Deploy {
             session,
             &secret_key,
             None,
+        )
+    }
+
+    /// Creates an add bid deploy, for testing.
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
+    pub fn add_bid(
+        chain_name: String,
+        auction_contract_hash: AddressableEntityHash,
+        public_key: PublicKey,
+        amount: U512,
+        delegation_rate: u8,
+        timestamp: Timestamp,
+        ttl: TimeDiff,
+    ) -> Self {
+        let payment = ExecutableDeployItem::ModuleBytes {
+            module_bytes: Bytes::new(),
+            args: runtime_args! { ARG_AMOUNT => U512::from(3_000_000_000_u64) },
+        };
+        let args = runtime_args! {
+            ARG_AUCTION_AMOUNT => amount,
+            ARG_AUCTION_PUBLIC_KEY => public_key.clone(),
+            ARG_DELEGATION_RATE => delegation_rate,
+        };
+        let session = ExecutableDeployItem::StoredContractByHash {
+            hash: auction_contract_hash,
+            entry_point: METHOD_ADD_BID.to_string(),
+            args,
+        };
+
+        Deploy::build(
+            timestamp,
+            ttl,
+            1,
+            vec![],
+            chain_name,
+            payment,
+            session,
+            InitiatorAddrAndSecretKey::InitiatorAddr(InitiatorAddr::PublicKey(public_key)),
         )
     }
 

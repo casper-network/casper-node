@@ -449,7 +449,7 @@ where
         let mut generator = AddressGenerator::new(main_purse.addr().as_ref(), Phase::System);
 
         let byte_code_hash = ByteCodeHash::default();
-        let entity_hash = AddressableEntityHash::new(generator.new_hash_address());
+        let entity_hash = AddressableEntityHash::new(account_hash.value());
         let package_hash = PackageHash::new(generator.new_hash_address());
 
         let associated_keys = AssociatedKeys::new(account_hash, Weight::new(1));
@@ -592,7 +592,7 @@ where
         let access_uref = legacy_package.access_key();
         let mut generator = AddressGenerator::new(access_uref.addr().as_ref(), Phase::System);
 
-        let mut package: Package = legacy_package.into();
+        let package: Package = legacy_package.into();
 
         for (_, contract_hash) in legacy_versions.into_iter() {
             let legacy_contract = match self.read(&Key::Hash(contract_hash.value()))? {
@@ -667,8 +667,6 @@ where
             self.prune(Key::Hash(contract_hash.value()));
             // Prune the legacy Wasm record.
             self.prune(Key::Hash(contract_wasm_hash.value()));
-
-            package.insert_entity_version(protocol_version.value().major, entity_hash);
         }
 
         let access_key_value = CLValue::from_t(access_uref).map_err(Self::Error::CLValue)?;

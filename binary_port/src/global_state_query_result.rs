@@ -11,9 +11,10 @@ use casper_types::testing::TestRng;
 
 #[cfg(test)]
 use casper_types::{ByteCode, ByteCodeKind};
+use serde::Serialize;
 
 /// Carries the successful result of the global state query.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Serialize)]
 pub struct GlobalStateQueryResult {
     /// Stored value.
     value: StoredValue,
