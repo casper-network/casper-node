@@ -67,8 +67,7 @@ mod tagged;
 #[cfg(any(feature = "testing", test))]
 pub mod testing;
 mod timestamp;
-/// Module containing transaction types.
-pub mod transaction;
+mod transaction;
 mod transfer;
 mod transfer_result;
 mod uint;
