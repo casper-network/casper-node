@@ -90,10 +90,7 @@ fn add_bid(
         );
     }
     if let Some(reserved_slots) = reserved_slots {
-        let _ = args.insert(
-            auction::ARG_RESERVED_SLOTS,
-            reserved_slots,
-        );
+        let _ = args.insert(auction::ARG_RESERVED_SLOTS, reserved_slots);
     }
     runtime::call_contract::<U512>(contract_hash, auction::METHOD_ADD_BID, args);
 }

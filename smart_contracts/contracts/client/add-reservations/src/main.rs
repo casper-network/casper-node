@@ -5,11 +5,10 @@ extern crate alloc;
 
 use alloc::vec::Vec;
 
-use casper_contract::contract_api::{runtime, system};
-use casper_types::{runtime_args, system::auction, PublicKey, U512};
+use casper_contract::contract_api::runtime;
+use casper_types::{system::auction, PublicKey};
 
-
-fn add_reservations(validator: PublicKey, delegators: &[PublicKey]) {
+fn add_reservations(_validator: PublicKey, _delegators: &[PublicKey]) {
     todo!();
 }
 

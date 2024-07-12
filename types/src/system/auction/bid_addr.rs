@@ -221,7 +221,10 @@ impl BidAddr {
     /// Else, it is the key for a validator bid record.
     pub fn is_delegator_bid_addr(&self) -> bool {
         match self {
-            BidAddr::Unified(_) | BidAddr::Validator(_) | BidAddr::Credit { .. } | BidAddr::Reservation { .. } => false,
+            BidAddr::Unified(_)
+            | BidAddr::Validator(_)
+            | BidAddr::Credit { .. }
+            | BidAddr::Reservation { .. } => false,
             BidAddr::Delegator { .. } => true,
         }
     }

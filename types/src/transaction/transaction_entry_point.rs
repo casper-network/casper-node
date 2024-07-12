@@ -230,7 +230,7 @@ impl TransactionEntryPoint {
             | TransactionEntryPoint::ActivateBid
             | TransactionEntryPoint::ChangeBidPublicKey
             | TransactionEntryPoint::AddReservations
-            | TransactionEntryPoint::CancelReservations => false
+            | TransactionEntryPoint::CancelReservations => false,
         }
     }
 }
@@ -273,9 +273,11 @@ impl ToBytes for TransactionEntryPoint {
             TransactionEntryPoint::ActivateBid => ACTIVATE_BID_TAG.write_bytes(writer),
             TransactionEntryPoint::ChangeBidPublicKey => {
                 CHANGE_BID_PUBLIC_KEY_TAG.write_bytes(writer)
-            },
+            }
             TransactionEntryPoint::AddReservations => ADD_RESERVATIONS_TAG.write_bytes(writer),
-            TransactionEntryPoint::CancelReservations => CANCEL_RESERVATIONS_TAG.write_bytes(writer),
+            TransactionEntryPoint::CancelReservations => {
+                CANCEL_RESERVATIONS_TAG.write_bytes(writer)
+            }
         }
     }
 
@@ -299,7 +301,7 @@ impl ToBytes for TransactionEntryPoint {
                 | TransactionEntryPoint::ActivateBid
                 | TransactionEntryPoint::ChangeBidPublicKey
                 | TransactionEntryPoint::AddReservations
-                | TransactionEntryPoint::CancelReservations => 0
+                | TransactionEntryPoint::CancelReservations => 0,
             }
     }
 }
