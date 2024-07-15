@@ -176,6 +176,14 @@ impl BidAddr {
         }
     }
 
+    /// Create a new instance of a [`BidAddr`].
+    pub fn new_reservation(validator: &PublicKey, delegator: &PublicKey) -> Self {
+        BidAddr::Reservation {
+            validator: validator.into(),
+            delegator: delegator.into(),
+        }
+    }
+
     /// Returns the common prefix of all delegators to the cited validator.
     pub fn delegators_prefix(&self) -> Result<Vec<u8>, Error> {
         let validator = self.validator_account_hash();

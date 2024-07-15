@@ -39,8 +39,9 @@ use crate::{
     package::{EntityVersionKey, EntityVersions, Groups, PackageStatus},
     system::{
         auction::{
-            gens::era_info_arb, Bid, BidAddr, BidKind, DelegationRate, Delegator, UnbondingPurse,
-            ValidatorBid, ValidatorCredit, WithdrawPurse, DELEGATION_RATE_DENOMINATOR,
+            gens::era_info_arb, Bid, BidAddr, BidKind, DelegationRate, Delegator, Reservation,
+            UnbondingPurse, ValidatorBid, ValidatorCredit, WithdrawPurse,
+            DELEGATION_RATE_DENOMINATOR,
         },
         mint::BalanceHoldAddr,
         SystemEntityType,
@@ -631,6 +632,11 @@ pub(crate) fn delegator_arb() -> impl Strategy<Value = Delegator> {
 
 fn delegation_rate_arb() -> impl Strategy<Value = DelegationRate> {
     0..=DELEGATION_RATE_DENOMINATOR // Maximum, allowed value for delegation rate.
+}
+
+pub(crate) fn reservation_arb() -> impl Strategy<Value = Reservation> {
+    (public_key_arb_no_system(), public_key_arb_no_system())
+        .prop_map(|(delegator_pk, validator_pk)| Reservation::new(delegator_pk, validator_pk))
 }
 
 pub(crate) fn unified_bid_arb(

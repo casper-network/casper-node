@@ -17,8 +17,8 @@ use casper_engine_test_support::LmdbWasmTestBuilder;
 use casper_execution_engine::engine_state::engine_config::DEFAULT_PROTOCOL_VERSION;
 use casper_types::{
     system::auction::{
-        Bid, BidKind, BidsExt, Delegator, SeigniorageRecipient, SeigniorageRecipientsSnapshot,
-        ValidatorBid, ValidatorCredit,
+        Bid, BidKind, BidsExt, Delegator, Reservation, SeigniorageRecipient,
+        SeigniorageRecipientsSnapshot, ValidatorBid, ValidatorCredit,
     },
     CLValue, EraId, PublicKey, StoredValue, U512,
 };
@@ -331,6 +331,12 @@ pub fn add_and_remove_bids<T: StateReader>(
                     public_key.clone(),
                     credit.era_id(),
                 ))),
+                BidKind::Reservation(reservation_bid) => {
+                    BidKind::Reservation(Box::new(Reservation::new(
+                        public_key.clone(),
+                        reservation_bid.delegator_public_key().clone(),
+                    )))
+                }
             };
             state.set_bid(reset_bid, slash_instead_of_unbonding);
         }
