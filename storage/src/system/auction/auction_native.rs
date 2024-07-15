@@ -8,7 +8,7 @@ use crate::{
         mint::Mint,
         runtime_native::RuntimeNative,
     },
-    tracking_copy::TrackingCopyError,
+    tracking_copy::{TrackingCopyEntityExt, TrackingCopyError},
 };
 use casper_types::{
     account::AccountHash,
@@ -214,6 +214,20 @@ where
     fn unbond(&mut self, unbonding_purse: &UnbondingPurse) -> Result<(), Error> {
         let account_hash =
             AccountHash::from_public_key(unbonding_purse.unbonder_public_key(), crypto::blake2b);
+
+        // Do a migration if the account hasn't been migrated yet. This is just a read if it has
+        // been migrated already.
+        self.tracking_copy()
+            .borrow_mut()
+            .migrate_account(account_hash, self.protocol_version())
+            .map_err(|error| {
+                error!(
+                    "MintProvider::unbond: couldn't migrate account: {:?}",
+                    error
+                );
+                Error::Storage
+            })?;
+
         let maybe_value = self
             .tracking_copy()
             .borrow_mut()

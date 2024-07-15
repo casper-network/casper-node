@@ -1870,6 +1870,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "endless-loop-with-effects"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "enum-iterator"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2332,6 +2340,14 @@ dependencies = [
 
 [[package]]
 name = "gh-3097-regression-call"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
+name = "gh-4771-regression"
 version = "0.1.0"
 dependencies = [
  "casper-contract",
