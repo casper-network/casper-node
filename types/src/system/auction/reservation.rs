@@ -26,7 +26,7 @@ pub struct Reservation {
 
 impl Reservation {
     /// Creates a new [`Reservation`]
-    pub fn new(delegator_public_key: PublicKey, validator_public_key: PublicKey) -> Self {
+    pub fn new(validator_public_key: PublicKey, delegator_public_key: PublicKey) -> Self {
         Self {
             delegator_public_key,
             validator_public_key,

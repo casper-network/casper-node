@@ -111,6 +111,13 @@ pub trait BidsExt {
         delegator_public_key: &PublicKey,
     ) -> Option<Delegator>;
 
+    /// Returns Reservation entry by public keys, if present.
+    fn reservation_by_public_keys(
+        &self,
+        validator_public_key: &PublicKey,
+        delegator_public_key: &PublicKey,
+    ) -> Option<Reservation>;
+
     /// Returns true if containing any elements matching the provided validator public key.
     fn contains_validator_public_key(&self, public_key: &PublicKey) -> bool;
 
@@ -223,10 +230,27 @@ impl BidsExt for Vec<BidKind> {
         delegator_public_key: &PublicKey,
     ) -> Option<Delegator> {
         if let BidKind::Delegator(delegator) = self.iter().find(|x| {
-            &x.validator_public_key() == validator_public_key
+            x.is_delegator()
+                && &x.validator_public_key() == validator_public_key
                 && x.delegator_public_key() == Some(delegator_public_key.clone())
         })? {
             Some(*delegator.clone())
+        } else {
+            None
+        }
+    }
+
+    fn reservation_by_public_keys(
+        &self,
+        validator_public_key: &PublicKey,
+        delegator_public_key: &PublicKey,
+    ) -> Option<Reservation> {
+        if let BidKind::Reservation(reservation) = self.iter().find(|x| {
+            x.is_reservation()
+                && &x.validator_public_key() == validator_public_key
+                && x.delegator_public_key() == Some(delegator_public_key.clone())
+        })? {
+            Some(*reservation.clone())
         } else {
             None
         }
@@ -318,6 +342,14 @@ impl BidsExt for Vec<BidKind> {
                     x.validator_public_key() == bid_kind.validator_public_key()
                         && x.tag() == bid_kind.tag()
                         && x.era_id() == bid_kind.era_id()
+                })
+                .map(|(idx, _)| idx),
+            BidKind::Reservation(_) => self
+                .iter()
+                .find_position(|x| {
+                    x.is_reservation()
+                        && x.validator_public_key() == bid_kind.validator_public_key()
+                        && x.delegator_public_key() == bid_kind.delegator_public_key()
                 })
                 .map(|(idx, _)| idx),
         };
