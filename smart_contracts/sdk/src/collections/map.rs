@@ -48,10 +48,7 @@ where
         let mut key_bytes = self.name.as_bytes().to_owned();
         key.serialize(&mut key_bytes).unwrap();
         let prefix = Keyspace::Context(&key_bytes);
-        match read_vec(prefix) {
-            Some(vec) => Some(borsh::from_slice(&vec).unwrap()),
-            None => None,
-        }
+        read_vec(prefix).map(|vec| borsh::from_slice(&vec).unwrap())
     }
 }
 

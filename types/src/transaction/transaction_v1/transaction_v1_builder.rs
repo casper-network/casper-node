@@ -14,7 +14,6 @@ use super::{
     InitiatorAddrAndSecretKey, PricingMode, TransactionV1, TransactionV1Body,
 };
 use crate::{
-    addressable_entity,
     bytesrepr::Bytes,
     transaction::{RuntimeArgs, TransactionCategory, TransferTarget},
     AddressableEntityHash, CLValue, CLValueError, EntityVersion, PackageHash, PublicKey, SecretKey,
@@ -298,7 +297,7 @@ impl<'a> TransactionV1Builder<'a> {
             TransactionV1Body {
                 args,
                 target,
-                entry_point: entry_point,
+                entry_point,
                 transaction_category,
                 scheduling,
                 value,
@@ -457,8 +456,15 @@ impl<'a> TransactionV1Builder<'a> {
 
     /// Appends the given runtime arg into the body's `args`.
     pub fn with_runtime_arg<K: Into<String>>(mut self, key: K, cl_value: CLValue) -> Self {
-        self.body.args.insert_cl_value(key, cl_value);
-        self
+        match &mut self.body.args {
+            TransactionArgs::Named(args) => {
+                args.insert_cl_value(key, cl_value);
+                self
+            }
+            TransactionArgs::Unnamed(raw_bytes) => {
+                panic!("Cannot append named args to unnamed args: {:?}", raw_bytes)
+            }
+        }
     }
 
     /// Sets the runtime args in the transaction.

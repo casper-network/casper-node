@@ -199,7 +199,7 @@ pub fn casper_create(
 
     if call_error == 0 {
         let result = unsafe { result.assume_init() };
-        Ok(result.into())
+        Ok(result)
     } else {
         Err(CallError::try_from(call_error).expect("Unexpected error code"))
     }
@@ -291,10 +291,7 @@ pub fn casper_upgrade(
 pub fn read_vec(key: Keyspace) -> Option<Vec<u8>> {
     let mut vec = Vec::new();
     let out = casper_read(key, |size| reserve_vec_space(&mut vec, size)).unwrap();
-    match out {
-        Some(_input) => Some(vec),
-        None => None,
-    }
+    out.map(|_input| vec)
 }
 
 pub fn has_state() -> Result<bool, Error> {

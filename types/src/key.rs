@@ -1285,6 +1285,7 @@ impl Key {
         ret
     }
 
+    /// Returns an entity addr for a [`Key::AddressableEntity`].
     pub fn into_entity_addr(self) -> Option<EntityAddr> {
         match self {
             Key::AddressableEntity(entity_addr) => Some(entity_addr),

@@ -1275,7 +1275,7 @@ where
                     "Contract".to_string(),
                     other.type_name(),
                 ))),
-                None => Err(TrackingCopyError::KeyNotFound(key)).map_err(Into::into),
+                None => Err(Into::into(TrackingCopyError::KeyNotFound(key))),
             },
         }
     }

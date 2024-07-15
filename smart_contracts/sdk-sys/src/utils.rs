@@ -14,7 +14,7 @@ pub const fn fallback_selector_count(selectors: &[&[EntryPoint]]) -> usize {
         }
         i += 1;
     }
-    return count;
+    count
 }
 
 #[cfg(test)]
@@ -27,7 +27,7 @@ mod tests {
     #[allow(dead_code)]
     const EMPTY_SELECTORS: &[&[EntryPoint]] = &[&[]];
     const _: () = {
-        assert!(fallback_selector_count(&EMPTY_SELECTORS) == 0);
+        assert!(fallback_selector_count(EMPTY_SELECTORS) == 0);
     };
 
     // Test case 2: No fallback selector
@@ -59,7 +59,7 @@ mod tests {
         ],
     ];
     const _: () = {
-        assert!(fallback_selector_count(&INVALID_SELECTORS) == 0);
+        assert!(fallback_selector_count(INVALID_SELECTORS) == 0);
     };
 
     // Test case 3: Fallback selector exists
@@ -97,6 +97,6 @@ mod tests {
         }],
     ];
     const _: () = {
-        assert!(fallback_selector_count(&VALID_SELECTORS) == 2);
+        assert!(fallback_selector_count(VALID_SELECTORS) == 2);
     };
 }

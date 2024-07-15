@@ -145,8 +145,16 @@ impl InstallContractResult {
         effects
     }
 
-    pub fn contract_hash(&self) -> [u8; 32] {
-        self.contract_hash.value()
+    pub fn contract_package_hash(&self) -> &ContractPackageHash {
+        &self.contract_package_hash
+    }
+
+    pub fn contract_hash(&self) -> &ContractHash {
+        &self.contract_hash
+    }
+
+    pub fn version(&self) -> &u32 {
+        &self.version
     }
 
     pub fn gas_usage(&self) -> &GasUsage {

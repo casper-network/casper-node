@@ -26,7 +26,7 @@ use crate::bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
 
 #[cfg(any(feature = "std", test))]
 use crate::InvalidTransactionV1;
-use crate::{CLTyped, CLValue, CLValueError};
+use crate::{CLTyped, CLValueError};
 
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::testing::TestRng;
@@ -76,22 +76,6 @@ pub enum TransactionArgs {
 }
 
 impl TransactionArgs {
-    pub(crate) fn insert_cl_value<K: Into<String>>(&mut self, key: K, cl_value: CLValue) {
-        match self {
-            TransactionArgs::Named(args) => {
-                args.insert_cl_value(key, cl_value);
-            }
-            TransactionArgs::Unnamed(_) => panic!("Cannot insert into unnamed transaction args"),
-        }
-    }
-
-    pub(crate) fn get(&self, transfer_arg_target: &str) -> Option<&CLValue> {
-        match self {
-            TransactionArgs::Named(args) => args.get(transfer_arg_target),
-            TransactionArgs::Unnamed(_) => None,
-        }
-    }
-
     pub fn as_named(&self) -> Option<&RuntimeArgs> {
         match self {
             TransactionArgs::Named(args) => Some(args),
@@ -324,30 +308,30 @@ impl TransactionV1Body {
                     })
                 }
                 TransactionEntryPoint::Transfer => arg_handling::has_valid_transfer_args(
-                    &self.args.as_named().unwrap(),
+                    self.args.as_named().unwrap(),
                     config.native_transfer_minimum_motes,
                 ),
                 TransactionEntryPoint::AddBid => {
-                    arg_handling::has_valid_add_bid_args(&self.args.as_named().unwrap())
+                    arg_handling::has_valid_add_bid_args(self.args.as_named().unwrap())
                 }
                 TransactionEntryPoint::WithdrawBid => {
-                    arg_handling::has_valid_withdraw_bid_args(&self.args.as_named().unwrap())
+                    arg_handling::has_valid_withdraw_bid_args(self.args.as_named().unwrap())
                 }
                 TransactionEntryPoint::Delegate => {
-                    arg_handling::has_valid_delegate_args(&self.args.as_named().unwrap())
+                    arg_handling::has_valid_delegate_args(self.args.as_named().unwrap())
                 }
                 TransactionEntryPoint::Undelegate => {
-                    arg_handling::has_valid_undelegate_args(&self.args.as_named().unwrap())
+                    arg_handling::has_valid_undelegate_args(self.args.as_named().unwrap())
                 }
                 TransactionEntryPoint::Redelegate => {
-                    arg_handling::has_valid_redelegate_args(&self.args.as_named().unwrap())
+                    arg_handling::has_valid_redelegate_args(self.args.as_named().unwrap())
                 }
                 TransactionEntryPoint::ActivateBid => {
-                    arg_handling::has_valid_activate_bid_args(&self.args.as_named().unwrap())
+                    arg_handling::has_valid_activate_bid_args(self.args.as_named().unwrap())
                 }
                 TransactionEntryPoint::ChangeBidPublicKey => {
                     arg_handling::has_valid_change_bid_public_key_args(
-                        &self.args.as_named().unwrap(),
+                        self.args.as_named().unwrap(),
                     )
                 }
                 TransactionEntryPoint::DefaultInstantiate
@@ -519,7 +503,6 @@ impl TransactionV1Body {
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub fn random(rng: &mut TestRng) -> Self {
         use crate::{
-            testing::TestRng,
             transaction::{TransactionRuntime, TransferTarget},
             PublicKey,
         };
@@ -638,6 +621,7 @@ impl TransactionV1Body {
         }
     }
 
+    /// Returns a token value attached to the transaction.
     pub fn value(&self) -> u128 {
         self.value
     }

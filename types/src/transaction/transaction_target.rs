@@ -125,20 +125,11 @@ impl Debug for TransactionTarget {
             TransactionTarget::Session {
                 module_bytes,
                 runtime,
-            } => {
-                struct BytesLen(usize);
-                impl Debug for BytesLen {
-                    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-                        write!(formatter, "{} bytes", self.0)
-                    }
-                }
-
-                formatter
-                    .debug_struct("Session")
-                    .field("module_bytes", &BytesLen(module_bytes.len()))
-                    .field("runtime", runtime)
-                    .finish()
-            }
+            } => formatter
+                .debug_struct("Session")
+                .field("module_bytes", &BytesLen(module_bytes.len()))
+                .field("runtime", runtime)
+                .finish(),
         }
     }
 }

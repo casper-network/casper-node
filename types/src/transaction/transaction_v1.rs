@@ -623,7 +623,7 @@ impl GasLimited for TransactionV1 {
                 gas_price_tolerance,
             } => {
                 let gas_price = Gas::new(U512::from(gas_price));
-                let gas = Gas::new(U512::from(gas_limit.value() * gas_price.value()));
+                let gas = Gas::new(gas_limit.value() * gas_price.value());
                 Motes::from_gas(gas, *gas_price_tolerance)
                     .ok_or(InvalidTransactionV1::UnableToCalculateGasCost)?
             }
@@ -699,8 +699,8 @@ impl GasLimited for TransactionV1 {
             } => {
                 let gas_limit = Gas::new(U512::from(*gas_limit));
                 let gas_price = Gas::new(U512::from(*gas_price_tolerance));
-                let gas = Gas::new(U512::from(gas_limit.value() * gas_price.value()));
-                gas
+
+                Gas::new(gas_limit.value() * gas_price.value())
             }
         };
         Ok(gas)

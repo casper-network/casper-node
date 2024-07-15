@@ -68,6 +68,11 @@ pub enum UIntParseError {
 
 macro_rules! impl_traits_for_uint {
     ($type:ident, $total_bytes:expr, $test_mod:ident) => {
+        impl $type {
+            /// The smallest value that can be represented by this type.
+            pub const MIN: $type = $type([0; $total_bytes / 8]);
+        }
+
         impl Serialize for $type {
             fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
                 if serializer.is_human_readable() {
@@ -686,7 +691,7 @@ mod tests {
         check_as_u256(U256::zero(), input);
         check_as_u512(U512::zero(), input);
 
-        input = i32::max_value() - 1;
+        input = i32::MAX - 1;
         check_as_i32(input, input);
         check_as_i64(i64::from(input), input);
         check_as_u8(input as u8, input);
@@ -696,25 +701,16 @@ mod tests {
         check_as_u256(U256::from(input), input);
         check_as_u512(U512::from(input), input);
 
-        input = i32::min_value() + 1;
+        input = i32::MIN + 1;
         check_as_i32(input, input);
         check_as_i64(i64::from(input), input);
         check_as_u8(input as u8, input);
         check_as_u32(input as u32, input);
         check_as_u64(input as u64, input);
-        // i32::min_value() is -1 - i32::max_value()
-        check_as_u128(
-            U128::zero().wrapping_sub(&U128::from(i32::max_value())),
-            input,
-        );
-        check_as_u256(
-            U256::zero().wrapping_sub(&U256::from(i32::max_value())),
-            input,
-        );
-        check_as_u512(
-            U512::zero().wrapping_sub(&U512::from(i32::max_value())),
-            input,
-        );
+        // i32::MIN is -1 - i32::MAX
+        check_as_u128(U128::zero().wrapping_sub(&U128::from(i32::MAX)), input);
+        check_as_u256(U256::zero().wrapping_sub(&U256::from(i32::MAX)), input);
+        check_as_u512(U512::zero().wrapping_sub(&U512::from(i32::MAX)), input);
     }
 
     #[test]
@@ -729,7 +725,7 @@ mod tests {
         check_as_u256(U256::zero(), input);
         check_as_u512(U512::zero(), input);
 
-        input = i64::max_value() - 1;
+        input = i64::MAX - 1;
         check_as_i32(input as i32, input);
         check_as_i64(input, input);
         check_as_u8(input as u8, input);
@@ -739,25 +735,16 @@ mod tests {
         check_as_u256(U256::from(input), input);
         check_as_u512(U512::from(input), input);
 
-        input = i64::min_value() + 1;
+        input = i64::MIN + 1;
         check_as_i32(input as i32, input);
         check_as_i64(input, input);
         check_as_u8(input as u8, input);
         check_as_u32(input as u32, input);
         check_as_u64(input as u64, input);
-        // i64::min_value() is (-1 - i64::max_value())
-        check_as_u128(
-            U128::zero().wrapping_sub(&U128::from(i64::max_value())),
-            input,
-        );
-        check_as_u256(
-            U256::zero().wrapping_sub(&U256::from(i64::max_value())),
-            input,
-        );
-        check_as_u512(
-            U512::zero().wrapping_sub(&U512::from(i64::max_value())),
-            input,
-        );
+        // i64::MIN is (-1 - i64::MAX)
+        check_as_u128(U128::zero().wrapping_sub(&U128::from(i64::MAX)), input);
+        check_as_u256(U256::zero().wrapping_sub(&U256::from(i64::MAX)), input);
+        check_as_u512(U512::zero().wrapping_sub(&U512::from(i64::MAX)), input);
     }
 
     #[test]
@@ -772,7 +759,7 @@ mod tests {
         check_as_u256(U256::zero(), input);
         check_as_u512(U512::zero(), input);
 
-        input = u8::max_value() - 1;
+        input = u8::MAX - 1;
         check_as_i32(i32::from(input), input);
         check_as_i64(i64::from(input), input);
         check_as_u8(input, input);
@@ -795,7 +782,7 @@ mod tests {
         check_as_u256(U256::zero(), input);
         check_as_u512(U512::zero(), input);
 
-        input = u32::max_value() - 1;
+        input = u32::MAX - 1;
         check_as_i32(input as i32, input);
         check_as_i64(i64::from(input), input);
         check_as_u8(input as u8, input);
@@ -818,7 +805,7 @@ mod tests {
         check_as_u256(U256::zero(), input);
         check_as_u512(U512::zero(), input);
 
-        input = u64::max_value() - 1;
+        input = u64::MAX - 1;
         check_as_i32(input as i32, input);
         check_as_i64(input as i64, input);
         check_as_u8(input as u8, input);
@@ -857,7 +844,7 @@ mod tests {
         check_as_u256(U256::zero(), input);
         check_as_u512(U512::zero(), input);
 
-        input = U128::max_value() - 1;
+        input = U128::MAX - 1;
 
         let mut little_endian_bytes = [0_u8; 64];
         input.to_little_endian(&mut little_endian_bytes[..16]);
@@ -885,7 +872,7 @@ mod tests {
         check_as_u256(U256::zero(), input);
         check_as_u512(U512::zero(), input);
 
-        input = U256::max_value() - 1;
+        input = U256::MAX - 1;
 
         let mut little_endian_bytes = [0_u8; 64];
         input.to_little_endian(&mut little_endian_bytes[..32]);
@@ -913,7 +900,7 @@ mod tests {
         check_as_u256(U256::zero(), input);
         check_as_u512(U512::zero(), input);
 
-        input = U512::max_value() - 1;
+        input = U512::MAX - 1;
 
         let mut little_endian_bytes = [0_u8; 64];
         input.to_little_endian(&mut little_endian_bytes);
@@ -931,35 +918,35 @@ mod tests {
 
     #[test]
     fn wrapping_test_u512() {
-        let max = U512::max_value();
+        let max = U512::MAX;
         let value = max.wrapping_add(&1.into());
         assert_eq!(value, 0.into());
 
-        let min = U512::min_value();
+        let min = U512::MIN;
         let value = min.wrapping_sub(&1.into());
-        assert_eq!(value, U512::max_value());
+        assert_eq!(value, U512::MAX);
     }
 
     #[test]
     fn wrapping_test_u256() {
-        let max = U256::max_value();
+        let max = U256::MAX;
         let value = max.wrapping_add(&1.into());
         assert_eq!(value, 0.into());
 
-        let min = U256::min_value();
+        let min = U256::MIN;
         let value = min.wrapping_sub(&1.into());
-        assert_eq!(value, U256::max_value());
+        assert_eq!(value, U256::MAX);
     }
 
     #[test]
     fn wrapping_test_u128() {
-        let max = U128::max_value();
+        let max = U128::MAX;
         let value = max.wrapping_add(&1.into());
         assert_eq!(value, 0.into());
 
-        let min = U128::min_value();
+        let min = U128::MIN;
         let value = min.wrapping_sub(&1.into());
-        assert_eq!(value, U128::max_value());
+        assert_eq!(value, U128::MAX);
     }
 
     fn serde_roundtrip<T: Serialize + DeserializeOwned + Eq + Debug>(value: T) {
@@ -977,25 +964,25 @@ mod tests {
 
     #[test]
     fn serde_roundtrip_u512() {
-        serde_roundtrip(U512::min_value());
+        serde_roundtrip(U512::MIN);
         serde_roundtrip(U512::from(1));
-        serde_roundtrip(U512::from(u64::max_value()));
-        serde_roundtrip(U512::max_value());
+        serde_roundtrip(U512::from(u64::MAX));
+        serde_roundtrip(U512::MAX);
     }
 
     #[test]
     fn serde_roundtrip_u256() {
-        serde_roundtrip(U256::min_value());
+        serde_roundtrip(U256::MIN);
         serde_roundtrip(U256::from(1));
-        serde_roundtrip(U256::from(u64::max_value()));
-        serde_roundtrip(U256::max_value());
+        serde_roundtrip(U256::from(u64::MAX));
+        serde_roundtrip(U256::MAX);
     }
 
     #[test]
     fn serde_roundtrip_u128() {
-        serde_roundtrip(U128::min_value());
+        serde_roundtrip(U128::MIN);
         serde_roundtrip(U128::from(1));
-        serde_roundtrip(U128::from(u64::max_value()));
-        serde_roundtrip(U128::max_value());
+        serde_roundtrip(U128::from(u64::MAX));
+        serde_roundtrip(U128::MAX);
     }
 }

@@ -137,11 +137,11 @@ mod tests {
             &SecretKey::ed25519_from_bytes([44; SecretKey::ED25519_LENGTH]).unwrap(),
         );
         let seigniorage_recipient = SeigniorageRecipient {
-            stake: U512::max_value(),
-            delegation_rate: DelegationRate::max_value(),
+            stake: U512::MAX,
+            delegation_rate: DelegationRate::MAX,
             delegator_stake: BTreeMap::from_iter(vec![
-                (delegator_1_key, U512::max_value()),
-                (delegator_2_key, U512::max_value()),
+                (delegator_1_key, U512::MAX),
+                (delegator_2_key, U512::MAX),
                 (delegator_3_key, U512::zero()),
             ]),
         };
@@ -160,11 +160,11 @@ mod tests {
             &SecretKey::ed25519_from_bytes([44; SecretKey::ED25519_LENGTH]).unwrap(),
         );
         let seigniorage_recipient = SeigniorageRecipient {
-            stake: U512::max_value(),
-            delegation_rate: DelegationRate::max_value(),
+            stake: U512::MAX,
+            delegation_rate: DelegationRate::MAX,
             delegator_stake: BTreeMap::from_iter(vec![
-                (delegator_1_key, U512::max_value()),
-                (delegator_2_key, U512::max_value()),
+                (delegator_1_key, U512::MAX),
+                (delegator_2_key, U512::MAX),
                 (delegator_3_key, U512::zero()),
             ]),
         };
@@ -183,12 +183,12 @@ mod tests {
             &SecretKey::ed25519_from_bytes([44; SecretKey::ED25519_LENGTH]).unwrap(),
         );
         let seigniorage_recipient = SeigniorageRecipient {
-            stake: U512::max_value(),
-            delegation_rate: DelegationRate::max_value(),
+            stake: U512::MAX,
+            delegation_rate: DelegationRate::MAX,
             delegator_stake: BTreeMap::from_iter(vec![
-                (delegator_1_key, U512::max_value()),
-                (delegator_2_key, U512::max_value()),
-                (delegator_3_key, U512::max_value()),
+                (delegator_1_key, U512::MAX),
+                (delegator_2_key, U512::MAX),
+                (delegator_3_key, U512::MAX),
             ]),
         };
         assert_eq!(seigniorage_recipient.delegator_total_stake(), None)

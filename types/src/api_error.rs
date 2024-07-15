@@ -830,8 +830,6 @@ pub fn result_from(value: i32) -> Result<(), ApiError> {
 
 #[cfg(test)]
 mod tests {
-    use std::{i32, u16, u8};
-
     use super::*;
 
     fn round_trip(result: Result<(), ApiError>) {

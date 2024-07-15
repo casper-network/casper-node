@@ -82,10 +82,7 @@ where
         let mut prefix_bytes = self.prefix.as_bytes().to_owned();
         prefix_bytes.extend(&index.to_le_bytes());
         let prefix = Keyspace::Context(&prefix_bytes);
-        match read_vec(prefix) {
-            Some(vec) => Some(borsh::from_slice(&vec).unwrap()),
-            None => None,
-        }
+        read_vec(prefix).map(|vec| borsh::from_slice(&vec).unwrap())
     }
 
     pub fn iter(&self) -> impl Iterator<Item = T> + '_ {
@@ -120,7 +117,7 @@ where
         self.binary_search_by(|v| v.cmp(value))
     }
 
-    pub fn binary_search_by<'a, F>(&'a self, mut f: F) -> Result<u64, u64>
+    pub fn binary_search_by<F>(&self, mut f: F) -> Result<u64, u64>
     where
         F: FnMut(&T) -> Ordering,
     {

@@ -827,7 +827,7 @@ impl Display for EntryPointAddr {
             }
             EntryPointAddr::VmCasperV2 {
                 entity_addr,
-                selector: selector,
+                selector,
             } => {
                 write!(f, "{}{}-{}", V2_ENTRY_POINT_PREFIX, entity_addr, selector)
             }

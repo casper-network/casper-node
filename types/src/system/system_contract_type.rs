@@ -244,6 +244,6 @@ mod tests {
         assert!(SystemEntityType::try_from(4).is_err());
         assert!(SystemEntityType::try_from(5).is_err());
         assert!(SystemEntityType::try_from(10).is_err());
-        assert!(SystemEntityType::try_from(u32::max_value()).is_err());
+        assert!(SystemEntityType::try_from(u32::MAX).is_err());
     }
 }

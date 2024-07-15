@@ -510,7 +510,7 @@ impl TransactionAcceptor {
         };
 
         match next_step {
-            NextStep::GetContract(entity_addr, runtime) => {
+            NextStep::GetContract(entity_addr, _runtime) => {
                 // Use `Key::Hash` variant so that we try to retrieve the entity as either an
                 // AddressableEntity, or fall back to retrieving an un-migrated Contract.
                 effect_builder

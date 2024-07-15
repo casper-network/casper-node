@@ -9,7 +9,6 @@ use casper_executor_wasm_interface::executor::{
     ExecuteRequest, ExecuteRequestBuilder, ExecuteResult, ExecutionKind, Executor,
 };
 use casper_storage::{
-    address_generator::Address,
     data_access_layer::{GenesisRequest, GenesisResult},
     global_state::{
         self,
@@ -42,7 +41,7 @@ const VM2_HARNESS: Bytes = Bytes::from_static(include_bytes!("../vm2-harness.was
 const VM2_CEP18: Bytes = Bytes::from_static(include_bytes!("../vm2_cep18.wasm"));
 const VM2_CEP18_CALLER: Bytes = Bytes::from_static(include_bytes!("../vm2-cep18-caller.wasm"));
 const VM2_TRAIT: Bytes = Bytes::from_static(include_bytes!("../vm2_trait.wasm"));
-const VM2_FLIPPER: Bytes = Bytes::from_static(include_bytes!("../vm2_flipper.wasm"));
+// const VM2_FLIPPER: Bytes = Bytes::from_static(include_bytes!("../vm2_flipper.wasm"));
 const VM2_UPGRADABLE: Bytes = Bytes::from_static(include_bytes!("../vm2_upgradable.wasm"));
 const VM2_UPGRADABLE_V2: Bytes = Bytes::from_static(include_bytes!("../vm2_upgradable_v2.wasm"));
 
@@ -64,8 +63,8 @@ fn make_address_generator() -> Arc<RwLock<AddressGenerator>> {
 fn base_execute_builder() -> ExecuteRequestBuilder {
     ExecuteRequestBuilder::default()
         .with_initiator(*DEFAULT_ACCOUNT_HASH)
-        .with_caller_key(Key::Account(DEFAULT_ACCOUNT_HASH.clone()))
-        .with_callee_key(Key::Account(DEFAULT_ACCOUNT_HASH.clone()))
+        .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
+        .with_callee_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
         .with_gas_limit(DEFAULT_GAS_LIMIT)
         .with_value(1000)
         .with_transaction_hash(TRANSACTION_HASH)
@@ -136,7 +135,7 @@ fn harness() {
             create_request,
         );
 
-        flipper_address = create_result.contract_hash();
+        flipper_address = create_result.contract_hash().value();
 
         global_state
             .commit(state_root_hash, create_result.effects().clone())
@@ -145,8 +144,8 @@ fn harness() {
 
     let execute_request = ExecuteRequestBuilder::default()
         .with_initiator(*DEFAULT_ACCOUNT_HASH)
-        .with_caller_key(Key::Account(DEFAULT_ACCOUNT_HASH.clone()))
-        .with_callee_key(Key::Account(DEFAULT_ACCOUNT_HASH.clone()))
+        .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
+        .with_callee_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
         .with_gas_limit(DEFAULT_GAS_LIMIT)
         .with_value(1000)
         .with_transaction_hash(TRANSACTION_HASH)
@@ -211,13 +210,13 @@ fn cep18() {
 
     let execute_request = ExecuteRequestBuilder::default()
         .with_initiator(*DEFAULT_ACCOUNT_HASH)
-        .with_caller_key(Key::Account(DEFAULT_ACCOUNT_HASH.clone()))
-        .with_callee_key(Key::Account(DEFAULT_ACCOUNT_HASH.clone()))
+        .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
+        .with_callee_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
         .with_gas_limit(DEFAULT_GAS_LIMIT)
         .with_value(1000)
         .with_transaction_hash(TRANSACTION_HASH)
         .with_target(ExecutionKind::SessionBytes(VM2_CEP18_CALLER))
-        .with_serialized_input((create_result.contract_hash(),))
+        .with_serialized_input((create_result.contract_hash().value(),))
         .with_value(0)
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_chain_name(DEFAULT_CHAIN_NAME)
@@ -239,7 +238,7 @@ fn make_global_state_with_genesis() -> (LmdbGlobalState, Digest, TempDir) {
         validator: None,
     }];
 
-    let (mut global_state, mut state_root_hash, _tempdir) =
+    let (global_state, _state_root_hash, _tempdir) =
         global_state::state::lmdb::make_temporary_global_state([]);
 
     let genesis_config = GenesisConfigBuilder::default()
@@ -257,17 +256,14 @@ fn make_global_state_with_genesis() -> (LmdbGlobalState, Digest, TempDir) {
         GenesisResult::Success {
             post_state_hash,
             effects: _,
-        } => {
-            state_root_hash = post_state_hash;
-        }
+        } => (global_state, post_state_hash, _tempdir),
     }
-    (global_state, state_root_hash, _tempdir)
 }
 
 #[test]
 fn traits() {
     let mut executor = make_executor();
-    let (mut global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
+    let (mut global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
 
     let execute_request = base_execute_builder()
         .with_target(ExecutionKind::SessionBytes(VM2_TRAIT))
@@ -314,7 +310,7 @@ fn upgradable() {
             create_request,
         );
 
-        upgradable_address = create_result.contract_hash();
+        upgradable_address = *create_result.contract_hash();
 
         global_state
             .commit(state_root_hash, create_result.effects().clone())
@@ -322,7 +318,7 @@ fn upgradable() {
     };
 
     let version_before_upgrade = {
-        let address = EntityAddr::new_smart_contract(upgradable_address);
+        let address = EntityAddr::new_smart_contract(upgradable_address.value());
         let execute_request = base_execute_builder()
             .with_target(ExecutionKind::Stored {
                 address,
@@ -341,14 +337,14 @@ fn upgradable() {
             execute_request,
         );
         let output = res.output().expect("should have output");
-        let version: String = borsh::from_slice(&output).expect("should deserialize");
+        let version: String = borsh::from_slice(output).expect("should deserialize");
         version
     };
     assert_eq!(version_before_upgrade, "v1");
 
     {
         // Increment the value
-        let address = EntityAddr::new_smart_contract(upgradable_address);
+        let address = EntityAddr::new_smart_contract(upgradable_address.value());
         let execute_request = base_execute_builder()
             .with_target(ExecutionKind::Stored {
                 address,
@@ -374,7 +370,7 @@ fn upgradable() {
     let binding = VM2_UPGRADABLE_V2;
     let new_code = binding.as_ref();
 
-    let address = EntityAddr::new_smart_contract(upgradable_address);
+    let address = EntityAddr::new_smart_contract(upgradable_address.value());
     let execute_request = base_execute_builder()
         .with_value(0)
         .with_target(ExecutionKind::Stored {
@@ -397,7 +393,7 @@ fn upgradable() {
         .expect("Should commit");
 
     let version_after_upgrade = {
-        let address = EntityAddr::new_smart_contract(upgradable_address);
+        let address = EntityAddr::new_smart_contract(upgradable_address.value());
         let execute_request = base_execute_builder()
             .with_target(ExecutionKind::Stored {
                 address,
@@ -416,14 +412,14 @@ fn upgradable() {
             execute_request,
         );
         let output = res.output().expect("should have output");
-        let version: String = borsh::from_slice(&output).expect("should deserialize");
+        let version: String = borsh::from_slice(output).expect("should deserialize");
         version
     };
     assert_eq!(version_after_upgrade, "v2");
 
     {
         // Increment the value
-        let address = EntityAddr::new_smart_contract(upgradable_address);
+        let address = EntityAddr::new_smart_contract(upgradable_address.value());
         let execute_request = base_execute_builder()
             .with_target(ExecutionKind::Stored {
                 address,
@@ -445,6 +441,8 @@ fn upgradable() {
             .commit(state_root_hash, res.effects().clone())
             .expect("Should commit");
     };
+
+    let _ = state_root_hash;
 }
 
 fn run_create_contract(

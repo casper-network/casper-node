@@ -16,8 +16,8 @@ pub(crate) fn compute_predictable_address<T: AsRef<[u8]>>(
         let mut hasher = Blake2b::<U32>::new();
 
         hasher.update(chain_name);
-        hasher.update(&initiator);
-        hasher.update(&bytecode_hash);
+        hasher.update(initiator);
+        hasher.update(bytecode_hash);
         // TODO: Seed to distinguish same code
 
         hasher.finalize().into()

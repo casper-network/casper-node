@@ -23,7 +23,7 @@ use casper_storage::{
         StateProvider, StateReader,
     },
     system::runtime_native::Config as NativeRuntimeConfig,
-    AddressGenerator, AddressGeneratorBuilder,
+    AddressGeneratorBuilder,
 };
 
 use casper_types::{
@@ -32,7 +32,7 @@ use casper_types::{
     system::handle_payment::ARG_AMOUNT,
     BlockHash, BlockHeader, BlockTime, BlockV2, CLValue, Chainspec, ChecksumRegistry, Digest,
     EntityAddr, EraEndV2, EraId, FeeHandling, Gas, GasLimited, Key, ProtocolVersion, PublicKey,
-    RefundHandling, Transaction, TransactionCategory, TransactionEntryPoint,
+    RefundHandling, Transaction, TransactionEntryPoint,
     TransactionInvocationTarget, TransactionRuntime, TransactionTarget, AUCTION_LANE_ID,
     MINT_LANE_ID, U512,
 };
@@ -412,7 +412,7 @@ pub fn execute_finalized_block(
                                 TransactionTarget::Native => {
                                     todo!("native not supported yet under v2 runtime")
                                 }
-                                TransactionTarget::Stored { id, runtime } => {
+                                TransactionTarget::Stored { id, runtime: _ } => {
                                     todo!("unable to instantiate stored contract {id:?} under v2 runtime");
                                 }
                             };
@@ -519,7 +519,7 @@ pub fn execute_finalized_block(
                                         TransactionTarget::Native => {
                                             todo!("native not supported yet under v2 runtime with a session code")
                                         }
-                                        TransactionTarget::Stored { id, runtime } => {
+                                        TransactionTarget::Stored { id, runtime: _ } => {
                                             todo!("unable to use stored contract {id:?} under v2 runtime as a session code");
                                         }
                                     };
@@ -538,7 +538,7 @@ pub fn execute_finalized_block(
                                         TransactionTarget::Native => {
                                             todo!("native not supported yet under v2 runtime with a session code")
                                         }
-                                        TransactionTarget::Stored { id, runtime } => {
+                                        TransactionTarget::Stored { id, runtime: _ } => {
                                             // todo!("unable to use stored contract {id:?} under v2
                                             // runtime as a session code");
                                             match id {

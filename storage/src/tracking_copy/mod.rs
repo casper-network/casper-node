@@ -236,7 +236,7 @@ impl<M: Meter<Key, StoredValue> + Copy + Default> GenericTrackingCopyCache<M> {
 
     /// Gets value from `key` in the cache.
     pub fn get(&mut self, key: &Key) -> Option<&StoredValue> {
-        if self.prunes_cached.get(key).is_some() {
+        if self.prunes_cached.contains(key) {
             // the item is marked for pruning and therefore
             // is no longer accessible.
             return None;

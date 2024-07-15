@@ -1,4 +1,4 @@
-use std::{io, sync};
+use std::sync;
 
 use thiserror::Error;
 

@@ -32,6 +32,7 @@ use crate::{
 pub use global_state_identifier::GlobalStateIdentifier;
 pub use type_mismatch::TypeMismatch;
 
+/// Tag used to discriminate between different variants of `StoredValue`.
 #[derive(Debug, Copy, Clone)]
 #[repr(u8)]
 pub enum StoredValueTag {
@@ -259,6 +260,7 @@ impl StoredValue {
         }
     }
 
+    /// Returns raw bytes if this is a `RawBytes` variant.
     pub fn as_raw_bytes(&self) -> Option<&[u8]> {
         match self {
             StoredValue::RawBytes(bytes) => Some(bytes),
@@ -423,6 +425,7 @@ impl StoredValue {
         }
     }
 
+    /// Returns the tag of the `StoredValue`.
     pub fn tag(&self) -> StoredValueTag {
         match self {
             StoredValue::CLValue(_) => StoredValueTag::CLValue,

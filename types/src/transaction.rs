@@ -41,7 +41,6 @@ use tracing::error;
 
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::testing::TestRng;
-pub use crate::transaction::transaction_v1::TransactionArgs;
 #[cfg(feature = "json-schema")]
 use crate::URef;
 use crate::{
@@ -348,6 +347,7 @@ impl Transaction {
         }
     }
 
+    /// Should this transaction use mint payment processing?
     pub fn is_gas_limited(&self) -> Option<u64> {
         match self {
             Transaction::Deploy(_) => None,

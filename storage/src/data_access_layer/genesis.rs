@@ -1,8 +1,3 @@
-use rand::{
-    distributions::{Distribution, Standard},
-    Rng,
-};
-
 use casper_types::{execution::Effects, ChainspecRegistry, Digest, GenesisConfig, ProtocolVersion};
 
 use crate::system::genesis::GenesisError;
@@ -50,23 +45,6 @@ impl GenesisRequest {
     /// Returns chainspec registry.
     pub fn chainspec_registry(&self) -> &ChainspecRegistry {
         &self.chainspec_registry
-    }
-}
-
-impl Distribution<GenesisRequest> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> GenesisRequest {
-        let input: [u8; 32] = rng.gen();
-        let chainspec_hash = Digest::hash(input);
-        let protocol_version = ProtocolVersion::from_parts(rng.gen(), rng.gen(), rng.gen());
-        // let config = rng.gen();
-        todo!();
-
-        // let chainspec_file_bytes: [u8; 10] = rng.gen();
-        // let genesis_account_file_bytes: [u8; 15] = rng.gen();
-        // let chainspec_registry =
-        //     ChainspecRegistry::new_with_genesis(&chainspec_file_bytes,
-        // &genesis_account_file_bytes); GenesisRequest::new(chainspec_hash,
-        // protocol_version, config, chainspec_registry)
     }
 }
 

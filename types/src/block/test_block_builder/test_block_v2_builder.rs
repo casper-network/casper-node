@@ -7,7 +7,7 @@ use rand::Rng;
 use crate::{
     system::auction::ValidatorWeights,
     testing::TestRng,
-    transaction::{Transaction, TransactionCategory, TransactionTarget},
+    transaction::{Transaction, TransactionCategory},
     Block, BlockHash, BlockV2, Digest, EraEndV2, EraId, ProtocolVersion, PublicKey,
     RewardedSignatures, Timestamp, U512,
 };

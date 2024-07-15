@@ -85,8 +85,6 @@ impl FromBytes for PricingHandling {
 
 #[cfg(test)]
 mod tests {
-    use alloc::collections::BTreeMap;
-    use serde_json::json;
 
     use super::*;
 

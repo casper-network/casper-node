@@ -1,5 +1,5 @@
 use std::{
-    collections::{btree_map::Entry, BTreeMap, BTreeSet},
+    collections::{btree_map::Entry, BTreeMap},
     convert::TryInto,
 };
 use tracing::{error, warn};
@@ -27,8 +27,8 @@ use casper_types::{
     },
     BlockGlobalAddr, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash, CLValue, ChecksumRegistry,
     Contract, EntityAddr, EntryPointValue, EntryPoints, HoldBalanceHandling, HoldsEpoch, Key,
-    KeyTag, Motes, Package, PackageHash, StoredValue, StoredValueTypeMismatch,
-    SystemEntityRegistry, URef, URefAddr, U512,
+    Motes, Package, PackageHash, StoredValue, StoredValueTypeMismatch, SystemEntityRegistry, URef,
+    URefAddr, U512,
 };
 
 /// Higher-level operations on the state via a `TrackingCopy`.

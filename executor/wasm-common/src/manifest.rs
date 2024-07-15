@@ -49,8 +49,8 @@ impl BorshDeserialize for EntryPoint {
         let fptr = {
             let fptr_integer: u64 = fptr_integer.into_inner();
             let fptr = fptr_integer as *const ();
-            let fptr = unsafe { std::mem::transmute(fptr) };
-            fptr
+
+            unsafe { std::mem::transmute::<*const (), extern "C" fn()>(fptr) }
         };
         let flags = u32::deserialize_reader(reader)?;
         Ok(Self(casper_sdk_sys::EntryPoint {
@@ -75,7 +75,7 @@ impl From<casper_sdk_sys::Manifest> for Manifest {
             std::slice::from_raw_parts(manifest.entry_points, manifest.entry_points_size)
         };
         let entry_points = slice
-            .into_iter()
+            .iter()
             .map(|entry_point| EntryPoint::from(*entry_point))
             .collect();
         Self(entry_points)
@@ -111,7 +111,7 @@ mod tests {
     use super::*;
 
     thread_local! {
-        pub static GLOBAL_FLAG: RefCell<usize> = RefCell::new(0);
+        pub static GLOBAL_FLAG: RefCell<usize> = const { RefCell::new(0) };
     }
 
     extern "C" fn dummy() {
@@ -133,12 +133,12 @@ mod tests {
     fn foo() {
         let bytes = {
             let entrypoint = Manifest::from(MANIFEST);
-            let bytes = borsh::to_vec(&entrypoint).unwrap();
-            bytes
+
+            borsh::to_vec(&entrypoint).unwrap()
         };
         let manifest_from_bytes = borsh::from_slice::<Manifest>(&bytes).unwrap();
         assert_eq!(manifest_from_bytes.entry_points().len(), 1);
-        let inner = manifest_from_bytes.entry_points().get(0).unwrap();
+        let inner = manifest_from_bytes.entry_points().first().unwrap();
         assert_eq!(inner.0.selector, 123);
         assert_eq!(inner.0.flags, 0xb4dc0de);
         let before = GLOBAL_FLAG.with_borrow(|v| *v);

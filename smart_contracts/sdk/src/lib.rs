@@ -190,7 +190,7 @@ impl<T: ContractRef> ContractHandle<T> {
 
     /// A shorthand form to call contracts with default settings.
     #[inline]
-    pub fn try_call<'a, CallData: ToCallData>(
+    pub fn try_call<CallData: ToCallData>(
         &self,
         func: impl FnOnce(T) -> CallData,
     ) -> Result<CallResult<CallData>, CallError> {
@@ -240,7 +240,7 @@ impl<T: ContractRef> CallBuilder<T> {
         }
     }
 
-    pub fn try_call<'a, CallData: ToCallData>(
+    pub fn try_call<CallData: ToCallData>(
         &self,
         func: impl FnOnce(T) -> CallData,
     ) -> Result<CallResult<CallData>, CallError> {
@@ -267,6 +267,12 @@ pub struct ContractBuilder<'a, T: ContractRef> {
     value: Option<u128>,
     code: Option<&'a [u8]>,
     marker: PhantomData<T>,
+}
+
+impl<'a, T: ContractRef> Default for ContractBuilder<'a, T> {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl<'a, T: ContractRef> ContractBuilder<'a, T> {
@@ -302,7 +308,7 @@ impl<'a, T: ContractRef> ContractBuilder<'a, T> {
             self.code,
             value,
             Some(call_data.entry_point()),
-            input_data.as_ref().map(|data| data.as_slice()),
+            input_data.as_deref(),
         )?;
         Ok(ContractHandle::from_address(create_result.contract_address))
     }

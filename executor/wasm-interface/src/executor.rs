@@ -3,15 +3,10 @@ use std::sync::Arc;
 use borsh::BorshSerialize;
 use bytes::Bytes;
 use casper_storage::{
-    address_generator::Address, global_state::GlobalStateReader, tracking_copy::TrackingCopyParts,
-    AddressGenerator, TrackingCopy,
+    global_state::GlobalStateReader, tracking_copy::TrackingCopyParts, AddressGenerator,
+    TrackingCopy,
 };
-use casper_types::{
-    account::AccountHash,
-    contracts::{ContractHash, ContractPackageHash},
-    execution::Effects,
-    EntityAddr, Key, TransactionHash,
-};
+use casper_types::{account::AccountHash, execution::Effects, EntityAddr, Key, TransactionHash};
 use parking_lot::RwLock;
 use thiserror::Error;
 

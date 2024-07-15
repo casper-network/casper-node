@@ -104,7 +104,7 @@ pub fn unchecked_allocate_buffer<T: ToBytes>(to_be_serialized: &T) -> Vec<u8> {
 /// serialization, or an error if the capacity would exceed `u32::max_value()`.
 pub fn allocate_buffer<T: ToBytes>(to_be_serialized: &T) -> Result<Vec<u8>, Error> {
     let serialized_length = to_be_serialized.serialized_length();
-    if serialized_length > u32::max_value() as usize {
+    if serialized_length > u32::MAX as usize {
         return Err(Error::OutOfMemory);
     }
     Ok(Vec::with_capacity(serialized_length))
@@ -1708,7 +1708,7 @@ mod proptests {
             bytesrepr::test_serialization_roundtrip(&t);
         }
         #[test]
-        fn test_ratio_u64(t in (any::<u64>(), 1..u64::max_value())) {
+        fn test_ratio_u64(t in (any::<u64>(), 1..u64::MAX)) {
             bytesrepr::test_serialization_roundtrip(&t);
         }
     }

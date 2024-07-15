@@ -4,9 +4,8 @@ pub(crate) mod system;
 
 use std::{collections::VecDeque, sync::Arc};
 
-use blake2::{Blake2b, Digest};
 use bytes::Bytes;
-use casper_executor_wasm_common::flags::{EntryPointFlags, ReturnFlags};
+use casper_executor_wasm_common::flags::ReturnFlags;
 use casper_executor_wasm_host::context::Context;
 use casper_executor_wasm_interface::{
     executor::{
@@ -17,7 +16,7 @@ use casper_executor_wasm_interface::{
 use casper_executor_wasmer_backend::WasmerEngine;
 use casper_storage::{global_state::GlobalStateReader, TrackingCopy};
 use casper_types::{
-    addressable_entity::{self, ActionThresholds, AssociatedKeys, MessageTopics},
+    addressable_entity::{ActionThresholds, AssociatedKeys, MessageTopics},
     contracts::{ContractHash, ContractPackageHash},
     AddressableEntity, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, EntityAddr, EntityKind,
     Groups, Key, Package, PackageHash, PackageStatus, ProtocolVersion, StoredValue,
@@ -124,7 +123,7 @@ impl ExecutorV2 {
         } = instantiate_request;
 
         let caller_key = Key::Account(initiator);
-        let source_purse = get_purse_for_entity(&mut tracking_copy, caller_key);
+        let _source_purse = get_purse_for_entity(&mut tracking_copy, caller_key);
 
         // 1. Store package hash
         let contract_package = Package::new(
@@ -171,7 +170,6 @@ impl ExecutorV2 {
         let addressable_entity_key = Key::AddressableEntity(entity_addr);
 
         // TODO: abort(str) as an alternative to trap
-        let transaction_hash = transaction_hash;
         let main_purse: URef = match system::mint_mint(
             &mut tracking_copy,
             transaction_hash,
@@ -227,7 +225,7 @@ impl ExecutorV2 {
 
                 let forked_tc = tracking_copy.fork2();
 
-                match Self::execute(&self, forked_tc, execute_request) {
+                match Self::execute(self, forked_tc, execute_request) {
                     Ok(ExecuteResult {
                         host_error,
                         output,
@@ -311,7 +309,7 @@ impl Executor for ExecutorV2 {
         let ExecuteRequest {
             initiator,
             caller_key,
-            callee_key,
+            callee_key: _,
             gas_limit,
             execution_kind,
             input,
@@ -429,7 +427,7 @@ impl Executor for ExecutorV2 {
         };
 
         let context = Context {
-            initiator: initiator,
+            initiator,
             caller: caller_key,
             callee: callee_key,
             value,

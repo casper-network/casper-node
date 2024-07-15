@@ -1,9 +1,6 @@
 pub mod executor;
 
-use std::fmt::{self, Display, Formatter};
-
 use bytes::Bytes;
-use casper_storage::global_state::GlobalStateReader;
 use thiserror::Error;
 
 use casper_executor_wasm_common::flags::ReturnFlags;

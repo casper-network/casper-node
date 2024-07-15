@@ -187,9 +187,9 @@ pub fn casper_read<S: GlobalStateReader, E: Executor>(
     }
 }
 
-fn keyspace_to_global_state_key<'a, S: GlobalStateReader, E: Executor>(
+fn keyspace_to_global_state_key<S: GlobalStateReader, E: Executor>(
     context: &Context<S, E>,
-    keyspace: Keyspace<'a>,
+    keyspace: Keyspace<'_>,
 ) -> Option<Key> {
     let entity_addr = match context.callee {
         Key::Account(account_hash) => EntityAddr::new_account(account_hash.value()),
@@ -260,6 +260,7 @@ pub fn casper_return<S: GlobalStateReader, E: Executor>(
     Err(VMError::Return { flags, data })
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
     mut caller: impl Caller<Context = Context<S, E>>,
     code_ptr: u32,
@@ -422,7 +423,7 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
         StoredValue::AddressableEntity(addressable_entity),
     );
 
-    let initial_state = match constructor_entry_point {
+    let _initial_state = match constructor_entry_point {
         Some(entry_point_name) => {
             // Take the gas spent so far and use it as a limit for the new VM.
             let gas_limit = caller
@@ -477,7 +478,7 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
 
                     output
                 }
-                Err(ExecuteError::WasmPreparation(preparation_error)) => {
+                Err(ExecuteError::WasmPreparation(_preparation_error)) => {
                     // This is a bug in the EE, as it should have been caught during the preparation
                     // phase when the contract was stored in the global state.
                     todo!()
@@ -669,8 +670,8 @@ pub fn casper_env_caller<S: GlobalStateReader, E: Executor>(
         Ok(dest_ptr)
     } else {
         let dest_len = dest_len as usize;
-        data = &data[0..cmp::min(32, dest_len as usize)];
-        caller.memory_write(dest_ptr, &data)?;
+        data = &data[0..cmp::min(32, dest_len)];
+        caller.memory_write(dest_ptr, data)?;
         let entity_kind_bytes = entity_kind.to_le_bytes();
         caller.memory_write(entity_kind_ptr, entity_kind_bytes.as_slice())?;
         Ok(dest_ptr + (data.len() as u32))
@@ -704,15 +705,14 @@ pub fn casper_env_balance<S: GlobalStateReader, E: Executor>(
             let account_key = Key::Account(account_hash);
             match caller.context_mut().tracking_copy.read(&account_key) {
                 Ok(Some(StoredValue::CLValue(clvalue))) => {
-                    let entity_key = clvalue.into_t::<Key>().expect("should be a key");
-                    entity_key
+
+                    clvalue.into_t::<Key>().expect("should be a key")
                 }
                 Ok(Some(other_entity)) => {
                     panic!("Unexpected entity type: {:?}", other_entity)
                 }
                 Ok(None) => return Ok(0),
                 Err(error) => panic!("Error while reading from storage; aborting key={account_key:?} error={error:?}"),
-                _ => return Ok(0),
             }
         }
         Some(EntityKindTag::Contract) => {
@@ -822,8 +822,8 @@ pub fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
             match caller.context_mut().tracking_copy.read(&callee_account_key) {
                 Ok(Some(StoredValue::CLValue(indirect))) => {
                     // is it an account?
-                    let addressable_entity_key = indirect.into_t::<Key>().expect("should be key");
-                    addressable_entity_key
+
+                    indirect.into_t::<Key>().expect("should be key")
                 }
                 Ok(Some(other)) => panic!("should be cl value but got {other:?}"),
                 Ok(None) => return Ok(u32_from_host_result(Err(HostError::NotCallable))),
@@ -841,7 +841,7 @@ pub fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
         other => panic!("should be account or addressable entity but got {other:?}"),
     };
 
-    let callee_entity_addr = callee_addressable_entity_key
+    let _callee_entity_addr = callee_addressable_entity_key
         .into_entity_addr()
         .expect("should be entity addr");
 
@@ -905,9 +905,9 @@ pub fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
             // let callee_purse = callee_stored_value.main_purse();
 
             let transaction_hash = caller.context().transaction_hash;
-            let address_generator = Arc::clone(&caller.context().address_generator);
+            let _address_generator = Arc::clone(&caller.context().address_generator);
 
-            let mut tracking_copy = caller.context().tracking_copy.fork2();
+            let tracking_copy = caller.context().tracking_copy.fork2();
 
             // Take the gas spent so far and use it as a limit for the new VM.
             let gas_limit = caller
@@ -950,7 +950,8 @@ pub fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
                     tracking_copy_parts,
                 }) => {
                     caller.consume_gas(gas_usage.gas_spent());
-                    // NOTE: What to do with the output of a fallback code?
+                    let _ = output; // TODO: What to do with the output of a fallback code? Need to emit a message
+                                    // with this
 
                     let host_result = match host_error {
                         Some(host_error) => Err(host_error),

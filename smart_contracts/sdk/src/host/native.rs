@@ -121,10 +121,10 @@ pub type Container = BTreeMap<u64, BTreeMap<Bytes, TaggedValue>>;
 #[allow(dead_code)]
 pub struct NativeParam(pub(crate) String);
 
-impl Into<NativeParam> for &casper_sdk_sys::Param {
-    fn into(self) -> NativeParam {
+impl From<&casper_sdk_sys::Param> for NativeParam {
+    fn from(val: &casper_sdk_sys::Param) -> Self {
         let name =
-            String::from_utf8_lossy(unsafe { slice::from_raw_parts(self.name_ptr, self.name_len) })
+            String::from_utf8_lossy(unsafe { slice::from_raw_parts(val.name_ptr, val.name_len) })
                 .into_owned();
         NativeParam(name)
     }
@@ -133,7 +133,7 @@ impl Into<NativeParam> for &casper_sdk_sys::Param {
 #[derive(Clone)]
 pub struct NativeEntryPoint {
     pub selector: u32,
-    pub fptr: Arc<dyn Fn() -> () + Send + Sync>,
+    pub fptr: Arc<dyn Fn() + Send + Sync>,
     pub flags: EntryPointFlags,
 }
 
@@ -147,14 +147,14 @@ impl std::fmt::Debug for NativeEntryPoint {
     }
 }
 
-impl Into<NativeEntryPoint> for &casper_sdk_sys::EntryPoint {
-    fn into(self) -> NativeEntryPoint {
-        let selector = self.selector;
-        let ptr = self.fptr;
+impl From<&casper_sdk_sys::EntryPoint> for NativeEntryPoint {
+    fn from(val: &casper_sdk_sys::EntryPoint) -> Self {
+        let selector = val.selector;
+        let ptr = val.fptr;
         let fptr = Arc::new(move || {
             ptr();
         });
-        let flags = EntryPointFlags::from_bits(self.flags).expect("Valid flags");
+        let flags = EntryPointFlags::from_bits(val.flags).expect("Valid flags");
         NativeEntryPoint {
             selector,
             fptr,
@@ -169,9 +169,9 @@ pub struct NativeManifest {
     pub entry_points: Vec<NativeEntryPoint>,
 }
 
-impl Into<NativeManifest> for NonNull<casper_sdk_sys::Manifest> {
-    fn into(self) -> NativeManifest {
-        let manifest = unsafe { self.as_ref() };
+impl From<NonNull<casper_sdk_sys::Manifest>> for NativeManifest {
+    fn from(val: NonNull<casper_sdk_sys::Manifest>) -> Self {
+        let manifest = unsafe { val.as_ref() };
         let entry_points =
             unsafe { slice::from_raw_parts(manifest.entry_points, manifest.entry_points_size) }
                 .iter()
@@ -355,6 +355,7 @@ impl Environment {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn casper_create(
         &self,
         code_ptr: *const u8,
@@ -444,6 +445,7 @@ impl Environment {
         // Ok(0)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn casper_call(
         &self,
         address_ptr: *const u8,
@@ -527,7 +529,7 @@ Example paths:
 }
 
 thread_local! {
-    pub(crate) static LAST_TRAP: RefCell<Option<NativeTrap>> = RefCell::new(None);
+    pub(crate) static LAST_TRAP: RefCell<Option<NativeTrap>> = const { RefCell::new(None) };
     static ENV_STACK: RefCell<VecDeque<Environment>> = RefCell::new(VecDeque::from_iter([
         // Stack of environments has a default element so unit tests do not require extra effort.
         // Environment::default()
@@ -697,7 +699,7 @@ mod symbols {
         let _args = (&alloc, &alloc_ctx);
         let _call_result =
             with_current_environment(|stub| stub.casper_copy_input(alloc, alloc_ctx));
-        crate::host::native::handle_ret_with(_call_result, || ptr::null_mut())
+        crate::host::native::handle_ret_with(_call_result, ptr::null_mut)
     }
 
     #[no_mangle]
@@ -788,7 +790,7 @@ mod symbols {
         let _call_result = with_current_environment(|stub| {
             stub.casper_env_read(env_path, env_path_size, alloc, alloc_ctx)
         });
-        crate::host::native::handle_ret_with(_call_result, || ptr::null_mut())
+        crate::host::native::handle_ret_with(_call_result, ptr::null_mut)
     }
 
     #[no_mangle]
@@ -796,7 +798,7 @@ mod symbols {
         let _name = "casper_env_caller";
         let _args = (&dest, &dest_len);
         let _call_result = with_current_environment(|stub| stub.casper_env_caller(dest, dest_len));
-        crate::host::native::handle_ret_with(_call_result, || ptr::null())
+        crate::host::native::handle_ret_with(_call_result, ptr::null)
     }
     #[no_mangle]
     pub extern "C" fn casper_env_value() -> u64 {

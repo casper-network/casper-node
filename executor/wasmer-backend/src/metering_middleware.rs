@@ -621,7 +621,7 @@ use wasmer_middlewares::Metering;
 // }
 
 pub(crate) fn make_wasmer_metering_middleware(initial_limit: u64) -> Arc<dyn ModuleMiddleware> {
-    Arc::new(Metering::new(initial_limit, move |operator| {
+    Arc::new(Metering::new(initial_limit, move |_operator| {
         // cost_function(opcode_costs, operator)
         1 // for debugging
     }))

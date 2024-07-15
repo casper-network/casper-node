@@ -8,7 +8,6 @@ use casper_executor_wasm_interface::{HostError, HostResult, TrapCode};
 use casper_storage::{
     global_state::GlobalStateReader,
     system::{
-        self,
         mint::Mint,
         runtime_native::{Config, Id, RuntimeNative},
     },
@@ -214,20 +213,6 @@ pub(crate) fn mint_transfer<R: GlobalStateReader>(
 
 #[cfg(test)]
 mod tests {
-    use casper_storage::{
-        data_access_layer::{GenesisRequest, GenesisResult},
-        global_state::{
-            self,
-            state::{CommitProvider, StateProvider},
-        },
-        system::mint::{storage_provider::StorageProvider, Mint},
-    };
-    use casper_types::{
-        AddressableEntityHash, ChainspecRegistry, Digest, GenesisConfigBuilder, HoldsEpoch,
-        SystemEntityRegistry, TransactionV1Hash,
-    };
-
-    use super::*;
 
     // #[test]
     // fn test_system_dispatcher() {

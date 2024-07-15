@@ -4,7 +4,7 @@ use serde::Serialize;
 
 use casper_types::{
     AddressableEntity, AddressableEntityHash, BlockHeader, EntityVersion, EntryPoint, Package,
-    PackageHash, Timestamp, Transaction, TransactionRuntime, U512,
+    PackageHash, Timestamp, Transaction, U512,
 };
 
 use super::{Error, Source};

@@ -117,7 +117,7 @@ impl MainReactor {
                 match self
                     .storage
                     .read_highest_switch_block_headers(1)
-                    .map(|headers| headers.get(0).cloned())
+                    .map(|headers| headers.first().cloned())
                 {
                     Ok(Some(_)) => {
                         // no trusted hash, no local block, no error, must be waiting for genesis

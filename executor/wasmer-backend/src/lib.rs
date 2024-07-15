@@ -11,9 +11,9 @@ use casper_executor_wasm_interface::{
 };
 use casper_storage::global_state::GlobalStateReader;
 use wasmer::{
-    AsStoreMut, AsStoreRef, CompilerConfig, Engine, Exports, Function, FunctionEnv, FunctionEnvMut,
-    Imports, Instance, Memory, MemoryView, Module, RuntimeError, Store, StoreMut, Table,
-    TypedFunction, WasmPtr,
+    AsStoreMut, AsStoreRef, CompilerConfig, Engine, Function, FunctionEnv, FunctionEnvMut, Imports,
+    Instance, Memory, MemoryView, Module, RuntimeError, Store, StoreMut, Table, TypedFunction,
+    WasmPtr,
 };
 use wasmer_compiler_singlepass::Singlepass;
 use wasmer_middlewares::metering;
@@ -69,11 +69,12 @@ fn from_wasmer_export_error(error: wasmer::ExportError) -> VMError {
     VMError::Export(export_error)
 }
 
+#[derive(Default)]
 pub struct WasmerEngine(());
 
 impl WasmerEngine {
     pub fn new() -> Self {
-        Self(())
+        Self::default()
     }
 
     pub fn prepare<T: Into<Bytes>, S: GlobalStateReader + 'static, E: Executor + 'static>(
@@ -109,7 +110,7 @@ impl<'a, S: GlobalStateReader + 'static, E: Executor + 'static> WasmerCaller<'a,
         &mut self,
         f: impl FnOnce(StoreMut, Arc<Instance>) -> Ret,
     ) -> Ret {
-        let (data, mut store) = self.env.data_and_store_mut();
+        let (data, store) = self.env.data_and_store_mut();
         let instance = data.instance.upgrade().expect("Valid instance");
         f(store, instance)
     }
@@ -117,7 +118,7 @@ impl<'a, S: GlobalStateReader + 'static, E: Executor + 'static> WasmerCaller<'a,
     /// Returns the amount of gas used.
     fn get_remaining_points(&mut self) -> MeteringPoints {
         self.with_store_and_instance(|mut store, instance| {
-            let mut metering_points = metering::get_remaining_points(&mut store, &instance);
+            let metering_points = metering::get_remaining_points(&mut store, &instance);
             match metering_points {
                 metering::MeteringPoints::Remaining(points) => MeteringPoints::Remaining(points),
                 metering::MeteringPoints::Exhausted => MeteringPoints::Exhausted,
@@ -136,9 +137,8 @@ impl<'a, S: GlobalStateReader + 'static, E: Executor + 'static> Caller for Wasme
     type Context = Context<S, E>;
 
     fn memory_write(&self, offset: u32, data: &[u8]) -> Result<(), VMError> {
-        Ok(self
-            .with_memory(|mem| mem.write(offset.into(), data))
-            .map_err(from_wasmer_memory_access_error)?)
+        self.with_memory(|mem| mem.write(offset.into(), data))
+            .map_err(from_wasmer_memory_access_error)
     }
 
     fn context(&self) -> &Context<S, E> {
@@ -149,9 +149,8 @@ impl<'a, S: GlobalStateReader + 'static, E: Executor + 'static> Caller for Wasme
     }
 
     fn memory_read_into(&self, offset: u32, output: &mut [u8]) -> Result<(), VMError> {
-        Ok(self
-            .with_memory(|mem| mem.read(offset.into(), output))
-            .map_err(from_wasmer_memory_access_error)?)
+        self.with_memory(|mem| mem.read(offset.into(), output))
+            .map_err(from_wasmer_memory_access_error)
     }
 
     fn alloc(&mut self, idx: u32, size: usize, ctx: u32) -> VMResult<u32> {
@@ -230,7 +229,6 @@ impl<S: GlobalStateReader, E: Executor> WasmerEnv<S, E> {
 pub(crate) struct ExportedRuntime {
     pub(crate) memory: Memory,
     pub(crate) exported_table: Option<Table>,
-    pub(crate) exports: Exports,
 }
 
 pub(crate) struct WasmerInstance<S: GlobalStateReader, E: Executor + 'static> {
@@ -265,46 +263,6 @@ where
             .map_err(from_wasmer_export_error)?;
 
         let () = exported_call_func
-            .call(&mut self.store.as_store_mut())
-            .map_err(handle_wasmer_runtime_error)?;
-        Ok(())
-    }
-
-    fn call_function(&mut self, function_index: u32) -> Result<(), VMError> {
-        let exported_runtime = self
-            .env
-            .as_ref(&self.store)
-            .exported_runtime
-            .as_ref()
-            .expect("Valid exported runtime");
-        let table = exported_runtime
-            .exported_table
-            .as_ref()
-            .expect("should have table")
-            .clone();
-
-        // NOTE: This should be safe to unwrap as we're passing a valid function index that comes
-        // from the manifest, and it should be present in the table. The table should be validated
-        // at creation time for all cases i.e. correct signature, the pointer is actually stored in
-        // the table, etc.
-        // dbg!(&function_index);
-        let function = table
-            .get(&mut self.store, function_index)
-            .expect("should have valid entry in the table");
-
-        let function = match function.funcref() {
-            Some(Some(funcref)) => funcref
-                .typed::<(), ()>(&self.store)
-                .expect("should have valid signature"),
-            Some(None) => {
-                todo!("the entry exists buut there's no object stored in the table?")
-            }
-            None => {
-                todo!("not a funcref");
-            }
-        };
-
-        let () = function
             .call(&mut self.store.as_store_mut())
             .map_err(handle_wasmer_runtime_error)?;
         Ok(())
@@ -677,19 +635,12 @@ where
             Err(wasmer::ExportError::Missing(_)) => None,
         };
 
-        let exports = instance.exports.clone();
-        // let memory = instance
-        //     .exports
-        //     .get_memory("memory")
-        //     .map_err(|error| BackendError::Export(error.to_string()))?;
-
         {
             let function_env_mut = function_env.as_mut(&mut store);
             function_env_mut.instance = Arc::downgrade(&instance);
             function_env_mut.exported_runtime = Some(ExportedRuntime {
                 memory,
                 exported_table: table,
-                exports,
             });
         }
 
