@@ -13,7 +13,9 @@
 use std::{any::TypeId, collections::BTreeSet};
 
 use lmdb::{Database, RwTransaction, Transaction, WriteFlags};
-use serde::{de::DeserializeOwned, Serialize};
+use serde::de::DeserializeOwned;
+#[cfg(test)]
+use serde::Serialize;
 use thiserror::Error;
 use tracing::warn;
 
@@ -121,6 +123,7 @@ pub(super) trait WriteTransactionExt {
     /// Returns `true` if the value has actually been written, `false` if the key already existed.
     ///
     /// Setting `overwrite` to true will cause the value to always be written instead.
+    #[cfg(test)]
     fn put_value<K: AsRef<[u8]>, V: 'static + Serialize>(
         &mut self,
         db: Database,
@@ -206,6 +209,7 @@ where
 /// function to provide compatibility with the legacy version of the `UnbondingPurse` struct.
 /// See [`serialize_unbonding_purse`] for more details.
 // TODO: Get rid of the 'static bound.
+#[cfg(test)]
 pub(crate) fn serialize_internal<V: 'static + Serialize>(
     value: &V,
 ) -> Result<Vec<u8>, LmdbExtError> {
@@ -232,6 +236,7 @@ pub(crate) fn deserialize_internal<V: 'static + DeserializeOwned>(
 }
 
 impl WriteTransactionExt for RwTransaction<'_> {
+    #[cfg(test)]
     fn put_value<K: AsRef<[u8]>, V: 'static + Serialize>(
         &mut self,
         db: Database,
@@ -343,6 +348,7 @@ pub(super) fn deserialize_unbonding_purse<T: DeserializeOwned + 'static>(
 }
 
 /// Serializes into a buffer.
+#[cfg(test)]
 #[inline(always)]
 pub(super) fn serialize<T: Serialize>(value: &T) -> Result<Vec<u8>, LmdbExtError> {
     bincode::serialize(value).map_err(|err| LmdbExtError::Other(Box::new(err)))
@@ -352,6 +358,7 @@ pub(super) fn serialize<T: Serialize>(value: &T) -> Result<Vec<u8>, LmdbExtError
 /// To provide backward compatibility with the previous version of the `UnbondingPurse`,
 /// the serialized bytes are prefixed with the "magic bytes", which will be used by the
 /// deserialization routine to detect the version of the `UnbondingPurse` struct.
+#[cfg(test)]
 #[inline(always)]
 pub(super) fn serialize_unbonding_purse<T: Serialize>(value: &T) -> Result<Vec<u8>, LmdbExtError> {
     let mut serialized = UNBONDING_PURSE_V2_MAGIC_BYTES.to_vec();

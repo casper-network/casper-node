@@ -155,6 +155,7 @@ pub(crate) trait InitializedComponent<REv>: Component<REv> {
         self.state() == &ComponentState::Uninitialized
     }
 
+    #[allow(dead_code)]
     fn is_initialized(&self) -> bool {
         self.state() == &ComponentState::Initialized
     }

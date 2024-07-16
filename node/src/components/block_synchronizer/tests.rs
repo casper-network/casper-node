@@ -42,21 +42,21 @@ const STRICT_FINALITY_REQUIRED_VERSION: ProtocolVersion = ProtocolVersion::from_
 /// Event for the mock reactor.
 #[derive(Debug, From)]
 enum MockReactorEvent {
-    MarkBlockCompletedRequest(MarkBlockCompletedRequest),
+    MarkBlockCompletedRequest(#[allow(dead_code)] MarkBlockCompletedRequest),
     BlockFetcherRequest(FetcherRequest<Block>),
     BlockHeaderFetcherRequest(FetcherRequest<BlockHeader>),
     LegacyDeployFetcherRequest(FetcherRequest<LegacyDeploy>),
     TransactionFetcherRequest(FetcherRequest<Transaction>),
     FinalitySignatureFetcherRequest(FetcherRequest<FinalitySignature>),
-    TrieOrChunkFetcherRequest(FetcherRequest<TrieOrChunk>),
+    TrieOrChunkFetcherRequest(#[allow(dead_code)] FetcherRequest<TrieOrChunk>),
     BlockExecutionResultsOrChunkFetcherRequest(FetcherRequest<BlockExecutionResultsOrChunk>),
-    SyncLeapFetcherRequest(FetcherRequest<SyncLeap>),
+    SyncLeapFetcherRequest(#[allow(dead_code)] FetcherRequest<SyncLeap>),
     ApprovalsHashesFetcherRequest(FetcherRequest<ApprovalsHashes>),
     NetworkInfoRequest(NetworkInfoRequest),
     BlockAccumulatorRequest(BlockAccumulatorRequest),
-    PeerBehaviorAnnouncement(PeerBehaviorAnnouncement),
+    PeerBehaviorAnnouncement(#[allow(dead_code)] PeerBehaviorAnnouncement),
     StorageRequest(StorageRequest),
-    TrieAccumulatorRequest(TrieAccumulatorRequest),
+    TrieAccumulatorRequest(#[allow(dead_code)] TrieAccumulatorRequest),
     ContractRuntimeRequest(ContractRuntimeRequest),
     SyncGlobalStateRequest(SyncGlobalStateRequest),
     MakeBlockExecutableRequest(MakeBlockExecutableRequest),
@@ -275,7 +275,7 @@ impl BlockSynchronizer {
             Arc::new(Chainspec::random(rng)),
             MAX_SIMULTANEOUS_PEERS,
             validator_matrix,
-            &prometheus::Registry::new(),
+            &Registry::new(),
         )
         .expect("Failed to create BlockSynchronizer");
 
@@ -2445,7 +2445,7 @@ async fn historical_sync_skips_exec_results_and_deploys_if_block_empty() {
         Event::GlobalStateSynced {
             block_hash: *block.hash(),
             result: Ok(GlobalStateSynchronizerResponse::new(
-                super::global_state_synchronizer::RootHash::new(*block.state_root_hash()),
+                global_state_synchronizer::RootHash::new(*block.state_root_hash()),
                 vec![],
             )),
         },
@@ -2552,7 +2552,7 @@ async fn historical_sync_no_legacy_block() {
         Event::GlobalStateSynced {
             block_hash: *block.hash(),
             result: Ok(GlobalStateSynchronizerResponse::new(
-                super::global_state_synchronizer::RootHash::new(*block.state_root_hash()),
+                global_state_synchronizer::RootHash::new(*block.state_root_hash()),
                 vec![],
             )),
         },
@@ -2780,7 +2780,7 @@ async fn historical_sync_legacy_block_strict_finality() {
         Event::GlobalStateSynced {
             block_hash: *block.hash(),
             result: Ok(GlobalStateSynchronizerResponse::new(
-                super::global_state_synchronizer::RootHash::new(*block.state_root_hash()),
+                global_state_synchronizer::RootHash::new(*block.state_root_hash()),
                 vec![],
             )),
         },
@@ -2982,7 +2982,7 @@ async fn historical_sync_legacy_block_weak_finality() {
         Event::GlobalStateSynced {
             block_hash: *block.hash(),
             result: Ok(GlobalStateSynchronizerResponse::new(
-                super::global_state_synchronizer::RootHash::new(*block.state_root_hash()),
+                global_state_synchronizer::RootHash::new(*block.state_root_hash()),
                 vec![],
             )),
         },
@@ -3195,7 +3195,7 @@ async fn historical_sync_legacy_block_any_finality() {
         Event::GlobalStateSynced {
             block_hash: *block.hash(),
             result: Ok(GlobalStateSynchronizerResponse::new(
-                super::global_state_synchronizer::RootHash::new(*block.state_root_hash()),
+                global_state_synchronizer::RootHash::new(*block.state_root_hash()),
                 vec![],
             )),
         },
@@ -3865,7 +3865,7 @@ async fn historical_sync_latch_should_not_decrement_for_old_deploy_fetch_respons
         Event::GlobalStateSynced {
             block_hash: *block.hash(),
             result: Ok(GlobalStateSynchronizerResponse::new(
-                super::global_state_synchronizer::RootHash::new(*block.state_root_hash()),
+                global_state_synchronizer::RootHash::new(*block.state_root_hash()),
                 vec![],
             )),
         },
@@ -4136,7 +4136,7 @@ async fn historical_sync_latch_should_not_decrement_for_old_execution_results() 
         Event::GlobalStateSynced {
             block_hash: *block.hash(),
             result: Ok(GlobalStateSynchronizerResponse::new(
-                super::global_state_synchronizer::RootHash::new(*block.state_root_hash()),
+                global_state_synchronizer::RootHash::new(*block.state_root_hash()),
                 vec![],
             )),
         },

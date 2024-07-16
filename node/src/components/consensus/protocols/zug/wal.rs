@@ -115,6 +115,7 @@ impl<C: Context> ReadWal<C> {
     pub(crate) fn new(wal_path: &PathBuf) -> Result<Self, ReadWalError> {
         let file = OpenOptions::new()
             .create(true)
+            .truncate(true)
             .read(true)
             .write(true)
             .open(wal_path)

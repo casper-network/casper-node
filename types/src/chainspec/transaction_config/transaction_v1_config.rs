@@ -6,10 +6,11 @@ use serde::{Deserialize, Serialize};
 
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
+#[cfg(any(feature = "testing", test))]
+use crate::INSTALL_UPGRADE_LANE_ID;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     transaction::TransactionCategory,
-    INSTALL_UPGRADE_LANE_ID,
 };
 
 /// Default gas limit of install / upgrade contracts
