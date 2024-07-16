@@ -32,9 +32,8 @@ use casper_types::{
     system::handle_payment::ARG_AMOUNT,
     BlockHash, BlockHeader, BlockTime, BlockV2, CLValue, Chainspec, ChecksumRegistry, Digest,
     EntityAddr, EraEndV2, EraId, FeeHandling, Gas, GasLimited, Key, ProtocolVersion, PublicKey,
-    RefundHandling, Transaction, TransactionEntryPoint,
-    TransactionInvocationTarget, TransactionRuntime, TransactionTarget, AUCTION_LANE_ID,
-    MINT_LANE_ID, U512,
+    RefundHandling, Transaction, TransactionEntryPoint, TransactionInvocationTarget,
+    TransactionRuntime, TransactionTarget, AUCTION_LANE_ID, MINT_LANE_ID, U512,
 };
 
 use super::{
