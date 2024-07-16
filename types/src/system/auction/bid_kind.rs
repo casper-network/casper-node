@@ -321,6 +321,8 @@ impl FromBytes for BidKind {
                 .map(|(bridge, remainder)| (BidKind::Bridge(Box::new(bridge)), remainder)),
             tag if tag == BidKindTag::Credit as u8 => ValidatorCredit::from_bytes(remainder)
                 .map(|(credit, remainder)| (BidKind::Credit(Box::new(credit)), remainder)),
+            tag if tag == BidKindTag::Reservation as u8 => Reservation::from_bytes(remainder)
+                .map(|(reservation, remainder)| (BidKind::Reservation(Box::new(reservation)), remainder)),
             _ => Err(bytesrepr::Error::Formatting),
         }
     }
