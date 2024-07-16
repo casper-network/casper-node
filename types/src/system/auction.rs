@@ -366,7 +366,7 @@ impl BidsExt for Vec<BidKind> {
 }
 
 #[cfg(test)]
-mod prop_tests {
+mod prop_test_delegator {
     use proptest::prelude::*;
 
     use crate::{bytesrepr, gens};
@@ -374,6 +374,20 @@ mod prop_tests {
     proptest! {
         #[test]
         fn test_value_bid(bid in gens::delegator_arb()) {
+            bytesrepr::test_serialization_roundtrip(&bid);
+        }
+    }
+}
+
+#[cfg(test)]
+mod prop_test_reservation {
+    use proptest::prelude::*;
+
+    use crate::{bytesrepr, gens};
+
+    proptest! {
+        #[test]
+        fn test_value_bid(bid in gens::reservation_arb()) {
             bytesrepr::test_serialization_roundtrip(&bid);
         }
     }

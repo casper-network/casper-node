@@ -634,9 +634,13 @@ fn delegation_rate_arb() -> impl Strategy<Value = DelegationRate> {
     0..=DELEGATION_RATE_DENOMINATOR // Maximum, allowed value for delegation rate.
 }
 
+pub(crate) fn reservation_bid_arb() -> impl Strategy<Value = BidKind> {
+    reservation_arb().prop_map(|reservation| BidKind::Reservation(Box::new(reservation)))
+}
+
 pub(crate) fn reservation_arb() -> impl Strategy<Value = Reservation> {
     (public_key_arb_no_system(), public_key_arb_no_system())
-        .prop_map(|(delegator_pk, validator_pk)| Reservation::new(delegator_pk, validator_pk))
+        .prop_map(|(validator_pk, delegator_pk)| Reservation::new(validator_pk, delegator_pk))
 }
 
 pub(crate) fn unified_bid_arb(
@@ -823,6 +827,7 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
         validator_bid_arb().prop_map(StoredValue::BidKind),
         delegator_bid_arb().prop_map(StoredValue::BidKind),
         credit_bid_arb().prop_map(StoredValue::BidKind),
+        reservation_bid_arb().prop_map(StoredValue::BidKind),
         withdraws_arb(1..50).prop_map(StoredValue::Withdraw),
         unbondings_arb(1..50).prop_map(StoredValue::Unbonding),
         message_topic_summary_arb().prop_map(StoredValue::MessageTopic),

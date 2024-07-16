@@ -423,3 +423,17 @@ mod prop_test_bid_kind_validator_credit {
         }
     }
 }
+
+#[cfg(test)]
+mod prop_test_bid_kind_reservation {
+    use proptest::prelude::*;
+
+    use crate::{bytesrepr, gens};
+
+    proptest! {
+        #[test]
+        fn test_value_bid_kind_reservation(bid_kind in gens::reservation_bid_arb()) {
+            bytesrepr::test_serialization_roundtrip(&bid_kind);
+        }
+    }
+}
