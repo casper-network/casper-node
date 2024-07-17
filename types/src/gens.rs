@@ -826,6 +826,7 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
         unified_bid_arb(0..3).prop_map(StoredValue::BidKind),
         validator_bid_arb().prop_map(StoredValue::BidKind),
         delegator_bid_arb().prop_map(StoredValue::BidKind),
+        reservation_bid_arb().prop_map(StoredValue::BidKind),
         credit_bid_arb().prop_map(StoredValue::BidKind),
         withdraws_arb(1..50).prop_map(StoredValue::Withdraw),
         unbondings_arb(1..50).prop_map(StoredValue::Unbonding),
