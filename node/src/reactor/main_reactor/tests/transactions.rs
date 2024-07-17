@@ -2364,6 +2364,14 @@ fn match_pricing_mode(txn_pricing_mode: &PricingMode) -> (PricingHandling, u8, O
             gas_price_tolerance,
         } => (PricingHandling::Fixed, *gas_price_tolerance, None),
         PricingMode::Reserved { .. } => unimplemented!(),
+        PricingMode::GasLimited {
+            gas_limit,
+            gas_price_tolerance,
+        } => (
+            PricingHandling::GasLimited,
+            *gas_price_tolerance,
+            Some(*gas_limit),
+        ),
     }
 }
 

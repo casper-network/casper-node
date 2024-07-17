@@ -200,7 +200,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
     let attr_args = match ast::NestedMeta::parse_meta_list(attrs2.into()) {
         Ok(v) => v,
         Err(e) => {
-            return TokenStream::from(syn::Error::from(e).to_compile_error());
+            return TokenStream::from(e.to_compile_error());
         }
     };
 
@@ -210,42 +210,40 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
         let struct_meta = StructMeta::from_list(&attr_args).unwrap();
         if !struct_meta.contract_state {
             let partial = generate_casper_state_for_struct(item_struct);
-            return quote! {
+            quote! {
                 #partial
             }
-            .into();
+            .into()
         } else {
-            return process_casper_contract_for_struct(item_struct);
+            process_casper_contract_for_struct(item_struct)
         }
     } else if let Ok(item_enum) = syn::parse::<ItemEnum>(item.clone()) {
         let partial = generate_casper_state_for_enum(item_enum);
-        return quote! {
+        quote! {
             #partial
         }
-        .into();
+        .into()
     } else if let Ok(item_trait) = syn::parse::<ItemTrait>(item.clone()) {
         let trait_meta = TraitMeta::from_list(&attr_args).unwrap();
-        return casper_trait_definition(item_trait, trait_meta, &mut has_fallback_selector);
+        casper_trait_definition(item_trait, trait_meta, &mut has_fallback_selector)
     } else if let Ok(entry_points) = syn::parse::<ItemImpl>(item.clone()) {
         if let Some((_not, trait_path, _for)) = entry_points.trait_.as_ref() {
             let impl_meta = ImplTraitForContractMeta::from_list(&attr_args).unwrap();
-            return generate_impl_trait_for_contract(&entry_points, trait_path, impl_meta);
+            generate_impl_trait_for_contract(&entry_points, trait_path, impl_meta)
         } else {
-            return generate_impl_for_contract(entry_points, has_fallback_selector);
+            generate_impl_for_contract(entry_points, has_fallback_selector)
         }
     } else if let Ok(func) = syn::parse::<ItemFn>(item.clone()) {
         let func_meta = ItemFnMeta::from_list(&attr_args).unwrap();
         match func_meta {
-            ItemFnMeta::Export => {
-                return generate_export_function(func).into();
-            }
+            ItemFnMeta::Export => generate_export_function(func),
         }
     } else {
         let err = syn::Error::new(
             Span::call_site(),
             "State attribute can only be applied to struct or enum",
         );
-        return TokenStream::from(err.to_compile_error());
+        TokenStream::from(err.to_compile_error())
     }
 
     //     proc_macro::TokenTree::Ident(ident) if ident.to_string() == "export" =>
@@ -352,14 +350,14 @@ fn generate_impl_for_contract(
 
         other => todo!("Unsupported {other:?}"),
     };
-    let mut defs = Vec::new();
-    defs.push(quote! {});
+    let defs = vec![quote! {}]; // TODO: Dummy element which may not be necessary but is used for expansion later
+    #[cfg(feature = "__abi_generator")]
+    let mut defs = defs;
     #[cfg(feature = "__abi_generator")]
     let mut defs_linkme = Vec::new();
     let mut names = Vec::new();
     let mut extern_entry_points = Vec::new();
-    let mut abi_generator_entry_points = Vec::new();
-    abi_generator_entry_points.push(quote! {});
+    let _abi_generator_entry_points = vec![quote! {}]; // TODO: Dummy element which may not be necessary but is used for expansion later
     let mut manifest_entry_point_enum_variants = Vec::new();
     let mut manifest_entry_point_enum_match_name = Vec::new();
     let mut manifest_entry_point_input_data = Vec::new();
@@ -388,10 +386,7 @@ fn generate_impl_for_contract(
                 // func.sig.re
                 let never_returns = match &func.sig.output {
                     syn::ReturnType::Default => false,
-                    syn::ReturnType::Type(_, ty) => match ty.as_ref() {
-                        Type::Never(_) => true,
-                        _ => false,
-                    },
+                    syn::ReturnType::Type(_, ty) => matches!(ty.as_ref(), Type::Never(_)),
                 };
 
                 method_attribute = MethodAttribute::from_attributes(&func.attrs).unwrap();
@@ -556,10 +551,7 @@ fn generate_impl_for_contract(
                     });
                 }
 
-                let handle_err;
-                let handle_call;
-
-                handle_err = if !never_returns && method_attribute.revert_on_error {
+                let handle_err = if !never_returns && method_attribute.revert_on_error {
                     if let syn::ReturnType::Default = func.sig.output {
                         panic!("Cannot revert on error if there is no return value");
                     }
@@ -575,20 +567,18 @@ fn generate_impl_for_contract(
                     quote! {}
                 };
 
-                handle_call = if entry_point_requires_state {
+                let handle_call = if entry_point_requires_state {
                     quote! {
                         let mut instance: #struct_name = casper_sdk::host::read_state().unwrap();
                         let _ret = instance.#func_name(#(args.#arg_names,)*);
                     }
+                } else if method_attribute.constructor {
+                    quote! {
+                        let _ret = <#struct_name>::#func_name(#(args.#arg_names,)*);
+                    }
                 } else {
-                    if method_attribute.constructor {
-                        quote! {
-                            let _ret = <#struct_name>::#func_name(#(args.#arg_names,)*);
-                        }
-                    } else {
-                        quote! {
-                            let _ret = <#struct_name>::#func_name(#(args.#arg_names,)*);
-                        }
+                    quote! {
+                        let _ret = <#struct_name>::#func_name(#(args.#arg_names,)*);
                     }
                 };
                 if method_attribute.constructor {
@@ -957,10 +947,8 @@ fn generate_impl_trait_for_contract(
         }
     };
 
-    let visitor;
-
-    if impl_meta.compile_as_dependency {
-        visitor = quote! {
+    let visitor = if impl_meta.compile_as_dependency {
+        quote! {
             const _: () = {
                 macro_rules! visitor {
                     ($($vis:vis $name:ident as $export_name:ident => $dispatch:ident,)*) => {
@@ -974,9 +962,9 @@ fn generate_impl_trait_for_contract(
 
                 #path_to_macro::#macro_name!(visitor);
             };
-        };
+        }
     } else {
-        visitor = quote! {
+        quote! {
             const _: () = {
                 macro_rules! visitor {
                     ($($vis:vis $name:ident as $export_name:ident => $dispatch:ident,)*) => {
@@ -991,7 +979,7 @@ fn generate_impl_trait_for_contract(
 
                 #path_to_macro::#macro_name!(visitor);
             };
-        };
+        }
     };
 
     code.push(visitor);
@@ -1344,12 +1332,12 @@ fn casper_trait_definition(
                 }
             }
     };
-    let foo = quote! {
+    quote! {
         #item_trait
 
         #extension_struct
-    };
-    foo.into()
+    }
+    .into()
 }
 
 fn generate_casper_state_for_struct(item_struct: ItemStruct) -> impl quote::ToTokens {
@@ -1378,14 +1366,14 @@ fn generate_casper_state_for_enum(item_enum: ItemEnum) -> impl quote::ToTokens {
 fn get_maybe_derive_abi() -> impl ToTokens {
     #[cfg(feature = "__abi_generator")]
     {
-        return quote! {
+        quote! {
             #[derive(casper_macros::CasperABI)]
-        };
+        }
     }
 
     #[cfg(not(feature = "__abi_generator"))]
     {
-        return quote! {};
+        quote! {}
     }
 }
 
@@ -1776,7 +1764,6 @@ pub fn selector(input: TokenStream) -> TokenStream {
     TokenStream::from(quote! {
         casper_sdk::casper_executor_wasm_common::selector::Selector::new(#selector_value)
     })
-    .into()
 }
 
 #[proc_macro]
@@ -1789,7 +1776,6 @@ pub fn blake2b256(input: TokenStream) -> TokenStream {
     TokenStream::from(quote! {
         [ #(#hash),* ]
     })
-    .into()
 }
 
 #[proc_macro]
@@ -1799,5 +1785,4 @@ pub fn test(item: TokenStream) -> TokenStream {
         #[test]
         #input
     })
-    .into()
 }

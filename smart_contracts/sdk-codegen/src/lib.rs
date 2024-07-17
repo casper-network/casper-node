@@ -54,6 +54,15 @@ pub struct Codegen {
     specialized_types: BTreeMap<Declaration, Specialized>,
 }
 
+impl FromStr for Codegen {
+    type Err = serde_json::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let schema: Schema = serde_json::from_str(s)?;
+        Ok(Self::new(schema))
+    }
+}
+
 impl Codegen {
     pub fn new(schema: Schema) -> Self {
         Self {
@@ -66,11 +75,6 @@ impl Codegen {
     pub fn from_file(path: &str) -> Result<Self, std::io::Error> {
         let file = std::fs::File::open(path)?;
         let schema: Schema = serde_json::from_reader(file)?;
-        Ok(Self::new(schema))
-    }
-
-    pub fn from_str(s: &str) -> Result<Self, serde_json::Error> {
-        let schema: Schema = serde_json::from_str(s)?;
         Ok(Self::new(schema))
     }
 
@@ -93,7 +97,7 @@ impl Codegen {
 
         match &self.schema.type_ {
             SchemaType::Contract { state } => {
-                if !self.schema.definitions.has_definition(&state) {
+                if !self.schema.definitions.has_definition(state) {
                     panic!(
                         "Missing state definition. Expected to find a definition for {}.",
                         &state
@@ -209,10 +213,10 @@ impl Codegen {
                     assert!(processed.contains(value));
                 }
                 Definition::Sequence { decl } => {
-                    assert!(processed.contains(&decl));
+                    assert!(processed.contains(decl));
                 }
                 Definition::FixedSequence { length: _, decl } => {
-                    assert!(processed.contains(&decl));
+                    assert!(processed.contains(decl));
                 }
                 Definition::Tuple { items } => {
                     for item in items {
@@ -244,11 +248,7 @@ impl Codegen {
                     .definitions
                     .get(decl)
                     .cloned()
-                    .or_else(|| {
-                        Primitive::from_str(decl)
-                            .ok()
-                            .map(|primitive| Definition::Primitive(primitive))
-                    })
+                    .or_else(|| Primitive::from_str(decl).ok().map(Definition::Primitive))
                     .unwrap_or_else(|| panic!("Missing definition for {}", decl));
 
                 match def {
@@ -318,7 +318,7 @@ impl Codegen {
                         }
 
                         println!("Processing tuple type {items:?}");
-                        let struct_name = slugify_type(&decl);
+                        let struct_name = slugify_type(decl);
 
                         let r#struct = scope
                             .new_struct(&struct_name)
@@ -381,7 +381,7 @@ impl Codegen {
                             items.reverse();
                         }
 
-                        let enum_name = slugify_type(&decl);
+                        let enum_name = slugify_type(decl);
 
                         let r#enum = scope
                             .new_enum(&enum_name)
@@ -456,7 +456,7 @@ impl Codegen {
                     Definition::Struct { items } => {
                         println!("Processing struct type {items:?}");
 
-                        let type_name = slugify_type(&decl);
+                        let type_name = slugify_type(decl);
 
                         let r#struct = scope.new_struct(&type_name);
 
@@ -560,7 +560,7 @@ impl Codegen {
                     r#"let result = {struct_name} {{ address: create_result.contract_address }};"#,
                     struct_name = &struct_name
                 ));
-                func.line(format!(r#"Ok(result)"#));
+                func.line("Ok(result)");
                 continue;
             } else {
                 func.line(r#"casper_sdk::host::call(&self.address, value, call_data)"#);

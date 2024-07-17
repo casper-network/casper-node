@@ -625,6 +625,7 @@ impl TransactionAcceptor {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn handle_get_entry_point_result<REv: ReactorEventT>(
         &self,
         effect_builder: EffectBuilder<REv>,

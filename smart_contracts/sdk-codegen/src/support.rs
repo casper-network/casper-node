@@ -1,4 +1,4 @@
-///! Support library for generated code.
+//! Support library for generated code.
 
 pub trait IntoResult<T, E> {
     fn into_result(self) -> Result<T, E>;

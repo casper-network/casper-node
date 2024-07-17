@@ -487,26 +487,3 @@ pub fn casper_transfer(target: &Entity, amount: u128) -> Result<(), CallError> {
     };
     call_result_from_code(result_code)
 }
-
-#[cfg(all(test, feature = "std"))]
-mod tests {
-    use bytes::Bytes;
-    use vm_common::flags::ReturnFlags;
-
-    use crate::host::native::NativeTrap;
-
-    use super::{
-        native::{dispatch_with, Environment},
-        start,
-    };
-
-    #[test]
-    fn foo() {
-        let dispatch_result =
-            dispatch_with(Environment::default(), || start(|_arg: ()| {})).unwrap_err();
-        assert_eq!(
-            dispatch_result,
-            NativeTrap::Return(ReturnFlags::empty(), Bytes::new())
-        );
-    }
-}

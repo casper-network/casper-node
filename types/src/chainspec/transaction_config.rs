@@ -17,7 +17,6 @@ use crate::{
 pub use deploy_config::DeployConfig;
 #[cfg(any(feature = "testing", test))]
 pub use deploy_config::DEFAULT_MAX_PAYMENT_MOTES;
-#[cfg(any(feature = "testing", test))]
 pub use transaction_v1_config::{
     TransactionV1Config, DEFAULT_INSTALL_UPGRADE_GAS_LIMIT, DEFAULT_LARGE_TRANSACTION_GAS_LIMIT,
 };

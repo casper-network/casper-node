@@ -43,6 +43,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::vec_init_then_push)]
     fn test_vec() {
         let mut v = super::Vec::new();
         v.push(1);

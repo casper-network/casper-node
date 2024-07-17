@@ -262,7 +262,7 @@ where
             .get_typed_function(&self.store, name)
             .map_err(from_wasmer_export_error)?;
 
-        let () = exported_call_func
+        exported_call_func
             .call(&mut self.store.as_store_mut())
             .map_err(handle_wasmer_runtime_error)?;
         Ok(())

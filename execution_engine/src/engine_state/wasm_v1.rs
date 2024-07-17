@@ -39,7 +39,8 @@ pub enum InvalidRequest {
     /// Unsupported category.
     #[error("invalid category for {0} attempting {1}")]
     InvalidCategory(TransactionHash, String),
-    #[error("unexpected transaction kind for {0} attempting {1}")]
+    /// Unexpected transaction args variant.
+    #[error("unexpected transaction args for {0} attempting {1}")]
     UnexpectedTransactionArgs(TransactionHash, String),
 }
 

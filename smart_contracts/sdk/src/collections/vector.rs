@@ -110,6 +110,11 @@ where
         self.length
     }
 
+    #[inline(always)]
+    pub fn is_empty(&self) -> bool {
+        self.length == 0
+    }
+
     pub fn binary_search(&self, value: &T) -> Result<u64, u64>
     where
         T: Ord,

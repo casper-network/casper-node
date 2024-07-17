@@ -145,7 +145,7 @@ pub fn execute_finalized_block(
 
         let initiator_addr = transaction.initiator_addr();
         let transaction_hash = transaction.hash();
-        let runtime_args = transaction.session_args().clone();
+        let runtime_args = transaction.session_args();
         let entry_point = transaction.entry_point();
         let authorization_keys = transaction.authorization_keys();
 

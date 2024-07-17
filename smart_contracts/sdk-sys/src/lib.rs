@@ -85,7 +85,7 @@ mod tests {
         macro_rules! visit_host_function {
             ( $( $(#[$cfg:meta])? $vis:vis fn $name:ident $(( $($arg:ident: $argty:ty,)* ))? $(-> $ret:ty)?;)+) => {
                 $(
-                    #[allow(dead_code, unused_variables)]
+                    #[allow(dead_code, unused_variables, clippy::too_many_arguments)]
                     $(#[$cfg])? $vis fn $name($($($arg: $argty,)*)?) $(-> $ret)? {
                         todo!("Called fn {}", stringify!($name));
                     }

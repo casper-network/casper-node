@@ -71,6 +71,11 @@ where
     }
 
     #[inline(always)]
+    pub fn is_empty(&self) -> bool {
+        self.vector.is_empty()
+    }
+
+    #[inline(always)]
     pub fn retain<F>(&mut self, f: F)
     where
         F: FnMut(&T) -> bool,

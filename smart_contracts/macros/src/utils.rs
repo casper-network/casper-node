@@ -8,7 +8,7 @@ fn sanitized_type_name(ty: &syn::Type) -> String {
     match ty {
         syn::Type::Tuple(tuple_type) => {
             let mut s = String::new();
-            s.push_str("(");
+            s.push('(');
 
             let types = tuple_type
                 .elems
@@ -17,13 +17,13 @@ fn sanitized_type_name(ty: &syn::Type) -> String {
                 .collect::<Vec<_>>()
                 .join(",");
             s.push_str(&types);
-            s.push_str(")");
+            s.push(')');
             s
         }
         ty => {
             // TODO: Get other types as a string without spaces
             let mut s = quote! { #ty }.to_string();
-            s = s.replace(" ", "");
+            s = s.replace(' ', "");
             s
         }
     }
@@ -42,10 +42,10 @@ pub(crate) fn selector_preimage(signature: &Signature) -> String {
                 _ => None,
             },
         })
-        .map(|token| sanitized_type_name(&token))
-        .collect::<Vec<_>>(); //.map(|tok| tok.to_string()).join(",");
+        .map(|token| sanitized_type_name(token))
+        .collect::<Vec<_>>();
 
-    preimage.push("(".to_string());
+    preimage.push('('.to_string());
 
     preimage.push(inputs.join(","));
 
@@ -56,7 +56,7 @@ pub(crate) fn selector_preimage(signature: &Signature) -> String {
 
 pub(crate) fn compute_blake2b256(bytes: &[u8]) -> [u8; 32] {
     let mut context = blake2_rfc::blake2b::Blake2b::new(32);
-    context.update(&bytes);
+    context.update(bytes);
     context.finalize().as_bytes().try_into().unwrap()
 }
 

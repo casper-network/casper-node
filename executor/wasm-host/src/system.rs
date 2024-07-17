@@ -77,7 +77,7 @@ fn dispatch_system_contract<R: GlobalStateReader, Ret>(
     let addressable_entity = addressable_entity_stored_value
         .clone()
         .into_addressable_entity()
-        .ok_or_else(|| DispatchError::InvalidStoredValueVariant {
+        .ok_or(DispatchError::InvalidStoredValueVariant {
             expected: StoredValueTag::AddressableEntity,
             actual: addressable_entity_stored_value,
         })?;

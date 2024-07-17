@@ -502,10 +502,7 @@ impl TransactionV1Body {
     /// Returns a random `TransactionV1Body`.
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub fn random(rng: &mut TestRng) -> Self {
-        use crate::{
-            transaction::{TransactionRuntime, TransferTarget},
-            PublicKey,
-        };
+        use crate::transaction::{TransactionRuntime, TransferTarget};
 
         match rng.gen_range(0..8) {
             0 => {

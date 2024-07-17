@@ -344,8 +344,8 @@ mod full_tries {
         let pairs_to_insert_less_pruned: Vec<(K, V)> = pairs_to_insert
             .iter()
             .rev()
-            .cloned()
             .filter(|(key, _value)| !keys_to_prune.contains(key))
+            .cloned()
             .collect();
 
         let mut actual_root = *root;

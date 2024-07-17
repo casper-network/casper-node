@@ -828,12 +828,12 @@ fn register_transactions_and_blocks() {
     // try to register held transactions again.
     let mut held_transactions = valid_transactions
         .iter()
-        .cloned()
         .filter(|transaction| {
             appendable_block
                 .transaction_hashes()
                 .contains(&transaction.hash())
         })
+        .cloned()
         .peekable();
     assert!(held_transactions.peek().is_some());
     held_transactions.for_each(|transaction| transaction_buffer.register_transaction(transaction));

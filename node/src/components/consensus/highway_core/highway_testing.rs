@@ -1139,7 +1139,6 @@ mod test_harness {
                 (
                     v.finalized_values().cloned().collect::<Vec<_>>(),
                     v.messages_produced()
-                        .cloned()
                         .filter(|hwm| hwm.is_new_unit())
                         .count(),
                 )

@@ -50,13 +50,7 @@ pub fn list_exports() -> Vec<&'static Export> {
 pub fn call_export(name: &str) {
     let exports_by_name: Vec<&Export> = EXPORTS
         .iter()
-        .filter_map(|export| {
-            if export.name == name {
-                Some(export)
-            } else {
-                None
-            }
-        })
+        .filter(|export| export.name == name)
         .collect();
 
     assert_eq!(exports_by_name.len(), 1);
