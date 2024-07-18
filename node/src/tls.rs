@@ -710,7 +710,7 @@ fn generate_private_key() -> SslResult<PKey<Private>> {
     // TODO: Please verify this for accuracy!
 
     let ec_group = ec::EcGroup::from_curve_name(SIGNATURE_CURVE)?;
-    let ec_key = ec::EcKey::generate(ec_group.as_ref())?;
+    let ec_key = EcKey::generate(ec_group.as_ref())?;
 
     PKey::from_ec_key(ec_key)
 }

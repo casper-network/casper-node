@@ -824,7 +824,8 @@ fn should_forcibly_undelegate_after_setting_validator_limits() {
     builder.forced_undelegate(None, DEFAULT_PROTOCOL_VERSION, DEFAULT_BLOCK_TIME);
 
     let bids = builder.get_bids();
-    assert_eq!(bids.len(), 1);
+    // The undelegation itself doesn't remove bids, only process_unbond does.
+    assert_eq!(bids.len(), 3);
 
     assert!(builder.get_validator_weights(new_era + 1).is_none());
 
@@ -839,7 +840,10 @@ fn should_forcibly_undelegate_after_setting_validator_limits() {
 
     assert_eq!(
         *validator_weights.get(&NON_FOUNDER_VALIDATOR_1_PK).unwrap(),
-        U512::from(ADD_BID_AMOUNT_1 + 1_000)
+        // The validator has now bid ADD_BID_AMOUNT_1 + 1_000.
+        // Delegator 1's delegation has been decreased to the maximum of DELEGATE_AMOUNT_1 - 1_000.
+        // Delegator 2's delegation was below minimum, so it has been completely unbonded.
+        U512::from(ADD_BID_AMOUNT_1 + 1_000 + DELEGATE_AMOUNT_1 - 1_000)
     );
 
     let unbonding_purses: UnbondingPurses = builder.get_unbonds();

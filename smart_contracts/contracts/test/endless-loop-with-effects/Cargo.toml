@@ -1,0 +1,16 @@
+[package]
+name = "endless-loop-with-effects"
+version = "0.1.0"
+authors = ["Alex Sardan <alexandru@casperlabs.io>"]
+edition = "2021"
+
+[[bin]]
+name = "endless_loop_with_effects"
+path = "src/main.rs"
+bench = false
+doctest = false
+test = false
+
+[dependencies]
+casper-contract = { path = "../../../contract" }
+casper-types = { path = "../../../../types" }

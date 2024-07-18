@@ -364,7 +364,7 @@ pub(crate) enum UnitTestEvent {
     FatalAnnouncement(FatalAnnouncement),
     /// A network request made by the component under test.
     #[from]
-    NetworkRequest(NetworkRequest<Message>),
+    NetworkRequest(#[allow(dead_code)] NetworkRequest<Message>),
 }
 
 impl ReactorEvent for UnitTestEvent {

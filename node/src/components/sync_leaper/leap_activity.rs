@@ -216,7 +216,7 @@ mod tests {
         let (actual_sync_leap, actual_peers) = leap_activity.best_response().unwrap();
 
         assert!(!actual_peers.is_empty());
-        assert_eq!(actual_peers.get(0).unwrap(), &peer_1.0);
+        assert_eq!(actual_peers.first().unwrap(), &peer_1.0);
         assert_eq!(actual_sync_leap, sync_leap);
 
         // Adding peers in other states does not change the result.
@@ -232,7 +232,7 @@ mod tests {
         let (actual_sync_leap, actual_peers) = leap_activity.best_response().unwrap();
 
         assert_eq!(actual_peers.len(), 1);
-        assert_eq!(actual_peers.get(0).unwrap(), &peer_1.0);
+        assert_eq!(actual_peers.first().unwrap(), &peer_1.0);
         assert_eq!(actual_sync_leap, sync_leap);
     }
 
@@ -276,7 +276,7 @@ mod tests {
 
         // Expect only a single peer with the best sync leap.
         assert_eq!(actual_peers.len(), 1);
-        assert_eq!(actual_peers.get(0).unwrap(), &peer_1_best_node_id);
+        assert_eq!(actual_peers.first().unwrap(), &peer_1_best_node_id);
         assert_eq!(actual_sync_leap, best_sync_leap);
 
         // Add two more peers with even better response.

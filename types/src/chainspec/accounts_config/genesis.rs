@@ -306,11 +306,9 @@ impl GenesisAccount {
             | GenesisAccount::Delegator { .. } => {
                 // This value represents a delegation rate in invalid state that system is supposed
                 // to reject if used.
-                DelegationRate::max_value()
+                DelegationRate::MAX
             }
-            GenesisAccount::Administrator(AdministratorAccount { .. }) => {
-                DelegationRate::max_value()
-            }
+            GenesisAccount::Administrator(AdministratorAccount { .. }) => DelegationRate::MAX,
         }
     }
 

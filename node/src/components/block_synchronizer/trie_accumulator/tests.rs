@@ -12,7 +12,7 @@ use futures::channel::oneshot;
 #[derive(Debug)]
 enum ReactorEvent {
     FetcherRequest(FetcherRequest<TrieOrChunk>),
-    PeerBehaviorAnnouncement(PeerBehaviorAnnouncement),
+    PeerBehaviorAnnouncement(#[allow(dead_code)] PeerBehaviorAnnouncement),
 }
 
 impl From<PeerBehaviorAnnouncement> for ReactorEvent {
