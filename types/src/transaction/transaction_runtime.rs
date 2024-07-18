@@ -87,7 +87,7 @@ impl TransactionRuntime {
     }
 }
 
-#[cfg(any(all(feature = "std", feature = "testing"), test))]
+#[cfg(any(feature = "testing", test))]
 impl Distribution<TransactionRuntime> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> TransactionRuntime {
         match rng.gen_range(0..=1) {
