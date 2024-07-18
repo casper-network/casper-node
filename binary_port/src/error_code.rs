@@ -271,6 +271,9 @@ pub enum ErrorCode {
     /// Invalid transaction kind
     #[error("invalid transaction kind")]
     InvalidTransactionInvalidTransactionKind = 84,
+    /// Received V1 Transaction for spec exec.
+    #[error("received v1 transaction for speculative execution")]
+    ReceivedV1Transaction = 85,
 }
 
 impl TryFrom<u16> for ErrorCode {

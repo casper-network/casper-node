@@ -156,4 +156,19 @@ impl TransferResult {
             TransferResult::Success { effects, .. } => effects.clone(),
         }
     }
+
+    pub fn transfers(&self) -> Vec<Transfer> {
+        match self {
+            TransferResult::RootNotFound | TransferResult::Failure(_) => vec![],
+            TransferResult::Success { transfers, .. } => transfers.clone(),
+        }
+    }
+
+    pub fn error(&self) -> Option<TransferError> {
+        if let Self::Failure(error) = self {
+            Some(error.clone())
+        } else {
+            None
+        }
+    }
 }
