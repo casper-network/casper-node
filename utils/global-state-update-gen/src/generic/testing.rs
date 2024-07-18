@@ -216,7 +216,7 @@ impl MockStateReader {
 
         let withdraws = self
             .withdraws
-            .entry(withdraw.validator_public_key().to_account_hash())
+            .entry(withdraw.unbonder_public_key().to_account_hash())
             .or_default();
         withdraws.push(withdraw);
         self
@@ -1894,8 +1894,8 @@ fn should_slash_a_validator_and_delegator_with_enqueued_withdraws() {
     // 8 keys should be written:
     // - seigniorage recipients
     // - total supply
-    // - 3 balances, 2 bids, 1 withdraw
-    assert_eq!(update.len(), 8);
+    // - 3 balances, 2 bids, 3 withdraws
+    assert_eq!(update.len(), 10);
 }
 
 #[test]
@@ -2040,12 +2040,12 @@ fn should_slash_a_validator_and_delegator_with_enqueued_unbonds() {
     // check the withdraws under validator 1 are unchanged
     update.assert_key_absent(&Key::Unbond(validator1.to_account_hash()));
 
-    // 9 keys should be written:
+    // 11 keys should be written:
     // - seigniorage recipients
     // - total supply
-    // - 3 balances, 2 bids,
-    // - 1 unbond
-    assert_eq!(update.len(), 8);
+    // - 4 balances, 2 bids,
+    // - 3 unbonds
+    assert_eq!(update.len(), 11);
 }
 
 #[test]
@@ -2604,11 +2604,12 @@ fn should_handle_legacy_unbonding_to_a_delegator_correctly() {
     update.assert_written_purse_is_unit(bid_write.bonding_purse().unwrap());
     update.assert_written_balance(bid_write.bonding_purse().unwrap(), V2_INITIAL_STAKE);
 
-    // 12 keys should be written:
+    // 13 keys should be written:
     // - seigniorage recipients
     // - total supply
     // - bid for old validator
     // - unbonding purse for old validator
+    // - unbonding purse for old delegator
     // - account for new validator
     // - main purse for account for new validator
     // - main purse balance for account for new validator
@@ -2617,5 +2618,5 @@ fn should_handle_legacy_unbonding_to_a_delegator_correctly() {
     // - bid for new validator
     // - bonding purse for new validator
     // - bonding purse balance for new validator
-    assert_eq!(update.len(), 12);
+    assert_eq!(update.len(), 13);
 }

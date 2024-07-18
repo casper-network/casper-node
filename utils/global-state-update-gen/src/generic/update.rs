@@ -279,10 +279,10 @@ impl Update {
     }
 
     #[track_caller]
-    pub(crate) fn assert_unbonds_empty(&self, validator_key: &PublicKey) {
+    pub(crate) fn assert_unbonds_empty(&self, unbonder_key: &PublicKey) {
         let unbonds = self
             .entries
-            .get(&Key::Unbond(validator_key.to_account_hash()))
+            .get(&Key::Unbond(unbonder_key.to_account_hash()))
             .expect("should have unbond purses")
             .as_unbonding()
             .expect("should be vec of unbonds");
