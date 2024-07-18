@@ -246,7 +246,7 @@ impl MockStateReader {
             None,
         );
 
-        let account_hash = unbonding_purse.validator_public_key().to_account_hash();
+        let account_hash = unbonding_purse.unbonder_public_key().to_account_hash();
         match self.unbonds.get_mut(&account_hash) {
             None => {
                 self.unbonds.insert(account_hash, vec![unbonding_purse]);
@@ -1534,8 +1534,8 @@ fn should_remove_the_delegator() {
     // - main purse for validator 1
     // - bonding purse balance for validator 1
     // - bonding purse balance for delegator 1
-    // - unbonding for delegator 1
     // - bid for validator 1
+    // - bid for delegator 1
     assert_eq!(update.len(), 7);
 }
 
@@ -1906,7 +1906,7 @@ fn should_slash_a_validator_and_delegator_with_enqueued_unbonds() {
     for unbond in reader
         .unbonds
         .get(&validator1.to_account_hash())
-        .expect("should have unbonds for validator2")
+        .expect("should have unbonds for validator1")
     {
         update.assert_key_absent(&Key::Balance(unbond.bonding_purse().addr()));
     }
@@ -1920,9 +1920,9 @@ fn should_slash_a_validator_and_delegator_with_enqueued_unbonds() {
     // 9 keys should be written:
     // - seigniorage recipients
     // - total supply
-    // - 4 balances, 2 bids,
+    // - 3 balances, 2 bids,
     // - 1 unbond
-    assert_eq!(update.len(), 9);
+    assert_eq!(update.len(), 8);
 }
 
 #[test]
@@ -2128,6 +2128,11 @@ fn should_handle_unbonding_to_a_delegator_correctly() {
         .find(|&purse| purse.unbonder_public_key() == &old_validator)
         .map(|purse| *purse.bonding_purse())
         .expect("A bonding purse for the validator");
+    let unbonding_purses = reader
+        .get_unbonds()
+        .get(&delegator.to_account_hash())
+        .cloned()
+        .expect("should have delegator unbond purses");
     let _ = unbonding_purses
         .iter()
         .find(|&purse| purse.unbonder_public_key() == &delegator)
