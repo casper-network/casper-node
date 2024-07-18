@@ -19,6 +19,11 @@ pub enum ExitCode {
     /// The process should exit with `101`, equivalent to panicking.  The launcher should not
     /// restart the node.
     Abort = 101,
+    /// The process should exit with `102`.  It used to be an indication to the launcher
+    /// that it should proceed to run the previous installed version of `casper-node`.
+    /// It is no longer used, but we keep it here to avoid it being reassigned to other features.
+    #[doc(hidden)]
+    DowngradeVersion = 102,
     /// The process should exit with `103`.  The user requested a node shut down without restart.
     CleanExitDontRestart = 103,
     /// The exit code Rust uses by default when interrupted via an `INT` signal.
