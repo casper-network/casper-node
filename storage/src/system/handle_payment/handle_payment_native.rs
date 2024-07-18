@@ -20,8 +20,6 @@ use casper_types::{
 use std::collections::BTreeSet;
 use tracing::error;
 
-pub use casper_types::system::handle_payment::Error as HandlePaymentError;
-
 impl<S> MintProvider for RuntimeNative<S>
 where
     S: StateReader<Key, StoredValue, Error = GlobalStateError>,

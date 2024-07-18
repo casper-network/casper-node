@@ -14,7 +14,7 @@ use rand::{
 use rand_pcg::Pcg64Mcg;
 
 thread_local! {
-    static THIS_THREAD_HAS_RNG: RefCell<bool> = RefCell::new(false);
+    static THIS_THREAD_HAS_RNG: RefCell<bool> = const { RefCell::new(false) };
 }
 
 const CL_TEST_SEED: &str = "CL_TEST_SEED";

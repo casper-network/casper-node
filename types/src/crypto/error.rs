@@ -152,8 +152,10 @@ mod serde_helpers {
     #[derive(Serialize)]
     #[serde(remote = "base64::DecodeError")]
     pub(super) enum Base64DecodeError {
+        #[allow(dead_code)]
         InvalidByte(usize, u8),
         InvalidLength,
+        #[allow(dead_code)]
         InvalidLastSymbol(usize, u8),
     }
 }

@@ -130,45 +130,39 @@ fn parse_stream<I>(tokens: &mut Peekable<I>) -> Result<Value, Error>
 where
     I: Iterator<Item = Token>,
 {
-    loop {
-        match tokens.next() {
-            Some(Token::String(value)) => return Ok(Value::String(value)),
-            Some(Token::I64(value)) => return Ok(Value::Integer(value)),
-            Some(Token::Boolean(value)) => return Ok(Value::Boolean(value)),
-            Some(Token::OpenBracket) => {
-                // Special case for empty list.
-                if tokens.peek() == Some(&Token::CloseBracket) {
-                    tokens.next();
-                    return Ok(Value::Array(Vec::new()));
-                }
+    match tokens.next() {
+        Some(Token::String(value)) => Ok(Value::String(value)),
+        Some(Token::I64(value)) => Ok(Value::Integer(value)),
+        Some(Token::Boolean(value)) => Ok(Value::Boolean(value)),
+        Some(Token::OpenBracket) => {
+            // Special case for empty list.
+            if tokens.peek() == Some(&Token::CloseBracket) {
+                tokens.next();
+                return Ok(Value::Array(Vec::new()));
+            }
 
-                let mut items = Vec::new();
-                loop {
-                    items.push(parse_stream(tokens)?);
+            let mut items = Vec::new();
+            loop {
+                items.push(parse_stream(tokens)?);
 
-                    match tokens.next() {
-                        Some(Token::CloseBracket) => {
-                            return Ok(Value::Array(items));
-                        }
-                        Some(Token::Comma) => {
-                            // Continue parsing next time.
-                        }
-                        Some(t) => {
-                            return Err(Error::UnexpectedToken(t));
-                        }
-                        None => {
-                            return Err(Error::UnexpectedEndOfInput);
-                        }
+                match tokens.next() {
+                    Some(Token::CloseBracket) => {
+                        return Ok(Value::Array(items));
+                    }
+                    Some(Token::Comma) => {
+                        // Continue parsing next time.
+                    }
+                    Some(t) => {
+                        return Err(Error::UnexpectedToken(t));
+                    }
+                    None => {
+                        return Err(Error::UnexpectedEndOfInput);
                     }
                 }
             }
-            Some(t @ Token::CloseBracket) | Some(t @ Token::Comma) => {
-                return Err(Error::UnexpectedToken(t));
-            }
-            None => {
-                return Err(Error::UnexpectedEndOfInput);
-            }
         }
+        Some(t @ Token::CloseBracket) | Some(t @ Token::Comma) => Err(Error::UnexpectedToken(t)),
+        None => Err(Error::UnexpectedEndOfInput),
     }
 }
 

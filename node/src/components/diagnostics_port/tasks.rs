@@ -395,7 +395,7 @@ impl Session {
         let tempdir = tempfile::tempdir().map_err(ObtainDumpError::CreateTempDir)?;
         let tempfile_path = tempdir.path().join("queue-dump");
 
-        let tempfile = fs::File::create(&tempfile_path).map_err(ObtainDumpError::CreateTempFile)?;
+        let tempfile = File::create(&tempfile_path).map_err(ObtainDumpError::CreateTempFile)?;
 
         effect_builder
             .diagnostics_port_dump_queue(self.create_queue_dump_format(tempfile))
@@ -403,7 +403,7 @@ impl Session {
 
         // We can now reopen the file and return it.
         let reopened_tempfile =
-            fs::File::open(tempfile_path).map_err(ObtainDumpError::ReopenTempFile)?;
+            File::open(tempfile_path).map_err(ObtainDumpError::ReopenTempFile)?;
         Ok(reopened_tempfile)
     }
 
