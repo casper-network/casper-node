@@ -101,7 +101,7 @@ pub fn unchecked_allocate_buffer<T: ToBytes>(to_be_serialized: &T) -> Vec<u8> {
 }
 
 /// Returns a `Vec<u8>` initialized with sufficient capacity to hold `to_be_serialized` after
-/// serialization, or an error if the capacity would exceed `u32::max_value()`.
+/// serialization, or an error if the capacity would exceed `u32::MAX`.
 pub fn allocate_buffer<T: ToBytes>(to_be_serialized: &T) -> Result<Vec<u8>, Error> {
     let serialized_length = to_be_serialized.serialized_length();
     if serialized_length > u32::MAX as usize {

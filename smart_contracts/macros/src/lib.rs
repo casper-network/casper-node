@@ -357,7 +357,7 @@ fn generate_impl_for_contract(
     let mut defs_linkme = Vec::new();
     let mut names = Vec::new();
     let mut extern_entry_points = Vec::new();
-    let _abi_generator_entry_points = vec![quote! {}]; // TODO: Dummy element which may not be necessary but is used for expansion later
+    let _abi_generator_entry_points = [quote! {}]; // TODO: Dummy element which may not be necessary but is used for expansion later
     let mut manifest_entry_point_enum_variants = Vec::new();
     let mut manifest_entry_point_enum_match_name = Vec::new();
     let mut manifest_entry_point_input_data = Vec::new();

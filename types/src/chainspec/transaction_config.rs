@@ -17,8 +17,10 @@ use crate::{
 pub use deploy_config::DeployConfig;
 #[cfg(any(feature = "testing", test))]
 pub use deploy_config::DEFAULT_MAX_PAYMENT_MOTES;
+pub use transaction_v1_config::TransactionV1Config;
+#[cfg(any(feature = "testing", test))]
 pub use transaction_v1_config::{
-    TransactionV1Config, DEFAULT_INSTALL_UPGRADE_GAS_LIMIT, DEFAULT_LARGE_TRANSACTION_GAS_LIMIT,
+    DEFAULT_INSTALL_UPGRADE_GAS_LIMIT, DEFAULT_LARGE_TRANSACTION_GAS_LIMIT,
 };
 
 /// The default minimum number of motes that can be transferred.

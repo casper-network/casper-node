@@ -368,7 +368,7 @@ fn get_appendable_block_when_transfers_are_of_one_category() {
     get_appendable_block(
         &mut rng,
         &mut transaction_buffer,
-        std::iter::repeat_with(|| MINT_LANE_ID),
+        iter::repeat_with(|| MINT_LANE_ID),
         transaction_config
             .transaction_v1_config
             .get_max_transaction_count(MINT_LANE_ID) as usize
@@ -439,7 +439,7 @@ fn get_appendable_block_when_standards_are_of_one_category() {
     get_appendable_block(
         &mut rng,
         &mut transaction_buffer,
-        std::iter::repeat_with(|| large_lane_id),
+        iter::repeat_with(|| large_lane_id),
         transaction_config
             .transaction_v1_config
             .get_max_transaction_count(large_lane_id) as usize
@@ -828,7 +828,7 @@ fn register_transactions_and_blocks() {
     // try to register held transactions again.
     let mut held_transactions = valid_transactions
         .iter()
-        .filter(|transaction| {
+        .filter(|&transaction| {
             appendable_block
                 .transaction_hashes()
                 .contains(&transaction.hash())
@@ -847,7 +847,7 @@ fn register_transactions_and_blocks() {
     // test if transactions held for proposed blocks which did not get finalized in time
     // are eligible again
     let count = rng.gen_range(1..11);
-    let txns: Vec<_> = std::iter::repeat_with(|| Transaction::Deploy(Deploy::random(&mut rng)))
+    let txns: Vec<_> = iter::repeat_with(|| Transaction::Deploy(Deploy::random(&mut rng)))
         .take(count)
         .collect();
     let block = FinalizedBlock::random_with_specifics(
@@ -871,7 +871,7 @@ fn register_transactions_and_blocks() {
 #[derive(Debug)]
 enum ReactorEvent {
     TransactionBufferAnnouncement(TransactionBufferAnnouncement),
-    Event(Event),
+    Event(#[allow(dead_code)] Event),
 }
 
 impl From<TransactionBufferAnnouncement> for ReactorEvent {
@@ -1401,7 +1401,7 @@ fn register_random_deploys_unique_hashes(
     num_deploys: usize,
     rng: &mut TestRng,
 ) {
-    let deploys = std::iter::repeat_with(|| {
+    let deploys = iter::repeat_with(|| {
         let name = format!("{}", rng.gen::<u64>());
         let call = format!("{}", rng.gen::<u64>());
         Deploy::random_contract_by_name(
@@ -1424,7 +1424,7 @@ fn register_random_deploys_same_hash(
     num_deploys: usize,
     rng: &mut TestRng,
 ) {
-    let deploys = std::iter::repeat_with(|| {
+    let deploys = iter::repeat_with(|| {
         let name = "test".to_owned();
         let call = "test".to_owned();
         Deploy::random_contract_by_name(

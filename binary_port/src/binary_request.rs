@@ -247,7 +247,7 @@ impl TryFrom<u8> for BinaryRequestTag {
             0 => Ok(BinaryRequestTag::Get),
             1 => Ok(BinaryRequestTag::TryAcceptTransaction),
             2 => Ok(BinaryRequestTag::TrySpeculativeExec),
-            _ => Err(InvalidBinaryRequestTag(value)),
+            _ => Err(InvalidBinaryRequestTag),
         }
     }
 }
@@ -259,7 +259,7 @@ impl From<BinaryRequestTag> for u8 {
 }
 
 /// Error raised when trying to convert an invalid u8 into a `BinaryRequestTag`.
-pub struct InvalidBinaryRequestTag(u8);
+pub struct InvalidBinaryRequestTag;
 
 #[cfg(test)]
 mod tests {

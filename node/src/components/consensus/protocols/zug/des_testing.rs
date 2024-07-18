@@ -166,7 +166,7 @@ pub(crate) enum TestRunError {
 }
 
 impl Display for TestRunError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             TestRunError::NoMessages => write!(
                 f,
@@ -999,7 +999,7 @@ impl Debug for HashWrapper {
 }
 
 impl Display for HashWrapper {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         Debug::fmt(self, f)
     }
 }
@@ -1112,7 +1112,8 @@ mod test_harness {
                 (
                     v.finalized_values().cloned().collect::<Vec<_>>(),
                     v.messages_produced()
-                        .filter(|zm| zm.is_signed_gossip_message() || zm.is_proposal())
+                        .filter(|&zm| zm.is_signed_gossip_message() || zm.is_proposal())
+                        .cloned()
                         .count(),
                 )
             })

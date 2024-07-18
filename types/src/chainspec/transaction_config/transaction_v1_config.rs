@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
+#[cfg(any(feature = "testing", test))]
+use crate::INSTALL_UPGRADE_LANE_ID;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     transaction::TransactionCategory,
@@ -204,8 +206,6 @@ impl TransactionV1Config {
         install: Option<u64>,
         large_limit: Option<u64>,
     ) -> Self {
-        use crate::INSTALL_UPGRADE_LANE_ID;
-
         if let Some(mint_count) = mint_count {
             self.native_mint_lane[MAX_TRANSACTION_COUNT] = mint_count;
         }

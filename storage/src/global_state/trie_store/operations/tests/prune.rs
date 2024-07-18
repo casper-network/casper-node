@@ -344,7 +344,7 @@ mod full_tries {
         let pairs_to_insert_less_pruned: Vec<(K, V)> = pairs_to_insert
             .iter()
             .rev()
-            .filter(|(key, _value)| !keys_to_prune.contains(key))
+            .filter(|&(key, _value)| !keys_to_prune.contains(key))
             .cloned()
             .collect();
 

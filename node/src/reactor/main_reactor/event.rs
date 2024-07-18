@@ -562,7 +562,7 @@ impl From<SyncGlobalStateRequest> for MainEvent {
 impl From<TrieAccumulatorRequest> for MainEvent {
     fn from(request: TrieAccumulatorRequest) -> Self {
         MainEvent::BlockSynchronizer(block_synchronizer::Event::GlobalStateSynchronizer(
-            GlobalStateSynchronizerEvent::TrieAccumulatorEvent(request.into()),
+            GlobalStateSynchronizerEvent::TrieAccumulator(request.into()),
         ))
     }
 }

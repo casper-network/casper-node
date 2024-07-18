@@ -311,9 +311,9 @@ fn should_run_ee_1120_slash_delegators() {
 
     let unbond_purses_after: UnbondingPurses = builder.get_unbonds();
     assert_ne!(unbond_purses_before, unbond_purses_after);
-    assert!(unbond_purses_after.get(&VALIDATOR_1_ADDR).is_none());
-    assert!(unbond_purses_after.get(&DELEGATOR_1_ADDR).is_some());
-    assert!(unbond_purses_after.get(&VALIDATOR_2_ADDR).is_some());
+    assert!(!unbond_purses_after.contains_key(&VALIDATOR_1_ADDR));
+    assert!(unbond_purses_after.contains_key(&DELEGATOR_1_ADDR));
+    assert!(unbond_purses_after.contains_key(&VALIDATOR_2_ADDR));
 
     // slash validator 1 to clear remaining bids and unbonding purses
     let slash_request_2 = ExecuteRequestBuilder::contract_call_by_hash(
