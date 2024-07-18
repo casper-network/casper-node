@@ -1540,6 +1540,129 @@ fn should_remove_the_delegator() {
 }
 
 #[test]
+fn should_remove_the_delegators_unbond() {
+    let mut rng = TestRng::new();
+
+    let validator1 = PublicKey::random(&mut rng);
+    let delegator1 = PublicKey::random(&mut rng);
+
+    let v_balance = U512::from(10);
+    let v_stake = U512::from(1);
+    let d_stake = U512::from(2);
+    let initial_supply = v_balance + v_stake + d_stake;
+
+    let mut reader = MockStateReader::new()
+        .with_validators(
+            vec![(
+                validator1.clone(),
+                v_balance,
+                ValidatorConfig {
+                    bonded_amount: v_stake,
+                    delegation_rate: Some(5),
+                    delegators: Some(vec![DelegatorConfig {
+                        public_key: delegator1.clone(),
+                        delegated_amount: d_stake,
+                    }]),
+                },
+            )],
+            &mut rng,
+        )
+        .with_unbond(validator1.clone(), delegator1.clone(), d_stake, &mut rng);
+
+    assert_eq!(
+        reader.total_supply(),
+        initial_supply,
+        "should match initial supply"
+    );
+
+    /* validator and delegator bids should be present */
+    let original_bids = reader.get_bids();
+    let validator_bid = original_bids
+        .validator_bid(&validator1)
+        .expect("should have old bid");
+    let validator_initial_stake = reader
+        .purses
+        .get(&validator_bid.bonding_purse().addr())
+        .expect("should have validator initial stake");
+    assert_eq!(
+        *validator_initial_stake, v_stake,
+        "validator initial balance should match"
+    );
+    let delegator_bid = original_bids
+        .delegator_by_public_keys(&validator1, &delegator1)
+        .expect("should have delegator");
+    let delegator_initial_stake = reader
+        .purses
+        .get(&delegator_bid.bonding_purse().addr())
+        .expect("should have delegator initial stake");
+    assert_eq!(
+        *delegator_initial_stake, d_stake,
+        "delegator initial balance should match"
+    );
+
+    let v_updated_balance = U512::from(20);
+    let v_updated_stake = U512::from(2);
+    let updated_supply = v_updated_balance + v_updated_stake;
+
+    /* make various changes to the bid, including removal of delegator */
+    let config = Config {
+        accounts: vec![AccountConfig {
+            public_key: validator1.clone(),
+            balance: Some(v_updated_balance),
+            validator: Some(ValidatorConfig {
+                bonded_amount: v_updated_stake,
+                delegation_rate: None,
+                delegators: Some(vec![]),
+            }),
+        }],
+        only_listed_validators: false,
+        slash_instead_of_unbonding: true,
+        ..Default::default()
+    };
+
+    let update = get_update(&mut reader, config);
+
+    /* check high level details */
+    let expected_validator_set = &[ValidatorInfo::new(&validator1, v_updated_stake)];
+    update.assert_validators(expected_validator_set);
+    update.assert_seigniorage_recipients_written(&mut reader);
+    update.assert_total_supply(&mut reader, updated_supply.as_u64());
+
+    /* check validator bid details */
+    let account1_hash = validator1.to_account_hash();
+    let updated_validator_bid = update.get_written_bid(account1_hash);
+    update.assert_written_balance(
+        updated_validator_bid.bonding_purse().unwrap(),
+        v_updated_stake.as_u64(),
+    );
+    assert_eq!(updated_validator_bid.validator_public_key(), validator1);
+    assert_eq!(
+        updated_validator_bid.staked_amount().unwrap(),
+        v_updated_stake
+    );
+    let total_staked = update
+        .get_total_stake(account1_hash)
+        .expect("should have total stake");
+    assert_eq!(total_staked, v_updated_stake);
+    assert!(!updated_validator_bid.inactive());
+    // The delegator's bonding purse should be 0'd
+    update.assert_written_balance(*delegator_bid.bonding_purse(), 0);
+    // The delegator's unbonding purse should be removed.
+    update.assert_unbonds_empty(&delegator1);
+
+    // 8 keys should be written:
+    // - seigniorage recipients
+    // - total supply
+    // - main purse for validator 1
+    // - bonding purse balance for validator 1
+    // - bonding purse balance for delegator 1
+    // - bid for validator 1
+    // - bid for delegator 1
+    // - unbonding for delegator 1
+    assert_eq!(update.len(), 8);
+}
+
+#[test]
 fn should_remove_the_delegator_with_unbonding() {
     let mut rng = TestRng::new();
 
