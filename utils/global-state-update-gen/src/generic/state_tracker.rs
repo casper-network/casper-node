@@ -364,6 +364,13 @@ impl<T: StateReader> StateTracker<T> {
 
         if (slash_instead_of_unbonding && new_stake != previous_stake) || new_stake > previous_stake
         {
+            if slash_instead_of_unbonding {
+                // we're resetting the bonded amount, remove the unbonding entries so that they
+                // don't cause inconsistencies
+                let validator = bid_kind.validator_public_key();
+                let unbonder = bid_kind.delegator_public_key().unwrap_or(validator.clone());
+                self.remove_withdraws_and_unbonds_single(&validator, &unbonder);
+            }
             self.set_purse_balance(bonding_purse, new_stake);
         } else if new_stake < previous_stake {
             let unbonder_key = match bid_kind.delegator_public_key() {
@@ -414,25 +421,96 @@ impl<T: StateReader> StateTracker<T> {
         U512::zero()
     }
 
+    pub fn remove_withdraws_and_unbonds_single(
+        &mut self,
+        validator: &PublicKey,
+        unbonder: &PublicKey,
+    ) {
+        let withdraws = self.reader.get_withdraws();
+        let unbonds = self.reader.get_unbonds();
+
+        let unbonder_account = unbonder.to_account_hash();
+        if let Some(unbonds) = unbonds.get(&unbonder_account) {
+            let mut new_unbonds = unbonds.clone();
+            new_unbonds.retain(|unbonding_purse| {
+                if unbonding_purse.validator_public_key() == validator
+                    && unbonding_purse.unbonder_public_key() == unbonder
+                {
+                    self.set_purse_balance(*unbonding_purse.bonding_purse(), U512::zero());
+                    false
+                } else {
+                    true
+                }
+            });
+            if &new_unbonds != unbonds {
+                self.write_entry(
+                    Key::Unbond(unbonder_account),
+                    StoredValue::Unbonding(new_unbonds),
+                );
+            }
+        }
+
+        if let Some(withdraws) = withdraws.get(&unbonder_account) {
+            let mut new_withdraws = withdraws.clone();
+            new_withdraws.retain(|withdraw| {
+                if withdraw.validator_public_key() == validator
+                    && withdraw.unbonder_public_key() == unbonder
+                {
+                    self.set_purse_balance(*withdraw.bonding_purse(), U512::zero());
+                    false
+                } else {
+                    true
+                }
+            });
+            if &new_withdraws != withdraws {
+                self.write_entry(
+                    Key::Withdraw(unbonder_account),
+                    StoredValue::Withdraw(new_withdraws),
+                );
+            }
+        }
+    }
+
     /// Generates the writes to the global state that will remove the pending withdraws and unbonds
     /// of all the old validators that will cease to be validators, and slashes their unbonding
     /// purses.
     pub fn remove_withdraws_and_unbonds(&mut self, removed: &BTreeSet<PublicKey>) {
         let withdraws = self.reader.get_withdraws();
         let unbonds = self.reader.get_unbonds();
-        for removed_validator in removed {
-            let acc = removed_validator.to_account_hash();
-            if let Some(unbond_set) = unbonds.get(&acc) {
-                for unbond in unbond_set {
-                    self.set_purse_balance(*unbond.bonding_purse(), U512::zero());
+
+        for (unbonder_key, unbonding_purses) in &unbonds {
+            let mut new_unbonding_purses = unbonding_purses.clone();
+            new_unbonding_purses.retain(|unbonding_purse| {
+                if removed.contains(unbonding_purse.validator_public_key()) {
+                    self.set_purse_balance(*unbonding_purse.bonding_purse(), U512::zero());
+                    false
+                } else {
+                    true
                 }
-                self.write_entry(Key::Unbond(acc), StoredValue::Unbonding(vec![]));
+            });
+            if &new_unbonding_purses != unbonding_purses {
+                self.write_entry(
+                    Key::Unbond(*unbonder_key),
+                    StoredValue::Unbonding(new_unbonding_purses),
+                );
             }
-            if let Some(withdraw_set) = withdraws.get(&acc) {
-                for withdraw in withdraw_set {
+        }
+
+        for (withdrawer_key, withdraw_entries) in &withdraws {
+            let mut new_withdraw_entries = withdraw_entries.clone();
+            new_withdraw_entries.retain(|withdraw| {
+                if removed.contains(withdraw.validator_public_key()) {
                     self.set_purse_balance(*withdraw.bonding_purse(), U512::zero());
+                    false
+                } else {
+                    true
                 }
-                self.write_entry(Key::Withdraw(acc), StoredValue::Withdraw(vec![]));
+            });
+            if &new_withdraw_entries != withdraw_entries {
+                self.write_entry(
+                    Key::Withdraw(*withdrawer_key),
+                    StoredValue::Withdraw(new_withdraw_entries),
+                );
             }
         }
     }
