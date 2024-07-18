@@ -133,7 +133,7 @@ macro_rules! revert {
 }
 
 pub trait UnwrapOrRevert<T> {
-    /// Unwraps the value into its inner type or calls [`runtime::revert`] with a
+    /// Unwraps the value into its inner type or calls [`crate::host::casper_return`] with a
     /// predetermined error code on failure.
     fn unwrap_or_revert(self) -> T;
 }

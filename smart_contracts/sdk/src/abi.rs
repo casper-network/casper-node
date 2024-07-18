@@ -78,7 +78,7 @@ pub enum Definition {
     },
     /// Arbitrary sequence of values.
     ///
-    /// Example Rust types: Vec<T>, &[T], [T; N], Box<[T]>
+    /// Example Rust types: `Vec<T>`, `&[T]`, `[T; N]`, `Box<[T]>`
     Sequence {
         /// If length is known, then it specifies that this definition should be be represented as
         /// an array of a fixed size.

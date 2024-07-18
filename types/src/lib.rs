@@ -16,7 +16,6 @@
     html_logo_url = "https://raw.githubusercontent.com/casper-network/casper-node/blob/dev/images/Casper_Logo_Favicon.png"
 )]
 #![warn(missing_docs)]
-#![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
 #[cfg_attr(not(test), macro_use)]
 extern crate alloc;
