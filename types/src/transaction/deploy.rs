@@ -1590,6 +1590,8 @@ mod tests {
 
     #[test]
     fn is_valid() {
+        const GAS_PRICE_TOLERANCE: u8 = u8::MAX;
+
         let mut rng = TestRng::new();
 
         let deploy = create_deploy(
@@ -1597,7 +1599,7 @@ mod tests {
             TransactionConfig::default().max_ttl,
             0,
             "net-1",
-            1,
+            GAS_PRICE_TOLERANCE as u64,
         );
         assert_eq!(
             deploy.is_valid.get(),
@@ -1650,13 +1652,15 @@ mod tests {
 
     #[test]
     fn not_valid_due_to_invalid_body_hash() {
+        const GAS_PRICE_TOLERANCE: u8 = u8::MAX;
+
         let mut rng = TestRng::new();
         let mut deploy = create_deploy(
             &mut rng,
             TransactionConfig::default().max_ttl,
             0,
             "net-1",
-            1,
+            GAS_PRICE_TOLERANCE as u64,
         );
 
         deploy.session = ExecutableDeployItem::Transfer {
@@ -1669,13 +1673,15 @@ mod tests {
 
     #[test]
     fn not_valid_due_to_invalid_deploy_hash() {
+        const GAS_PRICE_TOLERANCE: u8 = u8::MAX;
+
         let mut rng = TestRng::new();
         let mut deploy = create_deploy(
             &mut rng,
             TransactionConfig::default().max_ttl,
             0,
             "net-1",
-            1,
+            GAS_PRICE_TOLERANCE as u64,
         );
 
         // deploy.header.gas_price = 2;
@@ -1685,13 +1691,15 @@ mod tests {
 
     #[test]
     fn not_valid_due_to_empty_approvals() {
+        const GAS_PRICE_TOLERANCE: u8 = u8::MAX;
+
         let mut rng = TestRng::new();
         let mut deploy = create_deploy(
             &mut rng,
             TransactionConfig::default().max_ttl,
             0,
             "net-1",
-            1,
+            GAS_PRICE_TOLERANCE as u64,
         );
         deploy.approvals = BTreeSet::new();
         assert!(deploy.approvals.is_empty());
@@ -1700,13 +1708,15 @@ mod tests {
 
     #[test]
     fn not_valid_due_to_invalid_approval() {
+        const GAS_PRICE_TOLERANCE: u8 = u8::MAX;
+
         let mut rng = TestRng::new();
         let mut deploy = create_deploy(
             &mut rng,
             TransactionConfig::default().max_ttl,
             0,
             "net-1",
-            1,
+            GAS_PRICE_TOLERANCE as u64,
         );
 
         let deploy2 = Deploy::random(&mut rng);
