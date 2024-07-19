@@ -1732,9 +1732,10 @@ mod tests {
 
     #[test]
     fn is_acceptable() {
+        const GAS_PRICE_TOLERANCE: u8 = u8::MAX;
+
         let mut rng = TestRng::new();
         let chain_name = "net-1".to_string();
-        const GAS_PRICE_TOLERANCE: u8 = u8::MAX;
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(chain_name.to_string());
         let config = chainspec.transaction_config.clone();
@@ -1744,7 +1745,7 @@ mod tests {
             config.max_ttl,
             config.deploy_config.max_dependencies.into(),
             &chain_name,
-            1,
+            GAS_PRICE_TOLERANCE as u64,
         );
         let current_timestamp = deploy.header().timestamp();
         deploy
@@ -1759,10 +1760,11 @@ mod tests {
 
     #[test]
     fn not_acceptable_due_to_invalid_chain_name() {
+        const GAS_PRICE_TOLERANCE: u8 = u8::MAX;
+
         let mut rng = TestRng::new();
         let expected_chain_name = "net-1";
         let wrong_chain_name = "net-2".to_string();
-        const GAS_PRICE_TOLERANCE: u8 = u8::MAX;
 
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(expected_chain_name.to_string());
@@ -1773,7 +1775,7 @@ mod tests {
             config.max_ttl,
             config.deploy_config.max_dependencies.into(),
             &wrong_chain_name,
-            1,
+            GAS_PRICE_TOLERANCE as u64,
         );
 
         let expected_error = InvalidDeploy::InvalidChainName {
@@ -1799,9 +1801,10 @@ mod tests {
 
     #[test]
     fn not_acceptable_due_to_excessive_dependencies() {
+        const GAS_PRICE_TOLERANCE: u8 = u8::MAX;
+
         let mut rng = TestRng::new();
         let chain_name = "net-1";
-        const GAS_PRICE_TOLERANCE: u8 = u8::MAX;
 
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(chain_name.to_string());
@@ -1809,7 +1812,13 @@ mod tests {
 
         let dependency_count = usize::from(config.deploy_config.max_dependencies + 1);
 
-        let deploy = create_deploy(&mut rng, config.max_ttl, dependency_count, chain_name, 1);
+        let deploy = create_deploy(
+            &mut rng,
+            config.max_ttl,
+            dependency_count,
+            chain_name,
+            GAS_PRICE_TOLERANCE as u64,
+        );
 
         let expected_error = InvalidDeploy::DependenciesNoLongerSupported;
 
@@ -1831,9 +1840,10 @@ mod tests {
 
     #[test]
     fn not_acceptable_due_to_excessive_ttl() {
+        const GAS_PRICE_TOLERANCE: u8 = u8::MAX;
+
         let mut rng = TestRng::new();
         let chain_name = "net-1";
-        const GAS_PRICE_TOLERANCE: u8 = u8::MAX;
 
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(chain_name.to_string());
@@ -1846,7 +1856,7 @@ mod tests {
             ttl,
             config.deploy_config.max_dependencies.into(),
             chain_name,
-            1,
+            GAS_PRICE_TOLERANCE as u64,
         );
 
         let expected_error = InvalidDeploy::ExcessiveTimeToLive {
@@ -1872,9 +1882,10 @@ mod tests {
 
     #[test]
     fn not_acceptable_due_to_timestamp_in_future() {
+        const GAS_PRICE_TOLERANCE: u8 = u8::MAX;
+
         let mut rng = TestRng::new();
         let chain_name = "net-1";
-        const GAS_PRICE_TOLERANCE: u8 = u8::MAX;
 
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(chain_name.to_string());
@@ -1886,7 +1897,7 @@ mod tests {
             config.max_ttl,
             config.deploy_config.max_dependencies.into(),
             chain_name,
-            1,
+            GAS_PRICE_TOLERANCE as u64,
         );
         let current_timestamp = deploy.header.timestamp() - leeway - TimeDiff::from_seconds(1);
 
@@ -1908,9 +1919,10 @@ mod tests {
 
     #[test]
     fn acceptable_if_timestamp_slightly_in_future() {
+        const GAS_PRICE_TOLERANCE: u8 = u8::MAX;
+
         let mut rng = TestRng::new();
         let chain_name = "net-1";
-        const GAS_PRICE_TOLERANCE: u8 = u8::MAX;
 
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(chain_name.to_string());
@@ -1922,7 +1934,7 @@ mod tests {
             config.max_ttl,
             config.deploy_config.max_dependencies.into(),
             chain_name,
-            1,
+            GAS_PRICE_TOLERANCE as u64,
         );
         let current_timestamp = deploy.header.timestamp() - (leeway / 2);
         deploy
@@ -1932,9 +1944,10 @@ mod tests {
 
     #[test]
     fn not_acceptable_due_to_missing_payment_amount() {
+        const GAS_PRICE_TOLERANCE: u8 = u8::MAX;
+
         let mut rng = TestRng::new();
         let chain_name = "net-1";
-        const GAS_PRICE_TOLERANCE: u8 = u8::MAX;
 
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(chain_name.to_string());
@@ -1959,7 +1972,7 @@ mod tests {
             config.max_ttl,
             config.deploy_config.max_dependencies.into(),
             chain_name,
-            1,
+            GAS_PRICE_TOLERANCE as u64,
         );
 
         deploy.payment = payment;
@@ -1983,9 +1996,10 @@ mod tests {
 
     #[test]
     fn not_acceptable_due_to_mangled_payment_amount() {
+        const GAS_PRICE_TOLERANCE: u8 = u8::MAX;
+
         let mut rng = TestRng::new();
         let chain_name = "net-1";
-        const GAS_PRICE_TOLERANCE: u8 = u8::MAX;
 
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(chain_name.to_string());
@@ -2012,7 +2026,7 @@ mod tests {
             config.max_ttl,
             config.deploy_config.max_dependencies.into(),
             chain_name,
-            1,
+            GAS_PRICE_TOLERANCE as u64,
         );
 
         deploy.payment = payment;
@@ -2036,9 +2050,10 @@ mod tests {
 
     #[test]
     fn not_acceptable_due_to_excessive_payment_amount() {
+        const GAS_PRICE_TOLERANCE: u8 = u8::MAX;
+
         let mut rng = TestRng::new();
         let chain_name = "net-1";
-        const GAS_PRICE_TOLERANCE: u8 = u8::MAX;
 
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(chain_name.to_string());
@@ -2066,7 +2081,7 @@ mod tests {
             config.max_ttl,
             config.deploy_config.max_dependencies.into(),
             chain_name,
-            1,
+            GAS_PRICE_TOLERANCE as u64,
         );
 
         deploy.payment = payment;
@@ -2095,10 +2110,11 @@ mod tests {
 
     #[test]
     fn transfer_acceptable_regardless_of_excessive_payment_amount() {
+        const GAS_PRICE_TOLERANCE: u8 = u8::MAX;
+
         let mut rng = TestRng::new();
         let secret_key = SecretKey::random(&mut rng);
         let chain_name = "net-1";
-        const GAS_PRICE_TOLERANCE: u8 = u8::MAX;
 
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(chain_name.to_string());
@@ -2123,7 +2139,7 @@ mod tests {
         let deploy = Deploy::new(
             Timestamp::now(),
             config.max_ttl,
-            1,
+            GAS_PRICE_TOLERANCE as u64,
             vec![],
             chain_name.to_string(),
             payment,
@@ -2148,9 +2164,10 @@ mod tests {
 
     #[test]
     fn not_acceptable_due_to_excessive_approvals() {
+        const GAS_PRICE_TOLERANCE: u8 = u8::MAX;
+
         let mut rng = TestRng::new();
         let chain_name = "net-1";
-        const GAS_PRICE_TOLERANCE: u8 = u8::MAX;
 
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(chain_name.to_string());
@@ -2160,7 +2177,7 @@ mod tests {
             config.max_ttl,
             config.deploy_config.max_dependencies as usize,
             chain_name,
-            1,
+            GAS_PRICE_TOLERANCE as u64,
         );
         // This test is to ensure a given limit is being checked.
         // Therefore, set the limit to one less than the approvals in the deploy.
@@ -2183,11 +2200,12 @@ mod tests {
 
     #[test]
     fn not_acceptable_due_to_missing_transfer_amount() {
+        const GAS_PRICE_TOLERANCE: u8 = u8::MAX;
+
         let mut rng = TestRng::new();
         let chain_name = "net-1";
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(chain_name.to_string());
-        const GAS_PRICE_TOLERANCE: u8 = u8::MAX;
 
         let config = chainspec.transaction_config.clone();
         let mut deploy = create_deploy(
@@ -2195,7 +2213,7 @@ mod tests {
             config.max_ttl,
             config.deploy_config.max_dependencies as usize,
             chain_name,
-            1,
+            GAS_PRICE_TOLERANCE as u64,
         );
 
         let transfer_args = RuntimeArgs::default();
@@ -2218,11 +2236,12 @@ mod tests {
 
     #[test]
     fn not_acceptable_due_to_mangled_transfer_amount() {
+        const GAS_PRICE_TOLERANCE: u8 = u8::MAX;
+
         let mut rng = TestRng::new();
         let chain_name = "net-1";
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(chain_name.to_string());
-        const GAS_PRICE_TOLERANCE: u8 = u8::MAX;
 
         let config = chainspec.transaction_config.clone();
         let mut deploy = create_deploy(
@@ -2230,7 +2249,7 @@ mod tests {
             config.max_ttl,
             config.deploy_config.max_dependencies as usize,
             chain_name,
-            1,
+            GAS_PRICE_TOLERANCE as u64,
         );
 
         let transfer_args = runtime_args! {
@@ -2256,12 +2275,13 @@ mod tests {
     }
 
     #[test]
-    fn not_acceptable_due_to_too_low_gas_price() {
+    fn not_acceptable_due_to_too_low_gas_price_tolerance() {
+        const GAS_PRICE_TOLERANCE: u8 = 0;
+
         let mut rng = TestRng::new();
         let chain_name = "net-1";
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(chain_name.to_string());
-        const GAS_PRICE_TOLERANCE: u8 = 0;
 
         let config = chainspec.transaction_config.clone();
         let deploy = create_deploy(
@@ -2287,11 +2307,12 @@ mod tests {
 
     #[test]
     fn not_acceptable_due_to_insufficient_transfer_amount() {
+        const GAS_PRICE_TOLERANCE: u8 = u8::MAX;
+
         let mut rng = TestRng::new();
         let chain_name = "net-1";
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(chain_name.to_string());
-        const GAS_PRICE_TOLERANCE: u8 = u8::MAX;
 
         let config = chainspec.transaction_config.clone();
         let mut deploy = create_deploy(
@@ -2299,7 +2320,7 @@ mod tests {
             config.max_ttl,
             config.deploy_config.max_dependencies as usize,
             chain_name,
-            1,
+            GAS_PRICE_TOLERANCE as u64,
         );
 
         let amount = config.native_transfer_minimum_motes - 1;
@@ -2332,6 +2353,8 @@ mod tests {
 
     #[test]
     fn should_use_payment_amount_for_classic_payment() {
+        const GAS_PRICE_TOLERANCE: u8 = u8::MAX;
+
         let payment_amount = 500u64;
         let mut rng = TestRng::new();
         let chain_name = "net-1";
@@ -2362,7 +2385,7 @@ mod tests {
             config.max_ttl,
             config.deploy_config.max_dependencies.into(),
             chain_name,
-            1,
+            GAS_PRICE_TOLERANCE as u64,
         );
         deploy.payment = payment;
         deploy.session = session;
@@ -2391,6 +2414,8 @@ mod tests {
 
     #[test]
     fn should_use_cost_table_for_fixed_payment() {
+        const GAS_PRICE_TOLERANCE: u8 = u8::MAX;
+
         let payment_amount = 500u64;
         let mut rng = TestRng::new();
         let chain_name = "net-1";
@@ -2421,7 +2446,7 @@ mod tests {
             config.max_ttl,
             config.deploy_config.max_dependencies.into(),
             chain_name,
-            1,
+            GAS_PRICE_TOLERANCE as u64,
         );
         deploy.payment = payment;
         deploy.session = session;
