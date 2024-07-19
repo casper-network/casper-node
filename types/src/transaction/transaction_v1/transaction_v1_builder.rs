@@ -287,7 +287,7 @@ impl<'a> TransactionV1Builder<'a> {
 
         let runtime = TransactionRuntime::VmCasperV2;
         let body = {
-            let args = TransactionArgs::Unnamed(input_data);
+            let args = TransactionArgs::Chunked(input_data);
             let target = TransactionTarget::Session {
                 module_bytes,
                 runtime,
@@ -315,7 +315,7 @@ impl<'a> TransactionV1Builder<'a> {
         value: u128,
     ) -> Self {
         let body = {
-            let args = TransactionArgs::Unnamed(input_data.unwrap_or_default());
+            let args = TransactionArgs::Chunked(input_data.unwrap_or_default());
             let target = TransactionTarget::Stored {
                 id: TransactionInvocationTarget::ByHash(entity_address.value()),
                 runtime: TransactionRuntime::VmCasperV2,
@@ -461,7 +461,7 @@ impl<'a> TransactionV1Builder<'a> {
                 args.insert_cl_value(key, cl_value);
                 self
             }
-            TransactionArgs::Unnamed(raw_bytes) => {
+            TransactionArgs::Chunked(raw_bytes) => {
                 panic!("Cannot append named args to unnamed args: {:?}", raw_bytes)
             }
         }

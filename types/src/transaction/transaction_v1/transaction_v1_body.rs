@@ -72,28 +72,28 @@ pub struct TransactionV1Body {
 )]
 pub enum TransactionArgs {
     Named(RuntimeArgs),
-    Unnamed(Bytes),
+    Chunked(Bytes),
 }
 
 impl TransactionArgs {
     pub fn as_named(&self) -> Option<&RuntimeArgs> {
         match self {
             TransactionArgs::Named(args) => Some(args),
-            TransactionArgs::Unnamed(_) => None,
+            TransactionArgs::Chunked(_) => None,
         }
     }
 
     pub fn into_named(self) -> Option<RuntimeArgs> {
         match self {
             TransactionArgs::Named(args) => Some(args),
-            TransactionArgs::Unnamed(_) => None,
+            TransactionArgs::Chunked(_) => None,
         }
     }
 
     pub fn into_unnamed(self) -> Option<Bytes> {
         match self {
             TransactionArgs::Named(_) => None,
-            TransactionArgs::Unnamed(bytes) => Some(bytes),
+            TransactionArgs::Chunked(bytes) => Some(bytes),
         }
     }
 
@@ -107,7 +107,7 @@ impl TransactionArgs {
                 args.insert(key, value)?;
                 Ok(())
             }
-            TransactionArgs::Unnamed(_) => {
+            TransactionArgs::Chunked(_) => {
                 Err(CLValueError::Serialization(bytesrepr::Error::Formatting))
             }
         }
@@ -124,7 +124,7 @@ impl FromBytes for TransactionArgs {
             }
             1 => {
                 let (bytes, remainder) = Bytes::from_bytes(remainder)?;
-                Ok((TransactionArgs::Unnamed(bytes), remainder))
+                Ok((TransactionArgs::Chunked(bytes), remainder))
             }
             _ => Err(bytesrepr::Error::Formatting),
         }
@@ -141,7 +141,7 @@ impl ToBytes for TransactionArgs {
     fn serialized_length(&self) -> usize {
         match self {
             TransactionArgs::Named(args) => args.serialized_length() + U8_SERIALIZED_LENGTH,
-            TransactionArgs::Unnamed(bytes) => bytes.serialized_length() + U8_SERIALIZED_LENGTH,
+            TransactionArgs::Chunked(bytes) => bytes.serialized_length() + U8_SERIALIZED_LENGTH,
         }
     }
 
@@ -151,7 +151,7 @@ impl ToBytes for TransactionArgs {
                 writer.push(0);
                 args.write_bytes(writer)
             }
-            TransactionArgs::Unnamed(bytes) => {
+            TransactionArgs::Chunked(bytes) => {
                 writer.push(1);
                 bytes.write_bytes(writer)
             }

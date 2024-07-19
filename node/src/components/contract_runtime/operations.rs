@@ -181,11 +181,6 @@ pub fn execute_finalized_block(
         };
         artifact_builder.with_gas_limit(gas_limit);
 
-        // match transaction {
-        //     Transaction::Deploy(_) => todo!(),
-        //     Transaction::V1(_) => todo!(),
-        // }
-
         // NOTE: this is the actual adjusted cost that we charge for (gas limit * gas price)
         let cost = match transaction.gas_cost(chainspec, current_gas_price) {
             Ok(motes) => motes.value(),
@@ -200,7 +195,6 @@ pub fn execute_finalized_block(
 
         let is_standard_payment = transaction.is_standard_payment();
         let is_v2_wasm = transaction.is_v2_wasm();
-        let is_gas_limited = transaction.is_gas_limited();
         let refund_purse_active = !is_standard_payment;
         if refund_purse_active {
             // if custom payment  before doing any processing, initialize the initiator's main purse
@@ -231,19 +225,7 @@ pub fn execute_finalized_block(
         }
 
         let mut balance_identifier = {
-            if is_v2_wasm {
-                match is_gas_limited {
-                    Some(_value) => {
-                        // this is the typical scenario; the initiating account pays using its main
-                        // purse
-                        trace!(%transaction_hash, "account session with standard payment");
-                        initiator_addr.clone().into()
-                    }
-                    None => {
-                        todo!("Need gas limited transaction but got legacy deploy structure");
-                    }
-                }
-            } else if is_standard_payment {
+            if is_standard_payment {
                 // this is the typical scenario; the initiating account pays using its main
                 // purse
                 trace!(%transaction_hash, "account session with standard payment");
@@ -384,7 +366,15 @@ pub fn execute_finalized_block(
                     };
                 }
                 _ if is_v2_wasm => {
-                    let gas_limit = is_gas_limited.expect("gas limited");
+                    let gas_limit: u64 = if gas_limit.value() > U512::from(u64::MAX) {
+                        panic!("gas limit too high; needs u64") // TODO: This should be safe and validated in transaction acceptor
+                    } else {
+                        gas_limit.value().as_u64()
+                    };
+
+                    // TODO: Pass transaction hash to executor
+                    // TODO: Hide the complexity similar to `!is_v2_wasm` branch
+                    // WasmV2Request
                     let address_generator = AddressGeneratorBuilder::default()
                         .seed_with(transaction_hash.as_ref())
                         .build();
@@ -484,6 +474,7 @@ pub fn execute_finalized_block(
                             let initiator_account_hash = &initiator_addr.account_hash();
 
                             let initiator_key = Key::Account(*initiator_account_hash);
+
 
                             builder = builder
                                 .with_address_generator(address_generator)
@@ -837,8 +828,12 @@ pub fn execute_finalized_block(
             state_root_hash =
                 scratch_state.commit(state_root_hash, handle_refund_result.effects().clone())?;
         }
+        let built_artifacts = artifact_builder.build();
+        debug!(?transaction, ?built_artifacts, "transaction processed");
 
-        artifacts.push(artifact_builder.build());
+        artifacts.push(built_artifacts);
+
+        
     }
 
     // transaction processing is finished

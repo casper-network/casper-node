@@ -8,7 +8,7 @@ use std::{collections::BTreeSet, fmt::Debug, sync::Arc};
 
 use datasize::DataSize;
 use prometheus::Registry;
-use tracing::{debug, error, trace};
+use tracing::{debug, error, trace, warn};
 
 use casper_execution_engine::engine_state::MAX_PAYMENT;
 use casper_storage::data_access_layer::{balance::BalanceHandling, BalanceRequest, ProofHandling};
@@ -130,6 +130,7 @@ impl TransactionAcceptor {
         };
 
         if let Err(error) = is_config_compliant {
+            warn!(?error, "transaction is not config compliant");
             return self.reject_transaction(effect_builder, *event_metadata, error);
         }
 

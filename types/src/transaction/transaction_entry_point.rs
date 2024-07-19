@@ -42,7 +42,7 @@ const DEFAULT_INITIALIZE_TAG: u8 = 11;
 )]
 #[serde(deny_unknown_fields)]
 pub enum TransactionEntryPoint {
-    /// The standard `call` entry point used in session code.
+    /// The default entry point name.
     Call,
     /// A non-native, arbitrary entry point.
     Custom(String),
@@ -169,14 +169,14 @@ pub enum TransactionEntryPoint {
     ChangeBidPublicKey,
 
     /// Constructor entrypoint name to be used when instantiating a smart contract under v2 engine.
-    Instantiate(String),
+    Instantiate(String), // TODO: Remove
 
     /// Instantiate contract without an explicit constructor name.
     ///
     /// This is used together with installer transaction kind that will install the contract, but
     /// will not execute any constructor and therefore will rely on a default initialization upon
     /// first contract call.
-    DefaultInstantiate,
+    DefaultInstantiate, // TODO: Remove
 }
 
 impl TransactionEntryPoint {

@@ -174,7 +174,7 @@ impl FromBytes for EntryPointPayment {
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct EntryPoint {
     name: String,
-    args: Parameters,
+    args: Parameters, // one argument vec![Parameter::new("chunked", CLType::Any)]
     ret: CLType,
     access: EntryPointAccess,
     entry_point_type: EntryPointType,

@@ -20,6 +20,7 @@ fn sanitized_type_name(ty: &syn::Type) -> String {
             s.push(')');
             s
         }
+
         ty => {
             // TODO: Get other types as a string without spaces
             let mut s = quote! { #ty }.to_string();
@@ -98,9 +99,12 @@ mod tests {
     #[test]
     fn sanitize() {
         let tuple = syn::parse_quote! {
-            (u8, u32)
+            (u8, u32, Option<(String, u64)>)
         };
-        assert_eq!(super::sanitized_type_name(&tuple), "(u8,u32)".to_string());
+        assert_eq!(
+            super::sanitized_type_name(&tuple),
+            "(u8,u32,Option<(String,u64)>)".to_string()
+        );
 
         let unsigned_32 = syn::parse_quote! {
             u32
@@ -112,7 +116,7 @@ mod tests {
         };
         assert_eq!(
             super::sanitized_type_name(&result_ty),
-            "Result<u32, Error>".to_string()
+            "Result<u32,Error>".to_string()
         );
     }
     #[test]
