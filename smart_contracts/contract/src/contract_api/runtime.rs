@@ -222,7 +222,7 @@ pub fn try_get_named_arg<T: FromBytes>(name: &str) -> Option<T> {
         // Avoids allocation with 0 bytes and a call to get_named_arg
         Vec::new()
     };
-    bytesrepr::deserialize(arg_bytes).unwrap_or_revert_with(ApiError::InvalidArgument)
+    bytesrepr::deserialize(arg_bytes).ok()
 }
 
 /// Returns the caller of the current context, i.e. the [`AccountHash`] of the account which made

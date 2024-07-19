@@ -6,6 +6,7 @@ use datasize::DataSize;
 
 use casper_types::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
+    system::auction::DelegationRate,
     EraId, ExecutionInfo, Key, PublicKey, TimeDiff, Timestamp, Transaction, ValidatorChange, U512,
 };
 use serde::Serialize;
@@ -179,12 +180,17 @@ impl GetTrieFullResult {
 pub struct RewardResponse {
     amount: U512,
     era_id: EraId,
+    delegation_rate: DelegationRate,
 }
 
 impl RewardResponse {
     /// Constructs new reward response.
-    pub fn new(amount: U512, era_id: EraId) -> Self {
-        Self { amount, era_id }
+    pub fn new(amount: U512, era_id: EraId, delegation_rate: DelegationRate) -> Self {
+        Self {
+            amount,
+            era_id,
+            delegation_rate,
+        }
     }
 
     /// Returns the amount of the reward.
@@ -196,6 +202,11 @@ impl RewardResponse {
     pub fn era_id(&self) -> EraId {
         self.era_id
     }
+
+    /// Returns the delegation rate of the validator.
+    pub fn delegation_rate(&self) -> DelegationRate {
+        self.delegation_rate
+    }
 }
 
 impl ToBytes for RewardResponse {
@@ -206,12 +217,15 @@ impl ToBytes for RewardResponse {
     }
 
     fn serialized_length(&self) -> usize {
-        self.amount.serialized_length() + self.era_id.serialized_length()
+        self.amount.serialized_length()
+            + self.era_id.serialized_length()
+            + self.delegation_rate.serialized_length()
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         self.amount.write_bytes(writer)?;
-        self.era_id.write_bytes(writer)
+        self.era_id.write_bytes(writer)?;
+        self.delegation_rate.write_bytes(writer)
     }
 }
 
@@ -219,7 +233,11 @@ impl FromBytes for RewardResponse {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (amount, remainder) = FromBytes::from_bytes(bytes)?;
         let (era_id, remainder) = FromBytes::from_bytes(remainder)?;
-        Ok((RewardResponse::new(amount, era_id), remainder))
+        let (delegation_rate, remainder) = FromBytes::from_bytes(remainder)?;
+        Ok((
+            RewardResponse::new(amount, era_id, delegation_rate),
+            remainder,
+        ))
     }
 }
 
@@ -436,6 +454,7 @@ mod tests {
         bytesrepr::test_serialization_roundtrip(&RewardResponse::new(
             rng.gen(),
             EraId::random(rng),
+            rng.gen(),
         ));
     }
 
