@@ -117,15 +117,7 @@ impl TransactionV1Header {
         timestamp_leeway: TimeDiff,
         at: Timestamp,
         transaction_hash: &TransactionV1Hash,
-        min_gas_price: u8,
     ) -> Result<(), InvalidTransactionV1> {
-        if self.gas_price_tolerance() < min_gas_price {
-            return Err(InvalidTransactionV1::GasPriceToleranceTooLow {
-                min_gas_price_tolerance: min_gas_price,
-                provided_gas_price_tolerance: self.gas_price_tolerance(),
-            });
-        }
-
         if self.ttl() > config.max_ttl {
             debug!(
                 %transaction_hash,
