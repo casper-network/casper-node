@@ -402,7 +402,6 @@ impl Deploy {
         chainspec: &Chainspec,
         timestamp_leeway: TimeDiff,
         at: Timestamp,
-        gas_price_tolerance: u8,
     ) -> Result<(), InvalidDeploy> {
         let config = &chainspec.transaction_config;
         let max_transaction_size = config
@@ -426,6 +425,7 @@ impl Deploy {
         }
 
         let min_gas_price = chainspec.vacancy_config.min_gas_price;
+        let gas_price_tolerance = self.gas_price_tolerance()?;
         if gas_price_tolerance < min_gas_price {
             return Err(InvalidDeploy::GasPriceToleranceTooLow {
                 min_gas_price_tolerance: min_gas_price,
@@ -1749,12 +1749,7 @@ mod tests {
         );
         let current_timestamp = deploy.header().timestamp();
         deploy
-            .is_config_compliant(
-                &chainspec,
-                TimeDiff::default(),
-                current_timestamp,
-                GAS_PRICE_TOLERANCE,
-            )
+            .is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp)
             .expect("should be acceptable");
     }
 
@@ -1785,12 +1780,7 @@ mod tests {
 
         let current_timestamp = deploy.header().timestamp();
         assert_eq!(
-            deploy.is_config_compliant(
-                &chainspec,
-                TimeDiff::default(),
-                current_timestamp,
-                GAS_PRICE_TOLERANCE
-            ),
+            deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp,),
             Err(expected_error)
         );
         assert!(
@@ -1824,12 +1814,7 @@ mod tests {
 
         let current_timestamp = deploy.header().timestamp();
         assert_eq!(
-            deploy.is_config_compliant(
-                &chainspec,
-                TimeDiff::default(),
-                current_timestamp,
-                GAS_PRICE_TOLERANCE
-            ),
+            deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp,),
             Err(expected_error)
         );
         assert!(
@@ -1866,12 +1851,7 @@ mod tests {
 
         let current_timestamp = deploy.header().timestamp();
         assert_eq!(
-            deploy.is_config_compliant(
-                &chainspec,
-                TimeDiff::default(),
-                current_timestamp,
-                GAS_PRICE_TOLERANCE
-            ),
+            deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp,),
             Err(expected_error)
         );
         assert!(
@@ -1908,7 +1888,7 @@ mod tests {
         };
 
         assert_eq!(
-            deploy.is_config_compliant(&chainspec, leeway, current_timestamp, GAS_PRICE_TOLERANCE),
+            deploy.is_config_compliant(&chainspec, leeway, current_timestamp),
             Err(expected_error)
         );
         assert!(
@@ -1938,7 +1918,7 @@ mod tests {
         );
         let current_timestamp = deploy.header.timestamp() - (leeway / 2);
         deploy
-            .is_config_compliant(&chainspec, leeway, current_timestamp, GAS_PRICE_TOLERANCE)
+            .is_config_compliant(&chainspec, leeway, current_timestamp)
             .expect("should be acceptable");
     }
 
@@ -1980,12 +1960,7 @@ mod tests {
 
         let current_timestamp = deploy.header().timestamp();
         assert_eq!(
-            deploy.is_config_compliant(
-                &chainspec,
-                TimeDiff::default(),
-                current_timestamp,
-                GAS_PRICE_TOLERANCE
-            ),
+            deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp,),
             Err(InvalidDeploy::MissingPaymentAmount)
         );
         assert!(
@@ -2034,12 +2009,7 @@ mod tests {
 
         let current_timestamp = deploy.header().timestamp();
         assert_eq!(
-            deploy.is_config_compliant(
-                &chainspec,
-                TimeDiff::default(),
-                current_timestamp,
-                GAS_PRICE_TOLERANCE
-            ),
+            deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp,),
             Err(InvalidDeploy::FailedToParsePaymentAmount)
         );
         assert!(
@@ -2094,12 +2064,7 @@ mod tests {
 
         let current_timestamp = deploy.header().timestamp();
         assert_eq!(
-            deploy.is_config_compliant(
-                &chainspec,
-                TimeDiff::default(),
-                current_timestamp,
-                GAS_PRICE_TOLERANCE
-            ),
+            deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp,),
             Err(expected_error)
         );
         assert!(
@@ -2153,12 +2118,7 @@ mod tests {
         let current_timestamp = deploy.header().timestamp();
         assert_eq!(
             Ok(()),
-            deploy.is_config_compliant(
-                &chainspec,
-                TimeDiff::default(),
-                current_timestamp,
-                GAS_PRICE_TOLERANCE
-            )
+            deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp,)
         )
     }
 
@@ -2189,12 +2149,7 @@ mod tests {
                 got: deploy.approvals.len() as u32,
                 max_associated_keys,
             }),
-            deploy.is_config_compliant(
-                &chainspec,
-                TimeDiff::default(),
-                current_timestamp,
-                GAS_PRICE_TOLERANCE
-            )
+            deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp,)
         )
     }
 
@@ -2225,12 +2180,7 @@ mod tests {
         let current_timestamp = deploy.header().timestamp();
         assert_eq!(
             Err(InvalidDeploy::MissingTransferAmount),
-            deploy.is_config_compliant(
-                &chainspec,
-                TimeDiff::default(),
-                current_timestamp,
-                GAS_PRICE_TOLERANCE
-            )
+            deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp,)
         )
     }
 
@@ -2265,12 +2215,7 @@ mod tests {
         let current_timestamp = deploy.header().timestamp();
         assert_eq!(
             Err(InvalidDeploy::FailedToParseTransferAmount),
-            deploy.is_config_compliant(
-                &chainspec,
-                TimeDiff::default(),
-                current_timestamp,
-                GAS_PRICE_TOLERANCE
-            )
+            deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp,)
         )
     }
 
@@ -2298,7 +2243,6 @@ mod tests {
                 &chainspec,
                 TimeDiff::default(),
                 current_timestamp,
-                GAS_PRICE_TOLERANCE
             ),
             Err(InvalidDeploy::GasPriceToleranceTooLow { min_gas_price_tolerance, provided_gas_price_tolerance })
                 if min_gas_price_tolerance == chainspec.vacancy_config.min_gas_price && provided_gas_price_tolerance == GAS_PRICE_TOLERANCE
@@ -2342,12 +2286,7 @@ mod tests {
                 minimum: Box::new(U512::from(config.native_transfer_minimum_motes)),
                 attempted: Box::new(insufficient_amount),
             }),
-            deploy.is_config_compliant(
-                &chainspec,
-                TimeDiff::default(),
-                current_timestamp,
-                GAS_PRICE_TOLERANCE
-            )
+            deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp,)
         )
     }
 

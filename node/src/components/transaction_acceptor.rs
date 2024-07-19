@@ -16,9 +16,9 @@ use casper_types::{
     account::AccountHash, addressable_entity::AddressableEntity, system::auction::ARG_AMOUNT,
     AddressableEntityHash, AddressableEntityIdentifier, BlockHeader, Chainspec, EntityAddr,
     EntityVersion, EntityVersionKey, EntryPoint, EntryPointAddr, ExecutableDeployItem,
-    ExecutableDeployItemIdentifier, GasLimited, InitiatorAddr, Key, Package, PackageAddr,
-    PackageHash, PackageIdentifier, Transaction, TransactionEntryPoint,
-    TransactionInvocationTarget, TransactionTarget, DEFAULT_ENTRY_POINT_NAME, U512,
+    ExecutableDeployItemIdentifier, InitiatorAddr, Key, Package, PackageAddr, PackageHash,
+    PackageIdentifier, Transaction, TransactionEntryPoint, TransactionInvocationTarget,
+    TransactionTarget, DEFAULT_ENTRY_POINT_NAME, U512,
 };
 
 use crate::{
@@ -113,17 +113,13 @@ impl TransactionAcceptor {
         let event_metadata = Box::new(EventMetadata::new(transaction, source, maybe_responder));
 
         let is_config_compliant = match &event_metadata.transaction {
-            Transaction::Deploy(deploy) => match deploy.gas_price_tolerance() {
-                Ok(gas_price_tolerance) => deploy
-                    .is_config_compliant(
-                        &self.chainspec,
-                        self.acceptor_config.timestamp_leeway,
-                        event_metadata.verification_start_timestamp,
-                        gas_price_tolerance,
-                    )
-                    .map_err(|err| Error::InvalidTransaction(err.into())),
-                Err(err) => Err(Error::InvalidTransaction(err.into())),
-            },
+            Transaction::Deploy(deploy) => deploy
+                .is_config_compliant(
+                    &self.chainspec,
+                    self.acceptor_config.timestamp_leeway,
+                    event_metadata.verification_start_timestamp,
+                )
+                .map_err(|err| Error::InvalidTransaction(err.into())),
             Transaction::V1(txn) => txn
                 .is_config_compliant(
                     &self.chainspec,
