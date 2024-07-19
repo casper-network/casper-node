@@ -1790,7 +1790,7 @@ mod tests {
 
         let current_timestamp = deploy.header().timestamp();
         assert_eq!(
-            deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp,),
+            deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp),
             Err(expected_error)
         );
         assert!(
@@ -1824,7 +1824,7 @@ mod tests {
 
         let current_timestamp = deploy.header().timestamp();
         assert_eq!(
-            deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp,),
+            deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp),
             Err(expected_error)
         );
         assert!(
@@ -1861,7 +1861,7 @@ mod tests {
 
         let current_timestamp = deploy.header().timestamp();
         assert_eq!(
-            deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp,),
+            deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp),
             Err(expected_error)
         );
         assert!(
@@ -1970,7 +1970,7 @@ mod tests {
 
         let current_timestamp = deploy.header().timestamp();
         assert_eq!(
-            deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp,),
+            deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp),
             Err(InvalidDeploy::MissingPaymentAmount)
         );
         assert!(
@@ -2019,7 +2019,7 @@ mod tests {
 
         let current_timestamp = deploy.header().timestamp();
         assert_eq!(
-            deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp,),
+            deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp),
             Err(InvalidDeploy::FailedToParsePaymentAmount)
         );
         assert!(
@@ -2074,7 +2074,7 @@ mod tests {
 
         let current_timestamp = deploy.header().timestamp();
         assert_eq!(
-            deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp,),
+            deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp),
             Err(expected_error)
         );
         assert!(
@@ -2128,7 +2128,7 @@ mod tests {
         let current_timestamp = deploy.header().timestamp();
         assert_eq!(
             Ok(()),
-            deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp,)
+            deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp)
         )
     }
 
@@ -2159,7 +2159,7 @@ mod tests {
                 got: deploy.approvals.len() as u32,
                 max_associated_keys,
             }),
-            deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp,)
+            deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp)
         )
     }
 
@@ -2190,7 +2190,7 @@ mod tests {
         let current_timestamp = deploy.header().timestamp();
         assert_eq!(
             Err(InvalidDeploy::MissingTransferAmount),
-            deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp,)
+            deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp)
         )
     }
 
@@ -2225,7 +2225,7 @@ mod tests {
         let current_timestamp = deploy.header().timestamp();
         assert_eq!(
             Err(InvalidDeploy::FailedToParseTransferAmount),
-            deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp,)
+            deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp)
         )
     }
 
@@ -2252,7 +2252,7 @@ mod tests {
             deploy.is_config_compliant(
                 &chainspec,
                 TimeDiff::default(),
-                current_timestamp,
+                current_timestamp
             ),
             Err(InvalidDeploy::GasPriceToleranceTooLow { min_gas_price_tolerance, provided_gas_price_tolerance })
                 if min_gas_price_tolerance == chainspec.vacancy_config.min_gas_price && provided_gas_price_tolerance == GAS_PRICE_TOLERANCE
