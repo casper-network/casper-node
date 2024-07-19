@@ -366,6 +366,7 @@ impl TryFrom<u16> for ErrorCode {
             82 => Ok(ErrorCode::DeployMissingModuleBytes),
             83 => Ok(ErrorCode::InvalidTransactionEntryPointCannotBeCall),
             84 => Ok(ErrorCode::InvalidTransactionInvalidTransactionKind),
+            85 => Ok(ErrorCode::GasPriceToleranceTooLow),
             _ => Err(UnknownErrorCode),
         }
     }
