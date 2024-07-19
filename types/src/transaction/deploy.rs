@@ -425,14 +425,15 @@ impl Deploy {
             });
         }
 
-        header.is_valid(
-            config,
-            timestamp_leeway,
-            at,
-            &self.hash,
-            gas_price_tolerance,
-            chainspec.vacancy_config.min_gas_price,
-        )?;
+        let min_gas_price = chainspec.vacancy_config.min_gas_price;
+        if gas_price_tolerance < min_gas_price {
+            return Err(InvalidDeploy::GasPriceToleranceTooLow {
+                min_gas_price_tolerance: min_gas_price,
+                provided_gas_price_tolerance: gas_price_tolerance,
+            });
+        }
+
+        header.is_valid(config, timestamp_leeway, at, &self.hash)?;
 
         let max_associated_keys = chainspec.core_config.max_associated_keys;
         if self.approvals.len() > max_associated_keys as usize {
