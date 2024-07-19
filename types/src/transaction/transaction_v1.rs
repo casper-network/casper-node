@@ -415,7 +415,13 @@ impl TransactionV1 {
             }
         }
 
-        header.is_valid(&transaction_config, timestamp_leeway, at, &self.hash)?;
+        header.is_valid(
+            &transaction_config,
+            timestamp_leeway,
+            at,
+            &self.hash,
+            chainspec.vacancy_config.min_gas_price,
+        )?;
 
         let max_associated_keys = chainspec.core_config.max_associated_keys;
 

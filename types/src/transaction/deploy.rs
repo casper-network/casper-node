@@ -402,6 +402,7 @@ impl Deploy {
         chainspec: &Chainspec,
         timestamp_leeway: TimeDiff,
         at: Timestamp,
+        gas_price_tolerance: u8,
     ) -> Result<(), InvalidDeploy> {
         let config = &chainspec.transaction_config;
         let max_transaction_size = config
@@ -424,7 +425,14 @@ impl Deploy {
             });
         }
 
-        header.is_valid(config, timestamp_leeway, at, &self.hash)?;
+        header.is_valid(
+            config,
+            timestamp_leeway,
+            at,
+            &self.hash,
+            gas_price_tolerance,
+            chainspec.vacancy_config.min_gas_price,
+        )?;
 
         let max_associated_keys = chainspec.core_config.max_associated_keys;
         if self.approvals.len() > max_associated_keys as usize {
@@ -1008,6 +1016,25 @@ impl Deploy {
         )
     }
 
+    /// Returns a random valid `Deploy` with specified gas price.
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
+    pub fn random_with_gas_price(rng: &mut TestRng, gas_price: u64) -> Self {
+        let deploy = Self::random(rng);
+        let secret_key = SecretKey::random(rng);
+
+        Deploy::new(
+            deploy.header.timestamp(),
+            deploy.header.ttl(),
+            gas_price,
+            deploy.header.dependencies().clone(),
+            deploy.header.chain_name().to_string(),
+            deploy.payment,
+            deploy.session,
+            &secret_key,
+            None,
+        )
+    }
+
     /// Creates an add bid deploy, for testing.
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub fn add_bid(
@@ -1529,6 +1556,7 @@ mod tests {
         ttl: TimeDiff,
         dependency_count: usize,
         chain_name: &str,
+        gas_price: u64,
     ) -> Deploy {
         let secret_key = SecretKey::random(rng);
         let dependencies = iter::repeat_with(|| DeployHash::random(rng))
@@ -1544,7 +1572,7 @@ mod tests {
         Deploy::new(
             Timestamp::now(),
             ttl,
-            1,
+            gas_price,
             dependencies,
             chain_name.to_string(),
             ExecutableDeployItem::ModuleBytes {
@@ -1563,7 +1591,13 @@ mod tests {
     fn is_valid() {
         let mut rng = TestRng::new();
 
-        let deploy = create_deploy(&mut rng, TransactionConfig::default().max_ttl, 0, "net-1");
+        let deploy = create_deploy(
+            &mut rng,
+            TransactionConfig::default().max_ttl,
+            0,
+            "net-1",
+            1,
+        );
         assert_eq!(
             deploy.is_valid.get(),
             None,
@@ -1616,7 +1650,13 @@ mod tests {
     #[test]
     fn not_valid_due_to_invalid_body_hash() {
         let mut rng = TestRng::new();
-        let mut deploy = create_deploy(&mut rng, TransactionConfig::default().max_ttl, 0, "net-1");
+        let mut deploy = create_deploy(
+            &mut rng,
+            TransactionConfig::default().max_ttl,
+            0,
+            "net-1",
+            1,
+        );
 
         deploy.session = ExecutableDeployItem::Transfer {
             args: runtime_args! {
@@ -1629,7 +1669,13 @@ mod tests {
     #[test]
     fn not_valid_due_to_invalid_deploy_hash() {
         let mut rng = TestRng::new();
-        let mut deploy = create_deploy(&mut rng, TransactionConfig::default().max_ttl, 0, "net-1");
+        let mut deploy = create_deploy(
+            &mut rng,
+            TransactionConfig::default().max_ttl,
+            0,
+            "net-1",
+            1,
+        );
 
         // deploy.header.gas_price = 2;
         deploy.invalidate();
@@ -1639,7 +1685,13 @@ mod tests {
     #[test]
     fn not_valid_due_to_empty_approvals() {
         let mut rng = TestRng::new();
-        let mut deploy = create_deploy(&mut rng, TransactionConfig::default().max_ttl, 0, "net-1");
+        let mut deploy = create_deploy(
+            &mut rng,
+            TransactionConfig::default().max_ttl,
+            0,
+            "net-1",
+            1,
+        );
         deploy.approvals = BTreeSet::new();
         assert!(deploy.approvals.is_empty());
         check_is_not_valid(deploy, InvalidDeploy::EmptyApprovals)
@@ -1648,7 +1700,13 @@ mod tests {
     #[test]
     fn not_valid_due_to_invalid_approval() {
         let mut rng = TestRng::new();
-        let mut deploy = create_deploy(&mut rng, TransactionConfig::default().max_ttl, 0, "net-1");
+        let mut deploy = create_deploy(
+            &mut rng,
+            TransactionConfig::default().max_ttl,
+            0,
+            "net-1",
+            1,
+        );
 
         let deploy2 = Deploy::random(&mut rng);
 
@@ -1675,6 +1733,7 @@ mod tests {
     fn is_acceptable() {
         let mut rng = TestRng::new();
         let chain_name = "net-1".to_string();
+        const GAS_PRICE_TOLERANCE: u8 = u8::MAX;
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(chain_name.to_string());
         let config = chainspec.transaction_config.clone();
@@ -1684,10 +1743,16 @@ mod tests {
             config.max_ttl,
             config.deploy_config.max_dependencies.into(),
             &chain_name,
+            1,
         );
         let current_timestamp = deploy.header().timestamp();
         deploy
-            .is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp)
+            .is_config_compliant(
+                &chainspec,
+                TimeDiff::default(),
+                current_timestamp,
+                GAS_PRICE_TOLERANCE,
+            )
             .expect("should be acceptable");
     }
 
@@ -1696,6 +1761,7 @@ mod tests {
         let mut rng = TestRng::new();
         let expected_chain_name = "net-1";
         let wrong_chain_name = "net-2".to_string();
+        const GAS_PRICE_TOLERANCE: u8 = u8::MAX;
 
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(expected_chain_name.to_string());
@@ -1706,6 +1772,7 @@ mod tests {
             config.max_ttl,
             config.deploy_config.max_dependencies.into(),
             &wrong_chain_name,
+            1,
         );
 
         let expected_error = InvalidDeploy::InvalidChainName {
@@ -1715,7 +1782,12 @@ mod tests {
 
         let current_timestamp = deploy.header().timestamp();
         assert_eq!(
-            deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp),
+            deploy.is_config_compliant(
+                &chainspec,
+                TimeDiff::default(),
+                current_timestamp,
+                GAS_PRICE_TOLERANCE
+            ),
             Err(expected_error)
         );
         assert!(
@@ -1728,6 +1800,7 @@ mod tests {
     fn not_acceptable_due_to_excessive_dependencies() {
         let mut rng = TestRng::new();
         let chain_name = "net-1";
+        const GAS_PRICE_TOLERANCE: u8 = u8::MAX;
 
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(chain_name.to_string());
@@ -1735,13 +1808,18 @@ mod tests {
 
         let dependency_count = usize::from(config.deploy_config.max_dependencies + 1);
 
-        let deploy = create_deploy(&mut rng, config.max_ttl, dependency_count, chain_name);
+        let deploy = create_deploy(&mut rng, config.max_ttl, dependency_count, chain_name, 1);
 
         let expected_error = InvalidDeploy::DependenciesNoLongerSupported;
 
         let current_timestamp = deploy.header().timestamp();
         assert_eq!(
-            deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp),
+            deploy.is_config_compliant(
+                &chainspec,
+                TimeDiff::default(),
+                current_timestamp,
+                GAS_PRICE_TOLERANCE
+            ),
             Err(expected_error)
         );
         assert!(
@@ -1754,6 +1832,7 @@ mod tests {
     fn not_acceptable_due_to_excessive_ttl() {
         let mut rng = TestRng::new();
         let chain_name = "net-1";
+        const GAS_PRICE_TOLERANCE: u8 = u8::MAX;
 
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(chain_name.to_string());
@@ -1766,6 +1845,7 @@ mod tests {
             ttl,
             config.deploy_config.max_dependencies.into(),
             chain_name,
+            1,
         );
 
         let expected_error = InvalidDeploy::ExcessiveTimeToLive {
@@ -1775,7 +1855,12 @@ mod tests {
 
         let current_timestamp = deploy.header().timestamp();
         assert_eq!(
-            deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp),
+            deploy.is_config_compliant(
+                &chainspec,
+                TimeDiff::default(),
+                current_timestamp,
+                GAS_PRICE_TOLERANCE
+            ),
             Err(expected_error)
         );
         assert!(
@@ -1788,6 +1873,7 @@ mod tests {
     fn not_acceptable_due_to_timestamp_in_future() {
         let mut rng = TestRng::new();
         let chain_name = "net-1";
+        const GAS_PRICE_TOLERANCE: u8 = u8::MAX;
 
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(chain_name.to_string());
@@ -1799,6 +1885,7 @@ mod tests {
             config.max_ttl,
             config.deploy_config.max_dependencies.into(),
             chain_name,
+            1,
         );
         let current_timestamp = deploy.header.timestamp() - leeway - TimeDiff::from_seconds(1);
 
@@ -1809,7 +1896,7 @@ mod tests {
         };
 
         assert_eq!(
-            deploy.is_config_compliant(&chainspec, leeway, current_timestamp),
+            deploy.is_config_compliant(&chainspec, leeway, current_timestamp, GAS_PRICE_TOLERANCE),
             Err(expected_error)
         );
         assert!(
@@ -1822,6 +1909,7 @@ mod tests {
     fn acceptable_if_timestamp_slightly_in_future() {
         let mut rng = TestRng::new();
         let chain_name = "net-1";
+        const GAS_PRICE_TOLERANCE: u8 = u8::MAX;
 
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(chain_name.to_string());
@@ -1833,10 +1921,11 @@ mod tests {
             config.max_ttl,
             config.deploy_config.max_dependencies.into(),
             chain_name,
+            1,
         );
         let current_timestamp = deploy.header.timestamp() - (leeway / 2);
         deploy
-            .is_config_compliant(&chainspec, leeway, current_timestamp)
+            .is_config_compliant(&chainspec, leeway, current_timestamp, GAS_PRICE_TOLERANCE)
             .expect("should be acceptable");
     }
 
@@ -1844,6 +1933,7 @@ mod tests {
     fn not_acceptable_due_to_missing_payment_amount() {
         let mut rng = TestRng::new();
         let chain_name = "net-1";
+        const GAS_PRICE_TOLERANCE: u8 = u8::MAX;
 
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(chain_name.to_string());
@@ -1868,6 +1958,7 @@ mod tests {
             config.max_ttl,
             config.deploy_config.max_dependencies.into(),
             chain_name,
+            1,
         );
 
         deploy.payment = payment;
@@ -1875,7 +1966,12 @@ mod tests {
 
         let current_timestamp = deploy.header().timestamp();
         assert_eq!(
-            deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp),
+            deploy.is_config_compliant(
+                &chainspec,
+                TimeDiff::default(),
+                current_timestamp,
+                GAS_PRICE_TOLERANCE
+            ),
             Err(InvalidDeploy::MissingPaymentAmount)
         );
         assert!(
@@ -1888,6 +1984,7 @@ mod tests {
     fn not_acceptable_due_to_mangled_payment_amount() {
         let mut rng = TestRng::new();
         let chain_name = "net-1";
+        const GAS_PRICE_TOLERANCE: u8 = u8::MAX;
 
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(chain_name.to_string());
@@ -1914,6 +2011,7 @@ mod tests {
             config.max_ttl,
             config.deploy_config.max_dependencies.into(),
             chain_name,
+            1,
         );
 
         deploy.payment = payment;
@@ -1921,7 +2019,12 @@ mod tests {
 
         let current_timestamp = deploy.header().timestamp();
         assert_eq!(
-            deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp),
+            deploy.is_config_compliant(
+                &chainspec,
+                TimeDiff::default(),
+                current_timestamp,
+                GAS_PRICE_TOLERANCE
+            ),
             Err(InvalidDeploy::FailedToParsePaymentAmount)
         );
         assert!(
@@ -1934,6 +2037,7 @@ mod tests {
     fn not_acceptable_due_to_excessive_payment_amount() {
         let mut rng = TestRng::new();
         let chain_name = "net-1";
+        const GAS_PRICE_TOLERANCE: u8 = u8::MAX;
 
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(chain_name.to_string());
@@ -1961,6 +2065,7 @@ mod tests {
             config.max_ttl,
             config.deploy_config.max_dependencies.into(),
             chain_name,
+            1,
         );
 
         deploy.payment = payment;
@@ -1973,7 +2078,12 @@ mod tests {
 
         let current_timestamp = deploy.header().timestamp();
         assert_eq!(
-            deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp),
+            deploy.is_config_compliant(
+                &chainspec,
+                TimeDiff::default(),
+                current_timestamp,
+                GAS_PRICE_TOLERANCE
+            ),
             Err(expected_error)
         );
         assert!(
@@ -1987,6 +2097,7 @@ mod tests {
         let mut rng = TestRng::new();
         let secret_key = SecretKey::random(&mut rng);
         let chain_name = "net-1";
+        const GAS_PRICE_TOLERANCE: u8 = u8::MAX;
 
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(chain_name.to_string());
@@ -2025,7 +2136,12 @@ mod tests {
         let current_timestamp = deploy.header().timestamp();
         assert_eq!(
             Ok(()),
-            deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp)
+            deploy.is_config_compliant(
+                &chainspec,
+                TimeDiff::default(),
+                current_timestamp,
+                GAS_PRICE_TOLERANCE
+            )
         )
     }
 
@@ -2033,6 +2149,7 @@ mod tests {
     fn not_acceptable_due_to_excessive_approvals() {
         let mut rng = TestRng::new();
         let chain_name = "net-1";
+        const GAS_PRICE_TOLERANCE: u8 = u8::MAX;
 
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(chain_name.to_string());
@@ -2042,6 +2159,7 @@ mod tests {
             config.max_ttl,
             config.deploy_config.max_dependencies as usize,
             chain_name,
+            1,
         );
         // This test is to ensure a given limit is being checked.
         // Therefore, set the limit to one less than the approvals in the deploy.
@@ -2053,7 +2171,12 @@ mod tests {
                 got: deploy.approvals.len() as u32,
                 max_associated_keys,
             }),
-            deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp)
+            deploy.is_config_compliant(
+                &chainspec,
+                TimeDiff::default(),
+                current_timestamp,
+                GAS_PRICE_TOLERANCE
+            )
         )
     }
 
@@ -2063,6 +2186,7 @@ mod tests {
         let chain_name = "net-1";
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(chain_name.to_string());
+        const GAS_PRICE_TOLERANCE: u8 = u8::MAX;
 
         let config = chainspec.transaction_config.clone();
         let mut deploy = create_deploy(
@@ -2070,6 +2194,7 @@ mod tests {
             config.max_ttl,
             config.deploy_config.max_dependencies as usize,
             chain_name,
+            1,
         );
 
         let transfer_args = RuntimeArgs::default();
@@ -2081,7 +2206,12 @@ mod tests {
         let current_timestamp = deploy.header().timestamp();
         assert_eq!(
             Err(InvalidDeploy::MissingTransferAmount),
-            deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp)
+            deploy.is_config_compliant(
+                &chainspec,
+                TimeDiff::default(),
+                current_timestamp,
+                GAS_PRICE_TOLERANCE
+            )
         )
     }
 
@@ -2091,6 +2221,7 @@ mod tests {
         let chain_name = "net-1";
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(chain_name.to_string());
+        const GAS_PRICE_TOLERANCE: u8 = u8::MAX;
 
         let config = chainspec.transaction_config.clone();
         let mut deploy = create_deploy(
@@ -2098,6 +2229,7 @@ mod tests {
             config.max_ttl,
             config.deploy_config.max_dependencies as usize,
             chain_name,
+            1,
         );
 
         let transfer_args = runtime_args! {
@@ -2113,8 +2245,43 @@ mod tests {
         let current_timestamp = deploy.header().timestamp();
         assert_eq!(
             Err(InvalidDeploy::FailedToParseTransferAmount),
-            deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp)
+            deploy.is_config_compliant(
+                &chainspec,
+                TimeDiff::default(),
+                current_timestamp,
+                GAS_PRICE_TOLERANCE
+            )
         )
+    }
+
+    #[test]
+    fn not_acceptable_due_to_too_low_gas_price() {
+        let mut rng = TestRng::new();
+        let chain_name = "net-1";
+        let mut chainspec = Chainspec::default();
+        chainspec.with_chain_name(chain_name.to_string());
+        const GAS_PRICE_TOLERANCE: u8 = 0;
+
+        let config = chainspec.transaction_config.clone();
+        let deploy = create_deploy(
+            &mut rng,
+            config.max_ttl,
+            config.deploy_config.max_dependencies as usize,
+            chain_name,
+            GAS_PRICE_TOLERANCE as u64,
+        );
+
+        let current_timestamp = deploy.header().timestamp();
+        assert!(matches!(
+            deploy.is_config_compliant(
+                &chainspec,
+                TimeDiff::default(),
+                current_timestamp,
+                GAS_PRICE_TOLERANCE
+            ),
+            Err(InvalidDeploy::GasPriceToleranceTooLow { min_gas_price_tolerance, provided_gas_price_tolerance })
+                if min_gas_price_tolerance == chainspec.vacancy_config.min_gas_price && provided_gas_price_tolerance == GAS_PRICE_TOLERANCE
+        ))
     }
 
     #[test]
@@ -2123,6 +2290,7 @@ mod tests {
         let chain_name = "net-1";
         let mut chainspec = Chainspec::default();
         chainspec.with_chain_name(chain_name.to_string());
+        const GAS_PRICE_TOLERANCE: u8 = u8::MAX;
 
         let config = chainspec.transaction_config.clone();
         let mut deploy = create_deploy(
@@ -2130,6 +2298,7 @@ mod tests {
             config.max_ttl,
             config.deploy_config.max_dependencies as usize,
             chain_name,
+            1,
         );
 
         let amount = config.native_transfer_minimum_motes - 1;
@@ -2151,7 +2320,12 @@ mod tests {
                 minimum: Box::new(U512::from(config.native_transfer_minimum_motes)),
                 attempted: Box::new(insufficient_amount),
             }),
-            deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp)
+            deploy.is_config_compliant(
+                &chainspec,
+                TimeDiff::default(),
+                current_timestamp,
+                GAS_PRICE_TOLERANCE
+            )
         )
     }
 
@@ -2187,6 +2361,7 @@ mod tests {
             config.max_ttl,
             config.deploy_config.max_dependencies.into(),
             chain_name,
+            1,
         );
         deploy.payment = payment;
         deploy.session = session;
@@ -2245,6 +2420,7 @@ mod tests {
             config.max_ttl,
             config.deploy_config.max_dependencies.into(),
             chain_name,
+            1,
         );
         deploy.payment = payment;
         deploy.session = session;

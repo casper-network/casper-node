@@ -129,6 +129,8 @@ impl DeployHeader {
         timestamp_leeway: TimeDiff,
         at: Timestamp,
         deploy_hash: &DeployHash,
+        gas_price_tolerance: u8,
+        min_gas_price: u8,
     ) -> Result<(), InvalidDeploy> {
         // as of 2.0.0 deploy dependencies are not supported.
         // a legacy deploy citing dependencies should be rejected
@@ -138,6 +140,13 @@ impl DeployHeader {
                 "deploy dependencies no longer supported"
             );
             return Err(InvalidDeploy::DependenciesNoLongerSupported);
+        }
+
+        if gas_price_tolerance < min_gas_price {
+            return Err(InvalidDeploy::GasPriceToleranceTooLow {
+                min_gas_price_tolerance: min_gas_price,
+                provided_gas_price_tolerance: gas_price_tolerance,
+            });
         }
 
         if self.ttl() > config.max_ttl {
