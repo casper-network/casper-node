@@ -317,7 +317,7 @@ impl Transaction {
     /// Is this a transaction that should be sent to the v2 execution engine?
     pub fn is_v2_wasm(&self) -> bool {
         match self {
-            Transaction::Deploy(deploy) => !deploy.is_transfer(),
+            Transaction::Deploy(deploy) => false,
             Transaction::V1(v1) => v1.is_v2_wasm(),
         }
     }

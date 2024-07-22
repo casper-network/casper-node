@@ -1708,6 +1708,38 @@
             }
           },
           "additionalProperties": false
+        },
+        {
+          "description": "Gas limited transaction.",
+          "type": "object",
+          "required": [
+            "GasLimited"
+          ],
+          "properties": {
+            "GasLimited": {
+              "type": "object",
+              "required": [
+                "gas_limit",
+                "gas_price_tolerance"
+              ],
+              "properties": {
+                "gas_limit": {
+                  "description": "User-specified gas limit.",
+                  "type": "integer",
+                  "format": "uint64",
+                  "minimum": 0.0
+                },
+                "gas_price_tolerance": {
+                  "description": "User-specified gas_price tolerance (minimum 1). This is interpreted to mean \"do not include this transaction in a block if the current gas price is greater than this number\"",
+                  "type": "integer",
+                  "format": "uint8",
+                  "minimum": 0.0
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
         }
       ]
     },
@@ -1754,11 +1786,12 @@
         "entry_point",
         "scheduling",
         "target",
-        "transaction_category"
+        "transaction_category",
+        "value"
       ],
       "properties": {
         "args": {
-          "$ref": "#/definitions/RuntimeArgs"
+          "$ref": "#/definitions/TransactionArgs"
         },
         "target": {
           "$ref": "#/definitions/TransactionTarget"
@@ -1773,9 +1806,43 @@
         },
         "scheduling": {
           "$ref": "#/definitions/TransactionScheduling"
+        },
+        "value": {
+          "type": "integer",
+          "format": "uint128",
+          "minimum": 0.0
         }
       },
       "additionalProperties": false
+    },
+    "TransactionArgs": {
+      "description": "Body of a `TransactionArgs`.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "Named"
+          ],
+          "properties": {
+            "Named": {
+              "$ref": "#/definitions/RuntimeArgs"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "Chunked"
+          ],
+          "properties": {
+            "Chunked": {
+              "$ref": "#/definitions/Bytes"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
     },
     "TransactionTarget": {
       "description": "Execution target of a Transaction.",
@@ -1979,7 +2046,7 @@
       "description": "Entry point of a Transaction.",
       "oneOf": [
         {
-          "description": "The standard `call` entry point used in session code.",
+          "description": "The default entry point name.",
           "type": "string",
           "enum": [
             "Call"
@@ -2052,6 +2119,26 @@
           "type": "string",
           "enum": [
             "ChangeBidPublicKey"
+          ]
+        },
+        {
+          "description": "Constructor entrypoint name to be used when instantiating a smart contract under v2 engine.",
+          "type": "object",
+          "required": [
+            "Instantiate"
+          ],
+          "properties": {
+            "Instantiate": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Instantiate contract without an explicit constructor name.\n\nThis is used together with installer transaction kind that will install the contract, but will not execute any constructor and therefore will rely on a default initialization upon first contract call.",
+          "type": "string",
+          "enum": [
+            "DefaultInstantiate"
           ]
         }
       ]
@@ -4029,6 +4116,24 @@
             }
           },
           "additionalProperties": false
+        },
+        {
+          "description": "Raw bytes. Similar to a [`crate::StoredValue::CLValue`] but does not incur overhead of a [`crate::CLValue`] and [`crate::CLType`].",
+          "type": "object",
+          "required": [
+            "RawBytes"
+          ],
+          "properties": {
+            "RawBytes": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "format": "uint8",
+                "minimum": 0.0
+              }
+            }
+          },
+          "additionalProperties": false
         }
       ]
     },
@@ -4814,6 +4919,13 @@
           "type": "string",
           "enum": [
             "V1CasperWasm"
+          ]
+        },
+        {
+          "description": "Byte code to be executed with the version 2 Casper execution engine.",
+          "type": "string",
+          "enum": [
+            "V2CasperWasm"
           ]
         }
       ]
