@@ -156,6 +156,13 @@ pub enum InvalidTransaction {
     },
     /// The transaction provided is not supported.
     InvalidTransactionKind(u8),
+    /// Gas price tolerance too low.
+    GasPriceToleranceTooLow {
+        /// The minimum gas price tolerance.
+        min_gas_price_tolerance: u8,
+        /// The provided gas price tolerance.
+        provided_gas_price_tolerance: u8,
+    },
 }
 
 impl Display for InvalidTransaction {
@@ -294,6 +301,16 @@ impl Display for InvalidTransaction {
                     "received a transaction with an invalid kind {kind}"
                 )
             }
+            InvalidTransaction::GasPriceToleranceTooLow {
+                min_gas_price_tolerance,
+                provided_gas_price_tolerance,
+            } => {
+                write!(
+                    formatter,
+                    "received a transaction with gas price tolerance {} but this chain will only go as low as {}",
+                    provided_gas_price_tolerance, min_gas_price_tolerance
+                )
+            }
         }
     }
 }
@@ -331,6 +348,7 @@ impl StdError for InvalidTransaction {
             | InvalidTransaction::UnableToCalculateGasLimit
             | InvalidTransaction::UnableToCalculateGasCost
             | InvalidTransaction::InvalidPricingMode { .. }
+            | InvalidTransaction::GasPriceToleranceTooLow { .. }
             | InvalidTransaction::InvalidTransactionKind(_) => None,
         }
     }
