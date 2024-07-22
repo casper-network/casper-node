@@ -3248,6 +3248,19 @@
             }
           },
           "additionalProperties": false
+        },
+        {
+          "description": "Reservation",
+          "type": "object",
+          "required": [
+            "Reservation"
+          ],
+          "properties": {
+            "Reservation": {
+              "$ref": "#/definitions/Reservation"
+            }
+          },
+          "additionalProperties": false
         }
       ]
     },
@@ -3397,6 +3410,33 @@
           "allOf": [
             {
               "$ref": "#/definitions/U512"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "Reservation": {
+      "description": "Represents a validator reserving a slot for specific delegator",
+      "type": "object",
+      "required": [
+        "delegator_public_key",
+        "validator_public_key"
+      ],
+      "properties": {
+        "delegator_public_key": {
+          "description": "Delegator public key",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PublicKey"
+            }
+          ]
+        },
+        "validator_public_key": {
+          "description": "Validator public key",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PublicKey"
             }
           ]
         }
