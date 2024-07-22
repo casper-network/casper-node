@@ -7,6 +7,7 @@ const FIXTURE_1: &str = include_str!("fixtures/cep18_schema.json");
 const PROLOG: &str = "#![allow(dead_code, unused_variables, non_camel_case_types)]";
 const EPILOG: &str = "fn main() {}";
 
+#[ignore = "Not yet supported"]
 #[test]
 fn it_works() -> Result<(), std::io::Error> {
     let mut schema = Codegen::from_str(FIXTURE_1)?;

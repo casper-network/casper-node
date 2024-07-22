@@ -367,7 +367,8 @@ pub fn execute_finalized_block(
                 }
                 _ if is_v2_wasm => {
                     let gas_limit: u64 = if gas_limit.value() > U512::from(u64::MAX) {
-                        panic!("gas limit too high; needs u64") // TODO: This should be safe and validated in transaction acceptor
+                        panic!("gas limit too high; needs u64") // TODO: This should be safe and
+                                                                // validated in transaction acceptor
                     } else {
                         gas_limit.value().as_u64()
                     };
@@ -474,7 +475,6 @@ pub fn execute_finalized_block(
                             let initiator_account_hash = &initiator_addr.account_hash();
 
                             let initiator_key = Key::Account(*initiator_account_hash);
-
 
                             builder = builder
                                 .with_address_generator(address_generator)
@@ -832,8 +832,6 @@ pub fn execute_finalized_block(
         debug!(?transaction, ?built_artifacts, "transaction processed");
 
         artifacts.push(built_artifacts);
-
-        
     }
 
     // transaction processing is finished
