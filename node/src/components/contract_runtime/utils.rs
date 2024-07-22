@@ -246,12 +246,7 @@ pub(super) async fn exec_or_requeue<REv>(
         None
     };
 
-    let BlockAndExecutionArtifacts {
-        block,
-        approvals_hashes,
-        execution_artifacts,
-        step_outcome: maybe_step_outcome,
-    } = match run_intensive_task(move || {
+    let task = move || {
         debug!("ContractRuntime: execute_finalized_block");
         execute_finalized_block(
             data_access_layer.as_ref(),
@@ -265,9 +260,13 @@ pub(super) async fn exec_or_requeue<REv>(
             maybe_next_era_gas_price,
             last_switch_block_hash,
         )
-    })
-    .await
-    {
+    };
+    let BlockAndExecutionArtifacts {
+        block,
+        approvals_hashes,
+        execution_artifacts,
+        step_outcome: maybe_step_outcome,
+    } = match run_intensive_task(task).await {
         Ok(ret) => ret,
         Err(error) => {
             error!(%error, "failed to execute block");

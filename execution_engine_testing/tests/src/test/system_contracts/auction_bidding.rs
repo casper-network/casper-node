@@ -171,7 +171,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
     builder.exec(exec_request_5).expect_success().commit();
 
     let unbond_purses: UnbondingPurses = builder.get_unbonds();
-    assert!(unbond_purses.get(&*DEFAULT_ACCOUNT_ADDR).is_none());
+    assert!(!unbond_purses.contains_key(&*DEFAULT_ACCOUNT_ADDR));
 
     let bids = builder.get_bids();
     assert!(bids.validator_bid(&DEFAULT_ACCOUNT_PUBLIC_KEY).is_none());
@@ -460,7 +460,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
     );
 
     let unbond_purses: UnbondingPurses = builder.get_unbonds();
-    assert!(unbond_purses.get(&*DEFAULT_ACCOUNT_ADDR).is_none());
+    assert!(!unbond_purses.contains_key(&*DEFAULT_ACCOUNT_ADDR));
 
     let bids = builder.get_bids();
     assert!(!bids.is_empty());
@@ -650,7 +650,7 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
     );
 
     let unbond_purses: UnbondingPurses = builder.get_unbonds();
-    assert!(unbond_purses.get(&*DEFAULT_ACCOUNT_ADDR).is_none());
+    assert!(!unbond_purses.contains_key(&*DEFAULT_ACCOUNT_ADDR));
 
     let bids = builder.get_bids();
     assert!(!bids.is_empty());
