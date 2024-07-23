@@ -661,12 +661,6 @@ where
             let entity_hash = AddressableEntityHash::new(contract_hash.value());
             let entity_key = Key::contract_entity_key(entity_hash);
             self.write(entity_key, StoredValue::AddressableEntity(updated_entity));
-
-            // Prune the legacy records.
-            // Prune the legacy contract.
-            self.prune(Key::Hash(contract_hash.value()));
-            // Prune the legacy Wasm record.
-            self.prune(Key::Hash(contract_wasm_hash.value()));
         }
 
         let access_key_value = CLValue::from_t(access_uref).map_err(Self::Error::CLValue)?;

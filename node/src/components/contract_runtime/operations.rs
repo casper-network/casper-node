@@ -1248,19 +1248,49 @@ where
             return SpeculativeExecutionResult::invalid_gas_limit(transaction);
         }
     };
-    let wasm_v1_result = match WasmV1Request::new_session(
-        *state_root_hash,
-        block_time.into(),
-        gas_limit,
-        &transaction,
-    ) {
-        Ok(wasm_v1_request) => execution_engine_v1.execute(state_provider, wasm_v1_request),
-        Err(error) => WasmV1Result::invalid_executable_item(gas_limit, error),
-    };
-    SpeculativeExecutionResult::WasmV1(utils::spec_exec_from_wasm_v1_result(
-        wasm_v1_result,
-        block_header.block_hash(),
-    ))
+
+    if transaction.is_legacy_transaction() {
+        if transaction.is_native() {
+            let limit = Gas::from(chainspec.system_costs_config.mint_costs().transfer);
+            let protocol_version = chainspec.protocol_version();
+            let native_runtime_config = NativeRuntimeConfig::from_chainspec(chainspec);
+            let transaction_hash = transaction.hash();
+            let initiator_addr = transaction.initiator_addr();
+            let authorization_keys = transaction.authorization_keys();
+            let runtime_args = transaction.session_args().clone();
+
+            let result = state_provider.transfer(TransferRequest::with_runtime_args(
+                native_runtime_config.clone(),
+                *state_root_hash,
+                protocol_version,
+                transaction_hash,
+                initiator_addr,
+                authorization_keys,
+                runtime_args,
+            ));
+            SpeculativeExecutionResult::WasmV1(utils::spec_exec_from_transfer_result(
+                limit,
+                result,
+                block_header.block_hash(),
+            ))
+        } else {
+            let wasm_v1_result = match WasmV1Request::new_session(
+                *state_root_hash,
+                block_time.into(),
+                gas_limit,
+                &transaction,
+            ) {
+                Ok(wasm_v1_request) => execution_engine_v1.execute(state_provider, wasm_v1_request),
+                Err(error) => WasmV1Result::invalid_executable_item(gas_limit, error),
+            };
+            SpeculativeExecutionResult::WasmV1(utils::spec_exec_from_wasm_v1_result(
+                wasm_v1_result,
+                block_header.block_hash(),
+            ))
+        }
+    } else {
+        SpeculativeExecutionResult::ReceivedV1Transaction
+    }
 }
 
 #[allow(clippy::too_many_arguments)]

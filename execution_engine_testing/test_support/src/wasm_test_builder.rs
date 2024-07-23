@@ -1344,6 +1344,19 @@ where
         self
     }
 
+    /// Expect failure of the protocol upgrade.
+    pub fn expect_upgrade_failure(&mut self) -> &mut Self {
+        // Check first result, as only first result is interesting for a simple test
+        let result = self
+            .upgrade_results
+            .last()
+            .expect("Expected to be called after a system upgrade.");
+
+        assert!(result.is_err(), "Expected Failure got {:?}", result);
+
+        self
+    }
+
     /// Returns the "handle payment" contract, panics if it can't be found.
     pub fn get_handle_payment_contract(&self) -> EntityWithNamedKeys {
         let hash = self

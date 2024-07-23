@@ -378,6 +378,7 @@ pub struct BlockAndExecutionArtifacts {
 pub enum SpeculativeExecutionResult {
     InvalidTransaction(InvalidTransaction),
     WasmV1(casper_binary_port::SpeculativeExecutionResult),
+    ReceivedV1Transaction,
 }
 
 impl SpeculativeExecutionResult {

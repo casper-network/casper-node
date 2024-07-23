@@ -415,6 +415,14 @@ impl Transaction {
         }
     }
 
+    /// Is the transaction the legacy deploy variant.
+    pub fn is_legacy_transaction(&self) -> bool {
+        match self {
+            Transaction::Deploy(_) => true,
+            Transaction::V1(_) => false,
+        }
+    }
+
     // This method is not intended to be used by third party crates.
     #[doc(hidden)]
     #[cfg(feature = "json-schema")]
