@@ -271,6 +271,9 @@ pub enum ErrorCode {
     /// Invalid transaction kind
     #[error("invalid transaction kind")]
     InvalidTransactionInvalidTransactionKind = 84,
+    /// Gas price tolerance too low
+    #[error("gas price tolerance too low")]
+    GasPriceToleranceTooLow = 85,
 }
 
 impl TryFrom<u16> for ErrorCode {
@@ -363,6 +366,7 @@ impl TryFrom<u16> for ErrorCode {
             82 => Ok(ErrorCode::DeployMissingModuleBytes),
             83 => Ok(ErrorCode::InvalidTransactionEntryPointCannotBeCall),
             84 => Ok(ErrorCode::InvalidTransactionInvalidTransactionKind),
+            85 => Ok(ErrorCode::GasPriceToleranceTooLow),
             _ => Err(UnknownErrorCode),
         }
     }
@@ -433,6 +437,7 @@ impl From<InvalidDeploy> for ErrorCode {
             InvalidDeploy::UnableToCalculateGasCost => {
                 ErrorCode::InvalidDeployUnableToCalculateGasCost
             }
+            InvalidDeploy::GasPriceToleranceTooLow { .. } => ErrorCode::GasPriceToleranceTooLow,
             _ => ErrorCode::InvalidDeployUnspecified,
         }
     }
@@ -496,6 +501,9 @@ impl From<InvalidTransactionV1> for ErrorCode {
             }
             InvalidTransactionV1::InvalidTransactionKind(_) => {
                 ErrorCode::InvalidTransactionInvalidTransactionKind
+            }
+            InvalidTransactionV1::GasPriceToleranceTooLow { .. } => {
+                ErrorCode::GasPriceToleranceTooLow
             }
             _ => ErrorCode::InvalidTransactionUnspecified,
         }
