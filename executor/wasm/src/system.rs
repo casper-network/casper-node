@@ -44,7 +44,7 @@ enum DispatchError {
     },
 }
 
-fn dispatch_system_contract<R: GlobalStateReader, Ret>(
+fn dispatch_system_contract<R: GlobalStateReader, Ret: PartialEq>(
     tracking_copy: &mut TrackingCopy<R>,
     transaction_hash: TransactionHash,
     address_generator: Arc<RwLock<AddressGenerator>>,
@@ -213,174 +213,94 @@ pub(crate) fn mint_transfer<R: GlobalStateReader>(
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
 
-    // #[test]
-    // fn test_system_dispatcher() {
-    //     let (global_state, mut root_hash, _tempdir) =
-    //         global_state::state::lmdb::make_temporary_global_state([]);
+    use casper_storage::{
+        data_access_layer::{GenesisRequest, GenesisResult},
+        global_state::{
+            self,
+            state::{CommitProvider, StateProvider},
+        },
+        system::{
+            mint::{storage_provider::StorageProvider, Mint},
+            runtime_native::{Config, Id, RuntimeNative},
+        },
+        AddressGenerator,
+    };
+    use casper_types::{
+        AddressableEntityHash, ChainspecRegistry, ContextAccessRights, Digest, EntityAddr,
+        GenesisConfigBuilder, HoldsEpoch, Key, Phase, ProtocolVersion, SystemEntityRegistry,
+        TransactionHash, TransactionV1Hash, U512,
+    };
+    use parking_lot::RwLock;
 
-    //     let genesis_config = GenesisConfigBuilder::default().build();
+    use crate::system::dispatch_system_contract;
 
-    //     let genesis_request: GenesisRequest = GenesisRequest::new(
-    //         Digest::hash("foo"),
-    //         ProtocolVersion::V2_0_0,
-    //         genesis_config,
-    //         ChainspecRegistry::new_with_genesis(b"", b""),
-    //     );
+    #[test]
+    fn test_system_dispatcher() {
+        let (global_state, mut root_hash, _tempdir) =
+            global_state::state::lmdb::make_temporary_global_state([]);
 
-    //     match global_state.genesis(genesis_request) {
-    //         GenesisResult::Failure(failure) => panic!("Failed to run genesis: {:?}", failure),
-    //         GenesisResult::Fatal(fatal) => panic!("Fatal error while running genesis: {}",
-    // fatal),         GenesisResult::Success {
-    //             post_state_hash,
-    //             effects: _,
-    //         } => {
-    //             root_hash = post_state_hash;
-    //         }
-    //     }
+        let genesis_config = GenesisConfigBuilder::default().build();
 
-    //     let mut tracking_copy = global_state
-    //         .tracking_copy(root_hash)
-    //         .expect("Obtaining root hash succeed")
-    //         .expect("Root hash exists");
+        let genesis_request: GenesisRequest = GenesisRequest::new(
+            Digest::hash("foo"),
+            ProtocolVersion::V2_0_0,
+            genesis_config,
+            ChainspecRegistry::new_with_genesis(b"", b""),
+        );
 
-    //     let mut rng = rand::thread_rng();
-    //     let transaction_hash_bytes: [u8; 32] = rng.gen();
-    //     let transaction_hash: TransactionHash =
-    //         TransactionHash::V1(TransactionV1Hash::from_raw(transaction_hash_bytes));
-    //     let id = Id::Transaction(transaction_hash);
-    //     let address_generator = Arc::new(RwLock::new(AddressGenerator::new(
-    //         &id.seed(),
-    //         Phase::Session,
-    //     )));
+        match global_state.genesis(genesis_request) {
+            GenesisResult::Failure(failure) => panic!("Failed to run genesis: {:?}", failure),
+            GenesisResult::Fatal(fatal) => panic!("Fatal error while running genesis: {}", fatal),
+            GenesisResult::Success {
+                post_state_hash,
+                effects: _,
+            } => {
+                root_hash = post_state_hash;
+            }
+        }
 
-    //     let ret = dispatch_system_contract(
-    //         &mut tracking_copy,
-    //         transaction_hash,
-    //         Arc::clone(&address_generator),
-    //         "mint",
-    //         |mut runtime| runtime.mint(U512::from(1000u64)),
-    //     );
+        let mut tracking_copy = global_state
+            .tracking_copy(root_hash)
+            .expect("Obtaining root hash succeed")
+            .expect("Root hash exists");
 
-    //     let uref = ret.expect("Mint");
+        let transaction_hash_bytes: [u8; 32] = [1; 32];
+        let transaction_hash: TransactionHash =
+            TransactionHash::V1(TransactionV1Hash::from_raw(transaction_hash_bytes));
+        let id = Id::Transaction(transaction_hash);
+        let address_generator = Arc::new(RwLock::new(AddressGenerator::new(
+            &id.seed(),
+            Phase::Session,
+        )));
 
-    //     let ret = dispatch_system_contract(
-    //         &mut tracking_copy,
-    //         transaction_hash,
-    //         Arc::clone(&address_generator),
-    //         "mint",
-    //         |mut runtime| runtime.total_balance(uref),
-    //     );
+        let ret = dispatch_system_contract(
+            &mut tracking_copy,
+            transaction_hash,
+            Arc::clone(&address_generator),
+            "mint",
+            |mut runtime| runtime.mint(U512::from(1000u64)),
+        );
 
-    //     assert_eq!(ret, Ok(Ok(U512::from(1000u64))));
+        let uref = ret.expect("dispatch mint").expect("uref");
 
-    //     let post_root_hash = global_state
-    //         .commit(root_hash, tracking_copy.effects())
-    //         .expect("Should apply effect");
+        let ret: Result<Result<U512, _>, _> = dispatch_system_contract(
+            &mut tracking_copy,
+            transaction_hash,
+            Arc::clone(&address_generator),
+            "mint",
+            |mut runtime| runtime.total_balance(uref),
+        );
 
-    //     assert_ne!(post_root_hash, root_hash);
-    // }
+        // let ret = ret.expect("dispatch total balance");
 
-    // #[test]
-    // fn test_mint() {
-    //     let (global_state, mut root_hash, _tempdir) =
-    //         global_state::state::lmdb::make_temporary_global_state([]);
+        assert_eq!(ret.unwrap(), Ok(U512::from(1000u64)));
 
-    //     let genesis_config = GenesisConfigBuilder::default().build();
+        let post_root_hash = global_state
+            .commit(root_hash, tracking_copy.effects())
+            .expect("Should apply effect");
 
-    //     let genesis_request: GenesisRequest = GenesisRequest::new(
-    //         Digest::hash("foo"),
-    //         ProtocolVersion::V2_0_0,
-    //         genesis_config,
-    //         ChainspecRegistry::new_with_genesis(b"", b""),
-    //     );
-
-    //     match global_state.genesis(genesis_request) {
-    //         GenesisResult::Failure(failure) => panic!("Failed to run genesis: {:?}", failure),
-    //         GenesisResult::Fatal(fatal) => panic!("Fatal error while running genesis: {}",
-    // fatal),         GenesisResult::Success {
-    //             post_state_hash,
-    //             effects: _,
-    //         } => {
-    //             root_hash = post_state_hash;
-    //         }
-    //     }
-
-    //     let mut tracking_copy = global_state
-    //         .tracking_copy(root_hash)
-    //         .expect("Obtaining root hash succeed")
-    //         .expect("Root hash exists");
-
-    //     let system_entity_registry = {
-    //         let stored_value = tracking_copy
-    //             .read(&Key::SystemEntityRegistry)
-    //             .expect("should read system entity registry")
-    //             .expect("should get system entity registry");
-    //         stored_value
-    //             .into_cl_value()
-    //             .expect("should convert stored value into CLValue")
-    //             .into_t::<SystemEntityRegistry>()
-    //             .expect("should get system entity registry")
-    //     };
-
-    //     let mint = system_entity_registry.get("mint").expect("should get mint");
-    //     let entity_addr = EntityAddr::new_system(mint.value());
-    //     let addressable_entity = tracking_copy
-    //         .read(&Key::AddressableEntity(entity_addr))
-    //         .expect("should read addressable entity")
-    //         .expect("should get addressable entity")
-    //         .into_addressable_entity()
-    //         .expect("should convert stored value into addressable entity");
-
-    //     let mut runtime = RuntimeNative::new(
-    //         entity_addr,
-    //         Config::default(),
-    //         ProtocolVersion::V1_0_0,
-    //         Id::Seed(vec![1, 2, 3]),
-    //         tracking_copy,
-    //         addressable_entity,
-    //         ContextAccessRights::new(AddressableEntityHash::new([5; 32]), []),
-    //     );
-
-    //     let source = runtime.mint(U512::from(1000u64)).expect("Should mint");
-    //     let source_balance = runtime
-    //         .total_balance(source)
-    //         .expect("Should get total balance");
-    //     assert_eq!(source_balance, U512::from(1000u64));
-
-    //     let target = runtime.mint(U512::from(1u64)).expect("Should create uref");
-    //     let target_balance = runtime
-    //         .total_balance(target)
-    //         .expect("Should get total balance");
-    //     assert_eq!(target_balance, U512::from(1u64));
-
-    //     runtime
-    //         .transfer(
-    //             None,
-    //             source,
-    //             target,
-    //             U512::from(999),
-    //             None,
-    //             HoldsEpoch::NOT_APPLICABLE,
-    //         )
-    //         .expect("Should transfer");
-
-    //     let source_balance = runtime
-    //         .total_balance(source)
-    //         .expect("Should get total balance");
-    //     assert_eq!(source_balance, U512::from(1u64));
-    //     let target_balance = runtime
-    //         .total_balance(target)
-    //         .expect("Should get total balance");
-    //     assert_eq!(target_balance, U512::from(1000u64));
-
-    //     runtime
-    //         .mint_into_existing_purse(target, U512::from(1000u64))
-    //         .expect("Should mint");
-
-    //     let target_balance = runtime
-    //         .total_balance(target)
-    //         .expect("Should get total balance");
-    //     assert_eq!(target_balance, U512::from(2000u64));
-    // }
+        assert_ne!(post_root_hash, root_hash);
+    }
 }

@@ -20,7 +20,7 @@ for contract in "${VM2_LIBS[@]}"
 do
   pushd smart_contracts/contracts/vm2/$contract/
   pwd
-  cargo build --target wasm32-unknown-unknown -p $contract --lib --release
+  cargo +stable build --target wasm32-unknown-unknown -p $contract --lib --release
   popd
 done
 
@@ -28,11 +28,11 @@ for contract in "${VM2_BINS[@]}"
 do
   pushd smart_contracts/contracts/vm2/$contract/
   pwd
-  cargo build --target wasm32-unknown-unknown -p $contract --bin $contract --release
+  cargo +stable build --target wasm32-unknown-unknown -p $contract --bin $contract --release
   popd
 done
 
 echo "Stripping linked wasm"
-for wasm in vm/*.wasm; do
+for wasm in executor/wasm/*.wasm; do
   wasm-strip $wasm
 done

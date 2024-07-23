@@ -151,8 +151,6 @@ fn main() -> anyhow::Result<()> {
             };
             serde_json::to_writer_pretty(std::io::stdout(), &schema)?;
 
-            // dbg!(&defs);
-
             //
             // Stage 2: Construct a schema object from the extracted information
             //

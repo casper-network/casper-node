@@ -1119,16 +1119,6 @@ fn casper_trait_definition(
                 let flags = EntryPointFlags::empty();
 
                 let _flags = flags.bits();
-                // schema_entry_points.push(quote! {
-                //     casper_sdk::schema::SchemaEntryPoint {
-                //         name: stringify!(#func_name).into(),
-                //         selector: #schema_selector,
-                //         arguments: vec![ #(#args,)* ],
-                //         result: #result,
-                //         flags:
-                // casper_sdk::casper_executor_wasm_common::flags::EntryPointFlags::from_bits(#
-                // flags).unwrap(),     }
-                // });
 
                 let handle_dispatch = match func.sig.inputs.first() {
                     Some(syn::FnArg::Receiver(_receiver)) => {

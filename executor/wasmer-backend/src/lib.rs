@@ -512,17 +512,6 @@ where
                      -> Result<(), VMError> {
                         let wasmer_caller = WasmerCaller { env };
                         host::casper_env_value(wasmer_caller, output.offset())?;
-
-                        // {
-                        //     // TODO: This is quick hack, there's a need for an abstract WasmPtr
-                        // type     let mem =
-                        // env.data().exported_runtime().memory;
-                        //     let binding = env.as_store_ref();
-                        //     let view = mem.view(&binding);
-                        //     output.write(&view, result).map_err(|error|
-                        // TrapCode::from(error)).map_err(|error| VMError::Trap(error))?
-                        // };
-
                         Ok(())
                     },
                 ),

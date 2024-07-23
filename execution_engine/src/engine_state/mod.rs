@@ -14,7 +14,6 @@ use casper_storage::{
     tracking_copy::{TrackingCopyEntityExt, TrackingCopyError, TrackingCopyExt},
 };
 use casper_types::U512;
-use tracing::debug;
 
 use crate::{execution::Executor, runtime::RuntimeStack};
 pub use deploy_item::DeployItem;
@@ -125,7 +124,7 @@ impl ExecutionEngineV1 {
             Err(ese) => return WasmV1Result::precondition_failure(gas_limit, ese),
         };
         let access_rights = entity.extract_access_rights(entity_hash, &named_keys);
-        let result = Executor::new(self.config().clone()).exec(
+        Executor::new(self.config().clone()).exec(
             execution_kind,
             args,
             entity_hash,
@@ -144,8 +143,6 @@ impl ExecutionEngineV1 {
                 account_hash,
                 self.config.max_runtime_call_stack_height() as usize,
             ),
-        );
-        debug!(?result, "wasm execution result");
-        result
+        )
     }
 }

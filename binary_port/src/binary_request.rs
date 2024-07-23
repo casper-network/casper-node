@@ -4,7 +4,6 @@ use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     ProtocolVersion, Transaction,
 };
-use tracing::debug;
 
 use crate::get_request::GetRequest;
 
@@ -187,8 +186,6 @@ impl TryFrom<(BinaryRequestTag, &[u8])> for BinaryRequest {
     type Error = bytesrepr::Error;
 
     fn try_from((tag, bytes): (BinaryRequestTag, &[u8])) -> Result<Self, Self::Error> {
-        debug!(?tag, ?bytes, "BinaryRequest::try_from");
-
         let (req, remainder) = match tag {
             BinaryRequestTag::Get => {
                 let (get_request, remainder) = FromBytes::from_bytes(bytes)?;
@@ -206,7 +203,6 @@ impl TryFrom<(BinaryRequestTag, &[u8])> for BinaryRequest {
                 (BinaryRequest::TrySpeculativeExec { transaction }, remainder)
             }
         };
-        debug!(?req, ?remainder, "BinaryRequest::try_from succeed");
         if !remainder.is_empty() {
             return Err(bytesrepr::Error::LeftOverBytes);
         }
@@ -215,7 +211,7 @@ impl TryFrom<(BinaryRequestTag, &[u8])> for BinaryRequest {
 }
 
 /// The type tag of a binary request.
-#[derive(Debug, PartialEq, Copy, Clone)]
+#[derive(Debug, PartialEq)]
 #[repr(u8)]
 pub enum BinaryRequestTag {
     /// Request to get data from the node

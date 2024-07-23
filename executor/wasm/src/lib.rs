@@ -28,20 +28,6 @@ use parking_lot::RwLock;
 use system::{MintArgs, MintTransferArgs};
 use tracing::{error, warn};
 
-// use super::{
-//     ExecuteError, ExecuteRequest, ExecuteRequestBuilder, ExecuteResult, ExecutionKind, Executor,
-//     InstantiateContractRequest, InstallContractError, StoreContractResult,
-// };
-// use crate::{
-//     chain_utils,
-//     storage::{
-//         runtime::{self, MintArgs, MintTransferArgs},
-//         Address, GlobalStateReader, TrackingCopy,
-//     },
-//     wasm_backend::{Context, GasUsage, WasmInstance},
-//     ConfigBuilder, HostError, TrapCode, VMError, WasmEngine,
-// };
-
 const DEFAULT_WASM_ENTRY_POINT: &str = "call";
 
 const DEFAULT_MINT_TRANSFER_GAS_COST: u64 = 1; // NOTE: Require gas while executing and set this to at least 100_000_000 (or use chainspec)

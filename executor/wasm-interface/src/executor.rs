@@ -242,12 +242,6 @@ pub enum ExecuteError {
 /// Trait bounds also implying that the executor has to support interior mutability, as it may need
 /// to update its internal state during execution of a single or a chain of multiple contracts.
 pub trait Executor: Clone + Send {
-    // fn instantiate_contract<R: GlobalStateReader + 'static>(
-    //     &self,
-    //     tracking_copy: TrackingCopy<R>,
-    //     store_request: InstantiateContractRequest,
-    // ) -> Result<StoreContractResult, StoreContractError>;
-
     fn execute<R: GlobalStateReader + 'static>(
         &self,
         tracking_copy: TrackingCopy<R>,

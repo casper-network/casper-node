@@ -12,8 +12,6 @@ pub use linkme;
 
 #[cfg(feature = "__abi_generator")]
 pub mod abi_generator;
-#[cfg(feature = "cli")]
-pub mod cli;
 pub mod collections;
 pub mod host;
 #[cfg(feature = "std")]

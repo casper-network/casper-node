@@ -42,7 +42,6 @@ extern "C" fn alloc_callback<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
     len: usize,
     ctx: *mut c_void,
 ) -> *mut u8 {
-    // dbg!(&len);
     let opt_closure = ctx as *mut Option<F>;
     let allocated_ptr = unsafe { (*opt_closure).take().unwrap()(len) };
     match allocated_ptr {
