@@ -274,6 +274,9 @@ pub enum ErrorCode {
     /// Gas price tolerance too low
     #[error("gas price tolerance too low")]
     GasPriceToleranceTooLow = 85,
+    /// Received V1 Transaction for spec exec.
+    #[error("received v1 transaction for speculative execution")]
+    ReceivedV1Transaction = 86,
 }
 
 impl TryFrom<u16> for ErrorCode {
@@ -367,6 +370,7 @@ impl TryFrom<u16> for ErrorCode {
             83 => Ok(ErrorCode::InvalidTransactionEntryPointCannotBeCall),
             84 => Ok(ErrorCode::InvalidTransactionInvalidTransactionKind),
             85 => Ok(ErrorCode::GasPriceToleranceTooLow),
+            86 => Ok(ErrorCode::ReceivedV1Transaction),
             _ => Err(UnknownErrorCode),
         }
     }

@@ -707,3 +707,28 @@ fn should_correctly_migrate_and_prune_system_contract_records() {
             .expect("must have system entity");
     }
 }
+
+#[test]
+fn should_not_migrate_bids_with_invalid_min_max_delegation_amounts() {
+    let mut builder = LmdbWasmTestBuilder::default();
+
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
+
+    let sem_ver = PROTOCOL_VERSION.value();
+    let new_protocol_version =
+        ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 1);
+
+    let mut upgrade_request = {
+        UpgradeRequestBuilder::new()
+            .with_current_protocol_version(PROTOCOL_VERSION)
+            .with_new_protocol_version(new_protocol_version)
+            .with_activation_point(DEFAULT_ACTIVATION_POINT)
+            .with_maximum_delegation_amount(250_000_000_000)
+            .with_minimum_delegation_amount(500_000_000_000)
+            .build()
+    };
+
+    builder
+        .upgrade(&mut upgrade_request)
+        .expect_upgrade_failure();
+}
