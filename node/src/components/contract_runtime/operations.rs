@@ -1257,7 +1257,7 @@ where
             let transaction_hash = transaction.hash();
             let initiator_addr = transaction.initiator_addr();
             let authorization_keys = transaction.authorization_keys();
-            let runtime_args = transaction.session_args().clone();
+            let runtime_args = transaction.session_args().cloned().unwrap();
 
             let result = state_provider.transfer(TransferRequest::with_runtime_args(
                 native_runtime_config.clone(),
