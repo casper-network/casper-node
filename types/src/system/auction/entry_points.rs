@@ -1,8 +1,8 @@
 use crate::{
     system::auction::{
         DelegationRate, ValidatorWeights, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR,
-        ARG_ERA_END_TIMESTAMP_MILLIS, ARG_NEW_VALIDATOR, ARG_PUBLIC_KEY, ARG_VALIDATOR,
-        METHOD_ACTIVATE_BID, METHOD_ADD_BID, METHOD_DELEGATE, METHOD_DISTRIBUTE,
+        ARG_DELEGATORS, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_NEW_VALIDATOR, ARG_PUBLIC_KEY,
+        ARG_VALIDATOR, METHOD_ACTIVATE_BID, METHOD_ADD_BID, METHOD_DELEGATE, METHOD_DISTRIBUTE,
         METHOD_GET_ERA_VALIDATORS, METHOD_READ_ERA_ID, METHOD_REDELEGATE, METHOD_RUN_AUCTION,
         METHOD_SLASH, METHOD_UNDELEGATE, METHOD_WITHDRAW_BID,
     },
@@ -12,7 +12,7 @@ use crate::{
 
 use super::{
     ARG_MAXIMUM_DELEGATION_AMOUNT, ARG_MINIMUM_DELEGATION_AMOUNT, ARG_NEW_PUBLIC_KEY,
-    ARG_REWARDS_MAP, METHOD_CHANGE_BID_PUBLIC_KEY,
+    ARG_REWARDS_MAP, METHOD_ADD_RESERVATIONS, METHOD_CHANGE_BID_PUBLIC_KEY,
 };
 
 /// Creates auction contract entry points.
@@ -158,7 +158,10 @@ pub fn auction_entry_points() -> EntryPoints {
         METHOD_CHANGE_BID_PUBLIC_KEY,
         vec![
             Parameter::new(ARG_PUBLIC_KEY, PublicKey::cl_type()),
-            Parameter::new(ARG_NEW_PUBLIC_KEY, PublicKey::cl_type()),
+            Parameter::new(
+                ARG_NEW_PUBLIC_KEY,
+                CLType::List(Box::new(PublicKey::cl_type())),
+            ),
         ],
         CLType::Unit,
         EntryPointAccess::Public,
@@ -167,5 +170,17 @@ pub fn auction_entry_points() -> EntryPoints {
     );
     entry_points.add_entry_point(entry_point);
 
+    let entry_point = EntryPoint::new(
+        METHOD_ADD_RESERVATIONS,
+        vec![
+            Parameter::new(ARG_VALIDATOR, PublicKey::cl_type()),
+            Parameter::new(ARG_DELEGATORS, PublicKey::cl_type()),
+        ],
+        CLType::Unit,
+        EntryPointAccess::Public,
+        EntryPointType::Called,
+        EntryPointPayment::Caller,
+    );
+    entry_points.add_entry_point(entry_point);
     entry_points
 }
