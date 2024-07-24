@@ -33,7 +33,7 @@ use casper_types::{
     system::{
         self,
         auction::{
-            self, BidsExt, DelegationRate, EraValidators, Error as AuctionError, UnbondingPurses, ValidatorWeights, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_ENTRY_POINT, ARG_MAXIMUM_DELEGATION_AMOUNT, ARG_MINIMUM_DELEGATION_AMOUNT, ARG_NEW_PUBLIC_KEY, ARG_NEW_VALIDATOR, ARG_PUBLIC_KEY, ARG_RESERVED_SLOTS, ARG_REWARDS_MAP, ARG_VALIDATOR, ERA_ID_KEY, INITIAL_ERA_ID, METHOD_DISTRIBUTE
+            self, BidsExt, DelegationRate, EraValidators, Error as AuctionError, UnbondingPurses, ValidatorWeights, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_DELEGATORS, ARG_ENTRY_POINT, ARG_MAXIMUM_DELEGATION_AMOUNT, ARG_MINIMUM_DELEGATION_AMOUNT, ARG_NEW_PUBLIC_KEY, ARG_NEW_VALIDATOR, ARG_PUBLIC_KEY, ARG_RESERVED_SLOTS, ARG_REWARDS_MAP, ARG_VALIDATOR, ERA_ID_KEY, INITIAL_ERA_ID, METHOD_DISTRIBUTE
         },
     },
     EntityAddr, EraId, GenesisAccount, GenesisConfigBuilder, GenesisValidator, Key, Motes,
@@ -50,7 +50,8 @@ const CONTRACT_DELEGATE: &str = "delegate.wasm";
 const CONTRACT_UNDELEGATE: &str = "undelegate.wasm";
 const CONTRACT_REDELEGATE: &str = "redelegate.wasm";
 const CONTRACT_CHANGE_BID_PUBLIC_KEY: &str = "change_bid_public_key.wasm";
-const CONTRACT_ADD_RESERVATION: &str = "add_reservation.wasm";
+const CONTRACT_ADD_RESERVATIONS: &str = "add_reservations.wasm";
+const CONTRACT_CANCEL_RESERVATIONS: &str = "cancel_reservations.wasm";
 
 const TRANSFER_AMOUNT: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE + 1000;
 
@@ -4480,10 +4481,10 @@ fn should_enforce_max_delegators_per_validator_with_reserved_slots() {
 
     let reservation_request = ExecuteRequestBuilder::standard(
         *NON_FOUNDER_VALIDATOR_1_ADDR,
-        CONTRACT_ADD_RESERVATION,
+        CONTRACT_ADD_RESERVATIONS,
         runtime_args! {
             ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
-            ARG_DELEGATOR => DELEGATOR_1.clone(),
+            ARG_DELEGATORS => vec![DELEGATOR_1.clone()],
         },
     )
     .build();

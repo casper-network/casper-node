@@ -74,7 +74,7 @@ pub trait Auction:
         minimum_delegation_amount: u64,
         maximum_delegation_amount: u64,
         // TODO: reservation list functionality implementation
-        _reserved_slots: u32,
+        reserved_slots: u32,
     ) -> Result<U512, ApiError> {
         if !self.allow_auction_bids() {
             // The validator set may be closed on some side chains,
@@ -109,6 +109,9 @@ pub trait Auction:
                 minimum_delegation_amount,
                 maximum_delegation_amount,
             );
+            // TODO(jck): check if expanding the reservation list is possible
+            // TODO(jck): come up with a fair delegator eviction policy
+            validator_bid.with_reserved_slots(reserved_slots);
             (*validator_bid.bonding_purse(), validator_bid)
         } else {
             let bonding_purse = self.create_purse()?;
@@ -119,6 +122,7 @@ pub trait Auction:
                 delegation_rate,
                 minimum_delegation_amount,
                 maximum_delegation_amount,
+                reserved_slots,
             );
             (bonding_purse, Box::new(validator_bid))
         };

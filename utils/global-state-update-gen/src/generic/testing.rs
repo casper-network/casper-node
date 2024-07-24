@@ -133,6 +133,7 @@ impl MockStateReader {
                 delegation_rate,
                 0,
                 u64::MAX,
+                0,
             );
 
             self.bids.push(BidKind::Validator(Box::new(validator_bid)));
@@ -543,6 +544,7 @@ fn should_change_one_validator() {
         Default::default(),
         0,
         u64::MAX,
+        0,
     );
     update.assert_written_bid(account3_hash, BidKind::Validator(Box::new(expected_bid)));
 
@@ -637,6 +639,7 @@ fn should_change_only_stake_of_one_validator() {
         Default::default(),
         0,
         u64::MAX,
+        0,
     );
     update.assert_written_bid(account3_hash, BidKind::Validator(Box::new(expected_bid)));
 
@@ -778,6 +781,7 @@ fn should_replace_one_validator() {
         Default::default(),
         0,
         u64::MAX,
+        0,
     );
     expected_bid_1.deactivate();
     update.assert_written_bid(account1_hash, BidKind::Validator(Box::new(expected_bid_1)));
@@ -884,6 +888,7 @@ fn should_replace_one_validator_with_unbonding() {
         Default::default(),
         0,
         u64::MAX,
+        0,
     );
     expected_bid_1.deactivate();
     update.assert_written_bid(account1_hash, BidKind::Validator(Box::new(expected_bid_1)));
@@ -2003,6 +2008,7 @@ fn should_handle_unbonding_to_oneself_correctly() {
         Default::default(),
         0,
         u64::MAX,
+        0,
     );
     expected_bid_1.deactivate();
     update.assert_written_bid(account1_hash, BidKind::Validator(Box::new(expected_bid_1)));
@@ -2146,6 +2152,7 @@ fn should_handle_unbonding_to_a_delegator_correctly() {
         Default::default(),
         0,
         u64::MAX,
+        0,
     );
     expected_bid_1.deactivate();
     update.assert_written_bid(account1_hash, BidKind::Validator(Box::new(expected_bid_1)));
@@ -2274,6 +2281,7 @@ fn should_handle_legacy_unbonding_to_oneself_correctly() {
         Default::default(),
         0,
         u64::MAX,
+        0,
     );
     expected_bid_1.deactivate();
     update.assert_written_bid(account1_hash, BidKind::Validator(Box::new(expected_bid_1)));
@@ -2450,6 +2458,7 @@ fn should_handle_legacy_unbonding_to_a_delegator_correctly() {
         Default::default(),
         0,
         u64::MAX,
+        0,
     );
     expected_bid_1.deactivate();
     update.assert_written_bid(account1_hash, BidKind::Validator(Box::new(expected_bid_1)));

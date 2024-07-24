@@ -66,6 +66,7 @@ impl ValidatorBid {
         release_timestamp_millis: u64,
         minimum_delegation_amount: u64,
         maximum_delegation_amount: u64,
+        reserved_slots: u32,
     ) -> Self {
         let vesting_schedule = Some(VestingSchedule::new(release_timestamp_millis));
         let inactive = false;
@@ -78,7 +79,7 @@ impl ValidatorBid {
             inactive,
             minimum_delegation_amount,
             maximum_delegation_amount,
-            reserved_slots: 0,
+            reserved_slots,
         }
     }
 
@@ -90,6 +91,7 @@ impl ValidatorBid {
         delegation_rate: DelegationRate,
         minimum_delegation_amount: u64,
         maximum_delegation_amount: u64,
+        reserved_slots: u32,
     ) -> Self {
         let vesting_schedule = None;
         let inactive = false;
@@ -102,7 +104,7 @@ impl ValidatorBid {
             inactive,
             minimum_delegation_amount,
             maximum_delegation_amount,
-            reserved_slots: 0,
+            reserved_slots,
         }
     }
 
@@ -247,6 +249,12 @@ impl ValidatorBid {
     /// Updates the delegation rate of the provided bid
     pub fn with_delegation_rate(&mut self, delegation_rate: DelegationRate) -> &mut Self {
         self.delegation_rate = delegation_rate;
+        self
+    }
+
+    /// Updates the reserved slots of the provided bid
+    pub fn with_reserved_slots(&mut self, reserved_slots: u32) -> &mut Self {
+        self.reserved_slots = reserved_slots;
         self
     }
 
@@ -444,6 +452,7 @@ mod tests {
             validator_release_timestamp,
             0,
             u64::MAX,
+            0,
         );
 
         assert!(!bid.is_locked_with_vesting_schedule(
