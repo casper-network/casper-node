@@ -10,7 +10,7 @@ use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
     system::auction::{
-        BidAddr, BidKind, Delegator, DelegatorBids, Error, SeigniorageAllocation,
+        BidAddr, BidKind, Delegator, DelegatorBids, Error, Reservation, SeigniorageAllocation,
         SeigniorageRecipient, SeigniorageRecipients, SeigniorageRecipientsSnapshot, UnbondingPurse,
         UnbondingPurses, ValidatorBid, ValidatorBids, ValidatorCredit, ValidatorCredits,
         AUCTION_DELAY_KEY, ERA_END_TIMESTAMP_MILLIS_KEY, ERA_ID_KEY,
@@ -744,6 +744,30 @@ where
     }
 }
 
+// TODO(jck): docstring
+fn has_reservation<P>(
+    provider: &mut P,
+    delegator: &PublicKey,
+    validator: &PublicKey,
+) -> Result<bool, Error>
+where
+    P: RuntimeProvider + StorageProvider + ?Sized,
+{
+    // TODO(jck): unwrap
+    let bids = read_reservation_bids(provider, validator)?;
+    // TODO(jck): Vec::find()
+    for bid in bids {
+        println!(
+            "delegator_public_key: {}, delegator: {delegator}",
+            bid.delegator_public_key()
+        );
+        if bid.delegator_public_key() == delegator {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 /// If specified validator exists, and if validator is not yet at max delegators count, processes
 /// delegation. For a new delegation a delegator bid record will be created to track the delegation,
 /// otherwise the existing tracking record will be updated.
@@ -791,7 +815,11 @@ where
     } else {
         // is this validator over the delegator limit?
         let delegator_count = provider.delegator_count(&validator_bid_addr)?;
-        if delegator_count >= max_delegators_per_validator as usize {
+        if delegator_count
+            >= (max_delegators_per_validator - validator_bid.reserved_slots()) as usize
+            && !has_reservation(provider, &delegator_public_key, &validator_public_key)?
+        {
+            // TODO(jck): log reservation list size
             warn!(
                 %delegator_count, %max_delegators_per_validator,
                 "delegator_count {}, max_delegators_per_validator {}",
@@ -905,6 +933,42 @@ where
         Ok(delegator_bid)
     } else {
         Err(Error::DelegatorNotFound)
+    }
+}
+
+pub fn read_reservation_bids<P>(
+    provider: &mut P,
+    validator_public_key: &PublicKey,
+) -> Result<Vec<Reservation>, Error>
+where
+    P: RuntimeProvider + StorageProvider + ?Sized,
+{
+    let mut ret = vec![];
+    let bid_addr = BidAddr::from(validator_public_key.clone());
+    let reservation_bid_keys = provider.get_keys_by_prefix(
+        &bid_addr
+            .reservation_prefix()
+            .map_err(|_| Error::Serialization)?,
+    )?;
+    for reservation_bid_key in reservation_bid_keys {
+        let reservation_bid = read_reservation_bid(provider, &reservation_bid_key)?;
+        ret.push(*reservation_bid);
+    }
+
+    Ok(ret)
+}
+
+pub fn read_reservation_bid<P>(provider: &mut P, bid_key: &Key) -> Result<Box<Reservation>, Error>
+where
+    P: RuntimeProvider + ?Sized + StorageProvider,
+{
+    if !bid_key.is_bid_addr_key() {
+        return Err(Error::InvalidKeyVariant);
+    }
+    if let Some(BidKind::Reservation(reservation_bid)) = provider.read_bid(bid_key)? {
+        Ok(reservation_bid)
+    } else {
+        Err(Error::ReservationNotFound)
     }
 }
 

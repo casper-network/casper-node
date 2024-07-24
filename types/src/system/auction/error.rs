@@ -365,6 +365,12 @@ pub enum Error {
     /// assert_eq!(55, Error::DelegationAmountTooLarge as u8);
     /// ```
     DelegationAmountTooLarge = 55,
+    /// Reservation was not found in the map.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(56, Error::ReservationNotFound as u8);
+    /// ```
+    ReservationNotFound = 56,
 }
 
 impl Display for Error {
@@ -426,6 +432,7 @@ impl Display for Error {
             Error::BridgeRecordChainTooLong => formatter.write_str("Bridge record chain is too long to find current validator bid"),
             Error::UnexpectedBidVariant => formatter.write_str("Unexpected bid variant"),
             Error::DelegationAmountTooLarge => formatter.write_str("The delegated amount is above the maximum allowed"),
+            Error::ReservationNotFound => formatter.write_str("Reservation not found"),
         }
     }
 }

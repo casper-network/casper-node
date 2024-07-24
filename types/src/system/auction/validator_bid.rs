@@ -187,6 +187,11 @@ impl ValidatorBid {
         self.vesting_schedule.as_mut()
     }
 
+    /// Gets the reserved slots of the provided bid
+    pub fn reserved_slots(&self) -> u32 {
+        self.reserved_slots
+    }
+
     /// Returns `true` if validator is inactive
     pub fn inactive(&self) -> bool {
         self.inactive

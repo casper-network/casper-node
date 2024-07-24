@@ -194,6 +194,16 @@ impl BidAddr {
         Ok(ret)
     }
 
+    /// Returns the common prefix of all reservations to the cited validator.
+    pub fn reservation_prefix(&self) -> Result<Vec<u8>, Error> {
+        let validator = self.validator_account_hash();
+        let mut ret = Vec::with_capacity(validator.serialized_length() + 2);
+        ret.push(KeyTag::BidAddr as u8);
+        ret.push(BidAddrTag::Reservation as u8);
+        validator.write_bytes(&mut ret)?;
+        Ok(ret)
+    }
+
     /// Validator account hash.
     pub fn validator_account_hash(&self) -> AccountHash {
         match self {
