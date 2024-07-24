@@ -861,6 +861,108 @@ where
     Ok(updated_amount)
 }
 
+// TODO(jck): update docstring
+/// If specified validator exists, and if validator is not yet at max delegators count, processes
+/// delegation. For a new delegation a delegator bid record will be created to track the delegation,
+/// otherwise the existing tracking record will be updated.
+#[allow(clippy::too_many_arguments)]
+pub fn handle_add_reservation<P>(
+    provider: &mut P,
+    validator: PublicKey,
+    delegator: PublicKey,
+) -> Result<(), ApiError>
+where
+    P: StorageProvider + MintProvider + RuntimeProvider,
+{
+    // if amount.is_zero() {
+    //     return Err(Error::BondTooSmall.into());
+    // }
+
+    // if amount < U512::from(minimum_delegation_amount) {
+    //     return Err(Error::DelegationAmountTooSmall.into());
+    // }
+
+    let validator_bid_addr = BidAddr::from(validator.clone());
+    // is there such a validator?
+    let bid = read_validator_bid(provider, &validator_bid_addr.into())?;
+
+    // is there already a record for this delegator?
+    // let delegator_bid_key =
+    //     BidAddr::new_from_public_keys(&validator_public_key, Some(&delegator_public_key)).into();
+
+    let whitelist_bid_key = BidAddr::Reservation {
+        validator: AccountHash::from(&validator),
+        delegator: AccountHash::from(&delegator),
+    }
+    .into();
+    // let (target, delegator_bid) = if let Some(BidKind::WhitelistDelegator(mut delegator_bid)) =
+    if let Some(BidKind::Reservation(_)) = provider.read_bid(&whitelist_bid_key)? {
+        // // delegator_bid.increase_stake(amount)?;
+        // // (*whitelist_entry.bonding_purse(), whitelist_entry)
+        // *whitelist_entry
+        return Ok(());
+    }
+    // } else {
+    // is whitelist full?
+    // let delegator_count = provider.delegator_count(&validator_bid_addr)?;
+    // let whitelist_delegator_count = *bid.whitelist_size();
+    // TODO(jck): `fn check_delegator_limit(...)`
+    // TODO(jck): check if whitelist is not full
+    // if delegator_count
+    //     >= max_delegators_per_validator as usize - whitelist_delegator_count as usize
+    //     && !is_whitelisted(provider, &delegator_public_key, &bid)
+    if !has_free_reservation_slots(&bid) {
+        // TODO(jck): warning msg
+        warn!("Reservation list full",);
+        // TODO(jck): Error:WhitelistFull variant
+        return Err(Error::ExceededDelegatorSizeLimit.into());
+    }
+
+    // let bonding_purse = provider.create_purse()?;
+    // let delegator_bid = Delegator::unlocked(
+    //     delegator_public_key,
+    //     amount,
+    //     bonding_purse,
+    //     validator_public_key,
+    // );
+    // (bonding_purse, Box::new(delegator_bid))
+    // WhitelistEntry::new(delegator_public_key, validator_public_key)
+    // };
+
+    // // transfer token to bonding purse
+    // provider
+    //     .mint_transfer_direct(
+    //         Some(PublicKey::System.to_account_hash()),
+    //         source,
+    //         target,
+    //         amount,
+    //         None,
+    //     )
+    //     .map_err(|_| Error::TransferToDelegatorPurse)?
+    //     .map_err(|mint_error| {
+    //         // Propagate mint contract's error that occured during execution of transfer
+    //         // entrypoint. This will improve UX in case of (for example)
+    //         // unapproved spending limit error.
+    //         ApiError::from(mint_error)
+    //     })?;
+
+    // let updated_amount = delegator_bid.staked_amount();
+    let reservation = Reservation::new(validator, delegator);
+    provider.write_bid(
+        whitelist_bid_key,
+        BidKind::Reservation(Box::new(reservation)),
+    )?;
+
+    Ok(())
+}
+
+
+// TODO(jck): consider moving this (to ValidatorBid?)
+fn has_free_reservation_slots(_bid: &ValidatorBid) -> bool {
+    // TODO(jck)
+    true
+}
+
 pub fn read_validator_bid<P>(provider: &mut P, bid_key: &Key) -> Result<Box<ValidatorBid>, Error>
 where
     P: StorageProvider + ?Sized,
