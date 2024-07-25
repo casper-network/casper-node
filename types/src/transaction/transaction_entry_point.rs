@@ -29,8 +29,6 @@ const REDELEGATE_TAG: u8 = 6;
 const ACTIVATE_BID_TAG: u8 = 7;
 const CHANGE_BID_PUBLIC_KEY_TAG: u8 = 8;
 const CALL_TAG: u8 = 9;
-const INSTANTIATE_TAG: u8 = 10;
-const DEFAULT_INITIALIZE_TAG: u8 = 11;
 
 /// The entry point of a [`Transaction`].
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
@@ -167,23 +165,13 @@ pub enum TransactionEntryPoint {
         )
     )]
     ChangeBidPublicKey,
-
-    /// Constructor entrypoint name to be used when instantiating a smart contract under v2 engine.
-    Instantiate(String), // TODO: Remove
-
-    /// Instantiate contract without an explicit constructor name.
-    ///
-    /// This is used together with installer transaction kind that will install the contract, but
-    /// will not execute any constructor and therefore will rely on a default initialization upon
-    /// first contract call.
-    DefaultInstantiate, // TODO: Remove
 }
 
 impl TransactionEntryPoint {
     /// Returns a random `TransactionEntryPoint`.
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
-        match rng.gen_range(0..=11) {
+        match rng.gen_range(0..=9) {
             CUSTOM_TAG => TransactionEntryPoint::Custom(rng.random_string(1..21)),
             TRANSFER_TAG => TransactionEntryPoint::Transfer,
             ADD_BID_TAG => TransactionEntryPoint::AddBid,
@@ -194,8 +182,6 @@ impl TransactionEntryPoint {
             ACTIVATE_BID_TAG => TransactionEntryPoint::ActivateBid,
             CHANGE_BID_PUBLIC_KEY_TAG => TransactionEntryPoint::ChangeBidPublicKey,
             CALL_TAG => TransactionEntryPoint::Call,
-            INSTANTIATE_TAG => TransactionEntryPoint::Instantiate(rng.random_string(1..21)),
-            DEFAULT_INITIALIZE_TAG => TransactionEntryPoint::DefaultInstantiate,
             _ => unreachable!(),
         }
     }
@@ -208,9 +194,7 @@ impl TransactionEntryPoint {
             | TransactionEntryPoint::Custom(_)
             | TransactionEntryPoint::Call
             | TransactionEntryPoint::Transfer
-            | TransactionEntryPoint::Instantiate(_)
-            | TransactionEntryPoint::DefaultInstantiate => true,
-            TransactionEntryPoint::WithdrawBid
+            | TransactionEntryPoint::WithdrawBid
             | TransactionEntryPoint::Undelegate
             | TransactionEntryPoint::Redelegate
             | TransactionEntryPoint::ActivateBid
@@ -234,8 +218,6 @@ impl Display for TransactionEntryPoint {
             TransactionEntryPoint::Redelegate => write!(formatter, "redelegate"),
             TransactionEntryPoint::ActivateBid => write!(formatter, "activate_bid"),
             TransactionEntryPoint::ChangeBidPublicKey => write!(formatter, "change_bid_public_key"),
-            TransactionEntryPoint::DefaultInstantiate => write!(formatter, "default_initialize"),
-            TransactionEntryPoint::Instantiate(_) => write!(formatter, "instantiate"),
         }
     }
 }
@@ -258,12 +240,6 @@ impl ToBytes for TransactionEntryPoint {
             TransactionEntryPoint::ChangeBidPublicKey => {
                 CHANGE_BID_PUBLIC_KEY_TAG.write_bytes(writer)
             }
-            TransactionEntryPoint::Instantiate(entrypoint) => {
-                INSTANTIATE_TAG.write_bytes(writer)?;
-                entrypoint.write_bytes(writer)?;
-                Ok(())
-            }
-            TransactionEntryPoint::DefaultInstantiate => DEFAULT_INITIALIZE_TAG.write_bytes(writer),
         }
     }
 
@@ -276,10 +252,7 @@ impl ToBytes for TransactionEntryPoint {
     fn serialized_length(&self) -> usize {
         U8_SERIALIZED_LENGTH
             + match self {
-                TransactionEntryPoint::Custom(entry_point)
-                | TransactionEntryPoint::Instantiate(entry_point) => {
-                    entry_point.serialized_length()
-                }
+                TransactionEntryPoint::Custom(entry_point) => entry_point.serialized_length(),
                 TransactionEntryPoint::Call
                 | TransactionEntryPoint::Transfer
                 | TransactionEntryPoint::AddBid
@@ -288,8 +261,7 @@ impl ToBytes for TransactionEntryPoint {
                 | TransactionEntryPoint::Undelegate
                 | TransactionEntryPoint::Redelegate
                 | TransactionEntryPoint::ActivateBid
-                | TransactionEntryPoint::ChangeBidPublicKey
-                | TransactionEntryPoint::DefaultInstantiate => 0,
+                | TransactionEntryPoint::ChangeBidPublicKey => 0,
             }
     }
 }
@@ -311,11 +283,6 @@ impl FromBytes for TransactionEntryPoint {
             REDELEGATE_TAG => Ok((TransactionEntryPoint::Redelegate, remainder)),
             ACTIVATE_BID_TAG => Ok((TransactionEntryPoint::ActivateBid, remainder)),
             CHANGE_BID_PUBLIC_KEY_TAG => Ok((TransactionEntryPoint::ChangeBidPublicKey, remainder)),
-            INSTANTIATE_TAG => {
-                let (entry_point, remainder) = String::from_bytes(remainder)?;
-                Ok((TransactionEntryPoint::Instantiate(entry_point), remainder))
-            }
-            DEFAULT_INITIALIZE_TAG => Ok((TransactionEntryPoint::DefaultInstantiate, remainder)),
             _ => Err(bytesrepr::Error::Formatting),
         }
     }

@@ -1,5 +1,6 @@
 use std::{collections::BTreeMap, convert::TryInto, sync::Arc, time::Instant};
 
+use bytes::Bytes;
 use casper_executor_wasm::{install::InstallContractRequestBuilder, ExecutorV2};
 use itertools::Itertools;
 use tracing::{debug, error, info, trace, warn};
@@ -33,7 +34,7 @@ use casper_types::{
     BlockHash, BlockHeader, BlockTime, BlockV2, CLValue, Chainspec, ChecksumRegistry, Digest,
     EntityAddr, EraEndV2, EraId, FeeHandling, Gas, GasLimited, Key, ProtocolVersion, PublicKey,
     RefundHandling, Transaction, TransactionEntryPoint, TransactionInvocationTarget,
-    TransactionRuntime, TransactionTarget, AUCTION_LANE_ID, MINT_LANE_ID, U512,
+    TransactionTarget, AUCTION_LANE_ID, MINT_LANE_ID, U512,
 };
 
 use super::{
@@ -382,52 +383,80 @@ pub fn execute_finalized_block(
 
                     let transaction_v1 = transaction.as_transaction_v1().expect("should be v1");
 
-                    let input_data = transaction_v1.body().args().clone().into_unnamed();
+                    let input_data = transaction_v1.body().args().clone().into_chunked();
                     let value = transaction_v1.body().value();
 
-                    match transaction_v1.body().entry_point() {
-                        TransactionEntryPoint::Instantiate(_)
-                        | TransactionEntryPoint::DefaultInstantiate => {
+                    enum Target {
+                        Install {
+                            module_bytes: Bytes,
+                            entry_point: String,
+                        },
+                        Session {
+                            module_bytes: Bytes,
+                        },
+                        Stored {
+                            id: TransactionInvocationTarget,
+                            entry_point: String,
+                        },
+                    }
+
+                    let target = match transaction_v1.body().target() {
+                        TransactionTarget::Native => todo!(),
+                        TransactionTarget::Stored { id, runtime: _ } => {
+                            match transaction_v1.body().entry_point() {
+                                TransactionEntryPoint::Custom(entry_point) => Target::Stored {
+                                    id: id.clone(),
+                                    entry_point: entry_point.clone(),
+                                },
+                                _ => todo!(),
+                            }
+                        }
+                        TransactionTarget::Session {
+                            module_bytes,
+                            runtime: _,
+                        } => match transaction_v1.body().entry_point() {
+                            TransactionEntryPoint::Call => Target::Session {
+                                module_bytes: module_bytes.clone().take_inner().into(),
+                            },
+                            TransactionEntryPoint::Custom(entry_point) => Target::Install {
+                                module_bytes: module_bytes.clone().take_inner().into(),
+                                entry_point: entry_point.to_string(),
+                            },
+                            _ => todo!(),
+                        },
+                    };
+
+                    match target {
+                        Target::Install {
+                            module_bytes,
+                            entry_point,
+                        } => {
                             let mut builder = InstallContractRequestBuilder::default();
 
-                            let module_bytes = match transaction_v1.body().target() {
-                                TransactionTarget::Session {
-                                    module_bytes,
-                                    runtime,
-                                } => {
-                                    assert_eq!(*runtime, TransactionRuntime::VmCasperV2);
+                            let entry_point = (!entry_point.is_empty()).then_some(entry_point);
 
-                                    module_bytes.clone()
-                                }
-                                TransactionTarget::Native => {
-                                    todo!("native not supported yet under v2 runtime")
-                                }
-                                TransactionTarget::Stored { id, runtime: _ } => {
-                                    todo!("unable to instantiate stored contract {id:?} under v2 runtime");
-                                }
-                            };
+                            match entry_point {
+                                Some(entry_point) => {
+                                    builder = builder.with_entry_point(entry_point.clone());
 
-                            match transaction_v1.body().entry_point() {
-                                TransactionEntryPoint::Instantiate(entry_point_name) => {
-                                    builder = builder.with_entry_point(entry_point_name.clone());
                                     if let Some(input_data) = input_data {
-                                        builder = builder
-                                            .with_input(input_data.clone().take_inner().into());
+                                        builder =
+                                            builder.with_input(input_data.take_inner().into());
                                     }
                                 }
-                                TransactionEntryPoint::DefaultInstantiate => {
-                                    // No entry poitn specified, uses default initialization upon
-                                    // first call (if possible).
-                                    assert!(input_data.is_none(), "No arguments expected for a default initialization (got {input_data:?})");
+                                None => {
+                                    assert!(
+                                        input_data.is_none()
+                                            || matches!(input_data, Some(input_data) if input_data.is_empty())
+                                    );
                                 }
-                                _ => unreachable!(),
                             }
 
                             let request = builder
                                 .with_initiator(initiator_addr.account_hash())
                                 .with_gas_limit(gas_limit)
                                 .with_transaction_hash(transaction_hash)
-                                .with_wasm_bytes(module_bytes.clone().take_inner().into())
+                                .with_wasm_bytes(module_bytes)
                                 .with_address_generator(address_generator)
                                 .with_value(value)
                                 .with_chain_name(chainspec.network_config.name.clone())
@@ -468,8 +497,7 @@ pub fn execute_finalized_block(
                                 }
                             }
                         }
-
-                        TransactionEntryPoint::Call | TransactionEntryPoint::Custom(_) => {
+                        Target::Session { .. } | Target::Stored { .. } => {
                             let mut builder = ExecuteRequestBuilder::default();
 
                             let initiator_account_hash = &initiator_addr.account_hash();
@@ -493,62 +521,31 @@ pub fn execute_finalized_block(
                                     builder.with_input(input_data.clone().take_inner().into());
                             }
 
-                            // .with_entry_point(entry_point.clone())
-
-                            match transaction_v1.body().entry_point() {
-                                TransactionEntryPoint::Call => {
-                                    let module_bytes = match transaction_v1.body().target() {
-                                        TransactionTarget::Session {
-                                            module_bytes,
-                                            runtime,
-                                        } => {
-                                            assert_eq!(*runtime, TransactionRuntime::VmCasperV2);
-
-                                            module_bytes.clone()
-                                        }
-                                        TransactionTarget::Native => {
-                                            todo!("native not supported yet under v2 runtime with a session code")
-                                        }
-                                        TransactionTarget::Stored { id, runtime: _ } => {
-                                            todo!("unable to use stored contract {id:?} under v2 runtime as a session code");
-                                        }
-                                    };
-
+                            match target {
+                                Target::Session { module_bytes } => {
                                     // Session code
-                                    builder = builder.with_target(ExecutionKind::SessionBytes(
-                                        module_bytes.clone().take_inner().into(),
-                                    ));
+                                    builder = builder.with_target(ExecutionKind::SessionBytes(module_bytes));
                                 }
-                                TransactionEntryPoint::Custom(entry_point) => {
-                                    match transaction_v1.body().target() {
-                                        TransactionTarget::Session { runtime, .. } => {
-                                            assert_eq!(*runtime, TransactionRuntime::VmCasperV2);
-                                            todo!("session code not supported yet under v2 runtime with a custom entry point")
-                                        }
-                                        TransactionTarget::Native => {
-                                            todo!("native not supported yet under v2 runtime with a session code")
-                                        }
-                                        TransactionTarget::Stored { id, runtime: _ } => {
-                                            // todo!("unable to use stored contract {id:?} under v2
-                                            // runtime as a session code");
-                                            match id {
-                                                TransactionInvocationTarget::ByHash(address) => {
-                                                    builder = builder.with_target(ExecutionKind::Stored {
-                                                        address: EntityAddr::SmartContract(*address),
-                                                        entry_point: entry_point.clone(),
-                                                    });
-                                                },
-                                                TransactionInvocationTarget::ByName(name) => todo!("call by {name}"),
-                                                TransactionInvocationTarget::ByPackageHash { addr, version } => todo!("ByPackageHash {addr:?} {version:?} not supported under v2 engine"),
-                                                TransactionInvocationTarget::ByPackageName { name, version } => {
-                                                    todo!("ByPackageName {name:?} {version:?} not supported under v2 engine");
-                                                }
-                                            }
+                                Target::Stored { id, entry_point } => {
+                                    match id {
+                                        TransactionInvocationTarget::ByHash(address) => {
+                                            let execution_kind = ExecutionKind::Stored {
+                                                address: EntityAddr::SmartContract(address),
+                                                entry_point: entry_point.clone()
+                                            };
+                                            builder = builder.with_target(execution_kind);
+                                        },
+                                        TransactionInvocationTarget::ByName(name) =>
+                                            todo!("call by {name}"),
+                                        TransactionInvocationTarget::ByPackageHash { addr, version } =>
+                                            todo!("ByPackageHash {addr:?} {version:?} not supported under v2 engine"),
+                                        TransactionInvocationTarget::ByPackageName {name, version } => {
+                                            todo!("ByPackageName {name:?} {version:?} not supported under v2 engine");
                                         }
                                     }
                                 }
                                 _ => unreachable!(),
-                            };
+                            }
 
                             let request = builder.build().expect("should build");
 
@@ -578,10 +575,6 @@ pub fn execute_finalized_block(
                                     artifact_builder.with_error_message(error.to_string());
                                 }
                             }
-                        }
-
-                        _other => {
-                            todo!("Not supported entry point kind")
                         }
                     }
                 }

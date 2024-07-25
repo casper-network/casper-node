@@ -270,42 +270,6 @@ impl<'a> TransactionV1Builder<'a> {
         TransactionV1Builder::new(body)
     }
 
-    /// Returns a new `TransactionV1Builder` suitable for building a transaction for instantiating a
-    /// Wasm smart contract.
-    pub fn new_instantiate(
-        module_bytes: Bytes,
-        constructor: Option<String>,
-        input_data: Option<Bytes>,
-        value: u128,
-    ) -> Self {
-        let (entry_point, input_data) = match (constructor, input_data) {
-            (None, None) => (TransactionEntryPoint::DefaultInstantiate, Bytes::new()),
-            (None, Some(_)) => panic!("?"),
-            (Some(name), None) => (TransactionEntryPoint::Instantiate(name), Bytes::new()),
-            (Some(name), Some(input)) => (TransactionEntryPoint::Instantiate(name), input),
-        };
-
-        let runtime = TransactionRuntime::VmCasperV2;
-        let body = {
-            let args = TransactionArgs::Chunked(input_data);
-            let target = TransactionTarget::Session {
-                module_bytes,
-                runtime,
-            };
-            let transaction_category = TransactionCategory::InstallUpgrade as u8;
-            let scheduling = Self::DEFAULT_SCHEDULING;
-            TransactionV1Body {
-                args,
-                target,
-                entry_point,
-                transaction_category,
-                scheduling,
-                value,
-            }
-        };
-        TransactionV1Builder::new(body)
-    }
-
     /// Returns a new `TransactionV1Builder` suitable for building a transaction for calling a smart
     /// contract.
     pub fn new_call(

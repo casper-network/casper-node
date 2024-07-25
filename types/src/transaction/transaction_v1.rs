@@ -685,12 +685,6 @@ impl GasLimited for TransactionV1 {
                             TransactionEntryPoint::ChangeBidPublicKey => {
                                 costs.auction_costs().change_bid_public_key
                             }
-                            TransactionEntryPoint::DefaultInstantiate => {
-                                return Err(InvalidTransactionV1::UnableToInstantiate)
-                            }
-                            TransactionEntryPoint::Instantiate(_) => {
-                                return Err(InvalidTransactionV1::UnableToInstantiate)
-                            }
                         };
                         amount
                     } else {

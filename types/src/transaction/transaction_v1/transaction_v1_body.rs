@@ -90,7 +90,7 @@ impl TransactionArgs {
         }
     }
 
-    pub fn into_unnamed(self) -> Option<Bytes> {
+    pub fn into_chunked(self) -> Option<Bytes> {
         match self {
             TransactionArgs::Named(_) => None,
             TransactionArgs::Chunked(bytes) => Some(bytes),
@@ -334,11 +334,6 @@ impl TransactionV1Body {
                         self.args.as_named().unwrap(),
                     )
                 }
-                TransactionEntryPoint::DefaultInstantiate
-                | TransactionEntryPoint::Instantiate(_) => {
-                    debug!("TODO: Validation");
-                    Ok(())
-                }
             },
             TransactionTarget::Stored { .. } => match &self.entry_point {
                 TransactionEntryPoint::Custom(_) => Ok(()),
@@ -359,25 +354,11 @@ impl TransactionV1Body {
                         entry_point: self.entry_point.clone(),
                     })
                 }
-                TransactionEntryPoint::DefaultInstantiate => {
-                    Err(InvalidTransactionV1::UnableToInstantiate)
-                }
-                TransactionEntryPoint::Instantiate(_) => {
-                    debug!("TODO: Validation");
-                    Ok(())
-                }
             },
-            TransactionTarget::Session { module_bytes, .. } => match &self.entry_point {
+            TransactionTarget::Session { .. } => match &self.entry_point {
                 TransactionEntryPoint::Call
                 | TransactionEntryPoint::Custom(_)
-                | TransactionEntryPoint::Instantiate(_) => {
-                    if module_bytes.is_empty() {
-                        debug!("transaction with session code must not have empty module bytes");
-                        return Err(InvalidTransactionV1::EmptyModuleBytes);
-                    }
-                    Ok(())
-                }
-                TransactionEntryPoint::Transfer
+                | TransactionEntryPoint::Transfer
                 | TransactionEntryPoint::AddBid
                 | TransactionEntryPoint::WithdrawBid
                 | TransactionEntryPoint::Delegate
@@ -392,20 +373,6 @@ impl TransactionV1Body {
                     Err(InvalidTransactionV1::EntryPointMustBeCustom {
                         entry_point: self.entry_point.clone(),
                     })
-                }
-                TransactionEntryPoint::DefaultInstantiate => {
-                    debug!("TODO: Validation");
-                    Ok(())
-                    // if self.transaction_category() != TransactionCategory::InstallUpgrade as u8 {
-                    //     debug!(
-                    //         entry_point = %self.entry_point,
-                    //         ""
-                    //     );
-                    //     return Err(InvalidTransactionV1::EntryPointMustBeCustom {
-                    //         entry_point: self.entry_point.clone(),
-                    //     });
-                    // }
-                    //  rr(InvalidTransactionV1::EntryPointCannotBeDefault)
                 }
             },
         }

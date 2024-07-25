@@ -135,9 +135,6 @@ pub enum InvalidTransaction {
         /// The invalid entry point.
         entry_point: TransactionEntryPoint,
     },
-
-    /// Unable to instantiate a smart contract.
-    UnableToInstantiate,
     /// The entry point for this transaction target must be `TransactionEntryPoint::Custom`.
     EntryPointMustBeCustom {
         /// The invalid entry point.
@@ -312,9 +309,6 @@ impl Display for InvalidTransaction {
                 formatter,
                 "received a transaction with invalid arguments kind"
             ),
-            InvalidTransaction::UnableToInstantiate => {
-                write!(formatter, "entry point cannot be default")
-            }
             InvalidTransaction::GasPriceToleranceTooLow {
                 min_gas_price_tolerance,
                 provided_gas_price_tolerance,
@@ -363,9 +357,8 @@ impl StdError for InvalidTransaction {
             | InvalidTransaction::UnableToCalculateGasCost
             | InvalidTransaction::InvalidPricingMode { .. }
             | InvalidTransaction::GasPriceToleranceTooLow { .. }
-            | InvalidTransaction::InvalidTransactionKind(_) => None,
-            InvalidTransaction::InvalidTransactionArgumentsKind => None,
-            InvalidTransaction::UnableToInstantiate => None,
+            | InvalidTransaction::InvalidTransactionKind(_)
+            | InvalidTransaction::InvalidTransactionArgumentsKind => None,
         }
     }
 }

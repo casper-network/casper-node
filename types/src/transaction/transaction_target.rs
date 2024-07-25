@@ -84,6 +84,14 @@ impl TransactionTarget {
             _ => unreachable!(),
         }
     }
+
+    /// Returns `true` if the transaction target is [`Session`].
+    ///
+    /// [`Session`]: TransactionTarget::Session
+    #[must_use]
+    pub fn is_session(&self) -> bool {
+        matches!(self, Self::Session { .. })
+    }
 }
 
 impl Display for TransactionTarget {
