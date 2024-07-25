@@ -324,6 +324,17 @@ impl FromBytes for BidAddr {
                 let (era_id, remainder) = EraId::from_bytes(remainder)?;
                 Ok((BidAddr::Credit { validator, era_id }, remainder))
             }
+            tag if tag == BidAddrTag::Reservation as u8 => {
+                let (delegator, remainder) = AccountHash::from_bytes(remainder)?;
+                let (validator, remainder) = AccountHash::from_bytes(remainder)?;
+                Ok((
+                    BidAddr::Reservation {
+                        validator,
+                        delegator,
+                    },
+                    remainder,
+                ))
+            }
             _ => Err(bytesrepr::Error::Formatting),
         }
     }

@@ -1123,7 +1123,18 @@ where
 
                 CLValue::from_t(()).map_err(Self::reverter)
             })(),
-            auction::METHOD_ADD_RESERVATIONS => todo!(),
+            auction::METHOD_ADD_RESERVATIONS => (|| {
+                runtime.charge_system_contract_call(auction_costs.add_reservations)?;
+
+                let validator = Self::get_named_argument(runtime_args, auction::ARG_VALIDATOR)?;
+                let delegators = Self::get_named_argument(runtime_args, auction::ARG_DELEGATORS)?;
+
+                runtime
+                    .add_reservations(validator, delegators)
+                    .map_err(Self::reverter)?;
+
+                CLValue::from_t(()).map_err(Self::reverter)
+            })(),
             auction::METHOD_CANCEL_RESERVATIONS => todo!(),
 
             _ => CLValue::from_t(()).map_err(Self::reverter),

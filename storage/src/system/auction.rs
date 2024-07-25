@@ -454,7 +454,7 @@ pub trait Auction:
     fn add_reservations(
         &mut self,
         validator: PublicKey,
-        delegators: &[PublicKey],
+        delegators: Vec<PublicKey>,
     ) -> Result<(), ApiError> {
         if !self.allow_auction_bids() {
             // Validation set rotation might be disabled on some private chains and we should not
