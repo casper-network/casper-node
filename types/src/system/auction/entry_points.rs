@@ -11,8 +11,7 @@ use crate::{
 };
 
 use super::{
-    ARG_MAXIMUM_DELEGATION_AMOUNT, ARG_MINIMUM_DELEGATION_AMOUNT, ARG_NEW_PUBLIC_KEY,
-    ARG_REWARDS_MAP, METHOD_ADD_RESERVATIONS, METHOD_CHANGE_BID_PUBLIC_KEY,
+    ARG_MAXIMUM_DELEGATION_AMOUNT, ARG_MINIMUM_DELEGATION_AMOUNT, ARG_NEW_PUBLIC_KEY, ARG_REWARDS_MAP, METHOD_ADD_RESERVATIONS, METHOD_CANCEL_RESERVATIONS, METHOD_CHANGE_BID_PUBLIC_KEY
 };
 
 /// Creates auction contract entry points.
@@ -158,10 +157,7 @@ pub fn auction_entry_points() -> EntryPoints {
         METHOD_CHANGE_BID_PUBLIC_KEY,
         vec![
             Parameter::new(ARG_PUBLIC_KEY, PublicKey::cl_type()),
-            Parameter::new(
-                ARG_NEW_PUBLIC_KEY,
-                CLType::List(Box::new(PublicKey::cl_type())),
-            ),
+            Parameter::new(ARG_NEW_PUBLIC_KEY, PublicKey::cl_type()),
         ],
         CLType::Unit,
         EntryPointAccess::Public,
@@ -174,7 +170,7 @@ pub fn auction_entry_points() -> EntryPoints {
         METHOD_ADD_RESERVATIONS,
         vec![
             Parameter::new(ARG_VALIDATOR, PublicKey::cl_type()),
-            Parameter::new(ARG_DELEGATORS, PublicKey::cl_type()),
+            Parameter::new(ARG_DELEGATORS, CLType::List(Box::new(PublicKey::cl_type()))),
         ],
         CLType::Unit,
         EntryPointAccess::Public,
@@ -182,5 +178,19 @@ pub fn auction_entry_points() -> EntryPoints {
         EntryPointPayment::Caller,
     );
     entry_points.add_entry_point(entry_point);
+
+    let entry_point = EntryPoint::new(
+        METHOD_CANCEL_RESERVATIONS,
+        vec![
+            Parameter::new(ARG_VALIDATOR, PublicKey::cl_type()),
+            Parameter::new(ARG_DELEGATORS, CLType::List(Box::new(PublicKey::cl_type()))),
+        ],
+        CLType::Unit,
+        EntryPointAccess::Public,
+        EntryPointType::Called,
+        EntryPointPayment::Caller,
+    );
+    entry_points.add_entry_point(entry_point);
+
     entry_points
 }

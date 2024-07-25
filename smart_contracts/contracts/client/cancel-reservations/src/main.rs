@@ -8,8 +8,13 @@ use alloc::vec::Vec;
 use casper_contract::contract_api::runtime;
 use casper_types::{system::auction, PublicKey};
 
-fn cancel_reservations(_validator: PublicKey, _delegators: &[PublicKey]) {
-    todo!();
+fn cancel_reservations(validator: PublicKey, delegators: Vec<PublicKey>) {
+    let contract_hash = system::get_auction();
+    let args = runtime_args! {
+        auction::ARG_VALIDATOR => validator,
+        auction::ARG_DELEGATORS => delegators,
+    };
+    runtime::call_contract::<()>(contract_hash, auction::METHOD_CANCEL_RESERVATIONS, args);
 }
 
 // Remove delegators from validator's reserved list.
