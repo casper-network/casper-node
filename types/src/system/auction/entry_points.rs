@@ -1,3 +1,4 @@
+use alloc::boxed::Box;
 use crate::{
     system::auction::{
         DelegationRate, ValidatorWeights, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR,

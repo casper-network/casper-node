@@ -906,6 +906,35 @@ fn has_free_reservation_slots(_bid: &ValidatorBid) -> bool {
     true
 }
 
+// TODO(jck): update docstring
+/// If specified validator exists, and if validator is not yet at max delegators count, processes
+/// delegation. For a new delegation a delegator bid record will be created to track the delegation,
+/// otherwise the existing tracking record will be updated.
+#[allow(clippy::too_many_arguments)]
+pub fn handle_cancel_reservation<P>(
+    provider: &mut P,
+    validator: PublicKey,
+    delegator: PublicKey,
+) -> Result<(), ApiError>
+where
+    P: StorageProvider + MintProvider + RuntimeProvider,
+{
+    // is there such a validator?
+    let validator_bid_addr = BidAddr::from(validator.clone());
+    read_validator_bid(provider, &validator_bid_addr.into())?;
+
+    // is there a record for this delegator?
+    let reservation_bid_addr = BidAddr::Reservation {
+        validator: AccountHash::from(&validator),
+        delegator: AccountHash::from(&delegator),
+    };
+    if provider.read_bid(&reservation_bid_addr.into())?.is_none() {
+        return Ok(());
+    }
+    provider.prune_bid(reservation_bid_addr);
+    Ok(())
+}
+
 pub fn read_validator_bid<P>(provider: &mut P, bid_key: &Key) -> Result<Box<ValidatorBid>, Error>
 where
     P: StorageProvider + ?Sized,

@@ -445,6 +445,7 @@ pub trait Auction:
         Ok(())
     }
 
+    // TODO(jck): docstring
     /// Adds a new delegator to delegators or increases its current stake. If the target validator
     /// is missing, the function call returns an error and does nothing.
     ///
@@ -471,6 +472,35 @@ pub trait Auction:
         }
         Ok(())
     }
+
+    // TODO(jck): docstring
+    /// Adds a new delegator to delegators or increases its current stake. If the target validator
+    /// is missing, the function call returns an error and does nothing.
+    ///
+    /// The function transfers motes from the source purse to the delegator's bonding purse.
+    ///
+    /// This entry point returns the number of tokens currently delegated to a given validator.
+    fn cancel_reservations(
+        &mut self,
+        validator: PublicKey,
+        delegators: Vec<PublicKey>,
+    ) -> Result<(), ApiError> {
+        if !self.allow_auction_bids() {
+            // Validation set rotation might be disabled on some private chains and we should not
+            // allow new bids to come in.
+            return Err(Error::AuctionBidsDisabled.into());
+        }
+
+        if !self.is_allowed_session_caller(&AccountHash::from(&validator)) {
+            return Err(Error::InvalidContext.into());
+        }
+
+        for delegator in delegators {
+            detail::handle_cancel_reservation(self, validator.clone(), delegator.clone())?;
+        }
+        Ok(())
+    }
+
     /// Slashes each validator.
     ///
     /// This can be only invoked through a system call.
