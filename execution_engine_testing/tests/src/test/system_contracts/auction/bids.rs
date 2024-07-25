@@ -4460,6 +4460,8 @@ fn should_enforce_max_delegators_per_validator_with_reserved_slots() {
         builder.exec(request).expect_success().commit();
     }
 
+    // Delegator 1 is not on reservation list and validator is at delegator limit
+    // therefore delegation request should fail
     let delegation_request_3 = ExecuteRequestBuilder::standard(
         *DELEGATOR_1_ADDR,
         CONTRACT_DELEGATE,
@@ -4479,6 +4481,7 @@ fn should_enforce_max_delegators_per_validator_with_reserved_slots() {
         Error::Exec(ExecError::Revert(ApiError::AuctionError(auction_error)))
         if auction_error == AuctionError::ExceededDelegatorSizeLimit as u8));
 
+    // Once we put delegator 1 on reserved list the delegation request should succeed
     let reservation_request = ExecuteRequestBuilder::standard(
         *NON_FOUNDER_VALIDATOR_1_ADDR,
         CONTRACT_ADD_RESERVATIONS,
@@ -4500,7 +4503,47 @@ fn should_enforce_max_delegators_per_validator_with_reserved_slots() {
         },
     )
     .build();
-    builder.exec(delegation_request_4).expect_success();
+    builder.exec(delegation_request_4).expect_success().commit();
+
+    // Delegator 2 not on reserved list and validator at capacity
+    // therefore delegation request should fail
+    let delegation_request_5 = ExecuteRequestBuilder::standard(
+        *DELEGATOR_2_ADDR,
+        CONTRACT_DELEGATE,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(DEFAULT_MINIMUM_DELEGATION_AMOUNT),
+            ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_DELEGATOR => DELEGATOR_2.clone(),
+        },
+    )
+    .build();
+    builder.exec(delegation_request_5).expect_failure();
+
+    // Now we undelegate delegator 1 and cancel his reservation,
+    // then add reservation for delegator 2. Then delegation request for
+    // delegator 2 should succeed
+    let undelegation_request = ExecuteRequestBuilder::standard(
+        *DELEGATOR_1_ADDR,
+        CONTRACT_UNDELEGATE,
+        runtime_args! {
+            ARG_AMOUNT => U512::MAX,
+            ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_DELEGATOR => DELEGATOR_1.clone(),
+        },
+    )
+    .build();
+    builder.exec(undelegation_request).expect_success().commit();
+
+    let cancellation_request = ExecuteRequestBuilder::standard(
+        *NON_FOUNDER_VALIDATOR_1_ADDR,
+        CONTRACT_CANCEL_RESERVATIONS,
+        runtime_args! {
+            ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_DELEGATORS => vec![DELEGATOR_1.clone()],
+        },
+    )
+    .build();
+    builder.exec(cancellation_request).expect_success().commit();
 }
 
 #[ignore]
