@@ -753,9 +753,8 @@ fn has_reservation<P>(
 where
     P: RuntimeProvider + StorageProvider + ?Sized,
 {
-    // TODO(jck): unwrap
+    // TODO(jck): find the specified bid directly without iterating over all bids
     let bids = read_reservation_bids(provider, validator)?;
-    // TODO(jck): Vec::find()
     for bid in bids {
         println!(
             "delegator_public_key: {}, delegator: {delegator}",

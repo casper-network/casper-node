@@ -137,12 +137,23 @@ impl BidAddr {
         BidAddr::Validator(AccountHash::new(validator))
     }
 
-    /// Constructs a new [`BidAddr`] instance from the [`AccountHash`] pair of a validator
-    /// and a delegator.
+    /// Constructs a new [`BidAddr::Delegator`] instance from the [`AccountHash`] pair of a
+    /// validator and a delegator.
     pub const fn new_delegator_addr(
         pair: ([u8; ACCOUNT_HASH_LENGTH], [u8; ACCOUNT_HASH_LENGTH]),
     ) -> Self {
         BidAddr::Delegator {
+            validator: AccountHash::new(pair.0),
+            delegator: AccountHash::new(pair.1),
+        }
+    }
+
+    /// Constructs a new [`BidAddr::Reservation`] instance from the [`AccountHash`] pair of a
+    /// validator and a delegator.
+    pub const fn new_reservation_addr(
+        pair: ([u8; ACCOUNT_HASH_LENGTH], [u8; ACCOUNT_HASH_LENGTH]),
+    ) -> Self {
+        BidAddr::Reservation {
             validator: AccountHash::new(pair.0),
             delegator: AccountHash::new(pair.1),
         }
@@ -325,8 +336,8 @@ impl FromBytes for BidAddr {
                 Ok((BidAddr::Credit { validator, era_id }, remainder))
             }
             tag if tag == BidAddrTag::Reservation as u8 => {
-                let (delegator, remainder) = AccountHash::from_bytes(remainder)?;
                 let (validator, remainder) = AccountHash::from_bytes(remainder)?;
+                let (delegator, remainder) = AccountHash::from_bytes(remainder)?;
                 Ok((
                     BidAddr::Reservation {
                         validator,
@@ -440,6 +451,8 @@ mod tests {
             ),
             EraId::new(0),
         );
+        bytesrepr::test_serialization_roundtrip(&bid_addr);
+        let bid_addr = BidAddr::new_reservation_addr(([1; 32], [2; 32]));
         bytesrepr::test_serialization_roundtrip(&bid_addr);
     }
 }
