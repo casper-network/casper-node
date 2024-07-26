@@ -639,8 +639,14 @@ pub(crate) fn reservation_bid_arb() -> impl Strategy<Value = BidKind> {
 }
 
 pub(crate) fn reservation_arb() -> impl Strategy<Value = Reservation> {
-    (public_key_arb_no_system(), public_key_arb_no_system())
-        .prop_map(|(validator_pk, delegator_pk)| Reservation::new(validator_pk, delegator_pk))
+    (
+        public_key_arb_no_system(),
+        public_key_arb_no_system(),
+        delegation_rate_arb(),
+    )
+        .prop_map(|(validator_pk, delegator_pk, delegation_rate)| {
+            Reservation::new(validator_pk, delegator_pk, delegation_rate)
+        })
 }
 
 pub(crate) fn unified_bid_arb(
