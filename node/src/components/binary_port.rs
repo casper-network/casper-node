@@ -962,6 +962,7 @@ where
                         reward,
                         header.era_id(),
                         *seigniorage_recipient.delegation_rate(),
+                        header.block_hash(),
                     );
                     BinaryResponse::from_value(response, protocol_version)
                 }
