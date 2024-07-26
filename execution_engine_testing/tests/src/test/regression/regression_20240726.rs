@@ -4,7 +4,7 @@ use casper_engine_test_support::{
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 
-use casper_types::{runtime_args, RuntimeArgs};
+use casper_types::{runtime_args, RuntimeArgs, URef};
 
 const PURSE_FIXTURE: &str = "purse_fixture";
 const PURSE_WASM: &str = "regression-20240726.wasm";
@@ -39,10 +39,13 @@ fn should_not_allow_forged_urefs_to_be_saved_to_named_keys() {
     builder.exec(exec_request).expect_failure();
 
     let error = builder.get_error().expect("must have error");
+    let uref_str = "uref-bbd996744e771ce1b2af10104d6bb596576c4e1a797ac8bbdd273cbb5dc695e6-007";
+    let hardcoded_main_purse = URef::from_formatted_str(uref_str).unwrap();
     assert!(matches!(
         error,
         casper_execution_engine::core::engine_state::Error::Exec(
-            casper_execution_engine::core::execution::Error::ForgedReference(forged_uref) if forged_uref == hardcoded_main_purse
+            casper_execution_engine::core::execution::Error::ForgedReference(forged_uref)
         )
+        if forged_uref == hardcoded_main_purse
     ))
 }
