@@ -16,6 +16,7 @@ members = [
     "utils/global-state-update-gen",
     "utils/validation",
     "binary_port",
+    "macros",
 #    "utils/highway-rewards-analysis",
 #    "utils/highway-state-grapher",
 ]

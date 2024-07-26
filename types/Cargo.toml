@@ -27,6 +27,7 @@ itertools = { version = "0.10.3", default-features = false }
 libc = { version = "0.2.146", optional = true, default-features = false }
 k256 = { version = "0.13.1", default-features = false, features = ["ecdsa", "sha256"] }
 num = { version = "0.4.0", default-features = false, features = ["alloc"] }
+macros = { version = "2.0.0", path = "../macros" }
 num-derive = { version = "0.3.0", default-features = false }
 num-integer = { version = "0.1.42", default-features = false }
 num-rational = { version = "0.4.0", default-features = false, features = ["serde"] }

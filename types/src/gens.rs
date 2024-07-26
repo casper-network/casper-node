@@ -28,6 +28,7 @@ use crate::{
     },
     block::BlockGlobalAddr,
     byte_code::ByteCodeKind,
+    bytesrepr::Bytes,
     contract_messages::{MessageChecksum, MessageTopicSummary, TopicNameHash},
     contracts::{
         Contract, ContractHash, ContractPackage, ContractPackageStatus, ContractVersionKey,
@@ -52,8 +53,10 @@ use crate::{
     },
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, ByteCode, CLType, CLValue,
     Digest, EntityAddr, EntityKind, EntryPoint, EntryPointAccess, EntryPointPayment,
-    EntryPointType, EntryPoints, EraId, Group, Key, NamedArg, Package, Parameter, Phase,
-    ProtocolVersion, SemVer, StoredValue, TransactionRuntime, URef, U128, U256, U512,
+    EntryPointType, EntryPoints, EraId, Group, InitiatorAddr, Key, NamedArg, Package, Parameter,
+    Phase, PricingMode, ProtocolVersion, RuntimeArgs, SemVer, StoredValue, Timestamp,
+    TransactionCategory, TransactionEntryPoint, TransactionInvocationTarget, TransactionRuntime,
+    TransactionScheduling, TransactionTarget, TransactionV1Body, URef, U128, U256, U512,
 };
 
 pub fn u8_slice_32() -> impl Strategy<Value = [u8; 32]> {
@@ -521,6 +524,10 @@ pub fn entity_kind_arb() -> impl Strategy<Value = EntityKind> {
     ]
 }
 
+pub fn addressable_entity_hash_arb() -> impl Strategy<Value = AddressableEntityHash> {
+    u8_slice_32().prop_map(AddressableEntityHash::new)
+}
+
 pub fn addressable_entity_arb() -> impl Strategy<Value = AddressableEntity> {
     (
         protocol_version_arb(),
@@ -893,4 +900,136 @@ pub fn trie_merkle_proof_arb() -> impl Strategy<Value = TrieMerkleProof<Key, Sto
         vec(trie_merkle_proof_step_arb(), STEPS_SIZE),
     )
         .prop_map(|(key, value, proof_steps)| TrieMerkleProof::new(key, value, proof_steps.into()))
+}
+
+pub fn transaction_category_arb() -> impl Strategy<Value = TransactionCategory> {
+    prop_oneof![
+        Just(TransactionCategory::Mint),
+        Just(TransactionCategory::Auction),
+        Just(TransactionCategory::InstallUpgrade),
+        Just(TransactionCategory::Large),
+        Just(TransactionCategory::Medium),
+        Just(TransactionCategory::Small),
+    ]
+}
+
+pub fn transaction_scheduling_arb() -> impl Strategy<Value = TransactionScheduling> {
+    prop_oneof![
+        Just(TransactionScheduling::Standard),
+        era_id_arb().prop_map(TransactionScheduling::FutureEra),
+        any::<u64>().prop_map(
+            |timestamp| TransactionScheduling::FutureTimestamp(Timestamp::from(timestamp))
+        ),
+    ]
+}
+
+pub fn transaction_invocation_target_arb() -> impl Strategy<Value = TransactionInvocationTarget> {
+    prop_oneof![
+        addressable_entity_hash_arb().prop_map(TransactionInvocationTarget::new_invocable_entity),
+        Just(TransactionInvocationTarget::new_invocable_entity_alias(
+            "abcd".to_string()
+        )),
+        Just(TransactionInvocationTarget::new_package_alias(
+            "abcd".to_string(),
+            None
+        )),
+        Just(TransactionInvocationTarget::new_package_alias(
+            "abcd".to_string(),
+            Some(10)
+        )),
+        u8_slice_32()
+            .prop_map(|addr| { TransactionInvocationTarget::new_package(addr.into(), None) }),
+        u8_slice_32()
+            .prop_map(|addr| { TransactionInvocationTarget::new_package(addr.into(), Some(150)) }),
+    ]
+}
+
+pub fn transaction_target_arb() -> impl Strategy<Value = TransactionTarget> {
+    prop_oneof![
+        Just(TransactionTarget::Native),
+        (
+            transaction_invocation_target_arb(),
+            transaction_runtime_arb()
+        )
+            .prop_map(|(target, runtime)| TransactionTarget::new_stored(target, runtime))
+    ]
+}
+pub fn transaction_entry_point_arb() -> impl Strategy<Value = TransactionEntryPoint> {
+    prop_oneof![
+        Just(TransactionEntryPoint::Call),
+        Just(TransactionEntryPoint::Transfer),
+        Just(TransactionEntryPoint::AddBid),
+        Just(TransactionEntryPoint::WithdrawBid),
+        Just(TransactionEntryPoint::Delegate),
+        Just(TransactionEntryPoint::Undelegate),
+        Just(TransactionEntryPoint::Redelegate),
+        Just(TransactionEntryPoint::ActivateBid),
+        Just(TransactionEntryPoint::ChangeBidPublicKey),
+        Just(TransactionEntryPoint::Custom("custom".to_string())),
+    ]
+}
+
+pub fn runtime_args_arb() -> impl Strategy<Value = RuntimeArgs> {
+    let mut runtime_args_1 = RuntimeArgs::new();
+    let semi_random_string_pairs = [
+        ("977837db-8dba-48c2-86f1-32f9740631db", "b7b3b3b3-8b3b-48c2-86f1-32f9740631db"),
+        ("5de3eecc-b9c8-477f-bebe-937c3a16df85", "2ffd7939-34e5-4660-af9f-772a83011ce0"),
+        ("036db036-8b7b-4009-a0d4-c9ce", "515f4fe6-06c8-45c5-8554-f07e727a842d036db036-8b7b-4009-a0d4-c9ce036db036-8b7b-4009-a0d4-c9ce"),
+    ];
+    for (key, val_str) in semi_random_string_pairs.iter() {
+        let _ = runtime_args_1.insert(key.to_string(), Bytes::from(val_str.as_bytes()));
+    }
+    prop_oneof![Just(runtime_args_1)]
+}
+
+pub fn v1_transaction_body_arb() -> impl Strategy<Value = TransactionV1Body> {
+    (
+        runtime_args_arb(),
+        transaction_target_arb(),
+        transaction_entry_point_arb(),
+        transaction_category_arb(),
+        transaction_scheduling_arb(),
+    )
+        .prop_map(
+            |(args, target, entry_point, transaction_category, scheduling)| {
+                TransactionV1Body::new(
+                    args,
+                    target,
+                    entry_point,
+                    transaction_category as u8,
+                    scheduling,
+                )
+            },
+        )
+}
+
+pub fn pricing_mode_arb() -> impl Strategy<Value = PricingMode> {
+    prop_oneof![
+        (any::<u64>(), any::<u8>(), any::<bool>()).prop_map(
+            |(payment_amount, gas_price_tolerance, standard_payment)| {
+                PricingMode::Classic {
+                    payment_amount,
+                    gas_price_tolerance,
+                    standard_payment,
+                }
+            }
+        ),
+        any::<u8>().prop_map(|gas_price_tolerance| {
+            PricingMode::Fixed {
+                gas_price_tolerance,
+            }
+        }),
+        u8_slice_32().prop_map(|receipt| {
+            PricingMode::Reserved {
+                receipt: receipt.into(),
+            }
+        }),
+    ]
+}
+
+pub fn initiator_addr_arb() -> impl Strategy<Value = InitiatorAddr> {
+    prop_oneof![
+        public_key_arb_no_system().prop_map(InitiatorAddr::PublicKey),
+        u2_slice_32().prop_map(|hash| InitiatorAddr::AccountHash(AccountHash::new(hash))),
+    ]
 }

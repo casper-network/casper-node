@@ -1,0 +1,18 @@
+[package]
+name = "macros"
+version = "2.0.0" # when updating, also update 'html_root_url' in lib.rs
+authors = ["Jakub Zajkowski <jakub@casperlabs.io>"]
+edition = "2021"
+description = "Macros used in casper node"
+documentation = "https://docs.rs/casper-node"
+homepage = "https://casperlabs.io"
+repository = "https://github.com/CasperLabs/casper-node/tree/master/macros"
+license = "Apache-2.0"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1.0.86"
+quote = "1.0.7"
+syn = {version = "2.0.72", features = ["full", "extra-traits"]}
