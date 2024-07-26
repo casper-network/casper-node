@@ -48,7 +48,7 @@ where
         highway_testing::TEST_ENDORSEMENT_EVIDENCE_LIMIT,
     );
     let weights = weights.into_iter().map(|w| w.into()).collect::<Vec<_>>();
-    state::State::new(weights, params, vec![], vec![])
+    State::new(weights, params, vec![], vec![])
 }
 
 const INSTANCE_ID_DATA: &[u8; 1] = &[123u8; 1];

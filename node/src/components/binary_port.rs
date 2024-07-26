@@ -1019,6 +1019,9 @@ where
         SpeculativeExecutionResult::WasmV1(spec_exec_result) => {
             BinaryResponse::from_value(spec_exec_result, protocol_version)
         }
+        SpeculativeExecutionResult::ReceivedV1Transaction => {
+            BinaryResponse::new_error(ErrorCode::ReceivedV1Transaction, protocol_version)
+        }
     }
 }
 

@@ -118,7 +118,7 @@ pub(crate) enum Event {
         result: PutTrieResult,
     },
     #[from]
-    TrieAccumulatorEvent(TrieAccumulatorEvent),
+    TrieAccumulator(TrieAccumulatorEvent),
 }
 
 #[derive(Debug, DataSize)]
@@ -651,8 +651,8 @@ where
                 raw: trie_raw,
                 result: put_trie_result,
             } => self.handle_put_trie_result(trie_raw.hash(), put_trie_result, effect_builder),
-            Event::TrieAccumulatorEvent(event) => reactor::wrap_effects(
-                Event::TrieAccumulatorEvent,
+            Event::TrieAccumulator(event) => reactor::wrap_effects(
+                Event::TrieAccumulator,
                 self.trie_accumulator
                     .handle_event(effect_builder, rng, event),
             ),

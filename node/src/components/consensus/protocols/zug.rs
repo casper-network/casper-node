@@ -79,7 +79,7 @@ use datasize::DataSize;
 use either::Either;
 use itertools::Itertools;
 use rand::{seq::IteratorRandom, Rng};
-use tracing::{debug, error, event, info, warn, Level};
+use tracing::{debug, error, event, info, trace, warn, Level};
 
 use casper_types::{Chainspec, TimeDiff, Timestamp, U512};
 
@@ -424,7 +424,7 @@ impl<C: Context + 'static> Zug<C> {
         if self.evidence_only || self.finalized_switch_block() {
             return vec![]; // Era has ended. No further progress is expected.
         }
-        debug!(
+        trace!(
             our_idx = self.our_idx(),
             instance_id = ?self.instance_id(),
             "syncing with random peer",

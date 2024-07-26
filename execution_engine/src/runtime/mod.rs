@@ -809,7 +809,7 @@ where
         self.context.access_rights_extend(&urefs);
         {
             let transfers = self.context.transfers_mut();
-            *transfers = mint_runtime.context.transfers().to_owned();
+            mint_runtime.context.transfers().clone_into(transfers);
         }
         Ok(ret)
     }
@@ -888,7 +888,7 @@ where
         self.context.access_rights_extend(&urefs);
         {
             let transfers = self.context.transfers_mut();
-            *transfers = runtime.context.transfers().to_owned();
+            runtime.context.transfers().clone_into(transfers);
         }
         Ok(ret)
     }
@@ -1142,7 +1142,7 @@ where
         self.context.access_rights_extend(&urefs);
         {
             let transfers = self.context.transfers_mut();
-            *transfers = runtime.context.transfers().to_owned();
+            runtime.context.transfers().clone_into(transfers);
         }
 
         Ok(ret)
@@ -1626,7 +1626,7 @@ where
         self.context
             .set_emit_message_cost(runtime.context.emit_message_cost());
         let transfers = self.context.transfers_mut();
-        *transfers = runtime.context.transfers().to_owned();
+        runtime.context.transfers().clone_into(transfers);
 
         return match result {
             Ok(_) => {

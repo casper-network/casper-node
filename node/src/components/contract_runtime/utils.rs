@@ -31,10 +31,13 @@ use casper_execution_engine::engine_state::{ExecutionEngineV1, WasmV1Result};
 use casper_storage::{
     data_access_layer::{
         DataAccessLayer, FlushRequest, FlushResult, ProtocolUpgradeRequest, ProtocolUpgradeResult,
+        TransferResult,
     },
     global_state::state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
 };
-use casper_types::{BlockHash, Chainspec, Digest, EraId, GasLimited, Key, ProtocolUpgradeConfig};
+use casper_types::{
+    BlockHash, Chainspec, Digest, EraId, Gas, GasLimited, Key, ProtocolUpgradeConfig,
+};
 
 /// Maximum number of resource intensive tasks that can be run in parallel.
 ///
@@ -243,12 +246,7 @@ pub(super) async fn exec_or_requeue<REv>(
         None
     };
 
-    let BlockAndExecutionArtifacts {
-        block,
-        approvals_hashes,
-        execution_artifacts,
-        step_outcome: maybe_step_outcome,
-    } = match run_intensive_task(move || {
+    let task = move || {
         debug!("ContractRuntime: execute_finalized_block");
         execute_finalized_block(
             data_access_layer.as_ref(),
@@ -262,9 +260,13 @@ pub(super) async fn exec_or_requeue<REv>(
             maybe_next_era_gas_price,
             last_switch_block_hash,
         )
-    })
-    .await
-    {
+    };
+    let BlockAndExecutionArtifacts {
+        block,
+        approvals_hashes,
+        execution_artifacts,
+        step_outcome: maybe_step_outcome,
+    } = match run_intensive_task(task).await {
         Ok(ret) => ret,
         Err(error) => {
             error!(%error, "failed to execute block");
@@ -510,6 +512,25 @@ pub(super) fn calculate_prune_eras(
     }
 
     Some(range.map(EraId::new).map(Key::EraInfo).collect())
+}
+
+pub(crate) fn spec_exec_from_transfer_result(
+    limit: Gas,
+    transfer_result: TransferResult,
+    block_hash: BlockHash,
+) -> SpeculativeExecutionResult {
+    let transfers = transfer_result.transfers().to_owned();
+    let consumed = limit;
+    let effects = transfer_result.effects().to_owned();
+    let messages = vec![];
+    let error_msg = transfer_result
+        .error()
+        .to_owned()
+        .map(|err| format!("{:?}", err));
+
+    SpeculativeExecutionResult::new(
+        block_hash, transfers, limit, consumed, effects, messages, error_msg,
+    )
 }
 
 pub(crate) fn spec_exec_from_wasm_v1_result(

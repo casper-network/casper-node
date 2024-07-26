@@ -67,6 +67,7 @@ pub(crate) fn write_private_file<P: AsRef<Path>, B: AsRef<[u8]>>(
     fs::OpenOptions::new()
         .write(true)
         .create(true)
+        .truncate(true)
         .mode(0o600)
         .open(path)
         .and_then(|mut file| file.write_all(data.as_ref()))

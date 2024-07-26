@@ -33,7 +33,7 @@ pub struct EraId(u64);
 
 impl EraId {
     /// Maximum possible value an [`EraId`] can hold.
-    pub const MAX: EraId = EraId(u64::max_value());
+    pub const MAX: EraId = EraId(u64::MAX);
 
     /// Creates new [`EraId`] instance.
     pub const fn new(value: u64) -> EraId {
@@ -232,7 +232,7 @@ mod tests {
 
         let window: Vec<EraId> = current_era.iter_inclusive(auction_delay).collect();
         assert_eq!(window.len(), auction_delay as usize + 1);
-        assert_eq!(window.get(0), Some(&current_era));
+        assert_eq!(window.first(), Some(&current_era));
         assert_eq!(
             window.iter().next_back(),
             Some(&(current_era + auction_delay))
