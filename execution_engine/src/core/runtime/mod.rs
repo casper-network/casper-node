@@ -1719,6 +1719,10 @@ where
             return Err(Error::LockedContract(contract_package_hash));
         }
 
+        for (_, key) in named_keys.iter() {
+            self.context.validate_key(key)?
+        }
+
         let contract_wasm_hash = self.context.new_hash_address()?;
         let contract_wasm = {
             let module_bytes = self.get_module_from_entry_points(&entry_points)?;
@@ -1737,10 +1741,6 @@ where
 
             let mut previous_named_keys = previous_contract.take_named_keys();
             named_keys.append(&mut previous_named_keys);
-        }
-
-        for (_, key) in named_keys.iter() {
-            self.context.validate_key(key)?
         }
 
         let contract = Contract::new(

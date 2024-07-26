@@ -1,7 +1,7 @@
 use crate::lmdb_fixture;
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PROPOSER_PUBLIC_KEY, PRODUCTION_RUN_GENESIS_REQUEST,
+    ExecuteRequestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_PROPOSER_PUBLIC_KEY,
+    PRODUCTION_RUN_GENESIS_REQUEST,
 };
 
 use casper_types::{runtime_args, RuntimeArgs};
@@ -10,7 +10,7 @@ const PURSE_FIXTURE: &str = "purse_fixture";
 const PURSE_WASM: &str = "regression-20240726.wasm";
 #[ignore = "RUN_FIXTURE_GENERATORS env var should be enabled"]
 #[test]
-fn generate_era_info_bloat_fixture() {
+fn generate_20240726_fixture() {
     if !lmdb_fixture::is_fixture_generator_enabled() {
         return;
     }
@@ -39,5 +39,10 @@ fn should_not_allow_forged_urefs_to_be_saved_to_named_keys() {
     builder.exec(exec_request).expect_failure();
 
     let error = builder.get_error().expect("must have error");
-    assert!(matches!(error, casper_execution_engine::core::engine_state::Error::Exec(casper_execution_engine::core::execution::Error::ForgedReference(_))))
+    assert!(matches!(
+        error,
+        casper_execution_engine::core::engine_state::Error::Exec(
+            casper_execution_engine::core::execution::Error::ForgedReference(_)
+        )
+    ))
 }
