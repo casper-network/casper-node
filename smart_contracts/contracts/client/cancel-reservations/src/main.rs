@@ -6,9 +6,12 @@ extern crate alloc;
 use alloc::vec::Vec;
 
 use casper_contract::contract_api::runtime;
-use casper_types::{system::auction::{self, DelegationRate}, PublicKey};
+use casper_types::{
+    system::auction::{self, DelegationRate},
+    PublicKey,
+};
 
-fn cancel_reservations(_validator: PublicKey, _delegators: Vec<(PublicKey, DelegationRate)>) {
+fn cancel_reservations(_validator: PublicKey, _delegators: Vec<PublicKey>) {
     todo!();
 }
 

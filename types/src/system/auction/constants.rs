@@ -28,8 +28,8 @@ pub const ARG_NEW_PUBLIC_KEY: &str = "new_public_key";
 pub const ARG_VALIDATOR: &str = "validator";
 /// Named constant for `delegator`.
 pub const ARG_DELEGATOR: &str = "delegator";
-/// Named constant for `delegators`.
-pub const ARG_DELEGATORS: &str = "delegators";
+/// Named constant for `reservations`.
+pub const ARG_RESERVATIONS: &str = "reservations";
 /// Named constant for `validator_purse`.
 pub const ARG_VALIDATOR_PURSE: &str = "validator_purse";
 /// Named constant for `validator_keys`.

@@ -6,20 +6,22 @@ extern crate alloc;
 use alloc::vec::Vec;
 
 use casper_contract::contract_api::runtime;
-use casper_types::{system::auction::{self, DelegationRate}, PublicKey};
+use casper_types::{
+    system::auction::{self, DelegationRate, Reservation},
+    PublicKey,
+};
 
-fn add_reservations(_validator: PublicKey, _delegators: Vec<(PublicKey, DelegationRate)>) {
+fn add_reservations(reservations: Vec<Reservation>) {
     todo!();
 }
 
 // Add delegators to validator's reserved list.
 //
-// Accepts delegators' and validator's public keys.
+// Accepts reservations.
 // Issues an add_reservations request to the auction contract.
 #[no_mangle]
 pub extern "C" fn call() {
-    let delegators: Vec<PublicKey> = runtime::get_named_arg(auction::ARG_DELEGATORS);
-    let validator = runtime::get_named_arg(auction::ARG_VALIDATOR);
+    let reservations: Vec<Reservation> = runtime::get_named_arg(auction::ARG_RESERVATIONS);
 
-    add_reservations(validator, delegators);
+    add_reservations(reservations);
 }
