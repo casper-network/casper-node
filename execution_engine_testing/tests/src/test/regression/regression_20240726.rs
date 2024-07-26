@@ -42,7 +42,7 @@ fn should_not_allow_forged_urefs_to_be_saved_to_named_keys() {
     assert!(matches!(
         error,
         casper_execution_engine::core::engine_state::Error::Exec(
-            casper_execution_engine::core::execution::Error::ForgedReference(_)
+            casper_execution_engine::core::execution::Error::ForgedReference(forged_uref) if forged_uref == hardcoded_main_purse
         )
     ))
 }
