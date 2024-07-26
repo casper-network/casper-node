@@ -3420,6 +3420,7 @@
       "description": "Represents a validator reserving a slot for specific delegator",
       "type": "object",
       "required": [
+        "delegation_rate",
         "delegator_public_key",
         "validator_public_key"
       ],
@@ -3439,6 +3440,12 @@
               "$ref": "#/definitions/PublicKey"
             }
           ]
+        },
+        "delegation_rate": {
+          "description": "Individual delegation rate",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0.0
         }
       },
       "additionalProperties": false
