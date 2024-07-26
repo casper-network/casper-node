@@ -902,7 +902,7 @@ fn get_balance(state_root_hash: Digest, account_hash: AccountHash) -> TestCase {
 
 fn get_balance_account_not_found(state_root_hash: Digest) -> TestCase {
     TestCase {
-        name: "get_balance_not_found",
+        name: "get_balance_account_not_found",
         request: BinaryRequest::Get(GetRequest::State(Box::new(GlobalStateRequest::Balance {
             state_identifier: Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
             purse_identifier: PurseIdentifier::Account(AccountHash([9; 32])),
@@ -913,7 +913,7 @@ fn get_balance_account_not_found(state_root_hash: Digest) -> TestCase {
 
 fn get_balance_purse_uref_not_found(state_root_hash: Digest) -> TestCase {
     TestCase {
-        name: "get_balance_not_found",
+        name: "get_balance_purse_uref_not_found",
         request: BinaryRequest::Get(GetRequest::State(Box::new(GlobalStateRequest::Balance {
             state_identifier: Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
             purse_identifier: PurseIdentifier::Purse(URef::new([9; 32], Default::default())),
