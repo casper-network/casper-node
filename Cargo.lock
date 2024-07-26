@@ -4640,6 +4640,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "regression-20240726"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "regression-add-bid"
 version = "0.1.0"
 dependencies = [
@@ -5707,14 +5715,6 @@ dependencies = [
  "tracing-core",
  "tracing-log",
  "tracing-serde",
-]
-
-[[package]]
-name = "transfer-basic"
-version = "0.1.0"
-dependencies = [
- "casper-contract",
- "casper-types",
 ]
 
 [[package]]

@@ -1739,6 +1739,10 @@ where
             named_keys.append(&mut previous_named_keys);
         }
 
+        for (_, key) in named_keys.iter() {
+            self.context.validate_key(key)?
+        }
+
         let contract = Contract::new(
             contract_package_hash,
             contract_wasm_hash.into(),
