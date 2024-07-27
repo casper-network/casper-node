@@ -54,6 +54,23 @@ pub(crate) fn generate_emergency_balances_update(matches: &ArgMatches<'_>) {
                 account.main_purse()
             }
             Key::URef(uref) => uref,
+            Key::Hash(hash) => {
+                assert_eq!(amount, U512::zero());
+                eprintln!("Found a hash key {hash:?}, inserting a null CLValue");
+
+                let _contract_package = match builder.query(None, Key::Hash(hash), &[]) {
+                    Ok(StoredValue::ContractPackage(contract_package)) => contract_package,
+                    Ok(other) => panic!("Unexpected value for contract package: {:?}", other),
+                    Err(error) => {
+                        eprintln!("Can't find contract package at {hash:?}: {error}");
+                        continue;
+                    }
+                };
+
+                let value = StoredValue::CLValue(CLValue::unit());
+                entries.insert(key, value);
+                continue;
+            }
             other => panic!("Unexpected key type: {:?}", other),
         };
 
