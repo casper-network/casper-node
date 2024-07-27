@@ -105,6 +105,11 @@ impl CLValue {
         CLValue::from_components(CLType::Unit, Vec::new())
     }
 
+    /// Is the CLValue a unit value.
+    pub fn is_unit(&self) -> bool {
+        self.cl_type == CLType::Unit
+    }
+
     // This is only required in order to implement `TryFrom<state::CLValue> for CLValue` (i.e. the
     // conversion from the Protobuf `CLValue`) in a separate module to this one.
     #[doc(hidden)]

@@ -436,7 +436,8 @@ where
         for (key, value) in upgrade_config.global_state_update() {
             // Skip the key hashes associated with clvalues as we mark these as records to be
             // pruned.
-            if key.into_hash().is_some() && value.as_cl_value().is_some() {
+            let is_unit_value = value.is_unit_cl_value();
+            if key.into_hash().is_some() && is_unit_value {
                 continue;
             } else {
                 tracking_copy.borrow_mut().write(*key, value.clone());
