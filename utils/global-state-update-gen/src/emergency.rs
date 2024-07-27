@@ -29,7 +29,7 @@ pub(crate) fn generate_emergency_balances_update(matches: &ArgMatches<'_>) {
         panic!("No records found in CSV file");
     }
 
-    println!("Found {} records", records.len());
+    eprintln!("Found {} records", records.len());
 
     let builder = LmdbWasmTestBuilder::open_raw(data_dir, Default::default(), state_hash);
 
