@@ -462,6 +462,26 @@ where
             )
             .map_err(Into::into)?;
 
+        // Generate the list of keys to prune
+        let state_root_hash = post_state_hash;
+        let keys_to_prune = system_upgrader
+            .get_contracts_prune_list(correlation_id, upgrade_config.global_state_update()).unwrap_or_else(|upgrade_error| {
+            warn!("Error in generating prune list: {:?}", upgrade_error);
+            vec![]
+        });
+
+        let prune_config = PruneConfig::new(state_root_hash, keys_to_prune);
+        let post_state_hash = match self.commit_prune(correlation_id, prune_config) {
+            Ok(PruneResult::Success { post_state_hash: new_state_root_hash, .. }) => {
+                new_state_root_hash
+            },
+            Ok(_) | Err(_) => {
+                warn!("failed to prune, reusing previous state root hash");
+                state_root_hash
+            }
+
+        };
+
         // return result and effects
         Ok(UpgradeSuccess {
             post_state_hash,
