@@ -77,7 +77,7 @@ fn should_not_allow_forged_urefs_to_be_saved_to_named_keys() {
         .expect_upgrade_success()
         .commit();
 
-    let did_prune = builder.query(None, contract_to_prune, &vec![]).is_err();
+    let did_prune = builder.query(None, contract_to_prune, &[]).is_err();
     assert!(did_prune);
 
     let hardcoded_uref = builder
