@@ -3,7 +3,11 @@
 
 extern crate alloc;
 
-use alloc::{collections::BTreeMap, string::ToString, vec};
+use alloc::{
+    collections::BTreeMap,
+    string::{String, ToString},
+    vec,
+};
 use casper_contract::{
     contract_api::{runtime, storage, system},
     unwrap_or_revert::UnwrapOrRevert,
@@ -27,8 +31,8 @@ pub extern "C" fn withdraw() {
 
 #[no_mangle]
 pub extern "C" fn call() {
-    let uref_str = "uref-bbd996744e771ce1b2af10104d6bb596576c4e1a797ac8bbdd273cbb5dc695e6-007";
-    let purse: Key = URef::from_formatted_str(uref_str).unwrap().into();
+    let uref_str = runtime::get_named_arg::<String>("uref");
+    let purse: Key = URef::from_formatted_str(&uref_str).unwrap().into();
 
     let entry_points = {
         let mut ret = EntryPoints::new();

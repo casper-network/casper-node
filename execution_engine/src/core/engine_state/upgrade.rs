@@ -1,6 +1,6 @@
 //! Support for applying upgrades on the execution engine.
-use std::{cell::RefCell, collections::BTreeMap, fmt, rc::Rc};
 use log::{info, warn};
+use std::{cell::RefCell, collections::BTreeMap, fmt, rc::Rc};
 
 use num_rational::Ratio;
 use thiserror::Error;
@@ -416,7 +416,7 @@ where
     pub(crate) fn get_contracts_prune_list(
         &self,
         correlation_id: CorrelationId,
-        global_state_update: &BTreeMap<Key, StoredValue>
+        global_state_update: &BTreeMap<Key, StoredValue>,
     ) -> Result<Vec<Key>, ProtocolUpgradeError> {
         let mut keys_to_prune = vec![];
         for (key, _) in global_state_update.iter() {
@@ -424,10 +424,14 @@ where
                 continue;
             }
 
-            let maybe_contract_package = self.tracking_copy
+            let maybe_contract_package = self
+                .tracking_copy
                 .borrow_mut()
-                .read(correlation_id, key).ok();
-            if let Some(Some(StoredValue::ContractPackage(contract_package))) = maybe_contract_package {
+                .read(correlation_id, key)
+                .ok();
+            if let Some(Some(StoredValue::ContractPackage(contract_package))) =
+                maybe_contract_package
+            {
                 info!("Found contract package {:?}", key.to_formatted_string());
                 let contract_versions = contract_package.versions();
                 let mut found_all_keys = true;
@@ -444,8 +448,11 @@ where
                         keys_for_package.push(Key::Hash(contract_wasm_hash.value()))
                     } else {
                         found_all_keys = false;
-                        warn!("Unable to find contract record for contract hash: {:?}", contract_hash);
-                        break
+                        warn!(
+                            "Unable to find contract record for contract hash: {:?}",
+                            contract_hash
+                        );
+                        break;
                     }
                 }
                 if found_all_keys {
@@ -453,12 +460,13 @@ where
                 }
                 keys_to_prune.push(*key);
             } else {
-                warn!("Expected Contract package found either None or different stored value {:?}", key);
+                warn!(
+                    "Expected Contract package found either None or different stored value {:?}",
+                    key
+                );
             }
         }
 
         Ok(keys_to_prune)
     }
-
-
 }

@@ -21,6 +21,7 @@ pub mod system_contract_registry;
 mod transfer;
 pub mod upgrade;
 
+use log::info;
 use std::{
     cell::RefCell,
     collections::{BTreeMap, BTreeSet},
@@ -433,7 +434,13 @@ where
 
         // apply the accepted modifications to global state.
         for (key, value) in upgrade_config.global_state_update() {
-            tracking_copy.borrow_mut().write(*key, value.clone());
+            // Skip the key hashes associated with clvalues as we mark these as records to be
+            // pruned.
+            if key.into_hash().is_some() && value.as_cl_value().is_some() {
+                continue;
+            } else {
+                tracking_copy.borrow_mut().write(*key, value.clone());
+            }
         }
         // We insert the new unbonding delay once the purses to be paid out have been transformed
         // based on the previous unbonding delay.
@@ -465,21 +472,24 @@ where
         // Generate the list of keys to prune
         let state_root_hash = post_state_hash;
         let keys_to_prune = system_upgrader
-            .get_contracts_prune_list(correlation_id, upgrade_config.global_state_update()).unwrap_or_else(|upgrade_error| {
-            warn!("Error in generating prune list: {:?}", upgrade_error);
-            vec![]
-        });
+            .get_contracts_prune_list(correlation_id, upgrade_config.global_state_update())
+            .unwrap_or_else(|upgrade_error| {
+                warn!("Error in generating prune list: {:?}", upgrade_error);
+                vec![]
+            });
+
+        info!("Keys to prune {:?}", keys_to_prune);
 
         let prune_config = PruneConfig::new(state_root_hash, keys_to_prune);
         let post_state_hash = match self.commit_prune(correlation_id, prune_config) {
-            Ok(PruneResult::Success { post_state_hash: new_state_root_hash, .. }) => {
-                new_state_root_hash
-            },
+            Ok(PruneResult::Success {
+                post_state_hash: new_state_root_hash,
+                ..
+            }) => new_state_root_hash,
             Ok(_) | Err(_) => {
                 warn!("failed to prune, reusing previous state root hash");
                 state_root_hash
             }
-
         };
 
         // return result and effects
