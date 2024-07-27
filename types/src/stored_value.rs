@@ -152,7 +152,6 @@ impl StoredValue {
         self == &StoredValue::CLValue(CLValue::unit())
     }
 
-
     /// Returns the type name of the [`StoredValue`] enum variant.
     ///
     /// For [`CLValue`] variants it will return the name of the [`CLType`](crate::cl_type::CLType)
