@@ -33,7 +33,12 @@ use casper_types::{
     system::{
         self,
         auction::{
-            self, BidsExt, DelegationRate, EraValidators, Error as AuctionError, UnbondingPurses, ValidatorWeights, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_DELEGATORS, ARG_ENTRY_POINT, ARG_MAXIMUM_DELEGATION_AMOUNT, ARG_MINIMUM_DELEGATION_AMOUNT, ARG_NEW_PUBLIC_KEY, ARG_NEW_VALIDATOR, ARG_PUBLIC_KEY, ARG_RESERVED_SLOTS, ARG_REWARDS_MAP, ARG_VALIDATOR, ERA_ID_KEY, INITIAL_ERA_ID, METHOD_DISTRIBUTE
+            self, BidsExt, DelegationRate, EraValidators, Error as AuctionError, Reservation,
+            UnbondingPurses, ValidatorWeights, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR,
+            ARG_DELEGATORS, ARG_ENTRY_POINT, ARG_MAXIMUM_DELEGATION_AMOUNT,
+            ARG_MINIMUM_DELEGATION_AMOUNT, ARG_NEW_PUBLIC_KEY, ARG_NEW_VALIDATOR, ARG_PUBLIC_KEY,
+            ARG_RESERVATIONS, ARG_RESERVED_SLOTS, ARG_REWARDS_MAP, ARG_VALIDATOR, ERA_ID_KEY,
+            INITIAL_ERA_ID, METHOD_DISTRIBUTE,
         },
     },
     EntityAddr, EraId, GenesisAccount, GenesisConfigBuilder, GenesisValidator, Key, Motes,
@@ -4486,12 +4491,12 @@ fn should_enforce_max_delegators_per_validator_with_reserved_slots() {
         if auction_error == AuctionError::ExceededDelegatorSizeLimit as u8));
 
     // Once we put delegator 1 on reserved list the delegation request should succeed
+    let reservation = Reservation::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), DELEGATOR_1.clone(), 0);
     let reservation_request = ExecuteRequestBuilder::standard(
         *NON_FOUNDER_VALIDATOR_1_ADDR,
         CONTRACT_ADD_RESERVATIONS,
         runtime_args! {
-            ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
-            ARG_DELEGATORS => vec![DELEGATOR_1.clone()],
+            ARG_RESERVATIONS => vec![reservation],
         },
     )
     .build();
