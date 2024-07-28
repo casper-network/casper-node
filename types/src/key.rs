@@ -575,6 +575,15 @@ impl Key {
         }
         false
     }
+
+    /// Returns true if the key is of type [`Key::Account`].
+    pub fn as_account(&self) -> Option<&AccountHash> {
+        if let Self::Account(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
 }
 
 impl Display for Key {
