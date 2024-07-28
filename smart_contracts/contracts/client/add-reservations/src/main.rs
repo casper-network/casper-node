@@ -7,7 +7,7 @@ use alloc::vec::Vec;
 
 use casper_contract::contract_api::runtime;
 use casper_types::{
-    system::auction::{self, DelegationRate, Reservation},
+    system::auction::{Reservation, ARG_RESERVATIONS},
     PublicKey,
 };
 
@@ -21,7 +21,7 @@ fn add_reservations(reservations: Vec<Reservation>) {
 // Issues an add_reservations request to the auction contract.
 #[no_mangle]
 pub extern "C" fn call() {
-    let reservations: Vec<Reservation> = runtime::get_named_arg(auction::ARG_RESERVATIONS);
+    let reservations: Vec<Reservation> = runtime::get_named_arg(ARG_RESERVATIONS);
 
     add_reservations(reservations);
 }

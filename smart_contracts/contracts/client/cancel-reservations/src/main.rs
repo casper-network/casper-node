@@ -7,7 +7,7 @@ use alloc::vec::Vec;
 
 use casper_contract::contract_api::runtime;
 use casper_types::{
-    system::auction::{self, DelegationRate},
+    system::auction::{DelegationRate, ARG_DELEGATORS, ARG_VALIDATOR},
     PublicKey,
 };
 
@@ -21,8 +21,8 @@ fn cancel_reservations(_validator: PublicKey, _delegators: Vec<PublicKey>) {
 // Issues a cancel_reservations request to the auction contract.
 #[no_mangle]
 pub extern "C" fn call() {
-    let delegators: Vec<PublicKey> = runtime::get_named_arg(auction::ARG_DELEGATORS);
-    let validator = runtime::get_named_arg(auction::ARG_VALIDATOR);
+    let delegators: Vec<PublicKey> = runtime::get_named_arg(ARG_DELEGATORS);
+    let validator = runtime::get_named_arg(ARG_VALIDATOR);
 
     cancel_reservations(validator, delegators);
 }
