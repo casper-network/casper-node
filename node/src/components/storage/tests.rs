@@ -2278,7 +2278,7 @@ fn check_force_resync_with_marker_file() {
     );
     drop(storage);
     // Remove the marker file.
-    std::fs::remove_file(&force_resync_file_path).unwrap();
+    fs::remove_file(&force_resync_file_path).unwrap();
     assert!(!force_resync_file_path.exists());
 
     // Reinitialize storage with force resync enabled.

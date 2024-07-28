@@ -335,6 +335,7 @@ pub fn add_and_remove_bids<T: StateReader>(
                     BidKind::Reservation(Box::new(Reservation::new(
                         public_key.clone(),
                         reservation_bid.delegator_public_key().clone(),
+                        *reservation_bid.delegation_rate(),
                     )))
                 }
             };

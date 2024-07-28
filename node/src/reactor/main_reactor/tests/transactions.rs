@@ -8,7 +8,7 @@ use casper_types::{
     addressable_entity::NamedKeyAddr,
     runtime_args,
     system::mint::{ARG_AMOUNT, ARG_TARGET},
-    AddressableEntity, Digest, EntityAddr, GasLimited, TransactionCategory,
+    AddressableEntity, Digest, EntityAddr, ExecutionInfo, GasLimited, TransactionCategory,
 };
 use once_cell::sync::Lazy;
 
@@ -3648,5 +3648,190 @@ async fn out_of_gas_txn_does_not_produce_effects() {
     // Named key should not exist since the execution was reverted because it was out of gas.
     assert!(
         get_entity_named_key(&mut test.fixture, state_root_hash, bob_addr, "new_key").is_none()
+    );
+}
+
+#[tokio::test]
+async fn gas_holds_accumulate_for_multiple_transactions_in_the_same_block() {
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_min_gas_price(MIN_GAS_PRICE)
+        .with_max_gas_price(MIN_GAS_PRICE)
+        .with_pricing_handling(PricingHandling::Fixed)
+        .with_refund_handling(RefundHandling::NoRefund)
+        .with_fee_handling(FeeHandling::NoFee)
+        .with_balance_hold_interval(TimeDiff::from_seconds(5));
+
+    let mut test = SingleTransactionTestCase::new(
+        ALICE_SECRET_KEY.clone(),
+        BOB_SECRET_KEY.clone(),
+        CHARLIE_SECRET_KEY.clone(),
+        Some(config),
+    )
+    .await;
+
+    test.fixture
+        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+        .await;
+
+    const TRANSFER_AMOUNT: u64 = 30_000_000_000;
+
+    let chain_name = test.fixture.chainspec.network_config.name.clone();
+    let txn_pricing_mode = PricingMode::Fixed {
+        gas_price_tolerance: MIN_GAS_PRICE,
+    };
+    let expected_transfer_gas = test.chainspec().system_costs_config.mint_costs().transfer;
+    let expected_transfer_cost: U512 = U512::from(expected_transfer_gas) * MIN_GAS_PRICE;
+
+    let mut txn_1 = Transaction::from(
+        TransactionV1Builder::new_transfer(TRANSFER_AMOUNT, None, CHARLIE_PUBLIC_KEY.clone(), None)
+            .unwrap()
+            .with_initiator_addr(ALICE_PUBLIC_KEY.clone())
+            .with_pricing_mode(txn_pricing_mode.clone())
+            .with_chain_name(chain_name.clone())
+            .build()
+            .unwrap(),
+    );
+    txn_1.sign(&ALICE_SECRET_KEY);
+    let txn_1_hash = txn_1.hash();
+
+    let mut txn_2 = Transaction::from(
+        TransactionV1Builder::new_transfer(
+            2 * TRANSFER_AMOUNT,
+            None,
+            CHARLIE_PUBLIC_KEY.clone(),
+            None,
+        )
+        .unwrap()
+        .with_initiator_addr(ALICE_PUBLIC_KEY.clone())
+        .with_pricing_mode(txn_pricing_mode.clone())
+        .with_chain_name(chain_name.clone())
+        .build()
+        .unwrap(),
+    );
+    txn_2.sign(&ALICE_SECRET_KEY);
+    let txn_2_hash = txn_2.hash();
+
+    let mut txn_3 = Transaction::from(
+        TransactionV1Builder::new_transfer(
+            3 * TRANSFER_AMOUNT,
+            None,
+            CHARLIE_PUBLIC_KEY.clone(),
+            None,
+        )
+        .unwrap()
+        .with_initiator_addr(ALICE_PUBLIC_KEY.clone())
+        .with_pricing_mode(txn_pricing_mode)
+        .with_chain_name(chain_name)
+        .build()
+        .unwrap(),
+    );
+    txn_3.sign(&ALICE_SECRET_KEY);
+    let txn_3_hash = txn_3.hash();
+
+    test.fixture.inject_transaction(txn_1).await;
+    test.fixture.inject_transaction(txn_2).await;
+    test.fixture.inject_transaction(txn_3).await;
+
+    test.fixture
+        .run_until_executed_transaction(&txn_1_hash, TEN_SECS)
+        .await;
+    test.fixture
+        .run_until_executed_transaction(&txn_2_hash, TEN_SECS)
+        .await;
+    test.fixture
+        .run_until_executed_transaction(&txn_3_hash, TEN_SECS)
+        .await;
+
+    let (_node_id, runner) = test.fixture.network.nodes().iter().next().unwrap();
+    let ExecutionInfo {
+        block_height: txn_1_block_height,
+        execution_result: txn_1_exec_result,
+        ..
+    } = runner
+        .main_reactor()
+        .storage()
+        .read_execution_info(txn_1_hash)
+        .expect("Expected transaction to be included in a block.");
+    let ExecutionInfo {
+        block_height: txn_2_block_height,
+        execution_result: txn_2_exec_result,
+        ..
+    } = runner
+        .main_reactor()
+        .storage()
+        .read_execution_info(txn_2_hash)
+        .expect("Expected transaction to be included in a block.");
+    let ExecutionInfo {
+        block_height: txn_3_block_height,
+        execution_result: txn_3_exec_result,
+        ..
+    } = runner
+        .main_reactor()
+        .storage()
+        .read_execution_info(txn_3_hash)
+        .expect("Expected transaction to be included in a block.");
+
+    let txn_1_exec_result = txn_1_exec_result.expect("Expected result for txn 1");
+    let txn_2_exec_result = txn_2_exec_result.expect("Expected result for txn 2");
+    let txn_3_exec_result = txn_3_exec_result.expect("Expected result for txn 3");
+
+    assert!(exec_result_is_success(&txn_1_exec_result));
+    assert!(exec_result_is_success(&txn_2_exec_result));
+    assert!(exec_result_is_success(&txn_3_exec_result));
+
+    assert_exec_result_cost(
+        txn_1_exec_result,
+        expected_transfer_cost,
+        expected_transfer_gas.into(),
+    );
+    assert_exec_result_cost(
+        txn_2_exec_result,
+        expected_transfer_cost,
+        expected_transfer_gas.into(),
+    );
+    assert_exec_result_cost(
+        txn_3_exec_result,
+        expected_transfer_cost,
+        expected_transfer_gas.into(),
+    );
+
+    let max_block_height = std::cmp::max(
+        std::cmp::max(txn_1_block_height, txn_2_block_height),
+        txn_3_block_height,
+    );
+    let alice_total_holds: U512 = get_balance(
+        &mut test.fixture,
+        &ALICE_PUBLIC_KEY,
+        Some(max_block_height),
+        false,
+    )
+    .proofs_result()
+    .expect("Expected Alice to proof results.")
+    .balance_holds()
+    .expect("Expected Alice to have holds.")
+    .values()
+    .map(|block_holds| block_holds.values().copied().sum())
+    .sum();
+    assert_eq!(
+        alice_total_holds,
+        expected_transfer_cost * 3,
+        "Total holds amount should be equal to the cost of the 3 transactions."
+    );
+
+    test.fixture
+        .run_until_block_height(max_block_height + 5, ONE_MIN)
+        .await;
+    let alice_total_holds: U512 = get_balance(&mut test.fixture, &ALICE_PUBLIC_KEY, None, false)
+        .proofs_result()
+        .expect("Expected Alice to proof results.")
+        .balance_holds()
+        .expect("Expected Alice to have holds.")
+        .values()
+        .map(|block_holds| block_holds.values().copied().sum())
+        .sum();
+    assert_eq!(
+        alice_total_holds,
+        U512::from(0),
+        "Holds should have expired."
     );
 }

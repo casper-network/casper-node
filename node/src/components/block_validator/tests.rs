@@ -38,7 +38,7 @@ enum ReactorEvent {
     #[from]
     Storage(StorageRequest),
     #[from]
-    FatalAnnouncement(FatalAnnouncement),
+    FatalAnnouncement(#[allow(dead_code)] FatalAnnouncement),
 }
 
 impl From<BlockValidationRequest> for ReactorEvent {
@@ -148,34 +148,13 @@ pub(super) fn new_proposed_block_with_cited_signatures(
     let block_context = BlockContext::new(timestamp, vec![]);
     let transactions = {
         let mut ret = BTreeMap::new();
-        ret.insert(
-            MINT_LANE_ID,
-            transfer
-                .into_iter()
-                .map(|(txn_hash, approvals)| (txn_hash, approvals))
-                .collect(),
-        );
-        ret.insert(
-            AUCTION_LANE_ID,
-            staking
-                .into_iter()
-                .map(|(txn_hash, approvals)| (txn_hash, approvals))
-                .collect(),
-        );
+        ret.insert(MINT_LANE_ID, transfer.into_iter().collect());
+        ret.insert(AUCTION_LANE_ID, staking.into_iter().collect());
         ret.insert(
             INSTALL_UPGRADE_LANE_ID,
-            install_upgrade
-                .into_iter()
-                .map(|(txn_hash, approvals)| (txn_hash, approvals))
-                .collect(),
+            install_upgrade.into_iter().collect(),
         );
-        ret.insert(
-            LARGE_LANE_ID,
-            standard
-                .into_iter()
-                .map(|(txn_hash, approvals)| (txn_hash, approvals))
-                .collect(),
-        );
+        ret.insert(LARGE_LANE_ID, standard.into_iter().collect());
         ret
     };
     let block_payload = BlockPayload::new(transactions, vec![], cited_signatures, true);

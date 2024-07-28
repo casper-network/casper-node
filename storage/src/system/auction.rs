@@ -16,7 +16,7 @@ use crate::system::auction::detail::{
 use casper_types::{
     account::AccountHash,
     system::auction::{
-        BidAddr, BidKind, Bridge, DelegationRate, EraInfo, EraValidators, Error,
+        BidAddr, BidKind, Bridge, DelegationRate, EraInfo, EraValidators, Error, Reservation,
         SeigniorageRecipients, SeigniorageRecipientsSnapshot, UnbondingPurse, ValidatorBid,
         ValidatorCredit, ValidatorWeights, DELEGATION_RATE_DENOMINATOR,
     },
@@ -405,9 +405,14 @@ pub trait Auction:
             let minimum_delegation_amount = U512::from(validator_bid.minimum_delegation_amount());
             let maximum_delegation_amount = U512::from(validator_bid.maximum_delegation_amount());
 
-            let mut delegators = read_delegator_bids(self, validator_public_key)?;
-            for delegator in delegators.iter_mut() {
+            let delegators = read_delegator_bids(self, validator_public_key)?;
+            for mut delegator in delegators {
                 let staked_amount = delegator.staked_amount();
+                if staked_amount.is_zero() {
+                    // A delegator who has unbonded - nothing to do here, this will be removed when
+                    // unbonding is processed.
+                    continue;
+                }
                 if staked_amount < minimum_delegation_amount
                     || staked_amount > maximum_delegation_amount
                 {
@@ -425,20 +430,29 @@ pub trait Auction:
                         amount,
                         None,
                     )?;
-                    match delegator.decrease_stake(amount, era_end_timestamp_millis) {
-                        Ok(_) => (),
-                        // Work around the case when the locked amounts table has yet to be
-                        // initialized (likely pre-90 day mark).
-                        Err(Error::DelegatorFundsLocked) => continue,
-                        Err(err) => return Err(err),
-                    }
+                    let updated_stake =
+                        match delegator.decrease_stake(amount, era_end_timestamp_millis) {
+                            Ok(updated_stake) => updated_stake,
+                            // Work around the case when the locked amounts table has yet to be
+                            // initialized (likely pre-90 day mark).
+                            Err(Error::DelegatorFundsLocked) => continue,
+                            Err(err) => return Err(err),
+                        };
                     let delegator_bid_addr = BidAddr::new_from_public_keys(
                         validator_public_key,
                         Some(&delegator_public_key),
                     );
 
-                    debug!("pruning delegator bid {}", delegator_bid_addr);
-                    self.prune_bid(delegator_bid_addr)
+                    debug!(
+                        "forced undelegation for {} reducing {} by {} to {}",
+                        delegator_bid_addr, staked_amount, amount, updated_stake
+                    );
+
+                    // Keep the bid for now - it will get pruned when the unbonds are processed.
+                    self.write_bid(
+                        delegator_bid_addr.into(),
+                        BidKind::Delegator(Box::new(delegator)),
+                    )?;
                 }
             }
         }
@@ -452,23 +466,19 @@ pub trait Auction:
     /// The function transfers motes from the source purse to the delegator's bonding purse.
     ///
     /// This entry point returns the number of tokens currently delegated to a given validator.
-    fn add_reservations(
-        &mut self,
-        validator: PublicKey,
-        delegators: Vec<PublicKey>,
-    ) -> Result<(), ApiError> {
+    fn add_reservations(&mut self, reservations: Vec<Reservation>) -> Result<(), ApiError> {
         if !self.allow_auction_bids() {
             // Validation set rotation might be disabled on some private chains and we should not
             // allow new bids to come in.
             return Err(Error::AuctionBidsDisabled.into());
         }
 
-        if !self.is_allowed_session_caller(&AccountHash::from(&validator)) {
-            return Err(Error::InvalidContext.into());
-        }
+        for reservation in reservations {
+            if !self.is_allowed_session_caller(&AccountHash::from(reservation.validator_public_key())) {
+                return Err(Error::InvalidContext.into());
+            }
 
-        for delegator in delegators {
-            detail::handle_add_reservation(self, validator.clone(), delegator.clone())?;
+            detail::handle_add_reservation(self, reservation)?;
         }
         Ok(())
     }

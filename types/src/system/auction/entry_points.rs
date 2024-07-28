@@ -1,4 +1,3 @@
-use alloc::boxed::Box;
 use crate::{
     system::auction::{
         DelegationRate, ValidatorWeights, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR,
@@ -10,9 +9,12 @@ use crate::{
     CLType, CLTyped, EntryPoint, EntryPointAccess, EntryPointPayment, EntryPointType, EntryPoints,
     Parameter, PublicKey, U512,
 };
+use alloc::boxed::Box;
 
 use super::{
-    ARG_MAXIMUM_DELEGATION_AMOUNT, ARG_MINIMUM_DELEGATION_AMOUNT, ARG_NEW_PUBLIC_KEY, ARG_REWARDS_MAP, METHOD_ADD_RESERVATIONS, METHOD_CANCEL_RESERVATIONS, METHOD_CHANGE_BID_PUBLIC_KEY
+    Reservation, ARG_MAXIMUM_DELEGATION_AMOUNT, ARG_MINIMUM_DELEGATION_AMOUNT,
+    ARG_NEW_PUBLIC_KEY, ARG_RESERVATIONS, ARG_REWARDS_MAP, METHOD_ADD_RESERVATIONS,
+    METHOD_CANCEL_RESERVATIONS, METHOD_CHANGE_BID_PUBLIC_KEY,
 };
 
 /// Creates auction contract entry points.
@@ -169,10 +171,10 @@ pub fn auction_entry_points() -> EntryPoints {
 
     let entry_point = EntryPoint::new(
         METHOD_ADD_RESERVATIONS,
-        vec![
-            Parameter::new(ARG_VALIDATOR, PublicKey::cl_type()),
-            Parameter::new(ARG_DELEGATORS, CLType::List(Box::new(PublicKey::cl_type()))),
-        ],
+        vec![Parameter::new(
+            ARG_RESERVATIONS,
+            CLType::List(Box::new(Reservation::cl_type())),
+        )],
         CLType::Unit,
         EntryPointAccess::Public,
         EntryPointType::Called,

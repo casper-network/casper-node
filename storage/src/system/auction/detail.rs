@@ -863,22 +863,18 @@ where
 /// delegation. For a new delegation a delegator bid record will be created to track the delegation,
 /// otherwise the existing tracking record will be updated.
 #[allow(clippy::too_many_arguments)]
-pub fn handle_add_reservation<P>(
-    provider: &mut P,
-    validator: PublicKey,
-    delegator: PublicKey,
-) -> Result<(), ApiError>
+pub fn handle_add_reservation<P>(provider: &mut P, reservation: Reservation) -> Result<(), ApiError>
 where
     P: StorageProvider + MintProvider + RuntimeProvider,
 {
     // is there such a validator?
-    let validator_bid_addr = BidAddr::from(validator.clone());
+    let validator_bid_addr = BidAddr::from(reservation.validator_public_key().clone());
     let bid = read_validator_bid(provider, &validator_bid_addr.into())?;
 
     // is there already a record for this delegator?
     let reservation_bid_key = BidAddr::Reservation {
-        validator: AccountHash::from(&validator),
-        delegator: AccountHash::from(&delegator),
+        validator: AccountHash::from(reservation.validator_public_key()),
+        delegator: AccountHash::from(reservation.delegator_public_key()),
     }
     .into();
     if let Some(BidKind::Reservation(_)) = provider.read_bid(&reservation_bid_key)? {
@@ -891,7 +887,6 @@ where
         // TODO(jck): Error:WhitelistFull variant
         return Err(Error::ExceededDelegatorSizeLimit.into());
     }
-    let reservation = Reservation::new(validator, delegator);
     provider.write_bid(
         reservation_bid_key,
         BidKind::Reservation(Box::new(reservation)),

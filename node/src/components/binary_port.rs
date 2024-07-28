@@ -27,6 +27,7 @@ use casper_storage::{
     },
     global_state::trie::TrieRaw,
     system::auction,
+    tracking_copy::TrackingCopyError,
     KeyPrefix as StorageKeyPrefix,
 };
 use casper_types::{
@@ -671,7 +672,11 @@ where
             };
             BinaryResponse::from_value(response, protocol_version)
         }
-        BalanceResult::Failure(_) => {
+        BalanceResult::Failure(TrackingCopyError::KeyNotFound(_)) => {
+            BinaryResponse::new_error(ErrorCode::PurseNotFound, protocol_version)
+        }
+        BalanceResult::Failure(error) => {
+            debug!(%error, "failed when querying for a balance");
             BinaryResponse::new_error(ErrorCode::FailedQuery, protocol_version)
         }
     }
@@ -957,6 +962,7 @@ where
                         reward,
                         header.era_id(),
                         *seigniorage_recipient.delegation_rate(),
+                        header.block_hash(),
                     );
                     BinaryResponse::from_value(response, protocol_version)
                 }
@@ -1018,6 +1024,9 @@ where
         }
         SpeculativeExecutionResult::WasmV1(spec_exec_result) => {
             BinaryResponse::from_value(spec_exec_result, protocol_version)
+        }
+        SpeculativeExecutionResult::ReceivedV1Transaction => {
+            BinaryResponse::new_error(ErrorCode::ReceivedV1Transaction, protocol_version)
         }
     }
 }

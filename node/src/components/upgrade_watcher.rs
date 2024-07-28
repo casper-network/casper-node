@@ -329,7 +329,7 @@ struct UpgradePoint {
 
 impl UpgradePoint {
     /// Parses a chainspec file at the given path as an `UpgradePoint`.
-    fn from_chainspec_path<P: AsRef<Path> + std::fmt::Debug>(path: P) -> Result<Self, Error> {
+    fn from_chainspec_path<P: AsRef<Path> + fmt::Debug>(path: P) -> Result<Self, Error> {
         let bytes = file_utils::read_file(path.as_ref().join(CHAINSPEC_FILENAME))
             .map_err(Error::LoadUpgradePoint)?;
         Ok(toml::from_str(std::str::from_utf8(&bytes).unwrap())?)
@@ -349,8 +349,7 @@ fn next_installed_version(
     dir: &Path,
     current_version: ProtocolVersion,
 ) -> Result<ProtocolVersion, Error> {
-    let max_version =
-        ProtocolVersion::from_parts(u32::max_value(), u32::max_value(), u32::max_value());
+    let max_version = ProtocolVersion::from_parts(u32::MAX, u32::MAX, u32::MAX);
 
     let mut next_version = max_version;
     let mut read_version = false;

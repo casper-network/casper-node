@@ -809,7 +809,7 @@ where
         self.context.access_rights_extend(&urefs);
         {
             let transfers = self.context.transfers_mut();
-            *transfers = mint_runtime.context.transfers().to_owned();
+            mint_runtime.context.transfers().clone_into(transfers);
         }
         Ok(ret)
     }
@@ -888,7 +888,7 @@ where
         self.context.access_rights_extend(&urefs);
         {
             let transfers = self.context.transfers_mut();
-            *transfers = runtime.context.transfers().to_owned();
+            runtime.context.transfers().clone_into(transfers);
         }
         Ok(ret)
     }
@@ -1126,11 +1126,10 @@ where
             auction::METHOD_ADD_RESERVATIONS => (|| {
                 runtime.charge_system_contract_call(auction_costs.add_reservations)?;
 
-                let validator = Self::get_named_argument(runtime_args, auction::ARG_VALIDATOR)?;
-                let delegators = Self::get_named_argument(runtime_args, auction::ARG_DELEGATORS)?;
+                let reservations = Self::get_named_argument(runtime_args, auction::ARG_RESERVATIONS)?;
 
                 runtime
-                    .add_reservations(validator, delegators)
+                    .add_reservations(reservations)
                     .map_err(Self::reverter)?;
 
                 CLValue::from_t(()).map_err(Self::reverter)
@@ -1142,7 +1141,7 @@ where
                 let delegators = Self::get_named_argument(runtime_args, auction::ARG_DELEGATORS)?;
 
                 runtime
-                    .add_reservations(validator, delegators)
+                    .cancel_reservations(validator, delegators)
                     .map_err(Self::reverter)?;
 
                 CLValue::from_t(()).map_err(Self::reverter)
@@ -1166,7 +1165,7 @@ where
         self.context.access_rights_extend(&urefs);
         {
             let transfers = self.context.transfers_mut();
-            *transfers = runtime.context.transfers().to_owned();
+            runtime.context.transfers().clone_into(transfers);
         }
 
         Ok(ret)
@@ -1650,7 +1649,7 @@ where
         self.context
             .set_emit_message_cost(runtime.context.emit_message_cost());
         let transfers = self.context.transfers_mut();
-        *transfers = runtime.context.transfers().to_owned();
+        runtime.context.transfers().clone_into(transfers);
 
         return match result {
             Ok(_) => {

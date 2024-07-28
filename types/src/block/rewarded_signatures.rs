@@ -322,6 +322,18 @@ fn chunks_8(bits: impl Iterator<Item = u8>) -> impl Iterator<Item = impl Iterato
     Chunks(bits)
 }
 
+#[cfg(any(feature = "testing", test))]
+impl SingleBlockRewardedSignatures {
+    /// Returns random data.
+    pub fn random(rng: &mut crate::testing::TestRng, n_validators: usize) -> Self {
+        let mut bytes = vec![0; (n_validators + 7) / 8];
+
+        rand::RngCore::fill_bytes(rng, bytes.as_mut());
+
+        SingleBlockRewardedSignatures(bytes)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{chunks_8, SingleBlockRewardedSignatures};
@@ -458,17 +470,5 @@ mod tests {
         assert_eq!(v(chunks.next()), Some(vec![10, 11, 12, 13, 14, 15, 16, 17]));
         assert_eq!(v(chunks.next()), Some(vec![18, 19, 20, 21, 22, 23, 24, 25]));
         assert_eq!(v(chunks.next()), Some(vec![26]));
-    }
-}
-
-#[cfg(any(feature = "testing", test))]
-impl SingleBlockRewardedSignatures {
-    /// Returns random data.
-    pub fn random(rng: &mut crate::testing::TestRng, n_validators: usize) -> Self {
-        let mut bytes = vec![0; (n_validators + 7) / 8];
-
-        rand::RngCore::fill_bytes(rng, bytes.as_mut());
-
-        SingleBlockRewardedSignatures(bytes)
     }
 }
