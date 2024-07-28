@@ -362,6 +362,8 @@ async fn binary_port_component_handles_all_requests() {
         try_accept_transaction_invalid(&mut rng),
         try_accept_transaction(&secret_signing_key),
         get_balance(state_root_hash, test_account_hash),
+        get_balance_account_not_found(state_root_hash),
+        get_balance_purse_uref_not_found(state_root_hash),
         get_named_keys_by_prefix(state_root_hash, test_entity_addr),
         get_reward(
             Some(EraIdentifier::Era(ERA_ONE)),
@@ -895,6 +897,28 @@ fn get_balance(state_root_hash: Digest, account_hash: AccountHash) -> TestCase {
                 |res| res.available_balance == U512::one(),
             )
         }),
+    }
+}
+
+fn get_balance_account_not_found(state_root_hash: Digest) -> TestCase {
+    TestCase {
+        name: "get_balance_account_not_found",
+        request: BinaryRequest::Get(GetRequest::State(Box::new(GlobalStateRequest::Balance {
+            state_identifier: Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
+            purse_identifier: PurseIdentifier::Account(AccountHash([9; 32])),
+        }))),
+        asserter: Box::new(|response| response.error_code() == ErrorCode::PurseNotFound as u16),
+    }
+}
+
+fn get_balance_purse_uref_not_found(state_root_hash: Digest) -> TestCase {
+    TestCase {
+        name: "get_balance_purse_uref_not_found",
+        request: BinaryRequest::Get(GetRequest::State(Box::new(GlobalStateRequest::Balance {
+            state_identifier: Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
+            purse_identifier: PurseIdentifier::Purse(URef::new([9; 32], Default::default())),
+        }))),
+        asserter: Box::new(|response| response.error_code() == ErrorCode::PurseNotFound as u16),
     }
 }
 
