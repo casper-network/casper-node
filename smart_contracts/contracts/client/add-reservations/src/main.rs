@@ -6,12 +6,9 @@ extern crate alloc;
 use alloc::vec::Vec;
 
 use casper_contract::contract_api::runtime;
-use casper_types::{
-    system::auction::{Reservation, ARG_RESERVATIONS},
-    PublicKey,
-};
+use casper_types::system::auction::{Reservation, ARG_RESERVATIONS};
 
-fn add_reservations(reservations: Vec<Reservation>) {
+fn add_reservations(_reservations: Vec<Reservation>) {
     todo!();
 }
 

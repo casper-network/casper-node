@@ -7,7 +7,7 @@ use alloc::vec::Vec;
 
 use casper_contract::contract_api::runtime;
 use casper_types::{
-    system::auction::{DelegationRate, ARG_DELEGATORS, ARG_VALIDATOR},
+    system::auction::{ARG_DELEGATORS, ARG_VALIDATOR},
     PublicKey,
 };
 
