@@ -474,7 +474,9 @@ pub trait Auction:
         }
 
         for reservation in reservations {
-            if !self.is_allowed_session_caller(&AccountHash::from(reservation.validator_public_key())) {
+            if !self
+                .is_allowed_session_caller(&AccountHash::from(reservation.validator_public_key()))
+            {
                 return Err(Error::InvalidContext.into());
             }
 

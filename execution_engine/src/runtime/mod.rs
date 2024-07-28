@@ -1126,7 +1126,8 @@ where
             auction::METHOD_ADD_RESERVATIONS => (|| {
                 runtime.charge_system_contract_call(auction_costs.add_reservations)?;
 
-                let reservations = Self::get_named_argument(runtime_args, auction::ARG_RESERVATIONS)?;
+                let reservations =
+                    Self::get_named_argument(runtime_args, auction::ARG_RESERVATIONS)?;
 
                 runtime
                     .add_reservations(reservations)

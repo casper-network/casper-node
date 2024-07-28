@@ -6,7 +6,10 @@ extern crate alloc;
 use alloc::vec::Vec;
 
 use casper_contract::contract_api::{runtime, system};
-use casper_types::{runtime_args, system::auction::{self, Reservation}};
+use casper_types::{
+    runtime_args,
+    system::auction::{self, Reservation},
+};
 
 fn add_reservations(reservations: Vec<Reservation>) {
     let contract_hash = system::get_auction();
