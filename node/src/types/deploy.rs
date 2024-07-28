@@ -70,7 +70,7 @@ pub(crate) use finalized_approvals::FinalizedApprovals;
 pub(crate) use footprint::Footprint as DeployFootprint;
 pub use id::Id as DeployId;
 pub(crate) use legacy_deploy::LegacyDeploy;
-pub(crate) use metadata::{Metadata as DeployMetadata, MetadataExt as DeployMetadataExt};
+pub use metadata::{Metadata as DeployMetadata, MetadataExt as DeployMetadataExt};
 
 static DEPLOY: Lazy<Deploy> = Lazy::new(|| {
     let payment_args = runtime_args! {

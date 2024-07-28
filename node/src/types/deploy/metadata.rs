@@ -11,15 +11,15 @@ use crate::types::{BlockHash, BlockHashAndHeight};
 /// Currently a stop-gap measure to associate an immutable deploy with additional metadata. Holds
 /// execution results.
 #[derive(Clone, Default, Serialize, Deserialize, Debug, PartialEq, Eq)]
-pub(crate) struct Metadata {
+pub struct Metadata {
     /// The block hashes of blocks containing the related deploy, along with the results of
     /// executing the related deploy in the context of one or more blocks.
-    pub(crate) execution_results: HashMap<BlockHash, ExecutionResult>,
+    pub execution_results: HashMap<BlockHash, ExecutionResult>,
 }
 
 /// Additional information describing a deploy.
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
-pub(crate) enum MetadataExt {
+pub enum MetadataExt {
     /// Holds the execution results of a deploy.
     Metadata(Metadata),
     /// Holds the hash and height of the block this deploy was included in.

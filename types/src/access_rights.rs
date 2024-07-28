@@ -215,6 +215,17 @@ impl ContextAccessRights {
         }
     }
 
+    /// Checks if a uref exists and then check access rights.
+    pub fn maybe_has_access_rights_to_uref(&self, uref: &URef) -> Option<bool> {
+        if let Some(known_rights) = self.access_rights.get(&uref.addr()) {
+            let rights_to_check = uref.access_rights();
+            Some(known_rights.contains(rights_to_check))
+        } else {
+            // URef is not known
+            None
+        }
+    }
+
     /// Grants access to a [`URef`]; unless access was pre-existing.
     pub fn grant_access(&mut self, uref: URef) -> GrantedAccess {
         match self.access_rights.entry(uref.addr()) {
