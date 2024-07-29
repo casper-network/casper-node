@@ -439,7 +439,7 @@ where
             let is_unit_value = value.is_unit_cl_value();
             if key.into_hash().is_some() && is_unit_value {
                 info!(
-                    "found marker record for package prune; skipping {}",
+                    "found marker record for package prune; skipping normal operation of write {}",
                     key.to_formatted_string()
                 );
                 continue;
