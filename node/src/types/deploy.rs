@@ -66,7 +66,7 @@ pub use deploy_header::DeployHeader;
 pub use deploy_or_transfer_hash::DeployOrTransferHash;
 pub(crate) use deploy_with_finalized_approvals::DeployWithFinalizedApprovals;
 pub use error::{DeployConfigurationFailure, Error as DeployError, ExcessiveSizeError};
-pub(crate) use finalized_approvals::FinalizedApprovals;
+pub use finalized_approvals::FinalizedApprovals;
 pub(crate) use footprint::Footprint as DeployFootprint;
 pub use id::Id as DeployId;
 pub(crate) use legacy_deploy::LegacyDeploy;

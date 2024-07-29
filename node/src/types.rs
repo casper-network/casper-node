@@ -44,11 +44,11 @@ pub use chunkable::Chunkable;
 pub use datasize::DataSize;
 pub use deploy::{
     Approval, ApprovalsHash, Deploy, DeployConfigurationFailure, DeployError, DeployHash,
-    DeployHeader, DeployOrTransferHash, ExcessiveSizeError as ExcessiveSizeDeployError,
+    DeployHeader, DeployMetadata, DeployMetadataExt, DeployOrTransferHash,
+    ExcessiveSizeError as ExcessiveSizeDeployError, FinalizedApprovals,
 };
 pub(crate) use deploy::{
-    DeployFootprint, DeployHashWithApprovals, DeployId, DeployMetadata, DeployMetadataExt,
-    DeployWithFinalizedApprovals, FinalizedApprovals, LegacyDeploy,
+    DeployFootprint, DeployHashWithApprovals, DeployId, DeployWithFinalizedApprovals, LegacyDeploy,
 };
 pub use error::BlockValidationError;
 pub use exit_code::ExitCode;

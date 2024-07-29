@@ -7,7 +7,7 @@ use super::Approval;
 
 /// A set of approvals that has been agreed upon by consensus to approve of a specific deploy.
 #[derive(DataSize, Debug, Deserialize, Eq, PartialEq, Serialize, Clone)]
-pub(crate) struct FinalizedApprovals(BTreeSet<Approval>);
+pub struct FinalizedApprovals(BTreeSet<Approval>);
 
 impl FinalizedApprovals {
     pub(crate) fn new(approvals: BTreeSet<Approval>) -> Self {
