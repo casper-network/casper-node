@@ -438,8 +438,13 @@ where
             // pruned.
             let is_unit_value = value.is_unit_cl_value();
             if key.into_hash().is_some() && is_unit_value {
+                info!(
+                    "found marker record for package prune; skipping {}",
+                    key.to_formatted_string()
+                );
                 continue;
             } else {
+                info!("Regular update for key: {}", key.to_formatted_string());
                 tracking_copy.borrow_mut().write(*key, value.clone());
             }
         }
@@ -470,6 +475,8 @@ where
             )
             .map_err(Into::into)?;
 
+        info!("Attempting prune of contract packages");
+
         // Generate the list of keys to prune
         let state_root_hash = post_state_hash;
         let keys_to_prune = system_upgrader
@@ -486,7 +493,13 @@ where
             Ok(PruneResult::Success {
                 post_state_hash: new_state_root_hash,
                 ..
-            }) => new_state_root_hash,
+            }) => {
+                info!(
+                    "prune success with new state root hash {}",
+                    new_state_root_hash
+                );
+                new_state_root_hash
+            }
             Ok(_) | Err(_) => {
                 warn!("failed to prune, reusing previous state root hash");
                 state_root_hash
