@@ -843,31 +843,45 @@ impl ContractPackage {
         &self,
         current_contract_hash: &ContractHash,
     ) -> Option<ContractVersionKey> {
-        if let Some(current_version) = self
-            .versions
-            .iter()
-            .filter_map(|(k, v)| {
-                if v == current_contract_hash {
-                    Some(k)
-                } else {
-                    None
-                }
-            })
-            .next()
-        {
-            let contract_version = current_version.contract_version();
-            let protocol_version = current_version.0;
-
-            if contract_version == 0 {
-                return None;
+        let reverse = self.versions.iter().rev();
+        for (version, hash) in reverse {
+            if *hash == current_contract_hash {
+                break;
             }
-
-            let previous_version = contract_version - 1;
-            Some(ContractVersionKey(protocol_version, previous_version))
-        } else {
-            None
         }
+        reverse.next()
     }
+
+
+    // pub fn find_previous_version_key_by_hash(
+    //     &self,
+    //     current_contract_hash: &ContractHash,
+    // ) -> Option<ContractVersionKey> {
+    //     if let Some(current_version) = self
+    //         .versions
+    //         .iter()
+    //         .filter_map(|(k, v)| {
+    //             if v == current_contract_hash {
+    //                 Some(k)
+    //             } else {
+    //                 None
+    //             }
+    //         })
+    //         .next()
+    //     {
+    //         let contract_version = current_version.contract_version();
+    //         let protocol_version = current_version.0;
+    //
+    //         if contract_version == 0 {
+    //             return None;
+    //         }
+    //
+    //         let previous_version = contract_version - 1;
+    //         Some(ContractVersionKey(protocol_version, previous_version))
+    //     } else {
+    //         None
+    //     }
+    // }
 
     /// Returns reference to all of this contract's versions.
     pub fn versions(&self) -> &ContractVersions {
