@@ -468,7 +468,7 @@ where
         let execution_effect = tracking_copy.borrow().effect();
 
         // commit
-        let post_state_hash = self
+        let mut post_state_hash = self
             .state
             .commit(
                 correlation_id,
@@ -477,10 +477,10 @@ where
             )
             .map_err(Into::into)?;
 
+        info!("committed upgrade with psh: {}", post_state_hash);
         info!("attempting prune of contract packages");
 
         // Generate the list of keys to prune
-        let state_root_hash = post_state_hash;
         let keys_to_prune = system_upgrader
             .get_contracts_prune_list(correlation_id, upgrade_config.global_state_update())
             .unwrap_or_else(|upgrade_error| {
@@ -490,8 +490,8 @@ where
 
         info!("keys to prune {:?}", keys_to_prune);
 
-        let prune_config = PruneConfig::new(state_root_hash, keys_to_prune);
-        let post_state_hash = match self.commit_prune(correlation_id, prune_config) {
+        let prune_config = PruneConfig::new(post_state_hash, keys_to_prune);
+        match self.commit_prune(correlation_id, prune_config) {
             Ok(PruneResult::Success {
                 post_state_hash: new_state_root_hash,
                 ..
@@ -500,14 +500,13 @@ where
                     "prune success with new state root hash {}",
                     new_state_root_hash
                 );
-                new_state_root_hash
+                post_state_hash = new_state_root_hash;
             }
             Ok(_) | Err(_) => {
                 warn!("failed to prune, reusing previous state root hash");
-                state_root_hash
             }
         };
-
+        info!("upgrade success with post state hash: {}", post_state_hash);
         // return result and effects
         Ok(UpgradeSuccess {
             post_state_hash,
