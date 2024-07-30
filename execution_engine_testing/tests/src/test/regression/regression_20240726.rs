@@ -73,7 +73,7 @@ fn should_not_allow_forged_urefs_to_be_saved_to_named_keys() {
         .build();
 
     builder
-        .upgrade_with_upgrade_request_using_scratch( &mut upgrade_config)
+        .upgrade_with_upgrade_request_and_config(None, &mut upgrade_config)
         .expect_upgrade_success()
         .commit();
 
