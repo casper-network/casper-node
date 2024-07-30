@@ -841,17 +841,25 @@ impl ContractPackage {
 
     pub fn find_previous_version_key_by_hash(
         &self,
-        current_contract_hash: &ContractHash
+        current_contract_hash: &ContractHash,
     ) -> Option<ContractVersionKey> {
-        if let Some(current_version ) = self.versions
+        if let Some(current_version) = self
+            .versions
             .iter()
-            .filter_map(|(k, v)| if v == current_contract_hash { Some(k) } else { None })
-            .next() {
+            .filter_map(|(k, v)| {
+                if v == current_contract_hash {
+                    Some(k)
+                } else {
+                    None
+                }
+            })
+            .next()
+        {
             let contract_version = current_version.contract_version();
             let protocol_version = current_version.0;
 
             if contract_version == 0 {
-                return None
+                return None;
             }
 
             let previous_version = contract_version - 1;
