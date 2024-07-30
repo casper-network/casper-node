@@ -842,14 +842,15 @@ impl ContractPackage {
     pub fn find_previous_version_key_by_hash(
         &self,
         current_contract_hash: &ContractHash,
-    ) -> Option<ContractVersionKey> {
-        let reverse = self.versions.iter().rev();
-        for (version, hash) in reverse {
-            if *hash == current_contract_hash {
-                break;
+    ) -> Option<ContractHash> {
+        let mut latch = false;
+        for (_, hash) in self.versions().iter().rev() {
+            if latch {
+                return Some(*hash)
             }
+            latch = hash == current_contract_hash;
         }
-        reverse.next()
+        None
     }
 
 
