@@ -447,14 +447,6 @@ where
             tracking_copy.borrow_mut().write(unbonding_delay_key, value);
         }
 
-        // match system_upgrader
-        //     .clear_named_keys_for_packages(correlation_id, upgrade_config.global_state_update())
-        // {     Ok(()) => { info!("cleared named keys for contracts")}
-        //     Err(error) => {
-        //         error!("error in clearing named keys: {:?}", error);
-        //     }
-        // }
-
         // apply the accepted modifications to global state.
         for (key, value) in upgrade_config.global_state_update() {
             // Skip the key hashes associated with values as we mark these as records to be
