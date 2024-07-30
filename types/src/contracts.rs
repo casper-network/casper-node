@@ -1173,6 +1173,11 @@ impl Contract {
         self.named_keys.remove(key)
     }
 
+    /// Clears the named keys for the contract.
+    pub fn clear_named_keys(&mut self) {
+        self.named_keys = NamedKeys::new();
+    }
+
     /// Set protocol_version.
     pub fn set_protocol_version(&mut self, protocol_version: ProtocolVersion) {
         self.protocol_version = protocol_version;
