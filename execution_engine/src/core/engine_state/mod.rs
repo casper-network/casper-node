@@ -432,9 +432,10 @@ where
                 .write(locked_funds_period_key, value);
         }
 
+        info!("apply the accepted modifications to global state");
         // apply the accepted modifications to global state.
         for (key, value) in upgrade_config.global_state_update() {
-            // Skip the key hashes associated with clvalues as we mark these as records to be
+            // Skip the key hashes associated with values as we mark these as records to be
             // pruned.
             let is_unit_value = value.is_unit_cl_value();
             if key.into_hash().is_some() && is_unit_value {
@@ -444,10 +445,11 @@ where
                 );
                 continue;
             } else {
-                info!("Regular update for key: {}", key.to_formatted_string());
+                info!("regular update for key: {}", key.to_formatted_string());
                 tracking_copy.borrow_mut().write(*key, value.clone());
             }
         }
+        info!("finished applying accepted modifications to global state");
         // We insert the new unbonding delay once the purses to be paid out have been transformed
         // based on the previous unbonding delay.
         if let Some(new_unbonding_delay) = upgrade_config.new_unbonding_delay() {
@@ -475,18 +477,18 @@ where
             )
             .map_err(Into::into)?;
 
-        info!("Attempting prune of contract packages");
+        info!("attempting prune of contract packages");
 
         // Generate the list of keys to prune
         let state_root_hash = post_state_hash;
         let keys_to_prune = system_upgrader
             .get_contracts_prune_list(correlation_id, upgrade_config.global_state_update())
             .unwrap_or_else(|upgrade_error| {
-                warn!("Error in generating prune list: {:?}", upgrade_error);
+                warn!("error in generating prune list: {:?}", upgrade_error);
                 vec![]
             });
 
-        info!("Keys to prune {:?}", keys_to_prune);
+        info!("keys to prune {:?}", keys_to_prune);
 
         let prune_config = PruneConfig::new(state_root_hash, keys_to_prune);
         let post_state_hash = match self.commit_prune(correlation_id, prune_config) {
