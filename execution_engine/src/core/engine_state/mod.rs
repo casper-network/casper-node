@@ -303,13 +303,13 @@ where
         info!("keys to prune {:?}", keys_to_prune);
 
         let prune_config = PruneConfig::new(pre_state_hash, keys_to_prune);
-        let state_root_hash = match self.commit_prune(correlation_id, prune_config) {
+        let post_prune_state_root_hash = match self.commit_prune(correlation_id, prune_config) {
             Ok(PruneResult::Success {
                 post_state_hash: new_state_root_hash,
                 ..
             }) => {
                 info!(
-                    "prune success with new state root hash {}",
+                    "prune success with new state root hash {:?}",
                     new_state_root_hash
                 );
                 new_state_root_hash
@@ -321,31 +321,13 @@ where
         };
 
         info!(
-            "prune completed proceeding with upgrade with hash: {}",
-            state_root_hash
+            "post-prune: pre-state-hash: {:?} post-state-hash: {:?}",
+            pre_state_hash, post_prune_state_root_hash,
         );
 
-        let tracking_copy = match self.tracking_copy(state_root_hash)? {
+        let post_prune_tracking_copy = match self.tracking_copy(post_prune_state_root_hash)? {
             Some(tracking_copy) => Rc::new(RefCell::new(tracking_copy)),
-            None => return Err(Error::RootNotFound(state_root_hash)),
-        };
-
-        let effects = tracking_copy.borrow().effect();
-
-        println!("ee {:?}", effects);
-
-        let post_state_hash = self
-            .state
-            .commit(
-                correlation_id,
-                pre_state_hash,
-                effects.transforms.to_owned(),
-            )
-            .map_err(Into::into)?;
-
-        let post_prune_tracking_copy = match self.tracking_copy(post_state_hash)? {
-            Some(tracking_copy) => Rc::new(RefCell::new(tracking_copy)),
-            None => return Err(Error::RootNotFound(post_state_hash)),
+            None => return Err(Error::RootNotFound(post_prune_state_root_hash)),
         };
 
         let registry = if let Ok(registry) = post_prune_tracking_copy
@@ -500,28 +482,6 @@ where
                 .write(locked_funds_period_key, value);
         }
 
-        info!("apply the accepted modifications to global state");
-        // apply the accepted modifications to global state.
-        for (key, value) in upgrade_config.global_state_update() {
-            // Skip the key hashes associated with values as we mark these as records to be
-            // pruned.
-            let is_unit_value = value.is_unit_cl_value();
-            if key.into_hash().is_some() && is_unit_value {
-                info!(
-                    "found marker record for package prune; skipping normal operation of write {}",
-                    key.to_formatted_string()
-                );
-                continue;
-            } else {
-                info!("regular update for key: {}", key.to_formatted_string());
-                post_prune_tracking_copy
-                    .borrow_mut()
-                    .write(*key, value.clone());
-            }
-        }
-        info!("finished applying accepted modifications to global state");
-        // We insert the new unbonding delay once the purses to be paid out have been transformed
-        // based on the previous unbonding delay.
         if let Some(new_unbonding_delay) = upgrade_config.new_unbonding_delay() {
             let auction_contract = post_prune_tracking_copy
                 .borrow_mut()
@@ -537,6 +497,27 @@ where
                 .write(unbonding_delay_key, value);
         }
 
+        info!("apply the accepted modifications to global state");
+        // apply the accepted modifications to global state.
+        for (key, value) in upgrade_config.global_state_update() {
+            // Skip the key hashes associated with values as we mark these as records to be
+            // pruned.
+            let is_unit_value = value.is_unit_cl_value();
+            if key.into_hash().is_some() && is_unit_value {
+                debug!(
+                    "found marker record for package prune; skipping normal operation of write {}",
+                    key.to_formatted_string()
+                );
+                continue;
+            } else {
+                info!("update for key: {}", key.to_formatted_string());
+                post_prune_tracking_copy
+                    .borrow_mut()
+                    .write(*key, value.clone());
+            }
+        }
+        info!("finished applying accepted modifications to global state");
+
         let execution_effect = post_prune_tracking_copy.borrow().effect();
 
         // commit
@@ -544,12 +525,12 @@ where
             .state
             .commit(
                 correlation_id,
-                state_root_hash,
+                post_prune_state_root_hash,
                 execution_effect.transforms.to_owned(),
             )
             .map_err(Into::into)?;
 
-        info!("upgrade success with post state hash: {}", post_state_hash);
+        info!("upgrade success with post state hash: {:?}", post_state_hash);
         // return result and effects
         Ok(UpgradeSuccess {
             post_state_hash,
