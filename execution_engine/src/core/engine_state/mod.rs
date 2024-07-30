@@ -435,7 +435,7 @@ where
         info!("apply the accepted modifications to global state");
         // apply the accepted modifications to global state.
         for (key, value) in upgrade_config.global_state_update() {
-            // Skip the key hashes associated with clvalues as we mark these as records to be
+            // Skip the key hashes associated with values as we mark these as records to be
             // pruned.
             let is_unit_value = value.is_unit_cl_value();
             if key.into_hash().is_some() && is_unit_value {

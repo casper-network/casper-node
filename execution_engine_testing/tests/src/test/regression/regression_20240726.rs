@@ -77,12 +77,11 @@ fn should_not_allow_forged_urefs_to_be_saved_to_named_keys() {
         .expect_upgrade_success()
         .commit();
 
-    if let Err(err) = builder.query(None, contract_to_prune, &[]){
+    if let Err(err) = builder.query(None, contract_to_prune, &[]) {
         println!("{err}");
     } else {
         panic!("read was successful post prune");
     };
-
 
     let hardcoded_uref = builder
         .get_account(*DEFAULT_PROPOSER_ADDR)
