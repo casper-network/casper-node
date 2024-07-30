@@ -530,7 +530,10 @@ where
             )
             .map_err(Into::into)?;
 
-        info!("upgrade success with post state hash: {:?}", post_state_hash);
+        info!(
+            "upgrade success with post state hash: {:?}",
+            post_state_hash
+        );
         // return result and effects
         Ok(UpgradeSuccess {
             post_state_hash,
