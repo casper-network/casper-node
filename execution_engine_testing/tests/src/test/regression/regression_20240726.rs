@@ -83,8 +83,6 @@ fn should_not_allow_forged_urefs_to_be_saved_to_named_keys() {
         panic!("does not contain value not found");
     }
 
-
-
     let hardcoded_uref = builder
         .get_account(*DEFAULT_PROPOSER_ADDR)
         .expect("must get account")
