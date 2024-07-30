@@ -6,7 +6,9 @@ use casper_engine_test_support::{
 use once_cell::sync::Lazy;
 use std::collections::BTreeMap;
 
-use casper_types::{runtime_args, CLValue, EraId, ProtocolVersion, RuntimeArgs, StoredValue, URef};
+use casper_types::{
+    runtime_args, CLValue, EraId, Key, ProtocolVersion, RuntimeArgs, StoredValue, URef,
+};
 
 const PURSE_FIXTURE: &str = "purse_fixture";
 const PURSE_WASM: &str = "regression-20240726.wasm";
@@ -77,10 +79,21 @@ fn should_not_allow_forged_urefs_to_be_saved_to_named_keys() {
         .expect_upgrade_success()
         .commit();
 
-    if let Err(error) = builder.query(None, contract_to_prune, &[]) {
-        assert!(error.contains("ValueNotFound"))
-    } else {
-        panic!("does not contain value not found");
+    let contract_package = builder
+        .query(None, contract_to_prune, &[])
+        .expect("must get stored value")
+        .as_contract_package()
+        .cloned()
+        .expect("must get package");
+
+    for hash in contract_package.versions().values() {
+        let contract = builder
+            .query(None, Key::Hash(hash.value()), &[])
+            .expect("must get stored value")
+            .as_contract()
+            .cloned()
+            .expect("must get contract");
+        assert!(contract.named_keys().is_empty());
     }
 
     let hardcoded_uref = builder
