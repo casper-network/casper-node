@@ -332,6 +332,8 @@ where
 
         let effects = tracking_copy.borrow().effect();
 
+        println!("ee {:?}", effects);
+
         let post_state_hash = self
             .state
             .commit(
