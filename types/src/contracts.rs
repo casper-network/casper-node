@@ -846,13 +846,12 @@ impl ContractPackage {
         let mut latch = false;
         for (_, hash) in self.versions().iter().rev() {
             if latch {
-                return Some(*hash)
+                return Some(*hash);
             }
             latch = hash == current_contract_hash;
         }
         None
     }
-
 
     // pub fn find_previous_version_key_by_hash(
     //     &self,
