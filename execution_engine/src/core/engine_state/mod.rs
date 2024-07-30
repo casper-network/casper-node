@@ -284,7 +284,53 @@ where
             return Err(Error::InvalidProtocolVersion(new_protocol_version));
         }
 
-        let registry = if let Ok(registry) = tracking_copy
+        let system_upgrader: SystemUpgrader<S> = SystemUpgrader::new(
+            new_protocol_version,
+            current_protocol_version,
+            tracking_copy.clone(),
+        );
+
+        info!("attempting prune of contract packages");
+
+        // Generate the list of keys to prune
+        let keys_to_prune = system_upgrader
+            .get_contracts_prune_list(correlation_id, upgrade_config.global_state_update())
+            .unwrap_or_else(|upgrade_error| {
+                warn!("error in generating prune list: {:?}", upgrade_error);
+                vec![]
+            });
+
+        info!("keys to prune {:?}", keys_to_prune);
+
+        let prune_config = PruneConfig::new(pre_state_hash, keys_to_prune);
+        let post_prune_state_root_hash = match self.commit_prune(correlation_id, prune_config) {
+            Ok(PruneResult::Success {
+                post_state_hash: new_state_root_hash,
+                ..
+            }) => {
+                info!(
+                    "prune success with new state root hash {:?}",
+                    new_state_root_hash
+                );
+                new_state_root_hash
+            }
+            Ok(_) | Err(_) => {
+                warn!("failed to prune, reusing previous state root hash");
+                pre_state_hash
+            }
+        };
+
+        info!(
+            "post-prune: pre-state-hash: {:?} post-state-hash: {:?}",
+            pre_state_hash, post_prune_state_root_hash,
+        );
+
+        let post_prune_tracking_copy = match self.tracking_copy(post_prune_state_root_hash)? {
+            Some(tracking_copy) => Rc::new(RefCell::new(tracking_copy)),
+            None => return Err(Error::RootNotFound(post_prune_state_root_hash)),
+        };
+
+        let registry = if let Ok(registry) = post_prune_tracking_copy
             .borrow_mut()
             .get_system_contracts(correlation_id)
         {
@@ -337,7 +383,7 @@ where
 
         // We write the checksums of the chainspec settings to global state
         // allowing verification of the chainspec data reported via the RPC.
-        tracking_copy.borrow_mut().write(
+        post_prune_tracking_copy.borrow_mut().write(
             Key::ChainspecRegistry,
             StoredValue::CLValue(cl_value_chainspec_registry),
         );
@@ -347,7 +393,7 @@ where
         let system_upgrader: SystemUpgrader<S> = SystemUpgrader::new(
             new_protocol_version,
             current_protocol_version,
-            tracking_copy.clone(),
+            post_prune_tracking_copy.clone(),
         );
 
         system_upgrader
@@ -371,7 +417,7 @@ where
         // 3.1.1.1.1.7 new total validator slots is optional
         if let Some(new_validator_slots) = upgrade_config.new_validator_slots() {
             // 3.1.2.4 if new total validator slots is provided, update auction contract state
-            let auction_contract = tracking_copy
+            let auction_contract = post_prune_tracking_copy
                 .borrow_mut()
                 .get_contract(correlation_id, *auction_hash)?;
 
@@ -380,12 +426,14 @@ where
                 CLValue::from_t(new_validator_slots)
                     .map_err(|_| Error::Bytesrepr("new_validator_slots".to_string()))?,
             );
-            tracking_copy.borrow_mut().write(validator_slots_key, value);
+            post_prune_tracking_copy
+                .borrow_mut()
+                .write(validator_slots_key, value);
         }
 
         if let Some(new_auction_delay) = upgrade_config.new_auction_delay() {
             debug!(%new_auction_delay, "Auction delay changed as part of the upgrade");
-            let auction_contract = tracking_copy
+            let auction_contract = post_prune_tracking_copy
                 .borrow_mut()
                 .get_contract(correlation_id, *auction_hash)?;
 
@@ -394,11 +442,13 @@ where
                 CLValue::from_t(new_auction_delay)
                     .map_err(|_| Error::Bytesrepr("new_auction_delay".to_string()))?,
             );
-            tracking_copy.borrow_mut().write(auction_delay_key, value);
+            post_prune_tracking_copy
+                .borrow_mut()
+                .write(auction_delay_key, value);
         }
 
         if let Some(new_locked_funds_period) = upgrade_config.new_locked_funds_period_millis() {
-            let auction_contract = tracking_copy
+            let auction_contract = post_prune_tracking_copy
                 .borrow_mut()
                 .get_contract(correlation_id, *auction_hash)?;
 
@@ -407,7 +457,7 @@ where
                 CLValue::from_t(new_locked_funds_period)
                     .map_err(|_| Error::Bytesrepr("new_locked_funds_period".to_string()))?,
             );
-            tracking_copy
+            post_prune_tracking_copy
                 .borrow_mut()
                 .write(locked_funds_period_key, value);
         }
@@ -418,7 +468,7 @@ where
                 Ratio::new(numer.into(), denom.into())
             };
 
-            let mint_contract = tracking_copy
+            let mint_contract = post_prune_tracking_copy
                 .borrow_mut()
                 .get_contract(correlation_id, *mint_hash)?;
 
@@ -427,9 +477,24 @@ where
                 CLValue::from_t(new_round_seigniorage_rate)
                     .map_err(|_| Error::Bytesrepr("new_round_seigniorage_rate".to_string()))?,
             );
-            tracking_copy
+            post_prune_tracking_copy
                 .borrow_mut()
                 .write(locked_funds_period_key, value);
+        }
+
+        if let Some(new_unbonding_delay) = upgrade_config.new_unbonding_delay() {
+            let auction_contract = post_prune_tracking_copy
+                .borrow_mut()
+                .get_contract(correlation_id, *auction_hash)?;
+
+            let unbonding_delay_key = auction_contract.named_keys()[UNBONDING_DELAY_KEY];
+            let value = StoredValue::CLValue(
+                CLValue::from_t(new_unbonding_delay)
+                    .map_err(|_| Error::Bytesrepr("new_unbonding_delay".to_string()))?,
+            );
+            post_prune_tracking_copy
+                .borrow_mut()
+                .write(unbonding_delay_key, value);
         }
 
         info!("apply the accepted modifications to global state");
@@ -439,74 +504,36 @@ where
             // pruned.
             let is_unit_value = value.is_unit_cl_value();
             if key.into_hash().is_some() && is_unit_value {
-                info!(
+                debug!(
                     "found marker record for package prune; skipping normal operation of write {}",
                     key.to_formatted_string()
                 );
                 continue;
             } else {
-                info!("regular update for key: {}", key.to_formatted_string());
-                tracking_copy.borrow_mut().write(*key, value.clone());
+                info!("update for key: {}", key.to_formatted_string());
+                post_prune_tracking_copy
+                    .borrow_mut()
+                    .write(*key, value.clone());
             }
         }
         info!("finished applying accepted modifications to global state");
-        // We insert the new unbonding delay once the purses to be paid out have been transformed
-        // based on the previous unbonding delay.
-        if let Some(new_unbonding_delay) = upgrade_config.new_unbonding_delay() {
-            let auction_contract = tracking_copy
-                .borrow_mut()
-                .get_contract(correlation_id, *auction_hash)?;
 
-            let unbonding_delay_key = auction_contract.named_keys()[UNBONDING_DELAY_KEY];
-            let value = StoredValue::CLValue(
-                CLValue::from_t(new_unbonding_delay)
-                    .map_err(|_| Error::Bytesrepr("new_unbonding_delay".to_string()))?,
-            );
-            tracking_copy.borrow_mut().write(unbonding_delay_key, value);
-        }
-
-        let execution_effect = tracking_copy.borrow().effect();
+        let execution_effect = post_prune_tracking_copy.borrow().effect();
 
         // commit
-        let mut post_state_hash = self
+        let post_state_hash = self
             .state
             .commit(
                 correlation_id,
-                pre_state_hash,
+                post_prune_state_root_hash,
                 execution_effect.transforms.to_owned(),
             )
             .map_err(Into::into)?;
 
-        info!("committed upgrade with psh: {}", post_state_hash);
-        info!("attempting prune of contract packages");
-
-        // Generate the list of keys to prune
-        let keys_to_prune = system_upgrader
-            .get_contracts_prune_list(correlation_id, upgrade_config.global_state_update())
-            .unwrap_or_else(|upgrade_error| {
-                warn!("error in generating prune list: {:?}", upgrade_error);
-                vec![]
-            });
-
-        info!("keys to prune {:?}", keys_to_prune);
-
-        let prune_config = PruneConfig::new(post_state_hash, keys_to_prune);
-        match self.commit_prune(correlation_id, prune_config) {
-            Ok(PruneResult::Success {
-                post_state_hash: new_state_root_hash,
-                ..
-            }) => {
-                info!(
-                    "prune success with new state root hash {}",
-                    new_state_root_hash
-                );
-                post_state_hash = new_state_root_hash;
-            }
-            Ok(_) | Err(_) => {
-                warn!("failed to prune, reusing previous state root hash");
-            }
-        };
-        info!("upgrade success with post state hash: {}", post_state_hash);
+        info!(
+            "upgrade success with post state hash: {:?}",
+            post_state_hash
+        );
         // return result and effects
         Ok(UpgradeSuccess {
             post_state_hash,
