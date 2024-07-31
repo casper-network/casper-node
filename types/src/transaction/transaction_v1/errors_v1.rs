@@ -163,6 +163,15 @@ pub enum InvalidTransaction {
         /// The provided gas price tolerance.
         provided_gas_price_tolerance: u8,
     },
+    /// Unreachable gas price tolerance.
+    GasPriceToleranceUnreachable {
+        /// Current gas price.
+        current_gas_price: u8,
+        /// Acceptable gas price.
+        provided_gas_price_tolerance: u8,
+        /// Lowest possible gas price within TTL.
+        lowest_possible_gas_price_within_ttl: u8,
+    },
 }
 
 impl Display for InvalidTransaction {
@@ -311,6 +320,18 @@ impl Display for InvalidTransaction {
                     provided_gas_price_tolerance, min_gas_price_tolerance
                 )
             }
+            InvalidTransaction::GasPriceToleranceUnreachable {
+                current_gas_price,
+                provided_gas_price_tolerance,
+                lowest_possible_gas_price_within_ttl,
+            } => {
+                write!(
+                    formatter,
+                    "received a transaction with gas price tolerance {provided_gas_price_tolerance} but current gas \
+                    price is {current_gas_price} and it can only reach {lowest_possible_gas_price_within_ttl} within \
+                    the transaction TTL",
+                )
+            }
         }
     }
 }
@@ -349,6 +370,7 @@ impl StdError for InvalidTransaction {
             | InvalidTransaction::UnableToCalculateGasCost
             | InvalidTransaction::InvalidPricingMode { .. }
             | InvalidTransaction::GasPriceToleranceTooLow { .. }
+            | InvalidTransaction::GasPriceToleranceUnreachable { .. }
             | InvalidTransaction::InvalidTransactionKind(_) => None,
         }
     }

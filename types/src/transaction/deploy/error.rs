@@ -132,6 +132,16 @@ pub enum InvalidDeploy {
         /// The provided gas price tolerance.
         provided_gas_price_tolerance: u8,
     },
+
+    /// Unreachable gas price tolerance.
+    GasPriceToleranceUnreachable {
+        /// Current gas price.
+        current_gas_price: u8,
+        /// Acceptable gas price.
+        provided_gas_price_tolerance: u8,
+        /// Lowest possible gas price within TTL.
+        lowest_possible_gas_price_within_ttl: u8,
+    },
 }
 
 impl Display for InvalidDeploy {
@@ -254,6 +264,13 @@ impl Display for InvalidDeploy {
                 "received a deploy with gas price tolerance {} but this chain will only go as low as {}",
                 provided_gas_price_tolerance, min_gas_price_tolerance
             ),
+            InvalidDeploy::GasPriceToleranceUnreachable { current_gas_price, provided_gas_price_tolerance, lowest_possible_gas_price_within_ttl } =>                 write!(
+                formatter,
+                "received a deploy with gas price tolerance {provided_gas_price_tolerance} but current gas \
+                price is {current_gas_price} and it can only reach {lowest_possible_gas_price_within_ttl} within \
+                the transaction TTL",
+            )
+,
         }
     }
 }
@@ -288,7 +305,8 @@ impl StdError for InvalidDeploy {
             | InvalidDeploy::ExcessiveApprovals { .. }
             | InvalidDeploy::UnableToCalculateGasLimit
             | InvalidDeploy::UnableToCalculateGasCost
-            | InvalidDeploy::GasPriceToleranceTooLow { .. } => None,
+            | InvalidDeploy::GasPriceToleranceTooLow { .. }
+            | InvalidDeploy::GasPriceToleranceUnreachable { .. } => None,
         }
     }
 }

@@ -2430,3 +2430,34 @@ async fn should_reject_deploy_with_too_low_gas_price_tolerance() {
         ))
     ))
 }
+
+#[test]
+fn detects_unreachable_gas_price() {
+    const ONE_MIN: Duration = Duration::from_secs(60);
+    const FIVE_MIN: Duration = Duration::from_secs(5 * 60);
+
+    const ERA_DURATION: Duration = ONE_MIN;
+    const CURRENT_GAS_PRICE: u8 = 10;
+
+    const TX_TTL: Duration = FIVE_MIN;
+
+    // Given the TTL is set to 5 minutes and era duration is 1 minute, we'll have at most 5 price
+    // changes. This means that if the gas price tolerance is more than 5 units lower from the
+    // current gas price, it has no chance to be proposed.
+    const UNREACHABLE_LOW: u8 = 4;
+
+    for gas_price_tolerance in 0..=20 {
+        let (reachable, minimum_possible) = TransactionAcceptor::is_gas_price_tolerance_reachable(
+            TX_TTL,
+            gas_price_tolerance,
+            ERA_DURATION,
+            CURRENT_GAS_PRICE,
+        );
+        if gas_price_tolerance <= UNREACHABLE_LOW {
+            assert!(!reachable);
+        } else {
+            assert!(reachable);
+        }
+        assert!(minimum_possible == UNREACHABLE_LOW + 1);
+    }
+}

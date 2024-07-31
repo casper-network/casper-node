@@ -393,6 +393,15 @@ impl Transaction {
         }
     }
 
+    /// Returns the gas price tolerance.
+    #[cfg(any(feature = "std", test))]
+    pub fn gas_price_tolerance(&self) -> Result<u8, InvalidDeploy> {
+        match self {
+            Transaction::Deploy(deploy) => deploy.gas_price_tolerance(),
+            Transaction::V1(tx) => Ok(tx.header().gas_price_tolerance()),
+        }
+    }
+
     // This method is not intended to be used by third party crates.
     #[doc(hidden)]
     #[cfg(feature = "json-schema")]

@@ -4,11 +4,11 @@ mod event;
 mod metrics;
 mod tests;
 
-use std::{collections::BTreeSet, fmt::Debug, sync::Arc};
+use std::{collections::BTreeSet, fmt::Debug, sync::Arc, time::Duration};
 
 use datasize::DataSize;
 use prometheus::Registry;
-use tracing::{debug, error, trace};
+use tracing::{debug, error, info, trace, warn};
 
 use casper_execution_engine::engine_state::MAX_PAYMENT;
 use casper_storage::data_access_layer::{balance::BalanceHandling, BalanceRequest, ProofHandling};
@@ -16,15 +16,18 @@ use casper_types::{
     account::AccountHash, addressable_entity::AddressableEntity, system::auction::ARG_AMOUNT,
     AddressableEntityHash, AddressableEntityIdentifier, BlockHeader, Chainspec, EntityAddr,
     EntityVersion, EntityVersionKey, EntryPoint, EntryPointAddr, ExecutableDeployItem,
-    ExecutableDeployItemIdentifier, InitiatorAddr, Key, Package, PackageAddr, PackageHash,
-    PackageIdentifier, Transaction, TransactionEntryPoint, TransactionInvocationTarget,
-    TransactionTarget, DEFAULT_ENTRY_POINT_NAME, U512,
+    ExecutableDeployItemIdentifier, InitiatorAddr, InvalidDeploy, InvalidTransaction,
+    InvalidTransactionV1, Key, Package, PackageAddr, PackageHash, PackageIdentifier, Transaction,
+    TransactionEntryPoint, TransactionInvocationTarget, TransactionTarget,
+    DEFAULT_ENTRY_POINT_NAME, U512,
 };
 
 use crate::{
     components::Component,
     effect::{
-        announcements::{FatalAnnouncement, TransactionAcceptorAnnouncement},
+        announcements::{
+            ContractRuntimeAnnouncement, FatalAnnouncement, TransactionAcceptorAnnouncement,
+        },
         requests::{ContractRuntimeRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects, Responder,
     },
@@ -77,6 +80,7 @@ pub struct TransactionAcceptor {
     #[data_size(skip)]
     metrics: metrics::Metrics,
     balance_hold_interval: u64,
+    current_gas_price: Option<u8>,
 }
 
 impl TransactionAcceptor {
@@ -98,7 +102,23 @@ impl TransactionAcceptor {
             administrators,
             metrics: metrics::Metrics::new(registry)?,
             balance_hold_interval,
+            current_gas_price: None,
         })
+    }
+
+    fn is_gas_price_tolerance_reachable(
+        tx_ttl: Duration,
+        tx_gas_tolerance: u8,
+        era_duration: Duration,
+        current_gas_price: u8,
+    ) -> (bool, u8) {
+        let price_changes_within_ttl = tx_ttl.as_secs() / era_duration.as_secs();
+        let minimum_reachable_gas_price = current_gas_price - price_changes_within_ttl as u8;
+
+        (
+            tx_gas_tolerance >= minimum_reachable_gas_price,
+            minimum_reachable_gas_price,
+        )
     }
 
     /// Handles receiving a new `Transaction` from the given source.
@@ -131,6 +151,48 @@ impl TransactionAcceptor {
 
         if let Err(error) = is_config_compliant {
             return self.reject_transaction(effect_builder, *event_metadata, error);
+        }
+
+        if let Some(current_gas_price) = self.current_gas_price {
+            match event_metadata.transaction.gas_price_tolerance() {
+                Ok(gas_price_tolerance) => {
+                    let (reachable, lowest_possible) = Self::is_gas_price_tolerance_reachable(
+                        event_metadata.transaction.ttl().into(),
+                        gas_price_tolerance,
+                        self.chainspec.core_config.era_duration.into(),
+                        current_gas_price,
+                    );
+
+                    if !reachable {
+                        let error: InvalidTransaction = match &event_metadata.transaction {
+                            Transaction::Deploy(_) => InvalidDeploy::GasPriceToleranceUnreachable {
+                                current_gas_price,
+                                provided_gas_price_tolerance: gas_price_tolerance,
+                                lowest_possible_gas_price_within_ttl: lowest_possible,
+                            }
+                            .into(),
+                            Transaction::V1(_) => {
+                                InvalidTransactionV1::GasPriceToleranceUnreachable {
+                                    current_gas_price,
+                                    provided_gas_price_tolerance: gas_price_tolerance,
+                                    lowest_possible_gas_price_within_ttl: lowest_possible,
+                                }
+                            }
+                            .into(),
+                        };
+                        return self.reject_transaction(
+                            effect_builder,
+                            *event_metadata,
+                            error.into(),
+                        );
+                    }
+                }
+                Err(err) => {
+                    info!(hash = %event_metadata.transaction.hash(), %err, "not performing gas tolerance check")
+                }
+            }
+        } else {
+            warn!(hash = %event_metadata.transaction.hash(), "current gas price not announced yet, not performing gas tolerance check")
         }
 
         // We only perform expiry checks on transactions received from the client.
@@ -968,6 +1030,15 @@ impl<REv: ReactorEventT> Component<REv> for TransactionAcceptor {
                 event_metadata,
                 is_new,
             } => self.handle_stored_finalized_approvals(effect_builder, event_metadata, is_new),
+            Event::ContractRuntimeAnnouncement(ann) => {
+                if let ContractRuntimeAnnouncement::NextEraGasPrice {
+                    next_era_gas_price, ..
+                } = ann
+                {
+                    self.current_gas_price = Some(next_era_gas_price);
+                }
+                Effects::new()
+            }
         }
     }
 }
