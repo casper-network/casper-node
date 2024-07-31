@@ -1,6 +1,5 @@
 use std::fmt::{self, Display, Formatter};
 
-use derive_more::From;
 use serde::Serialize;
 
 use casper_types::{
@@ -9,7 +8,7 @@ use casper_types::{
 };
 
 use super::{Error, Source};
-use crate::effect::{announcements::ContractRuntimeAnnouncement, Responder};
+use crate::effect::Responder;
 
 /// A utility struct to hold duplicated information across events.
 #[derive(Debug, Serialize)]
@@ -36,7 +35,7 @@ impl EventMetadata {
 }
 
 /// `TransactionAcceptor` events.
-#[derive(Debug, From, Serialize)]
+#[derive(Debug, Serialize)]
 pub(crate) enum Event {
     /// The initiating event to accept a new `Transaction`.
     Accept {
@@ -100,8 +99,8 @@ pub(crate) enum Event {
         entry_point_name: String,
         maybe_entry_point: Option<EntryPoint>,
     },
-    #[from]
-    ContractRuntimeAnnouncement(ContractRuntimeAnnouncement),
+    /// Updates the current era gas price
+    UpdateCurrentGasPrice(u8),
 }
 
 impl Display for Event {
@@ -209,8 +208,8 @@ impl Display for Event {
                     block_header.state_root_hash(),
                 )
             }
-            Event::ContractRuntimeAnnouncement(ann) => {
-                write!(formatter, "contract runtime announcement: {}", ann)
+            Event::UpdateCurrentGasPrice(current_gas_price) => {
+                write!(formatter, "current gas price set to {}", current_gas_price)
             }
         }
     }

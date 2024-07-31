@@ -921,10 +921,18 @@ impl reactor::Reactor for MainReactor {
                     ContractRuntimeRequest::UpdateRuntimePrice(era_id, next_era_gas_price),
                 );
                 let mut effects = self.dispatch_event(effect_builder, rng, event);
-                let reactor_event = MainEvent::TransactionBuffer(
+                let transaction_buffer_event = MainEvent::TransactionBuffer(
                     transaction_buffer::Event::UpdateEraGasPrice(era_id, next_era_gas_price),
                 );
-                effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
+                let transaction_acceptor_event = MainEvent::TransactionAcceptor(
+                    transaction_acceptor::Event::UpdateCurrentGasPrice(next_era_gas_price),
+                );
+                effects.extend(self.dispatch_event(effect_builder, rng, transaction_buffer_event));
+                effects.extend(self.dispatch_event(
+                    effect_builder,
+                    rng,
+                    transaction_acceptor_event,
+                ));
                 effects
             }
 

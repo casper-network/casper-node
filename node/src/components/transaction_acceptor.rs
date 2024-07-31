@@ -25,9 +25,7 @@ use casper_types::{
 use crate::{
     components::Component,
     effect::{
-        announcements::{
-            ContractRuntimeAnnouncement, FatalAnnouncement, TransactionAcceptorAnnouncement,
-        },
+        announcements::{FatalAnnouncement, TransactionAcceptorAnnouncement},
         requests::{ContractRuntimeRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects, Responder,
     },
@@ -1030,13 +1028,9 @@ impl<REv: ReactorEventT> Component<REv> for TransactionAcceptor {
                 event_metadata,
                 is_new,
             } => self.handle_stored_finalized_approvals(effect_builder, event_metadata, is_new),
-            Event::ContractRuntimeAnnouncement(ann) => {
-                if let ContractRuntimeAnnouncement::NextEraGasPrice {
-                    next_era_gas_price, ..
-                } = ann
-                {
-                    self.current_gas_price = Some(next_era_gas_price);
-                }
+            Event::UpdateCurrentGasPrice(current_gas_price) => {
+                debug!(%current_gas_price, "received current gas price");
+                self.current_gas_price = Some(current_gas_price);
                 Effects::new()
             }
         }
