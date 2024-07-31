@@ -1583,7 +1583,7 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    pub(crate) async fn get_current_gas_price(self, era_id: EraId) -> Option<u8>
+    pub(crate) async fn get_gas_price(self, era_id: EraId) -> Option<u8>
     where
         REv: From<ContractRuntimeRequest>,
     {

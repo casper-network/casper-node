@@ -237,7 +237,7 @@ impl TransactionBuffer {
         if self.prices.get(&era_id).is_none() {
             info!("Empty prices field, requesting gas price from contract runtime");
             return effect_builder
-                .get_current_gas_price(era_id)
+                .get_gas_price(era_id)
                 .event(move |maybe_gas_price| {
                     Event::GetGasPriceResult(
                         maybe_gas_price,
