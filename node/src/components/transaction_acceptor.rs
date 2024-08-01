@@ -120,6 +120,47 @@ impl TransactionAcceptor {
         )
     }
 
+    fn check_reachable_gas_price(&self, txn: &Transaction) -> Result<(), InvalidTransaction> {
+        if let Some(current_gas_price) = self.current_gas_price {
+            match txn.gas_price_tolerance() {
+                Ok(gas_price_tolerance) => {
+                    let (reachable, lowest_possible) = Self::is_gas_price_tolerance_reachable(
+                        txn.ttl().into(),
+                        gas_price_tolerance,
+                        self.chainspec.core_config.era_duration.into(),
+                        current_gas_price,
+                    );
+
+                    if !reachable {
+                        let error: InvalidTransaction = match txn {
+                            Transaction::Deploy(_) => InvalidDeploy::GasPriceToleranceUnreachable {
+                                current_gas_price,
+                                provided_gas_price_tolerance: gas_price_tolerance,
+                                lowest_possible_gas_price_within_ttl: lowest_possible,
+                            }
+                            .into(),
+                            Transaction::V1(_) => {
+                                InvalidTransactionV1::GasPriceToleranceUnreachable {
+                                    current_gas_price,
+                                    provided_gas_price_tolerance: gas_price_tolerance,
+                                    lowest_possible_gas_price_within_ttl: lowest_possible,
+                                }
+                            }
+                            .into(),
+                        };
+                        return Err(error);
+                    }
+                }
+                Err(err) => {
+                    info!(hash = %txn.hash(), %err, "not performing gas tolerance check")
+                }
+            }
+        } else {
+            warn!(hash = %txn.hash(), "current gas price not announced yet, not performing gas tolerance check")
+        }
+        Ok(())
+    }
+
     /// Handles receiving a new `Transaction` from the given source.
     fn accept<REv: ReactorEventT>(
         &mut self,
@@ -152,46 +193,8 @@ impl TransactionAcceptor {
             return self.reject_transaction(effect_builder, *event_metadata, error);
         }
 
-        if let Some(current_gas_price) = self.current_gas_price {
-            match event_metadata.transaction.gas_price_tolerance() {
-                Ok(gas_price_tolerance) => {
-                    let (reachable, lowest_possible) = Self::is_gas_price_tolerance_reachable(
-                        event_metadata.transaction.ttl().into(),
-                        gas_price_tolerance,
-                        self.chainspec.core_config.era_duration.into(),
-                        current_gas_price,
-                    );
-
-                    if !reachable {
-                        let error: InvalidTransaction = match &event_metadata.transaction {
-                            Transaction::Deploy(_) => InvalidDeploy::GasPriceToleranceUnreachable {
-                                current_gas_price,
-                                provided_gas_price_tolerance: gas_price_tolerance,
-                                lowest_possible_gas_price_within_ttl: lowest_possible,
-                            }
-                            .into(),
-                            Transaction::V1(_) => {
-                                InvalidTransactionV1::GasPriceToleranceUnreachable {
-                                    current_gas_price,
-                                    provided_gas_price_tolerance: gas_price_tolerance,
-                                    lowest_possible_gas_price_within_ttl: lowest_possible,
-                                }
-                            }
-                            .into(),
-                        };
-                        return self.reject_transaction(
-                            effect_builder,
-                            *event_metadata,
-                            error.into(),
-                        );
-                    }
-                }
-                Err(err) => {
-                    info!(hash = %event_metadata.transaction.hash(), %err, "not performing gas tolerance check")
-                }
-            }
-        } else {
-            warn!(hash = %event_metadata.transaction.hash(), "current gas price not announced yet, not performing gas tolerance check")
+        if let Err(error) = self.check_reachable_gas_price(&event_metadata.transaction) {
+            return self.reject_transaction(effect_builder, *event_metadata, error.into());
         }
 
         // We only perform expiry checks on transactions received from the client.
