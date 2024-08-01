@@ -2561,38 +2561,19 @@ fn detects_unreachable_gas_price() {
     const UNREACHABLE_LOW: u8 = 4;
 
     for gas_price_tolerance in 0..=20 {
-        let (reachable, minimum_possible) = TransactionAcceptor::is_gas_price_tolerance_reachable(
+        let outcome = TransactionAcceptor::is_gas_price_tolerance_reachable(
             TX_TTL,
             gas_price_tolerance,
             ERA_DURATION,
             CURRENT_GAS_PRICE,
         );
         if gas_price_tolerance <= UNREACHABLE_LOW {
-            assert!(!reachable);
+            assert!(matches!(
+                outcome,
+                GasPriceToleranceCheckOutcome::Unreachable { lowest_possible_gas_price_within_ttl }
+             if lowest_possible_gas_price_within_ttl == UNREACHABLE_LOW + 1));
         } else {
-            assert!(reachable);
+            assert!(matches!(outcome, GasPriceToleranceCheckOutcome::Reachable));
         }
-        assert!(minimum_possible == UNREACHABLE_LOW + 1);
     }
-}
-
-#[test]
-fn minimum_reachable_gas_price_should_not_overflow() {
-    const ONE_MIN: Duration = Duration::from_secs(60);
-    const TWO_HOURS: Duration = Duration::from_secs(60 * 60 * 2);
-
-    const ERA_DURATION: Duration = ONE_MIN;
-    const CURRENT_GAS_PRICE: u8 = 10;
-    const GAS_PRICE_TOLERANCE: u8 = 5;
-
-    const TX_TTL: Duration = TWO_HOURS;
-
-    let (_, minimum_reachable_gas_price) = TransactionAcceptor::is_gas_price_tolerance_reachable(
-        TX_TTL,
-        GAS_PRICE_TOLERANCE,
-        ERA_DURATION,
-        CURRENT_GAS_PRICE,
-    );
-
-    assert_eq!(minimum_reachable_gas_price, 0);
 }

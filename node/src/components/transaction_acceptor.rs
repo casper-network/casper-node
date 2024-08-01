@@ -63,6 +63,15 @@ impl<REv> ReactorEventT for REv where
 {
 }
 
+#[derive(Debug)]
+enum GasPriceToleranceCheckOutcome {
+    Reachable,
+    Unreachable {
+        lowest_possible_gas_price_within_ttl: u8,
+    },
+    Undetermined,
+}
+
 /// The `TransactionAcceptor` is the component which handles all new `Transaction`s immediately
 /// after they're received by this node, regardless of whether they were provided by a peer or a
 /// client, unless they were actively retrieved by this node via a fetch request (in which case the
@@ -109,46 +118,62 @@ impl TransactionAcceptor {
         tx_gas_tolerance: u8,
         era_duration: Duration,
         current_gas_price: u8,
-    ) -> (bool, u8) {
+    ) -> GasPriceToleranceCheckOutcome {
+        if era_duration.as_secs() == 0 {
+            return GasPriceToleranceCheckOutcome::Undetermined;
+        }
         let price_changes_within_ttl = tx_ttl.as_secs() / era_duration.as_secs();
         let minimum_reachable_gas_price =
             current_gas_price.saturating_sub(price_changes_within_ttl as u8);
 
-        (
-            tx_gas_tolerance >= minimum_reachable_gas_price,
-            minimum_reachable_gas_price,
-        )
+        if tx_gas_tolerance >= minimum_reachable_gas_price {
+            return GasPriceToleranceCheckOutcome::Reachable;
+        }
+
+        GasPriceToleranceCheckOutcome::Unreachable {
+            lowest_possible_gas_price_within_ttl: minimum_reachable_gas_price,
+        }
     }
 
     fn check_reachable_gas_price(&self, txn: &Transaction) -> Result<(), InvalidTransaction> {
         if let Some(current_gas_price) = self.current_gas_price {
             match txn.gas_price_tolerance() {
                 Ok(gas_price_tolerance) => {
-                    let (reachable, lowest_possible) = Self::is_gas_price_tolerance_reachable(
+                    match Self::is_gas_price_tolerance_reachable(
                         txn.ttl().into(),
                         gas_price_tolerance,
                         self.chainspec.core_config.era_duration.into(),
                         current_gas_price,
-                    );
-
-                    if !reachable {
-                        let error: InvalidTransaction = match txn {
-                            Transaction::Deploy(_) => InvalidDeploy::GasPriceToleranceUnreachable {
-                                current_gas_price,
-                                provided_gas_price_tolerance: gas_price_tolerance,
-                                lowest_possible_gas_price_within_ttl: lowest_possible,
-                            }
-                            .into(),
-                            Transaction::V1(_) => {
-                                InvalidTransactionV1::GasPriceToleranceUnreachable {
-                                    current_gas_price,
-                                    provided_gas_price_tolerance: gas_price_tolerance,
-                                    lowest_possible_gas_price_within_ttl: lowest_possible,
+                    ) {
+                        GasPriceToleranceCheckOutcome::Reachable => return Ok(()),
+                        GasPriceToleranceCheckOutcome::Undetermined => {
+                            // If we're unable to determine the minimum reachable gas price, we
+                            // should not reject the transaction.
+                            return Ok(());
+                        }
+                        GasPriceToleranceCheckOutcome::Unreachable {
+                            lowest_possible_gas_price_within_ttl,
+                        } => {
+                            let error: InvalidTransaction = match txn {
+                                Transaction::Deploy(_) => {
+                                    InvalidDeploy::GasPriceToleranceUnreachable {
+                                        current_gas_price,
+                                        provided_gas_price_tolerance: gas_price_tolerance,
+                                        lowest_possible_gas_price_within_ttl,
+                                    }
+                                    .into()
                                 }
-                            }
-                            .into(),
-                        };
-                        return Err(error);
+                                Transaction::V1(_) => {
+                                    InvalidTransactionV1::GasPriceToleranceUnreachable {
+                                        current_gas_price,
+                                        provided_gas_price_tolerance: gas_price_tolerance,
+                                        lowest_possible_gas_price_within_ttl,
+                                    }
+                                }
+                                .into(),
+                            };
+                            return Err(error);
+                        }
                     }
                 }
                 Err(err) => {
