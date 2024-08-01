@@ -111,7 +111,8 @@ impl TransactionAcceptor {
         current_gas_price: u8,
     ) -> (bool, u8) {
         let price_changes_within_ttl = tx_ttl.as_secs() / era_duration.as_secs();
-        let minimum_reachable_gas_price = current_gas_price - price_changes_within_ttl as u8;
+        let minimum_reachable_gas_price =
+            current_gas_price.saturating_sub(price_changes_within_ttl as u8);
 
         (
             tx_gas_tolerance >= minimum_reachable_gas_price,
