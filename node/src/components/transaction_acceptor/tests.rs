@@ -2525,7 +2525,6 @@ async fn should_reject_deploy_with_too_low_gas_price_tolerance() {
 async fn should_reject_transaction_v1_with_unreachable_gas_price_tolerance() {
     let test_scenario = TestScenario::UnreachableGasPriceToleranceForTransactionV1;
     let result = run_transaction_acceptor_with_gas_price(test_scenario, 20).await;
-    dbg!(&result);
     assert!(matches!(
         result,
         Err(super::Error::InvalidTransaction(InvalidTransaction::V1(
