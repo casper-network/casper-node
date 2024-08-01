@@ -14,7 +14,7 @@ use crate::{
 };
 use casper_types::{
     account::AccountHash,
-    addressable_entity::{EntryPointV2, NamedKeys},
+    addressable_entity::NamedKeys,
     bytesrepr::ToBytes,
     contracts::ContractHash,
     global_state::TrieMerkleProof,
@@ -101,11 +101,6 @@ pub trait TrackingCopyExt<R> {
 
     /// Returns the collection of entry points for a given AddresableEntity.
     fn get_v1_entry_points(&mut self, entity_addr: EntityAddr) -> Result<EntryPoints, Self::Error>;
-
-    fn get_v2_entry_points(
-        &mut self,
-        entity_addr: EntityAddr,
-    ) -> Result<Vec<(Key, EntryPointV2)>, Self::Error>;
 
     /// Gets a package by hash.
     fn get_package(&mut self, package_hash: PackageHash) -> Result<Package, Self::Error>;
@@ -630,46 +625,6 @@ where
         }
 
         Ok(entry_points_v1)
-    }
-
-    fn get_v2_entry_points(
-        &mut self,
-        entity_addr: EntityAddr,
-    ) -> Result<Vec<(Key, EntryPointV2)>, Self::Error> {
-        let keys = self.get_keys_by_prefix(&KeyPrefix::EntryPointsV2ByEntity(entity_addr))?;
-        let mut entry_points_v2 = Vec::new();
-        for entry_point_key in keys.iter() {
-            match self.read(entry_point_key)? {
-                Some(StoredValue::EntryPoint(EntryPointValue::V2CasperVm(entry_point))) => {
-                    entry_points_v2.push((*entry_point_key, entry_point));
-                }
-                Some(other) => {
-                    return Err(TrackingCopyError::TypeMismatch(
-                        StoredValueTypeMismatch::new(
-                            "EntryPointsV2".to_string(),
-                            other.type_name(),
-                        ),
-                    ));
-                }
-                None => match self.cache.reads_cached.get(entry_point_key) {
-                    Some(StoredValue::EntryPoint(EntryPointValue::V2CasperVm(entry_point))) => {
-                        entry_points_v2.push((*entry_point_key, entry_point.to_owned()));
-                    }
-                    Some(other) => {
-                        return Err(TrackingCopyError::TypeMismatch(
-                            StoredValueTypeMismatch::new(
-                                "EntryPointsV2".to_string(),
-                                other.type_name(),
-                            ),
-                        ));
-                    }
-                    None => {
-                        return Err(TrackingCopyError::KeyNotFound(*entry_point_key));
-                    }
-                },
-            }
-        }
-        Ok(entry_points_v2)
     }
 
     fn get_package(&mut self, package_hash: PackageHash) -> Result<Package, Self::Error> {

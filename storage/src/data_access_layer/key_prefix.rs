@@ -253,13 +253,6 @@ mod tests {
                 ),
                 KeyPrefix::EntryPointsV1ByEntity(EntityAddr::Account(hash1)),
             ),
-            (
-                Key::EntryPoint(EntryPointAddr::new_v2_entry_point_addr(
-                    EntityAddr::Account(hash1),
-                    0,
-                )),
-                KeyPrefix::EntryPointsV2ByEntity(EntityAddr::Account(hash1)),
-            ),
         ] {
             let key_bytes = key.to_bytes().expect("should serialize key");
             let (parsed_key_prefix, remainder) =

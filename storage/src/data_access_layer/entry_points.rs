@@ -46,7 +46,6 @@ impl EntryPointsResult {
         if let Self::Success { entry_point } = self {
             match entry_point {
                 EntryPointValue::V1CasperVm(entry_point) => Some(entry_point),
-                EntryPointValue::V2CasperVm(_) => None,
             }
         } else {
             None

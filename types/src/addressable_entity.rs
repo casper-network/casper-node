@@ -51,8 +51,7 @@ pub use self::{
     associated_keys::AssociatedKeys,
     entry_points::{
         EntryPoint, EntryPointAccess, EntryPointAddr, EntryPointPayment, EntryPointType,
-        EntryPointV2, EntryPointValue, EntryPoints, Parameter, Parameters,
-        DEFAULT_ENTRY_POINT_NAME,
+        EntryPointValue, EntryPoints, Parameter, Parameters, DEFAULT_ENTRY_POINT_NAME,
     },
     error::{
         FromAccountHashStrError, SetThresholdFailure, TryFromIntError,
