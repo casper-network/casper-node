@@ -46,9 +46,12 @@ use crate::{
     components::{
         network::Identity as NetworkIdentity,
         storage::{self, Storage},
+        transaction_acceptor,
     },
     effect::{
-        announcements::{ControlAnnouncement, TransactionAcceptorAnnouncement},
+        announcements::{
+            ContractRuntimeAnnouncement, ControlAnnouncement, TransactionAcceptorAnnouncement,
+        },
         requests::{
             ContractRuntimeRequest, MakeBlockExecutableRequest, MarkBlockCompletedRequest,
             NetworkRequest,
@@ -87,6 +90,8 @@ enum Event {
     StorageRequest(StorageRequest),
     #[from]
     NetworkRequest(NetworkRequest<Message>),
+    #[from]
+    ContractRuntimeAnnouncement(ContractRuntimeAnnouncement),
 }
 
 impl From<MakeBlockExecutableRequest> for Event {
@@ -141,6 +146,9 @@ impl Display for Event {
             }
             Event::StorageRequest(request) => write!(formatter, "storage request: {:?}", request),
             Event::NetworkRequest(request) => write!(formatter, "network request: {:?}", request),
+            Event::ContractRuntimeAnnouncement(ann) => {
+                write!(formatter, "contract runtime: {}", ann)
+            }
         }
     }
 }
@@ -214,6 +222,8 @@ enum TestScenario {
     InvalidPricingModeForTransactionV1,
     TooLowGasPriceToleranceForTransactionV1,
     TooLowGasPriceToleranceForDeploy,
+    UnreachableGasPriceToleranceForTransactionV1,
+    UnreachableGasPriceToleranceForDeploy,
 }
 
 impl TestScenario {
@@ -256,7 +266,9 @@ impl TestScenario {
             | TestScenario::DeployWithNativeTransferInPayment
             | TestScenario::InvalidPricingModeForTransactionV1
             | TestScenario::TooLowGasPriceToleranceForTransactionV1
-            | TestScenario::TooLowGasPriceToleranceForDeploy => Source::Client,
+            | TestScenario::TooLowGasPriceToleranceForDeploy
+            | TestScenario::UnreachableGasPriceToleranceForTransactionV1
+            | TestScenario::UnreachableGasPriceToleranceForDeploy => Source::Client,
         }
     }
 
@@ -588,6 +600,41 @@ impl TestScenario {
                 let deploy = Deploy::random_with_gas_price(rng, TOO_LOW_GAS_PRICE_TOLERANCE);
                 Transaction::from(deploy)
             }
+            TestScenario::UnreachableGasPriceToleranceForTransactionV1 => {
+                // For this scenario, network will start with "current gas price" set to 20.
+                // It'll not be able to reach the gas price tolerance of 10 within 5 minutes.
+
+                const UNREACHABLE_GAS_PRICE_TOLERANCE: u8 = 10;
+                const FIVE_MINUTES: u32 = 5 * 60;
+                let timestamp = Timestamp::now() + (Config::default().timestamp_leeway / 2);
+
+                let fixed_mode_transaction = TransactionV1Builder::new_random(rng)
+                    .with_pricing_mode(PricingMode::Fixed {
+                        gas_price_tolerance: UNREACHABLE_GAS_PRICE_TOLERANCE,
+                    })
+                    .with_timestamp(timestamp)
+                    .with_ttl(TimeDiff::from_seconds(FIVE_MINUTES))
+                    .with_chain_name("casper-example")
+                    .build()
+                    .expect("must create fixed mode transaction");
+                Transaction::from(fixed_mode_transaction)
+            }
+            TestScenario::UnreachableGasPriceToleranceForDeploy => {
+                // For this scenario, network will start with "current gas price" set to 20.
+                // It'll not be able to reach the gas price tolerance of 10 within 5 minutes.
+
+                const UNREACHABLE_GAS_PRICE_TOLERANCE: u64 = 10;
+                const FIVE_MINUTES: u32 = 5 * 60;
+                let timestamp = Timestamp::now() + (Config::default().timestamp_leeway / 2);
+
+                let deploy = Deploy::random_with_timestamp_and_ttl_and_gas_price(
+                    rng,
+                    timestamp,
+                    TimeDiff::from_seconds(FIVE_MINUTES),
+                    UNREACHABLE_GAS_PRICE_TOLERANCE,
+                );
+                Transaction::from(deploy)
+            }
         }
     }
 
@@ -644,6 +691,8 @@ impl TestScenario {
             TestScenario::InvalidPricingModeForTransactionV1 => false,
             TestScenario::TooLowGasPriceToleranceForTransactionV1 => false,
             TestScenario::TooLowGasPriceToleranceForDeploy => false,
+            TestScenario::UnreachableGasPriceToleranceForTransactionV1 => false,
+            TestScenario::UnreachableGasPriceToleranceForDeploy => false,
         }
     }
 
@@ -952,6 +1001,19 @@ impl reactor::Reactor for Reactor {
                 _ => panic!("should not receive {:?}", event),
             },
             Event::NetworkRequest(_) => panic!("test does not handle network requests"),
+            Event::ContractRuntimeAnnouncement(ann) => {
+                if let ContractRuntimeAnnouncement::NextEraGasPrice {
+                    next_era_gas_price, ..
+                } = ann
+                {
+                    self.transaction_acceptor.handle_event(
+                        effect_builder,
+                        rng,
+                        transaction_acceptor::Event::UpdateCurrentGasPrice(next_era_gas_price),
+                    );
+                }
+                Effects::new()
+            }
         }
     }
 
@@ -1080,6 +1142,7 @@ fn inject_balance_check_for_peer(
 
 async fn run_transaction_acceptor_without_timeout(
     test_scenario: TestScenario,
+    current_gas_price: Option<u8>,
 ) -> Result<(), super::Error> {
     let _ = logging::init();
     let rng = &mut TestRng::new();
@@ -1114,6 +1177,19 @@ async fn run_transaction_acceptor_without_timeout(
         }
     }
     assert!(result_receiver.await.unwrap());
+
+    // Set the current gas price if test scenario requires so.
+    if let Some(current_gas_price) = current_gas_price {
+        runner
+            .process_injected_effects(|effect_builder: EffectBuilder<Event>| {
+                let event = transaction_acceptor::Event::UpdateCurrentGasPrice(current_gas_price);
+                effect_builder
+                    .into_inner()
+                    .schedule(event, QueueKind::ContractRuntime)
+                    .ignore()
+            })
+            .await;
+    }
 
     // Create a responder to assert the validity of the transaction
     let (txn_sender, txn_receiver) = oneshot::channel();
@@ -1182,7 +1258,9 @@ async fn run_transaction_acceptor_without_timeout(
             | TestScenario::InvalidPricingModeForTransactionV1
             | TestScenario::FromClientExpired(_)
             | TestScenario::TooLowGasPriceToleranceForTransactionV1
-            | TestScenario::TooLowGasPriceToleranceForDeploy => {
+            | TestScenario::TooLowGasPriceToleranceForDeploy
+            | TestScenario::UnreachableGasPriceToleranceForTransactionV1
+            | TestScenario::UnreachableGasPriceToleranceForDeploy => {
                 matches!(
                     event,
                     Event::TransactionAcceptorAnnouncement(
@@ -1352,7 +1430,19 @@ async fn run_transaction_acceptor_without_timeout(
 async fn run_transaction_acceptor(test_scenario: TestScenario) -> Result<(), super::Error> {
     time::timeout(
         TIMEOUT,
-        run_transaction_acceptor_without_timeout(test_scenario),
+        run_transaction_acceptor_without_timeout(test_scenario, None),
+    )
+    .await
+    .unwrap()
+}
+
+async fn run_transaction_acceptor_with_gas_price(
+    test_scenario: TestScenario,
+    gas_price: u8,
+) -> Result<(), super::Error> {
+    time::timeout(
+        TIMEOUT,
+        run_transaction_acceptor_without_timeout(test_scenario, Some(gas_price)),
     )
     .await
     .unwrap()
@@ -2427,6 +2517,31 @@ async fn should_reject_deploy_with_too_low_gas_price_tolerance() {
         result,
         Err(super::Error::InvalidTransaction(
             InvalidTransaction::Deploy(InvalidDeploy::GasPriceToleranceTooLow { .. })
+        ))
+    ))
+}
+
+#[tokio::test]
+async fn should_reject_transaction_v1_with_unreachable_gas_price_tolerance() {
+    let test_scenario = TestScenario::UnreachableGasPriceToleranceForTransactionV1;
+    let result = run_transaction_acceptor_with_gas_price(test_scenario, 20).await;
+    dbg!(&result);
+    assert!(matches!(
+        result,
+        Err(super::Error::InvalidTransaction(InvalidTransaction::V1(
+            InvalidTransactionV1::GasPriceToleranceUnreachable { .. }
+        )))
+    ))
+}
+
+#[tokio::test]
+async fn should_reject_deploy_with_unreachable_gas_price_tolerance() {
+    let test_scenario = TestScenario::UnreachableGasPriceToleranceForDeploy;
+    let result = run_transaction_acceptor_with_gas_price(test_scenario, 20).await;
+    assert!(matches!(
+        result,
+        Err(super::Error::InvalidTransaction(
+            InvalidTransaction::Deploy(InvalidDeploy::GasPriceToleranceUnreachable { .. })
         ))
     ))
 }
