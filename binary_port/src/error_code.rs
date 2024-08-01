@@ -277,6 +277,9 @@ pub enum ErrorCode {
     /// Received V1 Transaction for spec exec.
     #[error("received v1 transaction for speculative execution")]
     ReceivedV1Transaction = 86,
+    /// Purse was not found for given identifier.
+    #[error("purse was not found for given identifier")]
+    PurseNotFound = 87,
 }
 
 impl TryFrom<u16> for ErrorCode {
@@ -371,6 +374,7 @@ impl TryFrom<u16> for ErrorCode {
             84 => Ok(ErrorCode::InvalidTransactionInvalidTransactionKind),
             85 => Ok(ErrorCode::GasPriceToleranceTooLow),
             86 => Ok(ErrorCode::ReceivedV1Transaction),
+            87 => Ok(ErrorCode::PurseNotFound),
             _ => Err(UnknownErrorCode),
         }
     }
