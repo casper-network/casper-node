@@ -585,6 +585,44 @@ impl Deploy {
         )
     }
 
+    /// Returns a random `Deploy` but using the specified `timestamp`, `ttl` and `gas_price`.
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
+    pub fn random_with_timestamp_and_ttl_and_gas_price(
+        rng: &mut TestRng,
+        timestamp: Timestamp,
+        ttl: TimeDiff,
+        gas_price: u64,
+    ) -> Self {
+        let dependencies = vec![];
+        let chain_name = String::from("casper-example");
+
+        // We need "amount" in order to be able to get correct info via `deploy_info()`.
+        let payment_args = runtime_args! {
+            "amount" => U512::from(DEFAULT_MAX_PAYMENT_MOTES),
+        };
+        let payment = ExecutableDeployItem::StoredContractByName {
+            name: String::from("casper-example"),
+            entry_point: String::from("example-entry-point"),
+            args: payment_args,
+        };
+
+        let session = rng.gen();
+
+        let secret_key = SecretKey::random(rng);
+
+        Deploy::new(
+            timestamp,
+            ttl,
+            gas_price,
+            dependencies,
+            chain_name,
+            payment,
+            session,
+            &secret_key,
+            None,
+        )
+    }
+
     /// Turns `self` into an invalid `Deploy` by clearing the `chain_name`, invalidating the deploy
     /// hash.
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
