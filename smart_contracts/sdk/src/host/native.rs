@@ -104,11 +104,6 @@ pub struct TaggedValue {
     value: Bytes,
 }
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone)]
-pub struct BorrowedTaggedValue<'a> {
-    tag: u64,
-    value: &'a [u8],
-}
 pub type Container = BTreeMap<u64, BTreeMap<Bytes, TaggedValue>>;
 
 #[derive(Clone, Debug)]
