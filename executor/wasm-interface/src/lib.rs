@@ -238,6 +238,9 @@ pub trait Caller {
     /// Returns currently running *unmodified* bytecode.
     fn bytecode(&self) -> Bytes;
 
+    /// Check if an export is present in the module.
+    fn has_export(&self, name: &str) -> bool;
+
     fn memory_read(&self, offset: u32, size: usize) -> VMResult<Vec<u8>> {
         let mut vec = vec![0; size];
         self.memory_read_into(offset, &mut vec)?;

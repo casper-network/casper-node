@@ -431,7 +431,7 @@ impl Executor for ExecutorV2 {
             .with_memory_limit(self.config.memory_limit)
             .build();
 
-        let mut instance = vm.prepare(wasm_bytes, context, wasm_instance_config)?;
+        let mut instance = vm.instantiate(wasm_bytes, context, wasm_instance_config)?;
 
         self.push_execution_stack(execution_kind.clone());
         let (vm_result, gas_usage) = match export_or_selector {

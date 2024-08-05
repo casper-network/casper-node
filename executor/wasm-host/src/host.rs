@@ -1,10 +1,14 @@
-use std::{cmp, num::NonZeroU32, sync::Arc};
+use std::{borrow::Cow, cmp, num::NonZeroU32, sync::Arc};
 
 use crate::system::{self, MintArgs, MintTransferArgs};
 
 use crate::{abi::CreateResult, context::Context};
 use bytes::Bytes;
 use casper_executor_wasm_common::{
+    entry_point::{
+        ENTRY_POINT_PAYMENT_CALLER, ENTRY_POINT_PAYMENT_SELF_ONLY, ENTRY_POINT_PAYMENT_SELF_ONWARD,
+    },
+    error::{HOST_ERROR_INVALID_DATA, HOST_ERROR_INVALID_INPUT, HOST_ERROR_NOT_FOUND},
     flags::ReturnFlags,
     keyspace::{Keyspace, KeyspaceTag},
 };
@@ -13,9 +17,10 @@ use casper_storage::{global_state::GlobalStateReader, tracking_copy::TrackingCop
 use casper_types::{
     account::AccountHash,
     addressable_entity::{ActionThresholds, AssociatedKeys, MessageTopics, NamedKeyAddr},
-    AddressableEntity, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, Digest, EntityAddr,
-    EntityKind, Groups, HashAddr, Key, Package, PackageHash, PackageStatus, ProtocolVersion,
-    StoredValue, TransactionRuntime, URef, U512,
+    AddressableEntity, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLType, Digest,
+    EntityAddr, EntityKind, EntryPoint, EntryPointAccess, EntryPointAddr, EntryPointPayment,
+    EntryPointType, EntryPointValue, Groups, HashAddr, Key, Package, PackageHash, PackageStatus,
+    ProtocolVersion, StoredValue, TransactionRuntime, URef, U512,
 };
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
@@ -67,6 +72,21 @@ pub fn casper_write<S: GlobalStateReader, E: Executor>(
 
             Keyspace::NamedKey(key_name)
         }
+        KeyspaceTag::PaymentInfo => {
+            let key_name = match std::str::from_utf8(&key_payload_bytes) {
+                Ok(key_name) => key_name,
+                Err(_) => {
+                    return Ok(1);
+                }
+            };
+
+            if !caller.has_export(key_name) {
+                // Missing wasm export, unable to perform global state write
+                return Ok(1);
+            }
+
+            Keyspace::PaymentInfo(key_name)
+        }
     };
 
     let global_state_key = match keyspace_to_global_state_key(caller.context(), keyspace) {
@@ -79,10 +99,38 @@ pub fn casper_write<S: GlobalStateReader, E: Executor>(
 
     let value = caller.memory_read(value_ptr, value_size.try_into().unwrap())?;
 
+    let stored_value = match keyspace {
+        Keyspace::State | Keyspace::Context(_) | Keyspace::NamedKey(_) => {
+            StoredValue::RawBytes(value)
+        }
+        Keyspace::PaymentInfo(_) => {
+            let entry_point_payment = match value.as_slice() {
+                [ENTRY_POINT_PAYMENT_CALLER] => EntryPointPayment::Caller,
+                [ENTRY_POINT_PAYMENT_SELF_ONLY] => EntryPointPayment::SelfOnly,
+                [ENTRY_POINT_PAYMENT_SELF_ONWARD] => EntryPointPayment::SelfOnward,
+                _ => {
+                    // Invalid entry point payment variant
+                    return Ok(HOST_ERROR_INVALID_INPUT);
+                }
+            };
+
+            let entry_point = EntryPoint::new(
+                "_",
+                Vec::new(),
+                CLType::Unit,
+                EntryPointAccess::Public,
+                EntryPointType::Called,
+                entry_point_payment,
+            );
+            let entry_point_value = EntryPointValue::V1CasperVm(entry_point);
+            StoredValue::EntryPoint(entry_point_value)
+        }
+    };
+
     caller
         .context_mut()
         .tracking_copy
-        .write(global_state_key, StoredValue::RawBytes(value));
+        .write(global_state_key, stored_value);
 
     Ok(0)
 }
@@ -112,7 +160,7 @@ pub fn casper_read<S: GlobalStateReader, E: Executor>(
         Some(keyspace_tag) => keyspace_tag,
         None => {
             // Unknown keyspace received, return error
-            return Ok(1);
+            return Ok(HOST_ERROR_INVALID_INPUT);
         }
     };
 
@@ -127,12 +175,24 @@ pub fn casper_read<S: GlobalStateReader, E: Executor>(
             let key_name = match std::str::from_utf8(&key_payload_bytes) {
                 Ok(key_name) => key_name,
                 Err(_) => {
-                    // TODO: Invalid key name encoding
-                    return Ok(1);
+                    return Ok(HOST_ERROR_INVALID_DATA);
                 }
             };
 
             Keyspace::NamedKey(key_name)
+        }
+        KeyspaceTag::PaymentInfo => {
+            let key_name = match std::str::from_utf8(&key_payload_bytes) {
+                Ok(key_name) => key_name,
+                Err(_) => {
+                    return Ok(HOST_ERROR_INVALID_DATA);
+                }
+            };
+            if !caller.has_export(key_name) {
+                // Missing wasm export, unable to perform global state read
+                return Ok(HOST_ERROR_NOT_FOUND);
+            }
+            Keyspace::PaymentInfo(key_name)
         }
     };
 
@@ -143,27 +203,16 @@ pub fn casper_read<S: GlobalStateReader, E: Executor>(
             return Ok(1);
         }
     };
+    let global_state_read_result = caller.context_mut().tracking_copy.read(&global_state_key);
 
-    match caller.context_mut().tracking_copy.read(&global_state_key) {
-        Ok(Some(StoredValue::RawBytes(raw_bytes))) => {
-            let out_ptr: u32 = if cb_alloc != 0 {
-                caller.alloc(cb_alloc, raw_bytes.len(), alloc_ctx)?
-            } else {
-                // treats alloc_ctx as data
-                alloc_ctx
-            };
-
-            let read_info = ReadInfo {
-                data: out_ptr,
-                data_size: raw_bytes.len().try_into().unwrap(),
-            };
-
-            let read_info_bytes = safe_transmute::transmute_one_to_bytes(&read_info);
-            caller.memory_write(info_ptr, read_info_bytes)?;
-            if out_ptr != 0 {
-                caller.memory_write(out_ptr, &raw_bytes)?;
+    let global_state_raw_bytes: Cow<[u8]> = match global_state_read_result {
+        Ok(Some(StoredValue::RawBytes(raw_bytes))) => Cow::Owned(raw_bytes),
+        Ok(Some(StoredValue::EntryPoint(EntryPointValue::V1CasperVm(entry_point)))) => {
+            match entry_point.entry_point_payment() {
+                EntryPointPayment::Caller => Cow::Borrowed(&[ENTRY_POINT_PAYMENT_CALLER]),
+                EntryPointPayment::SelfOnly => Cow::Borrowed(&[ENTRY_POINT_PAYMENT_SELF_ONLY]),
+                EntryPointPayment::SelfOnward => Cow::Borrowed(&[ENTRY_POINT_PAYMENT_SELF_ONWARD]),
             }
-            Ok(0)
         }
         Ok(Some(stored_value)) => {
             // TODO: Backwards compatibility with old EE, although it's not clear if we should do it
@@ -174,7 +223,7 @@ pub fn casper_read<S: GlobalStateReader, E: Executor>(
             // deprecate this.
             todo!("Unsupported {stored_value:?}")
         }
-        Ok(None) => Ok(1), // Entry does not exists
+        Ok(None) => return Ok(HOST_ERROR_NOT_FOUND), // Entry does not exists
         Err(error) => {
             // To protect the network against potential non-determinism (i.e. one validator runs out
             // of space or just faces I/O issues that other validators may not have) we're simply
@@ -184,7 +233,26 @@ pub fn casper_read<S: GlobalStateReader, E: Executor>(
             error!(?error, "Error while reading from storage; aborting");
             panic!("Error while reading from storage; aborting key={global_state_key:?} error={error:?}")
         }
+    };
+
+    let out_ptr: u32 = if cb_alloc != 0 {
+        caller.alloc(cb_alloc, global_state_raw_bytes.len(), alloc_ctx)?
+    } else {
+        // treats alloc_ctx as data
+        alloc_ctx
+    };
+
+    let read_info = ReadInfo {
+        data: out_ptr,
+        data_size: global_state_raw_bytes.len().try_into().unwrap(),
+    };
+
+    let read_info_bytes = safe_transmute::transmute_one_to_bytes(&read_info);
+    caller.memory_write(info_ptr, read_info_bytes)?;
+    if out_ptr != 0 {
+        caller.memory_write(out_ptr, &global_state_raw_bytes)?;
     }
+    Ok(0)
 }
 
 fn keyspace_to_global_state_key<S: GlobalStateReader, E: Executor>(
@@ -215,6 +283,11 @@ fn keyspace_to_global_state_key<S: GlobalStateReader, E: Executor>(
             Some(casper_types::Key::NamedKey(
                 NamedKeyAddr::new_named_key_entry(entity_addr, digest.value()),
             ))
+        }
+        Keyspace::PaymentInfo(payload) => {
+            let entry_point_addr =
+                EntryPointAddr::new_v1_entry_point_addr(entity_addr, payload).ok()?;
+            Some(Key::EntryPoint(entry_point_addr))
         }
     }
 }

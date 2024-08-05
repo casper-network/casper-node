@@ -119,7 +119,7 @@ fn harness() {
             .map(Bytes::from)
             .unwrap();
 
-        let create_request = base_store_request_builder()
+        let install_request = base_store_request_builder()
             .with_wasm_bytes(VM2_CEP18.clone())
             .with_shared_address_generator(Arc::clone(&address_generator))
             .with_value(0)
@@ -132,7 +132,7 @@ fn harness() {
             &mut executor,
             &mut global_state,
             state_root_hash,
-            create_request,
+            install_request,
         );
 
         flipper_address = create_result.contract_hash().value();

@@ -1,7 +1,13 @@
-use std::collections::{BTreeSet, HashMap, LinkedList};
+use std::{
+    collections::{BTreeSet, HashMap, LinkedList},
+    ptr::NonNull,
+};
 
 use casper_macros::casper;
 use casper_sdk::{
+    casper_executor_wasm_common::{
+        entry_point::ENTRY_POINT_PAYMENT_CALLER, error::Error, keyspace::Keyspace,
+    },
     collections::Map,
     host::{self, Entity},
     log, revert,
@@ -72,6 +78,30 @@ impl Harness {
     #[casper(constructor)]
     pub fn constructor_with_args(who: String) -> Self {
         log!("👋 Hello from constructor with args: {who}");
+
+        assert_eq!(
+            host::casper_write(Keyspace::PaymentInfo("this does not exists"), &[0]),
+            Err(Error::NotFound)
+        );
+
+        {
+            host::casper_write(
+                Keyspace::PaymentInfo("counter"),
+                &[ENTRY_POINT_PAYMENT_CALLER],
+            )
+            .unwrap();
+
+            let mut buffer = [255; 1];
+            assert_eq!(
+                host::casper_read(Keyspace::PaymentInfo("counter"), |size| {
+                    assert_eq!(size, 1, "Size should be 1");
+                    NonNull::new(&mut buffer[0])
+                }),
+                Ok(Some(()))
+            );
+            assert_eq!(&buffer, &[ENTRY_POINT_PAYMENT_CALLER]);
+        }
+
         Self {
             counter: 0,
             greeting: format!("Hello, {who}!"),

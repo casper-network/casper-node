@@ -11,6 +11,7 @@ use crate::{
 };
 
 use casper_executor_wasm_common::{
+    error::Error,
     flags::ReturnFlags,
     keyspace::{Keyspace, KeyspaceTag},
 };
@@ -19,15 +20,9 @@ use casper_sdk_sys::casper_env_caller;
 use crate::{
     abi::{CasperABI, EnumVariant},
     reserve_vec_space,
-    types::{Address, CallError, Entry},
+    types::{Address, CallError},
     ToCallData,
 };
-
-#[derive(Debug)]
-pub enum Error {
-    Foo,
-    Bar,
-}
 
 pub fn casper_print(msg: &str) {
     unsafe { casper_sdk_sys::casper_print(msg.as_ptr(), msg.len()) };
@@ -104,11 +99,12 @@ pub fn casper_return(flags: ReturnFlags, data: Option<&[u8]>) {
 pub fn casper_read<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
     key: Keyspace,
     f: F,
-) -> Result<Option<Entry>, Error> {
+) -> Result<Option<()>, Error> {
     let (key_space, key_bytes) = match key {
         Keyspace::State => (KeyspaceTag::State as u64, &[][..]),
         Keyspace::Context(key_bytes) => (KeyspaceTag::Context as u64, key_bytes),
         Keyspace::NamedKey(key_bytes) => (KeyspaceTag::NamedKey as u64, key_bytes.as_bytes()),
+        Keyspace::PaymentInfo(payload) => (KeyspaceTag::PaymentInfo as u64, payload.as_bytes()),
     };
 
     let mut info = casper_sdk_sys::ReadInfo {
@@ -142,11 +138,12 @@ pub fn casper_read<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
     };
 
     if ret == 0 {
-        Ok(Some(Entry(())))
-    } else if ret == 1 {
-        Ok(None)
+        Ok(Some(()))
     } else {
-        Err(Error::Foo)
+        match Error::from(ret) {
+            Error::NotFound => Ok(None),
+            other => Err(other),
+        }
     }
 }
 
@@ -155,8 +152,9 @@ pub fn casper_write(key: Keyspace, value: &[u8]) -> Result<(), Error> {
         Keyspace::State => (KeyspaceTag::State as u64, &[][..]),
         Keyspace::Context(key_bytes) => (KeyspaceTag::Context as u64, key_bytes),
         Keyspace::NamedKey(key_bytes) => (KeyspaceTag::NamedKey as u64, key_bytes.as_bytes()),
+        Keyspace::PaymentInfo(payload) => (KeyspaceTag::PaymentInfo as u64, payload.as_bytes()),
     };
-    let _ret = unsafe {
+    let ret = unsafe {
         casper_sdk_sys::casper_write(
             key_space,
             key_bytes.as_ptr(),
@@ -165,7 +163,11 @@ pub fn casper_write(key: Keyspace, value: &[u8]) -> Result<(), Error> {
             value.len(),
         )
     };
-    Ok(())
+    if ret == 0 {
+        Ok(())
+    } else {
+        Err(Error::from(ret))
+    }
 }
 
 pub fn casper_create(

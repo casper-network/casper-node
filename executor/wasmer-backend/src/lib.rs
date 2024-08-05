@@ -77,7 +77,7 @@ impl WasmerEngine {
         Self::default()
     }
 
-    pub fn prepare<T: Into<Bytes>, S: GlobalStateReader + 'static, E: Executor + 'static>(
+    pub fn instantiate<T: Into<Bytes>, S: GlobalStateReader + 'static, E: Executor + 'static>(
         &self,
         wasm_bytes: T,
         context: Context<S, E>,
@@ -106,19 +106,22 @@ impl<'a, S: GlobalStateReader + 'static, E: Executor + 'static> WasmerCaller<'a,
         let view = mem.view(&binding);
         f(view)
     }
-    fn with_store_and_instance<Ret>(
-        &mut self,
-        f: impl FnOnce(StoreMut, Arc<Instance>) -> Ret,
-    ) -> Ret {
+
+    fn with_instance<Ret>(&self, f: impl FnOnce(&Instance) -> Ret) -> Ret {
+        let instance = self.env.data().instance.upgrade().expect("Valid instance");
+        f(&instance)
+    }
+
+    fn with_store_and_instance<Ret>(&mut self, f: impl FnOnce(StoreMut, &Instance) -> Ret) -> Ret {
         let (data, store) = self.env.data_and_store_mut();
         let instance = data.instance.upgrade().expect("Valid instance");
-        f(store, instance)
+        f(store, &instance)
     }
 
     /// Returns the amount of gas used.
     fn get_remaining_points(&mut self) -> MeteringPoints {
         self.with_store_and_instance(|mut store, instance| {
-            let metering_points = metering::get_remaining_points(&mut store, &instance);
+            let metering_points = metering::get_remaining_points(&mut store, instance);
             match metering_points {
                 metering::MeteringPoints::Remaining(points) => MeteringPoints::Remaining(points),
                 metering::MeteringPoints::Exhausted => MeteringPoints::Exhausted,
@@ -128,7 +131,7 @@ impl<'a, S: GlobalStateReader + 'static, E: Executor + 'static> WasmerCaller<'a,
     /// Set the amount of gas used.
     fn set_remaining_points(&mut self, new_value: u64) {
         self.with_store_and_instance(|mut store, instance| {
-            metering::set_remaining_points(&mut store, &instance, new_value)
+            metering::set_remaining_points(&mut store, instance, new_value)
         })
     }
 }
@@ -199,6 +202,10 @@ impl<'a, S: GlobalStateReader + 'static, E: Executor + 'static> Caller for Wasme
             MeteringPoints::Remaining(_remaining_points) => MeteringPoints::Exhausted,
             MeteringPoints::Exhausted => MeteringPoints::Exhausted,
         }
+    }
+
+    fn has_export(&self, name: &str) -> bool {
+        self.with_instance(|instance| instance.exports.contains(name))
     }
 }
 

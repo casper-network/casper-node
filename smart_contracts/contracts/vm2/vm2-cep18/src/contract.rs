@@ -24,7 +24,7 @@ impl Default for TokenContract {
 #[casper]
 impl TokenContract {
     #[casper(constructor)]
-    pub fn tra(token_name: String) -> Self {
+    pub fn new(token_name: String) -> Self {
         // TODO: If argument has same name as another entrypoint there's a compile error for some
         // reason, so can't use "name"
         let mut instance = Self::default();

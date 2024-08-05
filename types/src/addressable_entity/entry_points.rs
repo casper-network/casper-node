@@ -252,6 +252,11 @@ impl EntryPoint {
     pub fn entry_point_type(&self) -> EntryPointType {
         self.entry_point_type
     }
+
+    /// Obtains entry point payment
+    pub fn entry_point_payment(&self) -> EntryPointPayment {
+        self.entry_point_payment
+    }
 }
 
 impl Default for EntryPoint {
