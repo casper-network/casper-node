@@ -6,7 +6,12 @@ use std::{
 use casper_macros::casper;
 use casper_sdk::{
     casper_executor_wasm_common::{
-        entry_point::ENTRY_POINT_PAYMENT_CALLER, error::Error, keyspace::Keyspace,
+        entry_point::{
+            ENTRY_POINT_PAYMENT_CALLER, ENTRY_POINT_PAYMENT_SELF_ONLY,
+            ENTRY_POINT_PAYMENT_SELF_ONWARD,
+        },
+        error::Error,
+        keyspace::Keyspace,
     },
     collections::Map,
     host::{self, Entity},
@@ -85,21 +90,28 @@ impl Harness {
         );
 
         {
-            host::casper_write(
-                Keyspace::PaymentInfo("counter"),
-                &[ENTRY_POINT_PAYMENT_CALLER],
-            )
-            .unwrap();
+            for payment_info in [
+                ENTRY_POINT_PAYMENT_CALLER,
+                ENTRY_POINT_PAYMENT_SELF_ONLY,
+                ENTRY_POINT_PAYMENT_SELF_ONWARD,
+            ] {
+                host::casper_write(Keyspace::PaymentInfo("counter"), &[payment_info]).unwrap();
 
-            let mut buffer = [255; 1];
+                let mut buffer = [255; 1];
+                assert_eq!(
+                    host::casper_read(Keyspace::PaymentInfo("counter"), |size| {
+                        assert_eq!(size, 1, "Size should be 1");
+                        NonNull::new(&mut buffer[0])
+                    }),
+                    Ok(Some(()))
+                );
+                assert_eq!(&buffer, &[payment_info]);
+            }
+
             assert_eq!(
-                host::casper_read(Keyspace::PaymentInfo("counter"), |size| {
-                    assert_eq!(size, 1, "Size should be 1");
-                    NonNull::new(&mut buffer[0])
-                }),
-                Ok(Some(()))
+                host::casper_write(Keyspace::PaymentInfo("counter"), &[255, 255]),
+                Err(Error::InvalidInput)
             );
-            assert_eq!(&buffer, &[ENTRY_POINT_PAYMENT_CALLER]);
         }
 
         Self {
