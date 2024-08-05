@@ -187,8 +187,8 @@ where
         self.handle_legacy_accounts_migration()?;
         self.handle_legacy_contracts_migration()?;
         self.handle_bids_migration(
-            self.config.maximum_delegation_amount(),
             self.config.minimum_delegation_amount(),
+            self.config.maximum_delegation_amount(),
         )?;
         self.handle_era_info_migration()
     }
@@ -950,6 +950,9 @@ where
         chainspec_minimum: u64,
         chainspec_maximum: u64,
     ) -> Result<(), ProtocolUpgradeError> {
+        if chainspec_maximum < chainspec_minimum {
+            return Err(ProtocolUpgradeError::InvalidUpgradeConfig);
+        }
         debug!("handle bids migration");
         let mut tc = self.tracking_copy.borrow_mut();
         let existing_bid_keys = match tc.get_keys(&KeyTag::Bid) {

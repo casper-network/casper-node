@@ -124,6 +124,14 @@ pub enum InvalidDeploy {
 
     /// Unable to calculate gas cost.
     UnableToCalculateGasCost,
+
+    /// Gas price tolerance too low.
+    GasPriceToleranceTooLow {
+        /// The minimum gas price tolerance.
+        min_gas_price_tolerance: u8,
+        /// The provided gas price tolerance.
+        provided_gas_price_tolerance: u8,
+    },
 }
 
 impl Display for InvalidDeploy {
@@ -241,6 +249,11 @@ impl Display for InvalidDeploy {
             InvalidDeploy::UnableToCalculateGasCost => {
                 write!(formatter, "unable to calculate gas cost",)
             }
+            InvalidDeploy::GasPriceToleranceTooLow { min_gas_price_tolerance, provided_gas_price_tolerance } => write!(
+                formatter,
+                "received a deploy with gas price tolerance {} but this chain will only go as low as {}",
+                provided_gas_price_tolerance, min_gas_price_tolerance
+            ),
         }
     }
 }
@@ -274,7 +287,8 @@ impl StdError for InvalidDeploy {
             | InvalidDeploy::InsufficientTransferAmount { .. }
             | InvalidDeploy::ExcessiveApprovals { .. }
             | InvalidDeploy::UnableToCalculateGasLimit
-            | InvalidDeploy::UnableToCalculateGasCost => None,
+            | InvalidDeploy::UnableToCalculateGasCost
+            | InvalidDeploy::GasPriceToleranceTooLow { .. } => None,
         }
     }
 }
