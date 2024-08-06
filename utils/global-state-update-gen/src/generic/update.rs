@@ -197,26 +197,4 @@ impl Update {
     pub(crate) fn assert_validators_unchanged(&self) {
         assert!(self.validators.is_none());
     }
-
-    #[track_caller]
-    pub(crate) fn assert_withdraws_empty(&self, validator_key: &PublicKey) {
-        let withdraws = self
-            .entries
-            .get(&Key::Withdraw(validator_key.to_account_hash()))
-            .expect("should have withdraw purses")
-            .as_withdraw()
-            .expect("should be vec of withdraws");
-        assert!(withdraws.is_empty());
-    }
-
-    #[track_caller]
-    pub(crate) fn assert_unbonds_empty(&self, validator_key: &PublicKey) {
-        let unbonds = self
-            .entries
-            .get(&Key::Unbond(validator_key.to_account_hash()))
-            .expect("should have unbond purses")
-            .as_unbonding()
-            .expect("should be vec of unbonds");
-        assert!(unbonds.is_empty());
-    }
 }
