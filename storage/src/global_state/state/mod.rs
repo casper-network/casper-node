@@ -865,14 +865,6 @@ pub trait StateProvider {
                         remaining_balance
                     }
                 };
-                let cl_value = match CLValue::from_t(held_amount) {
-                    Ok(cl_value) => cl_value,
-                    Err(cve) => {
-                        return BalanceHoldResult::Failure(BalanceHoldError::TrackingCopy(
-                            TrackingCopyError::CLValue(cve),
-                        ));
-                    }
-                };
 
                 let balance_hold_addr = match tag {
                     BalanceHoldAddrTag::Gas => BalanceHoldAddr::Gas {
@@ -886,7 +878,39 @@ pub trait StateProvider {
                 };
 
                 let hold_key = Key::BalanceHold(balance_hold_addr);
-                tc.write(hold_key, StoredValue::CLValue(cl_value));
+                let hold_value = match tc.get(&hold_key) {
+                    Ok(Some(StoredValue::CLValue(cl_value))) => {
+                        // There was a previous hold on this balance. We need to add the new hold to
+                        // the old one.
+                        match cl_value.clone().into_t::<U512>() {
+                            Ok(prev_hold) => prev_hold.saturating_add(held_amount),
+                            Err(cve) => {
+                                return BalanceHoldResult::Failure(BalanceHoldError::TrackingCopy(
+                                    TrackingCopyError::CLValue(cve),
+                                ));
+                            }
+                        }
+                    }
+                    Ok(Some(other_value_variant)) => {
+                        return BalanceHoldResult::Failure(BalanceHoldError::UnexpectedHoldValue(
+                            other_value_variant,
+                        ))
+                    }
+                    Ok(None) => held_amount, // There was no previous hold.
+                    Err(tce) => {
+                        return BalanceHoldResult::Failure(BalanceHoldError::TrackingCopy(tce));
+                    }
+                };
+
+                let hold_cl_value = match CLValue::from_t(hold_value) {
+                    Ok(cl_value) => cl_value,
+                    Err(cve) => {
+                        return BalanceHoldResult::Failure(BalanceHoldError::TrackingCopy(
+                            TrackingCopyError::CLValue(cve),
+                        ));
+                    }
+                };
+                tc.write(hold_key, StoredValue::CLValue(hold_cl_value));
                 let holds = vec![balance_hold_addr];
 
                 let available_balance = remaining_balance.saturating_sub(held_amount);

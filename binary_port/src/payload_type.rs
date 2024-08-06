@@ -13,7 +13,7 @@ use casper_types::{
     execution::{ExecutionResult, ExecutionResultV1},
     AvailableBlockRange, BlockBody, BlockBodyV1, BlockHeader, BlockHeaderV1, BlockSignatures,
     BlockSignaturesV1, BlockSynchronizerStatus, ChainspecRawBytes, Deploy, NextUpgrade, Peers,
-    SignedBlock, StoredValue, Transaction, Transfer,
+    ProtocolVersion, SignedBlock, StoredValue, Transaction, Transfer,
 };
 
 use crate::{
@@ -108,6 +108,8 @@ pub enum PayloadType {
     BalanceResponse,
     /// Reward response.
     Reward,
+    /// Protocol version.
+    ProtocolVersion,
 }
 
 impl PayloadType {
@@ -199,6 +201,7 @@ impl TryFrom<u8> for PayloadType {
             x if x == PayloadType::WasmV1Result as u8 => Ok(PayloadType::WasmV1Result),
             x if x == PayloadType::BalanceResponse as u8 => Ok(PayloadType::BalanceResponse),
             x if x == PayloadType::Reward as u8 => Ok(PayloadType::Reward),
+            x if x == PayloadType::ProtocolVersion as u8 => Ok(PayloadType::ProtocolVersion),
             _ => Err(()),
         }
     }
@@ -253,6 +256,7 @@ impl fmt::Display for PayloadType {
             PayloadType::DictionaryQueryResult => write!(f, "DictionaryQueryResult"),
             PayloadType::BalanceResponse => write!(f, "BalanceResponse"),
             PayloadType::Reward => write!(f, "Reward"),
+            PayloadType::ProtocolVersion => write!(f, "ProtocolVersion"),
         }
     }
 }
@@ -389,6 +393,10 @@ impl PayloadEntity for BalanceResponse {
 
 impl PayloadEntity for RewardResponse {
     const PAYLOAD_TYPE: PayloadType = PayloadType::Reward;
+}
+
+impl PayloadEntity for ProtocolVersion {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::ProtocolVersion;
 }
 
 #[cfg(test)]

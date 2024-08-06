@@ -40,8 +40,10 @@ use crate::{
     crypto, Digest, DisplayIter, RuntimeArgs, SecretKey, TimeDiff, Timestamp, TransactionRuntime,
 };
 
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
+use crate::TransactionConfig;
 #[cfg(any(feature = "std", test))]
-use crate::{Gas, Motes, TransactionConfig, U512};
+use crate::{Gas, Motes, U512};
 pub use errors_v1::{
     DecodeFromJsonErrorV1 as TransactionV1DecodeFromJsonError, ErrorV1 as TransactionV1Error,
     ExcessiveSizeErrorV1 as TransactionV1ExcessiveSizeError,
@@ -276,7 +278,7 @@ impl TransactionV1 {
 
     /// Returns `true` if the serialized size of the transaction is not greater than
     /// `max_transaction_size`.
-    #[cfg(any(feature = "std", test))]
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
     fn is_valid_size(
         &self,
         max_transaction_size: u32,
@@ -411,6 +413,15 @@ impl TransactionV1 {
                     });
                 }
             }
+        }
+
+        let min_gas_price = chainspec.vacancy_config.min_gas_price;
+        let gas_price_tolerance = self.header.gas_price_tolerance();
+        if gas_price_tolerance < min_gas_price {
+            return Err(InvalidTransactionV1::GasPriceToleranceTooLow {
+                min_gas_price_tolerance: min_gas_price,
+                provided_gas_price_tolerance: gas_price_tolerance,
+            });
         }
 
         header.is_valid(&transaction_config, timestamp_leeway, at, &self.hash)?;

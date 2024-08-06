@@ -349,8 +349,7 @@ fn next_installed_version(
     dir: &Path,
     current_version: ProtocolVersion,
 ) -> Result<ProtocolVersion, Error> {
-    let max_version =
-        ProtocolVersion::from_parts(u32::max_value(), u32::max_value(), u32::max_value());
+    let max_version = ProtocolVersion::from_parts(u32::MAX, u32::MAX, u32::MAX);
 
     let mut next_version = max_version;
     let mut read_version = false;

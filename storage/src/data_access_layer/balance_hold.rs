@@ -6,7 +6,7 @@ use casper_types::{
     account::AccountHash,
     execution::Effects,
     system::mint::{BalanceHoldAddr, BalanceHoldAddrTag},
-    Digest, ProtocolVersion, U512,
+    Digest, ProtocolVersion, StoredValue, U512,
 };
 use std::fmt::{Display, Formatter};
 use thiserror::Error;
@@ -159,7 +159,8 @@ pub enum BalanceHoldError {
     TrackingCopy(TrackingCopyError),
     Balance(BalanceFailure),
     InsufficientBalance { remaining_balance: U512 },
-    UnexpectedWildcardVariant, // programmer error
+    UnexpectedWildcardVariant, // programmer error,
+    UnexpectedHoldValue(StoredValue),
 }
 
 impl From<BalanceFailure> for BalanceHoldError {
@@ -190,6 +191,9 @@ impl Display for BalanceHoldError {
                 )
             }
             BalanceHoldError::Balance(be) => Display::fmt(be, f),
+            BalanceHoldError::UnexpectedHoldValue(value) => {
+                write!(f, "Found an unexpected hold value in storage: {:?}", value,)
+            }
         }
     }
 }

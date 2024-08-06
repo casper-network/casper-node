@@ -212,6 +212,8 @@ enum TestScenario {
     DeployWithoutTransferAmount,
     BalanceCheckForDeploySentByPeer,
     InvalidPricingModeForTransactionV1,
+    TooLowGasPriceToleranceForTransactionV1,
+    TooLowGasPriceToleranceForDeploy,
 }
 
 impl TestScenario {
@@ -252,7 +254,9 @@ impl TestScenario {
             | TestScenario::FromClientSignedByAdmin(_)
             | TestScenario::DeployWithEmptySessionModuleBytes
             | TestScenario::DeployWithNativeTransferInPayment
-            | TestScenario::InvalidPricingModeForTransactionV1 => Source::Client,
+            | TestScenario::InvalidPricingModeForTransactionV1
+            | TestScenario::TooLowGasPriceToleranceForTransactionV1
+            | TestScenario::TooLowGasPriceToleranceForDeploy => Source::Client,
         }
     }
 
@@ -566,6 +570,24 @@ impl TestScenario {
                     .expect("must create classic mode transaction");
                 Transaction::from(classic_mode_transaction)
             }
+            TestScenario::TooLowGasPriceToleranceForTransactionV1 => {
+                const TOO_LOW_GAS_PRICE_TOLERANCE: u8 = 0;
+
+                let fixed_mode_transaction = TransactionV1Builder::new_random(rng)
+                    .with_pricing_mode(PricingMode::Fixed {
+                        gas_price_tolerance: TOO_LOW_GAS_PRICE_TOLERANCE,
+                    })
+                    .with_chain_name("casper-example")
+                    .build()
+                    .expect("must create fixed mode transaction");
+                Transaction::from(fixed_mode_transaction)
+            }
+            TestScenario::TooLowGasPriceToleranceForDeploy => {
+                const TOO_LOW_GAS_PRICE_TOLERANCE: u64 = 0;
+
+                let deploy = Deploy::random_with_gas_price(rng, TOO_LOW_GAS_PRICE_TOLERANCE);
+                Transaction::from(deploy)
+            }
         }
     }
 
@@ -620,6 +642,8 @@ impl TestScenario {
                 }
             }
             TestScenario::InvalidPricingModeForTransactionV1 => false,
+            TestScenario::TooLowGasPriceToleranceForTransactionV1 => false,
+            TestScenario::TooLowGasPriceToleranceForDeploy => false,
         }
     }
 
@@ -841,7 +865,7 @@ impl reactor::Reactor for Reactor {
                 }
                 ContractRuntimeRequest::GetAddressableEntity {
                     state_root_hash: _,
-                    key,
+                    entity_addr,
                     responder,
                 } => {
                     let result = if matches!(
@@ -852,12 +876,13 @@ impl reactor::Reactor for Reactor {
                         TestScenario::FromPeerMissingAccount(_)
                     ) {
                         AddressableEntityResult::ValueNotFound("missing account".to_string())
-                    } else if let Key::Account(account_hash) = key {
-                        let account = create_account(account_hash, self.test_scenario);
+                    } else if let EntityAddr::Account(account_hash) = entity_addr {
+                        let account =
+                            create_account(AccountHash::new(account_hash), self.test_scenario);
                         AddressableEntityResult::Success {
                             entity: AddressableEntity::from(account),
                         }
-                    } else if let Key::Hash(..) = key {
+                    } else if let EntityAddr::SmartContract(..) = entity_addr {
                         match self.test_scenario {
                             TestScenario::FromPeerCustomPaymentContract(
                                 ContractScenario::MissingContractAtHash,
@@ -894,10 +919,12 @@ impl reactor::Reactor for Reactor {
                                     entity: AddressableEntity::from(contract),
                                 }
                             }
-                            _ => panic!("unexpected GetAddressableEntity: {:?}", key),
+                            _ => panic!("unexpected GetAddressableEntity: {:?}", entity_addr),
                         }
                     } else {
-                        panic!("should GetAddressableEntity using Key's Account or Hash variant");
+                        panic!(
+                            "should GetAddressableEntity using Account or SmartContract variant"
+                        );
                     };
                     responder.respond(result).ignore()
                 }
@@ -1153,7 +1180,9 @@ async fn run_transaction_acceptor_without_timeout(
             | TestScenario::DeployWithoutTransferTarget
             | TestScenario::DeployWithoutTransferAmount
             | TestScenario::InvalidPricingModeForTransactionV1
-            | TestScenario::FromClientExpired(_) => {
+            | TestScenario::FromClientExpired(_)
+            | TestScenario::TooLowGasPriceToleranceForTransactionV1
+            | TestScenario::TooLowGasPriceToleranceForDeploy => {
                 matches!(
                     event,
                     Event::TransactionAcceptorAnnouncement(
@@ -2375,5 +2404,29 @@ async fn should_reject_transaction_v1_with_invalid_pricing_mode() {
         Err(super::Error::InvalidTransaction(InvalidTransaction::V1(
             InvalidTransactionV1::InvalidPricingMode { .. }
         )))
+    ))
+}
+
+#[tokio::test]
+async fn should_reject_transaction_v1_with_too_low_gas_price_tolerance() {
+    let test_scenario = TestScenario::TooLowGasPriceToleranceForTransactionV1;
+    let result = run_transaction_acceptor(test_scenario).await;
+    assert!(matches!(
+        result,
+        Err(super::Error::InvalidTransaction(InvalidTransaction::V1(
+            InvalidTransactionV1::GasPriceToleranceTooLow { .. }
+        )))
+    ))
+}
+
+#[tokio::test]
+async fn should_reject_deploy_with_too_low_gas_price_tolerance() {
+    let test_scenario = TestScenario::TooLowGasPriceToleranceForDeploy;
+    let result = run_transaction_acceptor(test_scenario).await;
+    assert!(matches!(
+        result,
+        Err(super::Error::InvalidTransaction(
+            InvalidTransaction::Deploy(InvalidDeploy::GasPriceToleranceTooLow { .. })
+        ))
     ))
 }

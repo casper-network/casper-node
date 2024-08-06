@@ -132,9 +132,9 @@ use casper_storage::{
 use casper_types::{
     execution::{Effects as ExecutionEffects, ExecutionResult},
     Approval, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures,
-    BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest, EraId, ExecutionInfo,
-    FinalitySignature, FinalitySignatureId, FinalitySignatureV2, Key, NextUpgrade, Package,
-    ProtocolUpgradeConfig, ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transaction,
+    BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest, EntityAddr, EraId,
+    ExecutionInfo, FinalitySignature, FinalitySignatureId, FinalitySignatureV2, Key, NextUpgrade,
+    Package, ProtocolUpgradeConfig, ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transaction,
     TransactionHash, TransactionHeader, TransactionId, Transfer, U512,
 };
 
@@ -2050,11 +2050,12 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Retrieves an `AddressableEntity` from under the given key in global state if present.
+    /// Retrieves an `AddressableEntity` from under the given entity address (or key, if the former
+    /// is not found) in global state.
     pub(crate) async fn get_addressable_entity(
         self,
         state_root_hash: Digest,
-        key: Key,
+        entity_addr: EntityAddr,
     ) -> AddressableEntityResult
     where
         REv: From<ContractRuntimeRequest>,
@@ -2062,7 +2063,7 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| ContractRuntimeRequest::GetAddressableEntity {
                 state_root_hash,
-                key,
+                entity_addr,
                 responder,
             },
             QueueKind::ContractRuntime,

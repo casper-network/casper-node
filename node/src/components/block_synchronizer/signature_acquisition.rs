@@ -205,7 +205,7 @@ mod tests {
         );
 
         // Signature for the validator #0 weighting 1:
-        let (public_0, secret_0) = validators.get(0).unwrap();
+        let (public_0, secret_0) = validators.first().unwrap();
         let finality_signature = FinalitySignatureV2::create(
             block_hash,
             block_height,
@@ -427,7 +427,7 @@ mod tests {
         );
 
         // Set the validator #0 weighting 1 as pending:
-        let (public_0, secret_0) = validators.get(0).unwrap();
+        let (public_0, secret_0) = validators.first().unwrap();
         signature_acquisition.register_pending(public_0.clone());
         assert_iter_equal!(signature_acquisition.have_signatures(), []);
         assert_iter_equal!(signature_acquisition.not_vacant(), [public_0]);

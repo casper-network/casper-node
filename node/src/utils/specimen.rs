@@ -60,7 +60,7 @@ impl Cache {
     /// Retrieves a potentially memoized instance.
     pub(crate) fn get<T: Any>(&mut self) -> Option<&T> {
         self.get_all::<T>()
-            .get(0)
+            .first()
             .map(|box_any| box_any.downcast_ref::<T>().expect("cache corrupted"))
     }
 

@@ -27,6 +27,7 @@ use casper_storage::{
     },
     global_state::trie::TrieRaw,
     system::auction,
+    tracking_copy::TrackingCopyError,
     KeyPrefix as StorageKeyPrefix,
 };
 use casper_types::{
@@ -671,7 +672,11 @@ where
             };
             BinaryResponse::from_value(response, protocol_version)
         }
-        BalanceResult::Failure(_) => {
+        BalanceResult::Failure(TrackingCopyError::KeyNotFound(_)) => {
+            BinaryResponse::new_error(ErrorCode::PurseNotFound, protocol_version)
+        }
+        BalanceResult::Failure(error) => {
+            debug!(%error, "failed when querying for a balance");
             BinaryResponse::new_error(ErrorCode::FailedQuery, protocol_version)
         }
     }
@@ -849,6 +854,7 @@ where
             };
 
             let status = NodeStatus {
+                protocol_version,
                 peers: Peers::from(peers),
                 build_version: crate::VERSION_STRING.clone(),
                 chainspec_name: network_name.into(),
@@ -939,23 +945,36 @@ where
             let Some(validator_rewards) = block_rewards.get(&validator) else {
                 return BinaryResponse::new_empty(protocol_version);
             };
-            match auction::reward(
+
+            let seigniorage_recipient = snapshot
+                .get(&header.era_id())
+                .and_then(|era| era.get(&validator));
+            let reward = auction::reward(
                 &validator,
                 delegator.as_deref(),
                 header.era_id(),
                 validator_rewards,
                 &snapshot,
-            ) {
-                Ok(Some(reward)) => {
-                    let response = RewardResponse::new(reward, header.era_id());
+            );
+            match (reward, seigniorage_recipient) {
+                (Ok(Some(reward)), Some(seigniorage_recipient)) => {
+                    let response = RewardResponse::new(
+                        reward,
+                        header.era_id(),
+                        *seigniorage_recipient.delegation_rate(),
+                        header.block_hash(),
+                    );
                     BinaryResponse::from_value(response, protocol_version)
                 }
-                Ok(None) => BinaryResponse::new_empty(protocol_version),
-                Err(error) => {
+                (Err(error), _) => {
                     warn!(%error, "failed when calculating rewards");
                     BinaryResponse::new_error(ErrorCode::InternalError, protocol_version)
                 }
+                _ => BinaryResponse::new_empty(protocol_version),
             }
+        }
+        InformationRequest::ProtocolVersion => {
+            BinaryResponse::from_value(protocol_version, protocol_version)
         }
     }
 }
@@ -1005,6 +1024,9 @@ where
         }
         SpeculativeExecutionResult::WasmV1(spec_exec_result) => {
             BinaryResponse::from_value(spec_exec_result, protocol_version)
+        }
+        SpeculativeExecutionResult::ReceivedV1Transaction => {
+            BinaryResponse::new_error(ErrorCode::ReceivedV1Transaction, protocol_version)
         }
     }
 }

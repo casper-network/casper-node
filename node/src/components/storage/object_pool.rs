@@ -101,10 +101,10 @@ where
     }
 
     /// Retrieves an object from the pool, if present.
-    pub(super) fn get<Q: ?Sized>(&self, id: &Q) -> Option<Arc<[u8]>>
+    pub(super) fn get<Q>(&self, id: &Q) -> Option<Arc<[u8]>>
     where
         I: Borrow<Q>,
-        Q: Hash + Eq,
+        Q: Hash + Eq + ?Sized,
     {
         self.items.get(id).and_then(Weak::upgrade)
     }

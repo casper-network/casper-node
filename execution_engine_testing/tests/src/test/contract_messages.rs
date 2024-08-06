@@ -960,7 +960,7 @@ fn should_produce_per_block_message_ordering() {
                 .get_last_exec_result()
                 .unwrap()
                 .messages()
-                .get(0)
+                .first()
                 .unwrap()
                 .block_index(),
             expected_index

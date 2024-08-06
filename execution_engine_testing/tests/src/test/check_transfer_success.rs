@@ -1,4 +1,3 @@
-use core::convert::TryFrom;
 use std::path::PathBuf;
 
 use casper_engine_test_support::{
@@ -39,7 +38,7 @@ fn test_check_transfer_success_with_source_only() {
     );
 
     // Doing a transfer from main purse to create new purse and store URef under NEW_PURSE_NAME.
-    let transfer_amount = U512::try_from(FIRST_TRANSFER_AMOUNT).expect("U512 from u64");
+    let transfer_amount = U512::from(FIRST_TRANSFER_AMOUNT);
     let path = PathBuf::from(TRANSFER_WASM);
     let session_args = runtime_args! {
         ARG_DESTINATION => NEW_PURSE_NAME,
@@ -100,9 +99,9 @@ fn test_check_transfer_success_with_source_only_errors() {
     );
 
     // Doing a transfer from main purse to create new purse and store Uref under NEW_PURSE_NAME.
-    let transfer_amount = U512::try_from(FIRST_TRANSFER_AMOUNT).expect("U512 from u64");
+    let transfer_amount = U512::from(FIRST_TRANSFER_AMOUNT);
     // Setup mismatch between transfer_amount performed and given to trigger assertion.
-    let wrong_transfer_amount = transfer_amount - U512::try_from(100u64).expect("U512 from 64");
+    let wrong_transfer_amount = transfer_amount - U512::from(100u64);
 
     let path = PathBuf::from(TRANSFER_WASM);
     let session_args = runtime_args! {
@@ -160,7 +159,7 @@ fn test_check_transfer_success_with_source_and_target() {
         DEFAULT_CHAINSPEC_REGISTRY.clone(),
     );
 
-    let transfer_amount = U512::try_from(SECOND_TRANSFER_AMOUNT).expect("U512 from u64");
+    let transfer_amount = U512::from(SECOND_TRANSFER_AMOUNT);
     // Doing a transfer from main purse to create new purse and store URef under NEW_PURSE_NAME.
     let path = PathBuf::from(TRANSFER_WASM);
     let session_args = runtime_args! {
