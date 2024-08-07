@@ -11,10 +11,10 @@ use casper_engine_test_support::{
     PRODUCTION_ROUND_SEIGNIORAGE_RATE, PRODUCTION_RUN_GENESIS_REQUEST, SYSTEM_ADDR,
     TIMESTAMP_MILLIS_INCREMENT,
 };
+use casper_execution_engine::core::engine_state::engine_config::DEFAULT_MINIMUM_BID_AMOUNT;
 use casper_execution_engine::core::engine_state::{
     engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, step::RewardItem,
 };
-use casper_execution_engine::core::engine_state::engine_config::DEFAULT_MINIMUM_BID_AMOUNT;
 use casper_types::{
     self,
     account::AccountHash,
