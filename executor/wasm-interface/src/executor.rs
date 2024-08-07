@@ -3,10 +3,13 @@ use std::sync::Arc;
 use borsh::BorshSerialize;
 use bytes::Bytes;
 use casper_storage::{
-    global_state::GlobalStateReader, tracking_copy::TrackingCopyParts, AddressGenerator,
-    TrackingCopy,
+    global_state::{error::Error as GlobalStateError, GlobalStateReader},
+    tracking_copy::TrackingCopyParts,
+    AddressGenerator, TrackingCopy,
 };
-use casper_types::{account::AccountHash, execution::Effects, EntityAddr, Key, TransactionHash};
+use casper_types::{
+    account::AccountHash, execution::Effects, Digest, EntityAddr, Key, TransactionHash,
+};
 use parking_lot::RwLock;
 use thiserror::Error;
 
@@ -187,10 +190,48 @@ pub struct ExecuteResult {
     pub tracking_copy_parts: TrackingCopyParts,
 }
 
+/// Result of executing a Wasm contract on a state provider.
+#[derive(Debug)]
+pub struct ExecuteWithProviderResult {
+    /// Error while executing Wasm: traps, memory access errors, etc.
+    pub host_error: Option<HostError>,
+    /// Output produced by the Wasm contract.
+    pub output: Option<Bytes>,
+    /// Gas usage.
+    pub gas_usage: GasUsage,
+    /// Effects produced by the execution.
+    pub effects: Effects,
+    /// Post state hash.
+    pub post_state_hash: Digest,
+}
+
+impl ExecuteWithProviderResult {
+    pub fn output(&self) -> Option<&Bytes> {
+        self.output.as_ref()
+    }
+
+    pub fn gas_usage(&self) -> &GasUsage {
+        &self.gas_usage
+    }
+
+    pub fn effects(&self) -> &Effects {
+        &self.effects
+    }
+
+    pub fn post_state_hash(&self) -> Digest {
+        self.post_state_hash
+    }
+}
+
 impl ExecuteResult {
     /// Returns the host error.
     pub fn effects(&self) -> &Effects {
         let (_cache, effects, _x) = &self.tracking_copy_parts;
+        effects
+    }
+
+    pub fn into_effects(self) -> Effects {
+        let (_cache, effects, _x) = self.tracking_copy_parts;
         effects
     }
 
@@ -232,6 +273,15 @@ pub enum ExecuteError {
     /// No wasm was executed at this point.
     #[error("Wasm error error: {0}")]
     WasmPreparation(#[from] WasmPreparationError),
+}
+
+#[derive(Debug, Error)]
+pub enum ExecuteWithProviderError {
+    /// Error while accessing global state.
+    #[error("Global state error: {0}")]
+    GlobalState(#[from] GlobalStateError),
+    #[error(transparent)]
+    Execute(#[from] ExecuteError),
 }
 
 /// Executor trait.

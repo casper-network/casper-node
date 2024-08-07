@@ -6,7 +6,7 @@ use itertools::Itertools;
 use tracing::{debug, error, info, trace, warn};
 
 use casper_execution_engine::engine_state::{ExecutionEngineV1, WasmV1Request, WasmV1Result};
-use casper_executor_wasm_interface::executor::{ExecuteRequestBuilder, ExecutionKind, Executor};
+use casper_executor_wasm_interface::executor::{ExecuteRequestBuilder, ExecutionKind};
 use casper_storage::{
     block_store::types::ApprovalsHashes,
     data_access_layer::{
@@ -463,37 +463,28 @@ pub fn execute_finalized_block(
                                 .build()
                                 .expect("should build");
 
-                            let tracking_copy = scratch_state
-                                .tracking_copy(state_root_hash)
-                                .expect("should have tracking copy")
-                                .expect("should have state root hash");
-
-                            match execution_engine_v2.install_contract(tracking_copy, request) {
+                            match execution_engine_v2.install_contract(
+                                state_root_hash,
+                                &scratch_state,
+                                request,
+                            ) {
                                 Ok(result) => {
-                                    let effects = result.effects().clone();
-                                    let pre_state_root_hash = state_root_hash;
-                                    let post_state_root_hash = scratch_state
-                                        .commit(pre_state_root_hash, effects.clone())
-                                        .expect("should commit");
-                                    state_root_hash = post_state_root_hash;
-                                    info!(contract_hash=base16::encode_lower(&result.contract_hash()), %pre_state_root_hash, %post_state_root_hash, ?effects, ?result, "instantiate contract result");
+                                    info!(contract_hash=base16::encode_lower(&result.contract_hash()), pre_state_root_hash=%state_root_hash, post_state_root_hash=%result.post_state_hash(),  ?result, "instantiate contract result");
+
+                                    // Update state root hash.
+                                    state_root_hash = result.post_state_hash();
 
                                     artifact_builder.with_added_consumed(Gas::from(
                                         result.gas_usage().gas_spent(),
                                     ));
                                     // TODO: Use system message to notify about contract hash
-                                    // artifact_builder..with_appended_messages(&mut
-                                    // wasm_v1_result.messages().clone())
-                                    // .with_appended_transfers(&mut
-                                    // wasm_v1_result.transfers().clone())
-                                    artifact_builder.with_appended_effects(effects);
+                                    artifact_builder
+                                        .with_appended_effects(result.effects().clone());
                                 }
                                 Err(error) => {
                                     error!(?error, "create contract error");
                                     artifact_builder.with_error_message(error.to_string());
-                                    // TODO: Gas consumed for failed instantiation
-                                    // artifact_builder.with_added_consumed(result.gas_usage().
-                                    // gas_spent());
+                                    // TODO: Gas consumed for failed instantiation.
                                 }
                             }
                         }
@@ -549,26 +540,23 @@ pub fn execute_finalized_block(
 
                             let request = builder.build().expect("should build");
 
-                            let tracking_copy = scratch_state
-                                .tracking_copy(state_root_hash)
-                                .expect("should have tracking copy")
-                                .expect("should have state root hash");
-
-                            match execution_engine_v2.execute(tracking_copy, request) {
+                            match execution_engine_v2.execute_with_provider(
+                                state_root_hash,
+                                &scratch_state,
+                                request,
+                            ) {
                                 Ok(result) => {
-                                    let effects = result.effects().clone();
-                                    let pre_state_root_hash = state_root_hash;
-                                    let post_state_root_hash = scratch_state
-                                        .commit(pre_state_root_hash, effects.clone())
-                                        .expect("should commit");
-                                    state_root_hash = post_state_root_hash;
-                                    info!(?result, %pre_state_root_hash, %post_state_root_hash, ?effects, "execute contract result");
+                                    info!(?result, pre_state_root_hash=%state_root_hash, post_state_root_hash=%result.post_state_hash(), effects=?result.effects(), "execute contract result");
+
+                                    // Update state root hash.
+                                    state_root_hash = result.post_state_hash();
 
                                     artifact_builder.with_added_consumed(Gas::from(
                                         result.gas_usage().gas_spent(),
                                     ));
 
-                                    artifact_builder.with_appended_effects(effects);
+                                    artifact_builder
+                                        .with_appended_effects(result.effects().clone());
                                 }
                                 Err(error) => {
                                     error!(?error, "execute contract error");

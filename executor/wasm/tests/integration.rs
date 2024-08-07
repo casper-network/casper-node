@@ -6,13 +6,13 @@ use casper_executor_wasm::{
     ExecutorConfigBuilder, ExecutorKind, ExecutorV2,
 };
 use casper_executor_wasm_interface::executor::{
-    ExecuteRequest, ExecuteRequestBuilder, ExecuteResult, ExecutionKind, Executor,
+    ExecuteRequest, ExecuteRequestBuilder, ExecuteWithProviderResult, ExecutionKind,
 };
 use casper_storage::{
     data_access_layer::{GenesisRequest, GenesisResult},
     global_state::{
         self,
-        state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
+        state::{lmdb::LmdbGlobalState, CommitProvider},
     },
     system::runtime_native::Id,
     AddressGenerator,
@@ -447,36 +447,26 @@ fn upgradable() {
 
 fn run_create_contract(
     executor: &mut ExecutorV2,
-    global_state: &mut LmdbGlobalState,
+    global_state: &LmdbGlobalState,
     pre_state_hash: Digest,
-    instantiate_contract_request: InstallContractRequest,
+    install_contract_request: InstallContractRequest,
 ) -> InstallContractResult {
-    let tracking_copy = global_state
-        .tracking_copy(pre_state_hash)
-        .expect("Obtaining root hash succeed")
-        .expect("Root hash exists");
-
     executor
-        .install_contract(tracking_copy, instantiate_contract_request)
+        .install_contract(pre_state_hash, global_state, install_contract_request)
         .expect("Succeed")
 }
 
 fn run_wasm_session(
     executor: &mut ExecutorV2,
-    global_state: &mut LmdbGlobalState,
+    global_state: &LmdbGlobalState,
     pre_state_hash: Digest,
     execute_request: ExecuteRequest,
-) -> ExecuteResult {
-    let tracking_copy = global_state
-        .tracking_copy(pre_state_hash)
-        .expect("Obtaining root hash succeed")
-        .expect("Root hash exists");
-
+) -> ExecuteWithProviderResult {
     let result = executor
-        .execute(tracking_copy, execute_request)
+        .execute_with_provider(pre_state_hash, global_state, execute_request)
         .expect("Succeed");
 
-    if let Some(host_error) = result.host_error() {
+    if let Some(host_error) = result.host_error {
         panic!("Host error: {host_error:?}")
     }
 

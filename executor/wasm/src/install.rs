@@ -2,12 +2,12 @@ use std::sync::Arc;
 
 use bytes::Bytes;
 use casper_executor_wasm_interface::{executor::ExecuteError, GasUsage, HostError};
-use casper_storage::{tracking_copy::TrackingCopyParts, AddressGenerator};
+use casper_storage::{global_state::error::Error as GlobalStateError, AddressGenerator};
 use casper_types::{
     account::AccountHash,
     contracts::{ContractHash, ContractPackageHash},
     execution::Effects,
-    TransactionHash,
+    Digest, TransactionHash,
 };
 use parking_lot::RwLock;
 use thiserror::Error;
@@ -137,12 +137,13 @@ pub struct InstallContractResult {
     /// Gas usage.
     pub(crate) gas_usage: GasUsage,
     /// Effects produced by the execution.
-    pub(crate) tracking_copy_parts: TrackingCopyParts,
+    pub(crate) effects: Effects,
+    /// Post state hash after installation.
+    pub(crate) post_state_hash: Digest,
 }
 impl InstallContractResult {
     pub fn effects(&self) -> &Effects {
-        let (_cache, effects, _x) = &self.tracking_copy_parts;
-        effects
+        &self.effects
     }
 
     pub fn contract_package_hash(&self) -> &ContractPackageHash {
@@ -160,6 +161,10 @@ impl InstallContractResult {
     pub fn gas_usage(&self) -> &GasUsage {
         &self.gas_usage
     }
+
+    pub fn post_state_hash(&self) -> Digest {
+        self.post_state_hash
+    }
 }
 
 #[derive(Debug, Error)]
@@ -169,6 +174,9 @@ pub enum InstallContractError {
 
     #[error("execute: {0}")]
     Execute(ExecuteError),
+
+    #[error("Global state error: {0}")]
+    GlobalState(#[from] GlobalStateError),
 
     #[error("constructor error: {host_error}")]
     Constructor { host_error: HostError },

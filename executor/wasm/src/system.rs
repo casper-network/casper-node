@@ -223,14 +223,13 @@ mod tests {
         },
         system::{
             mint::{storage_provider::StorageProvider, Mint},
-            runtime_native::{Config, Id, RuntimeNative},
+            runtime_native::Id,
         },
         AddressGenerator,
     };
     use casper_types::{
-        AddressableEntityHash, ChainspecRegistry, ContextAccessRights, Digest, EntityAddr,
-        GenesisConfigBuilder, HoldsEpoch, Key, Phase, ProtocolVersion, SystemEntityRegistry,
-        TransactionHash, TransactionV1Hash, U512,
+        ChainspecRegistry, Digest, GenesisConfigBuilder, Phase, ProtocolVersion, TransactionHash,
+        TransactionV1Hash, U512,
     };
     use parking_lot::RwLock;
 
