@@ -27,8 +27,7 @@ use once_cell::sync::Lazy;
 #[allow(deprecated)]
 pub use casper_execution_engine::core::engine_state::engine_config::{
     DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-    DEFAULT_MAX_STORED_VALUE_SIZE, DEFAULT_MINIMUM_DELEGATION_AMOUNT,
-    DEFAULT_MINIMUM_BID_AMOUNT
+    DEFAULT_MAX_STORED_VALUE_SIZE, DEFAULT_MINIMUM_BID_AMOUNT, DEFAULT_MINIMUM_DELEGATION_AMOUNT,
 };
 use casper_execution_engine::{
     core::engine_state::{

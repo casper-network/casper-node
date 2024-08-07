@@ -1,9 +1,9 @@
 pub(crate) mod detail;
 pub(crate) mod providers;
 
-use std::collections::BTreeMap;
 use num_rational::Ratio;
 use num_traits::{CheckedMul, CheckedSub};
+use std::collections::BTreeMap;
 
 use casper_types::{
     account::AccountHash,
