@@ -230,7 +230,7 @@ impl InMemoryWasmTestBuilder {
             max_associated_keys,
             max_runtime_call_stack_height,
             minimum_delegation_amount,
-            minimum_bid_amount,
+            minimum_bid_amount: _,
             strict_argument_checking,
             max_delegators_per_validator,
             refund_handling,
