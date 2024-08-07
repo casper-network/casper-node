@@ -2,7 +2,6 @@ pub(crate) mod detail;
 pub(crate) mod providers;
 
 use std::collections::BTreeMap;
-
 use num_rational::Ratio;
 use num_traits::{CheckedMul, CheckedSub};
 
@@ -63,6 +62,7 @@ pub trait Auction:
         public_key: PublicKey,
         delegation_rate: DelegationRate,
         amount: U512,
+        minimum_bid_amount: u64,
     ) -> Result<U512, ApiError> {
         if !self.allow_auction_bids() {
             // Validation set rotation might be disabled on some private chains and we should not
@@ -72,7 +72,7 @@ pub trait Auction:
 
         let provided_account_hash = AccountHash::from_public_key(&public_key, |x| self.blake2b(x));
 
-        if amount.is_zero() {
+        if amount < U512::from(minimum_bid_amount) {
             return Err(Error::BondTooSmall.into());
         }
 
