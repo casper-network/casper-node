@@ -1159,7 +1159,7 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
 fn should_distribute_reinvested_rewards_by_different_factor() {
     const VALIDATOR_1_STAKE: u64 = DEFAULT_MINIMUM_BID_AMOUNT * 4;
     const VALIDATOR_2_STAKE: u64 = DEFAULT_MINIMUM_BID_AMOUNT * 2;
-    const VALIDATOR_3_STAKE: u64 = DEFAULT_MINIMUM_BID_AMOUNT * 1;
+    const VALIDATOR_3_STAKE: u64 = DEFAULT_MINIMUM_BID_AMOUNT;
 
     const DELEGATION_RATE: DelegationRate = DELEGATION_RATE_DENOMINATOR;
 
@@ -2462,7 +2462,7 @@ fn should_distribute_by_factor() {
 fn should_distribute_by_factor_regardless_of_stake() {
     const VALIDATOR_1_STAKE: u64 = DEFAULT_MINIMUM_BID_AMOUNT * 4;
     const VALIDATOR_2_STAKE: u64 = DEFAULT_MINIMUM_BID_AMOUNT * 2;
-    const VALIDATOR_3_STAKE: u64 = DEFAULT_MINIMUM_BID_AMOUNT * 1;
+    const VALIDATOR_3_STAKE: u64 = DEFAULT_MINIMUM_BID_AMOUNT;
 
     const DELEGATION_RATE: DelegationRate = DELEGATION_RATE_DENOMINATOR;
 
