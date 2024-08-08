@@ -488,3 +488,9 @@ pub fn casper_transfer(target: &Entity, amount: u128) -> Result<(), CallError> {
     };
     call_result_from_code(result_code)
 }
+
+/// Get the current block time.
+#[inline]
+pub fn get_block_time() -> u64 {
+    unsafe { casper_sdk_sys::casper_env_block_time() }
+}

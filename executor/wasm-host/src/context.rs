@@ -3,7 +3,7 @@ use std::sync::Arc;
 use bytes::Bytes;
 use casper_executor_wasm_interface::executor::Executor;
 use casper_storage::{global_state::GlobalStateReader, AddressGenerator, TrackingCopy};
-use casper_types::{account::AccountHash, Key, TransactionHash};
+use casper_types::{account::AccountHash, Key, Timestamp, TransactionHash};
 use parking_lot::RwLock;
 
 /// Container that holds all relevant modules necessary to process an execution request.
@@ -26,4 +26,5 @@ pub struct Context<S: GlobalStateReader, E: Executor> {
     pub address_generator: Arc<RwLock<AddressGenerator>>,
     pub chain_name: Arc<str>,
     pub input: Bytes,
+    pub block_time: Timestamp,
 }

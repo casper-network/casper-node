@@ -28,6 +28,7 @@ pub struct Harness {
     greeting: String,
     address_inside_constructor: Option<Entity>,
     balances: Map<Entity, u128>,
+    block_time: u64,
 }
 
 // #[casper(path = crate::traits)]
@@ -72,6 +73,7 @@ impl Default for Harness {
             greeting: "Default value".to_string(),
             address_inside_constructor: None,
             balances: Map::new(BALANCES_PREFIX),
+            block_time: 0,
         }
     }
 }
@@ -119,6 +121,7 @@ impl Harness {
             greeting: format!("Hello, {who}!"),
             address_inside_constructor: Some(host::get_caller()),
             balances: Map::new(BALANCES_PREFIX),
+            block_time: host::get_block_time(),
         }
     }
 
@@ -144,6 +147,7 @@ impl Harness {
             greeting: INITIAL_GREETING.to_string(),
             address_inside_constructor: Some(host::get_caller()),
             balances: Map::new(BALANCES_PREFIX),
+            block_time: host::get_block_time(),
         }
     }
 
@@ -158,6 +162,7 @@ impl Harness {
             greeting: INITIAL_GREETING.to_string(),
             address_inside_constructor: Some(host::get_caller()),
             balances: Map::new(BALANCES_PREFIX),
+            block_time: host::get_block_time(),
         }
     }
 

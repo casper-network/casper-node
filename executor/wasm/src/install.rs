@@ -7,7 +7,7 @@ use casper_types::{
     account::AccountHash,
     contracts::{ContractHash, ContractPackageHash},
     execution::Effects,
-    Digest, TransactionHash,
+    Digest, Timestamp, TransactionHash,
 };
 use parking_lot::RwLock;
 use thiserror::Error;
@@ -32,6 +32,8 @@ pub struct InstallContractRequest {
     pub(crate) address_generator: Arc<RwLock<AddressGenerator>>,
     /// Chain name.
     pub(crate) chain_name: Arc<str>,
+    /// Block time.
+    pub(crate) block_time: Timestamp,
 }
 
 #[derive(Default)]
@@ -45,6 +47,7 @@ pub struct InstallContractRequestBuilder {
     transaction_hash: Option<TransactionHash>,
     address_generator: Option<Arc<RwLock<AddressGenerator>>>,
     chain_name: Option<Arc<str>>,
+    block_time: Option<Timestamp>,
 }
 
 impl InstallContractRequestBuilder {
@@ -101,6 +104,11 @@ impl InstallContractRequestBuilder {
         self
     }
 
+    pub fn with_block_time(mut self, block_time: Timestamp) -> Self {
+        self.block_time = Some(block_time);
+        self
+    }
+
     pub fn build(self) -> Result<InstallContractRequest, &'static str> {
         let initiator = self.initiator.ok_or("Initiator not set")?;
         let gas_limit = self.gas_limit.ok_or("Gas limit not set")?;
@@ -111,6 +119,7 @@ impl InstallContractRequestBuilder {
         let address_generator = self.address_generator.ok_or("Address generator not set")?;
         let transaction_hash = self.transaction_hash.ok_or("Transaction hash not set")?;
         let chain_name = self.chain_name.ok_or("Chain name not set")?;
+        let block_time = self.block_time.ok_or("Block time not set")?;
         Ok(InstallContractRequest {
             initiator,
             gas_limit,
@@ -121,6 +130,7 @@ impl InstallContractRequestBuilder {
             address_generator,
             transaction_hash,
             chain_name,
+            block_time,
         })
     }
 }

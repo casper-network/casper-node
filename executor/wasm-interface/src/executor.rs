@@ -8,7 +8,7 @@ use casper_storage::{
     AddressGenerator, TrackingCopy,
 };
 use casper_types::{
-    account::AccountHash, execution::Effects, Digest, EntityAddr, Key, TransactionHash,
+    account::AccountHash, execution::Effects, Digest, EntityAddr, Key, Timestamp, TransactionHash,
 };
 use parking_lot::RwLock;
 use thiserror::Error;
@@ -47,6 +47,8 @@ pub struct ExecuteRequest {
     ///
     /// This is very important ingredient for deriving contract hashes on the network.
     pub chain_name: Arc<str>,
+    /// Block time.
+    pub block_time: Timestamp,
 }
 
 /// Builder for `ExecuteRequest`.
@@ -62,6 +64,7 @@ pub struct ExecuteRequestBuilder {
     transaction_hash: Option<TransactionHash>,
     address_generator: Option<Arc<RwLock<AddressGenerator>>>,
     chain_name: Option<Arc<str>>,
+    block_time: Option<Timestamp>,
 }
 
 impl ExecuteRequestBuilder {
@@ -148,6 +151,12 @@ impl ExecuteRequestBuilder {
         self
     }
 
+    /// Set the block time.
+    pub fn with_block_time(mut self, block_time: Timestamp) -> Self {
+        self.block_time = Some(block_time);
+        self
+    }
+
     /// Build the `ExecuteRequest`.
     pub fn build(self) -> Result<ExecuteRequest, &'static str> {
         let initiator = self.initiator.ok_or("Initiator is not set")?;
@@ -162,6 +171,7 @@ impl ExecuteRequestBuilder {
             .address_generator
             .ok_or("Address generator is not set")?;
         let chain_name = self.chain_name.ok_or("Chain name is not set")?;
+        let block_time = self.block_time.ok_or("Block time is not set")?;
         Ok(ExecuteRequest {
             initiator,
             caller_key,
@@ -173,6 +183,7 @@ impl ExecuteRequestBuilder {
             transaction_hash,
             address_generator,
             chain_name,
+            block_time,
         })
     }
 }

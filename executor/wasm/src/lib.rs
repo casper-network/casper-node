@@ -129,6 +129,7 @@ impl ExecutorV2 {
             address_generator,
             transaction_hash,
             chain_name,
+            block_time,
         } = install_request;
 
         let caller_key = Key::Account(initiator);
@@ -229,6 +230,7 @@ impl ExecutorV2 {
                     .with_transaction_hash(transaction_hash)
                     .with_shared_address_generator(address_generator)
                     .with_chain_name(chain_name)
+                    .with_block_time(block_time)
                     .build()
                     .expect("should build");
 
@@ -297,7 +299,7 @@ impl ExecutorV2 {
             transaction_hash,
             address_generator,
             chain_name,
-            // TODO: Blocktime
+            block_time,
         } = execute_request;
 
         // TODO: Purse uref does not need to be optional once value transfers to WasmBytes are
@@ -418,6 +420,7 @@ impl ExecutorV2 {
             transaction_hash,
             chain_name,
             input,
+            block_time,
         };
 
         let wasm_instance_config = ConfigBuilder::new()

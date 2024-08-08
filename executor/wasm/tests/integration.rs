@@ -19,7 +19,7 @@ use casper_storage::{
 };
 use casper_types::{
     account::AccountHash, ChainspecRegistry, Digest, EntityAddr, GenesisAccount,
-    GenesisConfigBuilder, Key, Motes, Phase, ProtocolVersion, PublicKey, SecretKey,
+    GenesisConfigBuilder, Key, Motes, Phase, ProtocolVersion, PublicKey, SecretKey, Timestamp,
     TransactionHash, TransactionV1Hash, U512,
 };
 use once_cell::sync::Lazy;
@@ -69,14 +69,16 @@ fn base_execute_builder() -> ExecuteRequestBuilder {
         .with_transferred_value(1000)
         .with_transaction_hash(TRANSACTION_HASH)
         .with_chain_name(DEFAULT_CHAIN_NAME)
+        .with_block_time(Timestamp::now())
 }
 
-fn base_store_request_builder() -> InstallContractRequestBuilder {
+fn base_install_request_builder() -> InstallContractRequestBuilder {
     InstallContractRequestBuilder::default()
         .with_initiator(*DEFAULT_ACCOUNT_HASH)
         .with_gas_limit(1_000_000)
         .with_transaction_hash(TRANSACTION_HASH)
         .with_chain_name(DEFAULT_CHAIN_NAME)
+        .with_block_time(Timestamp::now())
 }
 
 // #[test]
@@ -119,7 +121,7 @@ fn harness() {
             .map(Bytes::from)
             .unwrap();
 
-        let install_request = base_store_request_builder()
+        let install_request = base_install_request_builder()
             .with_wasm_bytes(VM2_CEP18.clone())
             .with_shared_address_generator(Arc::clone(&address_generator))
             .with_transferred_value(0)
@@ -153,6 +155,7 @@ fn harness() {
         .with_serialized_input((flipper_address,))
         .with_shared_address_generator(address_generator)
         .with_chain_name(DEFAULT_CHAIN_NAME)
+        .with_block_time(Timestamp::now())
         .build()
         .expect("should build");
     run_wasm_session(
@@ -194,6 +197,7 @@ fn cep18() {
         .with_entry_point("new".to_string())
         .with_input(input_data)
         .with_chain_name(DEFAULT_CHAIN_NAME)
+        .with_block_time(Timestamp::now())
         .build()
         .expect("should build");
 
@@ -220,6 +224,7 @@ fn cep18() {
         .with_transferred_value(0)
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_chain_name(DEFAULT_CHAIN_NAME)
+        .with_block_time(Timestamp::now())
         .build()
         .expect("should build");
 
@@ -293,7 +298,7 @@ fn upgradable() {
     state_root_hash = {
         let input_data = borsh::to_vec(&(0u8,)).map(Bytes::from).unwrap();
 
-        let create_request = base_store_request_builder()
+        let create_request = base_install_request_builder()
             .with_wasm_bytes(VM2_UPGRADABLE.clone())
             .with_shared_address_generator(Arc::clone(&address_generator))
             .with_gas_limit(DEFAULT_GAS_LIMIT)

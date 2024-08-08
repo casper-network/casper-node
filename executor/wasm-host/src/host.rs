@@ -520,6 +520,7 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
                 // state of deterministic address generator across chain of calls.
                 .with_shared_address_generator(Arc::clone(&caller.context().address_generator))
                 .with_chain_name(caller.context().chain_name.clone())
+                .with_block_time(caller.context().block_time)
                 .build()
                 .expect("should build");
 
@@ -663,6 +664,7 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
         // of deterministic address generator across chain of calls.
         .with_shared_address_generator(Arc::clone(&caller.context().address_generator))
         .with_chain_name(caller.context().chain_name.clone())
+        .with_block_time(caller.context().block_time)
         .build()
         .expect("should build");
 
@@ -1008,6 +1010,7 @@ pub fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
                 // state of deterministic address generator across chain of calls.
                 .with_shared_address_generator(address_generator)
                 .with_chain_name(caller.context().chain_name.clone())
+                .with_block_time(caller.context().block_time)
                 .build()
                 .expect("should build");
 
@@ -1174,6 +1177,7 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
             // state of deterministic address generator across chain of calls.
             .with_shared_address_generator(Arc::clone(&caller.context().address_generator))
             .with_chain_name(caller.context().chain_name.clone())
+            .with_block_time(caller.context().block_time)
             .build()
             .expect("should build");
 
@@ -1223,4 +1227,11 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
     }
 
     Ok(Ok(()))
+}
+
+pub fn casper_env_block_time<S: GlobalStateReader, E: Executor>(
+    caller: impl Caller<Context = Context<S, E>>,
+) -> VMResult<u64> {
+    let block_time = caller.context().block_time;
+    Ok(block_time.millis())
 }

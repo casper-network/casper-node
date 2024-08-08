@@ -602,6 +602,19 @@ where
                 ),
             );
 
+            imports.define(
+                "env",
+                "casper_env_block_time",
+                Function::new_typed_with_env(
+                    &mut store,
+                    &function_env,
+                    |env: FunctionEnvMut<WasmerEnv<S, E>>| {
+                        let wasmer_caller = WasmerCaller { env };
+                        host::casper_env_block_time(wasmer_caller)
+                    },
+                ),
+            );
+
             imports
         };
 
@@ -691,6 +704,7 @@ where
             address_generator: Arc::clone(&data.context.address_generator),
             chain_name: data.context.chain_name.clone(),
             input: data.context.input.clone(),
+            block_time: data.context.block_time,
         }
     }
 }

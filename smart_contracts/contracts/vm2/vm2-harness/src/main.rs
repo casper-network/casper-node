@@ -226,7 +226,7 @@ pub fn call(flipper_address: Address) {
 
         let result_2 = contract_handle
             .build_call()
-            .with_value(499)
+            .with_transferred_value(499)
             .call(|harness| harness.payable_entrypoint())
             .expect("Should call");
         assert_eq!(result_2, Ok(()));
@@ -236,7 +236,7 @@ pub fn call(flipper_address: Address) {
 
         let result_3 = contract_handle
             .build_call()
-            .with_value(123)
+            .with_transferred_value(123)
             .call(|harness| harness.payable_failing_entrypoint())
             .expect("Should call");
         assert_eq!(result_3, Err(CustomError::Foo));
@@ -278,7 +278,7 @@ pub fn call(flipper_address: Address) {
 
             contract_handle
                 .build_call()
-                .with_value(25)
+                .with_transferred_value(25)
                 .call(|harness| harness.deposit(account_balance_2))
                 .expect("Should call")
                 .expect("Should succeed");
