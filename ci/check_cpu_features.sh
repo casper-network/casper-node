@@ -2,7 +2,7 @@
 
 # Ensure that there has not been a change in CPU features used.
 
-
+gi
 set -e
 
 cd $(dirname $0)/..
