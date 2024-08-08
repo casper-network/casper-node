@@ -205,7 +205,9 @@ impl Distribution<AuctionCosts> for Standard {
         AuctionCosts {
             get_era_validators: rng.gen(),
             read_seigniorage_recipients: rng.gen(),
-            add_bid: rng.gen(),
+            // We cap the range at i64 due to constraint for parsing u64s
+            // https://github.com/toml-rs/toml/issues/705
+            add_bid: rng.gen_range(0..(i64::MAX as u64)),
             withdraw_bid: rng.gen(),
             delegate: rng.gen(),
             undelegate: rng.gen(),

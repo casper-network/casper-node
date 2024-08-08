@@ -10,7 +10,8 @@ use std::{convert::TryFrom, path::Path};
 
 use serde::{Deserialize, Serialize};
 
-use casper_execution_engine::shared::{system_config::SystemConfig, wasm_config::WasmConfig};
+use casper_execution_engine::shared::{wasm_config::WasmConfig};
+use casper_execution_engine::shared::system_config::SystemConfig;
 use casper_types::{bytesrepr::Bytes, file_utils, ProtocolVersion};
 
 use super::{
