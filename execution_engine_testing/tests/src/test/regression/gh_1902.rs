@@ -2,7 +2,8 @@ use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_ACCOUNT_PUBLIC_KEY, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
+    DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_MINIMUM_BID_AMOUNT, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::engine_state::{
     engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, ExecuteRequest,
@@ -17,7 +18,7 @@ use casper_types::{
     Gas, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
-const BOND_AMOUNT: u64 = 42;
+const BOND_AMOUNT: u64 = DEFAULT_MINIMUM_BID_AMOUNT;
 const DELEGATE_AMOUNT: u64 = 100 + DEFAULT_MINIMUM_DELEGATION_AMOUNT;
 const DELEGATION_RATE: DelegationRate = 10;
 

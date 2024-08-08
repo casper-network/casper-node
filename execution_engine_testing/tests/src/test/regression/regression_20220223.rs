@@ -3,7 +3,8 @@ use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_ACCOUNT_PUBLIC_KEY, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
+    DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_MINIMUM_BID_AMOUNT, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::{
     engine_state, engine_state::engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, execution,
@@ -35,7 +36,7 @@ const ARG_TARGET: &str = "target";
 const ARG_PURSE_NAME: &str = "purse_name";
 const TEST_PURSE: &str = "test_purse";
 const TRANSFER_AMOUNT: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE + 1000;
-const ADD_BID_AMOUNT_1: u64 = 95_000;
+const ADD_BID_AMOUNT_1: u64 = DEFAULT_MINIMUM_BID_AMOUNT;
 const ADD_BID_DELEGATION_RATE_1: DelegationRate = 10;
 const DELEGATE_AMOUNT_1: u64 = 125_000 + DEFAULT_MINIMUM_DELEGATION_AMOUNT;
 
