@@ -517,31 +517,24 @@ pub fn execute_finalized_block(
                                     builder.with_input(input_data.clone().take_inner().into());
                             }
 
-                            match target {
+                            let execution_kind = match target {
                                 Target::Session { module_bytes } => {
-                                    // Session code
-                                    builder = builder.with_target(ExecutionKind::SessionBytes(module_bytes));
+                                    ExecutionKind::SessionBytes(module_bytes)
                                 }
+                                Target::Stored {
+                                    id: TransactionInvocationTarget::ByHash(address),
+                                    entry_point,
+                                } => ExecutionKind::Stored {
+                                    address: EntityAddr::SmartContract(address),
+                                    entry_point: entry_point.clone(),
+                                },
                                 Target::Stored { id, entry_point } => {
-                                    match id {
-                                        TransactionInvocationTarget::ByHash(address) => {
-                                            let execution_kind = ExecutionKind::Stored {
-                                                address: EntityAddr::SmartContract(address),
-                                                entry_point: entry_point.clone()
-                                            };
-                                            builder = builder.with_target(execution_kind);
-                                        },
-                                        TransactionInvocationTarget::ByName(name) =>
-                                            todo!("call by {name}"),
-                                        TransactionInvocationTarget::ByPackageHash { addr, version } =>
-                                            todo!("ByPackageHash {addr:?} {version:?} not supported under v2 engine"),
-                                        TransactionInvocationTarget::ByPackageName {name, version } => {
-                                            todo!("ByPackageName {name:?} {version:?} not supported under v2 engine");
-                                        }
-                                    }
+                                    todo!("Unsupported target {entry_point} {id:?}")
                                 }
-                                _ => unreachable!(),
-                            }
+                                Target::Install { .. } => unreachable!(),
+                            };
+
+                            builder = builder.with_target(execution_kind);
 
                             let request = builder.build().expect("should build");
 
