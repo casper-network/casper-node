@@ -469,7 +469,12 @@ pub fn execute_finalized_block(
                                 request,
                             ) {
                                 Ok(result) => {
-                                    info!(contract_hash=base16::encode_lower(&result.contract_hash()), pre_state_root_hash=%state_root_hash, post_state_root_hash=%result.post_state_hash(),  ?result, "instantiate contract result");
+                                    info!(
+                                        contract_hash=base16::encode_lower(&result.contract_hash()),
+                                        pre_state_root_hash=%state_root_hash,
+                                        post_state_root_hash=%result.post_state_hash(),
+                                        ?result,
+                                        "instantiate contract result");
 
                                     // Update state root hash.
                                     state_root_hash = result.post_state_hash();
@@ -546,7 +551,11 @@ pub fn execute_finalized_block(
                                 request,
                             ) {
                                 Ok(result) => {
-                                    info!(?result, pre_state_root_hash=%state_root_hash, post_state_root_hash=%result.post_state_hash(), effects=?result.effects(), "execute contract result");
+                                    info!(
+                                        pre_state_root_hash=%state_root_hash,
+                                        post_state_root_hash=%result.post_state_hash(),
+                                        ?result,
+                                        "execute contract result");
 
                                     // Update state root hash.
                                     state_root_hash = result.post_state_hash();
