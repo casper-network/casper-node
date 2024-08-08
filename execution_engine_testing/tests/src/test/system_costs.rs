@@ -54,7 +54,7 @@ const BID_AMOUNT: u64 = 99 + DEFAULT_MINIMUM_DELEGATION_AMOUNT;
 const TRANSFER_AMOUNT: u64 = 123;
 const BID_DELEGATION_RATE: DelegationRate = auction::DELEGATION_RATE_DENOMINATOR;
 const UPDATED_CALL_CONTRACT_COST: Cost = 12_345;
-const NEW_ADD_BID_COST: u32 = 2_500_000_000;
+const NEW_ADD_BID_COST: u64 = 5_000_000_000_000;
 const NEW_WITHDRAW_BID_COST: u32 = 2_500_000_000;
 const NEW_DELEGATE_COST: u32 = 2_500_000_000;
 const NEW_UNDELEGATE_COST: u32 = 2_500_000_000;
@@ -743,67 +743,67 @@ fn should_charge_for_erroneous_system_contract_calls() {
         (
             auction_hash,
             auction::METHOD_WITHDRAW_BID,
-            system_config.auction_costs().withdraw_bid,
+            system_config.auction_costs().withdraw_bid.into(),
         ),
         (
             auction_hash,
             auction::METHOD_DELEGATE,
-            system_config.auction_costs().delegate,
+            system_config.auction_costs().delegate.into(),
         ),
         (
             auction_hash,
             auction::METHOD_UNDELEGATE,
-            system_config.auction_costs().undelegate,
+            system_config.auction_costs().undelegate.into(),
         ),
         (
             auction_hash,
             auction::METHOD_REDELEGATE,
-            system_config.auction_costs().redelegate,
+            system_config.auction_costs().redelegate.into(),
         ),
         (
             auction_hash,
             auction::METHOD_RUN_AUCTION,
-            system_config.auction_costs().run_auction,
+            system_config.auction_costs().run_auction.into(),
         ),
         (
             auction_hash,
             auction::METHOD_SLASH,
-            system_config.auction_costs().slash,
+            system_config.auction_costs().slash.into(),
         ),
         (
             auction_hash,
             auction::METHOD_DISTRIBUTE,
-            system_config.auction_costs().distribute,
+            system_config.auction_costs().distribute.into(),
         ),
         (
             mint_hash,
             mint::METHOD_MINT,
-            system_config.mint_costs().mint,
+            system_config.mint_costs().mint.into(),
         ),
         (
             mint_hash,
             mint::METHOD_REDUCE_TOTAL_SUPPLY,
-            system_config.mint_costs().reduce_total_supply,
+            system_config.mint_costs().reduce_total_supply.into(),
         ),
         (
             mint_hash,
             mint::METHOD_BALANCE,
-            system_config.mint_costs().balance,
+            system_config.mint_costs().balance.into(),
         ),
         (
             mint_hash,
             mint::METHOD_TRANSFER,
-            system_config.mint_costs().transfer,
+            system_config.mint_costs().transfer.into(),
         ),
         (
             handle_payment_hash,
             handle_payment::METHOD_SET_REFUND_PURSE,
-            system_config.handle_payment_costs().set_refund_purse,
+            system_config.handle_payment_costs().set_refund_purse.into(),
         ),
         (
             handle_payment_hash,
             handle_payment::METHOD_FINALIZE_PAYMENT,
-            system_config.handle_payment_costs().finalize_payment,
+            system_config.handle_payment_costs().finalize_payment.into(),
         ),
     ];
 
