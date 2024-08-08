@@ -26,6 +26,7 @@ use casper_execution_engine::{
     },
     storage::global_state::in_memory::InMemoryGlobalState,
 };
+use casper_execution_engine::core::engine_state::engine_config::DEFAULT_MINIMUM_BID_AMOUNT;
 use casper_types::{
     self,
     account::AccountHash,
@@ -89,7 +90,7 @@ static ACCOUNT_1_PK: Lazy<PublicKey> = Lazy::new(|| {
 });
 static ACCOUNT_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*ACCOUNT_1_PK));
 const ACCOUNT_1_BALANCE: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
-const ACCOUNT_1_BOND: u64 = 100_000;
+const ACCOUNT_1_BOND: u64 = DEFAULT_MINIMUM_BID_AMOUNT;
 
 static ACCOUNT_2_PK: Lazy<PublicKey> = Lazy::new(|| {
     let secret_key = SecretKey::ed25519_from_bytes([202; SecretKey::ED25519_LENGTH]).unwrap();
