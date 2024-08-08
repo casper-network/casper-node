@@ -2,6 +2,7 @@
 
 # Ensure that there has not been a change in CPU features used.
 
+
 set -e
 
 cd $(dirname $0)/..
