@@ -16,7 +16,7 @@ use casper_execution_engine::{
     core::{
         engine_state::{
             self,
-            engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT,
+            engine_config::{DEFAULT_MINIMUM_BID_AMOUNT, DEFAULT_MINIMUM_DELEGATION_AMOUNT},
             genesis::{ExecConfigBuilder, GenesisAccount, GenesisValidator},
             run_genesis_request::RunGenesisRequest,
             step::EvictItem,
@@ -26,7 +26,6 @@ use casper_execution_engine::{
     },
     storage::global_state::in_memory::InMemoryGlobalState,
 };
-use casper_execution_engine::core::engine_state::engine_config::DEFAULT_MINIMUM_BID_AMOUNT;
 use casper_types::{
     self,
     account::AccountHash,
