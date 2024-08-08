@@ -3,9 +3,11 @@ use once_cell::sync::Lazy;
 
 #[cfg(not(feature = "use-as-wasm"))]
 use casper_engine_test_support::DEFAULT_ACCOUNT_PUBLIC_KEY;
+#[cfg(not(feature = "use-as-wasm"))]
+use casper_engine_test_support::DEFAULT_MINIMUM_BID_AMOUNT;
 use casper_engine_test_support::{
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_MINIMUM_BID_AMOUNT, DEFAULT_PROTOCOL_VERSION, PRODUCTION_RUN_GENESIS_REQUEST,
+    DEFAULT_PROTOCOL_VERSION, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 #[cfg(not(feature = "use-as-wasm"))]
 use casper_execution_engine::shared::system_config::auction_costs::DEFAULT_ADD_BID_COST;
