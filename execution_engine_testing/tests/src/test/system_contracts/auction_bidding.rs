@@ -3,9 +3,10 @@ use num_traits::Zero;
 use casper_engine_test_support::{
     utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNTS,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PAYMENT, DEFAULT_PROPOSER_PUBLIC_KEY,
-    DEFAULT_PROTOCOL_VERSION, DEFAULT_UNBONDING_DELAY, MINIMUM_ACCOUNT_CREATION_BALANCE,
-    PRODUCTION_RUN_GENESIS_REQUEST, SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
+    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_MINIMUM_BID_AMOUNT, DEFAULT_PAYMENT,
+    DEFAULT_PROPOSER_PUBLIC_KEY, DEFAULT_PROTOCOL_VERSION, DEFAULT_UNBONDING_DELAY,
+    MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST, SYSTEM_ADDR,
+    TIMESTAMP_MILLIS_INCREMENT,
 };
 use casper_execution_engine::core::{
     engine_state::{
@@ -34,7 +35,7 @@ const CONTRACT_WITHDRAW_BID: &str = "withdraw_bid.wasm";
 const CONTRACT_AUCTION_BIDDING: &str = "auction_bidding.wasm";
 
 const GENESIS_VALIDATOR_STAKE: u64 = 50_000;
-const GENESIS_ACCOUNT_STAKE: u64 = 100_000;
+const GENESIS_ACCOUNT_STAKE: u64 = 100_000 + DEFAULT_MINIMUM_BID_AMOUNT;
 const TRANSFER_AMOUNT: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 
 const TEST_BOND: &str = "bond";
@@ -234,7 +235,7 @@ fn should_fail_bonding_with_insufficient_funds_directly() {
         auction::METHOD_ADD_BID,
         runtime_args! {
             auction::ARG_PUBLIC_KEY => new_validator_pk,
-            auction::ARG_AMOUNT => new_validator_balance + U512::one(),
+            auction::ARG_AMOUNT => new_validator_balance + DEFAULT_MINIMUM_BID_AMOUNT,
             auction::ARG_DELEGATION_RATE => delegation_rate,
         },
     )

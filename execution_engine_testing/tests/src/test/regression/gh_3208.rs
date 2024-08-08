@@ -4,8 +4,9 @@ use casper_engine_test_support::{
     utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, StepRequestBuilder,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY,
     DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PAYMENT, DEFAULT_PROPOSER_ADDR,
-    DEFAULT_PROPOSER_PUBLIC_KEY, DEFAULT_PROTOCOL_VERSION, DEFAULT_VESTING_SCHEDULE_PERIOD_MILLIS,
+    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_MINIMUM_BID_AMOUNT, DEFAULT_PAYMENT,
+    DEFAULT_PROPOSER_ADDR, DEFAULT_PROPOSER_PUBLIC_KEY, DEFAULT_PROTOCOL_VERSION,
+    DEFAULT_VESTING_SCHEDULE_PERIOD_MILLIS,
 };
 use casper_execution_engine::core::{
     engine_state::{
@@ -181,7 +182,7 @@ fn should_immediatelly_unbond_genesis_validator_with_zero_day_vesting_schedule()
         auction::METHOD_ADD_BID,
         runtime_args! {
             auction::ARG_PUBLIC_KEY => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
-            auction::ARG_AMOUNT => U512::from(1u64),
+            auction::ARG_AMOUNT => U512::from(DEFAULT_MINIMUM_BID_AMOUNT),
             auction::ARG_DELEGATION_RATE => 10 as DelegationRate,
         },
     )
@@ -308,7 +309,7 @@ fn should_immediatelly_unbond_genesis_validator_with_zero_day_vesting_schedule_a
         auction::METHOD_ADD_BID,
         runtime_args! {
             auction::ARG_PUBLIC_KEY => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
-            auction::ARG_AMOUNT => U512::from(1u64),
+            auction::ARG_AMOUNT => U512::from(DEFAULT_MINIMUM_BID_AMOUNT),
             auction::ARG_DELEGATION_RATE => 10 as DelegationRate,
         },
     )

@@ -11,9 +11,13 @@ use casper_engine_test_support::{
     PRODUCTION_ROUND_SEIGNIORAGE_RATE, PRODUCTION_RUN_GENESIS_REQUEST, SYSTEM_ADDR,
     TIMESTAMP_MILLIS_INCREMENT,
 };
-use casper_execution_engine::core::engine_state::{
-    engine_config::{DEFAULT_MINIMUM_BID_AMOUNT, DEFAULT_MINIMUM_DELEGATION_AMOUNT},
-    step::RewardItem,
+use casper_execution_engine::{
+    core::engine_state::{
+        engine_config::{DEFAULT_MINIMUM_BID_AMOUNT, DEFAULT_MINIMUM_DELEGATION_AMOUNT},
+        step::RewardItem,
+        EngineConfigBuilder,
+    },
+    storage::global_state::in_memory::InMemoryGlobalState,
 };
 use casper_types::{
     self,
@@ -1157,9 +1161,9 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
 #[ignore]
 #[test]
 fn should_distribute_reinvested_rewards_by_different_factor() {
-    const VALIDATOR_1_STAKE: u64 = DEFAULT_MINIMUM_BID_AMOUNT * 4;
-    const VALIDATOR_2_STAKE: u64 = DEFAULT_MINIMUM_BID_AMOUNT * 2;
-    const VALIDATOR_3_STAKE: u64 = DEFAULT_MINIMUM_BID_AMOUNT;
+    const VALIDATOR_1_STAKE: u64 = 4_000_000;
+    const VALIDATOR_2_STAKE: u64 = 2_000_000;
+    const VALIDATOR_3_STAKE: u64 = 1_000_000;
 
     const DELEGATION_RATE: DelegationRate = DELEGATION_RATE_DENOMINATOR;
 
@@ -1255,7 +1259,11 @@ fn should_distribute_reinvested_rewards_by_different_factor() {
         validator_3_add_bid_request,
     ];
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let custom_engine_config = EngineConfigBuilder::default()
+        .with_minimum_bid_amount(VALIDATOR_3_STAKE)
+        .build();
+    let global_state = InMemoryGlobalState::empty().expect("should create global state");
+    let mut builder = InMemoryWasmTestBuilder::new(global_state, custom_engine_config, None);
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -3686,9 +3694,9 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
 #[ignore]
 #[test]
 fn should_increase_total_supply_after_distribute() {
-    const VALIDATOR_1_STAKE: u64 = DEFAULT_MINIMUM_DELEGATION_AMOUNT;
-    const VALIDATOR_2_STAKE: u64 = DEFAULT_MINIMUM_DELEGATION_AMOUNT;
-    const VALIDATOR_3_STAKE: u64 = DEFAULT_MINIMUM_DELEGATION_AMOUNT;
+    const VALIDATOR_1_STAKE: u64 = DEFAULT_MINIMUM_BID_AMOUNT;
+    const VALIDATOR_2_STAKE: u64 = DEFAULT_MINIMUM_BID_AMOUNT;
+    const VALIDATOR_3_STAKE: u64 = DEFAULT_MINIMUM_BID_AMOUNT;
 
     const DELEGATION_RATE: DelegationRate = DELEGATION_RATE_DENOMINATOR / 2;
 
@@ -3915,7 +3923,7 @@ fn should_increase_total_supply_after_distribute() {
 #[ignore]
 #[test]
 fn should_not_create_purses_during_distribute() {
-    const VALIDATOR_1_STAKE: u64 = DEFAULT_MINIMUM_DELEGATION_AMOUNT;
+    const VALIDATOR_1_STAKE: u64 = DEFAULT_MINIMUM_BID_AMOUNT;
 
     const DELEGATION_RATE: DelegationRate = DELEGATION_RATE_DENOMINATOR / 2;
 
