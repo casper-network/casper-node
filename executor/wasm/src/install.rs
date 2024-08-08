@@ -24,8 +24,8 @@ pub struct InstallContractRequest {
     pub(crate) entry_point: Option<String>,
     /// Input data for the constructor.
     pub(crate) input: Option<Bytes>,
-    /// Value of tokens to be transferred into the constructor.
-    pub(crate) value: u128,
+    /// Attached tokens value that to be transferred into the constructor.
+    pub(crate) transferred_value: u128,
     /// Transaction hash.
     pub(crate) transaction_hash: TransactionHash,
     /// Address generator.
@@ -41,7 +41,7 @@ pub struct InstallContractRequestBuilder {
     wasm_bytes: Option<Bytes>,
     entry_point: Option<String>,
     input: Option<Bytes>,
-    value: Option<u128>,
+    transferred_value: Option<u128>,
     transaction_hash: Option<TransactionHash>,
     address_generator: Option<Arc<RwLock<AddressGenerator>>>,
     chain_name: Option<Arc<str>>,
@@ -73,8 +73,8 @@ impl InstallContractRequestBuilder {
         self
     }
 
-    pub fn with_value(mut self, value: u128) -> Self {
-        self.value = Some(value);
+    pub fn with_transferred_value(mut self, transferred_value: u128) -> Self {
+        self.transferred_value = Some(transferred_value);
         self
     }
 
@@ -107,7 +107,7 @@ impl InstallContractRequestBuilder {
         let wasm_bytes = self.wasm_bytes.ok_or("Wasm bytes not set")?;
         let entry_point = self.entry_point;
         let input = self.input;
-        let value = self.value.ok_or("Value not set")?;
+        let transferred_value = self.transferred_value.ok_or("Value not set")?;
         let address_generator = self.address_generator.ok_or("Address generator not set")?;
         let transaction_hash = self.transaction_hash.ok_or("Transaction hash not set")?;
         let chain_name = self.chain_name.ok_or("Chain name not set")?;
@@ -117,7 +117,7 @@ impl InstallContractRequestBuilder {
             wasm_bytes,
             entry_point,
             input,
-            value,
+            transferred_value,
             address_generator,
             transaction_hash,
             chain_name,

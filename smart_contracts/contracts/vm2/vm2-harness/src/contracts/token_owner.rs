@@ -71,7 +71,7 @@ impl TokenOwnerContract {
         let self_balance = host::get_balance_of(&Entity::Contract(self_address));
         let res = ContractHandle::<HarnessRef>::from_address(contract_address)
             .build_call()
-            .with_value(amount)
+            .with_transferred_value(amount)
             .call(|harness| harness.deposit(self_balance))?;
         match &res {
             Ok(()) => log!("Token owner deposited {amount} to {contract_address:?}"),

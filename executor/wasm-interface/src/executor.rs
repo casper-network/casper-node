@@ -35,7 +35,7 @@ pub struct ExecuteRequest {
     /// Input data.
     pub input: Bytes,
     /// Value transferred to the contract.
-    pub value: u128,
+    pub transferred_value: u128,
     /// Transaction hash.
     pub transaction_hash: TransactionHash,
     /// Address generator.
@@ -110,7 +110,7 @@ impl ExecuteRequestBuilder {
     }
 
     /// Pass value to be sent to the contract.
-    pub fn with_value(mut self, value: u128) -> Self {
+    pub fn with_transferred_value(mut self, value: u128) -> Self {
         self.value = Some(value);
         self
     }
@@ -169,7 +169,7 @@ impl ExecuteRequestBuilder {
             gas_limit,
             execution_kind,
             input,
-            value,
+            transferred_value: value,
             transaction_hash,
             address_generator,
             chain_name,

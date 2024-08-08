@@ -276,7 +276,7 @@ impl<'a> TransactionV1Builder<'a> {
         entity_address: AddressableEntityHash,
         entry_point: String,
         input_data: Option<Bytes>,
-        value: u128,
+        transferred_value: u128,
     ) -> Self {
         let body = {
             let args = TransactionArgs::Chunked(input_data.unwrap_or_default());
@@ -292,7 +292,7 @@ impl<'a> TransactionV1Builder<'a> {
                 entry_point: TransactionEntryPoint::Custom(entry_point),
                 transaction_category,
                 scheduling,
-                value,
+                transferred_value,
             }
         };
         TransactionV1Builder::new(body)

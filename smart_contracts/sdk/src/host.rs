@@ -172,7 +172,7 @@ pub fn casper_write(key: Keyspace, value: &[u8]) -> Result<(), Error> {
 
 pub fn casper_create(
     code: Option<&[u8]>,
-    value: u128,
+    transferred_value: u128,
     constructor: Option<&str>,
     input_data: Option<&[u8]>,
 ) -> Result<casper_sdk_sys::CreateResult, CallError> {
@@ -183,7 +183,7 @@ pub fn casper_create(
 
     let mut result = MaybeUninit::uninit();
 
-    let ptr = NonNull::from(&value);
+    let ptr = NonNull::from(&transferred_value);
 
     let call_error = unsafe {
         casper_sdk_sys::casper_create(
@@ -208,12 +208,12 @@ pub fn casper_create(
 
 pub(crate) fn call_into<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
     address: &Address,
-    value: u128,
+    transferred_value: u128,
     entry_point: &str,
     input_data: &[u8],
     alloc: Option<F>,
 ) -> Result<(), CallError> {
-    let ptr = NonNull::from(&value);
+    let ptr = NonNull::from(&transferred_value);
     let result_code = unsafe {
         casper_sdk_sys::casper_call(
             address.as_ptr(),
@@ -240,14 +240,14 @@ fn call_result_from_code(result_code: u32) -> Result<(), CallError> {
 
 pub fn casper_call(
     address: &Address,
-    value: u128,
+    transferred_value: u128,
     entry_point: &str,
     input_data: &[u8],
 ) -> (Option<Vec<u8>>, Result<(), CallError>) {
     let mut output = None;
     let result_code = call_into(
         address,
-        value,
+        transferred_value,
         entry_point,
         input_data,
         Some(|size| {
@@ -348,14 +348,14 @@ impl<T: ToCallData> CallResult<T> {
 
 pub fn call<T: ToCallData>(
     contract_address: &Address,
-    value: u128,
+    transferred_value: u128,
     call_data: T,
 ) -> Result<CallResult<T>, CallError> {
     let input_data = call_data.input_data().unwrap_or_default();
 
     let (maybe_data, result_code) = casper_call(
         contract_address,
-        value,
+        transferred_value,
         call_data.entry_point(),
         &input_data,
     );
@@ -476,7 +476,7 @@ pub fn get_balance_of(entity_kind: &Entity) -> u128 {
 /// Get the value passed to the contract.
 pub fn get_value() -> u128 {
     let mut value = MaybeUninit::<u128>::uninit();
-    unsafe { casper_sdk_sys::casper_env_value(value.as_mut_ptr() as *mut _) };
+    unsafe { casper_sdk_sys::casper_env_transferred_value(value.as_mut_ptr() as *mut _) };
     unsafe { value.assume_init() }
 }
 

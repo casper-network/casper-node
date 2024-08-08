@@ -125,7 +125,7 @@ impl ExecutorV2 {
             wasm_bytes,
             entry_point,
             input,
-            value,
+            transferred_value,
             address_generator,
             transaction_hash,
             chain_name,
@@ -225,7 +225,7 @@ impl ExecutorV2 {
                     })
                     .with_gas_limit(gas_limit)
                     .with_input(input)
-                    .with_value(value)
+                    .with_transferred_value(transferred_value)
                     .with_transaction_hash(transaction_hash)
                     .with_shared_address_generator(address_generator)
                     .with_chain_name(chain_name)
@@ -293,7 +293,7 @@ impl ExecutorV2 {
             gas_limit,
             execution_kind,
             input,
-            value,
+            transferred_value,
             transaction_hash,
             address_generator,
             chain_name,
@@ -344,12 +344,12 @@ impl ExecutorV2 {
                             .expect("should be byte code")
                             .take_bytes();
 
-                        if value != 0 {
+                        if transferred_value != 0 {
                             let args = {
                                 let maybe_to = None;
                                 let source = source_purse;
                                 let target = addressable_entity.main_purse();
-                                let amount = value;
+                                let amount = transferred_value;
                                 let id = None;
                                 MintTransferArgs {
                                     maybe_to,
@@ -411,7 +411,7 @@ impl ExecutorV2 {
             initiator,
             caller: caller_key,
             callee: callee_key,
-            value,
+            transferred_value,
             tracking_copy,
             executor: self.clone(),
             address_generator: Arc::clone(&address_generator),

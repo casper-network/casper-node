@@ -19,7 +19,7 @@ pub struct Context<S: GlobalStateReader, E: Executor> {
     /// contract or session address.
     // pub state_address: Address,
     /// The amount of tokens that were send to the contract's purse at the time of the call.
-    pub value: u128,
+    pub transferred_value: u128,
     pub tracking_copy: TrackingCopy<S>,
     pub executor: E, // TODO: This could be part of the caller
     pub transaction_hash: TransactionHash,

@@ -458,7 +458,7 @@ pub fn execute_finalized_block(
                                 .with_transaction_hash(transaction_hash)
                                 .with_wasm_bytes(module_bytes)
                                 .with_address_generator(address_generator)
-                                .with_value(value)
+                                .with_transferred_value(value)
                                 .with_chain_name(chainspec.network_config.name.clone())
                                 .build()
                                 .expect("should build");
@@ -510,7 +510,7 @@ pub fn execute_finalized_block(
                                 // execution target inside the executor
                                 .with_callee_key(initiator_key)
                                 .with_chain_name(chainspec.network_config.name.clone())
-                                .with_value(value);
+                                .with_transferred_value(value);
 
                             if let Some(input_data) = input_data.clone() {
                                 builder =

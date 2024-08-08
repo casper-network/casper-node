@@ -510,7 +510,7 @@ where
 
             imports.define(
                 "env",
-                "casper_env_value",
+                "casper_env_transferred_value",
                 Function::new_typed_with_env(
                     &mut store,
                     &function_env,
@@ -518,7 +518,7 @@ where
                      output: WasmPtr<u128>|
                      -> Result<(), VMError> {
                         let wasmer_caller = WasmerCaller { env };
-                        host::casper_env_value(wasmer_caller, output.offset())?;
+                        host::casper_env_transferred_value(wasmer_caller, output.offset())?;
                         Ok(())
                     },
                 ),
@@ -684,7 +684,7 @@ where
             initiator: data.context.initiator,
             caller: data.context.caller,
             callee: data.context.callee,
-            value: data.context.value,
+            transferred_value: data.context.transferred_value,
             tracking_copy: data.context.tracking_copy.fork2(),
             executor: data.context.executor.clone(),
             transaction_hash: data.context.transaction_hash,

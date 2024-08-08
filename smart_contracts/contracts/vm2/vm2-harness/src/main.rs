@@ -201,7 +201,7 @@ pub fn call(flipper_address: Address) {
         next_test(&mut counter, "Checking payable entrypoints");
 
         let contract_handle = ContractBuilder::<HarnessRef>::new()
-            .with_value(1)
+            .with_transferred_value(1)
             .create(|| HarnessRef::payable_constructor())
             .expect("Should create");
 
@@ -217,7 +217,7 @@ pub fn call(flipper_address: Address) {
 
         let result_1 = contract_handle
             .build_call()
-            .with_value(500)
+            .with_transferred_value(500)
             .call(|harness| harness.payable_entrypoint())
             .expect("Should call");
         assert_eq!(result_1, Ok(()));
@@ -255,7 +255,7 @@ pub fn call(flipper_address: Address) {
         let current_test = next_test(&mut counter, "Deposit and withdraw");
 
         let contract_handle = ContractBuilder::<HarnessRef>::new()
-            .with_value(0)
+            .with_transferred_value(0)
             .create(|| HarnessRef::payable_constructor())
             .expect("Should create");
 
@@ -269,7 +269,7 @@ pub fn call(flipper_address: Address) {
             let account_balance_1 = host::get_balance_of(&caller);
             contract_handle
                 .build_call()
-                .with_value(100)
+                .with_transferred_value(100)
                 .call(|harness| harness.deposit(account_balance_1))
                 .expect("Should call")
                 .expect("Should succeed");
@@ -331,14 +331,14 @@ pub fn call(flipper_address: Address) {
         let caller = host::get_caller();
 
         let harness = ContractBuilder::<HarnessRef>::new()
-            .with_value(0)
+            .with_transferred_value(0)
             .create(|| HarnessRef::constructor_with_args("Contract".into()))
             .expect("Should create");
 
         let initial_balance = 1000;
 
         let token_owner = ContractBuilder::<TokenOwnerContractRef>::new()
-            .with_value(initial_balance)
+            .with_transferred_value(initial_balance)
             .create(|| TokenOwnerContractRef::token_owner_initialize())
             .expect("Should create");
         assert_eq!(token_owner.balance(), initial_balance);

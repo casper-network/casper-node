@@ -790,7 +790,7 @@ mod symbols {
         crate::host::native::handle_ret_with(_call_result, ptr::null)
     }
     #[no_mangle]
-    pub extern "C" fn casper_env_value() -> u64 {
+    pub extern "C" fn casper_env_transferred_value() -> u64 {
         todo!()
     }
     #[no_mangle]

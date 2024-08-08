@@ -66,7 +66,7 @@ fn base_execute_builder() -> ExecuteRequestBuilder {
         .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
         .with_callee_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
         .with_gas_limit(DEFAULT_GAS_LIMIT)
-        .with_value(1000)
+        .with_transferred_value(1000)
         .with_transaction_hash(TRANSACTION_HASH)
         .with_chain_name(DEFAULT_CHAIN_NAME)
 }
@@ -122,7 +122,7 @@ fn harness() {
         let install_request = base_store_request_builder()
             .with_wasm_bytes(VM2_CEP18.clone())
             .with_shared_address_generator(Arc::clone(&address_generator))
-            .with_value(0)
+            .with_transferred_value(0)
             .with_entry_point("new".to_string())
             .with_input(input_data)
             .build()
@@ -147,7 +147,7 @@ fn harness() {
         .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
         .with_callee_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
         .with_gas_limit(DEFAULT_GAS_LIMIT)
-        .with_value(1000)
+        .with_transferred_value(1000)
         .with_transaction_hash(TRANSACTION_HASH)
         .with_target(ExecutionKind::SessionBytes(VM2_HARNESS))
         .with_serialized_input((flipper_address,))
@@ -190,7 +190,7 @@ fn cep18() {
         .with_transaction_hash(TRANSACTION_HASH)
         .with_wasm_bytes(VM2_CEP18.clone())
         .with_shared_address_generator(Arc::clone(&address_generator))
-        .with_value(0)
+        .with_transferred_value(0)
         .with_entry_point("new".to_string())
         .with_input(input_data)
         .with_chain_name(DEFAULT_CHAIN_NAME)
@@ -213,11 +213,11 @@ fn cep18() {
         .with_caller_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
         .with_callee_key(Key::Account(*DEFAULT_ACCOUNT_HASH))
         .with_gas_limit(DEFAULT_GAS_LIMIT)
-        .with_value(1000)
+        .with_transferred_value(1000)
         .with_transaction_hash(TRANSACTION_HASH)
         .with_target(ExecutionKind::SessionBytes(VM2_CEP18_CALLER))
         .with_serialized_input((create_result.contract_hash().value(),))
-        .with_value(0)
+        .with_transferred_value(0)
         .with_shared_address_generator(Arc::clone(&address_generator))
         .with_chain_name(DEFAULT_CHAIN_NAME)
         .build()
@@ -297,7 +297,7 @@ fn upgradable() {
             .with_wasm_bytes(VM2_UPGRADABLE.clone())
             .with_shared_address_generator(Arc::clone(&address_generator))
             .with_gas_limit(DEFAULT_GAS_LIMIT)
-            .with_value(0)
+            .with_transferred_value(0)
             .with_entry_point("new".to_string())
             .with_input(input_data)
             .build()
@@ -326,7 +326,7 @@ fn upgradable() {
             })
             .with_input(Bytes::new())
             .with_gas_limit(DEFAULT_GAS_LIMIT)
-            .with_value(0)
+            .with_transferred_value(0)
             .with_shared_address_generator(Arc::clone(&address_generator))
             .build()
             .expect("should build");
@@ -352,7 +352,7 @@ fn upgradable() {
             })
             .with_input(Bytes::new())
             .with_gas_limit(DEFAULT_GAS_LIMIT)
-            .with_value(0)
+            .with_transferred_value(0)
             .with_shared_address_generator(Arc::clone(&address_generator))
             .build()
             .expect("should build");
@@ -372,7 +372,7 @@ fn upgradable() {
 
     let address = EntityAddr::new_smart_contract(upgradable_address.value());
     let execute_request = base_execute_builder()
-        .with_value(0)
+        .with_transferred_value(0)
         .with_target(ExecutionKind::Stored {
             address,
             entry_point: "perform_upgrade".to_string(),
@@ -401,7 +401,7 @@ fn upgradable() {
             })
             .with_input(Bytes::new())
             .with_gas_limit(DEFAULT_GAS_LIMIT)
-            .with_value(0)
+            .with_transferred_value(0)
             .with_shared_address_generator(Arc::clone(&address_generator))
             .build()
             .expect("should build");
@@ -427,7 +427,7 @@ fn upgradable() {
             })
             .with_serialized_input((10u64,))
             .with_gas_limit(DEFAULT_GAS_LIMIT)
-            .with_value(0)
+            .with_transferred_value(0)
             .with_shared_address_generator(Arc::clone(&address_generator))
             .build()
             .expect("should build");

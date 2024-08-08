@@ -170,7 +170,7 @@ impl<T: ContractRef> ContractHandle<T> {
         CallBuilder {
             address: self.contract_address,
             marker: PhantomData,
-            value: None,
+            transferred_value: None,
         }
     }
 
@@ -211,7 +211,7 @@ impl<T: ContractRef> ContractHandle<T> {
 
 pub struct CallBuilder<T: ContractRef> {
     address: Address,
-    value: Option<u128>,
+    transferred_value: Option<u128>,
     marker: PhantomData<T>,
 }
 
@@ -219,13 +219,13 @@ impl<T: ContractRef> CallBuilder<T> {
     pub fn new(address: Address) -> Self {
         CallBuilder {
             address,
-            value: None,
+            transferred_value: None,
             marker: PhantomData,
         }
     }
 
-    pub fn with_value(mut self, value: u128) -> Self {
-        self.value = Some(value);
+    pub fn with_transferred_value(mut self, transferred_value: u128) -> Self {
+        self.transferred_value = Some(transferred_value);
         self
     }
 
@@ -233,7 +233,7 @@ impl<T: ContractRef> CallBuilder<T> {
     pub fn cast<U: ContractRef>(self) -> CallBuilder<U> {
         CallBuilder {
             address: self.address,
-            value: self.value,
+            transferred_value: self.transferred_value,
             marker: PhantomData,
         }
     }
@@ -244,7 +244,11 @@ impl<T: ContractRef> CallBuilder<T> {
     ) -> Result<CallResult<CallData>, CallError> {
         let inst = T::new();
         let call_data = func(inst);
-        host::call(&self.address, self.value.unwrap_or(0), call_data)
+        host::call(
+            &self.address,
+            self.transferred_value.unwrap_or(0),
+            call_data,
+        )
     }
 
     pub fn call<'a, CallData: ToCallData>(
@@ -256,13 +260,17 @@ impl<T: ContractRef> CallBuilder<T> {
     {
         let inst = T::new();
         let call_data = func(inst);
-        let call_result = host::call(&self.address, self.value.unwrap_or(0), call_data)?;
+        let call_result = host::call(
+            &self.address,
+            self.transferred_value.unwrap_or(0),
+            call_data,
+        )?;
         call_result.into_result()
     }
 }
 
 pub struct ContractBuilder<'a, T: ContractRef> {
-    value: Option<u128>,
+    transferred_value: Option<u128>,
     code: Option<&'a [u8]>,
     marker: PhantomData<T>,
 }
@@ -276,14 +284,14 @@ impl<'a, T: ContractRef> Default for ContractBuilder<'a, T> {
 impl<'a, T: ContractRef> ContractBuilder<'a, T> {
     pub fn new() -> Self {
         ContractBuilder {
-            value: None,
+            transferred_value: None,
             code: None,
             marker: PhantomData,
         }
     }
 
-    pub fn with_value(mut self, value: u128) -> Self {
-        self.value = Some(value);
+    pub fn with_transferred_value(mut self, transferred_value: u128) -> Self {
+        self.transferred_value = Some(transferred_value);
         self
     }
 
@@ -299,7 +307,7 @@ impl<'a, T: ContractRef> ContractBuilder<'a, T> {
     where
         CallData::Return<'a>: BorshDeserialize,
     {
-        let value = self.value.unwrap_or(0);
+        let value = self.transferred_value.unwrap_or(0);
         let call_data = func();
         let input_data = call_data.input_data();
         let create_result = host::casper_create(
@@ -312,11 +320,11 @@ impl<'a, T: ContractRef> ContractBuilder<'a, T> {
     }
 
     pub fn default_create(&self) -> Result<ContractHandle<T>, CallError> {
-        if self.value.is_some() {
+        if self.transferred_value.is_some() {
             panic!("Value should not be set for default create");
         }
 
-        let value = self.value.unwrap_or(0);
+        let value = self.transferred_value.unwrap_or(0);
         let create_result = host::casper_create(self.code, value, None, None)?;
         Ok(ContractHandle::from_address(create_result.contract_address))
     }

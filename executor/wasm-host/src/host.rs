@@ -514,7 +514,7 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
                     entry_point: entry_point_name, //Some(Selector::new(selector)),
                 })
                 .with_input(input_data.unwrap_or_default())
-                .with_value(value)
+                .with_transferred_value(value)
                 .with_transaction_hash(caller.context().transaction_hash)
                 // We're using shared address generator there as we need to preserve and advance the
                 // state of deterministic address generator across chain of calls.
@@ -656,7 +656,7 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
             address: entity_addr,
             entry_point,
         })
-        .with_value(value)
+        .with_transferred_value(value)
         .with_input(input_data)
         .with_transaction_hash(caller.context().transaction_hash)
         // We're using shared address generator there as we need to preserve and advance the state
@@ -751,11 +751,11 @@ pub fn casper_env_caller<S: GlobalStateReader, E: Executor>(
     }
 }
 
-pub fn casper_env_value<S: GlobalStateReader, E: Executor>(
+pub fn casper_env_transferred_value<S: GlobalStateReader, E: Executor>(
     caller: impl Caller<Context = Context<S, E>>,
     output: u32,
 ) -> Result<(), VMError> {
-    let result = caller.context().value;
+    let result = caller.context().transferred_value;
     caller.memory_write(output, &result.to_le_bytes())?;
     Ok(())
 }
@@ -1001,7 +1001,7 @@ pub fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
                     address: target_entity_addr,
                     entry_point: "__casper_fallback".to_string(),
                 })
-                .with_value(amount)
+                .with_transferred_value(amount)
                 .with_input(Bytes::new())
                 .with_transaction_hash(transaction_hash)
                 // We're using shared address generator there as we need to preserve and advance the
@@ -1168,7 +1168,7 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
             .with_input(input_data.unwrap_or_default())
             // Upgrade entry point is executed with zero value as it does not seem to make sense to
             // be able to transfer anything.
-            .with_value(0)
+            .with_transferred_value(0)
             .with_transaction_hash(caller.context().transaction_hash)
             // We're using shared address generator there as we need to preserve and advance the
             // state of deterministic address generator across chain of calls.
