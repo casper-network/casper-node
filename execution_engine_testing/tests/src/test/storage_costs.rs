@@ -3,6 +3,8 @@ use once_cell::sync::Lazy;
 
 #[cfg(not(feature = "use-as-wasm"))]
 use casper_engine_test_support::DEFAULT_ACCOUNT_PUBLIC_KEY;
+#[cfg(not(feature = "use-as-wasm"))]
+use casper_engine_test_support::DEFAULT_MINIMUM_BID_AMOUNT;
 use casper_engine_test_support::{
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_PROTOCOL_VERSION, PRODUCTION_RUN_GENESIS_REQUEST,
@@ -221,7 +223,7 @@ fn should_verify_isolate_host_side_payment_code_is_free() {
 #[ignore]
 #[test]
 fn should_verify_isolated_auction_storage_is_free() {
-    const BOND_AMOUNT: u64 = 42;
+    const BOND_AMOUNT: u64 = DEFAULT_MINIMUM_BID_AMOUNT;
     const DELEGATION_RATE: DelegationRate = 10;
 
     let mut builder = initialize_isolated_storage_costs();

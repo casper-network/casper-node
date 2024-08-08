@@ -884,8 +884,10 @@ where
                     Self::get_named_argument(runtime_args, auction::ARG_DELEGATION_RATE)?;
                 let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
 
+                let minimum_bid_amount = self.config.minimum_bid_amount();
+
                 let result = runtime
-                    .add_bid(account_hash, delegation_rate, amount)
+                    .add_bid(account_hash, delegation_rate, amount, minimum_bid_amount)
                     .map_err(Self::reverter)?;
 
                 CLValue::from_t(result).map_err(Self::reverter)

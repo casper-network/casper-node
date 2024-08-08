@@ -2,7 +2,8 @@ use std::{collections::BTreeSet, convert::TryInto, fmt, iter::FromIterator};
 
 use casper_engine_test_support::{
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, StepRequestBuilder, WasmTestBuilder,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY, PRODUCTION_RUN_GENESIS_REQUEST,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_MINIMUM_BID_AMOUNT,
+    PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
     core::{
@@ -132,7 +133,7 @@ fn gh_3710_commit_prune_should_delete_values() {
     assert_eq!(keys_after_batch_2_prune.len(), 0);
 }
 
-const DEFAULT_REWARD_AMOUNT: u64 = 1_000_000;
+const DEFAULT_REWARD_AMOUNT: u64 = DEFAULT_MINIMUM_BID_AMOUNT;
 
 fn add_validator_and_wait_for_rotation<S>(builder: &mut WasmTestBuilder<S>)
 where

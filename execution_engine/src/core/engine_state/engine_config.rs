@@ -28,6 +28,8 @@ pub const DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT: u32 = 12;
 pub const DEFAULT_MAX_STORED_VALUE_SIZE: u32 = 8 * 1024 * 1024;
 /// Default value for minimum delegation amount in motes.
 pub const DEFAULT_MINIMUM_DELEGATION_AMOUNT: u64 = 500 * 1_000_000_000;
+/// Default value for minimum bid amount in motes.
+pub const DEFAULT_MINIMUM_BID_AMOUNT: u64 = 10_000 * 1_000_000_000;
 /// Default value for strict argument checking.
 pub const DEFAULT_STRICT_ARGUMENT_CHECKING: bool = false;
 /// 91 days / 7 days in a week = 13 weeks
@@ -59,6 +61,7 @@ pub struct EngineConfig {
     max_associated_keys: u32,
     max_runtime_call_stack_height: u32,
     minimum_delegation_amount: u64,
+    minimum_bid_amount: u64,
     /// This flag indicates if arguments passed to contracts are checked against the defined types.
     strict_argument_checking: bool,
     /// Vesting schedule period in milliseconds.
@@ -90,6 +93,7 @@ impl Default for EngineConfig {
             max_associated_keys: DEFAULT_MAX_ASSOCIATED_KEYS,
             max_runtime_call_stack_height: DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
             minimum_delegation_amount: DEFAULT_MINIMUM_DELEGATION_AMOUNT,
+            minimum_bid_amount: DEFAULT_MINIMUM_BID_AMOUNT,
             strict_argument_checking: DEFAULT_STRICT_ARGUMENT_CHECKING,
             vesting_schedule_period_millis: DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
             max_delegators_per_validator: None,
@@ -119,6 +123,7 @@ impl EngineConfig {
         max_associated_keys: u32,
         max_runtime_call_stack_height: u32,
         minimum_delegation_amount: u64,
+        minimum_bid_amount: u64,
         strict_argument_checking: bool,
         vesting_schedule_period_millis: u64,
         max_delegators_per_validator: Option<u32>,
@@ -130,6 +135,7 @@ impl EngineConfig {
             max_associated_keys,
             max_runtime_call_stack_height,
             minimum_delegation_amount,
+            minimum_bid_amount,
             strict_argument_checking,
             vesting_schedule_period_millis,
             max_delegators_per_validator,
@@ -166,6 +172,11 @@ impl EngineConfig {
     /// Returns the minimum delegation amount in motes.
     pub fn minimum_delegation_amount(&self) -> u64 {
         self.minimum_delegation_amount
+    }
+
+    /// Returns the minimum bid amount in motes.
+    pub fn minimum_bid_amount(&self) -> u64 {
+        self.minimum_bid_amount
     }
 
     /// Get the engine config's strict argument checking flag.
@@ -230,6 +241,7 @@ pub struct EngineConfigBuilder {
     max_associated_keys: Option<u32>,
     max_runtime_call_stack_height: Option<u32>,
     minimum_delegation_amount: Option<u64>,
+    minimum_bid_amount: Option<u64>,
     strict_argument_checking: Option<bool>,
     vesting_schedule_period_millis: Option<u64>,
     max_delegators_per_validator: Option<u32>,
@@ -312,6 +324,12 @@ impl EngineConfigBuilder {
         self
     }
 
+    /// Sets the minimum bid amount config option.
+    pub fn with_minimum_bid_amount(mut self, minimum_bid_amount: u64) -> Self {
+        self.minimum_bid_amount = Some(minimum_bid_amount);
+        self
+    }
+
     /// Sets the administrative accounts.
     pub fn with_administrative_accounts(
         mut self,
@@ -366,6 +384,9 @@ impl EngineConfigBuilder {
         let minimum_delegation_amount = self
             .minimum_delegation_amount
             .unwrap_or(DEFAULT_MINIMUM_DELEGATION_AMOUNT);
+        let minimum_bid_amount = self
+            .minimum_bid_amount
+            .unwrap_or(DEFAULT_MINIMUM_BID_AMOUNT);
         let wasm_config = self.wasm_config.unwrap_or_default();
         let system_config = self.system_config.unwrap_or_default();
         let administrative_accounts = {
@@ -397,6 +418,7 @@ impl EngineConfigBuilder {
             max_associated_keys,
             max_runtime_call_stack_height,
             minimum_delegation_amount,
+            minimum_bid_amount,
             wasm_config,
             system_config,
             administrative_accounts,

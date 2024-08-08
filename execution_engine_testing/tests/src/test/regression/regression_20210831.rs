@@ -5,7 +5,10 @@ use casper_engine_test_support::{
     DEFAULT_ACCOUNT_PUBLIC_KEY, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::{
-    engine_state::{engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, Error as CoreError},
+    engine_state::{
+        engine_config::{DEFAULT_MINIMUM_BID_AMOUNT, DEFAULT_MINIMUM_DELEGATION_AMOUNT},
+        Error as CoreError,
+    },
     execution::Error as ExecError,
 };
 use casper_types::{
@@ -41,7 +44,7 @@ const METHOD_ACTIVATE_BID_CALL: &str = "activate_bid_proxy_call";
 const CONTRACT_HASH_NAME: &str = "contract_hash";
 
 const BID_DELEGATION_RATE: DelegationRate = 42;
-static BID_AMOUNT: Lazy<U512> = Lazy::new(|| U512::from(1_000_000));
+static BID_AMOUNT: Lazy<U512> = Lazy::new(|| U512::from(DEFAULT_MINIMUM_BID_AMOUNT));
 static DELEGATE_AMOUNT: Lazy<U512> = Lazy::new(|| U512::from(500_000));
 
 fn setup() -> InMemoryWasmTestBuilder {

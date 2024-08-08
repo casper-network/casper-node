@@ -16,7 +16,7 @@ use casper_execution_engine::{
     core::{
         engine_state::{
             self,
-            engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT,
+            engine_config::{DEFAULT_MINIMUM_BID_AMOUNT, DEFAULT_MINIMUM_DELEGATION_AMOUNT},
             genesis::{ExecConfigBuilder, GenesisAccount, GenesisValidator},
             run_genesis_request::RunGenesisRequest,
             step::EvictItem,
@@ -54,10 +54,10 @@ const CONTRACT_REDELEGATE: &str = "redelegate.wasm";
 
 const TRANSFER_AMOUNT: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE + 1000;
 
-const ADD_BID_AMOUNT_1: u64 = 95_000;
-const ADD_BID_AMOUNT_2: u64 = 47_500;
+const ADD_BID_AMOUNT_1: u64 = 95_000 + DEFAULT_MINIMUM_BID_AMOUNT;
+const ADD_BID_AMOUNT_2: u64 = 47_500 + DEFAULT_MINIMUM_BID_AMOUNT;
 const ADD_BID_DELEGATION_RATE_1: DelegationRate = 10;
-const BID_AMOUNT_2: u64 = 5_000;
+const BID_AMOUNT_2: u64 = 5_000 + DEFAULT_MINIMUM_BID_AMOUNT;
 const ADD_BID_DELEGATION_RATE_2: DelegationRate = 15;
 const WITHDRAW_BID_AMOUNT_2: u64 = 15_000;
 
@@ -128,7 +128,7 @@ static DELEGATOR_2: Lazy<PublicKey> = Lazy::new(|| {
 static VALIDATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*VALIDATOR_1));
 static DELEGATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*DELEGATOR_1));
 static DELEGATOR_2_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*DELEGATOR_2));
-const VALIDATOR_1_STAKE: u64 = 1_000_000;
+const VALIDATOR_1_STAKE: u64 = 1_000_000 + DEFAULT_MINIMUM_BID_AMOUNT;
 const DELEGATOR_1_STAKE: u64 = 1_500_000 + DEFAULT_MINIMUM_DELEGATION_AMOUNT;
 const DELEGATOR_1_BALANCE: u64 = DEFAULT_ACCOUNT_INITIAL_BALANCE;
 const DELEGATOR_2_STAKE: u64 = 2_000_000 + DEFAULT_MINIMUM_DELEGATION_AMOUNT;
@@ -872,6 +872,7 @@ fn should_release_founder_stake() {
     let custom_engine_config = EngineConfigBuilder::default()
         .with_minimum_delegation_amount(NEW_MINIMUM_DELEGATION_AMOUNT)
         .with_vesting_schedule_period_millis(CASPER_VESTING_SCHEDULE_PERIOD_MILLIS)
+        .with_minimum_bid_amount(100_000)
         .build();
 
     let global_state = InMemoryGlobalState::empty().expect("should create global state");

@@ -9,7 +9,10 @@ All notable changes to this project will be documented in this file.  The format
 [comment]: <> (Fixed:      any bug fixes)
 [comment]: <> (Security:   in case of vulnerabilities)
 
+## 1.5.8
 
+### Changed
+* Add a chainspec setting `minimum_bid_amount` to limit the minimal amount of motes that can be bid for a validator.
 
 ## 1.5.6
 
