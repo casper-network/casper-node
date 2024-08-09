@@ -308,31 +308,27 @@ impl TransactionV1Body {
                     })
                 }
                 TransactionEntryPoint::Transfer => arg_handling::has_valid_transfer_args(
-                    self.args.as_named().unwrap(),
+                    &self.args,
                     config.native_transfer_minimum_motes,
                 ),
-                TransactionEntryPoint::AddBid => {
-                    arg_handling::has_valid_add_bid_args(self.args.as_named().unwrap())
-                }
+                TransactionEntryPoint::AddBid => arg_handling::has_valid_add_bid_args(&self.args),
                 TransactionEntryPoint::WithdrawBid => {
-                    arg_handling::has_valid_withdraw_bid_args(self.args.as_named().unwrap())
+                    arg_handling::has_valid_withdraw_bid_args(&self.args)
                 }
                 TransactionEntryPoint::Delegate => {
-                    arg_handling::has_valid_delegate_args(self.args.as_named().unwrap())
+                    arg_handling::has_valid_delegate_args(&self.args)
                 }
                 TransactionEntryPoint::Undelegate => {
-                    arg_handling::has_valid_undelegate_args(self.args.as_named().unwrap())
+                    arg_handling::has_valid_undelegate_args(&self.args)
                 }
                 TransactionEntryPoint::Redelegate => {
-                    arg_handling::has_valid_redelegate_args(self.args.as_named().unwrap())
+                    arg_handling::has_valid_redelegate_args(&self.args)
                 }
                 TransactionEntryPoint::ActivateBid => {
-                    arg_handling::has_valid_activate_bid_args(self.args.as_named().unwrap())
+                    arg_handling::has_valid_activate_bid_args(&self.args)
                 }
                 TransactionEntryPoint::ChangeBidPublicKey => {
-                    arg_handling::has_valid_change_bid_public_key_args(
-                        self.args.as_named().unwrap(),
-                    )
+                    arg_handling::has_valid_change_bid_public_key_args(&self.args)
                 }
             },
             TransactionTarget::Stored { .. } => match &self.entry_point {
@@ -355,10 +351,15 @@ impl TransactionV1Body {
                     })
                 }
             },
-            TransactionTarget::Session { .. } => match &self.entry_point {
-                TransactionEntryPoint::Call
-                | TransactionEntryPoint::Custom(_)
-                | TransactionEntryPoint::Transfer
+            TransactionTarget::Session { module_bytes, .. } => match &self.entry_point {
+                TransactionEntryPoint::Call | TransactionEntryPoint::Custom(_) => {
+                    if module_bytes.is_empty() {
+                        debug!("transaction with session code must not have empty module bytes");
+                        return Err(InvalidTransactionV1::EmptyModuleBytes);
+                    }
+                    Ok(())
+                }
+                TransactionEntryPoint::Transfer
                 | TransactionEntryPoint::AddBid
                 | TransactionEntryPoint::WithdrawBid
                 | TransactionEntryPoint::Delegate

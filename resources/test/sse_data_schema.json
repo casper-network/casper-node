@@ -1787,7 +1787,7 @@
         "scheduling",
         "target",
         "transaction_category",
-        "value"
+        "transferred_value"
       ],
       "properties": {
         "args": {
@@ -1807,7 +1807,7 @@
         "scheduling": {
           "$ref": "#/definitions/TransactionScheduling"
         },
-        "value": {
+        "transferred_value": {
           "type": "integer",
           "format": "uint128",
           "minimum": 0.0
@@ -2119,26 +2119,6 @@
           "type": "string",
           "enum": [
             "ChangeBidPublicKey"
-          ]
-        },
-        {
-          "description": "Constructor entrypoint name to be used when instantiating a smart contract under v2 engine.",
-          "type": "object",
-          "required": [
-            "Instantiate"
-          ],
-          "properties": {
-            "Instantiate": {
-              "type": "string"
-            }
-          },
-          "additionalProperties": false
-        },
-        {
-          "description": "Instantiate contract without an explicit constructor name.\n\nThis is used together with installer transaction kind that will install the contract, but will not execute any constructor and therefore will rely on a default initialization upon first contract call.",
-          "type": "string",
-          "enum": [
-            "DefaultInstantiate"
           ]
         }
       ]
@@ -5027,19 +5007,6 @@
             }
           },
           "additionalProperties": false
-        },
-        {
-          "description": "Entrypoints to be executed against the V2 Casper VM.",
-          "type": "object",
-          "required": [
-            "V2CasperVm"
-          ],
-          "properties": {
-            "V2CasperVm": {
-              "$ref": "#/definitions/EntryPointV2"
-            }
-          },
-          "additionalProperties": false
         }
       ]
     },
@@ -5103,28 +5070,6 @@
           ]
         }
       ]
-    },
-    "EntryPointV2": {
-      "description": "The entry point for the V2 Casper VM.",
-      "type": "object",
-      "required": [
-        "flags",
-        "function_index"
-      ],
-      "properties": {
-        "function_index": {
-          "description": "The selector.",
-          "type": "integer",
-          "format": "uint32",
-          "minimum": 0.0
-        },
-        "flags": {
-          "description": "The flags.",
-          "type": "integer",
-          "format": "uint32",
-          "minimum": 0.0
-        }
-      }
     },
     "TransformError": {
       "description": "Error type for applying and combining transforms.\n\nA `TypeMismatch` occurs when a transform cannot be applied because the types are not compatible (e.g. trying to add a number to a string).",

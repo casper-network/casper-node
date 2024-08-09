@@ -167,6 +167,8 @@ pub enum InvalidTransaction {
         /// The provided gas price tolerance.
         provided_gas_price_tolerance: u8,
     },
+    /// The transaction requires named arguments.
+    ExpectedNamedArguments,
 }
 
 impl Display for InvalidTransaction {
@@ -319,6 +321,9 @@ impl Display for InvalidTransaction {
                     provided_gas_price_tolerance, min_gas_price_tolerance
                 )
             }
+            InvalidTransaction::ExpectedNamedArguments => {
+                write!(formatter, "transaction requires named arguments")
+            }
         }
     }
 }
@@ -358,7 +363,8 @@ impl StdError for InvalidTransaction {
             | InvalidTransaction::InvalidPricingMode { .. }
             | InvalidTransaction::GasPriceToleranceTooLow { .. }
             | InvalidTransaction::InvalidTransactionKind(_)
-            | InvalidTransaction::InvalidTransactionArgumentsKind => None,
+            | InvalidTransaction::InvalidTransactionArgumentsKind
+            | InvalidTransaction::ExpectedNamedArguments => None,
         }
     }
 }
