@@ -14,7 +14,8 @@ use super::super::TransactionEntryPoint;
 #[cfg(doc)]
 use super::TransactionV1;
 use crate::{
-    bytesrepr, crypto, transaction::PricingMode, CLType, DisplayIter, TimeDiff, Timestamp, U512,
+    bytesrepr, crypto, transaction::PricingMode, CLType, DisplayIter, TimeDiff, Timestamp,
+    TransactionRuntime, U512,
 };
 
 /// Returned when a [`TransactionV1`] fails validation.
@@ -169,6 +170,13 @@ pub enum InvalidTransaction {
     },
     /// The transaction requires named arguments.
     ExpectedNamedArguments,
+    /// The transaction runtime is invalid.
+    InvalidTransactionRuntime {
+        /// The expected runtime as specified by the chainspec.
+        expected: TransactionRuntime,
+        /// The runtime as specified by the transaction.
+        got: TransactionRuntime,
+    },
 }
 
 impl Display for InvalidTransaction {
@@ -324,6 +332,12 @@ impl Display for InvalidTransaction {
             InvalidTransaction::ExpectedNamedArguments => {
                 write!(formatter, "transaction requires named arguments")
             }
+            InvalidTransaction::InvalidTransactionRuntime { expected, got } => {
+                write!(
+                    formatter,
+                    "invalid transaction runtime: expected {expected}, got {got}"
+                )
+            }
         }
     }
 }
@@ -364,7 +378,8 @@ impl StdError for InvalidTransaction {
             | InvalidTransaction::GasPriceToleranceTooLow { .. }
             | InvalidTransaction::InvalidTransactionKind(_)
             | InvalidTransaction::InvalidTransactionArgumentsKind
-            | InvalidTransaction::ExpectedNamedArguments => None,
+            | InvalidTransaction::ExpectedNamedArguments
+            | InvalidTransaction::InvalidTransactionRuntime { .. } => None,
         }
     }
 }

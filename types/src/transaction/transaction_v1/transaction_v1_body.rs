@@ -26,7 +26,7 @@ use crate::bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
 
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::InvalidTransactionV1;
-use crate::{CLTyped, CLValueError};
+use crate::{CLTyped, CLValueError, TransactionRuntime};
 
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::testing::TestRng;
@@ -242,6 +242,15 @@ impl TransactionV1Body {
         self.transaction_category
     }
 
+    /// Returns the transaction runtime of the transaction.
+    pub fn transaction_runtime(&self) -> Option<TransactionRuntime> {
+        match self.target {
+            TransactionTarget::Native => None,
+            TransactionTarget::Stored { runtime, .. } => Some(runtime),
+            TransactionTarget::Session { runtime, .. } => Some(runtime),
+        }
+    }
+
     /// Consumes `self`, returning its constituent parts.
     pub fn destructure(
         self,
@@ -256,6 +265,18 @@ impl TransactionV1Body {
 
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub(super) fn is_valid(&self, config: &TransactionConfig) -> Result<(), InvalidTransactionV1> {
+        if let Some(transaction_runtime) = self.transaction_runtime() {
+            // NOTE: In current implementation native transactions should be executed on both
+            // VmCasperV1 and VmCasperV2. This may change once we have a more stable
+            // VmCasperV2 that can also process calls to system contracts in VM2 chunked args style.
+            if config.transaction_runtime != transaction_runtime {
+                return Err(InvalidTransactionV1::InvalidTransactionRuntime {
+                    expected: config.transaction_runtime,
+                    got: transaction_runtime,
+                });
+            }
+        }
+
         let kind = self.transaction_category;
         if !config.transaction_v1_config.is_supported(kind) {
             return Err(InvalidTransactionV1::InvalidTransactionKind(
@@ -411,7 +432,7 @@ impl TransactionV1Body {
 
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
     fn random_standard(rng: &mut TestRng) -> Self {
-        use crate::transaction::{TransactionInvocationTarget, TransactionRuntime};
+        use crate::transaction::TransactionInvocationTarget;
 
         let target = TransactionTarget::Stored {
             id: TransactionInvocationTarget::random(rng),
@@ -428,8 +449,6 @@ impl TransactionV1Body {
 
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
     fn random_install_upgrade(rng: &mut TestRng) -> Self {
-        use crate::transaction::TransactionRuntime;
-
         let target = TransactionTarget::Session {
             module_bytes: Bytes::from(rng.random_vec(0..100)),
             runtime: TransactionRuntime::VmCasperV1,
@@ -470,7 +489,7 @@ impl TransactionV1Body {
     /// Returns a random `TransactionV1Body`.
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub fn random(rng: &mut TestRng) -> Self {
-        use crate::transaction::{TransactionRuntime, TransferTarget};
+        use crate::transaction::TransferTarget;
 
         match rng.gen_range(0..8) {
             0 => {
