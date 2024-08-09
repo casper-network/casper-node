@@ -177,7 +177,7 @@ impl ContractRuntime {
 
         let new_len = self
             .exec_queue
-            .remove_older_then(execution_pre_state.next_block_height());
+            .remove_older_than(execution_pre_state.next_block_height());
         self.metrics.exec_queue_size.set(new_len);
         debug!(next_block_height, "ContractRuntime: set initial state");
     }

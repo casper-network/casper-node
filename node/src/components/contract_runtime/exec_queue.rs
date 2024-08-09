@@ -35,7 +35,7 @@ impl ExecQueue {
     }
 
     /// Remove every entry older than the given height, and return the new len.
-    pub fn remove_older_then(&mut self, height: u64) -> i64 {
+    pub fn remove_older_than(&mut self, height: u64) -> i64 {
         let mut locked_queue = self.0
             .lock()
             .expect(
