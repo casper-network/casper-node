@@ -1428,7 +1428,7 @@ async fn execute_finalized_block<REv>(
     .await;
 
     let executable_block =
-        ExecutableBlock::from_finalized_block_and_transactions(finalized_block, transactions);
+        ExecutableBlock::from_finalized_block_and_transactions(finalized_block, transactions, None);
     effect_builder
         .enqueue_block_for_execution(executable_block, MetaBlockState::new())
         .await

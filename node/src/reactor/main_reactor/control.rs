@@ -387,6 +387,7 @@ impl MainReactor {
                 ExecutableBlock::from_finalized_block_and_transactions(
                     genesis_switch_block,
                     vec![],
+                    None,
                 ),
                 MetaBlockState::new_not_to_be_gossiped(),
             )

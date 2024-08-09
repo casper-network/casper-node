@@ -540,12 +540,15 @@ impl ContractRuntime {
                     );
 
                     info!("Enqueuing block for execution post state refresh");
+                    let next_era_gas_price = block_header.next_era_gas_price();
+                    debug!(next_era_gas_price, "immediate switch block");
 
                     effect_builder
                         .enqueue_block_for_execution(
                             ExecutableBlock::from_finalized_block_and_transactions(
                                 finalized_block,
                                 vec![],
+                                next_era_gas_price,
                             ),
                             MetaBlockState::new_not_to_be_gossiped(),
                         )

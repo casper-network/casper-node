@@ -57,6 +57,7 @@ impl ExecutableBlock {
     pub fn from_finalized_block_and_transactions(
         finalized_block: FinalizedBlock,
         transactions: Vec<Transaction>,
+        next_era_gas_price: Option<u8>,
     ) -> Self {
         Self {
             rewarded_signatures: finalized_block.rewarded_signatures,
@@ -69,7 +70,7 @@ impl ExecutableBlock {
             transactions,
             transaction_map: finalized_block.transactions,
             rewards: None,
-            next_era_gas_price: None,
+            next_era_gas_price,
         }
     }
 

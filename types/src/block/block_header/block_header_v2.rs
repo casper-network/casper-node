@@ -182,6 +182,13 @@ impl BlockHeaderV2 {
             .map(|era_end| era_end.next_era_validator_weights())
     }
 
+    /// Returns the gas price for the upcoming era (if this is a switch block).
+    pub fn next_era_gas_price(&self) -> Option<u8> {
+        self.era_end
+            .as_ref()
+            .map(|era_end| era_end.next_era_gas_price())
+    }
+
     /// Returns `true` if this block is the Genesis block, i.e. has height 0 and era 0.
     pub fn is_genesis(&self) -> bool {
         self.era_id().is_genesis() && self.height() == 0
