@@ -94,6 +94,7 @@ function run_nightly_upgrade_test() {
     run_test_and_count 'bash -c "./ci/nctl_upgrade.sh test_id=12"'
     run_test_and_count 'bash -c "./ci/nctl_upgrade.sh test_id=13"'
     run_test_and_count 'bash -c "./ci/nctl_upgrade.sh test_id=14"'
+    run_test_and_count 'bash -c "./ci/nctl_upgrade.sh test_id=15 skip_setup=true"'
 }
 
 function run_soundness_test() {
