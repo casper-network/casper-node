@@ -47,10 +47,13 @@ use crate::{
         network::Identity as NetworkIdentity,
         storage::{self, Storage},
         transaction_acceptor,
+        upgrade_watcher::{self, UpgradeWatcher},
+        InitializedComponent,
     },
     effect::{
         announcements::{
             ContractRuntimeAnnouncement, ControlAnnouncement, TransactionAcceptorAnnouncement,
+            UpgradeWatcherAnnouncement,
         },
         requests::{
             ContractRuntimeRequest, MakeBlockExecutableRequest, MarkBlockCompletedRequest,
@@ -92,6 +95,12 @@ enum Event {
     NetworkRequest(NetworkRequest<Message>),
     #[from]
     ContractRuntimeAnnouncement(ContractRuntimeAnnouncement),
+    #[from]
+    UpgradeWatcherRequest(UpgradeWatcherRequest),
+    #[from]
+    UpgradeWatcher(upgrade_watcher::Event),
+    #[from]
+    UpgradeWatcherAnnouncement(UpgradeWatcherAnnouncement),
 }
 
 impl From<MakeBlockExecutableRequest> for Event {
@@ -148,6 +157,13 @@ impl Display for Event {
             Event::NetworkRequest(request) => write!(formatter, "network request: {:?}", request),
             Event::ContractRuntimeAnnouncement(ann) => {
                 write!(formatter, "contract runtime: {}", ann)
+            }
+            Event::UpgradeWatcherRequest(request) => {
+                write!(formatter, "upgrade watcher request: {}", request)
+            }
+            Event::UpgradeWatcher(event) => write!(formatter, "upgrade watcher event: {}", event),
+            Event::UpgradeWatcherAnnouncement(ann) => {
+                write!(formatter, "upgrade watcher announcement: {}", ann)
             }
         }
     }
@@ -742,6 +758,7 @@ fn create_account(account_hash: AccountHash, test_scenario: TestScenario) -> Acc
 
 struct Reactor {
     storage: Storage,
+    upgrade_watcher: UpgradeWatcher,
     transaction_acceptor: TransactionAcceptor,
     _storage_tempdir: TempDir,
     test_scenario: TestScenario,
@@ -1014,6 +1031,21 @@ impl reactor::Reactor for Reactor {
                 }
                 Effects::new()
             }
+            Event::UpgradeWatcherRequest(req) => reactor::wrap_effects(
+                Event::UpgradeWatcher,
+                self.upgrade_watcher
+                    .handle_event(effect_builder, rng, req.into()),
+            ),
+            Event::UpgradeWatcher(event) => reactor::wrap_effects(
+                Event::UpgradeWatcher,
+                self.upgrade_watcher
+                    .handle_event(effect_builder, rng, event),
+            ),
+            Event::UpgradeWatcherAnnouncement(ann) => {
+                // TODO[RC]: Add tests with the next upgrade equal to Some()
+                assert!(ann.0.is_none());
+                Effects::new()
+            }
         }
     }
 
@@ -1046,9 +1078,15 @@ impl reactor::Reactor for Reactor {
         )
         .unwrap();
 
+        let upgrade_watcher_config = upgrade_watcher::Config::default();
+        let mut upgrade_watcher =
+            UpgradeWatcher::new(&chainspec, upgrade_watcher_config, ".").unwrap();
+        <UpgradeWatcher as InitializedComponent<Event>>::start_initialization(&mut upgrade_watcher);
+
         let reactor = Reactor {
             storage,
             transaction_acceptor,
+            upgrade_watcher,
             _storage_tempdir: storage_tempdir,
             test_scenario: config,
         };
@@ -1177,6 +1215,15 @@ async fn run_transaction_acceptor_without_timeout(
         }
     }
     assert!(result_receiver.await.unwrap());
+
+    runner
+        .process_injected_effects(|effect_builder| {
+            effect_builder
+                .into_inner()
+                .schedule(upgrade_watcher::Event::Initialize, QueueKind::Api)
+                .ignore()
+        })
+        .await;
 
     // Set the current gas price if test scenario requires so.
     if let Some(current_gas_price) = current_gas_price {

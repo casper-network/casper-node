@@ -3,8 +3,8 @@ use std::fmt::{self, Display, Formatter};
 use serde::Serialize;
 
 use casper_types::{
-    AddressableEntity, AddressableEntityHash, BlockHeader, EntityVersion, EntryPoint, Package,
-    PackageHash, Timestamp, Transaction, U512,
+    AddressableEntity, AddressableEntityHash, BlockHeader, EntityVersion, EntryPoint, NextUpgrade,
+    Package, PackageHash, Timestamp, Transaction, U512,
 };
 
 use super::{Error, Source};
@@ -101,6 +101,11 @@ pub(crate) enum Event {
     },
     /// Updates the current era gas price
     UpdateCurrentGasPrice(u8),
+    /// The result of getting next upgrade information from the upgrade watcher component.
+    GetNextUpgradeResult {
+        event_metadata: Box<EventMetadata>,
+        maybe_next_upgrade: Option<NextUpgrade>,
+    },
 }
 
 impl Display for Event {
@@ -210,6 +215,15 @@ impl Display for Event {
             }
             Event::UpdateCurrentGasPrice(current_gas_price) => {
                 write!(formatter, "current gas price set to {}", current_gas_price)
+            }
+            Event::GetNextUpgradeResult {
+                maybe_next_upgrade, ..
+            } => {
+                write!(
+                    formatter,
+                    "get next upgrade result: {:?}",
+                    maybe_next_upgrade
+                )
             }
         }
     }

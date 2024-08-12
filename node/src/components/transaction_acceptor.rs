@@ -14,11 +14,11 @@ use casper_execution_engine::engine_state::MAX_PAYMENT;
 use casper_storage::data_access_layer::{balance::BalanceHandling, BalanceRequest, ProofHandling};
 use casper_types::{
     account::AccountHash, addressable_entity::AddressableEntity, system::auction::ARG_AMOUNT,
-    AddressableEntityHash, AddressableEntityIdentifier, BlockHeader, Chainspec, EntityAddr,
-    EntityVersion, EntityVersionKey, EntryPoint, EntryPointAddr, ExecutableDeployItem,
+    ActivationPoint, AddressableEntityHash, AddressableEntityIdentifier, BlockHeader, Chainspec,
+    EntityAddr, EntityVersion, EntityVersionKey, EntryPoint, EntryPointAddr, ExecutableDeployItem,
     ExecutableDeployItemIdentifier, InitiatorAddr, InvalidDeploy, InvalidTransaction,
-    InvalidTransactionV1, Key, Package, PackageAddr, PackageHash, PackageIdentifier, Transaction,
-    TransactionEntryPoint, TransactionInvocationTarget, TransactionTarget,
+    InvalidTransactionV1, Key, NextUpgrade, Package, PackageAddr, PackageHash, PackageIdentifier,
+    Transaction, TransactionEntryPoint, TransactionInvocationTarget, TransactionTarget,
     DEFAULT_ENTRY_POINT_NAME, U512,
 };
 
@@ -26,7 +26,7 @@ use crate::{
     components::Component,
     effect::{
         announcements::{FatalAnnouncement, TransactionAcceptorAnnouncement},
-        requests::{ContractRuntimeRequest, StorageRequest},
+        requests::{ContractRuntimeRequest, StorageRequest, UpgradeWatcherRequest},
         EffectBuilder, EffectExt, Effects, Responder,
     },
     fatal,
@@ -49,6 +49,7 @@ pub(crate) trait ReactorEventT:
     + From<StorageRequest>
     + From<ContractRuntimeRequest>
     + From<FatalAnnouncement>
+    + From<UpgradeWatcherRequest>
     + Send
 {
 }
@@ -59,6 +60,7 @@ impl<REv> ReactorEventT for REv where
         + From<StorageRequest>
         + From<ContractRuntimeRequest>
         + From<FatalAnnouncement>
+        + From<UpgradeWatcherRequest>
         + Send
 {
 }
@@ -139,9 +141,30 @@ impl TransactionAcceptor {
         &self,
         txn: &Transaction,
         min_gas_price: u8,
+        maybe_next_upgrade: Option<NextUpgrade>,
     ) -> Result<(), InvalidTransaction> {
-        self.check_reachable_gas_price(txn)?;
-        self.check_minimum_gas_price_against_tolerance(txn, min_gas_price)?;
+        let should_verify_gas_price = match maybe_next_upgrade {
+            Some(next_upgrade) => {
+                let activation_point = next_upgrade.activation_point();
+                match activation_point {
+                    ActivationPoint::EraId(_era) => {
+                        /*
+                        let estimated_era_timestamp = unimplemented!();
+                        let expiry_timestamp = txn.expires();
+                        expiry_timestamp >= estimated_era_timestamp // TODO[RC]: Add leeway
+                        */
+                        unimplemented!()
+                    }
+                    ActivationPoint::Genesis(_) => false,
+                }
+            }
+            None => true,
+        };
+
+        if should_verify_gas_price {
+            self.check_reachable_gas_price(txn)?;
+            self.check_minimum_gas_price_against_tolerance(txn, min_gas_price)?;
+        }
         Ok(())
     }
 
@@ -255,16 +278,31 @@ impl TransactionAcceptor {
             return self.reject_transaction(effect_builder, *event_metadata, error);
         }
 
+        effect_builder
+            .get_next_upgrade()
+            .event(move |maybe_next_upgrade| Event::GetNextUpgradeResult {
+                maybe_next_upgrade,
+                event_metadata,
+            })
+    }
+
+    fn handle_get_next_upgrade_result<REv: ReactorEventT>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        maybe_next_upgrade: Option<NextUpgrade>,
+        event_metadata: Box<EventMetadata>,
+    ) -> Effects<Event> {
         if let Err(error) = self.should_reject_due_to_gas_price(
             &event_metadata.transaction,
             self.chainspec.vacancy_config.min_gas_price,
+            maybe_next_upgrade,
         ) {
             return self.reject_transaction(effect_builder, *event_metadata, error.into());
         }
 
         // We only perform expiry checks on transactions received from the client.
         let current_node_timestamp = event_metadata.verification_start_timestamp;
-        if event_metadata.source.is_client()
+        if event_metadata.source.is_client() // TODO[RC]: We should also do this for the gas price checks
             && event_metadata.transaction.expired(current_node_timestamp)
         {
             let expiry_timestamp = event_metadata.transaction.expires();
@@ -1102,6 +1140,14 @@ impl<REv: ReactorEventT> Component<REv> for TransactionAcceptor {
                 self.current_gas_price = Some(current_gas_price);
                 Effects::new()
             }
+            Event::GetNextUpgradeResult {
+                maybe_next_upgrade,
+                event_metadata,
+            } => self.handle_get_next_upgrade_result(
+                effect_builder,
+                maybe_next_upgrade,
+                event_metadata,
+            ),
         }
     }
 }
