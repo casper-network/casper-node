@@ -424,15 +424,6 @@ impl Deploy {
             });
         }
 
-        let min_gas_price = chainspec.vacancy_config.min_gas_price;
-        let gas_price_tolerance = self.gas_price_tolerance()?;
-        if gas_price_tolerance < min_gas_price {
-            return Err(InvalidDeploy::GasPriceToleranceTooLow {
-                min_gas_price_tolerance: min_gas_price,
-                provided_gas_price_tolerance: gas_price_tolerance,
-            });
-        }
-
         header.is_valid(config, timestamp_leeway, at, &self.hash)?;
 
         let max_associated_keys = chainspec.core_config.max_associated_keys;

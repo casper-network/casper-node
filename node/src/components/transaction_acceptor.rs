@@ -135,6 +135,43 @@ impl TransactionAcceptor {
         }
     }
 
+    fn should_reject_due_to_gas_price(
+        &self,
+        txn: &Transaction,
+        min_gas_price: u8,
+    ) -> Result<(), InvalidTransaction> {
+        self.check_reachable_gas_price(txn)?;
+        self.check_minimum_gas_price_against_tolerance(txn, min_gas_price)?;
+        Ok(())
+    }
+
+    fn check_minimum_gas_price_against_tolerance(
+        &self,
+        txn: &Transaction,
+        min_gas_price: u8,
+    ) -> Result<(), InvalidTransaction> {
+        let gas_price_tolerance = txn.gas_price_tolerance()?;
+        if gas_price_tolerance < min_gas_price {
+            match txn {
+                Transaction::Deploy(_) => {
+                    return Err(InvalidDeploy::GasPriceToleranceTooLow {
+                        min_gas_price_tolerance: min_gas_price,
+                        provided_gas_price_tolerance: gas_price_tolerance,
+                    }
+                    .into())
+                }
+                Transaction::V1(_) => {
+                    return Err(InvalidTransactionV1::GasPriceToleranceTooLow {
+                        min_gas_price_tolerance: min_gas_price,
+                        provided_gas_price_tolerance: gas_price_tolerance,
+                    }
+                    .into())
+                }
+            }
+        }
+        Ok(())
+    }
+
     fn check_reachable_gas_price(&self, txn: &Transaction) -> Result<(), InvalidTransaction> {
         if let Some(current_gas_price) = self.current_gas_price {
             match txn.gas_price_tolerance() {
@@ -218,7 +255,10 @@ impl TransactionAcceptor {
             return self.reject_transaction(effect_builder, *event_metadata, error);
         }
 
-        if let Err(error) = self.check_reachable_gas_price(&event_metadata.transaction) {
+        if let Err(error) = self.should_reject_due_to_gas_price(
+            &event_metadata.transaction,
+            self.chainspec.vacancy_config.min_gas_price,
+        ) {
             return self.reject_transaction(effect_builder, *event_metadata, error.into());
         }
 
