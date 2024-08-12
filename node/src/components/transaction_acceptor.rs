@@ -4,10 +4,16 @@ mod event;
 mod metrics;
 mod tests;
 
-use std::{collections::BTreeSet, fmt::Debug, sync::Arc, time::Duration};
+use std::{
+    collections::BTreeSet,
+    fmt::{self, Debug},
+    sync::Arc,
+    time::Duration,
+};
 
 use datasize::DataSize;
 use prometheus::Registry;
+use serde::Serialize;
 use tracing::{debug, error, info, trace, warn};
 
 use casper_execution_engine::engine_state::MAX_PAYMENT;
@@ -15,11 +21,11 @@ use casper_storage::data_access_layer::{balance::BalanceHandling, BalanceRequest
 use casper_types::{
     account::AccountHash, addressable_entity::AddressableEntity, system::auction::ARG_AMOUNT,
     ActivationPoint, AddressableEntityHash, AddressableEntityIdentifier, BlockHeader, Chainspec,
-    EntityAddr, EntityVersion, EntityVersionKey, EntryPoint, EntryPointAddr, ExecutableDeployItem,
-    ExecutableDeployItemIdentifier, InitiatorAddr, InvalidDeploy, InvalidTransaction,
-    InvalidTransactionV1, Key, NextUpgrade, Package, PackageAddr, PackageHash, PackageIdentifier,
-    Transaction, TransactionEntryPoint, TransactionInvocationTarget, TransactionTarget,
-    DEFAULT_ENTRY_POINT_NAME, U512,
+    EntityAddr, EntityVersion, EntityVersionKey, EntryPoint, EntryPointAddr, EraId,
+    ExecutableDeployItem, ExecutableDeployItemIdentifier, InitiatorAddr, InvalidDeploy,
+    InvalidTransaction, InvalidTransactionV1, Key, NextUpgrade, Package, PackageAddr, PackageHash,
+    PackageIdentifier, Timestamp, Transaction, TransactionEntryPoint, TransactionInvocationTarget,
+    TransactionTarget, DEFAULT_ENTRY_POINT_NAME, U512,
 };
 
 use crate::{
@@ -74,6 +80,24 @@ enum GasPriceToleranceCheckOutcome {
     Undetermined,
 }
 
+#[derive(Debug, DataSize, Serialize)]
+struct PriceInEra {
+    era: EraId,
+    price: u8,
+}
+
+impl PriceInEra {
+    fn new(era: EraId, price: u8) -> Self {
+        Self { era, price }
+    }
+}
+
+impl fmt::Display for PriceInEra {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "current gas price {} for era {}", self.price, self.era)
+    }
+}
+
 /// The `TransactionAcceptor` is the component which handles all new `Transaction`s immediately
 /// after they're received by this node, regardless of whether they were provided by a peer or a
 /// client, unless they were actively retrieved by this node via a fetch request (in which case the
@@ -89,7 +113,7 @@ pub struct TransactionAcceptor {
     #[data_size(skip)]
     metrics: metrics::Metrics,
     balance_hold_interval: u64,
-    current_gas_price: Option<u8>,
+    current_gas_price: Option<PriceInEra>,
 }
 
 impl TransactionAcceptor {
@@ -147,13 +171,18 @@ impl TransactionAcceptor {
             Some(next_upgrade) => {
                 let activation_point = next_upgrade.activation_point();
                 match activation_point {
-                    ActivationPoint::EraId(_era) => {
-                        /*
-                        let estimated_era_timestamp = unimplemented!();
-                        let expiry_timestamp = txn.expires();
-                        expiry_timestamp >= estimated_era_timestamp // TODO[RC]: Add leeway
-                        */
-                        unimplemented!()
+                    ActivationPoint::EraId(upgrade_era) => {
+                        match &self.current_gas_price {
+                            Some(current_gas_price) => {
+                                let current_era = current_gas_price.era;
+                                if upgrade_era <= current_era {
+                                    false
+                                } else {
+                                    panic!("Should not be invoked, yet...");
+                                }
+                            }
+                            None => false,
+                        }
                     }
                     ActivationPoint::Genesis(_) => false,
                 }
@@ -196,14 +225,14 @@ impl TransactionAcceptor {
     }
 
     fn check_reachable_gas_price(&self, txn: &Transaction) -> Result<(), InvalidTransaction> {
-        if let Some(current_gas_price) = self.current_gas_price {
+        if let Some(PriceInEra { price, .. }) = self.current_gas_price {
             match txn.gas_price_tolerance() {
                 Ok(gas_price_tolerance) => {
                     match Self::is_gas_price_tolerance_reachable(
                         txn.ttl().into(),
                         gas_price_tolerance,
                         self.chainspec.core_config.era_duration.into(),
-                        current_gas_price,
+                        price,
                     ) {
                         GasPriceToleranceCheckOutcome::Reachable => return Ok(()),
                         GasPriceToleranceCheckOutcome::Undetermined => {
@@ -217,7 +246,7 @@ impl TransactionAcceptor {
                             let error: InvalidTransaction = match txn {
                                 Transaction::Deploy(_) => {
                                     InvalidDeploy::GasPriceToleranceUnreachable {
-                                        current_gas_price,
+                                        current_gas_price: price,
                                         provided_gas_price_tolerance: gas_price_tolerance,
                                         lowest_possible_gas_price_within_ttl,
                                     }
@@ -225,7 +254,7 @@ impl TransactionAcceptor {
                                 }
                                 Transaction::V1(_) => {
                                     InvalidTransactionV1::GasPriceToleranceUnreachable {
-                                        current_gas_price,
+                                        current_gas_price: price,
                                         provided_gas_price_tolerance: gas_price_tolerance,
                                         lowest_possible_gas_price_within_ttl,
                                     }
@@ -1135,9 +1164,9 @@ impl<REv: ReactorEventT> Component<REv> for TransactionAcceptor {
                 event_metadata,
                 is_new,
             } => self.handle_stored_finalized_approvals(effect_builder, event_metadata, is_new),
-            Event::UpdateCurrentGasPrice(current_gas_price) => {
-                debug!(%current_gas_price, "received current gas price");
-                self.current_gas_price = Some(current_gas_price);
+            Event::UpdateCurrentGasPrice { era, price } => {
+                debug!(%era, %price, "received current gas price");
+                self.current_gas_price = Some(PriceInEra::new(era, price));
                 Effects::new()
             }
             Event::GetNextUpgradeResult {

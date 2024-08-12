@@ -925,7 +925,10 @@ impl reactor::Reactor for MainReactor {
                     transaction_buffer::Event::UpdateEraGasPrice(era_id, next_era_gas_price),
                 );
                 let transaction_acceptor_event = MainEvent::TransactionAcceptor(
-                    transaction_acceptor::Event::UpdateCurrentGasPrice(next_era_gas_price),
+                    transaction_acceptor::Event::UpdateCurrentGasPrice {
+                        era: era_id,
+                        price: next_era_gas_price,
+                    },
                 );
                 effects.extend(self.dispatch_event(effect_builder, rng, transaction_buffer_event));
                 effects.extend(self.dispatch_event(

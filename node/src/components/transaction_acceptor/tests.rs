@@ -1020,13 +1020,17 @@ impl reactor::Reactor for Reactor {
             Event::NetworkRequest(_) => panic!("test does not handle network requests"),
             Event::ContractRuntimeAnnouncement(ann) => {
                 if let ContractRuntimeAnnouncement::NextEraGasPrice {
-                    next_era_gas_price, ..
+                    era_id,
+                    next_era_gas_price,
                 } = ann
                 {
                     self.transaction_acceptor.handle_event(
                         effect_builder,
                         rng,
-                        transaction_acceptor::Event::UpdateCurrentGasPrice(next_era_gas_price),
+                        transaction_acceptor::Event::UpdateCurrentGasPrice {
+                            era: era_id,
+                            price: next_era_gas_price,
+                        },
                     );
                 }
                 Effects::new()
@@ -1180,7 +1184,7 @@ fn inject_balance_check_for_peer(
 
 async fn run_transaction_acceptor_without_timeout(
     test_scenario: TestScenario,
-    current_gas_price: Option<u8>,
+    era_gas_price: Option<PriceInEra>,
 ) -> Result<(), super::Error> {
     let _ = logging::init();
     let rng = &mut TestRng::new();
@@ -1226,10 +1230,10 @@ async fn run_transaction_acceptor_without_timeout(
         .await;
 
     // Set the current gas price if test scenario requires so.
-    if let Some(current_gas_price) = current_gas_price {
+    if let Some(PriceInEra { era, price }) = era_gas_price {
         runner
             .process_injected_effects(|effect_builder: EffectBuilder<Event>| {
-                let event = transaction_acceptor::Event::UpdateCurrentGasPrice(current_gas_price);
+                let event = transaction_acceptor::Event::UpdateCurrentGasPrice { era, price };
                 effect_builder
                     .into_inner()
                     .schedule(event, QueueKind::ContractRuntime)
@@ -1485,11 +1489,11 @@ async fn run_transaction_acceptor(test_scenario: TestScenario) -> Result<(), sup
 
 async fn run_transaction_acceptor_with_gas_price(
     test_scenario: TestScenario,
-    gas_price: u8,
+    price_in_era: PriceInEra,
 ) -> Result<(), super::Error> {
     time::timeout(
         TIMEOUT,
-        run_transaction_acceptor_without_timeout(test_scenario, Some(gas_price)),
+        run_transaction_acceptor_without_timeout(test_scenario, Some(price_in_era)),
     )
     .await
     .unwrap()
@@ -2571,7 +2575,8 @@ async fn should_reject_deploy_with_too_low_gas_price_tolerance() {
 #[tokio::test]
 async fn should_reject_transaction_v1_with_unreachable_gas_price_tolerance() {
     let test_scenario = TestScenario::UnreachableGasPriceToleranceForTransactionV1;
-    let result = run_transaction_acceptor_with_gas_price(test_scenario, 20).await;
+    let result =
+        run_transaction_acceptor_with_gas_price(test_scenario, PriceInEra::new(1.into(), 20)).await;
     assert!(matches!(
         result,
         Err(super::Error::InvalidTransaction(InvalidTransaction::V1(
@@ -2583,7 +2588,8 @@ async fn should_reject_transaction_v1_with_unreachable_gas_price_tolerance() {
 #[tokio::test]
 async fn should_reject_deploy_with_unreachable_gas_price_tolerance() {
     let test_scenario = TestScenario::UnreachableGasPriceToleranceForDeploy;
-    let result = run_transaction_acceptor_with_gas_price(test_scenario, 20).await;
+    let result =
+        run_transaction_acceptor_with_gas_price(test_scenario, PriceInEra::new(1.into(), 20)).await;
     assert!(matches!(
         result,
         Err(super::Error::InvalidTransaction(
