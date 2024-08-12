@@ -245,6 +245,7 @@ async fn should_not_set_shared_pre_state_to_lower_block_height() {
             PublicKey::System,
         ),
         vec![],
+        None,
     );
 
     runner
@@ -265,6 +266,7 @@ async fn should_not_set_shared_pre_state_to_lower_block_height() {
             PublicKey::System,
         ),
         vec![],
+        None,
     );
     runner
         .process_injected_effects(execute_block(block_1))
@@ -351,6 +353,7 @@ async fn should_not_set_shared_pre_state_to_lower_block_height() {
             PublicKey::System,
         ),
         txns,
+        None,
     );
     runner
         .process_injected_effects(execute_block(block_2))
