@@ -329,7 +329,7 @@ impl<T: StateReader> StateTracker<T> {
     fn get_withdraws(&mut self) -> WithdrawPurses {
         let mut result = self.reader.get_withdraws();
         for (acc, purses) in &self.withdraws_cache {
-            result.insert(acc, purses.clone());
+            result.insert(*acc, purses.clone());
         }
         result
     }
@@ -337,7 +337,7 @@ impl<T: StateReader> StateTracker<T> {
     fn get_unbonds(&mut self) -> UnbondingPurses {
         let mut result = self.reader.get_unbonds();
         for (acc, purses) in &self.unbonds_cache {
-            result.insert(acc, purses.clone());
+            result.insert(*acc, purses.clone());
         }
         result
     }
