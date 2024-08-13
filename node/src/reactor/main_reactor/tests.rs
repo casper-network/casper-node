@@ -1826,26 +1826,24 @@ async fn run_withdraw_bid_network() {
         .run_until_executed_transaction(&txn_hash, TEN_SECS)
         .await;
 
-    // Ensure execution succeeded and that there is a Write transform for the bid's key.
+    // Ensure execution succeeded and that there is a Prune transform for the bid's key.
     let bid_key = Key::BidAddr(BidAddr::from(alice_public_key.clone()));
     fixture
         .successful_execution_transforms(&txn_hash)
         .iter()
         .find(|transform| match transform.kind() {
-            TransformKindV2::Write(StoredValue::BidKind(bid_kind)) => {
-                Key::from(bid_kind.bid_addr()) == bid_key
-            }
+            TransformKindV2::Prune(prune_key) => prune_key == &bid_key,
             _ => false,
         })
-        .expect("should have a write record for bid");
+        .expect("should have a prune record for bid");
 
     // Crank the network forward until the era ends.
     fixture
         .run_until_stored_switch_block_header(ERA_ONE, ONE_MIN)
         .await;
 
-    // The bid record should still exist for now.
-    fixture.check_bid_existence_at_tip(&alice_public_key, None, true);
+    // The bid record should have been pruned once unbonding ran.
+    fixture.check_bid_existence_at_tip(&alice_public_key, None, false);
 
     // Crank the network forward until the unbonds are processed.
     fixture
@@ -1854,9 +1852,6 @@ async fn run_withdraw_bid_network() {
             ONE_MIN * 2,
         )
         .await;
-
-    // The bid record should have been pruned once unbonding ran.
-    fixture.check_bid_existence_at_tip(&alice_public_key, None, false);
 }
 
 #[tokio::test]
@@ -2035,27 +2030,25 @@ async fn run_undelegate_bid_network() {
         .run_until_executed_transaction(&txn_hash, TEN_SECS)
         .await;
 
-    // Ensure execution succeeded and that there is a Write transform for the bid's key.
+    // Ensure execution succeeded and that there is a Prune transform for the bid's key.
     fixture
         .successful_execution_transforms(&txn_hash)
         .iter()
         .find(|transform| match transform.kind() {
-            TransformKindV2::Write(StoredValue::BidKind(bid_kind)) => {
-                Key::from(bid_kind.bid_addr()) == bid_key
-            }
+            TransformKindV2::Prune(prune_key) => prune_key == &bid_key,
             _ => false,
         })
-        .expect("should have a write record for undelegated bid");
+        .expect("should have a prune record for undelegated bid");
 
     // Crank the network forward until the era ends.
     fixture
         .run_until_stored_switch_block_header(ERA_ONE, ONE_MIN)
         .await;
 
-    // Ensure the validator records are still present.
+    // Ensure the validator records are still present but the undelegated bid is gone.
     fixture.check_bid_existence_at_tip(&alice_public_key, None, true);
     fixture.check_bid_existence_at_tip(&bob_public_key, None, true);
-    fixture.check_bid_existence_at_tip(&bob_public_key, Some(&alice_public_key), true);
+    fixture.check_bid_existence_at_tip(&bob_public_key, Some(&alice_public_key), false);
 
     // Crank the network forward until the unbonds are processed.
     fixture
@@ -2064,11 +2057,6 @@ async fn run_undelegate_bid_network() {
             ONE_MIN * 2,
         )
         .await;
-
-    // Ensure the validator records are still present but the undelegated bid is gone.
-    fixture.check_bid_existence_at_tip(&alice_public_key, None, true);
-    fixture.check_bid_existence_at_tip(&bob_public_key, None, true);
-    fixture.check_bid_existence_at_tip(&bob_public_key, Some(&alice_public_key), false);
 }
 
 #[tokio::test]
