@@ -3315,10 +3315,7 @@ fn delegator_full_unbond_during_first_reward_era() {
         U512::from(DELEGATOR_1_STAKE),
     );
     let delegator = get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone());
-    assert!(delegator
-        .expect("should still have zero bid")
-        .staked_amount()
-        .is_zero());
+    assert!(delegator.is_none());
 
     let withdraws = builder.get_unbonds();
     let unbonding_purses = withdraws
