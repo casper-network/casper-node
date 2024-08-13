@@ -48,6 +48,12 @@ const COMPONENT_NAME: &str = "transaction_acceptor";
 
 const ARG_TARGET: &str = "target";
 
+// The gas price tolerance checks are disabled if the transaction TTL extends beyond the planned
+// upgrade activation point. Since the exact duration of the era may wary we allow short leeway when
+// comparing timestamps to minimize the chances of the transaction being rejected erroneously.
+// TODO[RC]: To config
+const UPGRADE_POINT_TIMESTAMP_LEEWAY_SECS: u64 = 60 * 60 * 2;
+
 /// A helper trait constraining `TransactionAcceptor` compatible reactor events.
 pub(crate) trait ReactorEventT:
     From<Event>
@@ -171,19 +177,22 @@ impl TransactionAcceptor {
             Some(next_upgrade) => {
                 let activation_point = next_upgrade.activation_point();
                 match activation_point {
-                    ActivationPoint::EraId(upgrade_era) => {
-                        match &self.current_gas_price {
-                            Some(current_gas_price) => {
-                                let current_era = current_gas_price.era;
-                                if upgrade_era <= current_era {
-                                    false
-                                } else {
-                                    panic!("Should not be invoked, yet...");
-                                }
+                    ActivationPoint::EraId(upgrade_era) => match &self.current_gas_price {
+                        Some(current_gas_price) => {
+                            let current_era = current_gas_price.era;
+                            if upgrade_era <= current_era {
+                                false
+                            } else {
+                                !Self::is_close_to_upgrade_point(
+                                    upgrade_era,
+                                    current_era,
+                                    self.chainspec.core_config.era_duration.millis() / 1000,
+                                    txn,
+                                )
                             }
-                            None => false,
                         }
-                    }
+                        None => false,
+                    },
                     ActivationPoint::Genesis(_) => false,
                 }
             }
@@ -195,6 +204,28 @@ impl TransactionAcceptor {
             self.check_minimum_gas_price_against_tolerance(txn, min_gas_price)?;
         }
         Ok(())
+    }
+
+    fn is_close_to_upgrade_point(
+        current_era: EraId,
+        upgrade_era: EraId,
+        era_duration_secs: u64,
+        txn: &Transaction,
+    ) -> bool {
+        let era_diff: u64 = upgrade_era.value() - current_era.value();
+        let estimated_upgrade_timestamp =
+            Timestamp::now().millis() / 1000 + era_diff * era_duration_secs;
+        let expiry_timestamp = txn.expires().millis() / 1000;
+        debug!(
+            %current_era,
+            %upgrade_era,
+            %era_diff,
+            %era_duration_secs,
+            %expiry_timestamp,
+            %estimated_upgrade_timestamp,
+            "verifying distance to upgrade point"
+        );
+        expiry_timestamp >= estimated_upgrade_timestamp - UPGRADE_POINT_TIMESTAMP_LEEWAY_SECS
     }
 
     fn check_minimum_gas_price_against_tolerance(

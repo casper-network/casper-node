@@ -2630,3 +2630,61 @@ fn detects_unreachable_gas_price() {
         }
     }
 }
+
+#[test]
+fn detects_distance_between_txn_expiry_and_upgrade_point() {
+    let rng = &mut TestRng::new();
+
+    const ONE_HOUR: u32 = 60 * 60;
+    const TWO_HOURS: u32 = ONE_HOUR * 2;
+
+    const ERA_DURATION_SECS: u64 = ONE_HOUR as u64;
+
+    let txn = Transaction::from(
+        TransactionV1Builder::new_random(rng)
+            .with_timestamp(Timestamp::now())
+            .with_ttl(TimeDiff::from_seconds(TWO_HOURS)) // 2 eras
+            .with_chain_name("casper-example")
+            .build()
+            .expect("must create fixed mode transaction"),
+    );
+
+    // The upgrade point is 10 eras ahead of the current era.
+    // TTL is set to 2 eras.
+    // The transaction is not close to the upgrade point.
+    let current_era = EraId::new(10);
+    let upgrade_era: EraId = EraId::new(20);
+    let result = TransactionAcceptor::is_close_to_upgrade_point(
+        current_era,
+        upgrade_era,
+        ERA_DURATION_SECS,
+        &txn,
+    );
+    assert!(!result);
+
+    // The upgrade point is 1 era ahead of the current era.
+    // TTL is set to 2 eras.
+    // The transaction is close to the upgrade point.
+    let current_era = EraId::new(10);
+    let upgrade_era: EraId = EraId::new(11);
+    let result = TransactionAcceptor::is_close_to_upgrade_point(
+        current_era,
+        upgrade_era,
+        ERA_DURATION_SECS,
+        &txn,
+    );
+    assert!(result);
+
+    // The upgrade point is 3 eras ahead of the current era.
+    // TTL is set to 2 eras.
+    // The transaction is still considered close to the upgrade point due to 2h leeway.
+    let current_era = EraId::new(10);
+    let upgrade_era: EraId = EraId::new(13);
+    let result = TransactionAcceptor::is_close_to_upgrade_point(
+        current_era,
+        upgrade_era,
+        ERA_DURATION_SECS,
+        &txn,
+    );
+    assert!(result);
+}
