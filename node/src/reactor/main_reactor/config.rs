@@ -66,10 +66,26 @@ impl Config {
                 configured_timestamp_leeway = %self.transaction_acceptor.timestamp_leeway,
                 max_timestamp_leeway = %chainspec.transaction_config.max_timestamp_leeway,
                 "setting value for 'transaction_acceptor.timestamp_leeway' to maximum permitted by \
-                chainspec 'transaction_config.max_timestamp_leeway'",
+                chainspec 'transactions.max_timestamp_leeway'",
             );
             self.transaction_acceptor.timestamp_leeway =
                 chainspec.transaction_config.max_timestamp_leeway;
+        }
+
+        if self.transaction_acceptor.ttl_leeway_for_upgrade_point_check
+            > chainspec
+                .transaction_config
+                .max_ttl_leeway_for_upgrade_point_check
+        {
+            error!(
+                configured_ttl_leeway_for_upgrade_point_check = %self.transaction_acceptor.ttl_leeway_for_upgrade_point_check,
+                max_ttl_leeway_for_upgrade_point_check = %chainspec.transaction_config.max_ttl_leeway_for_upgrade_point_check,
+                "setting value for 'transaction_acceptor.ttl_leeway_for_upgrade_point_check' to maximum permitted by \
+                chainspec 'transactions.max_ttl_leeway_for_upgrade_point_check'",
+            );
+            self.transaction_acceptor.ttl_leeway_for_upgrade_point_check = chainspec
+                .transaction_config
+                .max_ttl_leeway_for_upgrade_point_check;
         }
     }
 }

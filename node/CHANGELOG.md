@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.  The format
 * Add `BinaryPort` interface along with the relevant config entries.
 * Added chainspec settings `finders_fee`, `finality_signature_proportion` and `signature_rewards_max_delay` to control behavior of the new seigniorage model.
 * Add `ttl_leeway_for_upgrade_point_check` parameter to the `[transaction_acceptor]` section of the node config.
+* Add `max_ttl_leeway_for_upgrade_point_check` to the chainspec.
 
 ### Changed
 * All SSE events are emitted via the `<IP:Port>/events` endpoint. None of the previous ones (`/events/main`, `/events/deploys`, and `/events/sigs`) is available any longer.

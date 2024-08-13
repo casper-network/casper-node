@@ -24,6 +24,9 @@ pub struct Config {
     /// (due to the fact that era duration may vary and that we can't determine how much time in
     /// the current era has passed) we allow short leeway when comparing timestamps to minimize the
     /// chances of the transaction being rejected erroneously.
+    ///
+    /// The maximum value to which `ttl_leeway_for_upgrade_point_check` can be set is defined by
+    /// the chainspec setting `transactions.max_ttl_leeway_for_upgrade_point_check`.
     pub ttl_leeway_for_upgrade_point_check: TimeDiff,
 }
 

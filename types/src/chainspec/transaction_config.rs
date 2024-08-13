@@ -46,6 +46,9 @@ pub struct TransactionConfig {
     /// Maximum value to which `transaction_acceptor.timestamp_leeway` can be set in the
     /// config.toml file.
     pub max_timestamp_leeway: TimeDiff,
+    /// The maximum value to which `transaction_acceptor.ttl_leeway_for_upgrade_point_check` can be
+    /// set in the config.toml file.
+    pub max_ttl_leeway_for_upgrade_point_check: TimeDiff,
     /// Configuration values specific to Deploy transactions.
     #[serde(rename = "deploy")]
     pub deploy_config: DeployConfig,
@@ -65,6 +68,8 @@ impl TransactionConfig {
         let native_transfer_minimum_motes =
             rng.gen_range(DEFAULT_MIN_TRANSFER_MOTES..1_000_000_000_000_000);
         let max_timestamp_leeway = TimeDiff::from_seconds(rng.gen_range(0..6));
+        let max_ttl_leeway_for_upgrade_point_check =
+            TimeDiff::from_seconds(rng.gen_range(60 * 60 * 2..60 * 60 * 8));
         let deploy_config = DeployConfig::random(rng);
         let transaction_v1_config = TransactionV1Config::random(rng);
 
@@ -77,6 +82,7 @@ impl TransactionConfig {
             max_timestamp_leeway,
             deploy_config,
             transaction_v1_config,
+            max_ttl_leeway_for_upgrade_point_check,
         }
     }
 }
@@ -93,6 +99,7 @@ impl Default for TransactionConfig {
             max_timestamp_leeway: TimeDiff::from_seconds(5),
             deploy_config: DeployConfig::default(),
             transaction_v1_config: TransactionV1Config::default(),
+            max_ttl_leeway_for_upgrade_point_check: TimeDiff::from_seconds(60 * 60 * 2),
         }
     }
 }
@@ -105,6 +112,8 @@ impl ToBytes for TransactionConfig {
         self.block_gas_limit.write_bytes(writer)?;
         self.native_transfer_minimum_motes.write_bytes(writer)?;
         self.max_timestamp_leeway.write_bytes(writer)?;
+        self.max_ttl_leeway_for_upgrade_point_check
+            .write_bytes(writer)?;
         self.deploy_config.write_bytes(writer)?;
         self.transaction_v1_config.write_bytes(writer)
     }
@@ -122,6 +131,9 @@ impl ToBytes for TransactionConfig {
             + self.block_gas_limit.serialized_length()
             + self.native_transfer_minimum_motes.serialized_length()
             + self.max_timestamp_leeway.serialized_length()
+            + self
+                .max_ttl_leeway_for_upgrade_point_check
+                .serialized_length()
             + self.deploy_config.serialized_length()
             + self.transaction_v1_config.serialized_length()
     }
@@ -135,6 +147,7 @@ impl FromBytes for TransactionConfig {
         let (block_gas_limit, remainder) = u64::from_bytes(remainder)?;
         let (native_transfer_minimum_motes, remainder) = u64::from_bytes(remainder)?;
         let (max_timestamp_leeway, remainder) = TimeDiff::from_bytes(remainder)?;
+        let (max_ttl_leeway_for_upgrade_point_check, remainder) = TimeDiff::from_bytes(remainder)?;
         let (deploy_config, remainder) = DeployConfig::from_bytes(remainder)?;
         let (transaction_v1_config, remainder) = TransactionV1Config::from_bytes(remainder)?;
 
@@ -147,6 +160,7 @@ impl FromBytes for TransactionConfig {
             max_timestamp_leeway,
             deploy_config,
             transaction_v1_config,
+            max_ttl_leeway_for_upgrade_point_check,
         };
         Ok((config, remainder))
     }

@@ -579,6 +579,9 @@ timestamp_leeway = '2 seconds'
 # fact that era duration may vary and that we can't determine how much time in the current era
 # has passed) we allow short leeway when comparing timestamps to minimize the chances of the
 # transaction being rejected erroneously.
+#
+# The maximum value to which `ttl_leeway_for_upgrade_point_check` can be set is defined by the
+# chainspec setting `transaction.max_ttl_leeway_for_upgrade_point_check`.
 ttl_leeway_for_upgrade_point_check = '2 hours'
 
 

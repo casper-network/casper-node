@@ -175,6 +175,8 @@ block_gas_limit = 3_300_000_000_000
 native_transfer_minimum_motes = 2_500_000_000
 # The maximum value to which `transaction_acceptor.timestamp_leeway` can be set in the config.toml file.
 max_timestamp_leeway = '5 seconds'
+# The maximum value to which `transaction_acceptor.ttl_leeway_for_upgrade_point_check` can be set in the config.toml file.
+max_ttl_leeway_for_upgrade_point_check = '12 hours'
 
 [transactions.v1]
 # The configuration settings for the lanes of transactions including both native and Wasm based interactions.
