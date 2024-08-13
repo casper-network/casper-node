@@ -25,13 +25,14 @@ const METHOD_UNDELEGATE_CONTRACT_NAME: &str = "undelegate_contract";
 const METHOD_UNDELEGATE_SESSION_NAME: &str = "undelegate_session";
 const METHOD_ACTIVATE_BID_CONTRACT_NAME: &str = "activate_bid_contract";
 const METHOD_ACTIVATE_BID_SESSION_NAME: &str = "activate_bid_session";
+const BID_AMOUNT: u64 = 10_000 * 1_000_000_000;
 
 fn add_bid() {
     let public_key: PublicKey = runtime::get_named_arg(auction::ARG_PUBLIC_KEY);
     let auction = system::get_auction();
     let args = runtime_args! {
         auction::ARG_PUBLIC_KEY => public_key,
-        auction::ARG_AMOUNT => U512::one(),
+        auction::ARG_AMOUNT => U512::from(BID_AMOUNT),
         auction::ARG_DELEGATION_RATE => 42u8,
     };
     runtime::call_contract::<U512>(auction, auction::METHOD_ADD_BID, args);
@@ -52,7 +53,7 @@ pub fn withdraw_bid() {
     let auction = system::get_auction();
     let args = runtime_args! {
         auction::ARG_PUBLIC_KEY => public_key,
-        auction::ARG_AMOUNT => U512::one(),
+        auction::ARG_AMOUNT => U512::from(BID_AMOUNT),
     };
     runtime::call_contract::<U512>(auction, auction::METHOD_WITHDRAW_BID, args);
 }

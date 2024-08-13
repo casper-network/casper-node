@@ -3,7 +3,7 @@ mod state_reader;
 mod state_tracker;
 #[cfg(test)]
 mod testing;
-mod update;
+pub(crate) mod update;
 
 use std::{
     collections::{BTreeMap, BTreeSet},

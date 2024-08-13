@@ -21,6 +21,7 @@ pub mod system_contract_registry;
 mod transfer;
 pub mod upgrade;
 
+use log::info;
 use std::{
     cell::RefCell,
     collections::{BTreeMap, BTreeSet},
@@ -431,10 +432,6 @@ where
                 .write(locked_funds_period_key, value);
         }
 
-        // apply the accepted modifications to global state.
-        for (key, value) in upgrade_config.global_state_update() {
-            tracking_copy.borrow_mut().write(*key, value.clone());
-        }
         // We insert the new unbonding delay once the purses to be paid out have been transformed
         // based on the previous unbonding delay.
         if let Some(new_unbonding_delay) = upgrade_config.new_unbonding_delay() {
@@ -448,6 +445,57 @@ where
                     .map_err(|_| Error::Bytesrepr("new_unbonding_delay".to_string()))?,
             );
             tracking_copy.borrow_mut().write(unbonding_delay_key, value);
+        }
+
+        // apply the accepted modifications to global state.
+        for (key, value) in upgrade_config.global_state_update() {
+            // Skip the key hashes associated with values as we mark these as records to be
+            // pruned.
+            let is_unit_value = value.is_unit_cl_value();
+            if key.into_hash().is_some() && is_unit_value {
+                info!(
+                    "found marker record for package overwrite {}",
+                    key.to_formatted_string()
+                );
+                {
+                    let contract_package =
+                        match tracking_copy.borrow_mut().read(correlation_id, key) {
+                            Ok(Some(StoredValue::ContractPackage(contract_package))) => {
+                                contract_package
+                            }
+                            Ok(_) | Err(_) => {
+                                error!(
+                                    "error in retrieving contract package: {}",
+                                    key.to_formatted_string()
+                                );
+                                continue;
+                            }
+                        };
+                    for contract_hash in contract_package.versions().values() {
+                        let contract_key = Key::Hash(contract_hash.value());
+                        let mut contract = match tracking_copy
+                            .borrow_mut()
+                            .read(correlation_id, &contract_key)
+                        {
+                            Ok(Some(StoredValue::Contract(contract))) => contract,
+                            Ok(_) | Err(_) => {
+                                error!(
+                                    "error in retrieving contract : {}",
+                                    contract_key.to_formatted_string()
+                                );
+                                continue;
+                            }
+                        };
+                        contract.clear_named_keys();
+                        tracking_copy
+                            .borrow_mut()
+                            .write(contract_key, StoredValue::Contract(contract));
+                    }
+                };
+            } else {
+                info!("update for key: {}", key.to_formatted_string());
+                tracking_copy.borrow_mut().write(*key, value.clone());
+            }
         }
 
         let execution_effect = tracking_copy.borrow().effect();

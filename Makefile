@@ -138,9 +138,10 @@ lint-all-features:
 lint-smart-contracts:
 	cd smart_contracts/contract && $(CARGO) clippy --all-targets -- -D warnings -A renamed_and_removed_lints
 
+
 .PHONY: audit-rs
 audit-rs:
-	$(CARGO) audit --ignore RUSTSEC-2024-0332 --ignore RUSTSEC-2024-0019 --ignore RUSTSEC-2023-0072 --ignore RUSTSEC-2023-0045 --ignore RUSTSEC-2022-0092 --ignore RUSTSEC-2022-0054 --ignore RUSTSEC-2022-0041 --ignore RUSTSEC-2021-0145 --ignore RUSTSEC-2021-0139 --ignore RUSTSEC-2021-0127 --ignore RUSTSEC-2020-0168
+	$(CARGO) audit --ignore RUSTSEC-2024-0344 --ignore  RUSTSEC-2024-0019 --ignore  RUSTSEC-2024-0332
 
 .PHONY: audit-as
 audit-as:

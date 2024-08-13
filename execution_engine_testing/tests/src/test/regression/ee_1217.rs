@@ -1,6 +1,7 @@
 use casper_engine_test_support::{
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_ACCOUNT_PUBLIC_KEY, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
+    DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_MINIMUM_BID_AMOUNT, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::{
     engine_state::{engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, Error as CoreError},
@@ -125,7 +126,7 @@ fn should_fail_to_withdraw_bid_from_stored_session_code() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_ADD_BID,
         runtime_args! {
-            auction::ARG_AMOUNT => U512::one(), // zero results in Error::BondTooSmall
+            auction::ARG_AMOUNT => U512::from(DEFAULT_MINIMUM_BID_AMOUNT), // lower than default results in Error::BondTooSmall
             auction::ARG_PUBLIC_KEY => default_public_key_arg.clone(),
             auction::ARG_DELEGATION_RATE => 0u8,
         },
@@ -180,7 +181,7 @@ fn should_fail_to_withdraw_bid_from_stored_contract_code() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_ADD_BID,
         runtime_args! {
-            auction::ARG_AMOUNT => U512::one(), // zero results in Error::BondTooSmall
+            auction::ARG_AMOUNT => U512::from(DEFAULT_MINIMUM_BID_AMOUNT), // lower than default results in Error::BondTooSmall
             auction::ARG_PUBLIC_KEY => default_public_key_arg.clone(),
             auction::ARG_DELEGATION_RATE => 0u8,
         },
@@ -254,7 +255,7 @@ fn should_fail_to_delegate_from_stored_session_code() {
         VALIDATOR_PUBLIC_KEY.to_account_hash(),
         CONTRACT_ADD_BID,
         runtime_args! {
-            auction::ARG_AMOUNT => U512::one(), // zero results in Error::BondTooSmall
+            auction::ARG_AMOUNT => U512::from(DEFAULT_MINIMUM_BID_AMOUNT), // lower than default results in Error::BondTooSmall
             auction::ARG_PUBLIC_KEY => validator_public_key_arg.clone(),
             auction::ARG_DELEGATION_RATE => 0u8,
         },
@@ -334,7 +335,7 @@ fn should_fail_to_delegate_from_stored_contract_code() {
         VALIDATOR_PUBLIC_KEY.to_account_hash(),
         CONTRACT_ADD_BID,
         runtime_args! {
-            auction::ARG_AMOUNT => U512::one(), // zero results in Error::BondTooSmall
+            auction::ARG_AMOUNT => U512::from(DEFAULT_MINIMUM_BID_AMOUNT), // lower than default results in Error::BondTooSmall
             auction::ARG_PUBLIC_KEY => validator_public_key_arg.clone(),
             auction::ARG_DELEGATION_RATE => 0u8,
         },
@@ -414,7 +415,7 @@ fn should_fail_to_undelegate_from_stored_session_code() {
         VALIDATOR_PUBLIC_KEY.to_account_hash(),
         CONTRACT_ADD_BID,
         runtime_args! {
-            auction::ARG_AMOUNT => U512::one(), // zero results in Error::BondTooSmall
+            auction::ARG_AMOUNT => U512::from(DEFAULT_MINIMUM_BID_AMOUNT), // lower than default results in Error::BondTooSmall
             auction::ARG_PUBLIC_KEY => validator_public_key_arg.clone(),
             auction::ARG_DELEGATION_RATE => 0u8,
         },
@@ -508,7 +509,7 @@ fn should_fail_to_undelegate_from_stored_contract_code() {
         VALIDATOR_PUBLIC_KEY.to_account_hash(),
         CONTRACT_ADD_BID,
         runtime_args! {
-            auction::ARG_AMOUNT => U512::one(), // zero results in Error::BondTooSmall
+            auction::ARG_AMOUNT => U512::from(DEFAULT_MINIMUM_BID_AMOUNT), // lower than default results in Error::BondTooSmall
             auction::ARG_PUBLIC_KEY => validator_public_key_arg.clone(),
             auction::ARG_DELEGATION_RATE => 0u8,
         },
@@ -583,7 +584,7 @@ fn should_fail_to_activate_bid_from_stored_session_code() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_ADD_BID,
         runtime_args! {
-            auction::ARG_AMOUNT => U512::one(), // zero results in Error::BondTooSmall
+            auction::ARG_AMOUNT => U512::from(DEFAULT_MINIMUM_BID_AMOUNT), // lower than default results in Error::BondTooSmall
             auction::ARG_PUBLIC_KEY => default_public_key_arg.clone(),
             auction::ARG_DELEGATION_RATE => 0u8,
         },
@@ -649,7 +650,7 @@ fn should_fail_to_activate_bid_from_stored_contract_code() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_ADD_BID,
         runtime_args! {
-            auction::ARG_AMOUNT => U512::one(), // zero results in Error::BondTooSmall
+            auction::ARG_AMOUNT => U512::from(DEFAULT_MINIMUM_BID_AMOUNT), // lower than default results in Error::BondTooSmall
             auction::ARG_PUBLIC_KEY => default_public_key_arg.clone(),
             auction::ARG_DELEGATION_RATE => 0u8,
         },

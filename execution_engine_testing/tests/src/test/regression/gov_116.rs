@@ -6,8 +6,9 @@ use once_cell::sync::Lazy;
 use casper_engine_test_support::{
     utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG_HASH,
-    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROTOCOL_VERSION,
-    DEFAULT_VALIDATOR_SLOTS, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
+    DEFAULT_MINIMUM_BID_AMOUNT, DEFAULT_PROTOCOL_VERSION, DEFAULT_VALIDATOR_SLOTS,
+    MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::core::engine_state::{
     genesis::{ExecConfigBuilder, GenesisValidator},
@@ -22,7 +23,7 @@ use casper_types::{
     Motes, PublicKey, RuntimeArgs, SecretKey, U256, U512,
 };
 
-const MINIMUM_BONDED_AMOUNT: u64 = 1_000;
+const MINIMUM_BONDED_AMOUNT: u64 = DEFAULT_MINIMUM_BID_AMOUNT;
 
 /// Validator with smallest stake will withdraw most of his stake to ensure we did move time forward
 /// to unlock his whole vesting schedule.
@@ -66,7 +67,7 @@ static GENESIS_VALIDATORS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
             public_key.clone(),
             Motes::new(U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE)),
             Some(GenesisValidator::new(
-                Motes::new(U512::from(index + 1) * 1_000),
+                Motes::new(U512::from(index + 1) * DEFAULT_MINIMUM_BID_AMOUNT),
                 DelegationRate::zero(),
             )),
         );

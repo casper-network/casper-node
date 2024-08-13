@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 
 use casper_engine_test_support::{
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY, MINIMUM_ACCOUNT_CREATION_BALANCE,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_MINIMUM_BID_AMOUNT,
+    MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::{
     engine_state::{EngineConfigBuilder, Error, SystemContractRegistry},
@@ -26,7 +26,7 @@ const GH_1470_REGRESSION_CALL: &str = "gh_1470_regression_call.wasm";
 const DEFAULT_ACTIVATION_POINT: EraId = EraId::new(1);
 
 const CONTRACT_ADD_BID: &str = "add_bid.wasm";
-const BOND_AMOUNT: u64 = 42;
+const BOND_AMOUNT: u64 = DEFAULT_MINIMUM_BID_AMOUNT;
 const BID_DELEGATION_RATE: DelegationRate = auction::DELEGATION_RATE_DENOMINATOR;
 
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";

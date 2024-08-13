@@ -884,8 +884,10 @@ where
                     Self::get_named_argument(runtime_args, auction::ARG_DELEGATION_RATE)?;
                 let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
 
+                let minimum_bid_amount = self.config.minimum_bid_amount();
+
                 let result = runtime
-                    .add_bid(account_hash, delegation_rate, amount)
+                    .add_bid(account_hash, delegation_rate, amount, minimum_bid_amount)
                     .map_err(Self::reverter)?;
 
                 CLValue::from_t(result).map_err(Self::reverter)
@@ -1717,6 +1719,10 @@ where
         // Return an error if the contract is locked and has some version associated with it.
         if contract_package.is_locked() && version.is_some() {
             return Err(Error::LockedContract(contract_package_hash));
+        }
+
+        for (_, key) in named_keys.iter() {
+            self.context.validate_key(key)?
         }
 
         let contract_wasm_hash = self.context.new_hash_address()?;

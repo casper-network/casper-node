@@ -1,6 +1,6 @@
 //! A library to support testing of Wasm smart contracts for use on the Casper Platform.
 
-#![doc(html_root_url = "https://docs.rs/casper-engine-test-support/7.0.1")]
+#![doc(html_root_url = "https://docs.rs/casper-engine-test-support/7.0.3")]
 #![doc(
     html_favicon_url = "https://raw.githubusercontent.com/casper-network/casper-node/blob/dev/images/Casper_Logo_Favicon_48.png",
     html_logo_url = "https://raw.githubusercontent.com/casper-network/casper-node/blob/dev/images/Casper_Logo_Favicon.png",
@@ -27,7 +27,7 @@ use once_cell::sync::Lazy;
 #[allow(deprecated)]
 pub use casper_execution_engine::core::engine_state::engine_config::{
     DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-    DEFAULT_MAX_STORED_VALUE_SIZE, DEFAULT_MINIMUM_DELEGATION_AMOUNT,
+    DEFAULT_MAX_STORED_VALUE_SIZE, DEFAULT_MINIMUM_BID_AMOUNT, DEFAULT_MINIMUM_DELEGATION_AMOUNT,
 };
 use casper_execution_engine::{
     core::engine_state::{
@@ -128,7 +128,7 @@ pub static DEFAULT_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
 /// Default [`ProtocolVersion`].
 pub static DEFAULT_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| ProtocolVersion::V1_0_0);
 /// Default payment.
-pub static DEFAULT_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(2_500_000_000_000u64));
+pub static DEFAULT_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(6_000_000_000_000u64));
 /// Default [`WasmConfig`].
 pub static DEFAULT_WASM_CONFIG: Lazy<WasmConfig> = Lazy::new(WasmConfig::default);
 /// Default [`SystemConfig`].
@@ -231,7 +231,10 @@ mod tests {
             production.core_config.minimum_delegation_amount,
             DEFAULT_MINIMUM_DELEGATION_AMOUNT
         );
-
+        assert_eq!(
+            production.core_config.minimum_bid_amount,
+            DEFAULT_MINIMUM_BID_AMOUNT
+        );
         assert_eq!(production.wasm_config, WasmConfig::default());
         assert_eq!(production.system_costs_config, SystemConfig::default());
     }

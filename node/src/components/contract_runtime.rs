@@ -600,6 +600,7 @@ impl ContractRuntime {
         max_associated_keys: u32,
         max_runtime_call_stack_height: u32,
         minimum_delegation_amount: u64,
+        minimum_bid_amount: u64,
         activation_point: ActivationPoint,
         prune_batch_size: u64,
         strict_argument_checking: bool,
@@ -639,6 +640,7 @@ impl ContractRuntime {
             .with_max_associated_keys(max_associated_keys)
             .with_max_runtime_call_stack_height(max_runtime_call_stack_height)
             .with_minimum_delegation_amount(minimum_delegation_amount)
+            .with_minimum_bid_amount(minimum_bid_amount)
             .with_strict_argument_checking(strict_argument_checking)
             .with_vesting_schedule_period_millis(vesting_schedule_period_millis)
             .with_max_delegators_per_validator(max_delegators_per_validator)
@@ -1057,6 +1059,7 @@ mod trie_chunking_tests {
             &ContractRuntimeConfig::default(),
             WasmConfig::default(),
             SystemConfig::default(),
+            10,
             10,
             10,
             10,

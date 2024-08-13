@@ -9,7 +9,7 @@ pub const DEFAULT_GET_ERA_VALIDATORS_COST: u32 = 10_000;
 /// Default cost of the `read_seigniorage_recipients` auction entry point.
 pub const DEFAULT_READ_SEIGNIORAGE_RECIPIENTS_COST: u32 = 10_000;
 /// Default cost of the `add_bid` auction entry point.
-pub const DEFAULT_ADD_BID_COST: u32 = 2_500_000_000;
+pub const DEFAULT_ADD_BID_COST: u64 = 5_000_000_000_000;
 /// Default cost of the `withdraw_bid` auction entry point.
 pub const DEFAULT_WITHDRAW_BID_COST: u32 = 2_500_000_000;
 /// Default cost of the `delegate` auction entry point.
@@ -42,7 +42,7 @@ pub struct AuctionCosts {
     /// Cost of calling the `read_seigniorage_recipients` entry point.
     pub read_seigniorage_recipients: u32,
     /// Cost of calling the `add_bid` entry point.
-    pub add_bid: u32,
+    pub add_bid: u64,
     /// Cost of calling the `withdraw_bid` entry point.
     pub withdraw_bid: u32,
     /// Cost of calling the `delegate` entry point.
@@ -205,7 +205,9 @@ impl Distribution<AuctionCosts> for Standard {
         AuctionCosts {
             get_era_validators: rng.gen(),
             read_seigniorage_recipients: rng.gen(),
-            add_bid: rng.gen(),
+            // We cap the range at i64 due to constraint for parsing u64s
+            // https://github.com/toml-rs/toml/issues/705
+            add_bid: rng.gen_range(0..(i64::MAX as u64)),
             withdraw_bid: rng.gen(),
             delegate: rng.gen(),
             undelegate: rng.gen(),
@@ -248,7 +250,7 @@ pub mod gens {
             AuctionCosts {
                 get_era_validators,
                 read_seigniorage_recipients,
-                add_bid,
+                add_bid: add_bid.into(),
                 withdraw_bid,
                 delegate,
                 undelegate,

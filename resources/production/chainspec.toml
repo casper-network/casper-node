@@ -1,6 +1,6 @@
 [protocol]
 # Protocol version.
-version = '1.5.6'
+version = '1.5.8'
 # Whether we need to clear latest blocks back to the switch block just before the activation point or not.
 hard_reset = true
 # This protocol version becomes active at this point.
@@ -70,6 +70,8 @@ max_associated_keys = 100
 max_runtime_call_stack_height = 12
 # Minimum allowed delegation amount in motes
 minimum_delegation_amount = 500_000_000_000
+# Minimum allowed bid amount in motes
+minimum_bid_amount = 10_000_000_000_000
 # Global state prune batch size (0 = this feature is off)
 prune_batch_size = 0
 # Enables strict arguments checking when calling a contract; i.e. that all non-optional args are provided and of the correct `CLType`.
@@ -265,7 +267,7 @@ wasmless_transfer_cost = 100_000_000
 [system_costs.auction_costs]
 get_era_validators = 10_000
 read_seigniorage_recipients = 10_000
-add_bid = 2_500_000_000
+add_bid = 5_000_000_000_000
 withdraw_bid = 2_500_000_000
 delegate = 2_500_000_000
 undelegate = 2_500_000_000
