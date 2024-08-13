@@ -329,7 +329,7 @@ impl<T: StateReader> StateTracker<T> {
     fn get_withdraws(&mut self) -> WithdrawPurses {
         let mut result = self.reader.get_withdraws();
         for (acc, purses) in &self.withdraws_cache {
-            result.insert(acc.clone(), purses.clone());
+            result.insert(acc, purses.clone());
         }
         result
     }
@@ -337,14 +337,13 @@ impl<T: StateReader> StateTracker<T> {
     fn get_unbonds(&mut self) -> UnbondingPurses {
         let mut result = self.reader.get_unbonds();
         for (acc, purses) in &self.unbonds_cache {
-            result.insert(acc.clone(), purses.clone());
+            result.insert(acc, purses.clone());
         }
         result
     }
 
     fn write_withdraw(&mut self, account_hash: AccountHash, withdraws: Vec<WithdrawPurse>) {
-        self.withdraws_cache
-            .insert(account_hash.clone(), withdraws.clone());
+        self.withdraws_cache.insert(account_hash, withdraws.clone());
         self.write_entry(
             Key::Withdraw(account_hash),
             StoredValue::Withdraw(withdraws),
@@ -352,8 +351,7 @@ impl<T: StateReader> StateTracker<T> {
     }
 
     fn write_unbond(&mut self, account_hash: AccountHash, unbonds: Vec<UnbondingPurse>) {
-        self.unbonds_cache
-            .insert(account_hash.clone(), unbonds.clone());
+        self.unbonds_cache.insert(account_hash, unbonds.clone());
         self.write_entry(Key::Unbond(account_hash), StoredValue::Unbonding(unbonds));
     }
 
