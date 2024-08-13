@@ -122,8 +122,8 @@ fn update_auction_state<T: StateReader>(
 
     let bids = state.get_bids();
     if slash {
-        // zero the unbonds for the removed validators independently of set_bid; set_bid will take care
-        // of zeroing the delegators if necessary
+        // zero the unbonds for the removed validators independently of set_bid; set_bid will take
+        // care of zeroing the delegators if necessary
         for pub_key in &validators_diff.removed {
             if let Some(bid) = bids.get(pub_key) {
                 state.remove_withdraws_and_unbonds_with_bonding_purse(bid.bonding_purse());
