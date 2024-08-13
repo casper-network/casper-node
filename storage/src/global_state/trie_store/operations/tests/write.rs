@@ -492,3 +492,64 @@ mod full_tries {
         .unwrap()
     }
 }
+
+mod variable_sized_keys {
+    use super::*;
+
+    fn assert_write_result(result: WriteResult) -> Option<Digest> {
+        match result {
+            WriteResult::Written(root_hash) => Some(root_hash),
+            WriteResult::AlreadyExists => None,
+            WriteResult::RootNotFound => panic!("Root not found while attempting write"),
+        }
+    }
+
+    #[test]
+    fn write_variable_len_keys() {
+        let (root_hash, tries) = create_empty_trie::<MultiVariantTestKey, u32>().unwrap();
+
+        let context = LmdbTestContext::new(&tries).unwrap();
+        let mut txn = context.environment.create_read_write_txn().unwrap();
+
+        let test_key_1 =
+            MultiVariantTestKey::VariableSizedKey(VariableAddr::LegacyAddr(*b"caab6ff"));
+        let root_hash = assert_write_result(
+            write::<MultiVariantTestKey, _, _, _, error::Error>(
+                &mut txn,
+                &context.store,
+                &root_hash,
+                &test_key_1,
+                &1u32,
+            )
+            .unwrap(),
+        )
+        .expect("Expected new root hash after write");
+
+        let test_key_2 =
+            MultiVariantTestKey::VariableSizedKey(VariableAddr::LegacyAddr(*b"caabb74"));
+        let root_hash = assert_write_result(
+            write::<MultiVariantTestKey, _, _, _, error::Error>(
+                &mut txn,
+                &context.store,
+                &root_hash,
+                &test_key_2,
+                &2u32,
+            )
+            .unwrap(),
+        )
+        .expect("Expected new root hash after write");
+
+        let test_key_3 = MultiVariantTestKey::VariableSizedKey(VariableAddr::Empty);
+        let _ = assert_write_result(
+            write::<MultiVariantTestKey, _, _, _, error::Error>(
+                &mut txn,
+                &context.store,
+                &root_hash,
+                &test_key_3,
+                &3u32,
+            )
+            .unwrap(),
+        )
+        .expect("Expected new root hash after write");
+    }
+}
