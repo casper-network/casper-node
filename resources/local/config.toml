@@ -574,6 +574,13 @@ enable_manual_sync = true
 # `transaction.max_timestamp_leeway`.
 timestamp_leeway = '2 seconds'
 
+# The gas price tolerance checks are disabled if the transaction TTL extends beyond the planned
+# upgrade activation point. Since it's not possible to do the calculations precisely (due to the
+# fact that era duration may vary and that we can't determine how much time in the current era
+# has passed) we allow short leeway when comparing timestamps to minimize the chances of the
+# transaction being rejected erroneously.
+ttl_leeway_for_upgrade_point_check = '2 hours'
+
 
 # ===========================================
 # Configuration options for the transaction buffer

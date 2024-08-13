@@ -2635,15 +2635,16 @@ fn detects_unreachable_gas_price() {
 fn detects_distance_between_txn_expiry_and_upgrade_point() {
     let rng = &mut TestRng::new();
 
-    const ONE_HOUR: u32 = 60 * 60;
-    const TWO_HOURS: u32 = ONE_HOUR * 2;
+    const ONE_HOUR: u64 = 60 * 60;
+    const TWO_HOURS: u64 = ONE_HOUR * 2;
 
-    const ERA_DURATION_SECS: u64 = ONE_HOUR as u64;
+    const ERA_DURATION_SECS: u64 = ONE_HOUR;
+    const LEEWAY: u64 = TWO_HOURS;
 
     let txn = Transaction::from(
         TransactionV1Builder::new_random(rng)
             .with_timestamp(Timestamp::now())
-            .with_ttl(TimeDiff::from_seconds(TWO_HOURS)) // 2 eras
+            .with_ttl(TimeDiff::from_seconds(TWO_HOURS as u32)) // 2 eras
             .with_chain_name("casper-example")
             .build()
             .expect("must create fixed mode transaction"),
@@ -2658,6 +2659,7 @@ fn detects_distance_between_txn_expiry_and_upgrade_point() {
         current_era,
         upgrade_era,
         ERA_DURATION_SECS,
+        LEEWAY,
         &txn,
     );
     assert!(!result);
@@ -2671,6 +2673,7 @@ fn detects_distance_between_txn_expiry_and_upgrade_point() {
         current_era,
         upgrade_era,
         ERA_DURATION_SECS,
+        LEEWAY,
         &txn,
     );
     assert!(result);
@@ -2684,6 +2687,7 @@ fn detects_distance_between_txn_expiry_and_upgrade_point() {
         current_era,
         upgrade_era,
         ERA_DURATION_SECS,
+        LEEWAY,
         &txn,
     );
     assert!(result);

@@ -48,12 +48,6 @@ const COMPONENT_NAME: &str = "transaction_acceptor";
 
 const ARG_TARGET: &str = "target";
 
-// The gas price tolerance checks are disabled if the transaction TTL extends beyond the planned
-// upgrade activation point. Since the exact duration of the era may wary we allow short leeway when
-// comparing timestamps to minimize the chances of the transaction being rejected erroneously.
-// TODO[RC]: To config
-const UPGRADE_POINT_TIMESTAMP_LEEWAY_SECS: u64 = 60 * 60 * 2;
-
 /// A helper trait constraining `TransactionAcceptor` compatible reactor events.
 pub(crate) trait ReactorEventT:
     From<Event>
@@ -187,6 +181,10 @@ impl TransactionAcceptor {
                                     upgrade_era,
                                     current_era,
                                     self.chainspec.core_config.era_duration.millis() / 1000,
+                                    self.acceptor_config
+                                        .ttl_leeway_for_upgrade_point_check
+                                        .millis()
+                                        / 1000,
                                     txn,
                                 )
                             }
@@ -210,6 +208,7 @@ impl TransactionAcceptor {
         current_era: EraId,
         upgrade_era: EraId,
         era_duration_secs: u64,
+        leeway_secs: u64,
         txn: &Transaction,
     ) -> bool {
         let era_diff: u64 = upgrade_era.value() - current_era.value();
@@ -225,7 +224,7 @@ impl TransactionAcceptor {
             %estimated_upgrade_timestamp,
             "verifying distance to upgrade point"
         );
-        expiry_timestamp >= estimated_upgrade_timestamp - UPGRADE_POINT_TIMESTAMP_LEEWAY_SECS
+        expiry_timestamp >= estimated_upgrade_timestamp - leeway_secs
     }
 
     fn check_minimum_gas_price_against_tolerance(
