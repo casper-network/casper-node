@@ -550,6 +550,8 @@ pub trait Auction:
         include_credits: bool,
         credit_cap: Ratio<U512>,
     ) -> Result<(), ApiError> {
+        debug!("run_auction called");
+
         if self.get_caller() != PublicKey::System.to_account_hash() {
             return Err(Error::InvalidCaller.into());
         }
@@ -563,7 +565,9 @@ pub trait Auction:
         let mut era_id: EraId = detail::get_era_id(self)?;
 
         // Process unbond requests
+        debug!("processing unbond requests");
         detail::process_unbond_requests(self, max_delegators_per_validator)?;
+        debug!("processing unbond request successful");
 
         let mut validator_bids_detail = detail::get_validator_bids(self, era_id)?;
 
@@ -656,6 +660,8 @@ pub trait Auction:
         if bids_modified {
             detail::set_validator_bids(self, validator_bids)?;
         }
+
+        debug!("run_auction successful");
 
         Ok(())
     }

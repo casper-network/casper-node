@@ -661,7 +661,10 @@ where
             let validator_bid_addr = BidAddr::from(public_key.clone());
             match read_current_validator_bid(provider, validator_bid_addr.into()) {
                 Ok(validator_bid) => validator_bid.validator_public_key().clone(),
-                Err(_) => return Ok(UnbondRedelegationOutcome::NonexistantRedelegationTarget),
+                Err(err) => {
+                    error!(?err, ?unbonding_purse, redelegate_to=?public_key, "error redelegating");
+                    return Ok(UnbondRedelegationOutcome::NonexistantRedelegationTarget);
+                }
             }
         }
         None => return Ok(UnbondRedelegationOutcome::Withdrawal),
@@ -809,6 +812,11 @@ where
         match provider.read_bid(&bid_key)? {
             Some(BidKind::Validator(validator_bid)) => return Ok(validator_bid),
             Some(BidKind::Bridge(bridge)) => {
+                debug!(
+                    ?bid_key,
+                    ?bridge,
+                    "read_current_validator_bid: bridge found"
+                );
                 let validator_bid_addr = BidAddr::from(bridge.new_validator_public_key().clone());
                 bid_key = validator_bid_addr.into();
             }
