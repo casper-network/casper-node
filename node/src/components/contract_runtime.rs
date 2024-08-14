@@ -503,6 +503,8 @@ impl ContractRuntime {
             ContractRuntimeRequest::UpdatePreState { new_pre_state } => {
                 let next_block_height = new_pre_state.next_block_height();
                 self.set_initial_state(new_pre_state);
+                let min_gas_price = self.chainspec.vacancy_config.min_gas_price;
+                let max_gas_price = self.chainspec.vacancy_config.max_gas_price;
                 async move {
                     let block_header = match effect_builder
                         .get_highest_complete_block_header_from_storage()
@@ -540,7 +542,10 @@ impl ContractRuntime {
                     );
 
                     info!("Enqueuing block for execution post state refresh");
-                    let next_era_gas_price = block_header.next_era_gas_price();
+                    let next_era_gas_price =
+                        block_header.next_era_gas_price().map(|next_era_gas_price| {
+                            next_era_gas_price.clamp(min_gas_price, max_gas_price)
+                        });
                     debug!(next_era_gas_price, "immediate switch block");
 
                     effect_builder
