@@ -247,6 +247,11 @@ function start_upgrade_scenario_15() {
     nctl-exec-upgrade-scenario-15
 }
 
+function start_upgrade_scenario_16() {
+    log "... Starting Upgrade Scenario 16"
+    nctl-exec-upgrade-scenario-16
+}
+
 # ----------------------------------------------------------------
 # ENTRY POINT
 # ----------------------------------------------------------------
