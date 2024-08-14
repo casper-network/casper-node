@@ -351,17 +351,19 @@ impl TransactionAcceptor {
         maybe_next_upgrade: Option<NextUpgrade>,
         event_metadata: Box<EventMetadata>,
     ) -> Effects<Event> {
-        if let Err(error) = self.should_reject_due_to_gas_price(
-            &event_metadata.transaction,
-            self.chainspec.vacancy_config.min_gas_price,
-            maybe_next_upgrade,
-        ) {
-            return self.reject_transaction(effect_builder, *event_metadata, error.into());
+        if event_metadata.source.is_client() {
+            if let Err(error) = self.should_reject_due_to_gas_price(
+                &event_metadata.transaction,
+                self.chainspec.vacancy_config.min_gas_price,
+                maybe_next_upgrade,
+            ) {
+                return self.reject_transaction(effect_builder, *event_metadata, error.into());
+            }
         }
 
         // We only perform expiry checks on transactions received from the client.
         let current_node_timestamp = event_metadata.verification_start_timestamp;
-        if event_metadata.source.is_client() // TODO[RC]: We should also do this for the gas price checks
+        if event_metadata.source.is_client()
             && event_metadata.transaction.expired(current_node_timestamp)
         {
             let expiry_timestamp = event_metadata.transaction.expires();

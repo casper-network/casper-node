@@ -236,8 +236,10 @@ enum TestScenario {
     DeployWithoutTransferAmount,
     BalanceCheckForDeploySentByPeer,
     InvalidPricingModeForTransactionV1,
+    FromPeerTooLowGasPriceToleranceForTransactionV1,
     TooLowGasPriceToleranceForTransactionV1,
     TooLowGasPriceToleranceForDeploy,
+    FromPeerUnreachableGasPriceToleranceForTransactionV1,
     UnreachableGasPriceToleranceForTransactionV1,
     UnreachableGasPriceToleranceForDeploy,
 }
@@ -248,6 +250,8 @@ impl TestScenario {
             TestScenario::FromPeerInvalidTransaction(_)
             | TestScenario::FromPeerExpired(_)
             | TestScenario::FromPeerValidTransaction(_)
+            | TestScenario::FromPeerTooLowGasPriceToleranceForTransactionV1
+            | TestScenario::FromPeerUnreachableGasPriceToleranceForTransactionV1
             | TestScenario::FromPeerRepeatedValidTransaction(_)
             | TestScenario::BalanceCheckForDeploySentByPeer
             | TestScenario::FromPeerMissingAccount(_)
@@ -598,7 +602,8 @@ impl TestScenario {
                     .expect("must create classic mode transaction");
                 Transaction::from(classic_mode_transaction)
             }
-            TestScenario::TooLowGasPriceToleranceForTransactionV1 => {
+            TestScenario::TooLowGasPriceToleranceForTransactionV1
+            | TestScenario::FromPeerTooLowGasPriceToleranceForTransactionV1 => {
                 const TOO_LOW_GAS_PRICE_TOLERANCE: u8 = 0;
 
                 let fixed_mode_transaction = TransactionV1Builder::new_random(rng)
@@ -616,7 +621,8 @@ impl TestScenario {
                 let deploy = Deploy::random_with_gas_price(rng, TOO_LOW_GAS_PRICE_TOLERANCE);
                 Transaction::from(deploy)
             }
-            TestScenario::UnreachableGasPriceToleranceForTransactionV1 => {
+            TestScenario::UnreachableGasPriceToleranceForTransactionV1
+            | TestScenario::FromPeerUnreachableGasPriceToleranceForTransactionV1 => {
                 // For this scenario, network will start with "current gas price" set to 20.
                 // It'll not be able to reach the gas price tolerance of 10 within 5 minutes.
 
@@ -659,6 +665,8 @@ impl TestScenario {
             TestScenario::FromPeerRepeatedValidTransaction(_)
             | TestScenario::FromPeerExpired(_)
             | TestScenario::FromPeerValidTransaction(_)
+            | TestScenario::FromPeerTooLowGasPriceToleranceForTransactionV1 // gas price check skipped if from peer
+            | TestScenario::FromPeerUnreachableGasPriceToleranceForTransactionV1 // gas price check skipped if from peer
             | TestScenario::FromPeerMissingAccount(_) // account check skipped if from peer
             | TestScenario::FromPeerAccountWithInsufficientWeight(_) // account check skipped if from peer
             | TestScenario::FromPeerAccountWithInvalidAssociatedKeys(_) // account check skipped if from peer
@@ -831,6 +839,8 @@ impl reactor::Reactor for Reactor {
                             | TestScenario::FromClientCustomPaymentContractPackage(
                                 ContractPackageScenario::MissingContractVersion,
                             )
+                            | TestScenario::FromPeerTooLowGasPriceToleranceForTransactionV1
+                            | TestScenario::FromPeerUnreachableGasPriceToleranceForTransactionV1
                             | TestScenario::FromClientSessionContractPackage(
                                 _,
                                 ContractPackageScenario::MissingContractVersion,
@@ -1390,6 +1400,8 @@ async fn run_transaction_acceptor_without_timeout(
             | TestScenario::FromPeerMissingAccount(_)
             | TestScenario::FromPeerAccountWithInvalidAssociatedKeys(_)
             | TestScenario::FromPeerAccountWithInsufficientWeight(_)
+            | TestScenario::FromPeerTooLowGasPriceToleranceForTransactionV1
+            | TestScenario::FromPeerUnreachableGasPriceToleranceForTransactionV1
             | TestScenario::FromPeerExpired(_) => {
                 matches!(
                     event,
@@ -2549,6 +2561,14 @@ async fn should_reject_transaction_v1_with_invalid_pricing_mode() {
 }
 
 #[tokio::test]
+async fn should_accept_transaction_v1_with_too_low_gas_price_tolerance_from_peer() {
+    let test_scenario = TestScenario::FromPeerTooLowGasPriceToleranceForTransactionV1;
+    let result =
+        run_transaction_acceptor_with_gas_price(test_scenario, PriceInEra::new(1.into(), 20)).await;
+    assert!(result.is_ok())
+}
+
+#[tokio::test]
 async fn should_reject_transaction_v1_with_too_low_gas_price_tolerance() {
     let test_scenario = TestScenario::TooLowGasPriceToleranceForTransactionV1;
     let result = run_transaction_acceptor(test_scenario).await;
@@ -2570,6 +2590,14 @@ async fn should_reject_deploy_with_too_low_gas_price_tolerance() {
             InvalidTransaction::Deploy(InvalidDeploy::GasPriceToleranceTooLow { .. })
         ))
     ))
+}
+
+#[tokio::test]
+async fn should_accept_transaction_v1_with_unreachable_gas_price_tolerance_from_peer() {
+    let test_scenario = TestScenario::FromPeerUnreachableGasPriceToleranceForTransactionV1;
+    let result =
+        run_transaction_acceptor_with_gas_price(test_scenario, PriceInEra::new(1.into(), 20)).await;
+    assert!(result.is_ok())
 }
 
 #[tokio::test]
