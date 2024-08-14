@@ -167,12 +167,13 @@ impl TransactionAcceptor {
         min_gas_price: u8,
         maybe_next_upgrade: Option<NextUpgrade>,
     ) -> Result<(), InvalidTransaction> {
-        let should_verify_gas_price = match maybe_next_upgrade {
-            Some(next_upgrade) => {
-                let activation_point = next_upgrade.activation_point();
-                match activation_point {
-                    ActivationPoint::EraId(upgrade_era) => match &self.current_gas_price {
-                        Some(current_gas_price) => {
+        let should_verify_gas_price = maybe_next_upgrade.map_or(true, |next_upgrade| {
+            let activation_point = next_upgrade.activation_point();
+            match activation_point {
+                ActivationPoint::EraId(upgrade_era) => {
+                    self.current_gas_price
+                        .as_ref()
+                        .map_or(false, |current_gas_price| {
                             let current_era = current_gas_price.era;
                             if upgrade_era <= current_era {
                                 false
@@ -188,14 +189,11 @@ impl TransactionAcceptor {
                                     txn,
                                 )
                             }
-                        }
-                        None => false,
-                    },
-                    ActivationPoint::Genesis(_) => false,
+                        })
                 }
+                ActivationPoint::Genesis(_) => false,
             }
-            None => true,
-        };
+        });
 
         if should_verify_gas_price {
             self.check_reachable_gas_price(txn)?;
