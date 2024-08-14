@@ -1056,7 +1056,8 @@ impl reactor::Reactor for Reactor {
                     .handle_event(effect_builder, rng, event),
             ),
             Event::UpgradeWatcherAnnouncement(ann) => {
-                // TODO[RC]: Add tests with the next upgrade equal to Some()
+                // There is a `detects_distance_between_txn_expiry_and_upgrade_point()` test that
+                // covers various distances to the upgrade point.
                 assert!(ann.0.is_none());
                 Effects::new()
             }
