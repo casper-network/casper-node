@@ -250,7 +250,7 @@ pub(super) async fn exec_or_requeue<REv>(
 
     let task = move || {
         debug!("ContractRuntime: execute_finalized_block");
-        let result = execute_finalized_block(
+        execute_finalized_block(
             data_access_layer.as_ref(),
             execution_engine_v1.as_ref(),
             execution_engine_v2,
@@ -262,9 +262,7 @@ pub(super) async fn exec_or_requeue<REv>(
             current_gas_price,
             maybe_next_era_gas_price,
             last_switch_block_hash,
-        );
-        debug!(?result, "ContractRuntime: execute_finalized_block result");
-        result
+        )
     };
     let BlockAndExecutionArtifacts {
         block,
@@ -278,8 +276,6 @@ pub(super) async fn exec_or_requeue<REv>(
             return fatal!(effect_builder, "{}", error).await;
         }
     };
-
-    debug!(?execution_artifacts, "execution artifacts");
 
     let new_execution_pre_state = ExecutionPreState::from_block_header(block.header());
     {

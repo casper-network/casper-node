@@ -9,6 +9,7 @@ use casper_types::{
     runtime_args,
     system::mint::{ARG_AMOUNT, ARG_TARGET},
     AddressableEntity, Digest, EntityAddr, ExecutionInfo, GasLimited, TransactionCategory,
+    TransactionRuntime,
 };
 use once_cell::sync::Lazy;
 
@@ -90,12 +91,16 @@ async fn send_wasm_transaction(
     let chain_name = fixture.chainspec.network_config.name.clone();
 
     let mut txn = Transaction::from(
-        TransactionV1Builder::new_session(TransactionCategory::Large, Bytes::from(vec![1]))
-            .with_chain_name(chain_name)
-            .with_pricing_mode(pricing)
-            .with_initiator_addr(PublicKey::from(from))
-            .build()
-            .unwrap(),
+        TransactionV1Builder::new_session(
+            TransactionCategory::Large,
+            Bytes::from(vec![1]),
+            TransactionRuntime::VmCasperV1,
+        )
+        .with_chain_name(chain_name)
+        .with_pricing_mode(pricing)
+        .with_initiator_addr(PublicKey::from(from))
+        .build()
+        .unwrap(),
     );
 
     txn.sign(from);
@@ -1688,16 +1693,20 @@ async fn only_refunds_are_burnt_no_fee_custom_payment() {
     let expected_transaction_cost = expected_transaction_gas * MIN_GAS_PRICE as u64;
 
     let mut txn = Transaction::from(
-        TransactionV1Builder::new_session(TransactionCategory::Large, module_bytes)
-            .with_chain_name(CHAIN_NAME)
-            .with_pricing_mode(PricingMode::Classic {
-                payment_amount: expected_transaction_gas,
-                gas_price_tolerance: MIN_GAS_PRICE,
-                standard_payment: false,
-            })
-            .with_initiator_addr(BOB_PUBLIC_KEY.clone())
-            .build()
-            .unwrap(),
+        TransactionV1Builder::new_session(
+            TransactionCategory::Large,
+            module_bytes,
+            TransactionRuntime::VmCasperV1,
+        )
+        .with_chain_name(CHAIN_NAME)
+        .with_pricing_mode(PricingMode::Classic {
+            payment_amount: expected_transaction_gas,
+            gas_price_tolerance: MIN_GAS_PRICE,
+            standard_payment: false,
+        })
+        .with_initiator_addr(BOB_PUBLIC_KEY.clone())
+        .build()
+        .unwrap(),
     );
     txn.sign(&BOB_SECRET_KEY);
 
@@ -1786,16 +1795,20 @@ async fn no_refund_no_fee_custom_payment() {
     let expected_transaction_cost = expected_transaction_gas * MIN_GAS_PRICE as u64;
 
     let mut txn = Transaction::from(
-        TransactionV1Builder::new_session(TransactionCategory::Large, module_bytes)
-            .with_chain_name(CHAIN_NAME)
-            .with_pricing_mode(PricingMode::Classic {
-                payment_amount: expected_transaction_gas,
-                gas_price_tolerance: MIN_GAS_PRICE,
-                standard_payment: false,
-            })
-            .with_initiator_addr(BOB_PUBLIC_KEY.clone())
-            .build()
-            .unwrap(),
+        TransactionV1Builder::new_session(
+            TransactionCategory::Large,
+            module_bytes,
+            TransactionRuntime::VmCasperV1,
+        )
+        .with_chain_name(CHAIN_NAME)
+        .with_pricing_mode(PricingMode::Classic {
+            payment_amount: expected_transaction_gas,
+            gas_price_tolerance: MIN_GAS_PRICE,
+            standard_payment: false,
+        })
+        .with_initiator_addr(BOB_PUBLIC_KEY.clone())
+        .build()
+        .unwrap(),
     );
     txn.sign(&BOB_SECRET_KEY);
 
@@ -2338,12 +2351,16 @@ fn transfer_txn<A: Into<U512>>(
 
 fn invalid_wasm_txn(initiator: Arc<SecretKey>, pricing_mode: PricingMode) -> Transaction {
     let mut txn = Transaction::from(
-        TransactionV1Builder::new_session(TransactionCategory::Large, Bytes::from(vec![1]))
-            .with_chain_name(CHAIN_NAME)
-            .with_pricing_mode(pricing_mode)
-            .with_initiator_addr(PublicKey::from(&*initiator))
-            .build()
-            .unwrap(),
+        TransactionV1Builder::new_session(
+            TransactionCategory::Large,
+            Bytes::from(vec![1]),
+            TransactionRuntime::VmCasperV1,
+        )
+        .with_chain_name(CHAIN_NAME)
+        .with_pricing_mode(pricing_mode)
+        .with_initiator_addr(PublicKey::from(&*initiator))
+        .build()
+        .unwrap(),
     );
     txn.sign(&initiator);
     txn
@@ -3054,14 +3071,16 @@ async fn insufficient_funds_transfer_from_purse() {
         Bytes::from(std::fs::read(purse_create_contract).expect("cannot read module bytes"));
 
     let mut txn = Transaction::from(
-        TransactionV1Builder::new_session(TransactionCategory::Large, module_bytes)
-            .with_runtime_args(
-                runtime_args! { "destination" => purse_name, "amount" => U512::zero() },
-            )
-            .with_chain_name(CHAIN_NAME)
-            .with_initiator_addr(BOB_PUBLIC_KEY.clone())
-            .build()
-            .unwrap(),
+        TransactionV1Builder::new_session(
+            TransactionCategory::Large,
+            module_bytes,
+            TransactionRuntime::VmCasperV1,
+        )
+        .with_runtime_args(runtime_args! { "destination" => purse_name, "amount" => U512::zero() })
+        .with_chain_name(CHAIN_NAME)
+        .with_initiator_addr(BOB_PUBLIC_KEY.clone())
+        .build()
+        .unwrap(),
     );
     txn.sign(&BOB_SECRET_KEY);
     let (_txn_hash, _block_height, exec_result) = test.send_transaction(txn).await;
@@ -3179,15 +3198,19 @@ async fn charge_when_session_code_succeeds() {
 
     let transferred_amount = 1;
     let mut txn = Transaction::from(
-        TransactionV1Builder::new_session(TransactionCategory::Large, module_bytes)
-            .with_runtime_args(runtime_args! {
-                ARG_TARGET => CHARLIE_PUBLIC_KEY.to_account_hash(),
-                ARG_AMOUNT => U512::from(transferred_amount)
-            })
-            .with_chain_name(CHAIN_NAME)
-            .with_initiator_addr(BOB_PUBLIC_KEY.clone())
-            .build()
-            .unwrap(),
+        TransactionV1Builder::new_session(
+            TransactionCategory::Large,
+            module_bytes,
+            TransactionRuntime::VmCasperV1,
+        )
+        .with_runtime_args(runtime_args! {
+            ARG_TARGET => CHARLIE_PUBLIC_KEY.to_account_hash(),
+            ARG_AMOUNT => U512::from(transferred_amount)
+        })
+        .with_chain_name(CHAIN_NAME)
+        .with_initiator_addr(BOB_PUBLIC_KEY.clone())
+        .build()
+        .unwrap(),
     );
     txn.sign(&BOB_SECRET_KEY);
     let (_txn_hash, block_height, exec_result) = test.send_transaction(txn).await;
@@ -3240,11 +3263,15 @@ async fn charge_when_session_code_fails_with_user_error() {
     let (alice_initial_balance, bob_initial_balance, _) = test.get_balances(None);
 
     let mut txn = Transaction::from(
-        TransactionV1Builder::new_session(TransactionCategory::Large, module_bytes)
-            .with_chain_name(CHAIN_NAME)
-            .with_initiator_addr(BOB_PUBLIC_KEY.clone())
-            .build()
-            .unwrap(),
+        TransactionV1Builder::new_session(
+            TransactionCategory::Large,
+            module_bytes,
+            TransactionRuntime::VmCasperV1,
+        )
+        .with_chain_name(CHAIN_NAME)
+        .with_initiator_addr(BOB_PUBLIC_KEY.clone())
+        .build()
+        .unwrap(),
     );
     txn.sign(&BOB_SECRET_KEY);
     let (_txn_hash, block_height, exec_result) = test.send_transaction(txn).await;
@@ -3304,11 +3331,15 @@ async fn charge_when_session_code_runs_out_of_gas() {
     let (alice_initial_balance, bob_initial_balance, _) = test.get_balances(None);
 
     let mut txn = Transaction::from(
-        TransactionV1Builder::new_session(TransactionCategory::Large, module_bytes)
-            .with_chain_name(CHAIN_NAME)
-            .with_initiator_addr(BOB_PUBLIC_KEY.clone())
-            .build()
-            .unwrap(),
+        TransactionV1Builder::new_session(
+            TransactionCategory::Large,
+            module_bytes,
+            TransactionRuntime::VmCasperV1,
+        )
+        .with_chain_name(CHAIN_NAME)
+        .with_initiator_addr(BOB_PUBLIC_KEY.clone())
+        .build()
+        .unwrap(),
     );
     txn.sign(&BOB_SECRET_KEY);
     let (_txn_hash, block_height, exec_result) = test.send_transaction(txn).await;
@@ -3372,7 +3403,7 @@ async fn successful_purse_to_purse_transfer() {
         Bytes::from(std::fs::read(purse_create_contract).expect("cannot read module bytes"));
 
     let mut txn = Transaction::from(
-        TransactionV1Builder::new_session(TransactionCategory::Large, module_bytes)
+        TransactionV1Builder::new_session(TransactionCategory::Large, module_bytes, TransactionRuntime::VmCasperV1)
             .with_runtime_args(
                 runtime_args! { "destination" => purse_name, "amount" => U512::from(MAX_PAYMENT_AMOUNT) + U512::one() },
             )
@@ -3465,7 +3496,7 @@ async fn successful_purse_to_account_transfer() {
         Bytes::from(std::fs::read(purse_create_contract).expect("cannot read module bytes"));
 
     let mut txn = Transaction::from(
-        TransactionV1Builder::new_session(TransactionCategory::Large, module_bytes)
+        TransactionV1Builder::new_session(TransactionCategory::Large, module_bytes, TransactionRuntime::VmCasperV1)
             .with_runtime_args(
                 runtime_args! { "destination" => purse_name, "amount" => U512::from(MAX_PAYMENT_AMOUNT) + U512::one() },
             )
@@ -3626,11 +3657,15 @@ async fn out_of_gas_txn_does_not_produce_effects() {
         Bytes::from(std::fs::read(revert_contract).expect("cannot read module bytes"));
 
     let mut txn = Transaction::from(
-        TransactionV1Builder::new_session(TransactionCategory::Large, module_bytes)
-            .with_chain_name(CHAIN_NAME)
-            .with_initiator_addr(BOB_PUBLIC_KEY.clone())
-            .build()
-            .unwrap(),
+        TransactionV1Builder::new_session(
+            TransactionCategory::Large,
+            module_bytes,
+            TransactionRuntime::VmCasperV1,
+        )
+        .with_chain_name(CHAIN_NAME)
+        .with_initiator_addr(BOB_PUBLIC_KEY.clone())
+        .build()
+        .unwrap(),
     );
     txn.sign(&BOB_SECRET_KEY);
     let (_txn_hash, block_height, exec_result) = test.send_transaction(txn).await;

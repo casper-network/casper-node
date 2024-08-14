@@ -4,7 +4,8 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{engine_state::Error as StateError, execution::ExecError};
 use casper_types::{
-    ApiError, BlockTime, RuntimeArgs, Transaction, TransactionCategory, TransactionV1Builder,
+    ApiError, BlockTime, RuntimeArgs, Transaction, TransactionCategory, TransactionRuntime,
+    TransactionV1Builder,
 };
 
 const CONTRACT: &str = "do_nothing_stored.wasm";
@@ -31,7 +32,7 @@ fn try_add_contract_version(kind: TransactionCategory, should_succeed: bool) {
     let module_bytes = utils::read_wasm_file(CONTRACT);
 
     let txn = Transaction::from(
-        TransactionV1Builder::new_session(kind, module_bytes)
+        TransactionV1Builder::new_session(kind, module_bytes, TransactionRuntime::VmCasperV1)
             .with_secret_key(&DEFAULT_ACCOUNT_SECRET_KEY)
             .with_chain_name(CHAIN_NAME)
             .build()

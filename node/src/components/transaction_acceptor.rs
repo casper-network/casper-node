@@ -8,17 +8,17 @@ use std::{collections::BTreeSet, fmt::Debug, sync::Arc};
 
 use datasize::DataSize;
 use prometheus::Registry;
-use tracing::{debug, error, trace, warn};
+use tracing::{debug, error, trace};
 
 use casper_execution_engine::engine_state::MAX_PAYMENT;
 use casper_storage::data_access_layer::{balance::BalanceHandling, BalanceRequest, ProofHandling};
 use casper_types::{
     account::AccountHash, addressable_entity::AddressableEntity, system::auction::ARG_AMOUNT,
     AddressableEntityHash, AddressableEntityIdentifier, BlockHeader, Chainspec, EntityAddr,
-    EntityKind, EntityVersion, EntityVersionKey, EntryPoint, EntryPointAddr, ExecutableDeployItem,
+    EntityVersion, EntityVersionKey, EntryPoint, EntryPointAddr, ExecutableDeployItem,
     ExecutableDeployItemIdentifier, InitiatorAddr, Key, Package, PackageAddr, PackageHash,
     PackageIdentifier, Transaction, TransactionEntryPoint, TransactionInvocationTarget,
-    TransactionRuntime, TransactionTarget, DEFAULT_ENTRY_POINT_NAME, U512,
+    TransactionTarget, DEFAULT_ENTRY_POINT_NAME, U512,
 };
 
 use crate::{
@@ -109,7 +109,6 @@ impl TransactionAcceptor {
         source: Source,
         maybe_responder: Option<Responder<Result<(), Error>>>,
     ) -> Effects<Event> {
-        let transaction_hash = transaction.hash();
         debug!(%source, %transaction, "checking transaction before accepting");
         let event_metadata = Box::new(EventMetadata::new(transaction, source, maybe_responder));
 
@@ -129,10 +128,8 @@ impl TransactionAcceptor {
                 )
                 .map_err(|err| Error::InvalidTransaction(err.into())),
         };
-        debug!(%transaction_hash, ?is_config_compliant, "transaction config compliant");
 
         if let Err(error) = is_config_compliant {
-            warn!(?error, "transaction is not config compliant");
             return self.reject_transaction(effect_builder, *event_metadata, error);
         }
 
@@ -142,12 +139,6 @@ impl TransactionAcceptor {
             && event_metadata.transaction.expired(current_node_timestamp)
         {
             let expiry_timestamp = event_metadata.transaction.expires();
-            warn!(
-                %transaction_hash,
-                %expiry_timestamp,
-                %current_node_timestamp,
-                "transaction has expired"
-            );
             return self.reject_transaction(
                 effect_builder,
                 *event_metadata,
@@ -482,7 +473,7 @@ impl TransactionAcceptor {
         block_header: Box<BlockHeader>,
     ) -> Effects<Event> {
         enum NextStep {
-            GetContract(EntityAddr, TransactionRuntime),
+            GetContract(EntityAddr),
             GetPackage(PackageAddr, Option<EntityVersion>),
             CryptoValidation,
         }
@@ -500,9 +491,9 @@ impl TransactionAcceptor {
                 );
             }
             Transaction::V1(txn) => match txn.target() {
-                TransactionTarget::Stored { id, runtime } => match id {
+                TransactionTarget::Stored { id, .. } => match id {
                     TransactionInvocationTarget::ByHash(entity_addr) => {
-                        NextStep::GetContract(EntityAddr::SmartContract(*entity_addr), *runtime)
+                        NextStep::GetContract(EntityAddr::SmartContract(*entity_addr))
                     }
                     TransactionInvocationTarget::ByPackageHash { addr, version } => {
                         NextStep::GetPackage(*addr, *version)
@@ -519,7 +510,7 @@ impl TransactionAcceptor {
         };
 
         match next_step {
-            NextStep::GetContract(entity_addr, _runtime) => {
+            NextStep::GetContract(entity_addr) => {
                 // Use `Key::Hash` variant so that we try to retrieve the entity as either an
                 // AddressableEntity, or fall back to retrieving an un-migrated Contract.
                 effect_builder
@@ -560,16 +551,14 @@ impl TransactionAcceptor {
         contract_hash: AddressableEntityHash,
         maybe_contract: Option<AddressableEntity>,
     ) -> Effects<Event> {
-        let addressable_entity = match maybe_contract {
-            Some(addressable_entity) => addressable_entity,
-            None => {
-                let error = Error::parameter_failure(
-                    &block_header,
-                    ParameterFailure::NoSuchContractAtHash { contract_hash },
-                );
-                return self.reject_transaction(effect_builder, *event_metadata, error);
-            }
-        };
+        if maybe_contract.is_none() {
+            let error = Error::parameter_failure(
+                &block_header,
+                ParameterFailure::NoSuchContractAtHash { contract_hash },
+            );
+            return self.reject_transaction(effect_builder, *event_metadata, error);
+        }
+
         let maybe_entry_point_name = match &event_metadata.transaction {
             Transaction::Deploy(deploy) if is_payment => {
                 Some(deploy.payment().entry_point_name().to_string())
@@ -609,7 +598,6 @@ impl TransactionAcceptor {
                             block_header,
                             is_payment,
                             entry_point_name,
-                            addressable_entity,
                             maybe_entry_point: entry_point_result.into_v1_entry_point(),
                         }),
                     Err(_) => {
@@ -631,7 +619,6 @@ impl TransactionAcceptor {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn handle_get_entry_point_result<REv: ReactorEventT>(
         &self,
         effect_builder: EffectBuilder<REv>,
@@ -639,15 +626,16 @@ impl TransactionAcceptor {
         block_header: Box<BlockHeader>,
         is_payment: bool,
         entry_point_name: String,
-        addressable_entity: AddressableEntity,
+        // addressable_entity: AddressableEntity,
         maybe_entry_point: Option<EntryPoint>,
     ) -> Effects<Event> {
-        if let EntityKind::SmartContract(TransactionRuntime::VmCasperV2) = addressable_entity.kind()
-        {
-            // Engine V2 does not store entrypoint information on chain and relies entirely on the
-            // Wasm itself.
-            return self.validate_transaction_cryptography(effect_builder, event_metadata);
-        }
+        // if let EntityKind::SmartContract(TransactionRuntime::VmCasperV2) =
+        // addressable_entity.kind() {
+        //     warn!("Engine V2 does not store entrypoint information on chain and relies entirely
+        // on the Wasm itself.");     // Engine V2 does not store entrypoint information on
+        // chain and relies entirely on the     // Wasm itself.
+        //     return self.validate_transaction_cryptography(effect_builder, event_metadata);
+        // }
 
         let entry_point = match maybe_entry_point {
             Some(entry_point) => entry_point,
@@ -973,7 +961,7 @@ impl<REv: ReactorEventT> Component<REv> for TransactionAcceptor {
                 block_header,
                 is_payment,
                 entry_point_name,
-                addressable_entity,
+                // addressable_entity,
                 maybe_entry_point,
             } => self.handle_get_entry_point_result(
                 effect_builder,
@@ -981,7 +969,7 @@ impl<REv: ReactorEventT> Component<REv> for TransactionAcceptor {
                 block_header,
                 is_payment,
                 entry_point_name,
-                addressable_entity,
+                // addressable_entity,
                 maybe_entry_point,
             ),
             Event::PutToStorageResult {

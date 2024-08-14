@@ -2,11 +2,11 @@ use std::{collections::BTreeMap, convert::TryInto, sync::Arc, time::Instant};
 
 use bytes::Bytes;
 use casper_executor_wasm::{install::InstallContractRequestBuilder, ExecutorV2};
+use casper_executor_wasm_interface::executor::{ExecuteRequestBuilder, ExecutionKind};
 use itertools::Itertools;
 use tracing::{debug, error, info, trace, warn};
 
 use casper_execution_engine::engine_state::{ExecutionEngineV1, WasmV1Request, WasmV1Result};
-use casper_executor_wasm_interface::executor::{ExecuteRequestBuilder, ExecutionKind};
 use casper_storage::{
     block_store::types::ApprovalsHashes,
     data_access_layer::{
@@ -26,7 +26,6 @@ use casper_storage::{
     system::runtime_native::Config as NativeRuntimeConfig,
     AddressGeneratorBuilder,
 };
-
 use casper_types::{
     bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH},
     execution::{Effects, ExecutionResult, TransformKindV2, TransformV2},
@@ -64,11 +63,6 @@ pub fn execute_finalized_block(
     next_era_gas_price: Option<u8>,
     last_switch_block_hash: Option<BlockHash>,
 ) -> Result<BlockAndExecutionArtifacts, BlockExecutionError> {
-    info!(
-        tx_count = executable_block.transactions.len(),
-        "execute finalized block"
-    );
-
     if executable_block.height != execution_pre_state.next_block_height() {
         return Err(BlockExecutionError::WrongBlockHeight {
             executable_block: Box::new(executable_block),
@@ -147,12 +141,11 @@ pub fn execute_finalized_block(
     }
 
     for transaction in executable_block.transactions {
-        info!(transaction_hash=?transaction.hash(), "processing transaction");
         let mut artifact_builder = ExecutionArtifactBuilder::new(&transaction);
 
         let initiator_addr = transaction.initiator_addr();
         let transaction_hash = transaction.hash();
-        let runtime_args = transaction.session_args();
+        let runtime_args = transaction.session_args().cloned();
         let entry_point = transaction.entry_point();
         let authorization_keys = transaction.authorization_keys();
 
@@ -321,7 +314,7 @@ pub fn execute_finalized_block(
             trace!(%transaction_hash, ?category, "eligible for execution");
             match category {
                 category if category == MINT_LANE_ID => {
-                    let runtime_args = runtime_args.cloned().expect("named args");
+                    let runtime_args = runtime_args.unwrap().clone();
                     let transfer_result =
                         scratch_state.transfer(TransferRequest::with_runtime_args(
                             native_runtime_config.clone(),
@@ -341,8 +334,7 @@ pub fn execute_finalized_block(
                         .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
                 }
                 category if category == AUCTION_LANE_ID => {
-                    let runtime_args = runtime_args.cloned().expect("named args");
-
+                    let runtime_args = runtime_args.unwrap();
                     match AuctionMethod::from_parts(entry_point, &runtime_args, chainspec) {
                         Ok(auction_method) => {
                             let bidding_result = scratch_state.bidding(BiddingRequest::new(
@@ -468,6 +460,7 @@ pub fn execute_finalized_block(
                                 .with_address_generator(address_generator)
                                 .with_transferred_value(value)
                                 .with_chain_name(chainspec.network_config.name.clone())
+                                .with_block_time(transaction.timestamp())
                                 .build()
                                 .expect("should build");
 
@@ -518,7 +511,8 @@ pub fn execute_finalized_block(
                                 // execution target inside the executor
                                 .with_callee_key(initiator_key)
                                 .with_chain_name(chainspec.network_config.name.clone())
-                                .with_transferred_value(value);
+                                .with_transferred_value(value)
+                                .with_block_time(transaction.timestamp());
 
                             if let Some(input_data) = input_data.clone() {
                                 builder =
@@ -607,7 +601,7 @@ pub fn execute_finalized_block(
                             .observe(wasm_v1_start.elapsed().as_secs_f64());
                     }
                 }
-                category => unreachable!("unknown category {category}"),
+                _ => unreachable!("either v1 or v2 wasm"),
             }
         } else {
             debug!(%transaction_hash, "not eligible for execution");
@@ -819,10 +813,8 @@ pub fn execute_finalized_block(
             state_root_hash =
                 scratch_state.commit(state_root_hash, handle_refund_result.effects().clone())?;
         }
-        let built_artifacts = artifact_builder.build();
-        debug!(?transaction, ?built_artifacts, "transaction processed");
 
-        artifacts.push(built_artifacts);
+        artifacts.push(artifact_builder.build());
     }
 
     // transaction processing is finished
@@ -1248,7 +1240,7 @@ where
             let transaction_hash = transaction.hash();
             let initiator_addr = transaction.initiator_addr();
             let authorization_keys = transaction.authorization_keys();
-            let runtime_args = transaction.session_args().cloned().unwrap();
+            let runtime_args = transaction.session_args().unwrap().clone();
 
             let result = state_provider.transfer(TransferRequest::with_runtime_args(
                 native_runtime_config.clone(),

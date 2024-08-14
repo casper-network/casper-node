@@ -27,8 +27,8 @@ use casper_types::{
     ExecutableDeployItem, FinalitySignature, FinalitySignatureId, FinalitySignatureV2, PackageHash,
     ProtocolVersion, RewardedSignatures, RuntimeArgs, SecretKey, SemVer, SignedBlockHeader,
     SingleBlockRewardedSignatures, TimeDiff, Timestamp, Transaction, TransactionHash,
-    TransactionId, TransactionV1, TransactionV1Builder, TransactionV1Hash, URef, AUCTION_LANE_ID,
-    INSTALL_UPGRADE_LANE_ID, KEY_HASH_LENGTH, MINT_LANE_ID, U512,
+    TransactionId, TransactionRuntime, TransactionV1, TransactionV1Builder, TransactionV1Hash,
+    URef, AUCTION_LANE_ID, INSTALL_UPGRADE_LANE_ID, KEY_HASH_LENGTH, MINT_LANE_ID, U512,
 };
 
 use crate::{
@@ -442,9 +442,9 @@ where
                 //
                 // 1. The required seed bytes for Ed25519 and Secp256k1 are both the same length of
                 //    32 bytes.
-                // 2. While Secp256k1 does not allow the most trivial seed bytes of 0x00..0001, a a
-                //    hash function output seems to satisfy it, and our current hashing scheme also
-                //    output 32 bytes.
+                // 2. While Secp256k1 does not allow the most trivial seed bytes of 0x00..0001, a
+                //    a hash function output seems to satisfy it, and our current hashing scheme
+                //    also output 32 bytes.
                 let seed_bytes = Digest::hash(seed.to_be_bytes()).value();
 
                 match variant {
@@ -1021,7 +1021,7 @@ impl LargestSpecimen for TransactionV1 {
                 max_size_with_margin,
                 cache,
             )),
-            casper_types::TransactionRuntime::VmCasperV1,
+            TransactionRuntime::VmCasperV1,
         )
         .with_secret_key(&LargestSpecimen::largest_specimen(estimator, cache))
         .with_timestamp(LargestSpecimen::largest_specimen(estimator, cache))

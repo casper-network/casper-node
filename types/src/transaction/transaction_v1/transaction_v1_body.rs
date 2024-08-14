@@ -58,11 +58,13 @@ pub struct TransactionV1Body {
     pub(super) transferred_value: u128,
 }
 
+/// The arguments of a transaction, which can be either a named set of runtime arguments or a
+/// chunked bytes.
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
 #[cfg_attr(
     any(feature = "std", test),
     derive(Serialize, Deserialize),
-    serde(deny_unknown_fields, untagged)
+    serde(deny_unknown_fields)
 )]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(
@@ -71,11 +73,14 @@ pub struct TransactionV1Body {
     schemars(description = "Body of a `TransactionArgs`.")
 )]
 pub enum TransactionArgs {
+    /// Named runtime arguments.
     Named(RuntimeArgs),
+    /// Chunked bytes.
     Chunked(Bytes),
 }
 
 impl TransactionArgs {
+    /// Returns `RuntimeArgs` if the transaction arguments are named.
     pub fn as_named(&self) -> Option<&RuntimeArgs> {
         match self {
             TransactionArgs::Named(args) => Some(args),
@@ -83,6 +88,7 @@ impl TransactionArgs {
         }
     }
 
+    /// Returns `RuntimeArgs` if the transaction arguments are mnamed.
     pub fn into_named(self) -> Option<RuntimeArgs> {
         match self {
             TransactionArgs::Named(args) => Some(args),
@@ -90,6 +96,7 @@ impl TransactionArgs {
         }
     }
 
+    /// Returns `Bytes` if the transaction arguments are chunked.
     pub fn into_chunked(self) -> Option<Bytes> {
         match self {
             TransactionArgs::Named(_) => None,
@@ -97,6 +104,7 @@ impl TransactionArgs {
         }
     }
 
+    /// Inserts a key-value pair into the named runtime arguments.
     pub fn insert<K, V>(&mut self, key: K, value: V) -> Result<(), CLValueError>
     where
         K: Into<String>,

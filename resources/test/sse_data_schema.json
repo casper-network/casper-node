@@ -1819,6 +1819,7 @@
       "description": "Body of a `TransactionArgs`.",
       "oneOf": [
         {
+          "description": "Named runtime arguments.",
           "type": "object",
           "required": [
             "Named"
@@ -1831,6 +1832,7 @@
           "additionalProperties": false
         },
         {
+          "description": "Chunked bytes.",
           "type": "object",
           "required": [
             "Chunked"

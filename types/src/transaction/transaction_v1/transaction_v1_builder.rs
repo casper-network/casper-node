@@ -444,6 +444,18 @@ impl<'a> TransactionV1Builder<'a> {
         self
     }
 
+    /// Sets the runtime args in the transaction.
+    pub fn with_chunked_args(mut self, args: Bytes) -> Self {
+        self.body.args = TransactionArgs::Chunked(args);
+        self
+    }
+
+    /// Sets the transaction args in the transaction.
+    pub fn with_transaction_args(mut self, args: TransactionArgs) -> Self {
+        self.body.args = args;
+        self
+    }
+
     /// Sets the runtime for the transaction.
     ///
     /// If not provided, the runtime will be set to [`Self::DEFAULT_RUNTIME`].

@@ -76,7 +76,7 @@ pub use transaction_runtime::TransactionRuntime;
 pub use transaction_scheduling::TransactionScheduling;
 pub use transaction_target::TransactionTarget;
 pub use transaction_v1::{
-    InvalidTransactionV1, TransactionCategory, TransactionV1, TransactionV1Body,
+    InvalidTransactionV1, TransactionArgs, TransactionCategory, TransactionV1, TransactionV1Body,
     TransactionV1DecodeFromJsonError, TransactionV1Error, TransactionV1ExcessiveSizeError,
     TransactionV1Hash, TransactionV1Header,
 };
