@@ -14,13 +14,11 @@ use tracing::debug;
 use super::TransactionV1;
 use super::{InitiatorAddr, PricingMode};
 use crate::{
-    bytesrepr::{self, ToBytes},
-    transaction::serialization::{BinaryPayload, CalltableFromBytes, CalltableToBytes},
+    bytesrepr::{self, FromBytes, ToBytes},
     Digest, TimeDiff, Timestamp,
 };
 #[cfg(any(feature = "std", test))]
 use crate::{InvalidTransactionV1, TransactionConfig, TransactionV1Hash};
-use macros::{CalltableFromBytes, CalltableToBytes};
 
 /// The header portion of a [`TransactionV1`].
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
@@ -35,19 +33,12 @@ use macros::{CalltableFromBytes, CalltableToBytes};
     derive(JsonSchema),
     schemars(description = "The header portion of a TransactionV1.")
 )]
-#[derive(CalltableToBytes, CalltableFromBytes)]
 pub struct TransactionV1Header {
-    #[calltable(field_index = 0)]
     chain_name: String,
-    #[calltable(field_index = 1)]
     timestamp: Timestamp,
-    #[calltable(field_index = 2)]
     ttl: TimeDiff,
-    #[calltable(field_index = 3)]
     body_hash: Digest,
-    #[calltable(field_index = 4)]
     pricing_mode: PricingMode,
-    #[calltable(field_index = 5)]
     initiator_addr: InitiatorAddr,
 }
 
@@ -181,6 +172,52 @@ impl TransactionV1Header {
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub(super) fn invalidate(&mut self) {
         self.chain_name.clear();
+    }
+}
+
+impl ToBytes for TransactionV1Header {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.chain_name.serialized_length()
+            + self.timestamp.serialized_length()
+            + self.ttl.serialized_length()
+            + self.body_hash.serialized_length()
+            + self.pricing_mode.serialized_length()
+            + self.initiator_addr.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.chain_name.write_bytes(writer)?;
+        self.timestamp.write_bytes(writer)?;
+        self.ttl.write_bytes(writer)?;
+        self.body_hash.write_bytes(writer)?;
+        self.pricing_mode.write_bytes(writer)?;
+        self.initiator_addr.write_bytes(writer)
+    }
+}
+
+impl FromBytes for TransactionV1Header {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (chain_name, remainder) = String::from_bytes(bytes)?;
+        let (timestamp, remainder) = Timestamp::from_bytes(remainder)?;
+        let (ttl, remainder) = TimeDiff::from_bytes(remainder)?;
+        let (body_hash, remainder) = Digest::from_bytes(remainder)?;
+        let (pricing_mode, remainder) = PricingMode::from_bytes(remainder)?;
+        let (initiator_addr, remainder) = InitiatorAddr::from_bytes(remainder)?;
+        let transaction_header = TransactionV1Header {
+            chain_name,
+            timestamp,
+            ttl,
+            body_hash,
+            pricing_mode,
+            initiator_addr,
+        };
+        Ok((transaction_header, remainder))
     }
 }
 
