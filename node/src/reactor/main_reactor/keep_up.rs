@@ -660,7 +660,6 @@ impl MainReactor {
                 debug!("is synced to ttl");
                 return Ok(Some(SyncBackInstruction::TtlSynced));
             }
-            debug!("is not synced to ttl");
         }
 
         Ok(None)
