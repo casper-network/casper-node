@@ -1,26 +1,30 @@
 use alloc::{string::String, vec::Vec};
 use core::fmt::{self, Debug, Display, Formatter};
 
-use super::{
-    serialization::{BinaryPayload, CalltableFromBytes, CalltableToBytes},
-    AddressableEntityIdentifier,
-};
-#[cfg(any(feature = "testing", test))]
-use crate::testing::TestRng;
-use crate::{
-    bytesrepr::{self, ToBytes},
-    serde_helpers, AddressableEntityHash, EntityVersion, HashAddr, PackageAddr, PackageHash,
-    PackageIdentifier,
-};
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 use hex_fmt::HexFmt;
-use macros::{CalltableFromBytes, CalltableToBytes};
 #[cfg(any(feature = "testing", test))]
 use rand::Rng;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+
+use super::AddressableEntityIdentifier;
+#[cfg(doc)]
+use super::TransactionTarget;
+#[cfg(any(feature = "testing", test))]
+use crate::testing::TestRng;
+use crate::{
+    bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    serde_helpers, AddressableEntityHash, EntityVersion, HashAddr, PackageAddr, PackageHash,
+    PackageIdentifier,
+};
+
+const INVOCABLE_ENTITY_TAG: u8 = 0;
+const INVOCABLE_ENTITY_ALIAS_TAG: u8 = 1;
+const PACKAGE_TAG: u8 = 2;
+const PACKAGE_ALIAS_TAG: u8 = 3;
 
 /// The identifier of a [`TransactionTarget::Stored`].
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize)]
@@ -31,7 +35,6 @@ use serde::{Deserialize, Serialize};
     schemars(description = "Identifier of a `Stored` transaction target.")
 )]
 #[serde(deny_unknown_fields)]
-#[derive(CalltableToBytes, CalltableFromBytes)]
 pub enum TransactionInvocationTarget {
     /// The address identifying the invocable entity.
     #[serde(with = "serde_helpers::raw_32_byte_array")]
@@ -42,14 +45,10 @@ pub enum TransactionInvocationTarget {
             description = "Hex-encoded entity address identifying the invocable entity."
         )
     )]
-    #[calltable(variant_index = 0)]
-    ByHash(#[calltable(field_index = 1)] HashAddr), /* currently needs to be of contract tag
-                                                     * variant */
+    ByHash(HashAddr), // currently needs to be of contract tag variant
     /// The alias identifying the invocable entity.
-    #[calltable(variant_index = 1)]
-    ByName(#[calltable(field_index = 1)] String),
+    ByName(String),
     /// The address and optional version identifying the package.
-    #[calltable(variant_index = 2)]
     ByPackageHash {
         /// The package address.
         #[serde(with = "serde_helpers::raw_32_byte_array")]
@@ -57,24 +56,19 @@ pub enum TransactionInvocationTarget {
             feature = "json-schema",
             schemars(with = "String", description = "Hex-encoded address of the package.")
         )]
-        #[calltable(field_index = 1)]
         addr: PackageAddr,
         /// The package version.
         ///
         /// If `None`, the latest enabled version is implied.
-        #[calltable(field_index = 2)]
         version: Option<EntityVersion>,
     },
     /// The alias and optional version identifying the package.
-    #[calltable(variant_index = 3)]
     ByPackageName {
         /// The package name.
-        #[calltable(field_index = 1)]
         name: String,
         /// The package version.
         ///
         /// If `None`, the latest enabled version is implied.
-        #[calltable(field_index = 2)]
         version: Option<EntityVersion>,
     },
 }
@@ -144,13 +138,15 @@ impl TransactionInvocationTarget {
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
         match rng.gen_range(0..4) {
-            0 => TransactionInvocationTarget::ByHash(rng.gen()),
-            1 => TransactionInvocationTarget::ByName(rng.random_string(1..21)),
-            2 => TransactionInvocationTarget::ByPackageHash {
+            INVOCABLE_ENTITY_TAG => TransactionInvocationTarget::ByHash(rng.gen()),
+            INVOCABLE_ENTITY_ALIAS_TAG => {
+                TransactionInvocationTarget::ByName(rng.random_string(1..21))
+            }
+            PACKAGE_TAG => TransactionInvocationTarget::ByPackageHash {
                 addr: rng.gen(),
                 version: rng.gen::<bool>().then(|| rng.gen::<EntityVersion>()),
             },
-            3 => TransactionInvocationTarget::ByPackageName {
+            PACKAGE_ALIAS_TAG => TransactionInvocationTarget::ByPackageName {
                 name: rng.random_string(1..21),
                 version: rng.gen::<bool>().then(|| rng.gen::<EntityVersion>()),
             },
@@ -224,23 +220,98 @@ impl Debug for TransactionInvocationTarget {
     }
 }
 
+impl ToBytes for TransactionInvocationTarget {
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        match self {
+            TransactionInvocationTarget::ByHash(addr) => {
+                INVOCABLE_ENTITY_TAG.write_bytes(writer)?;
+                addr.write_bytes(writer)
+            }
+            TransactionInvocationTarget::ByName(alias) => {
+                INVOCABLE_ENTITY_ALIAS_TAG.write_bytes(writer)?;
+                alias.write_bytes(writer)
+            }
+            TransactionInvocationTarget::ByPackageHash { addr, version } => {
+                PACKAGE_TAG.write_bytes(writer)?;
+                addr.write_bytes(writer)?;
+                version.write_bytes(writer)
+            }
+            TransactionInvocationTarget::ByPackageName {
+                name: alias,
+                version,
+            } => {
+                PACKAGE_ALIAS_TAG.write_bytes(writer)?;
+                alias.write_bytes(writer)?;
+                version.write_bytes(writer)
+            }
+        }
+    }
+
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        U8_SERIALIZED_LENGTH
+            + match self {
+                TransactionInvocationTarget::ByHash(addr) => addr.serialized_length(),
+                TransactionInvocationTarget::ByName(alias) => alias.serialized_length(),
+                TransactionInvocationTarget::ByPackageHash { addr, version } => {
+                    addr.serialized_length() + version.serialized_length()
+                }
+                TransactionInvocationTarget::ByPackageName {
+                    name: alias,
+                    version,
+                } => alias.serialized_length() + version.serialized_length(),
+            }
+    }
+}
+
+impl FromBytes for TransactionInvocationTarget {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (tag, remainder) = u8::from_bytes(bytes)?;
+        match tag {
+            INVOCABLE_ENTITY_TAG => {
+                let (addr, remainder) = HashAddr::from_bytes(remainder)?;
+                let target = TransactionInvocationTarget::ByHash(addr);
+                Ok((target, remainder))
+            }
+            INVOCABLE_ENTITY_ALIAS_TAG => {
+                let (alias, remainder) = String::from_bytes(remainder)?;
+                let target = TransactionInvocationTarget::ByName(alias);
+                Ok((target, remainder))
+            }
+            PACKAGE_TAG => {
+                let (addr, remainder) = PackageAddr::from_bytes(remainder)?;
+                let (version, remainder) = Option::<EntityVersion>::from_bytes(remainder)?;
+                let target = TransactionInvocationTarget::ByPackageHash { addr, version };
+                Ok((target, remainder))
+            }
+            PACKAGE_ALIAS_TAG => {
+                let (alias, remainder) = String::from_bytes(remainder)?;
+                let (version, remainder) = Option::<EntityVersion>::from_bytes(remainder)?;
+                let target = TransactionInvocationTarget::ByPackageName {
+                    name: alias,
+                    version,
+                };
+                Ok((target, remainder))
+            }
+            _ => Err(bytesrepr::Error::Formatting),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::gens::transaction_invocation_target_arb;
-    use proptest::prelude::*;
 
     #[test]
     fn bytesrepr_roundtrip() {
         let rng = &mut TestRng::new();
         for _ in 0..10 {
             bytesrepr::test_serialization_roundtrip(&TransactionInvocationTarget::random(rng));
-        }
-    }
-    proptest! {
-        #[test]
-        fn generative_bytesrepr_roundtrip(val in transaction_invocation_target_arb()) {
-            bytesrepr::test_serialization_roundtrip(&val);
         }
     }
 }
