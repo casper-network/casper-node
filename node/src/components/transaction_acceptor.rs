@@ -109,6 +109,7 @@ impl TransactionAcceptor {
         source: Source,
         maybe_responder: Option<Responder<Result<(), Error>>>,
     ) -> Effects<Event> {
+        let transaction_hash = transaction.hash();
         debug!(%source, %transaction, "checking transaction before accepting");
         let event_metadata = Box::new(EventMetadata::new(transaction, source, maybe_responder));
 
@@ -128,6 +129,7 @@ impl TransactionAcceptor {
                 )
                 .map_err(|err| Error::InvalidTransaction(err.into())),
         };
+        debug!(%transaction_hash, ?is_config_compliant, "transaction config compliant");
 
         if let Err(error) = is_config_compliant {
             warn!(?error, "transaction is not config compliant");
@@ -140,6 +142,12 @@ impl TransactionAcceptor {
             && event_metadata.transaction.expired(current_node_timestamp)
         {
             let expiry_timestamp = event_metadata.transaction.expires();
+            warn!(
+                %transaction_hash,
+                %expiry_timestamp,
+                %current_node_timestamp,
+                "transaction has expired"
+            );
             return self.reject_transaction(
                 effect_builder,
                 *event_metadata,

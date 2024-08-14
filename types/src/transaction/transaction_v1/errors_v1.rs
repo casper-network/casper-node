@@ -100,9 +100,6 @@ pub enum InvalidTransaction {
         arg_name: String,
     },
 
-    /// Expected transaction args to be of a different type.
-    InvalidTransactionArgumentsKind,
-
     /// Given runtime arg is not one of the expected types.
     UnexpectedArgType {
         /// The name of the invalid arg.
@@ -315,10 +312,6 @@ impl Display for InvalidTransaction {
                     "received a transaction with an invalid kind {kind}"
                 )
             }
-            InvalidTransaction::InvalidTransactionArgumentsKind => write!(
-                formatter,
-                "received a transaction with invalid arguments kind"
-            ),
             InvalidTransaction::GasPriceToleranceTooLow {
                 min_gas_price_tolerance,
                 provided_gas_price_tolerance,
@@ -377,7 +370,6 @@ impl StdError for InvalidTransaction {
             | InvalidTransaction::InvalidPricingMode { .. }
             | InvalidTransaction::GasPriceToleranceTooLow { .. }
             | InvalidTransaction::InvalidTransactionKind(_)
-            | InvalidTransaction::InvalidTransactionArgumentsKind
             | InvalidTransaction::ExpectedNamedArguments
             | InvalidTransaction::InvalidTransactionRuntime { .. } => None,
         }

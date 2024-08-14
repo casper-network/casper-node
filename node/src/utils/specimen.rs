@@ -1021,6 +1021,7 @@ impl LargestSpecimen for TransactionV1 {
                 max_size_with_margin,
                 cache,
             )),
+            casper_types::TransactionRuntime::VmCasperV1,
         )
         .with_secret_key(&LargestSpecimen::largest_specimen(estimator, cache))
         .with_timestamp(LargestSpecimen::largest_specimen(estimator, cache))

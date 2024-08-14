@@ -62,7 +62,7 @@ pub struct TransactionV1Body {
 #[cfg_attr(
     any(feature = "std", test),
     derive(Serialize, Deserialize),
-    serde(deny_unknown_fields)
+    serde(deny_unknown_fields, untagged)
 )]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(

@@ -64,6 +64,11 @@ pub fn execute_finalized_block(
     next_era_gas_price: Option<u8>,
     last_switch_block_hash: Option<BlockHash>,
 ) -> Result<BlockAndExecutionArtifacts, BlockExecutionError> {
+    info!(
+        tx_count = executable_block.transactions.len(),
+        "execute finalized block"
+    );
+
     if executable_block.height != execution_pre_state.next_block_height() {
         return Err(BlockExecutionError::WrongBlockHeight {
             executable_block: Box::new(executable_block),
@@ -142,6 +147,7 @@ pub fn execute_finalized_block(
     }
 
     for transaction in executable_block.transactions {
+        info!(transaction_hash=?transaction.hash(), "processing transaction");
         let mut artifact_builder = ExecutionArtifactBuilder::new(&transaction);
 
         let initiator_addr = transaction.initiator_addr();
@@ -425,6 +431,8 @@ pub fn execute_finalized_block(
                             _ => todo!(),
                         },
                     };
+
+                    info!(%transaction_hash, "executing v1 contract");
 
                     match target {
                         Target::Install {

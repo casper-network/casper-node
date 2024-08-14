@@ -280,6 +280,12 @@ pub enum ErrorCode {
     /// Purse was not found for given identifier.
     #[error("purse was not found for given identifier")]
     PurseNotFound = 87,
+    /// Expected named arguments.
+    #[error("expected named arguments")]
+    ExpectedNamedArguments = 88,
+    /// Invalid transaction runtime.
+    #[error("invalid transaction runtime")]
+    InvalidTransactionRuntime = 89,
 }
 
 impl TryFrom<u16> for ErrorCode {
@@ -375,6 +381,8 @@ impl TryFrom<u16> for ErrorCode {
             85 => Ok(ErrorCode::GasPriceToleranceTooLow),
             86 => Ok(ErrorCode::ReceivedV1Transaction),
             87 => Ok(ErrorCode::PurseNotFound),
+            88 => Ok(ErrorCode::ExpectedNamedArguments),
+            89 => Ok(ErrorCode::InvalidTransactionRuntime),
             _ => Err(UnknownErrorCode),
         }
     }
@@ -513,7 +521,11 @@ impl From<InvalidTransactionV1> for ErrorCode {
             InvalidTransactionV1::GasPriceToleranceTooLow { .. } => {
                 ErrorCode::GasPriceToleranceTooLow
             }
-            _ => ErrorCode::InvalidTransactionUnspecified,
+            InvalidTransactionV1::ExpectedNamedArguments => ErrorCode::ExpectedNamedArguments,
+            InvalidTransactionV1::InvalidTransactionRuntime { .. } => {
+                ErrorCode::InvalidTransactionRuntime
+            }
+            _other => ErrorCode::InvalidTransactionUnspecified,
         }
     }
 }

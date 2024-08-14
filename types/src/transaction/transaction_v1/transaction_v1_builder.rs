@@ -61,8 +61,6 @@ impl<'a> TransactionV1Builder<'a> {
     pub const DEFAULT_PRICING_MODE: PricingMode = PricingMode::Fixed {
         gas_price_tolerance: 5,
     };
-    /// The default runtime for transactions, i.e. Casper Version 1 Virtual Machine.
-    pub const DEFAULT_RUNTIME: TransactionRuntime = TransactionRuntime::VmCasperV1;
     /// The default scheduling for transactions, i.e. `Standard`.
     pub const DEFAULT_SCHEDULING: TransactionScheduling = TransactionScheduling::Standard;
 
@@ -196,11 +194,9 @@ impl<'a> TransactionV1Builder<'a> {
     fn new_targeting_stored<E: Into<String>>(
         id: TransactionInvocationTarget,
         entry_point: E,
+        runtime: TransactionRuntime,
     ) -> Self {
-        let target = TransactionTarget::Stored {
-            id,
-            runtime: Self::DEFAULT_RUNTIME,
-        };
+        let target = TransactionTarget::Stored { id, runtime };
         let body = TransactionV1Body::new(
             RuntimeArgs::new(),
             target,
@@ -216,9 +212,10 @@ impl<'a> TransactionV1Builder<'a> {
     pub fn new_targeting_invocable_entity<E: Into<String>>(
         hash: AddressableEntityHash,
         entry_point: E,
+        runtime: TransactionRuntime,
     ) -> Self {
         let id = TransactionInvocationTarget::new_invocable_entity(hash);
-        Self::new_targeting_stored(id, entry_point)
+        Self::new_targeting_stored(id, entry_point, runtime)
     }
 
     /// Returns a new `TransactionV1Builder` suitable for building a transaction targeting a stored
@@ -226,9 +223,10 @@ impl<'a> TransactionV1Builder<'a> {
     pub fn new_targeting_invocable_entity_via_alias<A: Into<String>, E: Into<String>>(
         alias: A,
         entry_point: E,
+        runtime: TransactionRuntime,
     ) -> Self {
         let id = TransactionInvocationTarget::new_invocable_entity_alias(alias.into());
-        Self::new_targeting_stored(id, entry_point)
+        Self::new_targeting_stored(id, entry_point, runtime)
     }
 
     /// Returns a new `TransactionV1Builder` suitable for building a transaction targeting a
@@ -237,9 +235,10 @@ impl<'a> TransactionV1Builder<'a> {
         hash: PackageHash,
         version: Option<EntityVersion>,
         entry_point: E,
+        runtime: TransactionRuntime,
     ) -> Self {
         let id = TransactionInvocationTarget::new_package(hash, version);
-        Self::new_targeting_stored(id, entry_point)
+        Self::new_targeting_stored(id, entry_point, runtime)
     }
 
     /// Returns a new `TransactionV1Builder` suitable for building a transaction targeting a
@@ -248,17 +247,22 @@ impl<'a> TransactionV1Builder<'a> {
         alias: A,
         version: Option<EntityVersion>,
         entry_point: E,
+        runtime: TransactionRuntime,
     ) -> Self {
         let id = TransactionInvocationTarget::new_package_alias(alias.into(), version);
-        Self::new_targeting_stored(id, entry_point)
+        Self::new_targeting_stored(id, entry_point, runtime)
     }
 
     /// Returns a new `TransactionV1Builder` suitable for building a transaction for running session
     /// logic, i.e. compiled Wasm.
-    pub fn new_session(category: TransactionCategory, module_bytes: Bytes) -> Self {
+    pub fn new_session(
+        category: TransactionCategory,
+        module_bytes: Bytes,
+        runtime: TransactionRuntime,
+    ) -> Self {
         let target = TransactionTarget::Session {
             module_bytes,
-            runtime: Self::DEFAULT_RUNTIME,
+            runtime,
         };
         let body = TransactionV1Body::new(
             RuntimeArgs::new(),
@@ -462,6 +466,12 @@ impl<'a> TransactionV1Builder<'a> {
                 *existing_runtime = runtime;
             }
         }
+        self
+    }
+
+    /// Sets the entry point for the transaction.
+    pub fn with_entry_point<E: Into<String>>(mut self, entry_point: E) -> Self {
+        self.body.entry_point = TransactionEntryPoint::Custom(entry_point.into());
         self
     }
 
