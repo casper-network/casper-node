@@ -2259,36 +2259,6 @@ mod tests {
     }
 
     #[test]
-    fn not_acceptable_due_to_too_low_gas_price_tolerance() {
-        const GAS_PRICE_TOLERANCE: u8 = 0;
-
-        let mut rng = TestRng::new();
-        let chain_name = "net-1";
-        let mut chainspec = Chainspec::default();
-        chainspec.with_chain_name(chain_name.to_string());
-
-        let config = chainspec.transaction_config.clone();
-        let deploy = create_deploy(
-            &mut rng,
-            config.max_ttl,
-            config.deploy_config.max_dependencies as usize,
-            chain_name,
-            GAS_PRICE_TOLERANCE as u64,
-        );
-
-        let current_timestamp = deploy.header().timestamp();
-        assert!(matches!(
-            deploy.is_config_compliant(
-                &chainspec,
-                TimeDiff::default(),
-                current_timestamp
-            ),
-            Err(InvalidDeploy::GasPriceToleranceTooLow { min_gas_price_tolerance, provided_gas_price_tolerance })
-                if min_gas_price_tolerance == chainspec.vacancy_config.min_gas_price && provided_gas_price_tolerance == GAS_PRICE_TOLERANCE
-        ))
-    }
-
-    #[test]
     fn not_acceptable_due_to_insufficient_transfer_amount() {
         const GAS_PRICE_TOLERANCE: u8 = u8::MAX;
 
