@@ -60,6 +60,103 @@ impl FromBytes for TestKey {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+enum VariableAddr {
+    Empty,
+    LegacyAddr([u8; TEST_KEY_LENGTH]),
+}
+
+pub enum VariableAddrTag {
+    Empty = 0,
+    LegacyTestKey = 1,
+}
+
+impl ToBytes for VariableAddr {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        1 + match self {
+            Self::Empty => 0,
+            Self::LegacyAddr(_) => TEST_KEY_LENGTH,
+        }
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        match self {
+            Self::Empty => writer.push(VariableAddrTag::Empty as u8),
+            Self::LegacyAddr(addr) => {
+                writer.push(VariableAddrTag::LegacyTestKey as u8);
+                writer.extend(addr.to_bytes()?);
+            }
+        }
+        Ok(())
+    }
+}
+
+impl FromBytes for VariableAddr {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (tag, remainder): (u8, &[u8]) = FromBytes::from_bytes(bytes)?;
+        match tag {
+            tag if tag == VariableAddrTag::Empty as u8 => Ok((VariableAddr::Empty, remainder)),
+            tag if tag == VariableAddrTag::LegacyTestKey as u8 => {
+                let (key, rem) = remainder.split_at(TEST_KEY_LENGTH);
+                let mut ret = [0u8; TEST_KEY_LENGTH];
+                ret.copy_from_slice(key);
+                Ok((VariableAddr::LegacyAddr(ret), rem))
+            }
+            _ => Err(bytesrepr::Error::Formatting),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+enum MultiVariantTestKey {
+    VariableSizedKey(VariableAddr),
+}
+
+const VARIABLE_SIZE_KEY_TAG: u8 = 1;
+
+impl ToBytes for MultiVariantTestKey {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        1 + match self {
+            Self::VariableSizedKey(addr) => addr.serialized_length(),
+        }
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        match self {
+            Self::VariableSizedKey(addr) => {
+                writer.push(VARIABLE_SIZE_KEY_TAG);
+                writer.extend(addr.to_bytes()?);
+            }
+        }
+        Ok(())
+    }
+}
+
+impl FromBytes for MultiVariantTestKey {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (tag, remainder): (u8, &[u8]) = FromBytes::from_bytes(bytes)?;
+        match tag {
+            VARIABLE_SIZE_KEY_TAG => {
+                let (addr, rem) = FromBytes::from_bytes(remainder)?;
+                Ok((MultiVariantTestKey::VariableSizedKey(addr), rem))
+            }
+            _ => Err(bytesrepr::Error::Formatting),
+        }
+    }
+}
+
 const TEST_VAL_LENGTH: usize = 6;
 
 /// A short value type for tests.
@@ -252,6 +349,18 @@ fn create_0_leaf_trie() -> Result<(Digest, Vec<HashedTestTrie>), bytesrepr::Erro
         ret.extend(parents);
         ret
     };
+
+    Ok((root_hash, tries))
+}
+
+fn create_empty_trie<K, V>() -> Result<(Digest, Vec<HashedTrie<K, V>>), bytesrepr::Error>
+where
+    K: ToBytes,
+    V: ToBytes,
+{
+    let root_node = HashedTrie::<K, V>::new(Trie::node(&[]))?;
+    let root_hash = root_node.hash;
+    let tries = vec![root_node];
 
     Ok((root_hash, tries))
 }
