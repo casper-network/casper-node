@@ -29,6 +29,8 @@ const REDELEGATE_TAG: u8 = 6;
 const ACTIVATE_BID_TAG: u8 = 7;
 const CHANGE_BID_PUBLIC_KEY_TAG: u8 = 8;
 const CALL_TAG: u8 = 9;
+const ADD_RESERVATIONS_TAG: u8 = 10;
+const CANCEL_RESERVATIONS_TAG: u8 = 11;
 
 /// The entry point of a [`Transaction`].
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
@@ -165,6 +167,34 @@ pub enum TransactionEntryPoint {
         )
     )]
     ChangeBidPublicKey,
+    /// The `add_reservations` native entry point, used to add delegators to validator's reserve
+    /// list.
+    ///
+    /// Requires the following runtime args:
+    ///   * "validator": `PublicKey`
+    ///   * "delegators": `&[PublicKey]`
+    #[cfg_attr(
+        feature = "json-schema",
+        schemars(
+            description = "The `add_reservations` native entry point, used to add delegator to \
+            validator's reserve list"
+        )
+    )]
+    AddReservations,
+    /// The `cancel_reservations` native entry point, used to remove delegators from validator's
+    /// reserve list.
+    ///
+    /// Requires the following runtime args:
+    ///   * "validator": `PublicKey`
+    ///   * "delegators": `&[PublicKey]`
+    #[cfg_attr(
+        feature = "json-schema",
+        schemars(
+            description = "The `cancel_reservations` native entry point, used to remove delegator \
+            from validator's reserve list"
+        )
+    )]
+    CancelReservations,
 }
 
 impl TransactionEntryPoint {
@@ -198,7 +228,9 @@ impl TransactionEntryPoint {
             | TransactionEntryPoint::Undelegate
             | TransactionEntryPoint::Redelegate
             | TransactionEntryPoint::ActivateBid
-            | TransactionEntryPoint::ChangeBidPublicKey => false,
+            | TransactionEntryPoint::ChangeBidPublicKey
+            | TransactionEntryPoint::AddReservations
+            | TransactionEntryPoint::CancelReservations => false,
         }
     }
 }
@@ -218,6 +250,8 @@ impl Display for TransactionEntryPoint {
             TransactionEntryPoint::Redelegate => write!(formatter, "redelegate"),
             TransactionEntryPoint::ActivateBid => write!(formatter, "activate_bid"),
             TransactionEntryPoint::ChangeBidPublicKey => write!(formatter, "change_bid_public_key"),
+            TransactionEntryPoint::AddReservations => write!(formatter, "add_reservations"),
+            TransactionEntryPoint::CancelReservations => write!(formatter, "cancel_reservations"),
         }
     }
 }
@@ -240,6 +274,10 @@ impl ToBytes for TransactionEntryPoint {
             TransactionEntryPoint::ChangeBidPublicKey => {
                 CHANGE_BID_PUBLIC_KEY_TAG.write_bytes(writer)
             }
+            TransactionEntryPoint::AddReservations => ADD_RESERVATIONS_TAG.write_bytes(writer),
+            TransactionEntryPoint::CancelReservations => {
+                CANCEL_RESERVATIONS_TAG.write_bytes(writer)
+            }
         }
     }
 
@@ -261,7 +299,9 @@ impl ToBytes for TransactionEntryPoint {
                 | TransactionEntryPoint::Undelegate
                 | TransactionEntryPoint::Redelegate
                 | TransactionEntryPoint::ActivateBid
-                | TransactionEntryPoint::ChangeBidPublicKey => 0,
+                | TransactionEntryPoint::ChangeBidPublicKey
+                | TransactionEntryPoint::AddReservations
+                | TransactionEntryPoint::CancelReservations => 0,
             }
     }
 }

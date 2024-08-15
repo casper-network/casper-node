@@ -39,8 +39,9 @@ use crate::{
     package::{EntityVersionKey, EntityVersions, Groups, PackageStatus},
     system::{
         auction::{
-            gens::era_info_arb, Bid, BidAddr, BidKind, DelegationRate, Delegator, UnbondingPurse,
-            ValidatorBid, ValidatorCredit, WithdrawPurse, DELEGATION_RATE_DENOMINATOR,
+            gens::era_info_arb, Bid, BidAddr, BidKind, DelegationRate, Delegator, Reservation,
+            UnbondingPurse, ValidatorBid, ValidatorCredit, WithdrawPurse,
+            DELEGATION_RATE_DENOMINATOR,
         },
         mint::BalanceHoldAddr,
         SystemEntityType,
@@ -633,6 +634,21 @@ fn delegation_rate_arb() -> impl Strategy<Value = DelegationRate> {
     0..=DELEGATION_RATE_DENOMINATOR // Maximum, allowed value for delegation rate.
 }
 
+pub(crate) fn reservation_bid_arb() -> impl Strategy<Value = BidKind> {
+    reservation_arb().prop_map(|reservation| BidKind::Reservation(Box::new(reservation)))
+}
+
+pub(crate) fn reservation_arb() -> impl Strategy<Value = Reservation> {
+    (
+        public_key_arb_no_system(),
+        public_key_arb_no_system(),
+        delegation_rate_arb(),
+    )
+        .prop_map(|(validator_pk, delegator_pk, delegation_rate)| {
+            Reservation::new(validator_pk, delegator_pk, delegation_rate)
+        })
+}
+
 pub(crate) fn unified_bid_arb(
     delegations_len: impl Into<SizeRange>,
 ) -> impl Strategy<Value = BidKind> {
@@ -816,6 +832,7 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
         unified_bid_arb(0..3).prop_map(StoredValue::BidKind),
         validator_bid_arb().prop_map(StoredValue::BidKind),
         delegator_bid_arb().prop_map(StoredValue::BidKind),
+        reservation_bid_arb().prop_map(StoredValue::BidKind),
         credit_bid_arb().prop_map(StoredValue::BidKind),
         withdraws_arb(1..50).prop_map(StoredValue::Withdraw),
         unbondings_arb(1..50).prop_map(StoredValue::Unbonding),

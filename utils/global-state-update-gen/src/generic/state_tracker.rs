@@ -79,6 +79,10 @@ impl<T: StateReader> StateTracker<T> {
             BidKind::Credit(credit) => {
                 BidAddr::new_credit(credit.validator_public_key(), credit.era_id())
             }
+            BidKind::Reservation(reservation) => BidAddr::new_reservation(
+                reservation.validator_public_key(),
+                reservation.delegator_public_key(),
+            ),
         };
 
         let _ = self
@@ -320,6 +324,12 @@ impl<T: StateReader> StateTracker<T> {
             BidKind::Credit(credit) => existing_bids
                 .credit(credit.validator_public_key())
                 .map(|existing_credit| BidKind::Credit(Box::new(existing_credit))),
+            BidKind::Reservation(reservation) => existing_bids
+                .reservation_by_public_keys(
+                    reservation.validator_public_key(),
+                    reservation.delegator_public_key(),
+                )
+                .map(|exisiting_reservation| BidKind::Reservation(Box::new(exisiting_reservation))),
         }
     }
 

@@ -73,6 +73,8 @@ pub trait Auction:
         amount: U512,
         minimum_delegation_amount: u64,
         maximum_delegation_amount: u64,
+        // TODO: reservation list functionality implementation
+        _reserved_slots: u32,
     ) -> Result<U512, ApiError> {
         if !self.allow_auction_bids() {
             // The validator set may be closed on some side chains,
