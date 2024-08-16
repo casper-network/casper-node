@@ -155,8 +155,6 @@ impl AppendableBlock {
             ..
         } = self;
 
-        println!("price {}", price);
-
         fn collate(
             category: u8,
             collater: &mut BTreeMap<u8, Vec<(TransactionHash, BTreeSet<Approval>)>>,

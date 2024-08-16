@@ -59,7 +59,6 @@ impl FinalizedBlock {
         proposer: PublicKey,
     ) -> Self {
         let current_gas_price = block_payload.current_gas_price();
-        println!("payload price {}", current_gas_price);
         let transactions = block_payload.finalized_payload();
 
         FinalizedBlock {

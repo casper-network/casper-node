@@ -93,7 +93,6 @@ pub(super) async fn exec_or_requeue<REv>(
     debug!("ContractRuntime: execute_finalized_block_or_requeue");
     let contract_runtime_metrics = metrics.clone();
     let is_era_end = executable_block.era_report.is_some();
-    println!("{:?}", executable_block);
     let current_gas_price = executable_block.current_gas_price;
 
     if is_era_end && executable_block.rewards.is_none() {
@@ -127,9 +126,6 @@ pub(super) async fn exec_or_requeue<REv>(
         let go_down = chainspec.vacancy_config.lower_threshold;
         let max = chainspec.vacancy_config.max_gas_price;
         let min = chainspec.vacancy_config.min_gas_price;
-        if current_gas_price < min {
-            panic!("price less than min: {current_gas_price}")
-        }
         info!("End of era calculating new gas price");
         let era_id = executable_block.era_id;
         let block_height = executable_block.height;
@@ -214,16 +210,14 @@ pub(super) async fn exec_or_requeue<REv>(
                 let era_score = { Ratio::new(utilization, block_count).to_integer() };
 
                 let new_gas_price = if era_score >= go_up {
-                    let new_gas_price = current_gas_price + 1;
+                    let new_gas_price = current_gas_price.saturating_add(1);
                     if new_gas_price > max {
                         max
                     } else {
                         new_gas_price
                     }
                 } else if era_score <= go_down {
-                    println!("fooo {current_gas_price}");
-
-                    let new_gas_price = current_gas_price - 1;
+                    let new_gas_price = current_gas_price.saturating_sub(1);
                     if new_gas_price <= min {
                         min
                     } else {
