@@ -1157,6 +1157,7 @@ impl EraSupervisor {
                     }
                 });
                 let proposed_block = Arc::try_unwrap(value).unwrap_or_else(|arc| (*arc).clone());
+                println!("PB: {:?}", proposed_block);
                 let finalized_approvals: HashMap<_, _> =
                     proposed_block.all_transactions().cloned().collect();
                 if let Some(era_report) = report.as_ref() {

@@ -425,14 +425,26 @@ impl TransactionBuffer {
         era_id: EraId,
         request_expiry: Timestamp,
     ) -> AppendableBlock {
-        let mut ret = AppendableBlock::new(self.chainspec.transaction_config.clone(), timestamp);
+        let current_era_gas_price = match self.prices.get(&era_id) {
+            Some(gas_price) => *gas_price,
+            None => {
+                println!("In none case setting default val");
+                return AppendableBlock::new(
+                    self.chainspec.transaction_config.clone(),
+                    self.chainspec.vacancy_config.min_gas_price,
+                    timestamp,
+                );
+            }
+        };
+        let mut ret = AppendableBlock::new(
+            self.chainspec.transaction_config.clone(),
+            current_era_gas_price,
+            timestamp,
+        );
         if Timestamp::now() >= request_expiry {
             return ret;
         }
-        let current_era_gas_price = match self.prices.get(&era_id) {
-            Some(gas_price) => *gas_price,
-            None => return ret,
-        };
+
         let mut holds = HashSet::new();
         let mut dead = HashSet::new();
 
@@ -749,6 +761,7 @@ where
                     None => responder
                         .respond(AppendableBlock::new(
                             self.chainspec.transaction_config.clone(),
+                            self.chainspec.vacancy_config.min_gas_price,
                             timestamp,
                         ))
                         .ignore(),

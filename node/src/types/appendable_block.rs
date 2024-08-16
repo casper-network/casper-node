@@ -41,15 +41,21 @@ pub(crate) enum AddError {
 #[derive(Clone, Eq, PartialEq, DataSize, Debug)]
 pub(crate) struct AppendableBlock {
     transaction_config: TransactionConfig,
+    current_gas_price: u8,
     transactions: BTreeMap<TransactionHash, TransactionFootprint>,
     timestamp: Timestamp,
 }
 
 impl AppendableBlock {
     /// Creates an empty `AppendableBlock`.
-    pub(crate) fn new(transaction_config: TransactionConfig, timestamp: Timestamp) -> Self {
+    pub(crate) fn new(
+        transaction_config: TransactionConfig,
+        current_gas_price: u8,
+        timestamp: Timestamp,
+    ) -> Self {
         AppendableBlock {
             transaction_config,
+            current_gas_price,
             transactions: BTreeMap::new(),
             timestamp,
         }
@@ -145,8 +151,11 @@ impl AppendableBlock {
     ) -> BlockPayload {
         let AppendableBlock {
             transactions: footprints,
+            current_gas_price: price,
             ..
         } = self;
+
+        println!("price {}", price);
 
         fn collate(
             category: u8,
@@ -175,7 +184,13 @@ impl AppendableBlock {
             collate(lane_id as u8, &mut transactions, &footprints);
         }
 
-        BlockPayload::new(transactions, accusations, rewarded_signatures, random_bit)
+        BlockPayload::new(
+            transactions,
+            accusations,
+            rewarded_signatures,
+            random_bit,
+            price,
+        )
     }
 
     pub(crate) fn timestamp(&self) -> Timestamp {

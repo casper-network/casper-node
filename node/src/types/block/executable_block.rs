@@ -20,6 +20,7 @@ pub struct ExecutableBlock {
     pub(crate) era_id: EraId,
     pub(crate) height: u64,
     pub(crate) proposer: Box<PublicKey>,
+    pub(crate) current_gas_price: u8,
     /// The transactions for the `FinalizedBlock`.
     pub(crate) transactions: Vec<Transaction>,
     pub(crate) transaction_map: BTreeMap<u8, Vec<TransactionHash>>,
@@ -70,6 +71,7 @@ impl ExecutableBlock {
             transaction_map: finalized_block.transactions,
             rewards: None,
             next_era_gas_price: None,
+            current_gas_price: finalized_block.current_gas_price,
         }
     }
 
@@ -92,6 +94,7 @@ impl ExecutableBlock {
             transaction_map: block.transactions().clone(),
             rewards: block.era_end().map(|era_end| era_end.rewards().clone()),
             next_era_gas_price: block.era_end().map(|era_end| era_end.next_era_gas_price()),
+            current_gas_price: block.header().current_gas_price(),
         }
     }
 }

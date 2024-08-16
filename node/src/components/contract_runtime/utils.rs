@@ -82,7 +82,6 @@ pub(super) async fn exec_or_requeue<REv>(
     mut executable_block: ExecutableBlock,
     key_block_height_for_activation_point: u64,
     mut meta_block_state: MetaBlockState,
-    current_gas_price: u8,
 ) where
     REv: From<ContractRuntimeRequest>
         + From<ContractRuntimeAnnouncement>
@@ -94,6 +93,9 @@ pub(super) async fn exec_or_requeue<REv>(
     debug!("ContractRuntime: execute_finalized_block_or_requeue");
     let contract_runtime_metrics = metrics.clone();
     let is_era_end = executable_block.era_report.is_some();
+    println!("{:?}", executable_block);
+    let current_gas_price = executable_block.current_gas_price;
+
     if is_era_end && executable_block.rewards.is_none() {
         executable_block.rewards = Some(if chainspec.core_config.compute_rewards {
             let rewards = match rewards::fetch_data_and_calculate_rewards_for_era(
@@ -125,6 +127,9 @@ pub(super) async fn exec_or_requeue<REv>(
         let go_down = chainspec.vacancy_config.lower_threshold;
         let max = chainspec.vacancy_config.max_gas_price;
         let min = chainspec.vacancy_config.min_gas_price;
+        if current_gas_price < min {
+            panic!("price less than min: {current_gas_price}")
+        }
         info!("End of era calculating new gas price");
         let era_id = executable_block.era_id;
         let block_height = executable_block.height;
@@ -216,6 +221,8 @@ pub(super) async fn exec_or_requeue<REv>(
                         new_gas_price
                     }
                 } else if era_score <= go_down {
+                    println!("fooo {current_gas_price}");
+
                     let new_gas_price = current_gas_price - 1;
                     if new_gas_price <= min {
                         min

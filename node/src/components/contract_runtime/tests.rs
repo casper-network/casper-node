@@ -340,7 +340,7 @@ async fn should_not_set_shared_pre_state_to_lower_block_height() {
         })
         .collect();
     txn_set.insert(MINT_LANE_ID, val);
-    let block_payload = BlockPayload::new(txn_set, vec![], Default::default(), true);
+    let block_payload = BlockPayload::new(txn_set, vec![], Default::default(), true, 1u8);
     let block_2 = ExecutableBlock::from_finalized_block_and_transactions(
         FinalizedBlock::new(
             block_payload,
