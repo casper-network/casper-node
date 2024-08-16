@@ -120,6 +120,17 @@ fn update_auction_state<T: StateReader>(
 
     let validators_diff = validators_diff(&old_snapshot, &new_snapshot);
 
+    let bids = state.get_bids();
+    if slash {
+        // zero the unbonds for the removed validators independently of set_bid; set_bid will take
+        // care of zeroing the delegators if necessary
+        for pub_key in &validators_diff.removed {
+            if let Some(bid) = bids.get(pub_key) {
+                state.remove_withdraws_and_unbonds_with_bonding_purse(bid.bonding_purse());
+            }
+        }
+    }
+
     add_and_remove_bids(
         state,
         &validators_diff,
@@ -127,10 +138,6 @@ fn update_auction_state<T: StateReader>(
         only_listed_validators,
         slash,
     );
-
-    if slash {
-        state.remove_withdraws_and_unbonds(&validators_diff.removed);
-    }
 
     // We need to output the validators for the next era, which are contained in the first entry
     // in the snapshot.

@@ -2,7 +2,10 @@ use casper_engine_test_support::LmdbWasmTestBuilder;
 use casper_types::{
     account::{Account, AccountHash},
     system::{
-        auction::{Bids, UnbondingPurses, WithdrawPurses, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY},
+        auction::{
+            Bids, UnbondingPurses, WithdrawPurses, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+            UNBONDING_DELAY_KEY,
+        },
         mint::TOTAL_SUPPLY_KEY,
     },
     Key, StoredValue,
@@ -22,6 +25,8 @@ pub trait StateReader {
     fn get_withdraws(&mut self) -> WithdrawPurses;
 
     fn get_unbonds(&mut self) -> UnbondingPurses;
+
+    fn get_unbonding_delay(&mut self) -> u64;
 }
 
 impl<'a, T> StateReader for &'a mut T
@@ -54,6 +59,10 @@ where
 
     fn get_unbonds(&mut self) -> UnbondingPurses {
         T::get_unbonds(self)
+    }
+
+    fn get_unbonding_delay(&mut self) -> u64 {
+        T::get_unbonding_delay(self)
     }
 }
 
@@ -94,5 +103,23 @@ impl StateReader for LmdbWasmTestBuilder {
 
     fn get_unbonds(&mut self) -> UnbondingPurses {
         LmdbWasmTestBuilder::get_unbonds(self)
+    }
+
+    fn get_unbonding_delay(&mut self) -> u64 {
+        // Find the hash of the auction contract.
+        let auction_contract_hash = self.get_system_auction_hash();
+
+        let unbonding_delay_key = self
+            .get_contract(auction_contract_hash)
+            .expect("auction should exist")
+            .named_keys()[UNBONDING_DELAY_KEY];
+
+        self.query(unbonding_delay_key)
+            .expect("should query")
+            .as_cl_value()
+            .cloned()
+            .expect("should be cl value")
+            .into_t()
+            .expect("should be u64")
     }
 }

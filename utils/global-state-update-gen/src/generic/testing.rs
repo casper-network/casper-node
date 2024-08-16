@@ -270,6 +270,10 @@ impl StateReader for MockStateReader {
     fn get_unbonds(&mut self) -> UnbondingPurses {
         self.unbonds.clone()
     }
+
+    fn get_unbonding_delay(&mut self) -> u64 {
+        7
+    }
 }
 
 impl ValidatorInfo {
@@ -1556,7 +1560,16 @@ fn should_slash_a_validator_and_delegator_with_enqueued_withdraws() {
     update.assert_validators(&[ValidatorInfo::new(&validator1, U512::from(114))]);
 
     update.assert_seigniorage_recipients_written(&mut reader);
-    update.assert_total_supply(&mut reader, 327);
+    // validator 1 balance = 101 +
+    // validator 1 stake = 101 +
+    // delegator 1 stake = 13 +
+    // validator 2 balance = 102 +
+    // past delegator 1 stake = 10 +
+    // past delegator 2 stake = 10
+    // = 337
+    // (slashed: validator 2 stake = 102)
+    // (slashed: delegator 2 stake = 14)
+    update.assert_total_supply(&mut reader, 337);
 
     // check validator2 slashed
     let old_bid2 = reader
@@ -1574,17 +1587,6 @@ fn should_slash_a_validator_and_delegator_with_enqueued_withdraws() {
             .bonding_purse(),
         0,
     );
-    // check past_delegator2 slashed
-    update.assert_written_balance(
-        *reader
-            .withdraws
-            .get(&validator2.to_account_hash())
-            .expect("should have withdraws for validator2")
-            .last()
-            .expect("should have withdraw purses")
-            .bonding_purse(),
-        0,
-    );
 
     // check validator1 and its delegators not slashed
     for withdraw in reader
@@ -1595,21 +1597,17 @@ fn should_slash_a_validator_and_delegator_with_enqueued_withdraws() {
         update.assert_key_absent(&Key::Balance(withdraw.bonding_purse().addr()));
     }
 
-    // check the withdraws under validator 2 are cleared
-    update.assert_withdraws_empty(&validator2);
-
     // check the withdraws under validator 1 are unchanged
     update.assert_key_absent(&Key::Withdraw(validator1.to_account_hash()));
 
-    // 7 keys should be written:
+    // 6 keys should be written:
     // - seigniorage recipients
     // - total supply
     // - bid for validator 2
     // - bonding purse balance validator 2
     // - bonding purse balance for delegator 2
-    // - bonding purse balance for past delegator 2
-    // - empty WithdrawPurses for validator 2
-    assert_eq!(update.len(), 7);
+    // - WithdrawPurses for validator 2
+    assert_eq!(update.len(), 6);
 }
 
 #[test]
@@ -1681,7 +1679,16 @@ fn should_slash_a_validator_and_delegator_with_enqueued_unbonds() {
     update.assert_validators(&[ValidatorInfo::new(&validator1, U512::from(114))]);
 
     update.assert_seigniorage_recipients_written(&mut reader);
-    update.assert_total_supply(&mut reader, 327);
+    // validator 1 balance = 101 +
+    // validator 1 stake = 101 +
+    // delegator 1 stake = 13 +
+    // validator 2 balance = 102 +
+    // past delegator 1 stake = 10 +
+    // past delegator 2 stake = 10
+    // = 337
+    // (slashed: validator 2 stake = 102)
+    // (slashed: delegator 2 stake = 14)
+    update.assert_total_supply(&mut reader, 337);
 
     // check validator2 slashed
     let old_bid2 = reader
@@ -1699,17 +1706,6 @@ fn should_slash_a_validator_and_delegator_with_enqueued_unbonds() {
             .bonding_purse(),
         0,
     );
-    // check past_delegator2 slashed
-    update.assert_written_balance(
-        *reader
-            .unbonds
-            .get(&validator2.to_account_hash())
-            .expect("should have unbonds for validator2")
-            .last()
-            .expect("should have unbond purses")
-            .bonding_purse(),
-        0,
-    );
 
     // check validator1 and its delegators not slashed
     for unbond in reader
@@ -1720,9 +1716,6 @@ fn should_slash_a_validator_and_delegator_with_enqueued_unbonds() {
         update.assert_key_absent(&Key::Balance(unbond.bonding_purse().addr()));
     }
 
-    // check the unbonds under validator 2 are cleared
-    update.assert_unbonds_empty(&validator2);
-
     // check the withdraws under validator 1 are unchanged
     update.assert_key_absent(&Key::Unbond(validator1.to_account_hash()));
 
@@ -1732,9 +1725,8 @@ fn should_slash_a_validator_and_delegator_with_enqueued_unbonds() {
     // - bid for validator 2
     // - bonding purse balance validator 2
     // - bonding purse balance for delegator 2
-    // - bonding purse balance for past delegator 2
-    // - empty UnbondingPurses for validator 2
-    assert_eq!(update.len(), 7);
+    // - UnbondingPurses for validator 2
+    assert_eq!(update.len(), 6);
 }
 
 #[test]
