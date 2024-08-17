@@ -116,6 +116,7 @@ impl BlockValidationState {
         missing_signatures: HashSet<FinalitySignatureId>,
         sender: NodeId,
         responder: Responder<bool>,
+        current_gas_price: u8,
         chainspec: &Chainspec,
     ) -> (Self, Option<Responder<bool>>) {
         let transaction_count = proposed_block.transaction_count();
@@ -131,8 +132,15 @@ impl BlockValidationState {
             return (state, Some(responder));
         }
 
+        let proposed_gas_price = proposed_block.value().current_gas_price();
+        if current_gas_price != proposed_gas_price {
+            let state = BlockValidationState::Invalid(proposed_block.timestamp());
+            return (state, Some(responder));
+        }
+
         let appendable_block = AppendableBlock::new(
             chainspec.transaction_config.clone(),
+            current_gas_price,
             proposed_block.timestamp(),
         );
 
@@ -642,6 +650,7 @@ mod tests {
                 HashSet::new(),
                 NodeId::random(self.rng),
                 new_responder(),
+                1u8,
                 &self.chainspec,
             )
         }
@@ -860,6 +869,7 @@ mod tests {
             HashSet::new(),
             NodeId::random(fixture.rng),
             new_responder(),
+            1u8,
             &fixture.chainspec,
         );
 

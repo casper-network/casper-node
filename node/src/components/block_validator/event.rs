@@ -1,6 +1,6 @@
 use derive_more::{Display, From};
 
-use casper_types::{FinalitySignature, FinalitySignatureId, Transaction, TransactionHash};
+use casper_types::{EraId, FinalitySignature, FinalitySignatureId, Transaction, TransactionHash};
 
 use crate::{
     components::fetcher::FetchResult, effect::requests::BlockValidationRequest,
@@ -32,4 +32,7 @@ pub(crate) enum Event {
         finality_signature_id: Box<FinalitySignatureId>,
         result: FetchResult<FinalitySignature>,
     },
+
+    #[display(fmt = "{} price for era {}", _1, _0)]
+    UpdateEraGasPrice(EraId, u8),
 }
