@@ -428,7 +428,6 @@ impl TransactionBuffer {
         let current_era_gas_price = match self.prices.get(&era_id) {
             Some(gas_price) => *gas_price,
             None => {
-                println!("In none case setting default val");
                 return AppendableBlock::new(
                     self.chainspec.transaction_config.clone(),
                     self.chainspec.vacancy_config.min_gas_price,
