@@ -14,6 +14,7 @@ mod utils;
 
 use std::{
     cmp::Ordering,
+    collections::BTreeMap,
     convert::TryInto,
     fmt::{self, Debug, Formatter},
     path::Path,
@@ -516,6 +517,7 @@ impl ContractRuntime {
             ContractRuntimeRequest::UpdatePreState { new_pre_state } => {
                 let next_block_height = new_pre_state.next_block_height();
                 self.set_initial_state(new_pre_state);
+                let current_price = self.current_gas_price.gas_price();
                 async move {
                     let block_header = match effect_builder
                         .get_highest_complete_block_header_from_storage()
@@ -543,8 +545,16 @@ impl ContractRuntime {
                         }
                     };
 
+                    let payload = BlockPayload::new(
+                        BTreeMap::new(),
+                        vec![],
+                        Default::default(),
+                        false,
+                        current_price,
+                    );
+
                     let finalized_block = FinalizedBlock::new(
-                        BlockPayload::default(),
+                        payload,
                         Some(InternalEraReport::default()),
                         block_header.timestamp(),
                         block_header.next_block_era_id(),
@@ -645,8 +655,6 @@ impl ContractRuntime {
                         let chainspec = Arc::clone(&self.chainspec);
                         let metrics = Arc::clone(&self.metrics);
                         let shared_pre_state = Arc::clone(&self.execution_pre_state);
-                        let current_gas_price = self.current_gas_price.gas_price();
-
                         effects.extend(
                             exec_or_requeue(
                                 data_access_layer,
@@ -661,7 +669,6 @@ impl ContractRuntime {
                                 executable_block,
                                 key_block_height_for_activation_point,
                                 meta_block_state,
-                                current_gas_price,
                             )
                             .ignore(),
                         )

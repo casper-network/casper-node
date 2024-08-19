@@ -73,6 +73,8 @@ pub trait Auction:
         amount: U512,
         minimum_delegation_amount: u64,
         maximum_delegation_amount: u64,
+        // TODO: reservation list functionality implementation
+        _reserved_slots: u32,
     ) -> Result<U512, ApiError> {
         if !self.allow_auction_bids() {
             // The validator set may be closed on some side chains,
@@ -201,16 +203,14 @@ pub trait Auction:
                 let delegator_bid_addr =
                     BidAddr::new_from_public_keys(&public_key, Some(&delegator_public_key));
 
-                // Keep the bids for now - they will be pruned when the validator's unbonds get
-                // processed.
-                self.write_bid(
-                    delegator_bid_addr.into(),
-                    BidKind::Delegator(Box::new(delegator)),
-                )?;
+                debug!("pruning delegator bid {}", delegator_bid_addr);
+                self.prune_bid(delegator_bid_addr)
             }
+            debug!("pruning validator bid {}", validator_bid_addr);
+            self.prune_bid(validator_bid_addr);
+        } else {
+            self.write_bid(validator_bid_key, BidKind::Validator(validator_bid))?;
         }
-
-        self.write_bid(validator_bid_key, BidKind::Validator(validator_bid))?;
 
         Ok(updated_stake)
     }
@@ -299,8 +299,12 @@ pub trait Auction:
             updated_stake
         );
 
-        // Keep the bid for now - it will get pruned when the unbonds are processed.
-        self.write_bid(delegator_bid_addr.into(), BidKind::Delegator(delegator_bid))?;
+        if updated_stake.is_zero() {
+            debug!("pruning delegator bid {}", delegator_bid_addr);
+            self.prune_bid(delegator_bid_addr);
+        } else {
+            self.write_bid(delegator_bid_addr.into(), BidKind::Delegator(delegator_bid))?;
+        }
 
         Ok(updated_stake)
     }
@@ -548,6 +552,8 @@ pub trait Auction:
         include_credits: bool,
         credit_cap: Ratio<U512>,
     ) -> Result<(), ApiError> {
+        debug!("run_auction called");
+
         if self.get_caller() != PublicKey::System.to_account_hash() {
             return Err(Error::InvalidCaller.into());
         }
@@ -561,7 +567,9 @@ pub trait Auction:
         let mut era_id: EraId = detail::get_era_id(self)?;
 
         // Process unbond requests
+        debug!("processing unbond requests");
         detail::process_unbond_requests(self, max_delegators_per_validator)?;
+        debug!("processing unbond request successful");
 
         let mut validator_bids_detail = detail::get_validator_bids(self, era_id)?;
 
@@ -616,7 +624,6 @@ pub trait Auction:
                     .chain(
                         unlocked_validators
                             .into_iter()
-                            .filter(|(_, stake)| !stake.is_zero())
                             .take(remaining_auction_slots),
                     )
                     .collect()
@@ -655,6 +662,8 @@ pub trait Auction:
         if bids_modified {
             detail::set_validator_bids(self, validator_bids)?;
         }
+
+        debug!("run_auction successful");
 
         Ok(())
     }

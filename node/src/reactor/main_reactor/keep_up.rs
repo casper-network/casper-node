@@ -594,6 +594,7 @@ impl MainReactor {
         match self.storage.get_highest_orphaned_block_header() {
             HighestOrphanedBlockResult::Orphan(highest_orphaned_block_header) => {
                 if let Some(synched) = self.synched(&highest_orphaned_block_header)? {
+                    debug!(?synched, "synched result");
                     return Ok(Some(synched));
                 }
                 let (sync_hash, sync_era) =
@@ -647,11 +648,16 @@ impl MainReactor {
             .map_err(|err| err.to_string())?
             .last()
         {
+            debug!(
+                highest_switch_timestamp=?highest_switch_block_header.timestamp(),
+                highest_orphaned_timestamp=?highest_orphaned_block_header.timestamp(),
+                "checking max ttl");
             let max_ttl: MaxTtl = self.chainspec.transaction_config.max_ttl.into();
             if max_ttl.synced_to_ttl(
                 highest_switch_block_header.timestamp(),
                 highest_orphaned_block_header,
             ) {
+                debug!("is synced to ttl");
                 return Ok(Some(SyncBackInstruction::TtlSynced));
             }
         }

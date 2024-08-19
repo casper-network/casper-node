@@ -2054,11 +2054,7 @@ fn should_undelegate_delegators_when_validator_unbonds() {
         .expect_success();
 
     let bids_after = builder.get_bids();
-    assert!(bids_after
-        .validator_bid(&VALIDATOR_1)
-        .expect("should still have zero bid")
-        .staked_amount()
-        .is_zero());
+    assert!(bids_after.validator_bid(&VALIDATOR_1).is_none());
 
     let unbonding_purses_after: UnbondingPurses = builder.get_unbonds();
     assert_ne!(unbonding_purses_after, unbonding_purses_before);
@@ -2261,11 +2257,7 @@ fn should_undelegate_delegators_when_validator_fully_unbonds() {
         .expect_success();
 
     let bids_after = builder.get_bids();
-    assert!(bids_after
-        .validator_bid(&VALIDATOR_1)
-        .expect("should still have zero bid")
-        .staked_amount()
-        .is_zero());
+    assert!(bids_after.validator_bid(&VALIDATOR_1).is_none());
 
     let unbonding_purses_before: UnbondingPurses = builder.get_unbonds();
 
@@ -2323,9 +2315,6 @@ fn should_undelegate_delegators_when_validator_fully_unbonds() {
         builder.run_auction(timestamp_millis, Vec::new());
         timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
-
-    let bids_after_2 = builder.get_bids();
-    assert!(bids_after_2.validator_bid(&VALIDATOR_1).is_none());
 
     let validator_1_balance_after = builder.get_purse_balance(validator_1.main_purse());
     let delegator_1_balance_after = builder.get_purse_balance(delegator_1.main_purse());
@@ -4311,9 +4300,6 @@ fn should_enforce_max_delegators_per_validator_cap() {
         .len();
 
     assert_eq!(current_delegator_count, 1);
-
-    // Make the undelegation go through and remove the bid completely.
-    builder.advance_eras_by(DEFAULT_UNBONDING_DELAY + 1);
 
     let delegation_request_3 = ExecuteRequestBuilder::standard(
         *DELEGATOR_1_ADDR,

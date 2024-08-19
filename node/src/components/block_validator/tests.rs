@@ -157,7 +157,7 @@ pub(super) fn new_proposed_block_with_cited_signatures(
         ret.insert(LARGE_LANE_ID, standard.into_iter().collect());
         ret
     };
-    let block_payload = BlockPayload::new(transactions, vec![], cited_signatures, true);
+    let block_payload = BlockPayload::new(transactions, vec![], cited_signatures, true, 1u8);
     ProposedBlock::new(Arc::new(block_payload), block_context)
 }
 
@@ -604,6 +604,7 @@ impl ValidationContext {
             self.chainspec.clone(),
             reactor.validator_matrix.clone(),
             Config::default(),
+            1u8,
         );
 
         // Pass the block to the component. This future will eventually resolve to the result, i.e.
@@ -997,6 +998,7 @@ async fn should_fetch_from_multiple_peers() {
             Arc::new(chainspec),
             reactor.validator_matrix.clone(),
             Config::default(),
+            1u8,
         );
 
         // Have a validation request for each one of the peers. These futures will eventually all

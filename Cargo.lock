@@ -35,6 +35,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "add-reservations"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "add-update-associated-key"
 version = "0.1.0"
 dependencies = [
@@ -565,6 +573,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e0ec6b951b160caa93cc0c7b209e5a3bff7aae9062213451ac99493cd844c239"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "cancel-reservations"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]

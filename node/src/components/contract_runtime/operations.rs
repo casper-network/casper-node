@@ -930,6 +930,7 @@ pub fn execute_finalized_block(
         let step_processing_start = Instant::now();
 
         // force undelegate delegators outside delegation limits before the auction runs
+        debug!("starting forced undelegations");
         let forced_undelegate_req = ForcedUndelegateRequest::new(
             native_runtime_config.clone(),
             state_root_hash,
@@ -949,7 +950,9 @@ pub fn execute_finalized_block(
                 state_root_hash = post_state_hash;
             }
         }
+        debug!("forced undelegations success");
 
+        debug!("committing step");
         let step_effects = match commit_step(
             native_runtime_config,
             &scratch_state,
@@ -973,6 +976,7 @@ pub fn execute_finalized_block(
                 effects
             }
         };
+        debug!("step committed");
 
         let era_validators_req = EraValidatorsRequest::new(state_root_hash, protocol_version);
         let era_validators_result = data_access_layer.era_validators(era_validators_req);
