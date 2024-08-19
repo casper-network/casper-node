@@ -28,6 +28,10 @@ pub const ARG_NEW_PUBLIC_KEY: &str = "new_public_key";
 pub const ARG_VALIDATOR: &str = "validator";
 /// Named constant for `delegator`.
 pub const ARG_DELEGATOR: &str = "delegator";
+/// Named constant for `delegators`.
+pub const ARG_DELEGATORS: &str = "delegators";
+/// Named constant for `reservations`.
+pub const ARG_RESERVATIONS: &str = "reservations";
 /// Named constant for `validator_purse`.
 pub const ARG_VALIDATOR_PURSE: &str = "validator_purse";
 /// Named constant for `validator_keys`.
@@ -62,6 +66,8 @@ pub const ARG_ENTRY_POINT: &str = "entry_point";
 pub const ARG_MINIMUM_DELEGATION_AMOUNT: &str = "minimum_delegation_amount";
 /// Named constrant for `maximum_delegation_amount`.
 pub const ARG_MAXIMUM_DELEGATION_AMOUNT: &str = "maximum_delegation_amount";
+/// Named constant for `reserved_slots`.
+pub const ARG_RESERVED_SLOTS: &str = "reserved_slots";
 
 /// Named constant for method `get_era_validators`.
 pub const METHOD_GET_ERA_VALIDATORS: &str = "get_era_validators";
@@ -87,6 +93,10 @@ pub const METHOD_READ_ERA_ID: &str = "read_era_id";
 pub const METHOD_ACTIVATE_BID: &str = "activate_bid";
 /// Named constant for method `change_bid_public_key`.
 pub const METHOD_CHANGE_BID_PUBLIC_KEY: &str = " change_bid_public_key";
+/// Named constant for method `add_reservations`.
+pub const METHOD_ADD_RESERVATIONS: &str = "add_reservations";
+/// Named constant for method `cancel_reservations`.
+pub const METHOD_CANCEL_RESERVATIONS: &str = "cancel_reservations";
 
 /// Storage for `EraId`.
 pub const ERA_ID_KEY: &str = "era_id";
