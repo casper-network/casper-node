@@ -97,6 +97,7 @@ pub(crate) enum Event {
         block_header: Box<BlockHeader>,
         is_payment: bool,
         entry_point_name: String,
+        addressable_entity: AddressableEntity,
         maybe_entry_point: Option<EntryPoint>,
     },
 }
