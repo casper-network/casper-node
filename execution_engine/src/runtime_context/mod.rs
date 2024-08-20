@@ -393,14 +393,6 @@ where
         Ok(())
     }
 
-    pub(crate) fn write_named_keys(
-        &mut self,
-        entity_addr: EntityAddr,
-        named_keys: NamedKeys,
-    ) -> Result<(), ExecError> {
-        Ok(())
-    }
-
     pub(crate) fn get_named_keys(&mut self, entity_key: Key) -> Result<NamedKeys, ExecError> {
         let entity_addr = if let Key::AddressableEntity(entity_addr) = entity_key {
             entity_addr
