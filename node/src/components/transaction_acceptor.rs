@@ -625,6 +625,7 @@ impl TransactionAcceptor {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn handle_get_entry_point_result<REv: ReactorEventT>(
         &self,
         effect_builder: EffectBuilder<REv>,
@@ -666,7 +667,7 @@ impl TransactionAcceptor {
             EntityKind::SmartContract(TransactionRuntime::VmCasperV2) => {
                 // Engine V2 does not store entrypoint information on chain and relies entirely on
                 // the Wasm itself.
-                return self.validate_transaction_cryptography(effect_builder, event_metadata);
+                self.validate_transaction_cryptography(effect_builder, event_metadata)
             }
         }
     }
