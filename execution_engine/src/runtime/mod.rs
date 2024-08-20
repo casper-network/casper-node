@@ -35,8 +35,9 @@ use casper_types::{
     addressable_entity::{
         self, ActionThresholds, ActionType, AddKeyFailure, AddressableEntity,
         AddressableEntityHash, AssociatedKeys, EntityKindTag, EntryPoint, EntryPointAccess,
-        EntryPointType, EntryPoints, MessageTopicError, MessageTopics, NamedKeys, Parameter,
-        RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure, Weight, DEFAULT_ENTRY_POINT_NAME,
+        EntryPointType, EntryPoints, MessageTopicError, MessageTopics, NamedKeyAddr, NamedKeyValue,
+        NamedKeys, Parameter, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure, Weight,
+        DEFAULT_ENTRY_POINT_NAME,
     },
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     contract_messages::{
@@ -1908,6 +1909,9 @@ where
         }
 
         if entry_points.contains_stored_session() {
+            // As of 2.0 we do not allow stored session logic to be
+            // installed or upgraded. Pre-existing stored
+            // session logic is still callable.
             return Err(ExecError::InvalidEntryPointType);
         }
 
@@ -1953,13 +1957,15 @@ where
             }
         }
 
+        // We generate the byte code hash because a byte code record
+        // must exist for a contract record to exist.
         let byte_code_hash = self.context.new_hash_address()?;
 
         let entity_hash = self.context.new_hash_address()?;
 
         let protocol_version = self.context.protocol_version();
 
-        let insert_contract_result =
+        let insert_entity_version_result =
             package.insert_entity_version(protocol_version.value().major, entity_hash.into());
 
         let byte_code = {
@@ -1974,12 +1980,24 @@ where
 
         let entity_addr = EntityAddr::new_smart_contract(entity_hash);
 
-        let entity_key = Key::AddressableEntity(entity_addr);
-
-        named_keys.append(previous_named_keys);
-        self.context.write_named_keys(entity_addr, named_keys)?;
-
-        self.context.write_entry_points(entity_addr, entry_points)?;
+        {
+            // DO NOT EXTRACT INTO SEPARATE FUNCTION.
+            for (_, key) in named_keys.iter() {
+                // Validate all the imputed named keys
+                // against the installers permissions
+                self.validate_key(key)?;
+            }
+            // Carry forward named keys from previous version
+            // Grant all the imputed named keys + previous named keys.
+            named_keys.append(previous_named_keys);
+            for (name, key) in named_keys.iter() {
+                let named_key_value =
+                    StoredValue::NamedKey(NamedKeyValue::from_concrete_values(*key, name.clone())?);
+                let named_key_addr = NamedKeyAddr::new_from_string(entity_addr, name.clone())?;
+                self.metered_write_gs_unsafe(Key::NamedKey(named_key_addr), named_key_value)?;
+            }
+            self.context.write_entry_points(entity_addr, entry_points)?;
+        }
 
         let entity = AddressableEntity::new(
             package_hash,
@@ -1991,7 +2009,7 @@ where
             previous_message_topics.clone(),
             EntityKind::SmartContract(TransactionRuntime::VmCasperV1),
         );
-
+        let entity_key = Key::AddressableEntity(entity_addr);
         self.context.metered_write_gs_unsafe(entity_key, entity)?;
         self.context
             .metered_write_gs_unsafe(package_hash, package)?;
@@ -2018,7 +2036,7 @@ where
             }
 
             // Set version into VM shared memory
-            let version_value: u32 = insert_contract_result.entity_version();
+            let version_value: u32 = insert_entity_version_result.entity_version();
             let version_bytes = version_value.to_le_bytes();
             if let Err(error) = self.try_get_memory()?.set(version_ptr, &version_bytes) {
                 return Err(ExecError::Interpreter(error.into()));
@@ -2064,7 +2082,7 @@ where
                 // addressable entity format
                 let account_hash = self.context.get_caller();
 
-                let access_key = match self
+                let (_package_key, access_key) = match self
                     .context
                     .read_gs(&Key::Hash(previous_entity.package_hash().value()))?
                     .and_then(|stored_value| stored_value.into_cl_value())
@@ -2072,7 +2090,7 @@ where
                     None => {
                         return Err(ExecError::UpgradeAuthorizationFailure);
                     }
-                    Some(cl_value) => cl_value.into_t::<URef>().map_err(ExecError::CLValue),
+                    Some(cl_value) => cl_value.into_t::<(Key, URef)>().map_err(ExecError::CLValue),
                 }?;
 
                 let has_access = self.context.validate_uref(&access_key).is_ok();

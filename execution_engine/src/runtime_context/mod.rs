@@ -398,13 +398,6 @@ where
         entity_addr: EntityAddr,
         named_keys: NamedKeys,
     ) -> Result<(), ExecError> {
-        for (name, key) in named_keys.iter() {
-            let named_key_value =
-                StoredValue::NamedKey(NamedKeyValue::from_concrete_values(*key, name.clone())?);
-            let named_key_addr = NamedKeyAddr::new_from_string(entity_addr, name.clone())?;
-            self.metered_write_gs_unsafe(Key::NamedKey(named_key_addr), named_key_value)?;
-        }
-
         Ok(())
     }
 
