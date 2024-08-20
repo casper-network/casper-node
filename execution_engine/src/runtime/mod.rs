@@ -1985,7 +1985,7 @@ where
             for (_, key) in named_keys.iter() {
                 // Validate all the imputed named keys
                 // against the installers permissions
-                self.validate_key(key)?;
+                self.context.validate_key(key)?;
             }
             // Carry forward named keys from previous version
             // Grant all the imputed named keys + previous named keys.
@@ -1994,7 +1994,8 @@ where
                 let named_key_value =
                     StoredValue::NamedKey(NamedKeyValue::from_concrete_values(*key, name.clone())?);
                 let named_key_addr = NamedKeyAddr::new_from_string(entity_addr, name.clone())?;
-                self.metered_write_gs_unsafe(Key::NamedKey(named_key_addr), named_key_value)?;
+                self.context
+                    .metered_write_gs_unsafe(Key::NamedKey(named_key_addr), named_key_value)?;
             }
             self.context.write_entry_points(entity_addr, entry_points)?;
         }
