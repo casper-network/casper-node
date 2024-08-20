@@ -5,6 +5,22 @@ use thiserror::Error;
 
 use casper_executor_wasm_common::flags::ReturnFlags;
 
+/// Interface version for the Wasm host functions.
+///
+/// This defines behavior of the Wasm execution environment i.e. the host behavior, serialiation,
+/// etc.
+///
+/// Only the highest `interface_version_X` is taken from the imports table which means Wasm has to
+/// support X-1, X-2 versions as well.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct InterfaceVersion(u32);
+
+impl From<u32> for InterfaceVersion {
+    fn from(value: u32) -> Self {
+        InterfaceVersion(value)
+    }
+}
+
 const CALLEE_SUCCEED: u32 = 0;
 const CALLEE_REVERTED: u32 = 1;
 const CALLEE_TRAPPED: u32 = 2;

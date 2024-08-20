@@ -1,15 +1,21 @@
 pub(crate) mod imports;
 mod metering_middleware;
 
-use std::sync::{Arc, Weak};
+use std::{
+    collections::BinaryHeap,
+    sync::{Arc, Weak},
+};
 
 use bytes::Bytes;
 use casper_executor_wasm_host::{context::Context, host};
 use casper_executor_wasm_interface::{
     executor::Executor, u32_from_host_result, Caller, Config, ExportError, GasUsage,
-    MeteringPoints, TrapCode, VMError, VMResult, WasmInstance, WasmPreparationError,
+    InterfaceVersion, MeteringPoints, TrapCode, VMError, VMResult, WasmInstance,
+    WasmPreparationError,
 };
 use casper_storage::global_state::GlobalStateReader;
+use once_cell::sync::Lazy;
+use regex::Regex;
 use wasmer::{
     AsStoreMut, AsStoreRef, CompilerConfig, Engine, Function, FunctionEnv, FunctionEnvMut, Imports,
     Instance, Memory, MemoryView, Module, RuntimeError, Store, StoreMut, Table, TypedFunction,
@@ -93,6 +99,7 @@ struct WasmerEnv<S: GlobalStateReader, E: Executor> {
     instance: Weak<Instance>,
     bytecode: Bytes,
     exported_runtime: Option<ExportedRuntime>,
+    interface_version: InterfaceVersion,
 }
 
 pub(crate) struct WasmerCaller<'a, S: GlobalStateReader, E: Executor> {
@@ -157,6 +164,8 @@ impl<'a, S: GlobalStateReader + 'static, E: Executor + 'static> Caller for Wasme
     }
 
     fn alloc(&mut self, idx: u32, size: usize, ctx: u32) -> VMResult<u32> {
+        let _interface_version = self.env.data().interface_version;
+
         let (data, mut store) = self.env.data_and_store_mut();
         let value = data
             .exported_runtime()
@@ -212,14 +221,19 @@ impl<'a, S: GlobalStateReader + 'static, E: Executor + 'static> Caller for Wasme
 impl<S: GlobalStateReader, E: Executor> WasmerEnv<S, E> {}
 
 impl<S: GlobalStateReader, E: Executor> WasmerEnv<S, E> {
-    fn new(config: Config, context: Context<S, E>, code: Bytes) -> Self {
+    fn new(
+        config: Config,
+        context: Context<S, E>,
+        code: Bytes,
+        interface_version: InterfaceVersion,
+    ) -> Self {
         Self {
             config,
             context,
-            // memory: None,
             instance: Weak::new(),
             exported_runtime: None,
             bytecode: code,
+            interface_version,
         }
     }
     pub(crate) fn exported_runtime(&self) -> &ExportedRuntime {
@@ -285,7 +299,6 @@ where
             let mut singlepass_compiler = Singlepass::new();
             let metering = make_wasmer_metering_middleware(config.gas_limit());
             singlepass_compiler.push_middleware(metering);
-            // singlepass_compiler.push_middleware(middleware)
             singlepass_compiler
         };
 
@@ -298,7 +311,12 @@ where
 
         let mut store = Store::new(engine);
 
-        let wasmer_env = WasmerEnv::new(config.clone(), context, wasm_bytes);
+        let wasmer_env = WasmerEnv::new(
+            config.clone(),
+            context,
+            wasm_bytes,
+            InterfaceVersion::from(1u32),
+        );
         let function_env = FunctionEnv::new(&mut store, wasmer_env);
 
         let memory = Memory::new(
@@ -314,6 +332,12 @@ where
         let imports = {
             let mut imports = Imports::new();
             imports.define("env", "memory", memory.clone());
+
+            imports.define(
+                "env",
+                "interface_version_1",
+                Function::new_typed(&mut store, || {}),
+            );
 
             imports.define(
                 "env",
@@ -633,6 +657,26 @@ where
             Arc::new(instance)
         };
 
+        let interface_version = {
+            static RE: Lazy<Regex> =
+                Lazy::new(|| Regex::new(r"^interface_version_(?P<version>\d+)$").unwrap());
+
+            let mut interface_versions = BinaryHeap::new();
+            for import in module.imports() {
+                if import.module() == "env" {
+                    if let Some(caps) = RE.captures(import.name()) {
+                        let version = &caps["version"];
+                        let version: u32 = version.parse().expect("valid number"); // SAFETY: regex guarantees this is a number, and imports table guarantees
+                                                                                   // limited set of values.
+                        interface_versions.push(InterfaceVersion::from(version));
+                    }
+                }
+            }
+
+            // Get the highest one assuming given Wasm can support all previous interface versions.
+            interface_versions.pop()
+        };
+
         // TODO: get first export of type table as some compilers generate different names (i.e.
         // rust __indirect_function_table, assemblyscript `table` etc). There's only one table
         // allowed in a valid module.
@@ -651,6 +695,9 @@ where
                 memory,
                 exported_table: table,
             });
+            if let Some(interface_version) = interface_version {
+                function_env_mut.interface_version = interface_version;
+            }
         }
 
         Ok(Self {
