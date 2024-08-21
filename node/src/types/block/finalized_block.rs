@@ -35,6 +35,7 @@ pub struct FinalizedBlock {
     pub(crate) era_id: EraId,
     pub(crate) height: u64,
     pub(crate) proposer: Box<PublicKey>,
+    pub(crate) current_gas_price: u8,
 }
 
 /// `EraReport` used only internally. The one in types is a part of `EraEndV1`.
@@ -57,6 +58,7 @@ impl FinalizedBlock {
         height: u64,
         proposer: PublicKey,
     ) -> Self {
+        let current_gas_price = block_payload.current_gas_price();
         let transactions = block_payload.finalized_payload();
 
         FinalizedBlock {
@@ -68,6 +70,7 @@ impl FinalizedBlock {
             era_id,
             height,
             proposer: Box::new(proposer),
+            current_gas_price,
         }
     }
 
@@ -137,7 +140,7 @@ impl FinalizedBlock {
         let rewarded_signatures = Default::default();
         let random_bit = rng.gen();
         let block_payload =
-            BlockPayload::new(transactions, vec![], rewarded_signatures, random_bit);
+            BlockPayload::new(transactions, vec![], rewarded_signatures, random_bit, 1u8);
 
         let era_report = if is_switch {
             Some(InternalEraReport::random(rng))
@@ -172,6 +175,7 @@ impl From<BlockV2> for FinalizedBlock {
             height: block.height(),
             proposer: Box::new(block.proposer().clone()),
             rewarded_signatures: block.rewarded_signatures().clone(),
+            current_gas_price: block.header().current_gas_price(),
         }
     }
 }
@@ -244,7 +248,7 @@ mod tests {
             ret.insert(AUCTION_LANE_ID, vec![]);
             ret
         };
-        let block_payload = BlockPayload::new(transactions, vec![], Default::default(), false);
+        let block_payload = BlockPayload::new(transactions, vec![], Default::default(), false, 1u8);
 
         let fb = FinalizedBlock::new(
             block_payload,

@@ -2053,6 +2053,20 @@
           "enum": [
             "ChangeBidPublicKey"
           ]
+        },
+        {
+          "description": "The `add_reservations` native entry point, used to add delegator to validator's reserve list",
+          "type": "string",
+          "enum": [
+            "AddReservations"
+          ]
+        },
+        {
+          "description": "The `cancel_reservations` native entry point, used to remove delegator from validator's reserve list",
+          "type": "string",
+          "enum": [
+            "CancelReservations"
+          ]
         }
       ]
     },
@@ -3234,6 +3248,19 @@
             }
           },
           "additionalProperties": false
+        },
+        {
+          "description": "Reservation",
+          "type": "object",
+          "required": [
+            "Reservation"
+          ],
+          "properties": {
+            "Reservation": {
+              "$ref": "#/definitions/Reservation"
+            }
+          },
+          "additionalProperties": false
         }
       ]
     },
@@ -3246,6 +3273,7 @@
         "inactive",
         "maximum_delegation_amount",
         "minimum_delegation_amount",
+        "reserved_slots",
         "staked_amount",
         "validator_public_key"
       ],
@@ -3305,6 +3333,12 @@
           "description": "Maximum allowed delegation amount in motes",
           "type": "integer",
           "format": "uint64",
+          "minimum": 0.0
+        },
+        "reserved_slots": {
+          "description": "Slots reserved for specific delegators",
+          "type": "integer",
+          "format": "uint32",
           "minimum": 0.0
         }
       },
@@ -3378,6 +3412,40 @@
               "$ref": "#/definitions/U512"
             }
           ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "Reservation": {
+      "description": "Represents a validator reserving a slot for specific delegator",
+      "type": "object",
+      "required": [
+        "delegation_rate",
+        "delegator_public_key",
+        "validator_public_key"
+      ],
+      "properties": {
+        "delegator_public_key": {
+          "description": "Delegator public key",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PublicKey"
+            }
+          ]
+        },
+        "validator_public_key": {
+          "description": "Validator public key",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PublicKey"
+            }
+          ]
+        },
+        "delegation_rate": {
+          "description": "Individual delegation rate",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0.0
         }
       },
       "additionalProperties": false

@@ -363,6 +363,14 @@ where
                 }
             }
             LazilyDeserializedTrie::Extension { affix, pointer } => {
+                if path.len() < depth + affix.len() {
+                    // We might be trying to store a key that is shorter than the keys that are
+                    // already stored. In this case, we would need to split this extension.
+                    return Ok(TrieScanRaw::new(
+                        LazilyDeserializedTrie::Extension { affix, pointer },
+                        acc,
+                    ));
+                }
                 let sub_path = &path[depth..depth + affix.len()];
                 if sub_path != affix.as_slice() {
                     return Ok(TrieScanRaw::new(

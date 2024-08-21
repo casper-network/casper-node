@@ -936,6 +936,10 @@ impl reactor::Reactor for MainReactor {
                     rng,
                     transaction_acceptor_event,
                 ));
+                let reactor_event = MainEvent::BlockValidator(
+                    block_validator::Event::UpdateEraGasPrice(era_id, next_era_gas_price),
+                );
+                effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
                 effects
             }
 
@@ -1227,6 +1231,7 @@ impl reactor::Reactor for MainReactor {
             Arc::clone(&chainspec),
             validator_matrix.clone(),
             config.block_validator,
+            chainspec.vacancy_config.min_gas_price,
         );
         let upgrade_watcher =
             UpgradeWatcher::new(chainspec.as_ref(), config.upgrade_watcher, &root_dir)?;
