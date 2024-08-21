@@ -289,9 +289,9 @@ pub fn casper_upgrade(
     }
 }
 
-pub fn read_vec(key: Keyspace) -> Option<Vec<u8>> {
+pub fn read_into_vec(key: Keyspace) -> Option<Vec<u8>> {
     let mut vec = Vec::new();
-    let out = casper_read(key, |size| reserve_vec_space(&mut vec, size)).unwrap();
+    let out = casper_read(key, |size| reserve_vec_space(&mut vec, dbg!(size))).unwrap();
     out.map(|_input| vec)
 }
 
@@ -404,6 +404,13 @@ impl Entity {
         match self {
             Entity::Account(_) => 0,
             Entity::Contract(_) => 1,
+        }
+    }
+
+    pub fn address(&self) -> &Address {
+        match self {
+            Entity::Account(addr) => addr,
+            Entity::Contract(addr) => addr,
         }
     }
 

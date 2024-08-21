@@ -1,6 +1,6 @@
 use crate::{
     abi::{CasperABI, Declaration, Definition, StructField},
-    host::{self, read_vec},
+    host::{self, read_into_vec},
     serializers::borsh::{BorshDeserialize, BorshSerialize},
 };
 use casper_executor_wasm_common::keyspace::Keyspace;
@@ -48,7 +48,7 @@ where
         let mut key_bytes = self.name.as_bytes().to_owned();
         key.serialize(&mut key_bytes).unwrap();
         let prefix = Keyspace::Context(&key_bytes);
-        read_vec(prefix).map(|vec| borsh::from_slice(&vec).unwrap())
+        read_into_vec(prefix).map(|vec| borsh::from_slice(&vec).unwrap())
     }
 }
 

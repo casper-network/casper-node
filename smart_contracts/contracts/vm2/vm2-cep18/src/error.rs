@@ -3,7 +3,7 @@ use casper_macros::casper;
 /// While the code consuming this contract needs to define further error variants, it can
 /// return those via the [`Error::User`] variant or equivalently via the [`ApiError::User`]
 /// variant.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 #[casper]
 pub enum Cep18Error {
     /// CEP-18 contract called from within an invalid context.

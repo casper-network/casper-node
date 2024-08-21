@@ -13,6 +13,8 @@ use crate::{linkme::distributed_slice, types::Address};
 
 use crate::serializers::borsh::BorshSerialize;
 
+use super::Entity;
+
 pub struct Export {
     pub name: &'static str,
     pub module_path: &'static str,
@@ -95,16 +97,7 @@ pub enum NativeTrap {
 //     }
 // }
 
-// pub unsafe trait HostInterface {
-//     for_each_host_function!(define_trait_methods);
-// }
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
-pub struct TaggedValue {
-    tag: u64,
-    value: Bytes,
-}
-
-pub type Container = BTreeMap<u64, BTreeMap<Bytes, TaggedValue>>;
+pub type Container = BTreeMap<u64, BTreeMap<Bytes, Bytes>>;
 
 #[derive(Clone, Debug)]
 #[allow(dead_code)]
@@ -177,7 +170,7 @@ pub struct Environment {
     // input_data: Arc<RwLock<Option<Bytes>>>,
     input_data: Option<Bytes>,
     contract_address: Option<Address>,
-    caller: Address,
+    caller: Entity,
 }
 
 impl Default for Environment {
@@ -192,10 +185,10 @@ impl Default for Environment {
     }
 }
 
-pub const DEFAULT_ADDRESS: Address = [42; 32];
+pub const DEFAULT_ADDRESS: Entity = Entity::Account([42; 32]);
 
 impl Environment {
-    pub fn new(db: Container, caller: Address) -> Self {
+    pub fn new(db: Container, caller: Entity) -> Self {
         Self {
             db: Arc::new(RwLock::new(db)),
             manifests: Arc::new(RwLock::new(BTreeMap::new())),
@@ -205,7 +198,7 @@ impl Environment {
         }
     }
 
-    pub fn with_caller(&self, caller: Address) -> Self {
+    pub fn with_caller(&self, caller: Entity) -> Self {
         let mut env = self.clone();
         env.caller = caller;
         env
@@ -223,10 +216,18 @@ impl Environment {
 }
 
 impl Environment {
-    fn key_prefix(&self, key: &[u8]) -> Bytes {
-        let mut data = self.contract_address.unwrap_or(self.caller).to_vec();
-        data.extend(key);
-        Bytes::from(data)
+    fn key_prefix(&self, key: &[u8]) -> Vec<u8> {
+        let entity = self
+            .contract_address
+            .map(Entity::Contract)
+            .unwrap_or(self.caller);
+
+        let mut bytes = Vec::new();
+        bytes.extend(entity.tag().to_le_bytes());
+        bytes.extend(entity.address());
+        bytes.extend(key);
+
+        bytes
     }
 
     fn casper_read(
@@ -244,24 +245,24 @@ impl Environment {
         let db = self.db.read().unwrap();
 
         let value = match db.get(&key_space) {
-            Some(values) => values.get(&key_bytes).cloned(),
+            Some(values) => values.get(key_bytes.as_slice()).cloned(),
             None => return Ok(1),
         };
         match value {
             Some(tagged_value) => {
-                let ptr = NonNull::new(alloc(tagged_value.value.len(), alloc_ctx as _));
+                let ptr = NonNull::new(alloc(tagged_value.len(), alloc_ctx as _));
 
                 if let Some(ptr) = ptr {
                     unsafe {
                         (*info).data = ptr.as_ptr();
-                        (*info).size = tagged_value.value.len();
+                        (*info).size = tagged_value.len();
                     }
 
                     unsafe {
                         ptr::copy_nonoverlapping(
-                            tagged_value.value.as_ptr(),
+                            tagged_value.as_ptr(),
                             ptr.as_ptr(),
-                            tagged_value.value.len(),
+                            tagged_value.len(),
                         );
                     }
                 }
@@ -290,11 +291,8 @@ impl Environment {
 
         let mut db = self.db.write().unwrap();
         db.entry(key_space).or_default().insert(
-            key_bytes,
-            TaggedValue {
-                tag: 0,
-                value: Bytes::copy_from_slice(value_bytes),
-            },
+            Bytes::from(key_bytes.to_vec()),
+            Bytes::from(value_bytes.to_vec()),
         );
         Ok(0)
     }
@@ -510,9 +508,30 @@ Example paths:
         todo!()
     }
 
-    fn casper_env_caller(&self, dest: *mut u8, dest_size: usize) -> Result<*const u8, NativeTrap> {
+    fn casper_env_caller(
+        &self,
+        dest: *mut u8,
+        dest_size: usize,
+        entity_kind: *mut u32,
+    ) -> Result<*const u8, NativeTrap> {
         let dst = unsafe { slice::from_raw_parts_mut(dest, dest_size) };
-        dst.copy_from_slice(&self.caller);
+        let addr = match self.caller {
+            Entity::Account(addr) => {
+                unsafe {
+                    *entity_kind = 0;
+                }
+                addr
+            }
+            Entity::Contract(addr) => {
+                unsafe {
+                    *entity_kind = 1;
+                }
+                addr
+            }
+        };
+
+        dst.copy_from_slice(&addr);
+
         Ok(unsafe { dest.add(32) })
     }
 }
@@ -783,10 +802,15 @@ mod symbols {
     }
 
     #[no_mangle]
-    pub extern "C" fn casper_env_caller(dest: *mut u8, dest_len: usize) -> *const u8 {
+    pub extern "C" fn casper_env_caller(
+        dest: *mut u8,
+        dest_len: usize,
+        entity: *mut u32,
+    ) -> *const u8 {
         let _name = "casper_env_caller";
         let _args = (&dest, &dest_len);
-        let _call_result = with_current_environment(|stub| stub.casper_env_caller(dest, dest_len));
+        let _call_result =
+            with_current_environment(|stub| stub.casper_env_caller(dest, dest_len, entity));
         crate::host::native::handle_ret_with(_call_result, ptr::null)
     }
     #[no_mangle]

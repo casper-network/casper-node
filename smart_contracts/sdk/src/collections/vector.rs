@@ -1,6 +1,6 @@
 use crate::{
     abi::{CasperABI, Declaration, Definition, Definitions, StructField},
-    host::{self, read_vec},
+    host::{self, read_into_vec},
 };
 
 // use casper_macros::casper;
@@ -82,7 +82,7 @@ where
         let mut prefix_bytes = self.prefix.as_bytes().to_owned();
         prefix_bytes.extend(&index.to_le_bytes());
         let prefix = Keyspace::Context(&prefix_bytes);
-        read_vec(prefix).map(|vec| borsh::from_slice(&vec).unwrap())
+        read_into_vec(prefix).map(|vec| borsh::from_slice(&vec).unwrap())
     }
 
     pub fn iter(&self) -> impl Iterator<Item = T> + '_ {
