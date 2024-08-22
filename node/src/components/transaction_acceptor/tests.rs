@@ -1037,7 +1037,7 @@ impl reactor::Reactor for Reactor {
                     self.transaction_acceptor.handle_event(
                         effect_builder,
                         rng,
-                        transaction_acceptor::Event::UpdateCurrentGasPrice {
+                        transaction_acceptor::Event::UpdateEraGasPrice {
                             era: era_id,
                             price: next_era_gas_price,
                         },
@@ -1244,7 +1244,7 @@ async fn run_transaction_acceptor_without_timeout(
     if let Some(EraPrice { era_id, gas_price }) = era_gas_price {
         runner
             .process_injected_effects(|effect_builder: EffectBuilder<Event>| {
-                let event = transaction_acceptor::Event::UpdateCurrentGasPrice {
+                let event = transaction_acceptor::Event::UpdateEraGasPrice {
                     era: era_id,
                     price: gas_price,
                 };

@@ -100,7 +100,7 @@ pub(crate) enum Event {
         maybe_entry_point: Option<EntryPoint>,
     },
     /// Updates the current era gas price
-    UpdateCurrentGasPrice { era: EraId, price: u8 },
+    UpdateEraGasPrice { era: EraId, price: u8 },
     /// The result of getting next upgrade information from the upgrade watcher component.
     GetNextUpgradeResult {
         event_metadata: Box<EventMetadata>,
@@ -213,7 +213,7 @@ impl Display for Event {
                     block_header.state_root_hash(),
                 )
             }
-            Event::UpdateCurrentGasPrice { era, price } => {
+            Event::UpdateEraGasPrice { era, price } => {
                 write!(
                     formatter,
                     "current gas price set to {} for era {}",

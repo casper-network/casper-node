@@ -1174,7 +1174,7 @@ impl<REv: ReactorEventT> Component<REv> for TransactionAcceptor {
                 event_metadata,
                 is_new,
             } => self.handle_stored_finalized_approvals(effect_builder, event_metadata, is_new),
-            Event::UpdateCurrentGasPrice { era, price } => {
+            Event::UpdateEraGasPrice { era, price } => {
                 debug!(%era, %price, "received current gas price");
                 self.current_gas_price = Some(EraPrice::new(era, price));
                 Effects::new()
