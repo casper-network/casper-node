@@ -67,6 +67,7 @@ pub(crate) mod sync_leaper;
 pub(crate) mod transaction_acceptor;
 pub(crate) mod upgrade_watcher;
 
+use casper_types::EraId;
 use datasize::DataSize;
 use serde::Deserialize;
 use std::fmt::{Debug, Display};
@@ -201,4 +202,28 @@ pub(crate) trait ValidatorBoundComponent<REv>: Component<REv> {
         effect_builder: EffectBuilder<REv>,
         rng: &mut NodeRng,
     ) -> Effects<Self::Event>;
+}
+
+#[derive(Clone, Copy, Ord, Eq, PartialOrd, PartialEq, DataSize, Debug)]
+pub(crate) struct EraPrice {
+    era_id: EraId,
+    gas_price: u8,
+}
+
+impl EraPrice {
+    pub(crate) fn new(era_id: EraId, gas_price: u8) -> Self {
+        Self { era_id, gas_price }
+    }
+
+    pub(crate) fn gas_price(&self) -> u8 {
+        self.gas_price
+    }
+
+    pub(crate) fn maybe_gas_price_for_era_id(&self, era_id: EraId) -> Option<u8> {
+        if self.era_id == era_id {
+            return Some(self.gas_price);
+        }
+
+        None
+    }
 }

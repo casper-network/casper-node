@@ -49,7 +49,7 @@ use casper_types::{
 
 use crate::{
     components::{fetcher::FetchResponse, Component, ComponentState},
-    contract_runtime::{types::EraPrice, utils::handle_protocol_upgrade},
+    contract_runtime::utils::handle_protocol_upgrade,
     effect::{
         announcements::{
             ContractRuntimeAnnouncement, FatalAnnouncement, MetaBlockAnnouncement,
@@ -81,6 +81,8 @@ pub(crate) use types::{
     StepOutcome,
 };
 use utils::{exec_or_requeue, run_intensive_task};
+
+use super::EraPrice;
 
 const COMPONENT_NAME: &str = "contract_runtime";
 

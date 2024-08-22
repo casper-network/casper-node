@@ -4,16 +4,10 @@ mod event;
 mod metrics;
 mod tests;
 
-use std::{
-    collections::BTreeSet,
-    fmt::{self, Debug},
-    sync::Arc,
-    time::Duration,
-};
+use std::{collections::BTreeSet, fmt::Debug, sync::Arc, time::Duration};
 
 use datasize::DataSize;
 use prometheus::Registry;
-use serde::Serialize;
 use tracing::{debug, error, info, trace, warn};
 
 use casper_execution_engine::engine_state::MAX_PAYMENT;
@@ -43,6 +37,8 @@ use crate::{
 pub(crate) use config::Config;
 pub(crate) use error::{DeployParameterFailure, Error, ParameterFailure};
 pub(crate) use event::{Event, EventMetadata};
+
+use super::EraPrice;
 
 const COMPONENT_NAME: &str = "transaction_acceptor";
 
@@ -80,24 +76,6 @@ enum GasPriceToleranceCheckOutcome {
     Undetermined,
 }
 
-#[derive(Debug, DataSize, Serialize)]
-struct PriceInEra {
-    era: EraId,
-    price: u8,
-}
-
-impl PriceInEra {
-    fn new(era: EraId, price: u8) -> Self {
-        Self { era, price }
-    }
-}
-
-impl fmt::Display for PriceInEra {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "current gas price {} for era {}", self.price, self.era)
-    }
-}
-
 /// The `TransactionAcceptor` is the component which handles all new `Transaction`s immediately
 /// after they're received by this node, regardless of whether they were provided by a peer or a
 /// client, unless they were actively retrieved by this node via a fetch request (in which case the
@@ -113,7 +91,7 @@ pub struct TransactionAcceptor {
     #[data_size(skip)]
     metrics: metrics::Metrics,
     balance_hold_interval: u64,
-    current_gas_price: Option<PriceInEra>,
+    current_gas_price: Option<EraPrice>,
 }
 
 impl TransactionAcceptor {
@@ -174,7 +152,7 @@ impl TransactionAcceptor {
                     self.current_gas_price
                         .as_ref()
                         .map_or(false, |current_gas_price| {
-                            let current_era = current_gas_price.era;
+                            let current_era = current_gas_price.era_id;
                             if upgrade_era <= current_era {
                                 false
                             } else {
@@ -253,14 +231,14 @@ impl TransactionAcceptor {
     }
 
     fn check_reachable_gas_price(&self, txn: &Transaction) -> Result<(), InvalidTransaction> {
-        if let Some(PriceInEra { price, .. }) = self.current_gas_price {
+        if let Some(EraPrice { gas_price, .. }) = self.current_gas_price {
             match txn.gas_price_tolerance() {
                 Ok(gas_price_tolerance) => {
                     match Self::is_gas_price_tolerance_reachable(
                         txn.ttl().into(),
                         gas_price_tolerance,
                         self.chainspec.core_config.era_duration.into(),
-                        price,
+                        gas_price,
                     ) {
                         GasPriceToleranceCheckOutcome::Reachable => return Ok(()),
                         GasPriceToleranceCheckOutcome::Undetermined => {
@@ -274,7 +252,7 @@ impl TransactionAcceptor {
                             let error: InvalidTransaction = match txn {
                                 Transaction::Deploy(_) => {
                                     InvalidDeploy::GasPriceToleranceUnreachable {
-                                        current_gas_price: price,
+                                        current_gas_price: gas_price,
                                         provided_gas_price_tolerance: gas_price_tolerance,
                                         lowest_possible_gas_price_within_ttl,
                                     }
@@ -282,7 +260,7 @@ impl TransactionAcceptor {
                                 }
                                 Transaction::V1(_) => {
                                     InvalidTransactionV1::GasPriceToleranceUnreachable {
-                                        current_gas_price: price,
+                                        current_gas_price: gas_price,
                                         provided_gas_price_tolerance: gas_price_tolerance,
                                         lowest_possible_gas_price_within_ttl,
                                     }
@@ -1198,7 +1176,7 @@ impl<REv: ReactorEventT> Component<REv> for TransactionAcceptor {
             } => self.handle_stored_finalized_approvals(effect_builder, event_metadata, is_new),
             Event::UpdateCurrentGasPrice { era, price } => {
                 debug!(%era, %price, "received current gas price");
-                self.current_gas_price = Some(PriceInEra::new(era, price));
+                self.current_gas_price = Some(EraPrice::new(era, price));
                 Effects::new()
             }
             Event::GetNextUpgradeResult {

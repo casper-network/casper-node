@@ -1195,7 +1195,7 @@ fn inject_balance_check_for_peer(
 
 async fn run_transaction_acceptor_without_timeout(
     test_scenario: TestScenario,
-    era_gas_price: Option<PriceInEra>,
+    era_gas_price: Option<EraPrice>,
 ) -> Result<(), super::Error> {
     let _ = logging::init();
     let rng = &mut TestRng::new();
@@ -1241,10 +1241,13 @@ async fn run_transaction_acceptor_without_timeout(
         .await;
 
     // Set the current gas price if test scenario requires so.
-    if let Some(PriceInEra { era, price }) = era_gas_price {
+    if let Some(EraPrice { era_id, gas_price }) = era_gas_price {
         runner
             .process_injected_effects(|effect_builder: EffectBuilder<Event>| {
-                let event = transaction_acceptor::Event::UpdateCurrentGasPrice { era, price };
+                let event = transaction_acceptor::Event::UpdateCurrentGasPrice {
+                    era: era_id,
+                    price: gas_price,
+                };
                 effect_builder
                     .into_inner()
                     .schedule(event, QueueKind::ContractRuntime)
@@ -1502,11 +1505,11 @@ async fn run_transaction_acceptor(test_scenario: TestScenario) -> Result<(), sup
 
 async fn run_transaction_acceptor_with_gas_price(
     test_scenario: TestScenario,
-    price_in_era: PriceInEra,
+    era_price: EraPrice,
 ) -> Result<(), super::Error> {
     time::timeout(
         TIMEOUT,
-        run_transaction_acceptor_without_timeout(test_scenario, Some(price_in_era)),
+        run_transaction_acceptor_without_timeout(test_scenario, Some(era_price)),
     )
     .await
     .unwrap()
@@ -2565,7 +2568,7 @@ async fn should_reject_transaction_v1_with_invalid_pricing_mode() {
 async fn should_accept_transaction_v1_with_too_low_gas_price_tolerance_from_peer() {
     let test_scenario = TestScenario::FromPeerTooLowGasPriceToleranceForTransactionV1;
     let result =
-        run_transaction_acceptor_with_gas_price(test_scenario, PriceInEra::new(1.into(), 20)).await;
+        run_transaction_acceptor_with_gas_price(test_scenario, EraPrice::new(1.into(), 20)).await;
     assert!(result.is_ok())
 }
 
@@ -2597,7 +2600,7 @@ async fn should_reject_deploy_with_too_low_gas_price_tolerance() {
 async fn should_accept_transaction_v1_with_unreachable_gas_price_tolerance_from_peer() {
     let test_scenario = TestScenario::FromPeerUnreachableGasPriceToleranceForTransactionV1;
     let result =
-        run_transaction_acceptor_with_gas_price(test_scenario, PriceInEra::new(1.into(), 20)).await;
+        run_transaction_acceptor_with_gas_price(test_scenario, EraPrice::new(1.into(), 20)).await;
     assert!(result.is_ok())
 }
 
@@ -2605,7 +2608,7 @@ async fn should_accept_transaction_v1_with_unreachable_gas_price_tolerance_from_
 async fn should_reject_transaction_v1_with_unreachable_gas_price_tolerance() {
     let test_scenario = TestScenario::UnreachableGasPriceToleranceForTransactionV1;
     let result =
-        run_transaction_acceptor_with_gas_price(test_scenario, PriceInEra::new(1.into(), 20)).await;
+        run_transaction_acceptor_with_gas_price(test_scenario, EraPrice::new(1.into(), 20)).await;
     assert!(matches!(
         result,
         Err(super::Error::InvalidTransaction(InvalidTransaction::V1(
@@ -2618,7 +2621,7 @@ async fn should_reject_transaction_v1_with_unreachable_gas_price_tolerance() {
 async fn should_reject_deploy_with_unreachable_gas_price_tolerance() {
     let test_scenario = TestScenario::UnreachableGasPriceToleranceForDeploy;
     let result =
-        run_transaction_acceptor_with_gas_price(test_scenario, PriceInEra::new(1.into(), 20)).await;
+        run_transaction_acceptor_with_gas_price(test_scenario, EraPrice::new(1.into(), 20)).await;
     assert!(matches!(
         result,
         Err(super::Error::InvalidTransaction(
