@@ -25,6 +25,8 @@ use crate::global_state::{
 
 use self::store_wrappers::NonDeserializingStore;
 
+use super::{cache::TrieCache, TrieStoreCacheError};
+
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug, PartialEq, Eq)]
 pub enum ReadResult<V> {
@@ -666,7 +668,7 @@ where
     Ok(ret)
 }
 
-fn common_prefix<A: Eq + Clone>(ls: &[A], rs: &[A]) -> Vec<A> {
+pub(super) fn common_prefix<A: Eq + Clone>(ls: &[A], rs: &[A]) -> Vec<A> {
     ls.iter()
         .zip(rs.iter())
         .take_while(|(l, r)| l == r)
@@ -948,6 +950,29 @@ where
             Ok(WriteResult::Written(root_hash))
         }
     }
+}
+
+pub fn batch_write<K, V, I, T, S, E>(
+    txn: &mut T,
+    store: &S,
+    root: &Digest,
+    values: I,
+) -> Result<Digest, E>
+where
+    K: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
+    V: ToBytes + FromBytes + Clone + Eq,
+    I: Iterator<Item = (K, V)>,
+    T: Readable<Handle = S::Handle> + Writable<Handle = S::Handle>,
+    S: TrieStore<K, V>,
+    S::Error: From<T::Error>,
+    E: From<S::Error> + From<bytesrepr::Error> + From<TrieStoreCacheError>,
+{
+    let mut cache = TrieCache::<K, V, _>::new_from_store::<_, E>(txn, store, root)?;
+
+    for (key, value) in values {
+        cache.insert_with_store::<_, E>(key, value, txn)?;
+    }
+    cache.store_cache::<_, E>(txn)
 }
 
 /// Puts a trie pointer block, extension node or leaf into the trie.

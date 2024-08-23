@@ -3,6 +3,12 @@
 //! See the [lmdb](lmdb/index.html#usage) modules for usage examples.
 pub mod lmdb;
 pub mod operations;
+
+// An in-mem cache backed up by a store that is used to optimize batch writes.
+mod cache;
+
+pub(crate) use cache::CacheError as TrieStoreCacheError;
+
 #[cfg(test)]
 mod tests;
 

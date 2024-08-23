@@ -553,3 +553,151 @@ mod variable_sized_keys {
         .expect("Expected new root hash after write");
     }
 }
+
+mod batch_write_with_random_keys {
+    use crate::global_state::trie_store::cache::TrieCache;
+
+    use super::*;
+
+    use casper_types::{testing::TestRng, Key};
+    use rand::Rng;
+
+    #[test]
+    fn compare_random_keys_seq_write_with_batch_cache_write() {
+        let mut rng = TestRng::new();
+
+        for _ in 0..100 {
+            let (mut seq_write_root_hash, tries) = create_empty_trie::<Key, u32>().unwrap();
+            let context = LmdbTestContext::new(&tries).unwrap();
+            let mut txn = context.environment.create_read_write_txn().unwrap();
+
+            // Create some random keys and values.
+            let data: Vec<(Key, u32)> = (0u32..4000).map(|val| (rng.gen(), val)).collect();
+
+            // Write all the keys sequentially to the store
+            for (key, value) in data.iter() {
+                let write_result = write::<Key, u32, _, _, error::Error>(
+                    &mut txn,
+                    &context.store,
+                    &seq_write_root_hash,
+                    key,
+                    value,
+                )
+                .unwrap();
+                match write_result {
+                    WriteResult::Written(hash) => {
+                        seq_write_root_hash = hash; // Update the state root hash; we'll use it to
+                                                    // compare with the cache root hash.
+                    }
+                    WriteResult::AlreadyExists => (),
+                    WriteResult::RootNotFound => panic!("write_leaves given an invalid root"),
+                };
+            }
+
+            // Create an empty store that backs up the cache.
+            let (cache_root_hash, tries) = create_empty_trie::<Key, u32>().unwrap();
+            let context = LmdbTestContext::new(&tries).unwrap();
+            let mut txn = context.environment.create_read_write_txn().unwrap();
+
+            let mut trie_cache = TrieCache::<Key, u32, _>::new_from_store::<_, error::Error>(
+                &mut txn,
+                &context.store,
+                &cache_root_hash,
+            )
+            .unwrap();
+            for (key, value) in data.iter() {
+                trie_cache
+                    .insert_with_store::<_, error::Error>(*key, *value, &mut txn)
+                    .unwrap();
+            }
+
+            let cache_root_hash = trie_cache.store_cache::<_, error::Error>(&mut txn).unwrap();
+
+            if seq_write_root_hash != cache_root_hash {
+                println!("Root Hash is: {:?}", seq_write_root_hash);
+                println!("Cache root Hash is: {:?}", cache_root_hash);
+                println!("Faulty keys: ");
+
+                for (key, _) in data.iter() {
+                    println!("{}", key.to_formatted_string());
+                }
+                panic!("ROOT hash mismatch");
+            }
+        }
+    }
+
+    #[test]
+    fn compare_random_keys_write_with_cache_and_readback() {
+        let mut rng = TestRng::new();
+
+        // create a store
+        let (mut root_hash, tries) = create_empty_trie::<Key, u32>().unwrap();
+        let context = LmdbTestContext::new(&tries).unwrap();
+        let mut txn = context.environment.create_read_write_txn().unwrap();
+
+        // Create initial keys and values.
+        let initial_keys: Vec<(Key, u32)> = (0u32..1000).map(|val| (rng.gen(), val)).collect();
+
+        // Store these keys and values using sequential write;
+        for (key, value) in initial_keys.iter() {
+            let write_result = write::<Key, u32, _, _, error::Error>(
+                &mut txn,
+                &context.store,
+                &root_hash,
+                key,
+                value,
+            )
+            .unwrap();
+            match write_result {
+                WriteResult::Written(hash) => {
+                    root_hash = hash;
+                }
+                WriteResult::AlreadyExists => (),
+                WriteResult::RootNotFound => panic!("write_leaves given an invalid root"),
+            };
+        }
+
+        // Create some test data.
+        let data: Vec<(Key, u32)> = (0u32..1000).map(|val| (rng.gen(), val)).collect();
+
+        // Create a cache backed up by the store that has the initial data.
+        let mut trie_cache = TrieCache::<Key, u32, _>::new_from_store::<_, error::Error>(
+            &mut txn,
+            &context.store,
+            &root_hash,
+        )
+        .unwrap();
+
+        // Insert the test data into the cache.
+        for (key, value) in data.iter() {
+            trie_cache
+                .insert_with_store::<_, error::Error>(*key, *value, &mut txn)
+                .unwrap();
+        }
+
+        // Get the generated root hash
+        let cache_root_hash = trie_cache.calculate_root_hash();
+
+        // now write the same keys to the store one by one and check if we get the same root hash.
+        let mut seq_write_root_hash = root_hash;
+        for (key, value) in data.iter() {
+            let write_result = write::<Key, u32, _, _, error::Error>(
+                &mut txn,
+                &context.store,
+                &seq_write_root_hash,
+                key,
+                value,
+            )
+            .unwrap();
+            match write_result {
+                WriteResult::Written(hash) => {
+                    seq_write_root_hash = hash;
+                }
+                WriteResult::AlreadyExists => (),
+                WriteResult::RootNotFound => panic!("write_leaves given an invalid root"),
+            };
+        }
+
+        assert_eq!(cache_root_hash, seq_write_root_hash);
+    }
+}
