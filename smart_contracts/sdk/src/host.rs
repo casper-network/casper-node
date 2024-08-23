@@ -291,7 +291,7 @@ pub fn casper_upgrade(
 
 pub fn read_into_vec(key: Keyspace) -> Option<Vec<u8>> {
     let mut vec = Vec::new();
-    let out = casper_read(key, |size| reserve_vec_space(&mut vec, dbg!(size))).unwrap();
+    let out = casper_read(key, |size| reserve_vec_space(&mut vec, size)).unwrap();
     out.map(|_input| vec)
 }
 

@@ -277,10 +277,12 @@ fn generate_export_function(func: ItemFn) -> TokenStream {
         });
     }
     let _ctor_name = format_ident!("{func_name}_ctor");
+
+    let exported_func_name = format_ident!("__casper_export_{func_name}");
     quote! {
-        #[cfg(target_arch = "wasm32")]
+        #[export_name = stringify!(#func_name)]
         #[no_mangle]
-        pub extern "C" fn #func_name() {
+        pub extern "C" fn #exported_func_name() {
             #[cfg(target_arch = "wasm32")]
             {
                 casper_sdk::set_panic_hook();
@@ -305,27 +307,28 @@ fn generate_export_function(func: ItemFn) -> TokenStream {
 
         #[cfg(not(target_arch = "wasm32"))]
         const _: () = {
-            fn #func_name() {
-                #[derive(casper_sdk::serializers::borsh::BorshDeserialize)]
-                #[borsh(crate = "casper_sdk::serializers::borsh")]
-                struct Arguments {
-                    #(#args_attrs,)*
-                }
+            // fn #func_name() {
+            //     #[derive(casper_sdk::serializers::borsh::BorshDeserialize)]
+            //     #[borsh(crate = "casper_sdk::serializers::borsh")]
+            //     struct Arguments {
+            //         #(#args_attrs,)*
+            //     }
 
 
-                let input = casper_sdk::host::casper_copy_input();
-                let args: Arguments = casper_sdk::serializers::borsh::from_slice(&input).unwrap();
+            //     let input = casper_sdk::host::casper_copy_input();
+            //     let args: Arguments = casper_sdk::serializers::borsh::from_slice(&input).unwrap();
 
-                let _ret = #func_name(#(args.#arg_names,)*);
-            }
-            #[casper_sdk::linkme::distributed_slice(casper_sdk::host::native::EXPORTS)]
+            //     let _ret = #exported_func_name(#(args.#arg_names,)*);
+            // }
+
+            #[casper_sdk::linkme::distributed_slice(casper_sdk::host::native::private_exports::EXPORTS)]
             #[linkme(crate = casper_sdk::linkme)]
             pub static EXPORTS: casper_sdk::host::native::Export = casper_sdk::host::native::Export {
-                name: stringify!(#func_name),
+                kind: casper_sdk::host::native::ExportKind::Function { name: stringify!(#func_name) },
+                fptr: || { #exported_func_name(); },
                 module_path: module_path!(),
                 file: file!(),
                 line: line!(),
-                fptr: #func_name,
             };
         };
     }.into()
@@ -542,7 +545,7 @@ fn generate_impl_for_contract(
 
                 if !method_attribute.payable {
                     let panic_msg = format!(
-                        "Entry point {func_name} is not payable and does not accept tokens"
+                        r#"Entry point "{func_name}" is not payable and does not accept tokens"#
                     );
                     prelude.push(quote! {
                         if casper_sdk::host::get_value() != 0 {
@@ -609,7 +612,7 @@ fn generate_impl_for_contract(
 
                     #[export_name = stringify!(#export_name)]
                     #vis extern "C" fn #extern_func_name() {
-                            // Set panic hook (assumes std is enabled etc.)
+                        // Set panic hook (assumes std is enabled etc.)
                         #[cfg(target_arch = "wasm32")]
                         {
                             casper_sdk::set_panic_hook();
@@ -627,6 +630,19 @@ fn generate_impl_for_contract(
 
                         #handle_ret;
                     }
+
+                    #[cfg(not(target_arch = "wasm32"))]
+                    const _: () = {
+                        #[casper_sdk::linkme::distributed_slice(casper_sdk::host::native::private_exports::EXPORTS)]
+                        #[linkme(crate = casper_sdk::linkme)]
+                        pub static EXPORTS: casper_sdk::host::native::Export = casper_sdk::host::native::Export {
+                            kind: casper_sdk::host::native::ExportKind::SmartContract { name: stringify!(#export_name), struct_name: stringify!(#struct_name) },
+                            fptr: || -> () { #extern_func_name(); },
+                            module_path: module_path!(),
+                            file: file!(),
+                            line: line!(),
+                        };
+                    };
 
                 });
 
@@ -973,6 +989,19 @@ fn generate_impl_trait_for_contract(
                             $vis extern "C" fn $name() {
                                 #path_to_macro::$dispatch::<#self_ty>();
                             }
+
+                            #[cfg(not(target_arch = "wasm32"))]
+                            const _: () = {
+                                #[casper_sdk::linkme::distributed_slice(casper_sdk::host::native::private_exports::EXPORTS)]
+                                #[linkme(crate = casper_sdk::linkme)]
+                                pub static EXPORTS: casper_sdk::host::native::Export = casper_sdk::host::native::Export {
+                                    kind: casper_sdk::host::native::ExportKind::TraitImpl { trait_name: stringify!(#trait_name), impl_name: stringify!(#self_ty), name: stringify!($export_name) },
+                                    fptr: || -> () { $name(); },
+                                    module_path: module_path!(),
+                                    file: file!(),
+                                    line: line!(),
+                                };
+                            };
                         )*
                     }
                 }

@@ -1,58 +1,101 @@
 use bytes::Bytes;
 use casper_executor_wasm_common::flags::{EntryPointFlags, ReturnFlags};
 use core::slice;
+use once_cell::sync::Lazy;
+use rand::Rng;
 use std::{
     cell::RefCell,
-    collections::{BTreeMap, VecDeque},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     convert::Infallible,
+    os::raw::c_void,
     ptr::{self, NonNull},
     sync::{Arc, RwLock},
 };
 
-use crate::{linkme::distributed_slice, types::Address};
+use crate::types::Address;
 
 use crate::serializers::borsh::BorshSerialize;
 
 use super::Entity;
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ExportKind {
+    SmartContract {
+        struct_name: &'static str,
+        name: &'static str,
+    },
+    TraitImpl {
+        trait_name: &'static str,
+        impl_name: &'static str,
+        name: &'static str,
+    },
+    Function {
+        name: &'static str,
+    },
+}
+
+impl ExportKind {
+    pub fn name(&self) -> &'static str {
+        match self {
+            ExportKind::SmartContract { name, .. } => name,
+            ExportKind::TraitImpl { name, .. } => name,
+            ExportKind::Function { name } => name,
+        }
+    }
+}
+
 pub struct Export {
-    pub name: &'static str,
+    pub kind: ExportKind,
+    pub fptr: fn() -> (),
     pub module_path: &'static str,
     pub file: &'static str,
     pub line: u32,
-    pub fptr: fn() -> (),
 }
 
-#[distributed_slice]
-#[linkme(crate = crate::linkme)]
-pub static EXPORTS: [Export];
+#[doc(hidden)]
+pub mod private_exports {
+    use super::Export;
+    use linkme::distributed_slice;
+
+    #[distributed_slice]
+    #[linkme(crate = crate::linkme)]
+    pub static EXPORTS: [Export];
+}
+
+/// List of sorted exports gathered from the contracts code.
+pub static EXPORTS: Lazy<Vec<&'static Export>> = Lazy::new(|| {
+    let mut exports = private_exports::EXPORTS.into_iter().collect::<Vec<_>>();
+    exports.sort_by_key(|export| export.kind);
+    exports
+});
 
 impl crate::prelude::fmt::Debug for Export {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self {
+            kind,
+            fptr: _,
+            module_path,
+            file,
+            line,
+        } = self;
+
         f.debug_struct("Export")
-            .field("name", &self.name)
-            .field("module_path", &self.module_path)
-            .field("file", &self.file)
-            .field("line", &self.line)
+            .field("kind", kind)
+            .field("fptr", &"<fptr>")
+            .field("module_path", module_path)
+            .field("file", file)
+            .field("line", line)
             .finish()
     }
 }
 
-pub fn list_exports() -> Vec<&'static Export> {
-    EXPORTS.iter().collect()
-    // EXPORTS.with(|exports| {
-    //     let mut all_exports = Vec::new();
-    //     for (_name, exports) in exports.iter() {
-    //         all_exports.extend(exports.iter());
-    //     }
-    //     all_exports
-    // })
-}
-
 pub fn call_export(name: &str) {
-    let exports_by_name: Vec<&Export> = EXPORTS
+    let exports_by_name: Vec<_> = EXPORTS
         .iter()
-        .filter(|export| export.name == name)
+        .filter_map(|export| match export.kind {
+            ExportKind::Function { name: export_name } if export_name == name => Some(export),
+            _ => None,
+        })
         .collect();
 
     assert_eq!(exports_by_name.len(), 1);
@@ -166,7 +209,7 @@ impl From<NonNull<casper_sdk_sys::Manifest>> for NativeManifest {
 #[derive(Clone, Debug)]
 pub struct Environment {
     pub db: Arc<RwLock<Container>>,
-    manifests: Arc<RwLock<BTreeMap<Address, NativeManifest>>>,
+    contracts: Arc<RwLock<BTreeSet<Address>>>,
     // input_data: Arc<RwLock<Option<Bytes>>>,
     input_data: Option<Bytes>,
     contract_address: Option<Address>,
@@ -177,7 +220,7 @@ impl Default for Environment {
     fn default() -> Self {
         Self {
             db: Default::default(),
-            manifests: Default::default(),
+            contracts: Default::default(),
             input_data: Default::default(),
             contract_address: Default::default(),
             caller: DEFAULT_ADDRESS,
@@ -191,7 +234,7 @@ impl Environment {
     pub fn new(db: Container, caller: Entity) -> Self {
         Self {
             db: Arc::new(RwLock::new(db)),
-            manifests: Arc::new(RwLock::new(BTreeMap::new())),
+            contracts: Default::default(),
             input_data: Default::default(),
             contract_address: None,
             caller,
@@ -212,6 +255,16 @@ impl Environment {
                 .expect("Serialization"),
         );
         env
+    }
+
+    fn casper_env_transferred_value(&self, dest: *mut core::ffi::c_void) -> Result<(), NativeTrap> {
+        let dest_ptr = NonNull::new(dest).expect("Valid pointer");
+        let value = 0u128;
+        let src_ptr = NonNull::from(&value);
+        unsafe {
+            ptr::copy_nonoverlapping(src_ptr.as_ptr() as *const c_void, dest_ptr.as_ptr(), 16)
+        }
+        Ok(())
     }
 }
 
@@ -347,11 +400,12 @@ impl Environment {
         &self,
         code_ptr: *const u8,
         code_size: usize,
-        _manifest_ptr: *const casper_sdk_sys::Manifest,
-        _selector: u32,
-        _input_ptr: *const u8,
-        _input_size: usize,
-        _result_ptr: *mut casper_sdk_sys::CreateResult,
+        transferred_value_ptr: *const c_void,
+        constructor_ptr: *const u8,
+        constructor_size: usize,
+        input_ptr: *const u8,
+        input_size: usize,
+        result_ptr: *mut casper_sdk_sys::CreateResult,
     ) -> Result<u32, NativeTrap> {
         // let manifest =
         //     NonNull::new(manifest_ptr as *mut casper_sdk_sys::Manifest).expect("Manifest
@@ -366,70 +420,77 @@ impl Environment {
             panic!("Supplying code is not supported yet in native mode");
         }
 
-        // let entry_point_selector: Option<Selector> = if selector == 0 {
-        //     None
-        // } else {
-        //     Some(Selector::new(selector))
-        // };
-        todo!("update native impl");
+        let constructor = if constructor_ptr.is_null() {
+            None
+        } else {
+            Some(unsafe { slice::from_raw_parts(constructor_ptr, constructor_size) })
+        };
 
-        // let input_data = if input_ptr.is_null() {
-        //     None
-        // } else {
-        //     Some(unsafe { slice::from_raw_parts(input_ptr, input_size) })
-        // };
+        let input_data = if input_ptr.is_null() {
+            None
+        } else {
+            Some(unsafe { slice::from_raw_parts(input_ptr, input_size) })
+        };
 
-        // let mut rng = rand::thread_rng();
-        // let contract_address = rng.gen();
-        // let package_address = rng.gen();
+        let transferred_value: u128 = {
+            let value_ptr =
+                NonNull::new(transferred_value_ptr as *mut u128).expect("Valid pointer");
+            unsafe { *value_ptr.as_ptr() }
+        };
 
-        // let mut result = NonNull::new(result_ptr).expect("Valid pointer");
-        // unsafe {
-        //     result.as_mut().contract_address = contract_address;
-        //     result.as_mut().package_address = package_address;
-        // }
+        assert_eq!(
+            transferred_value, 0,
+            "Creating new contracts with transferred value is not supported in native mode"
+        );
 
-        // let mut manifests = self.manifests.write().unwrap();
-        // manifests.insert(contract_address, manifest.into());
+        let mut rng = rand::thread_rng();
+        let contract_address = rng.gen();
+        let package_address = rng.gen();
 
-        // if let Some(entry_point_selector) = entry_point_selector {
-        //     let manifest = manifests.get(&contract_address).expect("Manifest exists");
-        //     let entry_point = manifest
-        //         .entry_points
-        //         .iter()
-        //         .find(|entry_point| entry_point.selector == entry_point_selector.get())
-        //         .expect("Entry point exists");
+        let mut result = NonNull::new(result_ptr).expect("Valid pointer");
+        unsafe {
+            result.as_mut().contract_address = contract_address;
+            result.as_mut().package_address = package_address;
+        }
 
-        //     let mut stub = with_current_environment(|stub| stub);
-        //     stub.contract_address = Some(contract_address);
-        //     stub.input_data = input_data.map(Bytes::copy_from_slice);
+        let mut contracts = self.contracts.write().unwrap();
+        contracts.insert(contract_address);
 
-        //     // Call constructor, expect a trap
-        //     let result = dispatch_with(stub, || {
-        //         (entry_point.fptr)();
-        //     });
+        if let Some(entry_point) = constructor {
+            let entry_point = EXPORTS
+                .iter()
+                .find(|export| export.kind.name().as_bytes() == entry_point)
+                .expect("Entry point exists");
 
-        //     match result {
-        //         Ok(()) => todo!("Constructor did not return"),
-        //         Err(NativeTrap::Return(flags, bytes)) => {
-        //             if flags.contains(ReturnFlags::REVERT) {
-        //                 todo!("Constructor returned with a revert flag");
-        //             }
+            let mut stub = with_current_environment(|stub| stub);
+            stub.contract_address = Some(contract_address);
+            stub.input_data = input_data.map(Bytes::copy_from_slice);
 
-        //             let mut db = self.db.write().unwrap();
-        //             let values = db.entry(0).or_default();
-        //             values.insert(
-        //                 Bytes::copy_from_slice(contract_address.as_slice()),
-        //                 TaggedValue {
-        //                     tag: 0,
-        //                     value: bytes,
-        //                 },
-        //             );
-        //         }
-        //     }
-        // }
+            // Call constructor, expect a trap
+            let result = dispatch_with(stub, || {
+                (entry_point.fptr)();
+            });
 
-        // Ok(0)
+            match result {
+                Ok(()) => {}
+                Err(NativeTrap::Return(flags, bytes)) => {
+                    if flags.contains(ReturnFlags::REVERT) {
+                        todo!("Constructor returned with a revert flag");
+                    }
+
+                    assert!(bytes.is_empty(), "When returning from the constructor it is expected that no bytes are passed in a return function");
+
+                    // let mut db = self.db.write().unwrap();
+                    // let values = db.entry(0).or_default();
+                    // values.insert(
+                    //     Bytes::copy_from_slice(contract_address.as_slice()),
+                    //     bytes,
+                    // );
+                }
+            }
+        }
+
+        Ok(0)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -437,38 +498,53 @@ impl Environment {
         &self,
         address_ptr: *const u8,
         address_size: usize,
-        _value: *const core::ffi::c_void,
-        selector: u32,
+        value: *const core::ffi::c_void,
+        entry_point_ptr: *const u8,
+        entry_point_size: usize,
         input_ptr: *const u8,
         input_size: usize,
-        alloc: extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8,
+        alloc: extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8, /* For capturing output
+                                                                         * data */
         alloc_ctx: *const core::ffi::c_void,
     ) -> Result<u32, NativeTrap> {
         let address = unsafe { slice::from_raw_parts(address_ptr, address_size) };
         let input_data = unsafe { slice::from_raw_parts(input_ptr, input_size) };
-        let manifests = self.manifests.read().unwrap();
-        let manifest = manifests.get(address).expect("Manifest exists");
+        let entry_point = {
+            let entry_point_ptr = NonNull::new(entry_point_ptr as _).expect("Valid pointer");
+            let entry_point =
+                unsafe { slice::from_raw_parts(entry_point_ptr.as_ptr(), entry_point_size) };
+            let entry_point = std::str::from_utf8(entry_point).expect("Valid UTF-8 string");
+            entry_point.to_string()
+        };
 
-        let entry_point = manifest
-            .entry_points
-            .iter()
-            .find(|entry_point| entry_point.selector == selector)
-            .expect("Entry point exists");
+        let value: u128 = {
+            let value_ptr = NonNull::new(value as *mut u128).expect("Valid pointer");
+            unsafe { *value_ptr.as_ptr() }
+        };
 
-        // TODO: Wasm host should also forbid calling constructors
-        assert!(
-            !entry_point.flags.contains(EntryPointFlags::CONSTRUCTOR),
-            "Calling constructors is unsupported"
+        assert_eq!(
+            value, 0,
+            "Transferred value is not supported in native mode"
         );
 
-        // self.input_data
+        let export = EXPORTS
+            .iter()
+            .find_map(|export| match export.kind {
+                ExportKind::SmartContract { name, .. } | ExportKind::TraitImpl { name, .. }
+                    if name == entry_point =>
+                {
+                    Some(export)
+                }
+                _ => None,
+            })
+            .expect("Existing entry point");
 
         let mut new_stub = with_current_environment(|stub| stub.clone());
         new_stub.input_data = Some(Bytes::copy_from_slice(input_data));
         new_stub.contract_address = Some(address.try_into().expect("Size to match"));
 
         let ret = dispatch_with(new_stub, || {
-            (entry_point.fptr)();
+            (export.fptr)();
         });
 
         match ret {
@@ -714,28 +790,20 @@ mod symbols {
     pub extern "C" fn casper_create(
         code_ptr: *const u8,
         code_size: usize,
-        manifest_ptr: *const ::casper_sdk_sys::Manifest,
-        selector: u32,
+        value: *const core::ffi::c_void,
+        constructor_ptr: *const u8,
+        constructor_size: usize,
         input_ptr: *const u8,
         input_size: usize,
         result_ptr: *mut ::casper_sdk_sys::CreateResult,
     ) -> u32 {
-        let _name = "casper_create_contract";
-        let _args = (
-            &code_ptr,
-            &code_size,
-            &manifest_ptr,
-            &selector,
-            &input_ptr,
-            &input_size,
-            &result_ptr,
-        );
         let _call_result = with_current_environment(|stub| {
             stub.casper_create(
                 code_ptr,
                 code_size,
-                manifest_ptr,
-                selector,
+                value,
+                constructor_ptr,
+                constructor_size,
                 input_ptr,
                 input_size,
                 result_ptr,
@@ -748,30 +816,22 @@ mod symbols {
     pub extern "C" fn casper_call(
         address_ptr: *const u8,
         address_size: usize,
-        value: *const c_void,
-        selector: u32,
+        value: *const core::ffi::c_void,
+        entry_point_ptr: *const u8,
+        entry_point_size: usize,
         input_ptr: *const u8,
         input_size: usize,
-        alloc: extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8,
+        alloc: extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8, /* For capturing output
+                                                                         * data */
         alloc_ctx: *const core::ffi::c_void,
     ) -> u32 {
-        let _name = "casper_call";
-        let _args = (
-            &address_ptr,
-            &address_size,
-            &value,
-            &selector,
-            &input_ptr,
-            &input_size,
-            &alloc,
-            &alloc_ctx,
-        );
         let _call_result = with_current_environment(|stub| {
             stub.casper_call(
                 address_ptr,
                 address_size,
                 value,
-                selector,
+                entry_point_ptr,
+                entry_point_size,
                 input_ptr,
                 input_size,
                 alloc,
@@ -781,7 +841,6 @@ mod symbols {
         crate::host::native::handle_ret(_call_result)
     }
 
-    use core::ffi::c_void;
     use std::ptr;
 
     use super::with_current_environment;
@@ -814,8 +873,11 @@ mod symbols {
         crate::host::native::handle_ret_with(_call_result, ptr::null)
     }
     #[no_mangle]
-    pub extern "C" fn casper_env_transferred_value() -> u64 {
-        todo!()
+    pub extern "C" fn casper_env_transferred_value(dest: *mut core::ffi::c_void) {
+        let _name = "casper_env_transferred_value";
+        let _args = ();
+        let _call_result = with_current_environment(|stub| stub.casper_env_transferred_value(dest));
+        crate::host::native::handle_ret(_call_result)
     }
     #[no_mangle]
     pub extern "C" fn casper_env_balance(
@@ -834,10 +896,21 @@ mod symbols {
     ) -> u32 {
         todo!()
     }
+
+    #[no_mangle]
+    pub extern "C" fn casper_env_block_time() -> u64 {
+        0
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use core::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Mutex;
+
+    use libloading::Library;
+    use once_cell::sync::Lazy;
+
     use super::*;
 
     #[test]

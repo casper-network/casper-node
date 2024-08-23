@@ -43,13 +43,13 @@ impl CEP18State {
             return Ok(());
         }
 
-        let sender_balance = self.balances.get(&sender).unwrap_or_default();
+        let sender_balance = self.balances.get(sender).unwrap_or_default();
 
         let new_sender_balance = sender_balance
             .checked_sub(amount)
             .ok_or(Cep18Error::InsufficientBalance)?;
 
-        let recipient_balance = self.balances.get(&recipient).unwrap_or_default();
+        let recipient_balance = self.balances.get(recipient).unwrap_or_default();
 
         let new_recipient_balance = recipient_balance
             .checked_add(amount)
