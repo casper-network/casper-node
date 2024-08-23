@@ -688,7 +688,7 @@ mod tests {
 
         let val = EntityIdentifier::random(rng);
         let bytes = val.to_bytes().expect("should serialize");
-        assert_eq!(bytesrepr::deserialize_from_slice(&bytes), Ok(val));
+        assert_eq!(bytesrepr::deserialize_from_slice(bytes), Ok(val));
     }
 
     #[test]
@@ -697,6 +697,6 @@ mod tests {
 
         let val = PackageIdentifier::random(rng);
         let bytes = val.to_bytes().expect("should serialize");
-        assert_eq!(bytesrepr::deserialize_from_slice(&bytes), Ok(val));
+        assert_eq!(bytesrepr::deserialize_from_slice(bytes), Ok(val));
     }
 }
