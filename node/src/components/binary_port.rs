@@ -807,13 +807,14 @@ where
                 return Ok(None);
             };
             Ok(Some(Either::Left(ContractWithWasm::new(
+                hash,
                 contract,
                 Some(wasm),
             ))))
         }
-        (StoredValue::Contract(contract), _) => {
-            Ok(Some(Either::Left(ContractWithWasm::new(contract, None))))
-        }
+        (StoredValue::Contract(contract), _) => Ok(Some(Either::Left(ContractWithWasm::new(
+            hash, contract, None,
+        )))),
         (other, _) => {
             let Some(Key::AddressableEntity(addr)) = other
                 .as_cl_value()
@@ -896,12 +897,13 @@ where
                 return Ok(None);
             };
             Ok(Some(AddressableEntityWithByteCode::new(
+                addr,
                 entity,
                 Some(bytecode),
             )))
         }
         (StoredValue::AddressableEntity(entity), _) => {
-            Ok(Some(AddressableEntityWithByteCode::new(entity, None)))
+            Ok(Some(AddressableEntityWithByteCode::new(addr, entity, None)))
         }
         (other, _) => {
             debug!(

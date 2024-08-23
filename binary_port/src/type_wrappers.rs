@@ -6,9 +6,10 @@ use datasize::DataSize;
 
 use casper_types::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
+    contracts::ContractHash,
     system::auction::DelegationRate,
-    AddressableEntity, BlockHash, ByteCode, Contract, ContractWasm, EraId, ExecutionInfo, Key,
-    PublicKey, TimeDiff, Timestamp, Transaction, ValidatorChange, U512,
+    AddressableEntity, BlockHash, ByteCode, Contract, ContractWasm, EntityAddr, EraId,
+    ExecutionInfo, Key, PublicKey, TimeDiff, Timestamp, Transaction, ValidatorChange, U512,
 };
 use serde::Serialize;
 
@@ -410,14 +411,24 @@ impl FromBytes for DictionaryQueryResult {
 /// A contract with its associated Wasm.
 #[derive(Debug, PartialEq)]
 pub struct ContractWithWasm {
+    hash: ContractHash,
     contract: Contract,
     wasm: Option<ContractWasm>,
 }
 
 impl ContractWithWasm {
     /// Constructs new contract with Wasm.
-    pub fn new(contract: Contract, wasm: Option<ContractWasm>) -> Self {
-        Self { contract, wasm }
+    pub fn new(hash: ContractHash, contract: Contract, wasm: Option<ContractWasm>) -> Self {
+        Self {
+            hash,
+            contract,
+            wasm,
+        }
+    }
+
+    /// Returns the hash of the contract.
+    pub fn hash(&self) -> ContractHash {
+        self.hash
     }
 
     /// Returns the inner `Contract`.
@@ -430,9 +441,9 @@ impl ContractWithWasm {
         self.wasm.as_ref()
     }
 
-    /// Converts `self` into the contract and Wasm.
-    pub fn into_inner(self) -> (Contract, Option<ContractWasm>) {
-        (self.contract, self.wasm)
+    /// Converts `self` into the contract hash, contract and Wasm.
+    pub fn into_inner(self) -> (ContractHash, Contract, Option<ContractWasm>) {
+        (self.hash, self.contract, self.wasm)
     }
 }
 
@@ -444,34 +455,48 @@ impl ToBytes for ContractWithWasm {
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.hash.write_bytes(writer)?;
         self.contract.write_bytes(writer)?;
         self.wasm.write_bytes(writer)
     }
 
     fn serialized_length(&self) -> usize {
-        self.contract.serialized_length() + self.wasm.serialized_length()
+        self.hash.serialized_length()
+            + self.contract.serialized_length()
+            + self.wasm.serialized_length()
     }
 }
 
 impl FromBytes for ContractWithWasm {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (contract, remainder) = FromBytes::from_bytes(bytes)?;
+        let (hash, remainder) = FromBytes::from_bytes(bytes)?;
+        let (contract, remainder) = FromBytes::from_bytes(remainder)?;
         let (wasm, remainder) = FromBytes::from_bytes(remainder)?;
-        Ok((ContractWithWasm::new(contract, wasm), remainder))
+        Ok((ContractWithWasm::new(hash, contract, wasm), remainder))
     }
 }
 
 /// A contract entity with its associated ByteCode.
 #[derive(Debug, PartialEq)]
 pub struct AddressableEntityWithByteCode {
+    addr: EntityAddr,
     entity: AddressableEntity,
     bytecode: Option<ByteCode>,
 }
 
 impl AddressableEntityWithByteCode {
     /// Constructs new contract entity with ByteCode.
-    pub fn new(entity: AddressableEntity, bytecode: Option<ByteCode>) -> Self {
-        Self { entity, bytecode }
+    pub fn new(addr: EntityAddr, entity: AddressableEntity, bytecode: Option<ByteCode>) -> Self {
+        Self {
+            addr,
+            entity,
+            bytecode,
+        }
+    }
+
+    /// Returns the entity address.
+    pub fn addr(&self) -> EntityAddr {
+        self.addr
     }
 
     /// Returns the inner `AddressableEntity`.
@@ -484,9 +509,9 @@ impl AddressableEntityWithByteCode {
         self.bytecode.as_ref()
     }
 
-    /// Converts `self` into the contract entity and ByteCode.
-    pub fn into_inner(self) -> (AddressableEntity, Option<ByteCode>) {
-        (self.entity, self.bytecode)
+    /// Converts `self` into the entity address, entity, and bytecode.
+    pub fn into_inner(self) -> (EntityAddr, AddressableEntity, Option<ByteCode>) {
+        (self.addr, self.entity, self.bytecode)
     }
 }
 
@@ -498,21 +523,25 @@ impl ToBytes for AddressableEntityWithByteCode {
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.addr.write_bytes(writer)?;
         self.entity.write_bytes(writer)?;
         self.bytecode.write_bytes(writer)
     }
 
     fn serialized_length(&self) -> usize {
-        self.entity.serialized_length() + self.bytecode.serialized_length()
+        self.addr.serialized_length()
+            + self.entity.serialized_length()
+            + self.bytecode.serialized_length()
     }
 }
 
 impl FromBytes for AddressableEntityWithByteCode {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (entity, remainder) = FromBytes::from_bytes(bytes)?;
+        let (addr, remainder) = FromBytes::from_bytes(bytes)?;
+        let (entity, remainder) = FromBytes::from_bytes(remainder)?;
         let (bytecode, remainder) = FromBytes::from_bytes(remainder)?;
         Ok((
-            AddressableEntityWithByteCode::new(entity, bytecode),
+            AddressableEntityWithByteCode::new(addr, entity, bytecode),
             remainder,
         ))
     }
@@ -625,6 +654,7 @@ mod tests {
     fn contract_with_wasm_roundtrip() {
         let rng = &mut TestRng::new();
         bytesrepr::test_serialization_roundtrip(&ContractWithWasm::new(
+            ContractHash::new(rng.gen()),
             Contract::new(
                 ContractPackageHash::new(rng.gen()),
                 ContractWasmHash::new(rng.gen()),
@@ -641,6 +671,7 @@ mod tests {
     fn addressable_entity_with_byte_code_roundtrip() {
         let rng = &mut TestRng::new();
         bytesrepr::test_serialization_roundtrip(&AddressableEntityWithByteCode::new(
+            rng.gen(),
             AddressableEntity::example().clone(),
             rng.gen::<bool>()
                 .then(|| ByteCode::new(rng.gen(), rng.random_vec(10..50))),
