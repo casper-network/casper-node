@@ -17,9 +17,9 @@ mod key_prefix;
 mod minimal_block_info;
 mod node_status;
 mod original_request_context;
-mod payload_type;
 mod purse_identifier;
 pub mod record_id;
+mod response_type;
 mod speculative_execution_result;
 mod state_request;
 mod type_wrappers;
@@ -42,9 +42,9 @@ pub use information_request::{
 pub use key_prefix::KeyPrefix;
 pub use minimal_block_info::MinimalBlockInfo;
 pub use node_status::NodeStatus;
-pub use payload_type::{PayloadEntity, PayloadType};
 pub use purse_identifier::PurseIdentifier;
 pub use record_id::{RecordId, UnknownRecordId};
+pub use response_type::{PayloadEntity, ResponseType};
 pub use speculative_execution_result::SpeculativeExecutionResult;
 pub use state_request::GlobalStateRequest;
 pub use type_wrappers::{

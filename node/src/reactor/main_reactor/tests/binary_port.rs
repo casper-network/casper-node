@@ -12,8 +12,8 @@ use casper_binary_port::{
     ConsensusValidatorChanges, ContractWithWasm, DictionaryItemIdentifier, DictionaryQueryResult,
     EntityIdentifier, EraIdentifier, ErrorCode, GetRequest, GetTrieFullResult,
     GlobalStateQueryResult, GlobalStateRequest, InformationRequest, InformationRequestTag,
-    KeyPrefix, LastProgress, NetworkName, NodeStatus, PackageIdentifier, PayloadType,
-    PurseIdentifier, ReactorStateName, RecordId, RewardResponse, Uptime,
+    KeyPrefix, LastProgress, NetworkName, NodeStatus, PackageIdentifier, PurseIdentifier,
+    ReactorStateName, RecordId, ResponseType, RewardResponse, Uptime,
 };
 use casper_storage::global_state::state::CommitProvider;
 use casper_types::{
@@ -362,7 +362,7 @@ struct TestCase {
 
 fn validate_metadata(
     response: &BinaryResponse,
-    expected_payload_type: Option<PayloadType>,
+    expected_payload_type: Option<ResponseType>,
 ) -> bool {
     response.is_success()
         && response.returned_data_type_tag()
@@ -384,7 +384,7 @@ where
 
 fn assert_response<T, F>(
     response: &BinaryResponse,
-    payload_type: Option<PayloadType>,
+    payload_type: Option<ResponseType>,
     validator: F,
 ) -> bool
 where
@@ -562,7 +562,7 @@ fn block_header_info(hash: BlockHash) -> TestCase {
                 .expect("should convert"),
         ),
         asserter: Box::new(move |response| {
-            assert_response::<BlockHeader, _>(response, Some(PayloadType::BlockHeader), |header| {
+            assert_response::<BlockHeader, _>(response, Some(ResponseType::BlockHeader), |header| {
                 header.block_hash() == hash
             })
         }),
@@ -578,7 +578,7 @@ fn signed_block_info(hash: BlockHash) -> TestCase {
                 .expect("should convert"),
         ),
         asserter: Box::new(move |response| {
-            assert_response::<SignedBlock, _>(response, Some(PayloadType::SignedBlock), |header| {
+            assert_response::<SignedBlock, _>(response, Some(ResponseType::SignedBlock), |header| {
                 *header.block().hash() == hash
             })
         }),
@@ -593,7 +593,7 @@ fn peers() -> TestCase {
             key: vec![],
         }),
         asserter: Box::new(|response| {
-            assert_response::<Peers, _>(response, Some(PayloadType::Peers), |peers| {
+            assert_response::<Peers, _>(response, Some(ResponseType::Peers), |peers| {
                 !peers.into_inner().is_empty()
             })
         }),
@@ -608,7 +608,7 @@ fn uptime() -> TestCase {
             key: vec![],
         }),
         asserter: Box::new(|response| {
-            assert_response::<Uptime, _>(response, Some(PayloadType::Uptime), |uptime| {
+            assert_response::<Uptime, _>(response, Some(ResponseType::Uptime), |uptime| {
                 uptime.into_inner() > 0
             })
         }),
@@ -625,7 +625,7 @@ fn last_progress() -> TestCase {
         asserter: Box::new(|response| {
             assert_response::<LastProgress, _>(
                 response,
-                Some(PayloadType::LastProgress),
+                Some(ResponseType::LastProgress),
                 |last_progress| last_progress.into_inner().millis() > 0,
             )
         }),
@@ -642,7 +642,7 @@ fn reactor_state() -> TestCase {
         asserter: Box::new(|response| {
             assert_response::<ReactorStateName, _>(
                 response,
-                Some(PayloadType::ReactorState),
+                Some(ResponseType::ReactorState),
                 |reactor_state| matches!(reactor_state.into_inner().as_str(), "Validate"),
             )
         }),
@@ -659,7 +659,7 @@ fn network_name() -> TestCase {
         asserter: Box::new(|response| {
             assert_response::<NetworkName, _>(
                 response,
-                Some(PayloadType::NetworkName),
+                Some(ResponseType::NetworkName),
                 |network_name| &network_name.into_inner() == "casper-example",
             )
         }),
@@ -676,7 +676,7 @@ fn consensus_validator_changes() -> TestCase {
         asserter: Box::new(|response| {
             assert_response::<ConsensusValidatorChanges, _>(
                 response,
-                Some(PayloadType::ConsensusValidatorChanges),
+                Some(ResponseType::ConsensusValidatorChanges),
                 |cvc| cvc.into_inner().is_empty(),
             )
         }),
@@ -693,7 +693,7 @@ fn block_synchronizer_status() -> TestCase {
         asserter: Box::new(|response| {
             assert_response::<BlockSynchronizerStatus, _>(
                 response,
-                Some(PayloadType::BlockSynchronizerStatus),
+                Some(ResponseType::BlockSynchronizerStatus),
                 |bss| bss.historical().is_none() && bss.forward().is_none(),
             )
         }),
@@ -710,7 +710,7 @@ fn available_block_range(expected_height: u64) -> TestCase {
         asserter: Box::new(move |response| {
             assert_response::<AvailableBlockRange, _>(
                 response,
-                Some(PayloadType::AvailableBlockRange),
+                Some(ResponseType::AvailableBlockRange),
                 |abr| abr.low() == 0 && abr.high() >= expected_height,
             )
         }),
@@ -738,7 +738,7 @@ fn consensus_status() -> TestCase {
         asserter: Box::new(|response| {
             assert_response::<ConsensusStatus, _>(
                 response,
-                Some(PayloadType::ConsensusStatus),
+                Some(ResponseType::ConsensusStatus),
                 |_| true,
             )
         }),
@@ -755,7 +755,7 @@ fn chainspec_raw_bytes(network_chainspec_raw_bytes: ChainspecRawBytes) -> TestCa
         asserter: Box::new(move |response| {
             assert_response::<ChainspecRawBytes, _>(
                 response,
-                Some(PayloadType::ChainspecRawBytes),
+                Some(ResponseType::ChainspecRawBytes),
                 |crb| crb == network_chainspec_raw_bytes,
             )
         }),
@@ -770,7 +770,7 @@ fn latest_switch_block_header() -> TestCase {
             key: vec![],
         }),
         asserter: Box::new(move |response| {
-            assert_response::<BlockHeader, _>(response, Some(PayloadType::BlockHeader), |header| {
+            assert_response::<BlockHeader, _>(response, Some(ResponseType::BlockHeader), |header| {
                 header.is_switch_block()
             })
         }),
@@ -787,7 +787,7 @@ fn node_status(expected_version: ProtocolVersion) -> TestCase {
         asserter: Box::new(move |response| {
             assert_response::<NodeStatus, _>(
                 response,
-                Some(PayloadType::NodeStatus),
+                Some(ResponseType::NodeStatus),
                 |node_status| {
                     node_status.protocol_version == expected_version
                         && !node_status.peers.into_inner().is_empty()
@@ -812,7 +812,7 @@ fn get_block_header(expected: BlockHeader) -> TestCase {
             key: expected.block_hash().to_bytes().unwrap(),
         }),
         asserter: Box::new(move |response| {
-            assert_response::<BlockHeader, _>(response, Some(PayloadType::BlockHeader), |header| {
+            assert_response::<BlockHeader, _>(response, Some(ResponseType::BlockHeader), |header| {
                 header == expected
             })
         }),
@@ -827,7 +827,7 @@ fn get_block_transfers(expected: BlockHeader) -> TestCase {
             key: expected.block_hash().to_bytes().unwrap(),
         }),
         asserter: Box::new(move |response| {
-            validate_metadata(response, Some(PayloadType::Transfers))
+            validate_metadata(response, Some(ResponseType::Transfers))
                 && bincode::deserialize::<Vec<Transfer>>(response.payload()).is_ok()
         }),
     }
@@ -844,7 +844,7 @@ fn get_era_summary(state_root_hash: Digest) -> TestCase {
         asserter: Box::new(|response| {
             assert_response::<GlobalStateQueryResult, _>(
                 response,
-                Some(PayloadType::GlobalStateQueryResult),
+                Some(ResponseType::GlobalStateQueryResult),
                 |res| {
                     let (value, _) = res.into_inner();
                     matches!(value, StoredValue::EraInfo(_))
@@ -864,7 +864,7 @@ fn get_all_bids(state_root_hash: Digest) -> TestCase {
         asserter: Box::new(|response| {
             assert_response::<Vec<StoredValue>, _>(
                 response,
-                Some(PayloadType::StoredValues),
+                Some(ResponseType::StoredValues),
                 |res| res.iter().all(|v| matches!(v, StoredValue::BidKind(_))),
             )
         }),
@@ -880,7 +880,7 @@ fn get_trie(digest: Digest) -> TestCase {
         asserter: Box::new(|response| {
             assert_response::<GetTrieFullResult, _>(
                 response,
-                Some(PayloadType::GetTrieFullResult),
+                Some(ResponseType::GetTrieFullResult),
                 |res| res.into_inner().is_some(),
             )
         }),
@@ -899,7 +899,7 @@ fn get_dictionary_item_by_addr(state_root_hash: Digest, addr: DictionaryAddr) ->
         asserter: Box::new(move |response| {
             assert_response::<DictionaryQueryResult, _>(
                 response,
-                Some(PayloadType::DictionaryQueryResult),
+                Some(ResponseType::DictionaryQueryResult),
                 |res| {
                     matches!(
                         res.into_inner(),
@@ -930,7 +930,7 @@ fn get_dictionary_item_by_seed_uref(
         asserter: Box::new(move |response| {
             assert_response::<DictionaryQueryResult, _>(
                 response,
-                Some(PayloadType::DictionaryQueryResult),
+                Some(ResponseType::DictionaryQueryResult),
                 |res| {
                     let expected_key = Key::dictionary(seed_uref, dictionary_item_key.as_bytes());
                     matches!(
@@ -964,7 +964,7 @@ fn get_dictionary_item_by_legacy_named_key(
         asserter: Box::new(|response| {
             assert_response::<DictionaryQueryResult, _>(
                 response,
-                Some(PayloadType::DictionaryQueryResult),
+                Some(ResponseType::DictionaryQueryResult),
                 |res| matches!(res.into_inner(),(_, res) if res.value().as_cl_value().is_some()),
             )
         }),
@@ -992,7 +992,7 @@ fn get_dictionary_item_by_named_key(
         asserter: Box::new(|response| {
             assert_response::<DictionaryQueryResult, _>(
                 response,
-                Some(PayloadType::DictionaryQueryResult),
+                Some(ResponseType::DictionaryQueryResult),
                 |res| matches!(res.into_inner(),(_, res) if res.value().as_cl_value().is_some()),
             )
         }),
@@ -1009,7 +1009,7 @@ fn get_balance(state_root_hash: Digest, account_hash: AccountHash) -> TestCase {
         asserter: Box::new(|response| {
             assert_response::<BalanceResponse, _>(
                 response,
-                Some(PayloadType::BalanceResponse),
+                Some(ResponseType::BalanceResponse),
                 |res| res.available_balance == U512::one(),
             )
         }),
@@ -1050,7 +1050,7 @@ fn get_named_keys_by_prefix(state_root_hash: Digest, entity_addr: EntityAddr) ->
         asserter: Box::new(|response| {
             assert_response::<Vec<StoredValue>, _>(
                 response,
-                Some(PayloadType::StoredValues),
+                Some(ResponseType::StoredValues),
                 |res| res.iter().all(|v| matches!(v, StoredValue::NamedKey(_))),
             )
         }),
@@ -1075,7 +1075,7 @@ fn get_reward(
             key: key.to_bytes().expect("should serialize key"),
         }),
         asserter: Box::new(move |response| {
-            assert_response::<RewardResponse, _>(response, Some(PayloadType::Reward), |reward| {
+            assert_response::<RewardResponse, _>(response, Some(ResponseType::Reward), |reward| {
                 // test fixture sets delegation rate to 0
                 reward.amount() > U512::zero() && reward.delegation_rate() == 0
             })
@@ -1095,7 +1095,7 @@ fn get_protocol_version(expected: ProtocolVersion) -> TestCase {
         asserter: Box::new(move |response| {
             assert_response::<ProtocolVersion, _>(
                 response,
-                Some(PayloadType::ProtocolVersion),
+                Some(ResponseType::ProtocolVersion),
                 |version| expected == version,
             )
         }),
@@ -1118,7 +1118,7 @@ fn get_entity(state_root_hash: Digest, entity_addr: EntityAddr) -> TestCase {
         asserter: Box::new(|response| {
             assert_response::<AddressableEntityWithByteCode, _>(
                 response,
-                Some(PayloadType::AddressableEntityWithByteCode),
+                Some(ResponseType::AddressableEntityWithByteCode),
                 |res| res.bytecode().is_some(),
             )
         }),
@@ -1141,7 +1141,7 @@ fn get_entity_without_bytecode(state_root_hash: Digest, entity_addr: EntityAddr)
         asserter: Box::new(|response| {
             assert_response::<AddressableEntityWithByteCode, _>(
                 response,
-                Some(PayloadType::AddressableEntityWithByteCode),
+                Some(ResponseType::AddressableEntityWithByteCode),
                 |res| res.bytecode().is_none(),
             )
         }),
@@ -1165,7 +1165,7 @@ fn get_entity_pre_migration_account(
             key: key.to_bytes().expect("should serialize key"),
         }),
         asserter: Box::new(move |response| {
-            assert_response::<Account, _>(response, Some(PayloadType::Account), |res| {
+            assert_response::<Account, _>(response, Some(ResponseType::Account), |res| {
                 res.account_hash() == account_hash
             })
         }),
@@ -1191,7 +1191,7 @@ fn get_entity_post_migration_account(
         asserter: Box::new(move |response| {
             assert_response::<AddressableEntityWithByteCode, _>(
                 response,
-                Some(PayloadType::AddressableEntityWithByteCode),
+                Some(ResponseType::AddressableEntityWithByteCode),
                 |_| true,
             )
         }),
@@ -1217,7 +1217,7 @@ fn get_entity_pre_migration_contract(
         asserter: Box::new(move |response| {
             assert_response::<ContractWithWasm, _>(
                 response,
-                Some(PayloadType::ContractWithWasm),
+                Some(ResponseType::ContractWithWasm),
                 |res| res.wasm().is_some(),
             )
         }),
@@ -1243,7 +1243,7 @@ fn get_entity_post_migration_contract(
         asserter: Box::new(move |response| {
             assert_response::<AddressableEntityWithByteCode, _>(
                 response,
-                Some(PayloadType::AddressableEntityWithByteCode),
+                Some(ResponseType::AddressableEntityWithByteCode),
                 |res| res.bytecode().is_some(),
             )
         }),
@@ -1263,7 +1263,7 @@ fn get_package(state_root_hash: Digest, package_addr: PackageAddr) -> TestCase {
             key: key.to_bytes().expect("should serialize key"),
         }),
         asserter: Box::new(move |response| {
-            assert_response::<Package, _>(response, Some(PayloadType::Package), |_| true)
+            assert_response::<Package, _>(response, Some(ResponseType::Package), |_| true)
         }),
     }
 }
@@ -1286,7 +1286,7 @@ fn get_package_pre_migration(
         asserter: Box::new(move |response| {
             assert_response::<ContractPackage, _>(
                 response,
-                Some(PayloadType::ContractPackage),
+                Some(ResponseType::ContractPackage),
                 |_| true,
             )
         }),
@@ -1309,7 +1309,7 @@ fn get_package_post_migration(
             key: key.to_bytes().expect("should serialize key"),
         }),
         asserter: Box::new(move |response| {
-            assert_response::<Package, _>(response, Some(PayloadType::Package), |_| true)
+            assert_response::<Package, _>(response, Some(ResponseType::Package), |_| true)
         }),
     }
 }

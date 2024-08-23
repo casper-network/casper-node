@@ -14,7 +14,7 @@ use casper_binary_port::{
     ContractWithWasm, DictionaryItemIdentifier, DictionaryQueryResult, EntityIdentifier,
     EraIdentifier, ErrorCode, GetRequest, GetTrieFullResult, GlobalStateQueryResult,
     GlobalStateRequest, InformationRequest, InformationRequestTag, KeyPrefix, NodeStatus,
-    PackageIdentifier, PayloadType, PurseIdentifier, ReactorStateName, RecordId, RewardResponse,
+    PackageIdentifier, PurseIdentifier, ReactorStateName, RecordId, ResponseType, RewardResponse,
     TransactionWithExecutionInfo,
 };
 use casper_storage::{
@@ -221,7 +221,7 @@ where
             let Ok(serialized) = bincode::serialize(&transfers) else {
                 return BinaryResponse::new_error(ErrorCode::InternalError, protocol_version);
             };
-            BinaryResponse::from_raw_bytes(PayloadType::Transfers, serialized, protocol_version)
+            BinaryResponse::from_raw_bytes(ResponseType::Transfers, serialized, protocol_version)
         }
         GetRequest::Record {
             record_type_tag,
@@ -233,7 +233,8 @@ where
                     let Some(db_bytes) = effect_builder.get_raw_data(record_id, key).await else {
                         return BinaryResponse::new_empty(protocol_version);
                     };
-                    let payload_type = PayloadType::from_record_id(record_id, db_bytes.is_legacy());
+                    let payload_type =
+                        ResponseType::from_record_id(record_id, db_bytes.is_legacy());
                     BinaryResponse::from_raw_bytes(
                         payload_type,
                         db_bytes.into_raw_bytes(),
