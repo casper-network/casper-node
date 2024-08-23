@@ -532,7 +532,8 @@ mod tests {
 
     use super::*;
     use casper_types::{
-        execution::ExecutionResult, testing::TestRng, BlockHash, CLValue, StoredValue,
+        contracts::ContractPackageHash, execution::ExecutionResult, testing::TestRng, BlockHash,
+        CLValue, ContractWasmHash, StoredValue,
     };
 
     #[test]
@@ -617,6 +618,32 @@ mod tests {
                 StoredValue::CLValue(CLValue::from_t(rng.gen::<i32>()).unwrap()),
                 vec![],
             ),
+        ));
+    }
+
+    #[test]
+    fn contract_with_wasm_roundtrip() {
+        let rng = &mut TestRng::new();
+        bytesrepr::test_serialization_roundtrip(&ContractWithWasm::new(
+            Contract::new(
+                ContractPackageHash::new(rng.gen()),
+                ContractWasmHash::new(rng.gen()),
+                Default::default(),
+                Default::default(),
+                Default::default(),
+            ),
+            rng.gen::<bool>()
+                .then(|| ContractWasm::new(rng.random_vec(10..50))),
+        ));
+    }
+
+    #[test]
+    fn addressable_entity_with_byte_code_roundtrip() {
+        let rng = &mut TestRng::new();
+        bytesrepr::test_serialization_roundtrip(&AddressableEntityWithByteCode::new(
+            AddressableEntity::example().clone(),
+            rng.gen::<bool>()
+                .then(|| ByteCode::new(rng.gen(), rng.random_vec(10..50))),
         ));
     }
 }
