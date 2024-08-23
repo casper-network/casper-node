@@ -31,7 +31,7 @@ impl<K, V> CachePointer<K, V> {
     where
         K: FromBytes,
         V: FromBytes,
-        T: Readable<Handle = S::Handle> + Writable<Handle = S::Handle>,
+        T: Readable<Handle = S::Handle>,
         S: TrieStore<K, V>,
         S::Error: From<T::Error>,
         E: From<S::Error> + From<bytesrepr::Error> + From<CacheError>,
@@ -93,13 +93,13 @@ pub struct TrieCache<'a, K, V, S> {
 
 impl<'a, K, V, S> TrieCache<'a, K, V, S>
 where
-    K: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
+    K: ToBytes + FromBytes + Clone + Eq,
     V: ToBytes + FromBytes + Clone + Eq,
     S: TrieStore<K, V> + 'a,
 {
-    pub fn new_from_store<T, E>(txn: &mut T, store: &'a S, root: &Digest) -> Result<Self, E>
+    pub fn new<T, E>(txn: &T, store: &'a S, root: &Digest) -> Result<Self, E>
     where
-        T: Readable<Handle = S::Handle> + Writable<Handle = S::Handle>,
+        T: Readable<Handle = S::Handle>,
         S::Error: From<T::Error>,
         E: From<S::Error> + From<bytesrepr::Error> + From<CacheError>,
     {
@@ -112,18 +112,13 @@ where
         }
     }
 
-    pub fn insert_with_store<T, E>(
-        &mut self,
-        new_key: K,
-        new_value: V,
-        txn: &mut T,
-    ) -> Result<(), E>
+    pub fn insert<T, E>(&mut self, key: K, value: V, txn: &T) -> Result<(), E>
     where
-        T: Readable<Handle = S::Handle> + Writable<Handle = S::Handle>,
+        T: Readable<Handle = S::Handle>,
         S::Error: From<T::Error>,
         E: From<S::Error> + From<bytesrepr::Error> + From<CacheError>,
     {
-        let path: Vec<u8> = new_key.to_bytes()?;
+        let path: Vec<u8> = key.to_bytes()?;
 
         let mut depth: usize = 0;
         let mut current = &mut self.root;
@@ -139,10 +134,7 @@ where
                     let pointer = &mut pointer_block[index];
                     if let Some(next) = pointer {
                         if depth == path.len() - 1 {
-                            let leaf = TrieCacheNode::Leaf {
-                                key: new_key,
-                                value: new_value,
-                            };
+                            let leaf = TrieCacheNode::Leaf { key, value };
                             *next = CachePointer::InMem(leaf);
                             return Ok(());
                         } else {
@@ -156,10 +148,7 @@ where
                             }
                         }
                     } else {
-                        let leaf = TrieCacheNode::Leaf {
-                            key: new_key,
-                            value: new_value,
-                        };
+                        let leaf = TrieCacheNode::Leaf { key, value };
                         let _ = std::mem::replace(pointer, Some(CachePointer::InMem(leaf)));
                         return Ok(());
                     }
@@ -168,8 +157,8 @@ where
                     key: old_key,
                     value: old_value,
                 } => {
-                    if *old_key == new_key {
-                        *old_value = new_value;
+                    if *old_key == key {
+                        *old_value = value;
                     } else {
                         let mut pointer_block = Vec::with_capacity(RADIX);
                         pointer_block.resize_with(RADIX, || None::<CachePointer<K, V>>);
@@ -185,10 +174,8 @@ where
                             }));
 
                         let new_idx = path[shared_path.len()] as usize;
-                        pointer_block[new_idx] = Some(CachePointer::InMem(TrieCacheNode::Leaf {
-                            key: new_key,
-                            value: new_value,
-                        }));
+                        pointer_block[new_idx] =
+                            Some(CachePointer::InMem(TrieCacheNode::Leaf { key, value }));
 
                         let new_affix = { &shared_path[depth..] };
                         *current = if !new_affix.is_empty() {
@@ -221,10 +208,7 @@ where
 
                     // Add the new key under a leaf where the paths diverge.
                     pointer_block[path[depth + shared_prefix.len()] as usize] =
-                        Some(CachePointer::InMem(TrieCacheNode::Leaf {
-                            key: new_key,
-                            value: new_value,
-                        }));
+                        Some(CachePointer::InMem(TrieCacheNode::Leaf { key, value }));
 
                     let post_branch_affix = &affix[shared_prefix.len() + 1..];
                     if !post_branch_affix.is_empty() {
@@ -340,8 +324,8 @@ mod tests {
 
     impl<'a, K, V, S> TrieCache<'a, K, V, S>
     where
-        K: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
-        V: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
+        K: ToBytes + FromBytes + Clone + Eq,
+        V: ToBytes + FromBytes + Clone + Eq,
         S: TrieStore<K, V>,
     {
         fn traverse(node: TrieCacheNode<K, V>) -> Pointer {

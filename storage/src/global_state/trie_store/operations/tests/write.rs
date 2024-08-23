@@ -599,15 +599,15 @@ mod batch_write_with_random_keys {
             let context = LmdbTestContext::new(&tries).unwrap();
             let mut txn = context.environment.create_read_write_txn().unwrap();
 
-            let mut trie_cache = TrieCache::<Key, u32, _>::new_from_store::<_, error::Error>(
-                &mut txn,
+            let mut trie_cache = TrieCache::<Key, u32, _>::new::<_, error::Error>(
+                &txn,
                 &context.store,
                 &cache_root_hash,
             )
             .unwrap();
             for (key, value) in data.iter() {
                 trie_cache
-                    .insert_with_store::<_, error::Error>(*key, *value, &mut txn)
+                    .insert::<_, error::Error>(*key, *value, &txn)
                     .unwrap();
             }
 
@@ -661,17 +661,14 @@ mod batch_write_with_random_keys {
         let data: Vec<(Key, u32)> = (0u32..1000).map(|val| (rng.gen(), val)).collect();
 
         // Create a cache backed up by the store that has the initial data.
-        let mut trie_cache = TrieCache::<Key, u32, _>::new_from_store::<_, error::Error>(
-            &mut txn,
-            &context.store,
-            &root_hash,
-        )
-        .unwrap();
+        let mut trie_cache =
+            TrieCache::<Key, u32, _>::new::<_, error::Error>(&txn, &context.store, &root_hash)
+                .unwrap();
 
         // Insert the test data into the cache.
         for (key, value) in data.iter() {
             trie_cache
-                .insert_with_store::<_, error::Error>(*key, *value, &mut txn)
+                .insert::<_, error::Error>(*key, *value, &txn)
                 .unwrap();
         }
 

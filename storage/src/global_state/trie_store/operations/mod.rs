@@ -967,10 +967,10 @@ where
     S::Error: From<T::Error>,
     E: From<S::Error> + From<bytesrepr::Error> + From<TrieStoreCacheError>,
 {
-    let mut cache = TrieCache::<K, V, _>::new_from_store::<_, E>(txn, store, root)?;
+    let mut cache = TrieCache::<K, V, _>::new::<_, E>(txn, store, root)?;
 
     for (key, value) in values {
-        cache.insert_with_store::<_, E>(key, value, txn)?;
+        cache.insert::<_, E>(key, value, txn)?;
     }
     cache.store_cache::<_, E>(txn)
 }
