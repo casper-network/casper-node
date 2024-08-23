@@ -36,7 +36,9 @@ pub use error::Error;
 pub use error_code::ErrorCode;
 pub use get_request::GetRequest;
 pub use global_state_query_result::GlobalStateQueryResult;
-pub use information_request::{InformationRequest, InformationRequestTag};
+pub use information_request::{
+    EntityIdentifier, InformationRequest, InformationRequestTag, PackageIdentifier,
+};
 pub use key_prefix::KeyPrefix;
 pub use minimal_block_info::MinimalBlockInfo;
 pub use node_status::NodeStatus;
@@ -46,7 +48,7 @@ pub use record_id::{RecordId, UnknownRecordId};
 pub use speculative_execution_result::SpeculativeExecutionResult;
 pub use state_request::GlobalStateRequest;
 pub use type_wrappers::{
-    ConsensusStatus, ConsensusValidatorChanges, DictionaryQueryResult, GetTrieFullResult,
-    LastProgress, NetworkName, ReactorStateName, RewardResponse, TransactionWithExecutionInfo,
-    Uptime,
+    AddressableEntityWithByteCode, ConsensusStatus, ConsensusValidatorChanges, ContractWithWasm,
+    DictionaryQueryResult, GetTrieFullResult, LastProgress, NetworkName, ReactorStateName,
+    RewardResponse, TransactionWithExecutionInfo, Uptime,
 };

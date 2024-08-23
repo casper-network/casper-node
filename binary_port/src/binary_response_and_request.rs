@@ -37,7 +37,7 @@ impl BinaryResponseAndRequest {
         }
     }
 
-    /// Returns a new binary response with specified data and no original request.    
+    /// Returns a new binary response with specified data and no original request.
     pub fn new_test_response<A: PayloadEntity + ToBytes>(
         record_id: RecordId,
         data: &A,

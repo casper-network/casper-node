@@ -10,10 +10,11 @@ use schemars::JsonSchema;
 #[cfg(test)]
 use casper_types::testing::TestRng;
 use casper_types::{
+    contracts::ContractPackage,
     execution::{ExecutionResult, ExecutionResultV1},
-    AvailableBlockRange, BlockBody, BlockBodyV1, BlockHeader, BlockHeaderV1, BlockSignatures,
-    BlockSignaturesV1, BlockSynchronizerStatus, ChainspecRawBytes, Deploy, NextUpgrade, Peers,
-    ProtocolVersion, SignedBlock, StoredValue, Transaction, Transfer,
+    Account, AvailableBlockRange, BlockBody, BlockBodyV1, BlockHeader, BlockHeaderV1,
+    BlockSignatures, BlockSignaturesV1, BlockSynchronizerStatus, ChainspecRawBytes, Deploy,
+    NextUpgrade, Package, Peers, ProtocolVersion, SignedBlock, StoredValue, Transaction, Transfer,
 };
 
 use crate::{
@@ -24,7 +25,8 @@ use crate::{
         ConsensusStatus, ConsensusValidatorChanges, GetTrieFullResult, LastProgress, NetworkName,
         ReactorStateName, RewardResponse,
     },
-    BalanceResponse, DictionaryQueryResult, RecordId, TransactionWithExecutionInfo, Uptime,
+    AddressableEntityWithByteCode, BalanceResponse, ContractWithWasm, DictionaryQueryResult,
+    RecordId, TransactionWithExecutionInfo, Uptime,
 };
 
 /// A type of the payload being returned in a binary response.
@@ -110,6 +112,16 @@ pub enum PayloadType {
     Reward,
     /// Protocol version.
     ProtocolVersion,
+    /// Contract package.
+    ContractPackage,
+    /// Contract with Wasm.
+    ContractWithWasm,
+    /// Account.
+    Account,
+    /// Package.
+    Package,
+    /// Addressable entity with bytecode.
+    AddressableEntityWithByteCode,
 }
 
 impl PayloadType {
@@ -136,7 +148,7 @@ impl PayloadType {
 
     #[cfg(test)]
     pub(crate) fn random(rng: &mut TestRng) -> Self {
-        Self::try_from(rng.gen_range(0..38)).unwrap()
+        Self::try_from(rng.gen_range(0..45)).unwrap()
     }
 }
 
@@ -202,6 +214,13 @@ impl TryFrom<u8> for PayloadType {
             x if x == PayloadType::BalanceResponse as u8 => Ok(PayloadType::BalanceResponse),
             x if x == PayloadType::Reward as u8 => Ok(PayloadType::Reward),
             x if x == PayloadType::ProtocolVersion as u8 => Ok(PayloadType::ProtocolVersion),
+            x if x == PayloadType::ContractPackage as u8 => Ok(PayloadType::ContractPackage),
+            x if x == PayloadType::ContractWithWasm as u8 => Ok(PayloadType::ContractWithWasm),
+            x if x == PayloadType::Account as u8 => Ok(PayloadType::Account),
+            x if x == PayloadType::Package as u8 => Ok(PayloadType::Package),
+            x if x == PayloadType::AddressableEntityWithByteCode as u8 => {
+                Ok(PayloadType::AddressableEntityWithByteCode)
+            }
             _ => Err(()),
         }
     }
@@ -257,6 +276,13 @@ impl fmt::Display for PayloadType {
             PayloadType::BalanceResponse => write!(f, "BalanceResponse"),
             PayloadType::Reward => write!(f, "Reward"),
             PayloadType::ProtocolVersion => write!(f, "ProtocolVersion"),
+            PayloadType::ContractPackage => write!(f, "ContractPackage"),
+            PayloadType::ContractWithWasm => write!(f, "Contract"),
+            PayloadType::Account => write!(f, "Account"),
+            PayloadType::Package => write!(f, "Package"),
+            PayloadType::AddressableEntityWithByteCode => {
+                write!(f, "AddressableEntityWithByteCode")
+            }
         }
     }
 }
@@ -397,6 +423,26 @@ impl PayloadEntity for RewardResponse {
 
 impl PayloadEntity for ProtocolVersion {
     const PAYLOAD_TYPE: PayloadType = PayloadType::ProtocolVersion;
+}
+
+impl PayloadEntity for ContractPackage {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::ContractPackage;
+}
+
+impl PayloadEntity for ContractWithWasm {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::ContractWithWasm;
+}
+
+impl PayloadEntity for Account {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::Account;
+}
+
+impl PayloadEntity for Package {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::Package;
+}
+
+impl PayloadEntity for AddressableEntityWithByteCode {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::AddressableEntityWithByteCode;
 }
 
 #[cfg(test)]

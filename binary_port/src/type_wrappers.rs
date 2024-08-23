@@ -7,8 +7,8 @@ use datasize::DataSize;
 use casper_types::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     system::auction::DelegationRate,
-    BlockHash, EraId, ExecutionInfo, Key, PublicKey, TimeDiff, Timestamp, Transaction,
-    ValidatorChange, U512,
+    AddressableEntity, BlockHash, ByteCode, Contract, ContractWasm, EraId, ExecutionInfo, Key,
+    PublicKey, TimeDiff, Timestamp, Transaction, ValidatorChange, U512,
 };
 use serde::Serialize;
 
@@ -404,6 +404,117 @@ impl FromBytes for DictionaryQueryResult {
         let (key, remainder) = FromBytes::from_bytes(bytes)?;
         let (query_result, remainder) = FromBytes::from_bytes(remainder)?;
         Ok((DictionaryQueryResult::new(key, query_result), remainder))
+    }
+}
+
+/// A contract with its associated Wasm.
+#[derive(Debug, PartialEq)]
+pub struct ContractWithWasm {
+    contract: Contract,
+    wasm: Option<ContractWasm>,
+}
+
+impl ContractWithWasm {
+    /// Constructs new contract with Wasm.
+    pub fn new(contract: Contract, wasm: Option<ContractWasm>) -> Self {
+        Self { contract, wasm }
+    }
+
+    /// Returns the inner `Contract`.
+    pub fn contract(&self) -> &Contract {
+        &self.contract
+    }
+
+    /// Returns the inner `ContractWasm`.
+    pub fn wasm(&self) -> Option<&ContractWasm> {
+        self.wasm.as_ref()
+    }
+
+    /// Converts `self` into the contract and Wasm.
+    pub fn into_inner(self) -> (Contract, Option<ContractWasm>) {
+        (self.contract, self.wasm)
+    }
+}
+
+impl ToBytes for ContractWithWasm {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.contract.write_bytes(writer)?;
+        self.wasm.write_bytes(writer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.contract.serialized_length() + self.wasm.serialized_length()
+    }
+}
+
+impl FromBytes for ContractWithWasm {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (contract, remainder) = FromBytes::from_bytes(bytes)?;
+        let (wasm, remainder) = FromBytes::from_bytes(remainder)?;
+        Ok((ContractWithWasm::new(contract, wasm), remainder))
+    }
+}
+
+/// A contract entity with its associated ByteCode.
+#[derive(Debug, PartialEq)]
+pub struct AddressableEntityWithByteCode {
+    entity: AddressableEntity,
+    bytecode: Option<ByteCode>,
+}
+
+impl AddressableEntityWithByteCode {
+    /// Constructs new contract entity with ByteCode.
+    pub fn new(entity: AddressableEntity, bytecode: Option<ByteCode>) -> Self {
+        Self { entity, bytecode }
+    }
+
+    /// Returns the inner `AddressableEntity`.
+    pub fn entity(&self) -> &AddressableEntity {
+        &self.entity
+    }
+
+    /// Returns the inner `ByteCode`.
+    pub fn bytecode(&self) -> Option<&ByteCode> {
+        self.bytecode.as_ref()
+    }
+
+    /// Converts `self` into the contract entity and ByteCode.
+    pub fn into_inner(self) -> (AddressableEntity, Option<ByteCode>) {
+        (self.entity, self.bytecode)
+    }
+}
+
+impl ToBytes for AddressableEntityWithByteCode {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.entity.write_bytes(writer)?;
+        self.bytecode.write_bytes(writer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.entity.serialized_length() + self.bytecode.serialized_length()
+    }
+}
+
+impl FromBytes for AddressableEntityWithByteCode {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (entity, remainder) = FromBytes::from_bytes(bytes)?;
+        let (bytecode, remainder) = FromBytes::from_bytes(remainder)?;
+        Ok((
+            AddressableEntityWithByteCode::new(entity, bytecode),
+            remainder,
+        ))
     }
 }
 

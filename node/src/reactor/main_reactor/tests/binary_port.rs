@@ -7,25 +7,31 @@ use std::{
 };
 
 use casper_binary_port::{
-    BalanceResponse, BinaryMessage, BinaryMessageCodec, BinaryRequest, BinaryRequestHeader,
-    BinaryResponse, BinaryResponseAndRequest, ConsensusStatus, ConsensusValidatorChanges,
-    DictionaryItemIdentifier, DictionaryQueryResult, EraIdentifier, ErrorCode, GetRequest,
-    GetTrieFullResult, GlobalStateQueryResult, GlobalStateRequest, InformationRequest,
-    InformationRequestTag, KeyPrefix, LastProgress, NetworkName, NodeStatus, PayloadType,
+    AddressableEntityWithByteCode, BalanceResponse, BinaryMessage, BinaryMessageCodec,
+    BinaryRequest, BinaryRequestHeader, BinaryResponse, BinaryResponseAndRequest, ConsensusStatus,
+    ConsensusValidatorChanges, ContractWithWasm, DictionaryItemIdentifier, DictionaryQueryResult,
+    EntityIdentifier, EraIdentifier, ErrorCode, GetRequest, GetTrieFullResult,
+    GlobalStateQueryResult, GlobalStateRequest, InformationRequest, InformationRequestTag,
+    KeyPrefix, LastProgress, NetworkName, NodeStatus, PackageIdentifier, PayloadType,
     PurseIdentifier, ReactorStateName, RecordId, RewardResponse, Uptime,
 };
 use casper_storage::global_state::state::CommitProvider;
 use casper_types::{
-    account::{AccountHash, ActionThresholds, AssociatedKeys},
-    addressable_entity::{NamedKeyAddr, NamedKeyValue},
+    account::AccountHash,
+    addressable_entity::{
+        ActionThresholds, AssociatedKeys, MessageTopics, NamedKeyAddr, NamedKeyValue,
+    },
     bytesrepr::{FromBytes, ToBytes},
+    contracts::{ContractHash, ContractPackage, ContractPackageHash},
     execution::{Effects, TransformKindV2, TransformV2},
     testing::TestRng,
-    Account, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockIdentifier,
-    BlockSynchronizerStatus, CLValue, CLValueDictionary, ChainspecRawBytes, DictionaryAddr, Digest,
-    EntityAddr, GlobalStateIdentifier, Key, KeyTag, NextUpgrade, Peers, ProtocolVersion, PublicKey,
-    Rewards, SecretKey, SignedBlock, StoredValue, Transaction, TransactionV1Builder, Transfer,
-    URef, U512,
+    Account, AddressableEntity, AvailableBlockRange, Block, BlockHash, BlockHeader,
+    BlockIdentifier, BlockSynchronizerStatus, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind,
+    CLValue, CLValueDictionary, ChainspecRawBytes, Contract, ContractWasm, ContractWasmHash,
+    DictionaryAddr, Digest, EntityAddr, EntityKind, EntityVersions, GlobalStateIdentifier, Key,
+    KeyTag, NextUpgrade, Package, PackageAddr, PackageHash, Peers, ProtocolVersion, PublicKey,
+    Rewards, SecretKey, SignedBlock, StoredValue, Transaction, TransactionRuntime,
+    TransactionV1Builder, Transfer, URef, U512,
 };
 use futures::{SinkExt, StreamExt};
 use rand::Rng;
@@ -55,9 +61,7 @@ struct TestData {
     highest_block: Block,
     secret_signing_key: Arc<SecretKey>,
     state_root_hash: Digest,
-    test_account_hash: AccountHash,
-    test_entity_addr: EntityAddr,
-    test_dict_seed_uref: URef,
+    effects: TestEffects,
     era_one_validator: PublicKey,
 }
 
@@ -140,7 +144,7 @@ async fn setup() -> (
         .main_reactor()
         .contract_runtime()
         .data_access_layer()
-        .commit(*highest_block.state_root_hash(), effects.effects)
+        .commit(*highest_block.state_root_hash(), effects.effects.clone())
         .expect("should commit effects");
 
     // Get the binary port address.
@@ -171,9 +175,7 @@ async fn setup() -> (
                 highest_block,
                 secret_signing_key,
                 state_root_hash,
-                test_account_hash: effects.test_account_hash,
-                test_entity_addr: effects.test_entity_addr,
-                test_dict_seed_uref: effects.test_dict_seed_uref,
+                effects,
                 era_one_validator: rewards
                     .last_key_value()
                     .expect("should have at least one reward")
@@ -186,33 +188,52 @@ async fn setup() -> (
 
 fn test_effects(rng: &mut TestRng) -> TestEffects {
     // we set up some basic data for global state tests, including an account and a dictionary
-    let account_hash = AccountHash::new(rng.gen());
-    let entity_addr = rng.gen();
-    let dict_seed_uref = rng.gen();
+    let pre_migration_account_hash = AccountHash::new(rng.gen());
+    let post_migration_account_hash = AccountHash::new(rng.gen());
+    let main_purse: URef = rng.gen();
+
+    let pre_migration_contract_package_hash = ContractPackageHash::new(rng.gen());
+    let pre_migration_contract_hash = ContractHash::new(rng.gen());
+    let post_migration_contract_package_hash = ContractPackageHash::new(rng.gen());
+    let post_migration_contract_hash = ContractHash::new(rng.gen());
+    let wasm_hash = ContractWasmHash::new(rng.gen());
+
+    let package_addr: PackageAddr = rng.gen();
+    let package_access_key: URef = rng.gen();
+    let entity_addr: EntityAddr = rng.gen();
+    let entity_bytecode_hash: ByteCodeHash = ByteCodeHash::new(rng.gen());
+
+    let dict_seed_uref: URef = rng.gen();
     let dict_key = Key::dictionary(dict_seed_uref, TEST_DICT_ITEM_KEY.as_bytes());
     let dict_value = CLValueDictionary::new(
-        CLValue::from_t(0).unwrap(),
+        CLValue::from_t(rng.gen::<i32>()).unwrap(),
         dict_seed_uref.addr().to_vec(),
         TEST_DICT_ITEM_KEY.as_bytes().to_vec(),
     );
-    let main_purse = rng.gen();
 
     let mut effects = Effects::new();
+
     effects.push(TransformV2::new(
-        dict_key,
-        TransformKindV2::Write(StoredValue::CLValue(CLValue::from_t(dict_value).unwrap())),
-    ));
-    effects.push(TransformV2::new(
-        Key::Account(account_hash),
+        Key::Account(pre_migration_account_hash),
         TransformKindV2::Write(StoredValue::Account(Account::new(
-            account_hash,
+            pre_migration_account_hash,
             iter::once((TEST_DICT_NAME.to_owned(), Key::URef(dict_seed_uref)))
                 .collect::<BTreeMap<_, _>>()
                 .into(),
             main_purse,
-            AssociatedKeys::default(),
-            ActionThresholds::default(),
+            Default::default(),
+            Default::default(),
         ))),
+    ));
+    effects.push(TransformV2::new(
+        Key::Account(post_migration_account_hash),
+        TransformKindV2::Write(StoredValue::CLValue(
+            CLValue::from_t(Key::AddressableEntity(entity_addr)).expect("should create CLValue"),
+        )),
+    ));
+    effects.push(TransformV2::new(
+        dict_key,
+        TransformKindV2::Write(StoredValue::CLValue(CLValue::from_t(dict_value).unwrap())),
     ));
     effects.push(TransformV2::new(
         Key::NamedKey(
@@ -233,19 +254,104 @@ fn test_effects(rng: &mut TestRng) -> TestEffects {
             CLValue::from_t(U512::one()).expect("should create CLValue"),
         )),
     ));
+
+    effects.push(TransformV2::new(
+        Key::Hash(pre_migration_contract_package_hash.value()),
+        TransformKindV2::Write(StoredValue::ContractPackage(ContractPackage::new(
+            package_access_key,
+            Default::default(),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+        ))),
+    ));
+    effects.push(TransformV2::new(
+        Key::Hash(post_migration_contract_package_hash.value()),
+        TransformKindV2::Write(StoredValue::CLValue(
+            CLValue::from_t((Key::Package(package_addr), package_access_key))
+                .expect("should create CLValue"),
+        )),
+    ));
+
+    effects.push(TransformV2::new(
+        Key::Hash(pre_migration_contract_hash.value()),
+        TransformKindV2::Write(StoredValue::Contract(Contract::new(
+            pre_migration_contract_package_hash,
+            wasm_hash,
+            Default::default(),
+            Default::default(),
+            ProtocolVersion::V2_0_0,
+        ))),
+    ));
+    effects.push(TransformV2::new(
+        Key::Hash(post_migration_contract_hash.value()),
+        TransformKindV2::Write(StoredValue::CLValue(
+            CLValue::from_t(Key::AddressableEntity(entity_addr)).expect("should create CLValue"),
+        )),
+    ));
+
+    effects.push(TransformV2::new(
+        Key::Hash(wasm_hash.value()),
+        TransformKindV2::Write(StoredValue::ContractWasm(ContractWasm::new(
+            rng.random_vec(10..100),
+        ))),
+    ));
+
+    effects.push(TransformV2::new(
+        Key::Package(package_addr),
+        TransformKindV2::Write(StoredValue::Package(Package::new(
+            EntityVersions::default(),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+        ))),
+    ));
+    effects.push(TransformV2::new(
+        Key::AddressableEntity(entity_addr),
+        TransformKindV2::Write(StoredValue::AddressableEntity(AddressableEntity::new(
+            PackageHash::new(package_addr),
+            entity_bytecode_hash,
+            ProtocolVersion::V2_0_0,
+            main_purse,
+            AssociatedKeys::default(),
+            ActionThresholds::default(),
+            MessageTopics::default(),
+            EntityKind::SmartContract(TransactionRuntime::VmCasperV1),
+        ))),
+    ));
+    effects.push(TransformV2::new(
+        Key::ByteCode(ByteCodeAddr::new_wasm_addr(entity_bytecode_hash.value())),
+        TransformKindV2::Write(StoredValue::ByteCode(ByteCode::new(
+            ByteCodeKind::V1CasperWasm,
+            rng.random_vec(10..100),
+        ))),
+    ));
+
     TestEffects {
         effects,
-        test_account_hash: account_hash,
-        test_entity_addr: entity_addr,
-        test_dict_seed_uref: dict_seed_uref,
+        pre_migration_account_hash,
+        post_migration_account_hash,
+        pre_migration_contract_package_hash,
+        post_migration_contract_package_hash,
+        pre_migration_contract_hash,
+        post_migration_contract_hash,
+        package_addr,
+        entity_addr,
+        dict_seed_uref,
     }
 }
 
 struct TestEffects {
     effects: Effects,
-    test_account_hash: AccountHash,
-    test_entity_addr: EntityAddr,
-    test_dict_seed_uref: URef,
+    pre_migration_account_hash: AccountHash,
+    post_migration_account_hash: AccountHash,
+    pre_migration_contract_package_hash: ContractPackageHash,
+    post_migration_contract_package_hash: ContractPackageHash,
+    pre_migration_contract_hash: ContractHash,
+    post_migration_contract_hash: ContractHash,
+    package_addr: PackageAddr,
+    entity_addr: EntityAddr,
+    dict_seed_uref: URef,
 }
 
 struct TestCase {
@@ -306,9 +412,7 @@ async fn binary_port_component_handles_all_requests() {
                 highest_block,
                 secret_signing_key,
                 state_root_hash,
-                test_account_hash,
-                test_entity_addr,
-                test_dict_seed_uref,
+                effects,
                 era_one_validator,
             },
         ),
@@ -337,34 +441,34 @@ async fn binary_port_component_handles_all_requests() {
         get_trie(state_root_hash),
         get_dictionary_item_by_addr(
             state_root_hash,
-            *Key::dictionary(test_dict_seed_uref, TEST_DICT_ITEM_KEY.as_bytes())
+            *Key::dictionary(effects.dict_seed_uref, TEST_DICT_ITEM_KEY.as_bytes())
                 .as_dictionary()
                 .unwrap(),
         ),
         get_dictionary_item_by_seed_uref(
             state_root_hash,
-            test_dict_seed_uref,
+            effects.dict_seed_uref,
             TEST_DICT_ITEM_KEY.to_owned(),
         ),
         get_dictionary_item_by_legacy_named_key(
             state_root_hash,
-            test_account_hash,
+            effects.pre_migration_account_hash,
             TEST_DICT_NAME.to_owned(),
             TEST_DICT_ITEM_KEY.to_owned(),
         ),
         get_dictionary_item_by_named_key(
             state_root_hash,
-            test_entity_addr,
+            effects.entity_addr,
             TEST_DICT_NAME.to_owned(),
             TEST_DICT_ITEM_KEY.to_owned(),
         ),
         try_spec_exec_invalid(&mut rng),
         try_accept_transaction_invalid(&mut rng),
         try_accept_transaction(&secret_signing_key),
-        get_balance(state_root_hash, test_account_hash),
+        get_balance(state_root_hash, effects.pre_migration_account_hash),
         get_balance_account_not_found(state_root_hash),
         get_balance_purse_uref_not_found(state_root_hash),
-        get_named_keys_by_prefix(state_root_hash, test_entity_addr),
+        get_named_keys_by_prefix(state_root_hash, effects.entity_addr),
         get_reward(
             Some(EraIdentifier::Era(ERA_ONE)),
             era_one_validator.clone(),
@@ -376,6 +480,18 @@ async fn binary_port_component_handles_all_requests() {
             None,
         ),
         get_protocol_version(protocol_version),
+        get_entity(state_root_hash, effects.entity_addr),
+        get_entity_without_bytecode(state_root_hash, effects.entity_addr),
+        get_entity_pre_migration_account(state_root_hash, effects.pre_migration_account_hash),
+        get_entity_post_migration_account(state_root_hash, effects.post_migration_account_hash),
+        get_entity_pre_migration_contract(state_root_hash, effects.pre_migration_contract_hash),
+        get_entity_post_migration_contract(state_root_hash, effects.post_migration_contract_hash),
+        get_package(state_root_hash, effects.package_addr),
+        get_package_pre_migration(state_root_hash, effects.pre_migration_contract_package_hash),
+        get_package_post_migration(
+            state_root_hash,
+            effects.post_migration_contract_package_hash,
+        ),
     ];
 
     for (
@@ -982,6 +1098,218 @@ fn get_protocol_version(expected: ProtocolVersion) -> TestCase {
                 Some(PayloadType::ProtocolVersion),
                 |version| expected == version,
             )
+        }),
+    }
+}
+
+fn get_entity(state_root_hash: Digest, entity_addr: EntityAddr) -> TestCase {
+    let key = InformationRequest::Entity {
+        state_identifier: Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
+        identifier: EntityIdentifier::EntityAddr(entity_addr),
+        include_bytecode: true,
+    };
+
+    TestCase {
+        name: "get_entity",
+        request: BinaryRequest::Get(GetRequest::Information {
+            info_type_tag: key.tag().into(),
+            key: key.to_bytes().expect("should serialize key"),
+        }),
+        asserter: Box::new(|response| {
+            assert_response::<AddressableEntityWithByteCode, _>(
+                response,
+                Some(PayloadType::AddressableEntityWithByteCode),
+                |res| res.bytecode().is_some(),
+            )
+        }),
+    }
+}
+
+fn get_entity_without_bytecode(state_root_hash: Digest, entity_addr: EntityAddr) -> TestCase {
+    let key = InformationRequest::Entity {
+        state_identifier: Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
+        identifier: EntityIdentifier::EntityAddr(entity_addr),
+        include_bytecode: false,
+    };
+
+    TestCase {
+        name: "get_entity_without_bytecode",
+        request: BinaryRequest::Get(GetRequest::Information {
+            info_type_tag: key.tag().into(),
+            key: key.to_bytes().expect("should serialize key"),
+        }),
+        asserter: Box::new(|response| {
+            assert_response::<AddressableEntityWithByteCode, _>(
+                response,
+                Some(PayloadType::AddressableEntityWithByteCode),
+                |res| res.bytecode().is_none(),
+            )
+        }),
+    }
+}
+
+fn get_entity_pre_migration_account(
+    state_root_hash: Digest,
+    account_hash: AccountHash,
+) -> TestCase {
+    let key = InformationRequest::Entity {
+        state_identifier: Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
+        identifier: EntityIdentifier::AccountHash(account_hash),
+        include_bytecode: false,
+    };
+
+    TestCase {
+        name: "get_entity_pre_migration_account",
+        request: BinaryRequest::Get(GetRequest::Information {
+            info_type_tag: key.tag().into(),
+            key: key.to_bytes().expect("should serialize key"),
+        }),
+        asserter: Box::new(move |response| {
+            assert_response::<Account, _>(response, Some(PayloadType::Account), |res| {
+                res.account_hash() == account_hash
+            })
+        }),
+    }
+}
+
+fn get_entity_post_migration_account(
+    state_root_hash: Digest,
+    account_hash: AccountHash,
+) -> TestCase {
+    let key = InformationRequest::Entity {
+        state_identifier: Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
+        identifier: EntityIdentifier::AccountHash(account_hash),
+        include_bytecode: false,
+    };
+
+    TestCase {
+        name: "get_entity_post_migration_account",
+        request: BinaryRequest::Get(GetRequest::Information {
+            info_type_tag: key.tag().into(),
+            key: key.to_bytes().expect("should serialize key"),
+        }),
+        asserter: Box::new(move |response| {
+            assert_response::<AddressableEntityWithByteCode, _>(
+                response,
+                Some(PayloadType::AddressableEntityWithByteCode),
+                |_| true,
+            )
+        }),
+    }
+}
+
+fn get_entity_pre_migration_contract(
+    state_root_hash: Digest,
+    contract_hash: ContractHash,
+) -> TestCase {
+    let key = InformationRequest::Entity {
+        state_identifier: Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
+        identifier: EntityIdentifier::ContractHash(contract_hash),
+        include_bytecode: true,
+    };
+
+    TestCase {
+        name: "get_entity_pre_migration_contract",
+        request: BinaryRequest::Get(GetRequest::Information {
+            info_type_tag: key.tag().into(),
+            key: key.to_bytes().expect("should serialize key"),
+        }),
+        asserter: Box::new(move |response| {
+            assert_response::<ContractWithWasm, _>(
+                response,
+                Some(PayloadType::ContractWithWasm),
+                |res| res.wasm().is_some(),
+            )
+        }),
+    }
+}
+
+fn get_entity_post_migration_contract(
+    state_root_hash: Digest,
+    contract_hash: ContractHash,
+) -> TestCase {
+    let key = InformationRequest::Entity {
+        state_identifier: Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
+        identifier: EntityIdentifier::ContractHash(contract_hash),
+        include_bytecode: true,
+    };
+
+    TestCase {
+        name: "get_entity_post_migration_contract",
+        request: BinaryRequest::Get(GetRequest::Information {
+            info_type_tag: key.tag().into(),
+            key: key.to_bytes().expect("should serialize key"),
+        }),
+        asserter: Box::new(move |response| {
+            assert_response::<AddressableEntityWithByteCode, _>(
+                response,
+                Some(PayloadType::AddressableEntityWithByteCode),
+                |res| res.bytecode().is_some(),
+            )
+        }),
+    }
+}
+
+fn get_package(state_root_hash: Digest, package_addr: PackageAddr) -> TestCase {
+    let key = InformationRequest::Package {
+        state_identifier: Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
+        identifier: PackageIdentifier::PackageAddr(package_addr),
+    };
+
+    TestCase {
+        name: "get_package",
+        request: BinaryRequest::Get(GetRequest::Information {
+            info_type_tag: key.tag().into(),
+            key: key.to_bytes().expect("should serialize key"),
+        }),
+        asserter: Box::new(move |response| {
+            assert_response::<Package, _>(response, Some(PayloadType::Package), |_| true)
+        }),
+    }
+}
+
+fn get_package_pre_migration(
+    state_root_hash: Digest,
+    contract_package_hash: ContractPackageHash,
+) -> TestCase {
+    let key = InformationRequest::Package {
+        state_identifier: Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
+        identifier: PackageIdentifier::ContractPackageHash(contract_package_hash),
+    };
+
+    TestCase {
+        name: "get_package_pre_migration",
+        request: BinaryRequest::Get(GetRequest::Information {
+            info_type_tag: key.tag().into(),
+            key: key.to_bytes().expect("should serialize key"),
+        }),
+        asserter: Box::new(move |response| {
+            assert_response::<ContractPackage, _>(
+                response,
+                Some(PayloadType::ContractPackage),
+                |_| true,
+            )
+        }),
+    }
+}
+
+fn get_package_post_migration(
+    state_root_hash: Digest,
+    contract_package_hash: ContractPackageHash,
+) -> TestCase {
+    let key = InformationRequest::Package {
+        state_identifier: Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
+        identifier: PackageIdentifier::ContractPackageHash(contract_package_hash),
+    };
+
+    TestCase {
+        name: "get_package_post_migration",
+        request: BinaryRequest::Get(GetRequest::Information {
+            info_type_tag: key.tag().into(),
+            key: key.to_bytes().expect("should serialize key"),
+        }),
+        asserter: Box::new(move |response| {
+            assert_response::<Package, _>(response, Some(PayloadType::Package), |_| true)
         }),
     }
 }

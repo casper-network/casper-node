@@ -149,7 +149,7 @@ pub use chainspec::{
     DEFAULT_MUL_COST, DEFAULT_NEW_DICTIONARY_COST, DEFAULT_NOP_COST, DEFAULT_STORE_COST,
     DEFAULT_TRANSFER_COST, DEFAULT_UNREACHABLE_COST, DEFAULT_WASM_MAX_MEMORY,
 };
-pub use contract_wasm::ContractWasm;
+pub use contract_wasm::{ContractWasm, ContractWasmHash};
 #[doc(inline)]
 pub use contracts::Contract;
 pub use crypto::*;
