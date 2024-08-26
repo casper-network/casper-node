@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use casper_types::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     Digest, Pointer,
@@ -267,8 +269,8 @@ where
         match node {
             TrieCacheNode::Leaf { key, value } => {
                 let trie_leaf = Trie::leaf(key, value);
-                let hash = trie_leaf.trie_hash()?;
-                store.put(txn, &hash, &trie_leaf)?;
+                let (hash, trie_bytes) = trie_leaf.trie_hash_and_bytes()?;
+                store.put_raw(txn, &hash, Cow::from(trie_bytes))?;
                 Ok(Pointer::LeafPointer(hash))
             }
             TrieCacheNode::Branch { mut pointer_block } => {
@@ -287,8 +289,8 @@ where
                 let trie_node = Trie::<K, V>::Node {
                     pointer_block: Box::new(trie_pointer_block),
                 };
-                let hash = trie_node.trie_hash()?;
-                store.put(txn, &hash, &trie_node)?;
+                let (hash, trie_bytes) = trie_node.trie_hash_and_bytes()?;
+                store.put_raw(txn, &hash, Cow::from(trie_bytes))?;
                 Ok(Pointer::NodePointer(hash))
             }
             TrieCacheNode::Extension { pointer, affix } => {
@@ -300,8 +302,8 @@ where
                 }?;
 
                 let trie_extension = Trie::<K, V>::extension(affix.to_vec(), pointer);
-                let hash = trie_extension.trie_hash()?;
-                store.put(txn, &hash, &trie_extension)?;
+                let (hash, trie_bytes) = trie_extension.trie_hash_and_bytes()?;
+                store.put_raw(txn, &hash, Cow::from(trie_bytes))?;
                 Ok(Pointer::NodePointer(hash))
             }
         }
