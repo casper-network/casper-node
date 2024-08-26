@@ -348,12 +348,9 @@ where
     ) -> Result<(), Self::Error> {
         for (string, key) in named_keys.into_inner().into_iter() {
             let entry_addr = NamedKeyAddr::new_from_string(entity_addr, string.clone())?;
-
             let named_key_value =
                 StoredValue::NamedKey(NamedKeyValue::from_concrete_values(key, string.clone())?);
-
             let entry_key = Key::NamedKey(entry_addr);
-
             self.write(entry_key, named_key_value)
         }
 
@@ -652,6 +649,14 @@ where
                     let byte_code_key = Key::byte_code_key(ByteCodeAddr::new_wasm_addr(
                         updated_entity.byte_code_addr(),
                     ));
+                    let byte_code_cl_value = match CLValue::from_t(byte_code_key) {
+                        Ok(cl_value) => cl_value,
+                        Err(err) => return Err(Self::Error::CLValue(err)),
+                    };
+                    self.write(
+                        Key::Hash(updated_entity.byte_code_addr()),
+                        StoredValue::CLValue(byte_code_cl_value),
+                    );
 
                     let byte_code: ByteCode = contract_wasm.into();
                     self.write(byte_code_key, StoredValue::ByteCode(byte_code));
@@ -660,10 +665,17 @@ where
 
             let entity_hash = AddressableEntityHash::new(contract_hash.value());
             let entity_key = Key::contract_entity_key(entity_hash);
+            let indirection = match CLValue::from_t(entity_key) {
+                Ok(cl_value) => cl_value,
+                Err(err) => return Err(Self::Error::CLValue(err)),
+            };
+            self.write(
+                Key::Hash(contract_hash.value()),
+                StoredValue::CLValue(indirection),
+            );
+
             self.write(entity_key, StoredValue::AddressableEntity(updated_entity));
         }
-
-        let access_key_value = CLValue::from_t(access_uref).map_err(Self::Error::CLValue)?;
 
         let package_key = Key::Package(
             legacy_package_key
@@ -671,8 +683,9 @@ where
                 .ok_or(Self::Error::UnexpectedKeyVariant(legacy_package_key))?,
         );
 
+        let access_key_value =
+            CLValue::from_t((package_key, access_uref)).map_err(Self::Error::CLValue)?;
         self.write(legacy_package_key, StoredValue::CLValue(access_key_value));
-
         self.write(package_key, StoredValue::Package(package));
         Ok(())
     }
