@@ -595,11 +595,11 @@ mod tests {
 
     #[test]
     fn perform_test_natively() {
-        let create_result = dispatch(|| host::casper_create(None, 0, None, None).unwrap()).unwrap();
-
-        dispatch(|| {
+        let result = dispatch(|| {
+            let create_result = host::casper_create(None, 0, None, None).unwrap();
             perform_test(create_result.contract_address);
         });
+        dbg!(&result);
     }
 
     #[test]

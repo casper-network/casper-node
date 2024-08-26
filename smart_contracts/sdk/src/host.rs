@@ -334,7 +334,7 @@ impl<T: ToCallData> CallResult<T> {
     {
         match self.result {
             Ok(()) | Err(CallError::CalleeReverted) => {
-                let data = self.data.unwrap_or_default();
+                let data = dbg!(self.data).unwrap_or_default();
                 Ok(borsh::from_slice(&data).unwrap())
             }
             Err(call_error) => Err(call_error),

@@ -1,6 +1,6 @@
 use bytes::Bytes;
 use casper_executor_wasm_common::flags::{EntryPointFlags, ReturnFlags};
-use core::slice;
+use core::{panic::UnwindSafe, slice};
 use once_cell::sync::Lazy;
 use rand::Rng;
 use std::{
@@ -8,6 +8,7 @@ use std::{
     collections::{BTreeMap, BTreeSet, VecDeque},
     convert::Infallible,
     os::raw::c_void,
+    panic,
     ptr::{self, NonNull},
     sync::{Arc, RwLock},
 };
@@ -119,10 +120,10 @@ pub fn call_export_by_module(_module_path: &str, _name: &str) {
     // });
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Debug)]
 pub enum NativeTrap {
     Return(ReturnFlags, Bytes),
-    // Abort(String),
+    Panic(Box<dyn std::any::Any + Send + 'static>),
 }
 
 // macro_rules! define_trait_methods {
@@ -467,7 +468,8 @@ impl Environment {
 
             // Call constructor, expect a trap
             let result = dispatch_with(stub, || {
-                (entry_point.fptr)();
+                // TODO: Handle panic inside constructor
+                (entry_point.fptr)()
             });
 
             match result {
@@ -485,6 +487,10 @@ impl Environment {
                     //     Bytes::copy_from_slice(contract_address.as_slice()),
                     //     bytes,
                     // );
+                }
+                Err(NativeTrap::Panic(_panic)) => {
+                    // todo!!("HadnPanic {:?}", panic);
+                    todo!();
                 }
             }
         }
@@ -539,12 +545,22 @@ impl Environment {
         new_stub.contract_address = Some(address.try_into().expect("Size to match"));
 
         let ret = dispatch_with(new_stub, || {
-            (export.fptr)();
+            // We need to convert any panic inside the entry point into a native trap. This probably
+            // should be done in a more configurable way.
+            dispatch_export_call(|| {
+                (export.fptr)();
+            })
         });
 
-        match ret {
+        let unfolded = match ret {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(error)) => Err(error),
+            Err(error) => Err(error),
+        };
+
+        match unfolded {
             Ok(()) => Ok(0),
-            Err(NativeTrap::Return(_flags, bytes)) => {
+            Err(NativeTrap::Return(flags, bytes)) => {
                 let ptr = NonNull::new(alloc(bytes.len(), alloc_ctx as _));
                 if let Some(output_ptr) = ptr {
                     unsafe {
@@ -552,7 +568,15 @@ impl Environment {
                     }
                 }
 
-                Ok(0)
+                if flags.contains(ReturnFlags::REVERT) {
+                    Ok(1) // CalleeReverted
+                } else {
+                    Ok(0) // CalleeSucceeded
+                }
+            }
+            Err(NativeTrap::Panic(panic)) => {
+                eprintln!("Panic {:?}", panic);
+                Ok(2) // CalleeTrapped
             }
         }
     }
@@ -641,6 +665,22 @@ fn handle_ret_with<T>(value: Result<T, NativeTrap>, ret: impl FnOnce() -> T) -> 
             LAST_TRAP.with(|last_trap| last_trap.borrow_mut().replace(trap));
             result
         }
+    }
+}
+
+fn dispatch_export_call(func: impl FnOnce() -> () + Send + UnwindSafe) -> Result<(), NativeTrap> {
+    let call_result = panic::catch_unwind(|| {
+        func();
+    });
+    match call_result {
+        Ok(()) => {
+            let last_trap = LAST_TRAP.with(|last_trap| last_trap.borrow_mut().take());
+            match last_trap {
+                Some(last_trap) => Err(last_trap),
+                None => Ok(()),
+            }
+        }
+        Err(error) => Err(NativeTrap::Panic(error)),
     }
 }
 
