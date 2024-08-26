@@ -92,10 +92,9 @@ impl crate::prelude::fmt::Debug for Export {
 pub fn call_export(name: &str) {
     let exports_by_name: Vec<_> = EXPORTS
         .iter()
-        .filter_map(|export| match export.kind {
-            ExportKind::Function { name: export_name } if export_name == name => Some(export),
-            _ => None,
-        })
+        .filter(|export|
+            matches!(export.kind, ExportKind::Function { name: export_name } if export_name == name)
+        )
         .collect();
 
     assert_eq!(exports_by_name.len(), 1);
@@ -529,14 +528,10 @@ impl Environment {
 
         let export = EXPORTS
             .iter()
-            .find_map(|export| match export.kind {
-                ExportKind::SmartContract { name, .. } | ExportKind::TraitImpl { name, .. }
-                    if name == entry_point =>
-                {
-                    Some(export)
-                }
-                _ => None,
-            })
+            .find(|export|
+                matches!(export.kind, ExportKind::SmartContract { name, .. } | ExportKind::TraitImpl { name, .. }
+                    if name == entry_point)
+            )
             .expect("Existing entry point");
 
         let mut new_stub = with_current_environment(|stub| stub.clone());
@@ -905,12 +900,6 @@ mod symbols {
 
 #[cfg(test)]
 mod tests {
-    use core::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::Mutex;
-
-    use libloading::Library;
-    use once_cell::sync::Lazy;
-
     use super::*;
 
     #[test]
