@@ -9,7 +9,7 @@ use casper_types::{
     contracts::ContractHash,
     global_state::TrieMerkleProof,
     system::auction::DelegationRate,
-    AddressableEntity, BlockHash, ByteCode, Contract, ContractWasm, EntityAddr, EraId,
+    Account, AddressableEntity, BlockHash, ByteCode, Contract, ContractWasm, EntityAddr, EraId,
     ExecutionInfo, Key, PublicKey, StoredValue, TimeDiff, Timestamp, Transaction, ValidatorChange,
     U512,
 };
@@ -410,17 +410,74 @@ impl FromBytes for DictionaryQueryResult {
     }
 }
 
-/// A contract with its associated Wasm.
+/// An account with its associated merkle proof.
 #[derive(Debug, PartialEq)]
-pub struct ContractWithWasm {
+pub struct AccountInformation {
+    account: Account,
+    merkle_proof: Vec<TrieMerkleProof<Key, StoredValue>>,
+}
+
+impl AccountInformation {
+    /// Constructs a new `AccountResponse`.
+    pub fn new(account: Account, merkle_proof: Vec<TrieMerkleProof<Key, StoredValue>>) -> Self {
+        Self {
+            account,
+            merkle_proof,
+        }
+    }
+
+    /// Returns the inner `Account`.
+    pub fn account(&self) -> &Account {
+        &self.account
+    }
+
+    /// Returns the merkle proof.
+    pub fn merkle_proof(&self) -> &Vec<TrieMerkleProof<Key, StoredValue>> {
+        &self.merkle_proof
+    }
+
+    /// Converts `self` into the account and merkle proof.
+    pub fn into_inner(self) -> (Account, Vec<TrieMerkleProof<Key, StoredValue>>) {
+        (self.account, self.merkle_proof)
+    }
+}
+
+impl ToBytes for AccountInformation {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.account.write_bytes(writer)?;
+        self.merkle_proof.write_bytes(writer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.account.serialized_length() + self.merkle_proof.serialized_length()
+    }
+}
+
+impl FromBytes for AccountInformation {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (account, remainder) = FromBytes::from_bytes(bytes)?;
+        let (merkle_proof, remainder) = FromBytes::from_bytes(remainder)?;
+        Ok((AccountInformation::new(account, merkle_proof), remainder))
+    }
+}
+
+/// A contract with its associated Wasm and merkle proof.
+#[derive(Debug, PartialEq)]
+pub struct ContractInformation {
     hash: ContractHash,
     contract: Contract,
     merkle_proof: Vec<TrieMerkleProof<Key, StoredValue>>,
     wasm: Option<ContractWasmWithProof>,
 }
 
-impl ContractWithWasm {
-    /// Constructs new contract with Wasm.
+impl ContractInformation {
+    /// Constructs new `ContractResponse`.
     pub fn new(
         hash: ContractHash,
         contract: Contract,
@@ -450,6 +507,11 @@ impl ContractWithWasm {
         self.wasm.as_ref()
     }
 
+    /// Returns the merkle proof.
+    pub fn merkle_proof(&self) -> &[TrieMerkleProof<Key, StoredValue>] {
+        &self.merkle_proof
+    }
+
     /// Converts `self` into the contract hash, contract, its merkle proof and Wasm.
     pub fn into_inner(
         self,
@@ -463,7 +525,7 @@ impl ContractWithWasm {
     }
 }
 
-impl ToBytes for ContractWithWasm {
+impl ToBytes for ContractInformation {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         self.write_bytes(&mut buffer)?;
@@ -473,24 +535,26 @@ impl ToBytes for ContractWithWasm {
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         self.hash.write_bytes(writer)?;
         self.contract.write_bytes(writer)?;
+        self.merkle_proof.write_bytes(writer)?;
         self.wasm.write_bytes(writer)
     }
 
     fn serialized_length(&self) -> usize {
         self.hash.serialized_length()
             + self.contract.serialized_length()
+            + self.merkle_proof.serialized_length()
             + self.wasm.serialized_length()
     }
 }
 
-impl FromBytes for ContractWithWasm {
+impl FromBytes for ContractInformation {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (hash, remainder) = FromBytes::from_bytes(bytes)?;
         let (contract, remainder) = FromBytes::from_bytes(remainder)?;
         let (merkle_proof, remainder) = FromBytes::from_bytes(remainder)?;
         let (wasm, remainder) = FromBytes::from_bytes(remainder)?;
         Ok((
-            ContractWithWasm::new(hash, contract, merkle_proof, wasm),
+            ContractInformation::new(hash, contract, merkle_proof, wasm),
             remainder,
         ))
     }
@@ -551,14 +615,14 @@ impl FromBytes for ContractWasmWithProof {
 
 /// A contract entity with its associated ByteCode.
 #[derive(Debug, PartialEq)]
-pub struct AddressableEntityWithByteCode {
+pub struct AddressableEntityInformation {
     addr: EntityAddr,
     entity: AddressableEntity,
     merkle_proof: Vec<TrieMerkleProof<Key, StoredValue>>,
     bytecode: Option<ByteCodeWithProof>,
 }
 
-impl AddressableEntityWithByteCode {
+impl AddressableEntityInformation {
     /// Constructs new contract entity with ByteCode.
     pub fn new(
         addr: EntityAddr,
@@ -607,7 +671,7 @@ impl AddressableEntityWithByteCode {
     }
 }
 
-impl ToBytes for AddressableEntityWithByteCode {
+impl ToBytes for AddressableEntityInformation {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         self.write_bytes(&mut buffer)?;
@@ -617,24 +681,26 @@ impl ToBytes for AddressableEntityWithByteCode {
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         self.addr.write_bytes(writer)?;
         self.entity.write_bytes(writer)?;
+        self.merkle_proof.write_bytes(writer)?;
         self.bytecode.write_bytes(writer)
     }
 
     fn serialized_length(&self) -> usize {
         self.addr.serialized_length()
             + self.entity.serialized_length()
+            + self.merkle_proof.serialized_length()
             + self.bytecode.serialized_length()
     }
 }
 
-impl FromBytes for AddressableEntityWithByteCode {
+impl FromBytes for AddressableEntityInformation {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (addr, remainder) = FromBytes::from_bytes(bytes)?;
         let (entity, remainder) = FromBytes::from_bytes(remainder)?;
         let (merkle_proof, remainder) = FromBytes::from_bytes(remainder)?;
         let (bytecode, remainder) = FromBytes::from_bytes(remainder)?;
         Ok((
-            AddressableEntityWithByteCode::new(addr, entity, merkle_proof, bytecode),
+            AddressableEntityInformation::new(addr, entity, merkle_proof, bytecode),
             remainder,
         ))
     }
@@ -793,7 +859,7 @@ mod tests {
     #[test]
     fn contract_with_wasm_roundtrip() {
         let rng = &mut TestRng::new();
-        bytesrepr::test_serialization_roundtrip(&ContractWithWasm::new(
+        bytesrepr::test_serialization_roundtrip(&ContractInformation::new(
             ContractHash::new(rng.gen()),
             Contract::new(
                 ContractPackageHash::new(rng.gen()),
@@ -815,7 +881,7 @@ mod tests {
     #[test]
     fn addressable_entity_with_byte_code_roundtrip() {
         let rng = &mut TestRng::new();
-        bytesrepr::test_serialization_roundtrip(&AddressableEntityWithByteCode::new(
+        bytesrepr::test_serialization_roundtrip(&AddressableEntityInformation::new(
             rng.gen(),
             AddressableEntity::example().clone(),
             Default::default(),

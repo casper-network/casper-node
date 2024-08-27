@@ -7,13 +7,13 @@ use std::{
 };
 
 use casper_binary_port::{
-    AddressableEntityWithByteCode, BalanceResponse, BinaryMessage, BinaryMessageCodec,
-    BinaryRequest, BinaryRequestHeader, BinaryResponse, BinaryResponseAndRequest, ConsensusStatus,
-    ConsensusValidatorChanges, ContractWithWasm, DictionaryItemIdentifier, DictionaryQueryResult,
-    EntityIdentifier, EraIdentifier, ErrorCode, GetRequest, GetTrieFullResult,
-    GlobalStateQueryResult, GlobalStateRequest, InformationRequest, InformationRequestTag,
-    KeyPrefix, LastProgress, NetworkName, NodeStatus, PackageIdentifier, PurseIdentifier,
-    ReactorStateName, RecordId, ResponseType, RewardResponse, Uptime,
+    AccountInformation, AddressableEntityInformation, BalanceResponse, BinaryMessage,
+    BinaryMessageCodec, BinaryRequest, BinaryRequestHeader, BinaryResponse,
+    BinaryResponseAndRequest, ConsensusStatus, ConsensusValidatorChanges, ContractInformation,
+    DictionaryItemIdentifier, DictionaryQueryResult, EntityIdentifier, EraIdentifier, ErrorCode,
+    GetRequest, GetTrieFullResult, GlobalStateQueryResult, GlobalStateRequest, InformationRequest,
+    InformationRequestTag, KeyPrefix, LastProgress, NetworkName, NodeStatus, PackageIdentifier,
+    PurseIdentifier, ReactorStateName, RecordId, ResponseType, RewardResponse, Uptime,
 };
 use casper_storage::global_state::state::CommitProvider;
 use casper_types::{
@@ -1116,9 +1116,9 @@ fn get_entity(state_root_hash: Digest, entity_addr: EntityAddr) -> TestCase {
             key: key.to_bytes().expect("should serialize key"),
         }),
         asserter: Box::new(|response| {
-            assert_response::<AddressableEntityWithByteCode, _>(
+            assert_response::<AddressableEntityInformation, _>(
                 response,
-                Some(ResponseType::AddressableEntityWithByteCode),
+                Some(ResponseType::AddressableEntityInformation),
                 |res| res.bytecode().is_some(),
             )
         }),
@@ -1139,9 +1139,9 @@ fn get_entity_without_bytecode(state_root_hash: Digest, entity_addr: EntityAddr)
             key: key.to_bytes().expect("should serialize key"),
         }),
         asserter: Box::new(|response| {
-            assert_response::<AddressableEntityWithByteCode, _>(
+            assert_response::<AddressableEntityInformation, _>(
                 response,
-                Some(ResponseType::AddressableEntityWithByteCode),
+                Some(ResponseType::AddressableEntityInformation),
                 |res| res.bytecode().is_none(),
             )
         }),
@@ -1165,9 +1165,11 @@ fn get_entity_pre_migration_account(
             key: key.to_bytes().expect("should serialize key"),
         }),
         asserter: Box::new(move |response| {
-            assert_response::<Account, _>(response, Some(ResponseType::Account), |res| {
-                res.account_hash() == account_hash
-            })
+            assert_response::<AccountInformation, _>(
+                response,
+                Some(ResponseType::AccountInformation),
+                |res| res.account().account_hash() == account_hash,
+            )
         }),
     }
 }
@@ -1189,9 +1191,9 @@ fn get_entity_post_migration_account(
             key: key.to_bytes().expect("should serialize key"),
         }),
         asserter: Box::new(move |response| {
-            assert_response::<AddressableEntityWithByteCode, _>(
+            assert_response::<AddressableEntityInformation, _>(
                 response,
-                Some(ResponseType::AddressableEntityWithByteCode),
+                Some(ResponseType::AddressableEntityInformation),
                 |_| true,
             )
         }),
@@ -1215,9 +1217,9 @@ fn get_entity_pre_migration_contract(
             key: key.to_bytes().expect("should serialize key"),
         }),
         asserter: Box::new(move |response| {
-            assert_response::<ContractWithWasm, _>(
+            assert_response::<ContractInformation, _>(
                 response,
-                Some(ResponseType::ContractWithWasm),
+                Some(ResponseType::ContractInformation),
                 |res| res.wasm().is_some(),
             )
         }),
@@ -1241,9 +1243,9 @@ fn get_entity_post_migration_contract(
             key: key.to_bytes().expect("should serialize key"),
         }),
         asserter: Box::new(move |response| {
-            assert_response::<AddressableEntityWithByteCode, _>(
+            assert_response::<AddressableEntityInformation, _>(
                 response,
-                Some(ResponseType::AddressableEntityWithByteCode),
+                Some(ResponseType::AddressableEntityInformation),
                 |res| res.bytecode().is_some(),
             )
         }),

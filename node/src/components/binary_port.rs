@@ -9,11 +9,11 @@ mod tests;
 use std::{convert::TryFrom, net::SocketAddr, sync::Arc};
 
 use casper_binary_port::{
-    AddressableEntityWithByteCode, BalanceResponse, BinaryMessage, BinaryMessageCodec,
-    BinaryRequest, BinaryRequestHeader, BinaryRequestTag, BinaryResponse, BinaryResponseAndRequest,
-    ByteCodeWithProof, ContractWasmWithProof, ContractWithWasm, DictionaryItemIdentifier,
-    DictionaryQueryResult, EntityIdentifier, EraIdentifier, ErrorCode, GetRequest,
-    GetTrieFullResult, GlobalStateQueryResult, GlobalStateRequest, InformationRequest,
+    AccountInformation, AddressableEntityInformation, BalanceResponse, BinaryMessage,
+    BinaryMessageCodec, BinaryRequest, BinaryRequestHeader, BinaryRequestTag, BinaryResponse,
+    BinaryResponseAndRequest, ByteCodeWithProof, ContractInformation, ContractWasmWithProof,
+    DictionaryItemIdentifier, DictionaryQueryResult, EntityIdentifier, EraIdentifier, ErrorCode,
+    GetRequest, GetTrieFullResult, GlobalStateQueryResult, GlobalStateRequest, InformationRequest,
     InformationRequestTag, KeyPrefix, NodeStatus, PackageIdentifier, PurseIdentifier,
     ReactorStateName, RecordId, ResponseType, RewardResponse, TransactionWithExecutionInfo,
 };
@@ -36,9 +36,9 @@ use casper_types::{
     addressable_entity::NamedKeyAddr,
     bytesrepr::{self, FromBytes, ToBytes},
     contracts::{ContractHash, ContractPackage, ContractPackageHash},
-    Account, BlockHeader, BlockIdentifier, ByteCodeAddr, ByteCodeHash, Chainspec, ContractWasmHash,
-    Digest, EntityAddr, GlobalStateIdentifier, Key, Package, PackageAddr, Peers, ProtocolVersion,
-    Rewards, SignedBlock, StoredValue, TimeDiff, Transaction, URef,
+    BlockHeader, BlockIdentifier, ByteCodeAddr, ByteCodeHash, Chainspec, ContractWasmHash, Digest,
+    EntityAddr, GlobalStateIdentifier, Key, Package, PackageAddr, Peers, ProtocolVersion, Rewards,
+    SignedBlock, StoredValue, TimeDiff, Transaction, URef,
 };
 
 use datasize::DataSize;
@@ -784,7 +784,7 @@ async fn get_contract<REv>(
     state_root_hash: Digest,
     hash: ContractHash,
     include_wasm: bool,
-) -> Result<Option<Either<ContractWithWasm, AddressableEntityWithByteCode>>, ErrorCode>
+) -> Result<Option<Either<ContractInformation, AddressableEntityInformation>>, ErrorCode>
 where
     REv: From<Event>
         + From<StorageRequest>
@@ -805,16 +805,16 @@ where
             else {
                 return Ok(None);
             };
-            Ok(Some(Either::Left(ContractWithWasm::new(
+            Ok(Some(Either::Left(ContractInformation::new(
                 hash,
                 contract,
                 proof,
                 Some(wasm),
             ))))
         }
-        (StoredValue::Contract(contract), proof) => Ok(Some(Either::Left(ContractWithWasm::new(
-            hash, contract, proof, None,
-        )))),
+        (StoredValue::Contract(contract), proof) => Ok(Some(Either::Left(
+            ContractInformation::new(hash, contract, proof, None),
+        ))),
         (other, _) => {
             let Some(Key::AddressableEntity(addr)) = other
                 .as_cl_value()
@@ -837,7 +837,7 @@ async fn get_account<REv>(
     state_root_hash: Digest,
     hash: AccountHash,
     include_bytecode: bool,
-) -> Result<Option<Either<Account, AddressableEntityWithByteCode>>, ErrorCode>
+) -> Result<Option<Either<AccountInformation, AddressableEntityInformation>>, ErrorCode>
 where
     REv: From<Event>
         + From<StorageRequest>
@@ -850,7 +850,9 @@ where
         return Ok(None);
     };
     match result.into_inner() {
-        (StoredValue::Account(account), _) => Ok(Some(Either::Left(account))),
+        (StoredValue::Account(account), proof) => {
+            Ok(Some(Either::Left(AccountInformation::new(account, proof))))
+        }
         (other, _) => {
             let Some(Key::AddressableEntity(addr)) = other
                 .as_cl_value()
@@ -874,7 +876,7 @@ async fn get_entity<REv>(
     state_root_hash: Digest,
     addr: EntityAddr,
     include_bytecode: bool,
-) -> Result<Option<AddressableEntityWithByteCode>, ErrorCode>
+) -> Result<Option<AddressableEntityInformation>, ErrorCode>
 where
     REv: From<Event>
         + From<StorageRequest>
@@ -896,7 +898,7 @@ where
             else {
                 return Ok(None);
             };
-            Ok(Some(AddressableEntityWithByteCode::new(
+            Ok(Some(AddressableEntityInformation::new(
                 addr,
                 entity,
                 proof,
@@ -904,7 +906,7 @@ where
             )))
         }
         (StoredValue::AddressableEntity(entity), proof) => Ok(Some(
-            AddressableEntityWithByteCode::new(addr, entity, proof, None),
+            AddressableEntityInformation::new(addr, entity, proof, None),
         )),
         (other, _) => {
             debug!(

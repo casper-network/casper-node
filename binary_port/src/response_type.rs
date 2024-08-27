@@ -12,9 +12,9 @@ use casper_types::testing::TestRng;
 use casper_types::{
     contracts::ContractPackage,
     execution::{ExecutionResult, ExecutionResultV1},
-    Account, AvailableBlockRange, BlockBody, BlockBodyV1, BlockHeader, BlockHeaderV1,
-    BlockSignatures, BlockSignaturesV1, BlockSynchronizerStatus, ChainspecRawBytes, Deploy,
-    NextUpgrade, Package, Peers, ProtocolVersion, SignedBlock, StoredValue, Transaction, Transfer,
+    AvailableBlockRange, BlockBody, BlockBodyV1, BlockHeader, BlockHeaderV1, BlockSignatures,
+    BlockSignaturesV1, BlockSynchronizerStatus, ChainspecRawBytes, Deploy, NextUpgrade, Package,
+    Peers, ProtocolVersion, SignedBlock, StoredValue, Transaction, Transfer,
 };
 
 use crate::{
@@ -25,8 +25,8 @@ use crate::{
         ConsensusStatus, ConsensusValidatorChanges, GetTrieFullResult, LastProgress, NetworkName,
         ReactorStateName, RewardResponse,
     },
-    AddressableEntityWithByteCode, BalanceResponse, ContractWithWasm, DictionaryQueryResult,
-    RecordId, TransactionWithExecutionInfo, Uptime,
+    AccountInformation, AddressableEntityInformation, BalanceResponse, ContractInformation,
+    DictionaryQueryResult, RecordId, TransactionWithExecutionInfo, Uptime,
 };
 
 /// A type of the payload being returned in a binary response.
@@ -114,14 +114,14 @@ pub enum ResponseType {
     ProtocolVersion,
     /// Contract package.
     ContractPackage,
-    /// Contract with Wasm.
-    ContractWithWasm,
-    /// Account.
-    Account,
+    /// Contract with Merkle proof and Wasm.
+    ContractInformation,
+    /// Account with Merkle proof.
+    AccountInformation,
     /// Package.
     Package,
-    /// Addressable entity with bytecode.
-    AddressableEntityWithByteCode,
+    /// Addressable entity with Merkle proof and Wasm.
+    AddressableEntityInformation,
 }
 
 impl ResponseType {
@@ -217,11 +217,15 @@ impl TryFrom<u8> for ResponseType {
             x if x == ResponseType::Reward as u8 => Ok(ResponseType::Reward),
             x if x == ResponseType::ProtocolVersion as u8 => Ok(ResponseType::ProtocolVersion),
             x if x == ResponseType::ContractPackage as u8 => Ok(ResponseType::ContractPackage),
-            x if x == ResponseType::ContractWithWasm as u8 => Ok(ResponseType::ContractWithWasm),
-            x if x == ResponseType::Account as u8 => Ok(ResponseType::Account),
+            x if x == ResponseType::ContractInformation as u8 => {
+                Ok(ResponseType::ContractInformation)
+            }
+            x if x == ResponseType::AccountInformation as u8 => {
+                Ok(ResponseType::AccountInformation)
+            }
             x if x == ResponseType::Package as u8 => Ok(ResponseType::Package),
-            x if x == ResponseType::AddressableEntityWithByteCode as u8 => {
-                Ok(ResponseType::AddressableEntityWithByteCode)
+            x if x == ResponseType::AddressableEntityInformation as u8 => {
+                Ok(ResponseType::AddressableEntityInformation)
             }
             _ => Err(()),
         }
@@ -279,10 +283,10 @@ impl fmt::Display for ResponseType {
             ResponseType::Reward => write!(f, "Reward"),
             ResponseType::ProtocolVersion => write!(f, "ProtocolVersion"),
             ResponseType::ContractPackage => write!(f, "ContractPackage"),
-            ResponseType::ContractWithWasm => write!(f, "Contract"),
-            ResponseType::Account => write!(f, "Account"),
+            ResponseType::ContractInformation => write!(f, "Contract"),
+            ResponseType::AccountInformation => write!(f, "Account"),
             ResponseType::Package => write!(f, "Package"),
-            ResponseType::AddressableEntityWithByteCode => {
+            ResponseType::AddressableEntityInformation => {
                 write!(f, "AddressableEntityWithByteCode")
             }
         }
@@ -431,20 +435,20 @@ impl PayloadEntity for ContractPackage {
     const RESPONSE_TYPE: ResponseType = ResponseType::ContractPackage;
 }
 
-impl PayloadEntity for ContractWithWasm {
-    const RESPONSE_TYPE: ResponseType = ResponseType::ContractWithWasm;
+impl PayloadEntity for ContractInformation {
+    const RESPONSE_TYPE: ResponseType = ResponseType::ContractInformation;
 }
 
-impl PayloadEntity for Account {
-    const RESPONSE_TYPE: ResponseType = ResponseType::Account;
+impl PayloadEntity for AccountInformation {
+    const RESPONSE_TYPE: ResponseType = ResponseType::AccountInformation;
 }
 
 impl PayloadEntity for Package {
     const RESPONSE_TYPE: ResponseType = ResponseType::Package;
 }
 
-impl PayloadEntity for AddressableEntityWithByteCode {
-    const RESPONSE_TYPE: ResponseType = ResponseType::AddressableEntityWithByteCode;
+impl PayloadEntity for AddressableEntityInformation {
+    const RESPONSE_TYPE: ResponseType = ResponseType::AddressableEntityInformation;
 }
 
 #[cfg(test)]
