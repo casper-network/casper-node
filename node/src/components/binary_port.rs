@@ -11,11 +11,11 @@ use std::{convert::TryFrom, net::SocketAddr, sync::Arc};
 use casper_binary_port::{
     AddressableEntityWithByteCode, BalanceResponse, BinaryMessage, BinaryMessageCodec,
     BinaryRequest, BinaryRequestHeader, BinaryRequestTag, BinaryResponse, BinaryResponseAndRequest,
-    ContractWithWasm, DictionaryItemIdentifier, DictionaryQueryResult, EntityIdentifier,
-    EraIdentifier, ErrorCode, GetRequest, GetTrieFullResult, GlobalStateQueryResult,
-    GlobalStateRequest, InformationRequest, InformationRequestTag, KeyPrefix, NodeStatus,
-    PackageIdentifier, PurseIdentifier, ReactorStateName, RecordId, ResponseType, RewardResponse,
-    TransactionWithExecutionInfo,
+    ByteCodeWithProof, ContractWasmWithProof, ContractWithWasm, DictionaryItemIdentifier,
+    DictionaryQueryResult, EntityIdentifier, EraIdentifier, ErrorCode, GetRequest,
+    GetTrieFullResult, GlobalStateQueryResult, GlobalStateRequest, InformationRequest,
+    InformationRequestTag, KeyPrefix, NodeStatus, PackageIdentifier, PurseIdentifier,
+    ReactorStateName, RecordId, ResponseType, RewardResponse, TransactionWithExecutionInfo,
 };
 use casper_storage::{
     data_access_layer::{
@@ -36,10 +36,9 @@ use casper_types::{
     addressable_entity::NamedKeyAddr,
     bytesrepr::{self, FromBytes, ToBytes},
     contracts::{ContractHash, ContractPackage, ContractPackageHash},
-    Account, BlockHeader, BlockIdentifier, ByteCode, ByteCodeAddr, ByteCodeHash, Chainspec,
-    ContractWasm, ContractWasmHash, Digest, EntityAddr, GlobalStateIdentifier, Key, Package,
-    PackageAddr, Peers, ProtocolVersion, Rewards, SignedBlock, StoredValue, TimeDiff, Transaction,
-    URef,
+    Account, BlockHeader, BlockIdentifier, ByteCodeAddr, ByteCodeHash, Chainspec, ContractWasmHash,
+    Digest, EntityAddr, GlobalStateIdentifier, Key, Package, PackageAddr, Peers, ProtocolVersion,
+    Rewards, SignedBlock, StoredValue, TimeDiff, Transaction, URef,
 };
 
 use datasize::DataSize;
@@ -798,7 +797,7 @@ where
         return Ok(None);
     };
     match result.into_inner() {
-        (StoredValue::Contract(contract), _)
+        (StoredValue::Contract(contract), proof)
             if include_wasm && contract.contract_wasm_hash() != ContractWasmHash::default() =>
         {
             let wasm_hash = contract.contract_wasm_hash();
@@ -809,11 +808,12 @@ where
             Ok(Some(Either::Left(ContractWithWasm::new(
                 hash,
                 contract,
+                proof,
                 Some(wasm),
             ))))
         }
-        (StoredValue::Contract(contract), _) => Ok(Some(Either::Left(ContractWithWasm::new(
-            hash, contract, None,
+        (StoredValue::Contract(contract), proof) => Ok(Some(Either::Left(ContractWithWasm::new(
+            hash, contract, proof, None,
         )))),
         (other, _) => {
             let Some(Key::AddressableEntity(addr)) = other
@@ -887,7 +887,7 @@ where
         return Ok(None);
     };
     match result.into_inner() {
-        (StoredValue::AddressableEntity(entity), _)
+        (StoredValue::AddressableEntity(entity), proof)
             if include_bytecode && entity.byte_code_hash() != ByteCodeHash::default() =>
         {
             let Some(bytecode) =
@@ -899,12 +899,13 @@ where
             Ok(Some(AddressableEntityWithByteCode::new(
                 addr,
                 entity,
+                proof,
                 Some(bytecode),
             )))
         }
-        (StoredValue::AddressableEntity(entity), _) => {
-            Ok(Some(AddressableEntityWithByteCode::new(addr, entity, None)))
-        }
+        (StoredValue::AddressableEntity(entity), proof) => Ok(Some(
+            AddressableEntityWithByteCode::new(addr, entity, proof, None),
+        )),
         (other, _) => {
             debug!(
                 ?other,
@@ -919,7 +920,7 @@ async fn get_contract_wasm<REv>(
     effect_builder: EffectBuilder<REv>,
     state_root_hash: Digest,
     hash: ContractWasmHash,
-) -> Result<Option<ContractWasm>, ErrorCode>
+) -> Result<Option<ContractWasmWithProof>, ErrorCode>
 where
     REv: From<Event>
         + From<StorageRequest>
@@ -932,7 +933,9 @@ where
         return Ok(None);
     };
     match value.into_inner() {
-        (StoredValue::ContractWasm(wasm), _) => Ok(Some(wasm)),
+        (StoredValue::ContractWasm(wasm), proof) => {
+            Ok(Some(ContractWasmWithProof::new(wasm, proof)))
+        }
         other => {
             debug!(
                 ?other,
@@ -947,7 +950,7 @@ async fn get_contract_bytecode<REv>(
     effect_builder: EffectBuilder<REv>,
     state_root_hash: Digest,
     addr: ByteCodeHash,
-) -> Result<Option<ByteCode>, ErrorCode>
+) -> Result<Option<ByteCodeWithProof>, ErrorCode>
 where
     REv: From<Event>
         + From<StorageRequest>
@@ -960,7 +963,9 @@ where
         return Ok(None);
     };
     match value.into_inner() {
-        (StoredValue::ByteCode(bytecode), _) => Ok(Some(bytecode)),
+        (StoredValue::ByteCode(bytecode), proof) => {
+            Ok(Some(ByteCodeWithProof::new(bytecode, proof)))
+        }
         other => {
             debug!(
                 ?other,
