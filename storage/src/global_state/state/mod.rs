@@ -87,6 +87,8 @@ use crate::{
     tracking_copy::{TrackingCopy, TrackingCopyEntityExt, TrackingCopyError, TrackingCopyExt},
 };
 
+use super::trie_store::{operations::batch_write, TrieStoreCacheError};
+
 /// A trait expressing the reading of state. This trait is used to abstract the underlying store.
 pub trait StateReader<K, V> {
     /// An error which occurs when reading state
@@ -2189,27 +2191,21 @@ where
     R: TransactionSource<'a, Handle = S::Handle>,
     S: TrieStore<Key, StoredValue>,
     S::Error: From<R::Error>,
-    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error> + From<CommitError>,
+    E: From<R::Error>
+        + From<S::Error>
+        + From<bytesrepr::Error>
+        + From<CommitError>
+        + From<TrieStoreCacheError>,
 {
     let mut txn = environment.create_read_write_txn()?;
-    let mut state_root = prestate_hash;
+    let state_root = prestate_hash;
     let maybe_root: Option<Trie<Key, StoredValue>> = store.get(&txn, &state_root)?;
     if maybe_root.is_none() {
         return Err(CommitError::RootNotFound(prestate_hash).into());
     };
-    for (key, value) in stored_values.iter() {
-        let write_result = write::<_, _, _, _, E>(&mut txn, store, &state_root, key, value)?;
-        match write_result {
-            WriteResult::Written(root_hash) => {
-                state_root = root_hash;
-            }
-            WriteResult::AlreadyExists => (),
-            WriteResult::RootNotFound => {
-                error!(?state_root, ?key, ?value, "Error writing new value");
-                return Err(CommitError::WriteRootNotFound(state_root).into());
-            }
-        }
-    }
+
+    let state_root =
+        batch_write::<_, _, _, _, _, E>(&mut txn, store, &state_root, stored_values.into_iter())?;
     txn.commit()?;
     Ok(state_root)
 }
