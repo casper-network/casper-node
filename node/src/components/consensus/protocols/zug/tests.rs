@@ -323,6 +323,7 @@ fn new_payload(random_bit: bool) -> Arc<BlockPayload> {
         vec![],
         Default::default(),
         random_bit,
+        1u8,
     ))
 }
 
