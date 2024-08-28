@@ -14,6 +14,7 @@ use casper_binary_port::{
     GetRequest, GetTrieFullResult, GlobalStateQueryResult, GlobalStateRequest, InformationRequest,
     InformationRequestTag, KeyPrefix, LastProgress, NetworkName, NodeStatus, PackageIdentifier,
     PurseIdentifier, ReactorStateName, RecordId, ResponseType, RewardResponse, Uptime,
+    ValueWithProof,
 };
 use casper_storage::global_state::state::CommitProvider;
 use casper_types::{
@@ -1265,7 +1266,11 @@ fn get_package(state_root_hash: Digest, package_addr: PackageAddr) -> TestCase {
             key: key.to_bytes().expect("should serialize key"),
         }),
         asserter: Box::new(move |response| {
-            assert_response::<Package, _>(response, Some(ResponseType::Package), |_| true)
+            assert_response::<ValueWithProof<Package>, _>(
+                response,
+                Some(ResponseType::PackageWithProof),
+                |_| true,
+            )
         }),
     }
 }
@@ -1286,9 +1291,9 @@ fn get_package_pre_migration(
             key: key.to_bytes().expect("should serialize key"),
         }),
         asserter: Box::new(move |response| {
-            assert_response::<ContractPackage, _>(
+            assert_response::<ValueWithProof<ContractPackage>, _>(
                 response,
-                Some(ResponseType::ContractPackage),
+                Some(ResponseType::ContractPackageWithProof),
                 |_| true,
             )
         }),
@@ -1311,7 +1316,11 @@ fn get_package_post_migration(
             key: key.to_bytes().expect("should serialize key"),
         }),
         asserter: Box::new(move |response| {
-            assert_response::<Package, _>(response, Some(ResponseType::Package), |_| true)
+            assert_response::<ValueWithProof<Package>, _>(
+                response,
+                Some(ResponseType::PackageWithProof),
+                |_| true,
+            )
         }),
     }
 }

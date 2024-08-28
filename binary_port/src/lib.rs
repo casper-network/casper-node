@@ -48,8 +48,7 @@ pub use response_type::{PayloadEntity, ResponseType};
 pub use speculative_execution_result::SpeculativeExecutionResult;
 pub use state_request::GlobalStateRequest;
 pub use type_wrappers::{
-    AccountInformation, AddressableEntityInformation, ByteCodeWithProof, ConsensusStatus,
-    ConsensusValidatorChanges, ContractInformation, ContractWasmWithProof, DictionaryQueryResult,
-    GetTrieFullResult, LastProgress, NetworkName, ReactorStateName, RewardResponse,
-    TransactionWithExecutionInfo, Uptime,
+    AccountInformation, AddressableEntityInformation, ConsensusStatus, ConsensusValidatorChanges,
+    ContractInformation, DictionaryQueryResult, GetTrieFullResult, LastProgress, NetworkName,
+    ReactorStateName, RewardResponse, TransactionWithExecutionInfo, Uptime, ValueWithProof,
 };

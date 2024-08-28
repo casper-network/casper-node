@@ -26,7 +26,7 @@ use crate::{
         ReactorStateName, RewardResponse,
     },
     AccountInformation, AddressableEntityInformation, BalanceResponse, ContractInformation,
-    DictionaryQueryResult, RecordId, TransactionWithExecutionInfo, Uptime,
+    DictionaryQueryResult, RecordId, TransactionWithExecutionInfo, Uptime, ValueWithProof,
 };
 
 /// A type of the payload being returned in a binary response.
@@ -112,15 +112,15 @@ pub enum ResponseType {
     Reward,
     /// Protocol version.
     ProtocolVersion,
-    /// Contract package.
-    ContractPackage,
-    /// Contract with Merkle proof and Wasm.
+    /// Contract package with Merkle proof.
+    ContractPackageWithProof,
+    /// Contract information.
     ContractInformation,
-    /// Account with Merkle proof.
+    /// Account information.
     AccountInformation,
-    /// Package.
-    Package,
-    /// Addressable entity with Merkle proof and Wasm.
+    /// Package with Merkle proof.
+    PackageWithProof,
+    /// Addressable entity information.
     AddressableEntityInformation,
 }
 
@@ -216,14 +216,16 @@ impl TryFrom<u8> for ResponseType {
             x if x == ResponseType::BalanceResponse as u8 => Ok(ResponseType::BalanceResponse),
             x if x == ResponseType::Reward as u8 => Ok(ResponseType::Reward),
             x if x == ResponseType::ProtocolVersion as u8 => Ok(ResponseType::ProtocolVersion),
-            x if x == ResponseType::ContractPackage as u8 => Ok(ResponseType::ContractPackage),
+            x if x == ResponseType::ContractPackageWithProof as u8 => {
+                Ok(ResponseType::ContractPackageWithProof)
+            }
             x if x == ResponseType::ContractInformation as u8 => {
                 Ok(ResponseType::ContractInformation)
             }
             x if x == ResponseType::AccountInformation as u8 => {
                 Ok(ResponseType::AccountInformation)
             }
-            x if x == ResponseType::Package as u8 => Ok(ResponseType::Package),
+            x if x == ResponseType::PackageWithProof as u8 => Ok(ResponseType::PackageWithProof),
             x if x == ResponseType::AddressableEntityInformation as u8 => {
                 Ok(ResponseType::AddressableEntityInformation)
             }
@@ -282,12 +284,12 @@ impl fmt::Display for ResponseType {
             ResponseType::BalanceResponse => write!(f, "BalanceResponse"),
             ResponseType::Reward => write!(f, "Reward"),
             ResponseType::ProtocolVersion => write!(f, "ProtocolVersion"),
-            ResponseType::ContractPackage => write!(f, "ContractPackage"),
-            ResponseType::ContractInformation => write!(f, "Contract"),
-            ResponseType::AccountInformation => write!(f, "Account"),
-            ResponseType::Package => write!(f, "Package"),
+            ResponseType::ContractPackageWithProof => write!(f, "ContractPackageWithProof"),
+            ResponseType::ContractInformation => write!(f, "ContractInformation"),
+            ResponseType::AccountInformation => write!(f, "AccountInformation"),
+            ResponseType::PackageWithProof => write!(f, "PackageWithProof"),
             ResponseType::AddressableEntityInformation => {
-                write!(f, "AddressableEntityWithByteCode")
+                write!(f, "AddressableEntityInformation")
             }
         }
     }
@@ -431,8 +433,8 @@ impl PayloadEntity for ProtocolVersion {
     const RESPONSE_TYPE: ResponseType = ResponseType::ProtocolVersion;
 }
 
-impl PayloadEntity for ContractPackage {
-    const RESPONSE_TYPE: ResponseType = ResponseType::ContractPackage;
+impl PayloadEntity for ValueWithProof<ContractPackage> {
+    const RESPONSE_TYPE: ResponseType = ResponseType::ContractPackageWithProof;
 }
 
 impl PayloadEntity for ContractInformation {
@@ -443,8 +445,8 @@ impl PayloadEntity for AccountInformation {
     const RESPONSE_TYPE: ResponseType = ResponseType::AccountInformation;
 }
 
-impl PayloadEntity for Package {
-    const RESPONSE_TYPE: ResponseType = ResponseType::Package;
+impl PayloadEntity for ValueWithProof<Package> {
+    const RESPONSE_TYPE: ResponseType = ResponseType::PackageWithProof;
 }
 
 impl PayloadEntity for AddressableEntityInformation {
