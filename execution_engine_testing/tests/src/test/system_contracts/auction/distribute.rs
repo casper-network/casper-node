@@ -4,6 +4,9 @@ use num_rational::Ratio;
 use num_traits::{CheckedMul, CheckedSub};
 use once_cell::sync::Lazy;
 
+use crate::test::system_contracts::auction::{
+    get_delegator_staked_amount, get_era_info, get_validator_bid,
+};
 use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, StepRequestBuilder, UpgradeRequestBuilder,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
@@ -17,12 +20,12 @@ use casper_types::{
     account::AccountHash,
     runtime_args,
     system::auction::{
-        self, BidsExt as _, DelegationRate, Delegator, EraInfo, SeigniorageAllocation,
-        SeigniorageRecipientsSnapshot, ValidatorBid, ARG_AMOUNT, ARG_DELEGATION_RATE,
-        ARG_DELEGATOR, ARG_PUBLIC_KEY, ARG_REWARDS_MAP, ARG_VALIDATOR, DELEGATION_RATE_DENOMINATOR,
+        self, BidsExt as _, DelegationRate, Delegator, SeigniorageAllocation,
+        SeigniorageRecipientsSnapshot, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR,
+        ARG_PUBLIC_KEY, ARG_REWARDS_MAP, ARG_VALIDATOR, DELEGATION_RATE_DENOMINATOR,
         METHOD_DISTRIBUTE, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
     },
-    EntityAddr, EraId, Key, ProtocolVersion, PublicKey, SecretKey, Timestamp, U512,
+    EntityAddr, EraId, ProtocolVersion, PublicKey, SecretKey, Timestamp, U512,
 };
 
 const ARG_ENTRY_POINT: &str = "entry_point";
@@ -70,14 +73,6 @@ static GENESIS_ROUND_SEIGNIORAGE_RATE: Lazy<Ratio<U512>> = Lazy::new(|| {
         U512::from(*PRODUCTION_ROUND_SEIGNIORAGE_RATE.denom()),
     )
 });
-
-fn get_validator_bid(
-    builder: &mut LmdbWasmTestBuilder,
-    validator_public_key: PublicKey,
-) -> Option<ValidatorBid> {
-    let bids = builder.get_bids();
-    bids.validator_bid(&validator_public_key)
-}
 
 fn get_delegator_bid(
     builder: &mut LmdbWasmTestBuilder,
@@ -130,30 +125,6 @@ fn undelegate(
     )
     .build();
     builder.exec(undelegate_request).expect_success().commit();
-}
-
-fn get_delegator_staked_amount(
-    builder: &mut LmdbWasmTestBuilder,
-    validator_public_key: PublicKey,
-    delegator_public_key: PublicKey,
-) -> U512 {
-    let bids = builder.get_bids();
-    let delegator = bids
-        .delegator_by_public_keys(&validator_public_key, &delegator_public_key)
-        .expect("bid should exist for validator-{validator_public_key}, delegator-{delegator_public_key}");
-
-    delegator.staked_amount()
-}
-
-fn get_era_info(builder: &mut LmdbWasmTestBuilder) -> EraInfo {
-    let era_info_value = builder
-        .query(None, Key::EraSummary, &[])
-        .expect("should have value");
-
-    era_info_value
-        .as_era_info()
-        .cloned()
-        .expect("should be era info")
 }
 
 #[ignore]

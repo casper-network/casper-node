@@ -371,6 +371,12 @@ pub enum Error {
     /// assert_eq!(56, Error::ReservationNotFound as u8);
     /// ```
     ReservationNotFound = 56,
+    /// All reserved slots for validator are already occupied
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(57, Error::ExceededReservationSlotsLimit as u8);
+    /// ```
+    ExceededReservationSlotsLimit = 57,
 }
 
 impl Display for Error {
@@ -433,6 +439,7 @@ impl Display for Error {
             Error::UnexpectedBidVariant => formatter.write_str("Unexpected bid variant"),
             Error::DelegationAmountTooLarge => formatter.write_str("The delegated amount is above the maximum allowed"),
             Error::ReservationNotFound => formatter.write_str("Reservation not found"),
+            Error::ExceededReservationSlotsLimit => formatter.write_str("All reserved slots for validator are already occupied"),
         }
     }
 }

@@ -111,6 +111,12 @@ pub trait BidsExt {
         delegator_public_key: &PublicKey,
     ) -> Option<Delegator>;
 
+    /// Returns Reservation entries matching validator public key, if present.
+    fn reservations_by_validator_public_key(
+        &self,
+        public_key: &PublicKey,
+    ) -> Option<Vec<Reservation>>;
+
     /// Returns Reservation entry by public keys, if present.
     fn reservation_by_public_keys(
         &self,
@@ -237,6 +243,27 @@ impl BidsExt for Vec<BidKind> {
             Some(*delegator.clone())
         } else {
             None
+        }
+    }
+
+    fn reservations_by_validator_public_key(
+        &self,
+        validator_public_key: &PublicKey,
+    ) -> Option<Vec<Reservation>> {
+        let mut ret = vec![];
+        for reservation in self
+            .iter()
+            .filter(|x| x.is_reservation() && &x.validator_public_key() == validator_public_key)
+        {
+            if let BidKind::Reservation(reservation) = reservation {
+                ret.push(*reservation.clone());
+            }
+        }
+
+        if ret.is_empty() {
+            None
+        } else {
+            Some(ret)
         }
     }
 
