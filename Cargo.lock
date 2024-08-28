@@ -760,6 +760,7 @@ dependencies = [
  "blake2 0.10.6",
  "borsh",
  "bytes",
+ "casper-execution-engine",
  "casper-executor-wasm-common",
  "casper-executor-wasm-host",
  "casper-executor-wasm-interface",
@@ -768,8 +769,10 @@ dependencies = [
  "casper-types",
  "digest 0.10.7",
  "either",
+ "fs_extra",
  "once_cell",
  "parking_lot 0.12.3",
+ "serde_json",
  "tempfile",
  "thiserror",
  "tracing",
@@ -5818,12 +5821,13 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.104"
+version = "1.0.127"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "076066c5f1078eac5b722a31827a8832fe108bed65dfa75e233c89f8206e976c"
+checksum = "8043c06d9f82bd7271361ed64f415fe5e12a77fdb52e573e7f06a516dea329ad"
 dependencies = [
  "indexmap 2.2.6",
  "itoa",
+ "memchr",
  "ryu",
  "serde",
 ]

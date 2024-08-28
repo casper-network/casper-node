@@ -1,33 +1,37 @@
-use std::sync::Arc;
+use std::{fs::File, path::Path, sync::Arc};
 
 use bytes::Bytes;
+use casper_execution_engine::engine_state::{EngineConfig, ExecutionEngineV1};
 use casper_executor_wasm::{
     install::{InstallContractRequest, InstallContractRequestBuilder, InstallContractResult},
     ExecutorConfigBuilder, ExecutorKind, ExecutorV2,
 };
 use casper_executor_wasm_interface::executor::{
-    ExecuteRequest, ExecuteRequestBuilder, ExecuteWithProviderResult, ExecutionKind,
+    ExecuteRequest, ExecuteRequestBuilder, ExecuteWithProviderResult, ExecutionKind, Executor,
 };
 use casper_storage::{
-    data_access_layer::{GenesisRequest, GenesisResult},
+    data_access_layer::{GenesisRequest, GenesisResult, QueryRequest, QueryResult},
     global_state::{
         self,
-        state::{lmdb::LmdbGlobalState, CommitProvider},
+        state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
+        transaction_source::lmdb::LmdbEnvironment,
+        trie_store::lmdb::LmdbTrieStore,
     },
     system::runtime_native::Id,
     AddressGenerator,
 };
 use casper_types::{
-    account::AccountHash, ChainspecRegistry, Digest, EntityAddr, GenesisAccount,
-    GenesisConfigBuilder, Key, Motes, Phase, ProtocolVersion, PublicKey, SecretKey, Timestamp,
-    TransactionHash, TransactionV1Hash, U512,
+    account::AccountHash, execution, ChainspecRegistry, Digest, EntityAddr, GenesisAccount,
+    GenesisConfigBuilder, Key, Motes, Phase, ProtocolVersion, PublicKey, SecretKey, StoredValue,
+    Timestamp, TransactionHash, TransactionV1Hash, U512,
 };
+use fs_extra::dir;
 use once_cell::sync::Lazy;
 use parking_lot::RwLock;
 use tempfile::TempDir;
 
 static DEFAULT_ACCOUNT_SECRET_KEY: Lazy<SecretKey> =
-    Lazy::new(|| SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH]).unwrap());
+    Lazy::new(|| SecretKey::ed25519_from_bytes([199; SecretKey::ED25519_LENGTH]).unwrap());
 static DEFAULT_ACCOUNT_PUBLIC_KEY: Lazy<casper_types::PublicKey> =
     Lazy::new(|| PublicKey::from(&*DEFAULT_ACCOUNT_SECRET_KEY));
 static DEFAULT_ACCOUNT_HASH: Lazy<AccountHash> =
@@ -476,4 +480,113 @@ fn run_wasm_session(
     }
 
     result
+}
+
+#[test]
+fn backwards_compatibility() {
+    let (mut global_state, post_state_hash, _temp) = {
+        let fixture_name = "counter_contract";
+        // /Users/michal/Dev/casper-node/execution_engine_testing/tests/fixtures/counter_contract/
+        // global_state/data.lmdb
+        let lmdb_fixtures_base_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../")
+            .join("../")
+            .join("execution_engine_testing")
+            .join("tests")
+            .join("fixtures");
+        assert!(lmdb_fixtures_base_dir.exists());
+
+        let source = lmdb_fixtures_base_dir.join("counter_contract");
+        let to = tempfile::tempdir().expect("should create temp dir");
+        fs_extra::copy_items(&[source], &to, &dir::CopyOptions::default())
+            .expect("should copy global state fixture");
+
+        let path_to_state = to.path().join(fixture_name).join("state.json");
+
+        let lmdb_fixture_state: serde_json::Value =
+            serde_json::from_reader(File::open(path_to_state).unwrap()).unwrap();
+        let post_state_hash =
+            Digest::from_hex(lmdb_fixture_state["post_state_hash"].as_str().unwrap()).unwrap();
+
+        let path_to_gs = to.path().join(fixture_name).join("global_state");
+
+        const DEFAULT_LMDB_PAGES: usize = 256_000_000;
+        const DEFAULT_MAX_READERS: u32 = 512;
+
+        let environment = LmdbEnvironment::new(
+            &path_to_gs,
+            16384 * DEFAULT_LMDB_PAGES,
+            DEFAULT_MAX_READERS,
+            true,
+        )
+        .expect("should create LmdbEnvironment");
+
+        let trie_store =
+            LmdbTrieStore::open(&environment, None).expect("should open LmdbTrieStore");
+        (
+            LmdbGlobalState::new(
+                Arc::new(environment),
+                    Arc::new(trie_store),
+                    post_state_hash,
+                100,
+            ),
+            post_state_hash,
+            to,
+        )
+    };
+
+    let result = global_state.query(QueryRequest::new(
+        post_state_hash,
+        Key::Account(*DEFAULT_ACCOUNT_HASH),
+        Vec::new(),
+    ));
+    let value = match result {
+        QueryResult::RootNotFound => todo!(),
+        QueryResult::ValueNotFound(value) => panic!("Value not found: {:?}", value),
+        QueryResult::Success { value, .. } => value,
+        QueryResult::Failure(failure) => panic!("Failed to query: {:?}", failure),
+    };
+
+    //
+    //
+    //
+
+    let mut state_root_hash = post_state_hash;
+
+    let value = match *value {
+        StoredValue::Account(account) => account,
+        _ => panic!("Expected CLValue"),
+    };
+
+    let counter_hash = match value.named_keys().get("counter") {
+        Some(Key::Hash(hash_address)) => hash_address,
+        _ => panic!("Expected counter URef"),
+    };
+
+
+    let mut executor = make_executor();
+    let address_generator = make_address_generator();
+
+        let execute_request = base_execute_builder()
+        .with_target(ExecutionKind::Stored {
+            address: EntityAddr::new_smart_contract(*counter_hash),
+            entry_point: "increment".to_string(),
+        })
+        .with_input(Bytes::new())
+        .with_gas_limit(DEFAULT_GAS_LIMIT)
+        .with_transferred_value(0)
+        .with_shared_address_generator(Arc::clone(&address_generator))
+        .build()
+        .expect("should build");
+    let res = run_wasm_session(
+        &mut executor,
+        &mut global_state,
+        state_root_hash,
+        execute_request,
+    );
+    state_root_hash = global_state
+        .commit(state_root_hash, res.effects().clone())
+        .expect("Should commit");
+
+
 }

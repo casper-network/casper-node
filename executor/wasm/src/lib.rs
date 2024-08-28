@@ -315,7 +315,9 @@ impl ExecutorV2 {
                 address: entity_addr,
                 entry_point,
             } => {
-                let key = Key::AddressableEntity(*entity_addr); // TODO: Error handling
+                // let key = Key::AddressableEntity(*entity_addr); // TODO: Error handling
+                // let contract_key = Key::Hash(*entity_addr);
+                let  key = Key::Hash(entity_addr.value());
 
                 let contract = tracking_copy.read(&key).expect("should read contract");
 
@@ -387,8 +389,8 @@ impl ExecutorV2 {
 
                         (Bytes::from(wasm_bytes), Either::Left(entry_point.as_str()))
                     }
-                    Some(_stored_contract) => {
-                        panic!("Stored contract is not of V2 variant");
+                    Some(stored_contract) => {
+                        panic!("Stored contract is not of V2 variant: {stored_contract:?}");
                     }
                     None => {
                         panic!("No code found");
@@ -617,6 +619,9 @@ fn get_purse_for_entity<R: GlobalStateReader>(
             addressable_entity.main_purse()
         }
         StoredValue::AddressableEntity(addressable_entity) => addressable_entity.main_purse(),
+        StoredValue::Account(account) => {
+            account.main_purse()
+        }
         other => panic!("should be account or contract received {other:?}"),
     }
 }
