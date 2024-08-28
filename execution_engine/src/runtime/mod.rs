@@ -973,6 +973,14 @@ where
                     Self::try_get_named_argument(runtime_args, auction::ARG_RESERVED_SLOTS)?
                         .unwrap_or(0);
 
+                let max_delegators_per_validator =
+                    self.context.engine_config().max_delegators_per_validator();
+                if reserved_slots > max_delegators_per_validator {
+                    return Err(ExecError::Revert(
+                        ApiError::ReservedSlotsExceedDelegatorsLimit,
+                    ));
+                }
+
                 let result = runtime
                     .add_bid(
                         account_hash,

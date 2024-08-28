@@ -73,7 +73,7 @@ pub trait Auction:
         amount: U512,
         minimum_delegation_amount: u64,
         maximum_delegation_amount: u64,
-        // TODO: reservation list functionality implementation
+        // TODO(jck): reservation list functionality implementation
         reserved_slots: u32,
     ) -> Result<U512, ApiError> {
         if !self.allow_auction_bids() {

@@ -6,9 +6,8 @@ use tempfile::TempDir;
 
 use casper_engine_test_support::{
     ChainspecConfig, ExecuteRequestBuilder, LmdbWasmTestBuilder, StepRequestBuilder,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_PROTOCOL_VERSION,
-    LOCAL_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_ROUND_SEIGNIORAGE_RATE,
-    SYSTEM_ADDR,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_PROTOCOL_VERSION, LOCAL_GENESIS_REQUEST,
+    MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_ROUND_SEIGNIORAGE_RATE, SYSTEM_ADDR,
 };
 use casper_execution_engine::{
     engine_state::{engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, Error},
@@ -363,8 +362,10 @@ fn should_allow_validator_to_reserve_all_delegator_slots() {
 
     assert!(matches!(
         error,
-        Error::Exec(ExecError::Revert(ApiError::AuctionError(auction_error)))
-        if auction_error == AuctionError::ExceededDelegatorSizeLimit as u8));
+        Error::Exec(ExecError::Revert(
+            ApiError::ReservedSlotsExceedDelegatorsLimit
+        ))
+    ));
 
     // can reserve all slots
     let add_bid_request = ExecuteRequestBuilder::standard(

@@ -458,6 +458,12 @@ pub enum ApiError {
     /// assert_eq!(ApiError::from(50), ApiError::InvalidCallerInfoRequest);
     /// ```
     InvalidCallerInfoRequest,
+    /// Reserved slots exceed maximum number of delegators per validator.
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(51), ApiError::ReservedSlotsExceedDelegatorsLimit);
+    /// ```
+    ReservedSlotsExceedDelegatorsLimit,
 }
 
 impl From<bytesrepr::Error> for ApiError {
@@ -624,6 +630,7 @@ impl From<ApiError> for u32 {
             ApiError::NotAllowedToAddContractVersion => 48,
             ApiError::InvalidDelegationAmountLimits => 49,
             ApiError::InvalidCallerInfoRequest => 50,
+            ApiError::ReservedSlotsExceedDelegatorsLimit => 51,
             ApiError::AuctionError(value) => AUCTION_ERROR_OFFSET + u32::from(value),
             ApiError::ContractHeader(value) => HEADER_ERROR_OFFSET + u32::from(value),
             ApiError::Mint(value) => MINT_ERROR_OFFSET + u32::from(value),
@@ -686,6 +693,7 @@ impl From<u32> for ApiError {
             48 => ApiError::NotAllowedToAddContractVersion,
             49 => ApiError::InvalidDelegationAmountLimits,
             50 => ApiError::InvalidCallerInfoRequest,
+            51 => ApiError::ReservedSlotsExceedDelegatorsLimit,
             USER_ERROR_MIN..=USER_ERROR_MAX => ApiError::User(value as u16),
             HP_ERROR_MIN..=HP_ERROR_MAX => ApiError::HandlePayment(value as u8),
             MINT_ERROR_MIN..=MINT_ERROR_MAX => ApiError::Mint(value as u8),
@@ -764,6 +772,9 @@ impl Debug for ApiError {
                 write!(f, "ApiError::InvalidDelegationAmountLimits")?
             }
             ApiError::InvalidCallerInfoRequest => write!(f, "ApiError::InvalidCallerInfoRequest")?,
+            ApiError::ReservedSlotsExceedDelegatorsLimit => {
+                write!(f, "ApiError::ReservedSlotsExceedDelegatorsLimit")?
+            }
             ApiError::ExceededRecursionDepth => write!(f, "ApiError::ExceededRecursionDepth")?,
             ApiError::AuctionError(value) => write!(
                 f,
