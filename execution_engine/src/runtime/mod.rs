@@ -975,11 +975,6 @@ where
 
                 let max_delegators_per_validator =
                     self.context.engine_config().max_delegators_per_validator();
-                if reserved_slots > max_delegators_per_validator {
-                    return Err(ExecError::Revert(
-                        ApiError::ReservedSlotsExceedDelegatorsLimit,
-                    ));
-                }
 
                 let result = runtime
                     .add_bid(
@@ -989,6 +984,7 @@ where
                         minimum_delegation_amount,
                         maximum_delegation_amount,
                         reserved_slots,
+                        max_delegators_per_validator,
                     )
                     .map_err(Self::reverter)?;
 

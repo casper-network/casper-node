@@ -545,6 +545,8 @@ fn create_or_update_bid<T: StateReader>(
             *updated_recipient.delegation_rate(),
             min_delegation_amount,
             max_delegation_amount,
+            // TODO(jck): pass actual number
+            0,
         );
 
         state.set_bid(
@@ -583,6 +585,8 @@ fn create_or_update_bid<T: StateReader>(
         *updated_recipient.delegation_rate(),
         0,
         u64::MAX,
+        // TODO(jck): pass actual number
+        0,
     );
     state.set_bid(
         BidKind::Validator(Box::new(validator_bid)),

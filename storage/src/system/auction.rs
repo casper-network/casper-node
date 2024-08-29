@@ -52,6 +52,7 @@ pub trait Auction:
         Ok(seigniorage_recipients)
     }
 
+    // TODO(jck): update docstring
     /// This entry point adds or modifies an entry in the `Key::Bid` section of the global state and
     /// creates (or tops off) a bid purse. Post genesis, any new call on this entry point causes a
     /// non-founding validator in the system to exist.
@@ -73,8 +74,8 @@ pub trait Auction:
         amount: U512,
         minimum_delegation_amount: u64,
         maximum_delegation_amount: u64,
-        // TODO(jck): reservation list functionality implementation
         reserved_slots: u32,
+        max_delegators_per_validator: u32,
     ) -> Result<U512, ApiError> {
         if !self.allow_auction_bids() {
             // The validator set may be closed on some side chains,
@@ -90,6 +91,10 @@ pub trait Auction:
             return Err(Error::DelegationRateTooLarge.into());
         }
 
+        if reserved_slots > max_delegators_per_validator {
+            return Err(Error::ExceededReservationSlotsLimit.into());
+        }
+
         let provided_account_hash = AccountHash::from_public_key(&public_key, |x| self.blake2b(x));
 
         if !self.is_allowed_session_caller(&provided_account_hash) {
@@ -100,6 +105,7 @@ pub trait Auction:
         let (target, validator_bid) = if let Some(BidKind::Validator(mut validator_bid)) =
             self.read_bid(&validator_bid_key)?
         {
+            // update an existing validator bid
             if validator_bid.inactive() {
                 validator_bid.activate();
             }
@@ -110,10 +116,30 @@ pub trait Auction:
                 maximum_delegation_amount,
             );
             // TODO(jck): check if expanding the reservation list is possible
-            // TODO(jck): come up with a fair delegator eviction policy
-            validator_bid.with_reserved_slots(reserved_slots);
+            // perform validation if number of reserved slots has changed
+            if reserved_slots != validator_bid.reserved_slots() {
+                let validator_bid_addr = BidAddr::from(public_key.clone());
+                // cannot reserve fewer slots than there are reservations
+                let reservation_count = self.reservation_count(&validator_bid_addr)?;
+                if reserved_slots < reservation_count as u32 {
+                    // TODO(jck): add dedicated error variant
+                    return Err(Error::ExceededReservationSlotsLimit.into());
+                }
+
+                // cannot reserve more slots than there are free delegator slots
+                let used_reservation_count = self.used_reservation_count(&validator_bid_addr)?;
+                let delegator_count = self.delegator_count(&validator_bid_addr)?;
+                let normal_delegators = delegator_count - used_reservation_count;
+                let max_reserved_slots = max_delegators_per_validator - normal_delegators as u32;
+                if reserved_slots > max_reserved_slots {
+                    return Err(Error::ExceededReservationSlotsLimit.into());
+                }
+                validator_bid.with_reserved_slots(reserved_slots);
+            }
+
             (*validator_bid.bonding_purse(), validator_bid)
         } else {
+            // create new validator bid
             let bonding_purse = self.create_purse()?;
             let validator_bid = ValidatorBid::unlocked(
                 public_key,

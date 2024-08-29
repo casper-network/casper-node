@@ -1215,6 +1215,8 @@ pub trait StateProvider {
             }
         };
 
+        let max_delegators_per_validator = config.max_delegators_per_validator();
+
         let mut runtime = RuntimeNative::new(
             config,
             protocol_version,
@@ -1250,6 +1252,7 @@ pub trait StateProvider {
                     minimum_delegation_amount,
                     maximum_delegation_amount,
                     0,
+                    max_delegators_per_validator,
                 )
                 .map(AuctionMethodRet::UpdatedAmount)
                 .map_err(TrackingCopyError::Api),
