@@ -140,7 +140,7 @@ async fn setup() -> (
         .main_reactor()
         .contract_runtime()
         .data_access_layer()
-        .commit(*highest_block.state_root_hash(), effects.effects)
+        .commit_effects(*highest_block.state_root_hash(), effects.effects)
         .expect("should commit effects");
 
     // Get the binary port address.

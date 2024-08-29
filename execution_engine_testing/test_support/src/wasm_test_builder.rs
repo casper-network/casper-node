@@ -190,7 +190,7 @@ impl<S: ScratchProvider> WasmTestBuilder<S> {
         // First execute the request against our scratch global state.
         let execution_result = self.execution_engine.execute(cached_state, exec_request);
         let _post_state_hash = cached_state
-            .commit(
+            .commit_effects(
                 self.post_state_hash.expect("requires a post_state_hash"),
                 execution_result.effects().clone(),
             )
@@ -882,7 +882,7 @@ where
     pub fn commit_transforms(&mut self, pre_state_hash: Digest, effects: Effects) -> &mut Self {
         let post_state_hash = self
             .data_access_layer
-            .commit(pre_state_hash, effects)
+            .commit_effects(pre_state_hash, effects)
             .expect("should commit");
         self.post_state_hash = Some(post_state_hash);
         self
@@ -1236,6 +1236,27 @@ where
             self.commit_transforms(state_root_hash, tracking_copy.effects());
         }
 
+        self
+    }
+
+    /// Writes a set of keys and values to global state.
+    pub fn write_data_and_commit(
+        &mut self,
+        data: impl Iterator<Item = (Key, StoredValue)>,
+    ) -> &mut Self {
+        if let Some(state_root_hash) = self.post_state_hash {
+            let mut tracking_copy = self
+                .data_access_layer
+                .tracking_copy(state_root_hash)
+                .expect("should not error on checkout")
+                .expect("should checkout tracking copy");
+
+            for (key, val) in data {
+                tracking_copy.write(key, val);
+            }
+
+            self.commit_transforms(state_root_hash, tracking_copy.effects());
+        }
         self
     }
 

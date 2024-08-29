@@ -141,7 +141,18 @@ pub trait ScratchProvider: CommitProvider {
 pub trait CommitProvider: StateProvider {
     /// Applies changes and returns a new post state hash.
     /// block_hash is used for computing a deterministic and unique keys.
-    fn commit(&self, state_hash: Digest, effects: Effects) -> Result<Digest, GlobalStateError>;
+    fn commit_effects(
+        &self,
+        state_hash: Digest,
+        effects: Effects,
+    ) -> Result<Digest, GlobalStateError>;
+
+    fn commit_values(
+        &self,
+        state_hash: Digest,
+        values_to_write: Vec<(Key, StoredValue)>,
+        keys_to_prune: BTreeSet<Key>,
+    ) -> Result<Digest, GlobalStateError>;
 
     /// Runs and commits the genesis process, once per network.
     fn genesis(&self, request: GenesisRequest) -> GenesisResult {
@@ -168,7 +179,7 @@ pub trait CommitProvider: StateProvider {
         }
 
         let effects = genesis_installer.finalize();
-        match self.commit(initial_root, effects.clone()) {
+        match self.commit_effects(initial_root, effects.clone()) {
             Ok(post_state_hash) => GenesisResult::Success {
                 post_state_hash,
                 effects,
@@ -183,7 +194,7 @@ pub trait CommitProvider: StateProvider {
     fn protocol_upgrade(&self, request: ProtocolUpgradeRequest) -> ProtocolUpgradeResult {
         let pre_state_hash = request.pre_state_hash();
         let tc = match self.tracking_copy(pre_state_hash) {
-            Ok(Some(tc)) => Rc::new(RefCell::new(tc)),
+            Ok(Some(tc)) => tc,
             Ok(None) => return ProtocolUpgradeResult::RootNotFound,
             Err(err) => {
                 return ProtocolUpgradeResult::Failure(ProtocolUpgradeError::TrackingCopy(
@@ -193,16 +204,17 @@ pub trait CommitProvider: StateProvider {
         };
 
         let protocol_upgrader: ProtocolUpgrader<Self> =
-            ProtocolUpgrader::new(request.config().clone(), pre_state_hash, tc.clone());
+            ProtocolUpgrader::new(request.config().clone(), pre_state_hash, tc);
 
-        if let Err(err) = protocol_upgrader.upgrade(pre_state_hash) {
-            return err.into();
-        }
+        let post_upgrade_tc = match protocol_upgrader.upgrade(pre_state_hash) {
+            Err(e) => return e.into(),
+            Ok(tc) => tc,
+        };
 
-        let effects = tc.borrow().effects();
+        let (writes, prunes, effects) = post_upgrade_tc.destructure();
 
         // commit
-        match self.commit(pre_state_hash, effects.clone()) {
+        match self.commit_values(pre_state_hash, writes, prunes) {
             Ok(post_state_hash) => ProtocolUpgradeResult::Success {
                 post_state_hash,
                 effects,
@@ -237,7 +249,7 @@ pub trait CommitProvider: StateProvider {
 
         let effects = tc.borrow().effects();
 
-        match self.commit(pre_state_hash, effects.clone()) {
+        match self.commit_effects(pre_state_hash, effects.clone()) {
             Ok(post_state_hash) => PruneResult::Success {
                 post_state_hash,
                 effects,
@@ -334,7 +346,7 @@ pub trait CommitProvider: StateProvider {
 
         let effects = tc.borrow().effects();
 
-        match self.commit(state_hash, effects.clone()) {
+        match self.commit_effects(state_hash, effects.clone()) {
             Ok(post_state_hash) => StepResult::Success {
                 post_state_hash,
                 effects,
@@ -415,7 +427,7 @@ pub trait CommitProvider: StateProvider {
 
         let effects = tc.borrow().effects();
 
-        match self.commit(state_hash, effects.clone()) {
+        match self.commit_effects(state_hash, effects.clone()) {
             Ok(post_state_hash) => {
                 debug!("reward distribution committed");
                 BlockRewardsResult::Success {
@@ -498,7 +510,7 @@ pub trait CommitProvider: StateProvider {
             Ok(_) => {
                 let effects = tc.borrow_mut().effects();
                 let transfers = runtime.into_transfers();
-                let post_state_hash = match self.commit(state_hash, effects.clone()) {
+                let post_state_hash = match self.commit_effects(state_hash, effects.clone()) {
                     Ok(post_state_hash) => post_state_hash,
                     Err(gse) => {
                         return FeeResult::Failure(FeeError::TrackingCopy(
@@ -579,7 +591,7 @@ pub trait CommitProvider: StateProvider {
 
         let effects = tc.borrow().effects();
 
-        match self.commit(state_hash, effects.clone()) {
+        match self.commit_effects(state_hash, effects.clone()) {
             Ok(post_state_hash) => ForcedUndelegateResult::Success {
                 post_state_hash,
                 effects,
@@ -629,7 +641,7 @@ pub trait CommitProvider: StateProvider {
 
         let effects = tc.borrow_mut().effects();
 
-        let post_state_hash = match self.commit(state_hash, effects.clone()) {
+        let post_state_hash = match self.commit_effects(state_hash, effects.clone()) {
             Ok(post_state_hash) => post_state_hash,
             Err(gse) => return BlockGlobalResult::Failure(TrackingCopyError::Storage(gse)),
         };
