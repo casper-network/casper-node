@@ -525,12 +525,6 @@ pub trait Auction:
         validator: PublicKey,
         delegators: Vec<PublicKey>,
     ) -> Result<(), ApiError> {
-        if !self.allow_auction_bids() {
-            // Validation set rotation might be disabled on some private chains and we should not
-            // allow new bids to come in.
-            return Err(Error::AuctionBidsDisabled.into());
-        }
-
         if !self.is_allowed_session_caller(&AccountHash::from(&validator)) {
             return Err(Error::InvalidContext.into());
         }

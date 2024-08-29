@@ -528,7 +528,7 @@ fn should_not_allow_validator_to_reduce_number_of_reserved_spots_if_they_are_occ
     assert!(matches!(
         error,
         Error::Exec(ExecError::Revert(ApiError::AuctionError(auction_error)))
-        if auction_error == AuctionError::ExceededReservationSlotsLimit as u8));
+        if auction_error == AuctionError::ExceededReservationsLimit as u8));
 }
 
 #[ignore]
@@ -618,7 +618,7 @@ fn should_handle_reserved_slots() {
     assert!(matches!(
         error,
         Error::Exec(ExecError::Revert(ApiError::AuctionError(auction_error)))
-        if auction_error == AuctionError::ExceededReservationSlotsLimit as u8));
+        if auction_error == AuctionError::ExceededReservationsLimit as u8));
 
     // cancel all reservations
     let cancellation_request = ExecuteRequestBuilder::standard(
@@ -630,7 +630,7 @@ fn should_handle_reserved_slots() {
         },
     )
     .build();
-    builder.exec(cancellation_request).expect_success();
+    builder.exec(cancellation_request).expect_success().commit();
     let reservations = builder
         .get_bids()
         .reservations_by_validator_public_key(&VALIDATOR_1);

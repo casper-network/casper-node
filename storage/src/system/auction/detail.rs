@@ -829,12 +829,17 @@ where
     if let Some(BidKind::Reservation(_)) = provider.read_bid(&reservation_bid_key)? {
         return Ok(());
     }
-    // TODO(jck): ensure reservation list has capacity
-    if !has_free_reservation_slots(&bid) {
-        // TODO(jck): warning msg
-        warn!("Reservation list full",);
-        // TODO(jck): Error:WhitelistFull variant
-        return Err(Error::ExceededDelegatorSizeLimit.into());
+
+    // ensure reservation list has capacity
+    let reservation_count = provider.reservation_count(&validator_bid_addr)?;
+    let reserved_slots = bid.reserved_slots() as usize;
+    if !(reservation_count < reserved_slots) {
+        warn!(
+            %reservation_count, %reserved_slots,
+            "reservation_count {}, reserved_slots {}",
+            reservation_count, reserved_slots
+        );
+        return Err(Error::ExceededReservationsLimit.into());
     }
     provider.write_bid(
         reservation_bid_key,
@@ -842,12 +847,6 @@ where
     )?;
 
     Ok(())
-}
-
-// TODO(jck): consider moving this (to ValidatorBid?)
-fn has_free_reservation_slots(_bid: &ValidatorBid) -> bool {
-    // TODO(jck)
-    true
 }
 
 // TODO(jck): update docstring
@@ -859,7 +858,7 @@ pub fn handle_cancel_reservation<P>(
     provider: &mut P,
     validator: PublicKey,
     delegator: PublicKey,
-) -> Result<(), ApiError>
+) -> Result<(), Error>
 where
     P: StorageProvider + MintProvider + RuntimeProvider,
 {
@@ -873,7 +872,7 @@ where
         delegator: AccountHash::from(&delegator),
     };
     if provider.read_bid(&reservation_bid_addr.into())?.is_none() {
-        return Ok(());
+        return Err(Error::ReservationNotFound);
     }
     provider.prune_bid(reservation_bid_addr);
     Ok(())
