@@ -442,7 +442,7 @@ fn create_or_update_bid<T: StateReader>(
                         .map(|reservation| {
                             (
                                 reservation.delegator_public_key().clone(),
-                                reservation.delegation_rate().clone(),
+                                *reservation.delegation_rate(),
                             )
                         })
                         .collect(),

@@ -58,6 +58,7 @@ impl ValidatorBid {
 
 impl ValidatorBid {
     /// Creates new instance of a bid with locked funds.
+    #[allow(clippy::too_many_arguments)]
     pub fn locked(
         validator_public_key: PublicKey,
         bonding_purse: URef,

@@ -100,7 +100,7 @@ impl FromBytes for SeigniorageRecipient {
         let (delegation_rate, bytes) = FromBytes::from_bytes(bytes)?;
         let (delegator_stake, bytes) = FromBytes::from_bytes(bytes)?;
         // handle deserialization of legacy records without `reservation_delegation_rates` field
-        let (reservation_delegation_rates, bytes) = if bytes.len() == 0 {
+        let (reservation_delegation_rates, bytes) = if bytes.is_empty() {
             (BTreeMap::new(), bytes)
         } else {
             FromBytes::from_bytes(bytes)?

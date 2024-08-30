@@ -845,7 +845,7 @@ where
     // ensure reservation list has capacity
     let reservation_count = provider.reservation_count(&validator_bid_addr)?;
     let reserved_slots = bid.reserved_slots() as usize;
-    if !(reservation_count < reserved_slots) {
+    if reservation_count >= reserved_slots {
         warn!(
             %reservation_count, %reserved_slots,
             "reservation_count {}, reserved_slots {}",
@@ -1042,7 +1042,7 @@ pub fn seigniorage_recipients(
             for reservation in reservations {
                 reservation_delegation_rates.insert(
                     reservation.delegator_public_key().clone(),
-                    reservation.delegation_rate().clone(),
+                    *reservation.delegation_rate(),
                 );
             }
         }

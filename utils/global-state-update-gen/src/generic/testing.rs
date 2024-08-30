@@ -89,8 +89,14 @@ impl MockStateReader {
             let stake = validator_cfg.bonded_amount;
             let delegation_rate = validator_cfg.delegation_rate.unwrap_or_default();
             let delegators = validator_cfg.delegators_map().unwrap_or_default();
+            let reservation_delegation_rates = validator_cfg.reservations_map().unwrap_or_default();
             // add an entry to the recipients snapshot
-            let recipient = SeigniorageRecipient::new(stake, delegation_rate, delegators.clone());
+            let recipient = SeigniorageRecipient::new(
+                stake,
+                delegation_rate,
+                delegators.clone(),
+                reservation_delegation_rates,
+            );
             recipients.insert(public_key.clone(), recipient);
 
             // create the account if it doesn't exist
@@ -507,6 +513,7 @@ fn should_change_one_validator() {
                 bonded_amount: validator3_new_staked,
                 delegation_rate: None,
                 delegators: None,
+                reservations: None,
             }),
         }],
         ..Default::default()
@@ -604,6 +611,7 @@ fn should_change_only_stake_of_one_validator() {
                 bonded_amount: U512::from(104),
                 delegation_rate: None,
                 delegators: None,
+                reservations: None,
             }),
         }],
         ..Default::default()
@@ -748,6 +756,7 @@ fn should_replace_one_validator() {
                 bonded_amount: U512::from(102),
                 delegation_rate: None,
                 delegators: None,
+                reservations: None,
             }),
         }],
         only_listed_validators: true,
@@ -980,6 +989,7 @@ fn should_add_one_validator() {
                 bonded_amount: v4_stake,
                 delegation_rate: None,
                 delegators: None,
+                reservations: None,
             }),
         }],
         only_listed_validators: false,
@@ -1070,6 +1080,7 @@ fn should_add_one_validator_with_delegators() {
                     public_key: delegator1.clone(),
                     delegated_amount: U512::from(13),
                 }]),
+                reservations: None,
             }),
         }],
         only_listed_validators: false,
@@ -1162,6 +1173,7 @@ fn should_replace_a_delegator() {
                     public_key: delegator1.clone(),
                     delegated_amount: U512::from(d1_stake),
                 }]),
+                reservations: None,
             },
         )],
         &mut rng,
@@ -1179,6 +1191,7 @@ fn should_replace_a_delegator() {
                     public_key: delegator2.clone(),
                     delegated_amount: U512::from(d2_stake),
                 }]),
+                reservations: None,
             }),
         }],
         only_listed_validators: false,
@@ -1264,6 +1277,7 @@ fn should_replace_a_delegator_with_unbonding() {
                     public_key: delegator1.clone(),
                     delegated_amount: U512::from(d1_stake),
                 }]),
+                reservations: None,
             },
         )],
         &mut rng,
@@ -1281,6 +1295,7 @@ fn should_replace_a_delegator_with_unbonding() {
                     public_key: delegator2.clone(),
                     delegated_amount: U512::from(d2_stake),
                 }]),
+                reservations: None,
             }),
         }],
         only_listed_validators: false,
@@ -1369,6 +1384,7 @@ fn should_not_change_the_delegator() {
                     public_key: delegator1,
                     delegated_amount: U512::from(d1_stake),
                 }]),
+                reservations: None,
             },
         )],
         &mut rng,
@@ -1383,6 +1399,7 @@ fn should_not_change_the_delegator() {
                 bonded_amount: U512::from(v1_updated_stake),
                 delegation_rate: None,
                 delegators: None,
+                reservations: None,
             }),
         }],
         only_listed_validators: false,
@@ -1449,6 +1466,7 @@ fn should_remove_the_delegator() {
                     public_key: delegator1.clone(),
                     delegated_amount: d_stake,
                 }]),
+                reservations: None,
             },
         )],
         &mut rng,
@@ -1498,6 +1516,7 @@ fn should_remove_the_delegator() {
                 bonded_amount: v_updated_stake,
                 delegation_rate: None,
                 delegators: Some(vec![]),
+                reservations: None,
             }),
         }],
         only_listed_validators: false,
@@ -1562,6 +1581,7 @@ fn should_remove_the_delegator_with_unbonding() {
                     public_key: delegator1.clone(),
                     delegated_amount: U512::from(13),
                 }]),
+                reservations: None,
             },
         )],
         &mut rng,
@@ -1576,6 +1596,7 @@ fn should_remove_the_delegator_with_unbonding() {
                 bonded_amount: U512::from(111),
                 delegation_rate: None,
                 delegators: Some(vec![]),
+                reservations: None,
             }),
         }],
         only_listed_validators: false,
@@ -1656,6 +1677,7 @@ fn should_slash_a_validator_and_delegator_with_enqueued_withdraws() {
             public_key: delegator1.clone(),
             delegated_amount: amount,
         }]),
+        reservations: None,
     };
 
     let mut reader = MockStateReader::new()
@@ -1672,6 +1694,7 @@ fn should_slash_a_validator_and_delegator_with_enqueued_withdraws() {
                             public_key: delegator2.clone(),
                             delegated_amount: amount,
                         }]),
+                        reservations: None,
                     },
                 ),
             ],
@@ -1803,6 +1826,7 @@ fn should_slash_a_validator_and_delegator_with_enqueued_unbonds() {
             public_key: delegator1.clone(),
             delegated_amount: U512::from(d1_stake),
         }]),
+        reservations: None,
     };
 
     let mut reader = MockStateReader::new()
@@ -1823,6 +1847,7 @@ fn should_slash_a_validator_and_delegator_with_enqueued_unbonds() {
                             public_key: delegator2.clone(),
                             delegated_amount: U512::from(d2_stake),
                         }]),
+                        reservations: None,
                     },
                 ),
             ],

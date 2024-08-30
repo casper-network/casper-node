@@ -67,6 +67,7 @@ pub trait Auction:
     /// [`DELEGATION_RATE_DENOMINATOR`].
     ///
     /// Returns a [`U512`] value indicating total amount of tokens staked for given `public_key`.
+    #[allow(clippy::too_many_arguments)]
     fn add_bid(
         &mut self,
         public_key: PublicKey,
