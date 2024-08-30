@@ -1065,32 +1065,31 @@ fn rewards_per_validator(
             .delegator_total_stake()
             .ok_or(Error::ArithmeticOverflow)?;
 
-        let delegators_part: Ratio<U512> = {
+        // calculate part of reward to be distributed to delegators before commission
+        let base_delegators_part: Ratio<U512> = {
+            let reward_multiplier: Ratio<U512> = Ratio::new(delegator_total_stake, total_stake);
+            total_reward
+                .checked_mul(&reward_multiplier)
+                .ok_or(Error::ArithmeticOverflow)?
+        };
+
+        // calculate commission and final reward for each delegator
+        let mut delegator_rewards: BTreeMap<PublicKey, U512> = BTreeMap::new();
+        for (delegator_key, delegator_stake) in recipient
+            .delegator_stake()
+            .iter() {
+            let reward_multiplier = Ratio::new(*delegator_stake, delegator_total_stake);
+            let base_reward = base_delegators_part * reward_multiplier;
             let commission_rate = Ratio::new(
                 U512::from(*recipient.delegation_rate()),
                 U512::from(DELEGATION_RATE_DENOMINATOR),
             );
-            let reward_multiplier: Ratio<U512> = Ratio::new(delegator_total_stake, total_stake);
-            let delegator_reward: Ratio<U512> = total_reward
-                .checked_mul(&reward_multiplier)
-                .ok_or(Error::ArithmeticOverflow)?;
-            let commission: Ratio<U512> = delegator_reward
+            let commission: Ratio<U512> = base_reward
                 .checked_mul(&commission_rate)
                 .ok_or(Error::ArithmeticOverflow)?;
-            delegator_reward
-                .checked_sub(&commission)
-                .ok_or(Error::ArithmeticOverflow)?
+            let reward = base_reward.checked_sub(&commission).ok_or(Error::ArithmeticOverflow)?;
+            delegator_rewards.insert(delegator_key.clone(), reward.to_integer());
         };
-
-        let delegator_rewards: BTreeMap<PublicKey, U512> = recipient
-            .delegator_stake()
-            .iter()
-            .map(|(delegator_key, delegator_stake)| {
-                let reward_multiplier = Ratio::new(*delegator_stake, delegator_total_stake);
-                let reward = delegators_part * reward_multiplier;
-                (delegator_key.clone(), reward.to_integer())
-            })
-            .collect();
 
         let total_delegator_payout: U512 =
             delegator_rewards.iter().map(|(_, &amount)| amount).sum();

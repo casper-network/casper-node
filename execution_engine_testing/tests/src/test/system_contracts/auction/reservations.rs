@@ -41,7 +41,6 @@ const CONTRACT_ADD_RESERVATIONS: &str = "add_reservations.wasm";
 const CONTRACT_CANCEL_RESERVATIONS: &str = "cancel_reservations.wasm";
 
 const ADD_BID_AMOUNT_1: u64 = 1_000_000_000_000;
-const ADD_BID_DELEGATION_RATE_1: DelegationRate = 10;
 const ADD_BID_RESERVED_SLOTS: u32 = 1;
 
 static VALIDATOR_1: Lazy<PublicKey> = Lazy::new(|| {
@@ -165,7 +164,7 @@ fn setup_validator_bid(builder: &mut LmdbWasmTestBuilder, reserved_slots: u32) {
         runtime_args! {
             ARG_PUBLIC_KEY => VALIDATOR_1.clone(),
             ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
-            ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
+            ARG_DELEGATION_RATE => VALIDATOR_1_DELEGATION_RATE,
             ARG_RESERVED_SLOTS => reserved_slots,
         },
     )
@@ -351,7 +350,7 @@ fn should_allow_validator_to_reserve_all_delegator_slots() {
         runtime_args! {
             ARG_PUBLIC_KEY => VALIDATOR_1.clone(),
             ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
-            ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
+            ARG_DELEGATION_RATE => VALIDATOR_1_DELEGATION_RATE,
             ARG_RESERVED_SLOTS => max_delegators_per_validator + 1,
         },
     )
@@ -372,7 +371,7 @@ fn should_allow_validator_to_reserve_all_delegator_slots() {
         runtime_args! {
             ARG_PUBLIC_KEY => VALIDATOR_1.clone(),
             ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
-            ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
+            ARG_DELEGATION_RATE => VALIDATOR_1_DELEGATION_RATE,
             ARG_RESERVED_SLOTS => max_delegators_per_validator,
         },
     )
@@ -410,7 +409,7 @@ fn should_not_allow_validator_to_reserve_more_slots_than_free_delegator_slots() 
         runtime_args! {
             ARG_PUBLIC_KEY => VALIDATOR_1.clone(),
             ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
-            ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
+            ARG_DELEGATION_RATE => VALIDATOR_1_DELEGATION_RATE,
             ARG_RESERVED_SLOTS =>  max_delegators_per_validator,
         },
     )
@@ -460,7 +459,7 @@ fn should_not_allow_validator_to_reduce_number_of_reserved_spots_if_they_are_occ
         runtime_args! {
             ARG_PUBLIC_KEY => VALIDATOR_1.clone(),
             ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
-            ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
+            ARG_DELEGATION_RATE => VALIDATOR_1_DELEGATION_RATE,
             ARG_RESERVED_SLOTS => reserved_slots - 1,
         },
     )
@@ -499,7 +498,7 @@ fn should_not_allow_validator_to_reduce_number_of_reserved_spots_if_they_are_occ
         runtime_args! {
             ARG_PUBLIC_KEY => VALIDATOR_1.clone(),
             ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
-            ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
+            ARG_DELEGATION_RATE => VALIDATOR_1_DELEGATION_RATE,
             ARG_RESERVED_SLOTS => reserved_slots - 1,
         },
     )
