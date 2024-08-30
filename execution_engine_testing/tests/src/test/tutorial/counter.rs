@@ -1,12 +1,6 @@
 use casper_engine_test_support::{
-<<<<<<< Updated upstream
-    ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, LOCAL_GENESIS_REQUEST,
-||||||| Stash base
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    PRODUCTION_RUN_GENESIS_REQUEST,
-=======
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_RUN_GENESIS_REQUEST, PRODUCTION_RUN_GENESIS_REQUEST
->>>>>>> Stashed changes
+    DEFAULT_RUN_GENESIS_REQUEST, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::engine_state::RunGenesisRequest;
 use casper_types::{Key, RuntimeArgs, StoredValue};
@@ -84,16 +78,20 @@ fn should_run_counter_example() {
     builder.exec(call_request_1).expect_success().commit();
 }
 
-
 #[test]
 fn gen_fixture() {
-    lmdb_fixture::generate_fixture("counter_contract", PRODUCTION_RUN_GENESIS_REQUEST.clone(), |builder| {
-        let install_request_1 = ExecuteRequestBuilder::standard(
-            *DEFAULT_ACCOUNT_ADDR,
-            COUNTER_INSTALLER_WASM,
-            RuntimeArgs::default(),
-        )
-        .build();
-        builder.exec(install_request_1).expect_success().commit();
-    }).expect("should gen fixture");
+    lmdb_fixture::generate_fixture(
+        "counter_contract",
+        PRODUCTION_RUN_GENESIS_REQUEST.clone(),
+        |builder| {
+            let install_request_1 = ExecuteRequestBuilder::standard(
+                *DEFAULT_ACCOUNT_ADDR,
+                COUNTER_INSTALLER_WASM,
+                RuntimeArgs::default(),
+            )
+            .build();
+            builder.exec(install_request_1).expect_success().commit();
+        },
+    )
+    .expect("should gen fixture");
 }

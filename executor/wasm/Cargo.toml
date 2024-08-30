@@ -18,10 +18,10 @@ either = "1.10"
 parking_lot = "0.12.1"
 thiserror = "1.0.44"
 tracing = "0.1.40"
+casper-execution-engine = { path = "../../execution_engine", features = ["test-support"] }
 
 [dev-dependencies]
 tempfile = "3.10.1"
 once_cell = "1.19.0"
 fs_extra = "1.3.0"
 serde_json = "1.0.127"
-casper-execution-engine = { path = "../../execution_engine" }

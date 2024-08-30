@@ -21,9 +21,9 @@ use casper_storage::{
     AddressGenerator,
 };
 use casper_types::{
-    account::AccountHash, execution, ChainspecRegistry, Digest, EntityAddr, GenesisAccount,
-    GenesisConfigBuilder, Key, Motes, Phase, ProtocolVersion, PublicKey, SecretKey, StoredValue,
-    Timestamp, TransactionHash, TransactionV1Hash, U512,
+    account::AccountHash, bytesrepr::ToBytes, execution, ChainspecRegistry, Digest, EntityAddr,
+    GenesisAccount, GenesisConfigBuilder, Key, Motes, Phase, ProtocolVersion, PublicKey,
+    RuntimeArgs, SecretKey, StoredValue, Timestamp, TransactionHash, TransactionV1Hash, U512,
 };
 use fs_extra::dir;
 use once_cell::sync::Lazy;
@@ -53,7 +53,7 @@ const TRANSACTION_HASH_BYTES: [u8; 32] = [55; 32];
 const TRANSACTION_HASH: TransactionHash =
     TransactionHash::V1(TransactionV1Hash::from_raw(TRANSACTION_HASH_BYTES));
 
-const DEFAULT_GAS_LIMIT: u64 = 1_000_000;
+const DEFAULT_GAS_LIMIT: u64 = 1_000_000_000;
 const DEFAULT_CHAIN_NAME: &str = "casper-test";
 
 fn make_address_generator() -> Arc<RwLock<AddressGenerator>> {
@@ -526,8 +526,8 @@ fn backwards_compatibility() {
         (
             LmdbGlobalState::new(
                 Arc::new(environment),
-                    Arc::new(trie_store),
-                    post_state_hash,
+                Arc::new(trie_store),
+                post_state_hash,
                 100,
             ),
             post_state_hash,
@@ -563,16 +563,17 @@ fn backwards_compatibility() {
         _ => panic!("Expected counter URef"),
     };
 
-
     let mut executor = make_executor();
     let address_generator = make_address_generator();
 
-        let execute_request = base_execute_builder()
+    let runtime_args = RuntimeArgs::new().to_bytes().unwrap();
+
+    let execute_request = base_execute_builder()
         .with_target(ExecutionKind::Stored {
             address: EntityAddr::new_smart_contract(*counter_hash),
-            entry_point: "increment".to_string(),
+            entry_point: "counter_get".to_string(),
         })
-        .with_input(Bytes::new())
+        .with_input(runtime_args.into())
         .with_gas_limit(DEFAULT_GAS_LIMIT)
         .with_transferred_value(0)
         .with_shared_address_generator(Arc::clone(&address_generator))
@@ -587,6 +588,4 @@ fn backwards_compatibility() {
     state_root_hash = global_state
         .commit(state_root_hash, res.effects().clone())
         .expect("Should commit");
-
-
 }

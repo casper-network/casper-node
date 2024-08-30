@@ -9,9 +9,9 @@ use thiserror::Error;
 use casper_storage::data_access_layer::TransferResult;
 use casper_types::{
     account::AccountHash, bytesrepr::Bytes, contract_messages::Messages, execution::Effects,
-    BlockTime, DeployHash, Digest, ExecutableDeployItem, Gas, InitiatorAddr, Phase, PricingMode,
-    RuntimeArgs, Transaction, TransactionCategory, TransactionEntryPoint, TransactionHash,
-    TransactionInvocationTarget, TransactionTarget, TransactionV1, Transfer,
+    BlockTime, CLValue, DeployHash, Digest, ExecutableDeployItem, Gas, InitiatorAddr, Phase,
+    PricingMode, RuntimeArgs, Transaction, TransactionCategory, TransactionEntryPoint,
+    TransactionHash, TransactionInvocationTarget, TransactionTarget, TransactionV1, Transfer,
 };
 
 use crate::engine_state::{DeployItem, Error as EngineError};
@@ -246,6 +246,8 @@ pub struct WasmV1Result {
     messages: Messages,
     /// Did the wasm execute successfully?
     error: Option<EngineError>,
+    /// Result captured from a ret call.
+    ret: Option<CLValue>,
 }
 
 impl WasmV1Result {
@@ -257,6 +259,7 @@ impl WasmV1Result {
         transfers: Vec<Transfer>,
         messages: Messages,
         error: Option<EngineError>,
+        ret: Option<CLValue>,
     ) -> Self {
         WasmV1Result {
             limit,
@@ -265,6 +268,7 @@ impl WasmV1Result {
             transfers,
             messages,
             error,
+            ret,
         }
     }
 
@@ -298,6 +302,11 @@ impl WasmV1Result {
         &self.messages
     }
 
+    /// Result captured from a ret call.
+    pub fn ret(&self) -> Option<&CLValue> {
+        self.ret.as_ref()
+    }
+
     /// Root not found.
     pub fn root_not_found(gas_limit: Gas, state_hash: Digest) -> Self {
         WasmV1Result {
@@ -307,6 +316,7 @@ impl WasmV1Result {
             limit: gas_limit,
             consumed: Gas::zero(),
             error: Some(EngineError::RootNotFound(state_hash)),
+            ret: None,
         }
     }
 
@@ -319,6 +329,7 @@ impl WasmV1Result {
             limit: gas_limit,
             consumed: Gas::zero(),
             error: Some(error),
+            ret: None,
         }
     }
 
@@ -331,6 +342,7 @@ impl WasmV1Result {
             limit: gas_limit,
             consumed: Gas::zero(),
             error: Some(EngineError::InvalidExecutableItem(error)),
+            ret: None,
         }
     }
 
@@ -356,6 +368,7 @@ impl WasmV1Result {
                 effects,
                 messages: Messages::default(),
                 error: None,
+                ret: None,
             }),
             TransferResult::Failure(te) => {
                 Some(WasmV1Result {
@@ -365,6 +378,7 @@ impl WasmV1Result {
                     effects: Effects::default(), // currently not returning effects on failure
                     messages: Messages::default(),
                     error: Some(EngineError::Transfer(te)),
+                    ret: None,
                 })
             }
         }

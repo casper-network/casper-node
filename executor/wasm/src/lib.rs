@@ -2,9 +2,18 @@ mod chain_utils;
 pub mod install;
 pub(crate) mod system;
 
-use std::{collections::VecDeque, sync::Arc};
+use std::{
+    collections::{BTreeSet, VecDeque},
+    sync::Arc,
+};
 
 use bytes::Bytes;
+use casper_execution_engine::{
+    engine_state::{
+        EngineConfig, Error as EngineError, ExecutableItem, ExecutionEngineV1, WasmV1Request,
+    },
+    runtime::PreprocessingError,
+};
 use casper_executor_wasm_common::flags::ReturnFlags;
 use casper_executor_wasm_host::context::Context;
 use casper_executor_wasm_interface::{
@@ -12,7 +21,7 @@ use casper_executor_wasm_interface::{
         ExecuteError, ExecuteRequest, ExecuteRequestBuilder, ExecuteResult,
         ExecuteWithProviderError, ExecuteWithProviderResult, ExecutionKind, Executor,
     },
-    ConfigBuilder, GasUsage, HostError, TrapCode, VMError, WasmInstance,
+    ConfigBuilder, GasUsage, HostError, TrapCode, VMError, WasmInstance, WasmPreparationError,
 };
 use casper_executor_wasmer_backend::WasmerEngine;
 use casper_storage::{
@@ -25,16 +34,18 @@ use casper_storage::{
 };
 use casper_types::{
     addressable_entity::{ActionThresholds, AssociatedKeys, MessageTopics},
+    bytesrepr,
     contracts::{ContractHash, ContractPackageHash},
-    AddressableEntity, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, Digest, EntityAddr,
-    EntityKind, Groups, Key, Package, PackageHash, PackageStatus, ProtocolVersion, StoredValue,
-    TransactionRuntime, URef, U512,
+    AddressableEntity, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, Digest,
+    EntityAddr, EntityKind, Gas, Groups, InitiatorAddr, Key, Package, PackageHash, PackageStatus,
+    Phase, ProtocolVersion, StoredValue, TransactionInvocationTarget, TransactionRuntime, URef,
+    U512,
 };
 use either::Either;
 use install::{InstallContractError, InstallContractRequest, InstallContractResult};
 use parking_lot::RwLock;
 use system::{MintArgs, MintTransferArgs};
-use tracing::{error, warn};
+use tracing::{error, info, warn};
 
 const DEFAULT_WASM_ENTRY_POINT: &str = "call";
 
@@ -96,6 +107,7 @@ pub struct ExecutorV2 {
     config: ExecutorConfig,
     compiled_wasm_engine: Arc<WasmerEngine>,
     execution_stack: Arc<RwLock<VecDeque<ExecutionKind>>>,
+    execution_engine_v1: ExecutionEngineV1,
 }
 
 impl ExecutorV2 {
@@ -317,7 +329,7 @@ impl ExecutorV2 {
             } => {
                 // let key = Key::AddressableEntity(*entity_addr); // TODO: Error handling
                 // let contract_key = Key::Hash(*entity_addr);
-                let  key = Key::Hash(entity_addr.value());
+                let key = Key::Hash(entity_addr.value());
 
                 let contract = tracking_copy.read(&key).expect("should read contract");
 
@@ -389,8 +401,73 @@ impl ExecutorV2 {
 
                         (Bytes::from(wasm_bytes), Either::Left(entry_point.as_str()))
                     }
-                    Some(stored_contract) => {
-                        panic!("Stored contract is not of V2 variant: {stored_contract:?}");
+                    Some(StoredValue::Contract(_legacy_contract)) => {
+                        let authorization_keys = BTreeSet::from_iter([initiator]); // TODO: Support multisig
+                        let initiator_addr = InitiatorAddr::AccountHash(initiator);
+
+                        let block_time = BlockTime::from(block_time);
+                        // let transaction_hash = transaction_hash;
+
+                        let executable_item = ExecutableItem::Invocation(
+                            TransactionInvocationTarget::ByHash(entity_addr.value()),
+                        );
+                        let entry_point = entry_point.clone();
+                        let args =
+                            bytesrepr::deserialize_from_slice(&input).expect("should deserialize"); // TODO: Convert this to a host error as if it was executed.
+                        let phase = Phase::Session;
+
+                        let wasm_v1_result = {
+                            let forked_tc = tracking_copy.fork2();
+                            self.execution_engine_v1.execute_with_tracking_copy(
+                                forked_tc,
+                                block_time,
+                                transaction_hash,
+                                Gas::from(gas_limit),
+                                initiator_addr,
+                                executable_item,
+                                entry_point,
+                                args,
+                                authorization_keys,
+                                phase,
+                            )
+                        };
+
+                        let shared_reader = tracking_copy.shared_reader();
+
+                        tracking_copy = TrackingCopy::from_effects_and_messages(
+                            shared_reader,
+                            wasm_v1_result.effects().clone(),
+                            wasm_v1_result.messages().clone(),
+                        );
+
+                        let gas_consumed = wasm_v1_result
+                            .consumed()
+                            .value()
+                            .try_into()
+                            .expect("Should convert consumed gas to u64"); // SAFETY: Gas limit is first promoted from u64 to u512, and we know
+                                                                           // consumed gas under v1 would not exceed the imposed limit therefore an
+                                                                           // unwrap here is safe.
+                        let output = wasm_v1_result
+                            .ret()
+                            .map(|ret| bytesrepr::serialize(&ret).unwrap())
+                            .map(Bytes::from);
+
+                        let host_error = match wasm_v1_result.error() {
+                            Some(error) => {
+                                info!(?error, "Wasm v1 error");
+                                Some(HostError::CalleeTrapped(TrapCode::UnreachableCodeReached))
+                            }
+                            None => None,
+                        };
+                        return Ok(ExecuteResult {
+                            host_error,
+                            output,
+                            gas_usage: GasUsage::new(gas_limit, gas_consumed),
+                            tracking_copy_parts: tracking_copy.into_raw_parts(),
+                        });
+                    }
+                    Some(stored_value) => {
+                        todo!("Not yet implemented {stored_value:?}");
                     }
                     None => {
                         panic!("No code found");
@@ -556,6 +633,9 @@ impl ExecutorV2 {
             config,
             compiled_wasm_engine: Arc::new(wasm_engine),
             execution_stack: Default::default(),
+            execution_engine_v1: ExecutionEngineV1::new(EngineConfig::default()), /* TODO: Don't
+                                                                                   * use default
+                                                                                   * instance. */
         }
     }
 
@@ -619,9 +699,7 @@ fn get_purse_for_entity<R: GlobalStateReader>(
             addressable_entity.main_purse()
         }
         StoredValue::AddressableEntity(addressable_entity) => addressable_entity.main_purse(),
-        StoredValue::Account(account) => {
-            account.main_purse()
-        }
+        StoredValue::Account(account) => account.main_purse(),
         other => panic!("should be account or contract received {other:?}"),
     }
 }

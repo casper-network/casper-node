@@ -382,6 +382,11 @@ where
         &self.reader
     }
 
+    /// Returns a shared reference to the `reader` used to access the state.
+    pub fn shared_reader(&self) -> Arc<R> {
+        Arc::clone(&self.reader)
+    }
+
     /// Creates a new `TrackingCopy` using the `reader` as the interface to the state.
     /// Returns a new `TrackingCopy` instance that is a snapshot of the current state, allowing
     /// further changes to be made.
@@ -428,6 +433,16 @@ where
         self.cache = cache;
         self.effects = effects;
         self.messages = messages;
+    }
+
+    pub fn from_effects_and_messages(reader: Arc<R>, effects: Effects, messages: Messages) -> Self {
+        Self {
+            reader,
+            cache: GenericTrackingCopyCache::new(0, HeapSize),
+            effects,
+            max_query_depth: DEFAULT_MAX_QUERY_DEPTH,
+            messages,
+        }
     }
 
     /// Returns the `TrackingCopy`'s cache and effects, consuming the `TrackingCopy`.
