@@ -11,16 +11,19 @@ use casper_engine_test_support::{
 use crate::{lmdb_fixture, lmdb_fixture::ENTRY_REGISTRY_SPECIAL_ADDRESS};
 use casper_types::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
-    runtime_args, system,
+    addressable_entity::NamedKeys,
+    runtime_args,
     system::{
+        self,
         auction::{
             AUCTION_DELAY_KEY, LOCKED_FUNDS_PERIOD_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
         },
         mint::ROUND_SEIGNIORAGE_RATE_KEY,
     },
-    CLValue, CoreConfig, EntityAddr, EraId, Key, ProtocolVersion, StoredValue,
+    Account, CLValue, CoreConfig, EntityAddr, EraId, Key, ProtocolVersion, StoredValue,
     SystemEntityRegistry, U256, U512,
 };
+use rand::Rng;
 
 const PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V1_0_0;
 const DEFAULT_ACTIVATION_POINT: EraId = EraId::new(1);
@@ -731,4 +734,47 @@ fn should_not_migrate_bids_with_invalid_min_max_delegation_amounts() {
     builder
         .upgrade(&mut upgrade_request)
         .expect_upgrade_failure();
+}
+
+#[test]
+fn should_upgrade_legacy_accounts() {
+    let mut builder = LmdbWasmTestBuilder::default();
+
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
+
+    let mut rng = rand::thread_rng();
+    let account_data = (0..10000).map(|_| {
+        let account_hash = rng.gen();
+        let main_purse_uref = rng.gen();
+
+        let account_key = Key::Account(account_hash);
+        let account_value = StoredValue::Account(Account::create(
+            account_hash,
+            NamedKeys::new(),
+            main_purse_uref,
+        ));
+
+        (account_key, account_value)
+    });
+
+    builder.write_data_and_commit(account_data);
+
+    let sem_ver = PROTOCOL_VERSION.value();
+    let new_protocol_version =
+        ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 1);
+
+    let mut upgrade_request = {
+        UpgradeRequestBuilder::new()
+            .with_current_protocol_version(PROTOCOL_VERSION)
+            .with_new_protocol_version(new_protocol_version)
+            .with_activation_point(DEFAULT_ACTIVATION_POINT)
+            .with_minimum_delegation_amount(250_000_000_000)
+            .with_maximum_delegation_amount(500_000_000_000)
+            .with_migrate_legacy_accounts(true)
+            .build()
+    };
+
+    builder
+        .upgrade(&mut upgrade_request)
+        .expect_upgrade_success();
 }
