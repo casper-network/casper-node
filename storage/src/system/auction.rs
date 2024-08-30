@@ -710,7 +710,7 @@ pub trait Auction:
             }
         };
 
-        let (validator_bids, validator_credits, delegator_bids) =
+        let (validator_bids, validator_credits, delegator_bids, reservations) =
             validator_bids_detail.destructure();
 
         // call prune BEFORE incrementing the era
@@ -726,7 +726,8 @@ pub trait Auction:
         // Update seigniorage recipients for current era
         {
             let mut snapshot = detail::get_seigniorage_recipients_snapshot(self)?;
-            let recipients = seigniorage_recipients(&winners, &validator_bids, &delegator_bids)?;
+            let recipients =
+                seigniorage_recipients(&winners, &validator_bids, &delegator_bids, &reservations)?;
             let previous_recipients = snapshot.insert(delayed_era, recipients);
             assert!(previous_recipients.is_none());
 
@@ -1075,9 +1076,7 @@ fn rewards_per_validator(
 
         // calculate commission and final reward for each delegator
         let mut delegator_rewards: BTreeMap<PublicKey, U512> = BTreeMap::new();
-        for (delegator_key, delegator_stake) in recipient
-            .delegator_stake()
-            .iter() {
+        for (delegator_key, delegator_stake) in recipient.delegator_stake().iter() {
             let reward_multiplier = Ratio::new(*delegator_stake, delegator_total_stake);
             let base_reward = base_delegators_part * reward_multiplier;
             let commission_rate = Ratio::new(
@@ -1087,9 +1086,11 @@ fn rewards_per_validator(
             let commission: Ratio<U512> = base_reward
                 .checked_mul(&commission_rate)
                 .ok_or(Error::ArithmeticOverflow)?;
-            let reward = base_reward.checked_sub(&commission).ok_or(Error::ArithmeticOverflow)?;
+            let reward = base_reward
+                .checked_sub(&commission)
+                .ok_or(Error::ArithmeticOverflow)?;
             delegator_rewards.insert(delegator_key.clone(), reward.to_integer());
-        };
+        }
 
         let total_delegator_payout: U512 =
             delegator_rewards.iter().map(|(_, &amount)| amount).sum();

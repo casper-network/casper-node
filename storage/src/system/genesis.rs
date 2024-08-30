@@ -673,6 +673,7 @@ where
                 validator_bid.staked_amount(),
                 *validator_bid.delegation_rate(),
                 delegator_stake,
+                BTreeMap::new(),
             );
             seigniorage_recipients.insert(validator_public_key.clone(), recipient);
         }

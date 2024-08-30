@@ -6,11 +6,12 @@ use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
     system::auction::{
-        BidAddr, BidKind, Delegator, DelegatorBids, Error, Reservation, SeigniorageAllocation,
-        SeigniorageRecipient, SeigniorageRecipients, SeigniorageRecipientsSnapshot, UnbondingPurse,
-        UnbondingPurses, ValidatorBid, ValidatorBids, ValidatorCredit, ValidatorCredits,
-        AUCTION_DELAY_KEY, ERA_END_TIMESTAMP_MILLIS_KEY, ERA_ID_KEY,
-        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
+        BidAddr, BidKind, Delegator, DelegatorBids, Error, Reservation, Reservations,
+        SeigniorageAllocation, SeigniorageRecipient, SeigniorageRecipients,
+        SeigniorageRecipientsSnapshot, UnbondingPurse, UnbondingPurses, ValidatorBid,
+        ValidatorBids, ValidatorCredit, ValidatorCredits, AUCTION_DELAY_KEY,
+        ERA_END_TIMESTAMP_MILLIS_KEY, ERA_ID_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+        UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
     },
     ApiError, CLTyped, EraId, Key, KeyTag, PublicKey, URef, U512,
 };
@@ -56,6 +57,7 @@ pub struct ValidatorBidsDetail {
     validator_bids: ValidatorBids,
     validator_credits: ValidatorCredits,
     delegator_bids: DelegatorBids,
+    reservations: Reservations,
 }
 
 impl ValidatorBidsDetail {
@@ -64,6 +66,7 @@ impl ValidatorBidsDetail {
             validator_bids: BTreeMap::new(),
             validator_credits: BTreeMap::new(),
             delegator_bids: BTreeMap::new(),
+            reservations: BTreeMap::new(),
         }
     }
 
@@ -184,11 +187,12 @@ impl ValidatorBidsDetail {
     }
 
     /// Consume self into in underlying collections.
-    pub fn destructure(self) -> (ValidatorBids, ValidatorCredits, DelegatorBids) {
+    pub fn destructure(self) -> (ValidatorBids, ValidatorCredits, DelegatorBids, Reservations) {
         (
             self.validator_bids,
             self.validator_credits,
             self.delegator_bids,
+            self.reservations,
         )
     }
 }
@@ -1000,6 +1004,7 @@ pub fn seigniorage_recipients(
     validator_weights: &ValidatorWeights,
     validator_bids: &ValidatorBids,
     delegator_bids: &DelegatorBids,
+    reservations: &Reservations,
 ) -> Result<SeigniorageRecipients, Error> {
     let mut recipients = SeigniorageRecipients::new();
     for (validator_public_key, validator_total_weight) in validator_weights {
@@ -1009,7 +1014,7 @@ pub fn seigniorage_recipients(
             .ok_or(Error::ValidatorNotFound)?;
         // calculate delegator portion(s), if any
         let mut delegators_weight = U512::zero();
-        let mut delegators_stake: BTreeMap<PublicKey, U512> = BTreeMap::new();
+        let mut delegators_stake = BTreeMap::new();
         if let Some(delegators) = delegator_bids.get(validator_public_key) {
             for delegator_bid in delegators {
                 if delegator_bid.staked_amount().is_zero() {
@@ -1024,12 +1029,23 @@ pub fn seigniorage_recipients(
             }
         }
 
+        let mut reservation_delegation_rates = BTreeMap::new();
+        if let Some(reservations) = reservations.get(validator_public_key) {
+            for reservation in reservations {
+                reservation_delegation_rates.insert(
+                    reservation.delegator_public_key().clone(),
+                    reservation.delegation_rate().clone(),
+                );
+            }
+        }
+
         // determine validator's personal stake (total weight - sum of delegators weight)
         let validator_stake = validator_total_weight.saturating_sub(delegators_weight);
         let seigniorage_recipient = SeigniorageRecipient::new(
             validator_stake,
             *validator_bid.delegation_rate(),
             delegators_stake,
+            reservation_delegation_rates,
         );
         recipients.insert(validator_public_key.clone(), seigniorage_recipient);
     }

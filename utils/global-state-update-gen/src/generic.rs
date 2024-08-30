@@ -182,6 +182,7 @@ fn gen_snapshot_only_listed(
             validator_cfg.bonded_amount,
             validator_cfg.delegation_rate.unwrap_or_default(),
             validator_cfg.delegators_map().unwrap_or_default(),
+            validator_cfg.reservations_map().unwrap_or_default(),
         );
         let _ = era_validators.insert(account.public_key.clone(), seigniorage_recipient);
     }
@@ -230,6 +231,11 @@ fn gen_snapshot_from_old(
                             // If the delegators weren't specified in the config, keep the ones
                             // from the old snapshot.
                             .unwrap_or_else(|| recipient.delegator_stake().clone()),
+                        validator
+                            .reservations_map()
+                            // If the delegators weren't specified in the config, keep the ones
+                            // from the old snapshot.
+                            .unwrap_or_else(|| recipient.reservation_delegation_rates().clone()),
                     );
                     true
                 }
@@ -253,6 +259,9 @@ fn gen_snapshot_from_old(
                         validator.delegation_rate.unwrap_or_default(),
                         // Unspecified delegators will be treated as an empty list.
                         validator.delegators_map().unwrap_or_default(),
+                        // Unspecified reservation delegation rates will be treated as an empty
+                        // list.
+                        validator.reservations_map().unwrap_or_default(),
                     ),
                 );
             }
@@ -424,27 +433,45 @@ fn create_or_update_bid<T: StateReader>(
             (x.is_unified() || x.is_validator())
                 && &x.validator_public_key() == validator_public_key
         })
-        .map(|existing_bid| match existing_bid {
-            BidKind::Unified(bid) => {
-                let delegator_stake = bid
-                    .delegators()
-                    .iter()
-                    .map(|(k, d)| (k.clone(), d.staked_amount()))
-                    .collect();
-                (
-                    bid.bonding_purse(),
-                    SeigniorageRecipient::new(
-                        *bid.staked_amount(),
-                        *bid.delegation_rate(),
-                        delegator_stake,
-                    ),
-                    0,
-                    u64::MAX,
-                )
-            }
-            BidKind::Validator(validator_bid) => {
-                let delegator_stake =
-                    match existing_bids.delegators_by_validator_public_key(validator_public_key) {
+        .map(|existing_bid| {
+            let reservation_delegation_rates =
+                match existing_bids.reservations_by_validator_public_key(validator_public_key) {
+                    None => BTreeMap::new(),
+                    Some(reservations) => reservations
+                        .iter()
+                        .map(|reservation| {
+                            (
+                                reservation.delegator_public_key().clone(),
+                                reservation.delegation_rate().clone(),
+                            )
+                        })
+                        .collect(),
+                };
+
+            match existing_bid {
+                BidKind::Unified(bid) => {
+                    let delegator_stake = bid
+                        .delegators()
+                        .iter()
+                        .map(|(k, d)| (k.clone(), d.staked_amount()))
+                        .collect();
+
+                    (
+                        bid.bonding_purse(),
+                        SeigniorageRecipient::new(
+                            *bid.staked_amount(),
+                            *bid.delegation_rate(),
+                            delegator_stake,
+                            reservation_delegation_rates,
+                        ),
+                        0,
+                        u64::MAX,
+                    )
+                }
+                BidKind::Validator(validator_bid) => {
+                    let delegator_stake = match existing_bids
+                        .delegators_by_validator_public_key(validator_public_key)
+                    {
                         None => BTreeMap::new(),
                         Some(delegators) => delegators
                             .iter()
@@ -452,18 +479,20 @@ fn create_or_update_bid<T: StateReader>(
                             .collect(),
                     };
 
-                (
-                    validator_bid.bonding_purse(),
-                    SeigniorageRecipient::new(
-                        validator_bid.staked_amount(),
-                        *validator_bid.delegation_rate(),
-                        delegator_stake,
-                    ),
-                    validator_bid.minimum_delegation_amount(),
-                    validator_bid.maximum_delegation_amount(),
-                )
+                    (
+                        validator_bid.bonding_purse(),
+                        SeigniorageRecipient::new(
+                            validator_bid.staked_amount(),
+                            *validator_bid.delegation_rate(),
+                            delegator_stake,
+                            reservation_delegation_rates,
+                        ),
+                        validator_bid.minimum_delegation_amount(),
+                        validator_bid.maximum_delegation_amount(),
+                    )
+                }
+                _ => unreachable!(),
             }
-            _ => unreachable!(),
         });
 
     // existing bid
