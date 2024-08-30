@@ -1145,9 +1145,11 @@ where
 
                 let validator = Self::get_named_argument(runtime_args, auction::ARG_VALIDATOR)?;
                 let delegators = Self::get_named_argument(runtime_args, auction::ARG_DELEGATORS)?;
+                let max_delegators_per_validator =
+                    self.context.engine_config().max_delegators_per_validator();
 
                 runtime
-                    .cancel_reservations(validator, delegators)
+                    .cancel_reservations(validator, delegators, max_delegators_per_validator)
                     .map_err(Self::reverter)?;
 
                 CLValue::from_t(()).map_err(Self::reverter)

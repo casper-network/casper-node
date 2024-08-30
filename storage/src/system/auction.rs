@@ -525,13 +525,19 @@ pub trait Auction:
         &mut self,
         validator: PublicKey,
         delegators: Vec<PublicKey>,
+        max_delegators_per_validator: u32,
     ) -> Result<(), ApiError> {
         if !self.is_allowed_session_caller(&AccountHash::from(&validator)) {
             return Err(Error::InvalidContext.into());
         }
 
         for delegator in delegators {
-            detail::handle_cancel_reservation(self, validator.clone(), delegator.clone())?;
+            detail::handle_cancel_reservation(
+                self,
+                validator.clone(),
+                delegator.clone(),
+                max_delegators_per_validator,
+            )?;
         }
         Ok(())
     }

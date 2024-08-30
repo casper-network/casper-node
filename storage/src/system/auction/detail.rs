@@ -865,20 +865,20 @@ where
 /// If specified validator exists, and if validator is not yet at max delegators count, processes
 /// delegation. For a new delegation a delegator bid record will be created to track the delegation,
 /// otherwise the existing tracking record will be updated.
-#[allow(clippy::too_many_arguments)]
 pub fn handle_cancel_reservation<P>(
     provider: &mut P,
     validator: PublicKey,
     delegator: PublicKey,
+    max_delegators_per_validator: u32,
 ) -> Result<(), Error>
 where
     P: StorageProvider + MintProvider + RuntimeProvider,
 {
     // is there such a validator?
     let validator_bid_addr = BidAddr::from(validator.clone());
-    read_validator_bid(provider, &validator_bid_addr.into())?;
+    let validator_bid = read_validator_bid(provider, &validator_bid_addr.into())?;
 
-    // is there a record for this delegator?
+    // is there a reservation for this delegator?
     let reservation_bid_addr = BidAddr::Reservation {
         validator: AccountHash::from(&validator),
         delegator: AccountHash::from(&delegator),
@@ -886,6 +886,23 @@ where
     if provider.read_bid(&reservation_bid_addr.into())?.is_none() {
         return Err(Error::ReservationNotFound);
     }
+
+    // is there such a delegator?
+    let delegator_bid_addr = BidAddr::new_from_public_keys(&validator, Some(&delegator));
+    if read_delegator_bid(provider, &delegator_bid_addr.into()).is_ok() {
+        // is there a free public slot
+        let reserved_slots = validator_bid.reserved_slots();
+        let delegator_count = provider.delegator_count(&validator_bid_addr)?;
+        let used_reservation_count = provider.used_reservation_count(&validator_bid_addr)?;
+        let normal_delegators = delegator_count - used_reservation_count;
+        let public_slots = max_delegators_per_validator - reserved_slots;
+
+        // cannot "downgrade" a delegator if there are no free public slots available
+        if public_slots == normal_delegators as u32 {
+            return Err(Error::ExceededDelegatorSizeLimit);
+        }
+    }
+
     provider.prune_bid(reservation_bid_addr);
     Ok(())
 }

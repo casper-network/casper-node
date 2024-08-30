@@ -525,6 +525,93 @@ fn should_not_allow_validator_to_reduce_number_of_reserved_spots_if_they_are_occ
 
 #[ignore]
 #[test]
+fn should_not_allow_validator_to_remove_active_reservation_if_there_are_no_free_delegator_slots() {
+    let mut builder = setup_accounts(2);
+
+    let reserved_slots = 1;
+    setup_validator_bid(&mut builder, reserved_slots);
+
+    // add delegation for Delegator 1
+    let delegation_request_1 = ExecuteRequestBuilder::standard(
+        *DELEGATOR_1_ADDR,
+        CONTRACT_DELEGATE,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(DEFAULT_MINIMUM_DELEGATION_AMOUNT),
+            ARG_VALIDATOR => VALIDATOR_1.clone(),
+            ARG_DELEGATOR => DELEGATOR_1.clone(),
+        },
+    )
+    .build();
+
+    builder.exec(delegation_request_1).expect_success().commit();
+
+    // cannot add delegation for Delegator 2
+    let delegation_request_2 = ExecuteRequestBuilder::standard(
+        *DELEGATOR_2_ADDR,
+        CONTRACT_DELEGATE,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(DEFAULT_MINIMUM_DELEGATION_AMOUNT),
+            ARG_VALIDATOR => VALIDATOR_1.clone(),
+            ARG_DELEGATOR => DELEGATOR_2.clone(),
+        },
+    )
+    .build();
+
+    builder.exec(delegation_request_2).expect_failure();
+    let error = builder.get_error().expect("should get error");
+    assert!(matches!(
+        error,
+        Error::Exec(ExecError::Revert(ApiError::AuctionError(auction_error)))
+        if auction_error == AuctionError::ExceededDelegatorSizeLimit as u8));
+
+    // add reservation for Delegator 2
+    let reservation_request = ExecuteRequestBuilder::standard(
+        *VALIDATOR_1_ADDR,
+        CONTRACT_ADD_RESERVATIONS,
+        runtime_args! {
+            ARG_RESERVATIONS => vec![
+                Reservation::new(VALIDATOR_1.clone(), DELEGATOR_2.clone(), 0),
+            ],
+        },
+    )
+    .build();
+    builder.exec(reservation_request).expect_success().commit();
+
+    // add delegation for Delegator 2
+    let delegation_request_2 = ExecuteRequestBuilder::standard(
+        *DELEGATOR_2_ADDR,
+        CONTRACT_DELEGATE,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(DEFAULT_MINIMUM_DELEGATION_AMOUNT),
+            ARG_VALIDATOR => VALIDATOR_1.clone(),
+            ARG_DELEGATOR => DELEGATOR_2.clone(),
+        },
+    )
+    .build();
+
+    builder.exec(delegation_request_2).expect_success().commit();
+
+    // cannot cancel reservation for Delegator 2
+    // because there are no free public slots for delegators
+    let cancellation_request = ExecuteRequestBuilder::standard(
+        *VALIDATOR_1_ADDR,
+        CONTRACT_CANCEL_RESERVATIONS,
+        runtime_args! {
+            ARG_VALIDATOR => VALIDATOR_1.clone(),
+            ARG_DELEGATORS => vec![DELEGATOR_2.clone()],
+        },
+    )
+    .build();
+    builder.exec(cancellation_request).expect_failure();
+    let error = builder.get_error().expect("should get error");
+    assert!(matches!(
+        error,
+        Error::Exec(ExecError::Revert(ApiError::AuctionError(auction_error)))
+        if auction_error == AuctionError::ExceededDelegatorSizeLimit as u8));
+}
+
+#[ignore]
+#[test]
 fn should_handle_reserved_slots() {
     let mut builder = setup_accounts(4);
 
