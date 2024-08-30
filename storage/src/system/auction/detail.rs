@@ -76,8 +76,10 @@ impl ValidatorBidsDetail {
         validator: PublicKey,
         validator_bid: Box<ValidatorBid>,
         delegators: Vec<Box<Delegator>>,
+        reservations: Vec<Box<Reservation>>,
     ) -> Option<Box<ValidatorBid>> {
         self.delegator_bids.insert(validator.clone(), delegators);
+        self.reservations.insert(validator.clone(), reservations);
         self.validator_bids.insert(validator, validator_bid)
     }
 
@@ -227,7 +229,13 @@ where
             Some(BidKind::Validator(validator_bid)) => {
                 let validator_public_key = validator_bid.validator_public_key();
                 let delegator_bids = delegators(provider, validator_public_key)?;
-                ret.insert_bid(validator_public_key.clone(), validator_bid, delegator_bids);
+                let reservations = reservations(provider, validator_public_key)?;
+                ret.insert_bid(
+                    validator_public_key.clone(),
+                    validator_bid,
+                    delegator_bids,
+                    reservations,
+                );
             }
             Some(BidKind::Credit(credit)) => {
                 ret.insert_credit(credit.validator_public_key().clone(), era_id, credit);
@@ -1140,6 +1148,29 @@ where
     for delegator_bid_key in delegator_bid_keys {
         let delegator = read_delegator_bid(provider, &delegator_bid_key)?;
         ret.push(delegator);
+    }
+
+    Ok(ret)
+}
+
+pub fn reservations<P>(
+    provider: &mut P,
+    validator_public_key: &PublicKey,
+) -> Result<Vec<Box<Reservation>>, Error>
+where
+    P: RuntimeProvider + ?Sized + StorageProvider,
+{
+    let mut ret = vec![];
+    let bid_addr = BidAddr::from(validator_public_key.clone());
+    let reservation_bid_keys = provider.get_keys_by_prefix(
+        &bid_addr
+            .reservation_prefix()
+            .map_err(|_| Error::Serialization)?,
+    )?;
+
+    for reservation_bid_key in reservation_bid_keys {
+        let reservation = read_reservation_bid(provider, &reservation_bid_key)?;
+        ret.push(reservation);
     }
 
     Ok(ret)

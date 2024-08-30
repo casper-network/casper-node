@@ -1,5 +1,5 @@
 use num_rational::Ratio;
-use num_traits::CheckedMul;
+use num_traits::{CheckedMul, CheckedSub};
 use once_cell::sync::Lazy;
 use std::collections::BTreeMap;
 use tempfile::TempDir;
@@ -7,7 +7,7 @@ use tempfile::TempDir;
 use casper_engine_test_support::{
     ChainspecConfig, ExecuteRequestBuilder, LmdbWasmTestBuilder, StepRequestBuilder,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_PROTOCOL_VERSION, LOCAL_GENESIS_REQUEST,
-    MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_ROUND_SEIGNIORAGE_RATE, SYSTEM_ADDR,
+    MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR,
 };
 use casper_execution_engine::{
     engine_state::{engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, Error},
@@ -72,13 +72,6 @@ static DELEGATOR_4_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*DE
 
 const VALIDATOR_1_DELEGATION_RATE: DelegationRate = 10;
 const VALIDATOR_1_RESERVATION_DELEGATION_RATE: DelegationRate = 20;
-
-static GENESIS_ROUND_SEIGNIORAGE_RATE: Lazy<Ratio<U512>> = Lazy::new(|| {
-    Ratio::new(
-        U512::from(*PRODUCTION_ROUND_SEIGNIORAGE_RATE.numer()),
-        U512::from(*PRODUCTION_ROUND_SEIGNIORAGE_RATE.denom()),
-    )
-});
 
 /// Fund validator and delegators accounts.
 fn setup_accounts(max_delegators_per_validator: u32) -> LmdbWasmTestBuilder {
@@ -639,9 +632,9 @@ fn should_handle_reserved_slots() {
 #[ignore]
 #[test]
 fn should_distribute_rewards_with_reserved_slots() {
-    let validator_stake = ADD_BID_AMOUNT_1;
-    let delegator_1_stake = 1_000_000_000_000;
-    let delegator_2_stake = 1_000_000_000_000;
+    let validator_stake = U512::from(ADD_BID_AMOUNT_1);
+    let delegator_1_stake = U512::from(1_000_000_000_000u64);
+    let delegator_2_stake = U512::from(1_000_000_000_000u64);
     let total_delegator_stake = delegator_1_stake + delegator_2_stake;
     let total_stake = validator_stake + total_delegator_stake;
 
@@ -667,7 +660,7 @@ fn should_distribute_rewards_with_reserved_slots() {
         *DELEGATOR_1_ADDR,
         CONTRACT_DELEGATE,
         runtime_args! {
-            ARG_AMOUNT => U512::from(delegator_1_stake),
+            ARG_AMOUNT => delegator_1_stake,
             ARG_VALIDATOR => VALIDATOR_1.clone(),
             ARG_DELEGATOR => DELEGATOR_1.clone(),
         },
@@ -677,7 +670,7 @@ fn should_distribute_rewards_with_reserved_slots() {
         *DELEGATOR_2_ADDR,
         CONTRACT_DELEGATE,
         runtime_args! {
-            ARG_AMOUNT => U512::from(delegator_2_stake),
+            ARG_AMOUNT => delegator_2_stake,
             ARG_VALIDATOR => VALIDATOR_1.clone(),
             ARG_DELEGATOR => DELEGATOR_2.clone(),
         },
@@ -694,7 +687,8 @@ fn should_distribute_rewards_with_reserved_slots() {
     let protocol_version = DEFAULT_PROTOCOL_VERSION;
     let initial_supply = builder.total_supply(protocol_version, None);
     let total_payout = builder.base_round_reward(None, protocol_version);
-    let expected_total_reward = *GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
+    let rate = builder.round_seigniorage_rate(None, protocol_version);
+    let expected_total_reward = rate * initial_supply;
     let expected_total_reward_integer = expected_total_reward.to_integer();
     assert_eq!(total_payout, expected_total_reward_integer);
 
@@ -737,40 +731,40 @@ fn should_distribute_rewards_with_reserved_slots() {
         U512::from(VALIDATOR_1_RESERVATION_DELEGATION_RATE),
         U512::from(DELEGATION_RATE_DENOMINATOR),
     );
-    let reward_multiplier = Ratio::new(U512::from(total_delegator_stake), U512::from(total_stake));
+    let reward_multiplier = Ratio::new(total_delegator_stake, total_stake);
     let base_delegator_reward = expected_total_reward
         .checked_mul(&reward_multiplier)
         .expect("must get delegator reward");
 
     let delegator_1_expected_payout = {
-        let reward_multiplier = Ratio::new(
-            U512::from(delegator_1_stake),
-            U512::from(total_delegator_stake),
-        );
+        let reward_multiplier = Ratio::new(delegator_1_stake, total_delegator_stake);
         let delegator_1_reward = base_delegator_reward
             .checked_mul(&reward_multiplier)
             .unwrap();
         let commission = delegator_1_reward
             .checked_mul(&reservation_commission_rate)
             .unwrap();
-        (delegator_1_reward - commission).to_integer()
+        delegator_1_reward
+            .checked_sub(&commission)
+            .unwrap()
+            .to_integer()
     };
     let delegator_2_expected_payout = {
-        let reward_multiplier = Ratio::new(
-            U512::from(delegator_2_stake),
-            U512::from(total_delegator_stake),
-        );
+        let reward_multiplier = Ratio::new(delegator_2_stake, total_delegator_stake);
         let delegator_2_reward = base_delegator_reward
             .checked_mul(&reward_multiplier)
             .unwrap();
         let commission = delegator_2_reward
             .checked_mul(&default_commission_rate)
             .unwrap();
-        (delegator_2_reward - commission).to_integer()
+        delegator_2_reward
+            .checked_sub(&commission)
+            .unwrap()
+            .to_integer()
     };
 
     let delegator_1_actual_payout = {
-        let delegator_stake_before = U512::from(delegator_1_stake);
+        let delegator_stake_before = delegator_1_stake;
         let delegator_stake_after =
             get_delegator_staked_amount(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone());
         delegator_stake_after - delegator_stake_before
@@ -778,7 +772,7 @@ fn should_distribute_rewards_with_reserved_slots() {
     assert_eq!(delegator_1_actual_payout, delegator_1_expected_payout);
 
     let delegator_2_actual_payout = {
-        let delegator_stake_before = U512::from(delegator_2_stake);
+        let delegator_stake_before = delegator_2_stake;
         let delegator_stake_after =
             get_delegator_staked_amount(&mut builder, VALIDATOR_1.clone(), DELEGATOR_2.clone());
         delegator_stake_after - delegator_stake_before
@@ -792,7 +786,7 @@ fn should_distribute_rewards_with_reserved_slots() {
     };
 
     let validator_1_actual_payout = {
-        let validator_stake_before = U512::from(validator_stake);
+        let validator_stake_before = validator_stake;
         let validator_stake_after = get_validator_bid(&mut builder, VALIDATOR_1.clone())
             .expect("should have validator bid")
             .staked_amount();

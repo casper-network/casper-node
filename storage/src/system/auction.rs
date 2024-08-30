@@ -1074,13 +1074,17 @@ fn rewards_per_validator(
                 .ok_or(Error::ArithmeticOverflow)?
         };
 
+        let reservation_delegation_rates = recipient.reservation_delegation_rates();
         // calculate commission and final reward for each delegator
         let mut delegator_rewards: BTreeMap<PublicKey, U512> = BTreeMap::new();
         for (delegator_key, delegator_stake) in recipient.delegator_stake().iter() {
             let reward_multiplier = Ratio::new(*delegator_stake, delegator_total_stake);
             let base_reward = base_delegators_part * reward_multiplier;
+            let delegation_rate = *reservation_delegation_rates
+                .get(delegator_key)
+                .unwrap_or(recipient.delegation_rate());
             let commission_rate = Ratio::new(
-                U512::from(*recipient.delegation_rate()),
+                U512::from(delegation_rate),
                 U512::from(DELEGATION_RATE_DENOMINATOR),
             );
             let commission: Ratio<U512> = base_reward
