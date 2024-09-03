@@ -605,7 +605,7 @@ where
                 )?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }
-            FunctionIndex::AddPackageVersion => {
+            FunctionIndex::AddContractVersion => {
                 // args(0)  = pointer to package hash in wasm memory
                 // args(1)  = size of package hash in wasm memory
                 // args(2)  = pointer to entity version in wasm memory

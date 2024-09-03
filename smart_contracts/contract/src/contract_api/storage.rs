@@ -336,7 +336,7 @@ pub fn add_contract_version(
     let mut entity_version: EntityVersion = 0;
 
     let ret = unsafe {
-        ext_ffi::casper_add_package_version(
+        ext_ffi::casper_add_contract_version(
             package_hash_ptr,
             package_hash_size,
             &mut entity_version as *mut EntityVersion, // Fixed width
