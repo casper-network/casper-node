@@ -1,5 +1,6 @@
 use itertools::Itertools;
 use std::{ops::Deref, sync::Arc};
+use tracing::{error, warn};
 
 use lmdb::{DatabaseFlags, RwTransaction};
 
@@ -36,6 +37,8 @@ use crate::{
     },
     tracking_copy::TrackingCopy,
 };
+
+use super::CommitError;
 
 /// Global state implemented against LMDB as a backing data store.
 pub struct LmdbGlobalState {
@@ -215,13 +218,71 @@ impl StateReader<Key, StoredValue> for LmdbGlobalStateView {
 }
 
 impl CommitProvider for LmdbGlobalState {
-    fn commit(&self, prestate_hash: Digest, effects: Effects) -> Result<Digest, GlobalStateError> {
+    fn commit_effects(
+        &self,
+        prestate_hash: Digest,
+        effects: Effects,
+    ) -> Result<Digest, GlobalStateError> {
         commit::<LmdbEnvironment, LmdbTrieStore, GlobalStateError>(
             &self.environment,
             &self.trie_store,
             prestate_hash,
             effects,
         )
+    }
+
+    fn commit_values(
+        &self,
+        prestate_hash: Digest,
+        values_to_write: Vec<(Key, StoredValue)>,
+        keys_to_prune: std::collections::BTreeSet<Key>,
+    ) -> Result<Digest, GlobalStateError> {
+        let post_write_hash = put_stored_values::<LmdbEnvironment, LmdbTrieStore, GlobalStateError>(
+            &self.environment,
+            &self.trie_store,
+            prestate_hash,
+            values_to_write,
+        )?;
+
+        let mut txn = self.environment.create_read_write_txn()?;
+
+        let maybe_root: Option<Trie<Key, StoredValue>> =
+            self.trie_store.get(&txn, &post_write_hash)?;
+
+        if maybe_root.is_none() {
+            return Err(CommitError::RootNotFound(post_write_hash).into());
+        };
+
+        let mut state_hash = post_write_hash;
+
+        for key in keys_to_prune.into_iter() {
+            let prune_result = prune::<Key, StoredValue, _, LmdbTrieStore, GlobalStateError>(
+                &mut txn,
+                &self.trie_store,
+                &state_hash,
+                &key,
+            )?;
+
+            match prune_result {
+                TriePruneResult::Pruned(root_hash) => {
+                    state_hash = root_hash;
+                }
+                TriePruneResult::MissingKey => {
+                    warn!("commit: pruning attempt failed for {}", key);
+                }
+                TriePruneResult::RootNotFound => {
+                    error!(?state_hash, ?key, "commit: root not found");
+                    return Err(CommitError::WriteRootNotFound(state_hash).into());
+                }
+                TriePruneResult::Failure(gse) => {
+                    return Err(gse);
+                }
+            }
+        }
+
+        txn.commit()?;
+
+        Ok(state_hash)
     }
 }
 
@@ -456,7 +517,7 @@ pub fn make_temporary_global_state(
     }
 
     root_hash = lmdb_global_state
-        .commit(root_hash, effects)
+        .commit_effects(root_hash, effects)
         .expect("Creation of account should be a success.");
 
     (lmdb_global_state, root_hash, tempdir)
@@ -533,7 +594,7 @@ mod tests {
             tmp
         };
 
-        let updated_hash = state.commit(root_hash, effects).unwrap();
+        let updated_hash = state.commit_effects(root_hash, effects).unwrap();
 
         let updated_checkout = state.checkout(updated_hash).unwrap().unwrap();
 
@@ -557,7 +618,7 @@ mod tests {
             tmp
         };
 
-        let updated_hash = state.commit(root_hash, effects).unwrap();
+        let updated_hash = state.commit_effects(root_hash, effects).unwrap();
 
         let updated_checkout = state.checkout(updated_hash).unwrap().unwrap();
         for TestPair { key, value } in test_pairs_updated.iter().cloned() {

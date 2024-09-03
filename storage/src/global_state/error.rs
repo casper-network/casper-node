@@ -6,6 +6,8 @@ use casper_types::{bytesrepr, Digest, Key};
 
 use crate::global_state::{state::CommitError, trie::TrieRaw};
 
+use super::trie_store::TrieStoreCacheError;
+
 /// Error enum representing possible errors in global state interactions.
 #[derive(Debug, Clone, Error, PartialEq, Eq)]
 #[non_exhaustive]
@@ -41,6 +43,10 @@ pub enum Error {
     /// Cannot provide proofs over working state in a cache (programmer error).
     #[error("Attempt to generate proofs using non-empty cache.")]
     CannotProvideProofsOverCachedData,
+
+    /// Encountered a cache error.
+    #[error("Cache error")]
+    CacheError(#[from] TrieStoreCacheError),
 }
 
 impl<T> From<sync::PoisonError<T>> for Error {

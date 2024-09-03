@@ -358,7 +358,11 @@ impl StateReader<Key, StoredValue> for ScratchGlobalStateView {
 impl CommitProvider for ScratchGlobalState {
     /// State hash returned is the one provided, as we do not write to lmdb with this kind of global
     /// state. Note that the state hash is NOT used, and simply passed back to the caller.
-    fn commit(&self, state_hash: Digest, effects: Effects) -> Result<Digest, GlobalStateError> {
+    fn commit_effects(
+        &self,
+        state_hash: Digest,
+        effects: Effects,
+    ) -> Result<Digest, GlobalStateError> {
         let txn = self.environment.create_read_txn()?;
         for (key, kind) in effects.value().into_iter().map(TransformV2::destructure) {
             let cached_value = self.cache.read().unwrap().get(&key).cloned();
@@ -423,6 +427,24 @@ impl CommitProvider for ScratchGlobalState {
             }
         }
         txn.commit()?;
+        Ok(state_hash)
+    }
+
+    fn commit_values(
+        &self,
+        state_hash: Digest,
+        write_values: Vec<(Key, StoredValue)>,
+        prune_keys: BTreeSet<Key>,
+    ) -> Result<Digest, GlobalStateError> {
+        let mut cache = self.cache.write().unwrap();
+        for (key, value) in write_values {
+            cache.insert_write(key, value)?;
+        }
+
+        for key_to_prune in prune_keys {
+            cache.prune(key_to_prune)?;
+        }
+
         Ok(state_hash)
     }
 }
@@ -698,14 +720,14 @@ pub(crate) mod tests {
             tmp
         };
 
-        let scratch_root_hash = scratch.commit(root_hash, effects.clone()).unwrap();
+        let scratch_root_hash = scratch.commit_effects(root_hash, effects.clone()).unwrap();
 
         assert_eq!(
             scratch_root_hash, root_hash,
             "ScratchGlobalState should not modify the state root, as it does no hashing"
         );
 
-        let lmdb_hash = state.commit(root_hash, effects).unwrap();
+        let lmdb_hash = state.commit_effects(root_hash, effects).unwrap();
         let updated_checkout = state.checkout(lmdb_hash).unwrap().unwrap();
 
         let all_keys = updated_checkout.keys_with_prefix(&[]).unwrap();
@@ -753,13 +775,15 @@ pub(crate) mod tests {
         };
 
         // Commit effects to both databases.
-        scratch.commit(root_hash, effects.clone()).unwrap();
-        let updated_hash = state2.commit(state_2_root_hash, effects).unwrap();
+        scratch.commit_effects(root_hash, effects.clone()).unwrap();
+        let updated_hash = state2.commit_effects(state_2_root_hash, effects).unwrap();
 
         // Create add transforms as well
         let add_effects = create_test_transforms();
-        scratch.commit(root_hash, add_effects.clone()).unwrap();
-        let updated_hash = state2.commit(updated_hash, add_effects).unwrap();
+        scratch
+            .commit_effects(root_hash, add_effects.clone())
+            .unwrap();
+        let updated_hash = state2.commit_effects(updated_hash, add_effects).unwrap();
 
         let scratch_checkout = scratch.checkout(root_hash).unwrap().unwrap();
         let updated_checkout = state2.checkout(updated_hash).unwrap().unwrap();
@@ -793,7 +817,7 @@ pub(crate) mod tests {
             tmp
         };
 
-        let updated_hash = scratch.commit(root_hash, effects).unwrap();
+        let updated_hash = scratch.commit_effects(root_hash, effects).unwrap();
 
         let updated_checkout = scratch.checkout(updated_hash).unwrap().unwrap();
         for TestPair { key, value } in test_pairs_updated.iter().cloned() {

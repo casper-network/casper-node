@@ -295,7 +295,7 @@ pub(super) fn new_non_transfer(
 type SecretKeys = BTreeMap<PublicKey, Arc<SecretKey>>;
 
 struct ValidationContext {
-    chainspec: Arc<Chainspec>,
+    chainspec: Chainspec,
     // Validators
     secret_keys: SecretKeys,
     // map of height → block
@@ -320,7 +320,7 @@ impl ValidationContext {
     fn new() -> Self {
         let (chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources("local");
         Self {
-            chainspec: Arc::new(chainspec),
+            chainspec,
             secret_keys: BTreeMap::new(),
             past_blocks: HashMap::new(),
             delayed_blocks: HashMap::new(),
@@ -341,6 +341,28 @@ impl ValidationContext {
             self.secret_keys
                 .insert(PublicKey::from(&*validator_key), validator_key.clone());
         }
+        self
+    }
+
+    fn with_count_limits(
+        mut self,
+        mint_count: Option<u64>,
+        auction: Option<u64>,
+        install: Option<u64>,
+        large_limit: Option<u64>,
+    ) -> Self {
+        let transaction_v1_config = TransactionV1Config::default().with_count_limits(
+            mint_count,
+            auction,
+            install,
+            large_limit,
+        );
+        self.chainspec.transaction_config.transaction_v1_config = transaction_v1_config;
+        self
+    }
+
+    fn with_block_gas_limit(mut self, block_gas_limit: u64) -> Self {
+        self.chainspec.transaction_config.block_gas_limit = block_gas_limit;
         self
     }
 
@@ -601,7 +623,7 @@ impl ValidationContext {
         let effect_builder =
             EffectBuilder::new(EventQueueHandle::without_shutdown(reactor.scheduler));
         let mut block_validator = BlockValidator::new(
-            self.chainspec.clone(),
+            Arc::new(self.chainspec.clone()),
             reactor.validator_matrix.clone(),
             Config::default(),
             1u8,
@@ -780,15 +802,21 @@ async fn ttl() {
     let mut transactions_context = ValidationContext::new()
         .with_num_validators(&mut rng, 1)
         .with_transactions(transactions.clone())
+        .with_count_limits(Some(3000), Some(3000), Some(3000), Some(3000))
+        .with_block_gas_limit(10_300_000_000_000)
         .include_all_transactions();
     let mut transfers_context = ValidationContext::new()
         .with_num_validators(&mut rng, 1)
         .with_transfers(transfers.clone())
+        .with_count_limits(Some(3000), Some(3000), Some(3000), Some(3000))
+        .with_block_gas_limit(10_300_000_000_000)
         .include_all_transfers();
     let mut both_context = ValidationContext::new()
         .with_num_validators(&mut rng, 1)
         .with_transactions(transactions)
         .with_transfers(transfers)
+        .with_count_limits(Some(3000), Some(3000), Some(3000), Some(3000))
+        .with_block_gas_limit(10_300_000_000_000)
         .include_all_transactions()
         .include_all_transfers();
 
