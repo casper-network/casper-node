@@ -838,9 +838,19 @@ where
         delegator: AccountHash::from(reservation.delegator_public_key()),
     }
     .into();
-    if let Some(BidKind::Reservation(_)) = provider.read_bid(&reservation_bid_key)? {
-        return Ok(());
-    }
+    if provider.read_bid(&reservation_bid_key).is_err() {
+        // ensure reservation list has capacity to create a new reservation
+        let reservation_count = provider.reservation_count(&validator_bid_addr)?;
+        let reserved_slots = bid.reserved_slots() as usize;
+        if reservation_count >= reserved_slots {
+            warn!(
+                %reservation_count, %reserved_slots,
+                "reservation_count {}, reserved_slots {}",
+                reservation_count, reserved_slots
+            );
+            return Err(Error::ExceededReservationsLimit.into());
+        }
+    };
 
     // ensure reservation list has capacity
     let reservation_count = provider.reservation_count(&validator_bid_addr)?;

@@ -718,6 +718,63 @@ fn should_handle_reserved_slots() {
 
 #[ignore]
 #[test]
+fn should_update_reservation_delegation_rate() {
+    let mut builder = setup_accounts(4);
+
+    let reserved_slots = 3;
+    setup_validator_bid(&mut builder, reserved_slots);
+
+    let reservations = builder
+        .get_bids()
+        .reservations_by_validator_public_key(&VALIDATOR_1);
+    assert!(reservations.is_none());
+
+    // add reservations for Delegators 1 and 2
+    let reservation_request = ExecuteRequestBuilder::standard(
+        *VALIDATOR_1_ADDR,
+        CONTRACT_ADD_RESERVATIONS,
+        runtime_args! {
+            ARG_RESERVATIONS => vec![
+                Reservation::new(VALIDATOR_1.clone(), DELEGATOR_1.clone(), 0),
+                Reservation::new(VALIDATOR_1.clone(), DELEGATOR_2.clone(), 0),
+            ],
+        },
+    )
+    .build();
+    builder.exec(reservation_request).expect_success().commit();
+    let reservations = builder
+        .get_bids()
+        .reservations_by_validator_public_key(&VALIDATOR_1)
+        .expect("should have reservations");
+    assert_eq!(reservations.len(), 2);
+
+    // change delegation rate for Delegator 1
+    let reservation_request = ExecuteRequestBuilder::standard(
+        *VALIDATOR_1_ADDR,
+        CONTRACT_ADD_RESERVATIONS,
+        runtime_args! {
+            ARG_RESERVATIONS => vec![
+                Reservation::new(VALIDATOR_1.clone(), DELEGATOR_1.clone(), 10),
+            ],
+        },
+    )
+    .build();
+    builder.exec(reservation_request).expect_success().commit();
+    let reservations = builder
+        .get_bids()
+        .reservations_by_validator_public_key(&VALIDATOR_1)
+        .expect("should have reservations");
+    assert_eq!(reservations.len(), 2);
+
+    let delegator_1_reservation = reservations
+        .iter()
+        .find(|r| *r.delegator_public_key() == *DELEGATOR_1)
+        .unwrap();
+    assert_eq!(*delegator_1_reservation.delegation_rate(), 10);
+}
+
+#[ignore]
+#[test]
 fn should_distribute_rewards_with_reserved_slots() {
     let validator_stake = U512::from(ADD_BID_AMOUNT_1);
     let delegator_1_stake = U512::from(1_000_000_000_000u64);
