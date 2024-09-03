@@ -536,6 +536,9 @@ impl TryFrom<u8> for Error {
             d if d == Error::BridgeRecordChainTooLong as u8 => Ok(Error::BridgeRecordChainTooLong),
             d if d == Error::UnexpectedBidVariant as u8 => Ok(Error::UnexpectedBidVariant),
             d if d == Error::DelegationAmountTooLarge as u8 => Ok(Error::DelegationAmountTooLarge),
+            d if d == Error::ReservationNotFound as u8 => Ok(Error::ReservationNotFound),
+            d if d == Error::ExceededReservationSlotsLimit as u8 => Ok(Error::ExceededReservationSlotsLimit),
+            d if d == Error::ExceededReservationsLimit as u8 => Ok(Error::ExceededReservationsLimit),
             _ => Err(TryFromU8ForError(())),
         }
     }
@@ -558,7 +561,7 @@ impl FromBytes for Error {
         let error: Error = value
             .try_into()
             // In case an Error variant is unable to be determined it would return an
-            // Error::Formatting as if its unable to be correctly deserialized.
+            // Error::Formatting as if it's unable to be correctly deserialized.
             .map_err(|_| bytesrepr::Error::Formatting)?;
         Ok((error, rem))
     }
