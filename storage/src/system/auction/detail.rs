@@ -10,8 +10,8 @@ use casper_types::{
         SeigniorageAllocation, SeigniorageRecipient, SeigniorageRecipients,
         SeigniorageRecipientsSnapshot, UnbondingPurse, UnbondingPurses, ValidatorBid,
         ValidatorBids, ValidatorCredit, ValidatorCredits, AUCTION_DELAY_KEY,
-        ERA_END_TIMESTAMP_MILLIS_KEY, ERA_ID_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
-        UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
+        DELEGATION_RATE_DENOMINATOR, ERA_END_TIMESTAMP_MILLIS_KEY, ERA_ID_KEY,
+        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
     },
     ApiError, CLTyped, EraId, Key, KeyTag, PublicKey, URef, U512,
 };
@@ -711,7 +711,7 @@ where
     }
 }
 
-// TODO(jck): docstring
+/// Checks if a reservation for a given delegator exists.
 fn has_reservation<P>(
     provider: &mut P,
     delegator: &PublicKey,
@@ -771,17 +771,20 @@ where
         delegator_bid.increase_stake(amount)?;
         (*delegator_bid.bonding_purse(), delegator_bid)
     } else {
-        // is this validator over the delegator limit?
+        // is this validator over the delegator limit
+        // or is there a reservation for given delegator public key?
         let delegator_count = provider.delegator_count(&validator_bid_addr)?;
-        if delegator_count
-            >= (max_delegators_per_validator - validator_bid.reserved_slots()) as usize
-            && !has_reservation(provider, &delegator_public_key, &validator_public_key)?
+        let reserved_slots_count = validator_bid.reserved_slots();
+        let reservation_count = provider.reservation_count(&validator_bid_addr)?;
+        let has_reservation =
+            has_reservation(provider, &delegator_public_key, &validator_public_key)?;
+        if delegator_count >= (max_delegators_per_validator - reserved_slots_count) as usize
+            && !has_reservation
         {
-            // TODO(jck): log reservation list size
             warn!(
-                %delegator_count, %max_delegators_per_validator,
-                "delegator_count {}, max_delegators_per_validator {}",
-                delegator_count, max_delegators_per_validator
+                %delegator_count, %max_delegators_per_validator, %reservation_count, %has_reservation,
+                "delegator_count {}, max_delegators_per_validator {}, reservation_count {}, has_reservation {}",
+                delegator_count, max_delegators_per_validator, reservation_count, has_reservation
             );
             return Err(Error::ExceededDelegatorSizeLimit.into());
         }
@@ -819,9 +822,8 @@ where
     Ok(updated_amount)
 }
 
-// TODO(jck): update docstring
-/// If specified validator exists, and if validator is not yet at max delegators count, processes
-/// delegation. For a new delegation a delegator bid record will be created to track the delegation,
+/// If specified validator exists, and if validator is not yet at max reservations count, processes
+/// reservation. For a new reservation a bid record will be created to track the reservation,
 /// otherwise the existing tracking record will be updated.
 #[allow(clippy::too_many_arguments)]
 pub fn handle_add_reservation<P>(provider: &mut P, reservation: Reservation) -> Result<(), ApiError>
@@ -838,7 +840,7 @@ where
         delegator: AccountHash::from(reservation.delegator_public_key()),
     }
     .into();
-    if provider.read_bid(&reservation_bid_key).is_err() {
+    if provider.read_bid(&reservation_bid_key)?.is_none() {
         // ensure reservation list has capacity to create a new reservation
         let reservation_count = provider.reservation_count(&validator_bid_addr)?;
         let reserved_slots = bid.reserved_slots() as usize;
@@ -852,17 +854,11 @@ where
         }
     };
 
-    // ensure reservation list has capacity
-    let reservation_count = provider.reservation_count(&validator_bid_addr)?;
-    let reserved_slots = bid.reserved_slots() as usize;
-    if reservation_count >= reserved_slots {
-        warn!(
-            %reservation_count, %reserved_slots,
-            "reservation_count {}, reserved_slots {}",
-            reservation_count, reserved_slots
-        );
-        return Err(Error::ExceededReservationsLimit.into());
+    // validate specified delegation rate
+    if reservation.delegation_rate() > &DELEGATION_RATE_DENOMINATOR {
+        return Err(Error::DelegationRateTooLarge.into());
     }
+
     provider.write_bid(
         reservation_bid_key,
         BidKind::Reservation(Box::new(reservation)),
@@ -871,10 +867,11 @@ where
     Ok(())
 }
 
-// TODO(jck): update docstring
-/// If specified validator exists, and if validator is not yet at max delegators count, processes
-/// delegation. For a new delegation a delegator bid record will be created to track the delegation,
-/// otherwise the existing tracking record will be updated.
+/// Attempts to remove a reservation if one exists. If not it returns an error.
+///
+/// If there is already a delegator bid associated with a given reservation it validates that
+/// there are free public slots available. If not, it returns an error since the delegator
+/// cannot be "downgraded".
 pub fn handle_cancel_reservation<P>(
     provider: &mut P,
     validator: PublicKey,
@@ -997,7 +994,6 @@ where
     }
 }
 
-// TODO(jck): remove if unused
 pub fn read_reservation_bids<P>(
     provider: &mut P,
     validator_public_key: &PublicKey,
@@ -1020,7 +1016,6 @@ where
     Ok(ret)
 }
 
-// TODO(jck): remove if unused
 pub fn read_reservation_bid<P>(provider: &mut P, bid_key: &Key) -> Result<Box<Reservation>, Error>
 where
     P: RuntimeProvider + ?Sized + StorageProvider,

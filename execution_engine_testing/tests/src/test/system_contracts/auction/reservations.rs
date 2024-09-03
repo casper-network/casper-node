@@ -460,11 +460,10 @@ fn should_not_allow_validator_to_reduce_number_of_reserved_spots_if_they_are_occ
 
     builder.exec(add_validator_bid_request).expect_failure();
     let error = builder.get_error().expect("should get error");
-
     assert!(matches!(
         error,
         Error::Exec(ExecError::Revert(ApiError::AuctionError(auction_error)))
-        if auction_error == AuctionError::ExceededReservationSlotsLimit as u8));
+        if auction_error == AuctionError::ReservationSlotsCountTooSmall as u8));
 
     // remove a reservation for Delegator 2 and
     // reduce number of reserved spots
@@ -747,6 +746,25 @@ fn should_update_reservation_delegation_rate() {
         .reservations_by_validator_public_key(&VALIDATOR_1)
         .expect("should have reservations");
     assert_eq!(reservations.len(), 2);
+
+    // try to change delegation rate for Delegator 1
+    // this fails because delegation rate value is invalid
+    let reservation_request = ExecuteRequestBuilder::standard(
+        *VALIDATOR_1_ADDR,
+        CONTRACT_ADD_RESERVATIONS,
+        runtime_args! {
+            ARG_RESERVATIONS => vec![
+                Reservation::new(VALIDATOR_1.clone(), DELEGATOR_1.clone(), DELEGATION_RATE_DENOMINATOR + 1),
+            ],
+        },
+    )
+    .build();
+    builder.exec(reservation_request).expect_failure();
+    let error = builder.get_error().expect("should get error");
+    assert!(matches!(
+        error,
+        Error::Exec(ExecError::Revert(ApiError::AuctionError(auction_error)))
+        if auction_error == AuctionError::DelegationRateTooLarge as u8));
 
     // change delegation rate for Delegator 1
     let reservation_request = ExecuteRequestBuilder::standard(

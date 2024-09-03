@@ -466,6 +466,7 @@ fn create_or_update_bid<T: StateReader>(
                         ),
                         0,
                         u64::MAX,
+                        0,
                     )
                 }
                 BidKind::Validator(validator_bid) => {
@@ -489,6 +490,7 @@ fn create_or_update_bid<T: StateReader>(
                         ),
                         validator_bid.minimum_delegation_amount(),
                         validator_bid.maximum_delegation_amount(),
+                        validator_bid.reserved_slots(),
                     )
                 }
                 _ => unreachable!(),
@@ -496,8 +498,13 @@ fn create_or_update_bid<T: StateReader>(
         });
 
     // existing bid
-    if let Some((bonding_purse, existing_recipient, min_delegation_amount, max_delegation_amount)) =
-        maybe_existing_recipient
+    if let Some((
+        bonding_purse,
+        existing_recipient,
+        min_delegation_amount,
+        max_delegation_amount,
+        reserved_slots,
+    )) = maybe_existing_recipient
     {
         if existing_recipient == *updated_recipient {
             return; // noop
@@ -574,8 +581,7 @@ fn create_or_update_bid<T: StateReader>(
             *updated_recipient.delegation_rate(),
             min_delegation_amount,
             max_delegation_amount,
-            // TODO(jck): pass actual number
-            0,
+            reserved_slots,
         );
 
         state.set_bid(
@@ -614,7 +620,6 @@ fn create_or_update_bid<T: StateReader>(
         *updated_recipient.delegation_rate(),
         0,
         u64::MAX,
-        // TODO(jck): pass actual number
         0,
     );
     state.set_bid(

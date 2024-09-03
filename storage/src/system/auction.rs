@@ -52,7 +52,6 @@ pub trait Auction:
         Ok(seigniorage_recipients)
     }
 
-    // TODO(jck): update docstring
     /// This entry point adds or modifies an entry in the `Key::Bid` section of the global state and
     /// creates (or tops off) a bid purse. Post genesis, any new call on this entry point causes a
     /// non-founding validator in the system to exist.
@@ -116,15 +115,13 @@ pub trait Auction:
                 minimum_delegation_amount,
                 maximum_delegation_amount,
             );
-            // TODO(jck): check if expanding the reservation list is possible
             // perform validation if number of reserved slots has changed
             if reserved_slots != validator_bid.reserved_slots() {
                 let validator_bid_addr = BidAddr::from(public_key.clone());
                 // cannot reserve fewer slots than there are reservations
                 let reservation_count = self.reservation_count(&validator_bid_addr)?;
                 if reserved_slots < reservation_count as u32 {
-                    // TODO(jck): add dedicated error variant
-                    return Err(Error::ExceededReservationSlotsLimit.into());
+                    return Err(Error::ReservationSlotsCountTooSmall.into());
                 }
 
                 // cannot reserve more slots than there are free delegator slots
@@ -488,13 +485,11 @@ pub trait Auction:
         Ok(())
     }
 
-    // TODO(jck): docstring
-    /// Adds a new delegator to delegators or increases its current stake. If the target validator
-    /// is missing, the function call returns an error and does nothing.
+    /// Adds new reservations for a given validator with specified delegator public keys
+    /// and delegation rates. If during adding reservations configured number of reserved
+    /// delegator slots is exceeded it returns an error.
     ///
-    /// The function transfers motes from the source purse to the delegator's bonding purse.
-    ///
-    /// This entry point returns the number of tokens currently delegated to a given validator.
+    /// If given reservation exists already and the delegation rate was changed it's updated.
     fn add_reservations(&mut self, reservations: Vec<Reservation>) -> Result<(), ApiError> {
         if !self.allow_auction_bids() {
             // Validation set rotation might be disabled on some private chains and we should not
@@ -514,13 +509,8 @@ pub trait Auction:
         Ok(())
     }
 
-    // TODO(jck): docstring
-    /// Adds a new delegator to delegators or increases its current stake. If the target validator
-    /// is missing, the function call returns an error and does nothing.
-    ///
-    /// The function transfers motes from the source purse to the delegator's bonding purse.
-    ///
-    /// This entry point returns the number of tokens currently delegated to a given validator.
+    /// Removes reservations for given delegator public keys. If a reservation for one of the keys
+    /// does not exist it returns an error.
     fn cancel_reservations(
         &mut self,
         validator: PublicKey,
