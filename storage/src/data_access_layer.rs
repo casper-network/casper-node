@@ -115,8 +115,22 @@ impl<S> CommitProvider for DataAccessLayer<S>
 where
     S: CommitProvider,
 {
-    fn commit(&self, state_hash: Digest, effects: Effects) -> Result<Digest, GlobalStateError> {
-        self.state.commit(state_hash, effects)
+    fn commit_effects(
+        &self,
+        state_hash: Digest,
+        effects: Effects,
+    ) -> Result<Digest, GlobalStateError> {
+        self.state.commit_effects(state_hash, effects)
+    }
+
+    fn commit_values(
+        &self,
+        state_hash: Digest,
+        values_to_write: Vec<(casper_types::Key, casper_types::StoredValue)>,
+        keys_to_prune: std::collections::BTreeSet<casper_types::Key>,
+    ) -> Result<Digest, GlobalStateError> {
+        self.state
+            .commit_values(state_hash, values_to_write, keys_to_prune)
     }
 }
 
