@@ -12,6 +12,7 @@ use casper_types::{
     api_error,
     bytesrepr::{self, ToBytes},
     contract_messages::MessageTopicOperation,
+    contracts::ContractPackageHash,
     crypto, AddressableEntityHash, ApiError, EntityVersion, Gas, Group, HostFunction,
     HostFunctionCost, Key, PackageHash, PackageStatus, StoredValue, URef, U512,
     UREF_SERIALIZED_LENGTH,
@@ -605,6 +606,60 @@ where
                 )?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }
+            FunctionIndex::AddContractVersion => {
+                // args(0) = pointer to package key in wasm memory
+                // args(1) = size of package key in wasm memory
+                // args(2) = pointer to entrypoints in wasm memory
+                // args(3) = size of entrypoints in wasm memory
+                // args(4) = pointer to named keys in wasm memory
+                // args(5) = size of named keys in wasm memory
+                // args(6) = pointer to output buffer for serialized key
+                // args(7) = size of output buffer
+                // args(8) = pointer to bytes written
+                let (
+                    contract_package_hash_ptr,
+                    contract_package_hash_size,
+                    version_ptr,
+                    entry_points_ptr,
+                    entry_points_size,
+                    named_keys_ptr,
+                    named_keys_size,
+                    output_ptr,
+                    output_size,
+                    bytes_written_ptr,
+                ) = Args::parse(args)?;
+                self.charge_host_function_call(
+                    &host_function_costs.add_contract_version,
+                    [
+                        contract_package_hash_ptr,
+                        contract_package_hash_size,
+                        version_ptr,
+                        entry_points_ptr,
+                        entry_points_size,
+                        named_keys_ptr,
+                        named_keys_size,
+                        output_ptr,
+                        output_size,
+                        bytes_written_ptr,
+                    ],
+                )?;
+
+                let contract_package_hash: ContractPackageHash =
+                    self.t_from_mem(contract_package_hash_ptr, contract_package_hash_size)?;
+                let package_hash = PackageHash::new(contract_package_hash.value());
+                let entry_points: EntryPoints =
+                    self.t_from_mem(entry_points_ptr, entry_points_size)?;
+                let named_keys: NamedKeys = self.t_from_mem(named_keys_ptr, named_keys_size)?;
+                let ret = self.add_contract_version(
+                    package_hash,
+                    version_ptr,
+                    entry_points,
+                    named_keys,
+                    BTreeMap::new(),
+                    output_ptr,
+                )?;
+                Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
+            }
             FunctionIndex::AddPackageVersion => {
                 // args(0)  = pointer to package hash in wasm memory
                 // args(1)  = size of package hash in wasm memory
@@ -632,7 +687,7 @@ where
                 ) = Args::parse(args)?;
 
                 self.charge_host_function_call(
-                    &host_function_costs.add_contract_version,
+                    &host_function_costs.add_package_version,
                     [
                         contract_package_hash_ptr,
                         contract_package_hash_size,
