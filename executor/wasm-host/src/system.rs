@@ -124,7 +124,9 @@ fn dispatch_system_contract<R: GlobalStateReader, Ret>(
 
     let modified_tracking_copy = modified_tracking_copy.into_inner();
 
-    tracking_copy.merge_raw_parts(modified_tracking_copy.into_raw_parts());
+    tracking_copy
+        .commit(modified_tracking_copy.effects())
+        .expect("Commit effects");
 
     Ok(ret)
 }

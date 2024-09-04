@@ -1164,3 +1164,38 @@ fn query_with_large_depth_with_urefs_should_fail() {
         result
     );
 }
+
+#[test]
+fn add_should_work() {
+    let mut pairs = Vec::new();
+    let key = Key::URef(URef::default());
+    let initial_value = CLValue::from_t(1_i32).unwrap();
+    pairs.push((key, StoredValue::CLValue(initial_value)));
+
+    let (global_state, root_hash, _tempdir) = state::lmdb::make_temporary_global_state(pairs);
+
+    let effects = {
+        let view = global_state.checkout(root_hash).unwrap().unwrap();
+        let mut tracking_copy = TrackingCopy::new(view, DEFAULT_MAX_QUERY_DEPTH);
+        assert!(
+            matches!(tracking_copy.get(&key), Ok(Some(StoredValue::CLValue(initial_value))) if initial_value.clone().into_t::<i32>().unwrap() == 1)
+        );
+        tracking_copy
+            .add(key, StoredValue::CLValue(CLValue::from_t(1_i32).unwrap()))
+            .unwrap();
+        assert!(
+            matches!(tracking_copy.get(&key), Ok(Some(StoredValue::CLValue(initial_value))) if initial_value.clone().into_t::<i32>().unwrap() == 2)
+        );
+        tracking_copy.effects()
+    };
+
+    let view = global_state.checkout(root_hash).unwrap().unwrap();
+    let mut tc = TrackingCopy::new(view, DEFAULT_MAX_QUERY_DEPTH);
+    assert!(
+        matches!(tc.get(&key), Ok(Some(StoredValue::CLValue(initial_value))) if initial_value.clone().into_t::<i32>().unwrap() == 1)
+    );
+    tc.commit(effects).unwrap();
+    assert!(
+        matches!(tc.get(&key), Ok(Some(StoredValue::CLValue(initial_value))) if initial_value.clone().into_t::<i32>().unwrap() == 2)
+    );
+}

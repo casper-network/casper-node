@@ -19,6 +19,7 @@ use std::{
 
 use linked_hash_map::LinkedHashMap;
 use thiserror::Error;
+use tracing::{debug, error, warn};
 
 use crate::{
     global_state::{
@@ -422,32 +423,70 @@ where
         }
     }
 
-    /// Merges the caches and effects of the other `TrackingCopy` into this instance.
-    pub fn merge(&mut self, other: TrackingCopy<R>) {
-        *self = other;
-    }
+    pub fn commit(&mut self, effects: Effects) -> Result<(), TrackingCopyError> {
+        for (key, kind) in effects.value().into_iter().map(TransformV2::destructure) {
+            let read_result = self.get(&key);
 
-    /// Merges the caches and effects of the other `TrackingCopy` but keeps the reader instance.
-    pub fn merge_raw_parts(&mut self, raw_parts: TrackingCopyParts) {
-        let (cache, effects, messages) = raw_parts;
-        self.cache = cache;
-        self.effects = effects;
-        self.messages = messages;
-    }
+            let instruction = match (read_result, kind) {
+                (_, TransformKindV2::Identity) => {
+                    // effectively a noop.
+                    continue;
+                }
+                (Ok(None), TransformKindV2::Write(new_value)) => {
+                    TransformInstruction::store(new_value)
+                }
+                (Ok(None), TransformKindV2::Prune(key)) => {
+                    // effectively a noop.
+                    debug!(
+                        ?key,
+                        "commit: attempt to prune nonexistent record; this may happen if a key is both added and pruned in the same commit."
+                    );
+                    continue;
+                }
+                (Ok(None), transform_kind) => {
+                    error!(
+                        ?key,
+                        ?transform_kind,
+                        "commit: key not found while attempting to apply transform"
+                    );
+                    return Err(TrackingCopyError::KeyNotFound(key).into());
+                }
+                (Ok(Some(current_value)), transform_kind) => {
+                    match transform_kind.apply(current_value) {
+                        Ok(instruction) => instruction,
+                        Err(err) => {
+                            error!(
+                                ?key,
+                                ?err,
+                                "commit: key found, but could not apply transform"
+                            );
+                            return Err(TrackingCopyError::TransformError(err).into());
+                        }
+                    }
+                }
+                (Err(error), transform_kind) => {
+                    warn!(
+                        ?key,
+                        ?error,
+                        ?transform_kind,
+                        "commit: error reading key while attempting to apply transform"
+                    );
+                    return Err(error);
+                }
+            };
 
-    pub fn from_effects_and_messages(reader: Arc<R>, effects: Effects, messages: Messages) -> Self {
-        Self {
-            reader,
-            cache: GenericTrackingCopyCache::new(0, HeapSize),
-            effects,
-            max_query_depth: DEFAULT_MAX_QUERY_DEPTH,
-            messages,
+            match instruction {
+                TransformInstruction::Store(value) => {
+                    // let write_result =
+                    //     write::<_, _, _, _, E>(&mut txn, store, &state_root, &key, &value)?;
+                    self.write(key, value);
+                }
+                TransformInstruction::Prune(key) => {
+                    self.prune(key);
+                }
+            }
         }
-    }
-
-    /// Returns the `TrackingCopy`'s cache and effects, consuming the `TrackingCopy`.
-    pub fn into_raw_parts(self) -> TrackingCopyParts {
-        (self.cache, self.effects, self.messages)
+        Ok(())
     }
 
     /// Returns a copy of the execution effects cached by this instance.

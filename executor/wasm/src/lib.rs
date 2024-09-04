@@ -9,11 +9,8 @@ use std::{
 
 use bytes::Bytes;
 use casper_execution_engine::{
-    engine_state::{
-        EngineConfig, Error as EngineError, ExecutableItem, ExecutionEngineV1, WasmV1Request,
-    },
+    engine_state::{EngineConfig, Error as EngineError, ExecutableItem, ExecutionEngineV1},
     execution::ExecError,
-    runtime::PreprocessingError,
 };
 use casper_executor_wasm_common::flags::ReturnFlags;
 use casper_executor_wasm_host::context::Context;
@@ -22,7 +19,7 @@ use casper_executor_wasm_interface::{
         ExecuteError, ExecuteRequest, ExecuteRequestBuilder, ExecuteResult,
         ExecuteWithProviderError, ExecuteWithProviderResult, ExecutionKind, Executor,
     },
-    ConfigBuilder, GasUsage, HostError, TrapCode, VMError, WasmInstance, WasmPreparationError,
+    ConfigBuilder, GasUsage, HostError, TrapCode, VMError, WasmInstance,
 };
 use casper_executor_wasmer_backend::WasmerEngine;
 use casper_storage::{
@@ -47,7 +44,7 @@ use either::Either;
 use install::{InstallContractError, InstallContractRequest, InstallContractResult};
 use parking_lot::RwLock;
 use system::{MintArgs, MintTransferArgs};
-use tracing::{error, info, warn};
+use tracing::{error, warn};
 
 const DEFAULT_WASM_ENTRY_POINT: &str = "call";
 
@@ -255,13 +252,13 @@ impl ExecutorV2 {
                         host_error,
                         output,
                         gas_usage,
-                        tracking_copy_parts,
+                        effects,
                     }) => {
                         if let Some(host_error) = host_error {
                             return Err(InstallContractError::Constructor { host_error });
                         }
 
-                        tracking_copy.merge_raw_parts(tracking_copy_parts);
+                        tracking_copy.commit(effects).expect("should commit");
 
                         if let Some(output) = output {
                             warn!(?output, "unexpected output from constructor");
@@ -407,7 +404,7 @@ impl ExecutorV2 {
                                             gas_limit,
                                             gas_limit - DEFAULT_MINT_TRANSFER_GAS_COST,
                                         ),
-                                        tracking_copy_parts: tracking_copy.into_raw_parts(),
+                                        effects: tracking_copy.effects(),
                                     });
                                 }
                             }
@@ -494,7 +491,7 @@ impl ExecutorV2 {
                 host_error: None,
                 output: None,
                 gas_usage,
-                tracking_copy_parts: final_tracking_copy.into_raw_parts(),
+                effects: final_tracking_copy.effects(),
             }),
             Err(VMError::Return { flags, data }) => {
                 let host_error = if flags.contains(ReturnFlags::REVERT) {
@@ -502,7 +499,9 @@ impl ExecutorV2 {
                     Some(HostError::CalleeReverted)
                 } else {
                     // Merge the tracking copy parts since the execution has succeeded.
-                    initial_tracking_copy.merge(final_tracking_copy);
+                    initial_tracking_copy
+                        .commit(final_tracking_copy.effects())
+                        .expect("should commit");
 
                     None
                 };
@@ -511,20 +510,20 @@ impl ExecutorV2 {
                     host_error,
                     output: data,
                     gas_usage,
-                    tracking_copy_parts: initial_tracking_copy.into_raw_parts(),
+                    effects: initial_tracking_copy.effects(),
                 })
             }
             Err(VMError::OutOfGas) => Ok(ExecuteResult {
                 host_error: Some(HostError::CalleeGasDepleted),
                 output: None,
                 gas_usage,
-                tracking_copy_parts: final_tracking_copy.into_raw_parts(),
+                effects: final_tracking_copy.effects(),
             }),
             Err(VMError::Trap(trap_code)) => Ok(ExecuteResult {
                 host_error: Some(HostError::CalleeTrapped(trap_code)),
                 output: None,
                 gas_usage,
-                tracking_copy_parts: initial_tracking_copy.into_raw_parts(),
+                effects: initial_tracking_copy.effects(),
             }),
             Err(VMError::Export(export_error)) => {
                 error!(?export_error, "export error");
@@ -532,7 +531,7 @@ impl ExecutorV2 {
                     host_error: Some(HostError::NotCallable),
                     output: None,
                     gas_usage,
-                    tracking_copy_parts: initial_tracking_copy.into_raw_parts(),
+                    effects: initial_tracking_copy.effects(),
                 })
             }
         }
@@ -576,14 +575,9 @@ impl ExecutorV2 {
             )
         };
 
-        let shared_reader = tracking_copy.shared_reader();
-        let reconstructed_tracking_copy = TrackingCopy::from_effects_and_messages(
-            shared_reader,
-            wasm_v1_result.effects().clone(),
-            wasm_v1_result.messages().clone(),
-        );
-
-        tracking_copy.merge(reconstructed_tracking_copy);
+        tracking_copy
+            .commit(wasm_v1_result.effects().clone())
+            .expect("should commit");
 
         let gas_consumed = wasm_v1_result
             .consumed()
@@ -622,7 +616,7 @@ impl ExecutorV2 {
             host_error,
             output,
             gas_usage: GasUsage::new(gas_limit, remaining_points),
-            tracking_copy_parts: tracking_copy.fork2().into_raw_parts(),
+            effects: tracking_copy.fork2().effects(),
         });
     }
 
@@ -653,20 +647,17 @@ impl ExecutorV2 {
                 host_error,
                 output,
                 gas_usage,
-                tracking_copy_parts,
-            }) => {
-                let (_cache, effects, _messages) = tracking_copy_parts;
-                match state_provider.commit(state_root_hash, effects.clone()) {
-                    Ok(post_state_hash) => Ok(ExecuteWithProviderResult {
-                        host_error,
-                        output,
-                        gas_usage,
-                        post_state_hash,
-                        effects,
-                    }),
-                    Err(error) => Err(error.into()),
-                }
-            }
+                effects,
+            }) => match state_provider.commit(state_root_hash, effects.clone()) {
+                Ok(post_state_hash) => Ok(ExecuteWithProviderResult {
+                    host_error,
+                    output,
+                    gas_usage,
+                    post_state_hash,
+                    effects,
+                }),
+                Err(error) => Err(error.into()),
+            },
             Err(error) => Err(ExecuteWithProviderError::Execute(error)),
         }
     }

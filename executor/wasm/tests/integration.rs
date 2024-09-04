@@ -21,7 +21,7 @@ use casper_storage::{
     AddressGenerator,
 };
 use casper_types::{
-    account::AccountHash, bytesrepr::ToBytes, execution, ChainspecRegistry, Digest, EntityAddr,
+    account::AccountHash, bytesrepr::ToBytes, ChainspecRegistry, Digest, EntityAddr,
     GenesisAccount, GenesisConfigBuilder, Key, Motes, Phase, ProtocolVersion, PublicKey,
     RuntimeArgs, SecretKey, StoredValue, Timestamp, TransactionHash, TransactionV1Hash, U512,
 };

@@ -198,7 +198,7 @@ pub struct ExecuteResult {
     /// Gas usage.
     pub gas_usage: GasUsage,
     /// Effects produced by the execution.
-    pub tracking_copy_parts: TrackingCopyParts,
+    pub effects: Effects,
 }
 
 /// Result of executing a Wasm contract on a state provider.
@@ -237,13 +237,11 @@ impl ExecuteWithProviderResult {
 impl ExecuteResult {
     /// Returns the host error.
     pub fn effects(&self) -> &Effects {
-        let (_cache, effects, _x) = &self.tracking_copy_parts;
-        effects
+        &self.effects
     }
 
     pub fn into_effects(self) -> Effects {
-        let (_cache, effects, _x) = self.tracking_copy_parts;
-        effects
+        self.effects
     }
 
     pub fn host_error(&self) -> Option<&HostError> {

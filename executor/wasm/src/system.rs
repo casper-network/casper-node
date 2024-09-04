@@ -16,8 +16,7 @@ use casper_storage::{
 };
 use casper_types::{
     account::AccountHash,
-    addressable_entity::{self, ActionThresholds, AssociatedKeys, MessageTopics},
-    contract_messages::Message,
+    addressable_entity::{ActionThresholds, AssociatedKeys, MessageTopics},
     AddressableEntity, ByteCodeHash, CLValueError, ContextAccessRights, Contract, EntityAddr,
     EntityKind, Key, PackageHash, Phase, ProtocolVersion, PublicKey, StoredValue, StoredValueTag,
     SystemEntityRegistry, TransactionHash, TransactionRuntime, URef, U512,
@@ -141,7 +140,9 @@ fn dispatch_system_contract<R: GlobalStateReader, Ret: PartialEq>(
 
     let modified_tracking_copy = modified_tracking_copy.into_inner();
 
-    tracking_copy.merge_raw_parts(modified_tracking_copy.into_raw_parts());
+    tracking_copy
+        .commit(modified_tracking_copy.effects())
+        .expect("Should commit effects");
 
     Ok(ret)
 }

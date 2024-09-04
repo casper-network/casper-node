@@ -23,22 +23,33 @@ impl LegacyCounterProxy {
     }
 
     pub fn perform_test(&self) {
-        let (counter_get_result_before, host_error) =
+        let (counter_get_result_1, host_error) =
             host::casper_call(&self.legacy_address, 0, "counter_get", &EMPTY_RUNTIME_ARGS);
-        log!("counter_get_result_before: {:?}", counter_get_result_before);
-        // assert_eq!(counter_get_result_before, 0);
+        log!("counter_get_result_before: {:?}", counter_get_result_1);
         let _ = host_error.expect("No error 1");
 
-        let (inc_result, host_error) =
+        let (inc_result_1, host_error) =
             host::casper_call(&self.legacy_address, 0, "counter_inc", &EMPTY_RUNTIME_ARGS);
-        log!("inc_result {:?}", inc_result);
-        assert_eq!(inc_result, Some(CL_VALUE_UNIT_BYTES.to_vec()));
+        log!("inc_result {:?}", inc_result_1);
+        assert_eq!(inc_result_1, Some(CL_VALUE_UNIT_BYTES.to_vec()));
         let _ = host_error.expect("No error 2");
 
-        let (counter_get_result_after, host_error) =
+        let (counter_get_result_2, host_error) =
             host::casper_call(&self.legacy_address, 0, "counter_get", &EMPTY_RUNTIME_ARGS);
         let _ = host_error.expect("No error 3");
-        log!("counter_get_result_after: {:?}", counter_get_result_after);
-        assert_ne!(counter_get_result_before, counter_get_result_after);
+        log!("counter_get_result_after: {:?}", counter_get_result_2);
+        assert_ne!(counter_get_result_1, counter_get_result_2);
+
+        let (inc_result_2, host_error) =
+            host::casper_call(&self.legacy_address, 0, "counter_inc", &EMPTY_RUNTIME_ARGS);
+        log!("inc_result {:?}", inc_result_2);
+        assert_eq!(inc_result_2, Some(CL_VALUE_UNIT_BYTES.to_vec()));
+        let _ = host_error.expect("No error 4");
+
+        let (counter_get_result_3, host_error) =
+            host::casper_call(&self.legacy_address, 0, "counter_get", &EMPTY_RUNTIME_ARGS);
+        let _ = host_error.expect("No error 3");
+        log!("counter_get_result_after: {:?}", counter_get_result_3);
+        assert_ne!(counter_get_result_2, counter_get_result_3);
     }
 }
