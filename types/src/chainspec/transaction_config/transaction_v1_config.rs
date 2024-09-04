@@ -199,12 +199,12 @@ impl TransactionV1Config {
     #[cfg(any(feature = "testing", test))]
     pub fn with_count_limits(
         mut self,
-        mint_count: Option<u64>,
+        mint: Option<u64>,
         auction: Option<u64>,
         install: Option<u64>,
-        large_limit: Option<u64>,
+        large: Option<u64>,
     ) -> Self {
-        if let Some(mint_count) = mint_count {
+        if let Some(mint_count) = mint {
             self.native_mint_lane[MAX_TRANSACTION_COUNT] = mint_count;
         }
         if let Some(auction_count) = auction {
@@ -222,7 +222,7 @@ impl TransactionV1Config {
             updated_lane[MAX_TRANSACTION_COUNT] = install_upgrade_count;
             self.wasm_lanes.push(updated_lane);
         }
-        if let Some(large_limit) = large_limit {
+        if let Some(large_limit) = large {
             let (index, lane) = self
                 .wasm_lanes
                 .iter()

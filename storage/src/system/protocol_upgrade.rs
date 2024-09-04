@@ -141,7 +141,7 @@ where
 {
     config: ProtocolUpgradeConfig,
     address_generator: Rc<RefCell<AddressGenerator>>,
-    tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
+    tracking_copy: TrackingCopy<<S as StateProvider>::Reader>,
 }
 
 impl<S> ProtocolUpgrader<S>
@@ -152,7 +152,7 @@ where
     pub fn new(
         config: ProtocolUpgradeConfig,
         protocol_upgrade_config_hash: Digest,
-        tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
+        tracking_copy: TrackingCopy<<S as StateProvider>::Reader>,
     ) -> Self {
         let phase = Phase::System;
         let protocol_upgrade_config_hash_bytes = protocol_upgrade_config_hash.as_ref();
@@ -168,7 +168,10 @@ where
         }
     }
 
-    pub fn upgrade(self, pre_state_hash: Digest) -> Result<(), ProtocolUpgradeError> {
+    pub fn upgrade(
+        mut self,
+        pre_state_hash: Digest,
+    ) -> Result<TrackingCopy<<S as StateProvider>::Reader>, ProtocolUpgradeError> {
         self.check_next_protocol_version_validity()?;
         self.handle_global_state_updates();
         let system_entity_addresses = self.handle_system_entities()?;
@@ -190,7 +193,9 @@ where
             self.config.minimum_delegation_amount(),
             self.config.maximum_delegation_amount(),
         )?;
-        self.handle_era_info_migration()
+        self.handle_era_info_migration()?;
+
+        Ok(self.tracking_copy)
     }
 
     /// Determine if the next protocol version is a legitimate semver progression.
@@ -213,9 +218,7 @@ where
 
     fn system_entity_registry(&self) -> Result<SystemEntityRegistry, ProtocolUpgradeError> {
         debug!("system entity registry");
-        let registry = if let Ok(registry) =
-            self.tracking_copy.borrow_mut().get_system_entity_registry()
-        {
+        let registry = if let Ok(registry) = self.tracking_copy.get_system_entity_registry() {
             registry
         } else {
             // Check the upgrade config for the registry
@@ -243,7 +246,9 @@ where
     }
 
     /// Handle system entities.
-    pub fn handle_system_entities(&self) -> Result<SystemEntityAddresses, ProtocolUpgradeError> {
+    pub fn handle_system_entities(
+        &mut self,
+    ) -> Result<SystemEntityAddresses, ProtocolUpgradeError> {
         debug!("handle system entities");
         let mut registry = self.system_entity_registry()?;
 
@@ -264,14 +269,13 @@ where
             let cl_value_chainspec_registry = CLValue::from_t(registry)
                 .map_err(|error| ProtocolUpgradeError::Bytesrepr(error.to_string()))?;
 
-            self.tracking_copy.borrow_mut().write(
+            self.tracking_copy.write(
                 Key::SystemEntityRegistry,
                 StoredValue::CLValue(cl_value_chainspec_registry),
             );
 
             // Prune away standard payment from global state.
             self.tracking_copy
-                .borrow_mut()
                 .prune(Key::Hash(standard_payment_hash.value()));
         };
 
@@ -279,7 +283,7 @@ where
         let cl_value_chainspec_registry = CLValue::from_t(self.config.chainspec_registry().clone())
             .map_err(|error| ProtocolUpgradeError::Bytesrepr(error.to_string()))?;
 
-        self.tracking_copy.borrow_mut().write(
+        self.tracking_copy.write(
             Key::ChainspecRegistry,
             StoredValue::CLValue(cl_value_chainspec_registry),
         );
@@ -291,7 +295,7 @@ where
 
     /// Bump major version and/or update the entry points for system contracts.
     pub fn refresh_system_contracts(
-        &self,
+        &mut self,
         system_entity_addresses: &SystemEntityAddresses,
     ) -> Result<(), ProtocolUpgradeError> {
         debug!("refresh system contracts");
@@ -314,7 +318,7 @@ where
     /// Refresh the system contracts with an updated set of entry points,
     /// and bump the contract version at a major version upgrade.
     fn refresh_system_contract_entry_points(
-        &self,
+        &mut self,
         entity_hash: AddressableEntityHash,
         system_entity_type: SystemEntityType,
     ) -> Result<(), ProtocolUpgradeError> {
@@ -354,13 +358,11 @@ where
         let byte_code = ByteCode::new(ByteCodeKind::Empty, vec![]);
 
         self.tracking_copy
-            .borrow_mut()
             .write(byte_code_key, StoredValue::ByteCode(byte_code));
 
         let entity_key = new_entity.entity_key(entity_hash);
 
         self.tracking_copy
-            .borrow_mut()
             .write(entity_key, StoredValue::AddressableEntity(new_entity));
 
         let entity_addr = EntityAddr::new_system(entity_hash.value());
@@ -376,7 +378,6 @@ where
                     .map_err(|error| ProtocolUpgradeError::CLValue(error.to_string()))?;
 
                 self.tracking_copy
-                    .borrow_mut()
                     .write(entry_key, StoredValue::NamedKey(named_key_value));
             }
         }
@@ -387,7 +388,7 @@ where
             let entry_point_addr =
                 EntryPointAddr::new_v1_entry_point_addr(entity_addr, entry_point.name())
                     .map_err(|error| ProtocolUpgradeError::Bytesrepr(error.to_string()))?;
-            self.tracking_copy.borrow_mut().write(
+            self.tracking_copy.write(
                 Key::EntryPoint(entry_point_addr),
                 StoredValue::EntryPoint(EntryPointValue::V1CasperVm(entry_point)),
             );
@@ -398,7 +399,7 @@ where
             entity_hash,
         );
 
-        self.tracking_copy.borrow_mut().write(
+        self.tracking_copy.write(
             Key::Package(entity.package_hash().value()),
             StoredValue::Package(package),
         );
@@ -406,28 +407,24 @@ where
         if must_prune {
             // Start pruning legacy records
             self.tracking_copy
-                .borrow_mut()
                 .prune(Key::Hash(entity.package_hash().value()));
-            self.tracking_copy
-                .borrow_mut()
-                .prune(Key::Hash(entity_hash.value()));
+            self.tracking_copy.prune(Key::Hash(entity_hash.value()));
             let contract_wasm_key = Key::Hash(entity.byte_code_hash().value());
 
-            self.tracking_copy.borrow_mut().prune(contract_wasm_key);
+            self.tracking_copy.prune(contract_wasm_key);
         }
 
         Ok(())
     }
 
     fn retrieve_system_package(
-        &self,
+        &mut self,
         package_hash: PackageHash,
         system_contract_type: SystemEntityType,
     ) -> Result<Package, ProtocolUpgradeError> {
         debug!(%system_contract_type, "retrieve system package");
         if let Some(StoredValue::Package(system_entity)) = self
             .tracking_copy
-            .borrow_mut()
             .read(&Key::Package(package_hash.value()))
             .map_err(|_| {
                 ProtocolUpgradeError::UnableToRetrieveSystemContractPackage(
@@ -440,7 +437,6 @@ where
 
         if let Some(StoredValue::ContractPackage(contract_package)) = self
             .tracking_copy
-            .borrow_mut()
             .read(&Key::Hash(package_hash.value()))
             .map_err(|_| {
                 ProtocolUpgradeError::UnableToRetrieveSystemContractPackage(
@@ -459,14 +455,13 @@ where
     }
 
     fn retrieve_system_entity(
-        &self,
+        &mut self,
         entity_hash: AddressableEntityHash,
         system_contract_type: SystemEntityType,
     ) -> Result<(AddressableEntity, Option<NamedKeys>, bool), ProtocolUpgradeError> {
         debug!(%system_contract_type, "retrieve system entity");
         if let Some(StoredValue::Contract(system_contract)) = self
             .tracking_copy
-            .borrow_mut()
             .read(&Key::Hash(entity_hash.value()))
             .map_err(|_| {
                 ProtocolUpgradeError::UnableToRetrieveSystemContract(
@@ -480,7 +475,6 @@ where
 
         if let Some(StoredValue::AddressableEntity(system_entity)) = self
             .tracking_copy
-            .borrow_mut()
             .read(&Key::AddressableEntity(EntityAddr::new_system(
                 entity_hash.value(),
             )))
@@ -499,7 +493,7 @@ where
     }
 
     pub fn migrate_system_account(
-        &self,
+        &mut self,
         pre_state_hash: Digest,
     ) -> Result<(), ProtocolUpgradeError> {
         debug!("migrate system account");
@@ -519,7 +513,7 @@ where
             let balance_cl_value = CLValue::from_t(U512::zero())
                 .map_err(|error| ProtocolUpgradeError::CLValue(error.to_string()))?;
 
-            self.tracking_copy.borrow_mut().write(
+            self.tracking_copy.write(
                 Key::Balance(purse_addr),
                 StoredValue::CLValue(balance_cl_value),
             );
@@ -528,7 +522,6 @@ where
             let purse_uref = URef::new(purse_addr, AccessRights::READ_ADD_WRITE);
 
             self.tracking_copy
-                .borrow_mut()
                 .write(Key::URef(purse_uref), StoredValue::CLValue(purse_cl_value));
             purse_uref
         };
@@ -560,24 +553,22 @@ where
 
         let byte_code_key = Key::ByteCode(ByteCodeAddr::Empty);
         self.tracking_copy
-            .borrow_mut()
             .write(byte_code_key, StoredValue::ByteCode(byte_code));
 
         let entity_key = system_account_entity.entity_key(entity_hash);
 
-        self.tracking_copy.borrow_mut().write(
+        self.tracking_copy.write(
             entity_key,
             StoredValue::AddressableEntity(system_account_entity),
         );
 
         self.tracking_copy
-            .borrow_mut()
             .write(package_hash.into(), StoredValue::Package(package));
 
         let contract_by_account = CLValue::from_t(entity_key)
             .map_err(|error| ProtocolUpgradeError::CLValue(error.to_string()))?;
 
-        self.tracking_copy.borrow_mut().write(
+        self.tracking_copy.write(
             Key::Account(account_hash),
             StoredValue::CLValue(contract_by_account),
         );
@@ -591,7 +582,7 @@ where
     /// at the genesis. In such cases we have to check the state of handle payment contract and
     /// create an accumulation purse.
     pub fn create_accumulation_purse_if_required(
-        &self,
+        &mut self,
         handle_payment_hash: &AddressableEntityHash,
         fee_handling: FeeHandling,
     ) -> Result<(), ProtocolUpgradeError> {
@@ -627,7 +618,6 @@ where
                 let entry_key = Key::NamedKey(entry_addr);
 
                 self.tracking_copy
-                    .borrow_mut()
                     .write(entry_key, StoredValue::NamedKey(named_key_value));
             }
         }
@@ -638,7 +628,6 @@ where
 
         let requries_accumulation_purse = self
             .tracking_copy
-            .borrow_mut()
             .read(&Key::NamedKey(named_key_addr))
             .map_err(|_| ProtocolUpgradeError::UnexpectedStoredValueVariant)?
             .is_none();
@@ -646,7 +635,7 @@ where
         if requries_accumulation_purse {
             let purse_uref = address_generator.new_uref(AccessRights::READ_ADD_WRITE);
             let balance_clvalue = CLValue::from_t(U512::zero())?;
-            self.tracking_copy.borrow_mut().write(
+            self.tracking_copy.write(
                 Key::Balance(purse_uref.addr()),
                 StoredValue::CLValue(balance_clvalue),
             );
@@ -654,7 +643,6 @@ where
             let purse_key = Key::URef(purse_uref);
 
             self.tracking_copy
-                .borrow_mut()
                 .write(purse_key, StoredValue::CLValue(CLValue::unit()));
 
             let purse =
@@ -662,13 +650,12 @@ where
                     .map_err(|cl_error| ProtocolUpgradeError::CLValue(cl_error.to_string()))?;
 
             self.tracking_copy
-                .borrow_mut()
                 .write(Key::NamedKey(named_key_addr), StoredValue::NamedKey(purse));
 
             let entity_key =
                 Key::addressable_entity_key(EntityKindTag::System, *handle_payment_hash);
 
-            self.tracking_copy.borrow_mut().write(
+            self.tracking_copy.write(
                 entity_key,
                 StoredValue::AddressableEntity(addressable_entity),
             );
@@ -679,7 +666,7 @@ where
 
     /// Upsert gas hold interval to mint named keys.
     pub fn handle_new_gas_hold_config(
-        &self,
+        &mut self,
         mint: AddressableEntityHash,
     ) -> Result<(), ProtocolUpgradeError> {
         if self.config.new_gas_hold_handling().is_none()
@@ -689,7 +676,7 @@ where
         }
 
         let mint_addr = EntityAddr::new_system(mint.value());
-        let named_keys = self.tracking_copy.borrow_mut().get_named_keys(mint_addr)?;
+        let named_keys = self.tracking_copy.get_named_keys(mint_addr)?;
 
         if let Some(new_gas_hold_handling) = self.config.new_gas_hold_handling() {
             debug!(%new_gas_hold_handling, "handle new gas hold handling");
@@ -724,7 +711,7 @@ where
     }
 
     fn system_uref(
-        &self,
+        &mut self,
         entity_addr: EntityAddr,
         name: &str,
         named_keys: &NamedKeys,
@@ -745,24 +732,20 @@ where
             }
         };
         self.tracking_copy
-            .borrow_mut()
             .upsert_uref_to_named_keys(entity_addr, name, named_keys, uref, stored_value)
             .map_err(ProtocolUpgradeError::TrackingCopy)
     }
 
     /// Handle new validator slots.
     pub fn handle_new_validator_slots(
-        &self,
+        &mut self,
         auction: AddressableEntityHash,
     ) -> Result<(), ProtocolUpgradeError> {
         if let Some(new_validator_slots) = self.config.new_validator_slots() {
             debug!(%new_validator_slots, "handle new validator slots");
             // if new total validator slots is provided, update auction contract state
             let auction_addr = EntityAddr::new_system(auction.value());
-            let auction_named_keys = self
-                .tracking_copy
-                .borrow_mut()
-                .get_named_keys(auction_addr)?;
+            let auction_named_keys = self.tracking_copy.get_named_keys(auction_addr)?;
 
             let validator_slots_key = auction_named_keys
                 .get(VALIDATOR_SLOTS_KEY)
@@ -771,25 +754,20 @@ where
                 StoredValue::CLValue(CLValue::from_t(new_validator_slots).map_err(|_| {
                     ProtocolUpgradeError::Bytesrepr("new_validator_slots".to_string())
                 })?);
-            self.tracking_copy
-                .borrow_mut()
-                .write(*validator_slots_key, value);
+            self.tracking_copy.write(*validator_slots_key, value);
         }
         Ok(())
     }
 
     pub fn handle_new_auction_delay(
-        &self,
+        &mut self,
         auction: AddressableEntityHash,
     ) -> Result<(), ProtocolUpgradeError> {
         if let Some(new_auction_delay) = self.config.new_auction_delay() {
             debug!(%new_auction_delay, "handle new auction delay");
             let auction_addr = EntityAddr::new_system(auction.value());
 
-            let auction_named_keys = self
-                .tracking_copy
-                .borrow_mut()
-                .get_named_keys(auction_addr)?;
+            let auction_named_keys = self.tracking_copy.get_named_keys(auction_addr)?;
 
             let auction_delay_key = auction_named_keys
                 .get(AUCTION_DELAY_KEY)
@@ -798,25 +776,20 @@ where
                 StoredValue::CLValue(CLValue::from_t(new_auction_delay).map_err(|_| {
                     ProtocolUpgradeError::Bytesrepr("new_auction_delay".to_string())
                 })?);
-            self.tracking_copy
-                .borrow_mut()
-                .write(*auction_delay_key, value);
+            self.tracking_copy.write(*auction_delay_key, value);
         }
         Ok(())
     }
 
     pub fn handle_new_locked_funds_period_millis(
-        &self,
+        &mut self,
         auction: AddressableEntityHash,
     ) -> Result<(), ProtocolUpgradeError> {
         if let Some(new_locked_funds_period) = self.config.new_locked_funds_period_millis() {
             debug!(%new_locked_funds_period,"handle new locked funds period millis");
             let auction_addr = EntityAddr::new_system(auction.value());
 
-            let auction_named_keys = self
-                .tracking_copy
-                .borrow_mut()
-                .get_named_keys(auction_addr)?;
+            let auction_named_keys = self.tracking_copy.get_named_keys(auction_addr)?;
 
             let locked_funds_period_key = auction_named_keys
                 .get(LOCKED_FUNDS_PERIOD_KEY)
@@ -825,15 +798,13 @@ where
                 StoredValue::CLValue(CLValue::from_t(new_locked_funds_period).map_err(|_| {
                     ProtocolUpgradeError::Bytesrepr("new_locked_funds_period".to_string())
                 })?);
-            self.tracking_copy
-                .borrow_mut()
-                .write(*locked_funds_period_key, value);
+            self.tracking_copy.write(*locked_funds_period_key, value);
         }
         Ok(())
     }
 
     pub fn handle_new_unbonding_delay(
-        &self,
+        &mut self,
         auction: AddressableEntityHash,
     ) -> Result<(), ProtocolUpgradeError> {
         // We insert the new unbonding delay once the purses to be paid out have been transformed
@@ -842,10 +813,7 @@ where
             debug!(%new_unbonding_delay,"handle new unbonding delay");
             let auction_addr = EntityAddr::new_system(auction.value());
 
-            let auction_named_keys = self
-                .tracking_copy
-                .borrow_mut()
-                .get_named_keys(auction_addr)?;
+            let auction_named_keys = self.tracking_copy.get_named_keys(auction_addr)?;
 
             let unbonding_delay_key = auction_named_keys
                 .get(UNBONDING_DELAY_KEY)
@@ -854,15 +822,13 @@ where
                 StoredValue::CLValue(CLValue::from_t(new_unbonding_delay).map_err(|_| {
                     ProtocolUpgradeError::Bytesrepr("new_unbonding_delay".to_string())
                 })?);
-            self.tracking_copy
-                .borrow_mut()
-                .write(*unbonding_delay_key, value);
+            self.tracking_copy.write(*unbonding_delay_key, value);
         }
         Ok(())
     }
 
     pub fn handle_new_round_seigniorage_rate(
-        &self,
+        &mut self,
         mint: AddressableEntityHash,
     ) -> Result<(), ProtocolUpgradeError> {
         if let Some(new_round_seigniorage_rate) = self.config.new_round_seigniorage_rate() {
@@ -874,7 +840,7 @@ where
 
             let mint_addr = EntityAddr::new_system(mint.value());
 
-            let mint_named_keys = self.tracking_copy.borrow_mut().get_named_keys(mint_addr)?;
+            let mint_named_keys = self.tracking_copy.get_named_keys(mint_addr)?;
 
             let locked_funds_period_key = mint_named_keys
                 .get(ROUND_SEIGNIORAGE_RATE_KEY)
@@ -882,20 +848,18 @@ where
             let value = StoredValue::CLValue(CLValue::from_t(new_round_seigniorage_rate).map_err(
                 |_| ProtocolUpgradeError::Bytesrepr("new_round_seigniorage_rate".to_string()),
             )?);
-            self.tracking_copy
-                .borrow_mut()
-                .write(*locked_funds_period_key, value);
+            self.tracking_copy.write(*locked_funds_period_key, value);
         }
         Ok(())
     }
 
     /// Handle legacy account migration.
-    pub fn handle_legacy_accounts_migration(&self) -> Result<(), ProtocolUpgradeError> {
+    pub fn handle_legacy_accounts_migration(&mut self) -> Result<(), ProtocolUpgradeError> {
         if !self.config.migrate_legacy_accounts() {
             return Ok(());
         }
         info!("handling one time accounts migration");
-        let mut tc = self.tracking_copy.borrow_mut();
+        let tc = &mut self.tracking_copy;
         let existing_keys = match tc.get_keys(&KeyTag::Account) {
             Ok(keys) => keys,
             Err(err) => return Err(ProtocolUpgradeError::TrackingCopy(err)),
@@ -920,12 +884,12 @@ where
     }
 
     /// Handle legacy contract migration.
-    pub fn handle_legacy_contracts_migration(&self) -> Result<(), ProtocolUpgradeError> {
+    pub fn handle_legacy_contracts_migration(&mut self) -> Result<(), ProtocolUpgradeError> {
         if !self.config.migrate_legacy_contracts() {
             return Ok(());
         }
         info!("handling one time contracts migration");
-        let mut tc = self.tracking_copy.borrow_mut();
+        let tc = &mut self.tracking_copy;
         let existing_keys = match tc.get_keys(&KeyTag::Hash) {
             Ok(keys) => keys,
             Err(err) => return Err(ProtocolUpgradeError::TrackingCopy(err)),
@@ -946,7 +910,7 @@ where
 
     /// Handle bids migration.
     pub fn handle_bids_migration(
-        &self,
+        &mut self,
         chainspec_minimum: u64,
         chainspec_maximum: u64,
     ) -> Result<(), ProtocolUpgradeError> {
@@ -954,7 +918,7 @@ where
             return Err(ProtocolUpgradeError::InvalidUpgradeConfig);
         }
         debug!("handle bids migration");
-        let mut tc = self.tracking_copy.borrow_mut();
+        let tc = &mut self.tracking_copy;
         let existing_bid_keys = match tc.get_keys(&KeyTag::Bid) {
             Ok(keys) => keys,
             Err(err) => return Err(ProtocolUpgradeError::TrackingCopy(err)),
@@ -1013,7 +977,7 @@ where
     }
 
     /// Handle era info migration.
-    pub fn handle_era_info_migration(&self) -> Result<(), ProtocolUpgradeError> {
+    pub fn handle_era_info_migration(&mut self) -> Result<(), ProtocolUpgradeError> {
         // EraInfo migration
         if let Some(activation_point) = self.config.activation_point() {
             // The highest stored era is the immediate predecessor of the activation point.
@@ -1022,15 +986,12 @@ where
 
             let get_result = self
                 .tracking_copy
-                .borrow_mut()
                 .get(&highest_era_info_key)
                 .map_err(ProtocolUpgradeError::TrackingCopy)?;
 
             match get_result {
                 Some(stored_value @ StoredValue::EraInfo(_)) => {
-                    self.tracking_copy
-                        .borrow_mut()
-                        .write(Key::EraSummary, stored_value);
+                    self.tracking_copy.write(Key::EraSummary, stored_value);
                 }
                 Some(other_stored_value) => {
                     // This should not happen as we only write EraInfo variants.
@@ -1049,10 +1010,10 @@ where
     }
 
     /// Handle global state updates.
-    pub fn handle_global_state_updates(&self) {
+    pub fn handle_global_state_updates(&mut self) {
         debug!("handle global state updates");
         for (key, value) in self.config.global_state_update() {
-            self.tracking_copy.borrow_mut().write(*key, value.clone());
+            self.tracking_copy.write(*key, value.clone());
         }
     }
 }
