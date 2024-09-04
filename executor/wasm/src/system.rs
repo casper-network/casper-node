@@ -15,9 +15,12 @@ use casper_storage::{
     AddressGenerator, TrackingCopy,
 };
 use casper_types::{
-    account::AccountHash, CLValueError, ContextAccessRights, EntityAddr, Key, Phase,
-    ProtocolVersion, PublicKey, StoredValue, StoredValueTag, SystemEntityRegistry, TransactionHash,
-    URef, U512,
+    account::AccountHash,
+    addressable_entity::{self, ActionThresholds, AssociatedKeys, MessageTopics},
+    contract_messages::Message,
+    AddressableEntity, ByteCodeHash, CLValueError, ContextAccessRights, Contract, EntityAddr,
+    EntityKind, Key, PackageHash, Phase, ProtocolVersion, PublicKey, StoredValue, StoredValueTag,
+    SystemEntityRegistry, TransactionHash, TransactionRuntime, URef, U512,
 };
 use parking_lot::RwLock;
 use thiserror::Error;
@@ -65,17 +68,36 @@ fn dispatch_system_contract<R: GlobalStateReader, Ret: PartialEq>(
         .get(system_contract)
         .ok_or(DispatchError::MissingSystemContract(system_contract))?;
     let entity_addr = EntityAddr::new_system(system_entity_addr.value());
-    let addressable_entity_stored_value = tracking_copy
-        .read(&Key::AddressableEntity(entity_addr))?
-        .ok_or(DispatchError::MissingAddressableEntity)?;
 
-    let addressable_entity = addressable_entity_stored_value
-        .clone()
-        .into_addressable_entity()
-        .ok_or(DispatchError::InvalidStoredValueVariant {
-            expected: StoredValueTag::AddressableEntity,
-            actual: addressable_entity_stored_value,
-        })?;
+    // let addressable_entity_stored_value =
+
+    let addressable_entity = match tracking_copy.read(&Key::AddressableEntity(entity_addr))? {
+        Some(StoredValue::AddressableEntity(addressable_entity)) => addressable_entity,
+        Some(addressable_entity_stored_value) => {
+            return Err(DispatchError::InvalidStoredValueVariant {
+                expected: StoredValueTag::AddressableEntity,
+                actual: addressable_entity_stored_value,
+            })
+        }
+        None => {
+            let legacy_contract_stored_value = tracking_copy
+                .read(&Key::Hash(system_entity_addr.value()))?
+                .expect("Legacy contract structure should be present");
+            let legacy_contract: Contract = legacy_contract_stored_value
+                .into_contract()
+                .expect("should convert stored value into contract");
+            AddressableEntity::new(
+                PackageHash::new(legacy_contract.contract_package_hash().value()), //: PackageHash,
+                ByteCodeHash::new(legacy_contract.contract_wasm_hash().value()), //: ByteCodeHash,
+                legacy_contract.protocol_version(), //: ProtocolVersion,
+                URef::default(),                    // main_purse
+                AssociatedKeys::default(),          //: AssociatedKeys,
+                ActionThresholds::default(),        //: ActionThresholds,
+                MessageTopics::default(),
+                EntityKind::SmartContract(TransactionRuntime::VmCasperV1),
+            )
+        }
+    };
 
     let config = Config::default();
     let protocol_version = ProtocolVersion::V1_0_0;
@@ -145,7 +167,7 @@ pub(crate) fn mint_mint<R: GlobalStateReader>(
         Ok(mint_result) => mint_result,
         Err(error) => {
             error!(%error, ?args, "mint failed");
-            panic!("Mint failed; aborting");
+            panic!("Mint failed with error {error:?}; aborting");
         }
     };
 

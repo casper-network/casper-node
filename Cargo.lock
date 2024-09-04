@@ -7167,6 +7167,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "vm2-legacy-counter-proxy"
+version = "0.1.0"
+dependencies = [
+ "casper-macros",
+ "casper-sdk",
+ "casper-sdk-codegen",
+ "serde_json",
+]
+
+[[package]]
 name = "vm2-test-contract"
 version = "0.1.0"
 dependencies = [

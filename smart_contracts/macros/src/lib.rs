@@ -1805,3 +1805,30 @@ pub fn test(item: TokenStream) -> TokenStream {
         #input
     })
 }
+
+/// `PanicOnDefault` generates implementation for `Default` trait that panics with the following
+/// message `The contract is not initialized` when `default()` is called.
+///
+/// This is to protect againsts default-initialization of contracts in a situation where no
+/// constructor is called, and an entrypoint is invoked before the contract is initialized.
+#[proc_macro_derive(PanicOnDefault)]
+pub fn derive_no_default(item: TokenStream) -> TokenStream {
+    if let Ok(input) = syn::parse::<ItemStruct>(item) {
+        let name = &input.ident;
+        TokenStream::from(quote! {
+            impl ::core::default::Default for #name {
+                fn default() -> Self {
+                    panic!("The contract is not initialized");
+                }
+            }
+        })
+    } else {
+        TokenStream::from(
+            syn::Error::new(
+                Span::call_site(),
+                "PanicOnDefault can only be used on type declarations sections.",
+            )
+            .to_compile_error(),
+        )
+    }
+}

@@ -13,6 +13,7 @@ VM2_LIBS=(
   "vm2-flipper"
   "vm2-upgradable"
   "vm2-upgradable-v2"
+  "vm2-legacy-counter-proxy"
 )
 
 

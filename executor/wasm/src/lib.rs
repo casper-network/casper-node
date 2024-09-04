@@ -12,6 +12,7 @@ use casper_execution_engine::{
     engine_state::{
         EngineConfig, Error as EngineError, ExecutableItem, ExecutionEngineV1, WasmV1Request,
     },
+    execution::ExecError,
     runtime::PreprocessingError,
 };
 use casper_executor_wasm_common::flags::ReturnFlags;
@@ -33,13 +34,14 @@ use casper_storage::{
     TrackingCopy,
 };
 use casper_types::{
+    account::AccountHash,
     addressable_entity::{ActionThresholds, AssociatedKeys, MessageTopics},
     bytesrepr,
     contracts::{ContractHash, ContractPackageHash},
     AddressableEntity, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, Digest,
     EntityAddr, EntityKind, Gas, Groups, InitiatorAddr, Key, Package, PackageHash, PackageStatus,
-    Phase, ProtocolVersion, StoredValue, TransactionInvocationTarget, TransactionRuntime, URef,
-    U512,
+    Phase, ProtocolVersion, StoredValue, Timestamp, TransactionInvocationTarget,
+    TransactionRuntime, URef, U512,
 };
 use either::Either;
 use install::{InstallContractError, InstallContractRequest, InstallContractResult};
@@ -327,11 +329,12 @@ impl ExecutorV2 {
                 address: entity_addr,
                 entry_point,
             } => {
-                // let key = Key::AddressableEntity(*entity_addr); // TODO: Error handling
-                // let contract_key = Key::Hash(*entity_addr);
-                let key = Key::Hash(entity_addr.value());
+                let key = Key::AddressableEntity(*entity_addr); // TODO: Error handling
+                let legacy_key = Key::Hash(entity_addr.value());
 
-                let contract = tracking_copy.read(&key).expect("should read contract");
+                let contract = tracking_copy
+                    .read_first(&[&key, &legacy_key])
+                    .expect("should read contract");
 
                 match contract {
                     Some(StoredValue::AddressableEntity(addressable_entity)) => {
@@ -339,10 +342,21 @@ impl ExecutorV2 {
                             EntityKind::System(_) => todo!(),
                             EntityKind::Account(_) => todo!(),
                             EntityKind::SmartContract(TransactionRuntime::VmCasperV1) => {
-                                todo!()
+                                // We need to short circuit here to execute v1 contracts with legacy
+                                // execut
+
+                                return self.execute_legacy_wasm_byte_code(
+                                    initiator,
+                                    block_time,
+                                    entity_addr,
+                                    entry_point,
+                                    &input,
+                                    &mut tracking_copy,
+                                    transaction_hash,
+                                    gas_limit,
+                                );
                             }
                             EntityKind::SmartContract(TransactionRuntime::VmCasperV2) => {
-                                // OK
                                 Key::ByteCode(ByteCodeAddr::V2CasperWasm(
                                     addressable_entity.byte_code_addr(),
                                 ))
@@ -402,69 +416,16 @@ impl ExecutorV2 {
                         (Bytes::from(wasm_bytes), Either::Left(entry_point.as_str()))
                     }
                     Some(StoredValue::Contract(_legacy_contract)) => {
-                        let authorization_keys = BTreeSet::from_iter([initiator]); // TODO: Support multisig
-                        let initiator_addr = InitiatorAddr::AccountHash(initiator);
-
-                        let block_time = BlockTime::from(block_time);
-                        // let transaction_hash = transaction_hash;
-
-                        let executable_item = ExecutableItem::Invocation(
-                            TransactionInvocationTarget::ByHash(entity_addr.value()),
+                        return self.execute_legacy_wasm_byte_code(
+                            initiator,
+                            block_time,
+                            entity_addr,
+                            entry_point,
+                            &input,
+                            &mut tracking_copy,
+                            transaction_hash,
+                            gas_limit,
                         );
-                        let entry_point = entry_point.clone();
-                        let args =
-                            bytesrepr::deserialize_from_slice(&input).expect("should deserialize"); // TODO: Convert this to a host error as if it was executed.
-                        let phase = Phase::Session;
-
-                        let wasm_v1_result = {
-                            let forked_tc = tracking_copy.fork2();
-                            self.execution_engine_v1.execute_with_tracking_copy(
-                                forked_tc,
-                                block_time,
-                                transaction_hash,
-                                Gas::from(gas_limit),
-                                initiator_addr,
-                                executable_item,
-                                entry_point,
-                                args,
-                                authorization_keys,
-                                phase,
-                            )
-                        };
-
-                        let shared_reader = tracking_copy.shared_reader();
-
-                        tracking_copy = TrackingCopy::from_effects_and_messages(
-                            shared_reader,
-                            wasm_v1_result.effects().clone(),
-                            wasm_v1_result.messages().clone(),
-                        );
-
-                        let gas_consumed = wasm_v1_result
-                            .consumed()
-                            .value()
-                            .try_into()
-                            .expect("Should convert consumed gas to u64"); // SAFETY: Gas limit is first promoted from u64 to u512, and we know
-                                                                           // consumed gas under v1 would not exceed the imposed limit therefore an
-                                                                           // unwrap here is safe.
-                        let output = wasm_v1_result
-                            .ret()
-                            .map(|ret| bytesrepr::serialize(&ret).unwrap())
-                            .map(Bytes::from);
-
-                        let host_error = match wasm_v1_result.error() {
-                            Some(error) => {
-                                info!(?error, "Wasm v1 error");
-                                Some(HostError::CalleeTrapped(TrapCode::UnreachableCodeReached))
-                            }
-                            None => None,
-                        };
-                        return Ok(ExecuteResult {
-                            host_error,
-                            output,
-                            gas_usage: GasUsage::new(gas_limit, gas_consumed),
-                            tracking_copy_parts: tracking_copy.into_raw_parts(),
-                        });
                     }
                     Some(stored_value) => {
                         todo!("Not yet implemented {stored_value:?}");
@@ -577,6 +538,94 @@ impl ExecutorV2 {
         }
     }
 
+    fn execute_legacy_wasm_byte_code<R>(
+        &self,
+        initiator: AccountHash,
+        block_time: Timestamp,
+        entity_addr: &EntityAddr,
+        entry_point: &String,
+        input: &Bytes,
+        tracking_copy: &mut TrackingCopy<R>,
+        transaction_hash: casper_types::TransactionHash,
+        gas_limit: u64,
+    ) -> Result<ExecuteResult, ExecuteError>
+    where
+        R: GlobalStateReader + 'static,
+    {
+        let authorization_keys = BTreeSet::from_iter([initiator]);
+        let initiator_addr = InitiatorAddr::AccountHash(initiator);
+        let block_time = BlockTime::from(block_time);
+        let executable_item =
+            ExecutableItem::Invocation(TransactionInvocationTarget::ByHash(entity_addr.value()));
+        let entry_point = entry_point.clone();
+        let args = bytesrepr::deserialize_from_slice(input).expect("should deserialize");
+        let phase = Phase::Session;
+        let wasm_v1_result = {
+            let forked_tc = tracking_copy.fork2();
+            self.execution_engine_v1.execute_with_tracking_copy(
+                forked_tc,
+                block_time,
+                transaction_hash,
+                Gas::from(gas_limit),
+                initiator_addr,
+                executable_item,
+                entry_point,
+                args,
+                authorization_keys,
+                phase,
+            )
+        };
+
+        let shared_reader = tracking_copy.shared_reader();
+        let reconstructed_tracking_copy = TrackingCopy::from_effects_and_messages(
+            shared_reader,
+            wasm_v1_result.effects().clone(),
+            wasm_v1_result.messages().clone(),
+        );
+
+        tracking_copy.merge(reconstructed_tracking_copy);
+
+        let gas_consumed = wasm_v1_result
+            .consumed()
+            .value()
+            .try_into()
+            .expect("Should convert consumed gas to u64");
+
+        let mut output = wasm_v1_result
+            .ret()
+            .map(|ret| bytesrepr::serialize(&ret).unwrap())
+            .map(Bytes::from);
+
+        let host_error = match wasm_v1_result.error() {
+            Some(EngineError::Exec(ExecError::GasLimit)) => Some(HostError::CalleeGasDepleted),
+            Some(EngineError::Exec(ExecError::Revert(revert_code))) => {
+                assert!(output.is_none(), "output should be None"); // ExecutionEngineV1 sets output to None when error occurred.
+                let revert_code: u32 = (*revert_code).into();
+                output = Some(revert_code.to_le_bytes().to_vec().into()); // Pass serialized revert code as output.
+                Some(HostError::CalleeReverted)
+            }
+            Some(_) => Some(HostError::CalleeTrapped(TrapCode::UnreachableCodeReached)),
+            None => None,
+        };
+
+        // TODO: Support multisig
+
+        // TODO: Convert this to a host error as if it was executed.
+
+        // SAFETY: Gas limit is first promoted from u64 to u512, and we know
+        // consumed gas under v1 would not exceed the imposed limit therefore an
+        // unwrap here is safe.
+
+        let remaining_points = gas_limit.checked_sub(gas_consumed).unwrap();
+
+        return Ok(ExecuteResult {
+            host_error,
+            output,
+            gas_usage: GasUsage::new(gas_limit, remaining_points),
+            tracking_copy_parts: tracking_copy.fork2().into_raw_parts(),
+        });
+    }
+
     pub fn execute_with_provider<R>(
         &self,
         state_root_hash: Digest,
@@ -651,11 +700,6 @@ impl ExecutorV2 {
         execution_stack.pop_back()
     }
 }
-
-// fn atomic_global_state_operation<E>(state_root_hash: Digest, func: impl FnOnce() ->
-// Result<Effects, E>) -> Result<Digest, E> {
-
-// }
 
 impl Executor for ExecutorV2 {
     /// Execute a Wasm contract.

@@ -13,7 +13,7 @@ use casper_storage::{
     data_access_layer::{GenesisRequest, GenesisResult, QueryRequest, QueryResult},
     global_state::{
         self,
-        state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
+        state::{self, lmdb::LmdbGlobalState, CommitProvider, StateProvider},
         transaction_source::lmdb::LmdbEnvironment,
         trie_store::lmdb::LmdbTrieStore,
     },
@@ -43,6 +43,8 @@ const CSPR: u64 = 10u64.pow(9);
 // Bytes::from_static(include_bytes!("../vqm2-test-contract.wasm"));
 const VM2_HARNESS: Bytes = Bytes::from_static(include_bytes!("../vm2-harness.wasm"));
 const VM2_CEP18: Bytes = Bytes::from_static(include_bytes!("../vm2_cep18.wasm"));
+const VM2_LEGACY_COUNTER_PROXY: Bytes =
+    Bytes::from_static(include_bytes!("../vm2_legacy_counter_proxy.wasm"));
 const VM2_CEP18_CALLER: Bytes = Bytes::from_static(include_bytes!("../vm2-cep18-caller.wasm"));
 const VM2_TRAIT: Bytes = Bytes::from_static(include_bytes!("../vm2_trait.wasm"));
 // const VM2_FLIPPER: Bytes = Bytes::from_static(include_bytes!("../vm2_flipper.wasm"));
@@ -53,7 +55,7 @@ const TRANSACTION_HASH_BYTES: [u8; 32] = [55; 32];
 const TRANSACTION_HASH: TransactionHash =
     TransactionHash::V1(TransactionV1Hash::from_raw(TRANSACTION_HASH_BYTES));
 
-const DEFAULT_GAS_LIMIT: u64 = 1_000_000_000;
+const DEFAULT_GAS_LIMIT: u64 = 1_000_000_000_000;
 const DEFAULT_CHAIN_NAME: &str = "casper-test";
 
 fn make_address_generator() -> Arc<RwLock<AddressGenerator>> {
@@ -548,7 +550,7 @@ fn backwards_compatibility() {
     };
 
     //
-    //
+    // Calling legacy contract directly by it's address
     //
 
     let mut state_root_hash = post_state_hash;
@@ -588,4 +590,49 @@ fn backwards_compatibility() {
     state_root_hash = global_state
         .commit(state_root_hash, res.effects().clone())
         .expect("Should commit");
+
+    //
+    // Instantiate v2 runtime proxy contract
+    //
+    let input_data = counter_hash.to_vec();
+    let install_request = base_install_request_builder()
+        .with_wasm_bytes(VM2_LEGACY_COUNTER_PROXY.clone())
+        .with_shared_address_generator(Arc::clone(&address_generator))
+        .with_transferred_value(0)
+        .with_entry_point("new".to_string())
+        .with_input(input_data.into())
+        .build()
+        .expect("should build");
+
+    let create_result = run_create_contract(
+        &mut executor,
+        &mut global_state,
+        state_root_hash,
+        install_request,
+    );
+
+    state_root_hash = create_result.post_state_hash();
+
+    let proxy_address = create_result.contract_hash().value();
+
+    // Call v2 contract
+
+    let call_request = base_execute_builder()
+        .with_target(ExecutionKind::Stored {
+            address: EntityAddr::new_smart_contract(proxy_address),
+            entry_point: "perform_test".to_string(),
+        })
+        .with_input(Bytes::new())
+        .with_gas_limit(DEFAULT_GAS_LIMIT)
+        .with_transferred_value(0)
+        .with_shared_address_generator(Arc::clone(&address_generator))
+        .build()
+        .expect("should build");
+
+    run_wasm_session(
+        &mut executor,
+        &mut global_state,
+        state_root_hash,
+        call_request,
+    );
 }

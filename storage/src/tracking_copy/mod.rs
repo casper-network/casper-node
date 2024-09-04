@@ -516,6 +516,16 @@ where
         }
     }
 
+    /// Reads the first value stored under the keys in `keys`.
+    pub fn read_first(&mut self, keys: &[&Key]) -> Result<Option<StoredValue>, TrackingCopyError> {
+        for key in keys {
+            if let Some(value) = self.read(key)? {
+                return Ok(Some(value));
+            }
+        }
+        Ok(None)
+    }
+
     /// Writes `value` under `key`. Note that the write is only cached, and the global state itself
     /// remains unmodified.
     pub fn write(&mut self, key: Key, value: StoredValue) {
