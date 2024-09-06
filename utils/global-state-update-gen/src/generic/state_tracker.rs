@@ -9,7 +9,10 @@ use rand::Rng;
 use casper_types::{
     account::AccountHash,
     addressable_entity::{ActionThresholds, AssociatedKeys, MessageTopics, Weight},
-    system::auction::{BidAddr, BidKind, BidsExt, SeigniorageRecipientsSnapshot, UnbondingPurse},
+    system::auction::{
+        BidAddr, BidKind, BidsExt, SeigniorageRecipientsSnapshot, UnbondingPurse, UnbondingPurses,
+        WithdrawPurse, WithdrawPurses,
+    },
     AccessRights, AddressableEntity, AddressableEntityHash, ByteCodeHash, CLValue, EntityKind,
     EntityVersions, Groups, Key, Package, PackageHash, PackageStatus, ProtocolVersion, PublicKey,
     StoredValue, URef, U512,
@@ -24,6 +27,7 @@ pub struct StateTracker<T> {
     total_supply: U512,
     total_supply_key: Key,
     accounts_cache: BTreeMap<AccountHash, AddressableEntity>,
+    withdraws_cache: BTreeMap<AccountHash, Vec<WithdrawPurse>>,
     unbonds_cache: BTreeMap<AccountHash, Vec<UnbondingPurse>>,
     purses_cache: BTreeMap<URef, U512>,
     staking: Option<Vec<BidKind>>,
@@ -47,6 +51,7 @@ impl<T: StateReader> StateTracker<T> {
             total_supply_key,
             total_supply: total_supply.into_t().expect("should be U512"),
             accounts_cache: BTreeMap::new(),
+            withdraws_cache: BTreeMap::new(),
             unbonds_cache: BTreeMap::new(),
             purses_cache: BTreeMap::new(),
             staking: None,
@@ -340,29 +345,31 @@ impl<T: StateReader> StateTracker<T> {
             return;
         }
 
+        let bids = self.get_bids();
+        let maybe_existing_bid = self.existing_bid(&bid_kind, bids);
+
         // since we skip bridge records optional values should be present
         let new_stake = bid_kind.staked_amount().expect("should have staked amount");
         let bonding_purse = bid_kind.bonding_purse().expect("should have bonding purse");
-        let bids = self.get_bids();
-
-        let maybe_existing_bid = self.existing_bid(&bid_kind, bids);
 
         let previous_stake = match maybe_existing_bid {
             None => U512::zero(),
             Some(existing_bid) => {
-                //let previous_stake = self.get_purse_balance(existing_bid_kind.bonding_purse());
-                let previous_stake = existing_bid
-                    .staked_amount()
-                    .expect("should have staked amount");
+                let previously_bonded =
+                    self.get_purse_balance(existing_bid.bonding_purse().unwrap());
                 if existing_bid
                     .bonding_purse()
                     .expect("should have bonding purse")
                     != bonding_purse
                 {
                     self.set_purse_balance(existing_bid.bonding_purse().unwrap(), U512::zero());
-                    self.set_purse_balance(bonding_purse, previous_stake);
+                    self.set_purse_balance(bonding_purse, previously_bonded);
+                    // the old bonding purse gets zeroed - the unbonds will get invalid, anyway
+                    self.remove_withdraws_and_unbonds_with_bonding_purse(
+                        &existing_bid.bonding_purse().unwrap(),
+                    );
                 }
-                previous_stake
+                previously_bonded
             }
         };
 
@@ -372,19 +379,28 @@ impl<T: StateReader> StateTracker<T> {
         // Replace the bid (overwrite the previous bid, if any):
         self.write_bid(bid_kind.clone());
 
+        let unbonder_key = match bid_kind.delegator_public_key() {
+            None => bid_kind.validator_public_key(),
+            Some(delegator_public_key) => delegator_public_key,
+        };
+
+        // Remove all the relevant unbonds if we're slashing
+        if slash_instead_of_unbonding {
+            self.remove_withdraws_and_unbonds_with_bonding_purse(&bonding_purse);
+        }
+
+        // This will be zero if the unbonds got removed above.
+        let already_unbonded =
+            self.already_unbonding_amount(&bid_kind.validator_public_key(), &unbonder_key);
+
+        // This is the amount that should be in the bonding purse.
+        let new_stake = new_stake + already_unbonded;
+
         if (slash_instead_of_unbonding && new_stake != previous_stake) || new_stake > previous_stake
         {
             self.set_purse_balance(bonding_purse, new_stake);
         } else if new_stake < previous_stake {
-            let unbonder_key = match bid_kind.delegator_public_key() {
-                None => bid_kind.validator_public_key(),
-                Some(delegator_public_key) => delegator_public_key,
-            };
-
-            let already_unbonded =
-                self.already_unbonding_amount(&bid_kind.validator_public_key(), &unbonder_key);
-
-            let amount = previous_stake - new_stake - already_unbonded;
+            let amount = previous_stake - new_stake;
             self.create_unbonding_purse(
                 bonding_purse,
                 &bid_kind.validator_public_key(),
@@ -394,13 +410,42 @@ impl<T: StateReader> StateTracker<T> {
         }
     }
 
+    fn get_withdraws(&mut self) -> WithdrawPurses {
+        let mut result = self.reader.get_withdraws();
+        for (acc, purses) in &self.withdraws_cache {
+            result.insert(*acc, purses.clone());
+        }
+        result
+    }
+
+    fn get_unbonds(&mut self) -> UnbondingPurses {
+        let mut result = self.reader.get_unbonds();
+        for (acc, purses) in &self.unbonds_cache {
+            result.insert(*acc, purses.clone());
+        }
+        result
+    }
+
+    fn write_withdraw(&mut self, account_hash: AccountHash, withdraws: Vec<WithdrawPurse>) {
+        self.withdraws_cache.insert(account_hash, withdraws.clone());
+        self.write_entry(
+            Key::Withdraw(account_hash),
+            StoredValue::Withdraw(withdraws),
+        );
+    }
+
+    fn write_unbond(&mut self, account_hash: AccountHash, unbonds: Vec<UnbondingPurse>) {
+        self.unbonds_cache.insert(account_hash, unbonds.clone());
+        self.write_entry(Key::Unbond(account_hash), StoredValue::Unbonding(unbonds));
+    }
+
     /// Returns the sum of already unbonding purses for the given validator account & unbonder.
     fn already_unbonding_amount(
         &mut self,
         validator_public_key: &PublicKey,
         unbonder_public_key: &PublicKey,
     ) -> U512 {
-        let unbonds = self.reader.get_unbonds();
+        let unbonds = self.get_unbonds();
         let account_hash = AccountHash::from(validator_public_key);
         if let Some(purses) = unbonds.get(&account_hash) {
             if let Some(purse) = purses
@@ -411,7 +456,7 @@ impl<T: StateReader> StateTracker<T> {
             }
         }
 
-        let withdrawals = self.reader.get_withdraws();
+        let withdrawals = self.get_withdraws();
         if let Some(withdraws) = withdrawals.get(&account_hash) {
             if let Some(withdraw) = withdraws
                 .iter()
@@ -424,25 +469,23 @@ impl<T: StateReader> StateTracker<T> {
         U512::zero()
     }
 
-    /// Generates the writes to the global state that will remove the pending withdraws and unbonds
-    /// of all the old validators that will cease to be validators, and slashes their unbonding
-    /// purses.
-    pub fn remove_withdraws_and_unbonds(&mut self, removed: &BTreeSet<PublicKey>) {
-        let withdraws = self.reader.get_withdraws();
-        let unbonds = self.reader.get_unbonds();
-        for removed_validator in removed {
-            let acc = removed_validator.to_account_hash();
-            if let Some(unbond_set) = unbonds.get(&acc) {
-                for unbond in unbond_set {
-                    self.set_purse_balance(*unbond.bonding_purse(), U512::zero());
-                }
-                self.write_entry(Key::Unbond(acc), StoredValue::Unbonding(vec![]));
+    pub fn remove_withdraws_and_unbonds_with_bonding_purse(&mut self, affected_purse: &URef) {
+        let withdraws = self.get_withdraws();
+        let unbonds = self.get_unbonds();
+
+        for (acc, mut purses) in withdraws {
+            let old_len = purses.len();
+            purses.retain(|purse| purse.bonding_purse().addr() != affected_purse.addr());
+            if purses.len() != old_len {
+                self.write_withdraw(acc, purses);
             }
-            if let Some(withdraw_set) = withdraws.get(&acc) {
-                for withdraw in withdraw_set {
-                    self.set_purse_balance(*withdraw.bonding_purse(), U512::zero());
-                }
-                self.write_entry(Key::Withdraw(acc), StoredValue::Withdraw(vec![]));
+        }
+
+        for (acc, mut purses) in unbonds {
+            let old_len = purses.len();
+            purses.retain(|purse| purse.bonding_purse().addr() != affected_purse.addr());
+            if purses.len() != old_len {
+                self.write_unbond(acc, purses);
             }
         }
     }
