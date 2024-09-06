@@ -1,5 +1,6 @@
 mod account;
 mod add_contract_version;
+mod builtins;
 mod create_purse;
 mod dictionary;
 mod get_arg;

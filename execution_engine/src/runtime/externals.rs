@@ -1,4 +1,5 @@
 use std::{
+    cmp,
     collections::{BTreeMap, BTreeSet},
     convert::TryFrom,
 };
@@ -14,11 +15,11 @@ use casper_types::{
     contract_messages::MessageTopicOperation,
     contracts::ContractPackageHash,
     crypto, AddressableEntityHash, ApiError, EntityVersion, Gas, Group, HostFunction,
-    HostFunctionCost, Key, PackageHash, PackageStatus, StoredValue, URef, U512,
+    HostFunctionCost, Key, PackageHash, PackageStatus, StoredValue, URef, U256, U512,
     UREF_SERIALIZED_LENGTH,
 };
 
-use super::{args::Args, ExecError, Runtime};
+use super::{args::Args, builtins, ExecError, Runtime};
 use crate::resolvers::v1_function_index::FunctionIndex;
 
 impl<'a, R> Externals for Runtime<'a, R>
@@ -1276,6 +1277,59 @@ where
                 }
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(result))))
             }
+            FunctionIndex::AltBn128Add => {
+                // args(0) = pointer to output size (output param)
+                let (x1_ptr, y1_ptr, x2_ptr, y2_ptr, result_x_ptr, result_y_ptr): (
+                    u32,
+                    u32,
+                    u32,
+                    u32,
+                    u32,
+                    u32,
+                ) = Args::parse(args)?;
+
+                let x1: Vec<u8> = self.bytes_from_mem(x1_ptr, 32)?;
+                let y1: Vec<u8> = self.bytes_from_mem(y1_ptr, 32)?;
+                let x2: Vec<u8> = self.bytes_from_mem(x2_ptr, 32)?;
+                let y2: Vec<u8> = self.bytes_from_mem(y2_ptr, 32)?;
+
+                // let x1: U256 = U256::from_str_radix(&base16::encode_lower(&x1), 16).unwrap();
+                // //U256::from_little_endian(&x1); let y1: U256 =
+                // U256::from_str_radix(&base16::encode_lower(&y1), 16).unwrap();
+                // //U256::from_little_endian(&y1); let x2: U256 =
+                // U256::from_str_radix(&base16::encode_lower(&x2), 16).unwrap();
+                // //U256::from_little_endian(&x2); let y2: U256 =
+                // U256::from_str_radix(&base16::encode_lower(&y2), 16).unwrap();
+                // //U256::from_little_endian(&y2);
+                let x1: U256 = U256::from_big_endian(&x1);
+                let y1: U256 = U256::from_big_endian(&y1);
+                let x2: U256 = U256::from_big_endian(&x2);
+                let y2: U256 = U256::from_big_endian(&y2);
+                match builtins::altbn128::alt_bn128_add(x1, y1, x2, y2) {
+                    Ok((x, y)) => {
+                        let x_bytes = x.to_le_bytes();
+                        let y_bytes = y.to_le_bytes();
+
+                        self.try_get_memory()?
+                            .set(result_x_ptr, &x_bytes)
+                            .map_err(|error| ExecError::Interpreter(error.into()))?;
+
+                        self.try_get_memory()?
+                            .set(result_y_ptr, &y_bytes)
+                            .map_err(|error| ExecError::Interpreter(error.into()))?;
+
+                        // Success
+                        Ok(Some(RuntimeValue::I32(0)))
+                    }
+                    Err(error) => {
+                        let value = error as i32;
+                        debug_assert_ne!(value, 0);
+                        Ok(Some(RuntimeValue::I32(value)))
+                    }
+                }
+            }
+            FunctionIndex::AltBn128Mul => todo!(),
+            FunctionIndex::AltBn128Pairing => todo!(),
         }
     }
 }

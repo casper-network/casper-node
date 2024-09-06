@@ -60,6 +60,9 @@ pub(crate) enum FunctionIndex {
     ManageMessageTopic,
     EmitMessage,
     LoadCallerInformation,
+    AltBn128Add,
+    AltBn128Mul,
+    AltBn128Pairing,
 }
 
 impl From<FunctionIndex> for usize {

@@ -68,6 +68,38 @@ pub enum UIntParseError {
 
 macro_rules! impl_traits_for_uint {
     ($type:ident, $total_bytes:expr, $test_mod:ident) => {
+        impl $type {
+            /// Return the memory representation of this integer as a byte array in little-endian
+            /// byte order.
+            pub fn to_le_bytes(self) -> [u8; $total_bytes] {
+                let mut result = [0u8; $total_bytes];
+                self.to_little_endian(&mut result);
+                result
+            }
+
+            /// Return the memory representation of this integer as a byte array in big-endian byte
+            /// order.
+            pub fn to_be_bytes(self) -> [u8; $total_bytes] {
+                let mut result = [0u8; $total_bytes];
+                self.to_big_endian(&mut result);
+                result
+            }
+
+            /// Create a native endian integer value from its representation as a byte array in
+            /// little endian.
+            #[inline(always)]
+            pub fn from_le_bytes(bytes: [u8; $total_bytes]) -> Self {
+                Self::from_little_endian(&bytes)
+            }
+
+            /// Create a native endian integer value from its representation as a byte array in big
+            /// endian.
+            #[inline(always)]
+            pub fn from_be_bytes(bytes: [u8; $total_bytes]) -> Self {
+                Self::from_big_endian(&bytes)
+            }
+        }
+
         impl Serialize for $type {
             fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
                 if serializer.is_human_readable() {

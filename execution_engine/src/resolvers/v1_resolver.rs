@@ -253,6 +253,18 @@ impl ModuleImportResolver for RuntimeModuleImportResolver {
                 Signature::new(&[ValueType::I32; 4][..], Some(ValueType::I32)),
                 FunctionIndex::EmitMessage.into(),
             ),
+            "casper_alt_bn128_add" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32; 6][..], Some(ValueType::I32)),
+                FunctionIndex::AltBn128Add.into(),
+            ),
+            "casper_alt_bn128_mul" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32; 4][..], Some(ValueType::I32)),
+                FunctionIndex::AltBn128Mul.into(),
+            ),
+            "casper_alt_bn128_pairing" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32; 2][..], Some(ValueType::I32)),
+                FunctionIndex::AltBn128Pairing.into(),
+            ),
             _ => {
                 return Err(InterpreterError::Function(format!(
                     "host module doesn't export function with name {}",

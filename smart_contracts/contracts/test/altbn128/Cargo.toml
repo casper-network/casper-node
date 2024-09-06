@@ -1,0 +1,17 @@
+[package]
+name = "altbn128"
+version = "0.1.0"
+authors = ["Michał Papierski <michal@casper.network>"]
+edition = "2021"
+
+[[bin]]
+name = "altbn128"
+path = "src/main.rs"
+bench = false
+doctest = false
+test = false
+
+[dependencies]
+casper-contract = { path = "../../../contract", features = ["test-support"] }
+casper-types = { path = "../../../../types" }
+base16 = { version = "0.2.1", default-features = false, features = [] }

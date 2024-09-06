@@ -843,4 +843,61 @@ extern "C" {
         call_stack_len_ptr: *mut usize,
         result_size_ptr: *mut usize,
     ) -> i32;
+
+    /// Adds two points on the alt_bn128 elliptic curve.
+    ///
+    /// This function performs the addition of two points on the alt_bn128 elliptic curve and stores
+    /// the result in the provided pointers.
+    ///
+    /// # Parameters
+    ///
+    /// - `x1_ptr`: A pointer to the x-coordinate of the first point.
+    /// - `y1_ptr`: A pointer to the y-coordinate of the first point.
+    /// - `x2_ptr`: A pointer to the x-coordinate of the second point.
+    /// - `y2_ptr`: A pointer to the y-coordinate of the second point.
+    /// - `result_x_ptr`: A mutable pointer to store the x-coordinate of the resulting point.
+    /// - `result_y_ptr`: A mutable pointer to store the y-coordinate of the resulting point.
+    ///
+    /// # Returns
+    ///
+    /// - `0` if the addition was successful.
+    /// - `1` if the X is an invalid coordinate.
+    /// - `2` if the Y is an invalid coordinate.
+    /// - `3` if the point is not on a curve.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it dereferences raw pointers. Ensure that the pointers are
+    /// valid and properly aligned before calling this function.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let x1: [u8; 32] = [/* x-coordinate bytes */];
+    /// let y1: [u8; 32] = [/* y-coordinate bytes */];
+    /// let x2: [u8; 32] = [/* x-coordinate bytes */];
+    /// let y2: [u8; 32] = [/* y-coordinate bytes */];
+    /// let mut result_x: [u8; 32] = [0; 32];
+    /// let mut result_y: [u8; 32] = [0; 32];
+    ///
+    /// unsafe {
+    ///     let res = casper_alt_bn128_add(
+    ///         x1.as_ptr(),
+    ///         y1.as_ptr(),
+    ///         x2.as_ptr(),
+    ///         y2.as_ptr(),
+    ///         result_x.as_mut_ptr(),
+    ///         result_y.as_mut_ptr(),
+    ///     );
+    ///     assert_eq!(res, 0);
+    /// }
+    /// ```
+    pub fn casper_alt_bn128_add(
+        x1_ptr: *const u8,
+        y1_ptr: *const u8,
+        x2_ptr: *const u8,
+        y2_ptr: *const u8,
+        result_x_ptr: *mut u8,
+        result_y_ptr: *mut u8,
+    ) -> i32;
 }
