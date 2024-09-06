@@ -36,6 +36,7 @@ pub(crate) enum FunctionIndex {
     GetMainPurseIndex,
     ReadHostBufferIndex,
     CreateContractPackageAtHash,
+    AddContractVersion,
     AddPackageVersion,
     DisableContractVersion,
     CallVersionedContract,
