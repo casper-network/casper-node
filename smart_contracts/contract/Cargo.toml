@@ -15,6 +15,7 @@ casper-types = { version = "5.0.0", path = "../../types" }
 hex_fmt = "0.3.0"
 version-sync = { version = "0.9", optional = true }
 wee_alloc = { version = "0.4.5", optional = true }
+bytemuck = { version = "1.18.0", default-features = false, features = ["derive"] }
 
 [features]
 default = ["no-std-helpers"]

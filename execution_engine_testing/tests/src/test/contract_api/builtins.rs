@@ -1,15 +1,9 @@
-use std::collections::HashSet;
-
+use casper_types::{runtime_args, system::standard_payment::ARG_AMOUNT};
 use rand::Rng;
 
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_PAYMENT, LOCAL_GENESIS_REQUEST,
-};
-use casper_execution_engine::runtime_context::RANDOM_BYTES_COUNT;
-use casper_storage::address_generator::ADDRESS_LENGTH;
-use casper_types::{
-    crypto, runtime_args, system::standard_payment::ARG_AMOUNT, BLAKE2B_DIGEST_LENGTH,
 };
 
 const ALTBN128_WASM: &str = "altbn128.wasm";

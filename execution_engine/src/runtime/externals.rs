@@ -1,5 +1,4 @@
 use std::{
-    cmp,
     collections::{BTreeMap, BTreeSet},
     convert::TryFrom,
 };
@@ -1293,18 +1292,10 @@ where
                 let x2: Vec<u8> = self.bytes_from_mem(x2_ptr, 32)?;
                 let y2: Vec<u8> = self.bytes_from_mem(y2_ptr, 32)?;
 
-                // let x1: U256 = U256::from_str_radix(&base16::encode_lower(&x1), 16).unwrap();
-                // //U256::from_little_endian(&x1); let y1: U256 =
-                // U256::from_str_radix(&base16::encode_lower(&y1), 16).unwrap();
-                // //U256::from_little_endian(&y1); let x2: U256 =
-                // U256::from_str_radix(&base16::encode_lower(&x2), 16).unwrap();
-                // //U256::from_little_endian(&x2); let y2: U256 =
-                // U256::from_str_radix(&base16::encode_lower(&y2), 16).unwrap();
-                // //U256::from_little_endian(&y2);
-                let x1: U256 = U256::from_big_endian(&x1);
-                let y1: U256 = U256::from_big_endian(&y1);
-                let x2: U256 = U256::from_big_endian(&x2);
-                let y2: U256 = U256::from_big_endian(&y2);
+                let x1: U256 = U256::from_little_endian(&x1);
+                let y1: U256 = U256::from_little_endian(&y1);
+                let x2: U256 = U256::from_little_endian(&x2);
+                let y2: U256 = U256::from_little_endian(&y2);
                 match builtins::altbn128::alt_bn128_add(x1, y1, x2, y2) {
                     Ok((x, y)) => {
                         let x_bytes = x.to_le_bytes();
@@ -1328,8 +1319,104 @@ where
                     }
                 }
             }
-            FunctionIndex::AltBn128Mul => todo!(),
-            FunctionIndex::AltBn128Pairing => todo!(),
+            FunctionIndex::AltBn128Mul => {
+                // args(0) = pointer to output size (output param)
+                let (x_ptr, y_ptr, scalar_ptr, result_x_ptr, result_y_ptr): (
+                    u32,
+                    u32,
+                    u32,
+                    u32,
+                    u32,
+                ) = Args::parse(args)?;
+
+                let x: Vec<u8> = self.bytes_from_mem(x_ptr, 32)?;
+                let y: Vec<u8> = self.bytes_from_mem(y_ptr, 32)?;
+                let scalar: Vec<u8> = self.bytes_from_mem(scalar_ptr, 32)?;
+
+                let x: U256 = U256::from_little_endian(&x);
+                let y: U256 = U256::from_little_endian(&y);
+                let scalar: U256 = U256::from_little_endian(&scalar);
+                match builtins::altbn128::alt_bn128_mul(x, y, scalar) {
+                    Ok((x, y)) => {
+                        let x_bytes = x.to_le_bytes();
+                        let y_bytes = y.to_le_bytes();
+
+                        self.try_get_memory()?
+                            .set(result_x_ptr, &x_bytes)
+                            .map_err(|error| ExecError::Interpreter(error.into()))?;
+
+                        self.try_get_memory()?
+                            .set(result_y_ptr, &y_bytes)
+                            .map_err(|error| ExecError::Interpreter(error.into()))?;
+
+                        // Success
+                        Ok(Some(RuntimeValue::I32(0)))
+                    }
+                    Err(error) => {
+                        let value = error as i32;
+                        debug_assert_ne!(value, 0);
+                        Ok(Some(RuntimeValue::I32(value)))
+                    }
+                }
+            }
+            FunctionIndex::AltBn128Pairing => {
+                // args(0) = pointer to output size (output param)
+                let (elements_ptr, elements_size, result_ptr): (u32, u32, u32) = Args::parse(args)?;
+
+                const PAIR_ELEMENT_LEN: usize = 192;
+
+                if (elements_size as usize) % PAIR_ELEMENT_LEN != 0 {
+                    return Ok(Some(RuntimeValue::I32(
+                        builtins::altbn128::Error::InvalidLength as _,
+                    )));
+                }
+                let inputs =
+                    self.checked_memory_slice(elements_ptr as _, elements_size as _, |chunk| {
+                        chunk
+                            .chunks_exact(PAIR_ELEMENT_LEN)
+                            .map(|pair| {
+                                let (ax, ay, bay, bax, bby, bbx) = (
+                                    // These values are coming from a byte representation of an
+                                    // array, so we can't expect the memory layout of individual
+                                    // [u8;32] individual values are in little endian form.
+                                    U256::from_little_endian(&pair[0..32]),
+                                    U256::from_little_endian(&pair[32..64]),
+                                    U256::from_little_endian(&pair[64..96]),
+                                    U256::from_little_endian(&pair[96..128]),
+                                    U256::from_little_endian(&pair[128..160]),
+                                    U256::from_little_endian(&pair[160..192]),
+                                );
+                                (ax, ay, bay, bax, bby, bbx)
+                            })
+                            .collect::<Vec<_>>()
+                    })?;
+
+                match builtins::altbn128::alt_bn128_pairing(inputs) {
+                    Ok(result) => {
+                        let result_value = result as u32;
+                        let result_bytes = result_value.to_le_bytes();
+                        self.try_get_memory()?
+                            .set(result_ptr, &result_bytes)
+                            .map_err(|error| ExecError::Interpreter(error.into()))?;
+                        Ok(Some(RuntimeValue::I32(0)))
+                    }
+                    Err(error) => {
+                        let value = error as i32;
+                        debug_assert_ne!(value, 0);
+                        Ok(Some(RuntimeValue::I32(value)))
+                    }
+                }
+
+                // let result = if result {
+                //     0
+                // } else {
+                //     1
+                // };
+
+                // self.try_get_memory()?
+                //     .set(result_ptr, &result.to_le_bytes())
+                //     .map_err(|error| ExecError::Interpreter(error.into()))?;
+            }
         }
     }
 }

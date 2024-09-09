@@ -3,6 +3,8 @@
 //! Generally should not be used directly.  See the [`contract_api`](crate::contract_api) for
 //! high-level bindings suitable for writing smart contracts.
 
+use core::ffi::c_void;
+
 #[cfg(doc)]
 use alloc::collections::BTreeMap;
 
@@ -899,5 +901,101 @@ extern "C" {
         y2_ptr: *const u8,
         result_x_ptr: *mut u8,
         result_y_ptr: *mut u8,
+    ) -> i32;
+
+    /// Multiplies a point on the alt_bn128 elliptic curve by a scalar.
+    ///
+    /// This function performs scalar multiplication of a point on the alt_bn128 elliptic curve and
+    /// stores the result in the provided pointers.
+    ///
+    /// # Parameters
+    ///
+    /// - `x_ptr`: A pointer to the x-coordinate of the point.
+    /// - `y_ptr`: A pointer to the y-coordinate of the point.
+    /// - `scalar_ptr`: A pointer to the scalar value.
+    /// - `result_x_ptr`: A mutable pointer to store the x-coordinate of the resulting point.
+    /// - `result_y_ptr`: A mutable pointer to store the y-coordinate of the resulting point.
+    ///
+    /// # Returns
+    ///
+    /// - `0` if the multiplication was successful.
+    /// - A non-zero integer if there was an error.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it dereferences raw pointers. Ensure that the pointers are
+    /// valid and properly aligned before calling this function.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let x: [u8; 32] = [/* x-coordinate bytes */];
+    /// let y: [u8; 32] = [/* y-coordinate bytes */];
+    /// let scalar: [u8; 32] = [/* scalar bytes */];
+    /// let mut result_x: [u8; 32] = [0; 32];
+    /// let mut result_y: [u8; 32] = [0; 32];
+    ///
+    /// unsafe {
+    ///     let res = casper_alt_bn128_mul(
+    ///         x.as_ptr(),
+    ///         y.as_ptr(),
+    ///         scalar.as_ptr(),
+    ///         result_x.as_mut_ptr(),
+    ///         result_y.as_mut_ptr(),
+    ///     );
+    ///     assert_eq!(res, 0);
+    /// }
+    /// ```
+    pub fn casper_alt_bn128_mul(
+        x_ptr: *const u8,
+        y_ptr: *const u8,
+        scalar_ptr: *const u8,
+        result_x_ptr: *mut u8,
+        result_y_ptr: *mut u8,
+    ) -> i32;
+
+    /// Performs a pairing check on the alt_bn128 elliptic curve.
+    ///
+    /// This function performs a pairing check on the alt_bn128 elliptic curve using the provided
+    /// elements and stores the result in the provided pointer.
+    ///
+    /// # Parameters
+    ///
+    /// - `elements_ptr`: A pointer to the elements to be checked. This should be pointed at byte
+    ///   array of 6 elements, each 32 bytes long.
+    /// - `elements_size`: The size of the elements in bytes.
+    /// - `result_ptr`: A mutable pointer to store the result of the pairing check. The result will
+    ///   be `1` if the pairing check is successful, and `0` otherwise.
+    ///
+    /// # Returns
+    ///
+    /// - `0` if the pairing check was successful.
+    /// - A non-zero integer if there was an error.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it dereferences raw pointers. Ensure that the pointers are
+    /// valid and properly aligned before calling this function.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let elements: [u8; 32 * 6] = [/* elements bytes */];
+    /// let mut result: i32 = 0;
+    ///
+    /// unsafe {
+    ///     let res = casper_alt_bn128_pairing(
+    ///         elements.as_ptr() as *const c_void,
+    ///         elements.len(),
+    ///         &mut result as *mut i32,
+    ///     );
+    ///     assert_eq!(res, 0);
+    ///     assert_eq!(result, 1); // Assuming the pairing check is successful
+    /// }
+    /// ```
+    pub fn casper_alt_bn128_pairing(
+        elements_ptr: *const c_void,
+        elements_size: usize,
+        result_ptr: *mut i32,
     ) -> i32;
 }
