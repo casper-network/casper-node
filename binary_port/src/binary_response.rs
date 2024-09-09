@@ -6,7 +6,7 @@ use casper_types::{
 use crate::{
     binary_response_header::BinaryResponseHeader,
     error_code::ErrorCode,
-    payload_type::{PayloadEntity, PayloadType},
+    response_type::{PayloadEntity, ResponseType},
 };
 
 #[cfg(test)]
@@ -40,7 +40,7 @@ impl BinaryResponse {
 
     /// Creates new binary response from raw bytes.
     pub fn from_raw_bytes(
-        payload_type: PayloadType,
+        payload_type: ResponseType,
         payload: Vec<u8>,
         protocol_version: ProtocolVersion,
     ) -> Self {
@@ -59,7 +59,7 @@ impl BinaryResponse {
             BinaryResponse::new_error(ErrorCode::InternalError, protocol_version),
             |payload| BinaryResponse {
                 payload,
-                header: BinaryResponseHeader::new(Some(V::PAYLOAD_TYPE), protocol_version),
+                header: BinaryResponseHeader::new(Some(V::RESPONSE_TYPE), protocol_version),
             },
         )
     }

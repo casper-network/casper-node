@@ -149,6 +149,7 @@ fn send_a_valid_wire_unit() {
             vec![],
             Default::default(),
             false,
+            1u8,
         ))),
         seq_number,
         timestamp: now,
@@ -197,6 +198,7 @@ fn detect_doppelganger() {
         vec![],
         Default::default(),
         false,
+        1u8,
     ));
     let wunit: WireUnit<ClContext> = WireUnit {
         panorama,

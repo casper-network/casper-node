@@ -95,7 +95,7 @@ pub use vm_config::{
 
 /// A collection of configuration settings describing the state of the system at genesis and after
 /// upgrades to basic system functionality occurring after genesis.
-#[derive(PartialEq, Eq, Serialize, Debug, Default)]
+#[derive(Clone, PartialEq, Eq, Serialize, Debug, Default)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[serde(deny_unknown_fields)]
 pub struct Chainspec {

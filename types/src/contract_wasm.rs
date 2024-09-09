@@ -247,7 +247,8 @@ pub struct ContractWasm {
 }
 
 impl ContractWasm {
-    #[cfg(test)]
+    /// Creates a new `ContractWasm`.
+    #[cfg(any(feature = "testing", test))]
     pub fn new(bytes: Vec<u8>) -> Self {
         Self {
             bytes: bytes.into(),

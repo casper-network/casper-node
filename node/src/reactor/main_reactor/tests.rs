@@ -1715,6 +1715,7 @@ async fn empty_block_validation_regression() {
                             everyone_else.clone(),
                             Default::default(),
                             false,
+                            1u8,
                         )),
                         block_context,
                     },
