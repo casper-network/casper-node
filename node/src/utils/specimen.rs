@@ -442,9 +442,9 @@ where
                 //
                 // 1. The required seed bytes for Ed25519 and Secp256k1 are both the same length of
                 //    32 bytes.
-                // 2. While Secp256k1 does not allow the most trivial seed bytes of 0x00..0001, a
-                //    a hash function output seems to satisfy it, and our current hashing scheme
-                //    also output 32 bytes.
+                // 2. While Secp256k1 does not allow the most trivial seed bytes of 0x00..0001, a a
+                //    hash function output seems to satisfy it, and our current hashing scheme also
+                //    output 32 bytes.
                 let seed_bytes = Digest::hash(seed.to_be_bytes()).value();
 
                 match variant {
@@ -877,6 +877,7 @@ impl LargestSpecimen for BlockPayload {
         BlockPayload::new(
             transactions,
             vec_prop_specimen(estimator, "max_accusations_per_block", cache),
+            LargestSpecimen::largest_specimen(estimator, cache),
             LargestSpecimen::largest_specimen(estimator, cache),
             LargestSpecimen::largest_specimen(estimator, cache),
         )

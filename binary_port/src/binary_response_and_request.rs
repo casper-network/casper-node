@@ -5,7 +5,7 @@ use casper_types::{
 
 use crate::{
     binary_response::BinaryResponse, original_request_context::OriginalRequestContext,
-    payload_type::PayloadEntity, PayloadType,
+    response_type::PayloadEntity, ResponseType,
 };
 
 use crate::record_id::RecordId;
@@ -37,14 +37,14 @@ impl BinaryResponseAndRequest {
         }
     }
 
-    /// Returns a new binary response with specified data and no original request.    
+    /// Returns a new binary response with specified data and no original request.
     pub fn new_test_response<A: PayloadEntity + ToBytes>(
         record_id: RecordId,
         data: &A,
         protocol_version: ProtocolVersion,
     ) -> BinaryResponseAndRequest {
         let response = BinaryResponse::from_raw_bytes(
-            PayloadType::from_record_id(record_id, false),
+            ResponseType::from_record_id(record_id, false),
             data.to_bytes().unwrap(),
             protocol_version,
         );
@@ -58,7 +58,7 @@ impl BinaryResponseAndRequest {
         protocol_version: ProtocolVersion,
     ) -> BinaryResponseAndRequest {
         let response = BinaryResponse::from_raw_bytes(
-            PayloadType::from_record_id(record_id, true),
+            ResponseType::from_record_id(record_id, true),
             bincode::serialize(data).unwrap(),
             protocol_version,
         );

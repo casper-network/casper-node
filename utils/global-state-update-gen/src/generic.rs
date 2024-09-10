@@ -17,8 +17,8 @@ use casper_engine_test_support::LmdbWasmTestBuilder;
 use casper_execution_engine::engine_state::engine_config::DEFAULT_PROTOCOL_VERSION;
 use casper_types::{
     system::auction::{
-        Bid, BidKind, BidsExt, Delegator, SeigniorageRecipient, SeigniorageRecipientsSnapshot,
-        ValidatorBid, ValidatorCredit,
+        Bid, BidKind, BidsExt, Delegator, Reservation, SeigniorageRecipient,
+        SeigniorageRecipientsSnapshot, ValidatorBid, ValidatorCredit,
     },
     CLValue, EraId, PublicKey, StoredValue, U512,
 };
@@ -131,6 +131,22 @@ fn update_auction_state<T: StateReader>(
 
     let validators_diff = validators_diff(&old_snapshot, &new_snapshot);
 
+    let bids = state.get_bids();
+    if slash_instead_of_unbonding {
+        // zero the unbonds for the removed validators independently of set_bid; set_bid will take
+        // care of zeroing the delegators if necessary
+        for bid_kind in bids {
+            if validators_diff
+                .removed
+                .contains(&bid_kind.validator_public_key())
+            {
+                if let Some(bonding_purse) = bid_kind.bonding_purse() {
+                    state.remove_withdraws_and_unbonds_with_bonding_purse(&bonding_purse);
+                }
+            }
+        }
+    }
+
     add_and_remove_bids(
         state,
         &validators_diff,
@@ -138,10 +154,6 @@ fn update_auction_state<T: StateReader>(
         only_listed_validators,
         slash_instead_of_unbonding,
     );
-
-    if slash_instead_of_unbonding {
-        state.remove_withdraws_and_unbonds(&validators_diff.removed);
-    }
 
     // We need to output the validators for the next era, which are contained in the first entry
     // in the snapshot.
@@ -331,6 +343,13 @@ pub fn add_and_remove_bids<T: StateReader>(
                     public_key.clone(),
                     credit.era_id(),
                 ))),
+                BidKind::Reservation(reservation_bid) => {
+                    BidKind::Reservation(Box::new(Reservation::new(
+                        public_key.clone(),
+                        reservation_bid.delegator_public_key().clone(),
+                        *reservation_bid.delegation_rate(),
+                    )))
+                }
             };
             state.set_bid(reset_bid, slash_instead_of_unbonding);
         }

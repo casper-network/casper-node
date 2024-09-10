@@ -282,7 +282,8 @@ size_multiplier = 100
 [wasm.host_function_costs]
 add = { cost = 5_800, arguments = [0, 0, 0, 0] }
 add_associated_key = { cost = 1_200_000, arguments = [0, 0, 0] }
-add_contract_version = { cost = 200, arguments = [0, 0, 0, 0, 120_000, 0, 0, 0, 30_000, 0, 0] }
+add_contract_version = { cost = 200, arguments = [0, 0, 0, 0, 120_000, 0, 0, 0, 0, 0] }
+add_package_version = { cost = 200, arguments = [0, 0, 0, 0, 120_000, 0, 0, 0, 30_000, 0, 0] }
 blake2b = { cost = 1_200_000, arguments = [0, 120_000, 0, 0] }
 call_contract = { cost = 300_000_000, arguments = [0, 0, 0, 120_000, 0, 120_000, 0] }
 call_versioned_contract = { cost = 300_000_000, arguments = [0, 0, 0, 0, 0, 120_000, 0, 120_000, 0] }
@@ -351,6 +352,8 @@ read_era_id = 10_000
 activate_bid = 10_000
 redelegate = 2_500_000_000
 change_bid_public_key = 5_000_000_000
+add_reservations = 2_500_000_000
+cancel_reservations = 2_500_000_000
 
 [system_costs.mint_costs]
 mint = 2_500_000_000
