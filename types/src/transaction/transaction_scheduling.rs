@@ -1,6 +1,16 @@
+use super::serialization::CalltableSerializationEnvelope;
+#[cfg(any(feature = "testing", test))]
+use crate::testing::TestRng;
+use crate::{
+    bytesrepr::{
+        Error::{self, Formatting},
+        FromBytes, ToBytes,
+    },
+    transaction::serialization::CalltableSerializationEnvelopeBuilder,
+    EraId, Timestamp,
+};
 use alloc::vec::Vec;
 use core::fmt::{self, Display, Formatter};
-
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 #[cfg(any(feature = "testing", test))]
@@ -9,19 +19,6 @@ use rand::Rng;
 use schemars::JsonSchema;
 #[cfg(any(feature = "std", test))]
 use serde::{Deserialize, Serialize};
-
-#[cfg(doc)]
-use super::Transaction;
-#[cfg(any(feature = "testing", test))]
-use crate::testing::TestRng;
-use crate::{
-    bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    EraId, Timestamp,
-};
-
-const STANDARD_TAG: u8 = 0;
-const FUTURE_ERA_TAG: u8 = 1;
-const FUTURE_TIMESTAMP_TAG: u8 = 2;
 
 /// The scheduling mode of a [`Transaction`].
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
@@ -46,15 +43,109 @@ pub enum TransactionScheduling {
 }
 
 impl TransactionScheduling {
+    fn serialized_field_lengths(&self) -> Vec<usize> {
+        match self {
+            TransactionScheduling::Standard => {
+                vec![crate::bytesrepr::U8_SERIALIZED_LENGTH]
+            }
+            TransactionScheduling::FutureEra(era_id) => {
+                vec![
+                    crate::bytesrepr::U8_SERIALIZED_LENGTH,
+                    era_id.serialized_length(),
+                ]
+            }
+            TransactionScheduling::FutureTimestamp(timestamp) => {
+                vec![
+                    crate::bytesrepr::U8_SERIALIZED_LENGTH,
+                    timestamp.serialized_length(),
+                ]
+            }
+        }
+    }
+
     /// Returns a random `TransactionScheduling`.
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
         match rng.gen_range(0..3) {
-            STANDARD_TAG => TransactionScheduling::Standard,
-            FUTURE_ERA_TAG => TransactionScheduling::FutureEra(EraId::random(rng)),
-            FUTURE_TIMESTAMP_TAG => TransactionScheduling::FutureTimestamp(Timestamp::random(rng)),
+            0 => TransactionScheduling::Standard,
+            1 => TransactionScheduling::FutureEra(EraId::random(rng)),
+            2 => TransactionScheduling::FutureTimestamp(Timestamp::random(rng)),
             _ => unreachable!(),
         }
+    }
+}
+
+const TAG_FIELD_INDEX: u16 = 0;
+
+const STANDARD_VARIANT: u8 = 0;
+
+const FUTURE_ERA_VARIANT: u8 = 1;
+const FUTURE_ERA_ERA_ID_INDEX: u16 = 1;
+
+const FUTURE_TIMESTAMP_VARIANT: u8 = 2;
+const FUTURE_TIMESTAMP_TIMESTAMP_INDEX: u16 = 1;
+
+impl ToBytes for TransactionScheduling {
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        match self {
+            TransactionScheduling::Standard => {
+                CalltableSerializationEnvelopeBuilder::new(self.serialized_field_lengths())?
+                    .add_field(TAG_FIELD_INDEX, &STANDARD_VARIANT)?
+                    .binary_payload_bytes()
+            }
+            TransactionScheduling::FutureEra(era_id) => {
+                CalltableSerializationEnvelopeBuilder::new(self.serialized_field_lengths())?
+                    .add_field(TAG_FIELD_INDEX, &FUTURE_ERA_VARIANT)?
+                    .add_field(FUTURE_ERA_ERA_ID_INDEX, &era_id)?
+                    .binary_payload_bytes()
+            }
+            TransactionScheduling::FutureTimestamp(timestamp) => {
+                CalltableSerializationEnvelopeBuilder::new(self.serialized_field_lengths())?
+                    .add_field(TAG_FIELD_INDEX, &FUTURE_TIMESTAMP_VARIANT)?
+                    .add_field(FUTURE_TIMESTAMP_TIMESTAMP_INDEX, &timestamp)?
+                    .binary_payload_bytes()
+            }
+        }
+    }
+    fn serialized_length(&self) -> usize {
+        CalltableSerializationEnvelope::estimate_size(self.serialized_field_lengths())
+    }
+}
+
+impl FromBytes for TransactionScheduling {
+    fn from_bytes(bytes: &[u8]) -> Result<(TransactionScheduling, &[u8]), Error> {
+        let (binary_payload, remainder) = CalltableSerializationEnvelope::from_bytes(2, bytes)?;
+        let window = binary_payload.start_consuming()?.ok_or(Formatting)?;
+        window.verify_index(0)?;
+        let (tag, window) = window.deserialize_and_maybe_next::<u8>()?;
+        let to_ret = match tag {
+            STANDARD_VARIANT => {
+                if window.is_some() {
+                    return Err(Formatting);
+                }
+                Ok(TransactionScheduling::Standard)
+            }
+            FUTURE_ERA_VARIANT => {
+                let window = window.ok_or(Formatting)?;
+                window.verify_index(FUTURE_ERA_ERA_ID_INDEX)?;
+                let (era_id, window) = window.deserialize_and_maybe_next::<EraId>()?;
+                if window.is_some() {
+                    return Err(Formatting);
+                }
+                Ok(TransactionScheduling::FutureEra(era_id))
+            }
+            FUTURE_TIMESTAMP_VARIANT => {
+                let window = window.ok_or(Formatting)?;
+                window.verify_index(FUTURE_TIMESTAMP_TIMESTAMP_INDEX)?;
+                let (timestamp, window) = window.deserialize_and_maybe_next::<Timestamp>()?;
+                if window.is_some() {
+                    return Err(Formatting);
+                }
+                Ok(TransactionScheduling::FutureTimestamp(timestamp))
+            }
+            _ => Err(Formatting),
+        };
+        to_ret.map(|endpoint| (endpoint, remainder))
     }
 }
 
@@ -70,64 +161,24 @@ impl Display for TransactionScheduling {
     }
 }
 
-impl ToBytes for TransactionScheduling {
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        match self {
-            TransactionScheduling::Standard => STANDARD_TAG.write_bytes(writer),
-            TransactionScheduling::FutureEra(era_id) => {
-                FUTURE_ERA_TAG.write_bytes(writer)?;
-                era_id.write_bytes(writer)
-            }
-            TransactionScheduling::FutureTimestamp(timestamp) => {
-                FUTURE_TIMESTAMP_TAG.write_bytes(writer)?;
-                timestamp.write_bytes(writer)
-            }
-        }
-    }
-
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut buffer = bytesrepr::allocate_buffer(self)?;
-        self.write_bytes(&mut buffer)?;
-        Ok(buffer)
-    }
-
-    fn serialized_length(&self) -> usize {
-        U8_SERIALIZED_LENGTH
-            + match self {
-                TransactionScheduling::Standard => 0,
-                TransactionScheduling::FutureEra(era_id) => era_id.serialized_length(),
-                TransactionScheduling::FutureTimestamp(timestamp) => timestamp.serialized_length(),
-            }
-    }
-}
-
-impl FromBytes for TransactionScheduling {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (tag, remainder) = u8::from_bytes(bytes)?;
-        match tag {
-            STANDARD_TAG => Ok((TransactionScheduling::Standard, remainder)),
-            FUTURE_ERA_TAG => {
-                let (era_id, remainder) = EraId::from_bytes(remainder)?;
-                Ok((TransactionScheduling::FutureEra(era_id), remainder))
-            }
-            FUTURE_TIMESTAMP_TAG => {
-                let (timestamp, remainder) = Timestamp::from_bytes(remainder)?;
-                Ok((TransactionScheduling::FutureTimestamp(timestamp), remainder))
-            }
-            _ => Err(bytesrepr::Error::Formatting),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{bytesrepr, gens::transaction_scheduling_arb};
+    use proptest::prelude::*;
 
     #[test]
     fn bytesrepr_roundtrip() {
         let rng = &mut TestRng::new();
         for _ in 0..10 {
             bytesrepr::test_serialization_roundtrip(&TransactionScheduling::random(rng));
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn generative_bytesrepr_roundtrip(val in transaction_scheduling_arb()) {
+            bytesrepr::test_serialization_roundtrip(&val);
         }
     }
 }

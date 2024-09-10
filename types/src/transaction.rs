@@ -10,6 +10,7 @@ mod initiator_addr_and_secret_key;
 mod package_identifier;
 mod pricing_mode;
 mod runtime_args;
+mod serialization;
 mod transaction_category;
 mod transaction_entry_point;
 mod transaction_hash;
