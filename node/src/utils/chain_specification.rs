@@ -250,6 +250,9 @@ mod tests {
             manage_message_topic: HostFunction::new(100, [0, 1, 2, 4]),
             emit_message: HostFunction::new(100, [0, 1, 2, 3]),
             cost_increase_per_message: 50,
+            alt_bn128_add: HostFunction::new(100, [0, 1, 2, 3, 4, 5]),
+            alt_bn128_mul: HostFunction::new(100, [0, 1, 2, 3, 4]),
+            alt_bn128_pairing: HostFunction::new(100, [0, 1, 2]),
         });
     static EXPECTED_GENESIS_WASM_COSTS: Lazy<WasmConfig> = Lazy::new(|| {
         WasmConfig::new(

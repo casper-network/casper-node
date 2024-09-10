@@ -97,6 +97,9 @@ pub const DEFAULT_COST_INCREASE_PER_MESSAGE_EMITTED: u32 = 50;
 
 const DEFAULT_MESSAGE_TOPIC_NAME_SIZE_WEIGHT: u32 = 30_000;
 const DEFAULT_MESSAGE_PAYLOAD_SIZE_WEIGHT: u32 = 120_000;
+const DEFAULT_ALT_BN128_ADD_COST: u32 = 1_000_000;
+const DEFAULT_ALT_BN128_MUL_COST: u32 = 1_000_000;
+const DEFAULT_ALT_BN128_PAIRING_COST: u32 = 1_000_000;
 
 /// Representation of a host function cost.
 ///
@@ -337,6 +340,12 @@ pub struct HostFunctionCosts {
     pub manage_message_topic: HostFunction<[Cost; 4]>,
     /// Cost of calling the `casper_emit_message` host function.
     pub emit_message: HostFunction<[Cost; 4]>,
+    /// Cost of calling the `alt_bn128_add` host function.
+    pub alt_bn128_add: HostFunction<[Cost; 6]>,
+    /// Cost of calling the `alt_bn128_mul` host function.
+    pub alt_bn128_mul: HostFunction<[Cost; 5]>,
+    /// Cost of calling the `alt_bn128_pairing` host function.
+    pub alt_bn128_pairing: HostFunction<[Cost; 3]>,
 }
 
 impl Zero for HostFunctionCosts {
@@ -390,6 +399,9 @@ impl Zero for HostFunctionCosts {
             manage_message_topic: HostFunction::zero(),
             emit_message: HostFunction::zero(),
             cost_increase_per_message: Zero::zero(),
+            alt_bn128_add: HostFunction::zero(),
+            alt_bn128_mul: HostFunction::zero(),
+            alt_bn128_pairing: HostFunction::zero(),
         }
     }
 
@@ -443,6 +455,9 @@ impl Zero for HostFunctionCosts {
             enable_contract_version,
             manage_message_topic,
             emit_message,
+            alt_bn128_add,
+            alt_bn128_mul,
+            alt_bn128_pairing,
         } = self;
         read_value.is_zero()
             && dictionary_get.is_zero()
@@ -492,6 +507,9 @@ impl Zero for HostFunctionCosts {
             && emit_message.is_zero()
             && cost_increase_per_message.is_zero()
             && add_package_version.is_zero()
+            && alt_bn128_add.is_zero()
+            && alt_bn128_mul.is_zero()
+            && alt_bn128_pairing.is_zero()
     }
 }
 
@@ -679,6 +697,18 @@ impl Default for HostFunctionCosts {
                 ],
             ),
             cost_increase_per_message: DEFAULT_COST_INCREASE_PER_MESSAGE_EMITTED,
+            alt_bn128_add: HostFunction::new(
+                DEFAULT_ALT_BN128_ADD_COST,
+                [NOT_USED, NOT_USED, NOT_USED, NOT_USED, NOT_USED, NOT_USED],
+            ),
+            alt_bn128_mul: HostFunction::new(
+                DEFAULT_ALT_BN128_MUL_COST,
+                [NOT_USED, NOT_USED, NOT_USED, NOT_USED, NOT_USED],
+            ),
+            alt_bn128_pairing: HostFunction::new(
+                DEFAULT_ALT_BN128_PAIRING_COST,
+                [NOT_USED, DEFAULT_ARG_CHARGE, NOT_USED],
+            ),
         }
     }
 }
@@ -734,6 +764,9 @@ impl ToBytes for HostFunctionCosts {
         ret.append(&mut self.manage_message_topic.to_bytes()?);
         ret.append(&mut self.emit_message.to_bytes()?);
         ret.append(&mut self.cost_increase_per_message.to_bytes()?);
+        ret.append(&mut self.alt_bn128_add.to_bytes()?);
+        ret.append(&mut self.alt_bn128_mul.to_bytes()?);
+        ret.append(&mut self.alt_bn128_pairing.to_bytes()?);
         Ok(ret)
     }
 
@@ -786,6 +819,9 @@ impl ToBytes for HostFunctionCosts {
             + self.manage_message_topic.serialized_length()
             + self.emit_message.serialized_length()
             + self.cost_increase_per_message.serialized_length()
+            + self.alt_bn128_add.serialized_length()
+            + self.alt_bn128_mul.serialized_length()
+            + self.alt_bn128_pairing.serialized_length()
     }
 }
 
@@ -839,6 +875,9 @@ impl FromBytes for HostFunctionCosts {
         let (manage_message_topic, rem) = FromBytes::from_bytes(rem)?;
         let (emit_message, rem) = FromBytes::from_bytes(rem)?;
         let (cost_increase_per_message, rem) = FromBytes::from_bytes(rem)?;
+        let (alt_bn128_add, rem) = FromBytes::from_bytes(rem)?;
+        let (alt_bn128_mul, rem) = FromBytes::from_bytes(rem)?;
+        let (alt_bn128_pairing, rem) = FromBytes::from_bytes(rem)?;
         Ok((
             HostFunctionCosts {
                 read_value,
@@ -889,6 +928,9 @@ impl FromBytes for HostFunctionCosts {
                 manage_message_topic,
                 emit_message,
                 cost_increase_per_message,
+                alt_bn128_add,
+                alt_bn128_mul,
+                alt_bn128_pairing,
             },
             rem,
         ))
@@ -947,6 +989,9 @@ impl Distribution<HostFunctionCosts> for Standard {
             manage_message_topic: rng.gen(),
             emit_message: rng.gen(),
             cost_increase_per_message: rng.gen(),
+            alt_bn128_add: rng.gen(),
+            alt_bn128_mul: rng.gen(),
+            alt_bn128_pairing: rng.gen(),
         }
     }
 }
@@ -1014,6 +1059,9 @@ pub mod gens {
             manage_message_topic in host_function_cost_arb(),
             emit_message in host_function_cost_arb(),
             cost_increase_per_message in num::u32::ANY,
+            alt_bn128_add in host_function_cost_arb(),
+            alt_bn128_mul in host_function_cost_arb(),
+            alt_bn128_pairing in host_function_cost_arb(),
         ) -> HostFunctionCosts {
             HostFunctionCosts {
                 read_value,
@@ -1064,6 +1112,9 @@ pub mod gens {
                 manage_message_topic,
                 emit_message,
                 cost_increase_per_message,
+                alt_bn128_add,
+                alt_bn128_mul,
+                alt_bn128_pairing,
             }
         }
     }

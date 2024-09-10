@@ -1277,7 +1277,12 @@ where
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(result))))
             }
             FunctionIndex::AltBn128Add => {
-                // args(0) = pointer to output size (output param)
+                // args(0) = pointer to x1 in wasm memory
+                // args(1) = pointer to y1 in wasm memory
+                // args(2) = pointer to x2 in wasm memory
+                // args(3) = pointer to y2 in wasm memory
+                // args(4) = pointer to result_x in wasm memory
+                // args(5) = pointer to result_y in wasm memory
                 let (x1_ptr, y1_ptr, x2_ptr, y2_ptr, result_x_ptr, result_y_ptr): (
                     u32,
                     u32,
@@ -1286,6 +1291,10 @@ where
                     u32,
                     u32,
                 ) = Args::parse(args)?;
+                self.charge_host_function_call(
+                    &host_function_costs.alt_bn128_add,
+                    [x1_ptr, y1_ptr, x2_ptr, y2_ptr, result_x_ptr, result_y_ptr],
+                )?;
 
                 let x1: Vec<u8> = self.bytes_from_mem(x1_ptr, 32)?;
                 let y1: Vec<u8> = self.bytes_from_mem(y1_ptr, 32)?;
@@ -1296,6 +1305,7 @@ where
                 let y1: U256 = U256::from_little_endian(&y1);
                 let x2: U256 = U256::from_little_endian(&x2);
                 let y2: U256 = U256::from_little_endian(&y2);
+
                 match builtins::altbn128::alt_bn128_add(x1, y1, x2, y2) {
                     Ok((x, y)) => {
                         let x_bytes = x.to_le_bytes();
@@ -1320,7 +1330,11 @@ where
                 }
             }
             FunctionIndex::AltBn128Mul => {
-                // args(0) = pointer to output size (output param)
+                // args(0) = pointer to x in wasm memory
+                // args(1) = pointer to y in wasm memory
+                // args(2) = pointer to scalar in wasm memory
+                // args(3) = pointer to result_x in wasm memory
+                // args(4) = pointer to result_y in wasm memory
                 let (x_ptr, y_ptr, scalar_ptr, result_x_ptr, result_y_ptr): (
                     u32,
                     u32,
@@ -1328,6 +1342,10 @@ where
                     u32,
                     u32,
                 ) = Args::parse(args)?;
+                self.charge_host_function_call(
+                    &host_function_costs.alt_bn128_mul,
+                    [x_ptr, y_ptr, scalar_ptr, result_x_ptr, result_y_ptr],
+                )?;
 
                 let x: Vec<u8> = self.bytes_from_mem(x_ptr, 32)?;
                 let y: Vec<u8> = self.bytes_from_mem(y_ptr, 32)?;
@@ -1360,8 +1378,14 @@ where
                 }
             }
             FunctionIndex::AltBn128Pairing => {
-                // args(0) = pointer to output size (output param)
+                // args(0) = pointer to elements in wasm memory
+                // args(1) = size of elements in wasm memory
+                // args(2) = pointer to result in wasm memory
                 let (elements_ptr, elements_size, result_ptr): (u32, u32, u32) = Args::parse(args)?;
+                self.charge_host_function_call(
+                    &host_function_costs.alt_bn128_pairing,
+                    [elements_ptr, elements_size, result_ptr],
+                )?;
 
                 const PAIR_ELEMENT_LEN: usize = 192;
 
