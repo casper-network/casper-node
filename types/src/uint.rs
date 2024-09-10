@@ -43,6 +43,7 @@ mod macro_code {
         pub struct U512(8);
     }
     construct_uint! {
+
         #[cfg_attr(feature = "datasize", derive(DataSize))]
         pub struct U256(4);
     }

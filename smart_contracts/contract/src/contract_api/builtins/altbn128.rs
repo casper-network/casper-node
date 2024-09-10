@@ -1,7 +1,6 @@
 //! Host-optimized support for pairing cryptography with the Barreto-Naehrig curve
 use core::{array::TryFromSliceError, ffi::c_void, mem::MaybeUninit};
 
-use bytemuck::{Pod, Zeroable};
 use casper_types::U256;
 
 use crate::ext_ffi;
@@ -60,8 +59,14 @@ impl From<U256> for Fr {
     }
 }
 
+impl From<[u8; 32]> for Fr {
+    fn from(value: [u8; 32]) -> Self {
+        Fr(value)
+    }
+}
+
 /// A field element on the alt_bn128 curve.
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Zeroable, Pod)]
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
 #[repr(C, packed)]
 pub struct Fq([u8; 32]);
 
@@ -89,6 +94,12 @@ impl TryFrom<&[u8]> for Fq {
 
     fn try_from(value: &[u8]) -> core::result::Result<Self, Self::Error> {
         Ok(Fq(value.try_into()?))
+    }
+}
+
+impl From<[u8; 32]> for Fq {
+    fn from(value: [u8; 32]) -> Self {
+        Fq(value)
     }
 }
 
@@ -193,7 +204,7 @@ pub fn alt_bn128_mul(x: &G1, y: &G1, scalar: &Fr) -> Result<(Fq, Fq)> {
 }
 
 /// A pairing of points on the alt_bn128 curve.
-#[derive(Copy, Clone, Zeroable, Pod)]
+#[derive(Copy, Clone)]
 #[repr(C, packed)]
 pub struct Pair {
     /// G1 point
@@ -219,7 +230,9 @@ const _: () = assert!(
 pub fn alt_bn128_pairing(points: &[Pair]) -> Result<bool> {
     let mut result = MaybeUninit::uninit();
 
-    let bytes: &[u8] = bytemuck::cast_slice(points);
+    let bytes: &[u8] = unsafe {
+        core::slice::from_raw_parts(points.as_ptr() as *const u8, core::mem::size_of_val(points))
+    };
 
     let ret = unsafe {
         ext_ffi::casper_alt_bn128_pairing(

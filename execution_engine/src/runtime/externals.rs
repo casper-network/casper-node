@@ -1375,6 +1375,7 @@ where
                         chunk
                             .chunks_exact(PAIR_ELEMENT_LEN)
                             .map(|pair| {
+                                debug_assert_eq!(pair.len(), 192);
                                 let (ax, ay, bay, bax, bby, bbx) = (
                                     // These values are coming from a byte representation of an
                                     // array, so we can't expect the memory layout of individual
@@ -1406,16 +1407,6 @@ where
                         Ok(Some(RuntimeValue::I32(value)))
                     }
                 }
-
-                // let result = if result {
-                //     0
-                // } else {
-                //     1
-                // };
-
-                // self.try_get_memory()?
-                //     .set(result_ptr, &result.to_le_bytes())
-                //     .map_err(|error| ExecError::Interpreter(error.into()))?;
             }
         }
     }

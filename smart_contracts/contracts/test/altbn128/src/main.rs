@@ -343,18 +343,7 @@ fn test_pairing() {
             let mut result = MaybeUninit::uninit();
             ext_ffi::casper_alt_bn128_pairing(
                 [0u8; 0].as_ptr() as *const c_void,
-                usize::MAX / 196,
-                result.as_mut_ptr(),
-            )
-        },
-        1
-    );
-    assert_eq!(
-        unsafe {
-            let mut result = MaybeUninit::uninit();
-            ext_ffi::casper_alt_bn128_pairing(
-                [0u8; 32].as_ptr() as *const c_void,
-                usize::MAX / 196 * 196,
+                193,
                 result.as_mut_ptr(),
             )
         },
@@ -362,6 +351,35 @@ fn test_pairing() {
     );
 }
 
+fn test_pairing_no_input() {
+    assert_eq!(alt_bn128_pairing_raw(&[]), Ok(true));
+}
+
+fn test_pairing_invalid_a() {
+    let pair = Pair {
+        ax: Fq::from([0x11u8; 32]),
+        ay: Fq::from([0x11u8; 32]),
+        bax: Fq::from([0x11u8; 32]),
+        bay: Fq::from([0x11u8; 32]),
+        bbx: Fq::from([0x11u8; 32]),
+        bby: Fq::from([0x11u8; 32]),
+    };
+
+    assert_eq!(altbn128::alt_bn128_pairing(&[pair]), Err(Error::InvalidA));
+}
+
+fn test_pairing_on_curve() {
+    let pair = Pair {
+        ax: Fq::from([0; 32]),
+        ay: Fq::from([0; 32]),
+        bax: Fq::from([0; 32]),
+        bay: Fq::from([0; 32]),
+        bbx: Fq::from([0; 32]),
+        bby: Fq::from([0; 32]),
+    };
+
+    assert_eq!(altbn128::alt_bn128_pairing(&[pair]), Ok(true),);
+}
 #[no_mangle]
 pub extern "C" fn call() {
     test_alt_bn128_add();
@@ -371,4 +389,7 @@ pub extern "C" fn call() {
     test_zero_multiplication();
     test_not_on_curve_multiplication();
     test_pairing();
+    test_pairing_no_input();
+    test_pairing_invalid_a();
+    test_pairing_on_curve();
 }

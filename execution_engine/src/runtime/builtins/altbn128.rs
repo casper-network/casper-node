@@ -153,6 +153,7 @@ mod tests {
             16,
         )
         .unwrap();
+
         let y1 = U256::from_str_radix(
             "063c909c4720840cb5134cb9f59fa749755796819658d32efc0d288198f37266",
             16,
@@ -358,6 +359,8 @@ mod tests {
             16,
         )
         .unwrap();
+
+        dbg!(ax_1.0, ay_1.0, bax_1.0, bay_1.0, bbx_1.0, bby_1.0);
 
         assert_eq!(
             alt_bn128_pairing(vec![
