@@ -21,7 +21,7 @@ use super::TransactionCategory;
 use super::TransactionConfig;
 #[cfg(doc)]
 use super::TransactionV1;
-#[cfg(any(feature = "std", test))]
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::InvalidTransactionV1;
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::TransactionV1ExcessiveSizeError;
