@@ -7,9 +7,9 @@ use casper_types::{
     account::AccountHash,
     addressable_entity::{ActionThresholds, AssociatedKeys, MessageTopics, Weight},
     system::auction::{
-        BidKind, BidsExt, Delegator, SeigniorageRecipient, SeigniorageRecipients,
-        SeigniorageRecipientsSnapshot, UnbondingPurse, UnbondingPurses, ValidatorBid,
-        WithdrawPurse, WithdrawPurses,
+        BidKind, BidsExt, Delegator, SeigniorageRecipientV2, SeigniorageRecipientsSnapshotV2,
+        SeigniorageRecipientsV2, UnbondingPurse, UnbondingPurses, ValidatorBid, WithdrawPurse,
+        WithdrawPurses,
     },
     testing::TestRng,
     AccessRights, AddressableEntity, ByteCodeHash, CLValue, EntityKind, EraId, Key, PackageHash,
@@ -32,7 +32,7 @@ struct MockStateReader {
     accounts: BTreeMap<AccountHash, AddressableEntity>,
     purses: BTreeMap<URefAddr, U512>,
     total_supply: U512,
-    seigniorage_recipients: SeigniorageRecipientsSnapshot,
+    seigniorage_recipients: SeigniorageRecipientsSnapshotV2,
     bids: Vec<BidKind>,
     withdraws: WithdrawPurses,
     unbonds: UnbondingPurses,
@@ -45,7 +45,7 @@ impl MockStateReader {
             accounts: BTreeMap::new(),
             purses: BTreeMap::new(),
             total_supply: U512::zero(),
-            seigniorage_recipients: SeigniorageRecipientsSnapshot::new(),
+            seigniorage_recipients: SeigniorageRecipientsSnapshotV2::new(),
             bids: vec![],
             withdraws: WithdrawPurses::new(),
             unbonds: UnbondingPurses::new(),
@@ -84,14 +84,14 @@ impl MockStateReader {
         validators: Vec<(PublicKey, U512, ValidatorConfig)>,
         rng: &mut R,
     ) -> Self {
-        let mut recipients = SeigniorageRecipients::new();
+        let mut recipients = SeigniorageRecipientsV2::new();
         for (public_key, balance, validator_cfg) in validators {
             let stake = validator_cfg.bonded_amount;
             let delegation_rate = validator_cfg.delegation_rate.unwrap_or_default();
             let delegators = validator_cfg.delegators_map().unwrap_or_default();
             let reservation_delegation_rates = validator_cfg.reservations_map().unwrap_or_default();
             // add an entry to the recipients snapshot
-            let recipient = SeigniorageRecipient::new(
+            let recipient = SeigniorageRecipientV2::new(
                 stake,
                 delegation_rate,
                 delegators.clone(),

@@ -3,7 +3,7 @@ use std::{collections::BTreeMap, fmt, fs::File, io::Read};
 use clap::ArgMatches;
 
 use casper_types::{
-    bytesrepr::FromBytes, system::auction::SeigniorageRecipientsSnapshot, CLType,
+    bytesrepr::FromBytes, system::auction::SeigniorageRecipientsSnapshotV2, CLType,
     GlobalStateUpdate, GlobalStateUpdateConfig, Key, StoredValue,
 };
 
@@ -17,7 +17,8 @@ impl fmt::Debug for Entries {
                 StoredValue::CLValue(clv) => match clv.cl_type() {
                     CLType::Map { key, value: _ } if **key == CLType::U64 => {
                         // this should be the seigniorage recipient snapshot
-                        let snapshot: SeigniorageRecipientsSnapshot = clv.clone().into_t().unwrap();
+                        let snapshot: SeigniorageRecipientsSnapshotV2 =
+                            clv.clone().into_t().unwrap();
                         Box::new(snapshot)
                     }
                     _ => Box::new(clv),

@@ -17,8 +17,9 @@ use casper_types::{
     account::AccountHash,
     system::auction::{
         BidAddr, BidKind, Bridge, DelegationRate, EraInfo, EraValidators, Error, Reservation,
-        SeigniorageRecipients, SeigniorageRecipientsSnapshot, UnbondingPurse, ValidatorBid,
-        ValidatorCredit, ValidatorWeights, DELEGATION_RATE_DENOMINATOR,
+        SeigniorageRecipient, SeigniorageRecipientsSnapshot, SeigniorageRecipientsV2,
+        UnbondingPurse, ValidatorBid, ValidatorCredit, ValidatorWeights,
+        DELEGATION_RATE_DENOMINATOR,
     },
     ApiError, EraId, Key, PublicKey, U512,
 };
@@ -41,7 +42,7 @@ pub trait Auction:
     /// rates and lists of delegators together with their delegated quantities from delegators.
     /// This function is publicly accessible, but intended for system use by the Handle Payment
     /// contract, because this data is necessary for distributing seigniorage.
-    fn read_seigniorage_recipients(&mut self) -> Result<SeigniorageRecipients, Error> {
+    fn read_seigniorage_recipients(&mut self) -> Result<SeigniorageRecipientsV2, Error> {
         // `era_validators` are assumed to be computed already by calling "run_auction" entrypoint.
         let era_index = detail::get_era_id(self)?;
         let mut seigniorage_recipients_snapshot =
@@ -770,7 +771,7 @@ pub trait Auction:
                     &proposer,
                     current_era_id,
                     &amounts,
-                    &seigniorage_recipients_snapshot,
+                    &SeigniorageRecipientsSnapshot::V2(seigniorage_recipients_snapshot.clone()),
                 )
                 .map(|infos| infos.into_iter().map(move |info| (proposer.clone(), info)))
             })
@@ -1028,12 +1029,22 @@ fn rewards_per_validator(
         let rewarded_era = era_id
             .checked_sub(eras_back)
             .ok_or(Error::MissingSeigniorageRecipients)?;
-        let Some(recipient) = seigniorage_recipients_snapshot
-            .get(&rewarded_era)
-            .ok_or(Error::MissingSeigniorageRecipients)?
-            .get(validator)
-            .cloned()
-        else {
+
+        let Some(recipient) = (match seigniorage_recipients_snapshot {
+            SeigniorageRecipientsSnapshot::V1(snapshot) => {
+                snapshot
+                    .get(&rewarded_era)
+                    .ok_or(Error::MissingSeigniorageRecipients)?
+                    .get(validator)
+                    .cloned().map(SeigniorageRecipient::V1)
+            },
+            SeigniorageRecipientsSnapshot::V2(snapshot) => {snapshot
+                .get(&rewarded_era)
+                .ok_or(Error::MissingSeigniorageRecipients)?
+                .get(validator)
+                .cloned().map(SeigniorageRecipient::V2)}
+        })
+            else {
             // We couldn't find the validator. If the reward amount is zero, we don't care -
             // the validator wasn't supposed to be rewarded in this era, anyway. Otherwise,
             // return an error.
@@ -1071,7 +1082,9 @@ fn rewards_per_validator(
                 .ok_or(Error::ArithmeticOverflow)?
         };
 
-        let reservation_delegation_rates = recipient.reservation_delegation_rates();
+        let default = BTreeMap::new();
+        let reservation_delegation_rates =
+            recipient.reservation_delegation_rates().unwrap_or(&default);
         // calculate commission and final reward for each delegator
         let mut delegator_rewards: BTreeMap<PublicKey, U512> = BTreeMap::new();
         for (delegator_key, delegator_stake) in recipient.delegator_stake().iter() {

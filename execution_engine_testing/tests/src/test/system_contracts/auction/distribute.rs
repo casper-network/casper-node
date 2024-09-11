@@ -21,7 +21,7 @@ use casper_types::{
     runtime_args,
     system::auction::{
         self, BidsExt as _, DelegationRate, Delegator, SeigniorageAllocation,
-        SeigniorageRecipientsSnapshot, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR,
+        SeigniorageRecipientsSnapshotV2, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR,
         ARG_PUBLIC_KEY, ARG_REWARDS_MAP, ARG_VALIDATOR, DELEGATION_RATE_DENOMINATOR,
         METHOD_DISTRIBUTE, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
     },
@@ -3260,7 +3260,7 @@ fn delegator_full_unbond_during_first_reward_era() {
     // the delegator is scheduled to receive rewards this era.
 
     let auction_hash = builder.get_auction_contract_hash();
-    let seigniorage_snapshot: SeigniorageRecipientsSnapshot = builder.get_value(
+    let seigniorage_snapshot: SeigniorageRecipientsSnapshotV2 = builder.get_value(
         EntityAddr::System(auction_hash.value()),
         SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
     );

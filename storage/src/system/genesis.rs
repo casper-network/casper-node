@@ -26,10 +26,11 @@ use casper_types::{
     execution::Effects,
     system::{
         auction::{
-            self, BidAddr, BidKind, DelegationRate, Delegator, SeigniorageRecipient,
-            SeigniorageRecipients, SeigniorageRecipientsSnapshot, Staking, ValidatorBid,
-            AUCTION_DELAY_KEY, DELEGATION_RATE_DENOMINATOR, ERA_END_TIMESTAMP_MILLIS_KEY,
-            ERA_ID_KEY, INITIAL_ERA_END_TIMESTAMP_MILLIS, INITIAL_ERA_ID, LOCKED_FUNDS_PERIOD_KEY,
+            self, BidAddr, BidKind, DelegationRate, Delegator, SeigniorageRecipientV2,
+            SeigniorageRecipients, SeigniorageRecipientsSnapshot, SeigniorageRecipientsSnapshotV2,
+            SeigniorageRecipientsV2, Staking, ValidatorBid, AUCTION_DELAY_KEY,
+            DELEGATION_RATE_DENOMINATOR, ERA_END_TIMESTAMP_MILLIS_KEY, ERA_ID_KEY,
+            INITIAL_ERA_END_TIMESTAMP_MILLIS, INITIAL_ERA_ID, LOCKED_FUNDS_PERIOD_KEY,
             SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
         },
         handle_payment::{self, ACCUMULATION_PURSE_KEY},
@@ -660,16 +661,16 @@ where
         &self,
         staked: &Staking,
         auction_delay: u64,
-    ) -> BTreeMap<EraId, SeigniorageRecipients> {
+    ) -> BTreeMap<EraId, SeigniorageRecipientsV2> {
         let initial_snapshot_range = INITIAL_ERA_ID.iter_inclusive(auction_delay);
 
-        let mut seigniorage_recipients = SeigniorageRecipients::new();
+        let mut seigniorage_recipients = SeigniorageRecipientsV2::new();
         for (validator_public_key, (validator_bid, delegators)) in staked {
             let mut delegator_stake: BTreeMap<PublicKey, U512> = BTreeMap::new();
             for (k, v) in delegators {
                 delegator_stake.insert(k.clone(), v.staked_amount());
             }
-            let recipient = SeigniorageRecipient::new(
+            let recipient = SeigniorageRecipientV2::new(
                 validator_bid.staked_amount(),
                 *validator_bid.delegation_rate(),
                 delegator_stake,
@@ -678,7 +679,7 @@ where
             seigniorage_recipients.insert(validator_public_key.clone(), recipient);
         }
 
-        let mut initial_seigniorage_recipients = SeigniorageRecipientsSnapshot::new();
+        let mut initial_seigniorage_recipients = SeigniorageRecipientsSnapshotV2::new();
         for era_id in initial_snapshot_range {
             initial_seigniorage_recipients.insert(era_id, seigniorage_recipients.clone());
         }

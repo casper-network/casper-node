@@ -9,7 +9,7 @@ use rand::Rng;
 use casper_types::{
     account::AccountHash,
     addressable_entity::{ActionThresholds, AssociatedKeys, MessageTopics, Weight},
-    system::auction::{BidAddr, BidKind, BidsExt, SeigniorageRecipientsSnapshot, UnbondingPurse},
+    system::auction::{BidAddr, BidKind, BidsExt, SeigniorageRecipientsSnapshotV2, UnbondingPurse},
     AccessRights, AddressableEntity, AddressableEntityHash, ByteCodeHash, CLValue, EntityKind,
     EntityVersions, Groups, Key, Package, PackageHash, PackageStatus, ProtocolVersion, PublicKey,
     StoredValue, URef, U512,
@@ -27,7 +27,7 @@ pub struct StateTracker<T> {
     unbonds_cache: BTreeMap<AccountHash, Vec<UnbondingPurse>>,
     purses_cache: BTreeMap<URef, U512>,
     staking: Option<Vec<BidKind>>,
-    seigniorage_recipients: Option<(Key, SeigniorageRecipientsSnapshot)>,
+    seigniorage_recipients: Option<(Key, SeigniorageRecipientsSnapshotV2)>,
     protocol_version: ProtocolVersion,
 }
 
@@ -260,7 +260,7 @@ impl<T: StateReader> StateTracker<T> {
     }
 
     /// Reads the `SeigniorageRecipientsSnapshot` stored in the global state.
-    pub fn read_snapshot(&mut self) -> (Key, SeigniorageRecipientsSnapshot) {
+    pub fn read_snapshot(&mut self) -> (Key, SeigniorageRecipientsSnapshotV2) {
         if let Some(key_and_snapshot) = &self.seigniorage_recipients {
             return key_and_snapshot.clone();
         }
@@ -270,7 +270,7 @@ impl<T: StateReader> StateTracker<T> {
         // Decode the old snapshot.
         let stored_value = self.reader.query(validators_key).expect("should query");
         let cl_value = stored_value.into_cl_value().expect("should be cl value");
-        let snapshot: SeigniorageRecipientsSnapshot = cl_value.into_t().expect("should convert");
+        let snapshot: SeigniorageRecipientsSnapshotV2 = cl_value.into_t().expect("should convert");
         self.seigniorage_recipients = Some((validators_key, snapshot.clone()));
         (validators_key, snapshot)
     }

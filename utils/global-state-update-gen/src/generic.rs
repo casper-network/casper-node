@@ -17,8 +17,8 @@ use casper_engine_test_support::LmdbWasmTestBuilder;
 use casper_execution_engine::engine_state::engine_config::DEFAULT_PROTOCOL_VERSION;
 use casper_types::{
     system::auction::{
-        Bid, BidKind, BidsExt, Delegator, Reservation, SeigniorageRecipient,
-        SeigniorageRecipientsSnapshot, ValidatorBid, ValidatorCredit,
+        Bid, BidKind, BidsExt, Delegator, Reservation, SeigniorageRecipientV2,
+        SeigniorageRecipientsSnapshotV2, ValidatorBid, ValidatorCredit,
     },
     CLValue, EraId, PublicKey, StoredValue, U512,
 };
@@ -161,7 +161,7 @@ fn update_auction_state<T: StateReader>(
     )
 }
 
-/// Generates a new `SeigniorageRecipientsSnapshot` based on:
+/// Generates a new `SeigniorageRecipientsSnapshotV2` based on:
 /// - The starting era ID (the era ID at which the snapshot should start).
 /// - Count - the number of eras to be included in the snapshot.
 /// - The list of configured accounts.
@@ -169,7 +169,7 @@ fn gen_snapshot_only_listed(
     starting_era_id: EraId,
     count: u64,
     accounts: &[AccountConfig],
-) -> SeigniorageRecipientsSnapshot {
+) -> SeigniorageRecipientsSnapshotV2 {
     let mut new_snapshot = BTreeMap::new();
     let mut era_validators = BTreeMap::new();
     for account in accounts {
@@ -178,7 +178,7 @@ fn gen_snapshot_only_listed(
             Some(validator) if validator.bonded_amount != U512::zero() => validator,
             _ => continue,
         };
-        let seigniorage_recipient = SeigniorageRecipient::new(
+        let seigniorage_recipient = SeigniorageRecipientV2::new(
             validator_cfg.bonded_amount,
             validator_cfg.delegation_rate.unwrap_or_default(),
             validator_cfg.delegators_map().unwrap_or_default(),
@@ -192,12 +192,12 @@ fn gen_snapshot_only_listed(
     new_snapshot
 }
 
-/// Generates a new `SeigniorageRecipientsSnapshot` by modifying the stakes listed in the old
+/// Generates a new `SeigniorageRecipientsSnapshotV2` by modifying the stakes listed in the old
 /// snapshot according to the supplied list of configured accounts.
 fn gen_snapshot_from_old(
-    mut snapshot: SeigniorageRecipientsSnapshot,
+    mut snapshot: SeigniorageRecipientsSnapshotV2,
     accounts: &[AccountConfig],
-) -> SeigniorageRecipientsSnapshot {
+) -> SeigniorageRecipientsSnapshotV2 {
     // Read the modifications to be applied to the validators set from the config.
     let validators_map: BTreeMap<_, _> = accounts
         .iter()
@@ -219,7 +219,7 @@ fn gen_snapshot_from_old(
                 Some(validator) if validator.bonded_amount.is_zero() => false,
                 // Otherwise, we keep them, but modify the properties.
                 Some(validator) => {
-                    *recipient = SeigniorageRecipient::new(
+                    *recipient = SeigniorageRecipientV2::new(
                         validator.bonded_amount,
                         validator
                             .delegation_rate
@@ -253,7 +253,7 @@ fn gen_snapshot_from_old(
             if validator.bonded_amount != U512::zero() {
                 recipients.insert(
                     public_key.clone(),
-                    SeigniorageRecipient::new(
+                    SeigniorageRecipientV2::new(
                         validator.bonded_amount,
                         // Unspecified delegation rate will be treated as 0.
                         validator.delegation_rate.unwrap_or_default(),
@@ -281,7 +281,7 @@ fn gen_snapshot_from_old(
 pub fn add_and_remove_bids<T: StateReader>(
     state: &mut StateTracker<T>,
     validators_diff: &ValidatorsDiff,
-    new_snapshot: &SeigniorageRecipientsSnapshot,
+    new_snapshot: &SeigniorageRecipientsSnapshotV2,
     only_listed_validators: bool,
     slash_instead_of_unbonding: bool,
 ) {
@@ -357,7 +357,7 @@ pub fn add_and_remove_bids<T: StateReader>(
 /// validators.
 fn find_large_bids<T: StateReader>(
     state: &mut StateTracker<T>,
-    snapshot: &SeigniorageRecipientsSnapshot,
+    snapshot: &SeigniorageRecipientsSnapshotV2,
 ) -> BTreeSet<PublicKey> {
     let seigniorage_recipients = snapshot.values().next().unwrap();
     let min_bid = seigniorage_recipients
@@ -422,7 +422,7 @@ fn find_large_bids<T: StateReader>(
 fn create_or_update_bid<T: StateReader>(
     state: &mut StateTracker<T>,
     validator_public_key: &PublicKey,
-    updated_recipient: &SeigniorageRecipient,
+    updated_recipient: &SeigniorageRecipientV2,
     slash_instead_of_unbonding: bool,
 ) {
     let existing_bids = state.get_bids();
@@ -458,7 +458,7 @@ fn create_or_update_bid<T: StateReader>(
 
                     (
                         bid.bonding_purse(),
-                        SeigniorageRecipient::new(
+                        SeigniorageRecipientV2::new(
                             *bid.staked_amount(),
                             *bid.delegation_rate(),
                             delegator_stake,
@@ -482,7 +482,7 @@ fn create_or_update_bid<T: StateReader>(
 
                     (
                         validator_bid.bonding_purse(),
-                        SeigniorageRecipient::new(
+                        SeigniorageRecipientV2::new(
                             validator_bid.staked_amount(),
                             *validator_bid.delegation_rate(),
                             delegator_stake,

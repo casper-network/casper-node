@@ -7,9 +7,9 @@ use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
     system::auction::{
         BidAddr, BidKind, Delegator, DelegatorBids, Error, Reservation, Reservations,
-        SeigniorageAllocation, SeigniorageRecipient, SeigniorageRecipients,
-        SeigniorageRecipientsSnapshot, UnbondingPurse, UnbondingPurses, ValidatorBid,
-        ValidatorBids, ValidatorCredit, ValidatorCredits, AUCTION_DELAY_KEY,
+        SeigniorageAllocation, SeigniorageRecipientV2, SeigniorageRecipientsSnapshotV1,
+        SeigniorageRecipientsSnapshotV2, SeigniorageRecipientsV2, UnbondingPurse, UnbondingPurses,
+        ValidatorBid, ValidatorBids, ValidatorCredit, ValidatorCredits, AUCTION_DELAY_KEY,
         DELEGATION_RATE_DENOMINATOR, ERA_END_TIMESTAMP_MILLIS_KEY, ERA_ID_KEY,
         SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
     },
@@ -331,7 +331,16 @@ where
 
 pub fn get_seigniorage_recipients_snapshot<P>(
     provider: &mut P,
-) -> Result<SeigniorageRecipientsSnapshot, Error>
+) -> Result<SeigniorageRecipientsSnapshotV2, Error>
+where
+    P: StorageProvider + RuntimeProvider + ?Sized,
+{
+    read_from(provider, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY)
+}
+
+pub fn get_legacy_seigniorage_recipients_snapshot<P>(
+    provider: &mut P,
+) -> Result<SeigniorageRecipientsSnapshotV1, Error>
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
 {
@@ -340,7 +349,7 @@ where
 
 pub fn set_seigniorage_recipients_snapshot<P>(
     provider: &mut P,
-    snapshot: SeigniorageRecipientsSnapshot,
+    snapshot: SeigniorageRecipientsSnapshotV2,
 ) -> Result<(), Error>
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
@@ -1035,8 +1044,8 @@ pub fn seigniorage_recipients(
     validator_bids: &ValidatorBids,
     delegator_bids: &DelegatorBids,
     reservations: &Reservations,
-) -> Result<SeigniorageRecipients, Error> {
-    let mut recipients = SeigniorageRecipients::new();
+) -> Result<SeigniorageRecipientsV2, Error> {
+    let mut recipients = SeigniorageRecipientsV2::new();
     for (validator_public_key, validator_total_weight) in validator_weights {
         // check if validator bid exists before processing.
         let validator_bid = validator_bids
@@ -1071,7 +1080,7 @@ pub fn seigniorage_recipients(
 
         // determine validator's personal stake (total weight - sum of delegators weight)
         let validator_stake = validator_total_weight.saturating_sub(delegators_weight);
-        let seigniorage_recipient = SeigniorageRecipient::new(
+        let seigniorage_recipient = SeigniorageRecipientV2::new(
             validator_stake,
             *validator_bid.delegation_rate(),
             delegators_stake,
@@ -1086,7 +1095,29 @@ pub fn seigniorage_recipients(
 ///
 /// This is `pub` as it is used not just in the relevant auction entry point, but also by the
 /// engine state while directly querying for the era validators.
-pub fn era_validators_from_snapshot(snapshot: SeigniorageRecipientsSnapshot) -> EraValidators {
+pub fn era_validators_from_snapshot(snapshot: SeigniorageRecipientsSnapshotV2) -> EraValidators {
+    // match snapshot {
+    //     SeigniorageRecipientsSnapshot::V1(snapshot) => {snapshot
+    //         .into_iter()
+    //         .map(|(era_id, recipients)| {
+    //             let validator_weights = recipients
+    //                 .into_iter()
+    //                 .filter_map(|(public_key, bid)| bid.total_stake().map(|stake| (public_key,
+    // stake)))                 .collect::<ValidatorWeights>();
+    //             (era_id, validator_weights)
+    //         })
+    //         .collect()}
+    //     SeigniorageRecipientsSnapshot::V2(snapshot) => {snapshot
+    //         .into_iter()
+    //         .map(|(era_id, recipients)| {
+    //             let validator_weights = recipients
+    //                 .into_iter()
+    //                 .filter_map(|(public_key, bid)| bid.total_stake().map(|stake| (public_key,
+    // stake)))                 .collect::<ValidatorWeights>();
+    //             (era_id, validator_weights)
+    //         })
+    //         .collect()}
+    // }
     snapshot
         .into_iter()
         .map(|(era_id, recipients)| {

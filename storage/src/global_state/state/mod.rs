@@ -23,7 +23,10 @@ use casper_types::{
     global_state::TrieMerkleProof,
     system::{
         self,
-        auction::{ERA_END_TIMESTAMP_MILLIS_KEY, ERA_ID_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY},
+        auction::{
+            SeigniorageRecipientsSnapshot, ERA_END_TIMESTAMP_MILLIS_KEY, ERA_ID_KEY,
+            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION_KEY,
+        },
         mint::{
             BalanceHoldAddr, BalanceHoldAddrTag, ARG_AMOUNT, ROUND_SEIGNIORAGE_RATE_KEY,
             TOTAL_SUPPLY_KEY,
@@ -1037,8 +1040,12 @@ pub trait StateProvider {
             SeigniorageRecipientsResult::Success {
                 seigniorage_recipients,
             } => {
-                let era_validators =
-                    auction::detail::era_validators_from_snapshot(seigniorage_recipients);
+                let era_validators = match seigniorage_recipients {
+                    SeigniorageRecipientsSnapshot::V1(_) => todo!(),
+                    SeigniorageRecipientsSnapshot::V2(snapshot) => {
+                        auction::detail::era_validators_from_snapshot(snapshot)
+                    }
+                };
                 EraValidatorsResult::Success { era_validators }
             }
         }
@@ -1058,26 +1065,64 @@ pub trait StateProvider {
             }
         };
 
-        let query_request = match tc.get_system_entity_registry() {
-            Ok(scr) => match scr.get(AUCTION).copied() {
-                Some(auction_hash) => {
-                    let key = if request.protocol_version().value().major < 2 {
-                        Key::Hash(auction_hash.value())
-                    } else {
-                        Key::addressable_entity_key(EntityKindTag::System, auction_hash)
-                    };
-                    QueryRequest::new(
-                        state_hash,
-                        key,
-                        vec![SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY.to_string()],
-                    )
+        let (snapshot_query_request, snapshot_version_query_request) =
+            match tc.get_system_entity_registry() {
+                Ok(scr) => match scr.get(AUCTION).copied() {
+                    Some(auction_hash) => {
+                        let key = if request.protocol_version().value().major < 2 {
+                            Key::Hash(auction_hash.value())
+                        } else {
+                            Key::addressable_entity_key(EntityKindTag::System, auction_hash)
+                        };
+                        (
+                            QueryRequest::new(
+                                state_hash,
+                                key,
+                                vec![SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY.to_string()],
+                            ),
+                            QueryRequest::new(
+                                state_hash,
+                                key,
+                                vec![SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION_KEY.to_string()],
+                            ),
+                        )
+                    }
+                    None => return SeigniorageRecipientsResult::AuctionNotFound,
+                },
+                Err(err) => return SeigniorageRecipientsResult::Failure(err),
+            };
+
+        // check if snapshot version flag is present
+        let snapshot_version: Option<u8> = match self.query(snapshot_version_query_request) {
+            QueryResult::RootNotFound => return SeigniorageRecipientsResult::RootNotFound,
+            QueryResult::Failure(error) => {
+                error!(?error, "unexpected tracking copy error");
+                return SeigniorageRecipientsResult::Failure(error);
+            }
+            QueryResult::ValueNotFound(_msg) => None,
+            QueryResult::Success { value, proofs: _ } => {
+                let cl_value = match value.into_cl_value() {
+                    Some(snapshot_version_cl_value) => snapshot_version_cl_value,
+                    None => {
+                        error!("unexpected query failure; seigniorage recipients snapshot version is not a CLValue");
+                        return SeigniorageRecipientsResult::Failure(
+                            TrackingCopyError::UnexpectedStoredValueVariant,
+                        );
+                    }
+                };
+
+                match cl_value.into_t() {
+                    Ok(snapshot_version) => Some(snapshot_version),
+                    Err(cve) => {
+                        return SeigniorageRecipientsResult::Failure(TrackingCopyError::CLValue(
+                            cve,
+                        ));
+                    }
                 }
-                None => return SeigniorageRecipientsResult::AuctionNotFound,
-            },
-            Err(err) => return SeigniorageRecipientsResult::Failure(err),
+            }
         };
 
-        let snapshot = match self.query(query_request) {
+        let snapshot = match self.query(snapshot_query_request) {
             QueryResult::RootNotFound => return SeigniorageRecipientsResult::RootNotFound,
             QueryResult::Failure(error) => {
                 error!(?error, "unexpected tracking copy error");
@@ -1098,12 +1143,28 @@ pub trait StateProvider {
                     }
                 };
 
-                match cl_value.into_t() {
-                    Ok(snapshot) => snapshot,
-                    Err(cve) => {
-                        return SeigniorageRecipientsResult::Failure(TrackingCopyError::CLValue(
-                            cve,
-                        ));
+                match snapshot_version {
+                    Some(_) => {
+                        let snapshot = match cl_value.into_t() {
+                            Ok(snapshot) => snapshot,
+                            Err(cve) => {
+                                return SeigniorageRecipientsResult::Failure(
+                                    TrackingCopyError::CLValue(cve),
+                                );
+                            }
+                        };
+                        SeigniorageRecipientsSnapshot::V2(snapshot)
+                    }
+                    None => {
+                        let snapshot = match cl_value.into_t() {
+                            Ok(snapshot) => snapshot,
+                            Err(cve) => {
+                                return SeigniorageRecipientsResult::Failure(
+                                    TrackingCopyError::CLValue(cve),
+                                );
+                            }
+                        };
+                        SeigniorageRecipientsSnapshot::V1(snapshot)
                     }
                 }
             }

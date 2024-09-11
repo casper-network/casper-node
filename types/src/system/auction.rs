@@ -1,4 +1,4 @@
-//! Contains implementation of a Auction contract functionality.
+//! Contains implementation of the Auction contract functionality.
 mod bid;
 mod bid_addr;
 mod bid_kind;
@@ -32,7 +32,9 @@ pub use entry_points::auction_entry_points;
 pub use era_info::{EraInfo, SeigniorageAllocation};
 pub use error::Error;
 pub use reservation::Reservation;
-pub use seigniorage_recipient::SeigniorageRecipient;
+pub use seigniorage_recipient::{
+    SeigniorageRecipient, SeigniorageRecipientV1, SeigniorageRecipientV2,
+};
 pub use unbonding_purse::UnbondingPurse;
 pub use validator_bid::ValidatorBid;
 pub use validator_credit::ValidatorCredit;
@@ -66,11 +68,48 @@ pub type ValidatorWeights = BTreeMap<PublicKey, U512>;
 /// List of era validators
 pub type EraValidators = BTreeMap<EraId, ValidatorWeights>;
 
+/// Collection of seigniorage recipients. Legacy version.
+pub type SeigniorageRecipientsV1 = BTreeMap<PublicKey, SeigniorageRecipientV1>;
 /// Collection of seigniorage recipients.
-pub type SeigniorageRecipients = BTreeMap<PublicKey, SeigniorageRecipient>;
+pub type SeigniorageRecipientsV2 = BTreeMap<PublicKey, SeigniorageRecipientV2>;
+/// Wrapper enum for all variants of `SeigniorageRecipients`.
+#[allow(missing_docs)]
+pub enum SeigniorageRecipients {
+    V1(SeigniorageRecipientsV1),
+    V2(SeigniorageRecipientsV2),
+}
 
+/// Snapshot of `SeigniorageRecipients` for a given era. Legacy version.
+pub type SeigniorageRecipientsSnapshotV1 = BTreeMap<EraId, SeigniorageRecipientsV1>;
 /// Snapshot of `SeigniorageRecipients` for a given era.
-pub type SeigniorageRecipientsSnapshot = BTreeMap<EraId, SeigniorageRecipients>;
+pub type SeigniorageRecipientsSnapshotV2 = BTreeMap<EraId, SeigniorageRecipientsV2>;
+/// Wrapper enum for all variants of `SeigniorageRecipientsSnapshot`.
+#[derive(Debug)]
+#[allow(missing_docs)]
+pub enum SeigniorageRecipientsSnapshot {
+    V1(SeigniorageRecipientsSnapshotV1),
+    V2(SeigniorageRecipientsSnapshotV2),
+}
+
+impl SeigniorageRecipientsSnapshot {
+    /// Returns rewards for given validator in a specified era
+    pub fn get_seignorage_recipient(
+        &self,
+        era_id: &EraId,
+        validator_public_key: &PublicKey,
+    ) -> Option<SeigniorageRecipient> {
+        match self {
+            Self::V1(snapshot) => snapshot.get(era_id).and_then(|era| {
+                era.get(validator_public_key)
+                    .map(|recipient| SeigniorageRecipient::V1(recipient.clone()))
+            }),
+            Self::V2(snapshot) => snapshot.get(era_id).and_then(|era| {
+                era.get(validator_public_key)
+                    .map(|recipient| SeigniorageRecipient::V2(recipient.clone()))
+            }),
+        }
+    }
+}
 
 /// Validators and delegators mapped to their unbonding purses.
 pub type UnbondingPurses = BTreeMap<AccountHash, Vec<UnbondingPurse>>;
