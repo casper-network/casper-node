@@ -182,6 +182,15 @@ mod tests {
         )
         .unwrap();
 
+        dbg!(
+            x1.to_le_bytes(),
+            y1.to_le_bytes(),
+            x2.to_le_bytes(),
+            y2.to_le_bytes(),
+            expected_x.to_le_bytes(),
+            expected_y.to_le_bytes(),
+        );
+
         let result = alt_bn128_add(x1, y1, x2, y2);
         assert_eq!(result, Ok((expected_x, expected_y)));
     }
@@ -237,6 +246,14 @@ mod tests {
         )
         .unwrap();
 
+        dbg!(
+            x.to_le_bytes(),
+            y.to_le_bytes(),
+            scalar.to_le_bytes(),
+            expected_x.to_le_bytes(),
+            expected_y.to_le_bytes()
+        );
+
         assert_eq!(alt_bn128_mul(x, y, scalar), Ok((expected_x, expected_y)));
     }
 
@@ -265,6 +282,7 @@ mod tests {
             16,
         )
         .unwrap();
+
         let expected_y = U256::from_str_radix(
             "0000000000000000000000000000000000000000000000000000000000000000",
             16,
@@ -360,7 +378,20 @@ mod tests {
         )
         .unwrap();
 
-        dbg!(ax_1.0, ay_1.0, bax_1.0, bay_1.0, bbx_1.0, bby_1.0);
+        dbg!(
+            ax_1.to_le_bytes(),
+            ay_1.to_le_bytes(),
+            bax_1.to_le_bytes(),
+            bay_1.to_le_bytes(),
+            bbx_1.to_le_bytes(),
+            bby_1.to_le_bytes(),
+            ax_2.to_le_bytes(),
+            ay_2.to_le_bytes(),
+            bax_2.to_le_bytes(),
+            bay_2.to_le_bytes(),
+            bbx_2.to_le_bytes(),
+            bby_2.to_le_bytes()
+        );
 
         assert_eq!(
             alt_bn128_pairing(vec![

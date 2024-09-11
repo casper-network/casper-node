@@ -29,4 +29,12 @@ fn altbn128_builtins_should_work() {
     let execute_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder.exec(execute_request).commit().expect_success();
+
+    // Compile above test contract with either feature flags: wasm_add_test, wasm_mul_test,
+    // wasm_pairing_test, and uncomment gas line. None of these flags will use host functions.
+    // bash -c 'cd smart_contracts/contracts &&
+    // RUSTFLAGS="--remap-path-prefix=$HOME/.cargo= --remap-path-prefix=$PWD=/dir" cargo --locked
+    // build --verbose --release --package altbn128 --features wasm_add_test'
+
+    // eprintln!("gas {}", builder.last_exec_gas_cost());
 }

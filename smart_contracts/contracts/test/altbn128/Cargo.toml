@@ -15,3 +15,10 @@ test = false
 casper-contract = { path = "../../../contract", features = ["test-support"] }
 casper-types = { path = "../../../../types" }
 base16 = { version = "0.2.1", default-features = false, features = [] }
+bn = { version = "0.5", package = "zeropool-bn", default-features = false, optional = true }
+
+[features]
+default = []
+wasm_add_test = ["bn"]
+wasm_mul_test = ["bn"]
+wasm_pairing_test = ["bn"]

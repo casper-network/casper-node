@@ -115,6 +115,7 @@ dependencies = [
  "base16",
  "casper-contract",
  "casper-types",
+ "zeropool-bn",
 ]
 
 [[package]]
