@@ -1,4 +1,4 @@
-use crate::{error_code::ErrorCode, payload_type::PayloadType};
+use crate::{error_code::ErrorCode, response_type::ResponseType};
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     ProtocolVersion,
@@ -19,7 +19,10 @@ pub struct BinaryResponseHeader {
 
 impl BinaryResponseHeader {
     /// Creates new binary response header representing success.
-    pub fn new(returned_data_type: Option<PayloadType>, protocol_version: ProtocolVersion) -> Self {
+    pub fn new(
+        returned_data_type: Option<ResponseType>,
+        protocol_version: ProtocolVersion,
+    ) -> Self {
         Self {
             protocol_version,
             error: ErrorCode::NoError as u16,

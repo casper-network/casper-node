@@ -1,6 +1,19 @@
 use alloc::{string::String, vec::Vec};
 use core::fmt::{self, Display, Formatter};
 
+#[cfg(any(feature = "testing", test))]
+use crate::testing::TestRng;
+use crate::{
+    alloc::string::ToString,
+    bytesrepr::{
+        Error::{self, Formatting},
+        FromBytes, ToBytes,
+    },
+    system::{auction, mint},
+    transaction::serialization::{
+        CalltableSerializationEnvelope, CalltableSerializationEnvelopeBuilder,
+    },
+};
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 #[cfg(any(feature = "testing", test))]
@@ -8,29 +21,6 @@ use rand::Rng;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-
-#[cfg(doc)]
-use super::Transaction;
-#[cfg(any(feature = "testing", test))]
-use crate::testing::TestRng;
-use crate::{
-    alloc::string::ToString,
-    bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    system::{auction, mint},
-};
-
-const CUSTOM_TAG: u8 = 0;
-const TRANSFER_TAG: u8 = 1;
-const ADD_BID_TAG: u8 = 2;
-const WITHDRAW_BID_TAG: u8 = 3;
-const DELEGATE_TAG: u8 = 4;
-const UNDELEGATE_TAG: u8 = 5;
-const REDELEGATE_TAG: u8 = 6;
-const ACTIVATE_BID_TAG: u8 = 7;
-const CHANGE_BID_PUBLIC_KEY_TAG: u8 = 8;
-const CALL_TAG: u8 = 9;
-const ADD_RESERVATIONS_TAG: u8 = 10;
-const CANCEL_RESERVATIONS_TAG: u8 = 11;
 
 /// The entry point of a [`Transaction`].
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
@@ -201,17 +191,19 @@ impl TransactionEntryPoint {
     /// Returns a random `TransactionEntryPoint`.
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
-        match rng.gen_range(0..10) {
-            CUSTOM_TAG => TransactionEntryPoint::Custom(rng.random_string(1..21)),
-            TRANSFER_TAG => TransactionEntryPoint::Transfer,
-            ADD_BID_TAG => TransactionEntryPoint::AddBid,
-            WITHDRAW_BID_TAG => TransactionEntryPoint::WithdrawBid,
-            DELEGATE_TAG => TransactionEntryPoint::Delegate,
-            UNDELEGATE_TAG => TransactionEntryPoint::Undelegate,
-            REDELEGATE_TAG => TransactionEntryPoint::Redelegate,
-            ACTIVATE_BID_TAG => TransactionEntryPoint::ActivateBid,
-            CHANGE_BID_PUBLIC_KEY_TAG => TransactionEntryPoint::ChangeBidPublicKey,
-            CALL_TAG => TransactionEntryPoint::Call,
+        match rng.gen_range(0..12) {
+            0 => TransactionEntryPoint::Custom(rng.random_string(1..21)),
+            1 => TransactionEntryPoint::Transfer,
+            2 => TransactionEntryPoint::AddBid,
+            3 => TransactionEntryPoint::WithdrawBid,
+            4 => TransactionEntryPoint::Delegate,
+            5 => TransactionEntryPoint::Undelegate,
+            6 => TransactionEntryPoint::Redelegate,
+            7 => TransactionEntryPoint::ActivateBid,
+            8 => TransactionEntryPoint::ChangeBidPublicKey,
+            9 => TransactionEntryPoint::Call,
+            10 => TransactionEntryPoint::AddReservations,
+            11 => TransactionEntryPoint::CancelReservations,
             _ => unreachable!(),
         }
     }
@@ -233,6 +225,207 @@ impl TransactionEntryPoint {
             | TransactionEntryPoint::CancelReservations => false,
         }
     }
+
+    fn serialized_field_lengths(&self) -> Vec<usize> {
+        match self {
+            TransactionEntryPoint::Custom(custom) => {
+                vec![
+                    crate::bytesrepr::U8_SERIALIZED_LENGTH,
+                    custom.serialized_length(),
+                ]
+            }
+            TransactionEntryPoint::Call
+            | TransactionEntryPoint::Transfer
+            | TransactionEntryPoint::AddBid
+            | TransactionEntryPoint::WithdrawBid
+            | TransactionEntryPoint::Delegate
+            | TransactionEntryPoint::Undelegate
+            | TransactionEntryPoint::Redelegate
+            | TransactionEntryPoint::ActivateBid
+            | TransactionEntryPoint::ChangeBidPublicKey
+            | TransactionEntryPoint::AddReservations
+            | TransactionEntryPoint::CancelReservations => {
+                vec![crate::bytesrepr::U8_SERIALIZED_LENGTH]
+            }
+        }
+    }
+}
+
+const TAG_FIELD_INDEX: u16 = 0;
+
+const CALL_VARIANT_TAG: u8 = 0;
+
+const CUSTOM_VARIANT_TAG: u8 = 1;
+const CUSTOM_CUSTOM_INDEX: u16 = 1;
+
+const TRANSFER_VARIANT_TAG: u8 = 2;
+const ADD_BID_VARIANT_TAG: u8 = 3;
+const WITHDRAW_BID_VARIANT_TAG: u8 = 4;
+const DELEGATE_VARIANT_TAG: u8 = 5;
+const UNDELEGATE_VARIANT_TAG: u8 = 6;
+const REDELEGATE_VARIANT_TAG: u8 = 7;
+const ACTIVATE_BID_VARIANT_TAG: u8 = 8;
+const CHANGE_BID_PUBLIC_KEY_VARIANT_TAG: u8 = 9;
+const ADD_RESERVATIONS_VARIANT_TAG: u8 = 10;
+const CANCEL_RESERVATIONS_VARIANT_TAG: u8 = 11;
+
+impl ToBytes for TransactionEntryPoint {
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        match self {
+            TransactionEntryPoint::Call => {
+                CalltableSerializationEnvelopeBuilder::new(self.serialized_field_lengths())?
+                    .add_field(TAG_FIELD_INDEX, &CALL_VARIANT_TAG)?
+                    .binary_payload_bytes()
+            }
+            TransactionEntryPoint::Custom(custom) => {
+                CalltableSerializationEnvelopeBuilder::new(self.serialized_field_lengths())?
+                    .add_field(TAG_FIELD_INDEX, &CUSTOM_VARIANT_TAG)?
+                    .add_field(CUSTOM_CUSTOM_INDEX, &custom)?
+                    .binary_payload_bytes()
+            }
+            TransactionEntryPoint::Transfer => {
+                CalltableSerializationEnvelopeBuilder::new(self.serialized_field_lengths())?
+                    .add_field(TAG_FIELD_INDEX, &TRANSFER_VARIANT_TAG)?
+                    .binary_payload_bytes()
+            }
+            TransactionEntryPoint::AddBid => {
+                CalltableSerializationEnvelopeBuilder::new(self.serialized_field_lengths())?
+                    .add_field(TAG_FIELD_INDEX, &ADD_BID_VARIANT_TAG)?
+                    .binary_payload_bytes()
+            }
+            TransactionEntryPoint::WithdrawBid => {
+                CalltableSerializationEnvelopeBuilder::new(self.serialized_field_lengths())?
+                    .add_field(TAG_FIELD_INDEX, &WITHDRAW_BID_VARIANT_TAG)?
+                    .binary_payload_bytes()
+            }
+            TransactionEntryPoint::Delegate => {
+                CalltableSerializationEnvelopeBuilder::new(self.serialized_field_lengths())?
+                    .add_field(TAG_FIELD_INDEX, &DELEGATE_VARIANT_TAG)?
+                    .binary_payload_bytes()
+            }
+            TransactionEntryPoint::Undelegate => {
+                CalltableSerializationEnvelopeBuilder::new(self.serialized_field_lengths())?
+                    .add_field(TAG_FIELD_INDEX, &UNDELEGATE_VARIANT_TAG)?
+                    .binary_payload_bytes()
+            }
+            TransactionEntryPoint::Redelegate => {
+                CalltableSerializationEnvelopeBuilder::new(self.serialized_field_lengths())?
+                    .add_field(TAG_FIELD_INDEX, &REDELEGATE_VARIANT_TAG)?
+                    .binary_payload_bytes()
+            }
+            TransactionEntryPoint::ActivateBid => {
+                CalltableSerializationEnvelopeBuilder::new(self.serialized_field_lengths())?
+                    .add_field(TAG_FIELD_INDEX, &ACTIVATE_BID_VARIANT_TAG)?
+                    .binary_payload_bytes()
+            }
+            TransactionEntryPoint::ChangeBidPublicKey => {
+                CalltableSerializationEnvelopeBuilder::new(self.serialized_field_lengths())?
+                    .add_field(TAG_FIELD_INDEX, &CHANGE_BID_PUBLIC_KEY_VARIANT_TAG)?
+                    .binary_payload_bytes()
+            }
+            TransactionEntryPoint::AddReservations => {
+                CalltableSerializationEnvelopeBuilder::new(self.serialized_field_lengths())?
+                    .add_field(TAG_FIELD_INDEX, &ADD_RESERVATIONS_VARIANT_TAG)?
+                    .binary_payload_bytes()
+            }
+            TransactionEntryPoint::CancelReservations => {
+                CalltableSerializationEnvelopeBuilder::new(self.serialized_field_lengths())?
+                    .add_field(TAG_FIELD_INDEX, &CANCEL_RESERVATIONS_VARIANT_TAG)?
+                    .binary_payload_bytes()
+            }
+        }
+    }
+    fn serialized_length(&self) -> usize {
+        CalltableSerializationEnvelope::estimate_size(self.serialized_field_lengths())
+    }
+}
+
+impl FromBytes for TransactionEntryPoint {
+    fn from_bytes(bytes: &[u8]) -> Result<(TransactionEntryPoint, &[u8]), Error> {
+        let (binary_payload, remainder) = CalltableSerializationEnvelope::from_bytes(2u32, bytes)?;
+        let window = binary_payload.start_consuming()?.ok_or(Formatting)?;
+        window.verify_index(TAG_FIELD_INDEX)?;
+        let (tag, window) = window.deserialize_and_maybe_next::<u8>()?;
+        let to_ret = match tag {
+            CALL_VARIANT_TAG => {
+                if window.is_some() {
+                    return Err(Formatting);
+                }
+                Ok(TransactionEntryPoint::Call)
+            }
+            CUSTOM_VARIANT_TAG => {
+                let window = window.ok_or(Formatting)?;
+                window.verify_index(CUSTOM_CUSTOM_INDEX)?;
+                let (custom, window) = window.deserialize_and_maybe_next::<String>()?;
+                if window.is_some() {
+                    return Err(Formatting);
+                }
+                Ok(TransactionEntryPoint::Custom(custom))
+            }
+            TRANSFER_VARIANT_TAG => {
+                if window.is_some() {
+                    return Err(Formatting);
+                }
+                Ok(TransactionEntryPoint::Transfer)
+            }
+            ADD_BID_VARIANT_TAG => {
+                if window.is_some() {
+                    return Err(Formatting);
+                }
+                Ok(TransactionEntryPoint::AddBid)
+            }
+            WITHDRAW_BID_VARIANT_TAG => {
+                if window.is_some() {
+                    return Err(Formatting);
+                }
+                Ok(TransactionEntryPoint::WithdrawBid)
+            }
+            DELEGATE_VARIANT_TAG => {
+                if window.is_some() {
+                    return Err(Formatting);
+                }
+                Ok(TransactionEntryPoint::Delegate)
+            }
+            UNDELEGATE_VARIANT_TAG => {
+                if window.is_some() {
+                    return Err(Formatting);
+                }
+                Ok(TransactionEntryPoint::Undelegate)
+            }
+            REDELEGATE_VARIANT_TAG => {
+                if window.is_some() {
+                    return Err(Formatting);
+                }
+                Ok(TransactionEntryPoint::Redelegate)
+            }
+            ACTIVATE_BID_VARIANT_TAG => {
+                if window.is_some() {
+                    return Err(Formatting);
+                }
+                Ok(TransactionEntryPoint::ActivateBid)
+            }
+            CHANGE_BID_PUBLIC_KEY_VARIANT_TAG => {
+                if window.is_some() {
+                    return Err(Formatting);
+                }
+                Ok(TransactionEntryPoint::ChangeBidPublicKey)
+            }
+            ADD_RESERVATIONS_VARIANT_TAG => {
+                if window.is_some() {
+                    return Err(Formatting);
+                }
+                Ok(TransactionEntryPoint::AddReservations)
+            }
+            CANCEL_RESERVATIONS_VARIANT_TAG => {
+                if window.is_some() {
+                    return Err(Formatting);
+                }
+                Ok(TransactionEntryPoint::CancelReservations)
+            }
+            _ => Err(Formatting),
+        };
+        to_ret.map(|endpoint| (endpoint, remainder))
+    }
 }
 
 impl Display for TransactionEntryPoint {
@@ -252,78 +445,6 @@ impl Display for TransactionEntryPoint {
             TransactionEntryPoint::ChangeBidPublicKey => write!(formatter, "change_bid_public_key"),
             TransactionEntryPoint::AddReservations => write!(formatter, "add_reservations"),
             TransactionEntryPoint::CancelReservations => write!(formatter, "cancel_reservations"),
-        }
-    }
-}
-
-impl ToBytes for TransactionEntryPoint {
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        match self {
-            TransactionEntryPoint::Call => CALL_TAG.write_bytes(writer),
-            TransactionEntryPoint::Custom(entry_point) => {
-                CUSTOM_TAG.write_bytes(writer)?;
-                entry_point.write_bytes(writer)
-            }
-            TransactionEntryPoint::Transfer => TRANSFER_TAG.write_bytes(writer),
-            TransactionEntryPoint::AddBid => ADD_BID_TAG.write_bytes(writer),
-            TransactionEntryPoint::WithdrawBid => WITHDRAW_BID_TAG.write_bytes(writer),
-            TransactionEntryPoint::Delegate => DELEGATE_TAG.write_bytes(writer),
-            TransactionEntryPoint::Undelegate => UNDELEGATE_TAG.write_bytes(writer),
-            TransactionEntryPoint::Redelegate => REDELEGATE_TAG.write_bytes(writer),
-            TransactionEntryPoint::ActivateBid => ACTIVATE_BID_TAG.write_bytes(writer),
-            TransactionEntryPoint::ChangeBidPublicKey => {
-                CHANGE_BID_PUBLIC_KEY_TAG.write_bytes(writer)
-            }
-            TransactionEntryPoint::AddReservations => ADD_RESERVATIONS_TAG.write_bytes(writer),
-            TransactionEntryPoint::CancelReservations => {
-                CANCEL_RESERVATIONS_TAG.write_bytes(writer)
-            }
-        }
-    }
-
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut buffer = bytesrepr::allocate_buffer(self)?;
-        self.write_bytes(&mut buffer)?;
-        Ok(buffer)
-    }
-
-    fn serialized_length(&self) -> usize {
-        U8_SERIALIZED_LENGTH
-            + match self {
-                TransactionEntryPoint::Custom(entry_point) => entry_point.serialized_length(),
-                TransactionEntryPoint::Call
-                | TransactionEntryPoint::Transfer
-                | TransactionEntryPoint::AddBid
-                | TransactionEntryPoint::WithdrawBid
-                | TransactionEntryPoint::Delegate
-                | TransactionEntryPoint::Undelegate
-                | TransactionEntryPoint::Redelegate
-                | TransactionEntryPoint::ActivateBid
-                | TransactionEntryPoint::ChangeBidPublicKey
-                | TransactionEntryPoint::AddReservations
-                | TransactionEntryPoint::CancelReservations => 0,
-            }
-    }
-}
-
-impl FromBytes for TransactionEntryPoint {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (tag, remainder) = u8::from_bytes(bytes)?;
-        match tag {
-            CALL_TAG => Ok((TransactionEntryPoint::Call, remainder)),
-            CUSTOM_TAG => {
-                let (entry_point, remainder) = String::from_bytes(remainder)?;
-                Ok((TransactionEntryPoint::Custom(entry_point), remainder))
-            }
-            TRANSFER_TAG => Ok((TransactionEntryPoint::Transfer, remainder)),
-            ADD_BID_TAG => Ok((TransactionEntryPoint::AddBid, remainder)),
-            WITHDRAW_BID_TAG => Ok((TransactionEntryPoint::WithdrawBid, remainder)),
-            DELEGATE_TAG => Ok((TransactionEntryPoint::Delegate, remainder)),
-            UNDELEGATE_TAG => Ok((TransactionEntryPoint::Undelegate, remainder)),
-            REDELEGATE_TAG => Ok((TransactionEntryPoint::Redelegate, remainder)),
-            ACTIVATE_BID_TAG => Ok((TransactionEntryPoint::ActivateBid, remainder)),
-            CHANGE_BID_PUBLIC_KEY_TAG => Ok((TransactionEntryPoint::ChangeBidPublicKey, remainder)),
-            _ => Err(bytesrepr::Error::Formatting),
         }
     }
 }
@@ -361,12 +482,21 @@ impl From<&str> for TransactionEntryPoint {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{bytesrepr::test_serialization_roundtrip, gens::transaction_entry_point_arb};
+    use proptest::prelude::*;
 
     #[test]
     fn bytesrepr_roundtrip() {
         let rng = &mut TestRng::new();
         for _ in 0..10 {
-            bytesrepr::test_serialization_roundtrip(&TransactionEntryPoint::random(rng));
+            test_serialization_roundtrip(&TransactionEntryPoint::random(rng));
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn bytesrepr_roundtrip_from_arb(entry_point in transaction_entry_point_arb()) {
+            test_serialization_roundtrip(&entry_point);
         }
     }
 }

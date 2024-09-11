@@ -5,12 +5,12 @@ This page specifies the communication protocol between the [RPC Sidecar](https:/
 The communication protocol between the Sidecar and the binary port is a binary protocol that follows a simple request-response model. The protocol consists of one party (the client) sending requests to another party (the server) and the server sending responses back to the client. Both requests and responses are wrapped in envelopes containing a version and a payload type tag. The versioning scheme is based on [SemVer](https://semver.org/). See [versioning](#versioning) for more details. The payload type tags are used to interpret the contents of the payloads.
 
 ### Request format
-| Size in bytes | Field                             | Description                                                                                                                                                                                                                                                                                |
-|---------------|-----------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Size in bytes | Field                             | Description                                                                                                                                                                                                                                                                                       |
+|---------------|-----------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | 2             | Version of the binary port header | Version of the binary port header serialized as a single u16 number. Upon receiving the request, the binary port component will first read data from this field and check it against the currently supported version. In case of a version mismatch, the appropriate error response will be sent. |
-| 12            | Chain protocol version            | Chain protocol version as a u32 triplet (major, minor, patch). This parameter is used to determine whether an incoming request is compatible (according to semver rules) with the current chain protocol version. If not, the appropriate error response will be sent.                     |
-| 1             | BinaryRequestTag                  | Tag identifying the request.                                                                                                                                                                                                                                                               |
-| Variable           | RequestPayload                    | Payload to be interpreted according to the `BinaryRequestTag`.                                                                                                                                                                                                                                 |
+| 12            | Chain protocol version            | Chain protocol version as a u32 triplet (major, minor, patch). This parameter is used to determine whether an incoming request is compatible (according to semver rules) with the current chain protocol version. If not, the appropriate error response will be sent.                            |
+| 1             | BinaryRequestTag                  | Tag identifying the request.                                                                                                                                                                                                                                                                      |
+| Variable      | RequestPayload                    | Payload to be interpreted according to the `BinaryRequestTag`.                                                                                                                                                                                                                                    |
 
 Request bytes can be constructed from the bytesrepr-serialized `BinaryRequestHeader` followed by the bytesrepr-serialized `BinaryRequest`.
 
@@ -19,13 +19,13 @@ Request bytes can be constructed from the bytesrepr-serialized `BinaryRequestHea
 ### Response format
 | Size in bytes   | Field           | Description                                                              |
 |-----------------|-----------------|--------------------------------------------------------------------------|
-| 2               | Request ID      | Request ID as a u16 number.                                                        |
-| 4               | LengthOfRequest | Length of the request (encoded as bytes) for this response.             |
-| LengthOfRequest | RequestBytes    | The request, encoded as bytes, corresponding to this response.                         |
+| 2               | Request ID      | Request ID as a u16 number.                                              |
+| 4               | LengthOfRequest | Length of the request (encoded as bytes) for this response.              |
+| LengthOfRequest | RequestBytes    | The request, encoded as bytes, corresponding to this response.           |
 | 12              | ProtocolVersion | Protocol version as a u32 triplet (major, minor, patch).                 |
 | 2               | ErrorCode       | Error code, where 0 indicates success.                                   |
-| 1-2             | PayloadType     | Optional payload type tag (first byte being 1 indicates that it exists). |
-| Variable             | Payload         | Payload to be interpreted according to the `PayloadTag`.                     |
+| 1-2             | ResponseType     | Optional payload type tag (first byte being 1 indicates that it exists).|
+| Variable        | Payload         | Payload to be interpreted according to the `PayloadTag`.                 |
 
 `BinaryResponseAndRequest` object can be bytesrepr-deserialized from these bytes.
 
@@ -34,7 +34,7 @@ Request bytes can be constructed from the bytesrepr-serialized `BinaryRequestHea
 ## Versioning
 Versioning is based on the protocol version of the Casper Platform. The request/response model was designed to support **backward-compatible** changes to some parts, which are allowed to change between **MINOR** versions:
 - addition of a new [`BinaryRequestTag`](#request-format) with its own payload
-- addition of a new [`PayloadType`](#response-format) with its own payload
+- addition of a new [`ResponseType`](#response-format) with its own payload
 - addition of a new [`RecordId`](#request-model-details)
 - addition of a new [`InformationRequestTag`](#request-model-details)
 - addition of a new [`ErrorCode`](#response-format)
