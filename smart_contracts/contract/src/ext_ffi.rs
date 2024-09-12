@@ -871,28 +871,6 @@ extern "C" {
     ///
     /// This function is unsafe because it dereferences raw pointers. Ensure that the pointers are
     /// valid and properly aligned before calling this function.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// let x1: [u8; 32] = [/* x-coordinate bytes */];
-    /// let y1: [u8; 32] = [/* y-coordinate bytes */];
-    /// let x2: [u8; 32] = [/* x-coordinate bytes */];
-    /// let y2: [u8; 32] = [/* y-coordinate bytes */];
-    /// let mut result_x: [u8; 32] = [0; 32];
-    /// let mut result_y: [u8; 32] = [0; 32];
-    ///
-    /// unsafe {
-    ///     let res = casper_alt_bn128_add(
-    ///         x1.as_ptr(),
-    ///         y1.as_ptr(),
-    ///         x2.as_ptr(),
-    ///         y2.as_ptr(),
-    ///         result_x.as_mut_ptr(),
-    ///         result_y.as_mut_ptr(),
-    ///     );
-    ///     assert_eq!(res, 0);
-    /// }
     /// ```
     pub fn casper_alt_bn128_add(
         x1_ptr: *const u8,
@@ -925,26 +903,6 @@ extern "C" {
     ///
     /// This function is unsafe because it dereferences raw pointers. Ensure that the pointers are
     /// valid and properly aligned before calling this function.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// let x: [u8; 32] = [/* x-coordinate bytes */];
-    /// let y: [u8; 32] = [/* y-coordinate bytes */];
-    /// let scalar: [u8; 32] = [/* scalar bytes */];
-    /// let mut result_x: [u8; 32] = [0; 32];
-    /// let mut result_y: [u8; 32] = [0; 32];
-    ///
-    /// unsafe {
-    ///     let res = casper_alt_bn128_mul(
-    ///         x.as_ptr(),
-    ///         y.as_ptr(),
-    ///         scalar.as_ptr(),
-    ///         result_x.as_mut_ptr(),
-    ///         result_y.as_mut_ptr(),
-    ///     );
-    ///     assert_eq!(res, 0);
-    /// }
     /// ```
     pub fn casper_alt_bn128_mul(
         x_ptr: *const u8,
@@ -962,7 +920,8 @@ extern "C" {
     /// # Parameters
     ///
     /// - `elements_ptr`: A pointer to the elements to be checked. This should be pointed at byte
-    ///   array of 6 elements, each 32 bytes long.
+    ///   array of multiple of 6 elements representing (ax, ay, bax, bay, bbx, bby). Each point is
+    ///   32 bytes long.
     /// - `elements_size`: The size of the elements in bytes.
     /// - `result_ptr`: A mutable pointer to store the result of the pairing check. The result will
     ///   be `1` if the pairing check is successful, and `0` otherwise.
@@ -976,22 +935,6 @@ extern "C" {
     ///
     /// This function is unsafe because it dereferences raw pointers. Ensure that the pointers are
     /// valid and properly aligned before calling this function.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// let elements: [u8; 32 * 6] = [/* elements bytes */];
-    /// let mut result: i32 = 0;
-    ///
-    /// unsafe {
-    ///     let res = casper_alt_bn128_pairing(
-    ///         elements.as_ptr() as *const c_void,
-    ///         elements.len(),
-    ///         &mut result as *mut i32,
-    ///     );
-    ///     assert_eq!(res, 0);
-    ///     assert_eq!(result, 1); // Assuming the pairing check is successful
-    /// }
     /// ```
     pub fn casper_alt_bn128_pairing(
         elements_ptr: *const c_void,
