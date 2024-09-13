@@ -13,7 +13,9 @@ use casper_types::{
     bytesrepr::{self, ToBytes},
     system::{
         auction::{
-            BidAddr, BidKind, ValidatorBid, AUCTION_DELAY_KEY, LOCKED_FUNDS_PERIOD_KEY,
+            BidAddr, BidKind, SeigniorageRecipientsSnapshotV1, SeigniorageRecipientsSnapshotV2,
+            SeigniorageRecipientsV2, ValidatorBid, AUCTION_DELAY_KEY, LOCKED_FUNDS_PERIOD_KEY,
+            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION_KEY,
             UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
         },
         handle_payment::ACCUMULATION_PURSE_KEY,
@@ -194,6 +196,7 @@ where
             self.config.maximum_delegation_amount(),
         )?;
         self.handle_era_info_migration()?;
+        self.handle_seignorage_snapshot_migration(&system_entity_addresses)?;
 
         Ok(self.tracking_copy)
     }
@@ -1006,6 +1009,72 @@ where
                 }
             };
         }
+        Ok(())
+    }
+
+    /// Handle seignorage snapshot migration.
+    pub fn handle_seignorage_snapshot_migration(
+        &mut self,
+        system_entity_addresses: &SystemEntityAddresses,
+    ) -> Result<(), ProtocolUpgradeError> {
+        let auction_addr = EntityAddr::new_system(system_entity_addresses.auction().value());
+
+        let snapshot_version_addr = NamedKeyAddr::new_from_string(
+            auction_addr,
+            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION_KEY.to_string(),
+        )
+        .map_err(|err| ProtocolUpgradeError::Bytesrepr(err.to_string()))?;
+        let snapshot_version_key = Key::NamedKey(snapshot_version_addr);
+
+        // check if snapshot version named key already exists
+        let maybe_snapshot_version = self.tracking_copy.read(&snapshot_version_key)?;
+
+        // if version flag does not exist yet, set it and migrate snapshot
+        if maybe_snapshot_version.is_none() {
+            self.tracking_copy.write(
+                snapshot_version_key,
+                StoredValue::CLValue(CLValue::from_t(2u8)?),
+            );
+
+            // read legacy snapshot
+            let snapshot_addr = NamedKeyAddr::new_from_string(
+                auction_addr,
+                SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY.to_string(),
+            )
+            .map_err(|err| ProtocolUpgradeError::Bytesrepr(err.to_string()))?;
+            let snapshot_key = Key::NamedKey(snapshot_addr);
+
+            if let Some(snapshot_value) = self.tracking_copy.read(&snapshot_key)? {
+                let snapshot_cl_value = match snapshot_value.into_cl_value() {
+                    Some(cl_value) => cl_value,
+                    None => {
+                        error!("seigniorage recipients snapshot is not a CLValue");
+                        return Err(ProtocolUpgradeError::CLValue(
+                            "seigniorage recipients snapshot is not a CLValue".to_string(),
+                        ));
+                    }
+                };
+
+                let legacy_snapshot: SeigniorageRecipientsSnapshotV1 =
+                    snapshot_cl_value.into_t()?;
+
+                let mut new_snapshot = SeigniorageRecipientsSnapshotV2::default();
+                for (era_id, recipients) in legacy_snapshot.into_iter() {
+                    let mut new_recipients = SeigniorageRecipientsV2::default();
+                    for (pubkey, recipient) in recipients {
+                        new_recipients.insert(pubkey, recipient.into());
+                    }
+                    new_snapshot.insert(era_id, new_recipients);
+                }
+
+                // store new snapshot
+                self.tracking_copy.write(
+                    snapshot_key,
+                    StoredValue::CLValue(CLValue::from_t(new_snapshot)?),
+                );
+            };
+        }
+
         Ok(())
     }
 

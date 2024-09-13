@@ -237,6 +237,17 @@ impl From<&Bid> for SeigniorageRecipientV2 {
     }
 }
 
+impl From<SeigniorageRecipientV1> for SeigniorageRecipientV2 {
+    fn from(snapshot: SeigniorageRecipientV1) -> Self {
+        Self {
+            stake: snapshot.stake,
+            delegation_rate: snapshot.delegation_rate,
+            delegator_stake: snapshot.delegator_stake,
+            reservation_delegation_rates: Default::default(),
+        }
+    }
+}
+
 /// Wrapper enum for all variants of `SeigniorageRecipient`.
 #[allow(missing_docs)]
 pub enum SeigniorageRecipient {
