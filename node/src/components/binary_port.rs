@@ -9,12 +9,13 @@ mod tests;
 use std::{convert::TryFrom, net::SocketAddr, sync::Arc};
 
 use casper_binary_port::{
-    BalanceResponse, BinaryMessage, BinaryMessageCodec, BinaryRequest, BinaryRequestHeader,
-    BinaryRequestTag, BinaryResponse, BinaryResponseAndRequest, DictionaryItemIdentifier,
-    DictionaryQueryResult, EraIdentifier, ErrorCode, GetRequest, GetTrieFullResult,
+    AccountInformation, AddressableEntityInformation, BalanceResponse, BinaryMessage,
+    BinaryMessageCodec, BinaryRequest, BinaryRequestHeader, BinaryRequestTag, BinaryResponse,
+    BinaryResponseAndRequest, ContractInformation, DictionaryItemIdentifier, DictionaryQueryResult,
+    EntityIdentifier, EraIdentifier, ErrorCode, GetRequest, GetTrieFullResult,
     GlobalStateQueryResult, GlobalStateRequest, InformationRequest, InformationRequestTag,
-    KeyPrefix, NodeStatus, PayloadType, PurseIdentifier, ReactorStateName, RecordId,
-    RewardResponse, TransactionWithExecutionInfo,
+    KeyPrefix, NodeStatus, PackageIdentifier, PurseIdentifier, ReactorStateName, RecordId,
+    ResponseType, RewardResponse, TransactionWithExecutionInfo, ValueWithProof,
 };
 use casper_storage::{
     data_access_layer::{
@@ -31,13 +32,17 @@ use casper_storage::{
     KeyPrefix as StorageKeyPrefix,
 };
 use casper_types::{
+    account::AccountHash,
     addressable_entity::NamedKeyAddr,
     bytesrepr::{self, FromBytes, ToBytes},
-    BlockHeader, BlockIdentifier, Chainspec, Digest, EntityAddr, GlobalStateIdentifier, Key, Peers,
-    ProtocolVersion, Rewards, SignedBlock, StoredValue, TimeDiff, Transaction,
+    contracts::{ContractHash, ContractPackage, ContractPackageHash},
+    BlockHeader, BlockIdentifier, ByteCode, ByteCodeAddr, ByteCodeHash, Chainspec, ContractWasm,
+    ContractWasmHash, Digest, EntityAddr, GlobalStateIdentifier, Key, Package, PackageAddr, Peers,
+    ProtocolVersion, Rewards, SignedBlock, StoredValue, TimeDiff, Transaction, URef,
 };
 
 use datasize::DataSize;
+use either::Either;
 use futures::{future::BoxFuture, FutureExt, SinkExt, StreamExt};
 use once_cell::sync::OnceCell;
 use prometheus::Registry;
@@ -215,7 +220,7 @@ where
             let Ok(serialized) = bincode::serialize(&transfers) else {
                 return BinaryResponse::new_error(ErrorCode::InternalError, protocol_version);
             };
-            BinaryResponse::from_raw_bytes(PayloadType::Transfers, serialized, protocol_version)
+            BinaryResponse::from_raw_bytes(ResponseType::Transfers, serialized, protocol_version)
         }
         GetRequest::Record {
             record_type_tag,
@@ -227,7 +232,8 @@ where
                     let Some(db_bytes) = effect_builder.get_raw_data(record_id, key).await else {
                         return BinaryResponse::new_empty(protocol_version);
                     };
-                    let payload_type = PayloadType::from_record_id(record_id, db_bytes.is_legacy());
+                    let payload_type =
+                        ResponseType::from_record_id(record_id, db_bytes.is_legacy());
                     BinaryResponse::from_raw_bytes(
                         payload_type,
                         db_bytes.into_raw_bytes(),
@@ -710,6 +716,264 @@ where
     }
 }
 
+async fn get_contract_package<REv>(
+    effect_builder: EffectBuilder<REv>,
+    state_root_hash: Digest,
+    hash: ContractPackageHash,
+) -> Result<Option<Either<ValueWithProof<ContractPackage>, ValueWithProof<Package>>>, ErrorCode>
+where
+    REv: From<Event>
+        + From<StorageRequest>
+        + From<ContractRuntimeRequest>
+        + From<ReactorInfoRequest>,
+{
+    let key = Key::Hash(hash.value());
+    let Some(result) = get_global_state_item(effect_builder, state_root_hash, key, vec![]).await?
+    else {
+        return Ok(None);
+    };
+    match result.into_inner() {
+        (StoredValue::ContractPackage(contract), proof) => {
+            Ok(Some(Either::Left(ValueWithProof::new(contract, proof))))
+        }
+        (other, _) => {
+            let Some((Key::Package(addr), _)) = other
+                .as_cl_value()
+                .and_then(|cl_val| cl_val.to_t::<(Key, URef)>().ok())
+            else {
+                debug!(
+                    ?other,
+                    "unexpected stored value found when querying for a contract package"
+                );
+                return Err(ErrorCode::InternalError);
+            };
+            let package = get_package(effect_builder, state_root_hash, addr).await?;
+            Ok(package.map(Either::Right))
+        }
+    }
+}
+
+async fn get_package<REv>(
+    effect_builder: EffectBuilder<REv>,
+    state_root_hash: Digest,
+    package_addr: PackageAddr,
+) -> Result<Option<ValueWithProof<Package>>, ErrorCode>
+where
+    REv: From<Event>
+        + From<StorageRequest>
+        + From<ContractRuntimeRequest>
+        + From<ReactorInfoRequest>,
+{
+    let key = Key::Package(package_addr);
+    let Some(result) = get_global_state_item(effect_builder, state_root_hash, key, vec![]).await?
+    else {
+        return Ok(None);
+    };
+    match result.into_inner() {
+        (StoredValue::Package(contract), proof) => Ok(Some(ValueWithProof::new(contract, proof))),
+        other => {
+            debug!(
+                ?other,
+                "unexpected stored value found when querying for a package"
+            );
+            Err(ErrorCode::InternalError)
+        }
+    }
+}
+
+async fn get_contract<REv>(
+    effect_builder: EffectBuilder<REv>,
+    state_root_hash: Digest,
+    hash: ContractHash,
+    include_wasm: bool,
+) -> Result<Option<Either<ContractInformation, AddressableEntityInformation>>, ErrorCode>
+where
+    REv: From<Event>
+        + From<StorageRequest>
+        + From<ContractRuntimeRequest>
+        + From<ReactorInfoRequest>,
+{
+    let key = Key::Hash(hash.value());
+    let Some(result) = get_global_state_item(effect_builder, state_root_hash, key, vec![]).await?
+    else {
+        return Ok(None);
+    };
+    match result.into_inner() {
+        (StoredValue::Contract(contract), proof)
+            if include_wasm && contract.contract_wasm_hash() != ContractWasmHash::default() =>
+        {
+            let wasm_hash = contract.contract_wasm_hash();
+            let Some(wasm) = get_contract_wasm(effect_builder, state_root_hash, wasm_hash).await?
+            else {
+                return Ok(None);
+            };
+            Ok(Some(Either::Left(ContractInformation::new(
+                hash,
+                ValueWithProof::new(contract, proof),
+                Some(wasm),
+            ))))
+        }
+        (StoredValue::Contract(contract), proof) => Ok(Some(Either::Left(
+            ContractInformation::new(hash, ValueWithProof::new(contract, proof), None),
+        ))),
+        (other, _) => {
+            let Some(Key::AddressableEntity(addr)) = other
+                .as_cl_value()
+                .and_then(|cl_val| cl_val.to_t::<Key>().ok())
+            else {
+                debug!(
+                    ?other,
+                    "unexpected stored value found when querying for a contract"
+                );
+                return Err(ErrorCode::InternalError);
+            };
+            let entity = get_entity(effect_builder, state_root_hash, addr, include_wasm).await?;
+            Ok(entity.map(Either::Right))
+        }
+    }
+}
+
+async fn get_account<REv>(
+    effect_builder: EffectBuilder<REv>,
+    state_root_hash: Digest,
+    hash: AccountHash,
+    include_bytecode: bool,
+) -> Result<Option<Either<AccountInformation, AddressableEntityInformation>>, ErrorCode>
+where
+    REv: From<Event>
+        + From<StorageRequest>
+        + From<ContractRuntimeRequest>
+        + From<ReactorInfoRequest>,
+{
+    let key = Key::Account(hash);
+    let Some(result) = get_global_state_item(effect_builder, state_root_hash, key, vec![]).await?
+    else {
+        return Ok(None);
+    };
+    match result.into_inner() {
+        (StoredValue::Account(account), proof) => {
+            Ok(Some(Either::Left(AccountInformation::new(account, proof))))
+        }
+        (other, _) => {
+            let Some(Key::AddressableEntity(addr)) = other
+                .as_cl_value()
+                .and_then(|cl_val| cl_val.to_t::<Key>().ok())
+            else {
+                debug!(
+                    ?other,
+                    "unexpected stored value found when querying for an account"
+                );
+                return Err(ErrorCode::InternalError);
+            };
+            let entity =
+                get_entity(effect_builder, state_root_hash, addr, include_bytecode).await?;
+            Ok(entity.map(Either::Right))
+        }
+    }
+}
+
+async fn get_entity<REv>(
+    effect_builder: EffectBuilder<REv>,
+    state_root_hash: Digest,
+    addr: EntityAddr,
+    include_bytecode: bool,
+) -> Result<Option<AddressableEntityInformation>, ErrorCode>
+where
+    REv: From<Event>
+        + From<StorageRequest>
+        + From<ContractRuntimeRequest>
+        + From<ReactorInfoRequest>,
+{
+    let key = Key::from(addr);
+    let Some(result) = get_global_state_item(effect_builder, state_root_hash, key, vec![]).await?
+    else {
+        return Ok(None);
+    };
+    match result.into_inner() {
+        (StoredValue::AddressableEntity(entity), proof)
+            if include_bytecode && entity.byte_code_hash() != ByteCodeHash::default() =>
+        {
+            let Some(bytecode) =
+                get_contract_bytecode(effect_builder, state_root_hash, entity.byte_code_hash())
+                    .await?
+            else {
+                return Ok(None);
+            };
+            Ok(Some(AddressableEntityInformation::new(
+                addr,
+                ValueWithProof::new(entity, proof),
+                Some(bytecode),
+            )))
+        }
+        (StoredValue::AddressableEntity(entity), proof) => Ok(Some(
+            AddressableEntityInformation::new(addr, ValueWithProof::new(entity, proof), None),
+        )),
+        (other, _) => {
+            debug!(
+                ?other,
+                "unexpected stored value found when querying for an entity"
+            );
+            Err(ErrorCode::InternalError)
+        }
+    }
+}
+
+async fn get_contract_wasm<REv>(
+    effect_builder: EffectBuilder<REv>,
+    state_root_hash: Digest,
+    hash: ContractWasmHash,
+) -> Result<Option<ValueWithProof<ContractWasm>>, ErrorCode>
+where
+    REv: From<Event>
+        + From<StorageRequest>
+        + From<ContractRuntimeRequest>
+        + From<ReactorInfoRequest>,
+{
+    let key = Key::from(hash);
+    let Some(value) = get_global_state_item(effect_builder, state_root_hash, key, vec![]).await?
+    else {
+        return Ok(None);
+    };
+    match value.into_inner() {
+        (StoredValue::ContractWasm(wasm), proof) => Ok(Some(ValueWithProof::new(wasm, proof))),
+        other => {
+            debug!(
+                ?other,
+                "unexpected stored value found when querying for Wasm"
+            );
+            Err(ErrorCode::InternalError)
+        }
+    }
+}
+
+async fn get_contract_bytecode<REv>(
+    effect_builder: EffectBuilder<REv>,
+    state_root_hash: Digest,
+    addr: ByteCodeHash,
+) -> Result<Option<ValueWithProof<ByteCode>>, ErrorCode>
+where
+    REv: From<Event>
+        + From<StorageRequest>
+        + From<ContractRuntimeRequest>
+        + From<ReactorInfoRequest>,
+{
+    let key = Key::ByteCode(ByteCodeAddr::new_wasm_addr(addr.value()));
+    let Some(value) = get_global_state_item(effect_builder, state_root_hash, key, vec![]).await?
+    else {
+        return Ok(None);
+    };
+    match value.into_inner() {
+        (StoredValue::ByteCode(bytecode), proof) => Ok(Some(ValueWithProof::new(bytecode, proof))),
+        other => {
+            debug!(
+                ?other,
+                "unexpected stored value found when querying for bytecode"
+            );
+            Err(ErrorCode::InternalError)
+        }
+    }
+}
+
 async fn handle_info_request<REv>(
     req: InformationRequest,
     effect_builder: EffectBuilder<REv>,
@@ -975,6 +1239,98 @@ where
         }
         InformationRequest::ProtocolVersion => {
             BinaryResponse::from_value(protocol_version, protocol_version)
+        }
+        InformationRequest::Package {
+            state_identifier,
+            identifier,
+        } => {
+            let Some(state_root_hash) =
+                resolve_state_root_hash(effect_builder, state_identifier).await
+            else {
+                return BinaryResponse::new_error(ErrorCode::RootNotFound, protocol_version);
+            };
+            let either = match identifier {
+                PackageIdentifier::ContractPackageHash(hash) => {
+                    get_contract_package(effect_builder, state_root_hash, hash).await
+                }
+                PackageIdentifier::PackageAddr(addr) => {
+                    get_package(effect_builder, state_root_hash, addr)
+                        .await
+                        .map(|opt| opt.map(Either::Right))
+                }
+            };
+            match either {
+                Ok(Some(Either::Left(contract_package))) => {
+                    BinaryResponse::from_value(contract_package, protocol_version)
+                }
+                Ok(Some(Either::Right(package))) => {
+                    BinaryResponse::from_value(package, protocol_version)
+                }
+                Ok(None) => BinaryResponse::new_empty(protocol_version),
+                Err(err) => BinaryResponse::new_error(err, protocol_version),
+            }
+        }
+        InformationRequest::Entity {
+            state_identifier,
+            identifier,
+            include_bytecode,
+        } => {
+            let Some(state_root_hash) =
+                resolve_state_root_hash(effect_builder, state_identifier).await
+            else {
+                return BinaryResponse::new_error(ErrorCode::RootNotFound, protocol_version);
+            };
+            match identifier {
+                EntityIdentifier::ContractHash(hash) => {
+                    match get_contract(effect_builder, state_root_hash, hash, include_bytecode)
+                        .await
+                    {
+                        Ok(Some(Either::Left(contract))) => {
+                            BinaryResponse::from_value(contract, protocol_version)
+                        }
+                        Ok(Some(Either::Right(entity))) => {
+                            BinaryResponse::from_value(entity, protocol_version)
+                        }
+                        Ok(None) => BinaryResponse::new_empty(protocol_version),
+                        Err(err) => BinaryResponse::new_error(err, protocol_version),
+                    }
+                }
+                EntityIdentifier::AccountHash(hash) => {
+                    match get_account(effect_builder, state_root_hash, hash, include_bytecode).await
+                    {
+                        Ok(Some(Either::Left(account))) => {
+                            BinaryResponse::from_value(account, protocol_version)
+                        }
+                        Ok(Some(Either::Right(entity))) => {
+                            BinaryResponse::from_value(entity, protocol_version)
+                        }
+                        Ok(None) => BinaryResponse::new_empty(protocol_version),
+                        Err(err) => BinaryResponse::new_error(err, protocol_version),
+                    }
+                }
+                EntityIdentifier::PublicKey(pub_key) => {
+                    let hash = pub_key.to_account_hash();
+                    match get_account(effect_builder, state_root_hash, hash, include_bytecode).await
+                    {
+                        Ok(Some(Either::Left(account))) => {
+                            BinaryResponse::from_value(account, protocol_version)
+                        }
+                        Ok(Some(Either::Right(entity))) => {
+                            BinaryResponse::from_value(entity, protocol_version)
+                        }
+                        Ok(None) => BinaryResponse::new_empty(protocol_version),
+                        Err(err) => BinaryResponse::new_error(err, protocol_version),
+                    }
+                }
+                EntityIdentifier::EntityAddr(addr) => {
+                    match get_entity(effect_builder, state_root_hash, addr, include_bytecode).await
+                    {
+                        Ok(Some(entity)) => BinaryResponse::from_value(entity, protocol_version),
+                        Ok(None) => BinaryResponse::new_empty(protocol_version),
+                        Err(err) => BinaryResponse::new_error(err, protocol_version),
+                    }
+                }
+            }
         }
     }
 }

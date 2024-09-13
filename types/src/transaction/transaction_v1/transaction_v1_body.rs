@@ -4,6 +4,7 @@ pub(super) mod arg_handling;
 use alloc::vec::Vec;
 use core::fmt::{self, Display, Formatter};
 
+use super::super::{RuntimeArgs, TransactionEntryPoint, TransactionScheduling, TransactionTarget};
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
@@ -15,18 +16,13 @@ use serde::{Deserialize, Serialize};
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use tracing::debug;
 
-use super::super::{RuntimeArgs, TransactionEntryPoint, TransactionScheduling, TransactionTarget};
-
 use super::TransactionCategory;
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use super::TransactionConfig;
 #[cfg(doc)]
 use super::TransactionV1;
-use crate::bytesrepr::{self, FromBytes, ToBytes};
-
-#[cfg(any(all(feature = "std", feature = "testing"), test))]
+#[cfg(any(feature = "std", test))]
 use crate::InvalidTransactionV1;
-
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::TransactionV1ExcessiveSizeError;
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
@@ -34,7 +30,12 @@ use crate::{
     bytesrepr::Bytes, testing::TestRng, PublicKey, TransactionInvocationTarget, TransactionRuntime,
     TransferTarget,
 };
-
+use crate::{
+    bytesrepr::{Error, FromBytes, ToBytes},
+    transaction::serialization::{
+        CalltableSerializationEnvelope, CalltableSerializationEnvelopeBuilder,
+    },
+};
 /// The body of a [`TransactionV1`].
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
 #[cfg_attr(
@@ -49,11 +50,11 @@ use crate::{
     schemars(description = "Body of a `TransactionV1`.")
 )]
 pub struct TransactionV1Body {
-    pub(super) args: RuntimeArgs,
-    pub(super) target: TransactionTarget,
-    pub(super) entry_point: TransactionEntryPoint,
-    pub(super) transaction_category: u8,
-    pub(super) scheduling: TransactionScheduling,
+    pub(crate) args: RuntimeArgs,
+    pub(crate) target: TransactionTarget,
+    pub(crate) entry_point: TransactionEntryPoint,
+    pub(crate) transaction_category: u8,
+    pub(crate) scheduling: TransactionScheduling,
 }
 
 impl TransactionV1Body {
@@ -266,6 +267,16 @@ impl TransactionV1Body {
         }
     }
 
+    fn serialized_field_lengths(&self) -> Vec<usize> {
+        vec![
+            self.args.serialized_length(),
+            self.target.serialized_length(),
+            self.entry_point.serialized_length(),
+            self.transaction_category.serialized_length(),
+            self.scheduling.serialized_length(),
+        ]
+    }
+
     /// Returns a random `TransactionV1Body`.
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub fn random_of_category(rng: &mut TestRng, category: u8) -> Self {
@@ -466,6 +477,63 @@ impl TransactionV1Body {
     }
 }
 
+const ARGS_INDEX: u16 = 0;
+const TARGET_INDEX: u16 = 1;
+const ENTRY_POINT_INDEX: u16 = 2;
+const TRANSACTION_CATEGORY_INDEX: u16 = 3;
+const SCHEDULING_INDEX: u16 = 4;
+
+impl FromBytes for TransactionV1Body {
+    fn from_bytes(bytes: &[u8]) -> Result<(TransactionV1Body, &[u8]), Error> {
+        let (binary_payload, remainder) =
+            crate::transaction::serialization::CalltableSerializationEnvelope::from_bytes(
+                5, bytes,
+            )?;
+        let window = binary_payload.start_consuming()?;
+        let window = window.ok_or(Error::Formatting)?;
+        window.verify_index(ARGS_INDEX)?;
+        let (args, window) = window.deserialize_and_maybe_next::<RuntimeArgs>()?;
+        let window = window.ok_or(Error::Formatting)?;
+        window.verify_index(TARGET_INDEX)?;
+        let (target, window) = window.deserialize_and_maybe_next::<TransactionTarget>()?;
+        let window = window.ok_or(Error::Formatting)?;
+        window.verify_index(ENTRY_POINT_INDEX)?;
+        let (entry_point, window) = window.deserialize_and_maybe_next::<TransactionEntryPoint>()?;
+        let window = window.ok_or(Error::Formatting)?;
+        window.verify_index(TRANSACTION_CATEGORY_INDEX)?;
+        let (transaction_category, window) = window.deserialize_and_maybe_next::<u8>()?;
+        let window = window.ok_or(Error::Formatting)?;
+        window.verify_index(SCHEDULING_INDEX)?;
+        let (scheduling, window) = window.deserialize_and_maybe_next::<TransactionScheduling>()?;
+        if window.is_some() {
+            return Err(Error::Formatting);
+        }
+        let from_bytes = TransactionV1Body {
+            args,
+            target,
+            entry_point,
+            transaction_category,
+            scheduling,
+        };
+        Ok((from_bytes, remainder))
+    }
+}
+
+impl ToBytes for TransactionV1Body {
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        CalltableSerializationEnvelopeBuilder::new(self.serialized_field_lengths())?
+            .add_field(ARGS_INDEX, &self.args)?
+            .add_field(TARGET_INDEX, &self.target)?
+            .add_field(ENTRY_POINT_INDEX, &self.entry_point)?
+            .add_field(TRANSACTION_CATEGORY_INDEX, &self.transaction_category)?
+            .add_field(SCHEDULING_INDEX, &self.scheduling)?
+            .binary_payload_bytes()
+    }
+    fn serialized_length(&self) -> usize {
+        CalltableSerializationEnvelope::estimate_size(self.serialized_field_lengths())
+    }
+}
+
 impl Display for TransactionV1Body {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         write!(
@@ -476,46 +544,10 @@ impl Display for TransactionV1Body {
     }
 }
 
-impl ToBytes for TransactionV1Body {
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut buffer = bytesrepr::allocate_buffer(self)?;
-        self.write_bytes(&mut buffer)?;
-        Ok(buffer)
-    }
-
-    fn serialized_length(&self) -> usize {
-        self.args.serialized_length()
-            + self.target.serialized_length()
-            + self.entry_point.serialized_length()
-            + self.transaction_category.serialized_length()
-            + self.scheduling.serialized_length()
-    }
-
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        self.args.write_bytes(writer)?;
-        self.target.write_bytes(writer)?;
-        self.entry_point.write_bytes(writer)?;
-        self.transaction_category.write_bytes(writer)?;
-        self.scheduling.write_bytes(writer)
-    }
-}
-
-impl FromBytes for TransactionV1Body {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (args, remainder) = RuntimeArgs::from_bytes(bytes)?;
-        let (target, remainder) = TransactionTarget::from_bytes(remainder)?;
-        let (entry_point, remainder) = TransactionEntryPoint::from_bytes(remainder)?;
-        let (kind, remainder) = u8::from_bytes(remainder)?;
-        let (scheduling, remainder) = TransactionScheduling::from_bytes(remainder)?;
-        let body = TransactionV1Body::new(args, target, entry_point, kind, scheduling);
-        Ok((body, remainder))
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_args;
+    use crate::{bytesrepr, runtime_args};
 
     #[test]
     fn bytesrepr_roundtrip() {

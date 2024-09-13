@@ -63,7 +63,7 @@ impl<'a> TransactionV1Builder<'a> {
     /// The default scheduling for transactions, i.e. `Standard`.
     pub const DEFAULT_SCHEDULING: TransactionScheduling = TransactionScheduling::Standard;
 
-    fn new(body: TransactionV1Body) -> Self {
+    pub(super) fn new(body: TransactionV1Body) -> Self {
         TransactionV1Builder {
             chain_name: None,
             timestamp: Timestamp::now(),
