@@ -2,9 +2,9 @@ mod errors_v1;
 mod transaction_v1_body;
 #[cfg(any(feature = "std", test))]
 mod transaction_v1_builder;
-mod transaction_v1_category;
 mod transaction_v1_hash;
 mod transaction_v1_header;
+mod transaction_v1_lane;
 
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use alloc::string::ToString;
@@ -52,9 +52,9 @@ pub use errors_v1::{
 pub use transaction_v1_body::{TransactionArgs, TransactionV1Body};
 #[cfg(any(feature = "std", test))]
 pub use transaction_v1_builder::{TransactionV1Builder, TransactionV1BuilderError};
-pub use transaction_v1_category::TransactionCategory;
 pub use transaction_v1_hash::TransactionV1Hash;
 pub use transaction_v1_header::TransactionV1Header;
+pub use transaction_v1_lane::TransactionLane;
 
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::testing::TestRng;
@@ -226,8 +226,8 @@ impl TransactionV1 {
     }
 
     /// Returns the transaction category.
-    pub fn transaction_category(&self) -> u8 {
-        self.body.transaction_category()
+    pub fn transaction_lane(&self) -> u8 {
+        self.body.transaction_lane()
     }
 
     /// Does this transaction have wasm targeting the v1 vm.
@@ -374,10 +374,18 @@ impl TransactionV1 {
         at: Timestamp,
     ) -> Result<(), InvalidTransactionV1> {
         let transaction_config = chainspec.transaction_config.clone();
+
+        //
+        // if v2 runtime is turned off, and the transaction targets v2 runtime, then it's not
+        // compliant if v1 runtime is turned off, and the transaction targets v1 runtime,
+        // then it's not compliant
+        //
+        // if v2 && pricing mode is not standard => it's not compliant
+
         self.is_valid_size(
             transaction_config
                 .transaction_v1_config
-                .get_max_serialized_length(self.body.transaction_category) as u32,
+                .get_max_serialized_length(self.body.transaction_lane) as u32,
         )?;
 
         let chain_name = chainspec.network_config.name.clone();
@@ -400,7 +408,7 @@ impl TransactionV1 {
         let price_mode = header.pricing_mode();
 
         match price_mode {
-            PricingMode::Classic { .. } => {
+            PricingMode::PaymentLimited { .. } => {
                 if let PricingHandling::Classic = price_handling {
                 } else {
                     return Err(InvalidTransactionV1::InvalidPricingMode {
@@ -420,14 +428,6 @@ impl TransactionV1 {
                 if !chainspec.core_config.allow_reservations {
                     // Currently Reserved isn't implemented and we should
                     // not be accepting transactions with this mode.
-                    return Err(InvalidTransactionV1::InvalidPricingMode {
-                        price_mode: price_mode.clone(),
-                    });
-                }
-            }
-            PricingMode::GasLimited { .. } => {
-                if let PricingHandling::GasLimited = price_handling {
-                } else {
                     return Err(InvalidTransactionV1::InvalidPricingMode {
                         price_mode: price_mode.clone(),
                     });
@@ -507,17 +507,17 @@ impl TransactionV1 {
         timestamp: Option<Timestamp>,
         ttl: Option<TimeDiff>,
     ) -> Self {
-        let transaction = TransactionV1Builder::new_random_with_category_and_timestamp_and_ttl(
+        let transaction = TransactionV1Builder::new_random_with_lane_and_timestamp_and_ttl(
             rng,
-            TransactionCategory::Mint as u8,
+            TransactionLane::Mint as u8,
             timestamp,
             ttl,
         )
         .build()
         .unwrap();
         assert_eq!(
-            transaction.transaction_category(),
-            TransactionCategory::Mint as u8,
+            transaction.transaction_lane(),
+            TransactionLane::Mint as u8,
             "Required mint, incorrect category"
         );
         transaction
@@ -533,17 +533,17 @@ impl TransactionV1 {
         timestamp: Option<Timestamp>,
         ttl: Option<TimeDiff>,
     ) -> Self {
-        let transaction = TransactionV1Builder::new_random_with_category_and_timestamp_and_ttl(
+        let transaction = TransactionV1Builder::new_random_with_lane_and_timestamp_and_ttl(
             rng,
-            TransactionCategory::Large as u8,
+            TransactionLane::Large as u8,
             timestamp,
             ttl,
         )
         .build()
         .unwrap();
         assert_eq!(
-            transaction.transaction_category(),
-            TransactionCategory::Large as u8,
+            transaction.transaction_lane(),
+            TransactionLane::Large as u8,
             "Required large, incorrect category"
         );
         transaction
@@ -559,17 +559,17 @@ impl TransactionV1 {
         timestamp: Option<Timestamp>,
         ttl: Option<TimeDiff>,
     ) -> Self {
-        let transaction = TransactionV1Builder::new_random_with_category_and_timestamp_and_ttl(
+        let transaction = TransactionV1Builder::new_random_with_lane_and_timestamp_and_ttl(
             rng,
-            TransactionCategory::InstallUpgrade as u8,
+            TransactionLane::InstallUpgrade as u8,
             timestamp,
             ttl,
         )
         .build()
         .unwrap();
         assert_eq!(
-            transaction.transaction_category(),
-            TransactionCategory::InstallUpgrade as u8,
+            transaction.transaction_lane(),
+            TransactionLane::InstallUpgrade as u8,
             "Required install/upgrade, incorrect category"
         );
         transaction
@@ -585,17 +585,17 @@ impl TransactionV1 {
         timestamp: Option<Timestamp>,
         ttl: Option<TimeDiff>,
     ) -> Self {
-        let transaction = TransactionV1Builder::new_random_with_category_and_timestamp_and_ttl(
+        let transaction = TransactionV1Builder::new_random_with_lane_and_timestamp_and_ttl(
             rng,
-            TransactionCategory::Auction as u8,
+            TransactionLane::Auction as u8,
             timestamp,
             ttl,
         )
         .build()
         .unwrap();
         assert_eq!(
-            transaction.transaction_category(),
-            TransactionCategory::Auction as u8,
+            transaction.transaction_lane(),
+            TransactionLane::Auction as u8,
             "Required auction, incorrect category"
         );
         transaction
@@ -622,21 +622,12 @@ impl GasLimited for TransactionV1 {
     fn gas_cost(&self, chainspec: &Chainspec, gas_price: u8) -> Result<Motes, Self::Error> {
         let gas_limit = self.gas_limit(chainspec)?;
         let motes = match self.header().pricing_mode() {
-            PricingMode::Classic { .. } | PricingMode::Fixed { .. } => {
+            PricingMode::PaymentLimited { .. } | PricingMode::Fixed { .. } => {
                 Motes::from_gas(gas_limit, gas_price)
                     .ok_or(InvalidTransactionV1::UnableToCalculateGasCost)?
             }
             PricingMode::Reserved { .. } => {
                 Motes::zero() // prepaid
-            }
-            PricingMode::GasLimited {
-                gas_limit: _,
-                gas_price_tolerance,
-            } => {
-                let gas_price = Gas::new(U512::from(gas_price));
-                let gas = Gas::new(gas_limit.value() * gas_price.value());
-                Motes::from_gas(gas, *gas_price_tolerance)
-                    .ok_or(InvalidTransactionV1::UnableToCalculateGasCost)?
             }
         };
         Ok(motes)
@@ -645,7 +636,7 @@ impl GasLimited for TransactionV1 {
     fn gas_limit(&self, chainspec: &Chainspec) -> Result<Gas, Self::Error> {
         let costs = chainspec.system_costs_config;
         let gas = match self.header().pricing_mode() {
-            PricingMode::Classic { payment_amount, .. } => Gas::new(*payment_amount),
+            PricingMode::PaymentLimited { payment_amount, .. } => Gas::new(*payment_amount),
             PricingMode::Fixed { .. } => {
                 let computation_limit = {
                     if self.is_native_mint() {
@@ -694,7 +685,7 @@ impl GasLimited for TransactionV1 {
                         };
                         amount
                     } else {
-                        chainspec.get_max_gas_limit_by_category(self.body.transaction_category)
+                        chainspec.get_max_gas_limit_by_lane(self.body.transaction_lane)
                     }
                 };
                 Gas::new(U512::from(computation_limit))
@@ -703,15 +694,6 @@ impl GasLimited for TransactionV1 {
                 return Err(InvalidTransactionV1::InvalidPricingMode {
                     price_mode: PricingMode::Reserved { receipt: *receipt },
                 });
-            }
-            PricingMode::GasLimited {
-                gas_limit,
-                gas_price_tolerance,
-            } => {
-                let gas_limit = Gas::new(U512::from(*gas_limit));
-                let gas_price = Gas::new(U512::from(*gas_price_tolerance));
-
-                Gas::new(gas_limit.value() * gas_price.value())
             }
         };
         Ok(gas)
@@ -978,9 +960,9 @@ mod tests {
     fn is_config_compliant() {
         let rng = &mut TestRng::new();
         let chain_name = "net-1";
-        let transaction = TransactionV1Builder::new_random_with_category_and_timestamp_and_ttl(
+        let transaction = TransactionV1Builder::new_random_with_lane_and_timestamp_and_ttl(
             rng,
-            TransactionCategory::Large as u8,
+            TransactionLane::Large as u8,
             None,
             None,
         )
@@ -1221,7 +1203,7 @@ mod tests {
 
         let classic_mode_transaction = TransactionV1Builder::new_random(rng)
             .with_chain_name(chain_name)
-            .with_pricing_mode(PricingMode::Classic {
+            .with_pricing_mode(PricingMode::PaymentLimited {
                 payment_amount: 100000,
                 gas_price_tolerance: 1,
                 standard_payment: true,
@@ -1268,7 +1250,7 @@ mod tests {
         let rng = &mut TestRng::new();
         let builder = TransactionV1Builder::new_random(rng)
             .with_chain_name(chain_name)
-            .with_pricing_mode(PricingMode::Classic {
+            .with_pricing_mode(PricingMode::PaymentLimited {
                 payment_amount,
                 gas_price_tolerance: 1,
                 standard_payment: true,

@@ -20,7 +20,7 @@ use super::{Block, BlockBodyV2, BlockConversionError, RewardedSignatures};
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::testing::TestRng;
 #[cfg(feature = "json-schema")]
-use crate::transaction::{TransactionCategory, TransactionV1Hash};
+use crate::transaction::{TransactionLane, TransactionV1Hash};
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     transaction::TransactionHash,
@@ -55,13 +55,13 @@ static BLOCK_V2: Lazy<BlockV2> = Lazy::new(|| {
     )];
     let transactions = {
         let mut ret = BTreeMap::new();
-        ret.insert(TransactionCategory::Mint as u8, mint_hashes);
-        ret.insert(TransactionCategory::Auction as u8, auction_hashes);
+        ret.insert(TransactionLane::Mint as u8, mint_hashes);
+        ret.insert(TransactionLane::Auction as u8, auction_hashes);
         ret.insert(
-            TransactionCategory::InstallUpgrade as u8,
+            TransactionLane::InstallUpgrade as u8,
             installer_upgrader_hashes,
         );
-        ret.insert(TransactionCategory::Large as u8, standard);
+        ret.insert(TransactionLane::Large as u8, standard);
         ret
     };
     let rewarded_signatures = RewardedSignatures::default();

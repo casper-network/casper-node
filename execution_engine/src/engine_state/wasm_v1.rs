@@ -10,8 +10,8 @@ use casper_storage::data_access_layer::TransferResult;
 use casper_types::{
     account::AccountHash, bytesrepr::Bytes, contract_messages::Messages, execution::Effects,
     BlockTime, CLValue, DeployHash, Digest, ExecutableDeployItem, Gas, InitiatorAddr, Phase,
-    PricingMode, RuntimeArgs, Transaction, TransactionCategory, TransactionEntryPoint,
-    TransactionHash, TransactionInvocationTarget, TransactionTarget, TransactionV1, Transfer,
+    PricingMode, RuntimeArgs, Transaction, TransactionEntryPoint, TransactionHash,
+    TransactionInvocationTarget, TransactionLane, TransactionTarget, TransactionV1, Transfer,
 };
 
 use crate::engine_state::{DeployItem, Error as EngineError};
@@ -538,25 +538,25 @@ impl TryFrom<&TransactionV1> for SessionInfo {
                         v1_txn.entry_point().to_string(),
                     ));
                 };
-                let category = v1_txn.transaction_category();
-                let category: TransactionCategory = category.try_into().map_err(|_| {
+                let category = v1_txn.transaction_lane();
+                let lane: TransactionLane = category.try_into().map_err(|_| {
                     InvalidRequest::InvalidCategory(transaction_hash, category.to_string())
                 })?;
-                let item = match category {
-                    TransactionCategory::InstallUpgrade => ExecutableItem::SessionBytes {
+                let item = match lane {
+                    TransactionLane::InstallUpgrade => ExecutableItem::SessionBytes {
                         kind: SessionKind::InstallUpgradeBytecode,
                         module_bytes: module_bytes.clone(),
                     },
-                    TransactionCategory::Large
-                    | TransactionCategory::Medium
-                    | TransactionCategory::Small => ExecutableItem::SessionBytes {
-                        kind: SessionKind::GenericBytecode,
-                        module_bytes: module_bytes.clone(),
-                    },
+                    TransactionLane::Large | TransactionLane::Medium | TransactionLane::Small => {
+                        ExecutableItem::SessionBytes {
+                            kind: SessionKind::GenericBytecode,
+                            module_bytes: module_bytes.clone(),
+                        }
+                    }
                     _ => {
                         return Err(InvalidRequest::InvalidCategory(
                             transaction_hash,
-                            category.to_string(),
+                            lane.to_string(),
                         ))
                     }
                 };
@@ -679,7 +679,7 @@ impl TryFrom<&TransactionV1> for PaymentInfo {
     fn try_from(v1_txn: &TransactionV1) -> Result<Self, Self::Error> {
         let transaction_hash = TransactionHash::V1(*v1_txn.hash());
         match v1_txn.pricing_mode() {
-            mode @ PricingMode::Classic {
+            mode @ PricingMode::PaymentLimited {
                 standard_payment, ..
             } => {
                 if *standard_payment {
@@ -694,9 +694,6 @@ impl TryFrom<&TransactionV1> for PaymentInfo {
                     transaction_hash,
                     mode.to_string(),
                 ));
-            }
-            PricingMode::GasLimited { .. } => {
-                // This is the only supported mode for payment
             }
         };
 

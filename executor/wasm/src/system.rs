@@ -33,8 +33,6 @@ enum DispatchError {
     CLValue(CLValueError),
     #[error("Registry not found")]
     RegistryNotFound,
-    #[error("Missing addressable entity")]
-    MissingAddressableEntity,
     #[error("Missing system contract: {0}")]
     MissingSystemContract(&'static str),
     #[error("Error getting named keys")]

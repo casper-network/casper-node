@@ -15,7 +15,7 @@ use super::{
 };
 use crate::{
     bytesrepr::Bytes,
-    transaction::{RuntimeArgs, TransactionCategory, TransferTarget},
+    transaction::{RuntimeArgs, TransactionLane, TransferTarget},
     AddressableEntityHash, CLValue, CLValueError, EntityVersion, PackageHash, PublicKey, SecretKey,
     TimeDiff, Timestamp, URef, U512,
 };
@@ -91,7 +91,7 @@ impl<'a> TransactionV1Builder<'a> {
             args,
             TransactionTarget::Native,
             TransactionEntryPoint::Transfer,
-            TransactionCategory::Mint as u8,
+            TransactionLane::Mint as u8,
             Self::DEFAULT_SCHEDULING,
         );
         Ok(TransactionV1Builder::new(body))
@@ -116,7 +116,7 @@ impl<'a> TransactionV1Builder<'a> {
             args,
             TransactionTarget::Native,
             TransactionEntryPoint::AddBid,
-            TransactionCategory::Auction as u8,
+            TransactionLane::Auction as u8,
             Self::DEFAULT_SCHEDULING,
         );
         Ok(TransactionV1Builder::new(body))
@@ -133,7 +133,7 @@ impl<'a> TransactionV1Builder<'a> {
             args,
             TransactionTarget::Native,
             TransactionEntryPoint::WithdrawBid,
-            TransactionCategory::Auction as u8,
+            TransactionLane::Auction as u8,
             Self::DEFAULT_SCHEDULING,
         );
         Ok(TransactionV1Builder::new(body))
@@ -150,7 +150,7 @@ impl<'a> TransactionV1Builder<'a> {
             args,
             TransactionTarget::Native,
             TransactionEntryPoint::Delegate,
-            TransactionCategory::Auction as u8,
+            TransactionLane::Auction as u8,
             Self::DEFAULT_SCHEDULING,
         );
         Ok(TransactionV1Builder::new(body))
@@ -167,7 +167,7 @@ impl<'a> TransactionV1Builder<'a> {
             args,
             TransactionTarget::Native,
             TransactionEntryPoint::Undelegate,
-            TransactionCategory::Auction as u8,
+            TransactionLane::Auction as u8,
             Self::DEFAULT_SCHEDULING,
         );
         Ok(TransactionV1Builder::new(body))
@@ -185,7 +185,7 @@ impl<'a> TransactionV1Builder<'a> {
             args,
             TransactionTarget::Native,
             TransactionEntryPoint::Redelegate,
-            TransactionCategory::Auction as u8,
+            TransactionLane::Auction as u8,
             Self::DEFAULT_SCHEDULING,
         );
         Ok(TransactionV1Builder::new(body))
@@ -201,7 +201,7 @@ impl<'a> TransactionV1Builder<'a> {
             RuntimeArgs::new(),
             target,
             TransactionEntryPoint::Custom(entry_point.into()),
-            TransactionCategory::Large as u8,
+            TransactionLane::Large as u8,
             Self::DEFAULT_SCHEDULING,
         );
         TransactionV1Builder::new(body)
@@ -256,7 +256,7 @@ impl<'a> TransactionV1Builder<'a> {
     /// Returns a new `TransactionV1Builder` suitable for building a transaction for running session
     /// logic, i.e. compiled Wasm.
     pub fn new_session(
-        category: TransactionCategory,
+        lane: TransactionLane,
         module_bytes: Bytes,
         runtime: TransactionRuntime,
     ) -> Self {
@@ -268,7 +268,7 @@ impl<'a> TransactionV1Builder<'a> {
             RuntimeArgs::new(),
             target,
             TransactionEntryPoint::Call,
-            category as u8,
+            lane as u8,
             Self::DEFAULT_SCHEDULING,
         );
         TransactionV1Builder::new(body)
@@ -283,18 +283,18 @@ impl<'a> TransactionV1Builder<'a> {
         transferred_value: u128,
     ) -> Self {
         let body = {
-            let args = TransactionArgs::Chunked(input_data.unwrap_or_default());
+            let args = TransactionArgs::Bytesrepr(input_data.unwrap_or_default());
             let target = TransactionTarget::Stored {
                 id: TransactionInvocationTarget::ByHash(entity_address.value()),
                 runtime: TransactionRuntime::VmCasperV2,
             };
-            let transaction_category = TransactionCategory::Medium as u8;
+            let transaction_lane = TransactionLane::Medium as u8;
             let scheduling = Self::DEFAULT_SCHEDULING;
             TransactionV1Body {
                 args,
                 target,
                 entry_point: TransactionEntryPoint::Custom(entry_point),
-                transaction_category,
+                transaction_lane,
                 scheduling,
                 transferred_value,
             }
@@ -335,9 +335,9 @@ impl<'a> TransactionV1Builder<'a> {
     ///   * unsigned by calling `with_no_secret_key`
     ///   * given an invalid approval by calling `with_invalid_approval`
     #[cfg(any(feature = "testing", test))]
-    pub fn new_random_with_category_and_timestamp_and_ttl(
+    pub fn new_random_with_lane_and_timestamp_and_ttl(
         rng: &mut TestRng,
-        category: u8,
+        lane: u8,
         timestamp: Option<Timestamp>,
         ttl: Option<TimeDiff>,
     ) -> Self {
@@ -346,7 +346,7 @@ impl<'a> TransactionV1Builder<'a> {
             rng.gen_range(60_000..TransactionConfig::default().max_ttl.millis()),
             |ttl| ttl.millis(),
         );
-        let body = TransactionV1Body::random_of_category(rng, category);
+        let body = TransactionV1Body::random_of_lane(rng, lane);
         TransactionV1Builder {
             chain_name: Some(rng.random_string(5..10)),
             timestamp: timestamp.unwrap_or(Timestamp::now()),
@@ -429,7 +429,7 @@ impl<'a> TransactionV1Builder<'a> {
                 args.insert_cl_value(key, cl_value);
                 self
             }
-            TransactionArgs::Chunked(raw_bytes) => {
+            TransactionArgs::Bytesrepr(raw_bytes) => {
                 panic!("Cannot append named args to unnamed args: {:?}", raw_bytes)
             }
         }
@@ -446,7 +446,7 @@ impl<'a> TransactionV1Builder<'a> {
 
     /// Sets the runtime args in the transaction.
     pub fn with_chunked_args(mut self, args: Bytes) -> Self {
-        self.body.args = TransactionArgs::Chunked(args);
+        self.body.args = TransactionArgs::Bytesrepr(args);
         self
     }
 

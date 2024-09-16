@@ -21,8 +21,8 @@ pub(crate) struct TransactionFootprint {
     pub(crate) gas_price_tolerance: u8,
     /// The bytesrepr serialized length.
     pub(crate) size_estimate: usize,
-    /// The transaction category.
-    pub(crate) category: u8,
+    /// The transaction lane.
+    pub(crate) lane: u8,
     /// Timestamp of the transaction.
     pub(crate) timestamp: Timestamp,
     /// Time to live for the transaction.
@@ -38,7 +38,7 @@ impl TransactionFootprint {
     ) -> Result<Self, InvalidTransaction> {
         let gas_price_tolerance = transaction.gas_price_tolerance()?;
         let gas_limit = transaction.gas_limit(chainspec)?;
-        let category = transaction.transaction_category();
+        let category = transaction.transaction_lane();
         if !chainspec
             .transaction_config
             .transaction_v1_config
@@ -60,7 +60,7 @@ impl TransactionFootprint {
             gas_limit,
             gas_price_tolerance,
             size_estimate,
-            category,
+            lane: category,
             timestamp,
             ttl,
             approvals,
@@ -80,7 +80,7 @@ impl TransactionFootprint {
 
     /// Is mint interaction.
     pub(crate) fn is_mint(&self) -> bool {
-        if self.category == MINT_LANE_ID {
+        if self.lane == MINT_LANE_ID {
             return true;
         }
 
@@ -89,7 +89,7 @@ impl TransactionFootprint {
 
     /// Is auction interaction.
     pub(crate) fn is_auction(&self) -> bool {
-        if self.category == AUCTION_LANE_ID {
+        if self.lane == AUCTION_LANE_ID {
             return true;
         }
 
@@ -97,7 +97,7 @@ impl TransactionFootprint {
     }
 
     pub(crate) fn is_install_upgrade(&self) -> bool {
-        if self.category == INSTALL_UPGRADE_LANE_ID {
+        if self.lane == INSTALL_UPGRADE_LANE_ID {
             return true;
         }
 

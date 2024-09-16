@@ -7,7 +7,7 @@ use rand::Rng;
 use crate::{
     system::auction::ValidatorWeights,
     testing::TestRng,
-    transaction::{Transaction, TransactionCategory},
+    transaction::{Transaction, TransactionLane},
     Block, BlockHash, BlockV2, Digest, EraEndV2, EraId, ProtocolVersion, PublicKey,
     RewardedSignatures, Timestamp, U512,
 };
@@ -182,30 +182,30 @@ impl TestBlockV2Builder {
         let mut small_hashes = vec![];
         for txn in txns {
             let txn_hash = txn.hash();
-            let category: TransactionCategory = txn
-                .transaction_category()
+            let lane: TransactionLane = txn
+                .transaction_lane()
                 .try_into()
                 .expect("Expected a valid priority");
-            match category {
-                TransactionCategory::Mint => mint_hashes.push(txn_hash),
-                TransactionCategory::Auction => auction_hashes.push(txn_hash),
-                TransactionCategory::InstallUpgrade => install_upgrade_hashes.push(txn_hash),
-                TransactionCategory::Large => large_hashes.push(txn_hash),
-                TransactionCategory::Medium => medium_hashes.push(txn_hash),
-                TransactionCategory::Small => small_hashes.push(txn_hash),
+            match lane {
+                TransactionLane::Mint => mint_hashes.push(txn_hash),
+                TransactionLane::Auction => auction_hashes.push(txn_hash),
+                TransactionLane::InstallUpgrade => install_upgrade_hashes.push(txn_hash),
+                TransactionLane::Large => large_hashes.push(txn_hash),
+                TransactionLane::Medium => medium_hashes.push(txn_hash),
+                TransactionLane::Small => small_hashes.push(txn_hash),
             }
         }
         let transactions = {
             let mut ret = BTreeMap::new();
-            ret.insert(TransactionCategory::Mint as u8, mint_hashes);
-            ret.insert(TransactionCategory::Auction as u8, auction_hashes);
+            ret.insert(TransactionLane::Mint as u8, mint_hashes);
+            ret.insert(TransactionLane::Auction as u8, auction_hashes);
             ret.insert(
-                TransactionCategory::InstallUpgrade as u8,
+                TransactionLane::InstallUpgrade as u8,
                 install_upgrade_hashes,
             );
-            ret.insert(TransactionCategory::Large as u8, large_hashes);
-            ret.insert(TransactionCategory::Medium as u8, medium_hashes);
-            ret.insert(TransactionCategory::Small as u8, small_hashes);
+            ret.insert(TransactionLane::Large as u8, large_hashes);
+            ret.insert(TransactionLane::Medium as u8, medium_hashes);
+            ret.insert(TransactionLane::Small as u8, small_hashes);
             ret
         };
         let rewarded_signatures = rewarded_signatures.unwrap_or_default();

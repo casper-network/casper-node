@@ -21,7 +21,6 @@ use crate::{
 const CLASSIC_TAG: u8 = 0;
 const FIXED_TAG: u8 = 1;
 const RESERVED_TAG: u8 = 2;
-const GAS_LIMITED_TAG: u8 = 3;
 
 /// The pricing mode of a [`Transaction`].
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
@@ -35,7 +34,7 @@ const GAS_LIMITED_TAG: u8 = 3;
 pub enum PricingMode {
     /// The original payment model, where the creator of the transaction
     /// specifies how much they will pay, at what gas price.
-    Classic {
+    PaymentLimited {
         /// User-specified payment amount.
         payment_amount: u64,
         /// User-specified gas_price tolerance (minimum 1).
@@ -59,23 +58,14 @@ pub enum PricingMode {
         /// Pre-paid receipt.
         receipt: Digest,
     },
-    /// Gas limited transaction.
-    GasLimited {
-        /// User-specified gas limit.
-        gas_limit: u64,
-        /// User-specified gas_price tolerance (minimum 1).
-        /// This is interpreted to mean "do not include this transaction in a block
-        /// if the current gas price is greater than this number"
-        gas_price_tolerance: u8,
-    },
 }
 
 impl PricingMode {
     /// Returns a random `PricingMode.
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
-        match rng.gen_range(0..=3) {
-            0 => PricingMode::Classic {
+        match rng.gen_range(0..=2) {
+            0 => PricingMode::PaymentLimited {
                 payment_amount: rng.gen(),
                 gas_price_tolerance: 1,
                 standard_payment: true,
@@ -84,11 +74,17 @@ impl PricingMode {
                 gas_price_tolerance: rng.gen(),
             },
             2 => PricingMode::Reserved { receipt: rng.gen() },
-            3 => PricingMode::GasLimited {
-                gas_limit: rng.gen(),
-                gas_price_tolerance: rng.gen(),
-            },
             _ => unreachable!(),
+        }
+    }
+
+    fn is_standard_payment(&self) -> bool {
+        match self {
+            PricingMode::PaymentLimited {
+                standard_payment, ..
+            } => *standard_payment,
+            PricingMode::Fixed { .. } => true,
+            PricingMode::Reserved { .. } => true,
         }
     }
 }
@@ -96,7 +92,7 @@ impl PricingMode {
 impl Display for PricingMode {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match self {
-            PricingMode::Classic {
+            PricingMode::PaymentLimited {
                 payment_amount,
                 gas_price_tolerance: gas_price,
                 standard_payment,
@@ -111,16 +107,6 @@ impl Display for PricingMode {
             PricingMode::Fixed {
                 gas_price_tolerance,
             } => write!(formatter, "fixed pricing {}", gas_price_tolerance),
-            PricingMode::GasLimited {
-                gas_limit,
-                gas_price_tolerance,
-            } => {
-                write!(
-                    formatter,
-                    "gas limit {}, gas price multiplier {}",
-                    gas_limit, gas_price_tolerance
-                )
-            }
         }
     }
 }
@@ -128,7 +114,7 @@ impl Display for PricingMode {
 impl ToBytes for PricingMode {
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         match self {
-            PricingMode::Classic {
+            PricingMode::PaymentLimited {
                 payment_amount,
                 gas_price_tolerance: gas_price,
                 standard_payment,
@@ -148,14 +134,6 @@ impl ToBytes for PricingMode {
                 FIXED_TAG.write_bytes(writer)?;
                 gas_price_tolerance.write_bytes(writer)
             }
-            PricingMode::GasLimited {
-                gas_limit,
-                gas_price_tolerance,
-            } => {
-                GAS_LIMITED_TAG.write_bytes(writer)?;
-                gas_limit.write_bytes(writer)?;
-                gas_price_tolerance.write_bytes(writer)
-            }
         }
     }
 
@@ -168,7 +146,7 @@ impl ToBytes for PricingMode {
     fn serialized_length(&self) -> usize {
         U8_SERIALIZED_LENGTH
             + match self {
-                PricingMode::Classic {
+                PricingMode::PaymentLimited {
                     payment_amount,
                     gas_price_tolerance: gas_price,
                     standard_payment,
@@ -181,10 +159,6 @@ impl ToBytes for PricingMode {
                 PricingMode::Fixed {
                     gas_price_tolerance,
                 } => gas_price_tolerance.serialized_length(),
-                PricingMode::GasLimited {
-                    gas_limit,
-                    gas_price_tolerance,
-                } => gas_limit.serialized_length() + gas_price_tolerance.serialized_length(),
             }
     }
 }
@@ -199,7 +173,7 @@ impl FromBytes for PricingMode {
                 let (gas_price, remainder) = u8::from_bytes(remainder)?;
                 let (standard_payment, remainder) = bool::from_bytes(remainder)?;
                 Ok((
-                    PricingMode::Classic {
+                    PricingMode::PaymentLimited {
                         payment_amount,
                         gas_price_tolerance: gas_price,
                         standard_payment,
@@ -220,17 +194,6 @@ impl FromBytes for PricingMode {
                 let (receipt, remainder) = Digest::from_bytes(remainder)?;
                 Ok((PricingMode::Reserved { receipt }, remainder))
             }
-            GAS_LIMITED_TAG => {
-                let (gas_limit, remainder) = u64::from_bytes(remainder)?;
-                let (gas_price_tolerance, remainder) = u8::from_bytes(remainder)?;
-                Ok((
-                    PricingMode::GasLimited {
-                        gas_limit,
-                        gas_price_tolerance,
-                    },
-                    remainder,
-                ))
-            }
             _ => Err(bytesrepr::Error::Formatting),
         }
     }
@@ -240,13 +203,13 @@ mod tests {
     use super::*;
     #[test]
     fn test_to_bytes_and_from_bytes() {
-        let classic = PricingMode::Classic {
+        let classic = PricingMode::PaymentLimited {
             payment_amount: 100,
             gas_price_tolerance: 1,
             standard_payment: true,
         };
         match classic {
-            PricingMode::Classic { .. } => {}
+            PricingMode::PaymentLimited { .. } => {}
             PricingMode::Fixed { .. } => {}
             PricingMode::Reserved { .. } => {}
             PricingMode::GasLimited { .. } => {}

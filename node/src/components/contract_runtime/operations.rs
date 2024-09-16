@@ -230,7 +230,15 @@ pub fn execute_finalized_block(
                 // purse
                 trace!(%transaction_hash, "account session with standard payment");
                 initiator_addr.clone().into()
+            } else if is_v2_wasm {
+                // if transaction runtime is v2 then the initiating account will pay using
+                // the refund purse
+                BalanceIdentifier::PenalizedAccount(initiator_addr.clone().into()) // The INITIATOR
             } else {
+                //
+                // is transaction runtime is not v2 then error out
+                // else
+
                 // the initiating account will pay, but wants to do so with a different purse or
                 // in a custom way. If anything goes wrong, penalize the sender, do not execute
                 let custom_payment_gas_limit = Gas::new(
@@ -282,12 +290,12 @@ pub fn execute_finalized_block(
             ProofHandling::NoProofs,
         ));
 
-        let category = transaction.transaction_category();
+        let lane = transaction.transaction_lane();
 
         let allow_execution = {
             let is_not_penalized = !balance_identifier.is_penalty();
             let sufficient_balance = initial_balance_result.is_sufficient(cost);
-            let is_supported = chainspec.is_supported(category);
+            let is_supported = chainspec.is_supported(lane);
             trace!(%transaction_hash, ?sufficient_balance, ?is_not_penalized, ?is_supported, "payment preprocessing");
             is_not_penalized && sufficient_balance && is_supported
         };
@@ -311,8 +319,8 @@ pub fn execute_finalized_block(
                     .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
             }
 
-            trace!(%transaction_hash, ?category, "eligible for execution");
-            match category {
+            trace!(%transaction_hash, ?lane, "eligible for execution");
+            match lane {
                 category if category == MINT_LANE_ID => {
                     let runtime_args = runtime_args.unwrap().clone();
                     let transfer_result =
@@ -379,9 +387,11 @@ pub fn execute_finalized_block(
                         .seed_with(transaction_hash.as_ref())
                         .build();
 
-                    let transaction_v1 = transaction.as_transaction_v1().expect("should be v1");
+                    // don't panic, return error that similar to V1Request
+                    let transaction_v1 = transaction.as_transaction_v1(); // don't panic
 
-                    let input_data = transaction_v1.body().args().clone().into_chunked();
+                    // If it's wrong args variant => invalid request => penalty payment
+                    let input_data = transaction_v1.body().args().clone().into_bytesrepr(); // TODO: Make non optional
                     let value = transaction_v1.body().value();
 
                     enum Target {
@@ -399,7 +409,7 @@ pub fn execute_finalized_block(
                     }
 
                     let target = match transaction_v1.body().target() {
-                        TransactionTarget::Native => todo!(),
+                        TransactionTarget::Native => todo!(), //
                         TransactionTarget::Stored { id, runtime: _ } => {
                             match transaction_v1.body().entry_point() {
                                 TransactionEntryPoint::Custom(entry_point) => Target::Stored {
@@ -579,10 +589,10 @@ pub fn execute_finalized_block(
                         &transaction,
                     ) {
                         Ok(wasm_v1_request) => {
-                            trace!(%transaction_hash, ?category, ?wasm_v1_request, "able to get wasm v1 request");
+                            trace!(%transaction_hash, ?lane, ?wasm_v1_request, "able to get wasm v1 request");
                             let wasm_v1_result =
                                 execution_engine_v1.execute(&scratch_state, wasm_v1_request);
-                            trace!(%transaction_hash, ?category, ?wasm_v1_result, "able to get wasm v1 result");
+                            trace!(%transaction_hash, ?lane, ?wasm_v1_result, "able to get wasm v1 result");
                             state_root_hash = scratch_state
                                 .commit(state_root_hash, wasm_v1_result.effects().clone())?;
                             // note: consumed is scraped from wasm_v1_result along w/ other fields
@@ -591,7 +601,7 @@ pub fn execute_finalized_block(
                                 .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
                         }
                         Err(ire) => {
-                            debug!(%transaction_hash, ?category, ?ire, "unable to get wasm v1  request");
+                            debug!(%transaction_hash, ?lane, ?ire, "unable to get wasm v1  request");
                             artifact_builder.with_invalid_wasm_v1_request(&ire);
                         }
                     };
@@ -1236,7 +1246,7 @@ where
         }
     };
 
-    if transaction.is_legacy_transaction() {
+    if transaction.is_deploy() {
         if transaction.is_native() {
             let limit = Gas::from(chainspec.system_costs_config.mint_costs().transfer);
             let protocol_version = chainspec.protocol_version();

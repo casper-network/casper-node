@@ -17,9 +17,9 @@ use tracing::debug;
 
 use super::super::{RuntimeArgs, TransactionEntryPoint, TransactionScheduling, TransactionTarget};
 
-use super::TransactionCategory;
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use super::TransactionConfig;
+use super::TransactionLane;
 #[cfg(doc)]
 use super::TransactionV1;
 use crate::bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
@@ -53,7 +53,7 @@ pub struct TransactionV1Body {
     pub(super) args: TransactionArgs,
     pub(super) target: TransactionTarget,
     pub(super) entry_point: TransactionEntryPoint,
-    pub(super) transaction_category: u8,
+    pub(super) transaction_lane: u8,
     pub(super) scheduling: TransactionScheduling,
     pub(super) transferred_value: u128,
 }
@@ -75,8 +75,8 @@ pub struct TransactionV1Body {
 pub enum TransactionArgs {
     /// Named runtime arguments.
     Named(RuntimeArgs),
-    /// Chunked bytes.
-    Chunked(Bytes),
+    /// Bytesrepr bytes.
+    Bytesrepr(Bytes),
 }
 
 impl TransactionArgs {
@@ -84,7 +84,7 @@ impl TransactionArgs {
     pub fn as_named(&self) -> Option<&RuntimeArgs> {
         match self {
             TransactionArgs::Named(args) => Some(args),
-            TransactionArgs::Chunked(_) => None,
+            TransactionArgs::Bytesrepr(_) => None,
         }
     }
 
@@ -92,15 +92,15 @@ impl TransactionArgs {
     pub fn into_named(self) -> Option<RuntimeArgs> {
         match self {
             TransactionArgs::Named(args) => Some(args),
-            TransactionArgs::Chunked(_) => None,
+            TransactionArgs::Bytesrepr(_) => None,
         }
     }
 
     /// Returns `Bytes` if the transaction arguments are chunked.
-    pub fn into_chunked(self) -> Option<Bytes> {
+    pub fn into_bytesrepr(self) -> Option<Bytes> {
         match self {
             TransactionArgs::Named(_) => None,
-            TransactionArgs::Chunked(bytes) => Some(bytes),
+            TransactionArgs::Bytesrepr(bytes) => Some(bytes),
         }
     }
 
@@ -115,7 +115,7 @@ impl TransactionArgs {
                 args.insert(key, value)?;
                 Ok(())
             }
-            TransactionArgs::Chunked(_) => {
+            TransactionArgs::Bytesrepr(_) => {
                 Err(CLValueError::Serialization(bytesrepr::Error::Formatting))
             }
         }
@@ -132,7 +132,7 @@ impl FromBytes for TransactionArgs {
             }
             1 => {
                 let (bytes, remainder) = Bytes::from_bytes(remainder)?;
-                Ok((TransactionArgs::Chunked(bytes), remainder))
+                Ok((TransactionArgs::Bytesrepr(bytes), remainder))
             }
             _ => Err(bytesrepr::Error::Formatting),
         }
@@ -149,7 +149,7 @@ impl ToBytes for TransactionArgs {
     fn serialized_length(&self) -> usize {
         match self {
             TransactionArgs::Named(args) => args.serialized_length() + U8_SERIALIZED_LENGTH,
-            TransactionArgs::Chunked(bytes) => bytes.serialized_length() + U8_SERIALIZED_LENGTH,
+            TransactionArgs::Bytesrepr(bytes) => bytes.serialized_length() + U8_SERIALIZED_LENGTH,
         }
     }
 
@@ -159,7 +159,7 @@ impl ToBytes for TransactionArgs {
                 writer.push(0);
                 args.write_bytes(writer)
             }
-            TransactionArgs::Chunked(bytes) => {
+            TransactionArgs::Bytesrepr(bytes) => {
                 writer.push(1);
                 bytes.write_bytes(writer)
             }
@@ -173,14 +173,14 @@ impl TransactionV1Body {
         args: RuntimeArgs,
         target: TransactionTarget,
         entry_point: TransactionEntryPoint,
-        transaction_category: u8,
+        transaction_lane: u8,
         scheduling: TransactionScheduling,
     ) -> Self {
         TransactionV1Body {
             args: TransactionArgs::Named(args),
             target,
             entry_point,
-            transaction_category,
+            transaction_lane,
             scheduling,
             transferred_value: 0,
         }
@@ -191,7 +191,7 @@ impl TransactionV1Body {
         args: TransactionArgs,
         target: TransactionTarget,
         entry_point: TransactionEntryPoint,
-        transaction_category: u8,
+        transaction_lane: u8,
         scheduling: TransactionScheduling,
         transferred_value: u128,
     ) -> Self {
@@ -199,7 +199,7 @@ impl TransactionV1Body {
             args,
             target,
             entry_point,
-            transaction_category,
+            transaction_lane,
             scheduling,
             transferred_value,
         }
@@ -232,22 +232,22 @@ impl TransactionV1Body {
 
     /// Returns true if this transaction is a native mint interaction.
     pub fn is_native_mint(&self) -> bool {
-        self.transaction_category == TransactionCategory::Mint as u8
+        self.transaction_lane == TransactionLane::Mint as u8
     }
 
     /// Returns true if this transaction is a native auction interaction.
     pub fn is_native_auction(&self) -> bool {
-        self.transaction_category == TransactionCategory::Auction as u8
+        self.transaction_lane == TransactionLane::Auction as u8
     }
 
     /// Returns true if this transaction is a smart contract installer or upgrader.
     pub fn is_install_or_upgrade(&self) -> bool {
-        self.transaction_category == TransactionCategory::InstallUpgrade as u8
+        self.transaction_lane == TransactionLane::InstallUpgrade as u8
     }
 
     /// Returns the transaction category.
-    pub fn transaction_category(&self) -> u8 {
-        self.transaction_category
+    pub fn transaction_lane(&self) -> u8 {
+        self.transaction_lane
     }
 
     /// Returns the transaction runtime of the transaction.
@@ -285,10 +285,10 @@ impl TransactionV1Body {
             }
         }
 
-        let kind = self.transaction_category;
+        let kind = self.transaction_lane;
         if !config.transaction_v1_config.is_supported(kind) {
             return Err(InvalidTransactionV1::InvalidTransactionKind(
-                self.transaction_category,
+                self.transaction_lane,
             ));
         }
 
@@ -420,8 +420,8 @@ impl TransactionV1Body {
 
     /// Returns a random `TransactionV1Body`.
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
-    pub fn random_of_category(rng: &mut TestRng, category: u8) -> Self {
-        match category {
+    pub fn random_of_lane(rng: &mut TestRng, lane: u8) -> Self {
+        match lane {
             0 => Self::random_transfer(rng),
             1 => Self::random_staking(rng),
             2 => Self::random_install_upgrade(rng),
@@ -443,7 +443,7 @@ impl TransactionV1Body {
             args,
             TransactionTarget::Native,
             TransactionEntryPoint::Transfer,
-            TransactionCategory::Mint as u8,
+            TransactionLane::Mint as u8,
             TransactionScheduling::random(rng),
         )
     }
@@ -460,7 +460,7 @@ impl TransactionV1Body {
             RuntimeArgs::random(rng),
             target,
             TransactionEntryPoint::Custom(rng.random_string(1..11)),
-            TransactionCategory::Large as u8,
+            TransactionLane::Large as u8,
             TransactionScheduling::random(rng),
         )
     }
@@ -475,7 +475,7 @@ impl TransactionV1Body {
             RuntimeArgs::random(rng),
             target,
             TransactionEntryPoint::Custom(rng.random_string(1..11)),
-            TransactionCategory::InstallUpgrade as u8,
+            TransactionLane::InstallUpgrade as u8,
             TransactionScheduling::random(rng),
         )
     }
@@ -499,7 +499,7 @@ impl TransactionV1Body {
             args,
             TransactionTarget::Native,
             TransactionEntryPoint::AddBid,
-            TransactionCategory::Auction as u8,
+            TransactionLane::Auction as u8,
             TransactionScheduling::random(rng),
         )
     }
@@ -523,7 +523,7 @@ impl TransactionV1Body {
                     args,
                     TransactionTarget::Native,
                     TransactionEntryPoint::Transfer,
-                    TransactionCategory::Mint as u8,
+                    TransactionLane::Mint as u8,
                     TransactionScheduling::random(rng),
                 )
             }
@@ -545,7 +545,7 @@ impl TransactionV1Body {
                     args,
                     TransactionTarget::Native,
                     TransactionEntryPoint::AddBid,
-                    TransactionCategory::Auction as u8,
+                    TransactionLane::Auction as u8,
                     TransactionScheduling::random(rng),
                 )
             }
@@ -557,7 +557,7 @@ impl TransactionV1Body {
                     args,
                     TransactionTarget::Native,
                     TransactionEntryPoint::WithdrawBid,
-                    TransactionCategory::Auction as u8,
+                    TransactionLane::Auction as u8,
                     TransactionScheduling::random(rng),
                 )
             }
@@ -570,7 +570,7 @@ impl TransactionV1Body {
                     args,
                     TransactionTarget::Native,
                     TransactionEntryPoint::Delegate,
-                    TransactionCategory::Auction as u8,
+                    TransactionLane::Auction as u8,
                     TransactionScheduling::random(rng),
                 )
             }
@@ -583,7 +583,7 @@ impl TransactionV1Body {
                     args,
                     TransactionTarget::Native,
                     TransactionEntryPoint::Undelegate,
-                    TransactionCategory::Auction as u8,
+                    TransactionLane::Auction as u8,
                     TransactionScheduling::random(rng),
                 )
             }
@@ -599,7 +599,7 @@ impl TransactionV1Body {
                     args,
                     TransactionTarget::Native,
                     TransactionEntryPoint::Redelegate,
-                    TransactionCategory::Auction as u8,
+                    TransactionLane::Auction as u8,
                     TransactionScheduling::random(rng),
                 )
             }
@@ -615,7 +615,7 @@ impl TransactionV1Body {
                     RuntimeArgs::random(rng),
                     target,
                     TransactionEntryPoint::Custom(rng.random_string(1..11)),
-                    TransactionCategory::Large as u8,
+                    TransactionLane::Large as u8,
                     TransactionScheduling::random(rng),
                 )
             }
@@ -650,7 +650,7 @@ impl ToBytes for TransactionV1Body {
         self.args.serialized_length()
             + self.target.serialized_length()
             + self.entry_point.serialized_length()
-            + self.transaction_category.serialized_length()
+            + self.transaction_lane.serialized_length()
             + self.scheduling.serialized_length()
             + self.transferred_value.serialized_length()
     }
@@ -659,7 +659,7 @@ impl ToBytes for TransactionV1Body {
         self.args.write_bytes(writer)?;
         self.target.write_bytes(writer)?;
         self.entry_point.write_bytes(writer)?;
-        self.transaction_category.write_bytes(writer)?;
+        self.transaction_lane.write_bytes(writer)?;
         self.scheduling.write_bytes(writer)?;
         self.transferred_value.write_bytes(writer)?;
         Ok(())
@@ -678,7 +678,7 @@ impl FromBytes for TransactionV1Body {
             args,
             target,
             entry_point,
-            transaction_category: kind,
+            transaction_lane: kind,
             scheduling,
             transferred_value: value,
         };
@@ -704,7 +704,7 @@ mod tests {
         let mut config = TransactionConfig::default();
         let mut body = TransactionV1Body::random_standard(rng);
         config.transaction_v1_config.wasm_lanes =
-            vec![vec![body.transaction_category as u64, 1_048_576, 10, 0]];
+            vec![vec![body.transaction_lane as u64, 1_048_576, 10, 0]];
         body.args = TransactionArgs::Named(runtime_args! {"a" => 1_u8});
 
         let expected_error = InvalidTransactionV1::ExcessiveArgsLength {
@@ -726,7 +726,7 @@ mod tests {
             args,
             TransactionTarget::Native,
             entry_point.clone(),
-            TransactionCategory::Mint as u8,
+            TransactionLane::Mint as u8,
             TransactionScheduling::random(rng),
         );
 
@@ -747,7 +747,7 @@ mod tests {
             args,
             TransactionTarget::Native,
             entry_point,
-            TransactionCategory::Mint as u8,
+            TransactionLane::Mint as u8,
             TransactionScheduling::random(rng),
         );
 
@@ -776,14 +776,14 @@ mod tests {
                 RuntimeArgs::new(),
                 stored_target,
                 entry_point.clone(),
-                TransactionCategory::Large as u8,
+                TransactionLane::Large as u8,
                 TransactionScheduling::random(rng),
             );
             let session_body = TransactionV1Body::new(
                 RuntimeArgs::new(),
                 session_target,
                 entry_point.clone(),
-                TransactionCategory::Large as u8,
+                TransactionLane::Large as u8,
                 TransactionScheduling::random(rng),
             );
 

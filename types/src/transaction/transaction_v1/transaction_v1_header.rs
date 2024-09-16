@@ -156,7 +156,7 @@ impl TransactionV1Header {
     /// Returns the gas price tolerance for the given transaction.
     pub fn gas_price_tolerance(&self) -> u8 {
         match self.pricing_mode {
-            PricingMode::Classic {
+            PricingMode::PaymentLimited {
                 gas_price_tolerance,
                 ..
             } => gas_price_tolerance,
@@ -168,10 +168,6 @@ impl TransactionV1Header {
                 // TODO: Change this when reserve gets implemented.
                 0u8
             }
-            PricingMode::GasLimited {
-                gas_price_tolerance,
-                ..
-            } => gas_price_tolerance,
         }
     }
 

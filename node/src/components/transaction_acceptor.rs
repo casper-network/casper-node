@@ -112,25 +112,18 @@ impl TransactionAcceptor {
         debug!(%source, %transaction, "checking transaction before accepting");
         let event_metadata = Box::new(EventMetadata::new(transaction, source, maybe_responder));
 
-        let is_config_compliant = match &event_metadata.transaction {
-            Transaction::Deploy(deploy) => deploy
-                .is_config_compliant(
-                    &self.chainspec,
-                    self.acceptor_config.timestamp_leeway,
-                    event_metadata.verification_start_timestamp,
-                )
-                .map_err(|err| Error::InvalidTransaction(err.into())),
-            Transaction::V1(txn) => txn
-                .is_config_compliant(
-                    &self.chainspec,
-                    self.acceptor_config.timestamp_leeway,
-                    event_metadata.verification_start_timestamp,
-                )
-                .map_err(|err| Error::InvalidTransaction(err.into())),
-        };
+        let is_config_compliant = event_metadata.transaction.is_config_compliant(
+            &self.chainspec,
+            self.acceptor_config.timestamp_leeway,
+            event_metadata.verification_start_timestamp,
+        );
 
         if let Err(error) = is_config_compliant {
-            return self.reject_transaction(effect_builder, *event_metadata, error);
+            return self.reject_transaction(
+                effect_builder,
+                *event_metadata,
+                Error::InvalidTransaction(error),
+            );
         }
 
         // We only perform expiry checks on transactions received from the client.

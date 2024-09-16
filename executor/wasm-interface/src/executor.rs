@@ -4,7 +4,6 @@ use borsh::BorshSerialize;
 use bytes::Bytes;
 use casper_storage::{
     global_state::{error::Error as GlobalStateError, GlobalStateReader},
-    tracking_copy::TrackingCopyParts,
     AddressGenerator, TrackingCopy,
 };
 use casper_types::{

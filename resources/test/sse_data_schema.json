@@ -1786,7 +1786,7 @@
         "entry_point",
         "scheduling",
         "target",
-        "transaction_category",
+        "transaction_lane",
         "transferred_value"
       ],
       "properties": {
@@ -1799,7 +1799,7 @@
         "entry_point": {
           "$ref": "#/definitions/TransactionEntryPoint"
         },
-        "transaction_category": {
+        "transaction_lane": {
           "type": "integer",
           "format": "uint8",
           "minimum": 0.0

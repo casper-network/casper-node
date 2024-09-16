@@ -37,7 +37,7 @@ use casper_types::{
     Block, BlockV2, CLValue, Chainspec, ChainspecRawBytes, Contract, Deploy, EntryPointValue,
     EraId, HashAddr, InvalidDeploy, InvalidTransaction, InvalidTransactionV1, Package, PricingMode,
     ProtocolVersion, PublicKey, SecretKey, StoredValue, TestBlockBuilder, TimeDiff, Timestamp,
-    Transaction, TransactionCategory, TransactionConfig, TransactionRuntime, TransactionV1,
+    Transaction, TransactionConfig, TransactionLane, TransactionRuntime, TransactionV1,
     TransactionV1Builder, URef, U512,
 };
 
@@ -282,7 +282,7 @@ impl TestScenario {
             TestScenario::FromPeerExpired(TxnType::V1)
             | TestScenario::FromClientExpired(TxnType::V1) => {
                 let txn = TransactionV1Builder::new_session(
-                    TransactionCategory::Large,
+                    TransactionLane::Large,
                     Bytes::from(vec![1]),
                     TransactionRuntime::VmCasperV1,
                 )
@@ -307,7 +307,7 @@ impl TestScenario {
                 TxnType::Deploy => Transaction::from(Deploy::random_valid_native_transfer(rng)),
                 TxnType::V1 => {
                     let txn = TransactionV1Builder::new_session(
-                        TransactionCategory::Large,
+                        TransactionLane::Large,
                         Bytes::from(vec![1]),
                         TransactionRuntime::VmCasperV1,
                     )
@@ -326,7 +326,7 @@ impl TestScenario {
             }
             TestScenario::FromClientSignedByAdmin(TxnType::V1) => {
                 let txn = TransactionV1Builder::new_session(
-                    TransactionCategory::Large,
+                    TransactionLane::Large,
                     Bytes::from(vec![1]),
                     TransactionRuntime::VmCasperV1,
                 )
@@ -532,7 +532,7 @@ impl TestScenario {
                     ),
                     TxnType::V1 => {
                         let txn = TransactionV1Builder::new_session(
-                            TransactionCategory::Large,
+                            TransactionLane::Large,
                             Bytes::from(vec![1]),
                             TransactionRuntime::VmCasperV1,
                         )
@@ -559,7 +559,7 @@ impl TestScenario {
                     ),
                     TxnType::V1 => {
                         let txn = TransactionV1Builder::new_session(
-                            TransactionCategory::Large,
+                            TransactionLane::Large,
                             Bytes::from(vec![1]),
                             TransactionRuntime::VmCasperV1,
                         )
@@ -575,7 +575,7 @@ impl TestScenario {
             }
             TestScenario::InvalidPricingModeForTransactionV1 => {
                 let classic_mode_transaction = TransactionV1Builder::new_random(rng)
-                    .with_pricing_mode(PricingMode::Classic {
+                    .with_pricing_mode(PricingMode::PaymentLimited {
                         payment_amount: 10000u64,
                         gas_price_tolerance: 1u8,
                         standard_payment: true,

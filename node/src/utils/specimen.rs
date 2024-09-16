@@ -1016,7 +1016,7 @@ impl LargestSpecimen for TransactionV1 {
             estimator.parameter::<i32>("max_transaction_size").max(0) as usize + 10 * 4;
 
         TransactionV1Builder::new_session(
-            casper_types::TransactionCategory::InstallUpgrade,
+            casper_types::TransactionLane::InstallUpgrade,
             Bytes::from(vec_of_largest_specimen(
                 estimator,
                 max_size_with_margin,

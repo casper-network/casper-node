@@ -12,6 +12,8 @@ use casper_types::{
 use parking_lot::RwLock;
 use thiserror::Error;
 
+// NOTE: One struct that represents both InstallContractRequest and ExecuteRequest.
+
 /// Store contract request.
 pub struct InstallContractRequest {
     /// Initiator's address.
