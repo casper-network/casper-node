@@ -28,7 +28,7 @@ use prometheus::IntGauge;
 use rand::Rng;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tokio::{
-    net::TcpStream,
+    net::{TcpListener, TcpStream},
     sync::{mpsc::UnboundedReceiver, watch, Semaphore},
 };
 use tokio_openssl::SslStream;
@@ -146,7 +146,7 @@ where
     Span::current().record("peer_id", &field::display(peer_id));
 
     if peer_id == context.our_id {
-        info!("incoming loopback connection");
+        info!("outgoing loopback connection");
         return OutgoingConnection::Loopback { peer_addr };
     }
 
@@ -240,7 +240,7 @@ where
 
 impl<REv> NetworkContext<REv> {
     pub(super) fn new(
-        cfg: Config,
+        cfg: &Config,
         our_identity: Identity,
         node_key_pair: Option<NodeKeyPair>,
         chain_info: ChainInfo,
@@ -581,8 +581,8 @@ where
 /// Runs the server core acceptor loop.
 pub(super) async fn server<P, REv>(
     context: Arc<NetworkContext<REv>>,
-    listener: tokio::net::TcpListener,
-    mut shutdown_receiver: watch::Receiver<()>,
+    listener: TcpListener,
+    #[cfg(test)] mut shutdown_receiver: watch::Receiver<()>,
 ) where
     REv: From<Event<P>> + Send,
     P: Payload,
@@ -608,8 +608,7 @@ pub(super) async fn server<P, REv>(
                     let handler_span = span.clone();
                     tokio::spawn(
                         async move {
-                            let incoming =
-                                handle_incoming(context.clone(), stream, peer_addr).await;
+                            let incoming = handle_incoming(context, stream, peer_addr).await;
                             event_queue
                                 .schedule(
                                     Event::IncomingConnection {
@@ -631,23 +630,29 @@ pub(super) async fn server<P, REv>(
                 //
                 //       The code in its current state will consume 100% CPU if local resource
                 //       exhaustion happens, as no distinction is made and no delay introduced.
-                Err(ref err) => {
-                    warn!(%context.our_id, err=display_error(err), "dropping incoming connection during accept")
+                Err(err) => {
+                    warn!(%context.our_id, err=display_error(&err), "dropping incoming connection during accept");
                 }
             }
         }
     };
 
-    let shutdown_messages = async move { while shutdown_receiver.changed().await.is_ok() {} };
+    #[cfg(not(test))]
+    accept_connections.await;
 
-    // Now we can wait for either the `shutdown` channel's remote end to do be dropped or the
-    // infinite loop to terminate, which never happens.
-    match future::select(Box::pin(shutdown_messages), Box::pin(accept_connections)).await {
-        Either::Left(_) => info!(
-            %context.our_id,
-            "shutting down socket, no longer accepting incoming connections"
-        ),
-        Either::Right(_) => unreachable!(),
+    #[cfg(test)]
+    {
+        let shutdown_messages = async move { while shutdown_receiver.changed().await.is_ok() {} };
+
+        // Now we can wait for either the `shutdown` channel's remote end to do be dropped or the
+        // infinite loop to terminate, which never happens.
+        match future::select(Box::pin(shutdown_messages), Box::pin(accept_connections)).await {
+            Either::Left(_) => info!(
+                %context.our_id,
+                "shutting down socket, no longer accepting incoming connections"
+            ),
+            Either::Right(_) => unreachable!(),
+        }
     }
 }
 

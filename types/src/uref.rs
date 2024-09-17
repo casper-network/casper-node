@@ -207,7 +207,7 @@ impl URef {
 
     /// Removes specific access rights from this URef if present.
     pub fn disable_access_rights(&mut self, access_rights: AccessRights) {
-        self.1.remove(access_rights)
+        self.1.remove(access_rights);
     }
 }
 
