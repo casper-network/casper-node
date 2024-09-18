@@ -827,7 +827,7 @@ dependencies = [
 
 [[package]]
 name = "casper-wasmi"
-version = "0.13.2"
+version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8357f19a7fd98073d8fe8df60f1bef1e677b7c623c1e6e2e07d2f8e59ceb87fc"
 dependencies = [
@@ -838,7 +838,7 @@ dependencies = [
 
 [[package]]
 name = "casper-wasmi-core"
-version = "0.2.1"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "60089625560924f184cf91d59b0731373d5114b81224f1201c6a39ccc1d8388c"
 dependencies = [
@@ -851,7 +851,7 @@ dependencies = [
 
 [[package]]
 name = "casper-wasmi-validation"
-version = "0.5.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f669d385132ce321a57fdf453588d69c01654e75991bee3d22392a3aaaad80bb"
 dependencies = [

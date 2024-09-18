@@ -686,6 +686,8 @@ impl Rules for RuledOpcodeCosts {
             | Instruction::F32ReinterpretI32
             | Instruction::F64ReinterpretI64 => None, /* Unsupported reinterpretation operators
                                                        * for floats. */
+
+            Instruction::SignExt(_) => Some(1)
         }
     }
 
