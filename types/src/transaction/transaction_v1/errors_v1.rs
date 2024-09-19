@@ -171,8 +171,6 @@ pub enum InvalidTransaction {
     InvalidTransactionRuntime {
         /// The expected runtime as specified by the chainspec.
         expected: TransactionRuntime,
-        /// The runtime as specified by the transaction.
-        got: TransactionRuntime,
     },
 }
 
@@ -325,10 +323,10 @@ impl Display for InvalidTransaction {
             InvalidTransaction::ExpectedNamedArguments => {
                 write!(formatter, "transaction requires named arguments")
             }
-            InvalidTransaction::InvalidTransactionRuntime { expected, got } => {
+            InvalidTransaction::InvalidTransactionRuntime { expected } => {
                 write!(
                     formatter,
-                    "invalid transaction runtime: expected {expected}, got {got}"
+                    "invalid transaction runtime: expected {expected}"
                 )
             }
         }

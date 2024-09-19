@@ -405,16 +405,10 @@ impl Deploy {
     ) -> Result<(), InvalidDeploy> {
         let config = &chainspec.transaction_config;
 
-        // if self.
-        // check if transaction's specified runtime is compliant with enabled vm runtimes
-        // match self.runtime() {
-        //     VmCasperV1 if config.is_v1_runtime_enabled =>
-        // }
-        // if
-        // Deploy:
-
-        // (1) check if vm_casper_v1 is even turned on
-        // (2) if runtime != vm_casper_v1 => return InvalidDeploy::InvalidRuntime;
+        if !config.runtime_config.vm_casper_v1 {
+            // Not config compliant if V1 runtime is disabled.
+            return Err(InvalidDeploy::InvalidRuntime);
+        }
 
         let max_transaction_size = config
             .transaction_v1_config

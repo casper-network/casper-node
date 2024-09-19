@@ -212,7 +212,6 @@ mod tests {
             PricingMode::PaymentLimited { .. } => {}
             PricingMode::Fixed { .. } => {}
             PricingMode::Reserved { .. } => {}
-            PricingMode::GasLimited { .. } => {}
         }
         bytesrepr::test_serialization_roundtrip(&classic);
         bytesrepr::test_serialization_roundtrip(&PricingMode::Fixed {
@@ -220,10 +219,6 @@ mod tests {
         });
         bytesrepr::test_serialization_roundtrip(&PricingMode::Reserved {
             receipt: Digest::default(),
-        });
-        bytesrepr::test_serialization_roundtrip(&PricingMode::GasLimited {
-            gas_limit: 200,
-            gas_price_tolerance: 3,
         });
     }
 }

@@ -233,12 +233,8 @@ pub fn execute_finalized_block(
             } else if is_v2_wasm {
                 // if transaction runtime is v2 then the initiating account will pay using
                 // the refund purse
-                BalanceIdentifier::PenalizedAccount(initiator_addr.clone().into()) // The INITIATOR
+                BalanceIdentifier::PenalizedAccount(initiator_addr.account_hash())
             } else {
-                //
-                // is transaction runtime is not v2 then error out
-                // else
-
                 // the initiating account will pay, but wants to do so with a different purse or
                 // in a custom way. If anything goes wrong, penalize the sender, do not execute
                 let custom_payment_gas_limit = Gas::new(
@@ -373,12 +369,10 @@ pub fn execute_finalized_block(
                     };
                 }
                 _ if is_v2_wasm => {
-                    let gas_limit: u64 = if gas_limit.value() > U512::from(u64::MAX) {
-                        panic!("gas limit too high; needs u64") // TODO: This should be safe and
-                                                                // validated in transaction acceptor
-                    } else {
-                        gas_limit.value().as_u64()
-                    };
+                    let gas_limit: u64 = gas_limit
+                        .value()
+                        .try_into()
+                        .map_err(|_| BlockExecutionError::InvalidGasLimit(gas_limit.value()))?;
 
                     // TODO: Pass transaction hash to executor
                     // TODO: Hide the complexity similar to `!is_v2_wasm` branch
@@ -388,7 +382,12 @@ pub fn execute_finalized_block(
                         .build();
 
                     // don't panic, return error that similar to V1Request
-                    let transaction_v1 = transaction.as_transaction_v1(); // don't panic
+                    let transaction_v1 = match transaction.as_transaction_v1() {
+                        Some(transaction_v1) => transaction_v1,
+                        None => {
+                            return Err(BlockExecutionError::InvalidTransactionVariant);
+                        }
+                    };
 
                     // If it's wrong args variant => invalid request => penalty payment
                     let input_data = transaction_v1.body().args().clone().into_bytesrepr(); // TODO: Make non optional

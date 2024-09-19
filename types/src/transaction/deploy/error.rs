@@ -135,6 +135,9 @@ pub enum InvalidDeploy {
         /// The provided gas price tolerance.
         provided_gas_price_tolerance: u8,
     },
+
+    /// Invalid runtime.
+    InvalidRuntime,
 }
 
 impl Display for InvalidDeploy {

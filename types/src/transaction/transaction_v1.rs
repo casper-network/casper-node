@@ -375,6 +375,36 @@ impl TransactionV1 {
     ) -> Result<(), InvalidTransactionV1> {
         let transaction_config = chainspec.transaction_config.clone();
 
+        match self.body().transaction_runtime() {
+            Some(expected_runtime @ TransactionRuntime::VmCasperV1) => {
+                if !transaction_config.runtime_config.vm_casper_v1 {
+                    // NOTE: In current implementation native transactions should be executed on
+                    // both VmCasperV1 and VmCasperV2. This may change once we
+                    // have a more stable VmCasperV2 that can also process calls
+                    // to system contracts in VM2 chunked args style.
+
+                    return Err(InvalidTransactionV1::InvalidTransactionRuntime {
+                        expected: expected_runtime,
+                    });
+                }
+            }
+            Some(expected_runtime @ TransactionRuntime::VmCasperV2) => {
+                if !transaction_config.runtime_config.vm_casper_v2 {
+                    // NOTE: In current implementation native transactions should be executed on
+                    // both VmCasperV1 and VmCasperV2. This may change once we
+                    // have a more stable VmCasperV2 that can also process calls
+                    // to system contracts in VM2 chunked args style.
+
+                    return Err(InvalidTransactionV1::InvalidTransactionRuntime {
+                        expected: expected_runtime,
+                    });
+                }
+            }
+            None => {
+                // Native transactions are config compliant by default
+            }
+        }
+
         //
         // if v2 runtime is turned off, and the transaction targets v2 runtime, then it's not
         // compliant if v1 runtime is turned off, and the transaction targets v1 runtime,

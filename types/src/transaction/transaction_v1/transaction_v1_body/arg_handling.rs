@@ -960,7 +960,7 @@ mod tests {
 
     #[test]
     fn native_calls_require_named_args() {
-        let args = TransactionArgs::Chunked(vec![b'a'; 100].into());
+        let args = TransactionArgs::Bytesrepr(vec![b'a'; 100].into());
         let expected_error = InvalidTransactionV1::ExpectedNamedArguments;
         assert_eq!(
             has_valid_transfer_args(&args, 0).as_ref(),

@@ -273,18 +273,6 @@ impl TransactionV1Body {
 
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub(super) fn is_valid(&self, config: &TransactionConfig) -> Result<(), InvalidTransactionV1> {
-        if let Some(transaction_runtime) = self.transaction_runtime() {
-            // NOTE: In current implementation native transactions should be executed on both
-            // VmCasperV1 and VmCasperV2. This may change once we have a more stable
-            // VmCasperV2 that can also process calls to system contracts in VM2 chunked args style.
-            if config.transaction_runtime != transaction_runtime {
-                return Err(InvalidTransactionV1::InvalidTransactionRuntime {
-                    expected: config.transaction_runtime,
-                    got: transaction_runtime,
-                });
-            }
-        }
-
         let kind = self.transaction_lane;
         if !config.transaction_v1_config.is_supported(kind) {
             return Err(InvalidTransactionV1::InvalidTransactionKind(
