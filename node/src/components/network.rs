@@ -57,7 +57,6 @@ use std::{
 };
 
 use datasize::DataSize;
-#[cfg(test)]
 use futures::{future::BoxFuture, FutureExt};
 use itertools::Itertools;
 use prometheus::Registry;
@@ -66,14 +65,13 @@ use rand::{
     Rng,
 };
 use serde::{Deserialize, Serialize};
-#[cfg(test)]
-use tokio::task::JoinHandle;
 use tokio::{
     net::TcpStream,
     sync::{
         mpsc::{self, UnboundedSender},
         watch,
     },
+    task::JoinHandle,
 };
 use tokio_openssl::SslStream;
 use tokio_util::codec::LengthDelimitedCodec;
@@ -108,8 +106,6 @@ use self::{
     symmetry::ConnectionSymmetry,
     tasks::{MessageQueueItem, NetworkContext},
 };
-#[cfg(test)]
-use crate::reactor::Finalize;
 use crate::{
     components::{gossiper::GossipItem, Component, ComponentState, InitializedComponent},
     effect::{
@@ -117,7 +113,7 @@ use crate::{
         requests::{BeginGossipRequest, NetworkInfoRequest, NetworkRequest, StorageRequest},
         AutoClosingResponder, EffectBuilder, EffectExt, Effects, GossipTarget,
     },
-    reactor::ReactorEvent,
+    reactor::{Finalize, ReactorEvent},
     tls,
     types::{NodeId, ValidatorMatrix},
     utils::{self, display_error, Source},
@@ -126,9 +122,7 @@ use crate::{
 
 const COMPONENT_NAME: &str = "network";
 
-#[cfg(test)]
 const MAX_METRICS_DROP_ATTEMPTS: usize = 25;
-#[cfg(test)]
 const DROP_RETRY_DELAY: Duration = Duration::from_millis(100);
 
 /// How often to keep attempting to reconnect to a node before giving up. Note that reconnection
@@ -216,17 +210,15 @@ struct ChannelManagement {
     /// Channel signaling a shutdown of the network.
     // Note: This channel is closed when `Network` is dropped, signalling the receivers that
     // they should cease operation.
-    #[cfg(test)]
     shutdown_sender: Option<watch::Sender<()>>,
     /// Join handle for the server thread.
-    #[cfg(test)]
     server_join_handle: Option<JoinHandle<()>>,
 
     /// Channel signaling a shutdown of the incoming connections.
     // Note: This channel is closed when we finished syncing, so the `Network` can close all
     // connections. When they are re-established, the proper value of the now updated `is_syncing`
     // flag will be exchanged on handshake.
-    _close_incoming_sender: Option<watch::Sender<()>>,
+    close_incoming_sender: Option<watch::Sender<()>>,
     /// Handle used by the `message_reader` task to receive a notification that incoming
     /// connections should be closed.
     close_incoming_receiver: watch::Receiver<()>,
@@ -360,27 +352,23 @@ where
         // which we need to shutdown cleanly later on.
         info!(%local_addr, %public_addr, %protocol_version, "starting server background task");
 
-        #[cfg(test)]
         let (server_shutdown_sender, server_shutdown_receiver) = watch::channel(());
-        let (_close_incoming_sender, close_incoming_receiver) = watch::channel(());
+        let (close_incoming_sender, close_incoming_receiver) = watch::channel(());
 
         let context = self.context.clone();
-        let _server_join_handle = tokio::spawn(
+        let server_join_handle = tokio::spawn(
             tasks::server(
                 context,
                 tokio::net::TcpListener::from_std(listener).map_err(Error::ListenerConversion)?,
-                #[cfg(test)]
                 server_shutdown_receiver,
             )
             .in_current_span(),
         );
 
         let channel_management = ChannelManagement {
-            #[cfg(test)]
             shutdown_sender: Some(server_shutdown_sender),
-            #[cfg(test)]
-            server_join_handle: Some(_server_join_handle),
-            _close_incoming_sender: Some(_close_incoming_sender),
+            server_join_handle: Some(server_join_handle),
+            close_incoming_sender: Some(close_incoming_sender),
             close_incoming_receiver,
         };
 
@@ -996,7 +984,7 @@ where
                 ret.insert(node_id, connection.peer_addr.to_string());
             } else {
                 // This should never happen unless the state of `OutgoingManager` is corrupt.
-                warn!(%node_id, "route disappeared unexpectedly");
+                warn!(%node_id, "route disappeared unexpectedly")
             }
         }
 
@@ -1038,7 +1026,6 @@ where
     }
 }
 
-#[cfg(test)]
 impl<REv, P> Finalize for Network<REv, P>
 where
     REv: Send + 'static,
@@ -1049,7 +1036,7 @@ where
             if let Some(mut channel_management) = self.channel_management.take() {
                 // Close the shutdown socket, causing the server to exit.
                 drop(channel_management.shutdown_sender.take());
-                drop(channel_management._close_incoming_sender.take());
+                drop(channel_management.close_incoming_sender.take());
 
                 // Wait for the server to exit cleanly.
                 if let Some(join_handle) = channel_management.server_join_handle.take() {

@@ -28,22 +28,14 @@ mod info;
 use std::{net::SocketAddr, sync::Arc};
 
 use datasize::DataSize;
-use futures::join;
-#[cfg(test)]
-use futures::{future::BoxFuture, FutureExt};
+use futures::{future::BoxFuture, join, FutureExt};
 use once_cell::sync::OnceCell;
-use tokio::sync::oneshot;
-#[cfg(test)]
-use tokio::task::JoinHandle;
-#[cfg(test)]
-use tracing::debug;
-use tracing::{error, info, warn};
+use tokio::{sync::oneshot, task::JoinHandle};
+use tracing::{debug, error, info, warn};
 
 use casper_types::ProtocolVersion;
 
 use super::{Component, ComponentState, InitializedComponent};
-#[cfg(test)]
-use crate::reactor::Finalize;
 use crate::{
     components::PortBoundComponent,
     effect::{
@@ -54,7 +46,7 @@ use crate::{
         },
         EffectBuilder, EffectExt, Effects,
     },
-    reactor::main_reactor::MainEvent,
+    reactor::{main_reactor::MainEvent, Finalize},
     types::{ChainspecInfo, StatusFeed},
     utils::{self, ListeningError},
     NodeRng,
@@ -102,13 +94,11 @@ impl<REv> ReactorEventT for REv where
 #[derive(DataSize, Debug)]
 pub(crate) struct InnerRestServer {
     /// When the message is sent, it signals the server loop to exit cleanly.
-    #[cfg(test)]
     #[data_size(skip)]
     shutdown_sender: oneshot::Sender<()>,
     /// The address the server is listening on.
     local_addr: Arc<OnceCell<SocketAddr>>,
     /// The task handle which will only join once the server loop has exited.
-    #[cfg(test)]
     #[data_size(skip)]
     server_join_handle: Option<JoinHandle<()>>,
     /// The network name, as specified in the chainspec
@@ -293,12 +283,12 @@ where
         effect_builder: EffectBuilder<REv>,
     ) -> Result<Effects<Self::ComponentEvent>, Self::Error> {
         let cfg = &self.config;
-        let (_shutdown_sender, shutdown_receiver) = oneshot::channel::<()>();
+        let (shutdown_sender, shutdown_receiver) = oneshot::channel::<()>();
 
         let builder = utils::start_listening(&cfg.address)?;
         let local_addr: Arc<OnceCell<SocketAddr>> = Default::default();
 
-        let _server_join_handle = if cfg.cors_origin.is_empty() {
+        let server_join_handle = if cfg.cors_origin.is_empty() {
             Some(tokio::spawn(http_server::run(
                 builder,
                 effect_builder,
@@ -322,10 +312,8 @@ where
         let network_name = self.network_name.clone();
         self.inner_rest = Some(InnerRestServer {
             local_addr,
-            #[cfg(test)]
-            shutdown_sender: _shutdown_sender,
-            #[cfg(test)]
-            server_join_handle: _server_join_handle,
+            shutdown_sender,
+            server_join_handle,
             network_name,
         });
 
@@ -333,7 +321,6 @@ where
     }
 }
 
-#[cfg(test)]
 impl Finalize for RestServer {
     fn finalize(self) -> BoxFuture<'static, ()> {
         async {
