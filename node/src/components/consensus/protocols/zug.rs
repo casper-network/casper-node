@@ -64,7 +64,6 @@ mod proposal;
 mod round;
 #[cfg(test)]
 mod tests;
-mod wal;
 
 use std::{
     any::Any,
@@ -93,7 +92,10 @@ use crate::{
         era_supervisor::SerializedMessage,
         protocols,
         traits::{ConsensusValueT, Context},
-        utils::{ValidatorIndex, ValidatorMap, Validators, Weight},
+        utils::{
+            wal::{ReadWal, WalEntry, WriteWal},
+            ValidatorIndex, ValidatorMap, Validators, Weight,
+        },
         ActionId, LeaderSequence, TimerId,
     },
     types::NodeId,
@@ -105,7 +107,7 @@ use params::Params;
 use participation::{Participation, ParticipationStatus};
 use proposal::{HashedProposal, Proposal};
 use round::Round;
-use wal::{Entry, ReadWal, WriteWal};
+use serde::{Deserialize, Serialize};
 
 pub(crate) use message::{Message, SyncRequest};
 
@@ -125,6 +127,23 @@ pub(crate) type RoundId = u32;
 
 type ProposalsAwaitingParent = HashSet<(RoundId, NodeId)>;
 type ProposalsAwaitingValidation<C> = HashSet<(RoundId, HashedProposal<C>, NodeId)>;
+
+/// An entry in the Write-Ahead Log, storing a message we had added to our protocol state.
+#[derive(Deserialize, Serialize, Debug, PartialEq)]
+#[serde(bound(
+    serialize = "C::Hash: Serialize",
+    deserialize = "C::Hash: Deserialize<'de>",
+))]
+pub(crate) enum ZugWalEntry<C: Context> {
+    /// A signed echo or vote.
+    SignedMessage(SignedMessage<C>),
+    /// A proposal.
+    Proposal(Proposal<C>, RoundId),
+    /// Evidence of a validator double-signing.
+    Evidence(SignedMessage<C>, Content<C>, C::Signature),
+}
+
+impl<C: Context> WalEntry for ZugWalEntry<C> {}
 
 /// Contains the portion of the state required for an active validator to participate in the
 /// protocol.
@@ -200,7 +219,7 @@ where
     /// `update`.
     next_scheduled_update: Timestamp,
     /// The write-ahead log to prevent honest nodes from double-signing upon restart.
-    write_wal: Option<WriteWal<C>>,
+    write_wal: Option<WriteWal<ZugWalEntry<C>>>,
     /// A map of random IDs -> tipmestamp of when it has been created, allowing to
     /// verify that a response has been asked for.
     sent_sync_requests: registered_sync::RegisteredSync,
@@ -663,7 +682,7 @@ impl<C: Context + 'static> Zug<C> {
         );
         // We only return the new message if we are able to record it. If that fails we
         // wouldn't know about our own message after a restart and risk double-signing.
-        if self.record_entry(&Entry::SignedMessage(signed_msg.clone()))
+        if self.record_entry(&ZugWalEntry::SignedMessage(signed_msg.clone()))
             && self.add_content(signed_msg.clone())
         {
             Some(signed_msg)
@@ -708,7 +727,11 @@ impl<C: Context + 'static> Zug<C> {
         signature2: C::Signature,
         now: Timestamp,
     ) -> ProtocolOutcomes<C> {
-        self.record_entry(&Entry::Evidence(signed_msg.clone(), content2, signature2));
+        self.record_entry(&ZugWalEntry::Evidence(
+            signed_msg.clone(),
+            content2,
+            signature2,
+        ));
         self.handle_fault_no_wal(signed_msg, validator_id, content2, signature2, now)
     }
 
@@ -1108,7 +1131,7 @@ impl<C: Context + 'static> Zug<C> {
             return Ok(vec![]);
         }
 
-        self.record_entry(&Entry::SignedMessage(signed_msg.clone()));
+        self.record_entry(&ZugWalEntry::SignedMessage(signed_msg.clone()));
         if self.add_content(signed_msg) {
             Ok(self.update(now))
         } else {
@@ -1329,7 +1352,7 @@ impl<C: Context + 'static> Zug<C> {
 
     /// Adds a signed message to the WAL such that we can avoid double signing upon recovery if the
     /// node shuts down. Returns `true` if the message was added successfully.
-    fn record_entry(&mut self, entry: &Entry<C>) -> bool {
+    fn record_entry(&mut self, entry: &ZugWalEntry<C>) -> bool {
         match self.write_wal.as_mut().map(|ww| ww.record_entry(entry)) {
             None => false,
             Some(Ok(())) => true,
@@ -1353,7 +1376,7 @@ impl<C: Context + 'static> Zug<C> {
     pub(crate) fn open_wal(&mut self, wal_file: PathBuf, now: Timestamp) -> ProtocolOutcomes<C> {
         let our_idx = self.our_idx();
         // Open the file for reading.
-        let mut read_wal = match ReadWal::<C>::new(&wal_file) {
+        let mut read_wal = match ReadWal::<ZugWalEntry<C>>::new(&wal_file) {
             Ok(read_wal) => read_wal,
             Err(err) => {
                 error!(our_idx, %err, "could not create a ReadWal using this file");
@@ -1367,13 +1390,13 @@ impl<C: Context + 'static> Zug<C> {
         loop {
             match read_wal.read_next_entry() {
                 Ok(Some(next_entry)) => match next_entry {
-                    Entry::SignedMessage(next_message) => {
+                    ZugWalEntry::SignedMessage(next_message) => {
                         if !self.add_content(next_message) {
                             error!(our_idx, "Could not add content from WAL.");
                             return outcomes;
                         }
                     }
-                    Entry::Proposal(next_proposal, corresponding_round_id) => {
+                    ZugWalEntry::Proposal(next_proposal, corresponding_round_id) => {
                         if self
                             .round(corresponding_round_id)
                             .and_then(Round::proposal)
@@ -1421,7 +1444,7 @@ impl<C: Context + 'static> Zug<C> {
                             }
                         }
                     }
-                    Entry::Evidence(
+                    ZugWalEntry::Evidence(
                         conflicting_message,
                         conflicting_message_content,
                         conflicting_signature,
@@ -1806,7 +1829,7 @@ impl<C: Context + 'static> Zug<C> {
         } else {
             self.log_proposal(&proposal, round_id, "proposal does not need validation");
             if self.round_mut(round_id).insert_proposal(proposal.clone()) {
-                self.record_entry(&Entry::Proposal(proposal.inner().clone(), round_id));
+                self.record_entry(&ZugWalEntry::Proposal(proposal.inner().clone(), round_id));
                 self.progress_detected = true;
                 self.mark_dirty(round_id);
                 if let Some(block) = proposal.maybe_block().cloned() {
@@ -1947,7 +1970,10 @@ impl<C: Context + 'static> Zug<C> {
             instance_id: *self.instance_id(),
             echo,
         };
-        if !self.record_entry(&Entry::Proposal(hashed_prop.inner().clone(), round_id)) {
+        if !self.record_entry(&ZugWalEntry::Proposal(
+            hashed_prop.inner().clone(),
+            round_id,
+        )) {
             error!(
                 our_idx = self.our_idx(),
                 "could not record own proposal in WAL"
@@ -2314,7 +2340,7 @@ where
             for (round_id, proposal, _sender) in rounds_and_node_ids {
                 info!(our_idx = self.our_idx(), %round_id, %proposal, "handling valid proposal");
                 if self.round_mut(round_id).insert_proposal(proposal.clone()) {
-                    self.record_entry(&Entry::Proposal(proposal.into_inner(), round_id));
+                    self.record_entry(&ZugWalEntry::Proposal(proposal.into_inner(), round_id));
                     self.mark_dirty(round_id);
                     self.progress_detected = true;
                     outcomes.push(ProtocolOutcome::HandledProposedBlock(
