@@ -17,8 +17,6 @@ use crate::execution::ExecError;
 
 const ATOMIC_OPCODE_PREFIX: u8 = 0xfe;
 const BULK_OPCODE_PREFIX: u8 = 0xfc;
-const SIGN_EXT_OPCODE_START: u8 = 0xc0;
-const SIGN_EXT_OPCODE_END: u8 = 0xc4;
 const SIMD_OPCODE_PREFIX: u8 = 0xfd;
 
 const DEFAULT_GAS_MODULE_NAME: &str = "env";
@@ -687,7 +685,7 @@ impl Rules for RuledOpcodeCosts {
             | Instruction::F64ReinterpretI64 => None, /* Unsupported reinterpretation operators
                                                        * for floats. */
 
-            Instruction::SignExt(_) => Some(1)
+            Instruction::SignExt(_) => Some(costs.sign)
         }
     }
 
@@ -704,7 +702,6 @@ mod tests {
         elements::{CodeSection, Instructions},
     };
     use walrus::{
-        ir::{Instr, UnaryOp, Unop},
         FunctionBuilder, ModuleConfig, ValType,
     };
 
