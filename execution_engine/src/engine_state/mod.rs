@@ -90,7 +90,7 @@ impl ExecutionEngineV1 {
                 )
             }
         };
-        let (entity, entity_hash) = {
+        let (runtime_footprint, entity_addr) = {
             match tc.borrow_mut().get_authorized_addressable_entity(
                 protocol_version,
                 account_hash,
@@ -103,16 +103,7 @@ impl ExecutionEngineV1 {
                 }
             }
         };
-        let mut named_keys = match tc
-            .borrow_mut()
-            .get_named_keys(entity.entity_addr(entity_hash))
-            .map_err(Into::into)
-        {
-            Ok(named_keys) => named_keys,
-            Err(tce) => {
-                return WasmV1Result::precondition_failure(gas_limit, Error::TrackingCopy(tce))
-            }
-        };
+        let mut named_keys = runtime_footprint.named_keys().clone();
         let execution_kind = match ExecutionKind::new(
             &mut *tc.borrow_mut(),
             &named_keys,
@@ -123,12 +114,13 @@ impl ExecutionEngineV1 {
             Ok(execution_kind) => execution_kind,
             Err(ese) => return WasmV1Result::precondition_failure(gas_limit, ese),
         };
-        let access_rights = entity.extract_access_rights(entity_hash, &named_keys);
+        let access_rights =
+            runtime_footprint.extract_access_rights(entity_addr.value(), &named_keys);
         Executor::new(self.config().clone()).exec(
             execution_kind,
             args,
-            entity_hash,
-            &entity,
+            entity_addr,
+            &runtime_footprint,
             &mut named_keys,
             access_rights,
             authorization_keys,

@@ -281,7 +281,12 @@ where
         amount: U512,
         id: Option<u64>,
     ) -> Result<Result<(), mint::Error>, Error> {
-        if !(self.addressable_entity().main_purse().addr() == source.addr()
+        if !(self
+            .runtime_footprint()
+            .main_purse()
+            .ok_or_else(|| Error::InvalidContext)?
+            .addr()
+            == source.addr()
             || self.get_caller() == PublicKey::System.to_account_hash())
         {
             return Err(Error::InvalidCaller);
@@ -379,7 +384,10 @@ where
     fn get_main_purse(&self) -> Result<URef, Error> {
         // NOTE: this is used by the system and is not (and should not be made to be) accessible
         // from userland.
-        Ok(self.addressable_entity().main_purse())
+        Ok(self
+            .runtime_footprint()
+            .main_purse()
+            .ok_or_else(|| Error::InvalidContext)?)
     }
 }
 

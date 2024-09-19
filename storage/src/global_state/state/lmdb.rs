@@ -33,7 +33,7 @@ use crate::{
                 ReadResult, TriePruneResult,
             },
         },
-        DEFAULT_MAX_DB_SIZE, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_READERS,
+        DEFAULT_ENABLE_ENTITY, DEFAULT_MAX_DB_SIZE, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_READERS,
     },
     tracking_copy::TrackingCopy,
 };
@@ -51,6 +51,7 @@ pub struct LmdbGlobalState {
     pub(crate) empty_root_hash: Digest,
     /// Max query depth
     pub max_query_depth: u64,
+    pub enable_entity: bool,
 }
 
 /// Represents a "view" of global state at a particular root hash.
@@ -69,6 +70,7 @@ impl LmdbGlobalState {
         environment: Arc<LmdbEnvironment>,
         trie_store: Arc<LmdbTrieStore>,
         max_query_depth: u64,
+        enable_entity: bool,
     ) -> Result<Self, GlobalStateError> {
         let root_hash: Digest = {
             let (root_hash, root) = compute_empty_root_hash()?;
@@ -83,6 +85,7 @@ impl LmdbGlobalState {
             trie_store,
             root_hash,
             max_query_depth,
+            enable_entity,
         ))
     }
 
@@ -93,12 +96,14 @@ impl LmdbGlobalState {
         trie_store: Arc<LmdbTrieStore>,
         empty_root_hash: Digest,
         max_query_depth: u64,
+        enable_entity: bool,
     ) -> Self {
         LmdbGlobalState {
             environment,
             trie_store,
             empty_root_hash,
             max_query_depth,
+            enable_entity,
         }
     }
 
@@ -109,6 +114,7 @@ impl LmdbGlobalState {
             Arc::clone(&self.trie_store),
             self.empty_root_hash,
             self.max_query_depth,
+            self.enable_entity,
         )
     }
 
@@ -317,7 +323,11 @@ impl StateProvider for LmdbGlobalState {
         hash: Digest,
     ) -> Result<Option<TrackingCopy<Self::Reader>>, GlobalStateError> {
         match self.checkout(hash)? {
-            Some(reader) => Ok(Some(TrackingCopy::new(reader, self.max_query_depth))),
+            Some(reader) => Ok(Some(TrackingCopy::new(
+                reader,
+                self.max_query_depth,
+                self.enable_entity,
+            ))),
             None => Ok(None),
         }
     }
@@ -503,6 +513,7 @@ pub fn make_temporary_global_state(
             Arc::new(lmdb_environment),
             Arc::new(lmdb_trie_store),
             DEFAULT_MAX_QUERY_DEPTH,
+            DEFAULT_ENABLE_ENTITY,
         )
         .expect("should create lmdb global state")
     };

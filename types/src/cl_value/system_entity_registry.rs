@@ -9,12 +9,12 @@ use serde::{Deserialize, Serialize};
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     system::STANDARD_PAYMENT,
-    AddressableEntityHash, CLType, CLTyped,
+    AddressableEntityHash, CLType, CLTyped, HashAddr,
 };
 
 /// The system entity registry.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Debug)]
-pub struct SystemEntityRegistry(BTreeMap<String, AddressableEntityHash>);
+pub struct SystemEntityRegistry(BTreeMap<String, HashAddr>);
 
 impl SystemEntityRegistry {
     /// Returns a new `SystemEntityRegistry`.
@@ -24,29 +24,29 @@ impl SystemEntityRegistry {
     }
 
     /// Inserts a contract's details into the registry.
-    pub fn insert(&mut self, contract_name: String, contract_hash: AddressableEntityHash) {
+    pub fn insert(&mut self, contract_name: String, contract_hash: HashAddr) {
         self.0.insert(contract_name, contract_hash);
     }
 
     /// Gets a contract's hash from the registry.
-    pub fn get(&self, contract_name: &str) -> Option<&AddressableEntityHash> {
+    pub fn get(&self, contract_name: &str) -> Option<&HashAddr> {
         self.0.get(contract_name)
     }
 
     /// Returns `true` if the given contract hash exists as a value in the registry.
-    pub fn has_contract_hash(&self, contract_hash: &AddressableEntityHash) -> bool {
+    pub fn has_contract_hash(&self, contract_hash: &HashAddr) -> bool {
         self.0
             .values()
             .any(|system_contract_hash| system_contract_hash == contract_hash)
     }
 
     /// Remove standard payment from the contract registry.
-    pub fn remove_standard_payment(&mut self) -> Option<AddressableEntityHash> {
+    pub fn remove_standard_payment(&mut self) -> Option<HashAddr> {
         self.0.remove(STANDARD_PAYMENT)
     }
 
     #[cfg(test)]
-    pub fn inner(self) -> BTreeMap<String, AddressableEntityHash> {
+    pub fn inner(self) -> BTreeMap<String, HashAddr> {
         self.0
     }
 }
@@ -81,7 +81,7 @@ mod tests {
     #[test]
     fn bytesrepr_roundtrip() {
         let mut system_entity_registry = SystemEntityRegistry::new();
-        system_entity_registry.insert("a".to_string(), AddressableEntityHash::new([9; 32]));
+        system_entity_registry.insert("a".to_string(), [9; 32]);
         bytesrepr::test_serialization_roundtrip(&system_entity_registry);
     }
 
@@ -90,10 +90,10 @@ mod tests {
         // this test ensures that the serialization is not affected by the wrapper, because
         // this data is deserialized in other places as a BTree, e.g. GetAuctionInfo in the sidecar
         let mut system_entity_registry = SystemEntityRegistry::new();
-        system_entity_registry.insert("a".to_string(), AddressableEntityHash::new([9; 32]));
+        system_entity_registry.insert("a".to_string(), [9; 32]);
         let serialized =
             ToBytes::to_bytes(&system_entity_registry).expect("Unable to serialize data");
-        let deserialized: BTreeMap<String, AddressableEntityHash> =
+        let deserialized: BTreeMap<String, HashAddr> =
             bytesrepr::deserialize_from_slice(serialized).expect("Unable to deserialize data");
         assert_eq!(system_entity_registry, SystemEntityRegistry(deserialized));
     }

@@ -118,6 +118,11 @@ impl Account {
         &self.named_keys
     }
 
+    /// Returns a mutable reference to named keys.
+    pub fn named_keys_mut(&mut self) -> &mut NamedKeys {
+        &mut self.named_keys
+    }
+
     /// Removes the key under the given name from named keys.
     pub fn remove_named_key(&mut self, name: &str) -> Option<Key> {
         self.named_keys.remove(name)

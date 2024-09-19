@@ -1035,7 +1035,7 @@ fn should_meter_for_gas_storage_add() {
 #[test]
 fn associated_keys_add_full() {
     let final_add_result = build_runtime_context_and_execute(NamedKeys::new(), |mut rc| {
-        let associated_keys_before = rc.entity().associated_keys().len();
+        let associated_keys_before = rc.runtime_footprint().associated_keys().len();
 
         for count in 0..(rc.engine_config.max_associated_keys() as usize - associated_keys_before) {
             let account_hash = {

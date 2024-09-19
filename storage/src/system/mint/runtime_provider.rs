@@ -1,7 +1,7 @@
 use crate::system::error::ProviderError;
 use casper_types::{
-    account::AccountHash, system::Caller, AddressableEntity, Key, Phase, SystemEntityRegistry,
-    URef, U512,
+    account::AccountHash, system::Caller, AddressableEntity, Key, Phase, RuntimeFootprint,
+    SystemEntityRegistry, URef, U512,
 };
 
 /// Provider of runtime host functionality.
@@ -20,7 +20,7 @@ pub trait RuntimeProvider {
     fn read_addressable_entity_by_account_hash(
         &mut self,
         account_hash: AccountHash,
-    ) -> Result<Option<AddressableEntity>, ProviderError>;
+    ) -> Result<Option<RuntimeFootprint>, ProviderError>;
 
     /// Gets execution phase
     fn get_phase(&self) -> Phase;

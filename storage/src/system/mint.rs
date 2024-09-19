@@ -115,7 +115,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
                 Some(Caller::Entity {
                     entity_hash: contract_hash,
                     ..
-                }) if registry.has_contract_hash(&contract_hash) => {
+                }) if registry.has_contract_hash(&contract_hash.value()) => {
                     // System contract calling a mint is fine (i.e. standard payment calling mint's
                     // transfer)
                 }
@@ -142,11 +142,16 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
                             let maybe_account = self.read_addressable_entity_by_account_hash(to);
 
                             match maybe_account {
-                                Ok(Some(addressable_entity)) => {
+                                Ok(Some(runtime_footprint)) => {
                                     // This can happen when user tries to transfer funds by
                                     // calling mint
                                     // directly but tries to specify wrong account hash.
-                                    if addressable_entity.main_purse().addr() != target.addr() {
+                                    if runtime_footprint
+                                        .main_purse()
+                                        .ok_or_else(|| Error::InvalidContext)?
+                                        .addr()
+                                        != target.addr()
+                                    {
                                         return Err(Error::DisabledUnrestrictedTransfers);
                                     }
                                     let is_target_system_account =

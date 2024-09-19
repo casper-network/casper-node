@@ -318,6 +318,7 @@ pub struct TrackingCopy<R> {
     effects: Effects,
     max_query_depth: u64,
     messages: Messages,
+    enable_addressable_entity: bool,
 }
 
 /// Result of executing an "add" operation on a value in the state.
@@ -353,7 +354,11 @@ where
     R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
     /// Creates a new `TrackingCopy` using the `reader` as the interface to the state.
-    pub fn new(reader: R, max_query_depth: u64) -> TrackingCopy<R> {
+    pub fn new(
+        reader: R,
+        max_query_depth: u64,
+        enable_addressable_entity: bool,
+    ) -> TrackingCopy<R> {
         TrackingCopy {
             reader,
             // TODO: Should `max_cache_size` be a fraction of wasm memory limit?
@@ -361,6 +366,7 @@ where
             effects: Effects::new(),
             max_query_depth,
             messages: Vec::new(),
+            enable_addressable_entity,
         }
     }
 
@@ -382,7 +388,7 @@ where
     /// forking, however we recognize this is sub-optimal and will revisit
     /// in the future.
     pub fn fork(&self) -> TrackingCopy<&TrackingCopy<R>> {
-        TrackingCopy::new(self, self.max_query_depth)
+        TrackingCopy::new(self, self.max_query_depth, self.enable_addressable_entity)
     }
 
     /// Returns a copy of the execution effects cached by this instance.
@@ -395,6 +401,10 @@ where
         let writes: Vec<(Key, StoredValue)> = writes.into_iter().map(|(k, v)| (k.0, v)).collect();
 
         (writes, prunes, self.effects)
+    }
+
+    pub fn enable_entity(&self) -> bool {
+        self.enable_addressable_entity
     }
 
     pub fn get(&mut self, key: &Key) -> Result<Option<StoredValue>, TrackingCopyError> {
@@ -1001,6 +1011,7 @@ use crate::global_state::{
         lmdb::{make_temporary_global_state, LmdbGlobalStateView},
         StateProvider,
     },
+    DEFAULT_ENABLE_ENTITY,
 };
 use tempfile::TempDir;
 
@@ -1021,5 +1032,8 @@ pub fn new_temporary_tracking_copy(
         Some(depth) => depth,
     };
 
-    (TrackingCopy::new(reader, query_depth), tempdir)
+    (
+        TrackingCopy::new(reader, query_depth, DEFAULT_ENABLE_ENTITY),
+        tempdir,
+    )
 }

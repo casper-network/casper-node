@@ -14,7 +14,8 @@ use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
     system::{mint::Error, Caller},
-    AddressableEntity, CLTyped, CLValue, Key, Phase, StoredValue, SystemEntityRegistry, URef, U512,
+    AddressableEntity, CLTyped, CLValue, Key, Phase, RuntimeFootprint, StoredValue,
+    SystemEntityRegistry, URef, U512,
 };
 
 use super::Runtime;
@@ -59,7 +60,7 @@ where
     fn read_addressable_entity_by_account_hash(
         &mut self,
         account_hash: AccountHash,
-    ) -> Result<Option<AddressableEntity>, ProviderError> {
+    ) -> Result<Option<RuntimeFootprint>, ProviderError> {
         self.context
             .read_addressable_entity_by_account_hash(account_hash)
             .map_err(|err| {
@@ -87,7 +88,10 @@ where
     }
 
     fn get_main_purse(&self) -> URef {
-        self.context.entity().main_purse()
+        self.context
+            .runtime_footprint()
+            .main_purse()
+            .expect("did not have purse in mint internal")
     }
 
     fn is_administrator(&self, account_hash: &AccountHash) -> bool {

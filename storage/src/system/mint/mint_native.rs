@@ -17,7 +17,7 @@ use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
     system::{mint::Error, Caller},
     AccessRights, AddressableEntity, CLTyped, CLValue, Gas, InitiatorAddr, Key, Phase, PublicKey,
-    StoredValue, SystemEntityRegistry, Transfer, TransferV2, URef, U512,
+    RuntimeFootprint, StoredValue, SystemEntityRegistry, Transfer, TransferV2, URef, U512,
 };
 
 impl<S> RuntimeProvider for RuntimeNative<S>
@@ -52,13 +52,13 @@ where
     fn read_addressable_entity_by_account_hash(
         &mut self,
         account_hash: AccountHash,
-    ) -> Result<Option<AddressableEntity>, ProviderError> {
+    ) -> Result<Option<RuntimeFootprint>, ProviderError> {
         match self
             .tracking_copy()
             .borrow_mut()
             .get_addressable_entity_by_account_hash(self.protocol_version(), account_hash)
         {
-            Ok((_, entity)) => Ok(Some(entity)),
+            Ok((_, footprint)) => Ok(Some(footprint)),
             Err(tce) => {
                 error!(%tce, "error reading addressable entity by account hash");
                 Err(ProviderError::AddressableEntityByAccountHash(account_hash))
@@ -92,7 +92,9 @@ where
     }
 
     fn get_main_purse(&self) -> URef {
-        self.addressable_entity().main_purse()
+        self.runtime_footprint()
+            .main_purse()
+            .expect("tried to get main purse")
     }
 
     fn is_administrator(&self, account_hash: &AccountHash) -> bool {

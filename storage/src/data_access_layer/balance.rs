@@ -89,20 +89,26 @@ impl BalanceIdentifier {
             BalanceIdentifier::Public(public_key) => {
                 let account_hash = public_key.to_account_hash();
                 match tc.get_addressable_entity_by_account_hash(protocol_version, account_hash) {
-                    Ok((_, entity)) => entity.main_purse(),
+                    Ok((_, entity)) => entity
+                        .main_purse()
+                        .ok_or_else(|| TrackingCopyError::Authorization)?,
                     Err(tce) => return Err(tce),
                 }
             }
             BalanceIdentifier::Account(account_hash)
             | BalanceIdentifier::PenalizedAccount(account_hash) => {
                 match tc.get_addressable_entity_by_account_hash(protocol_version, *account_hash) {
-                    Ok((_, entity)) => entity.main_purse(),
+                    Ok((_, entity)) => entity
+                        .main_purse()
+                        .ok_or_else(|| TrackingCopyError::Authorization)?,
                     Err(tce) => return Err(tce),
                 }
             }
             BalanceIdentifier::Entity(entity_addr) => {
-                match tc.get_addressable_entity(*entity_addr) {
-                    Ok(entity) => entity.main_purse(),
+                match tc.get_runtime_footprint(*entity_addr) {
+                    Ok(entity) => entity
+                        .main_purse()
+                        .ok_or_else(|| TrackingCopyError::Authorization)?,
                     Err(tce) => return Err(tce),
                 }
             }
@@ -137,7 +143,10 @@ impl BalanceIdentifier {
                 TrackingCopyError::MissingSystemContractHash(system_contract_name.to_string())
             })?;
 
-        let named_keys = tc.get_named_keys(EntityAddr::System(entity_hash.value()))?;
+        let named_keys = tc
+            .get_runtime_footprint(EntityAddr::System(*entity_hash))?
+            .take_named_keys();
+
         let named_key =
             named_keys
                 .get(named_key_name)

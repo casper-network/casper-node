@@ -24,9 +24,9 @@ use casper_types::{
     },
     AccessRights, AddressableEntity, AddressableEntityHash, ByteCode, ByteCodeAddr, ByteCodeHash,
     ByteCodeKind, CLValue, CLValueError, Digest, EntityAddr, EntityVersions, EntryPointAddr,
-    EntryPointValue, FeeHandling, Groups, Key, KeyTag, Package, PackageHash, PackageStatus, Phase,
-    ProtocolUpgradeConfig, ProtocolVersion, PublicKey, StoredValue, SystemEntityRegistry, URef,
-    U512,
+    EntryPointValue, FeeHandling, Groups, HashAddr, Key, KeyTag, Package, PackageHash,
+    PackageStatus, Phase, ProtocolUpgradeConfig, ProtocolVersion, PublicKey, RuntimeFootprint,
+    StoredValue, SystemEntityRegistry, URef, U512,
 };
 
 use crate::{
@@ -99,18 +99,14 @@ impl From<bytesrepr::Error> for ProtocolUpgradeError {
 
 /// Addresses for system entities.
 pub struct SystemEntityAddresses {
-    mint: AddressableEntityHash,
-    auction: AddressableEntityHash,
-    handle_payment: AddressableEntityHash,
+    mint: HashAddr,
+    auction: HashAddr,
+    handle_payment: HashAddr,
 }
 
 impl SystemEntityAddresses {
     /// Creates a new instance of system entity addresses.
-    pub fn new(
-        mint: AddressableEntityHash,
-        auction: AddressableEntityHash,
-        handle_payment: AddressableEntityHash,
-    ) -> Self {
+    pub fn new(mint: HashAddr, auction: HashAddr, handle_payment: HashAddr) -> Self {
         SystemEntityAddresses {
             mint,
             auction,
@@ -119,17 +115,17 @@ impl SystemEntityAddresses {
     }
 
     /// Mint address.
-    pub fn mint(&self) -> AddressableEntityHash {
+    pub fn mint(&self) -> HashAddr {
         self.mint
     }
 
     /// Auction address.
-    pub fn auction(&self) -> AddressableEntityHash {
+    pub fn auction(&self) -> HashAddr {
         self.auction
     }
 
     /// Handle payment address.
-    pub fn handle_payment(&self) -> AddressableEntityHash {
+    pub fn handle_payment(&self) -> HashAddr {
         self.handle_payment
     }
 }
@@ -275,8 +271,7 @@ where
             );
 
             // Prune away standard payment from global state.
-            self.tracking_copy
-                .prune(Key::Hash(standard_payment_hash.value()));
+            self.tracking_copy.prune(Key::Hash(standard_payment_hash));
         };
 
         // Write the chainspec registry to global state
@@ -456,9 +451,9 @@ where
 
     fn retrieve_system_entity(
         &mut self,
-        entity_hash: AddressableEntityHash,
+        entity_hash: HashAddr,
         system_contract_type: SystemEntityType,
-    ) -> Result<(AddressableEntity, Option<NamedKeys>, bool), ProtocolUpgradeError> {
+    ) -> Result<(RuntimeFootprint, Option<NamedKeys>, bool), ProtocolUpgradeError> {
         debug!(%system_contract_type, "retrieve system entity");
         if let Some(StoredValue::Contract(system_contract)) = self
             .tracking_copy
@@ -583,7 +578,7 @@ where
     /// create an accumulation purse.
     pub fn create_accumulation_purse_if_required(
         &mut self,
-        handle_payment_hash: &AddressableEntityHash,
+        handle_payment_hash: &HashAddr,
         fee_handling: FeeHandling,
     ) -> Result<(), ProtocolUpgradeError> {
         debug!(?fee_handling, "create accumulation purse if required");

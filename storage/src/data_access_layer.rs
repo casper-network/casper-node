@@ -103,6 +103,7 @@ pub struct DataAccessLayer<S> {
     pub block_store: BlockStore,
     pub state: S,
     pub max_query_depth: u64,
+    pub enable_entity: bool,
 }
 
 impl<S> DataAccessLayer<S> {
@@ -153,7 +154,11 @@ where
         hash: Digest,
     ) -> Result<Option<TrackingCopy<S::Reader>>, GlobalStateError> {
         match self.state.checkout(hash)? {
-            Some(reader) => Ok(Some(TrackingCopy::new(reader, self.max_query_depth))),
+            Some(reader) => Ok(Some(TrackingCopy::new(
+                reader,
+                self.max_query_depth,
+                self.enable_entity,
+            ))),
             None => Ok(None),
         }
     }

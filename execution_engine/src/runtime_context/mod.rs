@@ -35,9 +35,9 @@ use casper_types::{
     system::auction::EraInfo,
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, CLType, CLValue,
     CLValueDictionary, ContextAccessRights, Contract, EntityAddr, EntryPointAddr, EntryPointType,
-    EntryPointValue, EntryPoints, Gas, GrantedAccess, Key, KeyTag, Motes, Package, PackageHash,
-    Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, StoredValueTypeMismatch,
-    SystemEntityRegistry, TransactionHash, Transfer, URef, URefAddr,
+    EntryPointValue, EntryPoints, Gas, GrantedAccess, HashAddr, Key, KeyTag, Motes, Package,
+    PackageHash, Phase, ProtocolVersion, PublicKey, RuntimeArgs, RuntimeFootprint, StoredValue,
+    StoredValueTypeMismatch, SystemEntityRegistry, TransactionHash, Transfer, URef, URefAddr,
     DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
 };
 
@@ -78,7 +78,7 @@ pub struct RuntimeContext<'a, R> {
     remaining_spending_limit: U512,
 
     // Original account/contract for read only tasks taken before execution
-    entity: &'a AddressableEntity,
+    runtime_footprint: &'a RuntimeFootprint,
     // Key pointing to the entity we are currently running
     entity_key: Key,
     account_hash: AccountHash,
@@ -96,7 +96,7 @@ where
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         named_keys: &'a mut NamedKeys,
-        entity: &'a AddressableEntity,
+        runtime_footprint: &'a RuntimeFootprint,
         entity_key: Key,
         authorization_keys: BTreeSet<AccountHash>,
         access_rights: ContextAccessRights,
@@ -128,7 +128,7 @@ where
             named_keys,
             access_rights,
             args,
-            entity,
+            runtime_footprint,
             entity_key,
             authorization_keys,
             account_hash,
@@ -157,7 +157,7 @@ where
         access_rights: ContextAccessRights,
         runtime_args: RuntimeArgs,
     ) -> Self {
-        let entity = self.entity;
+        let runtime_footprint = self.runtime_footprint;
         let authorization_keys = self.authorization_keys.clone();
         let account_hash = self.account_hash;
 
@@ -182,7 +182,7 @@ where
             named_keys,
             access_rights,
             args: runtime_args,
-            entity,
+            runtime_footprint,
             entity_key,
             authorization_keys,
             account_hash,
@@ -243,15 +243,45 @@ where
     /// Helper function to avoid duplication in `remove_uref`.
     fn remove_key_from_entity(&mut self, name: &str) -> Result<(), ExecError> {
         let key = self.entity_key;
-        match key.as_entity_addr() {
-            None => return Err(ExecError::UnexpectedKeyVariant(key)),
-            Some(entity_addr) => {
+        match key {
+            Key::AddressableEntity(entity_addr) => {
                 let named_key =
                     NamedKeyAddr::new_from_string(entity_addr, name.to_string())?.into();
                 if let Some(StoredValue::NamedKey(_)) = self.read_gs(&named_key)? {
                     self.prune_gs_unsafe(named_key);
                 }
             }
+            account_hash @ Key::Account(_) => {
+                let account: Account = {
+                    let mut account: Account = self.read_gs_typed(&account_hash)?;
+                    account.named_keys_mut().remove(name);
+                    account
+                };
+                self.named_keys.remove(name);
+                let account_value = self.account_to_validated_value(account)?;
+                self.metered_write_gs_unsafe(account_hash, account_value)?;
+            }
+            contract_uref @ Key::URef(_) => {
+                let contract: Contract = {
+                    let value: StoredValue = self
+                        .tracking_copy
+                        .borrow_mut()
+                        .read(&contract_uref)
+                        .map_err(Into::into)?
+                        .ok_or(ExecError::KeyNotFound(contract_uref))?;
+
+                    value.try_into().map_err(ExecError::TypeMismatch)?
+                };
+
+                self.named_keys.remove(name);
+                self.remove_key_from_contract(contract_uref, contract, name)
+            }
+            contract_hash @ Key::Hash(_) => {
+                let contract: Contract = self.read_gs_typed(&contract_hash)?;
+                self.named_keys.remove(name);
+                self.remove_key_from_contract(contract_hash, contract, name)
+            }
+            _ => return Err(ExecError::UnexpectedKeyVariant(key)),
         }
         Ok(())
     }
@@ -286,8 +316,8 @@ where
     }
 
     /// Returns contract of the caller.
-    pub fn entity(&self) -> &'a AddressableEntity {
-        self.entity
+    pub fn runtime_footprint(&self) -> &'a RuntimeFootprint {
+        self.runtime_footprint
     }
 
     /// Returns arguments.
@@ -444,7 +474,7 @@ where
 
     #[cfg(test)]
     pub(crate) fn get_entity(&self) -> AddressableEntity {
-        self.entity.clone()
+        self.runtime_footprint.clone()
     }
 
     /// Reads the total balance of a purse [`URef`].
@@ -822,7 +852,7 @@ where
     /// Checks if we are calling a system addressable entity.
     pub(crate) fn is_system_addressable_entity(
         &self,
-        contract_hash: &AddressableEntityHash,
+        contract_hash: &HashAddr,
     ) -> Result<bool, ExecError> {
         Ok(self
             .system_entity_registry()?
@@ -1052,7 +1082,10 @@ where
             return Err(RemoveKeyFailure::PermissionDenied.into());
         }
 
-        if !self.entity().can_manage_keys_with(&self.authorization_keys) {
+        if !self
+            .runtime_footprint()
+            .can_manage_keys_with(&self.authorization_keys)
+        {
             // Exit early if authorization keys weight doesn't exceed required
             // key management threshold
             return Err(RemoveKeyFailure::PermissionDenied.into());
@@ -1095,7 +1128,10 @@ where
             return Err(UpdateKeyFailure::PermissionDenied.into());
         }
 
-        if !self.entity().can_manage_keys_with(&self.authorization_keys) {
+        if !self
+            .runtime_footprint()
+            .can_manage_keys_with(&self.authorization_keys)
+        {
             // Exit early if authorization keys weight doesn't exceed required
             // key management threshold
             return Err(UpdateKeyFailure::PermissionDenied.into());
@@ -1178,26 +1214,45 @@ where
     pub(crate) fn read_addressable_entity_by_account_hash(
         &mut self,
         account_hash: AccountHash,
-    ) -> Result<Option<AddressableEntity>, ExecError> {
-        match self.read_gs(&Key::Account(account_hash))? {
-            Some(StoredValue::CLValue(cl_value)) => {
-                let key: Key = cl_value.into_t().map_err(ExecError::CLValue)?;
-                match self.read_gs(&key)? {
-                    Some(StoredValue::AddressableEntity(addressable_entity)) => {
-                        Ok(Some(addressable_entity))
+    ) -> Result<Option<RuntimeFootprint>, ExecError> {
+        if self.engine_config.enable_entity {
+            match self.read_gs(&Key::Account(account_hash))? {
+                Some(StoredValue::CLValue(cl_value)) => {
+                    let key: Key = cl_value.into_t().map_err(ExecError::CLValue)?;
+                    match self.read_gs(&key)? {
+                        Some(StoredValue::AddressableEntity(addressable_entity)) => {
+                            let entity_addr = EntityAddr::Account(account_hash.value());
+                            let named_keys = self.get_named_keys(key)?;
+                            let entry_points = self.get_casper_vm_v1_entry_point(key)?;
+                            let footprint = RuntimeFootprint::new_entity_footprint(
+                                entity_addr,
+                                addressable_entity,
+                                named_keys,
+                                entry_points,
+                            );
+                            Ok(Some(footprint))
+                        }
+                        Some(_other_variant_2) => Err(ExecError::UnexpectedStoredValueVariant),
+                        None => Ok(None),
                     }
-                    Some(_other_variant_2) => Err(ExecError::UnexpectedStoredValueVariant),
-                    None => Ok(None),
                 }
+                Some(_other_variant_1) => Err(ExecError::UnexpectedStoredValueVariant),
+                None => Ok(None),
             }
-            Some(_other_variant_1) => Err(ExecError::UnexpectedStoredValueVariant),
-            None => Ok(None),
+        } else {
+            match self.read_gs(&Key::Account(account_hash))? {
+                Some(StoredValue::Account(account)) => {
+                    Ok(Some(RuntimeFootprint::new_account_footprint(account)))
+                }
+                Some(_other_variant_1) => Err(ExecError::UnexpectedStoredValueVariant),
+                None => Ok(None),
+            }
         }
     }
 
     /// Gets main purse id
     pub fn get_main_purse(&mut self) -> Result<URef, ExecError> {
-        let main_purse = self.entity().main_purse();
+        let main_purse = self.runtime_footprint().main_purse();
         Ok(main_purse)
     }
 

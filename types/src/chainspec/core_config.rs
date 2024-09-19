@@ -54,6 +54,8 @@ pub const DEFAULT_GAS_HOLD_BALANCE_HANDLING: HoldBalanceHandling = HoldBalanceHa
 /// Default gas hold interval.
 pub const DEFAULT_GAS_HOLD_INTERVAL: TimeDiff = TimeDiff::from_seconds(24 * 60 * 60);
 
+pub const DEFAULT_ENABLE_ENTITY: bool = false;
+
 /// Configuration values associated with the core protocol.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
@@ -180,6 +182,7 @@ pub struct CoreConfig {
     /// Administrative accounts are a valid option for a private chain only.
     //#[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub administrators: BTreeSet<PublicKey>,
+    pub enable_addressable_entity: bool,
 }
 
 impl CoreConfig {
@@ -315,6 +318,7 @@ impl CoreConfig {
             migrate_legacy_accounts,
             migrate_legacy_contracts,
             validator_credit_cap,
+            enable_addressable_entity: false,
         }
     }
 }
@@ -360,6 +364,7 @@ impl Default for CoreConfig {
             migrate_legacy_accounts: false,
             migrate_legacy_contracts: false,
             validator_credit_cap: Ratio::new(1, 5),
+            enable_addressable_entity: DEFAULT_ENABLE_ENTITY,
         }
     }
 }
@@ -407,6 +412,7 @@ impl ToBytes for CoreConfig {
         buffer.extend(self.migrate_legacy_accounts.to_bytes()?);
         buffer.extend(self.migrate_legacy_contracts.to_bytes()?);
         buffer.extend(self.validator_credit_cap.to_bytes()?);
+        buffer.extend(self.enable_addressable_entity.to_bytes()?);
         Ok(buffer)
     }
 
@@ -450,6 +456,7 @@ impl ToBytes for CoreConfig {
             + self.migrate_legacy_accounts.serialized_length()
             + self.migrate_legacy_contracts.serialized_length()
             + self.validator_credit_cap.serialized_length()
+            + self.enable_addressable_entity.serialized_length()
     }
 }
 
@@ -493,6 +500,7 @@ impl FromBytes for CoreConfig {
         let (migrate_legacy_accounts, remainder) = FromBytes::from_bytes(remainder)?;
         let (migrate_legacy_contracts, remainder) = FromBytes::from_bytes(remainder)?;
         let (validator_credit_cap, remainder) = Ratio::from_bytes(remainder)?;
+        let (enable_addressable_entity, remainder) = FromBytes::from_bytes(remainder)?;
         let config = CoreConfig {
             era_duration,
             minimum_era_height,
@@ -531,6 +539,7 @@ impl FromBytes for CoreConfig {
             migrate_legacy_accounts,
             migrate_legacy_contracts,
             validator_credit_cap,
+            enable_addressable_entity,
         };
         Ok((config, remainder))
     }

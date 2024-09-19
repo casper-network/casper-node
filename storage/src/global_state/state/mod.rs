@@ -17,6 +17,7 @@ use std::{
 use tracing::{debug, error, info, warn};
 
 use casper_types::{
+    account::AccountHash,
     addressable_entity::{EntityKindTag, NamedKeys},
     bytesrepr::{self, ToBytes},
     execution::{Effects, TransformError, TransformInstruction, TransformKindV2, TransformV2},
@@ -1061,10 +1062,10 @@ pub trait StateProvider {
         let query_request = match tc.get_system_entity_registry() {
             Ok(scr) => match scr.get(AUCTION).copied() {
                 Some(auction_hash) => {
-                    let key = if request.protocol_version().value().major < 2 {
-                        Key::Hash(auction_hash.value())
+                    let key = if !request.enable_entity() {
+                        Key::Hash(auction_hash)
                     } else {
-                        Key::addressable_entity_key(EntityKindTag::System, auction_hash)
+                        Key::AddressableEntity(EntityAddr::System(auction_hash))
                     };
                     QueryRequest::new(
                         state_hash,
@@ -1168,7 +1169,7 @@ pub trait StateProvider {
         };
 
         let source_account_hash = initiator.account_hash();
-        let (entity_addr, entity, mut entity_named_keys, mut entity_access_rights) =
+        let (entity_addr, mut footprint, mut entity_access_rights) =
             match tc.borrow_mut().resolved_entity(
                 protocol_version,
                 source_account_hash,
@@ -1194,7 +1195,7 @@ pub trait StateProvider {
                         return BiddingResult::Failure(TrackingCopyError::UnexpectedKeyVariant(k));
                     }
                 }
-                entity_named_keys.insert(ERA_END_TIMESTAMP_MILLIS_KEY.into(), k);
+                footprint.insert_into_named_keys(ERA_END_TIMESTAMP_MILLIS_KEY.into(), k);
             }
             Ok(None) => {
                 return BiddingResult::Failure(TrackingCopyError::NamedKeyNotFound(
@@ -1217,7 +1218,7 @@ pub trait StateProvider {
                         return BiddingResult::Failure(TrackingCopyError::UnexpectedKeyVariant(k));
                     }
                 }
-                entity_named_keys.insert(ERA_ID_KEY.into(), k);
+                footprint.insert_into_named_keys(ERA_ID_KEY.into(), k);
             }
             Ok(None) => {
                 return BiddingResult::Failure(TrackingCopyError::NamedKeyNotFound(
@@ -1229,6 +1230,8 @@ pub trait StateProvider {
             }
         };
 
+        let named_keys = footprint.named_keys().clone();
+
         let mut runtime = RuntimeNative::new(
             config,
             protocol_version,
@@ -1236,8 +1239,8 @@ pub trait StateProvider {
             Rc::clone(&tc),
             source_account_hash,
             entity_key,
-            entity,
-            entity_named_keys,
+            footprint,
+            named_keys,
             entity_access_rights,
             U512::MAX,
             Phase::Session,
@@ -1813,10 +1816,10 @@ pub trait StateProvider {
             },
             SystemEntityRegistrySelector::ByName(name) => match reg.get(name).copied() {
                 Some(entity_hash) => {
-                    let key = if request.protocol_version().value().major < 2 {
-                        Key::Hash(entity_hash.value())
+                    let key = if !request.enable_to_entity() {
+                        Key::Hash(entity_hash)
                     } else {
-                        Key::addressable_entity_key(EntityKindTag::System, entity_hash)
+                        Key::AddressableEntity(EntityAddr::System(entity_hash))
                     };
                     SystemEntityRegistryResult::Success {
                         selected: selector.clone(),
@@ -1865,10 +1868,10 @@ pub trait StateProvider {
         let query_request = match tc.get_system_entity_registry() {
             Ok(scr) => match scr.get(MINT).copied() {
                 Some(mint_hash) => {
-                    let key = if request.protocol_version().value().major < 2 {
-                        Key::Hash(mint_hash.value())
+                    let key = if !request.enable_to_entity() {
+                        Key::Hash(mint_hash)
                     } else {
-                        Key::addressable_entity_key(EntityKindTag::System, mint_hash)
+                        Key::AddressableEntity(EntityAddr::System(mint_hash))
                     };
                     QueryRequest::new(state_hash, key, vec![TOTAL_SUPPLY_KEY.to_string()])
                 }
@@ -1920,10 +1923,10 @@ pub trait StateProvider {
         let query_request = match tc.get_system_entity_registry() {
             Ok(scr) => match scr.get(MINT).copied() {
                 Some(mint_hash) => {
-                    let key = if request.protocol_version().value().major < 2 {
-                        Key::Hash(mint_hash.value())
+                    let key = if !request.enable_to_entity() {
+                        Key::Hash(mint_hash)
                     } else {
-                        Key::addressable_entity_key(EntityKindTag::System, mint_hash)
+                        Key::AddressableEntity(EntityAddr::System(mint_hash))
                     };
                     QueryRequest::new(
                         state_hash,
@@ -2045,7 +2048,7 @@ pub trait StateProvider {
             }
         }
 
-        let (entity_addr, entity, entity_named_keys, entity_access_rights) =
+        let (entity_addr, runtime_footprint, entity_access_rights) =
             match tc.borrow_mut().resolved_entity(
                 protocol_version,
                 source_account_hash,
@@ -2057,7 +2060,15 @@ pub trait StateProvider {
                     return TransferResult::Failure(TransferError::TrackingCopy(tce));
                 }
             };
-        let entity_key = Key::AddressableEntity(entity_addr);
+        let entity_key = if config.enable_entity() {
+            Key::AddressableEntity(entity_addr)
+        } else {
+            match entity_addr {
+                EntityAddr::System(hash) | EntityAddr::SmartContract(hash) => Key::Hash(hash),
+                EntityAddr::Account(hash) => Key::Account(AccountHash::new(hash)),
+            }
+        };
+        let named_keys = runtime_footprint.named_keys().clone();
         let id = Id::Transaction(request.transaction_hash());
         // IMPORTANT: this runtime _must_ use the payer's context.
         let mut runtime = RuntimeNative::new(
@@ -2067,8 +2078,8 @@ pub trait StateProvider {
             Rc::clone(&tc),
             source_account_hash,
             entity_key,
-            entity.clone(),
-            entity_named_keys.clone(),
+            runtime_footprint.clone(),
+            named_keys,
             entity_access_rights,
             remaining_spending_limit,
             Phase::Session,
@@ -2098,8 +2109,7 @@ pub trait StateProvider {
             }
         }
         let transfer_args = match runtime_args_builder.build(
-            &entity,
-            entity_named_keys,
+            &runtime_footprint,
             protocol_version,
             Rc::clone(&tc),
         ) {

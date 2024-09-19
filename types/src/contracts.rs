@@ -753,7 +753,6 @@ impl ContractPackage {
         self.lock_status.clone()
     }
 
-    #[cfg(test)]
     fn next_contract_version_for(&self, protocol_version: ProtocolVersionMajor) -> ContractVersion {
         let current_version = self
             .versions
@@ -771,8 +770,7 @@ impl ContractPackage {
         current_version + 1
     }
 
-    #[cfg(test)]
-    fn insert_contract_version(
+    pub fn insert_contract_version(
         &mut self,
         protocol_version_major: ProtocolVersionMajor,
         contract_hash: ContractHash,
@@ -1047,6 +1045,23 @@ pub struct EntryPoints(
     #[serde(with = "BTreeMapToArray::<String, EntryPoint, EntryPointLabels>")]
     BTreeMap<String, EntryPoint>,
 );
+
+impl From<crate::addressable_entity::EntryPoints> for EntryPoints {
+    fn from(value: EntityEntryPoints) -> Self {
+        let mut ret = EntryPoints::new();
+        for entity_entry_point in value.take_entry_points() {
+            let entry_point = EntryPoint::new(
+                entity_entry_point.name(),
+                Parameters::from(entity_entry_point.args().clone()),
+                entity_entry_point.ret().clone(),
+                entity_entry_point.access().clone(),
+                entity_entry_point.entry_point_type(),
+            );
+            ret.add_entry_point(entry_point);
+        }
+        ret
+    }
+}
 
 impl ToBytes for EntryPoints {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {

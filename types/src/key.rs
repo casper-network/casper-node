@@ -915,14 +915,15 @@ impl Key {
         }
     }
 
-    /// Returns [`EntityAddr`] of `self` if `self` is of type [`Key::AddressableEntity`], otherwise
-    /// returns `None`.
-    pub fn as_entity_addr(&self) -> Option<EntityAddr> {
-        match self {
-            Key::AddressableEntity(addr) => Some(*addr),
-            _ => None,
-        }
-    }
+    // /// Returns [`EntityAddr`] of `self` if `self` is of type [`Key::AddressableEntity`],
+    // otherwise /// returns `None`.
+    // pub fn as_entity_addr(&self) -> Option<EntityAddr> {
+    //     match self {
+    //         Key::AddressableEntity(addr) => Some(*addr),
+    //         Key::Account(account_hash) => Some(EntityAddr::Account(account_hash.value())),
+    //         _ => None,
+    //     }
+    // }
 
     /// Returns the inner bytes of `self` if `self` is of type [`Key::Package`], otherwise returns
     /// `None`.

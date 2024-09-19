@@ -85,6 +85,9 @@ pub enum Error {
     /// Unable to find a contract.
     #[error("Contract {:?} not found", _0)]
     ContractNotFound(Key),
+    #[error("flag")]
+    /// Attempted to fetch an entity or an associated record
+    AddressableEntityDisable,
 }
 
 impl Error {

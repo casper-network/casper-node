@@ -1460,6 +1460,10 @@ impl AddressableEntity {
         }
     }
 
+    pub fn entity_kind(&self) -> EntityKind {
+        self.entity_kind.clone()
+    }
+
     /// Hash for accessing contract package
     pub fn package_hash(&self) -> PackageHash {
         self.package_hash
@@ -1720,7 +1724,7 @@ impl AddressableEntity {
             .keys()
             .filter_map(|key| key.as_uref().copied())
             .chain(iter::once(self.main_purse));
-        ContextAccessRights::new(entity_hash, urefs_iter)
+        ContextAccessRights::new(entity_hash.value(), urefs_iter)
     }
 
     // This method is not intended to be used by third party crates.

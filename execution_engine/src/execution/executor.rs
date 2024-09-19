@@ -8,8 +8,8 @@ use casper_storage::{
 use casper_types::{
     account::AccountHash, addressable_entity::NamedKeys, contract_messages::Messages,
     execution::Effects, AddressableEntity, AddressableEntityHash, BlockTime, ContextAccessRights,
-    EntryPointType, Gas, Key, Phase, ProtocolVersion, RuntimeArgs, StoredValue, Tagged,
-    TransactionHash, U512,
+    EntityAddr, EntryPointType, Gas, Key, Phase, ProtocolVersion, RuntimeArgs, RuntimeFootprint,
+    StoredValue, Tagged, TransactionHash, U512,
 };
 
 use crate::{
@@ -47,8 +47,8 @@ impl Executor {
         &self,
         execution_kind: ExecutionKind,
         args: RuntimeArgs,
-        entity_hash: AddressableEntityHash,
-        entity: &AddressableEntity,
+        entity_addr: EntityAddr,
+        entity: &RuntimeFootprint,
         named_keys: &mut NamedKeys,
         access_rights: ContextAccessRights,
         authorization_keys: BTreeSet<AccountHash>,
@@ -83,7 +83,14 @@ impl Executor {
             Rc::new(RefCell::new(generator))
         };
 
-        let entity_key = Key::addressable_entity_key(entity.kind().tag(), entity_hash);
+        let entity_key = if self.config.enable_entity {
+            Key::AddressableEntity(entity_addr)
+        } else {
+            match entity_addr {
+                EntityAddr::System(hash) | EntityAddr::SmartContract(hash) => Key::Hash(hash),
+                EntityAddr::Account(hash) => Key::Account(AccountHash::new(hash)),
+            }
+        };
 
         let calling_add_contract_version = match execution_kind {
             ExecutionKind::InstallerUpgrader(_)
@@ -156,7 +163,7 @@ impl Executor {
     fn create_runtime_context<'a, R>(
         &self,
         named_keys: &'a mut NamedKeys,
-        entity: &'a AddressableEntity,
+        runtime_footprint: &'a RuntimeFootprint,
         entity_key: Key,
         authorization_keys: BTreeSet<AccountHash>,
         access_rights: ContextAccessRights,
@@ -181,7 +188,7 @@ impl Executor {
 
         RuntimeContext::new(
             named_keys,
-            entity,
+            runtime_footprint,
             entity_key,
             authorization_keys,
             access_rights,

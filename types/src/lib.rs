@@ -59,6 +59,7 @@ mod package;
 mod peers_map;
 mod phase;
 mod protocol_version;
+mod runtime_footprint;
 mod semver;
 pub(crate) mod serde_helpers;
 mod stored_value;
@@ -176,6 +177,7 @@ pub use package::{
 pub use peers_map::{PeerEntry, Peers};
 pub use phase::{Phase, PHASE_SERIALIZED_LENGTH};
 pub use protocol_version::{ProtocolVersion, VersionCheckResult};
+pub use runtime_footprint::RuntimeFootprint;
 pub use semver::{ParseSemVerError, SemVer, SEM_VER_SERIALIZED_LENGTH};
 pub use stored_value::{
     GlobalStateIdentifier, StoredValue, TypeMismatch as StoredValueTypeMismatch,
@@ -209,7 +211,6 @@ pub use uref::{
     FromStrError as URefFromStrError, URef, URefAddr, UREF_ADDR_LENGTH, UREF_SERIALIZED_LENGTH,
 };
 pub use validator_change::ValidatorChange;
-
 /// The lane identifier for the native mint interaction.
 pub const MINT_LANE_ID: u8 = 0;
 /// The lane identifier for the native auction interaction.

@@ -50,6 +50,7 @@ pub struct SystemEntityRegistryRequest {
     protocol_version: ProtocolVersion,
     /// Selector.
     selector: SystemEntityRegistrySelector,
+    enable_addressable_entity: bool,
 }
 
 impl SystemEntityRegistryRequest {
@@ -58,11 +59,13 @@ impl SystemEntityRegistryRequest {
         state_hash: Digest,
         protocol_version: ProtocolVersion,
         selector: SystemEntityRegistrySelector,
+        enable_addressable_entity: bool,
     ) -> Self {
         SystemEntityRegistryRequest {
             state_hash,
             protocol_version,
             selector,
+            enable_addressable_entity,
         }
     }
 
@@ -77,6 +80,10 @@ impl SystemEntityRegistryRequest {
 
     pub fn protocol_version(&self) -> ProtocolVersion {
         self.protocol_version
+    }
+
+    pub fn enable_to_entity(&self) -> bool {
+        self.enable_addressable_entity
     }
 }
 

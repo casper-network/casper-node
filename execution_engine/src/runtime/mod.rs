@@ -54,9 +54,10 @@ use casper_types::{
     AccessRights, ApiError, BlockGlobalAddr, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash,
     ByteCodeKind, CLTyped, CLValue, ContextAccessRights, EntityAddr, EntityKind, EntityVersion,
     EntityVersionKey, EntityVersions, EntryPointAddr, EntryPointValue, Gas, GrantedAccess, Group,
-    Groups, HostFunction, HostFunctionCost, InitiatorAddr, Key, NamedArg, Package, PackageHash,
-    PackageStatus, Phase, PublicKey, RuntimeArgs, StoredValue, TransactionRuntime, Transfer,
-    TransferResult, TransferV2, TransferredTo, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, U512,
+    Groups, HashAddr, HostFunction, HostFunctionCost, InitiatorAddr, Key, NamedArg, Package,
+    PackageHash, PackageStatus, Phase, PublicKey, RuntimeArgs, StoredValue, TransactionRuntime,
+    Transfer, TransferResult, TransferV2, TransferredTo, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH,
+    U512,
 };
 
 use crate::{
@@ -616,7 +617,7 @@ where
     }
 
     /// Checks if a [`Key`] is a system contract.
-    fn is_system_contract(&self, entity_hash: AddressableEntityHash) -> Result<bool, ExecError> {
+    fn is_system_contract(&self, entity_hash: HashAddr) -> Result<bool, ExecError> {
         self.context.is_system_addressable_entity(&entity_hash)
     }
 
@@ -1180,7 +1181,11 @@ where
         self.stack = Some(stack);
         self.context.set_args(utils::attenuate_uref_in_args(
             self.context.args().clone(),
-            self.context.entity().main_purse().addr(),
+            self.context
+                .runtime_footprint()
+                .main_purse()
+                .expect("line 1183")
+                .addr(),
             AccessRights::WRITE,
         )?);
 
@@ -1469,7 +1474,9 @@ where
             .administrative_accounts()
             .is_empty()
             && !package.is_entity_enabled(&entity_hash)
-            && !self.context.is_system_addressable_entity(&entity_hash)?
+            && !self
+                .context
+                .is_system_addressable_entity(&entity_hash.value())?
         {
             return Err(ExecError::DisabledEntity(entity_hash));
         }
@@ -1488,7 +1495,8 @@ where
             let is_caller_system_contract =
                 self.is_system_contract(self.context.access_rights().context_key())?;
             // Checks if the contract we're about to call is a system contract.
-            let is_calling_system_contract = self.is_system_contract(context_entity_hash)?;
+            let is_calling_system_contract =
+                self.is_system_contract(context_entity_hash.value())?;
             // uref attenuation is necessary in the following circumstances:
             //   the originating account (aka the caller) is not the system account and
             //   the immediate caller is either a normal account or a normal contract and
@@ -1503,7 +1511,11 @@ where
             // a non-system account to avoid possible phishing attack scenarios.
             utils::attenuate_uref_in_args(
                 args,
-                self.context.entity().main_purse().addr(),
+                self.context
+                    .runtime_footprint()
+                    .main_purse()
+                    .expect("need purse for attenutation")
+                    .addr(),
                 AccessRights::WRITE,
             )?
         } else {
@@ -2341,7 +2353,7 @@ where
             // Public chain
             return self
                 .context
-                .entity()
+                .runtime_footprint()
                 .can_manage_keys_with(self.context.authorization_keys());
         }
 
