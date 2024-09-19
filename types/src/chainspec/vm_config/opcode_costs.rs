@@ -514,7 +514,7 @@ impl ToBytes for OpcodeCosts {
             current_memory,
             grow_memory,
             control_flow,
-            sign
+            sign,
         } = self;
 
         ret.append(&mut bit.to_bytes()?);
@@ -556,7 +556,7 @@ impl ToBytes for OpcodeCosts {
             current_memory,
             grow_memory,
             control_flow,
-            sign
+            sign,
         } = self;
         bit.serialized_length()
             + add.serialized_length()
@@ -640,7 +640,7 @@ impl Zero for OpcodeCosts {
             current_memory: 0,
             grow_memory: 0,
             control_flow: ControlFlowCosts::zero(),
-            sign: 0
+            sign: 0,
         }
     }
 
@@ -662,7 +662,7 @@ impl Zero for OpcodeCosts {
             current_memory,
             grow_memory,
             control_flow,
-            sign
+            sign,
         } = self;
         bit.is_zero()
             && add.is_zero()

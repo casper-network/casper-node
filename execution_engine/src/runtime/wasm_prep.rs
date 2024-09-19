@@ -426,11 +426,9 @@ pub fn deserialize(module_bytes: &[u8]) -> Result<Module, PreprocessingError> {
             casper_wasm::SerializationError::UnknownOpcode(ATOMIC_OPCODE_PREFIX) => {
                 PreprocessingError::Deserialize("Atomic operations are not supported".to_string())
             }
-            casper_wasm::SerializationError::UnknownOpcode(
-                _,
-            ) => PreprocessingError::Deserialize(
-                "Encountered an unsupported operation".to_string(),
-            ),
+            casper_wasm::SerializationError::UnknownOpcode(_) => {
+                PreprocessingError::Deserialize("Encountered an unsupported operation".to_string())
+            }
             casper_wasm::SerializationError::Other(
                 "Enable the multi_value feature to deserialize more than one function result",
             ) => {
@@ -679,13 +677,13 @@ impl Rules for RuledOpcodeCosts {
             | Instruction::F64ConvertUI64
             | Instruction::F64PromoteF32 => None, // Unsupported conversion operators for floats.
 
+            // Unsupported reinterpretation operators for floats.
             Instruction::I32ReinterpretF32
             | Instruction::I64ReinterpretF64
             | Instruction::F32ReinterpretI32
-            | Instruction::F64ReinterpretI64 => None, /* Unsupported reinterpretation operators
-                                                       * for floats. */
+            | Instruction::F64ReinterpretI64 => None,
 
-            Instruction::SignExt(_) => Some(costs.sign)
+            Instruction::SignExt(_) => Some(costs.sign),
         }
     }
 
@@ -701,9 +699,7 @@ mod tests {
         builder,
         elements::{CodeSection, Instructions},
     };
-    use walrus::{
-        FunctionBuilder, ModuleConfig, ValType,
-    };
+    use walrus::{FunctionBuilder, ModuleConfig, ValType};
 
     use super::*;
 
