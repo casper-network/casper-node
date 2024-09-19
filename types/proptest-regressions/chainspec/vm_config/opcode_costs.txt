@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 1fdebefaf3095a3c7dc7503bcc0f213ed68263d760440653c3e7f6005cd8c7a0 # shrinks to opcode_costs = OpcodeCosts { bit: 0, add: 0, mul: 0, div: 0, load: 0, store: 0, op_const: 0, local: 0, global: 0, integer_comparison: 0, conversion: 0, unreachable: 0, nop: 0, current_memory: 0, grow_memory: 0, control_flow: ControlFlowCosts { block: 0, op_loop: 0, op_if: 0, op_else: 0, end: 0, br: 0, br_if: 0, op_return: 0, call: 0, call_indirect: 0, drop: 0, select: 0, br_table: BrTableCost { cost: 0, size_multiplier: 0 } }, sign: 0 }
