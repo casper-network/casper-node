@@ -11,6 +11,7 @@ use std::{
     time::Duration,
 };
 
+use casper_execution_engine::engine_state::engine_config::DEFAULT_ENABLE_ENTITY;
 use either::Either;
 use num::Zero;
 use num_rational::Ratio;
@@ -39,8 +40,8 @@ use casper_types::{
     Block, BlockHash, BlockHeader, BlockV2, CLValue, Chainspec, ChainspecRawBytes,
     ConsensusProtocolName, Deploy, EraId, FeeHandling, Gas, HoldBalanceHandling, Key, Motes,
     NextUpgrade, PricingHandling, PricingMode, ProtocolVersion, PublicKey, RefundHandling, Rewards,
-    SecretKey, StoredValue, SystemEntityRegistry, TimeDiff, Timestamp, Transaction,
-    TransactionHash, TransactionV1Builder, TransactionV1Config, ValidatorConfig, U512,
+    SecretKey, StoredValue, SystemHashRegistry, TimeDiff, Timestamp, Transaction, TransactionHash,
+    TransactionV1Builder, TransactionV1Config, ValidatorConfig, U512,
 };
 
 use crate::{
@@ -896,14 +897,14 @@ impl TestFixture {
             .expect("should not have gs storage error")
             .expect("should have stored value");
 
-        let system_entity_registry: SystemEntityRegistry = match maybe_registry {
+        let system_entity_registry: SystemHashRegistry = match maybe_registry {
             StoredValue::CLValue(cl_value) => CLValue::into_t(cl_value).unwrap(),
             _ => {
                 panic!("expected CLValue")
             }
         };
 
-        *system_entity_registry.get(system_contract_name).unwrap()
+        (*system_entity_registry.get(system_contract_name).unwrap()).into()
     }
 
     #[track_caller]
@@ -2324,7 +2325,8 @@ async fn run_rewards_network_scenario(
                 .expect("failure to read block header")
                 .unwrap()
                 .state_root_hash();
-            let total_supply_req = TotalSupplyRequest::new(state_hash, protocol_version);
+            let total_supply_req =
+                TotalSupplyRequest::new(state_hash, protocol_version, DEFAULT_ENABLE_ENTITY);
             let result = representative_runtime
                 .data_access_layer()
                 .total_supply(total_supply_req);

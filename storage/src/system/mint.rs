@@ -13,7 +13,7 @@ use casper_types::{
         mint::{Error, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
         Caller,
     },
-    Key, PublicKey, SystemEntityRegistry, URef, U512,
+    Key, PublicKey, SystemHashRegistry, URef, U512,
 };
 
 use crate::system::mint::{
@@ -109,7 +109,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
         if !self.allow_unrestricted_transfers() {
             let registry = self
                 .get_system_entity_registry()
-                .unwrap_or_else(|_| SystemEntityRegistry::new());
+                .unwrap_or_else(|_| SystemHashRegistry::new());
             let immediate_caller = self.get_immediate_caller();
             match immediate_caller {
                 Some(Caller::Entity {

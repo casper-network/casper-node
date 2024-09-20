@@ -114,7 +114,7 @@ pub use byte_code::{ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind};
 pub use cl_type::{named_key_type, CLType, CLTyped};
 pub use cl_value::{
     cl_value_to_json, handle_stored_dictionary_value, CLTypeMismatch, CLValue, CLValueError,
-    ChecksumRegistry, DictionaryValue as CLValueDictionary, SystemEntityRegistry,
+    ChecksumRegistry, DictionaryValue as CLValueDictionary, SystemHashRegistry,
 };
 pub use global_state::Pointer;
 

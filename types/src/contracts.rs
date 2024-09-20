@@ -753,6 +753,13 @@ impl ContractPackage {
         self.lock_status.clone()
     }
 
+    pub fn is_locked(&self) -> bool {
+        match self.lock_status {
+            ContractPackageStatus::Locked => true,
+            ContractPackageStatus::Unlocked => false,
+        }
+    }
+
     fn next_contract_version_for(&self, protocol_version: ProtocolVersionMajor) -> ContractVersion {
         let current_version = self
             .versions
@@ -768,6 +775,34 @@ impl ContractPackage {
             .unwrap_or(0);
 
         current_version + 1
+    }
+
+    /// Returns `true` if the given contract version exists and is enabled.
+    pub fn is_version_enabled(&self, contract_version_key: ContractVersionKey) -> bool {
+        !self.disabled_versions.contains(&contract_version_key)
+            && self.versions.contains_key(&contract_version_key)
+    }
+
+    /// Returns all of this contract's enabled contract versions.
+    pub fn enabled_versions(&self) -> ContractVersions {
+        let mut ret = ContractVersions::new();
+        for version in &self.versions {
+            if !self.is_version_enabled(*version.0) {
+                continue;
+            }
+            ret.insert(*version.0, *version.1);
+        }
+        ret
+    }
+
+    /// Return the contract version key for the newest enabled contract version.
+    pub fn current_contract_version(&self) -> Option<ContractVersionKey> {
+        self.enabled_versions().keys().next_back().copied()
+    }
+
+    /// Return the contract hash for the newest enabled contract version.
+    pub fn current_contract_hash(&self) -> Option<ContractHash> {
+        self.enabled_versions().values().next_back().copied()
     }
 
     pub fn insert_contract_version(

@@ -1,7 +1,7 @@
 use crate::tracking_copy::TrackingCopyError;
 use casper_types::{
     system::{AUCTION, HANDLE_PAYMENT, MINT},
-    Digest, Key, ProtocolVersion, SystemEntityRegistry,
+    Digest, Key, ProtocolVersion, SystemHashRegistry,
 };
 
 /// Used to specify is the requestor wants the registry itself or a named entry within it.
@@ -90,7 +90,7 @@ impl SystemEntityRegistryRequest {
 /// The payload of a successful request.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SystemEntityRegistryPayload {
-    All(SystemEntityRegistry),
+    All(SystemHashRegistry),
     EntityKey(Key),
 }
 

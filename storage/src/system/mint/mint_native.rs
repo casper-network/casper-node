@@ -17,7 +17,7 @@ use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
     system::{mint::Error, Caller},
     AccessRights, AddressableEntity, CLTyped, CLValue, Gas, InitiatorAddr, Key, Phase, PublicKey,
-    RuntimeFootprint, StoredValue, SystemEntityRegistry, Transfer, TransferV2, URef, U512,
+    RuntimeFootprint, StoredValue, SystemHashRegistry, Transfer, TransferV2, URef, U512,
 };
 
 impl<S> RuntimeProvider for RuntimeNative<S>
@@ -39,7 +39,7 @@ where
         false
     }
 
-    fn get_system_entity_registry(&self) -> Result<SystemEntityRegistry, ProviderError> {
+    fn get_system_entity_registry(&self) -> Result<SystemHashRegistry, ProviderError> {
         self.tracking_copy()
             .borrow_mut()
             .get_system_entity_registry()

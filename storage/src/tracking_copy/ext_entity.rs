@@ -46,7 +46,7 @@ pub trait TrackingCopyEntityExt<R> {
     /// Gets an addressable entity by hash.
     fn get_runtime_footprint_by_hash(
         &mut self,
-        addressable_entity_hash: AddressableEntityHash,
+        addressable_entity_hash: HashAddr,
     ) -> Result<RuntimeFootprint, Self::Error>;
 
     // /// Gets the entity hash for an account hash.
@@ -184,12 +184,8 @@ where
             Some(StoredValue::Contract(contract)) => {
                 let contract_hash = ContractHash::new(entity_addr.value());
                 Ok(RuntimeFootprint::new_contract_footprint(
-                    contract.named_keys().clone(),
                     contract_hash,
-                    contract.contract_package_hash(),
-                    contract.contract_wasm_hash(),
-                    contract.entry_points().clone().into(),
-                    contract.protocol_version(),
+                    contract,
                 ))
             }
             Some(other) => Err(TrackingCopyError::TypeMismatch(
@@ -204,15 +200,15 @@ where
 
     fn get_runtime_footprint_by_hash(
         &mut self,
-        entity_hash: AddressableEntityHash,
+        entity_hash: HashAddr,
     ) -> Result<RuntimeFootprint, Self::Error> {
         let entity_addr = if self
             .get_system_entity_registry()?
             .has_contract_hash(&entity_hash)
         {
-            EntityAddr::new_system(entity_hash.value())
+            EntityAddr::new_system(entity_hash)
         } else {
-            EntityAddr::new_smart_contract(entity_hash.value())
+            EntityAddr::new_smart_contract(entity_hash)
         };
 
         self.get_runtime_footprint(entity_addr)
@@ -724,7 +720,7 @@ where
             };
             let auction = self.get_runtime_footprint_by_hash(auction_hash)?;
             let auction_access_rights =
-                auction.extract_access_rights(auction_hash.value(), auction.named_keys());
+                auction.extract_access_rights(auction_hash, auction.named_keys());
             (auction.take_named_keys(), auction_access_rights)
         };
         let (mint_named_keys, mint_access_rights) = {
@@ -739,7 +735,7 @@ where
             };
             let mint = self.get_runtime_footprint_by_hash(mint_hash)?;
             let mint_named_keys = mint.named_keys();
-            let mint_access_rights = mint.extract_access_rights(mint_hash.value(), mint_named_keys);
+            let mint_access_rights = mint.extract_access_rights(mint_hash, mint_named_keys);
             (mint.take_named_keys(), mint_access_rights)
         };
 
@@ -755,7 +751,7 @@ where
             };
             let payment = self.get_runtime_footprint_by_hash(payment_hash)?;
             let payment_access_rights =
-                payment.extract_access_rights(payment_hash.value(), &mint_named_keys);
+                payment.extract_access_rights(payment_hash, &mint_named_keys);
             (payment.take_named_keys(), payment_access_rights)
         };
 
@@ -820,7 +816,7 @@ where
                             ));
                         }
                     };
-                    EntityAddr::new_system(hash.value())
+                    EntityAddr::new_system(*hash)
                 };
 
                 let named_keys = self.get_named_keys(entity_addr)?;

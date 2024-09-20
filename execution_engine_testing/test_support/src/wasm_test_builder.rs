@@ -17,7 +17,8 @@ use num_traits::{CheckedMul, Zero};
 use tempfile::TempDir;
 
 use casper_execution_engine::engine_state::{
-    Error, ExecutionEngineV1, WasmV1Request, WasmV1Result, DEFAULT_MAX_QUERY_DEPTH,
+    engine_config::DEFAULT_ENABLE_ENTITY, Error, ExecutionEngineV1, WasmV1Request, WasmV1Result,
+    DEFAULT_MAX_QUERY_DEPTH,
 };
 use casper_storage::{
     data_access_layer::{
@@ -69,7 +70,7 @@ use casper_types::{
     EntityAddr, EntryPoints, EraId, FeeHandling, Gas, HandlePaymentCosts, HoldBalanceHandling,
     InitiatorAddr, Key, KeyTag, MintCosts, Motes, Package, PackageHash, Phase,
     ProtocolUpgradeConfig, ProtocolVersion, PublicKey, RefundHandling, StoredValue,
-    SystemEntityRegistry, TransactionHash, TransactionV1Hash, URef, OS_PAGE_SIZE, U512,
+    SystemHashRegistry, TransactionHash, TransactionV1Hash, URef, OS_PAGE_SIZE, U512,
 };
 
 use crate::{
@@ -309,13 +310,20 @@ impl LmdbWasmTestBuilder {
         );
 
         let max_query_depth = DEFAULT_MAX_QUERY_DEPTH;
-        let global_state = LmdbGlobalState::empty(environment, trie_store, max_query_depth)
-            .expect("should create LmdbGlobalState");
+        let enable_addressable_entity = DEFAULT_ENABLE_ENTITY;
+        let global_state = LmdbGlobalState::empty(
+            environment,
+            trie_store,
+            max_query_depth,
+            DEFAULT_ENABLE_ENTITY,
+        )
+        .expect("should create LmdbGlobalState");
 
         let data_access_layer = Arc::new(DataAccessLayer {
             block_store: BlockStore::new(),
             state: global_state,
             max_query_depth,
+            enable_addressable_entity,
         });
 
         let engine_config = chainspec.engine_config();
@@ -369,8 +377,13 @@ impl LmdbWasmTestBuilder {
             GlobalStateMode::Create(database_flags) => {
                 let trie_store = LmdbTrieStore::new(&environment, None, database_flags)
                     .expect("should open LmdbTrieStore");
-                LmdbGlobalState::empty(Arc::new(environment), Arc::new(trie_store), max_query_depth)
-                    .expect("should create LmdbGlobalState")
+                LmdbGlobalState::empty(
+                    Arc::new(environment),
+                    Arc::new(trie_store),
+                    max_query_depth,
+                    DEFAULT_ENABLE_ENTITY,
+                )
+                .expect("should create LmdbGlobalState")
             }
             GlobalStateMode::Open(post_state_hash) => {
                 let trie_store =
@@ -380,6 +393,7 @@ impl LmdbWasmTestBuilder {
                     Arc::new(trie_store),
                     post_state_hash,
                     max_query_depth,
+                    DEFAULT_ENABLE_ENTITY,
                 )
             }
         };
@@ -388,6 +402,7 @@ impl LmdbWasmTestBuilder {
             block_store: BlockStore::new(),
             state: global_state,
             max_query_depth,
+            enable_addressable_entity: DEFAULT_ENABLE_ENTITY,
         });
         let mut engine_config = chainspec.engine_config();
         engine_config.set_protocol_version(protocol_version);
@@ -597,11 +612,11 @@ where
     fn query_system_entity_registry(
         &self,
         post_state_hash: Option<Digest>,
-    ) -> Option<SystemEntityRegistry> {
+    ) -> Option<SystemHashRegistry> {
         match self.query(post_state_hash, Key::SystemEntityRegistry, &[]) {
             Ok(StoredValue::CLValue(cl_registry)) => {
                 let system_entity_registry =
-                    CLValue::into_t::<SystemEntityRegistry>(cl_registry).unwrap();
+                    CLValue::into_t::<SystemHashRegistry>(cl_registry).unwrap();
                 Some(system_entity_registry)
             }
             Ok(_) => None,
@@ -713,9 +728,11 @@ where
         let post_state = maybe_post_state
             .or(self.post_state_hash)
             .expect("builder must have a post-state hash");
-        let result = self
-            .data_access_layer
-            .total_supply(TotalSupplyRequest::new(post_state, protocol_version));
+        let result = self.data_access_layer.total_supply(TotalSupplyRequest::new(
+            post_state,
+            protocol_version,
+            DEFAULT_ENABLE_ENTITY,
+        ));
         if let TotalSupplyResult::Success { total_supply } = result {
             total_supply
         } else {
@@ -739,6 +756,7 @@ where
                 .round_seigniorage_rate(RoundSeigniorageRateRequest::new(
                     post_state,
                     protocol_version,
+                    DEFAULT_ENABLE_ENTITY,
                 ));
         if let RoundSeigniorageRateResult::Success { rate } = result {
             rate
@@ -809,6 +827,7 @@ where
             balance_hold_interval,
             include_credits,
             credit_cap,
+            DEFAULT_ENABLE_ENTITY,
         );
 
         let bidding_req = BiddingRequest::new(
@@ -971,6 +990,7 @@ where
             self.chainspec.core_config.gas_hold_interval.millis(),
             include_credits,
             credit_cap,
+            DEFAULT_ENABLE_ENTITY,
         )
     }
 
@@ -1179,7 +1199,7 @@ where
     fn get_system_entity_hash(&self, contract_name: &str) -> Option<AddressableEntityHash> {
         self.query_system_entity_registry(self.post_state_hash)?
             .get(contract_name)
-            .copied()
+            .map(|hash| AddressableEntityHash::new(*hash))
     }
 
     /// Returns the [`AddressableEntityHash`] of the "auction" contract, panics if it can't be
@@ -1277,7 +1297,7 @@ where
                 .get_system_entity_registry()
                 .expect("should have registry");
             let mint = *registry.get("mint").expect("should have mint");
-            let mint_addr = EntityAddr::new_system(mint.value());
+            let mint_addr = EntityAddr::new_system(mint);
             let named_keys = tracking_copy
                 .get_named_keys(mint_addr)
                 .expect("should have named keys");
@@ -1829,6 +1849,7 @@ where
             state_root_hash,
             ProtocolVersion::V2_0_0,
             SystemEntityRegistrySelector::auction(),
+            DEFAULT_ENABLE_ENTITY,
         );
         self.system_entity_key(request)
             .into_entity_hash()
@@ -1842,6 +1863,7 @@ where
             state_root_hash,
             ProtocolVersion::V2_0_0,
             SystemEntityRegistrySelector::mint(),
+            DEFAULT_ENABLE_ENTITY,
         );
         self.system_entity_key(request)
             .into_entity_hash()
@@ -1859,6 +1881,7 @@ where
             state_root_hash,
             protocol_version,
             SystemEntityRegistrySelector::handle_payment(),
+            DEFAULT_ENABLE_ENTITY,
         );
         self.system_entity_key(request)
             .into_entity_hash()

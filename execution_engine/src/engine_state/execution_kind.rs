@@ -92,7 +92,7 @@ impl<'a> ExecutionKind<'a> {
             }
             TransactionInvocationTarget::ByPackageHash { addr, version } => {
                 let package_hash = PackageHash::from(*addr);
-                let package = tracking_copy.get_package(package_hash)?;
+                let package = tracking_copy.get_package(*addr)?;
 
                 let maybe_version_key =
                     version.map(|ver| EntityVersionKey::new(protocol_version.value().major, ver));
@@ -132,7 +132,7 @@ impl<'a> ExecutionKind<'a> {
                     _ => return Err(Error::InvalidKeyVariant(*package_key)),
                 };
 
-                let package = tracking_copy.get_package(package_hash)?;
+                let package = tracking_copy.get_package(package_hash.value())?;
 
                 let maybe_version_key =
                     version.map(|ver| EntityVersionKey::new(protocol_version.value().major, ver));

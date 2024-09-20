@@ -27,6 +27,7 @@ pub struct UpgradeRequestBuilder {
     migrate_legacy_contracts: bool,
     maximum_delegation_amount: u64,
     minimum_delegation_amount: u64,
+    enable_addressable_entity: bool,
 }
 
 impl UpgradeRequestBuilder {
@@ -149,6 +150,11 @@ impl UpgradeRequestBuilder {
         self
     }
 
+    pub fn with_enable_addressable_entity(mut self, enable_entity: bool) -> Self {
+        self.enable_addressable_entity = enable_entity;
+        self
+    }
+
     /// Consumes the `UpgradeRequestBuilder` and returns an [`ProtocolUpgradeConfig`].
     pub fn build(self) -> ProtocolUpgradeConfig {
         ProtocolUpgradeConfig::new(
@@ -170,6 +176,7 @@ impl UpgradeRequestBuilder {
             self.migrate_legacy_contracts,
             self.maximum_delegation_amount,
             self.minimum_delegation_amount,
+            self.enable_addressable_entity,
         )
     }
 }
@@ -195,6 +202,7 @@ impl Default for UpgradeRequestBuilder {
             migrate_legacy_contracts: false,
             maximum_delegation_amount: u64::MAX,
             minimum_delegation_amount: 0,
+            enable_addressable_entity: false,
         }
     }
 }

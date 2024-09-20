@@ -10,7 +10,10 @@ use std::{
 
 use crate::{
     global_state::state::StateProvider,
-    system::genesis::{GenesisError, DEFAULT_ADDRESS, NO_WASM},
+    system::{
+        genesis::{GenesisError, DEFAULT_ADDRESS, NO_WASM},
+        protocol_upgrade::ProtocolUpgradeError,
+    },
     AddressGenerator, TrackingCopy,
 };
 use casper_types::{
@@ -46,7 +49,7 @@ use casper_types::{
     ChainspecRegistry, Contract, ContractWasm, ContractWasmHash, Digest, EntityAddr, EntityKind,
     EntityVersions, EntryPointAddr, EntryPointValue, EntryPoints, EraId, GenesisAccount,
     GenesisConfig, Groups, HashAddr, Key, Motes, Package, PackageHash, PackageStatus, Phase,
-    ProtocolVersion, PublicKey, StoredValue, SystemEntityRegistry, URef, U512,
+    ProtocolVersion, PublicKey, StoredValue, SystemHashRegistry, URef, U512,
 };
 
 pub(crate) struct AccountContractInstaller<S>
@@ -77,19 +80,6 @@ where
             Rc::new(RefCell::new(generator))
         };
 
-        let system_account_addr = PublicKey::System.to_account_hash();
-
-        let virtual_system_account = {
-            let named_keys = NamedKeys::new();
-            let purse = URef::new(Default::default(), AccessRights::READ_ADD_WRITE);
-            Account::create(system_account_addr, named_keys, purse)
-        };
-
-        let key = Key::Account(system_account_addr);
-        let value = { StoredValue::Account(virtual_system_account) };
-
-        tracking_copy.borrow_mut().write(key, value);
-
         AccountContractInstaller {
             protocol_version,
             address_generator,
@@ -100,6 +90,41 @@ where
 
     pub(crate) fn finalize(self) -> Effects {
         self.tracking_copy.borrow().effects()
+    }
+
+    fn setup_system_account(&mut self) -> Result<(), Box<GenesisError>> {
+        let system_account_addr = PublicKey::System.to_account_hash();
+
+        let main_purse = {
+            let purse_addr = self.address_generator.borrow_mut().new_hash_address();
+            let balance_cl_value = CLValue::from_t(U512::zero())
+                .map_err(|error| GenesisError::CLValue(error.to_string()))?;
+
+            self.tracking_copy.borrow_mut().write(
+                Key::Balance(purse_addr),
+                StoredValue::CLValue(balance_cl_value),
+            );
+
+            let purse_cl_value = CLValue::unit();
+            let purse_uref = URef::new(purse_addr, AccessRights::READ_ADD_WRITE);
+
+            self.tracking_copy
+                .borrow_mut()
+                .write(Key::URef(purse_uref), StoredValue::CLValue(purse_cl_value));
+            purse_uref
+        };
+
+        let virtual_system_account = {
+            let named_keys = NamedKeys::new();
+
+            Account::create(system_account_addr, named_keys, main_purse)
+        };
+
+        let key = Key::Account(system_account_addr);
+        let value = { StoredValue::Account(virtual_system_account) };
+
+        self.tracking_copy.borrow_mut().write(key, value);
+        Ok(())
     }
 
     fn create_mint(&mut self) -> Result<Key, Box<GenesisError>> {
@@ -673,7 +698,7 @@ where
             .as_cl_value()
             .ok_or_else(|| GenesisError::CLValue("failed to convert to CLValue".to_string()))?
             .to_owned();
-        let mut partial_registry = CLValue::into_t::<SystemEntityRegistry>(partial_cl_registry)
+        let mut partial_registry = CLValue::into_t::<SystemHashRegistry>(partial_cl_registry)
             .map_err(|error| GenesisError::CLValue(error.to_string()))?;
         partial_registry.insert(contract_name.to_string(), contract_hash.value());
         let cl_registry = CLValue::from_t(partial_registry)
@@ -701,11 +726,24 @@ where
         Ok(())
     }
 
+    /// Writes a tracking record to global state for block time / genesis timestamp.
+    fn store_block_time(&self) -> Result<(), Box<GenesisError>> {
+        let cl_value = CLValue::from_t(self.config.genesis_timestamp_millis())
+            .map_err(|error| GenesisError::CLValue(error.to_string()))?;
+
+        self.tracking_copy.borrow_mut().write(
+            Key::BlockGlobal(BlockGlobalAddr::BlockTime),
+            StoredValue::CLValue(cl_value),
+        );
+        Ok(())
+    }
+
     /// Performs a complete system installation.
     pub(crate) fn install(
         &mut self,
         chainspec_registry: ChainspecRegistry,
     ) -> Result<(), Box<GenesisError>> {
+        self.setup_system_account()?;
         // Create mint
         let total_supply_key = self.create_mint()?;
 
@@ -720,11 +758,11 @@ where
         // Create handle payment
         self.create_handle_payment(payment_purse_uref)?;
 
-        // Create standard payment
-        self.create_standard_payment()?;
-
+        // Write chainspec registry.
         self.store_chainspec_registry(chainspec_registry)?;
 
+        // Write block time to global state
+        self.store_block_time()?;
         Ok(())
     }
 }

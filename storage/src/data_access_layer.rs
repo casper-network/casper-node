@@ -103,7 +103,7 @@ pub struct DataAccessLayer<S> {
     pub block_store: BlockStore,
     pub state: S,
     pub max_query_depth: u64,
-    pub enable_entity: bool,
+    pub enable_addressable_entity: bool,
 }
 
 impl<S> DataAccessLayer<S> {
@@ -157,7 +157,7 @@ where
             Some(reader) => Ok(Some(TrackingCopy::new(
                 reader,
                 self.max_query_depth,
-                self.enable_entity,
+                self.enable_addressable_entity,
             ))),
             None => Ok(None),
         }

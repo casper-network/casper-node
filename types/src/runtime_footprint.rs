@@ -142,14 +142,13 @@ impl RuntimeFootprint {
         )
     }
 
-    pub fn new_contract_footprint(
-        named_keys: NamedKeys,
-        contract_hash: ContractHash,
-        contract_package_hash: ContractPackageHash,
-        contract_wasm_hash: ContractWasmHash,
-        entry_points: EntryPoints,
-        protocol_version: ProtocolVersion,
-    ) -> Self {
+    pub fn new_contract_footprint(contract_hash: ContractHash, contract: Contract) -> Self {
+        let contract_package_hash = contract.contract_package_hash();
+        let contract_wasm_hash = contract.contract_wasm_hash();
+        let entry_points = contract.entry_points().clone().into();
+        let protocol_version = contract.protocol_version();
+        let named_keys = contract.take_named_keys();
+
         let runtime_address = RuntimeAddress::new_stored_contract(
             contract_hash.value(),
             contract_package_hash.value(),
@@ -211,6 +210,33 @@ impl RuntimeFootprint {
         )
     }
 
+    pub fn package_hash(&self) -> Option<HashAddr> {
+        match &self.runtime_address {
+            RuntimeAddress::Hash(_) => None,
+            RuntimeAddress::StoredContract {
+                package_hash_addr, ..
+            } => Some(*package_hash_addr),
+        }
+    }
+
+    pub fn associated_keys(&self) -> &AssociatedKeys {
+        &self.associated_keys
+    }
+
+    pub fn wasm_hash(&self) -> Option<HashAddr> {
+        match &self.runtime_address {
+            RuntimeAddress::Hash(_) => None,
+            RuntimeAddress::StoredContract { wasm_hash_addr, .. } => Some(*wasm_hash_addr),
+        }
+    }
+
+    pub fn hash_addr(&self) -> HashAddr {
+        match &self.runtime_address {
+            RuntimeAddress::Hash(hash_addr) => *hash_addr,
+            RuntimeAddress::StoredContract { hash_addr, .. } => *hash_addr,
+        }
+    }
+
     pub fn named_keys(&self) -> &NamedKeys {
         &self.named_keys
     }
@@ -229,6 +255,14 @@ impl RuntimeFootprint {
 
     pub fn main_purse(&self) -> Option<URef> {
         self.main_purse
+    }
+
+    pub fn entry_points(&self) -> &EntryPoints {
+        &self.entry_points
+    }
+
+    pub fn entity_kind(&self) -> EntityKind {
+        self.entity_kind
     }
 
     /// Checks whether all authorization keys are associated with this addressable entity.

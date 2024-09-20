@@ -40,7 +40,7 @@ use casper_types::{
     ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLValue, ChainspecRegistry, Digest,
     EntityAddr, EntityKind, EntityVersions, EntryPointAddr, EntryPointValue, EntryPoints, EraId,
     GenesisAccount, GenesisConfig, Groups, HashAddr, Key, Motes, Package, PackageHash,
-    PackageStatus, Phase, ProtocolVersion, PublicKey, StoredValue, SystemEntityRegistry, Tagged,
+    PackageStatus, Phase, ProtocolVersion, PublicKey, StoredValue, SystemHashRegistry, Tagged,
     URef, U512,
 };
 
@@ -781,7 +781,7 @@ where
             })?
             .into_cl_value()
             .ok_or_else(|| GenesisError::CLValue("failed to convert to CLValue".to_string()))?;
-        let mut partial_registry = CLValue::into_t::<SystemEntityRegistry>(partial_cl_registry)
+        let mut partial_registry = CLValue::into_t::<SystemHashRegistry>(partial_cl_registry)
             .map_err(|error| GenesisError::CLValue(error.to_string()))?;
         partial_registry.insert(contract_name.to_string(), contract_hash);
         let cl_registry = CLValue::from_t(partial_registry)

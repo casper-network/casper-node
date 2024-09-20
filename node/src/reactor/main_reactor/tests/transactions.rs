@@ -239,13 +239,18 @@ fn get_entity_addr_from_account_hash(
         err => panic!("Expected QueryResult::Success but got {:?}", err),
     };
 
-    result
+    let key = result
         .as_cl_value()
         .expect("should have a CLValue")
         .to_t::<Key>()
-        .expect("should have a Key")
-        .as_entity_addr()
-        .expect("should have an EntityAddr")
+        .expect("should have a Key");
+
+    match key {
+        Key::Account(account_has) => EntityAddr::Account(account_has.value()),
+        Key::Hash(hash) => EntityAddr::SmartContract(hash),
+        Key::AddressableEntity(addr) => addr,
+        _ => panic!("unexpected key"),
+    }
 }
 
 fn get_entity(
@@ -1107,7 +1112,8 @@ impl SingleTransactionTestCase {
             .unwrap()
             .state_root_hash();
 
-        let total_supply_req = TotalSupplyRequest::new(state_hash, protocol_version);
+        let total_supply_req =
+            TotalSupplyRequest::new(state_hash, protocol_version, DEFAULT_ENABLE_ENTITY);
         let result = runner
             .main_reactor()
             .contract_runtime()

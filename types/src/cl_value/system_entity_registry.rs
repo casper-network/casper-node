@@ -14,13 +14,13 @@ use crate::{
 
 /// The system entity registry.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Debug)]
-pub struct SystemEntityRegistry(BTreeMap<String, HashAddr>);
+pub struct SystemHashRegistry(BTreeMap<String, HashAddr>);
 
-impl SystemEntityRegistry {
+impl SystemHashRegistry {
     /// Returns a new `SystemEntityRegistry`.
     #[allow(clippy::new_without_default)] // This empty `new()` will be replaced in the future.
     pub fn new() -> Self {
-        SystemEntityRegistry(BTreeMap::new())
+        SystemHashRegistry(BTreeMap::new())
     }
 
     /// Inserts a contract's details into the registry.
@@ -51,7 +51,7 @@ impl SystemEntityRegistry {
     }
 }
 
-impl ToBytes for SystemEntityRegistry {
+impl ToBytes for SystemHashRegistry {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         self.0.to_bytes()
     }
@@ -61,14 +61,14 @@ impl ToBytes for SystemEntityRegistry {
     }
 }
 
-impl FromBytes for SystemEntityRegistry {
+impl FromBytes for SystemHashRegistry {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (inner, remainder) = BTreeMap::from_bytes(bytes)?;
-        Ok((SystemEntityRegistry(inner), remainder))
+        Ok((SystemHashRegistry(inner), remainder))
     }
 }
 
-impl CLTyped for SystemEntityRegistry {
+impl CLTyped for SystemHashRegistry {
     fn cl_type() -> CLType {
         BTreeMap::<String, AddressableEntityHash>::cl_type()
     }
@@ -80,7 +80,7 @@ mod tests {
 
     #[test]
     fn bytesrepr_roundtrip() {
-        let mut system_entity_registry = SystemEntityRegistry::new();
+        let mut system_entity_registry = SystemHashRegistry::new();
         system_entity_registry.insert("a".to_string(), [9; 32]);
         bytesrepr::test_serialization_roundtrip(&system_entity_registry);
     }
@@ -89,12 +89,12 @@ mod tests {
     fn bytesrepr_transparent() {
         // this test ensures that the serialization is not affected by the wrapper, because
         // this data is deserialized in other places as a BTree, e.g. GetAuctionInfo in the sidecar
-        let mut system_entity_registry = SystemEntityRegistry::new();
+        let mut system_entity_registry = SystemHashRegistry::new();
         system_entity_registry.insert("a".to_string(), [9; 32]);
         let serialized =
             ToBytes::to_bytes(&system_entity_registry).expect("Unable to serialize data");
         let deserialized: BTreeMap<String, HashAddr> =
             bytesrepr::deserialize_from_slice(serialized).expect("Unable to deserialize data");
-        assert_eq!(system_entity_registry, SystemEntityRegistry(deserialized));
+        assert_eq!(system_entity_registry, SystemHashRegistry(deserialized));
     }
 }

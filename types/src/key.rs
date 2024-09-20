@@ -911,12 +911,14 @@ impl Key {
     pub fn into_entity_hash_addr(self) -> Option<HashAddr> {
         match self {
             Key::AddressableEntity(entity_addr) => Some(entity_addr.value()),
+            Key::Account(account_hash) => Some(account_hash.value()),
+            Key::Hash(hash) => Some(hash),
             _ => None,
         }
     }
 
     // /// Returns [`EntityAddr`] of `self` if `self` is of type [`Key::AddressableEntity`],
-    // otherwise /// returns `None`.
+    // ///  otherwise returns `None`.
     // pub fn as_entity_addr(&self) -> Option<EntityAddr> {
     //     match self {
     //         Key::AddressableEntity(addr) => Some(*addr),

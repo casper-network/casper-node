@@ -1,7 +1,7 @@
 use crate::system::error::ProviderError;
 use casper_types::{
     account::AccountHash, system::Caller, AddressableEntity, Key, Phase, RuntimeFootprint,
-    SystemEntityRegistry, URef, U512,
+    SystemHashRegistry, URef, U512,
 };
 
 /// Provider of runtime host functionality.
@@ -15,7 +15,7 @@ pub trait RuntimeProvider {
     fn is_called_from_standard_payment(&self) -> bool;
 
     /// Get system entity registry.
-    fn get_system_entity_registry(&self) -> Result<SystemEntityRegistry, ProviderError>;
+    fn get_system_entity_registry(&self) -> Result<SystemHashRegistry, ProviderError>;
 
     fn read_addressable_entity_by_account_hash(
         &mut self,

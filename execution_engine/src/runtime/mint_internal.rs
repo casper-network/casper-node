@@ -15,7 +15,7 @@ use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
     system::{mint::Error, Caller},
     AddressableEntity, CLTyped, CLValue, Key, Phase, RuntimeFootprint, StoredValue,
-    SystemEntityRegistry, URef, U512,
+    SystemHashRegistry, URef, U512,
 };
 
 use super::Runtime;
@@ -50,7 +50,7 @@ where
         self.context.phase() == Phase::Payment && self.module.is_none()
     }
 
-    fn get_system_entity_registry(&self) -> Result<SystemEntityRegistry, ProviderError> {
+    fn get_system_entity_registry(&self) -> Result<SystemHashRegistry, ProviderError> {
         self.context.system_entity_registry().map_err(|err| {
             error!(%err, "unable to obtain system entity registry during transfer");
             ProviderError::SystemEntityRegistry

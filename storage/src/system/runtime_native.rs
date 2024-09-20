@@ -4,9 +4,10 @@ use crate::{
     AddressGenerator, TrackingCopy,
 };
 use casper_types::{
-    account::AccountHash, addressable_entity::NamedKeys, AddressableEntity, Chainspec,
-    ContextAccessRights, EntityAddr, FeeHandling, Key, Phase, ProtocolVersion, PublicKey,
-    RefundHandling, RuntimeFootprint, StoredValue, TransactionHash, Transfer, URef, U512,
+    account::AccountHash, addressable_entity::NamedKeys, AddressableEntity, AddressableEntityHash,
+    Chainspec, ContextAccessRights, EntityAddr, FeeHandling, Key, Phase, ProtocolVersion,
+    PublicKey, RefundHandling, RuntimeFootprint, StoredValue, TransactionHash, Transfer, URef,
+    U512,
 };
 use num_rational::Ratio;
 use std::{cell::RefCell, collections::BTreeSet, rc::Rc};
@@ -376,15 +377,15 @@ where
             }
         };
         let entity_key = if config.enable_entity {
-            Key::AddressableEntity(EntityAddr::System(hash.value()))
+            Key::AddressableEntity(EntityAddr::System(hash))
         } else {
-            Key::Hash(hash.value())
+            Key::Hash(hash)
         };
         let runtime_footprint = tracking_copy
             .borrow_mut()
             .get_runtime_footprint_by_hash(hash)?;
         let access_rights =
-            runtime_footprint.extract_access_rights(hash.value(), runtime_footprint.named_keys());
+            runtime_footprint.extract_access_rights(hash, runtime_footprint.named_keys());
         let named_keys = runtime_footprint.named_keys().clone();
         let address = PublicKey::System.to_account_hash();
         let remaining_spending_limit = U512::MAX; // system has no spending limit

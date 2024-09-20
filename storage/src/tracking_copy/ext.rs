@@ -26,9 +26,9 @@ use casper_types::{
         MINT,
     },
     BlockGlobalAddr, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash, CLValue, ChecksumRegistry,
-    Contract, EntityAddr, EntryPointValue, EntryPoints, HoldBalanceHandling, HoldsEpoch, Key,
-    Motes, Package, PackageHash, StoredValue, StoredValueTypeMismatch, SystemEntityRegistry, URef,
-    URefAddr, U512,
+    Contract, EntityAddr, EntryPointValue, EntryPoints, HashAddr, HoldBalanceHandling, HoldsEpoch,
+    Key, Motes, Package, PackageHash, StoredValue, StoredValueTypeMismatch, SystemHashRegistry,
+    URef, URefAddr, U512,
 };
 
 /// Higher-level operations on the state via a `TrackingCopy`.
@@ -103,14 +103,14 @@ pub trait TrackingCopyExt<R> {
     fn get_v1_entry_points(&mut self, entity_addr: EntityAddr) -> Result<EntryPoints, Self::Error>;
 
     /// Gets a package by hash.
-    fn get_package(&mut self, package_hash: PackageHash) -> Result<Package, Self::Error>;
+    fn get_package(&mut self, package_hash: HashAddr) -> Result<Package, Self::Error>;
     fn get_legacy_contract(
         &mut self,
         legacy_contract: ContractHash,
     ) -> Result<Contract, Self::Error>;
 
     /// Gets the system entity registry.
-    fn get_system_entity_registry(&self) -> Result<SystemEntityRegistry, Self::Error>;
+    fn get_system_entity_registry(&self) -> Result<SystemHashRegistry, Self::Error>;
 
     /// Gets the system checksum registry.
     fn get_checksum_registry(&mut self) -> Result<Option<ChecksumRegistry>, Self::Error>;
@@ -167,12 +167,12 @@ where
 
         let system_contract_registry = self.get_system_entity_registry()?;
 
-        let entity_hash = system_contract_registry.get(MINT).ok_or_else(|| {
+        let entity_hash = *system_contract_registry.get(MINT).ok_or_else(|| {
             error!("Missing system mint contract hash");
             TrackingCopyError::MissingSystemContractHash(MINT.to_string())
         })?;
 
-        let named_keys = self.get_named_keys(EntityAddr::System(entity_hash.value()))?;
+        let named_keys = self.get_named_keys(EntityAddr::System(entity_hash))?;
 
         // get the handling
         let handling = {
@@ -627,21 +627,18 @@ where
         Ok(entry_points_v1)
     }
 
-    fn get_package(&mut self, package_hash: PackageHash) -> Result<Package, Self::Error> {
-        let key = package_hash.into();
+    fn get_package(&mut self, package_hash: HashAddr) -> Result<Package, Self::Error> {
+        let key = Key::Package(package_hash);
         match self.read(&key)? {
             Some(StoredValue::Package(contract_package)) => Ok(contract_package),
             Some(other) => Err(Self::Error::TypeMismatch(StoredValueTypeMismatch::new(
                 "Package".to_string(),
                 other.type_name(),
             ))),
-            None => match self.read(&Key::Hash(package_hash.value()))? {
+            None => match self.read(&Key::Hash(package_hash))? {
                 Some(StoredValue::ContractPackage(contract_package)) => {
+                    println!("got contract package converting but not migrating to package");
                     let package: Package = contract_package.into();
-                    self.write(
-                        Key::Package(package_hash.value()),
-                        StoredValue::Package(package.clone()),
-                    );
                     Ok(package)
                 }
                 Some(other) => Err(TrackingCopyError::TypeMismatch(
@@ -667,10 +664,10 @@ where
         }
     }
 
-    fn get_system_entity_registry(&self) -> Result<SystemEntityRegistry, Self::Error> {
+    fn get_system_entity_registry(&self) -> Result<SystemHashRegistry, Self::Error> {
         match self.read(&Key::SystemEntityRegistry)? {
             Some(StoredValue::CLValue(registry)) => {
-                let registry: SystemEntityRegistry =
+                let registry: SystemHashRegistry =
                     CLValue::into_t(registry).map_err(Self::Error::from)?;
                 Ok(registry)
             }

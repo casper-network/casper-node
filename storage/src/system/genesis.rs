@@ -44,7 +44,7 @@ use casper_types::{
     ChainspecRegistry, Digest, EntityAddr, EntityVersions, EntryPointAddr, EntryPointValue,
     EntryPoints, EraId, FeeHandling, GenesisAccount, GenesisConfig, GenesisConfigBuilder, Groups,
     HashAddr, Key, Motes, Package, PackageHash, PackageStatus, Phase, ProtocolVersion, PublicKey,
-    RefundHandling, StoredValue, SystemConfig, SystemEntityRegistry, Tagged, TimeDiff, URef,
+    RefundHandling, StoredValue, SystemConfig, SystemHashRegistry, Tagged, TimeDiff, URef,
     WasmConfig, U512,
 };
 
