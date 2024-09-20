@@ -263,6 +263,9 @@ impl Display for InvalidDeploy {
                 "received a deploy with gas price tolerance {} but this chain will only go as low as {}",
                 provided_gas_price_tolerance, min_gas_price_tolerance
             ),
+            InvalidDeploy::InvalidRuntime => {
+                write!(formatter, "invalid runtime",)
+            }
         }
     }
 }
@@ -298,7 +301,8 @@ impl StdError for InvalidDeploy {
             | InvalidDeploy::UnableToCalculateGasLimit
             | InvalidDeploy::GasLimitNotSupported
             | InvalidDeploy::UnableToCalculateGasCost
-            | InvalidDeploy::GasPriceToleranceTooLow { .. } => None,
+            | InvalidDeploy::GasPriceToleranceTooLow { .. }
+            | InvalidDeploy::InvalidRuntime => None,
         }
     }
 }

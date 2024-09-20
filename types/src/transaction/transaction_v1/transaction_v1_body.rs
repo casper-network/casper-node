@@ -297,7 +297,7 @@ impl TransactionV1Body {
         if args_length > max_args_length as usize {
             debug!(
                 args_length,
-                max_args_length = max_args_length@u,
+                max_args_length = max_args_length,
                 "transaction runtime args excessive size"
             );
             return Err(InvalidTransactionV1::ExcessiveArgsLength {

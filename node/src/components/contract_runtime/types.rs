@@ -1,5 +1,6 @@
 use std::{collections::BTreeMap, sync::Arc};
 
+use casper_executor_wasm::{WasmV2Error, WasmV2Result};
 use casper_types::{execution::PaymentInfo, InitiatorAddr, Transfer};
 use datasize::DataSize;
 use serde::Serialize;
@@ -322,6 +323,35 @@ impl ExecutionArtifactBuilder {
         };
         let execution_result = ExecutionResult::V2(result);
         ExecutionArtifact::new(self.hash, self.header, execution_result, self.messages)
+    }
+
+    /// Adds the error message from a `InvalidRequest` to the artifact.
+    pub(crate) fn with_invalid_wasm_v2_request(
+        &mut self,
+        ire: &casper_executor_wasm::InvalidRequest,
+    ) -> &mut Self {
+        if self.error_message.is_none() {
+            self.error_message = Some(format!("{}", ire));
+        }
+        self
+    }
+
+    /// Adds the result from a `WasmV2Result` to the artifact.
+    pub(crate) fn with_wasm_v2_result(&mut self, result: WasmV2Result) -> &mut Self {
+        self.with_added_consumed(Gas::from(result.gas_usage().gas_spent()));
+
+        // TODO: Use system message to notify about contract hash
+
+        self.with_appended_effects(result.effects().clone());
+
+        self
+    }
+
+    /// Adds the error message from a `WasmV2Error` to the artifact.
+    #[inline]
+    pub(crate) fn with_wasm_v2_error(&mut self, error: WasmV2Error) -> &mut Self {
+        self.with_error_message(error.to_string());
+        self
     }
 }
 

@@ -1,8 +1,6 @@
 use std::{collections::BTreeMap, convert::TryInto, sync::Arc, time::Instant};
 
-use bytes::Bytes;
-use casper_executor_wasm::{install::InstallContractRequestBuilder, ExecutorV2};
-use casper_executor_wasm_interface::executor::{ExecuteRequestBuilder, ExecutionKind};
+use casper_executor_wasm::{ExecutorV2, WasmV2Request};
 use itertools::Itertools;
 use tracing::{debug, error, info, trace, warn};
 
@@ -24,16 +22,14 @@ use casper_storage::{
         StateProvider, StateReader,
     },
     system::runtime_native::Config as NativeRuntimeConfig,
-    AddressGeneratorBuilder,
 };
 use casper_types::{
     bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH},
     execution::{Effects, ExecutionResult, TransformKindV2, TransformV2},
     system::handle_payment::ARG_AMOUNT,
     BlockHash, BlockHeader, BlockTime, BlockV2, CLValue, Chainspec, ChecksumRegistry, Digest,
-    EntityAddr, EraEndV2, EraId, FeeHandling, Gas, GasLimited, Key, ProtocolVersion, PublicKey,
-    RefundHandling, Transaction, TransactionEntryPoint, TransactionInvocationTarget,
-    TransactionTarget, AUCTION_LANE_ID, MINT_LANE_ID, U512,
+    EraEndV2, EraId, FeeHandling, Gas, GasLimited, Key, ProtocolVersion, PublicKey, RefundHandling,
+    Transaction, AUCTION_LANE_ID, MINT_LANE_ID, U512,
 };
 
 use super::{
@@ -368,217 +364,33 @@ pub fn execute_finalized_block(
                         }
                     };
                 }
-                _ if is_v2_wasm => {
-                    let gas_limit: u64 = gas_limit
-                        .value()
-                        .try_into()
-                        .map_err(|_| BlockExecutionError::InvalidGasLimit(gas_limit.value()))?;
+                _ if is_v2_wasm => match WasmV2Request::new(
+                    gas_limit,
+                    chainspec.network_config.name.clone(),
+                    &transaction,
+                ) {
+                    Ok(wasm_v2_request) => {
+                        let result = execution_engine_v2.execute_wasm_v2_request(
+                            state_root_hash,
+                            &scratch_state,
+                            wasm_v2_request,
+                        );
+                        match result {
+                            Ok(wasm_v2_result) => {
+                                state_root_hash = wasm_v2_result.state_root_hash();
 
-                    // TODO: Pass transaction hash to executor
-                    // TODO: Hide the complexity similar to `!is_v2_wasm` branch
-                    // WasmV2Request
-                    let address_generator = AddressGeneratorBuilder::default()
-                        .seed_with(transaction_hash.as_ref())
-                        .build();
-
-                    // don't panic, return error that similar to V1Request
-                    let transaction_v1 = match transaction.as_transaction_v1() {
-                        Some(transaction_v1) => transaction_v1,
-                        None => {
-                            return Err(BlockExecutionError::InvalidTransactionVariant);
-                        }
-                    };
-
-                    // If it's wrong args variant => invalid request => penalty payment
-                    let input_data = transaction_v1.body().args().clone().into_bytesrepr(); // TODO: Make non optional
-                    let value = transaction_v1.body().value();
-
-                    enum Target {
-                        Install {
-                            module_bytes: Bytes,
-                            entry_point: String,
-                        },
-                        Session {
-                            module_bytes: Bytes,
-                        },
-                        Stored {
-                            id: TransactionInvocationTarget,
-                            entry_point: String,
-                        },
-                    }
-
-                    let target = match transaction_v1.body().target() {
-                        TransactionTarget::Native => todo!(), //
-                        TransactionTarget::Stored { id, runtime: _ } => {
-                            match transaction_v1.body().entry_point() {
-                                TransactionEntryPoint::Custom(entry_point) => Target::Stored {
-                                    id: id.clone(),
-                                    entry_point: entry_point.clone(),
-                                },
-                                _ => todo!(),
+                                artifact_builder.with_wasm_v2_result(wasm_v2_result);
                             }
-                        }
-                        TransactionTarget::Session {
-                            module_bytes,
-                            runtime: _,
-                        } => match transaction_v1.body().entry_point() {
-                            TransactionEntryPoint::Call => Target::Session {
-                                module_bytes: module_bytes.clone().take_inner().into(),
-                            },
-                            TransactionEntryPoint::Custom(entry_point) => Target::Install {
-                                module_bytes: module_bytes.clone().take_inner().into(),
-                                entry_point: entry_point.to_string(),
-                            },
-                            _ => todo!(),
-                        },
-                    };
-
-                    info!(%transaction_hash, "executing v1 contract");
-
-                    match target {
-                        Target::Install {
-                            module_bytes,
-                            entry_point,
-                        } => {
-                            let mut builder = InstallContractRequestBuilder::default();
-
-                            let entry_point = (!entry_point.is_empty()).then_some(entry_point);
-
-                            match entry_point {
-                                Some(entry_point) => {
-                                    builder = builder.with_entry_point(entry_point.clone());
-
-                                    if let Some(input_data) = input_data {
-                                        builder =
-                                            builder.with_input(input_data.take_inner().into());
-                                    }
-                                }
-                                None => {
-                                    assert!(
-                                        input_data.is_none()
-                                            || matches!(input_data, Some(input_data) if input_data.is_empty())
-                                    );
-                                }
-                            }
-
-                            let request = builder
-                                .with_initiator(initiator_addr.account_hash())
-                                .with_gas_limit(gas_limit)
-                                .with_transaction_hash(transaction_hash)
-                                .with_wasm_bytes(module_bytes)
-                                .with_address_generator(address_generator)
-                                .with_transferred_value(value)
-                                .with_chain_name(chainspec.network_config.name.clone())
-                                .with_block_time(transaction.timestamp())
-                                .build()
-                                .expect("should build");
-
-                            match execution_engine_v2.install_contract(
-                                state_root_hash,
-                                &scratch_state,
-                                request,
-                            ) {
-                                Ok(result) => {
-                                    info!(
-                                        contract_hash=base16::encode_lower(&result.contract_hash()),
-                                        pre_state_root_hash=%state_root_hash,
-                                        post_state_root_hash=%result.post_state_hash(),
-                                        ?result,
-                                        "instantiate contract result");
-
-                                    // Update state root hash.
-                                    state_root_hash = result.post_state_hash();
-
-                                    artifact_builder.with_added_consumed(Gas::from(
-                                        result.gas_usage().gas_spent(),
-                                    ));
-                                    // TODO: Use system message to notify about contract hash
-                                    artifact_builder
-                                        .with_appended_effects(result.effects().clone());
-                                }
-                                Err(error) => {
-                                    error!(?error, "create contract error");
-                                    artifact_builder.with_error_message(error.to_string());
-                                    // TODO: Gas consumed for failed instantiation.
-                                }
-                            }
-                        }
-                        Target::Session { .. } | Target::Stored { .. } => {
-                            let mut builder = ExecuteRequestBuilder::default();
-
-                            let initiator_account_hash = &initiator_addr.account_hash();
-
-                            let initiator_key = Key::Account(*initiator_account_hash);
-
-                            builder = builder
-                                .with_address_generator(address_generator)
-                                .with_gas_limit(gas_limit)
-                                .with_transaction_hash(transaction_hash)
-                                .with_initiator(*initiator_account_hash)
-                                .with_caller_key(initiator_key)
-                                // TODO: Callee is unnecessary as it can be derived from the
-                                // execution target inside the executor
-                                .with_callee_key(initiator_key)
-                                .with_chain_name(chainspec.network_config.name.clone())
-                                .with_transferred_value(value)
-                                .with_block_time(transaction.timestamp());
-
-                            if let Some(input_data) = input_data.clone() {
-                                builder =
-                                    builder.with_input(input_data.clone().take_inner().into());
-                            }
-
-                            let execution_kind = match target {
-                                Target::Session { module_bytes } => {
-                                    ExecutionKind::SessionBytes(module_bytes)
-                                }
-                                Target::Stored {
-                                    id: TransactionInvocationTarget::ByHash(address),
-                                    entry_point,
-                                } => ExecutionKind::Stored {
-                                    address: EntityAddr::SmartContract(address),
-                                    entry_point: entry_point.clone(),
-                                },
-                                Target::Stored { id, entry_point } => {
-                                    todo!("Unsupported target {entry_point} {id:?}")
-                                }
-                                Target::Install { .. } => unreachable!(),
-                            };
-
-                            builder = builder.with_target(execution_kind);
-
-                            let request = builder.build().expect("should build");
-
-                            match execution_engine_v2.execute_with_provider(
-                                state_root_hash,
-                                &scratch_state,
-                                request,
-                            ) {
-                                Ok(result) => {
-                                    info!(
-                                        pre_state_root_hash=%state_root_hash,
-                                        post_state_root_hash=%result.post_state_hash(),
-                                        ?result,
-                                        "execute contract result");
-
-                                    // Update state root hash.
-                                    state_root_hash = result.post_state_hash();
-
-                                    artifact_builder.with_added_consumed(Gas::from(
-                                        result.gas_usage().gas_spent(),
-                                    ));
-
-                                    artifact_builder
-                                        .with_appended_effects(result.effects().clone());
-                                }
-                                Err(error) => {
-                                    error!(?error, "execute contract error");
-                                    artifact_builder.with_error_message(error.to_string());
-                                }
+                            Err(wasm_v2_error) => {
+                                artifact_builder.with_wasm_v2_error(wasm_v2_error);
                             }
                         }
                     }
-                }
+                    Err(ire) => {
+                        debug!(%transaction_hash, ?lane, ?ire, "unable to get wasm v2 request");
+                        artifact_builder.with_invalid_wasm_v2_request(&ire);
+                    }
+                },
                 _ if !is_v2_wasm => {
                     let wasm_v1_start = Instant::now();
                     match WasmV1Request::new_session(

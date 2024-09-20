@@ -78,7 +78,8 @@ impl PricingMode {
         }
     }
 
-    fn is_standard_payment(&self) -> bool {
+    /// Returns standard payment flag, if it is a `PaymentLimited` variant.
+    pub fn is_standard_payment(&self) -> bool {
         match self {
             PricingMode::PaymentLimited {
                 standard_payment, ..
