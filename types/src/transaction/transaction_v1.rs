@@ -225,6 +225,12 @@ impl TransactionV1 {
         self.body().is_install_or_upgrade()
     }
 
+    /// Returns true if this transaction is utilizing a standard payment.
+    #[inline]
+    pub fn is_standard_payment(&self) -> bool {
+        self.header().pricing_mode().is_standard_payment()
+    }
+
     /// Returns the transaction category.
     pub fn transaction_lane(&self) -> u8 {
         self.body.transaction_lane()
@@ -404,13 +410,6 @@ impl TransactionV1 {
                 // Native transactions are config compliant by default
             }
         }
-
-        //
-        // if v2 runtime is turned off, and the transaction targets v2 runtime, then it's not
-        // compliant if v1 runtime is turned off, and the transaction targets v1 runtime,
-        // then it's not compliant
-        //
-        // if v2 && pricing mode is not standard => it's not compliant
 
         self.is_valid_size(
             transaction_config

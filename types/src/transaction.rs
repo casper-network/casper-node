@@ -334,16 +334,7 @@ impl Transaction {
     pub fn is_standard_payment(&self) -> bool {
         match self {
             Transaction::Deploy(deploy) => deploy.payment().is_standard_payment(Phase::Payment),
-            Transaction::V1(v1) => {
-                if let PricingMode::PaymentLimited {
-                    standard_payment, ..
-                } = v1.pricing_mode()
-                {
-                    *standard_payment
-                } else {
-                    true
-                }
-            }
+            Transaction::V1(v1) => v1.is_standard_payment(),
         }
     }
 

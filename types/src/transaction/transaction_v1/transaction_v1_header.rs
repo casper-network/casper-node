@@ -101,6 +101,7 @@ impl TransactionV1Header {
     }
 
     /// Returns the pricing mode for the transaction.
+    #[inline]
     pub fn pricing_mode(&self) -> &PricingMode {
         &self.pricing_mode
     }
