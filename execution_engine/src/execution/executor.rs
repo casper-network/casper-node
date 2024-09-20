@@ -7,9 +7,8 @@ use casper_storage::{
 };
 use casper_types::{
     account::AccountHash, addressable_entity::NamedKeys, contract_messages::Messages,
-    execution::Effects, AddressableEntity, AddressableEntityHash, BlockTime, ContextAccessRights,
-    EntityAddr, EntryPointType, Gas, Key, Phase, ProtocolVersion, RuntimeArgs, RuntimeFootprint,
-    StoredValue, Tagged, TransactionHash, U512,
+    execution::Effects, BlockTime, ContextAccessRights, EntityAddr, EntryPointType, Gas, Key,
+    Phase, ProtocolVersion, RuntimeArgs, RuntimeFootprint, StoredValue, TransactionHash, U512,
 };
 
 use crate::{

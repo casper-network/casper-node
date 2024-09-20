@@ -7,8 +7,8 @@ use tracing::{debug, error, info};
 
 use casper_types::{
     addressable_entity::{
-        ActionThresholds, AssociatedKeys, EntityKind, EntityKindTag, MessageTopics, NamedKeyAddr,
-        NamedKeyValue, NamedKeys, Weight,
+        ActionThresholds, AssociatedKeys, EntityKind, MessageTopics, NamedKeyAddr, NamedKeyValue,
+        NamedKeys, Weight,
     },
     bytesrepr::{self, ToBytes},
     contracts::ContractHash,
@@ -27,7 +27,7 @@ use casper_types::{
     ByteCodeHash, ByteCodeKind, CLValue, CLValueError, Contract, Digest, EntityAddr,
     EntityVersions, EntryPointAddr, EntryPointValue, EntryPoints, FeeHandling, Groups, HashAddr,
     Key, KeyTag, Package, PackageHash, PackageStatus, Phase, ProtocolUpgradeConfig,
-    ProtocolVersion, PublicKey, RuntimeFootprint, StoredValue, SystemHashRegistry, URef, U512,
+    ProtocolVersion, PublicKey, StoredValue, SystemHashRegistry, URef, U512,
 };
 
 use crate::{
@@ -986,7 +986,6 @@ where
         if let Some(new_validator_slots) = self.config.new_validator_slots() {
             debug!(%new_validator_slots, "handle new validator slots");
             // if new total validator slots is provided, update auction contract state
-            let auction_addr = EntityAddr::new_system(auction);
             let auction_named_keys = self.get_named_keys(auction)?;
 
             let validator_slots_key = auction_named_keys
@@ -1007,8 +1006,6 @@ where
     ) -> Result<(), ProtocolUpgradeError> {
         if let Some(new_auction_delay) = self.config.new_auction_delay() {
             debug!(%new_auction_delay, "handle new auction delay");
-            let auction_addr = EntityAddr::new_system(auction);
-
             let auction_named_keys = self.get_named_keys(auction)?;
 
             let auction_delay_key = auction_named_keys
@@ -1029,7 +1026,6 @@ where
     ) -> Result<(), ProtocolUpgradeError> {
         if let Some(new_locked_funds_period) = self.config.new_locked_funds_period_millis() {
             debug!(%new_locked_funds_period,"handle new locked funds period millis");
-            let auction_addr = EntityAddr::new_system(auction);
 
             let auction_named_keys = self.get_named_keys(auction)?;
 
@@ -1053,7 +1049,6 @@ where
         // based on the previous unbonding delay.
         if let Some(new_unbonding_delay) = self.config.new_unbonding_delay() {
             debug!(%new_unbonding_delay,"handle new unbonding delay");
-            let auction_addr = EntityAddr::new_system(auction);
 
             let auction_named_keys = self.get_named_keys(auction)?;
 
@@ -1079,8 +1074,6 @@ where
                 let (numer, denom) = new_round_seigniorage_rate.into();
                 Ratio::new(numer.into(), denom.into())
             };
-
-            let mint_addr = EntityAddr::new_system(mint);
 
             let mint_named_keys = self.get_named_keys(mint)?;
 

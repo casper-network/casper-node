@@ -18,7 +18,7 @@ use tracing::{debug, error, info, warn};
 
 use casper_types::{
     account::AccountHash,
-    addressable_entity::{EntityKindTag, NamedKeys},
+    addressable_entity::NamedKeys,
     bytesrepr::{self, ToBytes},
     execution::{Effects, TransformError, TransformInstruction, TransformKindV2, TransformV2},
     global_state::TrieMerkleProof,
@@ -1230,8 +1230,6 @@ pub trait StateProvider {
             }
         };
 
-        let named_keys = footprint.named_keys().clone();
-
         let mut runtime = RuntimeNative::new(
             config,
             protocol_version,
@@ -1240,7 +1238,6 @@ pub trait StateProvider {
             source_account_hash,
             entity_key,
             footprint,
-            named_keys,
             entity_access_rights,
             U512::MAX,
             Phase::Session,
@@ -2068,7 +2065,6 @@ pub trait StateProvider {
                 EntityAddr::Account(hash) => Key::Account(AccountHash::new(hash)),
             }
         };
-        let named_keys = runtime_footprint.named_keys().clone();
         let id = Id::Transaction(request.transaction_hash());
         // IMPORTANT: this runtime _must_ use the payer's context.
         let mut runtime = RuntimeNative::new(
@@ -2079,7 +2075,6 @@ pub trait StateProvider {
             source_account_hash,
             entity_key,
             runtime_footprint.clone(),
-            named_keys,
             entity_access_rights,
             remaining_spending_limit,
             Phase::Session,

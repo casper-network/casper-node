@@ -167,6 +167,7 @@ gas_hold_interval = '24 hours'
 # List of public keys of administrator accounts. Setting this option makes only on private chains which require
 # administrator accounts for regulatory reasons.
 administrators = []
+enable_addressable_entity = false
 
 [highway]
 # Highway dynamically chooses its round length, between minimum_block_time and maximum_round_length.

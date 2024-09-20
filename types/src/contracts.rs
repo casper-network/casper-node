@@ -1087,7 +1087,7 @@ impl From<crate::addressable_entity::EntryPoints> for EntryPoints {
         for entity_entry_point in value.take_entry_points() {
             let entry_point = EntryPoint::new(
                 entity_entry_point.name(),
-                Parameters::from(entity_entry_point.args().clone()),
+                Parameters::from(entity_entry_point.args()),
                 entity_entry_point.ret().clone(),
                 entity_entry_point.access().clone(),
                 entity_entry_point.entry_point_type(),

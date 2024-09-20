@@ -4,10 +4,9 @@ use crate::{
     AddressGenerator, TrackingCopy,
 };
 use casper_types::{
-    account::AccountHash, addressable_entity::NamedKeys, AddressableEntity, AddressableEntityHash,
-    Chainspec, ContextAccessRights, EntityAddr, FeeHandling, Key, Phase, ProtocolVersion,
-    PublicKey, RefundHandling, RuntimeFootprint, StoredValue, TransactionHash, Transfer, URef,
-    U512,
+    account::AccountHash, addressable_entity::NamedKeys, Chainspec, ContextAccessRights,
+    EntityAddr, FeeHandling, Key, Phase, ProtocolVersion, PublicKey, RefundHandling,
+    RuntimeFootprint, StoredValue, TransactionHash, Transfer, URef, U512,
 };
 use num_rational::Ratio;
 use std::{cell::RefCell, collections::BTreeSet, rc::Rc};
@@ -268,7 +267,6 @@ pub struct RuntimeNative<S> {
     address: AccountHash,
     entity_key: Key,
     runtime_footprint: RuntimeFootprint,
-    named_keys: NamedKeys,
     access_rights: ContextAccessRights,
     remaining_spending_limit: U512,
     transfers: Vec<Transfer>,
@@ -288,7 +286,6 @@ where
         address: AccountHash,
         entity_key: Key,
         runtime_footprint: RuntimeFootprint,
-        named_keys: NamedKeys,
         access_rights: ContextAccessRights,
         remaining_spending_limit: U512,
         phase: Phase,
@@ -306,7 +303,6 @@ where
             address,
             entity_key,
             runtime_footprint,
-            named_keys,
             access_rights,
             remaining_spending_limit,
             transfers,
@@ -327,7 +323,6 @@ where
         let transfers = vec![];
         let (entity_addr, runtime_footprint, access_rights) =
             tracking_copy.borrow_mut().system_entity(protocol_version)?;
-        let named_keys = runtime_footprint.named_keys().clone();
         let address = PublicKey::System.to_account_hash();
         let entity_key = if config.enable_entity {
             Key::AddressableEntity(entity_addr)
@@ -345,7 +340,6 @@ where
             address,
             entity_key,
             runtime_footprint,
-            named_keys,
             access_rights,
             remaining_spending_limit,
             transfers,
@@ -386,7 +380,6 @@ where
             .get_runtime_footprint_by_hash(hash)?;
         let access_rights =
             runtime_footprint.extract_access_rights(hash, runtime_footprint.named_keys());
-        let named_keys = runtime_footprint.named_keys().clone();
         let address = PublicKey::System.to_account_hash();
         let remaining_spending_limit = U512::MAX; // system has no spending limit
         Ok(RuntimeNative {
@@ -399,7 +392,6 @@ where
             address,
             entity_key,
             runtime_footprint,
-            named_keys,
             access_rights,
             remaining_spending_limit,
             transfers,

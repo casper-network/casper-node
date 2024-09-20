@@ -9,7 +9,7 @@ use crate::{
         AvailableBalanceChecker, BalanceHolds, BalanceHoldsWithProof, ProcessingHoldBalanceHandling,
     },
     global_state::{error::Error as GlobalStateError, state::StateReader},
-    tracking_copy::{TrackingCopy, TrackingCopyError},
+    tracking_copy::{TrackingCopy, TrackingCopyEntityExt, TrackingCopyError},
     KeyPrefix,
 };
 use casper_types::{
@@ -27,8 +27,8 @@ use casper_types::{
     },
     BlockGlobalAddr, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash, CLValue, ChecksumRegistry,
     Contract, EntityAddr, EntryPointValue, EntryPoints, HashAddr, HoldBalanceHandling, HoldsEpoch,
-    Key, Motes, Package, PackageHash, StoredValue, StoredValueTypeMismatch, SystemHashRegistry,
-    URef, URefAddr, U512,
+    Key, Motes, Package, StoredValue, StoredValueTypeMismatch, SystemHashRegistry, URef, URefAddr,
+    U512,
 };
 
 /// Higher-level operations on the state via a `TrackingCopy`.
@@ -100,7 +100,7 @@ pub trait TrackingCopyExt<R> {
     fn get_named_keys(&self, entity_addr: EntityAddr) -> Result<NamedKeys, Self::Error>;
 
     /// Returns the collection of entry points for a given AddresableEntity.
-    fn get_v1_entry_points(&mut self, entity_addr: EntityAddr) -> Result<EntryPoints, Self::Error>;
+    fn get_v1_entry_points(&self, entity_addr: EntityAddr) -> Result<EntryPoints, Self::Error>;
 
     /// Gets a package by hash.
     fn get_package(&mut self, package_hash: HashAddr) -> Result<Package, Self::Error>;
@@ -173,6 +173,7 @@ where
         })?;
 
         let named_keys = self.get_named_keys(EntityAddr::System(entity_hash))?;
+        println!("mint nk {:?}", named_keys);
 
         // get the handling
         let handling = {
@@ -551,6 +552,10 @@ where
     }
 
     fn get_named_keys(&self, entity_addr: EntityAddr) -> Result<NamedKeys, Self::Error> {
+        if !self.enable_addressable_entity {
+            return Ok(self.get_runtime_footprint(entity_addr)?.take_named_keys());
+        }
+
         let keys = self.get_keys_by_prefix(&KeyPrefix::NamedKeysByEntity(entity_addr))?;
 
         let mut named_keys = NamedKeys::new();
@@ -587,7 +592,7 @@ where
         Ok(named_keys)
     }
 
-    fn get_v1_entry_points(&mut self, entity_addr: EntityAddr) -> Result<EntryPoints, Self::Error> {
+    fn get_v1_entry_points(&self, entity_addr: EntityAddr) -> Result<EntryPoints, Self::Error> {
         let keys = self.get_keys_by_prefix(&KeyPrefix::EntryPointsV1ByEntity(entity_addr))?;
 
         let mut entry_points_v1 = EntryPoints::new();

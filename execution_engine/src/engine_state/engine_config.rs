@@ -49,6 +49,7 @@ pub const DEFAULT_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V2_0_0;
 /// Default period for balance holds to decay (currently 24 hours).
 pub const DEFAULT_BALANCE_HOLD_INTERVAL: TimeDiff = TimeDiff::from_seconds(24 * 60 * 60);
 
+/// Default entity flag.
 pub const DEFAULT_ENABLE_ENTITY: bool = false;
 
 /// The runtime configuration of the execution engine
@@ -381,6 +382,7 @@ impl EngineConfigBuilder {
         self
     }
 
+    /// Sets the enable entity flag.
     pub fn with_enable_entity(mut self, enable_entity: bool) -> Self {
         self.enable_entity = Some(enable_entity);
         self

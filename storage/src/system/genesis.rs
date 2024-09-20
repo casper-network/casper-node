@@ -169,14 +169,6 @@ where
         config: GenesisConfig,
         tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
     ) -> Self {
-        let phase = Phase::System;
-        let genesis_config_hash_bytes = genesis_config_hash.as_ref();
-
-        let address_generator = {
-            let generator = AddressGenerator::new(genesis_config_hash_bytes, phase);
-            Rc::new(RefCell::new(generator))
-        };
-
         if config.enable_entity() {
             GenesisInstaller::Entity(EntityGenesisInstaller::new(
                 genesis_config_hash,

@@ -52,7 +52,7 @@ use casper_types::{
     ProtocolVersion, PublicKey, StoredValue, SystemHashRegistry, URef, U512,
 };
 
-pub(crate) struct AccountContractInstaller<S>
+pub struct AccountContractInstaller<S>
 where
     S: StateProvider + ?Sized,
 {
@@ -167,6 +167,40 @@ where
             total_supply_uref
         };
 
+        let gas_hold_handling_uref =
+            {
+                let gas_hold_handling = self.config.gas_hold_balance_handling().tag();
+                let gas_hold_handling_uref = self
+                    .address_generator
+                    .borrow_mut()
+                    .new_uref(AccessRights::READ_ADD_WRITE);
+
+                self.tracking_copy.borrow_mut().write(
+                    gas_hold_handling_uref.into(),
+                    StoredValue::CLValue(CLValue::from_t(gas_hold_handling).map_err(|_| {
+                        GenesisError::CLValue(MINT_GAS_HOLD_HANDLING_KEY.to_string())
+                    })?),
+                );
+                gas_hold_handling_uref
+            };
+
+        let gas_hold_interval_uref =
+            {
+                let gas_hold_interval = self.config.gas_hold_interval_millis();
+                let gas_hold_interval_uref = self
+                    .address_generator
+                    .borrow_mut()
+                    .new_uref(AccessRights::READ_ADD_WRITE);
+
+                self.tracking_copy.borrow_mut().write(
+                    gas_hold_interval_uref.into(),
+                    StoredValue::CLValue(CLValue::from_t(gas_hold_interval).map_err(|_| {
+                        GenesisError::CLValue(MINT_GAS_HOLD_INTERVAL_KEY.to_string())
+                    })?),
+                );
+                gas_hold_interval_uref
+            };
+
         let named_keys = {
             let mut named_keys = NamedKeys::new();
             named_keys.insert(
@@ -174,7 +208,14 @@ where
                 round_seigniorage_rate_uref.into(),
             );
             named_keys.insert(TOTAL_SUPPLY_KEY.to_string(), total_supply_uref.into());
-
+            named_keys.insert(
+                MINT_GAS_HOLD_HANDLING_KEY.to_string(),
+                gas_hold_handling_uref.into(),
+            );
+            named_keys.insert(
+                MINT_GAS_HOLD_INTERVAL_KEY.to_string(),
+                gas_hold_interval_uref.into(),
+            );
             named_keys
         };
 
@@ -504,23 +545,6 @@ where
         self.store_system_contract(AUCTION, auction_hash)?;
 
         Ok(auction_hash.value())
-    }
-
-    fn create_standard_payment(&self) -> Result<HashAddr, Box<GenesisError>> {
-        let named_keys = NamedKeys::new();
-
-        let entry_points = standard_payment::standard_payment_entry_points();
-
-        let access_key = self
-            .address_generator
-            .borrow_mut()
-            .new_uref(AccessRights::READ_ADD_WRITE);
-
-        let (_, standard_payment_hash) = self.store_contract(access_key, named_keys, entry_points);
-
-        self.store_system_contract(STANDARD_PAYMENT, standard_payment_hash)?;
-
-        Ok(standard_payment_hash.value())
     }
 
     pub(crate) fn create_accounts(

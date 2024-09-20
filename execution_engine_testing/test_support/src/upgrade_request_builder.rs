@@ -150,6 +150,7 @@ impl UpgradeRequestBuilder {
         self
     }
 
+    /// Sets the enable entity flag.
     pub fn with_enable_addressable_entity(mut self, enable_entity: bool) -> Self {
         self.enable_addressable_entity = enable_entity;
         self

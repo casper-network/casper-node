@@ -14,8 +14,7 @@ use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
     system::{mint::Error, Caller},
-    AddressableEntity, CLTyped, CLValue, Key, Phase, RuntimeFootprint, StoredValue,
-    SystemHashRegistry, URef, U512,
+    CLTyped, CLValue, Key, Phase, RuntimeFootprint, StoredValue, SystemHashRegistry, URef, U512,
 };
 
 use super::Runtime;

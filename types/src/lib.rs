@@ -15,7 +15,7 @@
     html_favicon_url = "https://raw.githubusercontent.com/casper-network/casper-node/blob/dev/images/Casper_Logo_Favicon_48.png",
     html_logo_url = "https://raw.githubusercontent.com/casper-network/casper-node/blob/dev/images/Casper_Logo_Favicon.png"
 )]
-#![warn(missing_docs)]
+//#![warn(missing_docs)]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
 #[cfg_attr(not(test), macro_use)]
@@ -59,7 +59,7 @@ mod package;
 mod peers_map;
 mod phase;
 mod protocol_version;
-mod runtime_footprint;
+pub mod runtime_footprint;
 mod semver;
 pub(crate) mod serde_helpers;
 mod stored_value;

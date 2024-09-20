@@ -1,52 +1,48 @@
 use crate::{
     account::AccountHash,
-    addressable_entity::{AddKeyFailure, AssociatedKeys, NamedKeys, Weight},
-    contract_wasm::ContractWasmHash,
-    contracts::{ContractHash, ContractPackageHash},
-    AccessRights, Account, AddressableEntity, AddressableEntityHash, ByteCodeHash,
-    ContextAccessRights, Contract, EntityAddr, EntityKind, EntryPoints, HashAddr, Key, PackageHash,
-    ProtocolVersion, TransactionRuntime, URef,
+    addressable_entity::{AssociatedKeys, NamedKeys, Weight},
+    contracts::ContractHash,
+    Account, AddressableEntity, ContextAccessRights, Contract, EntityAddr, EntityKind, EntryPoints,
+    HashAddr, Key, ProtocolVersion, TransactionRuntime, URef,
 };
 use alloc::{
-    collections::{btree_map::Entry, BTreeMap, BTreeSet},
-    format,
-    string::{String, ToString},
-    vec::Vec,
+    collections::{BTreeMap, BTreeSet},
+    string::String,
 };
-use blake2::{
-    digest::{Update, VariableOutput},
-    VarBlake2b,
-};
-use core::{
-    array::TryFromSliceError,
-    convert::{TryFrom, TryInto},
-    fmt::{self, Debug, Display, Formatter},
-    iter,
-};
+use core::{fmt::Debug, iter};
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+/// Runtime Address.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-enum RuntimeAddress {
+pub enum RuntimeAddress {
+    /// Account address
     Hash(HashAddr),
+    /// Runtime executable address.
     StoredContract {
+        /// The hash addr of the runtime entity
         hash_addr: HashAddr,
+        /// The package hash
         package_hash_addr: HashAddr,
+        /// The wasm hash
         wasm_hash_addr: HashAddr,
+        /// protocol version
         protocol_version: ProtocolVersion,
     },
 }
 
 impl RuntimeAddress {
+    /// Returns a new hash
     pub fn new_hash(hash_addr: HashAddr) -> Self {
         Self::Hash(hash_addr)
     }
 
+    /// Returns new stored contract
     pub fn new_stored_contract(
         hash_addr: HashAddr,
         package_hash_addr: HashAddr,
@@ -61,6 +57,7 @@ impl RuntimeAddress {
         }
     }
 
+    /// The hash addr for the runtime.
     pub fn hash_addr(&self) -> HashAddr {
         match self {
             RuntimeAddress::Hash(hash_addr) => *hash_addr,
@@ -142,7 +139,11 @@ impl RuntimeFootprint {
         )
     }
 
-    pub fn new_contract_footprint(contract_hash: ContractHash, contract: Contract) -> Self {
+    pub fn new_contract_footprint(
+        contract_hash: ContractHash,
+        contract: Contract,
+        is_system: bool,
+    ) -> Self {
         let contract_package_hash = contract.contract_package_hash();
         let contract_wasm_hash = contract.contract_wasm_hash();
         let entry_points = contract.entry_points().clone().into();
@@ -160,12 +161,18 @@ impl RuntimeFootprint {
         let action_thresholds = BTreeMap::new();
         let associated_keys = AssociatedKeys::empty_keys();
 
+        let kind = if !is_system {
+            EntityKind::SmartContract(TransactionRuntime::VmCasperV1),
+        } else {
+            EntityKind::System()
+        }
+
         Self::new(
             named_keys,
             action_thresholds,
             associated_keys,
             entry_points,
-            EntityKind::SmartContract(TransactionRuntime::VmCasperV1),
+
             main_purse,
             runtime_address,
         )

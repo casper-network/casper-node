@@ -16,8 +16,8 @@ use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
     system::{mint::Error, Caller},
-    AccessRights, AddressableEntity, CLTyped, CLValue, Gas, InitiatorAddr, Key, Phase, PublicKey,
-    RuntimeFootprint, StoredValue, SystemHashRegistry, Transfer, TransferV2, URef, U512,
+    AccessRights, CLTyped, CLValue, Gas, InitiatorAddr, Key, Phase, PublicKey, RuntimeFootprint,
+    StoredValue, SystemHashRegistry, Transfer, TransferV2, URef, U512,
 };
 
 impl<S> RuntimeProvider for RuntimeNative<S>

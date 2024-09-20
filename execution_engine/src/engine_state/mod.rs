@@ -11,7 +11,7 @@ use once_cell::sync::Lazy;
 
 use casper_storage::{
     global_state::state::StateProvider,
-    tracking_copy::{TrackingCopyEntityExt, TrackingCopyError, TrackingCopyExt},
+    tracking_copy::{TrackingCopyEntityExt, TrackingCopyError},
 };
 use casper_types::U512;
 

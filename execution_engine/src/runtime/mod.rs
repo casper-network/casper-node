@@ -53,16 +53,15 @@ use casper_types::{
     },
     AccessRights, ApiError, BlockGlobalAddr, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash,
     ByteCodeKind, CLTyped, CLValue, ContextAccessRights, Contract, ContractWasm, EntityAddr,
-    EntityKind, EntityVersion, EntityVersionKey, EntityVersions, EntryPointAddr, EntryPointValue,
-    Gas, GrantedAccess, Group, Groups, HashAddr, HostFunction, HostFunctionCost, InitiatorAddr,
-    Key, NamedArg, Package, PackageHash, PackageStatus, Phase, PublicKey, RuntimeArgs,
-    RuntimeFootprint, StoredValue, TransactionRuntime, Transfer, TransferResult, TransferV2,
-    TransferredTo, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, U512,
+    EntityKind, EntityVersion, EntityVersionKey, EntityVersions, Gas, GrantedAccess, Group, Groups,
+    HashAddr, HostFunction, HostFunctionCost, InitiatorAddr, Key, NamedArg, Package, PackageHash,
+    PackageStatus, Phase, PublicKey, RuntimeArgs, RuntimeFootprint, StoredValue,
+    TransactionRuntime, Transfer, TransferResult, TransferV2, TransferredTo, URef,
+    DICTIONARY_ITEM_KEY_MAX_LENGTH, U512,
 };
 
 use crate::{
-    execution::{ExecError, ExecError::InvalidContext},
-    runtime::host_function_flag::HostFunctionFlag,
+    execution::ExecError, runtime::host_function_flag::HostFunctionFlag,
     runtime_context::RuntimeContext,
 };
 pub use stack::{RuntimeStack, RuntimeStackFrame, RuntimeStackOverflow};
@@ -1453,8 +1452,6 @@ where
             return Err(ExecError::InvalidContext);
         }
 
-        let protocol_version = self.context.protocol_version();
-
         // First check if we can fetch the discrete record
         // if not use the method on the tracking copy to fetch the
         // full set which also peeks the cache.
@@ -1593,6 +1590,9 @@ where
 
             stack
         };
+
+        let kind = footprint.entity_kind();
+        println!("kind: {}", kind);
 
         if let EntityKind::System(system_contract_type) = footprint.entity_kind() {
             let entry_point_name = entry_point.name();

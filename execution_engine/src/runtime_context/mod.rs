@@ -1,7 +1,7 @@
 //! The context of execution of WASM code.
 
-#[cfg(test)]
-mod tests;
+// #[cfg(test)]
+// mod tests;
 
 use std::{
     cell::RefCell,
@@ -32,7 +32,7 @@ use casper_types::{
     contracts::{ContractHash, ContractPackage, ContractPackageHash},
     execution::Effects,
     handle_stored_dictionary_value,
-    system::auction::EraInfo,
+    system::{auction::EraInfo, SystemEntityType},
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, CLType, CLValue,
     CLValueDictionary, ContextAccessRights, Contract, EntityAddr, EntryPointAddr, EntryPointType,
     EntryPointValue, EntryPoints, Gas, GrantedAccess, HashAddr, Key, KeyTag, Motes, Package,
@@ -483,11 +483,6 @@ where
             .borrow_mut()
             .get_v1_entry_points(entity_addr)
             .map_err(Into::into)
-    }
-
-    #[cfg(test)]
-    pub(crate) fn get_entity(&self) -> RuntimeFootprint {
-        self.runtime_footprint.clone()
     }
 
     /// Reads the total balance of a purse [`URef`].

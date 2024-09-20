@@ -3,11 +3,10 @@ use thiserror::Error;
 
 use casper_types::{
     account::AccountHash,
-    addressable_entity::NamedKeys,
     bytesrepr::FromBytes,
     system::{mint, mint::Error as MintError},
-    AccessRights, AddressableEntity, CLType, CLTyped, CLValue, CLValueError, Key, ProtocolVersion,
-    RuntimeArgs, RuntimeFootprint, StoredValue, StoredValueTypeMismatch, URef, U512,
+    AccessRights, CLType, CLTyped, CLValue, CLValueError, Key, ProtocolVersion, RuntimeArgs,
+    RuntimeFootprint, StoredValue, StoredValueTypeMismatch, URef, U512,
 };
 
 use crate::{

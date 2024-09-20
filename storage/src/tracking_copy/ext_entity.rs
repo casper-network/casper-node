@@ -1,4 +1,4 @@
-use std::{collections::BTreeSet, convert::TryFrom};
+use std::collections::BTreeSet;
 use tracing::{debug, error};
 
 use casper_types::{
@@ -7,7 +7,6 @@ use casper_types::{
         ActionThresholds, AssociatedKeys, MessageTopics, NamedKeyAddr, NamedKeyValue, NamedKeys,
         Weight,
     },
-    bytesrepr,
     contracts::ContractHash,
     system::{handle_payment::ACCUMULATION_PURSE_KEY, AUCTION, HANDLE_PAYMENT, MINT},
     AccessRights, Account, AddressableEntity, AddressableEntityHash, ByteCode, ByteCodeAddr,
@@ -39,7 +38,7 @@ pub trait TrackingCopyEntityExt<R> {
 
     /// Gets an addressable entity by address.
     fn get_runtime_footprint(
-        &mut self,
+        &self,
         entity_addr: EntityAddr,
     ) -> Result<RuntimeFootprint, Self::Error>;
 
@@ -154,7 +153,7 @@ where
     type Error = TrackingCopyError;
 
     fn get_runtime_footprint(
-        &mut self,
+        &self,
         entity_addr: EntityAddr,
     ) -> Result<RuntimeFootprint, Self::Error> {
         let key = if self.enable_addressable_entity {
@@ -401,8 +400,7 @@ where
 
                     self.write(entry_key, entry_value);
                 } else {
-                    let named_key_value =
-                        StoredValue::CLValue(CLValue::from_t((name.clone(), uref_key))?);
+                    let named_key_value = StoredValue::CLValue(CLValue::from_t((name, uref_key))?);
                     let base_key = match entity_addr {
                         EntityAddr::System(hash_addr) | EntityAddr::SmartContract(hash_addr) => {
                             Key::Hash(hash_addr)
@@ -503,6 +501,11 @@ where
     ) -> Result<(), Self::Error> {
         let account_hash = account.account_hash();
         debug!("migrating account {}", account_hash);
+        if !self.enable_addressable_entity {
+            self.write(Key::Account(account_hash), StoredValue::Account(account));
+            return Ok(());
+        }
+
         // carry forward the account hash to allow reverse lookup
         let entity_hash = AddressableEntityHash::new(account_hash.value());
         let entity_addr = EntityAddr::new_account(entity_hash.value());

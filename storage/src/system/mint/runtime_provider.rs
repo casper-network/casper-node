@@ -1,7 +1,7 @@
 use crate::system::error::ProviderError;
 use casper_types::{
-    account::AccountHash, system::Caller, AddressableEntity, Key, Phase, RuntimeFootprint,
-    SystemHashRegistry, URef, U512,
+    account::AccountHash, system::Caller, Key, Phase, RuntimeFootprint, SystemHashRegistry, URef,
+    U512,
 };
 
 /// Provider of runtime host functionality.
