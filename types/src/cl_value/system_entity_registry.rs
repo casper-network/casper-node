@@ -45,7 +45,6 @@ impl SystemHashRegistry {
         self.0.remove(STANDARD_PAYMENT)
     }
 
-    #[cfg(test)]
     pub fn inner(self) -> BTreeMap<String, HashAddr> {
         self.0
     }

@@ -420,19 +420,27 @@ where
 
     /// Puts `key` to the map of named keys of current context.
     pub fn put_key(&mut self, name: String, key: Key) -> Result<(), ExecError> {
+        println!("in put key");
         // No need to perform actual validation on the base key because an account or contract (i.e.
         // the element stored under `base_key`) is allowed to add new named keys to itself.
-        let entity_addr = if let Key::AddressableEntity(entity_addr) = self.get_entity_key() {
-            entity_addr
-        } else {
-            return Err(ExecError::InvalidContext);
-        };
-        let named_key_value =
-            StoredValue::NamedKey(NamedKeyValue::from_concrete_values(key, name.clone())?);
-        self.validate_value(&named_key_value)?;
-        let named_key_addr = NamedKeyAddr::new_from_string(entity_addr, name.clone())?;
-        self.metered_write_gs_unsafe(Key::NamedKey(named_key_addr), named_key_value)?;
-        self.insert_named_key(name, key);
+        match self.get_entity_key() {
+            Key::Account(_) | Key::Hash(_) => {
+                let named_key_value = StoredValue::CLValue(CLValue::from_t((name.clone(), key))?);
+                self.validate_value(&named_key_value)?;
+                self.metered_add_gs_unsafe(self.get_entity_key(), named_key_value)?;
+                self.insert_named_key(name, key);
+            }
+            Key::AddressableEntity(entity_addr) => {
+                let named_key_value =
+                    StoredValue::NamedKey(NamedKeyValue::from_concrete_values(key, name.clone())?);
+                self.validate_value(&named_key_value)?;
+                let named_key_addr = NamedKeyAddr::new_from_string(entity_addr, name.clone())?;
+                self.metered_write_gs_unsafe(Key::NamedKey(named_key_addr), named_key_value)?;
+                self.insert_named_key(name, key);
+            }
+            _ => return Err(ExecError::InvalidContext),
+        }
+
         Ok(())
     }
 

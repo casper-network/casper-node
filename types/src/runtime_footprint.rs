@@ -2,6 +2,7 @@ use crate::{
     account::AccountHash,
     addressable_entity::{AssociatedKeys, NamedKeys, Weight},
     contracts::ContractHash,
+    system::SystemEntityType,
     Account, AddressableEntity, ContextAccessRights, Contract, EntityAddr, EntityKind, EntryPoints,
     HashAddr, Key, ProtocolVersion, TransactionRuntime, URef,
 };
@@ -142,7 +143,7 @@ impl RuntimeFootprint {
     pub fn new_contract_footprint(
         contract_hash: ContractHash,
         contract: Contract,
-        is_system: bool,
+        system_entity_type: Option<SystemEntityType>,
     ) -> Self {
         let contract_package_hash = contract.contract_package_hash();
         let contract_wasm_hash = contract.contract_wasm_hash();
@@ -161,18 +162,17 @@ impl RuntimeFootprint {
         let action_thresholds = BTreeMap::new();
         let associated_keys = AssociatedKeys::empty_keys();
 
-        let kind = if !is_system {
-            EntityKind::SmartContract(TransactionRuntime::VmCasperV1),
-        } else {
-            EntityKind::System()
-        }
+        let entity_kind = match system_entity_type {
+            None => EntityKind::SmartContract(TransactionRuntime::VmCasperV1),
+            Some(kind) => EntityKind::System(kind),
+        };
 
         Self::new(
             named_keys,
             action_thresholds,
             associated_keys,
             entry_points,
-
+            entity_kind,
             main_purse,
             runtime_address,
         )

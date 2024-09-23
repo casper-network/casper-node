@@ -1301,6 +1301,72 @@ where
         self.stack.as_ref().ok_or(ExecError::MissingRuntimeStack)
     }
 
+    fn maybe_system_type(&self, hash_addr: HashAddr) -> Option<SystemEntityType> {
+        let is_mint = self.is_mint(hash_addr);
+        if is_mint.is_some() {
+            return is_mint;
+        };
+
+        let is_auction = self.is_auction(hash_addr);
+        if is_auction.is_some() {
+            return is_auction;
+        };
+        let is_handle = self.is_handle_payment(hash_addr);
+        if is_handle.is_some() {
+            return is_handle;
+        };
+
+        None
+    }
+
+    fn is_mint(&self, hash_addr: HashAddr) -> Option<SystemEntityType> {
+        let hash = match self.context.get_system_contract(MINT) {
+            Ok(hash) => hash,
+            Err(_) => {
+                error!("Failed to get system mint contract hash");
+                return None;
+            }
+        };
+        if hash.value() == hash_addr {
+            Some(SystemEntityType::Mint)
+        } else {
+            None
+        }
+    }
+
+    /// Checks if current context is the `handle_payment` system contract.
+    fn is_handle_payment(&self, hash_addr: HashAddr) -> Option<SystemEntityType> {
+        let hash = match self.context.get_system_contract(HANDLE_PAYMENT) {
+            Ok(hash) => hash,
+            Err(_) => {
+                error!("Failed to get system handle payment contract hash");
+                return None;
+            }
+        };
+        if hash.value() == hash_addr {
+            Some(SystemEntityType::HandlePayment)
+        } else {
+            None
+        }
+    }
+
+    /// Checks if given hash is the auction system contract.
+    fn is_auction(&self, hash_addr: HashAddr) -> Option<SystemEntityType> {
+        let hash = match self.context.get_system_contract(AUCTION) {
+            Ok(hash) => hash,
+            Err(_) => {
+                error!("Failed to get system auction contract hash");
+                return None;
+            }
+        };
+
+        if hash.value() == hash_addr {
+            Some(SystemEntityType::Auction)
+        } else {
+            None
+        }
+    }
+
     fn execute_contract(
         &mut self,
         identifier: CallContractIdentifier,
@@ -1321,9 +1387,13 @@ where
                                 AddressableEntityHash::new(contract_hash),
                             )?;
                         };
+
+                        let maybe_system_entity_type = self.maybe_system_type(contract_hash);
+
                         let footprint = RuntimeFootprint::new_contract_footprint(
                             ContractHash::new(contract_hash),
                             contract,
+                            maybe_system_entity_type,
                         );
                         footprint
                     }
@@ -1416,9 +1486,11 @@ where
                                 AddressableEntityHash::new(entity_hash),
                             )?;
                         };
+                        let maybe_system_entity_type = self.maybe_system_type(entity_hash);
                         let footprint = RuntimeFootprint::new_contract_footprint(
                             ContractHash::new(entity_hash),
                             contract,
+                            maybe_system_entity_type,
                         );
                         footprint
                     }
@@ -2853,11 +2925,21 @@ where
 
         match result? {
             Ok(()) => {
+                let main_purse = target_purse;
+                if !self.context.engine_config().enable_entity {
+                    let account = Account::create(target, NamedKeys::new(), target_purse);
+                    self.context.metered_write_gs_unsafe(
+                        Key::Account(target),
+                        StoredValue::Account(account),
+                    )?;
+                    return Ok(Ok(TransferredTo::NewAccount));
+                }
+
                 let protocol_version = self.context.protocol_version();
                 let byte_code_hash = ByteCodeHash::default();
                 let entity_hash = AddressableEntityHash::new(target.value());
                 let package_hash = PackageHash::new(self.context.new_hash_address()?);
-                let main_purse = target_purse;
+
                 let associated_keys = AssociatedKeys::new(target, Weight::new(1));
                 let message_topics = MessageTopics::default();
 

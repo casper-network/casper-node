@@ -8,7 +8,9 @@ use casper_types::{
         Weight,
     },
     contracts::ContractHash,
-    system::{handle_payment::ACCUMULATION_PURSE_KEY, AUCTION, HANDLE_PAYMENT, MINT},
+    system::{
+        handle_payment::ACCUMULATION_PURSE_KEY, SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
+    },
     AccessRights, Account, AddressableEntity, AddressableEntityHash, ByteCode, ByteCodeAddr,
     ByteCodeHash, CLValue, ContextAccessRights, EntityAddr, EntityKind, EntityVersions,
     EntryPointAddr, EntryPointValue, EntryPoints, Groups, HashAddr, Key, Package, PackageHash,
@@ -157,6 +159,7 @@ where
         entity_addr: EntityAddr,
     ) -> Result<RuntimeFootprint, Self::Error> {
         let key = if self.enable_addressable_entity {
+            println!("enabled");
             Key::AddressableEntity(entity_addr)
         } else {
             match entity_addr {
@@ -182,17 +185,42 @@ where
             }
             Some(StoredValue::Contract(contract)) => {
                 let contract_hash = ContractHash::new(entity_addr.value());
+                let maybe_system_entity_type = {
+                    let mut ret = None;
+                    let registry = self.get_system_entity_registry()?;
+                    for (name, hash) in registry.inner().into_iter() {
+                        if hash == entity_addr.value() {
+                            match name.as_ref() {
+                                MINT => ret = Some(SystemEntityType::Mint),
+                                AUCTION => ret = Some(SystemEntityType::Auction),
+                                HANDLE_PAYMENT => ret = Some(SystemEntityType::HandlePayment),
+                                _ => continue,
+                            }
+                        }
+                    }
+
+                    ret
+                };
+
                 Ok(RuntimeFootprint::new_contract_footprint(
                     contract_hash,
                     contract,
+                    maybe_system_entity_type,
                 ))
             }
-            Some(other) => Err(TrackingCopyError::TypeMismatch(
-                StoredValueTypeMismatch::new(
-                    "AddressableEntity or Contract".to_string(),
-                    other.type_name(),
-                ),
-            )),
+            Some(other) => {
+                let key = other.as_cl_value().map(|val| val.clone());
+                let key = key.unwrap().into_t::<Key>().unwrap();
+                println!("{key}");
+
+                println!("in other,{:?} ", other);
+                Err(TrackingCopyError::TypeMismatch(
+                    StoredValueTypeMismatch::new(
+                        "AddressableEntity or Contract".to_string(),
+                        other.type_name(),
+                    ),
+                ))
+            }
             None => Err(TrackingCopyError::KeyNotFound(key)),
         }
     }
@@ -420,7 +448,8 @@ where
         protocol_version: ProtocolVersion,
     ) -> Result<(), Self::Error> {
         if !self.enable_addressable_entity {
-            return Err(Self::Error::AddressableEntityDisable);
+            println!("ae is not enabled, skipping migration");
+            return Ok(());
         }
         let key = Key::Account(account_hash);
         let maybe_stored_value = self.read(&key)?;
@@ -500,7 +529,7 @@ where
         protocol_version: ProtocolVersion,
     ) -> Result<(), Self::Error> {
         let account_hash = account.account_hash();
-        debug!("migrating account {}", account_hash);
+        println!("migrating account {}", account_hash);
         if !self.enable_addressable_entity {
             self.write(Key::Account(account_hash), StoredValue::Account(account));
             return Ok(());
@@ -804,6 +833,7 @@ where
                 let (_, entity) =
                     self.get_addressable_entity_by_account_hash(protocol_version, proposer)?;
 
+                println!("foo");
                 Ok(entity
                     .main_purse()
                     .ok_or_else(|| TrackingCopyError::AddressableEntityDisable)?)

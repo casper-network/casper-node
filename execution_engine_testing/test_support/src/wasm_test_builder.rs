@@ -1402,16 +1402,28 @@ where
     pub fn get_handle_payment_contract(&self) -> EntityWithNamedKeys {
         let hash = self
             .get_system_entity_hash(HANDLE_PAYMENT)
-            .expect("should have handle payment contract uref");
+            .expect("should have handle payment contract");
 
-        let handle_payment_contract = Key::addressable_entity_key(EntityKindTag::System, hash);
-        let handle_payment = self
+        let handle_payment_contract = if self.chainspec.core_config.enable_addressable_entity {
+            Key::addressable_entity_key(EntityKindTag::System, hash)
+        } else {
+            Key::Hash(hash.value())
+        };
+        let stored_value = self
             .query(None, handle_payment_contract, &[])
-            .and_then(|v| v.try_into().map_err(|error| format!("{:?}", error)))
-            .expect("should find handle payment URef");
-
-        let named_keys = self.get_named_keys(EntityAddr::System(hash.value()));
-        EntityWithNamedKeys::new(handle_payment, named_keys)
+            .expect("must have stored value");
+        match stored_value {
+            StoredValue::Contract(contract) => {
+                let named_keys = contract.named_keys().clone();
+                let entity = AddressableEntity::from(contract);
+                EntityWithNamedKeys::new(entity, named_keys)
+            }
+            StoredValue::AddressableEntity(entity) => {
+                let named_keys = self.get_named_keys(EntityAddr::System(hash.value()));
+                EntityWithNamedKeys::new(entity, named_keys)
+            }
+            _ => panic!("unhandled stored value"),
+        }
     }
 
     /// Returns the balance of a purse, panics if the balance can't be parsed into a `U512`.
@@ -1516,6 +1528,7 @@ where
         account_hash: AccountHash,
     ) -> Option<AddressableEntity> {
         match self.query(None, Key::Account(account_hash), &[]).ok() {
+            Some(StoredValue::Account(account)) => Some(AddressableEntity::from(account)),
             Some(StoredValue::CLValue(cl_value)) => {
                 let contract_key =
                     CLValue::into_t::<Key>(cl_value).expect("must have contract hash");
