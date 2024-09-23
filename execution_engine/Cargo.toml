@@ -18,7 +18,7 @@ casper-storage = { version = "2.0.0", path = "../storage" }
 casper-types = { version = "5.0.0", path = "../types", default-features = false, features = ["datasize", "gens", "json-schema", "std"] }
 casper-wasm = { version = "0.46.0", default-features = false, features = ["sign_ext"] }
 casper-wasm-utils = { version = "3.0.0", default-features = false, features = ["sign_ext"] }
-casper-wasmi = { version = "0.14.0", features=["sign_ext"] }
+casper-wasmi = { version = "0.14.0", features = ["sign_ext"] }
 datasize = "0.2.4"
 either = "1.8.1"
 hex-buffer-serde = "0.2.1"
