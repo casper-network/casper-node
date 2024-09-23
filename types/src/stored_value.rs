@@ -134,6 +134,13 @@ impl StoredValue {
         }
     }
 
+    pub fn as_contract_wasm(&self) -> Option<&ContractWasm> {
+        match self {
+            StoredValue::ContractWasm(contract_wasm) => Some(contract_wasm),
+            _ => None,
+        }
+    }
+
     /// Returns a reference to the wrapped `Contract` if this is a `Contract` variant.
     pub fn as_contract(&self) -> Option<&Contract> {
         match self {

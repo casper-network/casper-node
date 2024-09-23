@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    system::{SystemEntityType, STANDARD_PAYMENT},
+    system::STANDARD_PAYMENT,
     AddressableEntityHash, CLType, CLTyped, HashAddr,
 };
 

@@ -168,23 +168,32 @@ impl BuilderExt for LmdbWasmTestBuilder {
         stored_call_stack_key: &str,
         contract_package_hash: HashAddr,
     ) -> Vec<Caller> {
-        let value = self
-            .query(None, Key::Package(contract_package_hash), &[])
-            .unwrap();
+        let enable_entity = self.chainspec().core_config.enable_addressable_entity;
+        let package_key = if enable_entity {
+            Key::Package(contract_package_hash)
+        } else {
+            Key::Hash(contract_package_hash)
+        };
+
+        let value = self.query(None, package_key, &[]).unwrap();
 
         let package = match value {
+            StoredValue::ContractPackage(contract_package) => contract_package.into(),
             StoredValue::Package(package) => package,
             _ => panic!("unreachable"),
         };
 
         let current_entity_hash = package.current_entity_hash().unwrap();
-        let current_contract_entity_key =
-            EntityAddr::new_smart_contract(current_entity_hash.value());
+        let current_contract_entity_key = if enable_entity {
+            Key::AddressableEntity(EntityAddr::SmartContract(current_entity_hash.value()))
+        } else {
+            Key::Hash(current_entity_hash.value())
+        };
 
         let cl_value = self
             .query(
                 None,
-                current_contract_entity_key.into(),
+                current_contract_entity_key,
                 &[stored_call_stack_key.to_string()],
             )
             .unwrap();
@@ -230,8 +239,8 @@ fn setup() -> LmdbWasmTestBuilder {
         .with_pre_state_hash(pre_upgrade_hash)
         .with_current_protocol_version(old_protocol_version)
         .with_new_protocol_version(ProtocolVersion::V2_0_0)
-        .with_migrate_legacy_accounts(true)
-        .with_migrate_legacy_contracts(true)
+        .with_migrate_legacy_accounts(false)
+        .with_migrate_legacy_contracts(false)
         .build();
 
     builder
@@ -1229,10 +1238,18 @@ mod session {
 
             let effects = builder.get_effects().last().unwrap().clone();
 
+            let key = if builder.chainspec().core_config.enable_addressable_entity {
+                Key::Package(current_contract_package_hash)
+            } else {
+                Key::Hash(current_contract_package_hash)
+            };
+
             assert!(
-                effects.transforms().iter().any(|transform| transform.key()
-                    == &Key::Package(current_contract_package_hash)
-                    && transform.kind() == &TransformKindV2::Identity),
+                effects
+                    .transforms()
+                    .iter()
+                    .any(|transform| transform.key() == &key
+                        && transform.kind() == &TransformKindV2::Identity),
                 "Missing `Identity` transform for a contract package being called."
             );
 

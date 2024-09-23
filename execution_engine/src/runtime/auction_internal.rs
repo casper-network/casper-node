@@ -220,6 +220,18 @@ where
             })?;
 
         let contract_key: Key = match maybe_value {
+            Some(StoredValue::Account(account)) => {
+                self.mint_transfer_direct(
+                    Some(account_hash),
+                    *unbonding_purse.bonding_purse(),
+                    account.main_purse(),
+                    *unbonding_purse.amount(),
+                    None,
+                )
+                .map_err(|_| Error::Transfer)?
+                .map_err(|_| Error::Transfer)?;
+                return Ok(());
+            }
             Some(StoredValue::CLValue(cl_value)) => {
                 let contract_key: Key = cl_value.into_t().map_err(|_| Error::CLValue)?;
                 contract_key

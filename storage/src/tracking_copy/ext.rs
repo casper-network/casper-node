@@ -553,7 +553,10 @@ where
 
     fn get_named_keys(&self, entity_addr: EntityAddr) -> Result<NamedKeys, Self::Error> {
         if !self.enable_addressable_entity {
-            return Ok(self.get_runtime_footprint(entity_addr)?.take_named_keys());
+            println!("in foo");
+            let footprint = self.get_runtime_footprint(entity_addr)?;
+            println!("footprint {:?}", footprint);
+            return Ok(footprint.take_named_keys());
         }
 
         let keys = self.get_keys_by_prefix(&KeyPrefix::NamedKeysByEntity(entity_addr))?;

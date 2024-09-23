@@ -159,7 +159,6 @@ where
         entity_addr: EntityAddr,
     ) -> Result<RuntimeFootprint, Self::Error> {
         let key = if self.enable_addressable_entity {
-            println!("enabled");
             Key::AddressableEntity(entity_addr)
         } else {
             match entity_addr {
