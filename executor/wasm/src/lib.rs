@@ -264,7 +264,7 @@ impl ExecutorV2 {
                             return Err(InstallContractError::Constructor { host_error });
                         }
 
-                        tracking_copy.commit(effects, cache);
+                        tracking_copy.apply_changes(effects, cache);
 
                         if let Some(output) = output {
                             warn!(?output, "unexpected output from constructor");
@@ -508,7 +508,7 @@ impl ExecutorV2 {
                 } else {
                     // Merge the tracking copy parts since the execution has succeeded.
                     initial_tracking_copy
-                        .commit(final_tracking_copy.effects(), final_tracking_copy.cache());
+                        .apply_changes(final_tracking_copy.effects(), final_tracking_copy.cache());
 
                     None
                 };
@@ -586,7 +586,7 @@ impl ExecutorV2 {
             )
         };
 
-        tracking_copy.commit(
+        tracking_copy.apply_changes(
             wasm_v1_result.effects().clone(),
             wasm_v1_result.cache().cloned().unwrap(),
         );

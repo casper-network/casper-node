@@ -138,7 +138,7 @@ fn dispatch_system_contract<R: GlobalStateReader, Ret: PartialEq>(
 
     let modified_tracking_copy = modified_tracking_copy.into_inner();
 
-    tracking_copy.commit(
+    tracking_copy.apply_changes(
         modified_tracking_copy.effects(),
         modified_tracking_copy.cache(),
     );

@@ -1194,7 +1194,7 @@ fn add_should_work() {
     assert!(
         matches!(tc.get(&key), Ok(Some(StoredValue::CLValue(initial_value))) if initial_value.clone().into_t::<i32>().unwrap() == 1)
     );
-    tc.commit(effects).unwrap();
+    tc.apply_changes(effects).unwrap();
     assert!(
         matches!(tc.get(&key), Ok(Some(StoredValue::CLValue(initial_value))) if initial_value.clone().into_t::<i32>().unwrap() == 2)
     );

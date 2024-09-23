@@ -423,7 +423,13 @@ where
         }
     }
 
-    pub fn commit(&mut self, effects: Effects, cache: TrackingCopyCache) {
+    /// Applies the changes to the state.
+    ///
+    /// This is a low-level function that should be used only by the execution engine. The purpose
+    /// of this function is to apply the changes to the state from a forked tracking copy. Once
+    /// caller decides that the changes are valid, they can be applied to the state and the
+    /// processing can resume.
+    pub fn apply_changes(&mut self, effects: Effects, cache: TrackingCopyCache) {
         self.effects = effects;
         self.cache = cache;
     }

@@ -546,7 +546,10 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
                         return Ok(Err(host_error));
                     }
 
-                    caller.context_mut().tracking_copy.commit(effects, cache);
+                    caller
+                        .context_mut()
+                        .tracking_copy
+                        .apply_changes(effects, cache);
 
                     output
                 }
@@ -694,7 +697,10 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
             let host_result = match host_error {
                 Some(host_error) => Err(host_error),
                 None => {
-                    caller.context_mut().tracking_copy.commit(effects, cache);
+                    caller
+                        .context_mut()
+                        .tracking_copy
+                        .apply_changes(effects, cache);
                     Ok(())
                 }
             };
@@ -1029,7 +1035,10 @@ pub fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
                     let host_result = match host_error {
                         Some(host_error) => Err(host_error),
                         None => {
-                            caller.context_mut().tracking_copy.commit(effects, cache);
+                            caller
+                                .context_mut()
+                                .tracking_copy
+                                .apply_changes(effects, cache);
                             Ok(())
                         }
                     };
@@ -1197,7 +1206,10 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
                     return Ok(Err(host_error));
                 }
 
-                caller.context_mut().tracking_copy.commit(effects, cache);
+                caller
+                    .context_mut()
+                    .tracking_copy
+                    .apply_changes(effects, cache);
 
                 if let Some(output) = output {
                     info!(
