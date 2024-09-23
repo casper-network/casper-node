@@ -242,6 +242,7 @@ fn should_call_group_restricted_contract() {
     let mut upgrade_request = {
         UpgradeRequestBuilder::new()
             .with_new_protocol_version(DEFAULT_PROTOCOL_VERSION)
+            .with_enable_addressable_entity(false)
             .build()
     };
 
