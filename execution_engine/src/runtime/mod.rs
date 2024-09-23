@@ -43,7 +43,10 @@ use casper_types::{
     contract_messages::{
         Message, MessageAddr, MessagePayload, MessageTopicOperation, MessageTopicSummary,
     },
-    contracts::{ContractHash, ContractPackage, ContractPackageHash},
+    contracts::{
+        ContractHash, ContractPackage, ContractPackageHash, ContractPackageStatus,
+        ContractVersions, DisabledVersions,
+    },
     crypto,
     system::{
         self,
@@ -1941,7 +1944,25 @@ where
     fn create_contract_package(
         &mut self,
         is_locked: PackageStatus,
-    ) -> Result<(Package, URef), ExecError> {
+    ) -> Result<(ContractPackage, URef), ExecError> {
+        let access_key = self.context.new_unit_uref()?;
+        let package_status = match is_locked {
+            PackageStatus::Locked => ContractPackageStatus::Locked,
+            PackageStatus::Unlocked => ContractPackageStatus::Unlocked,
+        };
+
+        let contract_package = ContractPackage::new(
+            access_key,
+            ContractVersions::default(),
+            DisabledVersions::default(),
+            Groups::default(),
+            package_status,
+        );
+
+        Ok((contract_package, access_key))
+    }
+
+    fn create_package(&mut self, is_locked: PackageStatus) -> Result<(Package, URef), ExecError> {
         let access_key = self.context.new_unit_uref()?;
         let contract_package = Package::new(
             EntityVersions::new(),
@@ -1958,9 +1979,17 @@ where
         lock_status: PackageStatus,
     ) -> Result<([u8; 32], [u8; 32]), ExecError> {
         let addr = self.context.new_hash_address()?;
-        let (contract_package, access_key) = self.create_contract_package(lock_status)?;
-        self.context
-            .metered_write_gs_unsafe(Key::Package(addr), contract_package)?;
+        let access_key = if self.context.engine_config().enable_entity {
+            let (package, access_key) = self.create_package(lock_status)?;
+            self.context
+                .metered_write_gs_unsafe(Key::Package(addr), package)?;
+            access_key
+        } else {
+            let (package, access_key) = self.create_contract_package(lock_status)?;
+            self.context
+                .metered_write_gs_unsafe(Key::Hash(addr), package)?;
+            access_key
+        };
         Ok((addr, access_key.addr()))
     }
 
@@ -2074,6 +2103,7 @@ where
         mut named_keys: NamedKeys,
         output_ptr: u32,
     ) -> Result<Result<(), ApiError>, ExecError> {
+        println!("in add by package");
         self.context
             .validate_key(&Key::Hash(contract_package_hash))?;
 

@@ -62,7 +62,7 @@ fn test_upgrade(major_bump: u32, minor_bump: u32, patch_bump: u32, upgrade_entri
     let legacy_mint_hash = ContractHash::new(mint_contract_hash);
 
     let old_mint_contract = builder
-        .get_legacy_contract(legacy_mint_hash)
+        .get_contract(legacy_mint_hash)
         .expect("should have mint contract");
     assert_eq!(old_mint_contract.protocol_version(), old_protocol_version);
     let new_protocol_version = ProtocolVersion::from_parts(

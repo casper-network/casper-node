@@ -227,6 +227,21 @@ impl Account {
         self.associated_keys.update_key(account_hash, weight)
     }
 
+    /// Sets a new action threshold for a given action type for the account without checking against
+    /// the total weight of the associated keys.
+    ///
+    /// This should only be called when authorized by an administrator account.
+    ///
+    /// Returns an error if setting the action would cause the `ActionType::Deployment` threshold to
+    /// be greater than any of the other action types.
+    pub fn set_action_threshold_unchecked(
+        &mut self,
+        action_type: ActionType,
+        threshold: Weight,
+    ) -> Result<(), SetThresholdFailure> {
+        self.action_thresholds.set_threshold(action_type, threshold)
+    }
+
     /// Sets a new action threshold for a given action type for the account.
     ///
     /// Returns an error if the new action threshold weight is greater than the total weight of the

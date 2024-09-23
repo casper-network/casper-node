@@ -1487,6 +1487,7 @@ where
         account_hash: AccountHash,
     ) -> Option<AddressableEntityHash> {
         match self.query(None, Key::Account(account_hash), &[]).ok() {
+            Some(StoredValue::Account(_)) => Some(AddressableEntityHash::new(account_hash.value())),
             Some(StoredValue::CLValue(cl_value)) => {
                 let entity_key = CLValue::into_t::<Key>(cl_value).expect("must have contract hash");
                 entity_key.into_entity_hash()
@@ -1556,6 +1557,13 @@ where
         &self,
         entity_hash: AddressableEntityHash,
     ) -> Option<AddressableEntity> {
+        if !self.chainspec.core_config.enable_addressable_entity {
+            let contract_hash = ContractHash::new(entity_hash.value());
+            return self
+                .get_contract(contract_hash)
+                .map(|contract| AddressableEntity::from(contract));
+        }
+
         let entity_key = Key::addressable_entity_key(EntityKindTag::SmartContract, entity_hash);
 
         let value: StoredValue = match self.query(None, entity_key, &[]) {
@@ -1577,7 +1585,7 @@ where
     }
 
     /// Retrieve a Contract from global state.
-    pub fn get_legacy_contract(&self, contract_hash: ContractHash) -> Option<Contract> {
+    pub fn get_contract(&self, contract_hash: ContractHash) -> Option<Contract> {
         let contract_value: StoredValue = self
             .query(None, contract_hash.into(), &[])
             .expect("should have contract value");

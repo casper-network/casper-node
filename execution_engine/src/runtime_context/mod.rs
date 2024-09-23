@@ -1317,20 +1317,48 @@ where
             return Err(SetThresholdFailure::PermissionDeniedError.into());
         }
 
-        // Take an addressable entity out of the global state
-        let mut entity: AddressableEntity = self.read_gs_typed(&entity_key)?;
+        if self.engine_config.enable_entity {
+            // Take an addressable entity out of the global state
+            let mut entity: AddressableEntity = self.read_gs_typed(&entity_key)?;
 
-        // Exit early in case of error without updating global state
-        if self.is_authorized_by_admin() {
-            entity.set_action_threshold_unchecked(action_type, threshold)
+            // Exit early in case of error without updating global state
+            if self.is_authorized_by_admin() {
+                entity.set_action_threshold_unchecked(action_type, threshold)
+            } else {
+                entity.set_action_threshold(action_type, threshold)
+            }
+            .map_err(ExecError::from)?;
+
+            let entity_value = self.addressable_entity_to_validated_value(entity)?;
+
+            self.metered_write_gs_unsafe(entity_key, entity_value)?;
         } else {
-            entity.set_action_threshold(action_type, threshold)
+            // Converts an account's public key into a URef
+            let key = Key::Account(AccountHash::new(entity_addr.value()));
+
+            // Take an account out of the global state
+            let mut account: Account = self.read_gs_typed(&key)?;
+
+            // Exit early in case of error without updating global state
+            let action_type = match action_type {
+                ActionType::Deployment => casper_types::account::ActionType::Deployment,
+                ActionType::KeyManagement => casper_types::account::ActionType::KeyManagement,
+                ActionType::UpgradeManagement => return Err(ExecError::InvalidContext),
+            };
+
+            let threshold = casper_types::account::Weight::new(threshold.value());
+
+            if self.is_authorized_by_admin() {
+                account.set_action_threshold_unchecked(action_type, threshold)
+            } else {
+                account.set_action_threshold(action_type, threshold)
+            }
+            .map_err(ExecError::from)?;
+
+            let account_value = self.account_to_validated_value(account)?;
+
+            self.metered_write_gs_unsafe(key, account_value)?;
         }
-        .map_err(ExecError::from)?;
-
-        let entity_value = self.addressable_entity_to_validated_value(entity)?;
-
-        self.metered_write_gs_unsafe(entity_key, entity_value)?;
 
         Ok(())
     }
