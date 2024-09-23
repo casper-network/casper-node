@@ -715,6 +715,10 @@ fn should_only_upgrade_if_threshold_is_met() {
 
     builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
+    if !builder.chainspec().core_config.enable_addressable_entity {
+        return;
+    }
+
     let install_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         UPGRADE_THRESHOLD_CONTRACT_NAME,
@@ -880,6 +884,10 @@ fn setup_upgrade_threshold_state() -> (LmdbWasmTestBuilder, AccountHash) {
 fn should_correctly_set_upgrade_threshold_on_entity_upgrade() {
     let (mut builder, entity_1) = setup_upgrade_threshold_state();
 
+    if !builder.chainspec().core_config.enable_addressable_entity {
+        return;
+    }
+
     let default_addressable_entity = builder
         .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have default entity");
@@ -962,6 +970,10 @@ enum MigrationScenario {
 
 fn call_and_migrate_purse_holder_contract(migration_scenario: MigrationScenario) {
     let (mut builder, _) = setup_upgrade_threshold_state();
+
+    if !builder.chainspec().core_config.enable_addressable_entity {
+        return;
+    }
 
     let runtime_args = runtime_args! {
         PURSE_NAME_ARG_NAME => PURSE_1

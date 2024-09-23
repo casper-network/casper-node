@@ -472,13 +472,13 @@ fn should_run_delegate_and_undelegate() {
     );
     assert_eq!(*active_bid.delegation_rate(), ADD_BID_DELEGATION_RATE_1);
 
-    let auction_key = Key::addressable_entity_key(EntityKindTag::System, auction_hash);
+    let auction_key = Key::Hash(auction_hash.value());
 
     let auction_stored_value = builder
         .query(None, auction_key, &[])
         .expect("should query auction hash");
     let _auction = auction_stored_value
-        .as_addressable_entity()
+        .as_contract()
         .expect("should be contract");
 
     //

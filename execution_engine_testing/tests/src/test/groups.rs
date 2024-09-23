@@ -222,10 +222,7 @@ fn should_not_call_restricted_session_caller_from_wrong_account() {
 
     let _account = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query account")
-        .as_cl_value()
-        .cloned()
-        .expect("should be account");
+        .expect("should query account");
 
     let response = builder
         .get_last_exec_result()
@@ -379,10 +376,7 @@ fn should_call_group_unrestricted_contract_caller() {
 
     let _account = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query account")
-        .as_cl_value()
-        .cloned()
-        .expect("should be account");
+        .expect("should query account");
 }
 
 #[ignore]
@@ -705,10 +699,7 @@ fn should_not_call_group_restricted_stored_payment_code_from_invalid_account() {
 
     let _account = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query account")
-        .as_cl_value()
-        .cloned()
-        .expect("should be account");
+        .expect("should query account");
 
     let response = builder
         .get_last_exec_result()

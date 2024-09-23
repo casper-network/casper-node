@@ -41,7 +41,7 @@ fn should_run_counter_example() {
     let query_result = builder
         .query(
             None,
-            Key::from(*DEFAULT_ACCOUNT_ADDR),
+            Key::Account(*DEFAULT_ACCOUNT_ADDR),
             &[COUNTER_KEY.into(), COUNT_KEY.into()],
         )
         .expect("should query");

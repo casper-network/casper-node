@@ -62,20 +62,24 @@ fn should_install_faucet_contract() {
     let faucet_purse_id = format!("{}_{}", FAUCET_PURSE_NAMED_KEY, FAUCET_ID);
     assert!(installer_named_keys.get(&faucet_purse_id).is_some());
 
-    let faucet_named_key = installer_named_keys
-        .get(&format!("{}_{}", FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID))
-        .expect("failed to find faucet named key");
+    let faucet_named_key = Key::Hash(
+        installer_named_keys
+            .get(&format!("{}_{}", FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID))
+            .expect("failed to find faucet named key")
+            .into_entity_hash_addr()
+            .expect("must get hash addr"),
+    );
 
     // check installer is set.
     builder
-        .query(None, *faucet_named_key, &[INSTALLER_NAMED_KEY.to_string()])
+        .query(None, faucet_named_key, &[INSTALLER_NAMED_KEY.to_string()])
         .expect("failed to find installer named key");
 
     // check time interval
     builder
         .query(
             None,
-            *faucet_named_key,
+            faucet_named_key,
             &[TIME_INTERVAL_NAMED_KEY.to_string()],
         )
         .expect("failed to find time interval named key");
@@ -84,7 +88,7 @@ fn should_install_faucet_contract() {
     builder
         .query(
             None,
-            *faucet_named_key,
+            faucet_named_key,
             &[LAST_DISTRIBUTION_TIME_NAMED_KEY.to_string()],
         )
         .expect("failed to find last distribution named key");
@@ -93,7 +97,7 @@ fn should_install_faucet_contract() {
     builder
         .query(
             None,
-            *faucet_named_key,
+            faucet_named_key,
             &[FAUCET_PURSE_NAMED_KEY.to_string()],
         )
         .expect("failed to find faucet purse named key");
@@ -102,7 +106,7 @@ fn should_install_faucet_contract() {
     builder
         .query(
             None,
-            *faucet_named_key,
+            faucet_named_key,
             &[AVAILABLE_AMOUNT_NAMED_KEY.to_string()],
         )
         .expect("failed to find available amount named key");
@@ -111,7 +115,7 @@ fn should_install_faucet_contract() {
     builder
         .query(
             None,
-            *faucet_named_key,
+            faucet_named_key,
             &[REMAINING_REQUESTS_NAMED_KEY.to_string()],
         )
         .expect("failed to find remaining requests named key");
@@ -119,7 +123,7 @@ fn should_install_faucet_contract() {
     builder
         .query(
             None,
-            *faucet_named_key,
+            faucet_named_key,
             &[AUTHORIZED_ACCOUNT_NAMED_KEY.to_string()],
         )
         .expect("failed to find authorized account named key");
@@ -149,8 +153,7 @@ fn should_allow_installer_to_set_variables() {
         .commit();
 
     let faucet_contract_hash = helper.query_and_set_faucet_contract_hash(&builder);
-    let faucet_entity_key =
-        Key::addressable_entity_key(EntityKindTag::SmartContract, faucet_contract_hash);
+    let faucet_entity_key = Key::Hash(faucet_contract_hash.value());
 
     assert_eq!(
         helper.query_faucet_purse_balance(&builder),
@@ -385,8 +388,7 @@ fn should_allow_installer_to_fund_freely() {
     helper.query_and_set_faucet_contract_hash(&builder);
 
     let faucet_contract_hash = get_faucet_entity_hash(&builder, installer_account);
-    let faucet_entity_key =
-        Key::addressable_entity_key(EntityKindTag::SmartContract, faucet_contract_hash);
+    let faucet_entity_key = Key::Hash(faucet_contract_hash.value());
     let faucet_purse = get_faucet_purse(&builder, installer_account);
 
     let faucet_purse_balance = builder.get_purse_balance(faucet_purse);
@@ -552,10 +554,11 @@ fn should_allow_funding_by_an_authorized_account() {
         .get(&format!("{}_{}", FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID))
         .expect("failed to find faucet named key");
 
-    let key = Key::contract_entity_key(faucet_named_key.into_entity_hash().expect(
+    let hash = faucet_named_key.into_entity_hash().expect(
         "must convert to entity hash\
     ",
-    ));
+    );
+    let key = Key::Hash(hash.value());
 
     let maybe_authorized_account_public_key = builder
         .query(None, key, &[AUTHORIZED_ACCOUNT_NAMED_KEY.to_string()])

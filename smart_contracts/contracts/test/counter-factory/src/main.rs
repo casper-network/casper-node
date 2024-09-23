@@ -112,7 +112,7 @@ fn installer(name: String, initial_value: U512) {
     );
 
     runtime::put_key(CONTRACT_VERSION, storage::new_uref(contract_version).into());
-    runtime::put_key(&name, Key::contract_entity_key(contract_hash));
+    runtime::put_key(&name, Key::Hash(contract_hash.value()));
 }
 
 #[no_mangle]

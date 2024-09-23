@@ -116,7 +116,6 @@ where
 
         let virtual_system_account = {
             let named_keys = NamedKeys::new();
-
             Account::create(system_account_addr, named_keys, main_purse)
         };
 

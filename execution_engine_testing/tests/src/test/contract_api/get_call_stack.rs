@@ -1429,7 +1429,7 @@ mod session {
 
             assert!(
                 effects.transforms().iter().any(|transform| transform.key()
-                    == &Key::contract_entity_key(current_contract_hash.into())
+                    == &Key::Hash(current_contract_hash)
                     && transform.kind() == &TransformKindV2::Identity),
                 "Missing `Identity` transform for a contract being called."
             );

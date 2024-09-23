@@ -2,7 +2,8 @@ mod chainspec_registry;
 mod check_transfer_success;
 mod contract_api;
 mod contract_context;
-mod contract_messages;
+// TODO: Renable once message topics are uplifted.
+//mod contract_messages;
 mod counter_factory;
 mod deploy;
 mod explorer;

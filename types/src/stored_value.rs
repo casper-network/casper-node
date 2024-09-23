@@ -579,6 +579,7 @@ impl TryFrom<StoredValue> for Package {
     fn try_from(stored_value: StoredValue) -> Result<Self, Self::Error> {
         match stored_value {
             StoredValue::Package(contract_package) => Ok(contract_package),
+            StoredValue::ContractPackage(contract_package) => Ok(contract_package.into()),
             _ => Err(TypeMismatch::new(
                 "ContractPackage".to_string(),
                 stored_value.type_name(),

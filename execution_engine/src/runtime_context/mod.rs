@@ -425,6 +425,7 @@ where
         // the element stored under `base_key`) is allowed to add new named keys to itself.
         match self.get_entity_key() {
             Key::Account(_) | Key::Hash(_) => {
+                println!("adding key {name}");
                 let named_key_value = StoredValue::CLValue(CLValue::from_t((name.clone(), key))?);
                 self.validate_value(&named_key_value)?;
                 self.metered_add_gs_unsafe(self.get_entity_key(), named_key_value)?;

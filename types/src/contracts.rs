@@ -37,8 +37,8 @@ use crate::{
     serde_helpers::contract_package::HumanReadableContractPackage,
     uref::{self, URef},
     AddressableEntityHash, CLType, CLTyped, EntityVersionKey, EntryPoint as EntityEntryPoint,
-    EntryPointAccess, EntryPointPayment, EntryPointType, EntryPoints as EntityEntryPoints, Groups,
-    HashAddr, Key, Package, Parameter, Parameters, ProtocolVersion, KEY_HASH_LENGTH,
+    EntryPointAccess, EntryPointPayment, EntryPointType, EntryPoints as EntityEntryPoints, Group,
+    Groups, HashAddr, Key, Package, Parameter, Parameters, ProtocolVersion, KEY_HASH_LENGTH,
 };
 
 const CONTRACT_STRING_PREFIX: &str = "contract-";
@@ -760,6 +760,10 @@ impl ContractPackage {
         }
     }
 
+    /// Removes a group from this entity (if it exists).
+    pub fn remove_group(&mut self, group: &Group) -> bool {
+        self.groups.0.remove(group).is_some()
+    }
     fn next_contract_version_for(&self, protocol_version: ProtocolVersionMajor) -> ContractVersion {
         let current_version = self
             .versions
