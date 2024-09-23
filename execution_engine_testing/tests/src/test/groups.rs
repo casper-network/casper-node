@@ -281,10 +281,7 @@ fn should_call_group_restricted_contract() {
 
     let _account = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query account")
-        .as_cl_value()
-        .cloned()
-        .expect("should be account");
+        .expect("should query account");
 }
 
 #[ignore]

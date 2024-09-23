@@ -816,8 +816,7 @@ impl ContractPackage {
         key
     }
 
-    #[cfg(test)]
-    fn groups_mut(&mut self) -> &mut Groups {
+    pub fn groups_mut(&mut self) -> &mut Groups {
         &mut self.groups
     }
 }

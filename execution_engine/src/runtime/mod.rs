@@ -1376,6 +1376,7 @@ where
         entry_point_name: &str,
         args: RuntimeArgs,
     ) -> Result<CLValue, ExecError> {
+        println!("in exec contract");
         let (footprint, entity_addr, package) = match identifier {
             CallContractIdentifier::Contract { contract_hash } => {
                 let entity_addr = if self.context.is_system_addressable_entity(&contract_hash)? {
@@ -1547,7 +1548,7 @@ where
         // if not public, restricted to user group access
         // if abstract, not allowed
         self.validate_entry_point_access(&package, entry_point_name, entry_point.access())?;
-
+        println!("marker");
         if self.context.engine_config().strict_argument_checking() {
             let entry_point_args_lookup: BTreeMap<&str, &Parameter> = entry_point
                 .args()
@@ -1657,10 +1658,14 @@ where
         let stack = {
             let mut stack = self.try_get_stack()?.clone();
 
-            let package_hash = footprint
-                .package_hash()
-                .map(PackageHash::new)
-                .ok_or_else(|| ExecError::InvalidContext)?;
+            let package_hash = match footprint.package_hash() {
+                Some(hash) => PackageHash::new(hash),
+                None => {
+                    println!("in none case");
+                    return Err(ExecError::UnexpectedStoredValueVariant);
+                }
+            };
+
             stack.push(Caller::entity(package_hash, entity_hash))?;
 
             stack
@@ -1985,12 +1990,87 @@ where
                 .metered_write_gs_unsafe(Key::Package(addr), package)?;
             access_key
         } else {
+            println!("writing contract package");
             let (package, access_key) = self.create_contract_package(lock_status)?;
             self.context
                 .metered_write_gs_unsafe(Key::Hash(addr), package)?;
             access_key
         };
         Ok((addr, access_key.addr()))
+    }
+
+    fn create_contract_user_group_by_contract_package(
+        &mut self,
+        contract_package_hash: PackageHash,
+        label: String,
+        num_new_urefs: u32,
+        mut existing_urefs: BTreeSet<URef>,
+        output_size_ptr: u32,
+    ) -> Result<Result<(), ApiError>, ExecError> {
+        let mut contract_package: ContractPackage = self
+            .context
+            .get_validated_contract_package(contract_package_hash.value())?;
+
+        let groups = contract_package.groups_mut();
+        let new_group = Group::new(label);
+
+        // Ensure group does not already exist
+        if groups.contains(&new_group) {
+            return Ok(Err(addressable_entity::Error::GroupAlreadyExists.into()));
+        }
+
+        // Ensure there are not too many groups
+        if groups.len() >= (addressable_entity::MAX_GROUPS as usize) {
+            return Ok(Err(addressable_entity::Error::MaxGroupsExceeded.into()));
+        }
+
+        // Ensure there are not too many urefs
+        let total_urefs: usize =
+            groups.total_urefs() + (num_new_urefs as usize) + existing_urefs.len();
+        if total_urefs > addressable_entity::MAX_TOTAL_UREFS {
+            let err = addressable_entity::Error::MaxTotalURefsExceeded;
+            return Ok(Err(ApiError::ContractHeader(err as u8)));
+        }
+
+        // Proceed with creating user group
+        let mut new_urefs = Vec::with_capacity(num_new_urefs as usize);
+        for _ in 0..num_new_urefs {
+            let u = self.context.new_unit_uref()?;
+            new_urefs.push(u);
+        }
+
+        for u in new_urefs.iter().cloned() {
+            existing_urefs.insert(u);
+        }
+        groups.insert(new_group, existing_urefs);
+
+        // check we can write to the host buffer
+        if let Err(err) = self.check_host_buffer() {
+            return Ok(Err(err));
+        }
+        // create CLValue for return value
+        let new_urefs_value = CLValue::from_t(new_urefs)?;
+        let value_size = new_urefs_value.inner_bytes().len();
+        // write return value to buffer
+        if let Err(err) = self.write_host_buffer(new_urefs_value) {
+            return Ok(Err(err));
+        }
+        // Write return value size to output location
+        let output_size_bytes = value_size.to_le_bytes(); // Wasm is little-endian
+        if let Err(error) = self
+            .try_get_memory()?
+            .set(output_size_ptr, &output_size_bytes)
+        {
+            return Err(ExecError::Interpreter(error.into()));
+        }
+
+        // Write updated package to the global state
+        self.context.metered_write_gs_unsafe(
+            ContractPackageHash::new(contract_package_hash.value()),
+            contract_package,
+        )?;
+
+        Ok(Ok(()))
     }
 
     fn create_contract_user_group(
@@ -2001,6 +2081,16 @@ where
         mut existing_urefs: BTreeSet<URef>,
         output_size_ptr: u32,
     ) -> Result<Result<(), ApiError>, ExecError> {
+        if !self.context.engine_config().enable_entity {
+            return self.create_contract_user_group_by_contract_package(
+                contract_package_hash,
+                label,
+                num_new_urefs,
+                existing_urefs,
+                output_size_ptr,
+            );
+        };
+
         let mut contract_package: Package =
             self.context.get_validated_package(contract_package_hash)?;
 
@@ -2103,7 +2193,7 @@ where
         mut named_keys: NamedKeys,
         output_ptr: u32,
     ) -> Result<Result<(), ApiError>, ExecError> {
-        println!("in add by package");
+        println!("in add by contract package");
         self.context
             .validate_key(&Key::Hash(contract_package_hash))?;
 
@@ -3404,7 +3494,9 @@ where
         match access {
             EntryPointAccess::Public => Ok(()),
             EntryPointAccess::Groups(group_names) => {
+                println!("in groups");
                 if group_names.is_empty() {
+                    println!("is empty");
                     // Exits early in a special case of empty list of groups regardless of the group
                     // checking logic below it.
                     return Err(ExecError::InvalidContext);

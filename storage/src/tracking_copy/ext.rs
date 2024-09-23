@@ -636,21 +636,20 @@ where
     }
 
     fn get_package(&mut self, package_hash: HashAddr) -> Result<Package, Self::Error> {
-        let key = Key::Package(package_hash);
+        let key = Key::Hash(package_hash);
         match self.read(&key)? {
-            Some(StoredValue::Package(contract_package)) => Ok(contract_package),
+            Some(StoredValue::ContractPackage(contract_package)) => {
+                println!("in key hash");
+                Ok(contract_package.into())
+            }
             Some(other) => Err(Self::Error::TypeMismatch(StoredValueTypeMismatch::new(
-                "Package".to_string(),
+                "ContractPackage".to_string(),
                 other.type_name(),
             ))),
-            None => match self.read(&Key::Hash(package_hash))? {
-                Some(StoredValue::ContractPackage(contract_package)) => {
-                    println!("got contract package converting but not migrating to package");
-                    let package: Package = contract_package.into();
-                    Ok(package)
-                }
+            None => match self.read(&Key::Package(package_hash))? {
+                Some(StoredValue::Package(contract_package)) => Ok(contract_package),
                 Some(other) => Err(TrackingCopyError::TypeMismatch(
-                    StoredValueTypeMismatch::new("ContractPackage".to_string(), other.type_name()),
+                    StoredValueTypeMismatch::new("Package".to_string(), other.type_name()),
                 )),
                 None => Err(Self::Error::ValueNotFound(key.to_formatted_string())),
             },
