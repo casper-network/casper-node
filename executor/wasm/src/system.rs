@@ -138,9 +138,10 @@ fn dispatch_system_contract<R: GlobalStateReader, Ret: PartialEq>(
 
     let modified_tracking_copy = modified_tracking_copy.into_inner();
 
-    tracking_copy
-        .commit(modified_tracking_copy.effects())
-        .expect("Should commit effects");
+    tracking_copy.commit(
+        modified_tracking_copy.effects(),
+        modified_tracking_copy.cache(),
+    );
 
     Ok(ret)
 }

@@ -6,7 +6,7 @@ use std::{
 use serde::Serialize;
 use thiserror::Error;
 
-use casper_storage::data_access_layer::TransferResult;
+use casper_storage::{data_access_layer::TransferResult, tracking_copy::TrackingCopyCache};
 use casper_types::{
     account::AccountHash, bytesrepr::Bytes, contract_messages::Messages, execution::Effects,
     BlockTime, CLValue, DeployHash, Digest, ExecutableDeployItem, Gas, InitiatorAddr, Phase,
@@ -248,6 +248,8 @@ pub struct WasmV1Result {
     error: Option<EngineError>,
     /// Result captured from a ret call.
     ret: Option<CLValue>,
+    /// Tracking copy cache captured during execution.
+    cache: Option<TrackingCopyCache>,
 }
 
 impl WasmV1Result {
@@ -260,6 +262,7 @@ impl WasmV1Result {
         messages: Messages,
         error: Option<EngineError>,
         ret: Option<CLValue>,
+        cache: Option<TrackingCopyCache>,
     ) -> Self {
         WasmV1Result {
             limit,
@@ -269,6 +272,7 @@ impl WasmV1Result {
             messages,
             error,
             ret,
+            cache,
         }
     }
 
@@ -297,6 +301,11 @@ impl WasmV1Result {
         &self.effects
     }
 
+    /// Tracking copy cache captured during execution.
+    pub fn cache(&self) -> Option<&TrackingCopyCache> {
+        self.cache.as_ref()
+    }
+
     /// Messages emitted during execution.
     pub fn messages(&self) -> &Messages {
         &self.messages
@@ -317,6 +326,7 @@ impl WasmV1Result {
             consumed: Gas::zero(),
             error: Some(EngineError::RootNotFound(state_hash)),
             ret: None,
+            cache: None,
         }
     }
 
@@ -330,6 +340,7 @@ impl WasmV1Result {
             consumed: Gas::zero(),
             error: Some(error),
             ret: None,
+            cache: None,
         }
     }
 
@@ -343,6 +354,7 @@ impl WasmV1Result {
             consumed: Gas::zero(),
             error: Some(EngineError::InvalidExecutableItem(error)),
             ret: None,
+            cache: None,
         }
     }
 
@@ -361,7 +373,11 @@ impl WasmV1Result {
         // this is NOT true of wasm based operations however.
         match transfer_result {
             TransferResult::RootNotFound => None,
-            TransferResult::Success { transfers, effects } => Some(WasmV1Result {
+            TransferResult::Success {
+                transfers,
+                effects,
+                cache,
+            } => Some(WasmV1Result {
                 transfers,
                 limit: consumed,
                 consumed,
@@ -369,6 +385,7 @@ impl WasmV1Result {
                 messages: Messages::default(),
                 error: None,
                 ret: None,
+                cache: Some(cache),
             }),
             TransferResult::Failure(te) => {
                 Some(WasmV1Result {
@@ -379,6 +396,7 @@ impl WasmV1Result {
                     messages: Messages::default(),
                     error: Some(EngineError::Transfer(te)),
                     ret: None,
+                    cache: None,
                 })
             }
         }

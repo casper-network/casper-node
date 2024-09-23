@@ -4,6 +4,7 @@ use borsh::BorshSerialize;
 use bytes::Bytes;
 use casper_storage::{
     global_state::{error::Error as GlobalStateError, GlobalStateReader},
+    tracking_copy::TrackingCopyCache,
     AddressGenerator, TrackingCopy,
 };
 use casper_types::{
@@ -198,6 +199,8 @@ pub struct ExecuteResult {
     pub gas_usage: GasUsage,
     /// Effects produced by the execution.
     pub effects: Effects,
+    /// Cache of tracking copy effects produced by the execution.
+    pub cache: TrackingCopyCache,
 }
 
 /// Result of executing a Wasm contract on a state provider.

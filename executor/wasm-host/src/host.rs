@@ -536,6 +536,7 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
                     output,
                     gas_usage,
                     effects,
+                    cache,
                 }) => {
                     // output
 
@@ -545,11 +546,7 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
                         return Ok(Err(host_error));
                     }
 
-                    caller
-                        .context_mut()
-                        .tracking_copy
-                        .commit(effects)
-                        .expect("commit effects");
+                    caller.context_mut().tracking_copy.commit(effects, cache);
 
                     output
                 }
@@ -679,6 +676,7 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
             output,
             gas_usage,
             effects,
+            cache,
         }) => {
             if let Some(output) = output {
                 let out_ptr: u32 = if cb_alloc != 0 {
@@ -696,11 +694,7 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
             let host_result = match host_error {
                 Some(host_error) => Err(host_error),
                 None => {
-                    caller
-                        .context_mut()
-                        .tracking_copy
-                        .commit(effects)
-                        .expect("commit effects");
+                    caller.context_mut().tracking_copy.commit(effects, cache);
                     Ok(())
                 }
             };
@@ -1026,6 +1020,7 @@ pub fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
                     output,
                     gas_usage,
                     effects,
+                    cache,
                 }) => {
                     caller.consume_gas(gas_usage.gas_spent());
                     let _ = output; // TODO: What to do with the output of a fallback code? Need to emit a message
@@ -1034,11 +1029,7 @@ pub fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
                     let host_result = match host_error {
                         Some(host_error) => Err(host_error),
                         None => {
-                            caller
-                                .context_mut()
-                                .tracking_copy
-                                .commit(effects)
-                                .expect("commit effects");
+                            caller.context_mut().tracking_copy.commit(effects, cache);
                             Ok(())
                         }
                     };
@@ -1196,6 +1187,7 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
                 output,
                 gas_usage,
                 effects,
+                cache,
             }) => {
                 // output
 
@@ -1205,11 +1197,7 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
                     return Ok(Err(host_error));
                 }
 
-                caller
-                    .context_mut()
-                    .tracking_copy
-                    .commit(effects)
-                    .expect("commit effects");
+                caller.context_mut().tracking_copy.commit(effects, cache);
 
                 if let Some(output) = output {
                     info!(

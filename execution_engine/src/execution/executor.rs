@@ -75,6 +75,7 @@ impl Executor {
                     Vec::default(),
                     Some(error.into()),
                     None,
+                    None,
                 );
             }
         };
@@ -141,6 +142,7 @@ impl Executor {
                 runtime.context().messages(),
                 None,
                 Some(ret),
+                Some(runtime.context().cache()),
             ),
             Err(error) => WasmV1Result::new(
                 gas_limit,
@@ -149,6 +151,7 @@ impl Executor {
                 vec![],
                 Messages::new(),
                 Some(error.into()),
+                None,
                 None,
             ),
         }

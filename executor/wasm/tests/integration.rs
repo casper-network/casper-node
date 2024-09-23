@@ -1,19 +1,18 @@
 use std::{fs::File, path::Path, sync::Arc};
 
 use bytes::Bytes;
-use casper_execution_engine::engine_state::{EngineConfig, ExecutionEngineV1};
 use casper_executor_wasm::{
     install::{InstallContractRequest, InstallContractRequestBuilder, InstallContractResult},
     ExecutorConfigBuilder, ExecutorKind, ExecutorV2,
 };
 use casper_executor_wasm_interface::executor::{
-    ExecuteRequest, ExecuteRequestBuilder, ExecuteWithProviderResult, ExecutionKind, Executor,
+    ExecuteRequest, ExecuteRequestBuilder, ExecuteWithProviderResult, ExecutionKind,
 };
 use casper_storage::{
     data_access_layer::{GenesisRequest, GenesisResult, QueryRequest, QueryResult},
     global_state::{
         self,
-        state::{self, lmdb::LmdbGlobalState, CommitProvider, StateProvider},
+        state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
         transaction_source::lmdb::LmdbEnvironment,
         trie_store::lmdb::LmdbTrieStore,
     },

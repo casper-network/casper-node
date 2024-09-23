@@ -2138,8 +2138,13 @@ pub trait StateProvider: Send + Sync {
         let transfers = runtime.into_transfers();
 
         let effects = tc.borrow_mut().effects();
+        let cache = tc.borrow_mut().cache();
 
-        TransferResult::Success { transfers, effects }
+        TransferResult::Success {
+            transfers,
+            effects,
+            cache,
+        }
     }
 
     /// Gets all values under a given key tag.
