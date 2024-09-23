@@ -586,10 +586,15 @@ impl ExecutorV2 {
             )
         };
 
-        tracking_copy.apply_changes(
-            wasm_v1_result.effects().clone(),
-            wasm_v1_result.cache().cloned().unwrap(),
-        );
+        let effects = wasm_v1_result.effects();
+        match wasm_v1_result.cache() {
+            Some(cache) => {
+                tracking_copy.apply_changes(effects.clone(), cache.clone());
+            }
+            None => {
+                debug_assert!(effects.is_empty(), "effects should be empty if there is no cache");
+            }
+        }
 
         let gas_consumed = wasm_v1_result
             .consumed()
