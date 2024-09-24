@@ -7,8 +7,8 @@ use casper_engine_test_support::{
     TransferRequestBuilder, CHAINSPEC_SYMLINK, DEFAULT_PAYMENT, LOCAL_GENESIS_REQUEST,
 };
 use casper_types::{
-    account::AccountHash, addressable_entity::EntityKindTag, runtime_args, ApiError, FeeHandling,
-    Key, PricingHandling, PublicKey, RefundHandling, SecretKey, Transfer, U512,
+    account::AccountHash, runtime_args, ApiError, FeeHandling, Key, PricingHandling, PublicKey,
+    RefundHandling, SecretKey, Transfer, U512,
 };
 
 // test constants.

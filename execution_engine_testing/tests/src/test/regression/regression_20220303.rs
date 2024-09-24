@@ -7,8 +7,8 @@ use casper_engine_test_support::{LmdbWasmTestBuilder, UpgradeRequestBuilder};
 use casper_types::{
     contracts::ContractHash,
     system::{self, mint},
-    AccessRights, ByteCodeHash, CLValue, Digest, EntityAddr, EntryPoints, EraId, Key,
-    ProtocolVersion, StoredValue, SystemHashRegistry, URef,
+    AccessRights, CLValue, Digest, EntityAddr, EntryPoints, EraId, Key, ProtocolVersion,
+    StoredValue, SystemHashRegistry, URef,
 };
 use rand::Rng;
 

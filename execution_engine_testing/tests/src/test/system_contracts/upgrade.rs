@@ -703,7 +703,7 @@ fn should_correctly_migrate_and_prune_system_contract_records() {
             .get(name)
             .expect("must have hash");
         let legacy_contract_key = Key::Hash(legacy_hash);
-        let legacy_query = builder.query(None, legacy_contract_key, &[]);
+        let _legacy_query = builder.query(None, legacy_contract_key, &[]);
 
         // assert!(legacy_query.is_err());
         builder

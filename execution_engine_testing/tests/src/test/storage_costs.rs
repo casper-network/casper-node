@@ -13,13 +13,11 @@ use casper_engine_test_support::{
 #[cfg(not(feature = "use-as-wasm"))]
 use casper_types::DEFAULT_ADD_BID_COST;
 use casper_types::{
-    addressable_entity::NamedKeyValue,
     bytesrepr::{Bytes, ToBytes},
     contracts::{ContractHash, ContractPackage, ContractVersionKey},
-    AddressableEntityHash, BrTableCost, CLValue, ControlFlowCosts, EntityVersionKey, EraId, Gas,
-    Group, Groups, HostFunctionCosts, Key, MessageLimits, OpcodeCosts, Package, ProtocolVersion,
-    RuntimeArgs, StorageCosts, StoredValue, URef, WasmConfig, DEFAULT_MAX_STACK_HEIGHT,
-    DEFAULT_WASM_MAX_MEMORY, U512,
+    AddressableEntityHash, BrTableCost, CLValue, ControlFlowCosts, EraId, Gas, Group, Groups,
+    HostFunctionCosts, Key, MessageLimits, OpcodeCosts, ProtocolVersion, RuntimeArgs, StorageCosts,
+    StoredValue, URef, WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY, U512,
 };
 #[cfg(not(feature = "use-as-wasm"))]
 use casper_types::{

@@ -1,6 +1,6 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
-    convert::{TryFrom, TryInto},
+    convert::TryFrom,
     ffi::OsStr,
     fs,
     iter::{self, FromIterator},

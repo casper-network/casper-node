@@ -9,9 +9,8 @@ use casper_engine_test_support::{
 };
 use casper_storage::data_access_layer::GenesisRequest;
 use casper_types::{
-    account::AccountHash, addressable_entity::EntityKindTag, system::auction::DelegationRate,
-    GenesisAccount, GenesisConfigBuilder, GenesisValidator, Key, Motes, ProtocolVersion, PublicKey,
-    SecretKey, StoredValue, U512,
+    account::AccountHash, system::auction::DelegationRate, GenesisAccount, GenesisConfigBuilder,
+    GenesisValidator, Key, Motes, ProtocolVersion, PublicKey, SecretKey, StoredValue, U512,
 };
 
 const GENESIS_CONFIG_HASH: [u8; 32] = [127; 32];

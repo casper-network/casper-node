@@ -6,8 +6,8 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{engine_state::Error, execution::ExecError};
 use casper_types::{
-    account::AccountHash, runtime_args, EntityVersion, EntityVersionKey, EraId, HashAddr,
-    PackageHash, ProtocolVersion, RuntimeArgs, ENTITY_INITIAL_VERSION, U512,
+    account::AccountHash, runtime_args, EntityVersion, EraId, HashAddr, ProtocolVersion,
+    RuntimeArgs, ENTITY_INITIAL_VERSION, U512,
 };
 
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([42u8; 32]);
@@ -532,7 +532,7 @@ fn should_fail_session_stored_at_named_key_with_incompatible_major_version() {
         builder.is_error(),
         "calling a session module with increased major protocol version should be error",
     );
-    let error = builder.get_error().expect("must have error");
+    let _error = builder.get_error().expect("must have error");
     // println!("error {:?}", error);
     // assert!(matches!(
     //     error,

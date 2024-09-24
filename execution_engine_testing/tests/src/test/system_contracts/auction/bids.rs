@@ -27,7 +27,6 @@ use casper_storage::data_access_layer::{GenesisRequest, HandleFeeMode};
 use casper_types::{
     self,
     account::AccountHash,
-    addressable_entity::EntityKindTag,
     api_error::ApiError,
     runtime_args,
     system::{

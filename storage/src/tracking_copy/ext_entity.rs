@@ -1,5 +1,5 @@
 use std::collections::BTreeSet;
-use tracing::{debug, error};
+use tracing::error;
 
 use casper_types::{
     account::AccountHash,

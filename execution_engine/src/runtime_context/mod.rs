@@ -32,7 +32,7 @@ use casper_types::{
     contracts::{ContractHash, ContractPackage, ContractPackageHash},
     execution::Effects,
     handle_stored_dictionary_value,
-    system::{auction::EraInfo, SystemEntityType},
+    system::auction::EraInfo,
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, CLType, CLValue,
     CLValueDictionary, ContextAccessRights, Contract, EntityAddr, EntryPointAddr, EntryPointType,
     EntryPointValue, EntryPoints, Gas, GrantedAccess, HashAddr, Key, KeyTag, Motes, Package,
