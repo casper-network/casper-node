@@ -440,7 +440,7 @@ where
     }
 
     pub fn named_keys(&self) -> &NamedKeys {
-        &self.runtime_footprint().named_keys()
+        self.runtime_footprint().named_keys()
     }
 
     /// Returns a mutable reference to named keys.

@@ -259,17 +259,17 @@ impl TransferRuntimeArgsBuilder {
             }
             Some(cl_value) if *cl_value.cl_type() == CLType::Option(CLType::URef.into()) => {
                 let Some(uref): Option<URef> = self.map_cl_value(cl_value)? else {
-                    return Ok(account
+                    return account
                         .main_purse()
-                        .ok_or_else(|| TransferError::InvalidOperation)?);
+                        .ok_or_else(|| TransferError::InvalidOperation);
                 };
                 uref
             }
             Some(_) => return Err(TransferError::InvalidArgument),
             None => {
-                return Ok(account
+                return account
                     .main_purse()
-                    .ok_or_else(|| TransferError::InvalidOperation)?)
+                    .ok_or_else(|| TransferError::InvalidOperation)
             } /* if no source purse passed use account
                * main purse */
         };

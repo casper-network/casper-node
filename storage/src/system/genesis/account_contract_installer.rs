@@ -233,7 +233,7 @@ where
             // call the `call_host_mint` function during their creation.
             let mut partial_registry = BTreeMap::<String, HashAddr>::new();
             partial_registry.insert(MINT.to_string(), mint_hash.value());
-            partial_registry.insert(HANDLE_PAYMENT.to_string(), DEFAULT_ADDRESS.into());
+            partial_registry.insert(HANDLE_PAYMENT.to_string(), DEFAULT_ADDRESS);
             let cl_registry = CLValue::from_t(partial_registry)
                 .map_err(|error| GenesisError::CLValue(error.to_string()))?;
             self.tracking_copy

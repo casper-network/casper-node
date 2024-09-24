@@ -68,6 +68,7 @@ impl RuntimeAddress {
 }
 
 #[repr(u8)]
+#[allow(clippy::enum_variant_names)]
 pub(crate) enum Action {
     KeyManagement = 0,
     DeployManagement,

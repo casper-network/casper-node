@@ -901,8 +901,7 @@ fn should_verify_create_contract_user_group_is_charging_for_storage() {
         [(ContractVersionKey::new(2, 1), ContractHash::new([0u8; 32]))]
             .iter()
             .cloned()
-            .collect::<BTreeMap<_, _>>()
-            .into(),
+            .collect::<BTreeMap<_, _>>(),
         Default::default(),
         groups,
         Default::default(),

@@ -1393,12 +1393,11 @@ where
 
                         let maybe_system_entity_type = self.maybe_system_type(contract_hash);
 
-                        let footprint = RuntimeFootprint::new_contract_footprint(
+                        RuntimeFootprint::new_contract_footprint(
                             ContractHash::new(contract_hash),
                             contract,
                             maybe_system_entity_type,
-                        );
-                        footprint
+                        )
                     }
                     Some(_) => return Err(ExecError::UnexpectedStoredValueVariant),
                     None => {
@@ -1490,12 +1489,11 @@ where
                             )?;
                         };
                         let maybe_system_entity_type = self.maybe_system_type(entity_hash);
-                        let footprint = RuntimeFootprint::new_contract_footprint(
+                        RuntimeFootprint::new_contract_footprint(
                             ContractHash::new(entity_hash),
                             contract,
                             maybe_system_entity_type,
-                        );
-                        footprint
+                        )
                     }
                     Some(_) => return Err(ExecError::UnexpectedStoredValueVariant),
                     None => {
@@ -1648,7 +1646,7 @@ where
 
         let access_rights = {
             let mut access_rights =
-                footprint.extract_access_rights(entity_hash.value(), &footprint.named_keys());
+                footprint.extract_access_rights(entity_hash.value(), footprint.named_keys());
             access_rights.extend(&extended_access_rights);
             access_rights
         };
@@ -1667,8 +1665,6 @@ where
 
             stack
         };
-
-        let kind = footprint.entity_kind();
 
         if let EntityKind::System(system_contract_type) = footprint.entity_kind() {
             let entry_point_name = entry_point.name();

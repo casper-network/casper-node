@@ -146,12 +146,13 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
                                     // This can happen when user tries to transfer funds by
                                     // calling mint
                                     // directly but tries to specify wrong account hash.
-                                    if runtime_footprint
-                                        .main_purse()
-                                        .ok_or_else(|| Error::InvalidContext)?
-                                        .addr()
-                                        != target.addr()
-                                    {
+                                    let addr = if let Some(uref) = runtime_footprint.main_purse() {
+                                        uref.addr()
+                                    } else {
+                                        return Err(Error::InvalidContext);
+                                    };
+
+                                    if addr != target.addr() {
                                         return Err(Error::DisabledUnrestrictedTransfers);
                                     }
                                     let is_target_system_account =

@@ -1561,7 +1561,7 @@ where
             let contract_hash = ContractHash::new(entity_hash.value());
             return self
                 .get_contract(contract_hash)
-                .map(|contract| AddressableEntity::from(contract));
+                .map(AddressableEntity::from);
         }
 
         let entity_key = Key::addressable_entity_key(EntityKindTag::SmartContract, entity_hash);

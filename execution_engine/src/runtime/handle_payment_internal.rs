@@ -124,7 +124,7 @@ where
                         Err(_) => None,
                     }
                 }
-                _ => return None,
+                _ => None,
             },
             Some(key) => Some(key),
         }

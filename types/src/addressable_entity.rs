@@ -1461,7 +1461,7 @@ impl AddressableEntity {
     }
 
     pub fn entity_kind(&self) -> EntityKind {
-        self.entity_kind.clone()
+        self.entity_kind
     }
 
     /// Hash for accessing contract package

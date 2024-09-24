@@ -167,7 +167,7 @@ where
                 self.named_keys_mut().insert(name, key);
                 Ok(())
             }
-            _ => return Err(Error::UnexpectedKeyVariant),
+            _ => Err(Error::UnexpectedKeyVariant),
         }
     }
 
@@ -193,9 +193,9 @@ where
                     .borrow_mut()
                     .read(self.entity_key())
                     .map_err(|_| Error::RemoveKey)?
-                    .ok_or_else(|| Error::RemoveKey)?
+                    .ok_or(Error::RemoveKey)?
                     .as_contract()
-                    .ok_or_else(|| Error::RemoveKey)?
+                    .ok_or(Error::RemoveKey)?
                     .clone();
 
                 if contract.remove_named_key(name).is_none() {

@@ -398,7 +398,7 @@ where
         Runtime::context(self)
             .runtime_footprint()
             .main_purse()
-            .ok_or_else(|| Error::InvalidContext)
+            .ok_or(Error::InvalidContext)
     }
 }
 

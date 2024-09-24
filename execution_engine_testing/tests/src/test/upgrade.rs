@@ -674,8 +674,7 @@ fn should_fail_upgrade_for_locked_contract() {
         .expect("should have stored package hash")
         .into_hash_addr()
         .map(PackageHash::new)
-        .expect("should have hash")
-        .into();
+        .expect("should have hash");
 
     let contract_package = builder
         .get_package(stored_package_hash)
