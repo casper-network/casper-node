@@ -528,7 +528,6 @@ where
         protocol_version: ProtocolVersion,
     ) -> Result<(), Self::Error> {
         let account_hash = account.account_hash();
-        println!("migrating account {}", account_hash);
         if !self.enable_addressable_entity {
             self.write(Key::Account(account_hash), StoredValue::Account(account));
             return Ok(());

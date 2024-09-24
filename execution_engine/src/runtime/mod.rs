@@ -2526,22 +2526,45 @@ where
         contract_package_hash: PackageHash,
         contract_hash: AddressableEntityHash,
     ) -> Result<Result<(), ApiError>, ExecError> {
-        let contract_package_key = contract_package_hash.into();
-        self.context.validate_key(&contract_package_key)?;
+        if self.context.engine_config().enable_entity {
+            let contract_package_key = Key::Package(contract_package_hash.value());
+            self.context.validate_key(&contract_package_key)?;
 
-        let mut contract_package: Package =
-            self.context.get_validated_package(contract_package_hash)?;
+            let mut contract_package: Package =
+                self.context.get_validated_package(contract_package_hash)?;
 
-        if contract_package.is_locked() {
-            return Err(ExecError::LockedEntity(contract_package_hash));
+            if contract_package.is_locked() {
+                return Err(ExecError::LockedEntity(contract_package_hash));
+            }
+
+            if let Err(err) = contract_package.disable_entity_version(contract_hash) {
+                return Ok(Err(err.into()));
+            }
+
+            self.context
+                .metered_write_gs_unsafe(contract_package_key, contract_package)?;
+        } else {
+            let contract_package_key = Key::Hash(contract_package_hash.value());
+            self.context.validate_key(&contract_package_key)?;
+
+            let mut contract_package: ContractPackage = self
+                .context
+                .get_validated_contract_package(contract_package_hash.value())?;
+
+            if contract_package.is_locked() {
+                return Err(ExecError::LockedEntity(PackageHash::new(
+                    contract_package_hash.value(),
+                )));
+            }
+            let contract_hash = ContractHash::new(contract_hash.value());
+
+            if let Err(err) = contract_package.disable_contract_version(contract_hash) {
+                return Ok(Err(err.into()));
+            }
+
+            self.context
+                .metered_write_gs_unsafe(contract_package_key, contract_package)?;
         }
-
-        if let Err(err) = contract_package.disable_entity_version(contract_hash) {
-            return Ok(Err(err.into()));
-        }
-
-        self.context
-            .metered_write_gs_unsafe(contract_package_key, contract_package)?;
 
         Ok(Ok(()))
     }
@@ -2551,22 +2574,45 @@ where
         contract_package_hash: PackageHash,
         contract_hash: AddressableEntityHash,
     ) -> Result<Result<(), ApiError>, ExecError> {
-        let contract_package_key = contract_package_hash.into();
-        self.context.validate_key(&contract_package_key)?;
+        if self.context.engine_config().enable_entity {
+            let contract_package_key = Key::Package(contract_package_hash.value());
+            self.context.validate_key(&contract_package_key)?;
 
-        let mut contract_package: Package =
-            self.context.get_validated_package(contract_package_hash)?;
+            let mut contract_package: Package =
+                self.context.get_validated_package(contract_package_hash)?;
 
-        if contract_package.is_locked() {
-            return Err(ExecError::LockedEntity(contract_package_hash));
+            if contract_package.is_locked() {
+                return Err(ExecError::LockedEntity(contract_package_hash));
+            }
+
+            if let Err(err) = contract_package.enable_version(contract_hash) {
+                return Ok(Err(err.into()));
+            }
+
+            self.context
+                .metered_write_gs_unsafe(contract_package_key, contract_package)?;
+        } else {
+            let contract_package_key = Key::Hash(contract_package_hash.value());
+            self.context.validate_key(&contract_package_key)?;
+
+            let mut contract_package: ContractPackage = self
+                .context
+                .get_validated_contract_package(contract_package_hash.value())?;
+
+            if contract_package.is_locked() {
+                return Err(ExecError::LockedEntity(PackageHash::new(
+                    contract_package_hash.value(),
+                )));
+            }
+            let contract_hash = ContractHash::new(contract_hash.value());
+
+            if let Err(err) = contract_package.enable_contract_version(contract_hash) {
+                return Ok(Err(err.into()));
+            }
+
+            self.context
+                .metered_write_gs_unsafe(contract_package_key, contract_package)?;
         }
-
-        if let Err(err) = contract_package.enable_version(contract_hash) {
-            return Ok(Err(err.into()));
-        }
-
-        self.context
-            .metered_write_gs_unsafe(contract_package_key, contract_package)?;
 
         Ok(Ok(()))
     }

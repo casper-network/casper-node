@@ -760,6 +760,42 @@ impl ContractPackage {
         }
     }
 
+    /// Disable the contract version corresponding to the given hash (if it exists).
+    pub fn disable_contract_version(&mut self, contract_hash: ContractHash) -> Result<(), Error> {
+        let contract_version_key = self
+            .find_contract_version_key_by_hash(&contract_hash)
+            .copied()
+            .ok_or(Error::ContractNotFound)?;
+
+        if !self.disabled_versions.contains(&contract_version_key) {
+            self.disabled_versions.insert(contract_version_key);
+        }
+
+        Ok(())
+    }
+
+    /// Enable the contract version corresponding to the given hash (if it exists).
+    pub fn enable_contract_version(&mut self, contract_hash: ContractHash) -> Result<(), Error> {
+        let contract_version_key = self
+            .find_contract_version_key_by_hash(&contract_hash)
+            .copied()
+            .ok_or(Error::ContractNotFound)?;
+
+        self.disabled_versions.remove(&contract_version_key);
+
+        Ok(())
+    }
+
+    fn find_contract_version_key_by_hash(
+        &self,
+        contract_hash: &ContractHash,
+    ) -> Option<&ContractVersionKey> {
+        self.versions
+            .iter()
+            .filter_map(|(k, v)| if v == contract_hash { Some(k) } else { None })
+            .next()
+    }
+
     /// Removes a group from this entity (if it exists).
     pub fn remove_group(&mut self, group: &Group) -> bool {
         self.groups.0.remove(group).is_some()
