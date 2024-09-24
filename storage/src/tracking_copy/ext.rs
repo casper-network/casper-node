@@ -173,7 +173,6 @@ where
         })?;
 
         let named_keys = self.get_named_keys(EntityAddr::System(entity_hash))?;
-        println!("mint nk {:?}", named_keys);
 
         // get the handling
         let handling = {
@@ -553,9 +552,7 @@ where
 
     fn get_named_keys(&self, entity_addr: EntityAddr) -> Result<NamedKeys, Self::Error> {
         if !self.enable_addressable_entity {
-            println!("in foo");
             let footprint = self.get_runtime_footprint(entity_addr)?;
-            println!("footprint {:?}", footprint);
             return Ok(footprint.take_named_keys());
         }
 
@@ -643,10 +640,7 @@ where
     fn get_package(&mut self, package_hash: HashAddr) -> Result<Package, Self::Error> {
         let key = Key::Hash(package_hash);
         match self.read(&key)? {
-            Some(StoredValue::ContractPackage(contract_package)) => {
-                println!("in key hash");
-                Ok(contract_package.into())
-            }
+            Some(StoredValue::ContractPackage(contract_package)) => Ok(contract_package.into()),
             Some(other) => Err(Self::Error::TypeMismatch(StoredValueTypeMismatch::new(
                 "ContractPackage".to_string(),
                 other.type_name(),

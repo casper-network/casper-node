@@ -207,19 +207,12 @@ where
                     maybe_system_entity_type,
                 ))
             }
-            Some(other) => {
-                let key = other.as_cl_value().map(|val| val.clone());
-                let key = key.unwrap().into_t::<Key>().unwrap();
-                println!("{key}");
-
-                println!("in other,{:?} ", other);
-                Err(TrackingCopyError::TypeMismatch(
-                    StoredValueTypeMismatch::new(
-                        "AddressableEntity or Contract".to_string(),
-                        other.type_name(),
-                    ),
-                ))
-            }
+            Some(other) => Err(TrackingCopyError::TypeMismatch(
+                StoredValueTypeMismatch::new(
+                    "AddressableEntity or Contract".to_string(),
+                    other.type_name(),
+                ),
+            )),
             None => Err(TrackingCopyError::KeyNotFound(key)),
         }
     }

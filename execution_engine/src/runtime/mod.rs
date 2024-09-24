@@ -1376,7 +1376,6 @@ where
         entry_point_name: &str,
         args: RuntimeArgs,
     ) -> Result<CLValue, ExecError> {
-        println!("in exec contract");
         let (footprint, entity_addr, package) = match identifier {
             CallContractIdentifier::Contract { contract_hash } => {
                 let entity_addr = if self.context.is_system_addressable_entity(&contract_hash)? {
@@ -1548,7 +1547,6 @@ where
         // if not public, restricted to user group access
         // if abstract, not allowed
         self.validate_entry_point_access(&package, entry_point_name, entry_point.access())?;
-        println!("marker");
         if self.context.engine_config().strict_argument_checking() {
             let entry_point_args_lookup: BTreeMap<&str, &Parameter> = entry_point
                 .args()
@@ -1661,7 +1659,6 @@ where
             let package_hash = match footprint.package_hash() {
                 Some(hash) => PackageHash::new(hash),
                 None => {
-                    println!("in none case");
                     return Err(ExecError::UnexpectedStoredValueVariant);
                 }
             };
@@ -1672,7 +1669,6 @@ where
         };
 
         let kind = footprint.entity_kind();
-        println!("kind: {}", kind);
 
         if let EntityKind::System(system_contract_type) = footprint.entity_kind() {
             let entry_point_name = entry_point.name();
@@ -2193,7 +2189,6 @@ where
         mut named_keys: NamedKeys,
         output_ptr: u32,
     ) -> Result<Result<(), ApiError>, ExecError> {
-        println!("in add by contract package");
         self.context
             .validate_key(&Key::Hash(contract_package_hash))?;
 
@@ -3540,9 +3535,7 @@ where
         match access {
             EntryPointAccess::Public => Ok(()),
             EntryPointAccess::Groups(group_names) => {
-                println!("in groups");
                 if group_names.is_empty() {
-                    println!("is empty");
                     // Exits early in a special case of empty list of groups regardless of the group
                     // checking logic below it.
                     return Err(ExecError::InvalidContext);

@@ -1966,7 +1966,6 @@ pub trait StateProvider {
 
     /// Direct transfer.
     fn transfer(&self, request: TransferRequest) -> TransferResult {
-        println!("in transfer");
         let state_hash = request.state_hash();
         let tc = match self.tracking_copy(state_hash) {
             Ok(Some(tc)) => Rc::new(RefCell::new(tc)),
