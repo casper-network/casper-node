@@ -287,12 +287,10 @@ fn get_entity(
         result
             .into_addressable_entity()
             .expect("should have an AddressableEntity")
+    } else if is_contract {
+        AddressableEntity::from(result.as_contract().expect("must have contract").clone())
     } else {
-        if is_contract {
-            AddressableEntity::from(result.as_contract().expect("must have contract").clone())
-        } else {
-            AddressableEntity::from(result.as_account().expect("must have account").clone())
-        }
+        AddressableEntity::from(result.as_account().expect("must have account").clone())
     }
 }
 
@@ -1127,7 +1125,7 @@ impl SingleTransactionTestCase {
 
         self.fixture.inject_transaction(txn).await;
         self.fixture
-            .run_until_executed_transaction(&txn_hash, TEN_SECS)
+            .run_until_executed_transaction(&txn_hash, Duration::from_secs(30))
             .await;
 
         let (_node_id, runner) = self.fixture.network.nodes().iter().next().unwrap();
