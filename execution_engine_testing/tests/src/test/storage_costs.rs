@@ -111,6 +111,18 @@ static NEW_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| {
     )
 });
 
+/*
+NOTE: in this test suite, to isolation specific micro function,
+we are using specific costs that are not indicative of production values
+
+Do not interpret statements in this test suite as global statements of fact
+rather, they are self-reflective.
+
+For instance, "should not charge for x" does not mean production usage would allow zero
+cost host interaction. It only means in this controlled setup we have isolated that value
+for fine grained testing.
+*/
+
 fn initialize_isolated_storage_costs() -> LmdbWasmTestBuilder {
     // This test runs a contract that's after every call extends the same key with
     // more data
@@ -806,11 +818,15 @@ fn should_verify_remove_key_is_not_charging_for_storage() {
 
     builder.exec(exec_request).expect_success().commit();
 
-    // assert_eq!(
-    //     // should charge zero, because we do not charge for storage when removing a key
-    //     builder.last_exec_gas_cost(),
-    //     STORAGE_COSTS_ONLY.storage_costs().calculate_gas_cost(0),
-    // )
+    if builder.chainspec().core_config.enable_addressable_entity {
+        assert_eq!(
+            // should charge zero, because we do not charge for storage when removing a key
+            builder.last_exec_gas_cost(),
+            STORAGE_COSTS_ONLY.storage_costs().calculate_gas_cost(0),
+        )
+    } else {
+        assert!(builder.last_exec_gas_cost() > Gas::zero())
+    }
 }
 
 #[ignore]

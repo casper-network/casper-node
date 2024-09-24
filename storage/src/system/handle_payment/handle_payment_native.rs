@@ -31,37 +31,33 @@ where
         amount: U512,
     ) -> Result<TransferredTo, Error> {
         let target_key = Key::Account(target);
-        let entity_key_value = match self.tracking_copy().borrow_mut().read(&target_key) {
-            Ok(Some(StoredValue::CLValue(cl_value))) => cl_value, // entity exists
-            Ok(Some(StoredValue::Account(_))) => {
-                // legacy account exists; attempt to migrate to entity
-                self.tracking_copy()
-                    .borrow_mut()
-                    .migrate_account(target, self.protocol_version())
-                    .map_err(|_| Error::Transfer)?;
-                // attempt to read back migrated entity
-                if let Ok(Some(StoredValue::CLValue(cl_value))) =
-                    self.tracking_copy().borrow_mut().read(&target_key)
-                {
-                    cl_value
-                } else {
-                    return Err(Error::Transfer);
+        let target_uref = match self.tracking_copy().borrow_mut().read(&target_key) {
+            Ok(Some(StoredValue::CLValue(cl_value))) => {
+                let entity_key = CLValue::into_t::<Key>(cl_value)
+                    .map_err(|_| Error::FailedTransferToAccountPurse)?;
+                // get entity
+                let target_uref = {
+                    if let Ok(Some(StoredValue::AddressableEntity(entity))) =
+                        self.tracking_copy().borrow_mut().read(&entity_key)
+                    {
+                        entity.main_purse_add_only()
+                    } else {
+                        return Err(Error::Transfer);
+                    }
+                };
+                target_uref
+            } // entity exists
+            Ok(Some(StoredValue::Account(account))) => {
+                if self.config().enable_entity() {
+                    self.tracking_copy()
+                        .borrow_mut()
+                        .migrate_account(target, self.protocol_version())
+                        .map_err(|_| Error::Transfer)?;
                 }
+
+                account.main_purse_add_only()
             }
             Ok(_) | Err(_) => return Err(Error::Transfer),
-        };
-
-        let entity_key = CLValue::into_t::<Key>(entity_key_value)
-            .map_err(|_| Error::FailedTransferToAccountPurse)?;
-        // get entity
-        let target_uref = {
-            if let Ok(Some(StoredValue::AddressableEntity(entity))) =
-                self.tracking_copy().borrow_mut().read(&entity_key)
-            {
-                entity.main_purse_add_only()
-            } else {
-                return Err(Error::Transfer);
-            }
         };
 
         // source and target are the same, noop

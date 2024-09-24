@@ -239,11 +239,16 @@ fn get_entity_addr_from_account_hash(
         err => panic!("Expected QueryResult::Success but got {:?}", err),
     };
 
-    let key = result
-        .as_cl_value()
-        .expect("should have a CLValue")
-        .to_t::<Key>()
-        .expect("should have a Key");
+    let key = if fixture.chainspec.core_config.enable_addressable_entity {
+        result
+            .as_cl_value()
+            .expect("should have a CLValue")
+            .to_t::<Key>()
+            .expect("should have a Key")
+    } else {
+        result.as_account().expect("must have account");
+        Key::Account(account_hash)
+    };
 
     match key {
         Key::Account(account_has) => EntityAddr::Account(account_has.value()),
@@ -259,22 +264,36 @@ fn get_entity(
     entity_addr: EntityAddr,
 ) -> AddressableEntity {
     let (_node_id, runner) = fixture.network.nodes().iter().next().unwrap();
+    let (key, is_contract) = if fixture.chainspec.core_config.enable_addressable_entity {
+        (Key::AddressableEntity(entity_addr), false)
+    } else {
+        match entity_addr {
+            EntityAddr::System(hash) | EntityAddr::SmartContract(hash) => (Key::Hash(hash), true),
+            EntityAddr::Account(hash) => (Key::Account(AccountHash::new(hash)), false),
+        }
+    };
+
     let result = match runner
         .main_reactor()
         .contract_runtime()
         .data_access_layer()
-        .query(QueryRequest::new(
-            state_root_hash,
-            Key::AddressableEntity(entity_addr),
-            vec![],
-        )) {
+        .query(QueryRequest::new(state_root_hash, key, vec![]))
+    {
         QueryResult::Success { value, .. } => value,
         err => panic!("Expected QueryResult::Success but got {:?}", err),
     };
 
-    result
-        .into_addressable_entity()
-        .expect("should have an AddressableEntity")
+    if fixture.chainspec.core_config.enable_addressable_entity {
+        result
+            .into_addressable_entity()
+            .expect("should have an AddressableEntity")
+    } else {
+        if is_contract {
+            AddressableEntity::from(result.as_contract().expect("must have contract").clone())
+        } else {
+            AddressableEntity::from(result.as_account().expect("must have account").clone())
+        }
+    }
 }
 
 fn get_entity_named_key(
@@ -283,19 +302,50 @@ fn get_entity_named_key(
     entity_addr: EntityAddr,
     named_key: &str,
 ) -> Option<Key> {
-    let key = Key::NamedKey(
-        NamedKeyAddr::new_from_string(entity_addr, named_key.to_owned())
-            .expect("should be valid NamedKeyAddr"),
-    );
+    if fixture.chainspec.core_config.enable_addressable_entity {
+        let key = Key::NamedKey(
+            NamedKeyAddr::new_from_string(entity_addr, named_key.to_owned())
+                .expect("should be valid NamedKeyAddr"),
+        );
 
-    match query_global_state(fixture, state_root_hash, key) {
-        Some(val) => match &*val {
-            StoredValue::NamedKey(named_key) => {
-                Some(named_key.get_key().expect("should have a Key"))
+        match query_global_state(fixture, state_root_hash, key) {
+            Some(val) => match &*val {
+                StoredValue::NamedKey(named_key) => {
+                    Some(named_key.get_key().expect("should have a Key"))
+                }
+                value => panic!("Expected NamedKey but got {:?}", value),
+            },
+            None => None,
+        }
+    } else {
+        match entity_addr {
+            EntityAddr::System(hash) | EntityAddr::SmartContract(hash) => {
+                match query_global_state(fixture, state_root_hash, Key::Hash(hash)) {
+                    Some(val) => match &*val {
+                        StoredValue::Contract(contract) => {
+                            contract.named_keys().get(named_key).copied()
+                        }
+                        value => panic!("Expected Contract but got {:?}", value),
+                    },
+                    None => None,
+                }
             }
-            value => panic!("Expected NamedKey but got {:?}", value),
-        },
-        None => None,
+            EntityAddr::Account(hash) => {
+                match query_global_state(
+                    fixture,
+                    state_root_hash,
+                    Key::Account(AccountHash::new(hash)),
+                ) {
+                    Some(val) => match &*val {
+                        StoredValue::Account(account) => {
+                            account.named_keys().get(named_key).copied()
+                        }
+                        value => panic!("Expected Account but got {:?}", value),
+                    },
+                    None => None,
+                }
+            }
+        }
     }
 }
 
@@ -322,14 +372,16 @@ fn get_entity_by_account_hash(
     account_hash: AccountHash,
 ) -> AddressableEntity {
     let (_node_id, runner) = fixture.network.nodes().iter().next().unwrap();
+    let key = if fixture.chainspec.core_config.enable_addressable_entity {
+        Key::AddressableEntity(EntityAddr::Account(account_hash.value()))
+    } else {
+        Key::Account(account_hash)
+    };
     runner
         .main_reactor()
         .contract_runtime()
         .data_access_layer()
-        .addressable_entity(AddressableEntityRequest::new(
-            state_root_hash,
-            Key::AddressableEntity(EntityAddr::Account(account_hash.value())),
-        ))
+        .addressable_entity(AddressableEntityRequest::new(state_root_hash, key))
         .into_option()
         .unwrap_or_else(|| {
             panic!(
