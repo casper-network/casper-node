@@ -246,7 +246,7 @@ impl MockStateReader {
             None,
         );
 
-        let account_hash = unbonding_purse.validator_public_key().to_account_hash();
+        let account_hash = unbonding_purse.unbonder_public_key().to_account_hash();
         match self.unbonds.get_mut(&account_hash) {
             None => {
                 self.unbonds.insert(account_hash, vec![unbonding_purse]);
@@ -1703,7 +1703,7 @@ fn should_slash_a_validator_and_delegator_with_enqueued_withdraws() {
         )
         .with_withdraw(
             validator2.clone(),
-            past_delegator2,
+            past_delegator2.clone(),
             era_id,
             amount,
             &mut rng,
@@ -1735,23 +1735,22 @@ fn should_slash_a_validator_and_delegator_with_enqueued_withdraws() {
         .expect("should have validator2");
 
     update.assert_written_balance(*old_bid2.bonding_purse(), 0);
-    let delegator2 = old_bids2
+    let delegator2_record = old_bids2
         .delegator_by_public_keys(&validator2, &delegator2)
         .expect("should have delegator 2");
 
     // check delegator2 slashed
-    update.assert_written_balance(*delegator2.bonding_purse(), 0);
-    // check past_delegator2 slashed
-    update.assert_written_balance(
-        *reader
-            .withdraws
-            .get(&validator2.to_account_hash())
-            .expect("should have withdraws for validator2")
-            .last()
-            .expect("should have withdraw purses")
-            .bonding_purse(),
-        0,
-    );
+    update.assert_written_balance(*delegator2_record.bonding_purse(), 0);
+    // check past_delegator2 untouched
+    let past_delegator2_bid_purse = reader
+        .withdraws
+        .get(&validator2.to_account_hash())
+        .expect("should have withdraws for validator2")
+        .iter()
+        .find(|withdraw| withdraw.unbonder_public_key() == &past_delegator2)
+        .expect("should have withdraw purses")
+        .bonding_purse();
+    update.assert_key_absent(&Key::Balance(past_delegator2_bid_purse.addr()));
 
     // check validator1 and its delegators not slashed
     for withdraw in reader
@@ -1762,8 +1761,8 @@ fn should_slash_a_validator_and_delegator_with_enqueued_withdraws() {
         update.assert_key_absent(&Key::Balance(withdraw.bonding_purse().addr()));
     }
 
-    // check the withdraws under validator 2 are cleared
-    update.assert_withdraws_empty(&validator2);
+    // check the withdraws under validator 2 still contain the past delegator's withdraw
+    update.assert_withdraw_purse(*past_delegator2_bid_purse, &validator2, &past_delegator2, 1);
 
     // check the withdraws under validator 1 are unchanged
     update.assert_key_absent(&Key::Withdraw(validator1.to_account_hash()));
@@ -1771,8 +1770,8 @@ fn should_slash_a_validator_and_delegator_with_enqueued_withdraws() {
     // 8 keys should be written:
     // - seigniorage recipients
     // - total supply
-    // - 3 balances, 2 bids, 1 withdraw
-    assert_eq!(update.len(), 8);
+    // - 2 balances, 2 bids, 1 withdraw
+    assert_eq!(update.len(), 7);
 }
 
 #[test]
@@ -1829,10 +1828,15 @@ fn should_slash_a_validator_and_delegator_with_enqueued_unbonds() {
             v1_stake.into(),
             &mut rng,
         )
-        .with_unbond(validator1.clone(), delegator1, d1_stake.into(), &mut rng)
         .with_unbond(
             validator1.clone(),
-            past_delegator1,
+            delegator1.clone(),
+            d1_stake.into(),
+            &mut rng,
+        )
+        .with_unbond(
+            validator1.clone(),
+            past_delegator1.clone(),
             pd1_stake.into(),
             &mut rng,
         )
@@ -1850,7 +1854,7 @@ fn should_slash_a_validator_and_delegator_with_enqueued_unbonds() {
         )
         .with_unbond(
             validator2.clone(),
-            past_delegator2,
+            past_delegator2.clone(),
             pd2_stake.into(),
             &mut rng,
         );
@@ -1890,17 +1894,16 @@ fn should_slash_a_validator_and_delegator_with_enqueued_unbonds() {
 
     // check delegator2 slashed
     update.assert_written_balance(*delegator.bonding_purse(), 0);
-    // check past_delegator2 slashed
-    update.assert_written_balance(
-        *reader
-            .unbonds
-            .get(&validator2.to_account_hash())
-            .expect("should have unbonds for validator2")
-            .last()
-            .expect("should have unbond purses")
-            .bonding_purse(),
-        0,
-    );
+    // check past_delegator2 untouched
+    let past_delegator2_bid_purse = reader
+        .unbonds
+        .get(&past_delegator2.to_account_hash())
+        .expect("should have unbonds for validator2")
+        .iter()
+        .find(|unbond| unbond.validator_public_key() == &validator2)
+        .expect("should have unbonding purses")
+        .bonding_purse();
+    update.assert_key_absent(&Key::Balance(past_delegator2_bid_purse.addr()));
 
     // check validator1 and its delegators not slashed
     for unbond in reader
@@ -1911,17 +1914,16 @@ fn should_slash_a_validator_and_delegator_with_enqueued_unbonds() {
         update.assert_key_absent(&Key::Balance(unbond.bonding_purse().addr()));
     }
 
-    // check the unbonds under validator 2 are cleared
-    update.assert_unbonds_empty(&validator2);
-
-    // check the withdraws under validator 1 are unchanged
+    // check the unbonds under validator 1 are unchanged
     update.assert_key_absent(&Key::Unbond(validator1.to_account_hash()));
+    update.assert_key_absent(&Key::Unbond(delegator1.to_account_hash()));
+    update.assert_key_absent(&Key::Unbond(past_delegator1.to_account_hash()));
 
     // 9 keys should be written:
     // - seigniorage recipients
     // - total supply
-    // - 4 balances, 2 bids,
-    // - 1 unbond
+    // - 3 balances, 2 bids,
+    // - 2 unbonds
     assert_eq!(update.len(), 9);
 }
 
@@ -2128,6 +2130,11 @@ fn should_handle_unbonding_to_a_delegator_correctly() {
         .find(|&purse| purse.unbonder_public_key() == &old_validator)
         .map(|purse| *purse.bonding_purse())
         .expect("A bonding purse for the validator");
+    let unbonding_purses = reader
+        .get_unbonds()
+        .get(&delegator.to_account_hash())
+        .cloned()
+        .expect("should have unbond purses");
     let _ = unbonding_purses
         .iter()
         .find(|&purse| purse.unbonder_public_key() == &delegator)

@@ -40,7 +40,13 @@ proptest = "1.0.0"
 rand = "0.8.3"
 serde_json = "1"
 base16 = "0.2.1"
+criterion = { version = "0.5.1", features = ["html_reports"] }
+pprof = { version = "0.13.0", features = ["flamegraph", "criterion"] }
 
 [package.metadata.docs.rs]
 all-features = true
 rustc-args = ["--cfg", "docsrs"]
+
+[[bench]]
+name = "global_state_key_write_bench"
+harness = false

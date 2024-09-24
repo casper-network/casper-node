@@ -216,8 +216,8 @@ pub fn execute_finalized_block(
                 artifacts.push(artifact_builder.build());
                 continue; // no reason to commit the effects, move on
             }
-            state_root_hash =
-                scratch_state.commit(state_root_hash, handle_refund_result.effects().clone())?;
+            state_root_hash = scratch_state
+                .commit_effects(state_root_hash, handle_refund_result.effects().clone())?;
         }
 
         let mut balance_identifier = {
@@ -265,7 +265,7 @@ pub fn execute_finalized_block(
                     }
                 };
                 state_root_hash =
-                    scratch_state.commit(state_root_hash, pay_result.effects().clone())?;
+                    scratch_state.commit_effects(state_root_hash, pay_result.effects().clone())?;
                 artifact_builder
                     .with_wasm_v1_result(pay_result)
                     .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
@@ -305,7 +305,7 @@ pub fn execute_finalized_block(
                 );
                 let hold_result = scratch_state.balance_hold(hold_request);
                 state_root_hash =
-                    scratch_state.commit(state_root_hash, hold_result.effects().clone())?;
+                    scratch_state.commit_effects(state_root_hash, hold_result.effects().clone())?;
                 artifact_builder
                     .with_balance_hold_result(&hold_result)
                     .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
@@ -326,8 +326,8 @@ pub fn execute_finalized_block(
                             runtime_args,
                         ));
                     let consumed = gas_limit;
-                    state_root_hash =
-                        scratch_state.commit(state_root_hash, transfer_result.effects().clone())?;
+                    state_root_hash = scratch_state
+                        .commit_effects(state_root_hash, transfer_result.effects().clone())?;
                     artifact_builder
                         .with_added_consumed(consumed)
                         .with_transfer_result(transfer_result)
@@ -347,8 +347,10 @@ pub fn execute_finalized_block(
                                 auction_method,
                             ));
                             let consumed = gas_limit;
-                            state_root_hash = scratch_state
-                                .commit(state_root_hash, bidding_result.effects().clone())?;
+                            state_root_hash = scratch_state.commit_effects(
+                                state_root_hash,
+                                bidding_result.effects().clone(),
+                            )?;
                             artifact_builder
                                 .with_added_consumed(consumed)
                                 .with_bidding_result(bidding_result)
@@ -404,8 +406,10 @@ pub fn execute_finalized_block(
                             let wasm_v1_result =
                                 execution_engine_v1.execute(&scratch_state, wasm_v1_request);
                             trace!(%transaction_hash, ?lane, ?wasm_v1_result, "able to get wasm v1 result");
-                            state_root_hash = scratch_state
-                                .commit(state_root_hash, wasm_v1_result.effects().clone())?;
+                            state_root_hash = scratch_state.commit_effects(
+                                state_root_hash,
+                                wasm_v1_result.effects().clone(),
+                            )?;
                             // note: consumed is scraped from wasm_v1_result along w/ other fields
                             artifact_builder
                                 .with_wasm_v1_result(wasm_v1_result)
@@ -438,7 +442,7 @@ pub fn execute_finalized_block(
             );
             let hold_result = scratch_state.balance_hold(hold_request);
             state_root_hash =
-                scratch_state.commit(state_root_hash, hold_result.effects().clone())?;
+                scratch_state.commit_effects(state_root_hash, hold_result.effects().clone())?;
             artifact_builder
                 .with_balance_hold_result(&hold_result)
                 .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
@@ -511,7 +515,7 @@ pub fn execute_finalized_block(
                     let handle_refund_result = scratch_state.handle_refund(handle_refund_request);
                     let refunded_amount = handle_refund_result.refund_amount();
                     state_root_hash = scratch_state
-                        .commit(state_root_hash, handle_refund_result.effects().clone())?;
+                        .commit_effects(state_root_hash, handle_refund_result.effects().clone())?;
                     artifact_builder
                         .with_handle_refund_result(&handle_refund_result)
                         .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
@@ -536,7 +540,7 @@ pub fn execute_finalized_block(
                 );
                 let hold_result = scratch_state.balance_hold(hold_request);
                 state_root_hash =
-                    scratch_state.commit(state_root_hash, hold_result.effects().clone())?;
+                    scratch_state.commit_effects(state_root_hash, hold_result.effects().clone())?;
                 artifact_builder
                     .with_balance_hold_result(&hold_result)
                     .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
@@ -598,7 +602,7 @@ pub fn execute_finalized_block(
             }
         };
         state_root_hash =
-            scratch_state.commit(state_root_hash, handle_fee_result.effects().clone())?;
+            scratch_state.commit_effects(state_root_hash, handle_fee_result.effects().clone())?;
         artifact_builder
             .with_handle_fee_result(&handle_fee_result)
             .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
@@ -631,8 +635,8 @@ pub fn execute_finalized_block(
                     )
                 );
             }
-            state_root_hash =
-                scratch_state.commit(state_root_hash, handle_refund_result.effects().clone())?;
+            state_root_hash = scratch_state
+                .commit_effects(state_root_hash, handle_refund_result.effects().clone())?;
         }
 
         artifacts.push(artifact_builder.build());
@@ -671,7 +675,7 @@ pub fn execute_finalized_block(
                     .into(),
             ),
         ));
-        scratch_state.commit(state_root_hash, effects)?;
+        scratch_state.commit_effects(state_root_hash, effects)?;
         transaction_ids
             .into_iter()
             .map(|id| id.approvals_hash())

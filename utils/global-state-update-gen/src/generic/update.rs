@@ -188,6 +188,29 @@ impl Update {
     }
 
     #[track_caller]
+    pub(crate) fn assert_withdraw_purse(
+        &self,
+        bid_purse: URef,
+        validator_key: &PublicKey,
+        unbonder_key: &PublicKey,
+        amount: u64,
+    ) {
+        let account_hash = validator_key.to_account_hash();
+        let withdraws = self
+            .entries
+            .get(&Key::Withdraw(account_hash))
+            .expect("should have withdraws for the account")
+            .as_withdraw()
+            .expect("should be withdraw purses");
+        assert!(withdraws.iter().any(
+            |withdraw_purse| withdraw_purse.bonding_purse() == &bid_purse
+                && withdraw_purse.validator_public_key() == validator_key
+                && withdraw_purse.unbonder_public_key() == unbonder_key
+                && withdraw_purse.amount() == &U512::from(amount)
+        ))
+    }
+
+    #[track_caller]
     pub(crate) fn assert_unbonding_purse(
         &self,
         bid_purse: URef,
@@ -233,7 +256,7 @@ impl Update {
             .iter()
             .map(|unbonding_purse| {
                 (
-                    unbonding_purse.validator_public_key().to_account_hash(),
+                    unbonding_purse.unbonder_public_key().to_account_hash(),
                     *unbonding_purse.bonding_purse(),
                     unbonding_purse.unbonder_public_key(),
                     *unbonding_purse.amount(),
@@ -265,27 +288,5 @@ impl Update {
     #[track_caller]
     pub(crate) fn assert_validators_unchanged(&self) {
         assert!(self.validators.is_none());
-    }
-
-    #[track_caller]
-    pub(crate) fn assert_withdraws_empty(&self, validator_key: &PublicKey) {
-        let withdraws = self
-            .entries
-            .get(&Key::Withdraw(validator_key.to_account_hash()))
-            .expect("should have withdraw purses")
-            .as_withdraw()
-            .expect("should be vec of withdraws");
-        assert!(withdraws.is_empty());
-    }
-
-    #[track_caller]
-    pub(crate) fn assert_unbonds_empty(&self, validator_key: &PublicKey) {
-        let unbonds = self
-            .entries
-            .get(&Key::Unbond(validator_key.to_account_hash()))
-            .expect("should have unbond purses")
-            .as_unbonding()
-            .expect("should be vec of unbonds");
-        assert!(unbonds.is_empty());
     }
 }

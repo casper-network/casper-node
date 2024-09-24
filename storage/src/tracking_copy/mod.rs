@@ -261,6 +261,10 @@ impl<M: Meter<Key, StoredValue> + Copy + Default> GenericTrackingCopyCache<M> {
     pub fn is_pruned(&self, key: &Key) -> bool {
         self.prunes_cached.contains(key)
     }
+
+    pub(self) fn into_muts(self) -> (BTreeMap<KeyWithByteRepr, StoredValue>, BTreeSet<Key>) {
+        (self.muts_cached, self.prunes_cached)
+    }
 }
 
 /// A helper type for `TrackingCopyCache` that allows convenient storage and access
@@ -442,6 +446,13 @@ where
     /// Returns copy of cache.
     pub fn cache(&self) -> TrackingCopyCache {
         self.cache.clone()
+    }
+
+    pub fn destructure(self) -> (Vec<(Key, StoredValue)>, BTreeSet<Key>, Effects) {
+        let (writes, prunes) = self.cache.into_muts();
+        let writes: Vec<(Key, StoredValue)> = writes.into_iter().map(|(k, v)| (k.0, v)).collect();
+
+        (writes, prunes, self.effects)
     }
 
     pub fn get(&mut self, key: &Key) -> Result<Option<StoredValue>, TrackingCopyError> {

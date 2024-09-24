@@ -26,7 +26,8 @@ use serde::{Deserialize, Serialize};
 use tracing::debug;
 
 use super::{
-    Approval, ApprovalsHash, InitiatorAddr, PricingMode, TransactionEntryPoint, TransactionRuntime,
+    serialization::{CalltableSerializationEnvelope, CalltableSerializationEnvelopeBuilder},
+    Approval, ApprovalsHash, InitiatorAddr, PricingMode, TransactionEntryPoint,
     TransactionScheduling, TransactionTarget,
 };
 #[cfg(any(feature = "std", test))]
@@ -36,8 +37,11 @@ use crate::chainspec::Chainspec;
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::chainspec::PricingHandling;
 use crate::{
-    bytesrepr::{self, FromBytes, ToBytes},
-    crypto, Digest, DisplayIter, SecretKey, TimeDiff, Timestamp,
+    bytesrepr::{
+        Error::{self, Formatting},
+        FromBytes, ToBytes,
+    },
+    crypto, Digest, DisplayIter, SecretKey, TimeDiff, Timestamp, TransactionRuntime,
 };
 
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
@@ -59,6 +63,14 @@ pub use transaction_v1_lane::TransactionLane;
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::testing::TestRng;
 
+const TRANSACTION_V1_SERIALIZATION_VERSION: u8 = 1;
+
+const SERIALIZATION_VERSION_INDEX: u16 = 0;
+const HASH_FIELD_META_INDEX: u16 = 1;
+const HEADER_FIELD_META_INDEX: u16 = 2;
+const BODY_FIELD_META_INDEX: u16 = 3;
+const APPROVALS_FIELD_META_INDEX: u16 = 4;
+
 /// A unit of work sent by a client to the network, which when executed can cause global state to
 /// be altered.
 ///
@@ -79,6 +91,7 @@ use crate::testing::TestRng;
     )
 )]
 pub struct TransactionV1 {
+    serialization_version: u8,
     hash: TransactionV1Hash,
     header: TransactionV1Header,
     body: TransactionV1Body,
@@ -93,6 +106,20 @@ pub struct TransactionV1 {
 }
 
 impl TransactionV1 {
+    fn serialized_field_lengths(&self) -> Vec<usize> {
+        let serialization_version_len = TRANSACTION_V1_SERIALIZATION_VERSION.serialized_length();
+        let approvals_len = self.approvals.serialized_length();
+        let hash_len = self.hash.serialized_length();
+        let header_len = self.header.serialized_length();
+        let body_len = self.body.serialized_length();
+        vec![
+            serialization_version_len,
+            hash_len,
+            header_len,
+            body_len,
+            approvals_len,
+        ]
+    }
     /// Called by the `TransactionV1Builder` to construct a new `TransactionV1`.
     #[cfg(any(feature = "std", test))]
     pub(super) fn build(
@@ -119,6 +146,7 @@ impl TransactionV1 {
 
         let hash = header.compute_hash();
         let mut transaction = TransactionV1 {
+            serialization_version: TRANSACTION_V1_SERIALIZATION_VERSION,
             hash,
             header,
             body,
@@ -290,7 +318,7 @@ impl TransactionV1 {
     }
 
     /// Returns the `ApprovalsHash` of this transaction's approvals.
-    pub fn compute_approvals_hash(&self) -> Result<ApprovalsHash, bytesrepr::Error> {
+    pub fn compute_approvals_hash(&self) -> Result<ApprovalsHash, Error> {
         ApprovalsHash::compute(&self.approvals)
     }
 
@@ -737,6 +765,7 @@ impl hash::Hash for TransactionV1 {
     fn hash<H: hash::Hasher>(&self, state: &mut H) {
         // Destructure to make sure we don't accidentally omit fields.
         let TransactionV1 {
+            serialization_version,
             hash,
             header,
             body,
@@ -744,6 +773,7 @@ impl hash::Hash for TransactionV1 {
             #[cfg(any(feature = "once_cell", test))]
                 is_verified: _,
         } = self;
+        serialization_version.hash(state);
         hash.hash(state);
         header.hash(state);
         body.hash(state);
@@ -755,6 +785,7 @@ impl PartialEq for TransactionV1 {
     fn eq(&self, other: &TransactionV1) -> bool {
         // Destructure to make sure we don't accidentally omit fields.
         let TransactionV1 {
+            serialization_version,
             hash,
             header,
             body,
@@ -762,7 +793,8 @@ impl PartialEq for TransactionV1 {
             #[cfg(any(feature = "once_cell", test))]
                 is_verified: _,
         } = self;
-        *hash == other.hash
+        *serialization_version == other.serialization_version
+            && *hash == other.hash
             && *header == other.header
             && *body == other.body
             && *approvals == other.approvals
@@ -773,6 +805,7 @@ impl Ord for TransactionV1 {
     fn cmp(&self, other: &TransactionV1) -> cmp::Ordering {
         // Destructure to make sure we don't accidentally omit fields.
         let TransactionV1 {
+            serialization_version,
             hash,
             header,
             body,
@@ -780,7 +813,9 @@ impl Ord for TransactionV1 {
             #[cfg(any(feature = "once_cell", test))]
                 is_verified: _,
         } = self;
-        hash.cmp(&other.hash)
+        serialization_version
+            .cmp(&other.serialization_version)
+            .then_with(|| hash.cmp(&other.hash))
             .then_with(|| header.cmp(&other.header))
             .then_with(|| body.cmp(&other.body))
             .then_with(|| approvals.cmp(&other.approvals))
@@ -794,34 +829,49 @@ impl PartialOrd for TransactionV1 {
 }
 
 impl ToBytes for TransactionV1 {
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        self.hash.write_bytes(writer)?;
-        self.header.write_bytes(writer)?;
-        self.body.write_bytes(writer)?;
-        self.approvals.write_bytes(writer)
-    }
-
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut buffer = bytesrepr::allocate_buffer(self)?;
-        self.write_bytes(&mut buffer)?;
-        Ok(buffer)
+    fn to_bytes(&self) -> Result<Vec<u8>, crate::bytesrepr::Error> {
+        let expected_payload_sizes = self.serialized_field_lengths();
+        CalltableSerializationEnvelopeBuilder::new(expected_payload_sizes)?
+            .add_field(SERIALIZATION_VERSION_INDEX, &self.serialization_version)?
+            .add_field(HASH_FIELD_META_INDEX, &self.hash)?
+            .add_field(HEADER_FIELD_META_INDEX, &self.header)?
+            .add_field(BODY_FIELD_META_INDEX, &self.body)?
+            .add_field(APPROVALS_FIELD_META_INDEX, &self.approvals)?
+            .binary_payload_bytes()
     }
 
     fn serialized_length(&self) -> usize {
-        self.hash.serialized_length()
-            + self.header.serialized_length()
-            + self.body.serialized_length()
-            + self.approvals.serialized_length()
+        CalltableSerializationEnvelope::estimate_size(self.serialized_field_lengths())
     }
 }
 
 impl FromBytes for TransactionV1 {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (hash, remainder) = TransactionV1Hash::from_bytes(bytes)?;
-        let (header, remainder) = TransactionV1Header::from_bytes(remainder)?;
-        let (body, remainder) = TransactionV1Body::from_bytes(remainder)?;
-        let (approvals, remainder) = BTreeSet::<Approval>::from_bytes(remainder)?;
-        let transaction = TransactionV1 {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
+        let (binary_payload, remainder) = CalltableSerializationEnvelope::from_bytes(5, bytes)?;
+        let window = binary_payload.start_consuming()?.ok_or(Formatting)?;
+        window.verify_index(SERIALIZATION_VERSION_INDEX)?;
+
+        let (serialization_version, window) = window.deserialize_and_maybe_next::<u8>()?;
+        if serialization_version != TRANSACTION_V1_SERIALIZATION_VERSION {
+            return Err(Formatting);
+        }
+        let window = window.ok_or(Formatting)?;
+        window.verify_index(HASH_FIELD_META_INDEX)?;
+        let (hash, window) = window.deserialize_and_maybe_next::<TransactionV1Hash>()?;
+        let window = window.ok_or(Formatting)?;
+        window.verify_index(HEADER_FIELD_META_INDEX)?;
+        let (header, window) = window.deserialize_and_maybe_next::<TransactionV1Header>()?;
+        let window = window.ok_or(Formatting)?;
+        window.verify_index(BODY_FIELD_META_INDEX)?;
+        let (body, window) = window.deserialize_and_maybe_next::<TransactionV1Body>()?;
+        let window = window.ok_or(Formatting)?;
+        window.verify_index(APPROVALS_FIELD_META_INDEX)?;
+        let (approvals, window) = window.deserialize_and_maybe_next::<BTreeSet<Approval>>()?;
+        if window.is_some() {
+            return Err(Formatting);
+        }
+        let from_bytes = TransactionV1 {
+            serialization_version,
             hash,
             header,
             body,
@@ -829,7 +879,8 @@ impl FromBytes for TransactionV1 {
             #[cfg(any(feature = "once_cell", test))]
             is_verified: OnceCell::new(),
         };
-        Ok((transaction, remainder))
+
+        Ok((from_bytes, remainder))
     }
 }
 
@@ -848,6 +899,8 @@ impl Display for TransactionV1 {
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
+
+    use crate::bytesrepr;
 
     use super::*;
 
@@ -1345,5 +1398,56 @@ mod tests {
             limit * gas_price,
             "in fixed pricing, the cost should == limit * gas_price"
         );
+    }
+}
+
+#[cfg(test)]
+mod proptests {
+    use super::gens::v1_transaction_arb;
+    use crate::bytesrepr::test_serialization_roundtrip;
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn bytesrepr_roundtrip(v1_transaction in v1_transaction_arb()) {
+            test_serialization_roundtrip(&v1_transaction);
+        }
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod gens {
+    use super::*;
+    use crate::{gens::*, PublicKey};
+    use crypto::gens::secret_key_arb_no_system;
+    use proptest::prelude::*;
+
+    pub fn v1_transaction_arb() -> impl Strategy<Value = TransactionV1> {
+        (
+            any::<String>(),
+            any::<u64>(),
+            any::<u32>(),
+            v1_transaction_body_arb(),
+            pricing_mode_arb(),
+            secret_key_arb_no_system(),
+        )
+            .prop_map(
+                |(chain_name, timestamp, ttl, body, pricing_mode, secret_key)| {
+                    let public_key = PublicKey::from(&secret_key);
+                    let initiator_addr = InitiatorAddr::PublicKey(public_key);
+                    let initiator_addr_with_secret = InitiatorAddrAndSecretKey::Both {
+                        initiator_addr,
+                        secret_key: &secret_key,
+                    };
+                    TransactionV1::build(
+                        chain_name,
+                        Timestamp::from(timestamp),
+                        TimeDiff::from_seconds(ttl),
+                        body,
+                        pricing_mode,
+                        initiator_addr_with_secret,
+                    )
+                },
+            )
     }
 }

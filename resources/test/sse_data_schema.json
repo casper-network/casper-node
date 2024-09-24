@@ -1562,9 +1562,15 @@
         "approvals",
         "body",
         "hash",
-        "header"
+        "header",
+        "serialization_version"
       ],
       "properties": {
+        "serialization_version": {
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0.0
+        },
         "hash": {
           "$ref": "#/definitions/TransactionV1Hash"
         },

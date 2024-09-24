@@ -1,13 +1,12 @@
 use alloc::vec::Vec;
 use core::fmt::{self, Display, Formatter};
+#[cfg(feature = "datasize")]
+use datasize::DataSize;
 #[cfg(any(feature = "testing", test))]
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
-
-#[cfg(feature = "datasize")]
-use datasize::DataSize;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

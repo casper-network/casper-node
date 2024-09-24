@@ -421,6 +421,15 @@ impl<K, V> Trie<K, V> {
             .map(|bytes| Digest::hash_into_chunks_if_necessary(&bytes))
     }
 
+    /// Returns bytes representation of this Trie and the hash over those bytes.
+    pub fn trie_hash_and_bytes(&self) -> Result<(Digest, Vec<u8>), bytesrepr::Error>
+    where
+        Self: ToBytes,
+    {
+        self.to_bytes()
+            .map(|bytes| (Digest::hash_into_chunks_if_necessary(&bytes), bytes))
+    }
+
     /// Returns a pointer block, if possible.
     pub fn as_pointer_block(&self) -> Option<&PointerBlock> {
         if let Self::Node { pointer_block } = self {

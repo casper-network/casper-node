@@ -592,7 +592,10 @@ impl ExecutorV2 {
                 tracking_copy.apply_changes(effects.clone(), cache.clone());
             }
             None => {
-                debug_assert!(effects.is_empty(), "effects should be empty if there is no cache");
+                debug_assert!(
+                    effects.is_empty(),
+                    "effects should be empty if there is no cache"
+                );
             }
         }
 

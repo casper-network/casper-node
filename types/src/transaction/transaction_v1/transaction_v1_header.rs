@@ -16,11 +16,24 @@ use super::TransactionV1;
 use super::TransactionV1Hash;
 use super::{InitiatorAddr, PricingMode};
 use crate::{
-    bytesrepr::{self, FromBytes, ToBytes},
+    bytesrepr::{
+        Error::{self, Formatting},
+        FromBytes, ToBytes,
+    },
+    transaction::serialization::{
+        CalltableSerializationEnvelope, CalltableSerializationEnvelopeBuilder,
+    },
     Digest, TimeDiff, Timestamp,
 };
 #[cfg(any(feature = "std", test))]
 use crate::{InvalidTransactionV1, TransactionConfig};
+
+const CHAIN_NAME_INDEX: u16 = 0;
+const TIMESTAMP_INDEX: u16 = 1;
+const TTL_INDEX: u16 = 2;
+const BODY_HASH_INDEX: u16 = 3;
+const PRICING_MODE_INDEX: u16 = 4;
+const INITIATOR_ADDR_INDEX: u16 = 5;
 
 /// The header portion of a [`TransactionV1`].
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
@@ -45,6 +58,17 @@ pub struct TransactionV1Header {
 }
 
 impl TransactionV1Header {
+    fn serialized_field_lengths(&self) -> Vec<usize> {
+        vec![
+            self.chain_name.serialized_length(),
+            self.timestamp.serialized_length(),
+            self.ttl.serialized_length(),
+            self.body_hash.serialized_length(),
+            self.pricing_mode.serialized_length(),
+            self.initiator_addr.serialized_length(),
+        ]
+    }
+
     #[cfg(any(feature = "std", feature = "json-schema", test))]
     pub(super) fn new(
         chain_name: String,
@@ -179,40 +203,50 @@ impl TransactionV1Header {
 }
 
 impl ToBytes for TransactionV1Header {
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut buffer = bytesrepr::allocate_buffer(self)?;
-        self.write_bytes(&mut buffer)?;
-        Ok(buffer)
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        CalltableSerializationEnvelopeBuilder::new(self.serialized_field_lengths())?
+            .add_field(CHAIN_NAME_INDEX, &self.chain_name)?
+            .add_field(TIMESTAMP_INDEX, &self.timestamp)?
+            .add_field(TTL_INDEX, &self.ttl)?
+            .add_field(BODY_HASH_INDEX, &self.body_hash)?
+            .add_field(PRICING_MODE_INDEX, &self.pricing_mode)?
+            .add_field(INITIATOR_ADDR_INDEX, &self.initiator_addr)?
+            .binary_payload_bytes()
     }
-
     fn serialized_length(&self) -> usize {
-        self.chain_name.serialized_length()
-            + self.timestamp.serialized_length()
-            + self.ttl.serialized_length()
-            + self.body_hash.serialized_length()
-            + self.pricing_mode.serialized_length()
-            + self.initiator_addr.serialized_length()
-    }
-
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        self.chain_name.write_bytes(writer)?;
-        self.timestamp.write_bytes(writer)?;
-        self.ttl.write_bytes(writer)?;
-        self.body_hash.write_bytes(writer)?;
-        self.pricing_mode.write_bytes(writer)?;
-        self.initiator_addr.write_bytes(writer)
+        CalltableSerializationEnvelope::estimate_size(self.serialized_field_lengths())
     }
 }
 
 impl FromBytes for TransactionV1Header {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (chain_name, remainder) = String::from_bytes(bytes)?;
-        let (timestamp, remainder) = Timestamp::from_bytes(remainder)?;
-        let (ttl, remainder) = TimeDiff::from_bytes(remainder)?;
-        let (body_hash, remainder) = Digest::from_bytes(remainder)?;
-        let (pricing_mode, remainder) = PricingMode::from_bytes(remainder)?;
-        let (initiator_addr, remainder) = InitiatorAddr::from_bytes(remainder)?;
-        let transaction_header = TransactionV1Header {
+    fn from_bytes(bytes: &[u8]) -> Result<(TransactionV1Header, &[u8]), Error> {
+        let (binary_payload, remainder) =
+            crate::transaction::serialization::CalltableSerializationEnvelope::from_bytes(
+                6u32, bytes,
+            )?;
+        let window = binary_payload.start_consuming()?;
+        let window = window.ok_or(Formatting)?;
+        window.verify_index(CHAIN_NAME_INDEX)?;
+        let (chain_name, window) = window.deserialize_and_maybe_next::<String>()?;
+        let window = window.ok_or(Formatting)?;
+        window.verify_index(TIMESTAMP_INDEX)?;
+        let (timestamp, window) = window.deserialize_and_maybe_next::<Timestamp>()?;
+        let window = window.ok_or(Formatting)?;
+        window.verify_index(TTL_INDEX)?;
+        let (ttl, window) = window.deserialize_and_maybe_next::<TimeDiff>()?;
+        let window = window.ok_or(Formatting)?;
+        window.verify_index(BODY_HASH_INDEX)?;
+        let (body_hash, window) = window.deserialize_and_maybe_next::<Digest>()?;
+        let window = window.ok_or(Formatting)?;
+        window.verify_index(PRICING_MODE_INDEX)?;
+        let (pricing_mode, window) = window.deserialize_and_maybe_next::<PricingMode>()?;
+        let window = window.ok_or(Formatting)?;
+        window.verify_index(INITIATOR_ADDR_INDEX)?;
+        let (initiator_addr, window) = window.deserialize_and_maybe_next::<InitiatorAddr>()?;
+        if window.is_some() {
+            return Err(Formatting);
+        }
+        let from_bytes = TransactionV1Header {
             chain_name,
             timestamp,
             ttl,
@@ -220,7 +254,7 @@ impl FromBytes for TransactionV1Header {
             pricing_mode,
             initiator_addr,
         };
-        Ok((transaction_header, remainder))
+        Ok((from_bytes, remainder))
     }
 }
 
