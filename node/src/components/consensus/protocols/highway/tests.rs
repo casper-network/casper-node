@@ -89,6 +89,7 @@ where
         start_timestamp,
         0,
         start_timestamp,
+        None,
     );
     // We expect three messages:
     // * log participation timer,
