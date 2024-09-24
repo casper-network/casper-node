@@ -2,7 +2,9 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT,
     LOCAL_GENESIS_REQUEST,
 };
-use casper_types::{account::AccountHash, runtime_args, system::Caller, CLValue, EntityAddr};
+use casper_types::{
+    account::AccountHash, runtime_args, system::Caller, CLValue, EntityAddr, PackageHash,
+};
 
 const CONTRACT_GET_CALLER: &str = "get_caller.wasm";
 const CONTRACT_GET_CALLER_SUBCALL: &str = "get_caller_subcall.wasm";
@@ -219,7 +221,8 @@ fn should_load_caller_information_based_on_action() {
         .get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .get(LOAD_CALLER_INFO_PACKAGE_HASH)
         .expect("must get package key")
-        .into_package_hash()
+        .into_hash_addr()
+        .map(PackageHash::new)
         .expect("must get package hash");
 
     let frame = Caller::entity(package_hash, caller_info_entity_hash);

@@ -1098,19 +1098,31 @@ where
             let account = {
                 let mut account: Account = self.read_gs_typed(&entity_key)?;
 
-                if account.associated_keys().len()
-                    >= (self.engine_config.max_associated_keys() as usize)
+                println!(
+                    "{}, {}",
+                    self.engine_config.max_associated_keys(),
+                    account.associated_keys().len()
+                );
+
+                if account.associated_keys().len() as u32
+                    >= (self.engine_config.max_associated_keys())
                 {
                     return Err(ExecError::AddKeyFailure(AddKeyFailure::MaxKeysLimit));
                 }
 
                 // Exit early in case of error without updating global state
-                account
-                    .add_associated_key(
-                        account_hash,
-                        casper_types::account::Weight::new(weight.value()),
-                    )
-                    .map_err(ExecError::from)?;
+                let result = account.add_associated_key(
+                    account_hash,
+                    casper_types::account::Weight::new(weight.value()),
+                );
+
+                println!(
+                    "add {}, {}",
+                    self.engine_config.max_associated_keys(),
+                    account.associated_keys().len()
+                );
+
+                result.map_err(ExecError::from)?;
                 account
             };
 
@@ -1229,12 +1241,6 @@ where
             // Get the current entity record
             let entity = {
                 let mut entity: AddressableEntity = self.read_gs_typed(&entity_key)?;
-                // enforce max keys limit
-                if entity.associated_keys().len()
-                    >= (self.engine_config.max_associated_keys() as usize)
-                {
-                    return Err(ExecError::AddKeyFailure(AddKeyFailure::MaxKeysLimit));
-                }
 
                 // Exit early in case of error without updating global state
                 entity
@@ -1251,12 +1257,6 @@ where
             // Take an account out of the global state
             let account = {
                 let mut account: Account = self.read_gs_typed(&entity_key)?;
-
-                if account.associated_keys().len()
-                    >= (self.engine_config.max_associated_keys() as usize)
-                {
-                    return Err(ExecError::AddKeyFailure(AddKeyFailure::MaxKeysLimit));
-                }
 
                 // Exit early in case of error without updating global state
                 account

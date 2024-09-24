@@ -205,32 +205,6 @@ where
         Ok(self.tracking_copy)
     }
 
-    pub fn upgrade_by_entity(
-        mut self,
-        system_entity_addresses: SystemHashAddresses,
-    ) -> Result<TrackingCopy<<S as StateProvider>::Reader>, ProtocolUpgradeError> {
-        self.create_accumulation_purse_if_required(
-            &system_entity_addresses.handle_payment(),
-            self.config.fee_handling(),
-        )?;
-        self.refresh_system_entities(&system_entity_addresses)?;
-        self.handle_new_gas_hold_config(system_entity_addresses.mint())?;
-        self.handle_new_validator_slots(system_entity_addresses.auction())?;
-        self.handle_new_auction_delay(system_entity_addresses.auction())?;
-        self.handle_new_locked_funds_period_millis(system_entity_addresses.auction())?;
-        self.handle_new_unbonding_delay(system_entity_addresses.auction())?;
-        self.handle_new_round_seigniorage_rate(system_entity_addresses.mint())?;
-        // self.handle_legacy_accounts_migration()?;
-        // self.handle_legacy_contracts_migration()?;
-        self.handle_bids_migration(
-            self.config.minimum_delegation_amount(),
-            self.config.maximum_delegation_amount(),
-        )?;
-        self.handle_era_info_migration()?;
-
-        Ok(self.tracking_copy)
-    }
-
     /// Determine if the next protocol version is a legitimate semver progression.
     pub fn check_next_protocol_version_validity(&self) -> Result<(), ProtocolUpgradeError> {
         debug!("check next protocol version validity");

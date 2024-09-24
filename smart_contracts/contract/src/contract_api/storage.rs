@@ -148,14 +148,6 @@ pub fn new_locked_contract(
     )
 }
 
-// fn foo(entry_points: EntryPoints) {
-//     let package_hash = my_package_hash;
-//
-//     add_contract_version(package_hash, entry_points, NamedKeys::new());
-//
-//     disable_contract_version(package_hash, my_previous_entity_hash);
-// }
-
 fn create_contract(
     entry_points: EntryPoints,
     named_keys: Option<NamedKeys>,
@@ -167,7 +159,7 @@ fn create_contract(
     let (contract_package_hash, access_uref) = create_contract_package(is_locked);
 
     if let Some(hash_name) = hash_name {
-        runtime::put_key(&hash_name, contract_package_hash.into());
+        runtime::put_key(&hash_name, Key::Hash(contract_package_hash.value()));
     };
 
     if let Some(uref_name) = uref_name {

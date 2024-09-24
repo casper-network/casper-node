@@ -596,6 +596,11 @@ where
     }
 
     fn get_v1_entry_points(&self, entity_addr: EntityAddr) -> Result<EntryPoints, Self::Error> {
+        if !self.enable_addressable_entity {
+            let footprint = self.get_runtime_footprint(entity_addr)?;
+            return Ok(footprint.entry_points().clone());
+        }
+
         let keys = self.get_keys_by_prefix(&KeyPrefix::EntryPointsV1ByEntity(entity_addr))?;
 
         let mut entry_points_v1 = EntryPoints::new();

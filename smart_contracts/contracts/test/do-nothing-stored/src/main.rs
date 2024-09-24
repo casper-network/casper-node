@@ -43,5 +43,5 @@ pub extern "C" fn call() {
     );
 
     runtime::put_key(CONTRACT_VERSION, storage::new_uref(contract_version).into());
-    runtime::put_key(HASH_KEY_NAME, Key::contract_entity_key(contract_hash));
+    runtime::put_key(HASH_KEY_NAME, Key::Hash(contract_hash.value()));
 }

@@ -1804,7 +1804,7 @@ where
     pub fn get_entry_points(&self, entity_addr: EntityAddr) -> EntryPoints {
         let state_root_hash = self.get_post_state_hash();
 
-        let mut tracking_copy = self
+        let tracking_copy = self
             .data_access_layer
             .tracking_copy(state_root_hash)
             .unwrap()

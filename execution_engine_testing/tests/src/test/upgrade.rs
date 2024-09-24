@@ -194,7 +194,8 @@ fn should_upgrade_do_nothing_to_do_something_contract_call() {
         .named_keys()
         .get(DO_NOTHING_CONTRACT_NAME)
         .expect("should have key of do_nothing_hash")
-        .into_package_addr()
+        .into_hash_addr()
+        .map(PackageHash::new)
         .expect("should have hash");
 
     // Calling initial stored version from contract package hash, should have no effects
@@ -251,7 +252,8 @@ fn should_upgrade_do_nothing_to_do_something_contract_call() {
         .named_keys()
         .get(DO_NOTHING_CONTRACT_NAME)
         .expect("should have key of do_nothing_hash")
-        .into_package_addr()
+        .into_hash_addr()
+        .map(PackageHash::new)
         .expect("should have hash");
 
     // Calling upgraded stored version, expecting purse creation
@@ -324,13 +326,13 @@ fn should_be_able_to_observe_state_transition_across_upgrade() {
         "version uref should exist on install"
     );
 
-    let stored_package_hash: PackageHash = account
+    let stored_package_hash = account
         .named_keys()
         .get(HASH_KEY_NAME)
         .expect("should have stored uref")
-        .into_package_addr()
-        .expect("should have hash")
-        .into();
+        .into_hash_addr()
+        .map(PackageHash::new)
+        .expect("should have hash");
 
     // verify version before upgrade
     let account = builder
@@ -422,7 +424,7 @@ fn should_support_extending_functionality() {
         .named_keys()
         .get(HASH_KEY_NAME)
         .expect("should have stored uref")
-        .into_package_addr()
+        .into_hash_addr()
         .expect("should have hash");
 
     let stored_hash = account
@@ -469,7 +471,7 @@ fn should_support_extending_functionality() {
                 *DEFAULT_ACCOUNT_ADDR,
                 &contract_name,
                 runtime_args! {
-                    ARG_CONTRACT_PACKAGE => stored_package_hash,
+                    ARG_CONTRACT_PACKAGE => PackageHash::new(stored_package_hash),
                 },
             )
             .build()
@@ -572,7 +574,8 @@ fn should_maintain_named_keys_across_upgrade() {
         .named_keys()
         .get(HASH_KEY_NAME)
         .expect("should have stored package hash")
-        .into_package_hash()
+        .into_hash_addr()
+        .map(PackageHash::new)
         .expect("should have hash");
 
     // add several purse urefs to named_keys
@@ -669,7 +672,8 @@ fn should_fail_upgrade_for_locked_contract() {
         .named_keys()
         .get(HASH_KEY_NAME)
         .expect("should have stored package hash")
-        .into_package_addr()
+        .into_hash_addr()
+        .map(PackageHash::new)
         .expect("should have hash")
         .into();
 

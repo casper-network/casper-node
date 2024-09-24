@@ -12,7 +12,7 @@ use casper_contract::{
 };
 use casper_types::{
     addressable_entity::NamedKeys, CLType, CLValue, EntryPoint, EntryPointAccess,
-    EntryPointPayment, EntryPointType, EntryPoints, Key, PackageHash, Parameter, URef,
+    EntryPointPayment, EntryPointType, EntryPoints, HashAddr, Key, PackageHash, Parameter, URef,
 };
 
 pub const METHOD_ADD: &str = "add";

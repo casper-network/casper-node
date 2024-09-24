@@ -109,7 +109,7 @@ fn test_upgrade(major_bump: u32, minor_bump: u32, patch_bump: u32, upgrade_entri
         new_contract.package_hash().value()
     );
     assert_eq!(
-        ByteCodeHash::default().value(),
+        old_mint_contract.contract_wasm_hash().value(),
         new_contract.byte_code_hash().value()
     );
     let new_entry_points = builder.get_entry_points(EntityAddr::System(mint_contract_hash));
