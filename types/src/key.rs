@@ -2192,7 +2192,7 @@ mod tests {
         let account_hash = AccountHash::new(account);
         let key1 = Key::Account(account_hash);
         assert_eq!(key1.into_account(), Some(account_hash));
-        assert!(key1.into_entity_hash_addr().is_none());
+        assert!(key1.into_entity_hash_addr().is_some());
         assert!(key1.as_uref().is_none());
     }
 
