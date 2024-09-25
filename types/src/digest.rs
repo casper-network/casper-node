@@ -70,6 +70,7 @@ impl Digest {
     pub const SENTINEL_MERKLE_TREE: Digest = Digest([2u8; Digest::LENGTH]);
 
     /// Creates a 32-byte BLAKE2b hash digest from a given a piece of data.
+    #[inline(always)]
     pub fn hash<T: AsRef<[u8]>>(data: T) -> Digest {
         Self::blake2b_hash(data)
     }

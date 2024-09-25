@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 )]
 #[serde(deny_unknown_fields)]
 #[repr(u8)]
-pub enum TransactionCategory {
+pub enum TransactionLane {
     /// Native mint interaction (the default).
     #[default]
     Mint = 0,
@@ -37,15 +37,15 @@ pub enum TransactionCategory {
     Small = 5,
 }
 
-impl fmt::Display for TransactionCategory {
+impl fmt::Display for TransactionLane {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            TransactionCategory::Mint => write!(f, "Mint"),
-            TransactionCategory::Auction => write!(f, "Auction"),
-            TransactionCategory::InstallUpgrade => write!(f, "InstallUpgrade"),
-            TransactionCategory::Large => write!(f, "Large"),
-            TransactionCategory::Medium => write!(f, "Medium"),
-            TransactionCategory::Small => write!(f, "Small"),
+            TransactionLane::Mint => write!(f, "Mint"),
+            TransactionLane::Auction => write!(f, "Auction"),
+            TransactionLane::InstallUpgrade => write!(f, "InstallUpgrade"),
+            TransactionLane::Large => write!(f, "Large"),
+            TransactionLane::Medium => write!(f, "Medium"),
+            TransactionLane::Small => write!(f, "Small"),
         }
     }
 }
@@ -59,7 +59,7 @@ impl fmt::Display for TransactionCategoryConversionError {
     }
 }
 
-impl TryFrom<u8> for TransactionCategory {
+impl TryFrom<u8> for TransactionLane {
     type Error = TransactionCategoryConversionError;
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {

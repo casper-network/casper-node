@@ -1094,7 +1094,7 @@ mod tests {
 
     #[test]
     fn calculate_gas_cost_would_overflow() {
-        let large_value = Cost::max_value();
+        let large_value = Cost::MAX;
 
         let host_function = HostFunction::new(
             large_value,

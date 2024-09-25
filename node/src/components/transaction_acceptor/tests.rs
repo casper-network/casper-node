@@ -37,8 +37,8 @@ use casper_types::{
     Block, BlockV2, CLValue, Chainspec, ChainspecRawBytes, Contract, Deploy, EntryPointValue,
     EraId, HashAddr, InvalidDeploy, InvalidTransaction, InvalidTransactionV1, Package, PricingMode,
     ProtocolVersion, PublicKey, SecretKey, StoredValue, TestBlockBuilder, TimeDiff, Timestamp,
-    Transaction, TransactionCategory, TransactionConfig, TransactionV1, TransactionV1Builder, URef,
-    U512,
+    Transaction, TransactionConfig, TransactionLane, TransactionRuntime, TransactionV1,
+    TransactionV1Builder, URef, U512,
 };
 
 use super::*;
@@ -282,8 +282,9 @@ impl TestScenario {
             TestScenario::FromPeerExpired(TxnType::V1)
             | TestScenario::FromClientExpired(TxnType::V1) => {
                 let txn = TransactionV1Builder::new_session(
-                    TransactionCategory::Large,
+                    TransactionLane::Large,
                     Bytes::from(vec![1]),
+                    TransactionRuntime::VmCasperV1,
                 )
                 .with_chain_name("casper-example")
                 .with_timestamp(Timestamp::zero())
@@ -306,8 +307,9 @@ impl TestScenario {
                 TxnType::Deploy => Transaction::from(Deploy::random_valid_native_transfer(rng)),
                 TxnType::V1 => {
                     let txn = TransactionV1Builder::new_session(
-                        TransactionCategory::Large,
+                        TransactionLane::Large,
                         Bytes::from(vec![1]),
+                        TransactionRuntime::VmCasperV1,
                     )
                     .with_chain_name("casper-example")
                     .with_timestamp(Timestamp::now())
@@ -324,8 +326,9 @@ impl TestScenario {
             }
             TestScenario::FromClientSignedByAdmin(TxnType::V1) => {
                 let txn = TransactionV1Builder::new_session(
-                    TransactionCategory::Large,
+                    TransactionLane::Large,
                     Bytes::from(vec![1]),
+                    TransactionRuntime::VmCasperV1,
                 )
                 .with_chain_name("casper-example")
                 .with_timestamp(Timestamp::now())
@@ -404,7 +407,9 @@ impl TestScenario {
                 match contract_scenario {
                     ContractScenario::Valid | ContractScenario::MissingContractAtName => {
                         let txn = TransactionV1Builder::new_targeting_invocable_entity_via_alias(
-                            "Test", "call",
+                            "Test",
+                            "call",
+                            TransactionRuntime::VmCasperV1,
                         )
                         .with_chain_name("casper-example")
                         .with_timestamp(Timestamp::now())
@@ -417,6 +422,7 @@ impl TestScenario {
                         let txn = TransactionV1Builder::new_targeting_invocable_entity(
                             AddressableEntityHash::new(HashAddr::default()),
                             "call",
+                            TransactionRuntime::VmCasperV1,
                         )
                         .with_chain_name("casper-example")
                         .with_timestamp(Timestamp::now())
@@ -429,6 +435,7 @@ impl TestScenario {
                         let txn = TransactionV1Builder::new_targeting_invocable_entity(
                             AddressableEntityHash::new(HashAddr::default()),
                             "non-existent-entry-point",
+                            TransactionRuntime::VmCasperV1,
                         )
                         .with_chain_name("casper-example")
                         .with_timestamp(Timestamp::now())
@@ -466,13 +473,17 @@ impl TestScenario {
                 contract_package_scenario,
             ) => match contract_package_scenario {
                 ContractPackageScenario::Valid | ContractPackageScenario::MissingPackageAtName => {
-                    let txn =
-                        TransactionV1Builder::new_targeting_package_via_alias("Test", None, "call")
-                            .with_chain_name("casper-example")
-                            .with_timestamp(Timestamp::now())
-                            .with_secret_key(&secret_key)
-                            .build()
-                            .unwrap();
+                    let txn = TransactionV1Builder::new_targeting_package_via_alias(
+                        "Test",
+                        None,
+                        "call",
+                        TransactionRuntime::VmCasperV1,
+                    )
+                    .with_chain_name("casper-example")
+                    .with_timestamp(Timestamp::now())
+                    .with_secret_key(&secret_key)
+                    .build()
+                    .unwrap();
                     Transaction::from(txn)
                 }
                 ContractPackageScenario::MissingPackageAtHash => {
@@ -480,6 +491,7 @@ impl TestScenario {
                         PackageHash::new(PackageAddr::default()),
                         None,
                         "call",
+                        TransactionRuntime::VmCasperV1,
                     )
                     .with_chain_name("casper-example")
                     .with_timestamp(Timestamp::now())
@@ -493,6 +505,7 @@ impl TestScenario {
                         PackageHash::new(PackageAddr::default()),
                         Some(6),
                         "call",
+                        TransactionRuntime::VmCasperV1,
                     )
                     .with_chain_name("casper-example")
                     .with_timestamp(Timestamp::now())
@@ -519,8 +532,9 @@ impl TestScenario {
                     ),
                     TxnType::V1 => {
                         let txn = TransactionV1Builder::new_session(
-                            TransactionCategory::Large,
+                            TransactionLane::Large,
                             Bytes::from(vec![1]),
+                            TransactionRuntime::VmCasperV1,
                         )
                         .with_chain_name("casper-example")
                         .with_timestamp(timestamp)
@@ -545,8 +559,9 @@ impl TestScenario {
                     ),
                     TxnType::V1 => {
                         let txn = TransactionV1Builder::new_session(
-                            TransactionCategory::Large,
+                            TransactionLane::Large,
                             Bytes::from(vec![1]),
+                            TransactionRuntime::VmCasperV1,
                         )
                         .with_chain_name("casper-example")
                         .with_timestamp(timestamp)
@@ -560,7 +575,7 @@ impl TestScenario {
             }
             TestScenario::InvalidPricingModeForTransactionV1 => {
                 let classic_mode_transaction = TransactionV1Builder::new_random(rng)
-                    .with_pricing_mode(PricingMode::Classic {
+                    .with_pricing_mode(PricingMode::PaymentLimited {
                         payment_amount: 10000u64,
                         gas_price_tolerance: 1u8,
                         standard_payment: true,

@@ -196,7 +196,7 @@ impl Display for FinalizedBlock {
         for (category, transactions) in self.transactions.iter() {
             write!(
                 formatter,
-                "category: {} has {} transactions",
+                "lane: {} has {} transactions",
                 category,
                 transactions.len()
             )?;

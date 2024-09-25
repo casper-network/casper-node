@@ -1192,26 +1192,6 @@ pub struct Contract {
     protocol_version: ProtocolVersion,
 }
 
-impl From<Contract>
-    for (
-        ContractPackageHash,
-        ContractWasmHash,
-        NamedKeys,
-        EntryPoints,
-        ProtocolVersion,
-    )
-{
-    fn from(contract: Contract) -> Self {
-        (
-            contract.contract_package_hash,
-            contract.contract_wasm_hash,
-            contract.named_keys,
-            contract.entry_points,
-            contract.protocol_version,
-        )
-    }
-}
-
 impl Contract {
     /// `Contract` constructor.
     pub fn new(

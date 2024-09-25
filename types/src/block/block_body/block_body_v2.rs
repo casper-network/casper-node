@@ -11,8 +11,8 @@ use serde::{Deserialize, Serialize};
 use crate::{
     block::RewardedSignatures,
     bytesrepr::{self, FromBytes, ToBytes},
-    transaction::TransactionCategory,
-    Digest, TransactionHash,
+    transaction::{TransactionHash, TransactionLane},
+    Digest,
 };
 
 /// The body portion of a block. Version 2.
@@ -47,11 +47,8 @@ impl BlockBodyV2 {
         }
     }
 
-    fn transaction_by_category(
-        &self,
-        transaction_category: TransactionCategory,
-    ) -> Vec<TransactionHash> {
-        match self.transactions.get(&(transaction_category as u8)) {
+    fn transactions_by_lane(&self, transaction_lane: TransactionLane) -> Vec<TransactionHash> {
+        match self.transactions.get(&(transaction_lane as u8)) {
             Some(transactions) => transactions.to_vec(),
             None => vec![],
         }
@@ -59,37 +56,36 @@ impl BlockBodyV2 {
 
     /// Returns the hashes of the mint transactions within the block.
     pub fn mint(&self) -> impl Iterator<Item = TransactionHash> {
-        self.transaction_by_category(TransactionCategory::Mint)
-            .into_iter()
+        self.transactions_by_lane(TransactionLane::Mint).into_iter()
     }
 
     /// Returns the hashes of the auction transactions within the block.
     pub fn auction(&self) -> impl Iterator<Item = TransactionHash> {
-        self.transaction_by_category(TransactionCategory::Auction)
+        self.transactions_by_lane(TransactionLane::Auction)
             .into_iter()
     }
 
     /// Returns the hashes of the installer/upgrader transactions within the block.
     pub fn install_upgrade(&self) -> impl Iterator<Item = TransactionHash> {
-        self.transaction_by_category(TransactionCategory::InstallUpgrade)
+        self.transactions_by_lane(TransactionLane::InstallUpgrade)
             .into_iter()
     }
 
     /// Returns the hashes of all other transactions within the block.
     pub fn large(&self) -> impl Iterator<Item = TransactionHash> {
-        self.transaction_by_category(TransactionCategory::Large)
+        self.transactions_by_lane(TransactionLane::Large)
             .into_iter()
     }
 
     /// Returns the hashes of all other transactions within the block.
     pub fn medium(&self) -> impl Iterator<Item = TransactionHash> {
-        self.transaction_by_category(TransactionCategory::Medium)
+        self.transactions_by_lane(TransactionLane::Medium)
             .into_iter()
     }
 
     /// Returns the hashes of all other transactions within the block.
     pub fn small(&self) -> impl Iterator<Item = TransactionHash> {
-        self.transaction_by_category(TransactionCategory::Small)
+        self.transactions_by_lane(TransactionLane::Small)
             .into_iter()
     }
 

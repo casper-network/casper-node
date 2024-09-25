@@ -51,8 +51,8 @@ use crate::{
         METHOD_REDELEGATE, METHOD_UNDELEGATE, METHOD_WITHDRAW_BID,
     },
     testing::TestRng,
-    AddressableEntityHash, RuntimeArgs, URef, DEFAULT_MAX_PAYMENT_MOTES,
-    DEFAULT_MIN_TRANSFER_MOTES,
+    transaction::RuntimeArgs,
+    AddressableEntityHash, URef, DEFAULT_MAX_PAYMENT_MOTES, DEFAULT_MIN_TRANSFER_MOTES,
 };
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
@@ -62,7 +62,7 @@ use crate::{
 };
 
 #[cfg(any(feature = "std", test))]
-use crate::{chainspec::PricingHandling, transaction::TransactionCategory, Chainspec};
+use crate::{chainspec::PricingHandling, transaction::TransactionLane, Chainspec};
 #[cfg(any(feature = "std", test))]
 use crate::{system::auction::ARG_AMOUNT, transaction::GasLimited, Gas, Motes, U512};
 #[cfg(any(feature = "std", test))]
@@ -404,13 +404,20 @@ impl Deploy {
         at: Timestamp,
     ) -> Result<(), InvalidDeploy> {
         let config = &chainspec.transaction_config;
+
+        if !config.runtime_config.vm_casper_v1 {
+            // Not config compliant if V1 runtime is disabled.
+            return Err(InvalidDeploy::InvalidRuntime);
+        }
+
         let max_transaction_size = config
             .transaction_v1_config
-            .get_max_serialized_length(TransactionCategory::Large as u8);
+            .get_max_serialized_length(TransactionLane::Large as u8);
         self.is_valid_size(max_transaction_size as u32)?;
 
         let header = self.header();
         let chain_name = &chainspec.network_config.name;
+
         if header.chain_name() != chain_name {
             debug!(
                 deploy_hash = %self.hash(),
@@ -1319,10 +1326,14 @@ impl GasLimited for Deploy {
                 let computation_limit = if self.is_transfer() {
                     costs.mint_costs().transfer as u64
                 } else {
-                    chainspec.get_max_gas_limit_by_category(TransactionCategory::Large as u8)
+                    chainspec.get_max_gas_limit_by_lane(TransactionLane::Large as u8)
                 };
                 Gas::new(computation_limit)
             } // legacy deploys do not support reservations
+            PricingHandling::GasLimited => {
+                // legacy deploys do not support gas limits
+                return Err(InvalidDeploy::GasLimitNotSupported);
+            }
         };
         Ok(gas_limit)
     }

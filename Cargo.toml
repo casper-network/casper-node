@@ -16,8 +16,18 @@ members = [
     "utils/global-state-update-gen",
     "utils/validation",
     "binary_port",
+    "smart_contracts/sdk",
+    "smart_contracts/sdk-codegen",
+    "smart_contracts/sdk-sys",
+    "smart_contracts/macros",
+    "cargo-casper",
 #    "utils/highway-rewards-analysis",
 #    "utils/highway-state-grapher",
+    "executor/wasm-common",
+    "executor/wasm-interface",
+    "executor/wasm-host",
+    "executor/wasmer-backend",
+    "executor/wasm",
 ]
 
 default-members = [
@@ -31,6 +41,10 @@ default-members = [
     "utils/global-state-update-gen",
     "utils/validation",
     "binary_port",
+    "smart_contracts/sdk",
+    "smart_contracts/sdk-sys",
+    "smart_contracts/sdk-codegen",
+    "smart_contracts/macros"
 #    "utils/highway-rewards-analysis",
 #    "utils/highway-state-grapher",
 ]
@@ -45,8 +59,8 @@ resolver = "2"
 debug = true
 
 [profile.release]
-codegen-units = 1
-lto = true
+codegen-units=1
+lto=true
 
 [profile.bench]
 codegen-units = 1

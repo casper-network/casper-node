@@ -1,0 +1,25 @@
+[package]
+name = "casper-macros"
+version = "0.1.0"
+edition = "2021"
+authors = ["Michał Papierski <michal@casperlabs.io>"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = { version = "2", features = ["full", "extra-traits"] }
+quote = "1"
+casper-sdk = { path = "../sdk" }
+casper-sdk-sys = { path = "../sdk-sys" }
+paste = "1"
+darling = "0.20.3"
+proc-macro2 = "1.0"
+static_assertions = "1.1.0"
+
+blake2-rfc = { version = "0.2.18", default-features = false, features = ["std"] }
+
+[features]
+default = []
+__abi_generator = []

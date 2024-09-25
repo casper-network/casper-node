@@ -7,7 +7,6 @@
     test(attr(deny(warnings)))
 )]
 #![warn(missing_docs)]
-#![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
 mod chainspec_config;
 mod deploy_item_builder;

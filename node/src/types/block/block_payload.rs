@@ -90,13 +90,13 @@ impl BlockPayload {
         ret.into_iter()
     }
 
-    /// Returns all of the transaction hashes and approvals within the block by category.
-    pub fn transactions_by_category(
+    /// Returns all of the transaction hashes and approvals within the block by lane.
+    pub fn transactions_by_lane(
         &self,
-        category: u8,
+        lane: u8,
     ) -> impl Iterator<Item = &(TransactionHash, BTreeSet<Approval>)> {
         let mut ret = vec![];
-        if let Some(transactions) = self.transactions.get(&category) {
+        if let Some(transactions) = self.transactions.get(&lane) {
             for transaction in transactions {
                 ret.push(transaction)
             }
@@ -115,8 +115,8 @@ impl BlockPayload {
     }
 
     /// Returns count of transactions by category.
-    pub fn count(&self, category: Option<u8>) -> usize {
-        match category {
+    pub fn count(&self, lane: Option<u8>) -> usize {
+        match lane {
             None => self
                 .transactions
                 .values()

@@ -345,7 +345,7 @@ mod tests {
         let weight_2 = Weight::new(2);
         let weight_3 = Weight::new(3);
 
-        let saturated_weight = Weight::new(u8::max_value());
+        let saturated_weight = Weight::new(u8::MAX);
 
         let associated_keys = {
             let mut res = AssociatedKeys::new(identity_key, identity_key_weight);

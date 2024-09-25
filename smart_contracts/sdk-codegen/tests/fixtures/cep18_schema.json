@@ -1,0 +1,443 @@
+{
+  "name": "TokenContract",
+  "version": "0.1.0",
+  "type": {
+    "type": "Contract",
+    "state": "vm2_cep18::contract::TokenContract"
+  },
+  "definitions": {
+    "()": {
+      "type": "Tuple",
+      "items": []
+    },
+    "([U8; 32], [U8; 32])": {
+      "type": "Tuple",
+      "items": [
+        "[U8; 32]",
+        "[U8; 32]"
+      ]
+    },
+    "Bool": {
+      "type": "Primitive",
+      "Bool": null
+    },
+    "Map<([U8; 32], [U8; 32]), U64>": {
+      "type": "Struct",
+      "items": [
+        {
+          "name": "prefix",
+          "decl": "U64"
+        }
+      ]
+    },
+    "Map<[U8; 32], U64>": {
+      "type": "Struct",
+      "items": [
+        {
+          "name": "prefix",
+          "decl": "U64"
+        }
+      ]
+    },
+    "Map<[U8; 32], vm2_cep18::security_badge::SecurityBadge>": {
+      "type": "Struct",
+      "items": [
+        {
+          "name": "prefix",
+          "decl": "U64"
+        }
+      ]
+    },
+    "Result<(), vm2_cep18::error::Cep18Error>": {
+      "type": "Enum",
+      "items": [
+        {
+          "name": "Ok",
+          "discriminant": 0,
+          "decl": "()"
+        },
+        {
+          "name": "Err",
+          "discriminant": 1,
+          "decl": "vm2_cep18::error::Cep18Error"
+        }
+      ]
+    },
+    "String": {
+      "type": "Sequence",
+      "decl": "Char"
+    },
+    "U64": {
+      "type": "Primitive",
+      "U64": null
+    },
+    "U8": {
+      "type": "Primitive",
+      "U8": null
+    },
+    "[U8; 32]": {
+      "type": "FixedSequence",
+      "length": 32,
+      "decl": "U8"
+    },
+    "vm2_cep18::contract::TokenContract": {
+      "type": "Struct",
+      "items": [
+        {
+          "name": "state",
+          "decl": "vm2_cep18::traits::CEP18State"
+        }
+      ]
+    },
+    "vm2_cep18::error::Cep18Error": {
+      "type": "Enum",
+      "items": [
+        {
+          "name": "InvalidContext",
+          "discriminant": 0,
+          "decl": "()"
+        },
+        {
+          "name": "InsufficientBalance",
+          "discriminant": 1,
+          "decl": "()"
+        },
+        {
+          "name": "InsufficientAllowance",
+          "discriminant": 2,
+          "decl": "()"
+        },
+        {
+          "name": "Overflow",
+          "discriminant": 3,
+          "decl": "()"
+        },
+        {
+          "name": "PackageHashMissing",
+          "discriminant": 4,
+          "decl": "()"
+        },
+        {
+          "name": "PackageHashNotPackage",
+          "discriminant": 5,
+          "decl": "()"
+        },
+        {
+          "name": "InvalidEventsMode",
+          "discriminant": 6,
+          "decl": "()"
+        },
+        {
+          "name": "MissingEventsMode",
+          "discriminant": 7,
+          "decl": "()"
+        },
+        {
+          "name": "Phantom",
+          "discriminant": 8,
+          "decl": "()"
+        },
+        {
+          "name": "FailedToGetArgBytes",
+          "discriminant": 9,
+          "decl": "()"
+        },
+        {
+          "name": "InsufficientRights",
+          "discriminant": 10,
+          "decl": "()"
+        },
+        {
+          "name": "InvalidAdminList",
+          "discriminant": 11,
+          "decl": "()"
+        },
+        {
+          "name": "InvalidMinterList",
+          "discriminant": 12,
+          "decl": "()"
+        },
+        {
+          "name": "InvalidNoneList",
+          "discriminant": 13,
+          "decl": "()"
+        },
+        {
+          "name": "InvalidEnableMBFlag",
+          "discriminant": 14,
+          "decl": "()"
+        },
+        {
+          "name": "AlreadyInitialized",
+          "discriminant": 15,
+          "decl": "()"
+        },
+        {
+          "name": "MintBurnDisabled",
+          "discriminant": 16,
+          "decl": "()"
+        },
+        {
+          "name": "CannotTargetSelfUser",
+          "discriminant": 17,
+          "decl": "()"
+        },
+        {
+          "name": "InvalidBurnTarget",
+          "discriminant": 18,
+          "decl": "()"
+        }
+      ]
+    },
+    "vm2_cep18::security_badge::SecurityBadge": {
+      "type": "Enum",
+      "items": [
+        {
+          "name": "Admin",
+          "discriminant": 0,
+          "decl": "()"
+        },
+        {
+          "name": "Minter",
+          "discriminant": 1,
+          "decl": "()"
+        },
+        {
+          "name": "None",
+          "discriminant": 2,
+          "decl": "()"
+        }
+      ]
+    },
+    "vm2_cep18::traits::CEP18State": {
+      "type": "Struct",
+      "items": [
+        {
+          "name": "name",
+          "decl": "String"
+        },
+        {
+          "name": "symbol",
+          "decl": "String"
+        },
+        {
+          "name": "decimals",
+          "decl": "U8"
+        },
+        {
+          "name": "total_supply",
+          "decl": "U64"
+        },
+        {
+          "name": "balances",
+          "decl": "Map<[U8; 32], U64>"
+        },
+        {
+          "name": "allowances",
+          "decl": "Map<([U8; 32], [U8; 32]), U64>"
+        },
+        {
+          "name": "security_badges",
+          "decl": "Map<[U8; 32], vm2_cep18::security_badge::SecurityBadge>"
+        },
+        {
+          "name": "enable_mint_burn",
+          "decl": "Bool"
+        }
+      ]
+    }
+  },
+  "entry_points": [
+    {
+      "name": "new",
+      "selector": 2611912030,
+      "arguments": [
+        {
+          "name": "token_name",
+          "decl": "String"
+        }
+      ],
+      "result": "vm2_cep18::contract::TokenContract",
+      "flags": 1
+    },
+    {
+      "name": "my_balance",
+      "selector": 926069361,
+      "arguments": [],
+      "result": "U64",
+      "flags": 0
+    },
+    {
+      "name": "name",
+      "selector": 987428621,
+      "arguments": [],
+      "result": "String",
+      "flags": 0
+    },
+    {
+      "name": "symbol",
+      "selector": 2614203198,
+      "arguments": [],
+      "result": "String",
+      "flags": 0
+    },
+    {
+      "name": "decimals",
+      "selector": 2176884103,
+      "arguments": [],
+      "result": "U8",
+      "flags": 0
+    },
+    {
+      "name": "total_supply",
+      "selector": 3680728488,
+      "arguments": [],
+      "result": "U64",
+      "flags": 0
+    },
+    {
+      "name": "balance_of",
+      "selector": 259349078,
+      "arguments": [
+        {
+          "name": "address",
+          "decl": "[U8; 32]"
+        }
+      ],
+      "result": "U64",
+      "flags": 0
+    },
+    {
+      "name": "allowance",
+      "selector": 1778390622,
+      "arguments": [
+        {
+          "name": "spender",
+          "decl": "[U8; 32]"
+        },
+        {
+          "name": "owner",
+          "decl": "[U8; 32]"
+        }
+      ],
+      "result": "()",
+      "flags": 0
+    },
+    {
+      "name": "approve",
+      "selector": 1746036384,
+      "arguments": [
+        {
+          "name": "spender",
+          "decl": "[U8; 32]"
+        },
+        {
+          "name": "amount",
+          "decl": "U64"
+        }
+      ],
+      "result": "Result<(), vm2_cep18::error::Cep18Error>",
+      "flags": 0
+    },
+    {
+      "name": "decrease_allowance",
+      "selector": 4187548633,
+      "arguments": [
+        {
+          "name": "spender",
+          "decl": "[U8; 32]"
+        },
+        {
+          "name": "amount",
+          "decl": "U64"
+        }
+      ],
+      "result": "Result<(), vm2_cep18::error::Cep18Error>",
+      "flags": 0
+    },
+    {
+      "name": "increase_allowance",
+      "selector": 4115780642,
+      "arguments": [
+        {
+          "name": "spender",
+          "decl": "[U8; 32]"
+        },
+        {
+          "name": "amount",
+          "decl": "U64"
+        }
+      ],
+      "result": "Result<(), vm2_cep18::error::Cep18Error>",
+      "flags": 0
+    },
+    {
+      "name": "transfer",
+      "selector": 2225167777,
+      "arguments": [
+        {
+          "name": "recipient",
+          "decl": "[U8; 32]"
+        },
+        {
+          "name": "amount",
+          "decl": "U64"
+        }
+      ],
+      "result": "Result<(), vm2_cep18::error::Cep18Error>",
+      "flags": 0
+    },
+    {
+      "name": "transfer_from",
+      "selector": 188313368,
+      "arguments": [
+        {
+          "name": "owner",
+          "decl": "[U8; 32]"
+        },
+        {
+          "name": "recipient",
+          "decl": "[U8; 32]"
+        },
+        {
+          "name": "amount",
+          "decl": "U64"
+        }
+      ],
+      "result": "Result<(), vm2_cep18::error::Cep18Error>",
+      "flags": 0
+    },
+    {
+      "name": "mint",
+      "selector": 3487406754,
+      "arguments": [
+        {
+          "name": "owner",
+          "decl": "[U8; 32]"
+        },
+        {
+          "name": "amount",
+          "decl": "U64"
+        }
+      ],
+      "result": "Result<(), vm2_cep18::error::Cep18Error>",
+      "flags": 0
+    },
+    {
+      "name": "burn",
+      "selector": 2985279867,
+      "arguments": [
+        {
+          "name": "owner",
+          "decl": "[U8; 32]"
+        },
+        {
+          "name": "amount",
+          "decl": "U64"
+        }
+      ],
+      "result": "Result<(), vm2_cep18::error::Cep18Error>",
+      "flags": 0
+    }
+  ]
+}

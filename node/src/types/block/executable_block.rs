@@ -112,14 +112,14 @@ impl fmt::Display for ExecutableBlock {
             self.auction().len(),
             self.install_upgrade().len(),
         )?;
-        for (category, wasm_transaction) in self.transaction_map.iter() {
-            if *category < 3 {
+        for (lane, wasm_transaction) in self.transaction_map.iter() {
+            if *lane < 3 {
                 continue;
             }
             write!(
                 formatter,
-                ", category: {} with {} transactions",
-                *category,
+                ", lane: {} with {} transactions",
+                *lane,
                 wasm_transaction.len()
             )?;
         }

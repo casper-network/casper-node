@@ -10,16 +10,19 @@ use super::{
         InitiatorAddr, TransactionEntryPoint, TransactionInvocationTarget, TransactionRuntime,
         TransactionScheduling, TransactionTarget,
     },
-    transaction_v1_body::arg_handling,
+    transaction_v1_body::{arg_handling, TransactionArgs},
     InitiatorAddrAndSecretKey, PricingMode, TransactionV1, TransactionV1Body,
 };
 use crate::{
-    bytesrepr::Bytes, transaction::TransactionCategory, AddressableEntityHash, CLValue,
-    CLValueError, EntityVersion, PackageHash, PublicKey, RuntimeArgs, SecretKey, TimeDiff,
-    Timestamp, TransferTarget, URef, U512,
+    bytesrepr::Bytes,
+    transaction::{RuntimeArgs, TransactionLane, TransferTarget},
+    AddressableEntityHash, CLValue, CLValueError, EntityVersion, PackageHash, PublicKey, SecretKey,
+    TimeDiff, Timestamp, URef, U512,
 };
 #[cfg(any(feature = "testing", test))]
-use crate::{testing::TestRng, transaction::Approval, TransactionConfig, TransactionV1Hash};
+use crate::{
+    testing::TestRng, transaction::Approval, transaction::TransactionV1Hash, TransactionConfig,
+};
 pub use error::TransactionV1BuilderError;
 
 /// A builder for constructing a [`TransactionV1`].
@@ -58,8 +61,6 @@ impl<'a> TransactionV1Builder<'a> {
     pub const DEFAULT_PRICING_MODE: PricingMode = PricingMode::Fixed {
         gas_price_tolerance: 5,
     };
-    /// The default runtime for transactions, i.e. Casper Version 1 Virtual Machine.
-    pub const DEFAULT_RUNTIME: TransactionRuntime = TransactionRuntime::VmCasperV1;
     /// The default scheduling for transactions, i.e. `Standard`.
     pub const DEFAULT_SCHEDULING: TransactionScheduling = TransactionScheduling::Standard;
 
@@ -90,7 +91,7 @@ impl<'a> TransactionV1Builder<'a> {
             args,
             TransactionTarget::Native,
             TransactionEntryPoint::Transfer,
-            TransactionCategory::Mint as u8,
+            TransactionLane::Mint as u8,
             Self::DEFAULT_SCHEDULING,
         );
         Ok(TransactionV1Builder::new(body))
@@ -115,7 +116,7 @@ impl<'a> TransactionV1Builder<'a> {
             args,
             TransactionTarget::Native,
             TransactionEntryPoint::AddBid,
-            TransactionCategory::Auction as u8,
+            TransactionLane::Auction as u8,
             Self::DEFAULT_SCHEDULING,
         );
         Ok(TransactionV1Builder::new(body))
@@ -132,7 +133,7 @@ impl<'a> TransactionV1Builder<'a> {
             args,
             TransactionTarget::Native,
             TransactionEntryPoint::WithdrawBid,
-            TransactionCategory::Auction as u8,
+            TransactionLane::Auction as u8,
             Self::DEFAULT_SCHEDULING,
         );
         Ok(TransactionV1Builder::new(body))
@@ -149,7 +150,7 @@ impl<'a> TransactionV1Builder<'a> {
             args,
             TransactionTarget::Native,
             TransactionEntryPoint::Delegate,
-            TransactionCategory::Auction as u8,
+            TransactionLane::Auction as u8,
             Self::DEFAULT_SCHEDULING,
         );
         Ok(TransactionV1Builder::new(body))
@@ -166,7 +167,7 @@ impl<'a> TransactionV1Builder<'a> {
             args,
             TransactionTarget::Native,
             TransactionEntryPoint::Undelegate,
-            TransactionCategory::Auction as u8,
+            TransactionLane::Auction as u8,
             Self::DEFAULT_SCHEDULING,
         );
         Ok(TransactionV1Builder::new(body))
@@ -184,7 +185,7 @@ impl<'a> TransactionV1Builder<'a> {
             args,
             TransactionTarget::Native,
             TransactionEntryPoint::Redelegate,
-            TransactionCategory::Auction as u8,
+            TransactionLane::Auction as u8,
             Self::DEFAULT_SCHEDULING,
         );
         Ok(TransactionV1Builder::new(body))
@@ -193,16 +194,14 @@ impl<'a> TransactionV1Builder<'a> {
     fn new_targeting_stored<E: Into<String>>(
         id: TransactionInvocationTarget,
         entry_point: E,
+        runtime: TransactionRuntime,
     ) -> Self {
-        let target = TransactionTarget::Stored {
-            id,
-            runtime: Self::DEFAULT_RUNTIME,
-        };
+        let target = TransactionTarget::Stored { id, runtime };
         let body = TransactionV1Body::new(
             RuntimeArgs::new(),
             target,
             TransactionEntryPoint::Custom(entry_point.into()),
-            TransactionCategory::Large as u8,
+            TransactionLane::Large as u8,
             Self::DEFAULT_SCHEDULING,
         );
         TransactionV1Builder::new(body)
@@ -213,9 +212,10 @@ impl<'a> TransactionV1Builder<'a> {
     pub fn new_targeting_invocable_entity<E: Into<String>>(
         hash: AddressableEntityHash,
         entry_point: E,
+        runtime: TransactionRuntime,
     ) -> Self {
         let id = TransactionInvocationTarget::new_invocable_entity(hash);
-        Self::new_targeting_stored(id, entry_point)
+        Self::new_targeting_stored(id, entry_point, runtime)
     }
 
     /// Returns a new `TransactionV1Builder` suitable for building a transaction targeting a stored
@@ -223,9 +223,10 @@ impl<'a> TransactionV1Builder<'a> {
     pub fn new_targeting_invocable_entity_via_alias<A: Into<String>, E: Into<String>>(
         alias: A,
         entry_point: E,
+        runtime: TransactionRuntime,
     ) -> Self {
         let id = TransactionInvocationTarget::new_invocable_entity_alias(alias.into());
-        Self::new_targeting_stored(id, entry_point)
+        Self::new_targeting_stored(id, entry_point, runtime)
     }
 
     /// Returns a new `TransactionV1Builder` suitable for building a transaction targeting a
@@ -234,9 +235,10 @@ impl<'a> TransactionV1Builder<'a> {
         hash: PackageHash,
         version: Option<EntityVersion>,
         entry_point: E,
+        runtime: TransactionRuntime,
     ) -> Self {
         let id = TransactionInvocationTarget::new_package(hash, version);
-        Self::new_targeting_stored(id, entry_point)
+        Self::new_targeting_stored(id, entry_point, runtime)
     }
 
     /// Returns a new `TransactionV1Builder` suitable for building a transaction targeting a
@@ -245,25 +247,58 @@ impl<'a> TransactionV1Builder<'a> {
         alias: A,
         version: Option<EntityVersion>,
         entry_point: E,
+        runtime: TransactionRuntime,
     ) -> Self {
         let id = TransactionInvocationTarget::new_package_alias(alias.into(), version);
-        Self::new_targeting_stored(id, entry_point)
+        Self::new_targeting_stored(id, entry_point, runtime)
     }
 
     /// Returns a new `TransactionV1Builder` suitable for building a transaction for running session
     /// logic, i.e. compiled Wasm.
-    pub fn new_session(category: TransactionCategory, module_bytes: Bytes) -> Self {
+    pub fn new_session(
+        lane: TransactionLane,
+        module_bytes: Bytes,
+        runtime: TransactionRuntime,
+    ) -> Self {
         let target = TransactionTarget::Session {
             module_bytes,
-            runtime: Self::DEFAULT_RUNTIME,
+            runtime,
         };
         let body = TransactionV1Body::new(
             RuntimeArgs::new(),
             target,
             TransactionEntryPoint::Call,
-            category as u8,
+            lane as u8,
             Self::DEFAULT_SCHEDULING,
         );
+        TransactionV1Builder::new(body)
+    }
+
+    /// Returns a new `TransactionV1Builder` suitable for building a transaction for calling a smart
+    /// contract.
+    pub fn new_call(
+        entity_address: AddressableEntityHash,
+        entry_point: String,
+        input_data: Option<Bytes>,
+        transferred_value: u128,
+    ) -> Self {
+        let body = {
+            let args = TransactionArgs::Bytesrepr(input_data.unwrap_or_default());
+            let target = TransactionTarget::Stored {
+                id: TransactionInvocationTarget::ByHash(entity_address.value()),
+                runtime: TransactionRuntime::VmCasperV2,
+            };
+            let transaction_lane = TransactionLane::Medium as u8;
+            let scheduling = Self::DEFAULT_SCHEDULING;
+            TransactionV1Body {
+                args,
+                target,
+                entry_point: TransactionEntryPoint::Custom(entry_point),
+                transaction_lane,
+                scheduling,
+                transferred_value,
+            }
+        };
         TransactionV1Builder::new(body)
     }
 
@@ -300,9 +335,9 @@ impl<'a> TransactionV1Builder<'a> {
     ///   * unsigned by calling `with_no_secret_key`
     ///   * given an invalid approval by calling `with_invalid_approval`
     #[cfg(any(feature = "testing", test))]
-    pub fn new_random_with_category_and_timestamp_and_ttl(
+    pub fn new_random_with_lane_and_timestamp_and_ttl(
         rng: &mut TestRng,
-        category: u8,
+        lane: u8,
         timestamp: Option<Timestamp>,
         ttl: Option<TimeDiff>,
     ) -> Self {
@@ -311,7 +346,7 @@ impl<'a> TransactionV1Builder<'a> {
             rng.gen_range(60_000..TransactionConfig::default().max_ttl.millis()),
             |ttl| ttl.millis(),
         );
-        let body = TransactionV1Body::random_of_category(rng, category);
+        let body = TransactionV1Body::random_of_lane(rng, lane);
         TransactionV1Builder {
             chain_name: Some(rng.random_string(5..10)),
             timestamp: timestamp.unwrap_or(Timestamp::now()),
@@ -389,8 +424,15 @@ impl<'a> TransactionV1Builder<'a> {
 
     /// Appends the given runtime arg into the body's `args`.
     pub fn with_runtime_arg<K: Into<String>>(mut self, key: K, cl_value: CLValue) -> Self {
-        self.body.args.insert_cl_value(key, cl_value);
-        self
+        match &mut self.body.args {
+            TransactionArgs::Named(args) => {
+                args.insert_cl_value(key, cl_value);
+                self
+            }
+            TransactionArgs::Bytesrepr(raw_bytes) => {
+                panic!("Cannot append named args to unnamed args: {:?}", raw_bytes)
+            }
+        }
     }
 
     /// Sets the runtime args in the transaction.
@@ -398,6 +440,18 @@ impl<'a> TransactionV1Builder<'a> {
     /// NOTE: this overwrites any existing runtime args.  To append to existing args, use
     /// [`TransactionV1Builder::with_runtime_arg`].
     pub fn with_runtime_args(mut self, args: RuntimeArgs) -> Self {
+        self.body.args = TransactionArgs::Named(args);
+        self
+    }
+
+    /// Sets the runtime args in the transaction.
+    pub fn with_chunked_args(mut self, args: Bytes) -> Self {
+        self.body.args = TransactionArgs::Bytesrepr(args);
+        self
+    }
+
+    /// Sets the transaction args in the transaction.
+    pub fn with_transaction_args(mut self, args: TransactionArgs) -> Self {
         self.body.args = args;
         self
     }
@@ -424,6 +478,12 @@ impl<'a> TransactionV1Builder<'a> {
                 *existing_runtime = runtime;
             }
         }
+        self
+    }
+
+    /// Sets the entry point for the transaction.
+    pub fn with_entry_point<E: Into<String>>(mut self, entry_point: E) -> Self {
+        self.body.entry_point = TransactionEntryPoint::Custom(entry_point.into());
         self
     }
 

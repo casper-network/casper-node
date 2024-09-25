@@ -1714,6 +1714,38 @@
             }
           },
           "additionalProperties": false
+        },
+        {
+          "description": "Gas limited transaction.",
+          "type": "object",
+          "required": [
+            "GasLimited"
+          ],
+          "properties": {
+            "GasLimited": {
+              "type": "object",
+              "required": [
+                "gas_limit",
+                "gas_price_tolerance"
+              ],
+              "properties": {
+                "gas_limit": {
+                  "description": "User-specified gas limit.",
+                  "type": "integer",
+                  "format": "uint64",
+                  "minimum": 0.0
+                },
+                "gas_price_tolerance": {
+                  "description": "User-specified gas_price tolerance (minimum 1). This is interpreted to mean \"do not include this transaction in a block if the current gas price is greater than this number\"",
+                  "type": "integer",
+                  "format": "uint8",
+                  "minimum": 0.0
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
         }
       ]
     },
@@ -1760,11 +1792,12 @@
         "entry_point",
         "scheduling",
         "target",
-        "transaction_category"
+        "transaction_lane",
+        "transferred_value"
       ],
       "properties": {
         "args": {
-          "$ref": "#/definitions/RuntimeArgs"
+          "$ref": "#/definitions/TransactionArgs"
         },
         "target": {
           "$ref": "#/definitions/TransactionTarget"
@@ -1772,16 +1805,52 @@
         "entry_point": {
           "$ref": "#/definitions/TransactionEntryPoint"
         },
-        "transaction_category": {
+        "transaction_lane": {
           "type": "integer",
           "format": "uint8",
           "minimum": 0.0
         },
         "scheduling": {
           "$ref": "#/definitions/TransactionScheduling"
+        },
+        "transferred_value": {
+          "type": "integer",
+          "format": "uint128",
+          "minimum": 0.0
         }
       },
       "additionalProperties": false
+    },
+    "TransactionArgs": {
+      "description": "Body of a `TransactionArgs`.",
+      "oneOf": [
+        {
+          "description": "Named runtime arguments.",
+          "type": "object",
+          "required": [
+            "Named"
+          ],
+          "properties": {
+            "Named": {
+              "$ref": "#/definitions/RuntimeArgs"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Chunked bytes.",
+          "type": "object",
+          "required": [
+            "Chunked"
+          ],
+          "properties": {
+            "Chunked": {
+              "$ref": "#/definitions/Bytes"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
     },
     "TransactionTarget": {
       "description": "Execution target of a Transaction.",
@@ -1985,7 +2054,7 @@
       "description": "Entry point of a Transaction.",
       "oneOf": [
         {
-          "description": "The standard `call` entry point used in session code.",
+          "description": "The default entry point name.",
           "type": "string",
           "enum": [
             "Call"
@@ -4103,6 +4172,24 @@
             }
           },
           "additionalProperties": false
+        },
+        {
+          "description": "Raw bytes. Similar to a [`crate::StoredValue::CLValue`] but does not incur overhead of a [`crate::CLValue`] and [`crate::CLType`].",
+          "type": "object",
+          "required": [
+            "RawBytes"
+          ],
+          "properties": {
+            "RawBytes": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "format": "uint8",
+                "minimum": 0.0
+              }
+            }
+          },
+          "additionalProperties": false
         }
       ]
     },
@@ -4889,6 +4976,13 @@
           "enum": [
             "V1CasperWasm"
           ]
+        },
+        {
+          "description": "Byte code to be executed with the version 2 Casper execution engine.",
+          "type": "string",
+          "enum": [
+            "V2CasperWasm"
+          ]
         }
       ]
     },
@@ -4989,19 +5083,6 @@
             }
           },
           "additionalProperties": false
-        },
-        {
-          "description": "Entrypoints to be executed against the V2 Casper VM.",
-          "type": "object",
-          "required": [
-            "V2CasperVm"
-          ],
-          "properties": {
-            "V2CasperVm": {
-              "$ref": "#/definitions/EntryPointV2"
-            }
-          },
-          "additionalProperties": false
         }
       ]
     },
@@ -5065,28 +5146,6 @@
           ]
         }
       ]
-    },
-    "EntryPointV2": {
-      "description": "The entry point for the V2 Casper VM.",
-      "type": "object",
-      "required": [
-        "flags",
-        "function_index"
-      ],
-      "properties": {
-        "function_index": {
-          "description": "The selector.",
-          "type": "integer",
-          "format": "uint32",
-          "minimum": 0.0
-        },
-        "flags": {
-          "description": "The flags.",
-          "type": "integer",
-          "format": "uint32",
-          "minimum": 0.0
-        }
-      }
     },
     "TransformError": {
       "description": "Error type for applying and combining transforms.\n\nA `TypeMismatch` occurs when a transform cannot be applied because the types are not compatible (e.g. trying to add a number to a string).",

@@ -13,10 +13,13 @@ use std::{
     borrow::Borrow,
     collections::{BTreeMap, BTreeSet, HashSet, VecDeque},
     convert::{From, TryInto},
+    fmt::Debug,
+    sync::Arc,
 };
 
 use linked_hash_map::LinkedHashMap;
 use thiserror::Error;
+use tracing::error;
 
 use crate::{
     global_state::{
@@ -171,7 +174,8 @@ impl Query {
 /// Keeps track of already accessed keys.
 /// We deliberately separate cached Reads from cached mutations
 /// because we want to invalidate Reads' cache so it doesn't grow too fast.
-pub struct TrackingCopyCache<M> {
+#[derive(Clone, Debug)]
+pub struct GenericTrackingCopyCache<M: Copy + Debug> {
     max_cache_size: usize,
     current_cache_size: usize,
     reads_cached: LinkedHashMap<Key, StoredValue>,
@@ -180,13 +184,13 @@ pub struct TrackingCopyCache<M> {
     meter: M,
 }
 
-impl<M: Meter<Key, StoredValue>> TrackingCopyCache<M> {
+impl<M: Meter<Key, StoredValue> + Copy + Default> GenericTrackingCopyCache<M> {
     /// Creates instance of `TrackingCopyCache` with specified `max_cache_size`,
     /// above which least-recently-used elements of the cache are invalidated.
     /// Measurements of elements' "size" is done with the usage of `Meter`
     /// instance.
-    pub fn new(max_cache_size: usize, meter: M) -> TrackingCopyCache<M> {
-        TrackingCopyCache {
+    pub fn new(max_cache_size: usize, meter: M) -> GenericTrackingCopyCache<M> {
+        GenericTrackingCopyCache {
             max_cache_size,
             current_cache_size: 0,
             reads_cached: LinkedHashMap::new(),
@@ -194,6 +198,13 @@ impl<M: Meter<Key, StoredValue>> TrackingCopyCache<M> {
             prunes_cached: BTreeSet::new(),
             meter,
         }
+    }
+
+    /// Creates instance of `TrackingCopyCache` with specified `max_cache_size`, above which
+    /// least-recently-used elements of the cache are invalidated. Measurements of elements' "size"
+    /// is done with the usage of default `Meter` instance.
+    pub fn new_default(max_cache_size: usize) -> GenericTrackingCopyCache<M> {
+        GenericTrackingCopyCache::new(max_cache_size, M::default())
     }
 
     /// Inserts `key` and `value` pair to Read cache.
@@ -259,6 +270,7 @@ impl<M: Meter<Key, StoredValue>> TrackingCopyCache<M> {
 /// A helper type for `TrackingCopyCache` that allows convenient storage and access
 /// to keys as bytes.
 /// Its equality and ordering is based on the byte representation of the key.
+#[derive(Debug, Clone)]
 struct KeyWithByteRepr(Key, Vec<u8>);
 
 impl KeyWithByteRepr {
@@ -309,12 +321,16 @@ impl Ord for KeyWithByteRepr {
     }
 }
 
+/// An alias for a `TrackingCopyCache` with `HeapSize` as the meter.
+pub type TrackingCopyCache = GenericTrackingCopyCache<HeapSize>;
+
 /// An interface for the global state that caches all operations (reads and writes) instead of
 /// applying them directly to the state. This way the state remains unmodified, while the user can
 /// interact with it as if it was being modified in real time.
+#[derive(Clone)]
 pub struct TrackingCopy<R> {
-    reader: R,
-    cache: TrackingCopyCache<HeapSize>,
+    reader: Arc<R>,
+    cache: TrackingCopyCache,
     effects: Effects,
     max_query_depth: u64,
     messages: Messages,
@@ -348,6 +364,8 @@ impl From<CLValueError> for AddResult {
     }
 }
 
+pub type TrackingCopyParts = (TrackingCopyCache, Effects, Messages);
+
 impl<R: StateReader<Key, StoredValue>> TrackingCopy<R>
 where
     R: StateReader<Key, StoredValue, Error = GlobalStateError>,
@@ -355,9 +373,9 @@ where
     /// Creates a new `TrackingCopy` using the `reader` as the interface to the state.
     pub fn new(reader: R, max_query_depth: u64) -> TrackingCopy<R> {
         TrackingCopy {
-            reader,
+            reader: Arc::new(reader),
             // TODO: Should `max_cache_size` be a fraction of wasm memory limit?
-            cache: TrackingCopyCache::new(1024 * 16, HeapSize),
+            cache: GenericTrackingCopyCache::new(1024 * 16, HeapSize),
             effects: Effects::new(),
             max_query_depth,
             messages: Vec::new(),
@@ -369,25 +387,65 @@ where
         &self.reader
     }
 
-    /// Creates a new TrackingCopy, using this one (including its mutations) as
-    /// the base state to read against. The intended use case for this
-    /// function is to "snapshot" the current `TrackingCopy` and produce a
-    /// new `TrackingCopy` where further changes can be made. This
-    /// allows isolating a specific set of changes (those in the new
-    /// `TrackingCopy`) from existing changes. Note that mutations to state
-    /// caused by new changes (i.e. writes and adds) only impact the new
-    /// `TrackingCopy`, not this one. Note that currently there is no `join` /
-    /// `merge` function to bring changes from a fork back to the main
-    /// `TrackingCopy`. this means the current usage requires repeated
-    /// forking, however we recognize this is sub-optimal and will revisit
-    /// in the future.
+    /// Returns a shared reference to the `reader` used to access the state.
+    pub fn shared_reader(&self) -> Arc<R> {
+        Arc::clone(&self.reader)
+    }
+
+    /// Creates a new `TrackingCopy` using the `reader` as the interface to the state.
+    /// Returns a new `TrackingCopy` instance that is a snapshot of the current state, allowing
+    /// further changes to be made.
+    ///
+    /// This method creates a new `TrackingCopy` using the current instance (including its
+    /// mutations) as the base state to read against. Mutations made to the new `TrackingCopy`
+    /// will not impact the original instance.
+    ///
+    /// Note: Currently, there is no `join` or `merge` function to bring changes from a fork back to
+    /// the main `TrackingCopy`. Therefore, forking should be done repeatedly, which is
+    /// sub-optimal and will be improved in the future.
     pub fn fork(&self) -> TrackingCopy<&TrackingCopy<R>> {
         TrackingCopy::new(self, self.max_query_depth)
+    }
+
+    /// Returns a new `TrackingCopy` instance that is a snapshot of the current state, allowing
+    /// further changes to be made.
+    ///
+    /// This method creates a new `TrackingCopy` using the current instance (including its
+    /// mutations) as the base state to read against. Mutations made to the new `TrackingCopy`
+    /// will not impact the original instance.
+    ///
+    /// Note: Currently, there is no `join` or `merge` function to bring changes from a fork back to
+    /// the main `TrackingCopy`. This method is an alternative to the `fork` method and is
+    /// provided for clarity and consistency in naming.
+    pub fn fork2(&self) -> Self {
+        TrackingCopy {
+            reader: Arc::clone(&self.reader),
+            cache: self.cache.clone(),
+            effects: self.effects.clone(),
+            max_query_depth: self.max_query_depth,
+            messages: self.messages.clone(),
+        }
+    }
+
+    /// Applies the changes to the state.
+    ///
+    /// This is a low-level function that should be used only by the execution engine. The purpose
+    /// of this function is to apply the changes to the state from a forked tracking copy. Once
+    /// caller decides that the changes are valid, they can be applied to the state and the
+    /// processing can resume.
+    pub fn apply_changes(&mut self, effects: Effects, cache: TrackingCopyCache) {
+        self.effects = effects;
+        self.cache = cache;
     }
 
     /// Returns a copy of the execution effects cached by this instance.
     pub fn effects(&self) -> Effects {
         self.effects.clone()
+    }
+
+    /// Returns copy of cache.
+    pub fn cache(&self) -> TrackingCopyCache {
+        self.cache.clone()
     }
 
     pub fn destructure(self) -> (Vec<(Key, StoredValue)>, BTreeSet<Key>, Effects) {
@@ -456,6 +514,16 @@ where
         } else {
             Ok(None)
         }
+    }
+
+    /// Reads the first value stored under the keys in `keys`.
+    pub fn read_first(&mut self, keys: &[&Key]) -> Result<Option<StoredValue>, TrackingCopyError> {
+        for key in keys {
+            if let Some(value) = self.read(key)? {
+                return Ok(Some(value));
+            }
+        }
+        Ok(None)
     }
 
     /// Writes `value` under `key`. Note that the write is only cached, and the global state itself
@@ -770,6 +838,9 @@ where
                 StoredValue::Reservation(_) => {
                     return Ok(query.into_not_found_result("Reservation value found."))
                 }
+                StoredValue::RawBytes(_) => {
+                    return Ok(query.into_not_found_result("RawBytes value found."));
+                }
             }
         }
     }
@@ -806,6 +877,14 @@ impl<R: StateReader<Key, StoredValue>> StateReader<Key, StoredValue> for &Tracki
         self.reader.keys_with_prefix(prefix)
     }
 }
+
+/// An alias for a `TrackingCopy` that uses a `GlobalState` as the state reader.
+///
+/// This is aliasing the `TrackingCopy` to use the `GlobalState` as the state reader without the
+/// explicit verbose generic types and bounds.
+// pub trait GlobalState: StateReader<Key, StoredValue> {}
+
+// impl<R: StateReader<Key, StoredValue>> GlobalState for TrackingCopy<R> {}
 
 /// Error conditions of a proof validation.
 #[derive(Error, Debug, PartialEq, Eq)]

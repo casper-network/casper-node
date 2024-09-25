@@ -127,7 +127,8 @@ validator_credit_cap = [1, 5]
 #   'classic': senders of transaction self-specify how much they pay.
 #   'fixed': costs are fixed, per the cost table
 #   'reserved': prepaid transaction (currently not supported)
-pricing_handling = { type = 'fixed' }
+#   'gas_limited': applies to the v2 Casper Wasm runtime
+pricing_handling = { type = 'gas_limited' }
 # Does the network allow pre-payment / reservations for future
 # execution? Currently not supported.
 #
@@ -175,6 +176,10 @@ block_gas_limit = 3_300_000_000_000
 native_transfer_minimum_motes = 2_500_000_000
 # The maximum value to which `transaction_acceptor.timestamp_leeway` can be set in the config.toml file.
 max_timestamp_leeway = '5 seconds'
+# Configuration of the transaction runtime.
+[transactions.enabled_runtime]
+vm_casper_v1 = true
+vm_casper_v2 = false
 
 [transactions.v1]
 # The configuration settings for the lanes of transactions including both native and Wasm based interactions.

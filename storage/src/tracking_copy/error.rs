@@ -3,7 +3,9 @@ use thiserror::Error;
 use crate::data_access_layer::balance::BalanceFailure;
 use casper_types::{
     addressable_entity::{AddKeyFailure, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure},
-    bytesrepr, system, ApiError, CLType, CLValueError, Key, StoredValueTypeMismatch,
+    bytesrepr,
+    execution::TransformError,
+    system, ApiError, CLType, CLValueError, Key, StoredValueTypeMismatch,
 };
 
 /// Possible tracking copy errors.
@@ -85,6 +87,9 @@ pub enum Error {
     /// Unable to find a contract.
     #[error("Contract {:?} not found", _0)]
     ContractNotFound(Key),
+    /// Error executing transform.
+    #[error("Error executing transform: {0}")]
+    TransformError(TransformError),
 }
 
 impl Error {

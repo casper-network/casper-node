@@ -677,7 +677,7 @@ impl EraSupervisor {
         let era = era_id.value();
         if let Some(current_era_id) = self.current_era() {
             match era_id.cmp(&current_era_id) {
-                cmp::Ordering::Greater => info!(era, "received message for future era"),
+                cmp::Ordering::Greater => trace!(era, "received message for future era"),
                 cmp::Ordering::Equal => error!(era, "missing current era"),
                 cmp::Ordering::Less => info!(era, "received message for obsolete era"),
             }

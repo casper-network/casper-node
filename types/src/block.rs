@@ -42,7 +42,8 @@ use crate::TransactionConfig;
 
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    Digest, EraId, ProtocolVersion, PublicKey, Timestamp, TransactionHash,
+    transaction::TransactionHash,
+    Digest, EraId, ProtocolVersion, PublicKey, Timestamp,
 };
 pub use available_block_range::AvailableBlockRange;
 pub use block_body::{BlockBody, BlockBodyV1, BlockBodyV2};

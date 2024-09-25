@@ -5,7 +5,6 @@
     html_favicon_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Favicon_RGB_50px.png",
     html_logo_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Symbol_RGB.png"
 )]
-#![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
 pub mod address_generator;
 pub mod block_store;

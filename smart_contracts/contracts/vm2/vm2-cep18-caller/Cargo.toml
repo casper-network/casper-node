@@ -1,0 +1,12 @@
+[package]
+name = "vm2-cep18-caller"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+casper-macros = { path = "../../../macros" }
+casper-sdk = { path = "../../../sdk" }
+vm2-cep18 = { path = "../vm2-cep18" }
+borsh = { version = "1.2.0", features = ["derive"] }

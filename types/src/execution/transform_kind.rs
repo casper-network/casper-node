@@ -184,6 +184,11 @@ impl TransformKindV2 {
                     let found = "Message".to_string();
                     Err(StoredValueTypeMismatch::new(expected, found).into())
                 }
+                StoredValue::RawBytes(_) => {
+                    let expected = "Contract or Account".to_string();
+                    let found = "RawBytes".to_string();
+                    Err(StoredValueTypeMismatch::new(expected, found).into())
+                }
                 StoredValue::Reservation(_) => {
                     let expected = "Contract or Account".to_string();
                     let found = "Reservation".to_string();
@@ -426,27 +431,27 @@ mod tests {
     const ONE_I32: i32 = 1;
     const NEG_ONE_I32: i32 = -1;
     const NEG_TWO_I32: i32 = -2;
-    const MIN_I32: i32 = i32::min_value();
-    const MAX_I32: i32 = i32::max_value();
+    const MIN_I32: i32 = i32::MIN;
+    const MAX_I32: i32 = i32::MAX;
 
     const ZERO_I64: i64 = 0;
     const ONE_I64: i64 = 1;
     const NEG_ONE_I64: i64 = -1;
     const NEG_TWO_I64: i64 = -2;
-    const MIN_I64: i64 = i64::min_value();
-    const MAX_I64: i64 = i64::max_value();
+    const MIN_I64: i64 = i64::MIN;
+    const MAX_I64: i64 = i64::MAX;
 
     const ZERO_U8: u8 = 0;
     const ONE_U8: u8 = 1;
-    const MAX_U8: u8 = u8::max_value();
+    const MAX_U8: u8 = u8::MAX;
 
     const ZERO_U32: u32 = 0;
     const ONE_U32: u32 = 1;
-    const MAX_U32: u32 = u32::max_value();
+    const MAX_U32: u32 = u32::MAX;
 
     const ZERO_U64: u64 = 0;
     const ONE_U64: u64 = 1;
-    const MAX_U64: u64 = u64::max_value();
+    const MAX_U64: u64 = u64::MAX;
 
     const ZERO_U128: U128 = U128([0; 2]);
     const ONE_U128: U128 = U128([1, 0]);
@@ -462,8 +467,8 @@ mod tests {
 
     #[test]
     fn i32_overflow() {
-        let max = std::i32::MAX;
-        let min = std::i32::MIN;
+        let max = i32::MAX;
+        let min = i32::MIN;
 
         let max_value = StoredValue::CLValue(CLValue::from_t(max).unwrap());
         let min_value = StoredValue::CLValue(CLValue::from_t(min).unwrap());

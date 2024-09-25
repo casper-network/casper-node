@@ -74,6 +74,8 @@ impl Executor {
                     Vec::default(),
                     Vec::default(),
                     Some(error.into()),
+                    None,
+                    None,
                 );
             }
         };
@@ -132,13 +134,15 @@ impl Executor {
         };
 
         match result {
-            Ok(_) => WasmV1Result::new(
+            Ok(ret) => WasmV1Result::new(
                 gas_limit,
                 runtime.context().gas_counter(),
                 runtime.context().effects(),
                 runtime.context().transfers().to_owned(),
                 runtime.context().messages(),
                 None,
+                Some(ret),
+                Some(runtime.context().cache()),
             ),
             Err(error) => WasmV1Result::new(
                 gas_limit,
@@ -147,6 +151,8 @@ impl Executor {
                 vec![],
                 Messages::new(),
                 Some(error.into()),
+                None,
+                None,
             ),
         }
     }

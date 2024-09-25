@@ -11,12 +11,12 @@ mod package_identifier;
 mod pricing_mode;
 mod runtime_args;
 mod serialization;
-mod transaction_category;
 mod transaction_entry_point;
 mod transaction_hash;
 mod transaction_header;
 mod transaction_id;
 mod transaction_invocation_target;
+mod transaction_lane;
 mod transaction_runtime;
 mod transaction_scheduling;
 mod transaction_target;
@@ -77,7 +77,7 @@ pub use transaction_runtime::TransactionRuntime;
 pub use transaction_scheduling::TransactionScheduling;
 pub use transaction_target::TransactionTarget;
 pub use transaction_v1::{
-    InvalidTransactionV1, TransactionCategory, TransactionV1, TransactionV1Body,
+    InvalidTransactionV1, TransactionArgs, TransactionLane, TransactionV1, TransactionV1Body,
     TransactionV1DecodeFromJsonError, TransactionV1Error, TransactionV1ExcessiveSizeError,
     TransactionV1Hash, TransactionV1Header,
 };
@@ -315,20 +315,27 @@ impl Transaction {
         }
     }
 
+    /// Is this a transaction that should be sent to the v2 execution engine?
+    pub fn is_v2_wasm(&self) -> bool {
+        match self {
+            Transaction::Deploy(_deploy) => false,
+            Transaction::V1(v1) => v1.is_v2_wasm(),
+        }
+    }
+
+    /// Get [`TransactionV1`]
+    pub fn as_transaction_v1(&self) -> Option<&TransactionV1> {
+        match self {
+            Transaction::Deploy(_) => None,
+            Transaction::V1(v1) => Some(v1),
+        }
+    }
+
     /// Should this transaction use standard payment processing?
     pub fn is_standard_payment(&self) -> bool {
         match self {
             Transaction::Deploy(deploy) => deploy.payment().is_standard_payment(Phase::Payment),
-            Transaction::V1(v1) => {
-                if let PricingMode::Classic {
-                    standard_payment, ..
-                } = v1.pricing_mode()
-                {
-                    *standard_payment
-                } else {
-                    true
-                }
-            }
+            Transaction::V1(v1) => v1.is_standard_payment(),
         }
     }
 
@@ -337,6 +344,34 @@ impl Transaction {
         match self {
             Transaction::Deploy(deploy) => deploy.is_account_session(),
             Transaction::V1(v1) => v1.is_account_session(),
+        }
+    }
+
+    /// Checks if the transaction is compliant with the given configuration.
+    ///
+    /// This function verifies whether the transaction adheres to the specified
+    /// `chainspec`, considering the `timestamp_leeway` and the current `at` timestamp.
+    /// It returns `Ok(())` if the transaction is compliant, or an `Err(InvalidTransaction)`
+    /// if it is not. The function handles two types of transactions: `Deploy` and `V1`,
+    /// delegating the compliance check to their respective `is_config_compliant` methods
+    /// and mapping any errors to `InvalidTransaction` variants.
+    ///
+    /// This function is only available when either the `std` and `testing` features
+    /// are enabled, or during testing.
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
+    pub fn is_config_compliant(
+        &self,
+        chainspec: &Chainspec,
+        timestamp_leeway: TimeDiff,
+        at: Timestamp,
+    ) -> Result<(), InvalidTransaction> {
+        match self {
+            Transaction::Deploy(deploy) => deploy
+                .is_config_compliant(&chainspec, timestamp_leeway, at)
+                .map_err(|error| InvalidTransaction::Deploy(error)),
+            Transaction::V1(txn) => txn
+                .is_config_compliant(&chainspec, timestamp_leeway, at)
+                .map_err(|error| InvalidTransaction::V1(error)),
         }
     }
 
@@ -357,10 +392,10 @@ impl Transaction {
     }
 
     /// The session args.
-    pub fn session_args(&self) -> &RuntimeArgs {
+    pub fn session_args(&self) -> Option<&RuntimeArgs> {
         match self {
-            Transaction::Deploy(deploy) => deploy.session().args(),
-            Transaction::V1(transaction_v1) => transaction_v1.body().args(),
+            Transaction::Deploy(deploy) => Some(deploy.session().args()),
+            Transaction::V1(transaction_v1) => transaction_v1.body().args().as_named(),
         }
     }
 
@@ -373,21 +408,21 @@ impl Transaction {
     }
 
     /// The transaction category.
-    pub fn transaction_category(&self) -> u8 {
+    pub fn transaction_lane(&self) -> u8 {
         match self {
             Transaction::Deploy(deploy) => {
                 if deploy.is_transfer() {
-                    TransactionCategory::Mint as u8
+                    TransactionLane::Mint as u8
                 } else {
-                    TransactionCategory::Large as u8
+                    TransactionLane::Large as u8
                 }
             }
-            Transaction::V1(v1) => v1.transaction_category(),
+            Transaction::V1(v1) => v1.transaction_lane(),
         }
     }
 
-    /// Is the transaction the legacy deploy variant.
-    pub fn is_legacy_transaction(&self) -> bool {
+    /// Is the transaction the deploy variant.
+    pub fn is_deploy(&self) -> bool {
         match self {
             Transaction::Deploy(_) => true,
             Transaction::V1(_) => false,

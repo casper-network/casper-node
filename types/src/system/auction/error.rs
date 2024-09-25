@@ -583,7 +583,7 @@ mod tests {
 
     #[test]
     fn error_backward_trips() {
-        for u8 in 0..=u8::max_value() {
+        for u8 in 0..=u8::MAX {
             match Error::try_from(u8) {
                 Ok(error_variant) => {
                     assert_eq!(u8, error_variant as u8, "Error code mismatch")

@@ -447,7 +447,7 @@ mod tests {
             ),
             bonding_purse: URef::new([42; 32], AccessRights::READ_ADD_WRITE),
             staked_amount: U512::one(),
-            delegation_rate: DelegationRate::max_value(),
+            delegation_rate: DelegationRate::MAX,
             vesting_schedule: Some(VestingSchedule::default()),
             delegators: BTreeMap::default(),
             inactive: true,

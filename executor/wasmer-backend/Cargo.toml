@@ -1,0 +1,17 @@
+[package]
+name = "casper-executor-wasmer-backend"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bytes = "1.6.0"
+wasmer = { version = "4.3.1", default-features = false, features = ["singlepass"] }
+wasmer-compiler-singlepass = "4.3.1"
+wasmer-middlewares = "4.3.1"
+wasmer-types = "4.3.1"
+casper-executor-wasm-interface = { path = "../wasm-interface" }
+casper-executor-wasm-host = { path = "../wasm-host" }
+casper-storage = { path = "../../storage" }
+casper-sdk-sys = { path = "../../smart_contracts/sdk-sys" }
+regex = "1.10.6"
+once_cell = "1.19.0"

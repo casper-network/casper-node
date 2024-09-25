@@ -13,7 +13,10 @@ use serde::Serialize;
 use super::super::TransactionEntryPoint;
 #[cfg(doc)]
 use super::TransactionV1;
-use crate::{bytesrepr, crypto, CLType, DisplayIter, PricingMode, TimeDiff, Timestamp, U512};
+use crate::{
+    bytesrepr, crypto, transaction::PricingMode, CLType, DisplayIter, TimeDiff, Timestamp,
+    TransactionRuntime, U512,
+};
 
 /// Returned when a [`TransactionV1`] fails validation.
 #[derive(Clone, Eq, PartialEq, Debug)]
@@ -130,7 +133,6 @@ pub enum InvalidTransaction {
         /// The invalid entry point.
         entry_point: TransactionEntryPoint,
     },
-
     /// The entry point for this transaction target must be `TransactionEntryPoint::Custom`.
     EntryPointMustBeCustom {
         /// The invalid entry point.
@@ -162,6 +164,13 @@ pub enum InvalidTransaction {
         min_gas_price_tolerance: u8,
         /// The provided gas price tolerance.
         provided_gas_price_tolerance: u8,
+    },
+    /// The transaction requires named arguments.
+    ExpectedNamedArguments,
+    /// The transaction runtime is invalid.
+    InvalidTransactionRuntime {
+        /// The expected runtime as specified by the chainspec.
+        expected: TransactionRuntime,
     },
 }
 
@@ -311,6 +320,15 @@ impl Display for InvalidTransaction {
                     provided_gas_price_tolerance, min_gas_price_tolerance
                 )
             }
+            InvalidTransaction::ExpectedNamedArguments => {
+                write!(formatter, "transaction requires named arguments")
+            }
+            InvalidTransaction::InvalidTransactionRuntime { expected } => {
+                write!(
+                    formatter,
+                    "invalid transaction runtime: expected {expected}"
+                )
+            }
         }
     }
 }
@@ -349,7 +367,9 @@ impl StdError for InvalidTransaction {
             | InvalidTransaction::UnableToCalculateGasCost
             | InvalidTransaction::InvalidPricingMode { .. }
             | InvalidTransaction::GasPriceToleranceTooLow { .. }
-            | InvalidTransaction::InvalidTransactionKind(_) => None,
+            | InvalidTransaction::InvalidTransactionKind(_)
+            | InvalidTransaction::ExpectedNamedArguments
+            | InvalidTransaction::InvalidTransactionRuntime { .. } => None,
         }
     }
 }

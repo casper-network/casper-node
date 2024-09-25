@@ -1,0 +1,17 @@
+[package]
+name = "casper-executor-wasm-host"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+num-traits = "0.2.18"
+num-derive = "0.4.2"
+casper-storage = { path = "../../storage" }
+casper-types = { path = "../../types" }
+safe-transmute = "0.11.2"
+tracing = "0.1.40"
+casper-executor-wasm-common = { path = "../wasm-common" }
+casper-executor-wasm-interface = { path = "../wasm-interface" }
+bytes = "1.6.0"
+parking_lot = "0.12.3"
+thiserror = "1.0.61"

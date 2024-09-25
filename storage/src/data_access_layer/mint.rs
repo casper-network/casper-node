@@ -1,6 +1,9 @@
 use std::collections::BTreeSet;
 
-use crate::system::runtime_native::{Config as NativeRuntimeConfig, TransferConfig};
+use crate::{
+    system::runtime_native::{Config as NativeRuntimeConfig, TransferConfig},
+    tracking_copy::TrackingCopyCache,
+};
 use casper_types::{
     account::AccountHash, execution::Effects, Digest, InitiatorAddr, ProtocolVersion, RuntimeArgs,
     TransactionHash, Transfer,
@@ -143,6 +146,8 @@ pub enum TransferResult {
         transfers: Vec<Transfer>,
         /// Effects of transfer.
         effects: Effects,
+        /// Cached tracking copy operations.
+        cache: TrackingCopyCache,
     },
     /// Transfer failed
     Failure(TransferError),

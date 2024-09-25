@@ -7,11 +7,13 @@ pub mod lmdb;
 pub mod scratch;
 
 use num_rational::Ratio;
+use parking_lot::RwLock;
 use std::{
     cell::RefCell,
     collections::{BTreeMap, BTreeSet},
     convert::TryFrom,
     rc::Rc,
+    sync::Arc,
 };
 
 use tracing::{debug, error, info, warn};
@@ -85,12 +87,13 @@ use crate::{
         transfer::{NewTransferTargetMode, TransferError, TransferRuntimeArgsBuilder},
     },
     tracking_copy::{TrackingCopy, TrackingCopyEntityExt, TrackingCopyError, TrackingCopyExt},
+    AddressGenerator,
 };
 
 use super::trie_store::{operations::batch_write, TrieStoreCacheError};
 
 /// A trait expressing the reading of state. This trait is used to abstract the underlying store.
-pub trait StateReader<K, V> {
+pub trait StateReader<K = Key, V = StoredValue>: Sized + Send + Sync {
     /// An error which occurs when reading state
     type Error;
 
@@ -304,12 +307,15 @@ pub trait CommitProvider: StateProvider {
 
         let config = request.config();
         // this runtime uses the system's context
+        let phase = Phase::Session;
+        let address_generator = AddressGenerator::new(&seed.seed(), phase);
         let mut runtime = match RuntimeNative::new_system_runtime(
             config.clone(),
             protocol_version,
             seed,
+            Arc::new(RwLock::new(address_generator)),
             Rc::clone(&tc),
-            Phase::Session,
+            phase,
         ) {
             Ok(rt) => rt,
             Err(tce) => return StepResult::Failure(StepError::TrackingCopy(tce)),
@@ -402,12 +408,16 @@ pub trait CommitProvider: StateProvider {
         };
 
         // this runtime uses the system's context
+        let phase = Phase::Session;
+        let address_generator = AddressGenerator::new(&seed.seed(), phase);
+
         let mut runtime = match RuntimeNative::new_system_runtime(
             config.clone(),
             protocol_version,
             seed,
+            Arc::new(RwLock::new(address_generator)),
             Rc::clone(&tc),
-            Phase::Session,
+            phase,
         ) {
             Ok(rt) => rt,
             Err(tce) => {
@@ -485,12 +495,15 @@ pub trait CommitProvider: StateProvider {
         };
 
         // this runtime uses the system's context
+        let phase = Phase::System;
+        let address_generator = AddressGenerator::new(&seed.seed(), phase);
         let mut runtime = match RuntimeNative::new_system_runtime(
             config.clone(),
             protocol_version,
             seed,
+            Arc::new(RwLock::new(address_generator)),
             Rc::clone(&tc),
-            Phase::System,
+            phase,
         ) {
             Ok(rt) => rt,
             Err(tce) => {
@@ -568,12 +581,15 @@ pub trait CommitProvider: StateProvider {
         };
 
         // this runtime uses the system's context
+        let phase = Phase::Session;
+        let address_generator = Arc::new(RwLock::new(AddressGenerator::new(&seed.seed(), phase)));
         let mut runtime = match RuntimeNative::new_system_runtime(
             config.clone(),
             protocol_version,
             seed,
+            address_generator,
             Rc::clone(&tc),
-            Phase::Session,
+            phase,
         ) {
             Ok(rt) => rt,
             Err(tce) => {
@@ -654,7 +670,7 @@ pub trait CommitProvider: StateProvider {
 }
 
 /// A trait expressing operations over the trie.
-pub trait StateProvider {
+pub trait StateProvider: Send + Sync {
     /// Associated reader type for `StateProvider`.
     type Reader: StateReader<Key, StoredValue, Error = GlobalStateError>;
 
@@ -1229,10 +1245,14 @@ pub trait StateProvider {
             }
         };
 
+        let phase = Phase::Session;
+        let id = Id::Transaction(transaction_hash);
+        let address_generator = AddressGenerator::new(&id.seed(), phase);
         let mut runtime = RuntimeNative::new(
             config,
             protocol_version,
-            Id::Transaction(transaction_hash),
+            id,
+            Arc::new(RwLock::new(address_generator)),
             Rc::clone(&tc),
             source_account_hash,
             entity_key,
@@ -1240,7 +1260,7 @@ pub trait StateProvider {
             entity_named_keys,
             entity_access_rights,
             U512::MAX,
-            Phase::Session,
+            phase,
         );
 
         let result = match auction_method {
@@ -1339,14 +1359,17 @@ pub trait StateProvider {
             Err(err) => return HandleRefundResult::Failure(TrackingCopyError::Storage(err)),
         };
 
+        let id = Id::Transaction(transaction_hash);
         let phase = refund_mode.phase();
+        let address_generator = Arc::new(RwLock::new(AddressGenerator::new(&id.seed(), phase)));
         let mut runtime = match phase {
             Phase::FinalizePayment => {
                 // this runtime uses the system's context
                 match RuntimeNative::new_system_runtime(
                     config,
                     protocol_version,
-                    Id::Transaction(transaction_hash),
+                    id,
+                    address_generator,
                     Rc::clone(&tc),
                     phase,
                 ) {
@@ -1361,7 +1384,8 @@ pub trait StateProvider {
                 match RuntimeNative::new_system_contract_runtime(
                     config,
                     protocol_version,
-                    Id::Transaction(transaction_hash),
+                    id,
+                    address_generator,
                     Rc::clone(&tc),
                     phase,
                     HANDLE_PAYMENT,
@@ -1588,12 +1612,18 @@ pub trait StateProvider {
         };
 
         // this runtime uses the system's context
+
+        let id = Id::Transaction(transaction_hash);
+        let phase = Phase::FinalizePayment;
+        let address_generator = AddressGenerator::new(&id.seed(), phase);
+
         let mut runtime = match RuntimeNative::new_system_runtime(
             config,
             protocol_version,
-            Id::Transaction(transaction_hash),
+            id,
+            Arc::new(RwLock::new(address_generator)),
             Rc::clone(&tc),
-            Phase::FinalizePayment,
+            phase,
         ) {
             Ok(rt) => rt,
             Err(tce) => {
@@ -2059,11 +2089,14 @@ pub trait StateProvider {
             };
         let entity_key = Key::AddressableEntity(entity_addr);
         let id = Id::Transaction(request.transaction_hash());
+        let phase = Phase::Session;
+        let address_generator = AddressGenerator::new(&id.seed(), phase);
         // IMPORTANT: this runtime _must_ use the payer's context.
         let mut runtime = RuntimeNative::new(
             config.clone(),
             protocol_version,
             id,
+            Arc::new(RwLock::new(address_generator)),
             Rc::clone(&tc),
             source_account_hash,
             entity_key,
@@ -2071,7 +2104,7 @@ pub trait StateProvider {
             entity_named_keys.clone(),
             entity_access_rights,
             remaining_spending_limit,
-            Phase::Session,
+            phase,
         );
 
         match transfer_target_mode {
@@ -2119,8 +2152,13 @@ pub trait StateProvider {
         let transfers = runtime.into_transfers();
 
         let effects = tc.borrow_mut().effects();
+        let cache = tc.borrow_mut().cache();
 
-        TransferResult::Success { transfers, effects }
+        TransferResult::Success {
+            transfers,
+            effects,
+            cache,
+        }
     }
 
     /// Gets all values under a given key tag.

@@ -2,6 +2,7 @@ use core::marker::PhantomData;
 
 use tracing::debug;
 
+use super::TransactionArgs;
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::{account::AccountHash, system::auction::ARG_VALIDATOR, CLType};
 use crate::{
@@ -166,9 +167,13 @@ pub(in crate::transaction::transaction_v1) fn new_transfer_args<
 /// Checks the given `RuntimeArgs` are suitable for use in a transfer transaction.
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 pub(in crate::transaction::transaction_v1) fn has_valid_transfer_args(
-    args: &RuntimeArgs,
+    args: &TransactionArgs,
     native_transfer_minimum_motes: u64,
 ) -> Result<(), InvalidTransactionV1> {
+    let args = args
+        .as_named()
+        .ok_or(InvalidTransactionV1::ExpectedNamedArguments)?;
+
     let amount = TRANSFER_ARG_AMOUNT.get(args)?;
     if amount < U512::from(native_transfer_minimum_motes) {
         debug!(
@@ -240,8 +245,11 @@ pub(in crate::transaction::transaction_v1) fn new_add_bid_args<A: Into<U512>>(
 /// Checks the given `RuntimeArgs` are suitable for use in an add_bid transaction.
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 pub(in crate::transaction::transaction_v1) fn has_valid_add_bid_args(
-    args: &RuntimeArgs,
+    args: &TransactionArgs,
 ) -> Result<(), InvalidTransactionV1> {
+    let args = args
+        .as_named()
+        .ok_or(InvalidTransactionV1::ExpectedNamedArguments)?;
     let _public_key = ADD_BID_ARG_PUBLIC_KEY.get(args)?;
     let _delegation_rate = ADD_BID_ARG_DELEGATION_RATE.get(args)?;
     let _amount = ADD_BID_ARG_AMOUNT.get(args)?;
@@ -262,8 +270,11 @@ pub(in crate::transaction::transaction_v1) fn new_withdraw_bid_args<A: Into<U512
 /// Checks the given `RuntimeArgs` are suitable for use in an withdraw_bid transaction.
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 pub(in crate::transaction::transaction_v1) fn has_valid_withdraw_bid_args(
-    args: &RuntimeArgs,
+    args: &TransactionArgs,
 ) -> Result<(), InvalidTransactionV1> {
+    let args = args
+        .as_named()
+        .ok_or(InvalidTransactionV1::ExpectedNamedArguments)?;
     let _public_key = WITHDRAW_BID_ARG_PUBLIC_KEY.get(args)?;
     let _amount = WITHDRAW_BID_ARG_AMOUNT.get(args)?;
     Ok(())
@@ -285,8 +296,11 @@ pub(in crate::transaction::transaction_v1) fn new_delegate_args<A: Into<U512>>(
 /// Checks the given `RuntimeArgs` are suitable for use in a delegate transaction.
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 pub(in crate::transaction::transaction_v1) fn has_valid_delegate_args(
-    args: &RuntimeArgs,
+    args: &TransactionArgs,
 ) -> Result<(), InvalidTransactionV1> {
+    let args = args
+        .as_named()
+        .ok_or(InvalidTransactionV1::ExpectedNamedArguments)?;
     let _delegator = DELEGATE_ARG_DELEGATOR.get(args)?;
     let _validator = DELEGATE_ARG_VALIDATOR.get(args)?;
     let _amount = DELEGATE_ARG_AMOUNT.get(args)?;
@@ -309,8 +323,11 @@ pub(in crate::transaction::transaction_v1) fn new_undelegate_args<A: Into<U512>>
 /// Checks the given `RuntimeArgs` are suitable for use in an undelegate transaction.
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 pub(in crate::transaction::transaction_v1) fn has_valid_undelegate_args(
-    args: &RuntimeArgs,
+    args: &TransactionArgs,
 ) -> Result<(), InvalidTransactionV1> {
+    let args = args
+        .as_named()
+        .ok_or(InvalidTransactionV1::ExpectedNamedArguments)?;
     let _delegator = UNDELEGATE_ARG_DELEGATOR.get(args)?;
     let _validator = UNDELEGATE_ARG_VALIDATOR.get(args)?;
     let _amount = UNDELEGATE_ARG_AMOUNT.get(args)?;
@@ -335,8 +352,11 @@ pub(in crate::transaction::transaction_v1) fn new_redelegate_args<A: Into<U512>>
 /// Checks the given `RuntimeArgs` are suitable for use in a redelegate transaction.
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 pub(in crate::transaction::transaction_v1) fn has_valid_redelegate_args(
-    args: &RuntimeArgs,
+    args: &TransactionArgs,
 ) -> Result<(), InvalidTransactionV1> {
+    let args = args
+        .as_named()
+        .ok_or(InvalidTransactionV1::ExpectedNamedArguments)?;
     let _delegator = REDELEGATE_ARG_DELEGATOR.get(args)?;
     let _validator = REDELEGATE_ARG_VALIDATOR.get(args)?;
     let _amount = REDELEGATE_ARG_AMOUNT.get(args)?;
@@ -347,8 +367,11 @@ pub(in crate::transaction::transaction_v1) fn has_valid_redelegate_args(
 /// Checks the given `RuntimeArgs` are suitable for use in an activate bid transaction.
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 pub(in crate::transaction::transaction_v1) fn has_valid_activate_bid_args(
-    args: &RuntimeArgs,
+    args: &TransactionArgs,
 ) -> Result<(), InvalidTransactionV1> {
+    let args = args
+        .as_named()
+        .ok_or(InvalidTransactionV1::ExpectedNamedArguments)?;
     let _validator = ACTIVATE_BID_ARG_VALIDATOR.get(args)?;
     Ok(())
 }
@@ -356,8 +379,11 @@ pub(in crate::transaction::transaction_v1) fn has_valid_activate_bid_args(
 /// Checks the given `RuntimeArgs` are suitable for use in a change bid public key transaction.
 #[allow(dead_code)]
 pub(super) fn has_valid_change_bid_public_key_args(
-    args: &RuntimeArgs,
+    args: &TransactionArgs,
 ) -> Result<(), InvalidTransactionV1> {
+    let args = args
+        .as_named()
+        .ok_or(InvalidTransactionV1::ExpectedNamedArguments)?;
     let _public_key = CHANGE_BID_PUBLIC_KEY_ARG_PUBLIC_KEY.get(args)?;
     let _new_public_key = CHANGE_BID_PUBLIC_KEY_ARG_NEW_PUBLIC_KEY.get(args)?;
     Ok(())
@@ -382,7 +408,7 @@ mod tests {
             rng.gen::<bool>().then(|| rng.gen()),
         )
         .unwrap();
-        has_valid_transfer_args(&args, min_motes).unwrap();
+        has_valid_transfer_args(&TransactionArgs::Named(args), min_motes).unwrap();
 
         // Check random args, AccountHash target, within motes limit.
         let args = new_transfer_args(
@@ -392,7 +418,7 @@ mod tests {
             rng.gen::<bool>().then(|| rng.gen()),
         )
         .unwrap();
-        has_valid_transfer_args(&args, min_motes).unwrap();
+        has_valid_transfer_args(&TransactionArgs::Named(args), min_motes).unwrap();
 
         // Check random args, URef target, within motes limit.
         let args = new_transfer_args(
@@ -402,7 +428,7 @@ mod tests {
             rng.gen::<bool>().then(|| rng.gen()),
         )
         .unwrap();
-        has_valid_transfer_args(&args, min_motes).unwrap();
+        has_valid_transfer_args(&TransactionArgs::Named(args), min_motes).unwrap();
 
         // Check at minimum motes limit.
         let args = new_transfer_args(
@@ -412,7 +438,7 @@ mod tests {
             rng.gen::<bool>().then(|| rng.gen()),
         )
         .unwrap();
-        has_valid_transfer_args(&args, min_motes).unwrap();
+        has_valid_transfer_args(&TransactionArgs::Named(args), min_motes).unwrap();
 
         // Check with extra arg.
         let mut args = new_transfer_args(
@@ -423,7 +449,7 @@ mod tests {
         )
         .unwrap();
         args.insert("a", 1).unwrap();
-        has_valid_transfer_args(&args, min_motes).unwrap();
+        has_valid_transfer_args(&TransactionArgs::Named(args), min_motes).unwrap();
     }
 
     #[test]
@@ -442,7 +468,7 @@ mod tests {
         };
 
         assert_eq!(
-            has_valid_transfer_args(&args, min_motes),
+            has_valid_transfer_args(&TransactionArgs::Named(args), min_motes),
             Err(expected_error)
         );
     }
@@ -460,7 +486,7 @@ mod tests {
             arg_name: TRANSFER_ARG_TARGET.to_string(),
         };
         assert_eq!(
-            has_valid_transfer_args(&args, min_motes),
+            has_valid_transfer_args(&TransactionArgs::Named(args), min_motes),
             Err(expected_error)
         );
 
@@ -472,7 +498,7 @@ mod tests {
             arg_name: TRANSFER_ARG_AMOUNT.name.to_string(),
         };
         assert_eq!(
-            has_valid_transfer_args(&args, min_motes),
+            has_valid_transfer_args(&TransactionArgs::Named(args), min_motes),
             Err(expected_error)
         );
     }
@@ -493,7 +519,7 @@ mod tests {
             got: CLType::String,
         };
         assert_eq!(
-            has_valid_transfer_args(&args, min_motes),
+            has_valid_transfer_args(&TransactionArgs::Named(args), min_motes),
             Err(expected_error)
         );
 
@@ -509,7 +535,7 @@ mod tests {
             got: CLType::U8,
         };
         assert_eq!(
-            has_valid_transfer_args(&args, min_motes),
+            has_valid_transfer_args(&TransactionArgs::Named(args), min_motes),
             Err(expected_error)
         );
     }
@@ -530,11 +556,11 @@ mod tests {
             maximum_delegation_amount,
         )
         .unwrap();
-        has_valid_add_bid_args(&args).unwrap();
+        has_valid_add_bid_args(&TransactionArgs::Named(args.clone())).unwrap();
 
         // Check with extra arg.
         args.insert("a", 1).unwrap();
-        has_valid_add_bid_args(&args).unwrap();
+        has_valid_add_bid_args(&TransactionArgs::Named(args)).unwrap();
     }
 
     #[test]
@@ -549,7 +575,10 @@ mod tests {
         let expected_error = InvalidTransactionV1::MissingArg {
             arg_name: ADD_BID_ARG_PUBLIC_KEY.name.to_string(),
         };
-        assert_eq!(has_valid_add_bid_args(&args), Err(expected_error));
+        assert_eq!(
+            has_valid_add_bid_args(&TransactionArgs::Named(args)),
+            Err(expected_error)
+        );
 
         // Missing "delegation_rate".
         let args = runtime_args! {
@@ -559,7 +588,10 @@ mod tests {
         let expected_error = InvalidTransactionV1::MissingArg {
             arg_name: ADD_BID_ARG_DELEGATION_RATE.name.to_string(),
         };
-        assert_eq!(has_valid_add_bid_args(&args), Err(expected_error));
+        assert_eq!(
+            has_valid_add_bid_args(&TransactionArgs::Named(args)),
+            Err(expected_error)
+        );
 
         // Missing "amount".
         let args = runtime_args! {
@@ -569,7 +601,10 @@ mod tests {
         let expected_error = InvalidTransactionV1::MissingArg {
             arg_name: ADD_BID_ARG_AMOUNT.name.to_string(),
         };
-        assert_eq!(has_valid_add_bid_args(&args), Err(expected_error));
+        assert_eq!(
+            has_valid_add_bid_args(&TransactionArgs::Named(args)),
+            Err(expected_error)
+        );
     }
 
     #[test]
@@ -587,7 +622,10 @@ mod tests {
             expected: vec![CLType::U512],
             got: CLType::U64,
         };
-        assert_eq!(has_valid_add_bid_args(&args), Err(expected_error));
+        assert_eq!(
+            has_valid_add_bid_args(&TransactionArgs::Named(args)),
+            Err(expected_error)
+        );
     }
 
     #[test]
@@ -596,11 +634,11 @@ mod tests {
 
         // Check random args.
         let mut args = new_withdraw_bid_args(PublicKey::random(rng), rng.gen::<u64>()).unwrap();
-        has_valid_withdraw_bid_args(&args).unwrap();
+        has_valid_withdraw_bid_args(&TransactionArgs::Named(args.clone())).unwrap();
 
         // Check with extra arg.
         args.insert("a", 1).unwrap();
-        has_valid_withdraw_bid_args(&args).unwrap();
+        has_valid_withdraw_bid_args(&TransactionArgs::Named(args)).unwrap();
     }
 
     #[test]
@@ -614,7 +652,10 @@ mod tests {
         let expected_error = InvalidTransactionV1::MissingArg {
             arg_name: WITHDRAW_BID_ARG_PUBLIC_KEY.name.to_string(),
         };
-        assert_eq!(has_valid_withdraw_bid_args(&args), Err(expected_error));
+        assert_eq!(
+            has_valid_withdraw_bid_args(&TransactionArgs::Named(args)),
+            Err(expected_error)
+        );
 
         // Missing "amount".
         let args = runtime_args! {
@@ -623,7 +664,10 @@ mod tests {
         let expected_error = InvalidTransactionV1::MissingArg {
             arg_name: WITHDRAW_BID_ARG_AMOUNT.name.to_string(),
         };
-        assert_eq!(has_valid_withdraw_bid_args(&args), Err(expected_error));
+        assert_eq!(
+            has_valid_withdraw_bid_args(&TransactionArgs::Named(args)),
+            Err(expected_error)
+        );
     }
 
     #[test]
@@ -640,7 +684,10 @@ mod tests {
             expected: vec![CLType::U512],
             got: CLType::U64,
         };
-        assert_eq!(has_valid_withdraw_bid_args(&args), Err(expected_error));
+        assert_eq!(
+            has_valid_withdraw_bid_args(&TransactionArgs::Named(args)),
+            Err(expected_error)
+        );
     }
 
     #[test]
@@ -654,11 +701,11 @@ mod tests {
             rng.gen::<u64>(),
         )
         .unwrap();
-        has_valid_delegate_args(&args).unwrap();
+        has_valid_delegate_args(&TransactionArgs::Named(args.clone())).unwrap();
 
         // Check with extra arg.
         args.insert("a", 1).unwrap();
-        has_valid_delegate_args(&args).unwrap();
+        has_valid_delegate_args(&TransactionArgs::Named(args)).unwrap();
     }
 
     #[test]
@@ -673,7 +720,10 @@ mod tests {
         let expected_error = InvalidTransactionV1::MissingArg {
             arg_name: DELEGATE_ARG_DELEGATOR.name.to_string(),
         };
-        assert_eq!(has_valid_delegate_args(&args), Err(expected_error));
+        assert_eq!(
+            has_valid_delegate_args(&TransactionArgs::Named(args)),
+            Err(expected_error)
+        );
 
         // Missing "validator".
         let args = runtime_args! {
@@ -683,7 +733,10 @@ mod tests {
         let expected_error = InvalidTransactionV1::MissingArg {
             arg_name: DELEGATE_ARG_VALIDATOR.name.to_string(),
         };
-        assert_eq!(has_valid_delegate_args(&args), Err(expected_error));
+        assert_eq!(
+            has_valid_delegate_args(&TransactionArgs::Named(args)),
+            Err(expected_error)
+        );
 
         // Missing "amount".
         let args = runtime_args! {
@@ -693,7 +746,10 @@ mod tests {
         let expected_error = InvalidTransactionV1::MissingArg {
             arg_name: DELEGATE_ARG_AMOUNT.name.to_string(),
         };
-        assert_eq!(has_valid_delegate_args(&args), Err(expected_error));
+        assert_eq!(
+            has_valid_delegate_args(&TransactionArgs::Named(args)),
+            Err(expected_error)
+        );
     }
 
     #[test]
@@ -711,7 +767,10 @@ mod tests {
             expected: vec![CLType::U512],
             got: CLType::U64,
         };
-        assert_eq!(has_valid_delegate_args(&args), Err(expected_error));
+        assert_eq!(
+            has_valid_delegate_args(&TransactionArgs::Named(args)),
+            Err(expected_error)
+        );
     }
 
     #[test]
@@ -725,11 +784,11 @@ mod tests {
             rng.gen::<u64>(),
         )
         .unwrap();
-        has_valid_undelegate_args(&args).unwrap();
+        has_valid_undelegate_args(&TransactionArgs::Named(args.clone())).unwrap();
 
         // Check with extra arg.
         args.insert("a", 1).unwrap();
-        has_valid_undelegate_args(&args).unwrap();
+        has_valid_undelegate_args(&TransactionArgs::Named(args)).unwrap();
     }
 
     #[test]
@@ -744,7 +803,10 @@ mod tests {
         let expected_error = InvalidTransactionV1::MissingArg {
             arg_name: UNDELEGATE_ARG_DELEGATOR.name.to_string(),
         };
-        assert_eq!(has_valid_undelegate_args(&args), Err(expected_error));
+        assert_eq!(
+            has_valid_undelegate_args(&TransactionArgs::Named(args)),
+            Err(expected_error)
+        );
 
         // Missing "validator".
         let args = runtime_args! {
@@ -754,7 +816,10 @@ mod tests {
         let expected_error = InvalidTransactionV1::MissingArg {
             arg_name: UNDELEGATE_ARG_VALIDATOR.name.to_string(),
         };
-        assert_eq!(has_valid_undelegate_args(&args), Err(expected_error));
+        assert_eq!(
+            has_valid_undelegate_args(&TransactionArgs::Named(args)),
+            Err(expected_error)
+        );
 
         // Missing "amount".
         let args = runtime_args! {
@@ -764,7 +829,10 @@ mod tests {
         let expected_error = InvalidTransactionV1::MissingArg {
             arg_name: UNDELEGATE_ARG_AMOUNT.name.to_string(),
         };
-        assert_eq!(has_valid_undelegate_args(&args), Err(expected_error));
+        assert_eq!(
+            has_valid_undelegate_args(&TransactionArgs::Named(args)),
+            Err(expected_error)
+        );
     }
 
     #[test]
@@ -782,7 +850,10 @@ mod tests {
             expected: vec![CLType::U512],
             got: CLType::U64,
         };
-        assert_eq!(has_valid_undelegate_args(&args), Err(expected_error));
+        assert_eq!(
+            has_valid_undelegate_args(&TransactionArgs::Named(args)),
+            Err(expected_error)
+        );
     }
 
     #[test]
@@ -797,11 +868,11 @@ mod tests {
             PublicKey::random(rng),
         )
         .unwrap();
-        has_valid_redelegate_args(&args).unwrap();
+        has_valid_redelegate_args(&TransactionArgs::Named(args.clone())).unwrap();
 
         // Check with extra arg.
         args.insert("a", 1).unwrap();
-        has_valid_redelegate_args(&args).unwrap();
+        has_valid_redelegate_args(&TransactionArgs::Named(args)).unwrap();
     }
 
     #[test]
@@ -817,7 +888,10 @@ mod tests {
         let expected_error = InvalidTransactionV1::MissingArg {
             arg_name: REDELEGATE_ARG_DELEGATOR.name.to_string(),
         };
-        assert_eq!(has_valid_redelegate_args(&args), Err(expected_error));
+        assert_eq!(
+            has_valid_redelegate_args(&TransactionArgs::Named(args)),
+            Err(expected_error)
+        );
 
         // Missing "validator".
         let args = runtime_args! {
@@ -828,7 +902,10 @@ mod tests {
         let expected_error = InvalidTransactionV1::MissingArg {
             arg_name: REDELEGATE_ARG_VALIDATOR.name.to_string(),
         };
-        assert_eq!(has_valid_redelegate_args(&args), Err(expected_error));
+        assert_eq!(
+            has_valid_redelegate_args(&TransactionArgs::Named(args)),
+            Err(expected_error)
+        );
 
         // Missing "amount".
         let args = runtime_args! {
@@ -839,7 +916,10 @@ mod tests {
         let expected_error = InvalidTransactionV1::MissingArg {
             arg_name: REDELEGATE_ARG_AMOUNT.name.to_string(),
         };
-        assert_eq!(has_valid_redelegate_args(&args), Err(expected_error));
+        assert_eq!(
+            has_valid_redelegate_args(&TransactionArgs::Named(args)),
+            Err(expected_error)
+        );
 
         // Missing "new_validator".
         let args = runtime_args! {
@@ -850,7 +930,10 @@ mod tests {
         let expected_error = InvalidTransactionV1::MissingArg {
             arg_name: REDELEGATE_ARG_NEW_VALIDATOR.name.to_string(),
         };
-        assert_eq!(has_valid_redelegate_args(&args), Err(expected_error));
+        assert_eq!(
+            has_valid_redelegate_args(&TransactionArgs::Named(args)),
+            Err(expected_error)
+        );
     }
 
     #[test]
@@ -869,6 +952,36 @@ mod tests {
             expected: vec![CLType::U512],
             got: CLType::U64,
         };
-        assert_eq!(has_valid_redelegate_args(&args), Err(expected_error));
+        assert_eq!(
+            has_valid_redelegate_args(&TransactionArgs::Named(args)),
+            Err(expected_error)
+        );
+    }
+
+    #[test]
+    fn native_calls_require_named_args() {
+        let args = TransactionArgs::Bytesrepr(vec![b'a'; 100].into());
+        let expected_error = InvalidTransactionV1::ExpectedNamedArguments;
+        assert_eq!(
+            has_valid_transfer_args(&args, 0).as_ref(),
+            Err(&expected_error)
+        );
+        assert_eq!(has_valid_add_bid_args(&args).as_ref(), Err(&expected_error));
+        assert_eq!(
+            has_valid_withdraw_bid_args(&args).as_ref(),
+            Err(&expected_error)
+        );
+        assert_eq!(
+            has_valid_delegate_args(&args).as_ref(),
+            Err(&expected_error)
+        );
+        assert_eq!(
+            has_valid_undelegate_args(&args).as_ref(),
+            Err(&expected_error)
+        );
+        assert_eq!(
+            has_valid_redelegate_args(&args).as_ref(),
+            Err(&expected_error)
+        );
     }
 }

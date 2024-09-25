@@ -154,4 +154,10 @@ pub enum BlockExecutionError {
     #[error("Unsupported execution kind: {0}")]
     /// Unsupported execution kind
     UnsupportedTransactionKind(u8),
+    /// Invalid gas limit amount.
+    #[error("Invalid gas limit amount: {0}")]
+    InvalidGasLimit(U512),
+    /// Invalid transaction variant.
+    #[error("Invalid transaction variant")]
+    InvalidTransactionVariant,
 }

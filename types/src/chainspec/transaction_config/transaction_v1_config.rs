@@ -10,7 +10,7 @@ use crate::testing::TestRng;
 use crate::INSTALL_UPGRADE_LANE_ID;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    transaction::TransactionCategory,
+    transaction::TransactionLane,
 };
 
 /// Default gas limit of install / upgrade contracts
@@ -72,18 +72,18 @@ impl TransactionV1Config {
     }
 
     /// Returns the max serialized length of a transaction for the given category.
-    pub fn get_max_serialized_length(&self, category: u8) -> u64 {
-        if !self.is_supported(category) {
+    pub fn get_max_serialized_length(&self, lane: u8) -> u64 {
+        if !self.is_supported(lane) {
             return 0;
         }
-        match category {
+        match lane {
             0 => self.native_mint_lane[MAX_TRANSACTION_LENGTH],
             1 => self.native_auction_lane[MAX_TRANSACTION_LENGTH],
             _ => {
                 match self
                     .wasm_lanes
                     .iter()
-                    .find(|lane| lane.first() == Some(&(category as u64)))
+                    .find(|wasm_lane: &&Vec<u64>| wasm_lane.first() == Some(&(lane as u64)))
                 {
                     Some(wasm_lane) => wasm_lane[MAX_TRANSACTION_LENGTH],
                     None => 0,
@@ -93,18 +93,18 @@ impl TransactionV1Config {
     }
 
     /// Returns the max serialized args length of a transaction for the given category.
-    pub fn get_max_args_length(&self, category: u8) -> u64 {
-        if !self.is_supported(category) {
+    pub fn get_max_args_length(&self, lane: u8) -> u64 {
+        if !self.is_supported(lane) {
             return 0;
         }
-        match category {
+        match lane {
             0 => self.native_mint_lane[MAX_TRANSACTION_ARGS_LENGTH],
             1 => self.native_auction_lane[MAX_TRANSACTION_ARGS_LENGTH],
             _ => {
                 match self
                     .wasm_lanes
                     .iter()
-                    .find(|lane| lane.first() == Some(&(category as u64)))
+                    .find(|wasm_lane| wasm_lane.first() == Some(&(lane as u64)))
                 {
                     Some(wasm_lane) => wasm_lane[MAX_TRANSACTION_ARGS_LENGTH],
                     None => 0,
@@ -114,18 +114,18 @@ impl TransactionV1Config {
     }
 
     /// Returns the max gas limit of a transaction for the given category.
-    pub fn get_max_gas_limit(&self, category: u8) -> u64 {
-        if !self.is_supported(category) {
+    pub fn get_max_gas_limit(&self, lane: u8) -> u64 {
+        if !self.is_supported(lane) {
             return 0;
         }
-        match category {
+        match lane {
             0 => self.native_mint_lane[MAX_TRANSACTION_GAS_LIMIT],
             1 => self.native_auction_lane[MAX_TRANSACTION_GAS_LIMIT],
             _ => {
                 match self
                     .wasm_lanes
                     .iter()
-                    .find(|lane| lane.first() == Some(&(category as u64)))
+                    .find(|wasm_lane| wasm_lane.first() == Some(&(lane as u64)))
                 {
                     Some(wasm_lane) => wasm_lane[MAX_TRANSACTION_GAS_LIMIT],
                     None => 0,
@@ -135,18 +135,18 @@ impl TransactionV1Config {
     }
 
     /// Returns the max gas limit of a transaction for the given category.
-    pub fn get_max_transaction_count(&self, category: u8) -> u64 {
-        if !self.is_supported(category) {
+    pub fn get_max_transaction_count(&self, lane: u8) -> u64 {
+        if !self.is_supported(lane) {
             return 0;
         }
-        match category {
+        match lane {
             0 => self.native_mint_lane[MAX_TRANSACTION_COUNT],
             1 => self.native_auction_lane[MAX_TRANSACTION_COUNT],
             _ => {
                 match self
                     .wasm_lanes
                     .iter()
-                    .find(|lane| lane.first() == Some(&(category as u64)))
+                    .find(|wasm_lane| wasm_lane.first() == Some(&(lane as u64)))
                 {
                     Some(wasm_lane) => wasm_lane[MAX_TRANSACTION_COUNT],
                     None => 0,
@@ -156,12 +156,12 @@ impl TransactionV1Config {
     }
 
     /// Returns true if the given category is supported.
-    pub fn is_supported(&self, category: u8) -> bool {
-        if !self.is_native_lane(category) {
+    pub fn is_supported(&self, lane: u8) -> bool {
+        if !self.is_native_lane(lane) {
             return self
                 .wasm_lanes
                 .iter()
-                .any(|lane| lane.first() == Some(&(category as u64)));
+                .any(|wasm_lane| wasm_lane.first() == Some(&(lane as u64)));
         }
 
         true
@@ -244,7 +244,7 @@ impl TransactionV1Config {
 impl Default for TransactionV1Config {
     fn default() -> Self {
         let large_lane = vec![
-            TransactionCategory::Large as u64,
+            TransactionLane::Large as u64,
             1_048_576,
             1024,
             DEFAULT_LARGE_TRANSACTION_GAS_LIMIT,
@@ -252,7 +252,7 @@ impl Default for TransactionV1Config {
         ];
 
         let install_upgrade_lane = vec![
-            TransactionCategory::InstallUpgrade as u64,
+            TransactionLane::InstallUpgrade as u64,
             1_048_576,
             2048,
             DEFAULT_INSTALL_UPGRADE_GAS_LIMIT,

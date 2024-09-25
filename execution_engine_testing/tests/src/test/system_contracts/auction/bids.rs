@@ -2629,7 +2629,7 @@ fn should_validate_delegation_rate_of_genesis_validator() {
             Motes::new(ACCOUNT_1_BALANCE),
             Some(GenesisValidator::new(
                 Motes::new(ACCOUNT_1_BOND),
-                DelegationRate::max_value(),
+                DelegationRate::MAX,
             )),
         );
         tmp.push(account_1);

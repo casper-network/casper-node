@@ -77,6 +77,7 @@ const BID_ADDR_PREFIX: &str = "bid-addr-";
 const PACKAGE_PREFIX: &str = "package-";
 const BLOCK_GLOBAL_TIME_PREFIX: &str = "block-time-";
 const BLOCK_GLOBAL_MESSAGE_COUNT_PREFIX: &str = "block-message-count-";
+const STATE_PREFIX: &str = "state-";
 
 /// The number of bytes in a Blake2b hash
 pub const BLAKE2B_DIGEST_LENGTH: usize = 32;
@@ -159,13 +160,14 @@ pub enum KeyTag {
     BlockGlobal = 21,
     BalanceHold = 22,
     EntryPoint = 23,
+    State = 24,
 }
 
 impl KeyTag {
     /// Returns a random `KeyTag`.
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
-        match rng.gen_range(0..=22) {
+        match rng.gen_range(0..=23) {
             0 => KeyTag::Account,
             1 => KeyTag::Hash,
             2 => KeyTag::URef,
@@ -190,6 +192,7 @@ impl KeyTag {
             21 => KeyTag::BlockGlobal,
             22 => KeyTag::BalanceHold,
             23 => KeyTag::EntryPoint,
+            24 => KeyTag::State,
             _ => panic!(),
         }
     }
@@ -221,6 +224,7 @@ impl Display for KeyTag {
             KeyTag::NamedKey => write!(f, "NamedKey"),
             KeyTag::BlockGlobal => write!(f, "BlockGlobal"),
             KeyTag::BalanceHold => write!(f, "BalanceHold"),
+            KeyTag::State => write!(f, "State"),
             KeyTag::EntryPoint => write!(f, "EntryPoint"),
         }
     }
@@ -271,6 +275,7 @@ impl FromBytes for KeyTag {
             tag if tag == KeyTag::BlockGlobal as u8 => KeyTag::BlockGlobal,
             tag if tag == KeyTag::BalanceHold as u8 => KeyTag::BalanceHold,
             tag if tag == KeyTag::EntryPoint as u8 => KeyTag::EntryPoint,
+            tag if tag == KeyTag::State as u8 => KeyTag::State,
             _ => return Err(Error::Formatting),
         };
         Ok((tag, rem))
@@ -333,6 +338,8 @@ pub enum Key {
     BalanceHold(BalanceHoldAddr),
     /// A `Key` under which a entrypoint record is written.
     EntryPoint(EntryPointAddr),
+    /// A `Key` under which a contract's state lives.
+    State(EntityAddr),
 }
 
 #[cfg(feature = "json-schema")]
@@ -405,6 +412,8 @@ pub enum FromStrError {
     BalanceHold(String),
     /// Entry point parse error.
     EntryPoint(String),
+    /// State key parse error.
+    State(String),
     /// Unknown prefix.
     UnknownPrefix,
 }
@@ -489,6 +498,7 @@ impl Display for FromStrError {
                 write!(f, "entry-point from string error: {}", error)
             }
             FromStrError::UnknownPrefix => write!(f, "unknown prefix for key"),
+            FromStrError::State(error) => write!(f, "state-key from string error: {}", error),
         }
     }
 }
@@ -522,6 +532,7 @@ impl Key {
             Key::BlockGlobal(_) => String::from("Key::BlockGlobal"),
             Key::BalanceHold(_) => String::from("Key::BalanceHold"),
             Key::EntryPoint(_) => String::from("Key::EntryPoint"),
+            Key::State(_) => String::from("Key::State"),
         }
     }
 
@@ -641,6 +652,9 @@ impl Key {
             Key::BalanceHold(balance_hold_addr) => {
                 let tail = BalanceHoldAddr::to_formatted_string(&balance_hold_addr);
                 format!("{}{}", BALANCE_HOLD_PREFIX, tail)
+            }
+            Key::State(entity_addr) => {
+                format!("{}{}", STATE_PREFIX, entity_addr)
             }
             Key::EntryPoint(entry_point_addr) => {
                 format!("{}", entry_point_addr)
@@ -883,6 +897,15 @@ impl Key {
             Ok(entry_point_addr) => return Ok(Key::EntryPoint(entry_point_addr)),
             Err(addressable_entity::FromStrError::InvalidPrefix) => {}
             Err(error) => return Err(FromStrError::EntryPoint(error.to_string())),
+        }
+
+        if let Some(contract_entity_hash) = input.strip_prefix(STATE_PREFIX) {
+            let package_addr_bytes = checksummed_hex::decode(contract_entity_hash)
+                .map_err(|error| FromStrError::State(error.to_string()))?;
+
+            let entity_hash_addr: HashAddr = PackageAddr::try_from(package_addr_bytes.as_ref())
+                .map_err(|error| FromStrError::Package(error.to_string()))?;
+            return Ok(Key::State(EntityAddr::SmartContract(entity_hash_addr)));
         }
 
         Err(FromStrError::UnknownPrefix)
@@ -1261,6 +1284,14 @@ impl Key {
         }
         ret
     }
+
+    /// Returns an entity addr for a [`Key::AddressableEntity`].
+    pub fn into_entity_addr(self) -> Option<EntityAddr> {
+        match self {
+            Key::AddressableEntity(entity_addr) => Some(entity_addr),
+            _ => None,
+        }
+    }
 }
 
 impl Display for Key {
@@ -1342,6 +1373,9 @@ impl Display for Key {
             Key::EntryPoint(entry_point_addr) => {
                 write!(f, "Key::EntryPointAddr({})", entry_point_addr)
             }
+            Key::State(entity_addr) => {
+                write!(f, "Key::State({})", entity_addr)
+            }
         }
     }
 }
@@ -1379,6 +1413,7 @@ impl Tagged<KeyTag> for Key {
             Key::BlockGlobal(_) => KeyTag::BlockGlobal,
             Key::BalanceHold(_) => KeyTag::BalanceHold,
             Key::EntryPoint(_) => KeyTag::EntryPoint,
+            Key::State(_) => KeyTag::State,
         }
     }
 }
@@ -1495,6 +1530,7 @@ impl ToBytes for Key {
             Key::EntryPoint(entry_point_addr) => {
                 U8_SERIALIZED_LENGTH + entry_point_addr.serialized_length()
             }
+            Key::State(entity_addr) => KEY_ID_SERIALIZED_LENGTH + entity_addr.serialized_length(),
         }
     }
 
@@ -1528,6 +1564,7 @@ impl ToBytes for Key {
             Key::NamedKey(named_key_addr) => named_key_addr.write_bytes(writer),
             Key::BalanceHold(balance_hold_addr) => balance_hold_addr.write_bytes(writer),
             Key::EntryPoint(entry_point_addr) => entry_point_addr.write_bytes(writer),
+            Key::State(entity_addr) => entity_addr.write_bytes(writer),
         }
     }
 }
@@ -1633,6 +1670,10 @@ impl FromBytes for Key {
                 let (entry_point_addr, rem) = EntryPointAddr::from_bytes(remainder)?;
                 Ok((Key::EntryPoint(entry_point_addr), rem))
             }
+            KeyTag::State => {
+                let (entity_addr, rem) = EntityAddr::from_bytes(remainder)?;
+                Ok((Key::State(entity_addr), rem))
+            }
         }
     }
 }
@@ -1666,13 +1707,14 @@ fn please_add_to_distribution_impl(key: Key) {
         Key::BlockGlobal(_) => unimplemented!(),
         Key::BalanceHold(_) => unimplemented!(),
         Key::EntryPoint(_) => unimplemented!(),
+        Key::State(_) => unimplemented!(),
     }
 }
 
 #[cfg(any(feature = "testing", test))]
 impl Distribution<Key> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Key {
-        match rng.gen_range(0..=22) {
+        match rng.gen_range(0..=24) {
             0 => Key::Account(rng.gen()),
             1 => Key::Hash(rng.gen()),
             2 => Key::URef(rng.gen()),
@@ -1697,6 +1739,7 @@ impl Distribution<Key> for Standard {
             21 => Key::BlockGlobal(rng.gen()),
             22 => Key::BalanceHold(rng.gen()),
             23 => Key::EntryPoint(rng.gen()),
+            24 => Key::State(rng.gen()),
             _ => unreachable!(),
         }
     }
@@ -1732,6 +1775,7 @@ mod serde_helpers {
         BlockGlobal(&'a BlockGlobalAddr),
         BalanceHold(&'a BalanceHoldAddr),
         EntryPoint(&'a EntryPointAddr),
+        State(&'a EntityAddr),
     }
 
     #[derive(Deserialize)]
@@ -1761,6 +1805,7 @@ mod serde_helpers {
         BlockGlobal(BlockGlobalAddr),
         BalanceHold(BalanceHoldAddr),
         EntryPoint(EntryPointAddr),
+        State(EntityAddr),
     }
 
     impl<'a> From<&'a Key> for BinarySerHelper<'a> {
@@ -1794,6 +1839,7 @@ mod serde_helpers {
                     BinarySerHelper::BalanceHold(balance_hold_addr)
                 }
                 Key::EntryPoint(entry_point_addr) => BinarySerHelper::EntryPoint(entry_point_addr),
+                Key::State(entity_addr) => BinarySerHelper::State(entity_addr),
             }
         }
     }
@@ -1831,6 +1877,7 @@ mod serde_helpers {
                 BinaryDeserHelper::EntryPoint(entry_point_addr) => {
                     Key::EntryPoint(entry_point_addr)
                 }
+                BinaryDeserHelper::State(entity_addr) => Key::State(entity_addr),
             }
         }
     }
@@ -1919,12 +1966,9 @@ mod tests {
     ));
     const BLOCK_TIME_KEY: Key = Key::BlockGlobal(BlockGlobalAddr::BlockTime);
     const BLOCK_MESSAGE_COUNT_KEY: Key = Key::BlockGlobal(BlockGlobalAddr::MessageCount);
+    // const STATE_KEY: Key = Key::State(EntityAddr::new_contract_entity_addr([42; 32]));
     const BALANCE_HOLD: Key =
         Key::BalanceHold(BalanceHoldAddr::new_gas([42; 32], BlockTime::new(100)));
-    const ENTRY_POINT: Key = Key::EntryPoint(EntryPointAddr::new_v2_entry_point_addr(
-        EntityAddr::new_smart_contract([42; 32]),
-        1u32,
-    ));
     const KEYS: &[Key] = &[
         ACCOUNT_KEY,
         HASH_KEY,
@@ -1956,7 +2000,6 @@ mod tests {
         BLOCK_TIME_KEY,
         BLOCK_MESSAGE_COUNT_KEY,
         BALANCE_HOLD,
-        ENTRY_POINT,
     ];
     const HEX_STRING: &str = "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a";
     const TOPIC_NAME_HEX_STRING: &str =
@@ -2135,6 +2178,14 @@ mod tests {
                 HEX_STRING, TOPIC_NAME_HEX_STRING, MESSAGE_INDEX_HEX_STRING
             )
         );
+
+        // assert_eq!(
+        //     format!("{}", STATE_KEY),
+        //     format!(
+        //         "Key::State(addressable-entity-contract-{})",
+        //         base16::encode_lower(&[42; 32])
+        //     )
+        // );
         assert_eq!(
             format!("{}", BLOCK_TIME_KEY),
             format!(
@@ -2513,6 +2564,38 @@ mod tests {
     }
 
     #[test]
+    fn bytesrepr_serialization_roundtrip() {
+        bytesrepr::test_serialization_roundtrip(&ACCOUNT_KEY);
+        bytesrepr::test_serialization_roundtrip(&HASH_KEY);
+        bytesrepr::test_serialization_roundtrip(&UREF_KEY);
+        bytesrepr::test_serialization_roundtrip(&TRANSFER_KEY);
+        bytesrepr::test_serialization_roundtrip(&DEPLOY_INFO_KEY);
+        bytesrepr::test_serialization_roundtrip(&ERA_INFO_KEY);
+        bytesrepr::test_serialization_roundtrip(&BALANCE_KEY);
+        bytesrepr::test_serialization_roundtrip(&BID_KEY);
+        bytesrepr::test_serialization_roundtrip(&WITHDRAW_KEY);
+        bytesrepr::test_serialization_roundtrip(&DICTIONARY_KEY);
+        // bytesrepr::test_serialization_roundtrip(&SYSTEM_CONTRACT_REGISTRY_KEY);
+        bytesrepr::test_serialization_roundtrip(&ERA_SUMMARY_KEY);
+        bytesrepr::test_serialization_roundtrip(&UNBOND_KEY);
+        bytesrepr::test_serialization_roundtrip(&CHAINSPEC_REGISTRY_KEY);
+        bytesrepr::test_serialization_roundtrip(&CHECKSUM_REGISTRY_KEY);
+        // bytesrepr::test_serialization_roundtrip(&UNIFIED_BID_KEY);
+        bytesrepr::test_serialization_roundtrip(&VALIDATOR_BID_KEY);
+        bytesrepr::test_serialization_roundtrip(&DELEGATOR_BID_KEY);
+        bytesrepr::test_serialization_roundtrip(&PACKAGE_KEY);
+        bytesrepr::test_serialization_roundtrip(&ADDRESSABLE_ENTITY_SYSTEM_KEY);
+        bytesrepr::test_serialization_roundtrip(&ADDRESSABLE_ENTITY_ACCOUNT_KEY);
+        bytesrepr::test_serialization_roundtrip(&ADDRESSABLE_ENTITY_SMART_CONTRACT_KEY);
+        bytesrepr::test_serialization_roundtrip(&BYTE_CODE_EMPTY_KEY);
+        bytesrepr::test_serialization_roundtrip(&BYTE_CODE_V1_WASM_KEY);
+        bytesrepr::test_serialization_roundtrip(&MESSAGE_TOPIC_KEY);
+        bytesrepr::test_serialization_roundtrip(&MESSAGE_KEY);
+        bytesrepr::test_serialization_roundtrip(&NAMED_KEY);
+        // bytesrepr::test_serialization_roundtrip(&STATE_KEY);
+    }
+
+    #[test]
     fn serialization_roundtrip_json() {
         let round_trip = |key: &Key| {
             let encoded = serde_json::to_value(key).unwrap();
@@ -2566,7 +2649,7 @@ mod tests {
     }
 
     #[test]
-    fn bytesrepr_serialization_roundtrip() {
+    fn roundtrip() {
         bytesrepr::test_serialization_roundtrip(&ACCOUNT_KEY);
         bytesrepr::test_serialization_roundtrip(&HASH_KEY);
         bytesrepr::test_serialization_roundtrip(&UREF_KEY);
@@ -2594,6 +2677,5 @@ mod tests {
         bytesrepr::test_serialization_roundtrip(&MESSAGE_TOPIC_KEY);
         bytesrepr::test_serialization_roundtrip(&MESSAGE_KEY);
         bytesrepr::test_serialization_roundtrip(&NAMED_KEY);
-        bytesrepr::test_serialization_roundtrip(&ENTRY_POINT);
     }
 }

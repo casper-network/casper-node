@@ -1,0 +1,15 @@
+[package]
+name = "vm2-harness"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+casper-macros = { path = "../../../macros" }
+casper-sdk = { path = "../../../sdk" }
+
+impls = "1"
+thiserror = "1"
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+serde_json = "1"

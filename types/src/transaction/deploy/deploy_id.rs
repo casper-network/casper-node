@@ -12,8 +12,7 @@ use super::DeployHash;
 use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    transaction::ApprovalsHash,
-    TransactionHash, TransactionId,
+    transaction::{ApprovalsHash, TransactionHash, TransactionId},
 };
 
 /// The unique identifier of a [`Deploy`], comprising its [`DeployHash`] and

@@ -16,7 +16,8 @@ use tracing::error;
 use casper_storage::{
     global_state::{error::Error as GlobalStateError, state::StateReader},
     tracking_copy::{
-        AddResult, TrackingCopy, TrackingCopyEntityExt, TrackingCopyError, TrackingCopyExt,
+        AddResult, TrackingCopy, TrackingCopyCache, TrackingCopyEntityExt, TrackingCopyError,
+        TrackingCopyExt,
     },
     AddressGenerator,
 };
@@ -617,6 +618,11 @@ where
         self.tracking_copy.borrow().messages()
     }
 
+    /// Returns a copy of the current named keys of a tracking copy.
+    pub fn cache(&self) -> TrackingCopyCache {
+        self.tracking_copy.borrow().cache()
+    }
+
     /// Returns the cost charged for the last emitted message.
     pub fn emit_message_cost(&self) -> U512 {
         self.emit_message_cost
@@ -700,7 +706,8 @@ where
             | StoredValue::MessageTopic(_)
             | StoredValue::Message(_)
             | StoredValue::Reservation(_)
-            | StoredValue::EntryPoint(_) => Ok(()),
+            | StoredValue::EntryPoint(_)
+            | StoredValue::RawBytes(_) => Ok(()),
         }
     }
 

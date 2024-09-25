@@ -32,7 +32,7 @@ use serde::{Deserialize, Serialize};
 )]
 #[serde(deny_unknown_fields)]
 pub enum TransactionEntryPoint {
-    /// The standard `call` entry point used in session code.
+    /// The default entry point name.
     Call,
     /// A non-native, arbitrary entry point.
     Custom(String),
@@ -215,8 +215,8 @@ impl TransactionEntryPoint {
             | TransactionEntryPoint::Delegate
             | TransactionEntryPoint::Custom(_)
             | TransactionEntryPoint::Call
-            | TransactionEntryPoint::Transfer => true,
-            TransactionEntryPoint::WithdrawBid
+            | TransactionEntryPoint::Transfer
+            | TransactionEntryPoint::WithdrawBid
             | TransactionEntryPoint::Undelegate
             | TransactionEntryPoint::Redelegate
             | TransactionEntryPoint::ActivateBid
@@ -475,6 +475,7 @@ impl From<&str> for TransactionEntryPoint {
         if value.to_lowercase() == auction::METHOD_CHANGE_BID_PUBLIC_KEY {
             return TransactionEntryPoint::ChangeBidPublicKey;
         }
+
         TransactionEntryPoint::Custom(value.to_string())
     }
 }

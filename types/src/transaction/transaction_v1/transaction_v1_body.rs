@@ -1,7 +1,7 @@
 #[cfg(any(feature = "std", test))]
 pub(super) mod arg_handling;
 
-use alloc::vec::Vec;
+use alloc::{string::String, vec::Vec};
 use core::fmt::{self, Display, Formatter};
 
 use super::super::{RuntimeArgs, TransactionEntryPoint, TransactionScheduling, TransactionTarget};
@@ -16,26 +16,24 @@ use serde::{Deserialize, Serialize};
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use tracing::debug;
 
-use super::TransactionCategory;
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use super::TransactionConfig;
+use super::TransactionLane;
 #[cfg(doc)]
 use super::TransactionV1;
 #[cfg(any(feature = "std", test))]
 use crate::InvalidTransactionV1;
-#[cfg(any(all(feature = "std", feature = "testing"), test))]
-use crate::TransactionV1ExcessiveSizeError;
-#[cfg(any(all(feature = "std", feature = "testing"), test))]
+use crate::TransactionRuntime;
+
 use crate::{
-    bytesrepr::Bytes, testing::TestRng, PublicKey, TransactionInvocationTarget, TransactionRuntime,
-    TransferTarget,
-};
-use crate::{
-    bytesrepr::{Error, FromBytes, ToBytes},
+    bytesrepr::{self, Bytes, Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     transaction::serialization::{
         CalltableSerializationEnvelope, CalltableSerializationEnvelopeBuilder,
     },
+    CLTyped, CLValueError,
 };
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
+use crate::{testing::TestRng, PublicKey};
 /// The body of a [`TransactionV1`].
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
 #[cfg_attr(
@@ -50,11 +48,121 @@ use crate::{
     schemars(description = "Body of a `TransactionV1`.")
 )]
 pub struct TransactionV1Body {
-    pub(crate) args: RuntimeArgs,
+    pub(crate) args: TransactionArgs,
     pub(crate) target: TransactionTarget,
     pub(crate) entry_point: TransactionEntryPoint,
-    pub(crate) transaction_category: u8,
+    pub(crate) transaction_lane: u8,
     pub(crate) scheduling: TransactionScheduling,
+    pub(super) transferred_value: u128,
+}
+
+/// The arguments of a transaction, which can be either a named set of runtime arguments or a
+/// chunked bytes.
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
+#[cfg_attr(
+    any(feature = "std", test),
+    derive(Serialize, Deserialize),
+    serde(deny_unknown_fields)
+)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(
+    feature = "json-schema",
+    derive(JsonSchema),
+    schemars(description = "Body of a `TransactionArgs`.")
+)]
+pub enum TransactionArgs {
+    /// Named runtime arguments.
+    Named(RuntimeArgs),
+    /// Bytesrepr bytes.
+    Bytesrepr(Bytes),
+}
+
+impl TransactionArgs {
+    /// Returns `RuntimeArgs` if the transaction arguments are named.
+    pub fn as_named(&self) -> Option<&RuntimeArgs> {
+        match self {
+            TransactionArgs::Named(args) => Some(args),
+            TransactionArgs::Bytesrepr(_) => None,
+        }
+    }
+
+    /// Returns `RuntimeArgs` if the transaction arguments are mnamed.
+    pub fn into_named(self) -> Option<RuntimeArgs> {
+        match self {
+            TransactionArgs::Named(args) => Some(args),
+            TransactionArgs::Bytesrepr(_) => None,
+        }
+    }
+
+    /// Returns `Bytes` if the transaction arguments are chunked.
+    pub fn into_bytesrepr(self) -> Option<Bytes> {
+        match self {
+            TransactionArgs::Named(_) => None,
+            TransactionArgs::Bytesrepr(bytes) => Some(bytes),
+        }
+    }
+
+    /// Inserts a key-value pair into the named runtime arguments.
+    pub fn insert<K, V>(&mut self, key: K, value: V) -> Result<(), CLValueError>
+    where
+        K: Into<String>,
+        V: CLTyped + ToBytes,
+    {
+        match self {
+            TransactionArgs::Named(args) => {
+                args.insert(key, value)?;
+                Ok(())
+            }
+            TransactionArgs::Bytesrepr(_) => {
+                Err(CLValueError::Serialization(bytesrepr::Error::Formatting))
+            }
+        }
+    }
+}
+
+impl FromBytes for TransactionArgs {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (tag, remainder) = u8::from_bytes(bytes)?;
+        match tag {
+            0 => {
+                let (args, remainder) = RuntimeArgs::from_bytes(remainder)?;
+                Ok((TransactionArgs::Named(args), remainder))
+            }
+            1 => {
+                let (bytes, remainder) = Bytes::from_bytes(remainder)?;
+                Ok((TransactionArgs::Bytesrepr(bytes), remainder))
+            }
+            _ => Err(bytesrepr::Error::Formatting),
+        }
+    }
+}
+
+impl ToBytes for TransactionArgs {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        match self {
+            TransactionArgs::Named(args) => args.serialized_length() + U8_SERIALIZED_LENGTH,
+            TransactionArgs::Bytesrepr(bytes) => bytes.serialized_length() + U8_SERIALIZED_LENGTH,
+        }
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        match self {
+            TransactionArgs::Named(args) => {
+                writer.push(0);
+                args.write_bytes(writer)
+            }
+            TransactionArgs::Bytesrepr(bytes) => {
+                writer.push(1);
+                bytes.write_bytes(writer)
+            }
+        }
+    }
 }
 
 impl TransactionV1Body {
@@ -63,25 +171,45 @@ impl TransactionV1Body {
         args: RuntimeArgs,
         target: TransactionTarget,
         entry_point: TransactionEntryPoint,
-        transaction_category: u8,
+        transaction_lane: u8,
         scheduling: TransactionScheduling,
+    ) -> Self {
+        TransactionV1Body {
+            args: TransactionArgs::Named(args),
+            target,
+            entry_point,
+            transaction_lane,
+            scheduling,
+            transferred_value: 0,
+        }
+    }
+
+    /// Returns a new `TransactionV1Body`.
+    pub fn new_v2(
+        args: TransactionArgs,
+        target: TransactionTarget,
+        entry_point: TransactionEntryPoint,
+        transaction_lane: u8,
+        scheduling: TransactionScheduling,
+        transferred_value: u128,
     ) -> Self {
         TransactionV1Body {
             args,
             target,
             entry_point,
-            transaction_category,
+            transaction_lane,
             scheduling,
+            transferred_value,
         }
     }
 
     /// Returns the runtime args of the transaction.
-    pub fn args(&self) -> &RuntimeArgs {
+    pub fn args(&self) -> &TransactionArgs {
         &self.args
     }
 
     /// Consumes `self`, returning the runtime args of the transaction.
-    pub fn take_args(self) -> RuntimeArgs {
+    pub fn take_args(self) -> TransactionArgs {
         self.args
     }
 
@@ -102,29 +230,38 @@ impl TransactionV1Body {
 
     /// Returns true if this transaction is a native mint interaction.
     pub fn is_native_mint(&self) -> bool {
-        self.transaction_category == TransactionCategory::Mint as u8
+        self.transaction_lane == TransactionLane::Mint as u8
     }
 
     /// Returns true if this transaction is a native auction interaction.
     pub fn is_native_auction(&self) -> bool {
-        self.transaction_category == TransactionCategory::Auction as u8
+        self.transaction_lane == TransactionLane::Auction as u8
     }
 
     /// Returns true if this transaction is a smart contract installer or upgrader.
     pub fn is_install_or_upgrade(&self) -> bool {
-        self.transaction_category == TransactionCategory::InstallUpgrade as u8
+        self.transaction_lane == TransactionLane::InstallUpgrade as u8
     }
 
     /// Returns the transaction category.
-    pub fn transaction_category(&self) -> u8 {
-        self.transaction_category
+    pub fn transaction_lane(&self) -> u8 {
+        self.transaction_lane
+    }
+
+    /// Returns the transaction runtime of the transaction.
+    pub fn transaction_runtime(&self) -> Option<TransactionRuntime> {
+        match self.target {
+            TransactionTarget::Native => None,
+            TransactionTarget::Stored { runtime, .. } => Some(runtime),
+            TransactionTarget::Session { runtime, .. } => Some(runtime),
+        }
     }
 
     /// Consumes `self`, returning its constituent parts.
     pub fn destructure(
         self,
     ) -> (
-        RuntimeArgs,
+        TransactionArgs,
         TransactionTarget,
         TransactionEntryPoint,
         TransactionScheduling,
@@ -134,10 +271,12 @@ impl TransactionV1Body {
 
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub(super) fn is_valid(&self, config: &TransactionConfig) -> Result<(), InvalidTransactionV1> {
-        let kind = self.transaction_category;
+        use super::TransactionV1ExcessiveSizeError;
+
+        let kind = self.transaction_lane;
         if !config.transaction_v1_config.is_supported(kind) {
             return Err(InvalidTransactionV1::InvalidTransactionKind(
-                self.transaction_category,
+                self.transaction_lane,
             ));
         }
 
@@ -272,15 +411,15 @@ impl TransactionV1Body {
             self.args.serialized_length(),
             self.target.serialized_length(),
             self.entry_point.serialized_length(),
-            self.transaction_category.serialized_length(),
+            self.transaction_lane.serialized_length(),
             self.scheduling.serialized_length(),
         ]
     }
 
     /// Returns a random `TransactionV1Body`.
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
-    pub fn random_of_category(rng: &mut TestRng, category: u8) -> Self {
-        match category {
+    pub fn random_of_lane(rng: &mut TestRng, lane: u8) -> Self {
+        match lane {
             0 => Self::random_transfer(rng),
             1 => Self::random_staking(rng),
             2 => Self::random_install_upgrade(rng),
@@ -290,6 +429,8 @@ impl TransactionV1Body {
 
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
     fn random_transfer(rng: &mut TestRng) -> Self {
+        use crate::transaction::TransferTarget;
+
         let amount =
             rng.gen_range(TransactionConfig::default().native_transfer_minimum_motes..=u64::MAX);
         let maybe_source = if rng.gen() { Some(rng.gen()) } else { None };
@@ -300,13 +441,15 @@ impl TransactionV1Body {
             args,
             TransactionTarget::Native,
             TransactionEntryPoint::Transfer,
-            TransactionCategory::Mint as u8,
+            TransactionLane::Mint as u8,
             TransactionScheduling::random(rng),
         )
     }
 
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
     fn random_standard(rng: &mut TestRng) -> Self {
+        use crate::transaction::TransactionInvocationTarget;
+
         let target = TransactionTarget::Stored {
             id: TransactionInvocationTarget::random(rng),
             runtime: TransactionRuntime::VmCasperV1,
@@ -315,7 +458,7 @@ impl TransactionV1Body {
             RuntimeArgs::random(rng),
             target,
             TransactionEntryPoint::Custom(rng.random_string(1..11)),
-            TransactionCategory::Large as u8,
+            TransactionLane::Large as u8,
             TransactionScheduling::random(rng),
         )
     }
@@ -330,7 +473,7 @@ impl TransactionV1Body {
             RuntimeArgs::random(rng),
             target,
             TransactionEntryPoint::Custom(rng.random_string(1..11)),
-            TransactionCategory::InstallUpgrade as u8,
+            TransactionLane::InstallUpgrade as u8,
             TransactionScheduling::random(rng),
         )
     }
@@ -354,7 +497,7 @@ impl TransactionV1Body {
             args,
             TransactionTarget::Native,
             TransactionEntryPoint::AddBid,
-            TransactionCategory::Auction as u8,
+            TransactionLane::Auction as u8,
             TransactionScheduling::random(rng),
         )
     }
@@ -362,6 +505,8 @@ impl TransactionV1Body {
     /// Returns a random `TransactionV1Body`.
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub fn random(rng: &mut TestRng) -> Self {
+        use crate::transaction::TransferTarget;
+
         match rng.gen_range(0..8) {
             0 => {
                 let amount = rng.gen_range(
@@ -376,7 +521,7 @@ impl TransactionV1Body {
                     args,
                     TransactionTarget::Native,
                     TransactionEntryPoint::Transfer,
-                    TransactionCategory::Mint as u8,
+                    TransactionLane::Mint as u8,
                     TransactionScheduling::random(rng),
                 )
             }
@@ -398,7 +543,7 @@ impl TransactionV1Body {
                     args,
                     TransactionTarget::Native,
                     TransactionEntryPoint::AddBid,
-                    TransactionCategory::Auction as u8,
+                    TransactionLane::Auction as u8,
                     TransactionScheduling::random(rng),
                 )
             }
@@ -410,7 +555,7 @@ impl TransactionV1Body {
                     args,
                     TransactionTarget::Native,
                     TransactionEntryPoint::WithdrawBid,
-                    TransactionCategory::Auction as u8,
+                    TransactionLane::Auction as u8,
                     TransactionScheduling::random(rng),
                 )
             }
@@ -423,7 +568,7 @@ impl TransactionV1Body {
                     args,
                     TransactionTarget::Native,
                     TransactionEntryPoint::Delegate,
-                    TransactionCategory::Auction as u8,
+                    TransactionLane::Auction as u8,
                     TransactionScheduling::random(rng),
                 )
             }
@@ -436,7 +581,7 @@ impl TransactionV1Body {
                     args,
                     TransactionTarget::Native,
                     TransactionEntryPoint::Undelegate,
-                    TransactionCategory::Auction as u8,
+                    TransactionLane::Auction as u8,
                     TransactionScheduling::random(rng),
                 )
             }
@@ -452,7 +597,7 @@ impl TransactionV1Body {
                     args,
                     TransactionTarget::Native,
                     TransactionEntryPoint::Redelegate,
-                    TransactionCategory::Auction as u8,
+                    TransactionLane::Auction as u8,
                     TransactionScheduling::random(rng),
                 )
             }
@@ -468,20 +613,26 @@ impl TransactionV1Body {
                     RuntimeArgs::random(rng),
                     target,
                     TransactionEntryPoint::Custom(rng.random_string(1..11)),
-                    TransactionCategory::Large as u8,
+                    TransactionLane::Large as u8,
                     TransactionScheduling::random(rng),
                 )
             }
             _ => unreachable!(),
         }
     }
+
+    /// Returns a token value attached to the transaction.
+    pub fn value(&self) -> u128 {
+        self.transferred_value
+    }
 }
 
 const ARGS_INDEX: u16 = 0;
 const TARGET_INDEX: u16 = 1;
 const ENTRY_POINT_INDEX: u16 = 2;
-const TRANSACTION_CATEGORY_INDEX: u16 = 3;
+const TRANSACTION_LANE_INDEX: u16 = 3;
 const SCHEDULING_INDEX: u16 = 4;
+const TRANSFERRED_VALUE_INDEX: u16 = 5;
 
 impl FromBytes for TransactionV1Body {
     fn from_bytes(bytes: &[u8]) -> Result<(TransactionV1Body, &[u8]), Error> {
@@ -492,7 +643,7 @@ impl FromBytes for TransactionV1Body {
         let window = binary_payload.start_consuming()?;
         let window = window.ok_or(Error::Formatting)?;
         window.verify_index(ARGS_INDEX)?;
-        let (args, window) = window.deserialize_and_maybe_next::<RuntimeArgs>()?;
+        let (args, window) = window.deserialize_and_maybe_next::<TransactionArgs>()?;
         let window = window.ok_or(Error::Formatting)?;
         window.verify_index(TARGET_INDEX)?;
         let (target, window) = window.deserialize_and_maybe_next::<TransactionTarget>()?;
@@ -500,11 +651,15 @@ impl FromBytes for TransactionV1Body {
         window.verify_index(ENTRY_POINT_INDEX)?;
         let (entry_point, window) = window.deserialize_and_maybe_next::<TransactionEntryPoint>()?;
         let window = window.ok_or(Error::Formatting)?;
-        window.verify_index(TRANSACTION_CATEGORY_INDEX)?;
-        let (transaction_category, window) = window.deserialize_and_maybe_next::<u8>()?;
+        window.verify_index(TRANSACTION_LANE_INDEX)?;
+        let (transaction_lane, window) = window.deserialize_and_maybe_next::<u8>()?;
         let window = window.ok_or(Error::Formatting)?;
         window.verify_index(SCHEDULING_INDEX)?;
+
         let (scheduling, window) = window.deserialize_and_maybe_next::<TransactionScheduling>()?;
+        let window = window.ok_or(Error::Formatting)?;
+        window.verify_index(TRANSFERRED_VALUE_INDEX)?;
+        let (transferred_value, window) = window.deserialize_and_maybe_next::<u128>()?;
         if window.is_some() {
             return Err(Error::Formatting);
         }
@@ -512,8 +667,9 @@ impl FromBytes for TransactionV1Body {
             args,
             target,
             entry_point,
-            transaction_category,
+            transaction_lane,
             scheduling,
+            transferred_value,
         };
         Ok((from_bytes, remainder))
     }
@@ -525,7 +681,7 @@ impl ToBytes for TransactionV1Body {
             .add_field(ARGS_INDEX, &self.args)?
             .add_field(TARGET_INDEX, &self.target)?
             .add_field(ENTRY_POINT_INDEX, &self.entry_point)?
-            .add_field(TRANSACTION_CATEGORY_INDEX, &self.transaction_category)?
+            .add_field(TRANSACTION_LANE_INDEX, &self.transaction_lane)?
             .add_field(SCHEDULING_INDEX, &self.scheduling)?
             .binary_payload_bytes()
     }
@@ -562,12 +718,12 @@ mod tests {
         let mut config = TransactionConfig::default();
         let mut body = TransactionV1Body::random_standard(rng);
         config.transaction_v1_config.wasm_lanes =
-            vec![vec![body.transaction_category as u64, 1_048_576, 10, 0]];
-        body.args = runtime_args! {"a" => 1_u8};
+            vec![vec![body.transaction_lane as u64, 1_048_576, 10, 0]];
+        body.args = TransactionArgs::Named(runtime_args! {"a" => 1_u8});
 
         let expected_error = InvalidTransactionV1::ExcessiveArgsLength {
             max_length: 10,
-            got: 15,
+            got: 16,
         };
 
         assert_eq!(body.is_valid(&config), Err(expected_error));
@@ -584,7 +740,7 @@ mod tests {
             args,
             TransactionTarget::Native,
             entry_point.clone(),
-            TransactionCategory::Mint as u8,
+            TransactionLane::Mint as u8,
             TransactionScheduling::random(rng),
         );
 
@@ -605,7 +761,7 @@ mod tests {
             args,
             TransactionTarget::Native,
             entry_point,
-            TransactionCategory::Mint as u8,
+            TransactionLane::Mint as u8,
             TransactionScheduling::random(rng),
         );
 
@@ -634,14 +790,14 @@ mod tests {
                 RuntimeArgs::new(),
                 stored_target,
                 entry_point.clone(),
-                TransactionCategory::Large as u8,
+                TransactionLane::Large as u8,
                 TransactionScheduling::random(rng),
             );
             let session_body = TransactionV1Body::new(
                 RuntimeArgs::new(),
                 session_target,
                 entry_point.clone(),
-                TransactionCategory::Large as u8,
+                TransactionLane::Large as u8,
                 TransactionScheduling::random(rng),
             );
 

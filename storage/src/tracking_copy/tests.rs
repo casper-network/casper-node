@@ -1,4 +1,4 @@
-use std::{cell::Cell, rc::Rc};
+use std::sync::{Arc, RwLock};
 
 use assert_matches::assert_matches;
 
@@ -18,7 +18,7 @@ use casper_types::{
 };
 
 use super::{
-    meter::count_meter::Count, TrackingCopyCache, TrackingCopyError, TrackingCopyQueryResult,
+    meter::count_meter::Count, GenericTrackingCopyCache, TrackingCopyError, TrackingCopyQueryResult,
 };
 use crate::{
     global_state::state::{self, StateProvider, StateReader},
@@ -30,12 +30,12 @@ use casper_types::contracts::ContractHash;
 use proptest::proptest;
 
 struct CountingDb {
-    count: Rc<Cell<i32>>,
+    count: Arc<RwLock<i32>>,
     value: Option<StoredValue>,
 }
 
 impl CountingDb {
-    fn new(counter: Rc<Cell<i32>>) -> CountingDb {
+    fn new(counter: Arc<RwLock<i32>>) -> CountingDb {
         CountingDb {
             count: counter,
             value: None,
@@ -46,12 +46,12 @@ impl CountingDb {
 impl StateReader<Key, StoredValue> for CountingDb {
     type Error = crate::global_state::error::Error;
     fn read(&self, _key: &Key) -> Result<Option<StoredValue>, Self::Error> {
-        let count = self.count.get();
+        let count = *self.count.read().unwrap();
         let value = match self.value {
             Some(ref v) => v.clone(),
             None => StoredValue::CLValue(CLValue::from_t(count).unwrap()),
         };
-        self.count.set(count + 1);
+        *self.count.write().unwrap() = count + 1;
         Ok(Some(value))
     }
 
@@ -77,7 +77,7 @@ fn effects(transform_keys_and_kinds: Vec<(Key, TransformKindV2)>) -> Effects {
 
 #[test]
 fn tracking_copy_new() {
-    let counter = Rc::new(Cell::new(0));
+    let counter = Arc::new(RwLock::new(0));
     let db = CountingDb::new(counter);
     let tc = TrackingCopy::new(db, DEFAULT_MAX_QUERY_DEPTH);
 
@@ -86,8 +86,8 @@ fn tracking_copy_new() {
 
 #[test]
 fn tracking_copy_caching() {
-    let counter = Rc::new(Cell::new(0));
-    let db = CountingDb::new(Rc::clone(&counter));
+    let counter = Arc::new(RwLock::new(0));
+    let db = CountingDb::new(Arc::clone(&counter));
     let mut tc = TrackingCopy::new(db, DEFAULT_MAX_QUERY_DEPTH);
     let k = Key::Hash([0u8; 32]);
 
@@ -99,15 +99,15 @@ fn tracking_copy_caching() {
     // second read; should use cache instead
     // of going back to the DB
     let value = tc.read(&k).unwrap().unwrap();
-    let db_value = counter.get();
+    let db_value = *counter.read().unwrap();
     assert_eq!(value, zero);
     assert_eq!(db_value, 1);
 }
 
 #[test]
 fn tracking_copy_read() {
-    let counter = Rc::new(Cell::new(0));
-    let db = CountingDb::new(Rc::clone(&counter));
+    let counter = Arc::new(RwLock::new(0));
+    let db = CountingDb::new(Arc::clone(&counter));
     let mut tc = TrackingCopy::new(db, DEFAULT_MAX_QUERY_DEPTH);
     let k = Key::Hash([0u8; 32]);
 
@@ -121,8 +121,8 @@ fn tracking_copy_read() {
 
 #[test]
 fn tracking_copy_write() {
-    let counter = Rc::new(Cell::new(0));
-    let db = CountingDb::new(Rc::clone(&counter));
+    let counter = Arc::new(RwLock::new(0));
+    let db = CountingDb::new(Arc::clone(&counter));
     let mut tc = TrackingCopy::new(db, DEFAULT_MAX_QUERY_DEPTH);
     let k = Key::Hash([0u8; 32]);
 
@@ -132,7 +132,7 @@ fn tracking_copy_write() {
     // writing should work
     tc.write(k, one.clone());
     // write does not need to query the DB
-    let db_value = counter.get();
+    let db_value = *counter.read().unwrap();
     assert_eq!(db_value, 0);
     // Writing creates a write transform.
     assert_eq!(
@@ -142,7 +142,7 @@ fn tracking_copy_write() {
 
     // writing again should update the values
     tc.write(k, two.clone());
-    let db_value = counter.get();
+    let db_value = *counter.read().unwrap();
     assert_eq!(db_value, 0);
     assert_eq!(
         tc.effects,
@@ -155,7 +155,7 @@ fn tracking_copy_write() {
 
 #[test]
 fn tracking_copy_add_i32() {
-    let counter = Rc::new(Cell::new(0));
+    let counter = Arc::new(RwLock::new(0));
     let db = CountingDb::new(counter);
     let mut tc = TrackingCopy::new(db, DEFAULT_MAX_QUERY_DEPTH);
     let k = Key::Hash([0u8; 32]);
@@ -180,7 +180,7 @@ fn tracking_copy_add_i32() {
 
 #[test]
 fn tracking_copy_rw() {
-    let counter = Rc::new(Cell::new(0));
+    let counter = Arc::new(RwLock::new(0));
     let db = CountingDb::new(counter);
     let mut tc = TrackingCopy::new(db, DEFAULT_MAX_QUERY_DEPTH);
     let k = Key::Hash([0u8; 32]);
@@ -200,7 +200,7 @@ fn tracking_copy_rw() {
 
 #[test]
 fn tracking_copy_ra() {
-    let counter = Rc::new(Cell::new(0));
+    let counter = Arc::new(RwLock::new(0));
     let db = CountingDb::new(counter);
     let mut tc = TrackingCopy::new(db, DEFAULT_MAX_QUERY_DEPTH);
     let k = Key::Hash([0u8; 32]);
@@ -220,7 +220,7 @@ fn tracking_copy_ra() {
 
 #[test]
 fn tracking_copy_aw() {
-    let counter = Rc::new(Cell::new(0));
+    let counter = Arc::new(RwLock::new(0));
     let db = CountingDb::new(counter);
     let mut tc = TrackingCopy::new(db, DEFAULT_MAX_QUERY_DEPTH);
     let k = Key::Hash([0u8; 32]);
@@ -677,7 +677,7 @@ proptest! {
 
 #[test]
 fn cache_reads_invalidation() {
-    let mut tc_cache = TrackingCopyCache::new(2, Count);
+    let mut tc_cache = GenericTrackingCopyCache::new(2, Count);
     let (k1, v1) = (
         Key::Hash([1u8; 32]),
         StoredValue::CLValue(CLValue::from_t(1_i32).unwrap()),
@@ -700,7 +700,7 @@ fn cache_reads_invalidation() {
 
 #[test]
 fn cache_writes_not_invalidated() {
-    let mut tc_cache = TrackingCopyCache::new(2, Count);
+    let mut tc_cache = GenericTrackingCopyCache::new(2, Count);
     let (k1, v1) = (
         Key::Hash([1u8; 32]),
         StoredValue::CLValue(CLValue::from_t(1_i32).unwrap()),
@@ -1162,5 +1162,40 @@ fn query_with_large_depth_with_urefs_should_fail() {
     }) if depth == DEFAULT_MAX_QUERY_DEPTH),
         "{:?}",
         result
+    );
+}
+
+#[test]
+fn add_should_work() {
+    let mut pairs = Vec::new();
+    let key = Key::URef(URef::default());
+    let initial_value = CLValue::from_t(1_i32).unwrap();
+    pairs.push((key, StoredValue::CLValue(initial_value)));
+
+    let (global_state, root_hash, _tempdir) = state::lmdb::make_temporary_global_state(pairs);
+
+    let effects = {
+        let view = global_state.checkout(root_hash).unwrap().unwrap();
+        let mut tracking_copy = TrackingCopy::new(view, DEFAULT_MAX_QUERY_DEPTH);
+        assert!(
+            matches!(tracking_copy.get(&key), Ok(Some(StoredValue::CLValue(initial_value))) if initial_value.clone().into_t::<i32>().unwrap() == 1)
+        );
+        tracking_copy
+            .add(key, StoredValue::CLValue(CLValue::from_t(1_i32).unwrap()))
+            .unwrap();
+        assert!(
+            matches!(tracking_copy.get(&key), Ok(Some(StoredValue::CLValue(initial_value))) if initial_value.clone().into_t::<i32>().unwrap() == 2)
+        );
+        tracking_copy.effects()
+    };
+
+    let view = global_state.checkout(root_hash).unwrap().unwrap();
+    let mut tc = TrackingCopy::new(view, DEFAULT_MAX_QUERY_DEPTH);
+    assert!(
+        matches!(tc.get(&key), Ok(Some(StoredValue::CLValue(initial_value))) if initial_value.clone().into_t::<i32>().unwrap() == 1)
+    );
+    tc.apply_changes(effects).unwrap();
+    assert!(
+        matches!(tc.get(&key), Ok(Some(StoredValue::CLValue(initial_value))) if initial_value.clone().into_t::<i32>().unwrap() == 2)
     );
 }

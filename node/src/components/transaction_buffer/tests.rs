@@ -53,7 +53,7 @@ fn get_appendable_block(
 // Generates valid transactions
 fn create_valid_transaction(
     rng: &mut TestRng,
-    transaction_category: u8,
+    transaction_lane: u8,
     strict_timestamp: Option<Timestamp>,
     with_ttl: Option<TimeDiff>,
 ) -> Transaction {
@@ -66,8 +66,8 @@ fn create_valid_transaction(
         None => Timestamp::now(),
     };
 
-    match transaction_category {
-        transaction_category if transaction_category == MINT_LANE_ID => {
+    match transaction_lane {
+        transaction_lane if transaction_lane == MINT_LANE_ID => {
             if rng.gen() {
                 Transaction::V1(TransactionV1::random_transfer(
                     rng,
@@ -82,10 +82,10 @@ fn create_valid_transaction(
                 ))
             }
         }
-        transaction_category if transaction_category == INSTALL_UPGRADE_LANE_ID => Transaction::V1(
+        transaction_lane if transaction_lane == INSTALL_UPGRADE_LANE_ID => Transaction::V1(
             TransactionV1::random_install_upgrade(rng, strict_timestamp, with_ttl),
         ),
-        transaction_category if transaction_category == AUCTION_LANE_ID => Transaction::V1(
+        transaction_lane if transaction_lane == AUCTION_LANE_ID => Transaction::V1(
             TransactionV1::random_auction(rng, strict_timestamp, with_ttl),
         ),
         _ => {
@@ -342,7 +342,7 @@ fn get_proposable_transactions() {
 }
 
 #[test]
-fn get_appendable_block_when_transfers_are_of_one_category() {
+fn get_appendable_block_when_transfers_are_of_one_lane() {
     let mut rng = TestRng::new();
 
     let transaction_v1_config =
@@ -413,7 +413,7 @@ fn get_appendable_block_when_transfers_are_both_legacy_and_v1() {
 }
 
 #[test]
-fn get_appendable_block_when_standards_are_of_one_category() {
+fn get_appendable_block_when_standards_are_of_one_lane() {
     let large_lane_id: u8 = 3;
     let mut rng = TestRng::new();
 
@@ -915,7 +915,7 @@ impl MockReactor {
 }
 
 #[tokio::test]
-async fn expire_transactions_and_check_announcement_when_transactions_are_of_one_category() {
+async fn expire_transactions_and_check_announcement_when_transactions_are_of_one_lane() {
     let mut rng = TestRng::new();
 
     for category in all_categories() {
@@ -1022,8 +1022,8 @@ async fn expire_transactions_and_check_announcement_when_transactions_are_of_ran
     let num_transactions: usize = rng.gen_range(5..50);
     let expired_transactions: Vec<_> = (0..num_transactions)
         .map(|_| {
-            let random_category = *all_categories().choose(&mut rng).unwrap();
-            create_valid_transaction(&mut rng, random_category, Some(past_timestamp), Some(ttl))
+            let random_lane = *all_categories().choose(&mut rng).unwrap();
+            create_valid_transaction(&mut rng, random_lane, Some(past_timestamp), Some(ttl))
         })
         .collect();
 
@@ -1047,8 +1047,8 @@ async fn expire_transactions_and_check_announcement_when_transactions_are_of_ran
     // generate and register some valid transactions
     let transactions: Vec<_> = (0..num_transactions)
         .map(|_| {
-            let random_category = *all_categories().choose(&mut rng).unwrap();
-            create_valid_transaction(&mut rng, random_category, None, None)
+            let random_lane = *all_categories().choose(&mut rng).unwrap();
+            create_valid_transaction(&mut rng, random_lane, None, None)
         })
         .collect();
     transactions

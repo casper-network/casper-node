@@ -1327,11 +1327,15 @@ fn get_package_post_migration(
 
 fn try_accept_transaction(key: &SecretKey) -> TestCase {
     let transaction = Transaction::V1(
-        TransactionV1Builder::new_targeting_invocable_entity_via_alias("Test", "call")
-            .with_secret_key(key)
-            .with_chain_name("casper-example")
-            .build()
-            .unwrap(),
+        TransactionV1Builder::new_targeting_invocable_entity_via_alias(
+            "Test",
+            "call",
+            TransactionRuntime::VmCasperV1,
+        )
+        .with_secret_key(key)
+        .with_chain_name("casper-example")
+        .build()
+        .unwrap(),
     );
     TestCase {
         name: "try_accept_transaction",

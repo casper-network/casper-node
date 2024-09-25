@@ -289,7 +289,7 @@ mod tests {
 
     #[test]
     fn error_round_trips() {
-        for i in 0..=u8::max_value() {
+        for i in 0..=u8::MAX {
             match Error::try_from(i) {
                 Ok(error) if i < MAX_ERROR_VALUE => assert_eq!(error as u8, i),
                 Ok(error) => panic!(

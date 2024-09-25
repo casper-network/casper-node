@@ -14,6 +14,8 @@ use serde::{Deserialize, Serialize};
 #[cfg(doc)]
 use super::Transaction;
 use crate::bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
+use crate::testing::TestRng;
 
 /// The runtime used to execute a [`Transaction`].
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
@@ -68,6 +70,18 @@ impl FromBytes for TransactionRuntime {
                 Ok((TransactionRuntime::VmCasperV2, remainder))
             }
             _ => Err(bytesrepr::Error::Formatting),
+        }
+    }
+}
+
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
+impl TransactionRuntime {
+    /// Generates a random instance using a `TestRng`.
+    pub fn random(rng: &mut TestRng) -> Self {
+        match rng.gen_range(0..=1) {
+            0 => TransactionRuntime::VmCasperV1,
+            1 => TransactionRuntime::VmCasperV2,
+            _ => unreachable!(),
         }
     }
 }

@@ -125,6 +125,9 @@ pub enum InvalidDeploy {
     /// Unable to calculate gas cost.
     UnableToCalculateGasCost,
 
+    /// Gas limit is not supported in legacy deploys.
+    GasLimitNotSupported,
+
     /// Gas price tolerance too low.
     GasPriceToleranceTooLow {
         /// The minimum gas price tolerance.
@@ -132,6 +135,9 @@ pub enum InvalidDeploy {
         /// The provided gas price tolerance.
         provided_gas_price_tolerance: u8,
     },
+
+    /// Invalid runtime.
+    InvalidRuntime,
 }
 
 impl Display for InvalidDeploy {
@@ -249,11 +255,17 @@ impl Display for InvalidDeploy {
             InvalidDeploy::UnableToCalculateGasCost => {
                 write!(formatter, "unable to calculate gas cost",)
             }
+            InvalidDeploy::GasLimitNotSupported => {
+                write!(formatter, "gas limit is not supported in legacy deploys",)
+            }
             InvalidDeploy::GasPriceToleranceTooLow { min_gas_price_tolerance, provided_gas_price_tolerance } => write!(
                 formatter,
                 "received a deploy with gas price tolerance {} but this chain will only go as low as {}",
                 provided_gas_price_tolerance, min_gas_price_tolerance
             ),
+            InvalidDeploy::InvalidRuntime => {
+                write!(formatter, "invalid runtime",)
+            }
         }
     }
 }
@@ -287,8 +299,10 @@ impl StdError for InvalidDeploy {
             | InvalidDeploy::InsufficientTransferAmount { .. }
             | InvalidDeploy::ExcessiveApprovals { .. }
             | InvalidDeploy::UnableToCalculateGasLimit
+            | InvalidDeploy::GasLimitNotSupported
             | InvalidDeploy::UnableToCalculateGasCost
-            | InvalidDeploy::GasPriceToleranceTooLow { .. } => None,
+            | InvalidDeploy::GasPriceToleranceTooLow { .. }
+            | InvalidDeploy::InvalidRuntime => None,
         }
     }
 }

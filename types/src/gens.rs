@@ -47,7 +47,7 @@ use crate::{
         mint::BalanceHoldAddr,
         SystemEntityType,
     },
-    transaction::gens::deploy_hash_arb,
+    transaction::{gens::deploy_hash_arb, TransactionRuntime},
     transfer::{
         gens::{transfer_v1_addr_arb, transfer_v1_arb},
         TransferAddr,
@@ -56,8 +56,8 @@ use crate::{
     Digest, EntityAddr, EntityKind, EntryPoint, EntryPointAccess, EntryPointPayment,
     EntryPointType, EntryPoints, EraId, Group, InitiatorAddr, Key, NamedArg, Package, Parameter,
     Phase, PricingMode, ProtocolVersion, RuntimeArgs, SemVer, StoredValue, Timestamp,
-    TransactionCategory, TransactionEntryPoint, TransactionInvocationTarget, TransactionRuntime,
-    TransactionScheduling, TransactionTarget, TransactionV1Body, URef, U128, U256, U512,
+    TransactionEntryPoint, TransactionInvocationTarget, TransactionLane, TransactionScheduling,
+    TransactionTarget, TransactionV1Body, URef, U128, U256, U512,
 };
 
 pub fn u8_slice_32() -> impl Strategy<Value = [u8; 32]> {
@@ -846,6 +846,7 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
         message_topic_summary_arb().prop_map(StoredValue::MessageTopic),
         message_summary_arb().prop_map(StoredValue::Message),
         named_key_value_arb().prop_map(StoredValue::NamedKey),
+        collection::vec(any::<u8>(), 0..1000).prop_map(StoredValue::RawBytes),
     ]
     .prop_map(|stored_value|
             // The following match statement is here only to make sure
@@ -871,7 +872,8 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
                 StoredValue::NamedKey(_) => stored_value,
                 StoredValue::Reservation(_) => stored_value,
                 StoredValue::EntryPoint(_) => stored_value,
-            })
+                StoredValue::RawBytes(_) => stored_value,
+        })
 }
 
 pub fn blake2b_hash_arb() -> impl Strategy<Value = Digest> {
@@ -919,14 +921,14 @@ pub fn trie_merkle_proof_arb() -> impl Strategy<Value = TrieMerkleProof<Key, Sto
         .prop_map(|(key, value, proof_steps)| TrieMerkleProof::new(key, value, proof_steps.into()))
 }
 
-pub fn transaction_category_arb() -> impl Strategy<Value = TransactionCategory> {
+pub fn transaction_category_arb() -> impl Strategy<Value = TransactionLane> {
     prop_oneof![
-        Just(TransactionCategory::Mint),
-        Just(TransactionCategory::Auction),
-        Just(TransactionCategory::InstallUpgrade),
-        Just(TransactionCategory::Large),
-        Just(TransactionCategory::Medium),
-        Just(TransactionCategory::Small),
+        Just(TransactionLane::Mint),
+        Just(TransactionLane::Auction),
+        Just(TransactionLane::InstallUpgrade),
+        Just(TransactionLane::Large),
+        Just(TransactionLane::Medium),
+        Just(TransactionLane::Small),
     ]
 }
 

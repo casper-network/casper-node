@@ -18,9 +18,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
 #[cfg(feature = "json-schema")]
-use crate::{account::AccountHash, TransactionV1Hash, URef, U512};
+use crate::{account::AccountHash, transaction::TransactionV1Hash, URef, U512};
 #[cfg(any(feature = "testing", feature = "json-schema", test))]
-use crate::{Gas, InitiatorAddr, TransactionHash};
+use crate::{transaction::TransactionHash, Gas, InitiatorAddr};
 pub use error::TransferFromStrError;
 pub use transfer_v1::{TransferAddr, TransferV1, TRANSFER_ADDR_LENGTH};
 pub use transfer_v2::TransferV2;

@@ -111,6 +111,14 @@ impl TransactionTarget {
             _ => unreachable!(),
         }
     }
+
+    /// Returns `true` if the transaction target is [`Session`].
+    ///
+    /// [`Session`]: TransactionTarget::Session
+    #[must_use]
+    pub fn is_session(&self) -> bool {
+        matches!(self, Self::Session { .. })
+    }
 }
 
 const TAG_FIELD_INDEX: u16 = 0;
@@ -225,6 +233,13 @@ impl Display for TransactionTarget {
     }
 }
 
+struct BytesLen(usize);
+impl Debug for BytesLen {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{} bytes", self.0)
+    }
+}
+
 impl Debug for TransactionTarget {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -237,20 +252,11 @@ impl Debug for TransactionTarget {
             TransactionTarget::Session {
                 module_bytes,
                 runtime,
-            } => {
-                struct BytesLen(usize);
-                impl Debug for BytesLen {
-                    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-                        write!(formatter, "{} bytes", self.0)
-                    }
-                }
-
-                formatter
-                    .debug_struct("Session")
-                    .field("module_bytes", &BytesLen(module_bytes.len()))
-                    .field("runtime", runtime)
-                    .finish()
-            }
+            } => formatter
+                .debug_struct("Session")
+                .field("module_bytes", &BytesLen(module_bytes.len()))
+                .field("runtime", runtime)
+                .finish(),
         }
     }
 }

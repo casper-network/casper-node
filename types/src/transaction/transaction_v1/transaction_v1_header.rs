@@ -12,6 +12,8 @@ use tracing::debug;
 
 #[cfg(doc)]
 use super::TransactionV1;
+#[cfg(any(feature = "std", test))]
+use super::TransactionV1Hash;
 use super::{InitiatorAddr, PricingMode};
 use crate::{
     bytesrepr::{
@@ -24,7 +26,7 @@ use crate::{
     Digest, TimeDiff, Timestamp,
 };
 #[cfg(any(feature = "std", test))]
-use crate::{InvalidTransactionV1, TransactionConfig, TransactionV1Hash};
+use crate::{InvalidTransactionV1, TransactionConfig};
 
 const CHAIN_NAME_INDEX: u16 = 0;
 const TIMESTAMP_INDEX: u16 = 1;
@@ -123,6 +125,7 @@ impl TransactionV1Header {
     }
 
     /// Returns the pricing mode for the transaction.
+    #[inline]
     pub fn pricing_mode(&self) -> &PricingMode {
         &self.pricing_mode
     }
@@ -178,7 +181,7 @@ impl TransactionV1Header {
     /// Returns the gas price tolerance for the given transaction.
     pub fn gas_price_tolerance(&self) -> u8 {
         match self.pricing_mode {
-            PricingMode::Classic {
+            PricingMode::PaymentLimited {
                 gas_price_tolerance,
                 ..
             } => gas_price_tolerance,

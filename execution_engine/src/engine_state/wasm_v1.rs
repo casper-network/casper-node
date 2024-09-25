@@ -6,12 +6,12 @@ use std::{
 use serde::Serialize;
 use thiserror::Error;
 
-use casper_storage::data_access_layer::TransferResult;
+use casper_storage::{data_access_layer::TransferResult, tracking_copy::TrackingCopyCache};
 use casper_types::{
     account::AccountHash, bytesrepr::Bytes, contract_messages::Messages, execution::Effects,
-    BlockTime, DeployHash, Digest, ExecutableDeployItem, Gas, InitiatorAddr, Phase, PricingMode,
-    RuntimeArgs, Transaction, TransactionCategory, TransactionEntryPoint, TransactionHash,
-    TransactionInvocationTarget, TransactionTarget, TransactionV1, Transfer,
+    BlockTime, CLValue, DeployHash, Digest, ExecutableDeployItem, Gas, InitiatorAddr, Phase,
+    PricingMode, RuntimeArgs, Transaction, TransactionEntryPoint, TransactionHash,
+    TransactionInvocationTarget, TransactionLane, TransactionTarget, TransactionV1, Transfer,
 };
 
 use crate::engine_state::{DeployItem, Error as EngineError};
@@ -39,6 +39,9 @@ pub enum InvalidRequest {
     /// Unsupported category.
     #[error("invalid category for {0} attempting {1}")]
     InvalidCategory(TransactionHash, String),
+    /// Unexpected transaction args variant.
+    #[error("unexpected transaction args for {0} attempting {1}")]
+    UnexpectedTransactionArgs(TransactionHash, String),
 }
 
 #[derive(Debug, Clone)]
@@ -243,6 +246,10 @@ pub struct WasmV1Result {
     messages: Messages,
     /// Did the wasm execute successfully?
     error: Option<EngineError>,
+    /// Result captured from a ret call.
+    ret: Option<CLValue>,
+    /// Tracking copy cache captured during execution.
+    cache: Option<TrackingCopyCache>,
 }
 
 impl WasmV1Result {
@@ -254,6 +261,8 @@ impl WasmV1Result {
         transfers: Vec<Transfer>,
         messages: Messages,
         error: Option<EngineError>,
+        ret: Option<CLValue>,
+        cache: Option<TrackingCopyCache>,
     ) -> Self {
         WasmV1Result {
             limit,
@@ -262,6 +271,8 @@ impl WasmV1Result {
             transfers,
             messages,
             error,
+            ret,
+            cache,
         }
     }
 
@@ -290,9 +301,19 @@ impl WasmV1Result {
         &self.effects
     }
 
+    /// Tracking copy cache captured during execution.
+    pub fn cache(&self) -> Option<&TrackingCopyCache> {
+        self.cache.as_ref()
+    }
+
     /// Messages emitted during execution.
     pub fn messages(&self) -> &Messages {
         &self.messages
+    }
+
+    /// Result captured from a ret call.
+    pub fn ret(&self) -> Option<&CLValue> {
+        self.ret.as_ref()
     }
 
     /// Root not found.
@@ -304,6 +325,8 @@ impl WasmV1Result {
             limit: gas_limit,
             consumed: Gas::zero(),
             error: Some(EngineError::RootNotFound(state_hash)),
+            ret: None,
+            cache: None,
         }
     }
 
@@ -316,6 +339,8 @@ impl WasmV1Result {
             limit: gas_limit,
             consumed: Gas::zero(),
             error: Some(error),
+            ret: None,
+            cache: None,
         }
     }
 
@@ -328,6 +353,8 @@ impl WasmV1Result {
             limit: gas_limit,
             consumed: Gas::zero(),
             error: Some(EngineError::InvalidExecutableItem(error)),
+            ret: None,
+            cache: None,
         }
     }
 
@@ -346,13 +373,19 @@ impl WasmV1Result {
         // this is NOT true of wasm based operations however.
         match transfer_result {
             TransferResult::RootNotFound => None,
-            TransferResult::Success { transfers, effects } => Some(WasmV1Result {
+            TransferResult::Success {
+                transfers,
+                effects,
+                cache,
+            } => Some(WasmV1Result {
                 transfers,
                 limit: consumed,
                 consumed,
                 effects,
                 messages: Messages::default(),
                 error: None,
+                ret: None,
+                cache: Some(cache),
             }),
             TransferResult::Failure(te) => {
                 Some(WasmV1Result {
@@ -362,6 +395,8 @@ impl WasmV1Result {
                     effects: Effects::default(), // currently not returning effects on failure
                     messages: Messages::default(),
                     error: Some(EngineError::Transfer(te)),
+                    ret: None,
+                    cache: None,
                 })
             }
         }
@@ -496,9 +531,18 @@ impl TryFrom<&TransactionV1> for SessionInfo {
             }
             TransactionTarget::Stored { id, .. } => {
                 let TransactionEntryPoint::Custom(entry_point) = v1_txn.entry_point() else {
-                    return Err(InvalidRequest::InvalidEntryPoint(transaction_hash, v1_txn.entry_point().to_string()));
+                    return Err(InvalidRequest::InvalidEntryPoint(
+                        transaction_hash,
+                        v1_txn.entry_point().to_string(),
+                    ));
                 };
                 let item = ExecutableItem::Invocation(id.clone());
+                let args = args.into_named().ok_or_else(|| {
+                    InvalidRequest::UnexpectedTransactionArgs(
+                        transaction_hash,
+                        "named args".to_string(),
+                    )
+                })?;
                 ExecutableInfo {
                     item,
                     entry_point: entry_point.clone(),
@@ -512,28 +556,34 @@ impl TryFrom<&TransactionV1> for SessionInfo {
                         v1_txn.entry_point().to_string(),
                     ));
                 };
-                let category = v1_txn.transaction_category();
-                let category: TransactionCategory = category.try_into().map_err(|_| {
+                let category = v1_txn.transaction_lane();
+                let lane: TransactionLane = category.try_into().map_err(|_| {
                     InvalidRequest::InvalidCategory(transaction_hash, category.to_string())
                 })?;
-                let item = match category {
-                    TransactionCategory::InstallUpgrade => ExecutableItem::SessionBytes {
+                let item = match lane {
+                    TransactionLane::InstallUpgrade => ExecutableItem::SessionBytes {
                         kind: SessionKind::InstallUpgradeBytecode,
                         module_bytes: module_bytes.clone(),
                     },
-                    TransactionCategory::Large
-                    | TransactionCategory::Medium
-                    | TransactionCategory::Small => ExecutableItem::SessionBytes {
-                        kind: SessionKind::GenericBytecode,
-                        module_bytes: module_bytes.clone(),
-                    },
+                    TransactionLane::Large | TransactionLane::Medium | TransactionLane::Small => {
+                        ExecutableItem::SessionBytes {
+                            kind: SessionKind::GenericBytecode,
+                            module_bytes: module_bytes.clone(),
+                        }
+                    }
                     _ => {
                         return Err(InvalidRequest::InvalidCategory(
                             transaction_hash,
-                            category.to_string(),
+                            lane.to_string(),
                         ))
                     }
                 };
+                let args = args.into_named().ok_or_else(|| {
+                    InvalidRequest::UnexpectedTransactionArgs(
+                        transaction_hash,
+                        "named args".to_string(),
+                    )
+                })?;
                 ExecutableInfo {
                     item,
                     entry_point: DEFAULT_ENTRY_POINT.to_owned(),
@@ -545,7 +595,6 @@ impl TryFrom<&TransactionV1> for SessionInfo {
         Ok(SessionInfo(session))
     }
 }
-
 /// New type for hanging payment specific impl's off of.
 struct PaymentInfo(ExecutableInfo);
 
@@ -648,7 +697,7 @@ impl TryFrom<&TransactionV1> for PaymentInfo {
     fn try_from(v1_txn: &TransactionV1) -> Result<Self, Self::Error> {
         let transaction_hash = TransactionHash::V1(*v1_txn.hash());
         match v1_txn.pricing_mode() {
-            mode @ PricingMode::Classic {
+            mode @ PricingMode::PaymentLimited {
                 standard_payment, ..
             } => {
                 if *standard_payment {
@@ -674,11 +723,17 @@ impl TryFrom<&TransactionV1> for PaymentInfo {
                         v1_txn.entry_point().to_string(),
                     ));
                 };
+                let args = v1_txn.args().clone().into_named().ok_or_else(|| {
+                    InvalidRequest::UnexpectedTransactionArgs(
+                        transaction_hash,
+                        "named args".to_string(),
+                    )
+                })?;
                 let item = ExecutableItem::PaymentBytes(module_bytes.clone());
                 ExecutableInfo {
                     item,
                     entry_point: DEFAULT_ENTRY_POINT.to_owned(),
-                    args: v1_txn.args().clone(),
+                    args,
                 }
             }
             TransactionTarget::Native | TransactionTarget::Stored { .. } => {

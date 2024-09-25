@@ -424,6 +424,30 @@ impl FromBytes for u64 {
     }
 }
 
+impl ToBytes for u128 {
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        Ok(self.to_le_bytes().to_vec())
+    }
+
+    fn serialized_length(&self) -> usize {
+        U128_SERIALIZED_LENGTH
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        writer.extend_from_slice(&self.to_le_bytes());
+        Ok(())
+    }
+}
+
+impl FromBytes for u128 {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
+        let mut result = [0u8; U128_SERIALIZED_LENGTH];
+        let (bytes, remainder) = safe_split_at(bytes, U128_SERIALIZED_LENGTH)?;
+        result.copy_from_slice(bytes);
+        Ok((<u128>::from_le_bytes(result), remainder))
+    }
+}
+
 impl ToBytes for String {
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
         let bytes = self.as_bytes();
@@ -1369,8 +1393,8 @@ where
         .expect("Unable to serialize data via write_bytes");
     assert_eq!(serialized, written_bytes);
 
-    let deserialized_from_slice =
-        deserialize_from_slice(&serialized).expect("Unable to deserialize data");
+    let deserialized_from_slice = deserialize_from_slice(&serialized)
+        .unwrap_or_else(|error| panic!("Unable to deserialize data: {error:?} ({t:?})"));
     assert_eq!(*t, deserialized_from_slice);
 
     let deserialized = deserialize::<T>(serialized).expect("Unable to deserialize data");
