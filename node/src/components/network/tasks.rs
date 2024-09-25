@@ -146,7 +146,7 @@ where
     Span::current().record("peer_id", &field::display(peer_id));
 
     if peer_id == context.our_id {
-        info!("incoming loopback connection");
+        info!("outgoing loopback connection");
         return OutgoingConnection::Loopback { peer_addr };
     }
 
@@ -240,7 +240,7 @@ where
 
 impl<REv> NetworkContext<REv> {
     pub(super) fn new(
-        cfg: Config,
+        cfg: &Config,
         our_identity: Identity,
         node_key_pair: Option<NodeKeyPair>,
         chain_info: ChainInfo,

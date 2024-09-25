@@ -234,7 +234,7 @@ pub(super) struct NewSubscriberInfo {
 
 /// Maps the `event` to a warp event, or `None` if it's a malformed event (ie.: `ApiVersion` event
 /// with `id` set or event other than `ApiVersion` without `id`)
-async fn map_server_sent_event(
+fn map_server_sent_event(
     event: &ServerSentEvent,
 ) -> Option<Result<WarpServerSentEvent, RecvError>> {
     let id = match event.id {
@@ -292,7 +292,7 @@ async fn map_server_sent_event(
 ///
 /// If `query` is not empty, returns a 422 response if `query` doesn't have exactly one entry,
 /// "starts_from" mapped to a value representing an event ID.
-fn parse_query(query: HashMap<String, String>) -> Result<Option<Id>, Response> {
+fn parse_query(query: &HashMap<String, String>) -> Result<Option<Id>, Response> {
     if query.is_empty() {
         return Ok(None);
     }
@@ -374,7 +374,7 @@ impl ChannelsAndFilter {
                 return create_503();
             }
 
-            let start_from = match parse_query(query) {
+            let start_from = match parse_query(&query) {
                 Ok(maybe_id) => maybe_id,
                 Err(error_response) => return error_response,
             };
@@ -489,7 +489,7 @@ fn stream_to_client(
         .chain(ongoing_stream)
         .filter_map(move |result| async move {
             match result {
-                Ok(event) => map_server_sent_event(&event).await,
+                Ok(event) => map_server_sent_event(&event),
                 Err(error) => Some(Err(error)),
             }
         })

@@ -217,7 +217,7 @@ impl<T> JobHandle<T> {
 
 impl<T> Drop for JobHandle<T> {
     fn drop(&mut self) {
-        self.queue.complete_job()
+        self.queue.complete_job();
     }
 }
 
