@@ -148,7 +148,7 @@ impl ResponseType {
 
     #[cfg(test)]
     pub(crate) fn random(rng: &mut TestRng) -> Self {
-        Self::try_from(rng.gen_range(0..45)).unwrap()
+        Self::try_from(rng.gen_range(0..44)).unwrap()
     }
 }
 
