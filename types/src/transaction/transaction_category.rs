@@ -32,6 +32,7 @@ use crate::{
     schemars(description = "Session kind of a Transaction.")
 )]
 #[serde(deny_unknown_fields)]
+#[allow(dead_code)]
 #[repr(u8)]
 pub(crate) enum TransactionCategory {
     /// The supported categories of transactions. This was not explicit in protocol 1.x
