@@ -222,7 +222,7 @@ impl<REv> EventQueueHandle<REv> {
     where
         REv: From<Ev>,
     {
-        self.schedule_with_ancestor(None, event, queue_kind).await
+        self.schedule_with_ancestor(None, event, queue_kind).await;
     }
 
     /// Schedule an event on a specific queue.
@@ -236,7 +236,7 @@ impl<REv> EventQueueHandle<REv> {
     {
         self.scheduler
             .push((ancestor, event.into()), queue_kind)
-            .await
+            .await;
     }
 
     /// Returns number of events in each of the scheduler's queues.
@@ -540,8 +540,7 @@ where
         );
         // Run all effects from component instantiation.
         process_effects(None, scheduler, initial_effects, QueueKind::Regular)
-            .instrument(debug_span!("process initial effects"))
-            .await;
+            .instrument(debug_span!("process initial effects"));
 
         info!("reactor main loop is ready");
 
@@ -660,7 +659,7 @@ where
                                                     warn!(
                                                         ?err,
                                                         "failed to write/flush queue dump using debug format"
-                                                    )
+                                                    );
                                                 })
                                                 .ok();
                                         })
@@ -712,9 +711,7 @@ where
             self.scheduler,
             effects,
             queue_kind,
-        )
-        .in_current_span()
-        .await;
+        );
 
         self.current_event_id += 1;
 
@@ -838,12 +835,10 @@ where
 
         let effects = create_effects(effect_builder);
 
-        process_effects(None, self.scheduler, effects, QueueKind::Regular)
-            .instrument(debug_span!(
-                "process injected effects",
-                ev = self.current_event_id
-            ))
-            .await;
+        process_effects(None, self.scheduler, effects, QueueKind::Regular).instrument(debug_span!(
+            "process injected effects",
+            ev = self.current_event_id
+        ));
     }
 
     /// Processes a single event if there is one and we haven't previously handled an exit code.
@@ -939,7 +934,7 @@ where
 /// Spawns tasks that will process the given effects.
 ///
 /// Result events from processing the events will be scheduled with the given ancestor.
-async fn process_effects<Ev>(
+fn process_effects<Ev>(
     ancestor: Option<NonZeroU64>,
     scheduler: &'static Scheduler<Ev>,
     effects: Effects<Ev>,
@@ -950,7 +945,7 @@ async fn process_effects<Ev>(
     for effect in effects {
         tokio::spawn(async move {
             for event in effect.await {
-                scheduler.push((ancestor, event), queue_kind).await
+                scheduler.push((ancestor, event), queue_kind).await;
             }
         });
     }

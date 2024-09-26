@@ -1901,7 +1901,7 @@ async fn node_should_rejoin_after_ejection() {
         fixture.chainspec.network_config.name.clone(),
         fixture.system_contract_hash(AUCTION),
         stopped_public_key.clone(),
-        1_000_000_000_000_000_000_u64.into(),
+        100_000_000_000_000_000_u64.into(),
         10,
         Timestamp::now(),
         TimeDiff::from_seconds(60),

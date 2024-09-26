@@ -1199,7 +1199,7 @@ where
             };
             let block_rewards = match era_end.rewards() {
                 Rewards::V2(rewards) => rewards,
-                _ => {
+                Rewards::V1(_) => {
                     return BinaryResponse::new_error(
                         ErrorCode::UnsupportedRewardsV1Request,
                         protocol_version,
@@ -1349,7 +1349,7 @@ where
         .await
         .map_or_else(
             |err| BinaryResponse::new_error(err.into(), protocol_version),
-            |_| BinaryResponse::new_empty(protocol_version),
+            |()| BinaryResponse::new_empty(protocol_version),
         )
 }
 
@@ -1794,7 +1794,7 @@ where
                         let response =
                             handle_request(request, effect_builder, &config, &chainspec, &metrics)
                                 .await;
-                        responder.respond(response).await
+                        responder.respond(response).await;
                     }
                     .ignore()
                 }

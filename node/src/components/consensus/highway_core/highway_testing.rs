@@ -935,7 +935,8 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
             |(vid, secrets): (ValidatorId, &mut HashMap<ValidatorId, TestSecret>)| {
                 let v_sec = secrets.remove(&vid).expect("Secret key should exist.");
 
-                let mut highway = Highway::new(instance_id, validators.clone(), params.clone());
+                let mut highway =
+                    Highway::new(instance_id, validators.clone(), params.clone(), None);
                 let effects = highway.activate_validator(vid, v_sec, start_time, None, Weight(ftt));
 
                 let finality_detector = FinalityDetector::new(Weight(ftt));

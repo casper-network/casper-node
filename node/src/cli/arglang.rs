@@ -64,14 +64,14 @@ fn tokenize(input: &str) -> Result<Vec<Token>, Error> {
         // Check if we need to complete a token.
         if !buffer.is_empty() {
             match ch {
-                Some(' ') | Some('"') | Some('[') | Some(']') | Some(',') | None => {
+                Some(' ' | '"' | '[' | ']' | ',') | None => {
                     // Try to parse as number or bool first.
                     if let Ok(value) = i64::from_str(&buffer) {
                         tokens.push(Token::I64(value));
                     } else if let Ok(value) = bool::from_str(&buffer) {
                         tokens.push(Token::Boolean(value));
                     } else {
-                        tokens.push(Token::String(buffer.clone()))
+                        tokens.push(Token::String(buffer.clone()));
                     }
 
                     buffer.clear();
@@ -161,7 +161,7 @@ where
                 }
             }
         }
-        Some(t @ Token::CloseBracket) | Some(t @ Token::Comma) => Err(Error::UnexpectedToken(t)),
+        Some(t @ (Token::CloseBracket | Token::Comma)) => Err(Error::UnexpectedToken(t)),
         None => Err(Error::UnexpectedEndOfInput),
     }
 }

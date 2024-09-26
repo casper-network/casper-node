@@ -252,12 +252,12 @@ impl<T> AutoClosingResponder<T> {
 impl<T: Debug> AutoClosingResponder<T> {
     /// Send `Some(data)` to the origin of the request.
     pub(crate) async fn respond(self, data: T) {
-        self.into_inner().respond(Some(data)).await
+        self.into_inner().respond(Some(data)).await;
     }
 
     /// Send `None` to the origin of the request.
     pub(crate) async fn respond_none(self) {
-        self.into_inner().respond(None).await
+        self.into_inner().respond(None).await;
     }
 }
 
@@ -273,7 +273,7 @@ impl<T> Drop for AutoClosingResponder<T> {
                 debug!(
                     unsent_value = %self.0,
                     "failed to auto-close responder, ignoring"
-                )
+                );
             }
         }
     }
@@ -617,7 +617,7 @@ impl<REv> EffectBuilder<REv> {
                     //
                     // If it does happen, we pretend nothing happened instead of crashing.
                     if self.event_queue.shutdown_flag().is_set() {
-                        debug!(%err, channel=?type_name::<T>(), "ignoring closed channel due to shutdown")
+                        debug!(%err, channel=?type_name::<T>(), "ignoring closed channel due to shutdown");
                     } else {
                         error!(%err, channel=?type_name::<T>(), "request for channel closed, this may be a bug? \
                             check if a component is stuck from now on");
@@ -655,14 +655,14 @@ impl<REv> EffectBuilder<REv> {
     {
         self.event_queue
             .schedule(FatalAnnouncement { file, line, msg }, QueueKind::Control)
-            .await
+            .await;
     }
 
     /// Sets a timeout.
     pub(crate) async fn set_timeout(self, timeout: Duration) -> Duration {
         let then = Instant::now();
         time::sleep(timeout).await;
-        Instant::now() - then
+        then.elapsed()
     }
 
     /// Retrieve a snapshot of the nodes current metrics formatted as string.
@@ -828,7 +828,7 @@ impl<REv> EffectBuilder<REv> {
                 <REv as FromIncoming<P>>::from_incoming(sender, payload),
                 QueueKind::NetworkIncoming,
             )
-            .await
+            .await;
     }
 
     /// Announces that a gossiper has received a new item, where the item's ID is the complete item.
@@ -1015,7 +1015,7 @@ impl<REv> EffectBuilder<REv> {
                 UpgradeWatcherAnnouncement(maybe_next_upgrade),
                 QueueKind::Control,
             )
-            .await
+            .await;
     }
 
     /// Announces a committed Step success.
@@ -1028,7 +1028,7 @@ impl<REv> EffectBuilder<REv> {
                 ContractRuntimeAnnouncement::CommitStepSuccess { era_id, effects },
                 QueueKind::ContractRuntime,
             )
-            .await
+            .await;
     }
 
     pub(crate) async fn update_contract_runtime_state(self, new_pre_state: ExecutionPreState)
@@ -1040,7 +1040,7 @@ impl<REv> EffectBuilder<REv> {
                 ContractRuntimeRequest::UpdatePreState { new_pre_state },
                 QueueKind::ContractRuntime,
             )
-            .await
+            .await;
     }
 
     /// Announces validators for upcoming era.
@@ -1059,7 +1059,7 @@ impl<REv> EffectBuilder<REv> {
                 },
                 QueueKind::ContractRuntime,
             )
-            .await
+            .await;
     }
 
     pub(crate) async fn announce_new_era_gas_price(self, era_id: EraId, next_era_gas_price: u8)
@@ -1074,7 +1074,7 @@ impl<REv> EffectBuilder<REv> {
                 },
                 QueueKind::ContractRuntime,
             )
-            .await
+            .await;
     }
 
     /// Begins gossiping an item.
@@ -1092,7 +1092,7 @@ impl<REv> EffectBuilder<REv> {
             },
             QueueKind::Gossip,
         )
-        .await
+        .await;
     }
 
     /// Puts the given block into the linear block store.
@@ -1728,7 +1728,7 @@ impl<REv> EffectBuilder<REv> {
             },
             QueueKind::ToStorage,
         )
-        .await
+        .await;
     }
 
     /// Gets the requested block and its finality signatures.
@@ -1890,7 +1890,7 @@ impl<REv> EffectBuilder<REv> {
                 },
                 QueueKind::ContractRuntime,
             )
-            .await
+            .await;
     }
 
     pub(crate) async fn enqueue_protocol_upgrade(
@@ -1912,7 +1912,7 @@ impl<REv> EffectBuilder<REv> {
                 },
                 QueueKind::Control,
             )
-            .await
+            .await;
     }
 
     /// Checks whether the transactions included in the block exist on the network and the block is
@@ -1948,7 +1948,7 @@ impl<REv> EffectBuilder<REv> {
                 ConsensusAnnouncement::Proposed(Box::new(proposed_block)),
                 QueueKind::Consensus,
             )
-            .await
+            .await;
     }
 
     /// Announces that a block has been finalized.
@@ -1961,7 +1961,7 @@ impl<REv> EffectBuilder<REv> {
                 ConsensusAnnouncement::Finalized(Box::new(finalized_block)),
                 QueueKind::Consensus,
             )
-            .await
+            .await;
     }
 
     /// Announces that a meta block has been created or its state has changed.
@@ -1971,7 +1971,7 @@ impl<REv> EffectBuilder<REv> {
     {
         self.event_queue
             .schedule(MetaBlockAnnouncement(meta_block), QueueKind::Regular)
-            .await
+            .await;
     }
 
     /// Announces that a finalized block has been created, but it was not
@@ -1985,7 +1985,7 @@ impl<REv> EffectBuilder<REv> {
                 UnexecutedBlockAnnouncement(block_height),
                 QueueKind::Regular,
             )
-            .await
+            .await;
     }
 
     /// An equivocation has been detected.
@@ -2006,7 +2006,7 @@ impl<REv> EffectBuilder<REv> {
                 },
                 QueueKind::Consensus,
             )
-            .await
+            .await;
     }
 
     /// Blocks a specific peer due to a transgression.
@@ -2028,7 +2028,7 @@ impl<REv> EffectBuilder<REv> {
                 },
                 QueueKind::NetworkInfo,
             )
-            .await
+            .await;
     }
 
     /// Gets the next scheduled upgrade, if any.
@@ -2246,7 +2246,7 @@ impl<REv> EffectBuilder<REv> {
             },
             QueueKind::Control,
         )
-        .await
+        .await;
     }
 
     /// Activates/deactivates a failpoint from a given activation.
