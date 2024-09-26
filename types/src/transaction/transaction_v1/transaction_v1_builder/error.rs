@@ -19,6 +19,12 @@ pub enum TransactionV1BuilderError {
     /// Call [`TransactionV1Builder::with_chain_name`] before calling
     /// [`TransactionV1Builder::build`].
     MissingChainName,
+    /// Failed to build transaction due to an error when calling `to_bytes` on one of the payload
+    /// `field`.
+    CouldNotSerializeField {
+        /// The field index that failed to serialize.
+        field_index: u16,
+    },
 }
 
 impl Display for TransactionV1BuilderError {
@@ -35,6 +41,9 @@ impl Display for TransactionV1BuilderError {
                     formatter,
                     "transaction requires chain name - use `with_chain_name`"
                 )
+            }
+            TransactionV1BuilderError::CouldNotSerializeField { field_index } => {
+                write!(formatter, "Cannot serialize field at index {}", field_index)
             }
         }
     }

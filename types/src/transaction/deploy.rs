@@ -62,12 +62,11 @@ use crate::{
 };
 
 #[cfg(any(feature = "std", test))]
-use crate::{chainspec::PricingHandling, transaction::TransactionCategory, Chainspec};
+use crate::{chainspec::PricingHandling, Chainspec, LARGE_WASM_LANE_ID};
 #[cfg(any(feature = "std", test))]
 use crate::{system::auction::ARG_AMOUNT, transaction::GasLimited, Gas, Motes, U512};
 #[cfg(any(feature = "std", test))]
 pub use deploy_builder::{DeployBuilder, DeployBuilderError};
-pub use deploy_category::DeployCategory;
 pub use deploy_hash::DeployHash;
 pub use deploy_header::DeployHeader;
 pub use deploy_id::DeployId;
@@ -404,9 +403,12 @@ impl Deploy {
         at: Timestamp,
     ) -> Result<(), InvalidDeploy> {
         let config = &chainspec.transaction_config;
+        // We're assuming that Deploy can have a maximum size of an InstallUpgrade transaction.
+        //  We're passing 0 as transaction size since determining max transaction size for
+        //  InstallUpgrade doesn't rely on the size of transaction
         let max_transaction_size = config
             .transaction_v1_config
-            .get_max_serialized_length(TransactionCategory::Large as u8);
+            .get_max_serialized_length(LARGE_WASM_LANE_ID);
         self.is_valid_size(max_transaction_size as u32)?;
 
         let header = self.header();
@@ -1319,7 +1321,7 @@ impl GasLimited for Deploy {
                 let computation_limit = if self.is_transfer() {
                     costs.mint_costs().transfer as u64
                 } else {
-                    chainspec.get_max_gas_limit_by_category(TransactionCategory::Large as u8)
+                    chainspec.get_max_gas_limit_by_category(LARGE_WASM_LANE_ID)
                 };
                 Gas::new(computation_limit)
             } // legacy deploys do not support reservations

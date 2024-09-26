@@ -9,14 +9,6 @@ use alloc::{
     vec,
 };
 
-use proptest::{
-    array, bits, bool,
-    collection::{self, vec, SizeRange},
-    option,
-    prelude::*,
-    result,
-};
-
 use crate::{
     account::{
         self, action_thresholds::gens::account_action_thresholds_arb,
@@ -34,7 +26,10 @@ use crate::{
         Contract, ContractHash, ContractPackage, ContractPackageStatus, ContractVersionKey,
         ContractVersions, EntryPoint as ContractEntryPoint, EntryPoints as ContractEntryPoints,
     },
-    crypto::{self, gens::public_key_arb_no_system},
+    crypto::{
+        self,
+        gens::{public_key_arb_no_system, secret_key_arb_no_system},
+    },
     deploy_info::gens::deploy_info_arb,
     global_state::{Pointer, TrieMerkleProof, TrieMerkleProofStep},
     package::{EntityVersionKey, EntityVersions, Groups, PackageStatus},
@@ -47,7 +42,9 @@ use crate::{
         mint::BalanceHoldAddr,
         SystemEntityType,
     },
-    transaction::gens::deploy_hash_arb,
+    transaction::{
+        gens::deploy_hash_arb, FieldsContainer, InitiatorAddrAndSecretKey, TransactionV1Payload,
+    },
     transfer::{
         gens::{transfer_v1_addr_arb, transfer_v1_arb},
         TransferAddr,
@@ -55,9 +52,16 @@ use crate::{
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, ByteCode, CLType, CLValue,
     Digest, EntityAddr, EntityKind, EntryPoint, EntryPointAccess, EntryPointPayment,
     EntryPointType, EntryPoints, EraId, Group, InitiatorAddr, Key, NamedArg, Package, Parameter,
-    Phase, PricingMode, ProtocolVersion, RuntimeArgs, SemVer, StoredValue, Timestamp,
-    TransactionCategory, TransactionEntryPoint, TransactionInvocationTarget, TransactionRuntime,
-    TransactionScheduling, TransactionTarget, TransactionV1Body, URef, U128, U256, U512,
+    Phase, PricingMode, ProtocolVersion, PublicKey, RuntimeArgs, SemVer, StoredValue, TimeDiff,
+    Timestamp, Transaction, TransactionEntryPoint, TransactionInvocationTarget, TransactionRuntime,
+    TransactionScheduling, TransactionTarget, TransactionV1, URef, U128, U256, U512,
+};
+use proptest::{
+    array, bits, bool,
+    collection::{self, vec, SizeRange},
+    option,
+    prelude::*,
+    result,
 };
 
 pub fn u8_slice_32() -> impl Strategy<Value = [u8; 32]> {
@@ -919,17 +923,6 @@ pub fn trie_merkle_proof_arb() -> impl Strategy<Value = TrieMerkleProof<Key, Sto
         .prop_map(|(key, value, proof_steps)| TrieMerkleProof::new(key, value, proof_steps.into()))
 }
 
-pub fn transaction_category_arb() -> impl Strategy<Value = TransactionCategory> {
-    prop_oneof![
-        Just(TransactionCategory::Mint),
-        Just(TransactionCategory::Auction),
-        Just(TransactionCategory::InstallUpgrade),
-        Just(TransactionCategory::Large),
-        Just(TransactionCategory::Medium),
-        Just(TransactionCategory::Small),
-    ]
-}
-
 pub fn transaction_scheduling_arb() -> impl Strategy<Value = TransactionScheduling> {
     prop_oneof![
         Just(TransactionScheduling::Standard),
@@ -1001,25 +994,43 @@ pub fn runtime_args_arb() -> impl Strategy<Value = RuntimeArgs> {
     prop_oneof![Just(runtime_args_1)]
 }
 
-pub fn v1_transaction_body_arb() -> impl Strategy<Value = TransactionV1Body> {
+pub fn fields_arb() -> impl Strategy<Value = BTreeMap<u16, Bytes>> {
+    collection::btree_map(
+        any::<u16>(),
+        any::<String>().prop_map(|s| Bytes::from(s.as_bytes())),
+        3..30,
+    )
+}
+pub fn v1_transaction_payload_arb() -> impl Strategy<Value = TransactionV1Payload> {
     (
-        runtime_args_arb(),
-        transaction_target_arb(),
-        transaction_entry_point_arb(),
-        transaction_category_arb(),
-        transaction_scheduling_arb(),
+        any::<String>(),
+        Just(1_u64).prop_map(Timestamp::from),
+        any::<u64>(),
+        pricing_mode_arb(),
+        initiator_addr_arb(),
+        fields_arb(),
     )
         .prop_map(
-            |(args, target, entry_point, transaction_category, scheduling)| {
-                TransactionV1Body::new(
-                    args,
-                    target,
-                    entry_point,
-                    transaction_category as u8,
-                    scheduling,
+            |(chain_name, timestamp, ttl_millis, pricing_mode, initiator_addr, fields)| {
+                TransactionV1Payload::new(
+                    chain_name,
+                    timestamp,
+                    TimeDiff::from_millis(ttl_millis),
+                    pricing_mode,
+                    initiator_addr,
+                    fields,
                 )
             },
         )
+}
+
+pub fn fixed_pricing_mode_arb() -> impl Strategy<Value = PricingMode> {
+    (any::<u8>(), any::<u8>()).prop_map(|(gas_price_tolerance, additional_computation_factor)| {
+        PricingMode::Fixed {
+            gas_price_tolerance,
+            additional_computation_factor,
+        }
+    })
 }
 
 pub fn pricing_mode_arb() -> impl Strategy<Value = PricingMode> {
@@ -1033,11 +1044,7 @@ pub fn pricing_mode_arb() -> impl Strategy<Value = PricingMode> {
                 }
             }
         ),
-        any::<u8>().prop_map(|gas_price_tolerance| {
-            PricingMode::Fixed {
-                gas_price_tolerance,
-            }
-        }),
+        fixed_pricing_mode_arb(),
         u8_slice_32().prop_map(|receipt| {
             PricingMode::Reserved {
                 receipt: receipt.into(),
@@ -1051,4 +1058,51 @@ pub fn initiator_addr_arb() -> impl Strategy<Value = InitiatorAddr> {
         public_key_arb_no_system().prop_map(InitiatorAddr::PublicKey),
         u2_slice_32().prop_map(|hash| InitiatorAddr::AccountHash(AccountHash::new(hash))),
     ]
+}
+
+pub fn v1_transaction_arb() -> impl Strategy<Value = TransactionV1> {
+    (
+        any::<String>(),
+        any::<u64>(),
+        any::<u32>(),
+        pricing_mode_arb(),
+        secret_key_arb_no_system(),
+        runtime_args_arb(),
+        transaction_target_arb(),
+        transaction_entry_point_arb(),
+        transaction_scheduling_arb(),
+    )
+        .prop_map(
+            |(
+                chain_name,
+                timestamp,
+                ttl,
+                pricing_mode,
+                secret_key,
+                args,
+                target,
+                entry_point,
+                scheduling,
+            )| {
+                let public_key = PublicKey::from(&secret_key);
+                let initiator_addr = InitiatorAddr::PublicKey(public_key);
+                let initiator_addr_with_secret = InitiatorAddrAndSecretKey::Both {
+                    initiator_addr,
+                    secret_key: &secret_key,
+                };
+                let container = FieldsContainer::new(args, target, entry_point, scheduling);
+                TransactionV1::build(
+                    chain_name,
+                    Timestamp::from(timestamp),
+                    TimeDiff::from_seconds(ttl),
+                    pricing_mode,
+                    container.to_map().unwrap(),
+                    initiator_addr_with_secret,
+                )
+            },
+        )
+}
+
+pub fn transaction_arb() -> impl Strategy<Value = Transaction> {
+    (v1_transaction_arb()).prop_map(Transaction::V1)
 }

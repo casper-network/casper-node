@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use tracing::debug;
 
-use casper_types::Transaction;
+use casper_types::{Chainspec, Timestamp, Transaction};
 
 pub(crate) use crate::components::transaction_acceptor::{Error, Event};
 use crate::{
@@ -20,6 +20,7 @@ use crate::{
         announcements::TransactionAcceptorAnnouncement, requests::StorageRequest, EffectBuilder,
         EffectExt, Effects, Responder,
     },
+    types::MetaTransaction,
     utils::Source,
     NodeRng,
 };
@@ -39,11 +40,15 @@ impl<REv> ReactorEventT for REv where
 #[derive(Debug)]
 pub struct FakeTransactionAcceptor {
     is_active: bool,
+    chainspec: Chainspec,
 }
 
 impl FakeTransactionAcceptor {
     pub(crate) fn new() -> Self {
-        FakeTransactionAcceptor { is_active: true }
+        FakeTransactionAcceptor {
+            is_active: true,
+            chainspec: Chainspec::default(),
+        }
     }
 
     pub(crate) fn set_active(&mut self, new_setting: bool) {
@@ -57,10 +62,14 @@ impl FakeTransactionAcceptor {
         source: Source,
         maybe_responder: Option<Responder<Result<(), Error>>>,
     ) -> Effects<Event> {
+        let meta_transaction =
+            MetaTransaction::from(&transaction, &self.chainspec.transaction_config).unwrap();
         let event_metadata = Box::new(EventMetadata::new(
             transaction.clone(),
+            meta_transaction,
             source,
             maybe_responder,
+            Timestamp::now(),
         ));
         effect_builder
             .put_transaction_to_storage(transaction)
@@ -77,6 +86,7 @@ impl FakeTransactionAcceptor {
         is_new: bool,
     ) -> Effects<Event> {
         let EventMetadata {
+            meta_transaction: _,
             transaction,
             source,
             maybe_responder,

@@ -83,7 +83,7 @@ impl AppendableBlock {
         if expires < self.timestamp {
             return Err(AddError::Expired);
         }
-        let category = footprint.category;
+        let category = footprint.lane_id;
         let limit = self
             .transaction_config
             .transaction_v1_config
@@ -92,7 +92,7 @@ impl AppendableBlock {
         let count = self
             .transactions
             .iter()
-            .filter(|(_, item)| item.category == category)
+            .filter(|(_, item)| item.lane_id == category)
             .count();
         if count.checked_add(1).ok_or(AddError::Count(category))? > limit as usize {
             return Err(AddError::Count(category));
@@ -161,7 +161,7 @@ impl AppendableBlock {
             items: &BTreeMap<TransactionHash, TransactionFootprint>,
         ) {
             let mut ret = vec![];
-            for (x, y) in items.iter().filter(|(_, y)| y.category == category) {
+            for (x, y) in items.iter().filter(|(_, y)| y.lane_id == category) {
                 ret.push((*x, y.approvals.clone()));
             }
             if !ret.is_empty() {
@@ -177,9 +177,9 @@ impl AppendableBlock {
             .transaction_v1_config
             .wasm_lanes
             .iter()
-            .map(|lane| lane[0])
+            .map(|lane| lane.id())
         {
-            collate(lane_id as u8, &mut transactions, &footprints);
+            collate(lane_id, &mut transactions, &footprints);
         }
 
         BlockPayload::new(
@@ -198,7 +198,7 @@ impl AppendableBlock {
     fn category_count(&self, category: u8) -> usize {
         self.transactions
             .iter()
-            .filter(|(_, f)| f.category == category)
+            .filter(|(_, f)| f.lane_id == category)
             .count()
     }
 

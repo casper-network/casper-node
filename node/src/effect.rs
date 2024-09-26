@@ -135,7 +135,7 @@ use casper_types::{
     BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest, EntityAddr, EraId,
     ExecutionInfo, FinalitySignature, FinalitySignatureId, FinalitySignatureV2, Key, NextUpgrade,
     Package, ProtocolUpgradeConfig, ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transaction,
-    TransactionHash, TransactionHeader, TransactionId, Transfer, U512,
+    TransactionHash, TransactionId, Transfer, U512,
 };
 
 use crate::{
@@ -158,7 +158,7 @@ use crate::{
     types::{
         appendable_block::AppendableBlock, BlockExecutionResultsOrChunk,
         BlockExecutionResultsOrChunkId, BlockWithMetadata, ExecutableBlock, FinalizedBlock,
-        LegacyDeploy, MetaBlock, MetaBlockState, NodeId,
+        LegacyDeploy, MetaBlock, MetaBlockState, NodeId, TransactionHeader,
     },
     utils::{fmt_limit::FmtLimit, SharedFlag, Source},
 };

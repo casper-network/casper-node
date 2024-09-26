@@ -37,8 +37,7 @@ use casper_types::{
     Block, BlockV2, CLValue, Chainspec, ChainspecRawBytes, Contract, Deploy, EntryPointValue,
     EraId, HashAddr, InvalidDeploy, InvalidTransaction, InvalidTransactionV1, Package, PricingMode,
     ProtocolVersion, PublicKey, SecretKey, StoredValue, TestBlockBuilder, TimeDiff, Timestamp,
-    Transaction, TransactionCategory, TransactionConfig, TransactionV1, TransactionV1Builder, URef,
-    U512,
+    Transaction, TransactionConfig, TransactionV1, TransactionV1Builder, URef, U512,
 };
 
 use super::*;
@@ -281,15 +280,12 @@ impl TestScenario {
             }
             TestScenario::FromPeerExpired(TxnType::V1)
             | TestScenario::FromClientExpired(TxnType::V1) => {
-                let txn = TransactionV1Builder::new_session(
-                    TransactionCategory::Large,
-                    Bytes::from(vec![1]),
-                )
-                .with_chain_name("casper-example")
-                .with_timestamp(Timestamp::zero())
-                .with_secret_key(&secret_key)
-                .build()
-                .unwrap();
+                let txn = TransactionV1Builder::new_session(false, Bytes::from(vec![1]))
+                    .with_chain_name("casper-example")
+                    .with_timestamp(Timestamp::zero())
+                    .with_secret_key(&secret_key)
+                    .build()
+                    .unwrap();
                 Transaction::from(txn)
             }
             TestScenario::FromPeerValidTransaction(txn_type)
@@ -305,15 +301,12 @@ impl TestScenario {
             | TestScenario::FromClientAccountWithInsufficientWeight(txn_type) => match txn_type {
                 TxnType::Deploy => Transaction::from(Deploy::random_valid_native_transfer(rng)),
                 TxnType::V1 => {
-                    let txn = TransactionV1Builder::new_session(
-                        TransactionCategory::Large,
-                        Bytes::from(vec![1]),
-                    )
-                    .with_chain_name("casper-example")
-                    .with_timestamp(Timestamp::now())
-                    .with_secret_key(&secret_key)
-                    .build()
-                    .unwrap();
+                    let txn = TransactionV1Builder::new_session(false, Bytes::from(vec![1]))
+                        .with_chain_name("casper-example")
+                        .with_timestamp(Timestamp::now())
+                        .with_secret_key(&secret_key)
+                        .build()
+                        .unwrap();
                     Transaction::from(txn)
                 }
             },
@@ -323,15 +316,12 @@ impl TestScenario {
                 Transaction::from(deploy)
             }
             TestScenario::FromClientSignedByAdmin(TxnType::V1) => {
-                let txn = TransactionV1Builder::new_session(
-                    TransactionCategory::Large,
-                    Bytes::from(vec![1]),
-                )
-                .with_chain_name("casper-example")
-                .with_timestamp(Timestamp::now())
-                .with_secret_key(admin)
-                .build()
-                .unwrap();
+                let txn = TransactionV1Builder::new_session(false, Bytes::from(vec![1]))
+                    .with_chain_name("casper-example")
+                    .with_timestamp(Timestamp::now())
+                    .with_secret_key(admin)
+                    .build()
+                    .unwrap();
                 Transaction::from(txn)
             }
             TestScenario::AccountWithUnknownBalance
@@ -518,16 +508,13 @@ impl TestScenario {
                         ),
                     ),
                     TxnType::V1 => {
-                        let txn = TransactionV1Builder::new_session(
-                            TransactionCategory::Large,
-                            Bytes::from(vec![1]),
-                        )
-                        .with_chain_name("casper-example")
-                        .with_timestamp(timestamp)
-                        .with_ttl(ttl)
-                        .with_secret_key(&secret_key)
-                        .build()
-                        .unwrap();
+                        let txn = TransactionV1Builder::new_session(false, Bytes::from(vec![1]))
+                            .with_chain_name("casper-example")
+                            .with_timestamp(timestamp)
+                            .with_ttl(ttl)
+                            .with_secret_key(&secret_key)
+                            .build()
+                            .unwrap();
                         Transaction::from(txn)
                     }
                 }
@@ -544,16 +531,13 @@ impl TestScenario {
                         ),
                     ),
                     TxnType::V1 => {
-                        let txn = TransactionV1Builder::new_session(
-                            TransactionCategory::Large,
-                            Bytes::from(vec![1]),
-                        )
-                        .with_chain_name("casper-example")
-                        .with_timestamp(timestamp)
-                        .with_ttl(ttl)
-                        .with_secret_key(&secret_key)
-                        .build()
-                        .unwrap();
+                        let txn = TransactionV1Builder::new_session(false, Bytes::from(vec![1]))
+                            .with_chain_name("casper-example")
+                            .with_timestamp(timestamp)
+                            .with_ttl(ttl)
+                            .with_secret_key(&secret_key)
+                            .build()
+                            .unwrap();
                         Transaction::from(txn)
                     }
                 }
@@ -576,6 +560,7 @@ impl TestScenario {
                 let fixed_mode_transaction = TransactionV1Builder::new_random(rng)
                     .with_pricing_mode(PricingMode::Fixed {
                         gas_price_tolerance: TOO_LOW_GAS_PRICE_TOLERANCE,
+                        additional_computation_factor: 0,
                     })
                     .with_chain_name("casper-example")
                     .build()
@@ -1058,12 +1043,20 @@ fn inject_balance_check_for_peer(
     source: Source,
     rng: &mut TestRng,
     responder: Responder<Result<(), super::Error>>,
+    chainspec: &Chainspec,
 ) -> impl FnOnce(EffectBuilder<Event>) -> Effects<Event> {
     let txn = txn.clone();
     let block = TestBlockBuilder::new().build(rng);
     let block_header = Box::new(block.header().clone().into());
+    let meta_transaction = MetaTransaction::from(&txn, &chainspec.transaction_config).unwrap();
     |effect_builder: EffectBuilder<Event>| {
-        let event_metadata = Box::new(EventMetadata::new(txn, source, Some(responder)));
+        let event_metadata = Box::new(EventMetadata::new(
+            txn,
+            meta_transaction,
+            source,
+            Some(responder),
+            Timestamp::now(),
+        ));
         effect_builder
             .into_inner()
             .schedule(
@@ -1089,9 +1082,10 @@ async fn run_transaction_acceptor_without_timeout(
         <(Chainspec, ChainspecRawBytes)>::from_resources("local");
     chainspec.core_config.administrators = iter::once(PublicKey::from(&admin)).collect();
 
+    let chainspec = Arc::new(chainspec);
     let mut runner: Runner<ConditionCheckReactor<Reactor>> = Runner::new(
         test_scenario,
-        Arc::new(chainspec),
+        chainspec.clone(),
         Arc::new(chainspec_raw_bytes),
         rng,
     )
@@ -1141,12 +1135,14 @@ async fn run_transaction_acceptor_without_timeout(
         if test_scenario == TestScenario::BalanceCheckForDeploySentByPeer {
             let (txn_sender, _) = oneshot::channel();
             let txn_responder = Responder::without_shutdown(txn_sender);
+            let chainspec = chainspec.as_ref().clone();
             runner
                 .process_injected_effects(inject_balance_check_for_peer(
                     &txn,
                     source.clone(),
                     rng,
                     txn_responder,
+                    &chainspec,
                 ))
                 .await;
             while runner.try_crank(rng).await == TryCrankOutcome::NoEventsToProcess {

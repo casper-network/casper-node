@@ -5,7 +5,8 @@ use rand::{seq::SliceRandom, Rng};
 
 use casper_types::{
     testing::TestRng, Deploy, EraId, SecretKey, TestBlockBuilder, TimeDiff, Transaction,
-    TransactionConfig, TransactionV1, TransactionV1Config, DEFAULT_LARGE_TRANSACTION_GAS_LIMIT,
+    TransactionConfig, TransactionLimitsDefinition, TransactionV1, TransactionV1Config,
+    DEFAULT_LARGE_TRANSACTION_GAS_LIMIT, LARGE_WASM_LANE_ID,
 };
 
 use super::*;
@@ -19,7 +20,6 @@ use crate::{
 const ERA_ONE: EraId = EraId::new(1u64);
 const GAS_PRICE_TOLERANCE: u8 = 1;
 const DEFAULT_MINIMUM_GAS_PRICE: u8 = 1;
-const LARGE_LANE_ID: u8 = 3;
 
 fn get_appendable_block(
     rng: &mut TestRng,
@@ -53,7 +53,7 @@ fn get_appendable_block(
 // Generates valid transactions
 fn create_valid_transaction(
     rng: &mut TestRng,
-    transaction_category: u8,
+    transaction_lane: u8,
     strict_timestamp: Option<Timestamp>,
     with_ttl: Option<TimeDiff>,
 ) -> Transaction {
@@ -66,8 +66,8 @@ fn create_valid_transaction(
         None => Timestamp::now(),
     };
 
-    match transaction_category {
-        transaction_category if transaction_category == MINT_LANE_ID => {
+    match transaction_lane {
+        transaction_lane if transaction_lane == MINT_LANE_ID => {
             if rng.gen() {
                 Transaction::V1(TransactionV1::random_transfer(
                     rng,
@@ -82,10 +82,10 @@ fn create_valid_transaction(
                 ))
             }
         }
-        transaction_category if transaction_category == INSTALL_UPGRADE_LANE_ID => Transaction::V1(
+        transaction_lane if transaction_lane == INSTALL_UPGRADE_LANE_ID => Transaction::V1(
             TransactionV1::random_install_upgrade(rng, strict_timestamp, with_ttl),
         ),
-        transaction_category if transaction_category == AUCTION_LANE_ID => Transaction::V1(
+        transaction_lane if transaction_lane == AUCTION_LANE_ID => Transaction::V1(
             TransactionV1::random_auction(rng, strict_timestamp, with_ttl),
         ),
         _ => {
@@ -163,17 +163,17 @@ const fn all_categories() -> [u8; 4] {
         MINT_LANE_ID,
         INSTALL_UPGRADE_LANE_ID,
         AUCTION_LANE_ID,
-        LARGE_LANE_ID,
+        LARGE_WASM_LANE_ID,
     ]
 }
 
 #[test]
 fn register_transaction_and_check_size() {
     let mut rng = TestRng::new();
-
+    let chainspec = Chainspec::default();
     for category in all_categories() {
         let mut transaction_buffer = TransactionBuffer::new(
-            Arc::new(Chainspec::default()),
+            Arc::new(chainspec.clone()),
             Config::default(),
             &Registry::new(),
         )
@@ -194,7 +194,7 @@ fn register_transaction_and_check_size() {
             .get(rng.gen_range(0..num_valid_transactions))
             .unwrap()
             .clone();
-        transaction_buffer.register_transaction(duplicate_transaction);
+        transaction_buffer.register_transaction(duplicate_transaction.clone());
         assert_container_sizes(&transaction_buffer, valid_transactions.len(), 0, 0);
 
         // Insert transaction without footprint
@@ -836,7 +836,8 @@ fn register_transactions_and_blocks() {
         .cloned()
         .peekable();
     assert!(held_transactions.peek().is_some());
-    held_transactions.for_each(|transaction| transaction_buffer.register_transaction(transaction));
+    held_transactions
+        .for_each(|transaction| transaction_buffer.register_transaction(transaction.clone()));
     assert_container_sizes(
         &transaction_buffer,
         block_transaction.len() + valid_transactions.len(),
@@ -1090,11 +1091,13 @@ fn make_test_chainspec(max_standard_count: u64, max_mint_count: u64) -> Arc<Chai
         DEFAULT_LARGE_TRANSACTION_GAS_LIMIT,
         max_standard_count,
     ];
-    let transaction_v1_config = TransactionV1Config {
-        native_mint_lane: vec![0, 1024, 1024, 65_000_000_000, max_mint_count],
-        wasm_lanes: vec![large_lane],
-        ..Default::default()
-    };
+    let mut transaction_v1_config = TransactionV1Config::default();
+    transaction_v1_config.native_mint_lane =
+        TransactionLimitsDefinition::try_from(vec![0, 1024, 1024, 65_000_000_000, max_mint_count])
+            .unwrap();
+    transaction_v1_config.wasm_lanes =
+        vec![TransactionLimitsDefinition::try_from(large_lane).unwrap()];
+
     let transaction_config = TransactionConfig {
         transaction_v1_config,
         block_max_approval_count: (max_standard_count + max_mint_count) as u32,
