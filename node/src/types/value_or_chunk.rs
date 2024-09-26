@@ -107,12 +107,6 @@ impl Display for ValueOrChunk<Vec<ExecutionResult>> {
     }
 }
 
-/// Error type simply conveying that chunk validation failed.
-#[derive(Debug, Error)]
-#[error("Chunk validation failed")]
-#[allow(dead_code)]
-pub(crate) struct ChunkValidationError;
-
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, DataSize)]
 pub struct HashingTrieRaw {
     inner: TrieRaw,

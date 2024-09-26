@@ -204,26 +204,21 @@ where
 }
 
 #[allow(dead_code)]
-#[derive(DataSize)]
 struct ChannelManagement {
     /// Channel signaling a shutdown of the network.
     // Note: This channel is closed when `Network` is dropped, signalling the receivers that
     // they should cease operation.
-    #[data_size(skip)]
     shutdown_sender: Option<watch::Sender<()>>,
     /// Join handle for the server thread.
-    #[data_size(skip)]
     server_join_handle: Option<JoinHandle<()>>,
 
     /// Channel signaling a shutdown of the incoming connections.
     // Note: This channel is closed when we finished syncing, so the `Network` can close all
     // connections. When they are re-established, the proper value of the now updated `is_syncing`
     // flag will be exchanged on handshake.
-    #[data_size(skip)]
     close_incoming_sender: Option<watch::Sender<()>>,
     /// Handle used by the `message_reader` task to receive a notification that incoming
     /// connections should be closed.
-    #[data_size(skip)]
     close_incoming_receiver: watch::Receiver<()>,
 }
 
