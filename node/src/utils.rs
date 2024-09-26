@@ -359,6 +359,7 @@ pub(crate) fn xor(lhs: &mut [u8], rhs: &[u8]) {
 ///
 /// Using this function is usually a potential architectural issue and it should be used very
 /// sparingly. Consider introducing a different access pattern for the value under `Arc`.
+#[allow(dead_code)]
 pub(crate) async fn wait_for_arc_drop<T>(
     arc: Arc<T>,
     attempts: usize,

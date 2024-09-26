@@ -309,6 +309,7 @@ pub(crate) trait Reactor: Sized {
     ///
     /// May return `None` if the component cannot be found, or if the reactor does not support
     /// querying component states.
+    #[allow(dead_code)]
     #[cfg(test)]
     fn get_component_state(&self, _name: &str) -> Option<&ComponentState> {
         None
@@ -334,6 +335,7 @@ pub(crate) trait ReactorEvent: Send + Debug + From<ControlAnnouncement> + 'stati
 /// A drop-like trait for `async` compatible drop-and-wait.
 ///
 /// Shuts down a type by explicitly freeing resources, but allowing to wait on cleanup to complete.
+#[allow(dead_code)]
 pub(crate) trait Finalize: Sized {
     /// Runs cleanup code and waits for a shutdown to complete.
     ///

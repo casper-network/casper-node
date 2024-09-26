@@ -203,6 +203,7 @@ where
     state: ComponentState,
 }
 
+#[allow(dead_code)]
 #[derive(DataSize)]
 struct ChannelManagement {
     /// Channel signaling a shutdown of the network.

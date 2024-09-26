@@ -383,6 +383,7 @@ pub(crate) trait EffectExt: Future + Send {
     ///
     /// The function `f` is used to translate the returned value from an effect into an iterator of
     /// events.
+    #[allow(dead_code)]
     fn events<U, F, I>(self, f: F) -> Effects<U>
     where
         F: FnOnce(Self::Output) -> I + 'static + Send,
@@ -415,6 +416,7 @@ pub(crate) trait EffectResultExt {
 
 /// Effect extension for futures, used to convert futures returning an `Option` into two different
 /// effects.
+#[allow(dead_code)]
 pub(crate) trait EffectOptionExt {
     /// The type the future will return if `Some`.
     type Value;
