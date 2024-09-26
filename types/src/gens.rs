@@ -968,9 +968,16 @@ pub fn transaction_target_arb() -> impl Strategy<Value = TransactionTarget> {
         Just(TransactionTarget::Native),
         (
             transaction_invocation_target_arb(),
-            transaction_runtime_arb()
+            transaction_runtime_arb(),
+            any::<u64>(),
         )
-            .prop_map(|(target, runtime)| TransactionTarget::new_stored(target, runtime))
+            .prop_map(
+                |(target, runtime, transferred_value)| TransactionTarget::new_stored(
+                    target,
+                    runtime,
+                    transferred_value
+                )
+            )
     ]
 }
 pub fn transaction_entry_point_arb() -> impl Strategy<Value = TransactionEntryPoint> {
@@ -1028,7 +1035,7 @@ pub fn pricing_mode_arb() -> impl Strategy<Value = PricingMode> {
     prop_oneof![
         (any::<u64>(), any::<u8>(), any::<bool>()).prop_map(
             |(payment_amount, gas_price_tolerance, standard_payment)| {
-                PricingMode::Classic {
+                PricingMode::PaymentLimited {
                     payment_amount,
                     gas_price_tolerance,
                     standard_payment,

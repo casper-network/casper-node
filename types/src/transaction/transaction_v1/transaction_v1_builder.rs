@@ -195,8 +195,13 @@ impl<'a> TransactionV1Builder<'a> {
         id: TransactionInvocationTarget,
         entry_point: E,
         runtime: TransactionRuntime,
+        transferred_value: u64,
     ) -> Self {
-        let target = TransactionTarget::Stored { id, runtime };
+        let target = TransactionTarget::Stored {
+            id,
+            runtime,
+            transferred_value,
+        };
         let body = TransactionV1Body::new(
             RuntimeArgs::new(),
             target,
@@ -213,9 +218,10 @@ impl<'a> TransactionV1Builder<'a> {
         hash: AddressableEntityHash,
         entry_point: E,
         runtime: TransactionRuntime,
+        transferred_value: u64,
     ) -> Self {
         let id = TransactionInvocationTarget::new_invocable_entity(hash);
-        Self::new_targeting_stored(id, entry_point, runtime)
+        Self::new_targeting_stored(id, entry_point, runtime, transferred_value)
     }
 
     /// Returns a new `TransactionV1Builder` suitable for building a transaction targeting a stored
@@ -224,9 +230,10 @@ impl<'a> TransactionV1Builder<'a> {
         alias: A,
         entry_point: E,
         runtime: TransactionRuntime,
+        transferred_value: u64,
     ) -> Self {
         let id = TransactionInvocationTarget::new_invocable_entity_alias(alias.into());
-        Self::new_targeting_stored(id, entry_point, runtime)
+        Self::new_targeting_stored(id, entry_point, runtime, transferred_value)
     }
 
     /// Returns a new `TransactionV1Builder` suitable for building a transaction targeting a
@@ -236,9 +243,10 @@ impl<'a> TransactionV1Builder<'a> {
         version: Option<EntityVersion>,
         entry_point: E,
         runtime: TransactionRuntime,
+        transferred_value: u64,
     ) -> Self {
         let id = TransactionInvocationTarget::new_package(hash, version);
-        Self::new_targeting_stored(id, entry_point, runtime)
+        Self::new_targeting_stored(id, entry_point, runtime, transferred_value)
     }
 
     /// Returns a new `TransactionV1Builder` suitable for building a transaction targeting a
@@ -248,9 +256,10 @@ impl<'a> TransactionV1Builder<'a> {
         version: Option<EntityVersion>,
         entry_point: E,
         runtime: TransactionRuntime,
+        transferred_value: u64,
     ) -> Self {
         let id = TransactionInvocationTarget::new_package_alias(alias.into(), version);
-        Self::new_targeting_stored(id, entry_point, runtime)
+        Self::new_targeting_stored(id, entry_point, runtime, transferred_value)
     }
 
     /// Returns a new `TransactionV1Builder` suitable for building a transaction for running session
@@ -259,10 +268,12 @@ impl<'a> TransactionV1Builder<'a> {
         lane: TransactionLane,
         module_bytes: Bytes,
         runtime: TransactionRuntime,
+        transferred_value: u64,
     ) -> Self {
         let target = TransactionTarget::Session {
             module_bytes,
             runtime,
+            transferred_value,
         };
         let body = TransactionV1Body::new(
             RuntimeArgs::new(),
@@ -280,13 +291,14 @@ impl<'a> TransactionV1Builder<'a> {
         entity_address: AddressableEntityHash,
         entry_point: String,
         input_data: Option<Bytes>,
-        transferred_value: u128,
+        transferred_value: u64,
     ) -> Self {
         let body = {
             let args = TransactionArgs::Bytesrepr(input_data.unwrap_or_default());
             let target = TransactionTarget::Stored {
                 id: TransactionInvocationTarget::ByHash(entity_address.value()),
                 runtime: TransactionRuntime::VmCasperV2,
+                transferred_value,
             };
             let transaction_lane = TransactionLane::Medium as u8;
             let scheduling = Self::DEFAULT_SCHEDULING;
@@ -296,7 +308,6 @@ impl<'a> TransactionV1Builder<'a> {
                 entry_point: TransactionEntryPoint::Custom(entry_point),
                 transaction_lane,
                 scheduling,
-                transferred_value,
             }
         };
         TransactionV1Builder::new(body)

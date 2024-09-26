@@ -145,7 +145,7 @@ fn harness() {
         flipper_address = create_result.contract_hash().value();
 
         global_state
-            .commit(state_root_hash, create_result.effects().clone())
+            .commit_effects(state_root_hash, create_result.effects().clone())
             .expect("Should commit")
     };
 
@@ -214,7 +214,7 @@ fn cep18() {
     );
 
     state_root_hash = global_state
-        .commit(state_root_hash, create_result.effects().clone())
+        .commit_effects(state_root_hash, create_result.effects().clone())
         .expect("Should commit");
 
     let execute_request = ExecuteRequestBuilder::default()
@@ -323,7 +323,7 @@ fn upgradable() {
         upgradable_address = *create_result.contract_hash();
 
         global_state
-            .commit(state_root_hash, create_result.effects().clone())
+            .commit_effects(state_root_hash, create_result.effects().clone())
             .expect("Should commit")
     };
 
@@ -373,7 +373,7 @@ fn upgradable() {
             execute_request,
         );
         state_root_hash = global_state
-            .commit(state_root_hash, res.effects().clone())
+            .commit_effects(state_root_hash, res.effects().clone())
             .expect("Should commit");
     };
 
@@ -399,7 +399,7 @@ fn upgradable() {
         execute_request,
     );
     state_root_hash = global_state
-        .commit(state_root_hash, res.effects().clone())
+        .commit_effects(state_root_hash, res.effects().clone())
         .expect("Should commit");
 
     let version_after_upgrade = {
@@ -448,7 +448,7 @@ fn upgradable() {
             execute_request,
         );
         state_root_hash = global_state
-            .commit(state_root_hash, res.effects().clone())
+            .commit_effects(state_root_hash, res.effects().clone())
             .expect("Should commit");
     };
 
@@ -587,7 +587,7 @@ fn backwards_compatibility() {
         execute_request,
     );
     state_root_hash = global_state
-        .commit(state_root_hash, res.effects().clone())
+        .commit_effects(state_root_hash, res.effects().clone())
         .expect("Should commit");
 
     //

@@ -287,7 +287,7 @@ impl ExecutorV2 {
 
         let effects = tracking_copy.effects();
 
-        match state_provider.commit(state_root_hash, effects.clone()) {
+        match state_provider.commit_effects(state_root_hash, effects.clone()) {
             Ok(post_state_hash) => Ok(InstallContractResult {
                 contract_package_hash: ContractPackageHash::new(package_hash_bytes),
                 contract_hash: ContractHash::new(contract_hash),
@@ -671,7 +671,7 @@ impl ExecutorV2 {
                 gas_usage,
                 effects,
                 cache: _,
-            }) => match state_provider.commit(state_root_hash, effects.clone()) {
+            }) => match state_provider.commit_effects(state_root_hash, effects.clone()) {
                 Ok(post_state_hash) => Ok(ExecuteWithProviderResult {
                     host_error,
                     output,
@@ -874,7 +874,7 @@ impl WasmV2Request {
 
         // If it's wrong args variant => invalid request => penalty payment
         let input_data = transaction_v1.body().args().clone().into_bytesrepr(); // TODO: Make non optional
-        let value = transaction_v1.body().value();
+        let value = transaction_v1.body().transferred_value();
 
         enum Target {
             Install {
@@ -892,18 +892,21 @@ impl WasmV2Request {
 
         let target = match transaction_v1.body().target() {
             TransactionTarget::Native => todo!(), //
-            TransactionTarget::Stored { id, runtime: _ } => {
-                match transaction_v1.body().entry_point() {
-                    TransactionEntryPoint::Custom(entry_point) => Target::Stored {
-                        id: id.clone(),
-                        entry_point: entry_point.clone(),
-                    },
-                    _ => todo!(),
-                }
-            }
+            TransactionTarget::Stored {
+                id,
+                runtime: _,
+                transferred_value: _,
+            } => match transaction_v1.body().entry_point() {
+                TransactionEntryPoint::Custom(entry_point) => Target::Stored {
+                    id: id.clone(),
+                    entry_point: entry_point.clone(),
+                },
+                _ => todo!(),
+            },
             TransactionTarget::Session {
                 module_bytes,
                 runtime: _,
+                transferred_value: _,
             } => match transaction_v1.body().entry_point() {
                 TransactionEntryPoint::Call => Target::Session {
                     module_bytes: module_bytes.clone().take_inner().into(),
@@ -949,7 +952,7 @@ impl WasmV2Request {
                     .with_transaction_hash(transaction_hash)
                     .with_wasm_bytes(module_bytes)
                     .with_address_generator(address_generator)
-                    .with_transferred_value(value)
+                    .with_transferred_value(value.into()) // TODO: Replace u128 to u64
                     .with_chain_name(network_name)
                     .with_block_time(transaction.timestamp())
                     .build()
@@ -974,7 +977,7 @@ impl WasmV2Request {
                     // execution target inside the executor
                     .with_callee_key(initiator_key)
                     .with_chain_name(network_name)
-                    .with_transferred_value(value)
+                    .with_transferred_value(value.into()) // TODO: Remove u128 internally
                     .with_block_time(transaction.timestamp());
 
                 if let Some(input_data) = input_data.clone() {

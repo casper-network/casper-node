@@ -53,7 +53,6 @@ pub struct TransactionV1Body {
     pub(crate) entry_point: TransactionEntryPoint,
     pub(crate) transaction_lane: u8,
     pub(crate) scheduling: TransactionScheduling,
-    pub(super) transferred_value: u128,
 }
 
 /// The arguments of a transaction, which can be either a named set of runtime arguments or a
@@ -180,7 +179,6 @@ impl TransactionV1Body {
             entry_point,
             transaction_lane,
             scheduling,
-            transferred_value: 0,
         }
     }
 
@@ -191,7 +189,6 @@ impl TransactionV1Body {
         entry_point: TransactionEntryPoint,
         transaction_lane: u8,
         scheduling: TransactionScheduling,
-        transferred_value: u128,
     ) -> Self {
         TransactionV1Body {
             args,
@@ -199,7 +196,6 @@ impl TransactionV1Body {
             entry_point,
             transaction_lane,
             scheduling,
-            transferred_value,
         }
     }
 
@@ -453,6 +449,7 @@ impl TransactionV1Body {
         let target = TransactionTarget::Stored {
             id: TransactionInvocationTarget::random(rng),
             runtime: TransactionRuntime::VmCasperV1,
+            transferred_value: rng.gen(),
         };
         TransactionV1Body::new(
             RuntimeArgs::random(rng),
@@ -468,6 +465,7 @@ impl TransactionV1Body {
         let target = TransactionTarget::Session {
             module_bytes: Bytes::from(rng.random_vec(0..100)),
             runtime: TransactionRuntime::VmCasperV1,
+            transferred_value: rng.gen(),
         };
         TransactionV1Body::new(
             RuntimeArgs::random(rng),
@@ -505,7 +503,7 @@ impl TransactionV1Body {
     /// Returns a random `TransactionV1Body`.
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub fn random(rng: &mut TestRng) -> Self {
-        use crate::transaction::TransferTarget;
+        use crate::{transaction::TransferTarget, transfer};
 
         match rng.gen_range(0..8) {
             0 => {
@@ -605,9 +603,11 @@ impl TransactionV1Body {
             7 => {
                 let mut buffer = vec![0u8; rng.gen_range(1..100)];
                 rng.fill_bytes(buffer.as_mut());
+                let transferred_value = rng.gen();
                 let target = TransactionTarget::Session {
                     module_bytes: Bytes::from(buffer),
                     runtime: TransactionRuntime::VmCasperV1,
+                    transferred_value,
                 };
                 TransactionV1Body::new(
                     RuntimeArgs::random(rng),
@@ -622,8 +622,18 @@ impl TransactionV1Body {
     }
 
     /// Returns a token value attached to the transaction.
-    pub fn value(&self) -> u128 {
-        self.transferred_value
+    pub fn transferred_value(&self) -> u64 {
+        match self.target() {
+            TransactionTarget::Native => 0,
+            TransactionTarget::Stored {
+                transferred_value, ..
+            } => *transferred_value,
+            TransactionTarget::Session {
+                module_bytes,
+                runtime,
+                transferred_value,
+            } => *transferred_value,
+        }
     }
 }
 
@@ -632,7 +642,6 @@ const TARGET_INDEX: u16 = 1;
 const ENTRY_POINT_INDEX: u16 = 2;
 const TRANSACTION_LANE_INDEX: u16 = 3;
 const SCHEDULING_INDEX: u16 = 4;
-const TRANSFERRED_VALUE_INDEX: u16 = 5;
 
 impl FromBytes for TransactionV1Body {
     fn from_bytes(bytes: &[u8]) -> Result<(TransactionV1Body, &[u8]), Error> {
@@ -655,11 +664,7 @@ impl FromBytes for TransactionV1Body {
         let (transaction_lane, window) = window.deserialize_and_maybe_next::<u8>()?;
         let window = window.ok_or(Error::Formatting)?;
         window.verify_index(SCHEDULING_INDEX)?;
-
         let (scheduling, window) = window.deserialize_and_maybe_next::<TransactionScheduling>()?;
-        let window = window.ok_or(Error::Formatting)?;
-        window.verify_index(TRANSFERRED_VALUE_INDEX)?;
-        let (transferred_value, window) = window.deserialize_and_maybe_next::<u128>()?;
         if window.is_some() {
             return Err(Error::Formatting);
         }
@@ -669,7 +674,6 @@ impl FromBytes for TransactionV1Body {
             entry_point,
             transaction_lane,
             scheduling,
-            transferred_value,
         };
         Ok((from_bytes, remainder))
     }
@@ -703,7 +707,7 @@ impl Display for TransactionV1Body {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{bytesrepr, runtime_args};
+    use crate::{bytesrepr, runtime_args, TransactionInvocationTarget};
 
     #[test]
     fn bytesrepr_roundtrip() {
@@ -780,10 +784,12 @@ mod tests {
             let stored_target = TransactionTarget::new_stored(
                 TransactionInvocationTarget::ByHash([0; 32]),
                 TransactionRuntime::VmCasperV1,
+                0,
             );
             let session_target = TransactionTarget::new_session(
                 Bytes::from(vec![1]),
                 TransactionRuntime::VmCasperV1,
+                1,
             );
 
             let stored_body = TransactionV1Body::new(
