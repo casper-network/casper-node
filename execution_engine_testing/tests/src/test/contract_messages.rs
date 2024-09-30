@@ -9,9 +9,9 @@ use casper_types::{
     bytesrepr::ToBytes,
     contract_messages::{MessageChecksum, MessagePayload, MessageTopicSummary, TopicNameHash},
     crypto, runtime_args, AddressableEntity, AddressableEntityHash, BlockGlobalAddr, BlockTime,
-    CLValue, CoreConfig, Digest, EntityAddr, HostFunction, HostFunctionCosts, Key, MessageLimits,
-    OpcodeCosts, RuntimeArgs, StorageCosts, StoredValue, SystemConfig, WasmConfig,
-    DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY, U512,
+    CLValue, CoreConfig, Digest, HostFunction, HostFunctionCosts, Key, MessageLimits, OpcodeCosts,
+    RuntimeArgs, StorageCosts, StoredValue, SystemConfig, WasmConfig, DEFAULT_MAX_STACK_HEIGHT,
+    DEFAULT_WASM_MAX_MEMORY, U512,
 };
 
 const MESSAGE_EMITTER_INSTALLER_WASM: &str = "contract_messages_emitter.wasm";
@@ -197,10 +197,7 @@ impl<'a> ContractQueryView<'a> {
             .borrow_mut()
             .query(
                 None,
-                Key::message_topic(
-                    EntityAddr::new_smart_contract(self.contract_hash.value()),
-                    topic_name_hash,
-                ),
+                Key::message_topic(self.contract_hash.value(), topic_name_hash),
                 &[],
             )
             .expect("should query");
@@ -224,11 +221,7 @@ impl<'a> ContractQueryView<'a> {
     ) -> Result<MessageChecksum, String> {
         let query_result = self.builder.borrow_mut().query(
             state_hash,
-            Key::message(
-                EntityAddr::new_smart_contract(self.contract_hash.value()),
-                topic_name_hash,
-                message_index,
-            ),
+            Key::message(self.contract_hash.value(), topic_name_hash, message_index),
             &[],
         )?;
 
@@ -680,13 +673,15 @@ fn should_charge_expected_gas_for_storage() {
     let contract_hash = install_messages_emitter_contract(&builder, true);
     let query_view = ContractQueryView::new(&builder, contract_hash);
 
+    let topic_name = "cost_topic";
+
     // check the cost of adding a new topic
     let add_topic_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
         contract_hash,
         ENTRY_POINT_ADD_TOPIC,
         runtime_args! {
-            ARG_TOPIC_NAME => "cost_topic",
+            ARG_TOPIC_NAME => topic_name,
         },
     )
     .build();
@@ -701,7 +696,8 @@ fn should_charge_expected_gas_for_storage() {
 
     // cost depends on the entity size since we store the topic names in the entity record.
     let entity = query_view.entity();
-    let default_topic_summary = MessageTopicSummary::new(0, BlockTime::new(0));
+    let default_topic_summary =
+        MessageTopicSummary::new(0, BlockTime::new(0), topic_name.to_string());
     let written_size_expected = StoredValue::MessageTopic(default_topic_summary.clone())
         .serialized_length()
         + StoredValue::AddressableEntity(entity).serialized_length();

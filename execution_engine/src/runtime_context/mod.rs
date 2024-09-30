@@ -21,6 +21,7 @@ use casper_storage::{
     AddressGenerator,
 };
 
+use casper_types::addressable_entity::MessageTopics;
 use casper_types::{
     account::{Account, AccountHash},
     addressable_entity::{
@@ -441,6 +442,16 @@ where
         }
 
         Ok(())
+    }
+
+    pub(crate) fn get_message_topics(
+        &mut self,
+        hash_addr: HashAddr,
+    ) -> Result<MessageTopics, ExecError> {
+        self.tracking_copy
+            .borrow_mut()
+            .get_message_topics(hash_addr)
+            .map_err(Into::into)
     }
 
     pub(crate) fn get_named_keys(&mut self, entity_key: Key) -> Result<NamedKeys, ExecError> {
@@ -970,8 +981,11 @@ where
         topic_message_count: u32,
         message: Message,
     ) -> Result<(), ExecError> {
-        let topic_value =
-            StoredValue::MessageTopic(MessageTopicSummary::new(topic_message_count, block_time));
+        let topic_value = StoredValue::MessageTopic(MessageTopicSummary::new(
+            topic_message_count,
+            block_time,
+            message.topic_name().clone(),
+        ));
         let message_key = message.message_key();
         let message_value = StoredValue::Message(message.checksum().map_err(ExecError::BytesRepr)?);
 
@@ -1649,8 +1663,15 @@ where
             entity
         };
 
-        let topic_key = Key::Message(MessageAddr::new_topic_addr(entity_addr, topic_name_hash));
-        let summary = StoredValue::MessageTopic(MessageTopicSummary::new(0, self.get_blocktime()));
+        let topic_key = Key::Message(MessageAddr::new_topic_addr(
+            entity_addr.value(),
+            topic_name_hash,
+        ));
+        let summary = StoredValue::MessageTopic(MessageTopicSummary::new(
+            0,
+            self.get_blocktime(),
+            topic_name.to_string(),
+        ));
 
         let entity_value = self.addressable_entity_to_validated_value(entity)?;
 

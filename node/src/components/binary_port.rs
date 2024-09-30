@@ -286,7 +286,7 @@ where
         KeyPrefix::DelegatorBidAddrsByValidator(hash) => {
             StorageKeyPrefix::DelegatorBidAddrsByValidator(hash)
         }
-        KeyPrefix::MessagesByEntity(addr) => StorageKeyPrefix::MessagesByEntity(addr),
+        KeyPrefix::MessagesByEntity(addr) => StorageKeyPrefix::MessageEntriesByEntity(addr),
         KeyPrefix::MessagesByEntityAndTopic(addr, topic) => {
             StorageKeyPrefix::MessagesByEntityAndTopic(addr, topic)
         }

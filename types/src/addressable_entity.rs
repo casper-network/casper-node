@@ -297,13 +297,13 @@ impl From<ContractHash> for AddressableEntityHash {
 }
 
 impl Display for AddressableEntityHash {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}", base16::encode_lower(&self.0))
     }
 }
 
 impl Debug for AddressableEntityHash {
-    fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(
             f,
             "AddressableEntityHash({})",

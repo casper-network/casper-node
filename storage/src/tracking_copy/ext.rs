@@ -12,6 +12,8 @@ use crate::{
     tracking_copy::{TrackingCopy, TrackingCopyEntityExt, TrackingCopyError},
     KeyPrefix,
 };
+use casper_types::addressable_entity::MessageTopics;
+use casper_types::contract_messages::TopicNameHash;
 use casper_types::{
     account::AccountHash,
     addressable_entity::NamedKeys,
@@ -95,6 +97,9 @@ pub trait TrackingCopyExt<R> {
         &self,
         purse_addr: URefAddr,
     ) -> Result<BTreeMap<BlockTime, BalanceHoldsWithProof>, Self::Error>;
+
+    /// Returns the collection of message topics (if any) for a given HashAddr.
+    fn get_message_topics(&self, hash_addr: HashAddr) -> Result<MessageTopics, Self::Error>;
 
     /// Returns the collection of named keys for a given AddressableEntity.
     fn get_named_keys(&self, entity_addr: EntityAddr) -> Result<NamedKeys, Self::Error>;
@@ -548,6 +553,46 @@ where
             }
         }
         Ok(ret)
+    }
+
+    fn get_message_topics(&self, hash_addr: HashAddr) -> Result<MessageTopics, Self::Error> {
+        let keys = self.get_keys_by_prefix(&KeyPrefix::MessageEntriesByEntity(hash_addr))?;
+
+        let mut topics: BTreeMap<String, TopicNameHash> = BTreeMap::new();
+
+        for entry_key in &keys {
+            if let Some(topic_name_hash) = entry_key.as_message_topic_name_hash() {
+                match self.read(entry_key)? {
+                    Some(StoredValue::Message(_)) => {
+                        continue;
+                    }
+                    Some(StoredValue::MessageTopic(summary)) => {
+                        topics.insert(summary.topic_name(), topic_name_hash);
+                    }
+                    Some(other) => {
+                        return Err(TrackingCopyError::TypeMismatch(
+                            StoredValueTypeMismatch::new(
+                                "MessageTopic".to_string(),
+                                other.type_name(),
+                            ),
+                        ));
+                    }
+                    None => match self.cache.reads_cached.get(entry_key) {
+                        Some(StoredValue::Message(_)) => {
+                            continue;
+                        }
+                        Some(StoredValue::MessageTopic(summary)) => {
+                            topics.insert(summary.topic_name(), topic_name_hash);
+                        }
+                        Some(_) | None => {
+                            return Err(TrackingCopyError::KeyNotFound(*entry_key));
+                        }
+                    },
+                };
+            }
+        }
+
+        Ok(MessageTopics::from(topics))
     }
 
     fn get_named_keys(&self, entity_addr: EntityAddr) -> Result<NamedKeys, Self::Error> {

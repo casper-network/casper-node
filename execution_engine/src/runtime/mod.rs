@@ -2391,11 +2391,12 @@ where
         self.context
             .metered_write_gs_unsafe(package_hash, package)?;
 
-        for (_, topic_hash) in previous_message_topics.iter() {
-            let topic_key = Key::message_topic(entity_addr, *topic_hash);
+        for (topic_name, topic_hash) in previous_message_topics.iter() {
+            let topic_key = Key::message_topic(entity_hash, *topic_hash);
             let summary = StoredValue::MessageTopic(MessageTopicSummary::new(
                 0,
                 self.context.get_blocktime(),
+                topic_name.clone(),
             ));
             self.context.metered_write_gs_unsafe(topic_key, summary)?;
         }
@@ -2490,7 +2491,9 @@ where
 
             let associated_keys = previous_entity.associated_keys().clone();
 
-            let previous_message_topics = previous_entity.message_topics().clone();
+            let previous_message_topics = self
+                .context
+                .get_message_topics(previous_entity_hash.value())?;
 
             let previous_named_keys = self.context.get_named_keys(previous_entity_key)?;
 
@@ -3978,7 +3981,7 @@ where
         let entity_addr = self.context.base_key_to_entity_addr()?;
 
         let topic_name_hash = crypto::blake2b(topic_name).into();
-        let topic_key = Key::Message(MessageAddr::new_topic_addr(entity_addr, topic_name_hash));
+        let topic_key = Key::Message(MessageAddr::new_topic_addr(hash_addr, topic_name_hash));
 
         // Check if the topic exists and get the summary.
         let Some(StoredValue::MessageTopic(prev_topic_summary)) =
@@ -3991,7 +3994,7 @@ where
         let topic_message_index = if prev_topic_summary.blocktime() != current_blocktime {
             for index in 1..prev_topic_summary.message_count() {
                 self.context
-                    .prune_gs_unsafe(Key::message(entity_addr, topic_name_hash, index));
+                    .prune_gs_unsafe(Key::message(hash_addr, topic_name_hash, index));
             }
             0
         } else {
@@ -4030,7 +4033,7 @@ where
             block_message_count,
             topic_message_count,
             Message::new(
-                entity_addr,
+                hash_addr,
                 message,
                 topic_name.to_string(),
                 topic_name_hash,

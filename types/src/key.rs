@@ -959,6 +959,14 @@ impl Key {
         }
     }
 
+    /// Returns the inner [`URef`] if `self` is of type [`Key::URef`], otherwise returns `None`.
+    pub fn into_uref(self) -> Option<URef> {
+        match self {
+            Key::URef(uref) => Some(uref),
+            _ => None,
+        }
+    }
+
     /// Returns a reference to the inner [`URef`] if `self` is of type [`Key::URef`], otherwise
     /// returns `None`.
     pub fn as_uref(&self) -> Option<&URef> {
@@ -997,20 +1005,32 @@ impl Key {
         }
     }
 
-    /// Returns the inner [`URef`] if `self` is of type [`Key::URef`], otherwise returns `None`.
-    pub fn into_uref(self) -> Option<URef> {
-        match self {
-            Key::URef(uref) => Some(uref),
-            _ => None,
-        }
-    }
-
     /// Returns a reference to the inner [`DictionaryAddr`] if `self` is of type
     /// [`Key::Dictionary`], otherwise returns `None`.
     pub fn as_dictionary(&self) -> Option<&DictionaryAddr> {
         match self {
             Key::Dictionary(v) => Some(v),
             _ => None,
+        }
+    }
+
+    /// Returns a reference to the inner `BidAddr` if `self` is of type [`Key::Bid`],
+    /// otherwise returns `None`.
+    pub fn as_bid_addr(&self) -> Option<&BidAddr> {
+        if let Self::BidAddr(addr) = self {
+            Some(addr)
+        } else {
+            None
+        }
+    }
+
+    /// Returns a reference to the inner `TopicNameHash` if `self` is of the type [`Key::Message`]
+    /// otherwise returns `None`.
+    pub fn as_message_topic_name_hash(&self) -> Option<TopicNameHash> {
+        if let Self::Message(addr) = self {
+            Some(addr.topic_name_hash())
+        } else {
+            None
         }
     }
 
@@ -1068,19 +1088,19 @@ impl Key {
     }
 
     /// Creates a new [`Key::Message`] variant that identifies an indexed message based on an
-    /// `entity_addr`, `topic_name_hash` and message `index`.
-    pub fn message(entity_addr: EntityAddr, topic_name_hash: TopicNameHash, index: u32) -> Key {
+    /// `hash_addr`, `topic_name_hash` and message `index`.
+    pub fn message(hash_addr: HashAddr, topic_name_hash: TopicNameHash, index: u32) -> Key {
         Key::Message(MessageAddr::new_message_addr(
-            entity_addr,
+            hash_addr,
             topic_name_hash,
             index,
         ))
     }
 
     /// Creates a new [`Key::Message`] variant that identifies a message topic based on an
-    /// `entity_addr` and a hash of the topic name.
-    pub fn message_topic(entity_addr: EntityAddr, topic_name_hash: TopicNameHash) -> Key {
-        Key::Message(MessageAddr::new_topic_addr(entity_addr, topic_name_hash))
+    /// `hash_addr` and a hash of the topic name.
+    pub fn message_topic(hash_addr: HashAddr, topic_name_hash: TopicNameHash) -> Key {
+        Key::Message(MessageAddr::new_topic_addr(hash_addr, topic_name_hash))
     }
 
     /// Creates a new [`Key::EntryPoint`] variant from an entrypoint addr.
@@ -1119,16 +1139,6 @@ impl Key {
         }
 
         false
-    }
-
-    /// Returns a reference to the inner `BidAddr` if `self` is of type [`Key::Bid`],
-    /// otherwise returns `None`.
-    pub fn as_bid_addr(&self) -> Option<&BidAddr> {
-        if let Self::BidAddr(addr) = self {
-            Some(addr)
-        } else {
-            None
-        }
     }
 
     /// Returns if the inner address is for a system contract entity.
@@ -1908,11 +1918,11 @@ mod tests {
     const BYTE_CODE_EMPTY_KEY: Key = Key::ByteCode(ByteCodeAddr::Empty);
     const BYTE_CODE_V1_WASM_KEY: Key = Key::ByteCode(ByteCodeAddr::V1CasperWasm([42; 32]));
     const MESSAGE_TOPIC_KEY: Key = Key::Message(MessageAddr::new_topic_addr(
-        EntityAddr::new_smart_contract([42; 32]),
+        [42; 32],
         TopicNameHash::new([42; 32]),
     ));
     const MESSAGE_KEY: Key = Key::Message(MessageAddr::new_message_addr(
-        EntityAddr::new_smart_contract([42u8; 32]),
+        [42; 32],
         TopicNameHash::new([2; 32]),
         15,
     ));
@@ -2554,11 +2564,11 @@ mod tests {
         round_trip(&Key::ByteCode(ByteCodeAddr::Empty));
         round_trip(&Key::ByteCode(ByteCodeAddr::V1CasperWasm(zeros)));
         round_trip(&Key::Message(MessageAddr::new_topic_addr(
-            EntityAddr::new_smart_contract(zeros),
+            zeros,
             nines.into(),
         )));
         round_trip(&Key::Message(MessageAddr::new_message_addr(
-            EntityAddr::new_smart_contract(zeros),
+            zeros,
             nines.into(),
             1,
         )));
