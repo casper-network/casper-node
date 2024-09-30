@@ -43,7 +43,7 @@ use casper_types::{
 
 use datasize::DataSize;
 use either::Either;
-use futures::{future::BoxFuture, FutureExt, SinkExt, StreamExt};
+use futures::{SinkExt, StreamExt};
 use once_cell::sync::OnceCell;
 use prometheus::Registry;
 use tokio::{
@@ -53,6 +53,9 @@ use tokio::{
 };
 use tokio_util::codec::Framed;
 use tracing::{debug, error, info, warn};
+
+#[cfg(test)]
+use futures::{future::BoxFuture, FutureExt};
 
 use crate::{
     contract_runtime::SpeculativeExecutionResult,
@@ -64,7 +67,7 @@ use crate::{
         },
         EffectBuilder, EffectExt, Effects,
     },
-    reactor::{main_reactor::MainEvent, Finalize, QueueKind},
+    reactor::{main_reactor::MainEvent, QueueKind},
     types::NodeRng,
     utils::{display_error, ListeningError},
 };
@@ -1597,7 +1600,8 @@ async fn run_server<REv>(
     }
 }
 
-impl Finalize for BinaryPort {
+#[cfg(test)]
+impl crate::reactor::Finalize for BinaryPort {
     fn finalize(mut self) -> BoxFuture<'static, ()> {
         self.shutdown_trigger.notify_one();
         async move {

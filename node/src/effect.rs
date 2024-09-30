@@ -379,18 +379,6 @@ pub(crate) trait EffectExt: Future + Send {
         U: 'static,
         Self: Sized;
 
-    /// Finalizes a future into an effect that returns an iterator of events.
-    ///
-    /// The function `f` is used to translate the returned value from an effect into an iterator of
-    /// events.
-    #[allow(dead_code)]
-    fn events<U, F, I>(self, f: F) -> Effects<U>
-    where
-        F: FnOnce(Self::Output) -> I + 'static + Send,
-        U: 'static,
-        I: Iterator<Item = U>,
-        Self: Sized;
-
     /// Finalizes a future into an effect that runs but drops the result.
     fn ignore<Ev>(self) -> Effects<Ev>;
 }
@@ -451,15 +439,6 @@ where
         U: 'static,
     {
         smallvec![self.map(f).map(|item| smallvec![item]).boxed()]
-    }
-
-    fn events<U, F, I>(self, f: F) -> Effects<U>
-    where
-        F: FnOnce(Self::Output) -> I + 'static + Send,
-        U: 'static,
-        I: Iterator<Item = U>,
-    {
-        smallvec![self.map(f).map(|iter| iter.collect()).boxed()]
     }
 
     fn ignore<Ev>(self) -> Effects<Ev> {

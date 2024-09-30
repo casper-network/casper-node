@@ -49,7 +49,9 @@ use datasize::DataSize;
 use erased_serde::Serialize as ErasedSerialize;
 #[cfg(test)]
 use fake_instant::FakeClock;
-use futures::{future::BoxFuture, FutureExt};
+#[cfg(test)]
+use futures::future::BoxFuture;
+use futures::FutureExt;
 use once_cell::sync::Lazy;
 use prometheus::{self, Histogram, HistogramOpts, IntCounter, IntGauge, Registry};
 use quanta::{Clock, IntoNanoseconds};
@@ -335,7 +337,7 @@ pub(crate) trait ReactorEvent: Send + Debug + From<ControlAnnouncement> + 'stati
 /// A drop-like trait for `async` compatible drop-and-wait.
 ///
 /// Shuts down a type by explicitly freeing resources, but allowing to wait on cleanup to complete.
-#[allow(dead_code)]
+#[cfg(test)]
 pub(crate) trait Finalize: Sized {
     /// Runs cleanup code and waits for a shutdown to complete.
     ///

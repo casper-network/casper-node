@@ -57,7 +57,6 @@ use std::{
 };
 
 use datasize::DataSize;
-use futures::{future::BoxFuture, FutureExt};
 use itertools::Itertools;
 use prometheus::Registry;
 use rand::{
@@ -76,6 +75,9 @@ use tokio::{
 use tokio_openssl::SslStream;
 use tokio_util::codec::LengthDelimitedCodec;
 use tracing::{debug, error, info, trace, warn, Instrument, Span};
+
+#[cfg(test)]
+use futures::{future::BoxFuture, FutureExt};
 
 use casper_types::{EraId, PublicKey, SecretKey};
 
@@ -113,7 +115,7 @@ use crate::{
         requests::{BeginGossipRequest, NetworkInfoRequest, NetworkRequest, StorageRequest},
         AutoClosingResponder, EffectBuilder, EffectExt, Effects, GossipTarget,
     },
-    reactor::{Finalize, ReactorEvent},
+    reactor::ReactorEvent,
     tls,
     types::{NodeId, ValidatorMatrix},
     utils::{self, display_error, Source},
@@ -121,9 +123,6 @@ use crate::{
 };
 
 const COMPONENT_NAME: &str = "network";
-
-const MAX_METRICS_DROP_ATTEMPTS: usize = 25;
-const DROP_RETRY_DELAY: Duration = Duration::from_millis(100);
 
 /// How often to keep attempting to reconnect to a node before giving up. Note that reconnection
 /// delays increase exponentially!
@@ -206,20 +205,24 @@ where
     state: ComponentState,
 }
 
-#[allow(dead_code)]
 struct ChannelManagement {
     /// Channel signaling a shutdown of the network.
     // Note: This channel is closed when `Network` is dropped, signalling the receivers that
     // they should cease operation.
+    #[allow(dead_code)]
     shutdown_sender: Option<watch::Sender<()>>,
+
     /// Join handle for the server thread.
+    #[allow(dead_code)]
     server_join_handle: Option<JoinHandle<()>>,
 
     /// Channel signaling a shutdown of the incoming connections.
     // Note: This channel is closed when we finished syncing, so the `Network` can close all
     // connections. When they are re-established, the proper value of the now updated `is_syncing`
     // flag will be exchanged on handshake.
+    #[allow(dead_code)]
     close_incoming_sender: Option<watch::Sender<()>>,
+
     /// Handle used by the `message_reader` task to receive a notification that incoming
     /// connections should be closed.
     close_incoming_receiver: watch::Receiver<()>,
@@ -1027,7 +1030,14 @@ where
     }
 }
 
-impl<REv, P> Finalize for Network<REv, P>
+#[cfg(test)]
+const MAX_METRICS_DROP_ATTEMPTS: usize = 25;
+
+#[cfg(test)]
+const DROP_RETRY_DELAY: Duration = Duration::from_millis(100);
+
+#[cfg(test)]
+impl<REv, P> crate::reactor::Finalize for Network<REv, P>
 where
     REv: Send + 'static,
     P: Payload,
