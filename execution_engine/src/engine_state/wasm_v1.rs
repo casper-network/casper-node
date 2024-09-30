@@ -9,9 +9,9 @@ use thiserror::Error;
 use casper_storage::data_access_layer::TransferResult;
 use casper_types::{
     account::AccountHash, bytesrepr::Bytes, contract_messages::Messages, execution::Effects,
-    BlockTime, DeployHash, Digest, ExecutableDeployItem, Gas, InitiatorAddr, Phase, PricingMode,
-    RuntimeArgs, Transaction, TransactionCategory, TransactionEntryPoint, TransactionHash,
-    TransactionInvocationTarget, TransactionTarget, TransactionV1, Transfer,
+    BlockHash, BlockTime, DeployHash, Digest, ExecutableDeployItem, Gas, InitiatorAddr, Phase,
+    PricingMode, RuntimeArgs, Transaction, TransactionCategory, TransactionEntryPoint,
+    TransactionHash, TransactionInvocationTarget, TransactionTarget, TransactionV1, Transfer,
 };
 
 use crate::engine_state::{DeployItem, Error as EngineError};
@@ -65,13 +65,51 @@ pub enum ExecutableItem {
     Invocation(TransactionInvocationTarget),
 }
 
-/// A request to execute the given Wasm on the V1 runtime.
-#[derive(Debug)]
-pub struct WasmV1Request {
+/// Block info.
+#[derive(Copy, Clone, Debug)]
+pub struct BlockInfo {
     /// State root hash of the global state in which the transaction will be executed.
     pub state_hash: Digest,
     /// Block time represented as a unix timestamp.
     pub block_time: BlockTime,
+    /// Parent block hash
+    pub parent_block_hash: BlockHash,
+    /// Block height
+    pub block_height: u64,
+}
+
+impl BlockInfo {
+    /// A new instance of `[BlockInfo]`.
+    pub fn new(
+        state_hash: Digest,
+        block_time: BlockTime,
+        parent_block_hash: BlockHash,
+        block_height: u64,
+    ) -> Self {
+        BlockInfo {
+            state_hash,
+            block_time,
+            parent_block_hash,
+            block_height,
+        }
+    }
+
+    /// Apply different state hash.
+    pub fn with_state_hash(&mut self, state_hash: Digest) {
+        self.state_hash = state_hash;
+    }
+
+    /// Block time.
+    pub fn block_time(&self) -> BlockTime {
+        self.block_time
+    }
+}
+
+/// A request to execute the given Wasm on the V1 runtime.
+#[derive(Debug)]
+pub struct WasmV1Request {
+    /// Block info.
+    pub block_info: BlockInfo,
     /// The hash identifying the transaction.
     pub transaction_hash: TransactionHash,
     /// The number of Motes per unit of Gas to be paid for execution.
@@ -92,8 +130,7 @@ pub struct WasmV1Request {
 
 impl WasmV1Request {
     pub(crate) fn new_from_executable_info(
-        state_hash: Digest,
-        block_time: BlockTime,
+        block_info: BlockInfo,
         gas_limit: Gas,
         transaction_hash: TransactionHash,
         initiator_addr: InitiatorAddr,
@@ -102,8 +139,7 @@ impl WasmV1Request {
     ) -> Self {
         let executable_item = executable_info.item();
         Self {
-            state_hash,
-            block_time,
+            block_info,
             transaction_hash,
             gas_limit,
             initiator_addr,
@@ -117,12 +153,11 @@ impl WasmV1Request {
 
     /// Creates a new request from a transaction for use as the session code.
     pub fn new_session(
-        state_hash: Digest,
-        block_time: BlockTime,
+        block_info: BlockInfo,
         gas_limit: Gas,
         transaction: &Transaction,
     ) -> Result<Self, InvalidRequest> {
-        let info = match transaction {
+        let session_info = match transaction {
             Transaction::Deploy(deploy) => {
                 SessionInfo::try_from((deploy.session(), deploy.hash()))?
             }
@@ -133,24 +168,22 @@ impl WasmV1Request {
         let initiator_addr = transaction.initiator_addr();
         let authorization_keys = transaction.signers();
         Ok(WasmV1Request::new_from_executable_info(
-            state_hash,
-            block_time,
+            block_info,
             gas_limit,
             transaction_hash,
             initiator_addr,
             authorization_keys,
-            info,
+            session_info,
         ))
     }
 
     /// Creates a new request from a transaction for use as custom payment.
     pub fn new_custom_payment(
-        state_hash: Digest,
-        block_time: BlockTime,
+        block_info: BlockInfo,
         gas_limit: Gas,
         transaction: &Transaction,
     ) -> Result<Self, InvalidRequest> {
-        let info = match transaction {
+        let payment_info = match transaction {
             Transaction::Deploy(deploy) => {
                 PaymentInfo::try_from((deploy.payment(), deploy.hash()))?
             }
@@ -161,20 +194,18 @@ impl WasmV1Request {
         let initiator_addr = transaction.initiator_addr();
         let authorization_keys = transaction.signers();
         Ok(WasmV1Request::new_from_executable_info(
-            state_hash,
-            block_time,
+            block_info,
             gas_limit,
             transaction_hash,
             initiator_addr,
             authorization_keys,
-            info,
+            payment_info,
         ))
     }
 
     /// Creates a new request from a deploy item for use as the session code.
     pub fn new_session_from_deploy_item(
-        state_hash: Digest,
-        block_time: BlockTime,
+        block_info: BlockInfo,
         gas_limit: Gas,
         DeployItem {
             ref address,
@@ -184,25 +215,23 @@ impl WasmV1Request {
             ..
         }: &DeployItem,
     ) -> Result<Self, InvalidRequest> {
-        let info = SessionInfo::try_from((session, deploy_hash))?;
+        let session_info = SessionInfo::try_from((session, deploy_hash))?;
         let transaction_hash = TransactionHash::Deploy(*deploy_hash);
         let initiator_addr = InitiatorAddr::AccountHash(*address);
         let authorization_keys = authorization_keys.clone();
         Ok(WasmV1Request::new_from_executable_info(
-            state_hash,
-            block_time,
+            block_info,
             gas_limit,
             transaction_hash,
             initiator_addr,
             authorization_keys,
-            info,
+            session_info,
         ))
     }
 
     /// Creates a new request from a deploy item for use as custom payment.
     pub fn new_custom_payment_from_deploy_item(
-        state_hash: Digest,
-        block_time: BlockTime,
+        block_info: BlockInfo,
         gas_limit: Gas,
         DeployItem {
             ref address,
@@ -212,18 +241,17 @@ impl WasmV1Request {
             ..
         }: &DeployItem,
     ) -> Result<Self, InvalidRequest> {
-        let info = PaymentInfo::try_from((payment, deploy_hash))?;
+        let payment_info = PaymentInfo::try_from((payment, deploy_hash))?;
         let transaction_hash = TransactionHash::Deploy(*deploy_hash);
         let initiator_addr = InitiatorAddr::AccountHash(*address);
         let authorization_keys = authorization_keys.clone();
         Ok(WasmV1Request::new_from_executable_info(
-            state_hash,
-            block_time,
+            block_info,
             gas_limit,
             transaction_hash,
             initiator_addr,
             authorization_keys,
-            info,
+            payment_info,
         ))
     }
 }
@@ -496,7 +524,10 @@ impl TryFrom<&TransactionV1> for SessionInfo {
             }
             TransactionTarget::Stored { id, .. } => {
                 let TransactionEntryPoint::Custom(entry_point) = v1_txn.entry_point() else {
-                    return Err(InvalidRequest::InvalidEntryPoint(transaction_hash, v1_txn.entry_point().to_string()));
+                    return Err(InvalidRequest::InvalidEntryPoint(
+                        transaction_hash,
+                        v1_txn.entry_point().to_string(),
+                    ));
                 };
                 let item = ExecutableItem::Invocation(id.clone());
                 ExecutableInfo {

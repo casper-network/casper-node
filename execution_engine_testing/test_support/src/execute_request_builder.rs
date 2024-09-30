@@ -1,12 +1,12 @@
 use std::collections::BTreeSet;
 
 use casper_execution_engine::engine_state::{
-    deploy_item::DeployItem, ExecutableItem, WasmV1Request,
+    deploy_item::DeployItem, BlockInfo, ExecutableItem, WasmV1Request,
 };
 use casper_types::{
     account::AccountHash, addressable_entity::DEFAULT_ENTRY_POINT_NAME, runtime_args,
-    AddressableEntityHash, BlockTime, Digest, EntityVersion, Gas, InitiatorAddr, PackageHash,
-    Phase, RuntimeArgs, Transaction, TransactionHash, TransactionV1Hash,
+    AddressableEntityHash, BlockHash, BlockTime, Digest, EntityVersion, Gas, InitiatorAddr,
+    PackageHash, Phase, RuntimeArgs, Transaction, TransactionHash, TransactionV1Hash,
 };
 
 use crate::{DeployItemBuilder, ARG_AMOUNT, DEFAULT_BLOCK_TIME, DEFAULT_PAYMENT};
@@ -50,10 +50,15 @@ impl ExecuteRequestBuilder {
 
     /// Converts a `Transaction` into an `ExecuteRequestBuilder`.
     pub fn from_transaction(txn: &Transaction) -> Self {
-        let authorization_keys = txn.authorization_keys();
-        let session = WasmV1Request::new_session(
+        let block_info = BlockInfo::new(
             Self::DEFAULT_STATE_HASH,
             BlockTime::new(DEFAULT_BLOCK_TIME),
+            BlockHash::default(),
+            0,
+        );
+        let authorization_keys = txn.authorization_keys();
+        let session = WasmV1Request::new_session(
+            block_info,
             Gas::new(5_000_000_000_000_u64), // TODO - set proper value
             txn,
         )
@@ -69,9 +74,14 @@ impl ExecuteRequestBuilder {
             payment_entry_point = DEFAULT_ENTRY_POINT_NAME.to_string();
             payment_args = RuntimeArgs::new();
         } else {
-            let request = WasmV1Request::new_custom_payment(
+            let block_info = BlockInfo::new(
                 Self::DEFAULT_STATE_HASH,
                 BlockTime::new(DEFAULT_BLOCK_TIME),
+                BlockHash::default(),
+                0,
+            );
+            let request = WasmV1Request::new_custom_payment(
+                block_info,
                 Gas::new(5_000_000_000_000_u64), // TODO - set proper value
                 txn,
             )
@@ -83,8 +93,8 @@ impl ExecuteRequestBuilder {
         }
 
         ExecuteRequestBuilder {
-            state_hash: session.state_hash,
-            block_time: session.block_time,
+            state_hash: session.block_info.state_hash,
+            block_time: session.block_info.block_time,
             transaction_hash: session.transaction_hash,
             initiator_addr: session.initiator_addr,
             payment,
@@ -102,9 +112,14 @@ impl ExecuteRequestBuilder {
     /// Converts a `DeployItem` into an `ExecuteRequestBuilder`.
     pub fn from_deploy_item(deploy_item: &DeployItem) -> Self {
         let authorization_keys = deploy_item.authorization_keys.clone();
-        let session = WasmV1Request::new_session_from_deploy_item(
+        let block_info = BlockInfo::new(
             Self::DEFAULT_STATE_HASH,
             BlockTime::new(DEFAULT_BLOCK_TIME),
+            BlockHash::default(),
+            0,
+        );
+        let session = WasmV1Request::new_session_from_deploy_item(
+            block_info,
             Gas::new(5_000_000_000_000_u64), // TODO - set proper value
             deploy_item,
         )
@@ -120,9 +135,14 @@ impl ExecuteRequestBuilder {
             payment_entry_point = DEFAULT_ENTRY_POINT_NAME.to_string();
             payment_args = RuntimeArgs::new();
         } else {
-            let request = WasmV1Request::new_custom_payment_from_deploy_item(
+            let block_info = BlockInfo::new(
                 Self::DEFAULT_STATE_HASH,
                 BlockTime::new(DEFAULT_BLOCK_TIME),
+                BlockHash::default(),
+                0,
+            );
+            let request = WasmV1Request::new_custom_payment_from_deploy_item(
+                block_info,
                 Gas::new(5_000_000_000_000_u64), // TODO - set proper value
                 deploy_item,
             )
@@ -134,8 +154,8 @@ impl ExecuteRequestBuilder {
         }
 
         ExecuteRequestBuilder {
-            state_hash: session.state_hash,
-            block_time: session.block_time,
+            state_hash: session.block_info.state_hash,
+            block_time: session.block_info.block_time,
             transaction_hash: session.transaction_hash,
             initiator_addr: session.initiator_addr,
             payment,
@@ -289,9 +309,9 @@ impl ExecuteRequestBuilder {
             authorization_keys,
         } = self;
 
+        let block_info = BlockInfo::new(state_hash, block_time, BlockHash::default(), 0);
         let maybe_custom_payment = payment.map(|executable_item| WasmV1Request {
-            state_hash,
-            block_time,
+            block_info,
             transaction_hash,
             gas_limit: payment_gas_limit,
             initiator_addr: initiator_addr.clone(),
@@ -302,9 +322,9 @@ impl ExecuteRequestBuilder {
             phase: Phase::Payment,
         });
 
+        let block_info = BlockInfo::new(state_hash, block_time, BlockHash::default(), 0);
         let session = WasmV1Request {
-            state_hash,
-            block_time,
+            block_info,
             transaction_hash,
             gas_limit: session_gas_limit,
             initiator_addr,
