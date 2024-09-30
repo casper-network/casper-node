@@ -8,6 +8,7 @@ mod mint_internal;
 pub mod stack;
 mod utils;
 mod wasm_prep;
+mod cryptography;
 
 use std::{
     cmp,

@@ -98,6 +98,8 @@ pub const DEFAULT_COST_INCREASE_PER_MESSAGE_EMITTED: u32 = 50;
 const DEFAULT_MESSAGE_TOPIC_NAME_SIZE_WEIGHT: u32 = 30_000;
 const DEFAULT_MESSAGE_PAYLOAD_SIZE_WEIGHT: u32 = 120_000;
 
+const DEFAULT_GENERIC_HASH_COST: u32 = 300;
+
 /// Representation of a host function cost.
 ///
 /// The total gas cost is equal to `cost` + sum of each argument weight multiplied by the byte size
@@ -337,6 +339,8 @@ pub struct HostFunctionCosts {
     pub manage_message_topic: HostFunction<[Cost; 4]>,
     /// Cost of calling the `casper_emit_message` host function.
     pub emit_message: HostFunction<[Cost; 4]>,
+    /// Cost of calling the `generic_hash` host function.
+    pub generic_hash: HostFunction<[Cost; 5]>,
 }
 
 impl Zero for HostFunctionCosts {
@@ -390,6 +394,7 @@ impl Zero for HostFunctionCosts {
             manage_message_topic: HostFunction::zero(),
             emit_message: HostFunction::zero(),
             cost_increase_per_message: Zero::zero(),
+            generic_hash: HostFunction::zero(),
         }
     }
 
@@ -443,6 +448,7 @@ impl Zero for HostFunctionCosts {
             enable_contract_version,
             manage_message_topic,
             emit_message,
+            generic_hash
         } = self;
         read_value.is_zero()
             && dictionary_get.is_zero()
@@ -492,6 +498,7 @@ impl Zero for HostFunctionCosts {
             && emit_message.is_zero()
             && cost_increase_per_message.is_zero()
             && add_package_version.is_zero()
+            && generic_hash.is_zero()
     }
 }
 
@@ -678,6 +685,16 @@ impl Default for HostFunctionCosts {
                     DEFAULT_MESSAGE_PAYLOAD_SIZE_WEIGHT,
                 ],
             ),
+            generic_hash: HostFunction::new(
+                DEFAULT_GENERIC_HASH_COST,
+                [
+                    NOT_USED,
+                    NOT_USED,
+                    NOT_USED,
+                    NOT_USED,
+                    NOT_USED,
+                ],
+            ),
             cost_increase_per_message: DEFAULT_COST_INCREASE_PER_MESSAGE_EMITTED,
         }
     }
@@ -734,6 +751,7 @@ impl ToBytes for HostFunctionCosts {
         ret.append(&mut self.manage_message_topic.to_bytes()?);
         ret.append(&mut self.emit_message.to_bytes()?);
         ret.append(&mut self.cost_increase_per_message.to_bytes()?);
+        ret.append(&mut self.generic_hash.to_bytes()?);
         Ok(ret)
     }
 
@@ -786,6 +804,7 @@ impl ToBytes for HostFunctionCosts {
             + self.manage_message_topic.serialized_length()
             + self.emit_message.serialized_length()
             + self.cost_increase_per_message.serialized_length()
+            + self.generic_hash.serialized_length()
     }
 }
 
@@ -839,6 +858,7 @@ impl FromBytes for HostFunctionCosts {
         let (manage_message_topic, rem) = FromBytes::from_bytes(rem)?;
         let (emit_message, rem) = FromBytes::from_bytes(rem)?;
         let (cost_increase_per_message, rem) = FromBytes::from_bytes(rem)?;
+        let (generic_hash, rem) = FromBytes::from_bytes(rem)?;
         Ok((
             HostFunctionCosts {
                 read_value,
@@ -889,6 +909,7 @@ impl FromBytes for HostFunctionCosts {
                 manage_message_topic,
                 emit_message,
                 cost_increase_per_message,
+                generic_hash
             },
             rem,
         ))
@@ -947,6 +968,7 @@ impl Distribution<HostFunctionCosts> for Standard {
             manage_message_topic: rng.gen(),
             emit_message: rng.gen(),
             cost_increase_per_message: rng.gen(),
+            generic_hash: rng.gen(),
         }
     }
 }
@@ -1014,6 +1036,7 @@ pub mod gens {
             manage_message_topic in host_function_cost_arb(),
             emit_message in host_function_cost_arb(),
             cost_increase_per_message in num::u32::ANY,
+            generic_hash in host_function_cost_arb(),
         ) -> HostFunctionCosts {
             HostFunctionCosts {
                 read_value,
@@ -1064,6 +1087,7 @@ pub mod gens {
                 manage_message_topic,
                 emit_message,
                 cost_increase_per_message,
+                generic_hash,
             }
         }
     }

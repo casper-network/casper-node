@@ -843,4 +843,21 @@ extern "C" {
         call_stack_len_ptr: *mut usize,
         result_size_ptr: *mut usize,
     ) -> i32;
+
+    /// Computes digest hash, using provided algorithm type.
+    ///
+    /// # Arguments
+    ///
+    /// * `in_ptr` - pointer to the location where argument bytes will be copied from the host side
+    /// * `in_size` - size of output pointer
+    /// * `hash_algo_type` - integer representation of HashAlgoType enum variant
+    /// * `out_ptr` - pointer to the location where argument bytes will be copied to the host side
+    /// * `out_size` - size of output pointer
+    pub fn casper_generic_hash(
+        in_ptr: *const u8,
+        in_size: usize,
+        hash_algo_type: u8,
+        out_ptr: *const u8,
+        out_size: usize,
+    ) -> i32;
 }

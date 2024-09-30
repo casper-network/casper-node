@@ -14,12 +14,13 @@ use casper_types::{
     contract_messages::MessageTopicOperation,
     contracts::ContractPackageHash,
     crypto, AddressableEntityHash, ApiError, EntityVersion, Gas, Group, HostFunction,
-    HostFunctionCost, Key, PackageHash, PackageStatus, StoredValue, URef, U512,
+    HostFunctionCost, Key, HashAlgorithm, PackageHash, PackageStatus, StoredValue, URef, U512,
     UREF_SERIALIZED_LENGTH,
 };
 
 use super::{args::Args, ExecError, Runtime};
 use crate::resolvers::v1_function_index::FunctionIndex;
+use crate::runtime::cryptography;
 
 impl<'a, R> Externals for Runtime<'a, R>
 where
@@ -1275,6 +1276,50 @@ where
                     self.context.set_emit_message_cost(new_cost);
                 }
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(result))))
+            },
+            FunctionIndex::GenericHash => {
+                // args(0) = pointer to input in Wasm memory
+                // args(1) = size of input in Wasm memory
+                // args(2) = integer representation of HashAlgoType enum variant
+                // args(3) = pointer to output pointer in Wasm memory
+                // args(4) = size of output
+                let (in_ptr, in_size, hash_algo_type, out_ptr, out_size) = Args::parse(args)?;
+                self.charge_host_function_call(
+                    &host_function_costs.generic_hash,
+                    [in_ptr, in_size, hash_algo_type, out_ptr, out_size],
+                )?;
+                let hash_algo_type = match HashAlgorithm::try_from(hash_algo_type as u8) {
+                    Ok(v) => v,
+                    Err(_e) => {
+                        return Ok(Some(RuntimeValue::I32(api_error::i32_from(Err(
+                            ApiError::InvalidArgument,
+                        )))))
+                    }
+                };
+
+                let digest =
+                    self.checked_memory_slice(in_ptr as usize, in_size as usize, |input| {
+                        match hash_algo_type {
+                            HashAlgorithm::Blake2b => crypto::blake2b(input),
+                            HashAlgorithm::Blake3 => cryptography::blake3(input),
+                        }
+                    })?;
+
+                let result = if digest.len() > out_size as usize {
+                    Err(ApiError::BufferTooSmall)
+                } else {
+                    Ok(())
+                };
+
+                if result.is_err() {
+                    return Ok(Some(RuntimeValue::I32(api_error::i32_from(result))));
+                }
+
+                if self.try_get_memory()?.set(out_ptr, &digest).is_err() {
+                    return Ok(Some(RuntimeValue::I32(u32::from(ApiError::HostBufferEmpty) as i32)))
+                }
+
+                Ok(Some(RuntimeValue::I32(0)))
             }
         }
     }
