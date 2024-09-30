@@ -575,6 +575,7 @@ impl LmdbWasmTestBuilder {
         let gas = Gas::new(self.chainspec.system_costs_config.mint_costs().transfer);
         let execution_result = WasmV1Result::from_transfer_result(transfer_result, gas)
             .expect("transfer result should map to wasm v1 result");
+        println!("{:?}", execution_result);
         let effects = execution_result.effects().clone();
         self.effects.push(effects.clone());
         self.exec_results.push(execution_result);

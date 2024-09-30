@@ -3978,7 +3978,7 @@ where
         topic_name: &str,
         message: MessagePayload,
     ) -> Result<Result<(), ApiError>, Trap> {
-        let entity_addr = self.context.base_key_to_entity_addr()?;
+        let hash_addr = self.context.base_key_to_entity_addr()?.value();
 
         let topic_name_hash = crypto::blake2b(topic_name).into();
         let topic_key = Key::Message(MessageAddr::new_topic_addr(hash_addr, topic_name_hash));
