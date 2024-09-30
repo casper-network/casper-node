@@ -306,6 +306,8 @@ pub struct HostFunctionCosts {
     /// Cost of calling the `create_contract_user_group` host function.
     pub create_contract_user_group: HostFunction<[Cost; 8]>,
     /// Cost of calling the `add_package_version` host function.
+    pub add_contract_version_with_message_topics: HostFunction<[Cost; 11]>,
+    /// Cost of calling the `add_package_version` host function.
     pub add_contract_version: HostFunction<[Cost; 10]>,
     /// Cost of calling the `add_package_version` host function.
     pub add_package_version: HostFunction<[Cost; 11]>,
@@ -373,6 +375,7 @@ impl Zero for HostFunctionCosts {
             read_host_buffer: HostFunction::zero(),
             create_contract_package_at_hash: HostFunction::zero(),
             create_contract_user_group: HostFunction::zero(),
+            add_contract_version_with_message_topics: HostFunction::zero(),
             add_contract_version: HostFunction::zero(),
             add_package_version: HostFunction::zero(),
             disable_contract_version: HostFunction::zero(),
@@ -427,6 +430,7 @@ impl Zero for HostFunctionCosts {
             read_host_buffer,
             create_contract_package_at_hash,
             create_contract_user_group,
+            add_contract_version_with_message_topics,
             add_contract_version,
             add_package_version,
             disable_contract_version,
@@ -492,6 +496,7 @@ impl Zero for HostFunctionCosts {
             && emit_message.is_zero()
             && cost_increase_per_message.is_zero()
             && add_package_version.is_zero()
+            && add_contract_version_with_message_topics.is_zero()
     }
 }
 
@@ -605,6 +610,22 @@ impl Default for HostFunctionCosts {
                 ],
             ),
             add_contract_version: HostFunction::default(),
+            add_contract_version_with_message_topics: HostFunction::new(
+                DEFAULT_FIXED_COST,
+                [
+                    NOT_USED,
+                    NOT_USED,
+                    NOT_USED,
+                    NOT_USED,
+                    NOT_USED,
+                    NOT_USED,
+                    NOT_USED,
+                    NOT_USED,
+                    DEFAULT_MESSAGE_TOPIC_NAME_SIZE_WEIGHT,
+                    NOT_USED,
+                    NOT_USED,
+                ],
+            ),
             disable_contract_version: HostFunction::default(),
             call_contract: HostFunction::new(
                 DEFAULT_CALL_CONTRACT_COST,
@@ -717,6 +738,7 @@ impl ToBytes for HostFunctionCosts {
         ret.append(&mut self.read_host_buffer.to_bytes()?);
         ret.append(&mut self.create_contract_package_at_hash.to_bytes()?);
         ret.append(&mut self.create_contract_user_group.to_bytes()?);
+        ret.append(&mut self.add_contract_version_with_message_topics.to_bytes()?);
         ret.append(&mut self.add_contract_version.to_bytes()?);
         ret.append(&mut self.add_package_version.to_bytes()?);
         ret.append(&mut self.disable_contract_version.to_bytes()?);
@@ -769,6 +791,9 @@ impl ToBytes for HostFunctionCosts {
             + self.read_host_buffer.serialized_length()
             + self.create_contract_package_at_hash.serialized_length()
             + self.create_contract_user_group.serialized_length()
+            + self
+                .add_contract_version_with_message_topics
+                .serialized_length()
             + self.add_contract_version.serialized_length()
             + self.add_package_version.serialized_length()
             + self.disable_contract_version.serialized_length()
@@ -822,6 +847,7 @@ impl FromBytes for HostFunctionCosts {
         let (read_host_buffer, rem) = FromBytes::from_bytes(rem)?;
         let (create_contract_package_at_hash, rem) = FromBytes::from_bytes(rem)?;
         let (create_contract_user_group, rem) = FromBytes::from_bytes(rem)?;
+        let (add_contract_version_with_message_topics, rem) = FromBytes::from_bytes(rem)?;
         let (add_contract_version, rem) = FromBytes::from_bytes(rem)?;
         let (add_package_version, rem) = FromBytes::from_bytes(rem)?;
         let (disable_contract_version, rem) = FromBytes::from_bytes(rem)?;
@@ -872,6 +898,7 @@ impl FromBytes for HostFunctionCosts {
                 read_host_buffer,
                 create_contract_package_at_hash,
                 create_contract_user_group,
+                add_contract_version_with_message_topics,
                 add_contract_version,
                 add_package_version,
                 disable_contract_version,
@@ -930,6 +957,7 @@ impl Distribution<HostFunctionCosts> for Standard {
             read_host_buffer: rng.gen(),
             create_contract_package_at_hash: rng.gen(),
             create_contract_user_group: rng.gen(),
+            add_contract_version_with_message_topics: rng.gen(),
             add_contract_version: rng.gen(),
             add_package_version: rng.gen(),
             disable_contract_version: rng.gen(),
@@ -997,6 +1025,7 @@ pub mod gens {
             read_host_buffer in host_function_cost_arb(),
             create_contract_package_at_hash in host_function_cost_arb(),
             create_contract_user_group in host_function_cost_arb(),
+            add_contract_version_with_message_topics in host_function_cost_arb(),
             add_contract_version in host_function_cost_arb(),
             add_package_version in host_function_cost_arb(),
             disable_contract_version in host_function_cost_arb(),
@@ -1047,6 +1076,7 @@ pub mod gens {
                 read_host_buffer,
                 create_contract_package_at_hash,
                 create_contract_user_group,
+                add_contract_version_with_message_topics,
                 add_contract_version,
                 add_package_version,
                 disable_contract_version,

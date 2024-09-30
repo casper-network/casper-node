@@ -660,6 +660,82 @@ where
                 )?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }
+            FunctionIndex::AddContractVersionWithMessageTopics => {
+                // args(0) = pointer to package key in wasm memory
+                // args(1) = size of package key in wasm memory
+                // args(2) = pointer to entrypoints in wasm memory
+                // args(3) = size of entrypoints in wasm memory
+                // args(4) = pointer to named keys in wasm memory
+                // args(5) = size of named keys in wasm memory
+                // args(6) = pointer to output buffer for serialized key
+                // args(7) = size of output buffer
+                // args(8) = pointer to bytes written
+                let (
+                    contract_package_hash_ptr,
+                    contract_package_hash_size,
+                    version_ptr,
+                    entry_points_ptr,
+                    entry_points_size,
+                    named_keys_ptr,
+                    named_keys_size,
+                    message_topics,
+                    message_topics_size,
+                    output_ptr,
+                    output_size,
+                ) = Args::parse(args)?;
+                self.charge_host_function_call(
+                    &host_function_costs.add_contract_version_with_message_topics,
+                    [
+                        contract_package_hash_ptr,
+                        contract_package_hash_size,
+                        version_ptr,
+                        entry_points_ptr,
+                        entry_points_size,
+                        named_keys_ptr,
+                        named_keys_size,
+                        message_topics,
+                        message_topics_size,
+                        output_ptr,
+                        output_size,
+                    ],
+                )?;
+
+                let contract_package_hash: ContractPackageHash =
+                    self.t_from_mem(contract_package_hash_ptr, contract_package_hash_size)?;
+                let package_hash = PackageHash::new(contract_package_hash.value());
+                let entry_points: EntryPoints =
+                    self.t_from_mem(entry_points_ptr, entry_points_size)?;
+                let named_keys: NamedKeys = self.t_from_mem(named_keys_ptr, named_keys_size)?;
+                let message_topics: BTreeMap<String, MessageTopicOperation> =
+                    self.t_from_mem(message_topics, message_topics_size)?;
+
+                // Check that the names of the topics that are added are within the configured
+                // limits.
+                let message_limits = self.context.engine_config().wasm_config().messages_limits();
+                for (topic_name, _) in
+                    message_topics
+                        .iter()
+                        .filter(|(_, operation)| match operation {
+                            MessageTopicOperation::Add => true,
+                        })
+                {
+                    if topic_name.len() > message_limits.max_topic_name_size() as usize {
+                        return Ok(Some(RuntimeValue::I32(api_error::i32_from(Err(
+                            ApiError::MaxTopicNameSizeExceeded,
+                        )))));
+                    }
+                }
+
+                let ret = self.add_contract_version(
+                    package_hash,
+                    version_ptr,
+                    entry_points,
+                    named_keys,
+                    message_topics,
+                    output_ptr,
+                )?;
+                Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
+            }
             FunctionIndex::AddPackageVersion => {
                 // args(0)  = pointer to package hash in wasm memory
                 // args(1)  = size of package hash in wasm memory

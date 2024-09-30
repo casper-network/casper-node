@@ -28,11 +28,12 @@ use casper_storage::{
         BiddingResult, BidsRequest, BlockRewardsRequest, BlockRewardsResult, BlockStore,
         DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, FeeRequest, FeeResult,
         FlushRequest, FlushResult, GenesisRequest, GenesisResult, HandleFeeMode, HandleFeeRequest,
-        HandleFeeResult, ProofHandling, ProtocolUpgradeRequest, ProtocolUpgradeResult,
-        PruneRequest, PruneResult, QueryRequest, QueryResult, RoundSeigniorageRateRequest,
-        RoundSeigniorageRateResult, StepRequest, StepResult, SystemEntityRegistryPayload,
-        SystemEntityRegistryRequest, SystemEntityRegistryResult, SystemEntityRegistrySelector,
-        TotalSupplyRequest, TotalSupplyResult, TransferRequest, TrieRequest,
+        HandleFeeResult, MessageTopicsRequest, MessageTopicsResult, ProofHandling,
+        ProtocolUpgradeRequest, ProtocolUpgradeResult, PruneRequest, PruneResult, QueryRequest,
+        QueryResult, RoundSeigniorageRateRequest, RoundSeigniorageRateResult, StepRequest,
+        StepResult, SystemEntityRegistryPayload, SystemEntityRegistryRequest,
+        SystemEntityRegistryResult, SystemEntityRegistrySelector, TotalSupplyRequest,
+        TotalSupplyResult, TransferRequest, TrieRequest,
     },
     global_state::{
         state::{
@@ -50,7 +51,7 @@ use casper_storage::{
 
 use casper_types::{
     account::AccountHash,
-    addressable_entity::{EntityKindTag, NamedKeyAddr, NamedKeys},
+    addressable_entity::{EntityKindTag, MessageTopics, NamedKeyAddr, NamedKeys},
     bytesrepr::{self, FromBytes},
     contracts::ContractHash,
     execution::Effects,
@@ -67,8 +68,8 @@ use casper_types::{
     },
     AccessRights, AddressableEntity, AddressableEntityHash, AuctionCosts, BlockGlobalAddr,
     BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash, CLTyped, CLValue, Contract, Digest,
-    EntityAddr, EntryPoints, EraId, FeeHandling, Gas, HandlePaymentCosts, HoldBalanceHandling,
-    InitiatorAddr, Key, KeyTag, MintCosts, Motes, Package, PackageHash, Phase,
+    EntityAddr, EntryPoints, EraId, FeeHandling, Gas, HandlePaymentCosts, HashAddr,
+    HoldBalanceHandling, InitiatorAddr, Key, KeyTag, MintCosts, Motes, Package, PackageHash, Phase,
     ProtocolUpgradeConfig, ProtocolVersion, PublicKey, RefundHandling, StoredValue,
     SystemHashRegistry, TransactionHash, TransactionV1Hash, URef, OS_PAGE_SIZE, U512,
 };
@@ -644,6 +645,24 @@ where
         }
 
         Err(format!("{:?}", query_result))
+    }
+
+    pub fn message_topics(
+        &self,
+        maybe_post_state: Option<Digest>,
+        hash_addr: HashAddr,
+    ) -> Result<MessageTopics, String> {
+        let post_state = maybe_post_state
+            .or(self.post_state_hash)
+            .expect("builder must have a post-state hash");
+
+        let request = MessageTopicsRequest::new(post_state, hash_addr);
+        let result = self.data_access_layer.message_topics(request);
+        if let MessageTopicsResult::Success { message_topics } = result {
+            return Ok(message_topics);
+        }
+
+        Err(format!("{:?}", result))
     }
 
     /// Query a named key in global state by account hash.

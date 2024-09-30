@@ -185,7 +185,6 @@ impl<T: StateReader> StateTracker<T> {
             main_purse,
             associated_keys,
             ActionThresholds::default(),
-            MessageTopics::default(),
             EntityKind::Account(account_hash),
         );
 

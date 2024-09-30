@@ -5,8 +5,8 @@ use assert_matches::assert_matches;
 use casper_types::{
     account::AccountHash,
     addressable_entity::{
-        ActionThresholds, AddressableEntityHash, AssociatedKeys, MessageTopics, NamedKeyAddr,
-        NamedKeyValue, NamedKeys, Weight,
+        ActionThresholds, AddressableEntityHash, AssociatedKeys, NamedKeyAddr, NamedKeyValue,
+        NamedKeys, Weight,
     },
     contracts::EntryPoints as ContractEntryPoints,
     execution::{Effects, TransformKindV2, TransformV2},
@@ -553,7 +553,6 @@ proptest! {
             URef::default(),
             AssociatedKeys::default(),
             ActionThresholds::default(),
-            MessageTopics::default(),
             EntityKind::SmartContract(TransactionRuntime::VmCasperV1)
         ));
         let contract_key = Key::AddressableEntity(EntityAddr::SmartContract(hash));
@@ -599,7 +598,6 @@ proptest! {
             purse,
             associated_keys,
             ActionThresholds::default(),
-            MessageTopics::default(),
             EntityKind::Account(address)
         );
 
@@ -646,7 +644,6 @@ proptest! {
             URef::default(),
             AssociatedKeys::default(),
             ActionThresholds::default(),
-            MessageTopics::default(),
             EntityKind::SmartContract(TransactionRuntime::VmCasperV1)
         ));
         let contract_key = Key::AddressableEntity(EntityAddr::SmartContract(hash));
@@ -743,7 +740,6 @@ fn query_for_circular_references_should_fail() {
         URef::default(),
         AssociatedKeys::default(),
         ActionThresholds::default(),
-        MessageTopics::default(),
         EntityKind::SmartContract(TransactionRuntime::VmCasperV1),
     ));
 
@@ -806,7 +802,6 @@ fn validate_query_proof_should_work() {
         URef::default(),
         AssociatedKeys::new(AccountHash::new([3; 32]), Weight::new(1)),
         ActionThresholds::default(),
-        MessageTopics::default(),
         EntityKind::Account(AccountHash::new([3; 32])),
     ));
 
@@ -818,7 +813,6 @@ fn validate_query_proof_should_work() {
         URef::default(),
         AssociatedKeys::default(),
         ActionThresholds::default(),
-        MessageTopics::default(),
         EntityKind::SmartContract(TransactionRuntime::VmCasperV1),
     ));
 
@@ -1077,7 +1071,6 @@ fn query_with_large_depth_with_fixed_path_should_fail() {
             URef::default(),
             AssociatedKeys::default(),
             ActionThresholds::default(),
-            MessageTopics::default(),
             EntityKind::SmartContract(TransactionRuntime::VmCasperV1),
         ));
         pairs.push((contract_key, contract));
@@ -1144,7 +1137,6 @@ fn query_with_large_depth_with_urefs_should_fail() {
         URef::default(),
         AssociatedKeys::default(),
         ActionThresholds::default(),
-        MessageTopics::default(),
         EntityKind::SmartContract(casper_types::TransactionRuntime::VmCasperV1),
     ));
     let contract_key = Key::AddressableEntity(contract_addr);

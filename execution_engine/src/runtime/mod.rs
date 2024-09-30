@@ -42,6 +42,7 @@ use casper_types::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     contract_messages::{
         Message, MessageAddr, MessagePayload, MessageTopicOperation, MessageTopicSummary,
+        TopicNameHash,
     },
     contracts::{
         ContractHash, ContractPackage, ContractPackageHash, ContractPackageStatus,
@@ -2171,6 +2172,7 @@ where
                 version_ptr,
                 entry_points,
                 named_keys,
+                message_topics,
                 output_ptr,
             )
         }
@@ -2183,6 +2185,7 @@ where
         version_ptr: u32,
         entry_points: EntryPoints,
         mut named_keys: NamedKeys,
+        message_topics: BTreeMap<String, MessageTopicOperation>,
         output_ptr: u32,
     ) -> Result<Result<(), ApiError>, ExecError> {
         self.context
@@ -2217,13 +2220,23 @@ where
         let major = protocol_version.value().major;
 
         // TODO: EE-1032 - Implement different ways of carrying on existing named keys
-        if let Some(previous_contract_hash) = contract_package.current_contract_hash() {
-            let previous_contract: Contract =
-                self.context.read_gs_typed(&previous_contract_hash.into())?;
+        let maybe_previous_hash =
+            if let Some(previous_contract_hash) = contract_package.current_contract_hash() {
+                let previous_contract: Contract =
+                    self.context.read_gs_typed(&previous_contract_hash.into())?;
 
-            let previous_named_keys = previous_contract.take_named_keys();
-            named_keys.append(previous_named_keys);
-        }
+                let previous_named_keys = previous_contract.take_named_keys();
+                named_keys.append(previous_named_keys);
+                Some(previous_contract_hash.value())
+            } else {
+                None
+            };
+
+        if let Err(err) =
+            self.carry_forward_message_topics(maybe_previous_hash, contract_hash, message_topics)?
+        {
+            return Ok(Err(err));
+        };
 
         let contract_package_hash = ContractPackageHash::new(contract_package_hash);
         let contract = Contract::new(
@@ -2303,41 +2316,20 @@ where
             previous_named_keys,
             action_thresholds,
             associated_keys,
-            mut previous_message_topics,
+            previous_hash_addr,
         ) = self.new_version_entity_parts(&package)?;
-
-        let max_topics_per_contract = self
-            .context
-            .engine_config()
-            .wasm_config()
-            .messages_limits()
-            .max_topics_per_contract();
-
-        let topics_to_add = message_topics
-            .iter()
-            .filter(|(_, operation)| match operation {
-                MessageTopicOperation::Add => true,
-            });
-        // Check if registering the new topics would exceed the limit per contract
-        if previous_message_topics.len() + topics_to_add.clone().count()
-            > max_topics_per_contract as usize
-        {
-            return Ok(Err(ApiError::from(MessageTopicError::MaxTopicsExceeded)));
-        }
-
-        // Extend the previous topics with the newly added ones.
-        for (new_topic, _) in topics_to_add {
-            let topic_name_hash = crypto::blake2b(new_topic.as_bytes()).into();
-            if let Err(e) = previous_message_topics.add_topic(new_topic.as_str(), topic_name_hash) {
-                return Ok(Err(e.into()));
-            }
-        }
 
         // We generate the byte code hash because a byte code record
         // must exist for a contract record to exist.
         let byte_code_hash = self.context.new_hash_address()?;
 
         let entity_hash = self.context.new_hash_address()?;
+
+        if let Err(err) =
+            self.carry_forward_message_topics(previous_hash_addr, entity_hash, message_topics)?
+        {
+            return Ok(Err(err));
+        };
 
         let protocol_version = self.context.protocol_version();
 
@@ -2383,23 +2375,12 @@ where
             main_purse,
             associated_keys,
             action_thresholds,
-            previous_message_topics.clone(),
             EntityKind::SmartContract(TransactionRuntime::VmCasperV1),
         );
         let entity_key = Key::AddressableEntity(entity_addr);
         self.context.metered_write_gs_unsafe(entity_key, entity)?;
         self.context
             .metered_write_gs_unsafe(package_hash, package)?;
-
-        for (topic_name, topic_hash) in previous_message_topics.iter() {
-            let topic_key = Key::message_topic(entity_hash, *topic_hash);
-            let summary = StoredValue::MessageTopic(MessageTopicSummary::new(
-                0,
-                self.context.get_blocktime(),
-                topic_name.clone(),
-            ));
-            self.context.metered_write_gs_unsafe(topic_key, summary)?;
-        }
 
         // set return values to buffer
         {
@@ -2424,6 +2405,57 @@ where
         Ok(Ok(()))
     }
 
+    fn carry_forward_message_topics(
+        &mut self,
+        previous_hash_addr: Option<HashAddr>,
+        hash_addr: HashAddr,
+        message_topics: BTreeMap<String, MessageTopicOperation>,
+    ) -> Result<Result<(), ApiError>, ExecError> {
+        let mut previous_message_topics = match previous_hash_addr {
+            Some(previous_hash) => self.context.get_message_topics(previous_hash)?,
+            None => MessageTopics::default(),
+        };
+
+        let max_topics_per_contract = self
+            .context
+            .engine_config()
+            .wasm_config()
+            .messages_limits()
+            .max_topics_per_contract();
+
+        let topics_to_add = message_topics
+            .iter()
+            .filter(|(_, operation)| match operation {
+                MessageTopicOperation::Add => true,
+            });
+        // Check if registering the new topics would exceed the limit per contract
+        if previous_message_topics.len() + topics_to_add.clone().count()
+            > max_topics_per_contract as usize
+        {
+            return Ok(Err(ApiError::from(MessageTopicError::MaxTopicsExceeded)));
+        }
+
+        // Extend the previous topics with the newly added ones.
+        for (new_topic, _) in topics_to_add {
+            let topic_name_hash = crypto::blake2b(new_topic.as_bytes()).into();
+            if let Err(e) = previous_message_topics.add_topic(new_topic.as_str(), topic_name_hash) {
+                return Ok(Err(e.into()));
+            }
+        }
+
+        for (topic_name, topic_hash) in previous_message_topics.iter() {
+            let topic_key = Key::message_topic(hash_addr, *topic_hash);
+            let summary = StoredValue::MessageTopic(MessageTopicSummary::new(
+                0,
+                self.context.get_blocktime(),
+                topic_name.clone(),
+            ));
+            self.context.metered_write_gs_unsafe(topic_key, summary)?;
+        }
+
+        Ok(Ok(()))
+    }
+
     fn new_version_entity_parts(
         &mut self,
         package: &Package,
@@ -2433,7 +2465,7 @@ where
             NamedKeys,
             ActionThresholds,
             AssociatedKeys,
-            MessageTopics,
+            Option<HashAddr>,
         ),
         ExecError,
     > {
@@ -2491,10 +2523,6 @@ where
 
             let associated_keys = previous_entity.associated_keys().clone();
 
-            let previous_message_topics = self
-                .context
-                .get_message_topics(previous_entity_hash.value())?;
-
             let previous_named_keys = self.context.get_named_keys(previous_entity_key)?;
 
             return Ok((
@@ -2502,7 +2530,7 @@ where
                 previous_named_keys,
                 action_thresholds,
                 associated_keys,
-                previous_message_topics,
+                Some(previous_entity_hash.value()),
             ));
         }
 
@@ -2511,7 +2539,7 @@ where
             NamedKeys::new(),
             ActionThresholds::default(),
             AssociatedKeys::new(self.context.get_caller(), Weight::new(1)),
-            MessageTopics::default(),
+            None,
         ))
     }
 
@@ -3101,7 +3129,6 @@ where
                 let package_hash = PackageHash::new(self.context.new_hash_address()?);
 
                 let associated_keys = AssociatedKeys::new(target, Weight::new(1));
-                let message_topics = MessageTopics::default();
 
                 let entity = AddressableEntity::new(
                     package_hash,
@@ -3110,7 +3137,6 @@ where
                     main_purse,
                     associated_keys,
                     ActionThresholds::default(),
-                    message_topics,
                     EntityKind::Account(target),
                 );
 

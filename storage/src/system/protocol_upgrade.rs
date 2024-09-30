@@ -7,8 +7,8 @@ use tracing::{debug, error, info};
 
 use casper_types::{
     addressable_entity::{
-        ActionThresholds, AssociatedKeys, EntityKind, MessageTopics, NamedKeyAddr, NamedKeyValue,
-        NamedKeys, Weight,
+        ActionThresholds, AssociatedKeys, EntityKind, NamedKeyAddr, NamedKeyValue, NamedKeys,
+        Weight,
     },
     bytesrepr::{self, ToBytes},
     contracts::ContractHash,
@@ -376,7 +376,6 @@ where
             URef::default(),
             AssociatedKeys::default(),
             ActionThresholds::default(),
-            MessageTopics::default(),
             EntityKind::System(system_entity_type),
         );
 
@@ -655,7 +654,6 @@ where
             main_purse,
             associated_keys,
             ActionThresholds::default(),
-            MessageTopics::default(),
             EntityKind::Account(account_hash),
         );
 

@@ -316,7 +316,6 @@ fn test_effects(rng: &mut TestRng) -> TestEffects {
             main_purse,
             AssociatedKeys::default(),
             ActionThresholds::default(),
-            MessageTopics::default(),
             EntityKind::SmartContract(TransactionRuntime::VmCasperV1),
         ))),
     ));

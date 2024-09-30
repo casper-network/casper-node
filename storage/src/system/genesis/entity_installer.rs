@@ -671,7 +671,6 @@ where
             main_purse,
             associated_keys,
             ActionThresholds::default(),
-            MessageTopics::default(),
             entity_kind,
         );
 

@@ -21,12 +21,11 @@ use casper_storage::{
     AddressGenerator,
 };
 
-use casper_types::addressable_entity::MessageTopics;
 use casper_types::{
     account::{Account, AccountHash},
     addressable_entity::{
-        ActionType, AddKeyFailure, EntityKindTag, MessageTopicError, NamedKeyAddr, NamedKeyValue,
-        NamedKeys, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure, Weight,
+        ActionType, AddKeyFailure, EntityKindTag, MessageTopicError, MessageTopics, NamedKeyAddr,
+        NamedKeyValue, NamedKeys, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure, Weight,
     },
     bytesrepr::ToBytes,
     contract_messages::{Message, MessageAddr, MessageTopicSummary, Messages, TopicNameHash},
@@ -1644,8 +1643,11 @@ where
         };
 
         // Take the addressable entity out of the global state
-        let entity = {
-            let mut entity: AddressableEntity = self.read_gs_typed(&entity_key)?;
+        let message_topics = {
+            let mut message_topics = self
+                .tracking_copy
+                .borrow_mut()
+                .get_message_topics(entity_addr.value())?;
 
             let max_topics_per_contract = self
                 .engine_config
@@ -1653,14 +1655,14 @@ where
                 .messages_limits()
                 .max_topics_per_contract();
 
-            if entity.message_topics().len() >= max_topics_per_contract as usize {
+            if message_topics.len() >= max_topics_per_contract as usize {
                 return Ok(Err(MessageTopicError::MaxTopicsExceeded));
             }
 
-            if let Err(e) = entity.add_message_topic(topic_name, topic_name_hash) {
+            if let Err(e) = message_topics.add_topic(topic_name, topic_name_hash) {
                 return Ok(Err(e));
             }
-            entity
+            message_topics
         };
 
         let topic_key = Key::Message(MessageAddr::new_topic_addr(
@@ -1673,9 +1675,9 @@ where
             topic_name.to_string(),
         ));
 
-        let entity_value = self.addressable_entity_to_validated_value(entity)?;
-
-        self.metered_write_gs_unsafe(entity_key, entity_value)?;
+        // let entity_value = self.addressable_entity_to_validated_value(entity)?;
+        //
+        // self.metered_write_gs_unsafe(entity_key, entity_value)?;
         self.metered_write_gs_unsafe(topic_key, summary)?;
 
         Ok(Ok(()))

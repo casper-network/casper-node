@@ -467,7 +467,6 @@ fn sample_contract() -> AddressableEntity {
         URef::default(),
         AssociatedKeys::default(),
         ActionThresholds::default(),
-        MessageTopics::default(),
         EntityKind::SmartContract(TransactionRuntime::VmCasperV1),
     )
 }

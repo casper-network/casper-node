@@ -464,7 +464,7 @@ extern "C" {
         existing_urefs_size: usize,
         output_size_ptr: *mut usize,
     ) -> i32;
-    /// Adds new contract version to a contract package.
+    /// Adds new contract version to a contract package without message topics.
     ///
     /// # Arguments
     ///
@@ -490,6 +490,35 @@ extern "C" {
         output_ptr: *mut u8,
         output_size: usize,
         bytes_written_ptr: *mut usize,
+    ) -> i32;
+    /// Adds a new version to a contract package with message topics.
+    ///
+    /// # Arguments
+    ///
+    /// * `contract_package_hash_ptr` - pointer to serialized package hash.
+    /// * `contract_package_hash_size` - size of package hash in serialized form.
+    /// * `version_ptr` - output parameter where new version assigned by host is set
+    /// * `entry_points_ptr` - pointer to serialized [`casper_types::EntryPoints`]
+    /// * `entry_points_size` - size of serialized [`casper_types::EntryPoints`]
+    /// * `named_keys_ptr` - pointer to serialized [`casper_types::contracts::NamedKeys`]
+    /// * `named_keys_size` - size of serialized [`casper_types::contracts::NamedKeys`]
+    /// * `message_topics_ptr` - pointer to serialized BTreeMap<String, MessageTopicOperation>
+    ///   containing message topic names and the operation to pe performed on each one.
+    /// * `message_topics_size` - size of serialized BTreeMap<String, MessageTopicOperation>
+    /// * `output_ptr` - pointer to a memory where host assigned contract hash is set to
+    /// * `output_size` - expected width of output (currently 32)
+    pub fn casper_add_contract_version_with_message_topics(
+        contract_package_hash_ptr: *const u8,
+        contract_package_hash_size: usize,
+        version_ptr: *const u32,
+        entry_points_ptr: *const u8,
+        entry_points_size: usize,
+        named_keys_ptr: *const u8,
+        named_keys_size: usize,
+        message_topics_ptr: *const u8,
+        message_topics_size: usize,
+        output_ptr: *mut u8,
+        output_size: usize,
     ) -> i32;
     /// Adds a new version to a package.
     ///

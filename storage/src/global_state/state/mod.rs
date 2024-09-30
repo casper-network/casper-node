@@ -57,14 +57,14 @@ use crate::{
         BlockRewardsResult, EntryPointsRequest, EntryPointsResult, EraValidatorsRequest,
         ExecutionResultsChecksumRequest, ExecutionResultsChecksumResult, FeeError, FeeRequest,
         FeeResult, FlushRequest, FlushResult, GenesisRequest, GenesisResult, HandleRefundMode,
-        HandleRefundRequest, HandleRefundResult, InsufficientBalanceHandling, ProofHandling,
-        ProofsResult, ProtocolUpgradeRequest, ProtocolUpgradeResult, PruneRequest, PruneResult,
-        PutTrieRequest, PutTrieResult, QueryRequest, QueryResult, RoundSeigniorageRateRequest,
-        RoundSeigniorageRateResult, SeigniorageRecipientsRequest, SeigniorageRecipientsResult,
-        StepError, StepRequest, StepResult, SystemEntityRegistryPayload,
-        SystemEntityRegistryRequest, SystemEntityRegistryResult, SystemEntityRegistrySelector,
-        TotalSupplyRequest, TotalSupplyResult, TrieRequest, TrieResult,
-        EXECUTION_RESULTS_CHECKSUM_NAME,
+        HandleRefundRequest, HandleRefundResult, InsufficientBalanceHandling, MessageTopicsRequest,
+        MessageTopicsResult, ProofHandling, ProofsResult, ProtocolUpgradeRequest,
+        ProtocolUpgradeResult, PruneRequest, PruneResult, PutTrieRequest, PutTrieResult,
+        QueryRequest, QueryResult, RoundSeigniorageRateRequest, RoundSeigniorageRateResult,
+        SeigniorageRecipientsRequest, SeigniorageRecipientsResult, StepError, StepRequest,
+        StepResult, SystemEntityRegistryPayload, SystemEntityRegistryRequest,
+        SystemEntityRegistryResult, SystemEntityRegistrySelector, TotalSupplyRequest,
+        TotalSupplyResult, TrieRequest, TrieResult, EXECUTION_RESULTS_CHECKSUM_NAME,
     },
     global_state::{
         error::Error as GlobalStateError,
@@ -683,6 +683,20 @@ pub trait StateProvider {
             },
             Ok(None) => QueryResult::RootNotFound,
             Err(err) => QueryResult::Failure(TrackingCopyError::Storage(err)),
+        }
+    }
+
+    /// Message topics request.
+    fn message_topics(&self, message_topics_request: MessageTopicsRequest) -> MessageTopicsResult {
+        let mut tc = match self.tracking_copy(message_topics_request.state_hash()) {
+            Ok(Some(tracking_copy)) => tracking_copy,
+            Ok(None) => return MessageTopicsResult::RootNotFound,
+            Err(err) => return MessageTopicsResult::Failure(err.into()),
+        };
+
+        match tc.get_message_topics(message_topics_request.hash_addr()) {
+            Ok(message_topics) => MessageTopicsResult::Success { message_topics },
+            Err(tce) => MessageTopicsResult::Failure(tce),
         }
     }
 

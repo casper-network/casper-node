@@ -13,6 +13,7 @@ mod groups;
 mod host_function_costs;
 // TODO: Revisit this module and check relevancy.
 // mod manage_groups;
+mod contract_messages;
 mod private_chain;
 mod regression;
 mod stack_overflow;

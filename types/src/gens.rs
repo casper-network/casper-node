@@ -537,7 +537,6 @@ pub fn addressable_entity_arb() -> impl Strategy<Value = AddressableEntity> {
         uref_arb(),
         associated_keys_arb(),
         action_thresholds_arb(),
-        message_topics_arb(),
         entity_kind_arb(),
     )
         .prop_map(
@@ -548,7 +547,6 @@ pub fn addressable_entity_arb() -> impl Strategy<Value = AddressableEntity> {
                 main_purse,
                 associated_keys,
                 action_thresholds,
-                message_topics,
                 entity_kind,
             )| {
                 AddressableEntity::new(
@@ -558,7 +556,6 @@ pub fn addressable_entity_arb() -> impl Strategy<Value = AddressableEntity> {
                     main_purse,
                     associated_keys,
                     action_thresholds,
-                    message_topics,
                     entity_kind,
                 )
             },

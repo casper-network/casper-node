@@ -4,8 +4,7 @@ use tracing::error;
 use casper_types::{
     account::AccountHash,
     addressable_entity::{
-        ActionThresholds, AssociatedKeys, MessageTopics, NamedKeyAddr, NamedKeyValue, NamedKeys,
-        Weight,
+        ActionThresholds, AssociatedKeys, NamedKeyAddr, NamedKeyValue, NamedKeys, Weight,
     },
     contracts::ContractHash,
     system::{
@@ -483,7 +482,6 @@ where
             main_purse,
             associated_keys,
             action_thresholds,
-            MessageTopics::default(),
             EntityKind::Account(account_hash),
         );
 
@@ -578,7 +576,6 @@ where
                 account.main_purse(),
                 associated_keys,
                 action_thresholds,
-                MessageTopics::default(),
                 EntityKind::Account(account_hash),
             );
             let entity_key = entity.entity_key(entity_hash);
@@ -655,7 +652,6 @@ where
                 purse,
                 AssociatedKeys::default(),
                 ActionThresholds::default(),
-                MessageTopics::default(),
                 EntityKind::SmartContract(TransactionRuntime::VmCasperV1),
             );
 

@@ -67,7 +67,6 @@ impl MockStateReader {
             main_purse,
             AssociatedKeys::new(account_hash, Weight::new(1)),
             ActionThresholds::default(),
-            MessageTopics::default(),
             EntityKind::Account(account_hash),
         );
 
