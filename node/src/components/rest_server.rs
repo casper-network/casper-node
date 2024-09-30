@@ -52,7 +52,7 @@ use crate::{
         },
         EffectBuilder, EffectExt, Effects,
     },
-    reactor::{main_reactor::MainEvent},
+    reactor::main_reactor::MainEvent,
     types::{ChainspecInfo, StatusFeed},
     utils::{self, ListeningError},
     NodeRng,
