@@ -931,6 +931,7 @@ impl Key {
     /// `None`.
     pub fn into_package_addr(self) -> Option<PackageAddr> {
         match self {
+            Key::Hash(hash) => Some(hash),
             Key::Package(package_addr) => Some(package_addr),
             _ => None,
         }
@@ -1154,11 +1155,11 @@ impl Key {
 
     /// Return true if the inner Key is of the smart contract type.
     pub fn is_smart_contract_key(&self) -> bool {
-        if let Self::AddressableEntity(EntityAddr::SmartContract(_)) = self {
-            return true;
+        match self {
+            Self::AddressableEntity(EntityAddr::SmartContract(_)) => true,
+            Self::Hash(_) => true,
+            _ => false,
         }
-
-        false
     }
 
     /// Returns true if the key is of type [`Key::NamedKey`] and its Entry variant.

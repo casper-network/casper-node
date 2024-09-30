@@ -1,5 +1,5 @@
 use num_traits::Zero;
-use std::cell::RefCell;
+use std::{cell::RefCell, collections::BTreeMap};
 
 use casper_engine_test_support::{
     ChainspecConfig, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
@@ -8,7 +8,9 @@ use casper_engine_test_support::{
 use casper_types::{
     addressable_entity::MessageTopics,
     bytesrepr::ToBytes,
-    contract_messages::{MessageChecksum, MessagePayload, MessageTopicSummary, TopicNameHash},
+    contract_messages::{
+        MessageChecksum, MessagePayload, MessageTopicOperation, MessageTopicSummary, TopicNameHash,
+    },
     crypto, runtime_args, AddressableEntity, AddressableEntityHash, BlockGlobalAddr, BlockTime,
     CLValue, CoreConfig, Digest, HostFunction, HostFunctionCosts, Key, MessageLimits, OpcodeCosts,
     RuntimeArgs, StorageCosts, StoredValue, SystemConfig, WasmConfig, DEFAULT_MAX_STACK_HEIGHT,
@@ -95,6 +97,13 @@ fn upgrade_messages_emitter_contract(
         },
     )
     .build();
+
+    let new_topics = BTreeMap::from([(
+        MESSAGE_EMITTER_GENERIC_TOPIC.to_string(),
+        MessageTopicOperation::Add,
+    )]);
+
+    println!("{}", new_topics.into_bytes().unwrap().len());
 
     // Execute the request to upgrade the message emitting contract.
     // This will also register a new topic for the contract to emit messages on.
@@ -696,25 +705,24 @@ fn should_charge_expected_gas_for_storage() {
 
     let add_topic_cost = builder.borrow().last_exec_gas_cost().value();
 
-    // cost depends on the entity size since we store the topic names in the entity record.
-    let entity = query_view.entity();
     let default_topic_summary =
         MessageTopicSummary::new(0, BlockTime::new(0), topic_name.to_string());
-    let written_size_expected = StoredValue::MessageTopic(default_topic_summary.clone())
-        .serialized_length()
-        + StoredValue::AddressableEntity(entity).serialized_length();
+    let written_size_expected =
+        StoredValue::MessageTopic(default_topic_summary.clone()).serialized_length();
     assert_eq!(
         U512::from(written_size_expected * GAS_PER_BYTE_COST as usize),
         add_topic_cost
     );
 
-    // check that the storage cost charged is invariable with message size that is emitted.
+    let message_topic =
+        MessageTopicSummary::new(0, BlockTime::new(0), "generic_messages".to_string());
+    emit_message_with_suffix(&builder, "test", &contract_hash, DEFAULT_BLOCK_TIME);
+    // check that the storage cost charged is variable since the message topic hash a variable
+    // string field with message size that is emitted.
     let written_size_expected = StoredValue::Message(MessageChecksum([0; 32])).serialized_length()
-        + StoredValue::MessageTopic(default_topic_summary).serialized_length()
+        + StoredValue::MessageTopic(message_topic).serialized_length()
         + StoredValue::CLValue(CLValue::from_t((BlockTime::new(0), 0u64)).unwrap())
             .serialized_length();
-
-    emit_message_with_suffix(&builder, "test", &contract_hash, DEFAULT_BLOCK_TIME);
     let emit_message_gas_cost = builder.borrow().last_exec_gas_cost().value();
     assert_eq!(
         U512::from(written_size_expected * GAS_PER_BYTE_COST as usize),
@@ -722,6 +730,15 @@ fn should_charge_expected_gas_for_storage() {
     );
 
     emit_message_with_suffix(&builder, "test 12345", &contract_hash, DEFAULT_BLOCK_TIME);
+    let written_size_expected = StoredValue::Message(MessageChecksum([0; 32])).serialized_length()
+        + StoredValue::MessageTopic(MessageTopicSummary::new(
+            0,
+            BlockTime::new(0),
+            "generic_messages".to_string(),
+        ))
+        .serialized_length()
+        + StoredValue::CLValue(CLValue::from_t((BlockTime::new(0), 0u64)).unwrap())
+            .serialized_length();
     let emit_message_gas_cost = builder.borrow().last_exec_gas_cost().value();
     assert_eq!(
         U512::from(written_size_expected * GAS_PER_BYTE_COST as usize),

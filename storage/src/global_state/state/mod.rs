@@ -1636,6 +1636,7 @@ pub trait StateProvider {
                     Ok(value) => value,
                     Err(tce) => return HandleFeeResult::Failure(tce),
                 };
+                println!("{source_purse}");
                 let target_purse = match target.purse_uref(&mut tc.borrow_mut(), protocol_version) {
                     Ok(value) => value,
                     Err(tce) => return HandleFeeResult::Failure(tce),

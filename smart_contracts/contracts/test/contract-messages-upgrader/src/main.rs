@@ -11,15 +11,22 @@ use alloc::{
 };
 
 use casper_contract::{
-    contract_api::{runtime, storage},
+    contract_api,
+    contract_api::{runtime, runtime::revert, storage},
+    ext_ffi,
     unwrap_or_revert::UnwrapOrRevert,
 };
 
 use casper_types::{
     addressable_entity::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys},
+    api_error,
     api_error::ApiError,
+    bytesrepr,
+    bytesrepr::ToBytes,
     contract_messages::MessageTopicOperation,
-    runtime_args, CLType, CLTyped, EntryPointPayment, PackageHash, Parameter, RuntimeArgs,
+    contracts::ContractVersion,
+    runtime_args, AddressableEntityHash, CLType, CLTyped, EntryPointPayment, PackageHash,
+    Parameter, RuntimeArgs,
 };
 
 const ENTRY_POINT_INIT: &str = "init";
@@ -129,7 +136,7 @@ pub extern "C" fn call() {
     let message_emitter_package_hash: PackageHash = runtime::get_key(PACKAGE_HASH_KEY_NAME)
         .unwrap_or_revert()
         .into_package_addr()
-        .unwrap()
+        .unwrap_or_revert()
         .into();
 
     let mut named_keys = NamedKeys::new();

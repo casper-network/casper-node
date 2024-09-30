@@ -764,6 +764,8 @@ fn should_allow_transfer_to_system_in_a_native_transfer() {
         payment_purse_key.into_uref().unwrap()
     };
 
+    println!("payment {payment_purse_uref}");
+
     assert_eq!(
         builder.get_purse_balance(payment_purse_uref),
         U512::zero(),

@@ -828,11 +828,15 @@ where
         access_rights: ContextAccessRights,
         stack: RuntimeStack,
     ) -> Result<CLValue, ExecError> {
+        println!("calling handle payment");
         let gas_counter = self.gas_counter();
 
         let handle_payment_hash = self.context.get_system_contract(HANDLE_PAYMENT)?;
-        let handle_payment_key =
-            Key::addressable_entity_key(EntityKindTag::System, handle_payment_hash);
+        let handle_payment_key = if self.context.engine_config().enable_entity {
+            Key::AddressableEntity(EntityAddr::System(handle_payment_hash.value()))
+        } else {
+            Key::Hash(handle_payment_hash.value())
+        };
 
         let handle_payment_named_keys = self
             .context
@@ -1983,7 +1987,6 @@ where
                 .metered_write_gs_unsafe(Key::Package(addr), package)?;
             access_key
         } else {
-            println!("writing contract package");
             let (package, access_key) = self.create_contract_package(lock_status)?;
             self.context
                 .metered_write_gs_unsafe(Key::Hash(addr), package)?;
@@ -2188,6 +2191,7 @@ where
         message_topics: BTreeMap<String, MessageTopicOperation>,
         output_ptr: u32,
     ) -> Result<Result<(), ApiError>, ExecError> {
+        println!("in add by contract package");
         self.context
             .validate_key(&Key::Hash(contract_package_hash))?;
 
@@ -2214,7 +2218,7 @@ where
             ContractWasm::new(module_bytes)
         };
 
-        let contract_hash = self.context.new_hash_address()?;
+        let contract_hash: HashAddr = self.context.new_hash_address()?;
 
         let protocol_version = self.context.protocol_version();
         let major = protocol_version.value().major;
@@ -2235,6 +2239,7 @@ where
         if let Err(err) =
             self.carry_forward_message_topics(maybe_previous_hash, contract_hash, message_topics)?
         {
+            println!("{:?}", err);
             return Ok(Err(err));
         };
 
@@ -2411,6 +2416,7 @@ where
         hash_addr: HashAddr,
         message_topics: BTreeMap<String, MessageTopicOperation>,
     ) -> Result<Result<(), ApiError>, ExecError> {
+        println!("new topics: {:?}", message_topics);
         let mut previous_message_topics = match previous_hash_addr {
             Some(previous_hash) => self.context.get_message_topics(previous_hash)?,
             None => MessageTopics::default(),
@@ -2453,6 +2459,7 @@ where
             self.context.metered_write_gs_unsafe(topic_key, summary)?;
         }
 
+        println!("carry forward");
         Ok(Ok(()))
     }
 

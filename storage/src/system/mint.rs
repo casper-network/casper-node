@@ -66,10 +66,9 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
             None => return Err(Error::PurseNotFound),
         };
 
-        let new_balance = match source_available_balance.checked_sub(amount) {
-            Some(value) => value,
-            None => U512::zero(),
-        };
+        let new_balance = source_available_balance
+            .checked_sub(amount)
+            .unwrap_or_else(|| U512::zero());
         // change balance
         self.write_balance(purse, new_balance)?;
         // reduce total supply AFTER changing balance in case changing balance errors

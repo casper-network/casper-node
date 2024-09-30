@@ -305,10 +305,10 @@ pub struct HostFunctionCosts {
     pub create_contract_package_at_hash: HostFunction<[Cost; 2]>,
     /// Cost of calling the `create_contract_user_group` host function.
     pub create_contract_user_group: HostFunction<[Cost; 8]>,
-    /// Cost of calling the `add_package_version` host function.
-    pub add_contract_version_with_message_topics: HostFunction<[Cost; 11]>,
-    /// Cost of calling the `add_package_version` host function.
+    /// Cost of calling the `add_contract_version` host function.
     pub add_contract_version: HostFunction<[Cost; 10]>,
+    /// Cost of calling the `add_contract_version_with_message_topics` host function.
+    pub add_contract_version_with_message_topics: HostFunction<[Cost; 11]>,
     /// Cost of calling the `add_package_version` host function.
     pub add_package_version: HostFunction<[Cost; 11]>,
     /// Cost of calling the `disable_contract_version` host function.

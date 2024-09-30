@@ -36,6 +36,7 @@ pub(crate) enum FunctionIndex {
     GetMainPurseIndex,
     ReadHostBufferIndex,
     CreateContractPackageAtHash,
+    AddContractVersion,
     AddContractVersionWithMessageTopics,
     AddPackageVersion,
     DisableContractVersion,
@@ -60,7 +61,6 @@ pub(crate) enum FunctionIndex {
     ManageMessageTopic,
     EmitMessage,
     LoadCallerInformation,
-    AddContractVersion,
 }
 
 impl From<FunctionIndex> for usize {

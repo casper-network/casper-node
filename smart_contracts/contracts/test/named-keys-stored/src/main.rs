@@ -201,5 +201,5 @@ pub extern "C" fn call() {
 
     runtime::put_key(CONTRACT_VERSION, storage::new_uref(contract_version).into());
     runtime::put_key(CONTRACT_PACKAGE_HASH_NAME, contract_package_hash.into());
-    runtime::put_key(CONTRACT_HASH_NAME, Key::contract_entity_key(contract_hash));
+    runtime::put_key(CONTRACT_HASH_NAME, Key::Hash(contract_hash.value()));
 }
