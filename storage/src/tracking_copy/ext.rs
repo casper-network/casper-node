@@ -12,12 +12,11 @@ use crate::{
     tracking_copy::{TrackingCopy, TrackingCopyEntityExt, TrackingCopyError},
     KeyPrefix,
 };
-use casper_types::addressable_entity::MessageTopics;
-use casper_types::contract_messages::TopicNameHash;
 use casper_types::{
     account::AccountHash,
-    addressable_entity::NamedKeys,
+    addressable_entity::{MessageTopics, NamedKeys},
     bytesrepr::ToBytes,
+    contract_messages::TopicNameHash,
     contracts::ContractHash,
     global_state::TrieMerkleProof,
     system::{
