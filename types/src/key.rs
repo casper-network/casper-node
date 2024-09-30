@@ -1155,11 +1155,10 @@ impl Key {
 
     /// Return true if the inner Key is of the smart contract type.
     pub fn is_smart_contract_key(&self) -> bool {
-        match self {
-            Self::AddressableEntity(EntityAddr::SmartContract(_)) => true,
-            Self::Hash(_) => true,
-            _ => false,
-        }
+        matches!(
+            self,
+            Self::AddressableEntity(EntityAddr::SmartContract(_)) | Self::Hash(_)
+        )
     }
 
     /// Returns true if the key is of type [`Key::NamedKey`] and its Entry variant.

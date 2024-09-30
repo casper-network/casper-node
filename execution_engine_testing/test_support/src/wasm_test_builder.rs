@@ -646,6 +646,7 @@ where
         Err(format!("{:?}", query_result))
     }
 
+    /// Retrieves the message topics for the given hash addr.
     pub fn message_topics(
         &self,
         maybe_post_state: Option<Digest>,

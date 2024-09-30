@@ -11,9 +11,9 @@ use casper_types::{
     contract_messages::{
         MessageChecksum, MessagePayload, MessageTopicOperation, MessageTopicSummary, TopicNameHash,
     },
-    crypto, runtime_args, AddressableEntity, AddressableEntityHash, BlockGlobalAddr, BlockTime,
-    CLValue, CoreConfig, Digest, HostFunction, HostFunctionCosts, Key, MessageLimits, OpcodeCosts,
-    RuntimeArgs, StorageCosts, StoredValue, SystemConfig, WasmConfig, DEFAULT_MAX_STACK_HEIGHT,
+    crypto, runtime_args, AddressableEntityHash, BlockGlobalAddr, BlockTime, CLValue, CoreConfig,
+    Digest, HostFunction, HostFunctionCosts, Key, MessageLimits, OpcodeCosts, RuntimeArgs,
+    StorageCosts, StoredValue, SystemConfig, WasmConfig, DEFAULT_MAX_STACK_HEIGHT,
     DEFAULT_WASM_MAX_MEMORY, U512,
 };
 
@@ -183,20 +183,6 @@ impl<'a> ContractQueryView<'a> {
         Self {
             builder,
             contract_hash,
-        }
-    }
-
-    fn entity(&self) -> AddressableEntity {
-        let query_result = self
-            .builder
-            .borrow_mut()
-            .query(None, Key::Hash(self.contract_hash.value()), &[])
-            .expect("should query");
-
-        if let StoredValue::Contract(contract) = query_result {
-            AddressableEntity::from(contract)
-        } else {
-            panic!("Stored value is not a contract: {:?}", query_result);
         }
     }
 
@@ -682,7 +668,6 @@ fn should_charge_expected_gas_for_storage() {
         .run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let contract_hash = install_messages_emitter_contract(&builder, true);
-    let query_view = ContractQueryView::new(&builder, contract_hash);
 
     let topic_name = "cost_topic";
 

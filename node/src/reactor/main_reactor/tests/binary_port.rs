@@ -19,9 +19,7 @@ use casper_binary_port::{
 use casper_storage::global_state::state::CommitProvider;
 use casper_types::{
     account::AccountHash,
-    addressable_entity::{
-        ActionThresholds, AssociatedKeys, MessageTopics, NamedKeyAddr, NamedKeyValue,
-    },
+    addressable_entity::{ActionThresholds, AssociatedKeys, NamedKeyAddr, NamedKeyValue},
     bytesrepr::{FromBytes, ToBytes},
     contracts::{ContractHash, ContractPackage, ContractPackageHash},
     execution::{Effects, TransformKindV2, TransformV2},

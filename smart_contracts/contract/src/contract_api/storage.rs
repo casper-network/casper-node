@@ -2,7 +2,6 @@
 
 use alloc::{
     collections::{BTreeMap, BTreeSet},
-    fmt::format,
     format,
     string::String,
     vec,

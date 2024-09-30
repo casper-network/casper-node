@@ -69,6 +69,6 @@ pub extern "C" fn call() {
         Key::Hash(enabled_contract_hash.value()),
     );
 
-    storage::disable_contract_version(contract_package_hash, disabled_contract_hash.into())
+    storage::disable_contract_version(contract_package_hash, disabled_contract_hash)
         .unwrap_or_revert();
 }

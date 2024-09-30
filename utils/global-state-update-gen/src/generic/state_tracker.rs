@@ -8,7 +8,7 @@ use rand::Rng;
 
 use casper_types::{
     account::AccountHash,
-    addressable_entity::{ActionThresholds, AssociatedKeys, MessageTopics, Weight},
+    addressable_entity::{ActionThresholds, AssociatedKeys, Weight},
     system::auction::{
         BidAddr, BidKind, BidsExt, SeigniorageRecipientsSnapshot, UnbondingPurse, UnbondingPurses,
         WithdrawPurse, WithdrawPurses,

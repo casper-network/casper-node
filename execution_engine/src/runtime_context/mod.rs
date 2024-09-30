@@ -1636,14 +1636,13 @@ where
         topic_name: &str,
         topic_name_hash: TopicNameHash,
     ) -> Result<Result<(), MessageTopicError>, ExecError> {
-        let entity_key: Key = self.get_entity_key();
         let entity_addr = match self.base_key_to_entity_addr() {
             Ok(entity_addr) => entity_addr,
             Err(error) => return Err(error),
         };
 
         // Take the addressable entity out of the global state
-        let message_topics = {
+        {
             let mut message_topics = self
                 .tracking_copy
                 .borrow_mut()
@@ -1662,8 +1661,7 @@ where
             if let Err(e) = message_topics.add_topic(topic_name, topic_name_hash) {
                 return Ok(Err(e));
             }
-            message_topics
-        };
+        }
 
         let topic_key = Key::Message(MessageAddr::new_topic_addr(
             entity_addr.value(),
@@ -1675,9 +1673,6 @@ where
             topic_name.to_string(),
         ));
 
-        // let entity_value = self.addressable_entity_to_validated_value(entity)?;
-        //
-        // self.metered_write_gs_unsafe(entity_key, entity_value)?;
         self.metered_write_gs_unsafe(topic_key, summary)?;
 
         Ok(Ok(()))

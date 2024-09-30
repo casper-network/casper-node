@@ -7,9 +7,7 @@ use criterion::{black_box, criterion_group, criterion_main, Bencher, Criterion};
 
 use casper_types::{
     account::AccountHash,
-    addressable_entity::{
-        ActionThresholds, AddressableEntity, AssociatedKeys, EntityKind, MessageTopics,
-    },
+    addressable_entity::{ActionThresholds, AddressableEntity, AssociatedKeys, EntityKind},
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     system::auction::{Bid, Delegator, EraInfo, SeigniorageAllocation},
     AccessRights, AddressableEntityHash, ByteCodeHash, CLTyped, CLValue, DeployHash, DeployInfo,

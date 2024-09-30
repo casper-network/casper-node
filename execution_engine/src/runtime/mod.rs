@@ -42,7 +42,6 @@ use casper_types::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     contract_messages::{
         Message, MessageAddr, MessagePayload, MessageTopicOperation, MessageTopicSummary,
-        TopicNameHash,
     },
     contracts::{
         ContractHash, ContractPackage, ContractPackageHash, ContractPackageStatus,

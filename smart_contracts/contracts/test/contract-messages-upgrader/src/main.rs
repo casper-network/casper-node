@@ -11,22 +11,15 @@ use alloc::{
 };
 
 use casper_contract::{
-    contract_api,
-    contract_api::{runtime, runtime::revert, storage},
-    ext_ffi,
+    contract_api::{runtime, storage},
     unwrap_or_revert::UnwrapOrRevert,
 };
 
 use casper_types::{
     addressable_entity::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys},
-    api_error,
     api_error::ApiError,
-    bytesrepr,
-    bytesrepr::ToBytes,
     contract_messages::MessageTopicOperation,
-    contracts::ContractVersion,
-    runtime_args, AddressableEntityHash, CLType, CLTyped, EntryPointPayment, PackageHash,
-    Parameter, RuntimeArgs,
+    runtime_args, CLType, CLTyped, EntryPointPayment, PackageHash, Parameter, RuntimeArgs,
 };
 
 const ENTRY_POINT_INIT: &str = "init";

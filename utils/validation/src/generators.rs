@@ -9,7 +9,7 @@ use casper_types::{
         AssociatedKeys as AccountAssociatedKeys, Weight as AccountWeight,
     },
     addressable_entity::{
-        ActionThresholds, AddressableEntity, AssociatedKeys, EntityKind, MessageTopics, NamedKeys,
+        ActionThresholds, AddressableEntity, AssociatedKeys, EntityKind, NamedKeys,
     },
     system::{
         auction::{

@@ -688,7 +688,7 @@ pub trait StateProvider {
 
     /// Message topics request.
     fn message_topics(&self, message_topics_request: MessageTopicsRequest) -> MessageTopicsResult {
-        let mut tc = match self.tracking_copy(message_topics_request.state_hash()) {
+        let tc = match self.tracking_copy(message_topics_request.state_hash()) {
             Ok(Some(tracking_copy)) => tracking_copy,
             Ok(None) => return MessageTopicsResult::RootNotFound,
             Err(err) => return MessageTopicsResult::Failure(err.into()),

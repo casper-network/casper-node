@@ -68,7 +68,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
 
         let new_balance = source_available_balance
             .checked_sub(amount)
-            .unwrap_or_else(|| U512::zero());
+            .unwrap_or_else(U512::zero);
         // change balance
         self.write_balance(purse, new_balance)?;
         // reduce total supply AFTER changing balance in case changing balance errors
