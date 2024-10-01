@@ -83,9 +83,11 @@ const COMPONENT_NAME: &str = "binary_port";
 
 #[derive(Debug, DataSize)]
 pub(crate) struct BinaryPort {
+    #[data_size(skip)]
     state: ComponentState,
+    #[data_size(skip)]
     config: Arc<Config>,
-    /// The chainspec.
+    #[data_size(skip)]
     chainspec: Arc<Chainspec>,
     #[data_size(skip)]
     connection_limit: Arc<Semaphore>,

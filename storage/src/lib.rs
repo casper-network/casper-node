@@ -6,7 +6,6 @@
     html_logo_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Symbol_RGB.png"
 )]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
-#![allow(unexpected_cfgs)]
 
 pub mod address_generator;
 pub mod block_store;
