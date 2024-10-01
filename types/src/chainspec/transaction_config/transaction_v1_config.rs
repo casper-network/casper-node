@@ -323,7 +323,7 @@ impl TransactionV1Config {
             self.native_auction_lane.max_transaction_count = auction_count;
         }
         if let Some(install_upgrade) = install {
-            self.native_auction_lane.max_transaction_count = install_upgrade;
+            self.install_upgrade_lane.max_transaction_count = install_upgrade;
         }
         if let Some(large_limit) = large {
             for lane in self.wasm_lanes.iter_mut() {

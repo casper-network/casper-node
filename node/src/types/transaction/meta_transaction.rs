@@ -266,12 +266,12 @@ impl Display for MetaTransaction {
 #[cfg(test)]
 mod proptests {
     use super::*;
-    use casper_types::gens::transaction_arb;
+    use casper_types::gens::legal_transaction_arb;
     use proptest::prelude::*;
 
     proptest! {
         #[test]
-        fn construction_roundtrip(transaction in transaction_arb()) {
+        fn construction_roundtrip(transaction in legal_transaction_arb()) {
             let maybe_transaction = MetaTransaction::from(&transaction, &TransactionConfig::default());
             assert!(maybe_transaction.is_ok());
         }

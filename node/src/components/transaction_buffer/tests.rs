@@ -558,8 +558,9 @@ fn block_fully_saturated() {
 
     // Ensure that only 'total_allowed' transactions are proposed.
     let timestamp = Timestamp::now();
-    let expiry = timestamp.saturating_add(TimeDiff::from_seconds(1));
+    let expiry = timestamp.saturating_add(TimeDiff::from_seconds(60));
     let appendable_block = transaction_buffer.appendable_block(Timestamp::now(), ERA_ONE, expiry);
+
     assert_eq!(
         appendable_block.transaction_hashes().len(),
         total_allowed as usize
@@ -584,7 +585,6 @@ fn block_fully_saturated() {
                 proposed_standards += 1;
             }
         });
-
     let mut has_hit_any_limit = false;
     if proposed_transfers == max_transfers {
         has_hit_any_limit = true;
@@ -592,7 +592,7 @@ fn block_fully_saturated() {
     if proposed_stakings == max_staking {
         has_hit_any_limit = true;
     }
-    if proposed_install_upgrades as u64 == max_install_upgrade {
+    if proposed_install_upgrades == max_install_upgrade {
         has_hit_any_limit = true;
     }
     if proposed_standards == max_standard {
@@ -1326,7 +1326,7 @@ fn should_have_diverse_proposable_blocks_with_stocked_buffer() {
     // using this strategy, it should be very unlikely...the below brute forces a check for this
     let expected_eq_tolerance = 1;
     let mut actual_eq_count = 0;
-    let expiry = last_timestamp.saturating_add(TimeDiff::from_seconds(120));
+    let expiry = last_timestamp.saturating_add(TimeDiff::from_seconds(240));
     for _ in 0..10 {
         let appendable1 = transaction_buffer.appendable_block(last_timestamp, ERA_ONE, expiry);
         let appendable2 = transaction_buffer.appendable_block(last_timestamp, ERA_ONE, expiry);

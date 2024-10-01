@@ -83,19 +83,19 @@ impl AppendableBlock {
         if expires < self.timestamp {
             return Err(AddError::Expired);
         }
-        let category = footprint.lane_id;
+        let lane_id = footprint.lane_id;
         let limit = self
             .transaction_config
             .transaction_v1_config
-            .get_max_transaction_count(category);
+            .get_max_transaction_count(lane_id);
         // check total count by category
         let count = self
             .transactions
             .iter()
-            .filter(|(_, item)| item.lane_id == category)
+            .filter(|(_, item)| item.lane_id == lane_id)
             .count();
-        if count.checked_add(1).ok_or(AddError::Count(category))? > limit as usize {
-            return Err(AddError::Count(category));
+        if count.checked_add(1).ok_or(AddError::Count(lane_id))? > limit as usize {
+            return Err(AddError::Count(lane_id));
         }
         // check total gas
         let gas_limit: U512 = self

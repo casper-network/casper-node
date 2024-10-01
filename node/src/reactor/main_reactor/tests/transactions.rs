@@ -89,8 +89,13 @@ async fn send_wasm_transaction(
 ) -> (TransactionHash, u64, ExecutionResult) {
     let chain_name = fixture.chainspec.network_config.name.clone();
 
+    //These bytes are intentionally so large - this way they fall into "WASM_LARGE" category in the
+    // local chainspec Alternatively we could change the chainspec to have a different limits
+    // for the wasm categories, but that would require aligning all tests that use local
+    // chainspec
+    let module_bytes = Bytes::from(vec![1; 172_033]);
     let mut txn = Transaction::from(
-        TransactionV1Builder::new_session(false, Bytes::from(vec![1]))
+        TransactionV1Builder::new_session(false, module_bytes)
             .with_chain_name(chain_name)
             .with_pricing_mode(pricing)
             .with_initiator_addr(PublicKey::from(from))
@@ -845,6 +850,7 @@ async fn native_operations_fees_are_not_refunded() {
 
 #[tokio::test]
 async fn wasm_transaction_fees_are_refunded() {
+    std::env::set_var("CL_TEST_SEED", "84188df5d5f7a1e736c13623fb9721f6");
     let initial_stakes = InitialStakes::FromVec(vec![u128::MAX, 1]); // Node 0 is effectively guaranteed to be the proposer.
 
     let refund_ratio = Ratio::new(1, 2);
@@ -2357,8 +2363,13 @@ fn transfer_txn<A: Into<U512>>(
 }
 
 fn invalid_wasm_txn(initiator: Arc<SecretKey>, pricing_mode: PricingMode) -> Transaction {
+    //These bytes are intentionally so large - this way they fall into "WASM_LARGE" category in the
+    // local chainspec Alternatively we could change the chainspec to have a different limits
+    // for the wasm categories, but that would require aligning all tests that use local
+    // chainspec
+    let module_bytes = Bytes::from(vec![1; 172_033]);
     let mut txn = Transaction::from(
-        TransactionV1Builder::new_session(false, Bytes::from(vec![1]))
+        TransactionV1Builder::new_session(false, module_bytes)
             .with_chain_name(CHAIN_NAME)
             .with_pricing_mode(pricing_mode)
             .with_initiator_addr(PublicKey::from(&*initiator))

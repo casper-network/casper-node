@@ -954,6 +954,25 @@ pub fn transaction_invocation_target_arb() -> impl Strategy<Value = TransactionI
     ]
 }
 
+pub fn stored_transaction_target() -> impl Strategy<Value = TransactionTarget> {
+    (
+        transaction_invocation_target_arb(),
+        transaction_runtime_arb(),
+    )
+        .prop_map(|(target, runtime)| TransactionTarget::new_stored(target, runtime))
+}
+
+pub fn session_transaction_target() -> impl Strategy<Value = TransactionTarget> {
+    (
+        any::<bool>(),
+        Just(Bytes::from(vec![1; 10])),
+        transaction_runtime_arb(),
+    )
+        .prop_map(|(target, module_bytes, runtime)| {
+            TransactionTarget::new_session(target, module_bytes, runtime)
+        })
+}
+
 pub fn transaction_target_arb() -> impl Strategy<Value = TransactionTarget> {
     prop_oneof![
         Just(TransactionTarget::Native),
@@ -964,9 +983,19 @@ pub fn transaction_target_arb() -> impl Strategy<Value = TransactionTarget> {
             .prop_map(|(target, runtime)| TransactionTarget::new_stored(target, runtime))
     ]
 }
-pub fn transaction_entry_point_arb() -> impl Strategy<Value = TransactionEntryPoint> {
+
+pub fn legal_target_entry_point_calls_arb(
+) -> impl Strategy<Value = (TransactionTarget, TransactionEntryPoint)> {
     prop_oneof![
-        Just(TransactionEntryPoint::Call),
+        native_entry_point_arb().prop_map(|s| (TransactionTarget::Native, s)),
+        stored_transaction_target()
+            .prop_map(|s| (s, TransactionEntryPoint::Custom("ABC".to_string()))),
+        session_transaction_target().prop_map(|s| (s, TransactionEntryPoint::Call)),
+    ]
+}
+
+pub fn native_entry_point_arb() -> impl Strategy<Value = TransactionEntryPoint> {
+    prop_oneof![
         Just(TransactionEntryPoint::Transfer),
         Just(TransactionEntryPoint::AddBid),
         Just(TransactionEntryPoint::WithdrawBid),
@@ -975,9 +1004,15 @@ pub fn transaction_entry_point_arb() -> impl Strategy<Value = TransactionEntryPo
         Just(TransactionEntryPoint::Redelegate),
         Just(TransactionEntryPoint::ActivateBid),
         Just(TransactionEntryPoint::ChangeBidPublicKey),
-        Just(TransactionEntryPoint::Custom("custom".to_string())),
         Just(TransactionEntryPoint::AddReservations),
         Just(TransactionEntryPoint::CancelReservations),
+    ]
+}
+pub fn transaction_entry_point_arb() -> impl Strategy<Value = TransactionEntryPoint> {
+    prop_oneof![
+        native_entry_point_arb(),
+        Just(TransactionEntryPoint::Call),
+        Just(TransactionEntryPoint::Custom("custom".to_string())),
     ]
 }
 
@@ -1004,7 +1039,7 @@ pub fn fields_arb() -> impl Strategy<Value = BTreeMap<u16, Bytes>> {
 pub fn v1_transaction_payload_arb() -> impl Strategy<Value = TransactionV1Payload> {
     (
         any::<String>(),
-        Just(1_u64).prop_map(Timestamp::from),
+        timestamp_arb(),
         any::<u64>(),
         pricing_mode_arb(),
         initiator_addr_arb(),
@@ -1060,10 +1095,56 @@ pub fn initiator_addr_arb() -> impl Strategy<Value = InitiatorAddr> {
     ]
 }
 
+pub fn timestamp_arb() -> impl Strategy<Value = Timestamp> {
+    //The weird u64 value is the max milliseconds that are bofeore year 10000. 5 digit years are
+    // not rfc3339 compliant and will cause an error
+    prop_oneof![Just(0_u64), Just(1_u64), Just(253_402_300_799_999_u64)].prop_map(Timestamp::from)
+}
+
+pub fn legal_v1_transaction_arb() -> impl Strategy<Value = TransactionV1> {
+    (
+        any::<String>(),
+        timestamp_arb(),
+        any::<u32>(),
+        pricing_mode_arb(),
+        secret_key_arb_no_system(),
+        runtime_args_arb(),
+        transaction_scheduling_arb(),
+        legal_target_entry_point_calls_arb(),
+    )
+        .prop_map(
+            |(
+                chain_name,
+                timestamp,
+                ttl,
+                pricing_mode,
+                secret_key,
+                args,
+                scheduling,
+                (target, entry_point),
+            )| {
+                let public_key = PublicKey::from(&secret_key);
+                let initiator_addr = InitiatorAddr::PublicKey(public_key);
+                let initiator_addr_with_secret = InitiatorAddrAndSecretKey::Both {
+                    initiator_addr,
+                    secret_key: &secret_key,
+                };
+                let container = FieldsContainer::new(args, target, entry_point, scheduling);
+                TransactionV1::build(
+                    chain_name,
+                    timestamp,
+                    TimeDiff::from_seconds(ttl),
+                    pricing_mode,
+                    container.to_map().unwrap(),
+                    initiator_addr_with_secret,
+                )
+            },
+        )
+}
 pub fn v1_transaction_arb() -> impl Strategy<Value = TransactionV1> {
     (
         any::<String>(),
-        any::<u64>(),
+        timestamp_arb(),
         any::<u32>(),
         pricing_mode_arb(),
         secret_key_arb_no_system(),
@@ -1093,7 +1174,7 @@ pub fn v1_transaction_arb() -> impl Strategy<Value = TransactionV1> {
                 let container = FieldsContainer::new(args, target, entry_point, scheduling);
                 TransactionV1::build(
                     chain_name,
-                    Timestamp::from(timestamp),
+                    timestamp,
                     TimeDiff::from_seconds(ttl),
                     pricing_mode,
                     container.to_map().unwrap(),
@@ -1105,4 +1186,8 @@ pub fn v1_transaction_arb() -> impl Strategy<Value = TransactionV1> {
 
 pub fn transaction_arb() -> impl Strategy<Value = Transaction> {
     (v1_transaction_arb()).prop_map(Transaction::V1)
+}
+
+pub fn legal_transaction_arb() -> impl Strategy<Value = Transaction> {
+    (legal_v1_transaction_arb()).prop_map(Transaction::V1)
 }

@@ -11,7 +11,9 @@ use crate::{
     crypto,
 };
 #[cfg(any(feature = "testing", test))]
-use crate::{testing::TestRng, AUCTION_LANE_ID, LARGE_WASM_LANE_ID, MINT_LANE_ID};
+use crate::{
+    testing::TestRng, AUCTION_LANE_ID, INSTALL_UPGRADE_LANE_ID, LARGE_WASM_LANE_ID, MINT_LANE_ID,
+};
 #[cfg(any(feature = "std", test, feature = "testing"))]
 use alloc::collections::BTreeMap;
 use alloc::{collections::BTreeSet, vec::Vec};
@@ -282,7 +284,7 @@ impl TransactionV1 {
     ) -> Self {
         let transaction = TransactionV1Builder::new_random_with_category_and_timestamp_and_ttl(
             rng,
-            LARGE_WASM_LANE_ID,
+            INSTALL_UPGRADE_LANE_ID,
             timestamp,
             ttl,
         )

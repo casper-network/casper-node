@@ -1588,18 +1588,12 @@
         "fields",
         "initiator_addr",
         "pricing_mode",
-        "serialization_version",
         "timestamp",
         "ttl"
       ],
       "properties": {
-        "serialization_version": {
-          "type": "integer",
-          "format": "uint8",
-          "minimum": 0.0
-        },
-        "chain_name": {
-          "type": "string"
+        "initiator_addr": {
+          "$ref": "#/definitions/InitiatorAddr"
         },
         "timestamp": {
           "$ref": "#/definitions/Timestamp"
@@ -1607,11 +1601,11 @@
         "ttl": {
           "$ref": "#/definitions/TimeDiff"
         },
+        "chain_name": {
+          "type": "string"
+        },
         "pricing_mode": {
           "$ref": "#/definitions/PricingMode"
-        },
-        "initiator_addr": {
-          "$ref": "#/definitions/InitiatorAddr"
         },
         "fields": {
           "type": "object",
@@ -1621,6 +1615,41 @@
         }
       },
       "additionalProperties": false
+    },
+    "InitiatorAddr": {
+      "description": "The address of the initiator of a TransactionV1.",
+      "oneOf": [
+        {
+          "description": "The public key of the initiator.",
+          "type": "object",
+          "required": [
+            "PublicKey"
+          ],
+          "properties": {
+            "PublicKey": {
+              "$ref": "#/definitions/PublicKey"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "The account hash derived from the public key of the initiator.",
+          "type": "object",
+          "required": [
+            "AccountHash"
+          ],
+          "properties": {
+            "AccountHash": {
+              "$ref": "#/definitions/AccountHash"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "AccountHash": {
+      "description": "Account hash as a formatted string.",
+      "type": "string"
     },
     "PricingMode": {
       "description": "Pricing mode of a Transaction.",
@@ -1672,9 +1701,16 @@
             "Fixed": {
               "type": "object",
               "required": [
+                "additional_computation_factor",
                 "gas_price_tolerance"
               ],
               "properties": {
+                "additional_computation_factor": {
+                  "description": "User-specified additional computation factor (minimum 0). If \"0\" is provided, no additional logic is applied to the computation limit. Each value above \"0\" tells the node that it needs to treat the transaction as if it uses more gas than it's serialized size indicates. Each \"1\" will increase the \"wasm lane\" size bucket for this transaction by 1. So if the size of the transaction indicates bucket \"0\" and \"additional_computation_factor = 2\", the transaction will be treated as a \"2\".",
+                  "type": "integer",
+                  "format": "uint8",
+                  "minimum": 0.0
+                },
                 "gas_price_tolerance": {
                   "description": "User-specified gas_price tolerance (minimum 1). This is interpreted to mean \"do not include this transaction in a block if the current gas price is greater than this number\"",
                   "type": "integer",
@@ -1715,41 +1751,6 @@
           "additionalProperties": false
         }
       ]
-    },
-    "InitiatorAddr": {
-      "description": "The address of the initiator of a TransactionV1.",
-      "oneOf": [
-        {
-          "description": "The public key of the initiator.",
-          "type": "object",
-          "required": [
-            "PublicKey"
-          ],
-          "properties": {
-            "PublicKey": {
-              "$ref": "#/definitions/PublicKey"
-            }
-          },
-          "additionalProperties": false
-        },
-        {
-          "description": "The account hash derived from the public key of the initiator.",
-          "type": "object",
-          "required": [
-            "AccountHash"
-          ],
-          "properties": {
-            "AccountHash": {
-              "$ref": "#/definitions/AccountHash"
-            }
-          },
-          "additionalProperties": false
-        }
-      ]
-    },
-    "AccountHash": {
-      "description": "Account hash as a formatted string.",
-      "type": "string"
     },
     "ExecutionResult": {
       "description": "The versioned result of executing a single deploy.",
