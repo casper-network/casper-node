@@ -92,40 +92,6 @@ where
         self.tracking_copy.borrow().effects()
     }
 
-    fn setup_system_account(&mut self) -> Result<(), Box<GenesisError>> {
-        let system_account_addr = PublicKey::System.to_account_hash();
-
-        let main_purse = {
-            let purse_addr = self.address_generator.borrow_mut().new_hash_address();
-            let balance_cl_value = CLValue::from_t(U512::zero())
-                .map_err(|error| GenesisError::CLValue(error.to_string()))?;
-
-            self.tracking_copy.borrow_mut().write(
-                Key::Balance(purse_addr),
-                StoredValue::CLValue(balance_cl_value),
-            );
-
-            let purse_cl_value = CLValue::unit();
-            let purse_uref = URef::new(purse_addr, AccessRights::READ_ADD_WRITE);
-
-            self.tracking_copy
-                .borrow_mut()
-                .write(Key::URef(purse_uref), StoredValue::CLValue(purse_cl_value));
-            purse_uref
-        };
-
-        let virtual_system_account = {
-            let named_keys = NamedKeys::new();
-            Account::create(system_account_addr, named_keys, main_purse)
-        };
-
-        let key = Key::Account(system_account_addr);
-        let value = { StoredValue::Account(virtual_system_account) };
-
-        self.tracking_copy.borrow_mut().write(key, value);
-        Ok(())
-    }
-
     fn create_mint(&mut self) -> Result<Key, Box<GenesisError>> {
         let round_seigniorage_rate_uref =
             {
