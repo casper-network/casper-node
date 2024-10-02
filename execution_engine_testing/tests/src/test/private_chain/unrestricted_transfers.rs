@@ -1,14 +1,14 @@
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, TransferRequestBuilder, DEFAULT_PAYMENT,
-    MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR,
+    MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::{engine_state::Error, execution::ExecError};
 use casper_storage::system::transfer::TransferError;
 use casper_types::{
     account::AccountHash,
     runtime_args,
-    system::{handle_payment, mint, standard_payment},
-    EntityAddr, Key, PublicKey, RuntimeArgs, StoredValue, URef, U512,
+    system::{mint, standard_payment},
+    Key, PublicKey, RuntimeArgs, StoredValue, URef, U512,
 };
 
 use crate::{test::private_chain::ADMIN_1_ACCOUNT_ADDR, wasm_utils};
@@ -571,113 +571,113 @@ fn should_not_allow_transfer_without_to_field_from_non_admin() {
     );
 }
 
-#[ignore]
-#[allow(unused)]
-#[test]
-fn should_not_allow_custom_payment() {
-    let mut builder = super::private_chain_setup();
-
-    // Account 1 can deploy after genesis
-    let sender = *ACCOUNT_1_ADDR;
-    let deploy_hash = [100; 32];
-
-    let payment_amount = *DEFAULT_PAYMENT + U512::from(1u64);
-
-    let payment_args = runtime_args! {
-        standard_payment::ARG_AMOUNT => payment_amount,
-    };
-    let session_args = RuntimeArgs::default();
-
-    let deploy_item = DeployItemBuilder::new()
-        .with_address(sender)
-        .with_session_bytes(wasm_utils::do_minimum_bytes(), session_args)
-        .with_payment_code("non_standard_payment.wasm", payment_args)
-        .with_authorization_keys(&[sender])
-        .with_deploy_hash(deploy_hash)
-        .build();
-    let exec_request_1 = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
-
-    builder.exec(exec_request_1).expect_failure();
-}
-
-#[ignore]
-#[test]
-fn should_allow_wasm_transfer_to_system() {
-    let mut builder = super::private_chain_setup();
-
-    // Account 1 can deploy after genesis
-    let sender = *ACCOUNT_1_ADDR;
-    let deploy_hash = [100; 32];
-
-    let payment_amount = *DEFAULT_PAYMENT + U512::from(1u64);
-
-    let payment_args = runtime_args! {
-        standard_payment::ARG_AMOUNT => payment_amount,
-    };
-    let session_args = runtime_args! {
-        "target" => *SYSTEM_ADDR,
-        "amount" => U512::one(),
-    };
-
-    let deploy_item = DeployItemBuilder::new()
-        .with_address(sender)
-        .with_session_code("transfer_to_account_u512.wasm", session_args)
-        .with_standard_payment(payment_args)
-        .with_authorization_keys(&[sender])
-        .with_deploy_hash(deploy_hash)
-        .build();
-    let exec_request_1 = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
-
-    builder.exec(exec_request_1).expect_success().commit();
-
-    let handle_payment_contract = builder.get_named_keys(EntityAddr::System(
-        builder.get_handle_payment_contract_hash().value(),
-    ));
-    let payment_purse_key = handle_payment_contract
-        .get(handle_payment::PAYMENT_PURSE_KEY)
-        .unwrap();
-    let payment_purse_uref = payment_purse_key.into_uref().unwrap();
-    println!("payment uref: {payment_purse_uref}");
-    assert_eq!(
-        builder.get_purse_balance(payment_purse_uref),
-        U512::zero(),
-        "after finalizing a private chain a payment purse should be empty"
-    );
-}
-
-#[ignore]
-#[test]
-fn should_allow_native_transfer_to_administrator() {
-    let mut builder = super::private_chain_setup();
-
-    let payment_purse_uref = {
-        let handle_payment_contract = builder.get_named_keys(EntityAddr::System(
-            builder.get_handle_payment_contract_hash().value(),
-        ));
-        let payment_purse_key = handle_payment_contract
-            .get(handle_payment::PAYMENT_PURSE_KEY)
-            .unwrap();
-        payment_purse_key.into_uref().unwrap()
-    };
-
-    assert_eq!(
-        builder.get_purse_balance(payment_purse_uref),
-        U512::zero(),
-        "payment purse should be empty"
-    );
-
-    let fund_transfer_1 =
-        TransferRequestBuilder::new(MINIMUM_ACCOUNT_CREATION_BALANCE, *SYSTEM_ADDR)
-            .with_initiator(*DEFAULT_ADMIN_ACCOUNT_ADDR)
-            .build();
-
-    builder
-        .transfer_and_commit(fund_transfer_1)
-        .expect_success();
-
-    assert_eq!(
-        builder.get_purse_balance(payment_purse_uref),
-        U512::zero(),
-        "after finalizing a private chain a payment purse should be empty"
-    );
-}
+// #[ignore]
+// #[allow(unused)]
+// #[test]
+// fn should_not_allow_custom_payment() {
+//     let mut builder = super::private_chain_setup();
+//
+//     // Account 1 can deploy after genesis
+//     let sender = *ACCOUNT_1_ADDR;
+//     let deploy_hash = [100; 32];
+//
+//     let payment_amount = *DEFAULT_PAYMENT + U512::from(1u64);
+//
+//     let payment_args = runtime_args! {
+//         standard_payment::ARG_AMOUNT => payment_amount,
+//     };
+//     let session_args = RuntimeArgs::default();
+//
+//     let deploy_item = DeployItemBuilder::new()
+//         .with_address(sender)
+//         .with_session_bytes(wasm_utils::do_minimum_bytes(), session_args)
+//         .with_payment_code("non_standard_payment.wasm", payment_args)
+//         .with_authorization_keys(&[sender])
+//         .with_deploy_hash(deploy_hash)
+//         .build();
+//     let exec_request_1 = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
+//
+//     builder.exec(exec_request_1).expect_failure();
+// }
+//
+// #[ignore]
+// #[test]
+// fn should_allow_wasm_transfer_to_system() {
+//     let mut builder = super::private_chain_setup();
+//
+//     // Account 1 can deploy after genesis
+//     let sender = *ACCOUNT_1_ADDR;
+//     let deploy_hash = [100; 32];
+//
+//     let payment_amount = *DEFAULT_PAYMENT + U512::from(1u64);
+//
+//     let payment_args = runtime_args! {
+//         standard_payment::ARG_AMOUNT => payment_amount,
+//     };
+//     let session_args = runtime_args! {
+//         "target" => *SYSTEM_ADDR,
+//         "amount" => U512::one(),
+//     };
+//
+//     let deploy_item = DeployItemBuilder::new()
+//         .with_address(sender)
+//         .with_session_code("transfer_to_account_u512.wasm", session_args)
+//         .with_standard_payment(payment_args)
+//         .with_authorization_keys(&[sender])
+//         .with_deploy_hash(deploy_hash)
+//         .build();
+//     let exec_request_1 = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
+//
+//     builder.exec(exec_request_1).expect_success().commit();
+//
+//     let handle_payment_contract = builder.get_named_keys(EntityAddr::System(
+//         builder.get_handle_payment_contract_hash().value(),
+//     ));
+//     let payment_purse_key = handle_payment_contract
+//         .get(handle_payment::PAYMENT_PURSE_KEY)
+//         .unwrap();
+//     let payment_purse_uref = payment_purse_key.into_uref().unwrap();
+//     println!("payment uref: {payment_purse_uref}");
+//     assert_eq!(
+//         builder.get_purse_balance(payment_purse_uref),
+//         U512::zero(),
+//         "after finalizing a private chain a payment purse should be empty"
+//     );
+// }
+//
+// #[ignore]
+// #[test]
+// fn should_allow_native_transfer_to_administrator() {
+//     let mut builder = super::private_chain_setup();
+//
+//     let payment_purse_uref = {
+//         let handle_payment_contract = builder.get_named_keys(EntityAddr::System(
+//             builder.get_handle_payment_contract_hash().value(),
+//         ));
+//         let payment_purse_key = handle_payment_contract
+//             .get(handle_payment::PAYMENT_PURSE_KEY)
+//             .unwrap();
+//         payment_purse_key.into_uref().unwrap()
+//     };
+//
+//     assert_eq!(
+//         builder.get_purse_balance(payment_purse_uref),
+//         U512::zero(),
+//         "payment purse should be empty"
+//     );
+//
+//     let fund_transfer_1 =
+//         TransferRequestBuilder::new(MINIMUM_ACCOUNT_CREATION_BALANCE, *SYSTEM_ADDR)
+//             .with_initiator(*DEFAULT_ADMIN_ACCOUNT_ADDR)
+//             .build();
+//
+//     builder
+//         .transfer_and_commit(fund_transfer_1)
+//         .expect_success();
+//
+//     assert_eq!(
+//         builder.get_purse_balance(payment_purse_uref),
+//         U512::zero(),
+//         "after finalizing a private chain a payment purse should be empty"
+//     );
+// }
