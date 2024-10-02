@@ -36,7 +36,7 @@ where
     }
 
     fn is_called_from_standard_payment(&self) -> bool {
-        false
+        self.phase() == Phase::Payment
     }
 
     fn get_system_entity_registry(&self) -> Result<SystemHashRegistry, ProviderError> {

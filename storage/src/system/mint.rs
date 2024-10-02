@@ -106,6 +106,10 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
         id: Option<u64>,
     ) -> Result<(), Error> {
         if !self.allow_unrestricted_transfers() {
+            if !self.is_called_from_standard_payment() {
+                // TODO: consider adding a specific error for DisabledCustomPayment
+                return Err(Error::DisabledUnrestrictedTransfers);
+            }
             let registry = self
                 .get_system_entity_registry()
                 .unwrap_or_else(|_| SystemHashRegistry::new());
