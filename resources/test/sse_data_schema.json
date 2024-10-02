@@ -4553,7 +4553,6 @@
         "byte_code_hash",
         "entity_kind",
         "main_purse",
-        "message_topics",
         "package_hash",
         "protocol_version"
       ],
@@ -4578,9 +4577,6 @@
         },
         "action_thresholds": {
           "$ref": "#/definitions/EntityActionThresholds"
-        },
-        "message_topics": {
-          "$ref": "#/definitions/Array_of_MessageTopic"
         }
       }
     },
@@ -4713,35 +4709,6 @@
       "type": "integer",
       "format": "uint8",
       "minimum": 0.0
-    },
-    "Array_of_MessageTopic": {
-      "type": "array",
-      "items": {
-        "$ref": "#/definitions/MessageTopic"
-      }
-    },
-    "MessageTopic": {
-      "type": "object",
-      "required": [
-        "topic_name",
-        "topic_name_hash"
-      ],
-      "properties": {
-        "topic_name": {
-          "type": "string"
-        },
-        "topic_name_hash": {
-          "allOf": [
-            {
-              "$ref": "#/definitions/TopicNameHash"
-            }
-          ]
-        }
-      }
-    },
-    "TopicNameHash": {
-      "description": "The hash of the name of the message topic.",
-      "type": "string"
     },
     "Package": {
       "description": "Entity definition, metadata, and security container.",
@@ -4897,7 +4864,8 @@
       "type": "object",
       "required": [
         "blocktime",
-        "message_count"
+        "message_count",
+        "topic_name"
       ],
       "properties": {
         "message_count": {
@@ -4913,6 +4881,10 @@
               "$ref": "#/definitions/BlockTime"
             }
           ]
+        },
+        "topic_name": {
+          "description": "Name of the topic.",
+          "type": "string"
         }
       }
     },
@@ -5196,20 +5168,23 @@
       "type": "object",
       "required": [
         "block_index",
-        "entity_hash",
+        "hash_addr",
         "message",
         "topic_index",
         "topic_name",
         "topic_name_hash"
       ],
       "properties": {
-        "entity_hash": {
+        "hash_addr": {
           "description": "The identity of the entity that produced the message.",
-          "allOf": [
-            {
-              "$ref": "#/definitions/EntityAddr"
-            }
-          ]
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0.0
+          },
+          "maxItems": 32,
+          "minItems": 32
         },
         "message": {
           "description": "The payload of the message.",
@@ -5245,23 +5220,6 @@
         }
       }
     },
-    "EntityAddr": {
-      "description": "The address for an AddressableEntity which contains the 32 bytes and tagging information.",
-      "anyOf": [
-        {
-          "description": "The address for a system entity account or contract.",
-          "type": "string"
-        },
-        {
-          "description": "The address of an entity that corresponds to an Account.",
-          "type": "string"
-        },
-        {
-          "description": "The address of an entity that corresponds to a Userland smart contract.",
-          "type": "string"
-        }
-      ]
-    },
     "MessagePayload": {
       "description": "The payload of the message emitted by an addressable entity during execution.",
       "oneOf": [
@@ -5292,6 +5250,10 @@
           "additionalProperties": false
         }
       ]
+    },
+    "TopicNameHash": {
+      "description": "The hash of the name of the message topic.",
+      "type": "string"
     },
     "FinalitySignature": {
       "description": "A validator's signature of a block, confirming it is finalized.",
