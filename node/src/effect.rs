@@ -402,33 +402,6 @@ pub(crate) trait EffectResultExt {
         U: 'static;
 }
 
-/// Effect extension for futures, used to convert futures returning an `Option` into two different
-/// effects.
-#[allow(dead_code)]
-pub(crate) trait EffectOptionExt {
-    /// The type the future will return if `Some`.
-    type Value;
-
-    /// Finalizes a future returning an `Option` into two different effects.
-    ///
-    /// The function `f_some` is used to translate the returned value from an effect into an event,
-    /// while the function `f_none` does the same for a returned `None`.
-    fn map_or_else<U, F, G>(self, f_some: F, f_none: G) -> Effects<U>
-    where
-        F: FnOnce(Self::Value) -> U + 'static + Send,
-        G: FnOnce() -> U + 'static + Send,
-        U: 'static;
-
-    /// Finalizes a future returning an `Option` into two different effects.
-    ///
-    /// The function `f` is used to translate the returned value from an effect into an event,
-    /// In the case of `None`, empty vector of effects is returned.
-    fn map_some<U, F>(self, f: F) -> Effects<U>
-    where
-        F: FnOnce(Self::Value) -> U + 'static + Send,
-        U: 'static;
-}
-
 impl<T: ?Sized> EffectExt for T
 where
     T: Future + Send + 'static + Sized,
@@ -463,42 +436,6 @@ where
         smallvec![self
             .map(|result| result.map_or_else(f_err, f_ok))
             .map(|item| smallvec![item])
-            .boxed()]
-    }
-}
-
-impl<T, V> EffectOptionExt for T
-where
-    T: Future<Output = Option<V>> + Send + 'static + Sized,
-    T: ?Sized,
-{
-    type Value = V;
-
-    fn map_or_else<U, F, G>(self, f_some: F, f_none: G) -> Effects<U>
-    where
-        F: FnOnce(V) -> U + 'static + Send,
-        G: FnOnce() -> U + 'static + Send,
-        U: 'static,
-    {
-        smallvec![self
-            .map(|option| option.map_or_else(f_none, f_some))
-            .map(|item| smallvec![item])
-            .boxed()]
-    }
-
-    /// Finalizes a future returning an `Option`.
-    ///
-    /// The function `f` is used to translate the returned value from an effect into an event,
-    /// In the case of `None`, empty vector is returned.
-    fn map_some<U, F>(self, f: F) -> Effects<U>
-    where
-        F: FnOnce(Self::Value) -> U + 'static + Send,
-        U: 'static,
-    {
-        smallvec![self
-            .map(|option| option
-                .map(|el| smallvec![f(el)])
-                .unwrap_or_else(|| smallvec![]))
             .boxed()]
     }
 }
