@@ -1,5 +1,5 @@
 use std::collections::BTreeSet;
-use tracing::error;
+use tracing::{debug, error};
 
 use casper_types::{
     account::AccountHash,
@@ -439,7 +439,7 @@ where
         protocol_version: ProtocolVersion,
     ) -> Result<(), Self::Error> {
         if !self.enable_addressable_entity {
-            println!("ae is not enabled, skipping migration");
+            debug!("ae is not enabled, skipping migration");
             return Ok(());
         }
         let key = Key::Account(account_hash);

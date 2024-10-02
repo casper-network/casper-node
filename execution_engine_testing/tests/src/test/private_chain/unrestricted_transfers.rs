@@ -727,7 +727,7 @@ fn should_allow_wasm_transfer_to_system() {
     let deploy_item = DeployItemBuilder::new()
         .with_address(sender)
         .with_session_code("transfer_to_account_u512.wasm", session_args)
-        .with_payment_bytes(Vec::new(), payment_args)
+        .with_standard_payment(payment_args)
         .with_authorization_keys(&[sender])
         .with_deploy_hash(deploy_hash)
         .build();
@@ -741,12 +741,13 @@ fn should_allow_wasm_transfer_to_system() {
     let payment_purse_key = handle_payment_contract
         .get(handle_payment::PAYMENT_PURSE_KEY)
         .unwrap();
-    let _payment_purse_uref = payment_purse_key.into_uref().unwrap();
-    // assert_eq!(
-    //     builder.get_purse_balance(payment_purse_uref),
-    //     U512::zero(),
-    //     "after finalizing a private chain custom payment code a payment purse should be empty"
-    // );
+    let payment_purse_uref = payment_purse_key.into_uref().unwrap();
+    println!("payment uref: {payment_purse_uref}");
+    assert_eq!(
+        builder.get_purse_balance(payment_purse_uref),
+        U512::zero(),
+        "after finalizing a private chain a payment purse should be empty"
+    );
 }
 
 #[ignore]
@@ -779,9 +780,9 @@ fn should_allow_transfer_to_system_in_a_native_transfer() {
         .transfer_and_commit(fund_transfer_1)
         .expect_success();
 
-    // assert_eq!(
-    //     builder.get_purse_balance(payment_purse_uref),
-    //     U512::zero(),
-    //     "after finalizing a private chain custom payment code a payment purse should be empty"
-    // );
+    assert_eq!(
+        builder.get_purse_balance(payment_purse_uref),
+        U512::zero(),
+        "after finalizing a private chain a payment purse should be empty"
+    );
 }

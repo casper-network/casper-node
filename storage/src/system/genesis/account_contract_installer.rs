@@ -766,7 +766,7 @@ where
         &mut self,
         chainspec_registry: ChainspecRegistry,
     ) -> Result<(), Box<GenesisError>> {
-        self.setup_system_account()?;
+        // self.setup_system_account()?;
         // Create mint
         let total_supply_key = self.create_mint()?;
 

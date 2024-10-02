@@ -2190,7 +2190,6 @@ where
         message_topics: BTreeMap<String, MessageTopicOperation>,
         output_ptr: u32,
     ) -> Result<Result<(), ApiError>, ExecError> {
-        println!("in add by contract package");
         self.context
             .validate_key(&Key::Hash(contract_package_hash))?;
 
@@ -2415,7 +2414,6 @@ where
         hash_addr: HashAddr,
         message_topics: BTreeMap<String, MessageTopicOperation>,
     ) -> Result<Result<(), ApiError>, ExecError> {
-        println!("new topics: {:?}", message_topics);
         let mut previous_message_topics = match previous_hash_addr {
             Some(previous_hash) => self.context.get_message_topics(previous_hash)?,
             None => MessageTopics::default(),
@@ -2457,8 +2455,6 @@ where
             ));
             self.context.metered_write_gs_unsafe(topic_key, summary)?;
         }
-
-        println!("carry forward");
         Ok(Ok(()))
     }
 
