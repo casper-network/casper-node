@@ -45,6 +45,8 @@ pub enum HashAlgorithm {
     Blake2b = 0,
     /// Blake3
     Blake3 = 1,
+    /// Sha256,
+    Sha256 = 2,
 }
 
 impl TryFrom<u8> for HashAlgorithm {

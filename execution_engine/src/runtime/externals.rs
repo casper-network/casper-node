@@ -1302,6 +1302,7 @@ where
                         match hash_algo_type {
                             HashAlgorithm::Blake2b => crypto::blake2b(input),
                             HashAlgorithm::Blake3 => cryptography::blake3(input),
+                            HashAlgorithm::Sha256 => cryptography::sha256(input),
                         }
                     })?;
 
