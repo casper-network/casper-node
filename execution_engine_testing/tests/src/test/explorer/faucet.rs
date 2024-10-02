@@ -665,9 +665,9 @@ fn faucet_costs() {
     // reflected in the "Costs by Entry Point" section of the faucet crate's README.md.
     const EXPECTED_FAUCET_INSTALL_COST: u64 = 160_605_239_618;
 
-    const EXPECTED_FAUCET_SET_VARIABLES_COST: u64 = 135_089_610;
-    const EXPECTED_FAUCET_CALL_BY_INSTALLER_COST: u64 = 2_692_057_403;
-    const EXPECTED_FAUCET_CALL_BY_USER_COST: u64 = 2_622_785_546;
+    const EXPECTED_FAUCET_SET_VARIABLES_COST: u64 = 134_878_510;
+    const EXPECTED_FAUCET_CALL_BY_INSTALLER_COST: u64 = 2_691_846_303;
+    const EXPECTED_FAUCET_CALL_BY_USER_COST: u64 = 2_622_405_566;
 
     let installer_account = AccountHash::new([1u8; 32]);
     let user_account: AccountHash = AccountHash::new([2u8; 32]);
