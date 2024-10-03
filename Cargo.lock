@@ -2334,6 +2334,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "get-blockinfo"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "get-blocktime"
 version = "0.1.0"
 dependencies = [

@@ -99,9 +99,24 @@ impl BlockInfo {
         self.state_hash = state_hash;
     }
 
+    /// State hash.
+    pub fn state_hash(&self) -> Digest {
+        self.state_hash
+    }
+
     /// Block time.
     pub fn block_time(&self) -> BlockTime {
         self.block_time
+    }
+
+    /// Parent block hash.
+    pub fn parent_block_hash(&self) -> BlockHash {
+        self.parent_block_hash
+    }
+
+    /// Block height.
+    pub fn block_height(&self) -> u64 {
+        self.block_height
     }
 }
 

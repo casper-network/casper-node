@@ -124,7 +124,6 @@ impl ExecutionEngineV1 {
             Err(ese) => return WasmV1Result::precondition_failure(gas_limit, ese),
         };
         let access_rights = entity.extract_access_rights(entity_hash, &named_keys);
-        let block_time = block_info.block_time;
         Executor::new(self.config().clone()).exec(
             execution_kind,
             args,
@@ -134,7 +133,7 @@ impl ExecutionEngineV1 {
             access_rights,
             authorization_keys,
             account_hash,
-            block_time,
+            block_info,
             transaction_hash,
             gas_limit,
             protocol_version,

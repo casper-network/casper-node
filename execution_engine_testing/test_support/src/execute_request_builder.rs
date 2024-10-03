@@ -26,6 +26,8 @@ pub struct ExecuteRequest {
 pub struct ExecuteRequestBuilder {
     state_hash: Digest,
     block_time: BlockTime,
+    block_height: u64,
+    parent_block_hash: BlockHash,
     transaction_hash: TransactionHash,
     initiator_addr: InitiatorAddr,
     payment: Option<ExecutableItem>,
@@ -95,6 +97,8 @@ impl ExecuteRequestBuilder {
         ExecuteRequestBuilder {
             state_hash: session.block_info.state_hash,
             block_time: session.block_info.block_time,
+            block_height: session.block_info.block_height,
+            parent_block_hash: session.block_info.parent_block_hash,
             transaction_hash: session.transaction_hash,
             initiator_addr: session.initiator_addr,
             payment,
@@ -156,6 +160,8 @@ impl ExecuteRequestBuilder {
         ExecuteRequestBuilder {
             state_hash: session.block_info.state_hash,
             block_time: session.block_info.block_time,
+            block_height: session.block_info.block_height,
+            parent_block_hash: session.block_info.parent_block_hash,
             transaction_hash: session.transaction_hash,
             initiator_addr: session.initiator_addr,
             payment,
@@ -285,6 +291,24 @@ impl ExecuteRequestBuilder {
         self
     }
 
+    /// Sets the block height of the [`WasmV1Request`]s.
+    pub fn with_block_height(mut self, block_height: u64) -> Self {
+        self.block_height = block_height;
+        self
+    }
+
+    /// Sets the parent block hash of the [`WasmV1Request`]s.
+    pub fn with_parent_block_hash(mut self, parent_block_hash: BlockHash) -> Self {
+        self.parent_block_hash = parent_block_hash;
+        self
+    }
+
+    /// Sets the parent block hash of the [`WasmV1Request`]s.
+    pub fn with_state_hash(mut self, state_hash: Digest) -> Self {
+        self.state_hash = state_hash;
+        self
+    }
+
     /// Sets the authorization keys used by the [`WasmV1Request`]s.
     pub fn with_authorization_keys(mut self, authorization_keys: BTreeSet<AccountHash>) -> Self {
         self.authorization_keys = authorization_keys;
@@ -296,6 +320,8 @@ impl ExecuteRequestBuilder {
         let ExecuteRequestBuilder {
             state_hash,
             block_time,
+            block_height,
+            parent_block_hash,
             transaction_hash,
             initiator_addr,
             payment,
@@ -309,7 +335,7 @@ impl ExecuteRequestBuilder {
             authorization_keys,
         } = self;
 
-        let block_info = BlockInfo::new(state_hash, block_time, BlockHash::default(), 0);
+        let block_info = BlockInfo::new(state_hash, block_time, parent_block_hash, block_height);
         let maybe_custom_payment = payment.map(|executable_item| WasmV1Request {
             block_info,
             transaction_hash,
@@ -322,7 +348,6 @@ impl ExecuteRequestBuilder {
             phase: Phase::Payment,
         });
 
-        let block_info = BlockInfo::new(state_hash, block_time, BlockHash::default(), 0);
         let session = WasmV1Request {
             block_info,
             transaction_hash,

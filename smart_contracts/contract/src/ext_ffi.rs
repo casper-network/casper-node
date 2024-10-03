@@ -843,4 +843,18 @@ extern "C" {
         call_stack_len_ptr: *mut usize,
         result_size_ptr: *mut usize,
     ) -> i32;
+
+    /// This function gets the requested field at `field_ptr`. It is up to
+    /// the caller to ensure that the correct number of bytes for the field data
+    /// are allocated at `dest_ptr`, otherwise data corruption in the wasm memory may occur.
+    ///
+    /// # Arguments
+    ///
+    /// * `field_ptr` - what info field is requested?
+    ///     0 => block time (functionally equivalent to earlier get_blocktime ffi)
+    ///     1 => block height
+    ///     2 => parent block hash
+    ///     3 => state hash
+    /// * `dest_ptr` => pointer in wasm memory where to write the result
+    pub fn casper_get_block_info(field_idx: u8, dest_ptr: *const u8);
 }
