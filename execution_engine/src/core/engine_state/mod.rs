@@ -75,10 +75,10 @@ pub use self::{
     run_genesis_request::RunGenesisRequest,
     step::{RewardItem, SlashItem, StepError, StepRequest, StepSuccess},
     system_contract_registry::SystemContractRegistry,
-    transfer::{TransferArgs, TransferRuntimeArgsBuilder, TransferTargetMode},
+    transfer::{TransferArgs, TransferRuntimeArgsBuilder},
     upgrade::{UpgradeConfig, UpgradeSuccess},
 };
-use self::{engine_config::FeeHandling, transfer::NewTransferTargetMode};
+use self::{engine_config::FeeHandling, transfer::TransferTargetMode};
 use crate::{
     core::{
         engine_state::{
@@ -809,11 +809,11 @@ where
         {
             // We need to make sure that source or target has to be admin.
             match transfer_target_mode {
-                NewTransferTargetMode::ExistingAccount {
+                TransferTargetMode::ExistingAccount {
                     target_account_hash,
                     ..
                 }
-                | NewTransferTargetMode::CreateAccount(target_account_hash) => {
+                | TransferTargetMode::CreateAccount(target_account_hash) => {
                     let is_target_system_account =
                         target_account_hash == PublicKey::System.to_account_hash();
                     let is_target_administrator =
@@ -825,7 +825,7 @@ where
                         ));
                     }
                 }
-                NewTransferTargetMode::PurseExists(_) => {
+                TransferTargetMode::PurseExists(_) => {
                     // We don't know who is the target and we can't simply reverse search
                     // account/contract that owns it. We also can't know if purse is owned exactly
                     // by one entity in the system.
@@ -837,11 +837,10 @@ where
         }
 
         match transfer_target_mode {
-            NewTransferTargetMode::ExistingAccount { .. }
-            | NewTransferTargetMode::PurseExists(_) => {
+            TransferTargetMode::ExistingAccount { .. } | TransferTargetMode::PurseExists(_) => {
                 // Noop
             }
-            NewTransferTargetMode::CreateAccount(account_hash) => {
+            TransferTargetMode::CreateAccount(account_hash) => {
                 let create_purse_stack = self.get_new_system_call_stack();
                 let (maybe_uref, execution_result): (Option<URef>, ExecutionResult) = executor
                     .call_system_contract(
