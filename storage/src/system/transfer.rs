@@ -15,6 +15,7 @@ use crate::{
     tracking_copy::{TrackingCopy, TrackingCopyEntityExt, TrackingCopyError, TrackingCopyExt},
 };
 
+/// Transfer error.
 #[derive(Clone, Error, Debug)]
 pub enum TransferError {
     /// Invalid key variant.

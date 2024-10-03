@@ -48,18 +48,28 @@ pub enum ProofHandling {
 /// Represents a way to make a balance inquiry.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BalanceIdentifier {
+    /// Use system refund purse (held by handle payment system contract).
     Refund,
+    /// Use system payment purse (held by handle payment system contract).
     Payment,
+    /// Use system accumulate purse (held by handle payment system contract).
     Accumulate,
+    /// Use purse associated to specified uref.
     Purse(URef),
+    /// Use main purse of entity derived from public key.
     Public(PublicKey),
+    /// Use main purse of entity from account hash.
     Account(AccountHash),
+    /// Use main purse of entity.
     Entity(EntityAddr),
+    /// Use purse at Key::Purse(URefAddr).
     Internal(URefAddr),
+    /// Penalized account identifier.
     PenalizedAccount(AccountHash),
 }
 
 impl BalanceIdentifier {
+    /// Returns underlying uref addr from balance identifier, if any.
     pub fn as_purse_addr(&self) -> Option<URefAddr> {
         match self {
             BalanceIdentifier::Internal(addr) => Some(*addr),
@@ -173,6 +183,7 @@ impl From<InitiatorAddr> for BalanceIdentifier {
     }
 }
 
+/// Processing hold balance handling.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Default)]
 pub struct ProcessingHoldBalanceHandling {}
 
@@ -204,6 +215,7 @@ impl From<(HoldBalanceHandling, u64)> for ProcessingHoldBalanceHandling {
     }
 }
 
+/// Gas hold balance handling.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Default)]
 pub struct GasHoldBalanceHandling {
     handling: HoldBalanceHandling,
@@ -389,6 +401,7 @@ impl BalanceRequest {
     }
 }
 
+/// Available balance checker.
 pub trait AvailableBalanceChecker {
     /// Calculate and return available balance.
     fn available_balance(
@@ -433,6 +446,7 @@ pub trait AvailableBalanceChecker {
         }
     }
 
+    /// Calculates amortization.
     fn amortization(
         &self,
         hold_kind: BalanceHoldAddrTag,
@@ -559,12 +573,15 @@ impl AvailableBalanceChecker for BTreeMap<BlockTime, BalanceHoldsWithProof> {
     }
 }
 
+/// Proofs result.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProofsResult {
+    /// Not requested.
     NotRequested {
         /// Any time-relevant active holds on the balance, without proofs.
         balance_holds: BTreeMap<BlockTime, BalanceHolds>,
     },
+    /// Proofs.
     Proofs {
         /// A proof that the given value is present in the Merkle trie.
         total_balance_proof: Box<TrieMerkleProof<Key, StoredValue>>,
@@ -645,6 +662,7 @@ impl ProofsResult {
     }
 }
 
+/// Balance failure.
 #[derive(Debug, Clone)]
 pub enum BalanceFailure {
     /// Failed to calculate amortization (checked multiplication).
@@ -688,6 +706,7 @@ pub enum BalanceResult {
         /// Proofs result.
         proofs_result: ProofsResult,
     },
+    /// Failure.
     Failure(TrackingCopyError),
 }
 

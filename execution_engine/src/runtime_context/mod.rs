@@ -1230,7 +1230,7 @@ where
     ) -> Result<Contract, ExecError> {
         self.tracking_copy
             .borrow_mut()
-            .get_legacy_contract(legacy_contract)
+            .get_contract(legacy_contract)
             .map_err(Into::into)
     }
 

@@ -1922,7 +1922,7 @@ where
         let req = TrieRequest::new(state_hash, None);
         self.data_access_layer()
             .trie(req)
-            .into_legacy()
+            .into_raw()
             .unwrap()
             .map(|bytes| bytesrepr::deserialize(bytes.into_inner().into()).unwrap())
     }
