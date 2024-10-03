@@ -13,9 +13,10 @@ use casper_binary_port::{
     BinaryMessageCodec, BinaryRequest, BinaryRequestHeader, BinaryRequestTag, BinaryResponse,
     BinaryResponseAndRequest, ContractInformation, DictionaryItemIdentifier, DictionaryQueryResult,
     EntityIdentifier, EraIdentifier, ErrorCode, GetRequest, GetTrieFullResult,
-    GlobalStateQueryResult, GlobalStateRequest, InformationRequest, InformationRequestTag,
-    KeyPrefix, NodeStatus, PackageIdentifier, PurseIdentifier, ReactorStateName, RecordId,
-    ResponseType, RewardResponse, TransactionWithExecutionInfo, ValueWithProof,
+    GlobalStateEntityQualifier, GlobalStateQueryResult, GlobalStateRequest, InformationRequest,
+    InformationRequestTag, KeyPrefix, NodeStatus, PackageIdentifier, PurseIdentifier,
+    ReactorStateName, RecordId, ResponseType, RewardResponse, TransactionWithExecutionInfo,
+    ValueWithProof,
 };
 use casper_storage::{
     data_access_layer::{
@@ -266,6 +267,17 @@ where
             metrics.binary_port_get_state_count.inc();
             handle_state_request(effect_builder, *req, protocol_version, config, chainspec).await
         }
+        GetRequest::Trie { trie_key } => {
+            metrics.binary_port_get_trie_count.inc();
+            handle_trie_request(
+                effect_builder,
+                trie_key,
+                protocol_version,
+                config,
+                chainspec,
+            )
+            .await
+        }
     }
 }
 
@@ -354,12 +366,9 @@ where
         + From<StorageRequest>
         + From<ReactorInfoRequest>,
 {
-    match request {
-        GlobalStateRequest::Item {
-            state_identifier,
-            base_key,
-            path,
-        } => {
+    let (state_identifier, qualifier) = request.destructure();
+    match qualifier {
+        GlobalStateEntityQualifier::Item { base_key, path } => {
             let Some(state_root_hash) =
                 resolve_state_root_hash(effect_builder, state_identifier).await
             else {
@@ -371,10 +380,7 @@ where
                 Err(err) => BinaryResponse::new_error(err, protocol_version),
             }
         }
-        GlobalStateRequest::AllItems {
-            state_identifier,
-            key_tag,
-        } => {
+        GlobalStateEntityQualifier::AllItems { key_tag } => {
             if !config.allow_request_get_all_values {
                 debug!(%key_tag, "received a request for items by key tag while the feature is disabled");
                 BinaryResponse::new_error(ErrorCode::FunctionDisabled, protocol_version)
@@ -383,28 +389,7 @@ where
                     .await
             }
         }
-        GlobalStateRequest::Trie { trie_key } => {
-            if !config.allow_request_get_trie {
-                debug!(%trie_key, "received a trie request while the feature is disabled");
-                BinaryResponse::new_error(ErrorCode::FunctionDisabled, protocol_version)
-            } else {
-                let req = TrieRequest::new(trie_key, None);
-                match effect_builder.get_trie(req).await.into_legacy() {
-                    Ok(result) => BinaryResponse::from_value(
-                        GetTrieFullResult::new(result.map(TrieRaw::into_inner)),
-                        protocol_version,
-                    ),
-                    Err(error) => {
-                        debug!(%error, "failed when querying for a trie");
-                        BinaryResponse::new_error(ErrorCode::InternalError, protocol_version)
-                    }
-                }
-            }
-        }
-        GlobalStateRequest::DictionaryItem {
-            state_identifier,
-            identifier,
-        } => {
+        GlobalStateEntityQualifier::DictionaryItem { identifier } => {
             let Some(state_root_hash) =
                 resolve_state_root_hash(effect_builder, state_identifier).await
             else {
@@ -475,10 +460,7 @@ where
                 Err(err) => BinaryResponse::new_error(err, protocol_version),
             }
         }
-        GlobalStateRequest::Balance {
-            state_identifier,
-            purse_identifier,
-        } => {
+        GlobalStateEntityQualifier::Balance { purse_identifier } => {
             let Some(state_root_hash) =
                 resolve_state_root_hash(effect_builder, state_identifier).await
             else {
@@ -492,10 +474,7 @@ where
             )
             .await
         }
-        GlobalStateRequest::ItemsByPrefix {
-            state_identifier,
-            key_prefix,
-        } => {
+        GlobalStateEntityQualifier::ItemsByPrefix { key_prefix } => {
             handle_get_items_by_prefix(
                 state_identifier,
                 key_prefix,
@@ -503,6 +482,37 @@ where
                 protocol_version,
             )
             .await
+        }
+    }
+}
+
+async fn handle_trie_request<REv>(
+    effect_builder: EffectBuilder<REv>,
+    trie_key: Digest,
+    protocol_version: ProtocolVersion,
+    config: &Config,
+    _chainspec: &Chainspec,
+) -> BinaryResponse
+where
+    REv: From<Event>
+        + From<ContractRuntimeRequest>
+        + From<StorageRequest>
+        + From<ReactorInfoRequest>,
+{
+    if !config.allow_request_get_trie {
+        debug!(%trie_key, "received a trie request while the feature is disabled");
+        BinaryResponse::new_error(ErrorCode::FunctionDisabled, protocol_version)
+    } else {
+        let req = TrieRequest::new(trie_key, None);
+        match effect_builder.get_trie(req).await.into_legacy() {
+            Ok(result) => BinaryResponse::from_value(
+                GetTrieFullResult::new(result.map(TrieRaw::into_inner)),
+                protocol_version,
+            ),
+            Err(error) => {
+                debug!(%error, "failed when querying for a trie");
+                BinaryResponse::new_error(ErrorCode::InternalError, protocol_version)
+            }
         }
     }
 }
