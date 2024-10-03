@@ -13,14 +13,13 @@ use casper_types::{
     bytesrepr::{self, ToBytes},
     contract_messages::MessageTopicOperation,
     contracts::ContractPackageHash,
-    crypto, AddressableEntityHash, ApiError, EntityVersion, Gas, Group, HostFunction,
-    HostFunctionCost, Key, HashAlgorithm, PackageHash, PackageStatus, StoredValue, URef, U512,
+    crypto, AddressableEntityHash, ApiError, EntityVersion, Gas, Group, HashAlgorithm,
+    HostFunction, HostFunctionCost, Key, PackageHash, PackageStatus, StoredValue, URef, U512,
     UREF_SERIALIZED_LENGTH,
 };
 
 use super::{args::Args, ExecError, Runtime};
-use crate::resolvers::v1_function_index::FunctionIndex;
-use crate::runtime::cryptography;
+use crate::{resolvers::v1_function_index::FunctionIndex, runtime::cryptography};
 
 impl<'a, R> Externals for Runtime<'a, R>
 where
@@ -1276,7 +1275,7 @@ where
                     self.context.set_emit_message_cost(new_cost);
                 }
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(result))))
-            },
+            }
             FunctionIndex::GenericHash => {
                 // args(0) = pointer to input in Wasm memory
                 // args(1) = size of input in Wasm memory
@@ -1317,7 +1316,9 @@ where
                 }
 
                 if self.try_get_memory()?.set(out_ptr, &digest).is_err() {
-                    return Ok(Some(RuntimeValue::I32(u32::from(ApiError::HostBufferEmpty) as i32)))
+                    return Ok(Some(RuntimeValue::I32(
+                        u32::from(ApiError::HostBufferEmpty) as i32,
+                    )));
                 }
 
                 Ok(Some(RuntimeValue::I32(0)))

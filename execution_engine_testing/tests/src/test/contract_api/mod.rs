@@ -2,6 +2,7 @@ mod account;
 mod add_contract_version;
 mod create_purse;
 mod dictionary;
+mod generic_hash;
 mod get_arg;
 mod get_blocktime;
 mod get_call_stack;

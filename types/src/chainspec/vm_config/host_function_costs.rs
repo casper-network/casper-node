@@ -448,7 +448,7 @@ impl Zero for HostFunctionCosts {
             enable_contract_version,
             manage_message_topic,
             emit_message,
-            generic_hash
+            generic_hash,
         } = self;
         read_value.is_zero()
             && dictionary_get.is_zero()
@@ -687,13 +687,7 @@ impl Default for HostFunctionCosts {
             ),
             generic_hash: HostFunction::new(
                 DEFAULT_GENERIC_HASH_COST,
-                [
-                    NOT_USED,
-                    NOT_USED,
-                    NOT_USED,
-                    NOT_USED,
-                    NOT_USED,
-                ],
+                [NOT_USED, NOT_USED, NOT_USED, NOT_USED, NOT_USED],
             ),
             cost_increase_per_message: DEFAULT_COST_INCREASE_PER_MESSAGE_EMITTED,
         }
@@ -909,7 +903,7 @@ impl FromBytes for HostFunctionCosts {
                 manage_message_topic,
                 emit_message,
                 cost_increase_per_message,
-                generic_hash
+                generic_hash,
             },
             rem,
         ))

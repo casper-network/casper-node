@@ -1,10 +1,10 @@
 //! Contains support for writing smart contracts.
 
 pub mod account;
+pub mod cryptography;
 pub mod runtime;
 pub mod storage;
 pub mod system;
-pub mod cryptography;
 
 use alloc::{
     alloc::{alloc, Layout},

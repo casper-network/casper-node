@@ -1,6 +1,7 @@
 //! This module contains executor state of the WASM code.
 mod args;
 mod auction_internal;
+mod cryptography;
 mod externals;
 mod handle_payment_internal;
 mod host_function_flag;
@@ -8,7 +9,6 @@ mod mint_internal;
 pub mod stack;
 mod utils;
 mod wasm_prep;
-mod cryptography;
 
 use std::{
     cmp,

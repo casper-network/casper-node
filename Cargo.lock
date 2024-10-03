@@ -2353,6 +2353,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "generic-hash"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "get-arg"
 version = "0.1.0"
 dependencies = [
