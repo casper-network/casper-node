@@ -59,7 +59,7 @@ fn should_run_generic_hash_sha256() {
                 runtime_args! {
                     "data" => "sha256 hash test",
                     "algorithm" => HashAlgorithm::Sha256 as u8,
-                    "expected" => [0X29, 0XD2, 0XC7, 0X7B, 0X39, 0X7F, 0XF6, 0X9E, 0X25, 0X0D, 0X81, 0XA3, 0XBA, 0XBB, 0X32, 0XDE, 0XFF, 0X3C, 0X2D, 0X06, 0XC9, 0X8E, 0X5E, 0X73, 0X60, 0X54, 0X3C, 0XE4, 0X91, 0XAC, 0X81, 0XCA]
+                    "expected" => [0x29, 0xD2, 0xC7, 0x7B, 0x39, 0x7F, 0xF6, 0x9E, 0x25, 0x0D, 0x81, 0xA3, 0xBA, 0xBB, 0x32, 0xDE, 0xFF, 0x3C, 0x2D, 0x06, 0xC9, 0x8E, 0x5E, 0x73, 0x60, 0x54, 0x3C, 0xE4, 0x91, 0xAC, 0x81, 0xCA]
                 },
             )
             .build(),
