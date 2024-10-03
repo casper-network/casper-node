@@ -1,5 +1,6 @@
 #![no_std]
 #![no_main]
+#![allow(internal_features)]
 #![feature(lang_items)]
 
 extern crate core;
@@ -45,7 +46,7 @@ pub fn memory_size() -> usize {
 pub fn memory_grow(new_pages: usize) {
     let ptr = wasm32::memory_grow(DEFAULT_MEMORY_INDEX, new_pages);
 
-    if ptr == usize::max_value() {
+    if ptr == usize::MAX {
         revert(ApiError::OutOfMemory);
     }
 }

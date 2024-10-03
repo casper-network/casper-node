@@ -199,6 +199,7 @@ mod tests {
         nop: 25,
         current_memory: 26,
         grow_memory: 27,
+        sign: 28,
     };
     static EXPECTED_GENESIS_HOST_FUNCTION_COSTS: Lazy<HostFunctionCosts> =
         Lazy::new(|| HostFunctionCosts {

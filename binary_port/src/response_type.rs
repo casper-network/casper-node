@@ -4,8 +4,6 @@ use core::{convert::TryFrom, fmt};
 
 #[cfg(test)]
 use rand::Rng;
-#[cfg(feature = "json-schema")]
-use schemars::JsonSchema;
 
 #[cfg(test)]
 use casper_types::testing::TestRng;
@@ -32,7 +30,6 @@ use crate::{
 /// A type of the payload being returned in a binary response.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(u8)]
-#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub enum ResponseType {
     /// Legacy version of the block header.
     BlockHeaderV1,
