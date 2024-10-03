@@ -844,13 +844,13 @@ extern "C" {
         result_size_ptr: *mut usize,
     ) -> i32;
 
-    /// This function gets the requested field at `field_ptr`. It is up to
+    /// This function gets the requested field at `field_idx`. It is up to
     /// the caller to ensure that the correct number of bytes for the field data
     /// are allocated at `dest_ptr`, otherwise data corruption in the wasm memory may occur.
     ///
     /// # Arguments
     ///
-    /// * `field_ptr` - what info field is requested?
+    /// * `field_idx` - what info field is requested?
     ///     0 => block time (functionally equivalent to earlier get_blocktime ffi)
     ///     1 => block height
     ///     2 => parent block hash
