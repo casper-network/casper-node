@@ -1,7 +1,5 @@
 //! A Rust library for types used by the binary port of a casper node.
 
-// #![allow(unexpected_cfgs)]
-
 mod balance_response;
 mod binary_message;
 mod binary_request;
