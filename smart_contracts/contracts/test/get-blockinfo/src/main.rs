@@ -1,11 +1,14 @@
 #![no_std]
 #![no_main]
 
-use casper_contract::contract_api::runtime;
-use casper_contract::contract_api::runtime::revert;
-use casper_contract::unwrap_or_revert::UnwrapOrRevert;
-use casper_types::bytesrepr::{Bytes, FromBytes};
-use casper_types::{ApiError, BlockTime, Digest};
+use casper_contract::{
+    contract_api::{runtime, runtime::revert},
+    unwrap_or_revert::UnwrapOrRevert,
+};
+use casper_types::{
+    bytesrepr::{Bytes, FromBytes},
+    ApiError, BlockTime, Digest,
+};
 
 const ARG_FIELD_IDX: &str = "field_idx";
 const FIELD_IDX_BLOCK_TIME: u8 = 0;

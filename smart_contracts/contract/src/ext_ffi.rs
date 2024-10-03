@@ -851,10 +851,10 @@ extern "C" {
     /// # Arguments
     ///
     /// * `field_idx` - what info field is requested?
-    ///     0 => block time (functionally equivalent to earlier get_blocktime ffi)
-    ///     1 => block height
-    ///     2 => parent block hash
-    ///     3 => state hash
+    /// * 0 => block time (functionally equivalent to earlier get_blocktime ffi)
+    /// * 1 => block height
+    /// * 2 => parent block hash
+    /// * 3 => state hash
     /// * `dest_ptr` => pointer in wasm memory where to write the result
     pub fn casper_get_block_info(field_idx: u8, dest_ptr: *const u8);
 }

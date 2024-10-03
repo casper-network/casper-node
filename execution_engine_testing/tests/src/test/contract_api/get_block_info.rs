@@ -1,8 +1,7 @@
 use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, LOCAL_GENESIS_REQUEST,
 };
-use casper_types::bytesrepr::ToBytes;
-use casper_types::{runtime_args, BlockHash};
+use casper_types::{bytesrepr::ToBytes, runtime_args, BlockHash};
 
 const CONTRACT_GET_BLOCKINFO: &str = "get_blockinfo.wasm";
 const ARG_FIELD_IDX: &str = "field_idx";

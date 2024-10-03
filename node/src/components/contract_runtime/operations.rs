@@ -87,7 +87,6 @@ pub fn execute_finalized_block(
 
     // scrape variables from executable block
     let block_time = BlockTime::new(executable_block.timestamp.millis());
-    let block_info = BlockInfo::new(state_root_hash, block_time, parent_block_hash, block_height);
 
     let proposer = executable_block.proposer.clone();
     let era_id = executable_block.era_id;
@@ -239,7 +238,7 @@ pub fn execute_finalized_block(
                     chainspec.transaction_config.native_transfer_minimum_motes * 5,
                 );
                 let pay_result = match WasmV1Request::new_custom_payment(
-                    block_info,
+                    BlockInfo::new(state_root_hash, block_time, parent_block_hash, block_height),
                     custom_payment_gas_limit,
                     &transaction,
                 ) {
@@ -365,7 +364,16 @@ pub fn execute_finalized_block(
                 }
                 _ => {
                     let wasm_v1_start = Instant::now();
-                    match WasmV1Request::new_session(block_info, gas_limit, &transaction) {
+                    match WasmV1Request::new_session(
+                        BlockInfo::new(
+                            state_root_hash,
+                            block_time,
+                            parent_block_hash,
+                            block_height,
+                        ),
+                        gas_limit,
+                        &transaction,
+                    ) {
                         Ok(wasm_v1_request) => {
                             trace!(%transaction_hash, ?category, ?wasm_v1_request, "able to get wasm v1 request");
                             let wasm_v1_result =
@@ -749,7 +757,7 @@ pub fn execute_finalized_block(
             protocol_version,
             state_root_hash,
             era_report.clone(),
-            block_info.block_time().value(),
+            block_time.value(),
             executable_block.era_id.successor(),
         ) {
             StepResult::RootNotFound => {
