@@ -72,6 +72,8 @@ pub const DEFAULT_CONTROL_FLOW_DROP_OPCODE: u32 = 440;
 pub const DEFAULT_CONTROL_FLOW_BR_TABLE_OPCODE: u32 = 35_000;
 /// Default multiplier for the size of targets in `br_table` Wasm opcode.
 pub const DEFAULT_CONTROL_FLOW_BR_TABLE_MULTIPLIER: u32 = 100;
+/// Default cost of the sign extension opcodes
+pub const DEFAULT_SIGN_COST: u32 = 300;
 
 /// Definition of a cost table for a Wasm `br_table` opcode.
 ///
@@ -438,6 +440,8 @@ pub struct OpcodeCosts {
     pub grow_memory: u32,
     /// Control flow operations multiplier.
     pub control_flow: ControlFlowCosts,
+    /// Sign ext operations costs
+    pub sign: u32,
 }
 
 impl Default for OpcodeCosts {
@@ -459,6 +463,7 @@ impl Default for OpcodeCosts {
             current_memory: DEFAULT_CURRENT_MEMORY_COST,
             grow_memory: DEFAULT_GROW_MEMORY_COST,
             control_flow: ControlFlowCosts::default(),
+            sign: DEFAULT_SIGN_COST,
         }
     }
 }
@@ -483,6 +488,7 @@ impl Distribution<OpcodeCosts> for Standard {
             current_memory: rng.gen(),
             grow_memory: rng.gen(),
             control_flow: rng.gen(),
+            sign: rng.gen(),
         }
     }
 }
@@ -508,6 +514,7 @@ impl ToBytes for OpcodeCosts {
             current_memory,
             grow_memory,
             control_flow,
+            sign,
         } = self;
 
         ret.append(&mut bit.to_bytes()?);
@@ -526,6 +533,7 @@ impl ToBytes for OpcodeCosts {
         ret.append(&mut current_memory.to_bytes()?);
         ret.append(&mut grow_memory.to_bytes()?);
         ret.append(&mut control_flow.to_bytes()?);
+        ret.append(&mut sign.to_bytes()?);
 
         Ok(ret)
     }
@@ -548,6 +556,7 @@ impl ToBytes for OpcodeCosts {
             current_memory,
             grow_memory,
             control_flow,
+            sign,
         } = self;
         bit.serialized_length()
             + add.serialized_length()
@@ -565,6 +574,7 @@ impl ToBytes for OpcodeCosts {
             + current_memory.serialized_length()
             + grow_memory.serialized_length()
             + control_flow.serialized_length()
+            + sign.serialized_length()
     }
 }
 
@@ -586,6 +596,7 @@ impl FromBytes for OpcodeCosts {
         let (current_memory, bytes): (_, &[u8]) = FromBytes::from_bytes(bytes)?;
         let (grow_memory, bytes): (_, &[u8]) = FromBytes::from_bytes(bytes)?;
         let (control_flow, bytes): (_, &[u8]) = FromBytes::from_bytes(bytes)?;
+        let (sign, bytes): (_, &[u8]) = FromBytes::from_bytes(bytes)?;
 
         let opcode_costs = OpcodeCosts {
             bit,
@@ -604,6 +615,7 @@ impl FromBytes for OpcodeCosts {
             current_memory,
             grow_memory,
             control_flow,
+            sign,
         };
         Ok((opcode_costs, bytes))
     }
@@ -628,6 +640,7 @@ impl Zero for OpcodeCosts {
             current_memory: 0,
             grow_memory: 0,
             control_flow: ControlFlowCosts::zero(),
+            sign: 0,
         }
     }
 
@@ -649,6 +662,7 @@ impl Zero for OpcodeCosts {
             current_memory,
             grow_memory,
             control_flow,
+            sign,
         } = self;
         bit.is_zero()
             && add.is_zero()
@@ -666,6 +680,7 @@ impl Zero for OpcodeCosts {
             && current_memory.is_zero()
             && grow_memory.is_zero()
             && control_flow.is_zero()
+            && sign.is_zero()
     }
 }
 
@@ -738,6 +753,7 @@ pub mod gens {
             current_memory in num::u32::ANY,
             grow_memory in num::u32::ANY,
             control_flow in control_flow_cost_arb(),
+            sign in num::u32::ANY,
         ) -> OpcodeCosts {
             OpcodeCosts {
                 bit,
@@ -756,6 +772,7 @@ pub mod gens {
                 current_memory,
                 grow_memory,
                 control_flow,
+                sign,
             }
         }
     }
