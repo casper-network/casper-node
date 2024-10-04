@@ -993,7 +993,10 @@ fn should_meter_for_gas_storage_write() {
         gas_usage_before
     );
 
-    assert_eq!(gas_usage_after, gas_usage_before + expected_write_cost);
+    assert_eq!(
+        Some(gas_usage_after),
+        gas_usage_before.checked_add(expected_write_cost)
+    );
 }
 
 #[test]
@@ -1029,7 +1032,10 @@ fn should_meter_for_gas_storage_add() {
         gas_usage_before
     );
 
-    assert_eq!(gas_usage_after, gas_usage_before + expected_add_cost);
+    assert_eq!(
+        Some(gas_usage_after),
+        gas_usage_before.checked_add(expected_add_cost)
+    );
 }
 
 #[test]

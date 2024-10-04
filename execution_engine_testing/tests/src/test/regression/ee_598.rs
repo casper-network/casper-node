@@ -38,7 +38,9 @@ fn should_handle_unbond_for_more_than_stake_as_full_unbond_of_stake_ee_598_regre
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
         let account = GenesisAccount::account(
             public_key,
-            Motes::new(GENESIS_VALIDATOR_STAKE) * Motes::new(2),
+            Motes::new(GENESIS_VALIDATOR_STAKE)
+                .checked_mul(Motes::new(2))
+                .unwrap(),
             Some(GenesisValidator::new(
                 Motes::new(GENESIS_VALIDATOR_STAKE),
                 DelegationRate::zero(),
