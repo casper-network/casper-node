@@ -803,21 +803,7 @@ impl FromBytes for StoredValue {
 }
 
 mod serde_helpers {
-    use core::fmt;
-
     use super::*;
-
-    pub struct InvalidHumanReadableDeser(String);
-
-    impl fmt::Display for InvalidHumanReadableDeser {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(
-                f,
-                "Couldn't deserialize StoredValue. Underlying error: {}",
-                self.0
-            )
-        }
-    }
 
     #[derive(Serialize)]
     pub(super) enum HumanReadableSerHelper<'a> {

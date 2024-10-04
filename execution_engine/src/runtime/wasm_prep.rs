@@ -17,8 +17,6 @@ use crate::execution::ExecError;
 
 const ATOMIC_OPCODE_PREFIX: u8 = 0xfe;
 const BULK_OPCODE_PREFIX: u8 = 0xfc;
-const SIGN_EXT_OPCODE_START: u8 = 0xc0;
-const SIGN_EXT_OPCODE_END: u8 = 0xc4;
 const SIMD_OPCODE_PREFIX: u8 = 0xfd;
 
 const DEFAULT_GAS_MODULE_NAME: &str = "env";
@@ -428,11 +426,9 @@ pub fn deserialize(module_bytes: &[u8]) -> Result<Module, PreprocessingError> {
             casper_wasm::SerializationError::UnknownOpcode(ATOMIC_OPCODE_PREFIX) => {
                 PreprocessingError::Deserialize("Atomic operations are not supported".to_string())
             }
-            casper_wasm::SerializationError::UnknownOpcode(
-                SIGN_EXT_OPCODE_START..=SIGN_EXT_OPCODE_END,
-            ) => PreprocessingError::Deserialize(
-                "Sign extension operations are not supported".to_string(),
-            ),
+            casper_wasm::SerializationError::UnknownOpcode(_) => {
+                PreprocessingError::Deserialize("Encountered an unsupported operation".to_string())
+            }
             casper_wasm::SerializationError::Other(
                 "Enable the multi_value feature to deserialize more than one function result",
             ) => {
@@ -681,11 +677,13 @@ impl Rules for RuledOpcodeCosts {
             | Instruction::F64ConvertUI64
             | Instruction::F64PromoteF32 => None, // Unsupported conversion operators for floats.
 
+            // Unsupported reinterpretation operators for floats.
             Instruction::I32ReinterpretF32
             | Instruction::I64ReinterpretF64
             | Instruction::F32ReinterpretI32
-            | Instruction::F64ReinterpretI64 => None, /* Unsupported reinterpretation operators
-                                                       * for floats. */
+            | Instruction::F64ReinterpretI64 => None,
+
+            Instruction::SignExt(_) => Some(costs.sign),
         }
     }
 
@@ -701,10 +699,7 @@ mod tests {
         builder,
         elements::{CodeSection, Instructions},
     };
-    use walrus::{
-        ir::{Instr, UnaryOp, Unop},
-        FunctionBuilder, ModuleConfig, ValType,
-    };
+    use walrus::{FunctionBuilder, ModuleConfig, ValType};
 
     use super::*;
 
@@ -1006,216 +1001,6 @@ mod tests {
         assert!(
             matches!(&error, PreprocessingError::Deserialize(msg)
             if msg == "SIMD operations are not supported"),
-            "{:?}",
-            error,
-        );
-    }
-
-    #[test]
-    fn should_not_accept_sign_ext_i32_e8s_proposal_wasm() {
-        let module_bytes = {
-            let mut module = walrus::Module::with_config(ModuleConfig::new());
-
-            let _memory_id = module.memories.add_local(false, 11, None);
-
-            let mut func_with_sign_ext = FunctionBuilder::new(&mut module.types, &[], &[]);
-
-            func_with_sign_ext.func_body().i32_const(0);
-
-            {
-                let mut body = func_with_sign_ext.func_body();
-                let instructions = body.instrs_mut();
-                let (instr, _) = instructions.get_mut(0).unwrap();
-                *instr = Instr::Unop(Unop {
-                    op: UnaryOp::I32Extend8S,
-                });
-            }
-
-            let func_with_sign_ext = func_with_sign_ext.finish(vec![], &mut module.funcs);
-
-            let mut call_func = FunctionBuilder::new(&mut module.types, &[], &[]);
-
-            call_func.func_body().call(func_with_sign_ext);
-
-            let call = call_func.finish(Vec::new(), &mut module.funcs);
-
-            module.exports.add(DEFAULT_ENTRY_POINT_NAME, call);
-
-            module.emit_wasm()
-        };
-        let error = preprocess(WasmConfig::default(), &module_bytes)
-            .expect_err("should fail with an error");
-        assert!(
-            matches!(&error, PreprocessingError::Deserialize(msg)
-            if msg == "Sign extension operations are not supported"),
-            "{:?}",
-            error,
-        );
-    }
-
-    #[test]
-    fn should_not_accept_sign_ext_i32_e16s_proposal_wasm() {
-        let module_bytes = {
-            let mut module = walrus::Module::with_config(ModuleConfig::new());
-
-            let _memory_id = module.memories.add_local(false, 11, None);
-
-            let mut func_with_sign_ext = FunctionBuilder::new(&mut module.types, &[], &[]);
-
-            func_with_sign_ext.func_body().i32_const(0);
-
-            {
-                let mut body = func_with_sign_ext.func_body();
-                let instructions = body.instrs_mut();
-                let (instr, _) = instructions.get_mut(0).unwrap();
-                *instr = Instr::Unop(Unop {
-                    op: UnaryOp::I32Extend16S,
-                });
-            }
-
-            let func_with_sign_ext = func_with_sign_ext.finish(vec![], &mut module.funcs);
-
-            let mut call_func = FunctionBuilder::new(&mut module.types, &[], &[]);
-
-            call_func.func_body().call(func_with_sign_ext);
-
-            let call = call_func.finish(Vec::new(), &mut module.funcs);
-
-            module.exports.add(DEFAULT_ENTRY_POINT_NAME, call);
-
-            module.emit_wasm()
-        };
-        let error = preprocess(WasmConfig::default(), &module_bytes)
-            .expect_err("should fail with an error");
-        assert!(
-            matches!(&error, PreprocessingError::Deserialize(msg)
-            if msg == "Sign extension operations are not supported"),
-            "{:?}",
-            error,
-        );
-    }
-
-    #[test]
-    fn should_not_accept_sign_ext_i64_e8s_proposal_wasm() {
-        let module_bytes = {
-            let mut module = walrus::Module::with_config(ModuleConfig::new());
-
-            let _memory_id = module.memories.add_local(false, 11, None);
-
-            let mut func_with_sign_ext = FunctionBuilder::new(&mut module.types, &[], &[]);
-
-            func_with_sign_ext.func_body().i32_const(0);
-
-            {
-                let mut body = func_with_sign_ext.func_body();
-                let instructions = body.instrs_mut();
-                let (instr, _) = instructions.get_mut(0).unwrap();
-                *instr = Instr::Unop(Unop {
-                    op: UnaryOp::I64Extend8S,
-                });
-            }
-
-            let func_with_sign_ext = func_with_sign_ext.finish(vec![], &mut module.funcs);
-
-            let mut call_func = FunctionBuilder::new(&mut module.types, &[], &[]);
-
-            call_func.func_body().call(func_with_sign_ext);
-
-            let call = call_func.finish(Vec::new(), &mut module.funcs);
-
-            module.exports.add(DEFAULT_ENTRY_POINT_NAME, call);
-
-            module.emit_wasm()
-        };
-        let error = preprocess(WasmConfig::default(), &module_bytes)
-            .expect_err("should fail with an error");
-        assert!(
-            matches!(&error, PreprocessingError::Deserialize(msg)
-            if msg == "Sign extension operations are not supported"),
-            "{:?}",
-            error,
-        );
-    }
-
-    #[test]
-    fn should_not_accept_sign_ext_i64_e16s_proposal_wasm() {
-        let module_bytes = {
-            let mut module = walrus::Module::with_config(ModuleConfig::new());
-
-            let _memory_id = module.memories.add_local(false, 11, None);
-
-            let mut func_with_sign_ext = FunctionBuilder::new(&mut module.types, &[], &[]);
-
-            func_with_sign_ext.func_body().i32_const(0);
-
-            {
-                let mut body = func_with_sign_ext.func_body();
-                let instructions = body.instrs_mut();
-                let (instr, _) = instructions.get_mut(0).unwrap();
-                *instr = Instr::Unop(Unop {
-                    op: UnaryOp::I64Extend16S,
-                });
-            }
-
-            let func_with_sign_ext = func_with_sign_ext.finish(vec![], &mut module.funcs);
-
-            let mut call_func = FunctionBuilder::new(&mut module.types, &[], &[]);
-
-            call_func.func_body().call(func_with_sign_ext);
-
-            let call = call_func.finish(Vec::new(), &mut module.funcs);
-
-            module.exports.add(DEFAULT_ENTRY_POINT_NAME, call);
-
-            module.emit_wasm()
-        };
-        let error = preprocess(WasmConfig::default(), &module_bytes)
-            .expect_err("should fail with an error");
-        assert!(
-            matches!(&error, PreprocessingError::Deserialize(msg)
-            if msg == "Sign extension operations are not supported"),
-            "{:?}",
-            error,
-        );
-    }
-
-    #[test]
-    fn should_not_accept_sign_ext_i64_e32s_proposal_wasm() {
-        let module_bytes = {
-            let mut module = walrus::Module::with_config(ModuleConfig::new());
-
-            let _memory_id = module.memories.add_local(false, 11, None);
-
-            let mut func_with_sign_ext = FunctionBuilder::new(&mut module.types, &[], &[]);
-
-            func_with_sign_ext.func_body().i32_const(0);
-
-            {
-                let mut body = func_with_sign_ext.func_body();
-                let instructions = body.instrs_mut();
-                let (instr, _) = instructions.get_mut(0).unwrap();
-                *instr = Instr::Unop(Unop {
-                    op: UnaryOp::I64Extend32S,
-                });
-            }
-
-            let func_with_sign_ext = func_with_sign_ext.finish(vec![], &mut module.funcs);
-
-            let mut call_func = FunctionBuilder::new(&mut module.types, &[], &[]);
-
-            call_func.func_body().call(func_with_sign_ext);
-
-            let call = call_func.finish(Vec::new(), &mut module.funcs);
-
-            module.exports.add(DEFAULT_ENTRY_POINT_NAME, call);
-
-            module.emit_wasm()
-        };
-        let error = preprocess(WasmConfig::default(), &module_bytes)
-            .expect_err("should fail with an error");
-        assert!(
-            matches!(&error, PreprocessingError::Deserialize(msg)
-            if msg == "Sign extension operations are not supported"),
             "{:?}",
             error,
         );

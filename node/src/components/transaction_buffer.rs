@@ -233,7 +233,7 @@ impl TransactionBuffer {
     where
         REv: From<ContractRuntimeRequest> + Send,
     {
-        if self.prices.get(&era_id).is_none() {
+        if !self.prices.contains_key(&era_id) {
             info!("Empty prices field, requesting gas price from contract runtime");
             return effect_builder
                 .get_current_gas_price(era_id)
