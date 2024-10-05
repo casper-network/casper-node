@@ -286,27 +286,26 @@ impl BlockAcceptor {
                         },
                         faulty_senders,
                     );
-                } else {
-                    if meta_block
-                        .state
-                        .register_as_stored()
-                        .was_already_registered()
-                    {
-                        error!(
-                            %block_hash,
-                            block_height = meta_block.block.height(),
-                            meta_block_state = ?meta_block.state,
-                            "should not store the same block more than once"
-                        );
-                    }
-                    return (
-                        ShouldStore::SufficientlySignedBlock {
-                            meta_block: meta_block.clone(),
-                            block_signatures,
-                        },
-                        faulty_senders,
+                }
+                if meta_block
+                    .state
+                    .register_as_stored()
+                    .was_already_registered()
+                {
+                    error!(
+                        %block_hash,
+                        block_height = meta_block.block.height(),
+                        meta_block_state = ?meta_block.state,
+                        "should not store the same block more than once"
                     );
                 }
+                return (
+                    ShouldStore::SufficientlySignedBlock {
+                        meta_block: meta_block.clone(),
+                        block_signatures,
+                    },
+                    faulty_senders,
+                );
             }
         }
 

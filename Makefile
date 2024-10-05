@@ -4,18 +4,11 @@ RUSTUP = $(or $(shell which rustup), $(HOME)/.cargo/bin/rustup)
 NPM    = $(or $(shell which npm),    /usr/bin/npm)
 
 PINNED_NIGHTLY := $(shell cat smart_contracts/rust-toolchain)
-# TODO: When `PINNED_NIGHTLY` is updated to something reletively new, we can get rid
-# of this specific 'NIGHTLY_FOR_DOC' variable and use `PINNED_NIGHTLY` in `make doc` instead.
-#
-# At the moment, we can't use STABLE for doc, due to 'doc_auto_cfg' feature being unstable.
-# We also can't use the nightly version that is pinned for the contracts, because it is too old.
-NIGHTLY_FOR_DOC = nightly-2024-01-01
 PINNED_STABLE  := $(shell sed -nr 's/channel *= *\"(.*)\"/\1/p' rust-toolchain.toml)
 WASM_STRIP_VERSION := $(shell wasm-strip --version)
 
 CARGO_OPTS := --locked
 CARGO_PINNED_NIGHTLY := $(CARGO) +$(PINNED_NIGHTLY) $(CARGO_OPTS)
-CARGO_NIGHTLY_FOR_DOC := $(CARGO) +$(NIGHTLY_FOR_DOC) $(CARGO_OPTS)
 CARGO := $(CARGO) $(CARGO_OPTS)
 
 DISABLE_LOGGING = RUST_LOG=MatchesNothing
@@ -171,7 +164,7 @@ audit: audit-rs
 
 .PHONY: doc
 doc:
-	RUSTFLAGS="-D warnings" RUSTDOCFLAGS="--cfg docsrs" $(CARGO_NIGHTLY_FOR_DOC) doc --all-features $(CARGO_FLAGS) --no-deps
+	RUSTFLAGS="-D warnings" RUSTDOCFLAGS="--cfg docsrs" $(CARGO_PINNED_NIGHTLY) doc --all-features $(CARGO_FLAGS) --no-deps
 	cd smart_contracts/contract && RUSTFLAGS="-D warnings" RUSTDOCFLAGS="--cfg docsrs" $(CARGO_PINNED_NIGHTLY) doc --all-features $(CARGO_FLAGS) --no-deps
 
 .PHONY: check-rs

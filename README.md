@@ -23,6 +23,7 @@ The Casper MainNet is live.
 
 - [Platform Specification](https://docs.casperlabs.io/design/)
 - [Highway Consensus Proofs](https://github.com/CasperLabs/highway/releases/latest)
+- [Zug Consensus Whitepaper](http://arxiv.org/pdf/2205.06314)
 
 ### Get Started with Smart Contracts
 - [Writing Smart Contracts](https://docs.casperlabs.io/developers/)

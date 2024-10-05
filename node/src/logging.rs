@@ -1,6 +1,6 @@
 //! Logging via the tracing crate.
 
-use std::{env, fmt, io};
+use std::{env, fmt, io, string::ToString};
 
 use ansi_term::{Color, Style};
 use anyhow::anyhow;
@@ -284,8 +284,8 @@ impl ReloadHandle {
     /// Returns a string representation of the current [`EnvFilter`], if set.
     fn display_log_filter(&self) -> Result<String, reload::Error> {
         match self {
-            ReloadHandle::Text(handle) => handle.with_current(|env_filter| env_filter.to_string()),
-            ReloadHandle::Json(handle) => handle.with_current(|env_filter| env_filter.to_string()),
+            ReloadHandle::Text(handle) => handle.with_current(ToString::to_string),
+            ReloadHandle::Json(handle) => handle.with_current(ToString::to_string),
         }
     }
 }

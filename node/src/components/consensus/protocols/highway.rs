@@ -97,6 +97,7 @@ impl<C: Context + 'static> HighwayProtocol<C> {
         era_start_time: Timestamp,
         seed: u64,
         now: Timestamp,
+        protocol_state_file: Option<PathBuf>,
     ) -> (Box<dyn ConsensusProtocol<C>>, ProtocolOutcomes<C>) {
         let validators_count = validator_stakes.len();
         let validators = protocols::common::validators::<C>(faulty, inactive, validator_stakes);
@@ -170,7 +171,7 @@ impl<C: Context + 'static> HighwayProtocol<C> {
 
         let outcomes = Self::initialize_timers(now, era_start_time, &config.highway);
 
-        let highway = Highway::new(instance_id, validators, params);
+        let highway = Highway::new(instance_id, validators, params, protocol_state_file);
         let hw_proto = Box::new(HighwayProtocol {
             pending_values: HashMap::new(),
             finality_detector: FinalityDetector::new(ftt),
@@ -339,9 +340,8 @@ impl<C: Context + 'static> HighwayProtocol<C> {
                     });
                 }
                 return outcomes;
-            } else {
-                self.log_proposal(vertex, "proposal does not need validation");
             }
+            self.log_proposal(vertex, "proposal does not need validation");
         }
 
         // Either consensus value doesn't need validation or it's not a proposal.

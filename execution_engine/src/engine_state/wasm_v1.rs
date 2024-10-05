@@ -496,7 +496,10 @@ impl TryFrom<&TransactionV1> for SessionInfo {
             }
             TransactionTarget::Stored { id, .. } => {
                 let TransactionEntryPoint::Custom(entry_point) = v1_txn.entry_point() else {
-                    return Err(InvalidRequest::InvalidEntryPoint(transaction_hash, v1_txn.entry_point().to_string()));
+                    return Err(InvalidRequest::InvalidEntryPoint(
+                        transaction_hash,
+                        v1_txn.entry_point().to_string(),
+                    ));
                 };
                 let item = ExecutableItem::Invocation(id.clone());
                 ExecutableInfo {

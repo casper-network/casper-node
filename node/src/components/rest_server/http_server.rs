@@ -54,7 +54,7 @@ pub(super) async fn run<REv: ReactorEventT>(
 
     // Shutdown the server gracefully.
     let _ = server
-        .with_graceful_shutdown(async {
+        .with_graceful_shutdown(async move {
             shutdown_receiver.await.ok();
         })
         .map_err(|error| {
@@ -109,7 +109,7 @@ pub(super) async fn run_with_cors<REv: ReactorEventT>(
 
     // Shutdown the server gracefully.
     let _ = server
-        .with_graceful_shutdown(async {
+        .with_graceful_shutdown(async move {
             shutdown_receiver.await.ok();
         })
         .map_err(|error| {

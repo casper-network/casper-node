@@ -11,36 +11,16 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::warn;
 
-use crate::components::consensus::{
-    protocols::zug::{Content, Proposal, SignedMessage},
-    traits::Context,
-};
-
-use super::RoundId;
-
-/// An entry in the Write-Ahead Log, storing a message we had added to our protocol state.
-#[derive(Deserialize, Serialize, Debug, PartialEq)]
-#[serde(bound(
-    serialize = "C::Hash: Serialize",
-    deserialize = "C::Hash: Deserialize<'de>",
-))]
-pub(crate) enum Entry<C: Context> {
-    /// A signed echo or vote.
-    SignedMessage(SignedMessage<C>),
-    /// A proposal.
-    Proposal(Proposal<C>, RoundId),
-    /// Evidence of a validator double-signing.
-    Evidence(SignedMessage<C>, Content<C>, C::Signature),
-}
+pub(crate) trait WalEntry: Serialize + for<'de> Deserialize<'de> {}
 
 /// A Write-Ahead Log to store every message on disk when we add it to the protocol state.
 #[derive(Debug)]
-pub(crate) struct WriteWal<C: Context> {
+pub(crate) struct WriteWal<E: WalEntry> {
     writer: BufWriter<File>,
-    phantom_context: PhantomData<C>,
+    phantom_context: PhantomData<E>,
 }
 
-impl<C: Context> DataSize for WriteWal<C> {
+impl<E: WalEntry> DataSize for WriteWal<E> {
     const IS_DYNAMIC: bool = true;
 
     const STATIC_HEAP_SIZE: usize = 0;
@@ -64,7 +44,7 @@ pub(crate) enum WriteWalError {
     FileCouldntBeOpened(io::Error),
 }
 
-impl<C: Context> WriteWal<C> {
+impl<E: WalEntry> WriteWal<E> {
     pub(crate) fn new(wal_path: &PathBuf) -> Result<Self, WriteWalError> {
         let file = OpenOptions::new()
             .append(true)
@@ -77,7 +57,7 @@ impl<C: Context> WriteWal<C> {
         })
     }
 
-    pub(crate) fn record_entry(&mut self, entry: &Entry<C>) -> Result<(), WriteWalError> {
+    pub(crate) fn record_entry(&mut self, entry: &E) -> Result<(), WriteWalError> {
         // First write the size of the entry as a serialized u64.
         let entry_size =
             bincode::serialized_size(entry).map_err(WriteWalError::CouldntGetSerializedSize)?;
@@ -96,9 +76,9 @@ impl<C: Context> WriteWal<C> {
 
 /// A buffer to read a Write-Ahead Log from disk and deserialize its messages.
 #[derive(Debug)]
-pub(crate) struct ReadWal<C: Context> {
+pub(crate) struct ReadWal<E: WalEntry> {
     pub(crate) reader: BufReader<File>,
-    pub(crate) phantom_context: PhantomData<C>,
+    pub(crate) phantom_context: PhantomData<E>,
 }
 
 #[derive(Error, Debug)]
@@ -111,7 +91,7 @@ pub(crate) enum ReadWalError {
     CouldNotDeserialize(bincode::Error),
 }
 
-impl<C: Context> ReadWal<C> {
+impl<E: WalEntry> ReadWal<E> {
     pub(crate) fn new(wal_path: &PathBuf) -> Result<Self, ReadWalError> {
         let file = OpenOptions::new()
             .create(true)
@@ -127,10 +107,10 @@ impl<C: Context> ReadWal<C> {
     }
 }
 
-impl<C: Context> ReadWal<C> {
+impl<E: WalEntry> ReadWal<E> {
     /// Reads the next entry from the WAL, or returns an error.
     /// If there are 0 bytes left it returns `Ok(None)`.
-    pub(crate) fn read_next_entry(&mut self) -> Result<Option<Entry<C>>, ReadWalError> {
+    pub(crate) fn read_next_entry(&mut self) -> Result<Option<E>, ReadWalError> {
         // Remember the current position: If we encounter an unreadable entry we trim the file at
         // this point so we can continue appending entries after it.
         let position = self.reader.stream_position()?;
@@ -179,65 +159,29 @@ impl<C: Context> ReadWal<C> {
 mod tests {
     use std::iter::from_fn;
 
-    use crate::components::consensus::{
-        cl_context::{ClContext, Keypair},
-        protocols::common,
-    };
-    use casper_types::{PublicKey, SecretKey, Timestamp, U512};
+    use casper_types::Timestamp;
+    use serde::{Deserialize, Serialize};
     use tempfile::tempdir;
 
     use super::*;
-    use once_cell::sync::Lazy;
-    const INSTANCE_ID_DATA: &[u8; 1] = &[123u8; 1];
-    const ALICE_WEIGHT: u64 = 1000000;
-    const ALICE_SECRET_KEY_BYTES: [u8; SecretKey::ED25519_LENGTH] = [3; SecretKey::ED25519_LENGTH];
-    static ALICE_SECRET_KEY: Lazy<SecretKey> =
-        Lazy::new(|| SecretKey::ed25519_from_bytes(ALICE_SECRET_KEY_BYTES).unwrap());
-    static ALICE_PUBLIC_KEY: Lazy<PublicKey> =
-        Lazy::new(|| PublicKey::from(Lazy::force(&ALICE_SECRET_KEY)));
 
-    fn create_message_fn() -> Box<dyn Fn(RoundId, Content<ClContext>) -> SignedMessage<ClContext>> {
-        let alice_keypair = Keypair::from(std::sync::Arc::new(
-            SecretKey::ed25519_from_bytes(ALICE_SECRET_KEY_BYTES).unwrap(),
-        ));
-        let weights: Vec<(PublicKey, U512)> =
-            vec![(ALICE_PUBLIC_KEY.clone(), U512::from(ALICE_WEIGHT))];
-        let validators = common::validators::<ClContext>(
-            &Default::default(),
-            &Default::default(),
-            weights.iter().cloned().collect(),
-        );
-        let instance_id = ClContext::hash(INSTANCE_ID_DATA);
-        Box::new(move |round_id, content: Content<ClContext>| {
-            let validator_idx = validators.get_index(alice_keypair.public_key()).unwrap();
-            SignedMessage::sign_new(
-                round_id,
-                instance_id,
-                content,
-                validator_idx,
-                &alice_keypair,
-            )
-        })
+    #[derive(Serialize, Deserialize, Debug, PartialEq)]
+    enum TestWalEntry {
+        Variant1(u32),
+        Variant2(Timestamp),
     }
+
+    impl WalEntry for TestWalEntry {}
 
     #[test]
     // Tests the functionality of the ReadWal and WriteWal by constructing one and manipulating it.
     fn test_read_write_wal() {
         // Create a bunch of test entries
-        let create_message = create_message_fn();
         let mut entries = vec![
-            Entry::SignedMessage(create_message(0, Content::Vote(true))),
-            Entry::SignedMessage(create_message(1, Content::Vote(false))),
-            Entry::SignedMessage(create_message(
-                2,
-                Content::Echo(ClContext::hash(&[123u8; 1])),
-            )),
-            Entry::Proposal(Proposal::dummy(Timestamp::zero(), 0), 0),
-            Entry::Evidence(
-                create_message(0, Content::Echo(ClContext::hash(&[23u8; 1]))),
-                Content::Echo(ClContext::hash(&[52u8; 1])),
-                create_message(0, Content::Echo(ClContext::hash(&[4u8; 1]))).signature,
-            ),
+            TestWalEntry::Variant1(0),
+            TestWalEntry::Variant1(1),
+            TestWalEntry::Variant1(2),
+            TestWalEntry::Variant2(Timestamp::zero()),
         ];
 
         // Create a temporary directory which will be removed upon dropping the dir variable,
@@ -246,14 +190,14 @@ mod tests {
         let path = dir.path().join("wal");
 
         let read_entries = || {
-            let mut read_wal: ReadWal<ClContext> = ReadWal::new(&path).unwrap();
+            let mut read_wal: ReadWal<TestWalEntry> = ReadWal::new(&path).unwrap();
             from_fn(move || read_wal.read_next_entry().unwrap()).collect::<Vec<_>>()
         };
 
         assert_eq!(read_entries(), vec![]);
 
         // Record all of the test entries into the WAL file
-        let mut write_wal: WriteWal<ClContext> = WriteWal::new(&path).unwrap();
+        let mut write_wal: WriteWal<TestWalEntry> = WriteWal::new(&path).unwrap();
 
         entries.iter().for_each(move |entry| {
             write_wal.record_entry(entry).unwrap();

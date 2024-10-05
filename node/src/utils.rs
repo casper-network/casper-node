@@ -16,18 +16,17 @@ pub(crate) mod umask;
 pub mod work_queue;
 
 use std::{
-    any,
     fmt::{self, Debug, Display, Formatter},
     io,
     net::{SocketAddr, ToSocketAddrs},
     ops::{Add, BitXorAssign, Div},
     path::{Path, PathBuf},
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
-    time::{Duration, Instant, SystemTime},
+    sync::atomic::{AtomicBool, Ordering},
+    time::{Instant, SystemTime},
 };
+
+#[cfg(test)]
+use std::{any, sync::Arc, time::Duration};
 
 use datasize::DataSize;
 use hyper::server::{conn::AddrIncoming, Builder, Server};
@@ -175,7 +174,7 @@ impl SharedFlag {
 
     /// Set the flag.
     pub(crate) fn set(self) {
-        self.0.store(true, Ordering::SeqCst)
+        self.0.store(true, Ordering::SeqCst);
     }
 
     /// Returns a shared instance of the flag for testing.
@@ -287,8 +286,9 @@ impl Source {
 impl Display for Source {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Source::PeerGossiped(node_id) => Display::fmt(node_id, formatter),
-            Source::Peer(node_id) => Display::fmt(node_id, formatter),
+            Source::PeerGossiped(node_id) | Source::Peer(node_id) => {
+                Display::fmt(node_id, formatter)
+            }
             Source::Client => write!(formatter, "client"),
             Source::SpeculativeExec => write!(formatter, "client (speculative exec)"),
             Source::Ourself => write!(formatter, "ourself"),
@@ -359,6 +359,7 @@ pub(crate) fn xor(lhs: &mut [u8], rhs: &[u8]) {
 ///
 /// Using this function is usually a potential architectural issue and it should be used very
 /// sparingly. Consider introducing a different access pattern for the value under `Arc`.
+#[cfg(test)]
 pub(crate) async fn wait_for_arc_drop<T>(
     arc: Arc<T>,
     attempts: usize,

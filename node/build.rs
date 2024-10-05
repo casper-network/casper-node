@@ -20,24 +20,23 @@ fn main() {
         .output()
     {
         Ok(output) => {
-            //In the event the git command is successful, export the properly formatted git hash to
+            // In the event the git command is successful, export the properly formatted git hash to
             // cargo at compile time.
             let git_hash_raw =
                 String::from_utf8(output.stdout).expect("Failed to obtain commit hash to string");
             let git_hash = git_hash_raw.trim_end_matches('\n');
 
-            println!("cargo:rustc-env={}={}", NODE_GIT_HASH_ENV_VAR, git_hash);
+            println!("cargo:rustc-env={NODE_GIT_HASH_ENV_VAR}={git_hash}");
         }
 
         Err(error) => {
-            println!("cargo:warning={}", error);
+            println!("cargo:warning={error}");
             println!("cargo:warning=casper-node build version will not include git short hash");
         }
     }
 
     println!(
-        "cargo:rustc-env={}={}",
-        NODE_BUILD_PROFILE_ENV_VAR,
+        "cargo:rustc-env={NODE_BUILD_PROFILE_ENV_VAR}={}",
         env::var(CARGO_BUILD_PROFILE_ENV_VAR).unwrap()
     );
 }
