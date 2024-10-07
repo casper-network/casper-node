@@ -687,6 +687,7 @@ extern "C" {
     /// * `in_size` - length of bytes
     /// * `out_ptr` - pointer to the location where argument bytes will be copied from the host side
     /// * `out_size` - size of output pointer
+    #[deprecated(note = "Superseded by ext_ffi::casper_generic_hash")]
     pub fn casper_blake2b(
         in_ptr: *const u8,
         in_size: usize,
@@ -851,7 +852,7 @@ extern "C" {
     ///
     /// * `in_ptr` - pointer to the location where argument bytes will be copied from the host side
     /// * `in_size` - size of output pointer
-    /// * `hash_algo_type` - integer representation of HashAlgoType enum variant
+    /// * `hash_algo_type` - integer representation of HashAlgorithm enum variant
     /// * `out_ptr` - pointer to the location where argument bytes will be copied to the host side
     /// * `out_size` - size of output pointer
     pub fn casper_generic_hash(

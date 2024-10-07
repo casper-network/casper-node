@@ -10,8 +10,8 @@ use casper_types::{
     bytesrepr::{self, FromBytes},
     contract_messages::{MessagePayload, MessageTopicOperation},
     system::Caller,
-    AddressableEntityHash, ApiError, BlockTime, CLTyped, CLValue, EntityVersion, Key, PackageHash,
-    Phase, RuntimeArgs, URef, BLAKE2B_DIGEST_LENGTH, BLOCKTIME_SERIALIZED_LENGTH,
+    AddressableEntityHash, ApiError, BlockTime, CLTyped, CLValue, EntityVersion, HashAlgorithm,
+    Key, PackageHash, Phase, RuntimeArgs, URef, BLAKE2B_DIGEST_LENGTH, BLOCKTIME_SERIALIZED_LENGTH,
     PHASE_SERIALIZED_LENGTH,
 };
 
@@ -380,9 +380,10 @@ pub fn is_valid_uref(uref: URef) -> bool {
 pub fn blake2b<T: AsRef<[u8]>>(input: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {
     let mut ret = [0; BLAKE2B_DIGEST_LENGTH];
     let result = unsafe {
-        ext_ffi::casper_blake2b(
+        ext_ffi::casper_generic_hash(
             input.as_ref().as_ptr(),
             input.as_ref().len(),
+            HashAlgorithm::Blake2b as u8,
             ret.as_mut_ptr(),
             BLAKE2B_DIGEST_LENGTH,
         )
