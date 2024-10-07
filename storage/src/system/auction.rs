@@ -73,6 +73,7 @@ pub trait Auction:
         amount: U512,
         minimum_delegation_amount: u64,
         maximum_delegation_amount: u64,
+        minimum_bid_amount: u64,
         // TODO: reservation list functionality implementation
         _reserved_slots: u32,
     ) -> Result<U512, ApiError> {
@@ -82,7 +83,7 @@ pub trait Auction:
             return Err(Error::AuctionBidsDisabled.into());
         }
 
-        if amount.is_zero() {
+        if amount < U512::from(minimum_bid_amount) {
             return Err(Error::BondTooSmall.into());
         }
 

@@ -1256,6 +1256,7 @@ pub trait StateProvider {
                 amount,
                 minimum_delegation_amount,
                 maximum_delegation_amount,
+                minimum_bid_amount,
             } => runtime
                 .add_bid(
                     public_key,
@@ -1263,6 +1264,7 @@ pub trait StateProvider {
                     amount,
                     minimum_delegation_amount,
                     maximum_delegation_amount,
+                    minimum_bid_amount,
                     0,
                 )
                 .map(AuctionMethodRet::UpdatedAmount)
