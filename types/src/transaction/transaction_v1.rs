@@ -667,7 +667,7 @@ impl GasLimited for TransactionV1 {
                                 });
                             }
                             TransactionEntryPoint::AddBid | TransactionEntryPoint::ActivateBid => {
-                                costs.auction_costs().add_bid.into()
+                                costs.auction_costs().add_bid
                             }
                             TransactionEntryPoint::WithdrawBid => {
                                 costs.auction_costs().withdraw_bid.into()
