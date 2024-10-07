@@ -14,13 +14,13 @@ use crate::{
 };
 
 /// Default gas limit of install / upgrade contracts
-pub const DEFAULT_INSTALL_UPGRADE_GAS_LIMIT: u64 = 3_500_000_000_000;
+pub const DEFAULT_INSTALL_UPGRADE_GAS_LIMIT: u64 = 6_000_000_000_000;
 
 /// Default gas limit of standard transactions
-pub const DEFAULT_LARGE_TRANSACTION_GAS_LIMIT: u64 = 500_000_000_000;
+pub const DEFAULT_LARGE_TRANSACTION_GAS_LIMIT: u64 = 6_000_000_000_000;
 
 const DEFAULT_NATIVE_MINT_LANE: [u64; 5] = [0, 1_048_576, 1024, 2_500_000_000, 650];
-const DEFAULT_NATIVE_AUCTION_LANE: [u64; 5] = [1, 1_048_576, 1024, 2_500_000_000, 145];
+const DEFAULT_NATIVE_AUCTION_LANE: [u64; 5] = [1, 1_048_576, 1024, 5_000_000_000_000, 145];
 
 const KIND: usize = 0;
 const MAX_TRANSACTION_LENGTH: usize = 1;

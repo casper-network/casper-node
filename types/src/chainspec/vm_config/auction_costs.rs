@@ -15,7 +15,7 @@ pub const DEFAULT_GET_ERA_VALIDATORS_COST: u32 = 10_000;
 /// Default cost of the `read_seigniorage_recipients` auction entry point.
 pub const DEFAULT_READ_SEIGNIORAGE_RECIPIENTS_COST: u32 = 10_000;
 /// Default cost of the `add_bid` auction entry point.
-pub const DEFAULT_ADD_BID_COST: u64 = 5_000_000_000_000;
+pub const DEFAULT_ADD_BID_COST: u64 = 2_500_000_000;
 /// Default cost of the `withdraw_bid` auction entry point.
 pub const DEFAULT_WITHDRAW_BID_COST: u32 = 2_500_000_000;
 /// Default cost of the `delegate` auction entry point.

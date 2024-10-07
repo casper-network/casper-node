@@ -18,7 +18,7 @@ use casper_types::{
     GenesisValidator, HandlePaymentCosts, HostFunction, HostFunctionCost, HostFunctionCosts,
     MessageLimits, MintCosts, Motes, OpcodeCosts, ProtocolVersion, PublicKey, RuntimeArgs,
     SecretKey, StandardPaymentCosts, StorageCosts, SystemConfig, WasmConfig, DEFAULT_ADD_BID_COST,
-    DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY, U512,
+    DEFAULT_MAX_STACK_HEIGHT, DEFAULT_MINIMUM_BID_AMOUNT, DEFAULT_WASM_MAX_MEMORY, U512,
 };
 
 use crate::wasm_utils;
@@ -34,12 +34,12 @@ const VALIDATOR_1_STAKE: u64 = 250_000;
 static VALIDATOR_2_SECRET_KEY: Lazy<SecretKey> =
     Lazy::new(|| SecretKey::ed25519_from_bytes([124; SecretKey::ED25519_LENGTH]).unwrap());
 static VALIDATOR_2: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&*VALIDATOR_2_SECRET_KEY));
-const BOND_AMOUNT: u64 = 42;
+const BOND_AMOUNT: u64 = DEFAULT_MINIMUM_BID_AMOUNT + 42;
 const BID_AMOUNT: u64 = 99 + DEFAULT_MINIMUM_DELEGATION_AMOUNT;
 const TRANSFER_AMOUNT: u64 = 123;
 const BID_DELEGATION_RATE: DelegationRate = auction::DELEGATION_RATE_DENOMINATOR;
 const UPDATED_CALL_CONTRACT_COST: HostFunctionCost = 12_345;
-const NEW_ADD_BID_COST: u32 = 2_500_000_000;
+const NEW_ADD_BID_COST: u64 = 2_500_000_000;
 const NEW_WITHDRAW_BID_COST: u32 = 2_500_000_000;
 const NEW_DELEGATE_COST: u32 = 2_500_000_000;
 const NEW_UNDELEGATE_COST: u32 = NEW_DELEGATE_COST;

@@ -44,7 +44,7 @@ pub const DEFAULT_FEE_HANDLING: FeeHandling = FeeHandling::NoFee;
 pub const DEFAULT_ALLOW_RESERVATIONS: bool = false;
 
 /// Default value for minimum bid amount in motes.
-pub const DEFAULT_MINIMUM_BID_AMOUNT: u64 = 10_000 * 1_000_000_000;
+pub const DEFAULT_MINIMUM_BID_AMOUNT: u64 = 1;
 
 /// Default processing hold balance handling.
 #[allow(unused)]

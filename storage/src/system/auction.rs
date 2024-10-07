@@ -82,6 +82,7 @@ pub trait Auction:
             // which is configured by disabling bids.
             return Err(Error::AuctionBidsDisabled.into());
         }
+        println!("{minimum_bid_amount} {amount}");
 
         if amount < U512::from(minimum_bid_amount) {
             return Err(Error::BondTooSmall.into());
