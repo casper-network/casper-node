@@ -994,9 +994,10 @@ where
 
                 let public_key = Self::get_named_argument(runtime_args, auction::ARG_PUBLIC_KEY)?;
                 let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
+                let min_bid_amount = self.context.engine_config().minimum_bid_amount();
 
                 let result = runtime
-                    .withdraw_bid(public_key, amount)
+                    .withdraw_bid(public_key, amount, min_bid_amount)
                     .map_err(Self::reverter)?;
                 CLValue::from_t(result).map_err(Self::reverter)
             })(),

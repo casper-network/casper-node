@@ -155,7 +155,12 @@ pub trait Auction:
     /// An attempt to reduce stake by more than is staked will instead 0 the stake.
     ///
     /// The function returns the remaining staked amount (we allow partial unbonding).
-    fn withdraw_bid(&mut self, public_key: PublicKey, amount: U512) -> Result<U512, Error> {
+    fn withdraw_bid(
+        &mut self,
+        public_key: PublicKey,
+        amount: U512,
+        minimum_bid_amount: u64,
+    ) -> Result<U512, Error> {
         let provided_account_hash = AccountHash::from_public_key(&public_key, |x| self.blake2b(x));
 
         if !self.is_allowed_session_caller(&provided_account_hash) {
@@ -187,7 +192,7 @@ pub trait Auction:
             "withdrawing bid for {} reducing {} by {} to {}",
             validator_bid_addr, initial_amount, unbonding_amount, updated_stake
         );
-        if updated_stake.is_zero() {
+        if updated_stake < U512::from(minimum_bid_amount) {
             // Unbond all delegators and zero them out
             let delegators = read_delegator_bids(self, &public_key)?;
             for mut delegator in delegators {

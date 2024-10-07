@@ -1035,6 +1035,7 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
                 AuctionMethod::WithdrawBid {
                     public_key: VALIDATOR_1.clone(),
                     amount,
+                    minimum_bid_amount: DEFAULT_MINIMUM_BID_AMOUNT,
                 }
             }
         };

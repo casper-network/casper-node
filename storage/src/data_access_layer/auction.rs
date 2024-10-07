@@ -52,6 +52,7 @@ pub enum AuctionMethod {
     WithdrawBid {
         public_key: PublicKey,
         amount: U512,
+        minimum_bid_amount: u64,
     },
     Delegate {
         delegator: PublicKey,
@@ -95,7 +96,9 @@ impl AuctionMethod {
                 chainspec.core_config.maximum_delegation_amount,
                 chainspec.core_config.minimum_bid_amount,
             ),
-            TransactionEntryPoint::WithdrawBid => Self::new_withdraw_bid(runtime_args),
+            TransactionEntryPoint::WithdrawBid => {
+                Self::new_withdraw_bid(runtime_args, chainspec.core_config.minimum_bid_amount)
+            }
             TransactionEntryPoint::Delegate => Self::new_delegate(
                 runtime_args,
                 chainspec.core_config.max_delegators_per_validator,
@@ -142,10 +145,17 @@ impl AuctionMethod {
         })
     }
 
-    fn new_withdraw_bid(runtime_args: &RuntimeArgs) -> Result<Self, AuctionMethodError> {
+    fn new_withdraw_bid(
+        runtime_args: &RuntimeArgs,
+        global_minimum_bid_amount: u64,
+    ) -> Result<Self, AuctionMethodError> {
         let public_key = Self::get_named_argument(runtime_args, auction::ARG_PUBLIC_KEY)?;
         let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
-        Ok(Self::WithdrawBid { public_key, amount })
+        Ok(Self::WithdrawBid {
+            public_key,
+            amount,
+            minimum_bid_amount: global_minimum_bid_amount,
+        })
     }
 
     fn new_delegate(

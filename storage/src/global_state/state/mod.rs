@@ -1269,8 +1269,12 @@ pub trait StateProvider {
                 )
                 .map(AuctionMethodRet::UpdatedAmount)
                 .map_err(TrackingCopyError::Api),
-            AuctionMethod::WithdrawBid { public_key, amount } => runtime
-                .withdraw_bid(public_key, amount)
+            AuctionMethod::WithdrawBid {
+                public_key,
+                amount,
+                minimum_bid_amount,
+            } => runtime
+                .withdraw_bid(public_key, amount, minimum_bid_amount)
                 .map(AuctionMethodRet::UpdatedAmount)
                 .map_err(|auc_err| {
                     TrackingCopyError::SystemContract(system::Error::Auction(auc_err))
