@@ -23,7 +23,10 @@ pub use engine_config::{
 };
 pub use error::Error;
 use execution_kind::ExecutionKind;
-pub use wasm_v1::{ExecutableItem, InvalidRequest, WasmV1Request, WasmV1Result};
+pub use wasm_v1::{
+    ExecutableItem, InvalidRequest, SessionDataDeploy, SessionDataV1, SessionInputData,
+    WasmV1Request, WasmV1Result,
+};
 
 /// The maximum amount of motes that payment code execution can cost.
 pub const MAX_PAYMENT_AMOUNT: u64 = 2_500_000_000;

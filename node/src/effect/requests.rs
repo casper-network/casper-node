@@ -35,7 +35,7 @@ use casper_types::{
     BlockSignatures, BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest,
     DisplayIter, EntityAddr, EraId, ExecutionInfo, FinalitySignature, FinalitySignatureId, Key,
     NextUpgrade, ProtocolUpgradeConfig, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
-    Transaction, TransactionHash, TransactionHeader, TransactionId, Transfer,
+    Transaction, TransactionHash, TransactionId, Transfer,
 };
 
 use super::{AutoClosingResponder, GossipTarget, Responder};
@@ -58,7 +58,7 @@ use crate::{
     types::{
         appendable_block::AppendableBlock, BlockExecutionResultsOrChunk,
         BlockExecutionResultsOrChunkId, BlockWithMetadata, ExecutableBlock, LegacyDeploy,
-        MetaBlockState, NodeId, StatusFeed,
+        MetaBlockState, NodeId, StatusFeed, TransactionHeader,
     },
     utils::Source,
 };

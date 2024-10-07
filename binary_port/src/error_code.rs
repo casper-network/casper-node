@@ -507,7 +507,7 @@ impl From<InvalidTransactionV1> for ErrorCode {
             InvalidTransactionV1::EntryPointCannotBeCall => {
                 ErrorCode::InvalidTransactionEntryPointCannotBeCall
             }
-            InvalidTransactionV1::InvalidTransactionKind(_) => {
+            InvalidTransactionV1::InvalidTransactionLane(_) => {
                 ErrorCode::InvalidTransactionInvalidTransactionKind
             }
             InvalidTransactionV1::GasPriceToleranceTooLow { .. } => {

@@ -3,13 +3,13 @@ use std::{
     sync::Arc,
 };
 
+use crate::types::TransactionHeader;
 use itertools::Itertools;
 
 use casper_types::{
     contract_messages::Messages,
     execution::{Effects, ExecutionResult},
     Block, BlockHash, EraId, FinalitySignature, PublicKey, Timestamp, Transaction, TransactionHash,
-    TransactionHeader,
 };
 
 #[derive(Debug)]
