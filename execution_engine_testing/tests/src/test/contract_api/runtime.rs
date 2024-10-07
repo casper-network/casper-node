@@ -8,7 +8,7 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{runtime::cryptography, runtime_context::RANDOM_BYTES_COUNT};
 use casper_storage::address_generator::ADDRESS_LENGTH;
-use casper_types::{runtime_args, BLAKE2B_DIGEST_LENGTH};
+use casper_types::runtime_args;
 
 const ARG_BYTES: &str = "bytes";
 const ARG_AMOUNT: &str = "amount";

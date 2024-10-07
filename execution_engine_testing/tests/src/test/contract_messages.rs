@@ -11,7 +11,7 @@ use casper_engine_test_support::{
 use casper_types::{
     bytesrepr::ToBytes,
     contract_messages::{MessageChecksum, MessagePayload, MessageTopicSummary, TopicNameHash},
-    crypto, runtime_args, AddressableEntity, AddressableEntityHash, BlockGlobalAddr, BlockTime,
+    runtime_args, AddressableEntity, AddressableEntityHash, BlockGlobalAddr, BlockTime,
     CLValue, CoreConfig, Digest, EntityAddr, HostFunction, HostFunctionCosts, Key, MessageLimits,
     OpcodeCosts, RuntimeArgs, StorageCosts, StoredValue, SystemConfig, WasmConfig,
     DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY, U512,
