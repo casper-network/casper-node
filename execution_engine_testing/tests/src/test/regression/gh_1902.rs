@@ -73,7 +73,7 @@ fn should_not_charge_for_create_purse_in_first_time_bond() {
         .standard_payment_costs()
         .pay;
 
-    let add_bid_payment_amount = U512::from(add_bid_cost + pay_cost) * 2;
+    let add_bid_payment_amount = U512::from(add_bid_cost + pay_cost as u64) * 2;
 
     let sender = *DEFAULT_ACCOUNT_ADDR;
     let contract_hash = builder.get_auction_contract_hash();
