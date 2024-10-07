@@ -188,6 +188,9 @@ pub enum InvalidTransaction {
 
     /// Unable to calculate hash for payloads transaction.
     CannotCalculateFieldsHash,
+
+    /// The transactions field map had entries that were unexpected
+    UnexpectedTransactionFieldEntries,
 }
 
 impl Display for InvalidTransaction {
@@ -364,6 +367,7 @@ impl Display for InvalidTransaction {
                 write!(formatter, "entry point must be call: {entry_point}")
             },
             InvalidTransaction::NoWasmLaneMatchesTransaction() => write!(formatter, "Could not match any generic wasm lane to the specified transaction"),
+            InvalidTransaction::UnexpectedTransactionFieldEntries => write!(formatter, "There were entries in the fields map of the payload that could not be matched"),
         }
     }
 }
@@ -405,7 +409,8 @@ impl StdError for InvalidTransaction {
             | InvalidTransaction::GasPriceToleranceTooLow { .. }
             | InvalidTransaction::InvalidTransactionLane(_)
             | InvalidTransaction::CannotCalculateFieldsHash
-            | InvalidTransaction::NoWasmLaneMatchesTransaction() => None,
+            | InvalidTransaction::NoWasmLaneMatchesTransaction()
+            | InvalidTransaction::UnexpectedTransactionFieldEntries => None,
             InvalidTransaction::CouldNotDeserializeField { error } => match error {
                 FieldDeserializationError::IndexNotExists { .. }
                 | FieldDeserializationError::LingeringBytesInField { .. } => None,

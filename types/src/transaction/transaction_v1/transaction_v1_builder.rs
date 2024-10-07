@@ -18,6 +18,8 @@ use crate::{testing::TestRng, transaction::Approval, TransactionConfig, Transact
 pub use error::TransactionV1BuilderError;
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use rand::Rng;
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
+use std::collections::BTreeMap;
 
 /// A builder for constructing a [`TransactionV1`].
 ///
@@ -48,6 +50,8 @@ pub struct TransactionV1Builder<'a> {
     secret_key: Option<SecretKey>,
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
     invalid_approvals: Vec<Approval>,
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
+    additional_fields: BTreeMap<u16, Bytes>,
     _phantom_data: PhantomData<&'a ()>,
 }
 
@@ -79,6 +83,7 @@ impl<'a> TransactionV1Builder<'a> {
             _phantom_data: PhantomData,
             #[cfg(any(all(feature = "std", feature = "testing"), test))]
             invalid_approvals: vec![],
+            additional_fields: BTreeMap::new(),
         }
     }
 
@@ -283,6 +288,7 @@ impl<'a> TransactionV1Builder<'a> {
             secret_key: Some(secret_key),
             _phantom_data: PhantomData,
             invalid_approvals: vec![],
+            additional_fields: BTreeMap::new(),
         }
     }
 
@@ -326,6 +332,7 @@ impl<'a> TransactionV1Builder<'a> {
             secret_key: Some(secret_key),
             _phantom_data: PhantomData,
             invalid_approvals: vec![],
+            additional_fields: BTreeMap::new(),
         }
     }
 
@@ -455,6 +462,13 @@ impl<'a> TransactionV1Builder<'a> {
         self
     }
 
+    /// Manually sets additional fields
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
+    pub fn with_additional_fields(mut self, additional_fields: BTreeMap<u16, Bytes>) -> Self {
+        self.additional_fields = additional_fields;
+        self
+    }
+
     /// Returns the new transaction, or an error if non-defaulted fields were not set.
     ///
     /// For more info, see [the `TransactionBuilder` documentation](TransactionV1Builder).
@@ -518,7 +532,7 @@ impl<'a> TransactionV1Builder<'a> {
         let chain_name = self
             .chain_name
             .ok_or(TransactionV1BuilderError::MissingChainName)?;
-        let container =
+        let mut container =
             FieldsContainer::new(self.args, self.target, self.entry_point, self.scheduling)
                 .to_map()
                 .map_err(|err| match err {
@@ -526,6 +540,8 @@ impl<'a> TransactionV1Builder<'a> {
                         TransactionV1BuilderError::CouldNotSerializeField { field_index }
                     }
                 })?;
+        let mut additional_fields = self.additional_fields.clone();
+        container.append(&mut additional_fields);
 
         let mut transaction = TransactionV1::build(
             chain_name,
