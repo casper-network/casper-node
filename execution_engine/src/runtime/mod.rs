@@ -1,7 +1,7 @@
 //! This module contains executor state of the WASM code.
 mod args;
 mod auction_internal;
-mod cryptography;
+pub mod cryptography;
 mod externals;
 mod handle_payment_internal;
 mod host_function_flag;
@@ -45,7 +45,6 @@ use casper_types::{
         Message, MessageAddr, MessagePayload, MessageTopicOperation, MessageTopicSummary,
     },
     contracts::ContractHash,
-    crypto,
     system::{
         self,
         auction::{self, EraInfo},
@@ -1952,7 +1951,7 @@ where
 
         // Extend the previous topics with the newly added ones.
         for (new_topic, _) in topics_to_add {
-            let topic_name_hash = crypto::blake2b(new_topic.as_bytes()).into();
+            let topic_name_hash = cryptography::blake2b(new_topic.as_bytes()).into();
             if let Err(e) = previous_message_topics.add_topic(new_topic.as_str(), topic_name_hash) {
                 return Ok(Err(e.into()));
             }
@@ -3530,7 +3529,7 @@ where
     }
 
     fn add_message_topic(&mut self, topic_name: &str) -> Result<Result<(), ApiError>, ExecError> {
-        let topic_hash = crypto::blake2b(topic_name).into();
+        let topic_hash = cryptography::blake2b(topic_name).into();
 
         self.context
             .add_message_topic(topic_name, topic_hash)
@@ -3548,7 +3547,7 @@ where
             .as_entity_addr()
             .ok_or(ExecError::InvalidContext)?;
 
-        let topic_name_hash = crypto::blake2b(topic_name).into();
+        let topic_name_hash = cryptography::blake2b(topic_name).into();
         let topic_key = Key::Message(MessageAddr::new_topic_addr(entity_addr, topic_name_hash));
 
         // Check if the topic exists and get the summary.

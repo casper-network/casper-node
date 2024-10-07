@@ -32,7 +32,7 @@ use crate::{
         AddKeyFailure, NamedKeys, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure,
     },
     bytesrepr::{self, FromBytes, ToBytes},
-    crypto, AccessRights, Key, URef, BLAKE2B_DIGEST_LENGTH,
+    AccessRights, Key, URef,
 };
 #[cfg(feature = "json-schema")]
 use crate::{PublicKey, SecretKey};
@@ -330,15 +330,6 @@ impl FromBytes for Account {
             rem,
         ))
     }
-}
-
-#[doc(hidden)]
-#[deprecated(
-    since = "1.4.4",
-    note = "function moved to casper_types::crypto::blake2b"
-)]
-pub fn blake2b<T: AsRef<[u8]>>(data: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {
-    crypto::blake2b(data)
 }
 
 #[doc(hidden)]

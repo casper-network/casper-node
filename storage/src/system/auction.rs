@@ -90,7 +90,7 @@ pub trait Auction:
             return Err(Error::DelegationRateTooLarge.into());
         }
 
-        let provided_account_hash = AccountHash::from_public_key(&public_key, |x| self.blake2b(x));
+        let provided_account_hash = AccountHash::from(&public_key);
 
         if !self.is_allowed_session_caller(&provided_account_hash) {
             return Err(Error::InvalidContext.into());
@@ -155,7 +155,7 @@ pub trait Auction:
     ///
     /// The function returns the remaining staked amount (we allow partial unbonding).
     fn withdraw_bid(&mut self, public_key: PublicKey, amount: U512) -> Result<U512, Error> {
-        let provided_account_hash = AccountHash::from_public_key(&public_key, |x| self.blake2b(x));
+        let provided_account_hash = AccountHash::from(&public_key);
 
         if !self.is_allowed_session_caller(&provided_account_hash) {
             return Err(Error::InvalidContext);
@@ -261,8 +261,7 @@ pub trait Auction:
         validator_public_key: PublicKey,
         amount: U512,
     ) -> Result<U512, Error> {
-        let provided_account_hash =
-            AccountHash::from_public_key(&delegator_public_key, |x| self.blake2b(x));
+        let provided_account_hash = AccountHash::from(&delegator_public_key);
 
         if !self.is_allowed_session_caller(&provided_account_hash) {
             return Err(Error::InvalidContext);
@@ -332,8 +331,7 @@ pub trait Auction:
         amount: U512,
         new_validator: PublicKey,
     ) -> Result<U512, Error> {
-        let delegator_account_hash =
-            AccountHash::from_public_key(&delegator_public_key, |x| self.blake2b(x));
+        let delegator_account_hash = AccountHash::from(&delegator_public_key);
 
         if !self.is_allowed_session_caller(&delegator_account_hash) {
             return Err(Error::InvalidContext);
@@ -762,7 +760,7 @@ pub trait Auction:
     /// Activates a given validator's bid.  To be used when a validator has been marked as inactive
     /// by consensus (aka "evicted").
     fn activate_bid(&mut self, validator: PublicKey) -> Result<(), Error> {
-        let provided_account_hash = AccountHash::from_public_key(&validator, |x| self.blake2b(x));
+        let provided_account_hash = AccountHash::from(&validator);
 
         if !self.is_allowed_session_caller(&provided_account_hash) {
             return Err(Error::InvalidContext);

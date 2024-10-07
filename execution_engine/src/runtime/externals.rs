@@ -13,8 +13,8 @@ use casper_types::{
     bytesrepr::{self, ToBytes},
     contract_messages::MessageTopicOperation,
     contracts::ContractPackageHash,
-    crypto, AddressableEntityHash, ApiError, EntityVersion, Gas, Group, HashAlgorithm,
-    HostFunction, HostFunctionCost, Key, PackageHash, PackageStatus, StoredValue, URef, U512,
+    AddressableEntityHash, ApiError, EntityVersion, Gas, Group, HashAlgorithm, HostFunction,
+    HostFunctionCost, Key, PackageHash, PackageStatus, StoredValue, URef, U512,
     UREF_SERIALIZED_LENGTH,
 };
 
@@ -997,7 +997,7 @@ where
                 )?;
                 let digest =
                     self.checked_memory_slice(in_ptr as usize, in_size as usize, |input| {
-                        crypto::blake2b(input)
+                        cryptography::blake2b(input)
                     })?;
 
                 let result = if digest.len() != out_size as usize {
@@ -1299,7 +1299,7 @@ where
                 let digest =
                     self.checked_memory_slice(in_ptr as usize, in_size as usize, |input| {
                         match hash_algo_type {
-                            HashAlgorithm::Blake2b => crypto::blake2b(input),
+                            HashAlgorithm::Blake2b => cryptography::blake2b(input),
                             HashAlgorithm::Blake3 => cryptography::blake3(input),
                             HashAlgorithm::Sha256 => cryptography::sha256(input),
                         }
