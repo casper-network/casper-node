@@ -1,5 +1,11 @@
 use core::cmp;
 
+#[cfg(any(feature = "testing", test))]
+use crate::testing::TestRng;
+use crate::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    AUCTION_LANE_ID, INSTALL_UPGRADE_LANE_ID, MINT_LANE_ID,
+};
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 #[cfg(any(feature = "once_cell", test))]
@@ -11,13 +17,6 @@ use serde::{
     ser::SerializeSeq,
     Deserialize, Deserializer, Serialize, Serializer,
 };
-
-use crate::{
-    bytesrepr::{self, FromBytes, ToBytes},
-    AUCTION_LANE_ID, MINT_LANE_ID,
-};
-#[cfg(any(feature = "testing", test))]
-use crate::{testing::TestRng, INSTALL_UPGRADE_LANE_ID};
 
 /// Default gas limit of standard transactions
 pub const DEFAULT_LARGE_TRANSACTION_GAS_LIMIT: u64 = 500_000_000_000;

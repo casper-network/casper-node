@@ -21,36 +21,51 @@ use rand::Rng;
 
 /// A builder for constructing `TransactionV1` instances with various configuration options.
 ///
-/// The `TransactionV1Builder` provides a flexible API for specifying different transaction parameters
-/// like the target, scheduling, entry point, and signing options. Once all the required fields are set,
-/// the transaction can be built by calling [`build`](Self::build).
+/// The `TransactionV1Builder` provides a flexible API for specifying different transaction
+/// parameters like the target, scheduling, entry point, and signing options. Once all the required
+/// fields are set, the transaction can be built by calling [`build`](Self::build).
 ///
 /// # Fields
 ///
-/// - `args`: Arguments passed to the transaction's runtime, initialized to [`RuntimeArgs::new`](RuntimeArgs::new).
-/// - `target`: Specifies the target of the transaction, which can be native or other custom targets. Defaults to [`TransactionTarget::Native`](TransactionTarget::Native).
-/// - `scheduling`: Determines the scheduling mechanism of the transaction, e.g., standard or immediate, and is initialized to [`TransactionScheduling::Standard`](TransactionScheduling::Standard).
-/// - `entry_point`: Defines the transaction's entry point, such as transfer or another defined action. Defaults to [`TransactionEntryPoint::Transfer`](TransactionEntryPoint::Transfer).
-/// - `chain_name`: The name of the blockchain where the transaction will be executed. Initially set to `None` and must be provided before building the transaction.
+/// - `args`: Arguments passed to the transaction's runtime, initialized to
+///   [`RuntimeArgs::new`](RuntimeArgs::new).
+/// - `target`: Specifies the target of the transaction, which can be native or other custom
+///   targets. Defaults to [`TransactionTarget::Native`](TransactionTarget::Native).
+/// - `scheduling`: Determines the scheduling mechanism of the transaction, e.g., standard or
+///   immediate, and is initialized to
+///   [`TransactionScheduling::Standard`](TransactionScheduling::Standard).
+/// - `entry_point`: Defines the transaction's entry point, such as transfer or another defined
+///   action. Defaults to [`TransactionEntryPoint::Transfer`](TransactionEntryPoint::Transfer).
+/// - `chain_name`: The name of the blockchain where the transaction will be executed. Initially set
+///   to `None` and must be provided before building the transaction.
 ///
 /// ## Time-Related Fields
-/// - `timestamp`: The timestamp at which the transaction is created. It is either set to the current time using [`Timestamp::now`](Timestamp::now) or [`Timestamp::zero`](Timestamp::zero) without the `std-fs-io` feature.
-/// - `ttl`: Time-to-live for the transaction, specified as a [`TimeDiff`], representing how long the transaction is valid for execution. Defaults to [`Self::DEFAULT_TTL`].
+/// - `timestamp`: The timestamp at which the transaction is created. It is either set to the
+///   current time using [`Timestamp::now`](Timestamp::now) or [`Timestamp::zero`](Timestamp::zero)
+///   without the `std-fs-io` feature.
+/// - `ttl`: Time-to-live for the transaction, specified as a [`TimeDiff`], representing how long
+///   the transaction is valid for execution. Defaults to [`Self::DEFAULT_TTL`].
 ///
 /// ## Pricing and Initiator Fields
-/// - `pricing_mode`: Specifies the pricing mode to use for transaction execution (e.g., fixed or dynamic). Defaults to [`Self::DEFAULT_PRICING_MODE`].
-/// - `initiator_addr`: The address of the initiator who creates and signs the transaction. Initially set to `None` and must be set before building.
+/// - `pricing_mode`: Specifies the pricing mode to use for transaction execution (e.g., fixed or
+///   dynamic). Defaults to [`Self::DEFAULT_PRICING_MODE`].
+/// - `initiator_addr`: The address of the initiator who creates and signs the transaction.
+///   Initially set to `None` and must be set before building.
 ///
 /// ## Signing Fields
-/// - `secret_key`: The secret key used to sign the transaction. This field is conditional based on the compilation environment:
+/// - `secret_key`: The secret key used to sign the transaction. This field is conditional based on
+/// the compilation environment:
 ///     - In normal mode, it holds a reference to the secret key (`Option<&'a SecretKey>`).
-///     - In testing mode or with the `std` feature enabled, it holds an owned secret key (`Option<SecretKey>`).
+///     - In testing mode or with the `std` feature enabled, it holds an owned secret key
+///  (`Option<SecretKey>`).
 ///
 /// ## Invalid Approvals
-/// - `invalid_approvals`: A collection of invalid approvals used for testing purposes. This field is available only when the `std` or `testing` features are enabled, or in a test environment.
+/// - `invalid_approvals`: A collection of invalid approvals used for testing purposes. This field
+///   is available only when the `std` or `testing` features are enabled, or in a test environment.
 ///
 /// ## Phantom Data
-/// - `_phantom_data`: Ensures the correct lifetime `'a` is respected for the builder, helping with proper borrowing and memory safety.
+/// - `_phantom_data`: Ensures the correct lifetime `'a` is respected for the builder, helping with
+///   proper borrowing and memory safety.
 pub struct TransactionV1Builder<'a> {
     /// Arguments passed to the transaction's runtime.
     args: RuntimeArgs,
@@ -109,8 +124,8 @@ impl<'a> TransactionV1Builder<'a> {
     /// This function sets the following default values upon creation:
     ///
     /// - `chain_name`: Initialized to `None`.
-    /// - `timestamp`: Set to the current time using [`Timestamp::now`](Timestamp::now),
-    ///   or [`Timestamp::zero`](Timestamp::zero) if the `std-fs-io` feature is disabled.
+    /// - `timestamp`: Set to the current time using [`Timestamp::now`](Timestamp::now), or
+    ///   [`Timestamp::zero`](Timestamp::zero) if the `std-fs-io` feature is disabled.
     /// - `ttl`: Defaults to [`Self::DEFAULT_TTL`].
     /// - `pricing_mode`: Defaults to [`Self::DEFAULT_PRICING_MODE`].
     /// - `initiator_addr`: Initialized to `None`.
@@ -119,14 +134,16 @@ impl<'a> TransactionV1Builder<'a> {
     /// Additionally, the following internal fields are configured:
     ///
     /// - `args`: Initialized to an empty [`RuntimeArgs::new`](RuntimeArgs::new).
-    /// - `entry_point`: Set to [`TransactionEntryPoint::Transfer`](TransactionEntryPoint::Transfer).
+    /// - `entry_point`: Set to
+    ///   [`TransactionEntryPoint::Transfer`](TransactionEntryPoint::Transfer).
     /// - `target`: Defaults to [`TransactionTarget::Native`](TransactionTarget::Native).
-    /// - `scheduling`: Defaults to [`TransactionScheduling::Standard`](TransactionScheduling::Standard).
+    /// - `scheduling`: Defaults to
+    ///   [`TransactionScheduling::Standard`](TransactionScheduling::Standard).
     ///
     /// # Testing and Additional Configuration
     ///
-    /// - If the `std` or `testing` feature is enabled, or in test configurations,
-    ///   the `invalid_approvals` field is initialized as an empty vector.
+    /// - If the `std` or `testing` feature is enabled, or in test configurations, the
+    ///   `invalid_approvals` field is initialized as an empty vector.
     ///
     /// # Returns
     ///
