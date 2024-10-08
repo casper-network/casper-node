@@ -19,6 +19,7 @@ const ARGS_MAP_KEY: u16 = 0;
 const TARGET_MAP_KEY: u16 = 1;
 const ENTRY_POINT_MAP_KEY: u16 = 2;
 const SCHEDULING_MAP_KEY: u16 = 3;
+const EXPECTED_NUMBER_OF_FIELDS: usize = 4;
 
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[derive(Clone, Debug, Serialize)]
@@ -66,6 +67,13 @@ impl MetaTransactionV1 {
             v1.deserialize_field(SCHEDULING_MAP_KEY).map_err(|error| {
                 InvalidTransaction::V1(InvalidTransactionV1::CouldNotDeserializeField { error })
             })?;
+
+        if v1.number_of_fields() != EXPECTED_NUMBER_OF_FIELDS {
+            return Err(InvalidTransaction::V1(
+                InvalidTransactionV1::UnexpectedTransactionFieldEntries,
+            ));
+        }
+
         let payload_hash = v1.payload_hash()?;
         let serialized_length = v1.serialized_length();
 

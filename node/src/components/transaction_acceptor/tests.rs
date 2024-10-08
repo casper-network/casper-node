@@ -1,7 +1,7 @@
 #![cfg(test)]
 
 use std::{
-    collections::VecDeque,
+    collections::{BTreeMap, VecDeque},
     fmt::{self, Debug, Display, Formatter},
     iter,
     sync::Arc,
@@ -213,6 +213,8 @@ enum TestScenario {
     InvalidPricingModeForTransactionV1,
     TooLowGasPriceToleranceForTransactionV1,
     TooLowGasPriceToleranceForDeploy,
+    InvalidFields,
+    InvalidFieldsFromPeer,
 }
 
 impl TestScenario {
@@ -229,7 +231,8 @@ impl TestScenario {
             | TestScenario::FromPeerCustomPaymentContract(_)
             | TestScenario::FromPeerCustomPaymentContractPackage(_)
             | TestScenario::FromPeerSessionContract(..)
-            | TestScenario::FromPeerSessionContractPackage(..) => Source::Peer(NodeId::random(rng)),
+            | TestScenario::FromPeerSessionContractPackage(..)
+            | TestScenario::InvalidFieldsFromPeer => Source::Peer(NodeId::random(rng)),
             TestScenario::FromClientInvalidTransaction(_)
             | TestScenario::FromClientSlightlyFutureDatedTransaction(_)
             | TestScenario::FromClientFutureDatedTransaction(_)
@@ -255,7 +258,8 @@ impl TestScenario {
             | TestScenario::DeployWithNativeTransferInPayment
             | TestScenario::InvalidPricingModeForTransactionV1
             | TestScenario::TooLowGasPriceToleranceForTransactionV1
-            | TestScenario::TooLowGasPriceToleranceForDeploy => Source::Client,
+            | TestScenario::TooLowGasPriceToleranceForDeploy
+            | TestScenario::InvalidFields => Source::Client,
         }
     }
 
@@ -573,6 +577,18 @@ impl TestScenario {
                 let deploy = Deploy::random_with_gas_price(rng, TOO_LOW_GAS_PRICE_TOLERANCE);
                 Transaction::from(deploy)
             }
+            TestScenario::InvalidFields | TestScenario::InvalidFieldsFromPeer => {
+                let mut additional_fields = BTreeMap::new();
+                additional_fields.insert(5, Bytes::from(vec![1]));
+                let txn = TransactionV1Builder::new_session(false, Bytes::from(vec![1]))
+                    .with_chain_name("casper-example")
+                    .with_ttl(TimeDiff::from_seconds(300))
+                    .with_secret_key(&secret_key)
+                    .with_additional_fields(additional_fields)
+                    .build()
+                    .unwrap();
+                Transaction::from(txn)
+            }
         }
     }
 
@@ -629,6 +645,8 @@ impl TestScenario {
             TestScenario::InvalidPricingModeForTransactionV1 => false,
             TestScenario::TooLowGasPriceToleranceForTransactionV1 => false,
             TestScenario::TooLowGasPriceToleranceForDeploy => false,
+            TestScenario::InvalidFields => false,
+            TestScenario::InvalidFieldsFromPeer => false,
         }
     }
 
@@ -1178,7 +1196,8 @@ async fn run_transaction_acceptor_without_timeout(
             | TestScenario::InvalidPricingModeForTransactionV1
             | TestScenario::FromClientExpired(_)
             | TestScenario::TooLowGasPriceToleranceForTransactionV1
-            | TestScenario::TooLowGasPriceToleranceForDeploy => {
+            | TestScenario::TooLowGasPriceToleranceForDeploy
+            | TestScenario::InvalidFields => {
                 matches!(
                     event,
                     Event::TransactionAcceptorAnnouncement(
@@ -1240,7 +1259,8 @@ async fn run_transaction_acceptor_without_timeout(
             // Check that invalid transactions sent by a peer raise the `InvalidTransaction`
             // announcement with the appropriate source.
             TestScenario::FromPeerInvalidTransaction(_)
-            | TestScenario::BalanceCheckForDeploySentByPeer => {
+            | TestScenario::BalanceCheckForDeploySentByPeer
+            | TestScenario::InvalidFieldsFromPeer => {
                 matches!(
                     event,
                     Event::TransactionAcceptorAnnouncement(
@@ -2424,5 +2444,27 @@ async fn should_reject_deploy_with_too_low_gas_price_tolerance() {
         Err(super::Error::InvalidTransaction(
             InvalidTransaction::Deploy(InvalidDeploy::GasPriceToleranceTooLow { .. })
         ))
+    ))
+}
+
+#[tokio::test]
+async fn should_reject_transaction_with_unexpected_fields() {
+    let result = run_transaction_acceptor(TestScenario::InvalidFields).await;
+    assert!(matches!(
+        result,
+        Err(super::Error::InvalidTransaction(InvalidTransaction::V1(
+            InvalidTransactionV1::UnexpectedTransactionFieldEntries
+        )))
+    ))
+}
+
+#[tokio::test]
+async fn should_reject_transaction_from_peer_with_unexpected_fields() {
+    let result = run_transaction_acceptor(TestScenario::InvalidFieldsFromPeer).await;
+    assert!(matches!(
+        result,
+        Err(super::Error::InvalidTransaction(InvalidTransaction::V1(
+            InvalidTransactionV1::UnexpectedTransactionFieldEntries
+        )))
     ))
 }
