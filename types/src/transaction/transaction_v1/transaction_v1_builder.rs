@@ -15,11 +15,11 @@ use crate::{
 };
 #[cfg(any(feature = "testing", test))]
 use crate::{testing::TestRng, transaction::Approval, TransactionConfig, TransactionV1Hash};
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
+use alloc::collections::BTreeMap;
 pub use error::TransactionV1BuilderError;
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use rand::Rng;
-#[cfg(any(all(feature = "std", feature = "testing"), test))]
-use std::collections::BTreeMap;
 
 /// A builder for constructing `TransactionV1` instances with various configuration options.
 ///
@@ -173,6 +173,7 @@ impl<'a> TransactionV1Builder<'a> {
             _phantom_data: PhantomData,
             #[cfg(any(all(feature = "std", feature = "testing"), test))]
             invalid_approvals: vec![],
+            #[cfg(any(all(feature = "std", feature = "testing"), test))]
             additional_fields: BTreeMap::new(),
         }
     }
@@ -378,6 +379,7 @@ impl<'a> TransactionV1Builder<'a> {
             secret_key: Some(secret_key),
             _phantom_data: PhantomData,
             invalid_approvals: vec![],
+            #[cfg(any(all(feature = "std", feature = "testing"), test))]
             additional_fields: BTreeMap::new(),
         }
     }
@@ -422,6 +424,7 @@ impl<'a> TransactionV1Builder<'a> {
             secret_key: Some(secret_key),
             _phantom_data: PhantomData,
             invalid_approvals: vec![],
+            #[cfg(any(all(feature = "std", feature = "testing"), test))]
             additional_fields: BTreeMap::new(),
         }
     }
