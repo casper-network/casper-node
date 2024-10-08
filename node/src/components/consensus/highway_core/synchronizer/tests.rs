@@ -38,7 +38,7 @@ fn purge_vertices() {
 
     // A Highway instance that's just used to create PreValidatedVertex instances below.
     let util_highway =
-        Highway::<TestContext>::new(TEST_INSTANCE_ID, test_validators(), params.clone());
+        Highway::<TestContext>::new(TEST_INSTANCE_ID, test_validators(), params.clone(), None);
 
     // Returns the WireUnit with the specified hash.
     let unit = |hash: u64| Vertex::Unit(state.wire_unit(&hash, TEST_INSTANCE_ID).unwrap());
@@ -50,7 +50,8 @@ fn purge_vertices() {
     // Create a synchronizer with a 0x20 ms timeout, and a Highway instance.
     let max_requests_for_vertex = 5;
     let mut sync = Synchronizer::<TestContext>::new(WEIGHTS.len(), TEST_INSTANCE_ID);
-    let mut highway = Highway::<TestContext>::new(TEST_INSTANCE_ID, test_validators(), params);
+    let mut highway =
+        Highway::<TestContext>::new(TEST_INSTANCE_ID, test_validators(), params, None);
 
     // At time 0x20, we receive c2, b0 and b1 — the latter ahead of their timestamp.
     // Since c2 is the first entry in the main queue, processing is scheduled.
@@ -126,7 +127,7 @@ fn do_not_download_synchronized_dependencies() {
 
     let mut state = State::new(WEIGHTS, params.clone(), vec![], vec![]);
     let util_highway =
-        Highway::<TestContext>::new(TEST_INSTANCE_ID, test_validators(), params.clone());
+        Highway::<TestContext>::new(TEST_INSTANCE_ID, test_validators(), params.clone(), None);
 
     // We use round exponent 0u8, so a round is 0x40 ms. With seed 0, Carol is the first leader.
     //
@@ -153,7 +154,8 @@ fn do_not_download_synchronized_dependencies() {
     let max_requests_for_vertex = 5;
     let mut sync = Synchronizer::<TestContext>::new(WEIGHTS.len(), TEST_INSTANCE_ID);
 
-    let mut highway = Highway::<TestContext>::new(TEST_INSTANCE_ID, test_validators(), params);
+    let mut highway =
+        Highway::<TestContext>::new(TEST_INSTANCE_ID, test_validators(), params, None);
     let now = 0x20.into();
 
     assert!(matches!(
@@ -232,7 +234,7 @@ fn transitive_proposal_dependency() {
 
     let mut state = State::new(WEIGHTS, params.clone(), vec![], vec![]);
     let util_highway =
-        Highway::<TestContext>::new(TEST_INSTANCE_ID, test_validators(), params.clone());
+        Highway::<TestContext>::new(TEST_INSTANCE_ID, test_validators(), params.clone(), None);
 
     // Alice   a0 — a1
     //             /  \
@@ -257,7 +259,8 @@ fn transitive_proposal_dependency() {
     let max_requests_for_vertex = 5;
     let mut sync = Synchronizer::<TestContext>::new(WEIGHTS.len(), TEST_INSTANCE_ID);
 
-    let mut highway = Highway::<TestContext>::new(TEST_INSTANCE_ID, test_validators(), params);
+    let mut highway =
+        Highway::<TestContext>::new(TEST_INSTANCE_ID, test_validators(), params, None);
     let now = 0x100.into();
 
     assert!(matches!(

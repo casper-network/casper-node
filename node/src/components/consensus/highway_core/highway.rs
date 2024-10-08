@@ -10,6 +10,7 @@ pub use vertex::{
 use std::path::PathBuf;
 
 use datasize::DataSize;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::{debug, error, info, trace, warn};
 
@@ -24,7 +25,10 @@ use crate::components::consensus::{
         state::{Fault, Observation, State, UnitError},
     },
     traits::Context,
-    utils::{Validator, ValidatorIndex, Validators, Weight},
+    utils::{
+        wal::{ReadWal, WalEntry, WriteWal},
+        Validator, ValidatorIndex, Validators, Weight,
+    },
 };
 
 /// If a lot of rounds were skipped between two blocks, log at most this many.
@@ -102,7 +106,11 @@ impl<C: Context> From<PreValidatedVertex<C>> for Vertex<C> {
 ///
 /// Note that this must only be added to the `Highway` instance that created it. Can cause a panic
 /// or inconsistent state otherwise.
-#[derive(Clone, DataSize, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, DataSize, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[serde(bound(
+    serialize = "C::Hash: Serialize",
+    deserialize = "C::Hash: Deserialize<'de>",
+))]
 pub(crate) struct ValidVertex<C>(pub(crate) Vertex<C>)
 where
     C: Context;
@@ -134,6 +142,18 @@ pub(crate) enum GetDepOutcome<C: Context> {
     Evidence(C::ValidatorId),
 }
 
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[serde(bound(
+    serialize = "C::Hash: Serialize",
+    deserialize = "C::Hash: Deserialize<'de>",
+))]
+struct HighwayWalEntry<C: Context> {
+    vertex: ValidVertex<C>,
+    timestamp: Timestamp,
+}
+
+impl<C: Context> WalEntry for HighwayWalEntry<C> {}
+
 /// An instance of the Highway protocol, containing its local state.
 ///
 /// Both observers and active validators must instantiate this, pass in all incoming vertices from
@@ -152,6 +172,8 @@ where
     state: State<C>,
     /// The state of an active validator, who is participating and creating new vertices.
     active_validator: Option<ActiveValidator<C>>,
+    /// The path to the protocol state file.
+    write_wal: Option<WriteWal<HighwayWalEntry<C>>>,
 }
 
 impl<C: Context> Highway<C> {
@@ -167,17 +189,65 @@ impl<C: Context> Highway<C> {
         instance_id: C::InstanceId,
         validators: Validators<C::ValidatorId>,
         params: Params,
+        protocol_state_file: Option<PathBuf>,
     ) -> Highway<C> {
         info!(%validators, instance=%instance_id, "creating Highway instance");
         let weights = validators.iter().map(Validator::weight);
         let banned = validators.iter_banned_idx();
         let cannot_propose = validators.iter_cannot_propose_idx();
         let state = State::new(weights, params, banned, cannot_propose);
-        Highway {
+        let (write_wal, entries) = if let Some(protocol_state_file) = protocol_state_file.as_ref() {
+            let entries = Self::read_stored_vertices(protocol_state_file);
+            let write_wal = match WriteWal::<HighwayWalEntry<C>>::new(protocol_state_file) {
+                Ok(wal) => Some(wal),
+                Err(err) => {
+                    panic!("couldn't open WriteWal: {}", err);
+                }
+            };
+            (write_wal, entries)
+        } else {
+            (None, vec![])
+        };
+        let mut result = Highway {
             instance_id,
             validators,
             state,
             active_validator: None,
+            write_wal,
+        };
+        result.restore_state(entries);
+        result
+    }
+
+    fn read_stored_vertices(protocol_state_file: &PathBuf) -> Vec<HighwayWalEntry<C>> {
+        let mut read_wal = match ReadWal::<HighwayWalEntry<C>>::new(protocol_state_file) {
+            Ok(wal) => wal,
+            Err(err) => {
+                panic!("couldn't open ReadWal: {}", err);
+            }
+        };
+        let mut entries = vec![];
+        loop {
+            match read_wal.read_next_entry() {
+                Ok(Some(entry)) => {
+                    entries.push(entry);
+                }
+                Ok(None) => {
+                    break;
+                }
+                Err(err) => {
+                    panic!("error while reading ReadWal: {}", err);
+                }
+            }
+        }
+        entries
+    }
+
+    fn restore_state(&mut self, entries: Vec<HighwayWalEntry<C>>) {
+        for entry in entries {
+            // we can safely ignore the effects - they were properly processed when persisting the
+            // vertex
+            self.add_valid_vertex(entry.vertex, entry.timestamp);
         }
     }
 
@@ -190,7 +260,7 @@ impl<C: Context> Highway<C> {
         id: C::ValidatorId,
         secret: C::ValidatorSecret,
         current_time: Timestamp,
-        unit_hash_file: Option<PathBuf>,
+        _unit_hash_file: Option<PathBuf>,
         target_ftt: Weight,
     ) -> Vec<Effect<C>> {
         if self.active_validator.is_some() {
@@ -211,7 +281,6 @@ impl<C: Context> Highway<C> {
             current_time,
             start_time,
             &self.state,
-            unit_hash_file,
             target_ftt,
             self.instance_id,
         );
@@ -292,6 +361,15 @@ impl<C: Context> Highway<C> {
         now: Timestamp,
     ) -> Vec<Effect<C>> {
         if !self.has_vertex(&vertex) {
+            if let Some(ref mut wal) = self.write_wal {
+                let entry = HighwayWalEntry {
+                    vertex: ValidVertex(vertex.clone()),
+                    timestamp: now,
+                };
+                if let Err(err) = wal.record_entry(&entry) {
+                    error!("error recording entry: {}", err);
+                }
+            }
             match vertex {
                 Vertex::Unit(unit) => self.add_valid_unit(unit, now),
                 Vertex::Evidence(evidence) => self.add_evidence(evidence),
@@ -638,28 +716,7 @@ impl<C: Context> Highway<C> {
             })
             .unwrap_or_default();
         evidence_effects.extend(self.on_new_unit(&unit_hash, now));
-        evidence_effects.extend(self.add_own_last_unit(now));
         evidence_effects
-    }
-
-    /// If validator's protocol state is synchronized, adds its own last unit (if any) to the
-    /// protocol state
-    fn add_own_last_unit(&mut self, now: Timestamp) -> Vec<Effect<C>> {
-        self.map_active_validator(
-            |av, state| {
-                if av.is_own_last_unit_panorama_sync(state) {
-                    if let Some(own_last_unit) = av.take_own_last_unit() {
-                        vec![Effect::NewVertex(ValidVertex(Vertex::Unit(own_last_unit)))]
-                    } else {
-                        vec![]
-                    }
-                } else {
-                    vec![]
-                }
-            },
-            now,
-        )
-        .unwrap_or_default()
     }
 
     /// Adds endorsements to the state. If there are conflicting endorsements, `NewVertex` effects
@@ -805,6 +862,7 @@ pub(crate) mod tests {
             validators: test_validators(),
             state,
             active_validator: None,
+            write_wal: None,
         };
         let wunit = WireUnit {
             panorama: Panorama::new(WEIGHTS.len()),
@@ -862,6 +920,7 @@ pub(crate) mod tests {
             validators: test_validators(),
             state: State::new_test(WEIGHTS, 0),
             active_validator: None,
+            write_wal: None,
         };
 
         let vertex_end_a = Vertex::Endorsements(end_a);
@@ -914,6 +973,7 @@ pub(crate) mod tests {
             validators: test_validators(),
             state,
             active_validator: None,
+            write_wal: None,
         };
 
         let validate = |wunit0: &WireUnit<TestContext>,
@@ -1012,6 +1072,7 @@ pub(crate) mod tests {
             validators: test_validators(),
             state,
             active_validator: None,
+            write_wal: None,
         };
 
         // Ping by validator that is not bonded, with an index that is outside of boundaries of the
@@ -1038,6 +1099,7 @@ pub(crate) mod tests {
             validators: test_validators(),
             state,
             active_validator: None,
+            write_wal: None,
         };
 
         let _effects =

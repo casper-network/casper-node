@@ -46,6 +46,7 @@
 //! submodules.
 
 #![cfg_attr(not(test), no_std)]
+#![cfg_attr(all(not(test), feature = "no-std-helpers"), allow(internal_features))]
 #![cfg_attr(
     all(not(test), feature = "no-std-helpers"),
     feature(alloc_error_handler, core_intrinsics, lang_items)

@@ -90,7 +90,7 @@ impl Drop for EventQueueMetrics {
             .for_each(|(key, queue_gauge)| {
                 self.registry
                     .unregister(Box::new(queue_gauge.clone()))
-                    .unwrap_or_else(|_| error!("unregistering {} failed: was not registered", key))
+                    .unwrap_or_else(|_| error!("unregistering {} failed: was not registered", key));
             });
     }
 }

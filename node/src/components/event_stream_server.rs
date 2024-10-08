@@ -232,7 +232,7 @@ where
 
     fn handle_event(
         &mut self,
-        _effect_builder: EffectBuilder<REv>,
+        effect_builder: EffectBuilder<REv>,
         _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
@@ -256,7 +256,7 @@ where
             }
             ComponentState::Initializing => match event {
                 Event::Initialize => {
-                    let (effects, state) = self.bind(self.config.enable_server, _effect_builder);
+                    let (effects, state) = self.bind(self.config.enable_server, effect_builder);
                     <Self as InitializedComponent<MainEvent>>::set_state(self, state);
                     effects
                 }

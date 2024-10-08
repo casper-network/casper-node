@@ -260,7 +260,7 @@ impl TransferRuntimeArgsBuilder {
             }
             Some(cl_value) if *cl_value.cl_type() == CLType::Option(CLType::URef.into()) => {
                 let Some(uref): Option<URef> = self.map_cl_value(cl_value)? else {
-                    return Ok(account.main_purse())
+                    return Ok(account.main_purse());
                 };
                 uref
             }

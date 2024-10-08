@@ -122,7 +122,7 @@ impl TransactionBuffer {
                 }
             };
             debug!(
-                blocks = ?blocks.iter().map(|b| b.height()).collect_vec(),
+                blocks = ?blocks.iter().map(Block::height).collect_vec(),
                 "TransactionBuffer: initialization"
             );
             info!("initialized {}", <Self as Component<MainEvent>>::name(self));
@@ -162,7 +162,7 @@ impl TransactionBuffer {
         // clear expired transaction from all holds, then clear any entries that have no items
         // remaining
         self.hold.iter_mut().for_each(|(_, held_transactions)| {
-            held_transactions.retain(|transaction_hash| !freed.contains_key(transaction_hash))
+            held_transactions.retain(|transaction_hash| !freed.contains_key(transaction_hash));
         });
         self.hold.retain(|_, remaining| !remaining.is_empty());
 
@@ -208,7 +208,6 @@ impl TransactionBuffer {
     }
 
     fn register_transaction_gossiped<REv>(
-        &mut self,
         transaction_id: TransactionId,
         effect_builder: EffectBuilder<REv>,
     ) -> Effects<Event>
@@ -234,7 +233,7 @@ impl TransactionBuffer {
     where
         REv: From<ContractRuntimeRequest> + Send,
     {
-        if self.prices.get(&era_id).is_none() {
+        if !self.prices.contains_key(&era_id) {
             info!("Empty prices field, requesting gas price from contract runtime");
             return effect_builder
                 .get_current_gas_price(era_id)
@@ -788,7 +787,7 @@ where
                     Effects::new()
                 }
                 Event::ReceiveTransactionGossiped(transaction_id) => {
-                    self.register_transaction_gossiped(transaction_id, effect_builder)
+                    Self::register_transaction_gossiped(transaction_id, effect_builder)
                 }
                 Event::StoredTransaction(transaction_id, maybe_transaction) => {
                     match maybe_transaction {

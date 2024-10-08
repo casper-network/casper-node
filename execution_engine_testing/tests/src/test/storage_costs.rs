@@ -90,6 +90,7 @@ const NEW_OPCODE_COSTS: OpcodeCosts = OpcodeCosts {
     nop: 0,
     current_memory: 0,
     grow_memory: 0,
+    sign: 0,
 };
 
 static NEW_HOST_FUNCTION_COSTS: Lazy<HostFunctionCosts> = Lazy::new(HostFunctionCosts::zero);

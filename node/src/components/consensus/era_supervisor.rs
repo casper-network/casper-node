@@ -389,7 +389,7 @@ impl EraSupervisor {
                 our_id.clone(),
             );
             let instance_id = self.era(era_id).consensus.instance_id();
-            let unit_hash_file = self.unit_file(instance_id);
+            let unit_hash_file = self.protocol_state_file(instance_id);
             self.era_mut(era_id).consensus.activate_validator(
                 our_id,
                 secret,
@@ -510,6 +510,7 @@ impl EraSupervisor {
             .collect();
 
         // Create and insert the new era instance.
+        let protocol_state_file = self.protocol_state_file(&instance_id);
         let (consensus, mut outcomes) = match self.chainspec.core_config.consensus_protocol {
             ConsensusProtocolName::Highway => HighwayProtocol::new_boxed(
                 instance_id,
@@ -522,6 +523,7 @@ impl EraSupervisor {
                 start_time,
                 seed,
                 now,
+                Some(protocol_state_file),
             ),
             ConsensusProtocolName::Zug => Zug::new_boxed(
                 instance_id,
@@ -534,7 +536,7 @@ impl EraSupervisor {
                 start_time,
                 seed,
                 now,
-                self.unit_file(&instance_id),
+                protocol_state_file,
             ),
         };
 
@@ -579,7 +581,7 @@ impl EraSupervisor {
                     self.validator_matrix.secret_signing_key().clone(),
                     our_id.clone(),
                 );
-                let unit_hash_file = self.unit_file(&instance_id);
+                let unit_hash_file = self.protocol_state_file(&instance_id);
                 outcomes.extend(self.era_mut(era_id).consensus.activate_validator(
                     our_id,
                     secret,
@@ -624,7 +626,7 @@ impl EraSupervisor {
                 }
             });
             for instance_id in removed_instance_ids {
-                if let Err(err) = fs::remove_file(self.unit_file(&instance_id)) {
+                if let Err(err) = fs::remove_file(self.protocol_state_file(&instance_id)) {
                     match err.kind() {
                         io::ErrorKind::NotFound => {}
                         err => warn!(?err, "could not delete unit hash file"),
@@ -637,7 +639,7 @@ impl EraSupervisor {
     }
 
     /// Returns the path to the era's unit file.
-    fn unit_file(&self, instance_id: &Digest) -> PathBuf {
+    fn protocol_state_file(&self, instance_id: &Digest) -> PathBuf {
         self.unit_files_folder.join(format!(
             "unit_{:?}_{}.dat",
             instance_id,

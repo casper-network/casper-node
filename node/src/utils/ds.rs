@@ -53,7 +53,7 @@ where
         let sampled = vec
             .as_slice()
             .choose_multiple(&mut rng, SAMPLE_SIZE)
-            .map(|v| v.estimate_heap_size())
+            .map(DataSize::estimate_heap_size)
             .sum();
         base_size + scale_sample(vec.len(), sampled)
     }

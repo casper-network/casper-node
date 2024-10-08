@@ -89,9 +89,6 @@
 //! precedence over the previous one. This prevents problems when a notification of a terminated
 //! connection is overtaken by the new connection announcement.
 
-// Clippy has a lot of false positives due to `span.clone()`-closures.
-#![allow(clippy::redundant_clone)]
-
 use std::{
     collections::{hash_map::Entry, HashMap},
     error::Error,
@@ -102,7 +99,6 @@ use std::{
 };
 
 use datasize::DataSize;
-
 use prometheus::IntGauge;
 use rand::Rng;
 use tracing::{debug, error, error_span, field::Empty, info, trace, warn, Span};
@@ -230,9 +226,9 @@ impl<H, E> DialOutcome<H, E> {
     /// Retrieves the socket address from the `DialOutcome`.
     fn addr(&self) -> SocketAddr {
         match self {
-            DialOutcome::Successful { addr, .. } => *addr,
-            DialOutcome::Failed { addr, .. } => *addr,
-            DialOutcome::Loopback { addr, .. } => *addr,
+            DialOutcome::Successful { addr, .. }
+            | DialOutcome::Failed { addr, .. }
+            | DialOutcome::Loopback { addr, .. } => *addr,
         }
     }
 }
@@ -305,7 +301,7 @@ impl OutgoingConfig {
     /// `failed_attempts` (n) is the number of previous attempts *before* the current failure (thus
     /// starting at 0). The backoff time will be double for each attempt.
     fn calc_backoff(&self, failed_attempts: u8) -> Duration {
-        2u32.pow(failed_attempts as u32) * self.base_timeout
+        (1u32 << failed_attempts as u32) * self.base_timeout
     }
 }
 
@@ -539,7 +535,7 @@ where
 
     /// Iterates over all connected peer IDs.
     pub(crate) fn connected_peers(&'_ self) -> impl Iterator<Item = NodeId> + '_ {
-        self.routes.keys().cloned()
+        self.routes.keys().copied()
     }
 
     /// Notify about a potentially new address that has been discovered.
@@ -718,7 +714,7 @@ where
         let mut to_reconnect = Vec::new();
         let mut to_ping = Vec::new();
 
-        for (&addr, outgoing) in self.outgoing.iter_mut() {
+        for (&addr, outgoing) in &mut self.outgoing {
             // Note: `Span::in_scope` is no longer serviceable here due to borrow limitations.
             let _span_guard = make_span(addr, Some(outgoing)).entered();
 
@@ -806,12 +802,12 @@ where
         }
 
         // Remove all addresses marked for forgetting.
-        to_forget.into_iter().for_each(|addr| {
+        for addr in to_forget {
             self.outgoing.remove(&addr);
-        });
+        }
 
         // Fail connections that are taking way too long to connect.
-        to_fail.into_iter().for_each(|(addr, failures_so_far)| {
+        for (addr, failures_so_far) in to_fail {
             let span = make_span(addr, self.outgoing.get(&addr));
 
             span.in_scope(|| {
@@ -824,7 +820,7 @@ where
                     },
                 )
             });
-        });
+        }
 
         let mut dial_requests = Vec::new();
 

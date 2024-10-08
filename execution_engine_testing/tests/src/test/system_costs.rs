@@ -826,6 +826,7 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
         nop: 0,
         current_memory: 0,
         grow_memory: 0,
+        sign: 0,
     };
     let new_storage_costs = StorageCosts::new(0);
 

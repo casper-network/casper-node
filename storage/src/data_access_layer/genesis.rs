@@ -1,4 +1,4 @@
-#[cfg(any(feature = "testing", test))]
+#[cfg(test)]
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
@@ -54,7 +54,7 @@ impl GenesisRequest {
     }
 }
 
-#[cfg(any(feature = "testing", test))]
+#[cfg(test)]
 impl Distribution<GenesisRequest> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> GenesisRequest {
         let input: [u8; 32] = rng.gen();
