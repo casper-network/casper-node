@@ -1030,21 +1030,23 @@ fn rewards_per_validator(
             .checked_sub(eras_back)
             .ok_or(Error::MissingSeigniorageRecipients)?;
 
-        let Some(recipient) = (match seigniorage_recipients_snapshot {
-            SeigniorageRecipientsSnapshot::V1(snapshot) => {
-                snapshot
-                    .get(&rewarded_era)
-                    .ok_or(Error::MissingSeigniorageRecipients)?
-                    .get(validator)
-                    .cloned().map(SeigniorageRecipient::V1)
-            },
-            SeigniorageRecipientsSnapshot::V2(snapshot) => {snapshot
+        // try to find validator in seigniorage snapshot
+        let maybe_seigniorage_recipient = match seigniorage_recipients_snapshot {
+            SeigniorageRecipientsSnapshot::V1(snapshot) => snapshot
                 .get(&rewarded_era)
                 .ok_or(Error::MissingSeigniorageRecipients)?
                 .get(validator)
-                .cloned().map(SeigniorageRecipient::V2)}
-        })
-            else {
+                .cloned()
+                .map(SeigniorageRecipient::V1),
+            SeigniorageRecipientsSnapshot::V2(snapshot) => snapshot
+                .get(&rewarded_era)
+                .ok_or(Error::MissingSeigniorageRecipients)?
+                .get(validator)
+                .cloned()
+                .map(SeigniorageRecipient::V2),
+        };
+
+        let Some(recipient) = maybe_seigniorage_recipient else {
             // We couldn't find the validator. If the reward amount is zero, we don't care -
             // the validator wasn't supposed to be rewarded in this era, anyway. Otherwise,
             // return an error.
