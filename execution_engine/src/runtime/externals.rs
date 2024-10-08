@@ -1279,7 +1279,7 @@ where
             FunctionIndex::GenericHash => {
                 // args(0) = pointer to input in Wasm memory
                 // args(1) = size of input in Wasm memory
-                // args(2) = integer representation of HashAlgoType enum variant
+                // args(2) = integer representation of HashAlgorithm enum variant
                 // args(3) = pointer to output pointer in Wasm memory
                 // args(4) = size of output
                 let (in_ptr, in_size, hash_algo_type, out_ptr, out_size) = Args::parse(args)?;
