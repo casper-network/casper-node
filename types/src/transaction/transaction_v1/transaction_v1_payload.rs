@@ -191,7 +191,8 @@ impl FromBytes for TransactionV1Payload {
         let (pricing_mode, window) = window.deserialize_and_maybe_next::<PricingMode>()?;
         let window = window.ok_or(Formatting)?;
         window.verify_index(FIELDS_FIELD_INDEX)?;
-        let (fields, window) = window.deserialize_and_maybe_next::<BTreeMap<u16, Bytes>>()?;
+        let (fields_as_vec, window) = window.deserialize_and_maybe_next::<Vec<(u16, Bytes)>>()?;
+        let fields = build_map(fields_as_vec)?;
         if window.is_some() {
             return Err(Formatting);
         }
@@ -213,6 +214,25 @@ impl FromBytes for TransactionV1Payload {
 
         Ok((from_bytes, remainder))
     }
+}
+
+// We need to make sure that the bytes of the `fields` field are serialized in the correct order.
+// A BTreeMap is serialized the same as Vec<(K, V)> and it actually, on deserialization, doesn't check
+// if the keys are in ascending order. We need to make sure that the incoming transaction payload is serialized
+// in a strict way, otherwise we would have trouble with verifying the signature(s).
+fn build_map(fields_as_vec: Vec<(u16, Bytes)>) -> Result<BTreeMap<u16, Bytes>, Error> {
+    let mut ret = BTreeMap::new();
+    let mut max_idx: i32 = -1;
+    for (key, value) in fields_as_vec {
+        let key_signed = key as i32;
+        if key_signed <= max_idx {
+            return Err(Formatting);
+        }
+        max_idx = key_signed;
+        ret.insert(key, value);
+    }
+
+    Ok(ret)
 }
 
 impl Display for TransactionV1Payload {
@@ -240,13 +260,73 @@ mod tests {
     use std::collections::BTreeMap;
 
     #[test]
+    fn reserialize_should_work_with_ascending_ids() {
+        let input = vec![
+            (0, Bytes::from(vec![1])),
+            (1, Bytes::from(vec![2])),
+            (4, Bytes::from(vec![3])),
+        ];
+        let map = build_map(input).expect("Should not fail");
+        assert_eq!(
+            map,
+            BTreeMap::from_iter(vec![
+                (0, Bytes::from(vec![1])),
+                (1, Bytes::from(vec![2])),
+                (4, Bytes::from(vec![3]))
+            ])
+        );
+    }
+
+    #[test]
+    fn reserialize_should_fail_when_ids_not_unique() {
+        let input = vec![
+            (0, Bytes::from(vec![1])),
+            (0, Bytes::from(vec![2])),
+            (4, Bytes::from(vec![3])),
+        ];
+        let map_ret = build_map(input);
+        assert!(map_ret.is_err());
+    }
+
+    #[test]
+    fn reserialize_should_fail_when_ids_not_ascending() {
+        let input = vec![
+            (0, Bytes::from(vec![1])),
+            (2, Bytes::from(vec![2])),
+            (1, Bytes::from(vec![3])),
+        ];
+        assert!(build_map(input).is_err());
+        let input = vec![
+            (0, Bytes::from(vec![1])),
+            (2, Bytes::from(vec![2])),
+            (0, Bytes::from(vec![3])),
+        ];
+        assert!(build_map(input).is_err());
+        let input = vec![
+            (0, Bytes::from(vec![1])),
+            (1, Bytes::from(vec![2])),
+            (2, Bytes::from(vec![3])),
+            (3, Bytes::from(vec![4])),
+            (2, Bytes::from(vec![5])),
+        ];
+        assert!(build_map(input).is_err());
+    }
+
+    #[test]
     fn should_fail_if_deserialized_payload_has_too_many_fields() {
         let rng = &mut TestRng::new();
+        let (
+            args,
+            target,
+            entry_point,
+            scheduling,
+            initiator_addr,
+            timestamp,
+            ttl,
+            chain_name,
+            pricing_mode,
+        ) = random_payload_data(rng);
         let mut fields = BTreeMap::new();
-        let args = RuntimeArgs::random(rng);
-        let target = TransactionTarget::random(rng);
-        let entry_point = TransactionEntryPoint::random(rng);
-        let scheduling = TransactionScheduling::random(rng);
         fields.insert(ARGS_MAP_KEY, args.to_bytes().unwrap().into());
         fields.insert(TARGET_MAP_KEY, target.to_bytes().unwrap().into());
         fields.insert(ENTRY_POINT_MAP_KEY, entry_point.to_bytes().unwrap().into());
@@ -254,11 +334,11 @@ mod tests {
         fields.insert(4, 111_u64.to_bytes().unwrap().into());
 
         let bytes = TransactionV1Payload::new(
-            "chain-name".to_string(),
-            Timestamp::now(),
-            TimeDiff::from_millis(1000),
-            PricingMode::random(rng),
-            InitiatorAddr::random(rng),
+            chain_name,
+            timestamp,
+            ttl,
+            pricing_mode,
+            initiator_addr,
             fields,
         )
         .to_bytes()
@@ -270,27 +350,118 @@ mod tests {
     #[test]
     fn should_fail_if_deserialized_payload_has_unrecognized_fields() {
         let rng = &mut TestRng::new();
+        let (
+            args,
+            target,
+            entry_point,
+            scheduling,
+            initiator_addr,
+            timestamp,
+            ttl,
+            chain_name,
+            pricing_mode,
+        ) = random_payload_data(rng);
         let mut fields = BTreeMap::new();
-        let args = RuntimeArgs::random(rng);
-        let target = TransactionTarget::random(rng);
-        let entry_point = TransactionEntryPoint::random(rng);
-        let scheduling = TransactionScheduling::random(rng);
         fields.insert(ARGS_MAP_KEY, args.to_bytes().unwrap().into());
         fields.insert(TARGET_MAP_KEY, target.to_bytes().unwrap().into());
         fields.insert(100, entry_point.to_bytes().unwrap().into());
         fields.insert(SCHEDULING_MAP_KEY, scheduling.to_bytes().unwrap().into());
 
         let bytes = TransactionV1Payload::new(
-            "chain-name".to_string(),
-            Timestamp::now(),
-            TimeDiff::from_millis(1000),
-            PricingMode::random(rng),
-            InitiatorAddr::random(rng),
+            chain_name,
+            timestamp,
+            ttl,
+            pricing_mode,
+            initiator_addr,
             fields,
         )
         .to_bytes()
         .unwrap();
         let result = TransactionV1Payload::from_bytes(&bytes);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn should_fail_if_serialized_payoad_has_fields_out_of_order() {
+        let rng = &mut TestRng::new();
+        let (
+            args,
+            target,
+            entry_point,
+            scheduling,
+            initiator_addr,
+            timestamp,
+            ttl,
+            chain_name,
+            pricing_mode,
+        ) = random_payload_data(rng);
+        let mut fields = Vec::<(u16, Bytes)>::new();
+        fields.push((SCHEDULING_MAP_KEY, scheduling.to_bytes().unwrap().into()));
+        fields.push((TARGET_MAP_KEY, target.to_bytes().unwrap().into()));
+        fields.push((ENTRY_POINT_MAP_KEY, entry_point.to_bytes().unwrap().into()));
+        fields.push((ARGS_MAP_KEY, args.to_bytes().unwrap().into()));
+
+        let expected_payload_sizes = vec![
+            initiator_addr.serialized_length(),
+            timestamp.serialized_length(),
+            ttl.serialized_length(),
+            chain_name.serialized_length(),
+            pricing_mode.serialized_length(),
+            fields.serialized_length(),
+        ];
+
+        let bytes = CalltableSerializationEnvelopeBuilder::new(expected_payload_sizes)
+            .unwrap()
+            .add_field(INITIATOR_ADDR_FIELD_INDEX, &initiator_addr)
+            .unwrap()
+            .add_field(TIMESTAMP_FIELD_INDEX, &timestamp)
+            .unwrap()
+            .add_field(TTL_FIELD_INDEX, &ttl)
+            .unwrap()
+            .add_field(CHAIN_NAME_FIELD_INDEX, &chain_name)
+            .unwrap()
+            .add_field(PRICING_MODE_FIELD_INDEX, &pricing_mode)
+            .unwrap()
+            .add_field(FIELDS_FIELD_INDEX, &fields)
+            .unwrap()
+            .binary_payload_bytes()
+            .unwrap();
+        let payload_res = TransactionV1Payload::from_bytes(&bytes);
+        assert!(payload_res.is_err());
+    }
+
+    fn random_payload_data(
+        rng: &mut TestRng,
+    ) -> (
+        RuntimeArgs,
+        TransactionTarget,
+        TransactionEntryPoint,
+        TransactionScheduling,
+        InitiatorAddr,
+        Timestamp,
+        TimeDiff,
+        String,
+        PricingMode,
+    ) {
+        let args = RuntimeArgs::random(rng);
+        let target = TransactionTarget::random(rng);
+        let entry_point = TransactionEntryPoint::random(rng);
+        let scheduling = TransactionScheduling::random(rng);
+        let initiator_addr = InitiatorAddr::random(rng);
+        let timestamp = Timestamp::now();
+        let ttl = TimeDiff::from_millis(1000);
+        let chain_name = "chain-name".to_string();
+        let pricing_mode = PricingMode::random(rng);
+        (
+            args,
+            target,
+            entry_point,
+            scheduling,
+            initiator_addr,
+            timestamp,
+            ttl,
+            chain_name,
+            pricing_mode,
+        )
     }
 }
