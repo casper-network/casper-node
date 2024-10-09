@@ -149,13 +149,13 @@ impl ExecutionArtifactBuilder {
         if let Some(Error::RootNotFound(_)) = wasm_v1_result.error() {
             return Err(());
         }
-        self.with_added_consumed(wasm_v1_result.consumed())
-            .with_appended_transfers(&mut wasm_v1_result.transfers().clone());
+        self.with_added_consumed(wasm_v1_result.consumed());
         if let (None, Some(err)) = (&self.error_message, wasm_v1_result.error()) {
             self.error_message = Some(format!("{}", err));
             return Ok(self);
         }
-        self.with_appended_messages(&mut wasm_v1_result.messages().clone())
+        self.with_appended_transfers(&mut wasm_v1_result.transfers().clone())
+            .with_appended_messages(&mut wasm_v1_result.messages().clone())
             .with_appended_effects(wasm_v1_result.effects().clone());
         Ok(self)
     }
