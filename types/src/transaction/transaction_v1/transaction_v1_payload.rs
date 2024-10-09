@@ -217,9 +217,10 @@ impl FromBytes for TransactionV1Payload {
 }
 
 // We need to make sure that the bytes of the `fields` field are serialized in the correct order.
-// A BTreeMap is serialized the same as Vec<(K, V)> and it actually, on deserialization, doesn't check
-// if the keys are in ascending order. We need to make sure that the incoming transaction payload is serialized
-// in a strict way, otherwise we would have trouble with verifying the signature(s).
+// A BTreeMap is serialized the same as Vec<(K, V)> and it actually, on deserialization, doesn't
+// check if the keys are in ascending order. We need to make sure that the incoming transaction
+// payload is serialized in a strict way, otherwise we would have trouble with verifying the
+// signature(s).
 fn build_map(fields_as_vec: Vec<(u16, Bytes)>) -> Result<BTreeMap<u16, Bytes>, Error> {
     let mut ret = BTreeMap::new();
     let mut max_idx: i32 = -1;
