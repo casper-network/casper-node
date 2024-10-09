@@ -57,6 +57,7 @@ pub enum BalanceIdentifier {
     Entity(EntityAddr),
     Internal(URefAddr),
     PenalizedAccount(AccountHash),
+    PenalizedPayment,
 }
 
 impl BalanceIdentifier {
@@ -67,6 +68,7 @@ impl BalanceIdentifier {
             BalanceIdentifier::Public(_)
             | BalanceIdentifier::Account(_)
             | BalanceIdentifier::PenalizedAccount(_)
+            | BalanceIdentifier::PenalizedPayment
             | BalanceIdentifier::Entity(_)
             | BalanceIdentifier::Refund
             | BalanceIdentifier::Payment
@@ -109,7 +111,7 @@ impl BalanceIdentifier {
             BalanceIdentifier::Refund => {
                 self.get_system_purse(tc, HANDLE_PAYMENT, REFUND_PURSE_KEY)?
             }
-            BalanceIdentifier::Payment => {
+            BalanceIdentifier::Payment | BalanceIdentifier::PenalizedPayment => {
                 self.get_system_purse(tc, HANDLE_PAYMENT, PAYMENT_PURSE_KEY)?
             }
             BalanceIdentifier::Accumulate => {
@@ -152,9 +154,10 @@ impl BalanceIdentifier {
 
     /// Is this balance identifier for penalty?
     pub fn is_penalty(&self) -> bool {
-        // currently there is one variant of this kind, but more may be added later to
-        // support more use cases.
-        matches!(self, BalanceIdentifier::PenalizedAccount(_))
+        matches!(
+            self,
+            BalanceIdentifier::Payment | BalanceIdentifier::PenalizedPayment
+        )
     }
 }
 
@@ -741,6 +744,14 @@ impl BalanceResult {
         match self {
             BalanceResult::RootNotFound | BalanceResult::Failure(_) => false,
             BalanceResult::Success { .. } => true,
+        }
+    }
+
+    /// Tracking copy error, if any.
+    pub fn error(&self) -> Option<&TrackingCopyError> {
+        match self {
+            BalanceResult::RootNotFound | BalanceResult::Success { .. } => None,
+            BalanceResult::Failure(err) => Some(err),
         }
     }
 }

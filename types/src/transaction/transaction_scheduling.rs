@@ -20,7 +20,7 @@ use schemars::JsonSchema;
 #[cfg(any(feature = "std", test))]
 use serde::{Deserialize, Serialize};
 
-/// The scheduling mode of a [`Transaction`].
+/// The scheduling mode of a [`crate::Transaction`].
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
 #[cfg_attr(
     any(feature = "std", test),
