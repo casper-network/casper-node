@@ -3215,6 +3215,12 @@ async fn charge_when_session_code_succeeds() {
             })
             .with_chain_name(CHAIN_NAME)
             .with_initiator_addr(BOB_PUBLIC_KEY.clone())
+            .with_pricing_mode(PricingMode::Fixed {
+                gas_price_tolerance: 5,
+                additional_computation_factor: 2, /*Makes the transaction
+                                                   * "Large" despite the fact that the actual
+                                                   * WASM bytes categorize it as "Small" */
+            })
             .build()
             .unwrap(),
     );
