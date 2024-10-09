@@ -82,9 +82,7 @@ use crate::{
         mint::Mint,
         protocol_upgrade::{ProtocolUpgradeError, ProtocolUpgrader},
         runtime_native::{Id, RuntimeNative},
-        transfer::{
-            NewTransferTargetMode, TransferArgs, TransferError, TransferRuntimeArgsBuilder,
-        },
+        transfer::{TransferArgs, TransferError, TransferRuntimeArgsBuilder, TransferTargetMode},
     },
     tracking_copy::{TrackingCopy, TrackingCopyEntityExt, TrackingCopyError, TrackingCopyExt},
 };
@@ -2104,11 +2102,10 @@ pub trait StateProvider {
         );
 
         match transfer_target_mode {
-            NewTransferTargetMode::ExistingAccount { .. }
-            | NewTransferTargetMode::PurseExists { .. } => {
+            TransferTargetMode::ExistingAccount { .. } | TransferTargetMode::PurseExists { .. } => {
                 // Noop
             }
-            NewTransferTargetMode::CreateAccount(account_hash) => {
+            TransferTargetMode::CreateAccount(account_hash) => {
                 let main_purse = match runtime.mint(U512::zero()) {
                     Ok(uref) => uref,
                     Err(mint_error) => {
