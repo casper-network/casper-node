@@ -850,7 +850,6 @@ async fn native_operations_fees_are_not_refunded() {
 
 #[tokio::test]
 async fn wasm_transaction_fees_are_refunded() {
-    std::env::set_var("CL_TEST_SEED", "84188df5d5f7a1e736c13623fb9721f6");
     let initial_stakes = InitialStakes::FromVec(vec![u128::MAX, 1]); // Node 0 is effectively guaranteed to be the proposer.
 
     let refund_ratio = Ratio::new(1, 2);
