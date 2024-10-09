@@ -183,9 +183,9 @@ pub enum Error {
     /// The EntryPoints contains an invalid entry.
     #[error("The EntryPoints contains an invalid entry")]
     InvalidEntryPointType,
-    /// Invalid message topic operation.
-    #[error("The requested operation is invalid for a message topic")]
-    InvalidMessageTopicOperation,
+    /// Invalid operation.
+    #[error("The imputed operation is invalid")]
+    InvalidImputedOperation,
     /// Invalid string encoding.
     #[error("Invalid UTF-8 string encoding: {0}")]
     InvalidUtf8Encoding(Utf8Error),
