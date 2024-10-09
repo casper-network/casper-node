@@ -396,11 +396,12 @@ mod tests {
             chain_name,
             pricing_mode,
         ) = random_payload_data(rng);
-        let mut fields = Vec::<(u16, Bytes)>::new();
-        fields.push((SCHEDULING_MAP_KEY, scheduling.to_bytes().unwrap().into()));
-        fields.push((TARGET_MAP_KEY, target.to_bytes().unwrap().into()));
-        fields.push((ENTRY_POINT_MAP_KEY, entry_point.to_bytes().unwrap().into()));
-        fields.push((ARGS_MAP_KEY, args.to_bytes().unwrap().into()));
+        let fields: Vec<(u16, Bytes)> = vec![
+            (SCHEDULING_MAP_KEY, scheduling.to_bytes().unwrap().into()),
+            (TARGET_MAP_KEY, target.to_bytes().unwrap().into()),
+            (ENTRY_POINT_MAP_KEY, entry_point.to_bytes().unwrap().into()),
+            (ARGS_MAP_KEY, args.to_bytes().unwrap().into()),
+        ];
 
         let expected_payload_sizes = vec![
             initiator_addr.serialized_length(),
