@@ -59,7 +59,7 @@ pub enum DictionaryItemIdentifier {
 impl DictionaryItemIdentifier {
     #[cfg(test)]
     pub(crate) fn random(rng: &mut TestRng) -> Self {
-        match rng.gen_range(0..4) {
+        match rng.gen_range(0..5) {
             0 => DictionaryItemIdentifier::AccountNamedKey {
                 hash: rng.gen(),
                 dictionary_name: rng.random_string(32..64),
@@ -70,11 +70,16 @@ impl DictionaryItemIdentifier {
                 dictionary_name: rng.random_string(32..64),
                 dictionary_item_key: rng.random_string(32..64),
             },
-            2 => DictionaryItemIdentifier::URef {
+            2 => DictionaryItemIdentifier::EntityNamedKey {
+                addr: rng.gen(),
+                dictionary_name: rng.random_string(32..64),
+                dictionary_item_key: rng.random_string(32..64),
+            },
+            3 => DictionaryItemIdentifier::URef {
                 seed_uref: rng.gen(),
                 dictionary_item_key: rng.random_string(32..64),
             },
-            3 => DictionaryItemIdentifier::DictionaryItem(rng.gen()),
+            4 => DictionaryItemIdentifier::DictionaryItem(rng.gen()),
             _ => unreachable!(),
         }
     }
