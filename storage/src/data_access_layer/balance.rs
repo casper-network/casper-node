@@ -66,6 +66,7 @@ pub enum BalanceIdentifier {
     Internal(URefAddr),
     /// Penalized account identifier.
     PenalizedAccount(AccountHash),
+    /// Penalized payment identifier.
     PenalizedPayment,
 }
 

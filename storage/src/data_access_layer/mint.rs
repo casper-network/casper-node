@@ -72,6 +72,8 @@ pub enum TransferRequestArgs {
     Raw(RuntimeArgs),
     /// Provides explicit structured args.
     Explicit(TransferArgs),
+    /// Provides support for transfers using balance identifiers.
+    /// The source and target purses will get resolved on usage.
     Indirect(Box<BalanceIdentifierTransferArgs>),
 }
 
