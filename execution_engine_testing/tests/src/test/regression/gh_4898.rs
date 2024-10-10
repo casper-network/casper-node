@@ -1,26 +1,10 @@
-use casper_wasm::builder;
-use num_traits::Zero;
-use once_cell::sync::Lazy;
-
-use casper_types::{GenesisAccount, GenesisValidator, Key};
 
 use casper_engine_test_support::{
-    utils, DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNTS,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY,
-    DEFAULT_PAYMENT, LOCAL_GENESIS_REQUEST,
-};
-use casper_execution_engine::{
-    engine_state::Error, execution::ExecError, runtime::PreprocessingError,
-};
-use casper_types::{
-    account::AccountHash,
-    addressable_entity::DEFAULT_ENTRY_POINT_NAME,
-    runtime_args,
-    system::auction::{self, DelegationRate},
-    Motes, PublicKey, RuntimeArgs, SecretKey, DEFAULT_DELEGATE_COST, U512,
+    utils, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    LOCAL_GENESIS_REQUEST,
 };
 
-use crate::wasm_utils;
+use casper_types::runtime_args;
 
 const ARG_DATA: &str = "data";
 const GH_4898_REGRESSION_WASM: &str = "gh_4898_regression.wasm";
@@ -28,6 +12,13 @@ const GH_4898_REGRESSION_WASM: &str = "gh_4898_regression.wasm";
 #[ignore]
 #[test]
 fn should_not_contain_f64_opcodes() {
+    let module_bytes = utils::read_wasm_file(GH_4898_REGRESSION_WASM);
+    let wat = wasmprinter::print_bytes(module_bytes).expect("WASM parse error");
+    assert!(
+        !wat.contains("f64."),
+        "WASM contains f64 opcodes"
+    );
+
     let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
@@ -41,11 +32,4 @@ fn should_not_contain_f64_opcodes() {
     .build();
 
     builder.exec(exec_request).commit();
-
-    // let error = builder
-    //     .get_last_exec_result()
-    //     .expect("should have results")
-    //     .error()
-    //     .cloned()
-    //     .expect("should have error");
 }
