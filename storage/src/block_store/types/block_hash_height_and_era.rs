@@ -6,10 +6,14 @@ use rand::Rng;
 use casper_types::testing::TestRng;
 use casper_types::{BlockHash, BlockHashAndHeight, EraId};
 
+/// Aggregates block identifying information.
 #[derive(Clone, Copy, Debug, DataSize)]
 pub struct BlockHashHeightAndEra {
+    /// Block hash.
     pub block_hash: BlockHash,
+    /// Block height.
     pub block_height: u64,
+    /// EraId
     pub era_id: EraId,
 }
 

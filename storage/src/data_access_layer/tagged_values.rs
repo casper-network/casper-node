@@ -2,9 +2,10 @@
 use crate::tracking_copy::TrackingCopyError;
 use casper_types::{Digest, KeyTag, StoredValue};
 
+/// Tagged values selector.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum TaggedValuesSelection {
-    // All values under the specified key tag.
+    /// All values under the specified key tag.
     All(KeyTag),
 }
 
@@ -54,5 +55,6 @@ pub enum TaggedValuesResult {
         /// Current values.
         values: Vec<StoredValue>,
     },
+    /// Tagged value failure.
     Failure(TrackingCopyError),
 }

@@ -376,6 +376,7 @@ impl<K, V> Trie<K, V> {
         }
     }
 
+    /// Tag type for current trie element.
     pub fn tag_type(&self) -> String {
         match self {
             Trie::Leaf { .. } => "Leaf".to_string(),

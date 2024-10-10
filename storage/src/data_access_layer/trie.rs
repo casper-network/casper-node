@@ -55,7 +55,8 @@ pub enum TrieResult {
 }
 
 impl TrieResult {
-    pub fn into_legacy(self) -> Result<Option<TrieRaw>, GlobalStateError> {
+    /// Transform trie result to raw state.
+    pub fn into_raw(self) -> Result<Option<TrieRaw>, GlobalStateError> {
         match self {
             TrieResult::ValueNotFound(_) => Ok(None),
             TrieResult::Success { element } => match element {
@@ -83,6 +84,7 @@ impl PutTrieRequest {
         &self.raw
     }
 
+    /// Take raw trie value.
     pub fn take_raw(self) -> TrieRaw {
         self.raw
     }

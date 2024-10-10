@@ -31,6 +31,7 @@ pub enum BidsResult {
         /// Current bids.
         bids: Vec<BidKind>,
     },
+    /// Failure.
     Failure(TrackingCopyError),
 }
 
