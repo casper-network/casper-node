@@ -43,10 +43,12 @@ pub enum TransactionTarget {
     },
     /// The execution target is the included module bytes, i.e. compiled Wasm.
     Session {
-        /// The compiled Wasm.
-        module_bytes: Bytes,
+        /// Flag determining if the Wasm is an install/upgrade.
+        is_install_upgrade: bool,
         /// The execution runtime to use.
         runtime: TransactionRuntime,
+        /// The compiled Wasm.
+        module_bytes: Bytes,
     },
 }
 
@@ -62,8 +64,13 @@ impl TransactionTarget {
     }
 
     /// Returns a new `TransactionTarget::Session`.
-    pub fn new_session(module_bytes: Bytes, runtime: TransactionRuntime) -> Self {
+    pub fn new_session(
+        is_install_upgrade: bool,
+        module_bytes: Bytes,
+        runtime: TransactionRuntime,
+    ) -> Self {
         TransactionTarget::Session {
+            is_install_upgrade,
             module_bytes,
             runtime,
         }
@@ -82,13 +89,15 @@ impl TransactionTarget {
                 ]
             }
             TransactionTarget::Session {
-                module_bytes,
+                is_install_upgrade,
                 runtime,
+                module_bytes,
             } => {
                 vec![
                     crate::bytesrepr::U8_SERIALIZED_LENGTH,
-                    module_bytes.serialized_length(),
+                    is_install_upgrade.serialized_length(),
                     runtime.serialized_length(),
+                    module_bytes.serialized_length(),
                 ]
             }
         }
@@ -106,7 +115,12 @@ impl TransactionTarget {
             2 => {
                 let mut buffer = vec![0u8; rng.gen_range(0..100)];
                 rng.fill_bytes(buffer.as_mut());
-                TransactionTarget::new_session(Bytes::from(buffer), TransactionRuntime::VmCasperV1)
+                let is_install_upgrade = rng.gen();
+                TransactionTarget::new_session(
+                    is_install_upgrade,
+                    Bytes::from(buffer),
+                    TransactionRuntime::VmCasperV1,
+                )
             }
             _ => unreachable!(),
         }
@@ -122,8 +136,9 @@ const STORED_ID_INDEX: u16 = 1;
 const STORED_RUNTIME_INDEX: u16 = 2;
 
 const SESSION_VARIANT: u8 = 2;
-const SESSION_MODULE_BYTES_INDEX: u16 = 1;
+const SESSION_IS_INSTALL_INDEX: u16 = 1;
 const SESSION_RUNTIME_INDEX: u16 = 2;
+const SESSION_MODULE_BYTES_INDEX: u16 = 3;
 
 impl ToBytes for TransactionTarget {
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
@@ -141,12 +156,14 @@ impl ToBytes for TransactionTarget {
                     .binary_payload_bytes()
             }
             TransactionTarget::Session {
+                is_install_upgrade,
                 module_bytes,
                 runtime,
             } => CalltableSerializationEnvelopeBuilder::new(self.serialized_field_lengths())?
                 .add_field(TAG_FIELD_INDEX, &SESSION_VARIANT)?
-                .add_field(SESSION_MODULE_BYTES_INDEX, &module_bytes)?
+                .add_field(SESSION_IS_INSTALL_INDEX, &is_install_upgrade)?
                 .add_field(SESSION_RUNTIME_INDEX, &runtime)?
+                .add_field(SESSION_MODULE_BYTES_INDEX, &module_bytes)?
                 .binary_payload_bytes(),
         }
     }
@@ -158,7 +175,7 @@ impl ToBytes for TransactionTarget {
 
 impl FromBytes for TransactionTarget {
     fn from_bytes(bytes: &[u8]) -> Result<(TransactionTarget, &[u8]), Error> {
-        let (binary_payload, remainder) = CalltableSerializationEnvelope::from_bytes(3, bytes)?;
+        let (binary_payload, remainder) = CalltableSerializationEnvelope::from_bytes(4, bytes)?;
         let window = binary_payload.start_consuming()?.ok_or(Formatting)?;
         window.verify_index(TAG_FIELD_INDEX)?;
         let (tag, window) = window.deserialize_and_maybe_next::<u8>()?;
@@ -185,16 +202,20 @@ impl FromBytes for TransactionTarget {
             }
             SESSION_VARIANT => {
                 let window = window.ok_or(Formatting)?;
-                window.verify_index(SESSION_MODULE_BYTES_INDEX)?;
-                let (module_bytes, window) = window.deserialize_and_maybe_next::<Bytes>()?;
+                window.verify_index(SESSION_IS_INSTALL_INDEX)?;
+                let (is_install_upgrade, window) = window.deserialize_and_maybe_next::<bool>()?;
                 let window = window.ok_or(Formatting)?;
                 window.verify_index(SESSION_RUNTIME_INDEX)?;
                 let (runtime, window) =
                     window.deserialize_and_maybe_next::<TransactionRuntime>()?;
+                let window = window.ok_or(Formatting)?;
+                window.verify_index(SESSION_MODULE_BYTES_INDEX)?;
+                let (module_bytes, window) = window.deserialize_and_maybe_next::<Bytes>()?;
                 if window.is_some() {
                     return Err(Formatting);
                 }
                 Ok(TransactionTarget::Session {
+                    is_install_upgrade,
                     module_bytes,
                     runtime,
                 })
@@ -213,13 +234,15 @@ impl Display for TransactionTarget {
                 write!(formatter, "stored({}, {})", id, runtime)
             }
             TransactionTarget::Session {
+                is_install_upgrade,
                 module_bytes,
                 runtime,
             } => write!(
                 formatter,
-                "session({} module bytes, {})",
+                "session({} module bytes, runtime: {}, is_install_upgrade: {})",
                 module_bytes.len(),
-                runtime
+                runtime,
+                is_install_upgrade,
             ),
         }
     }
@@ -235,6 +258,7 @@ impl Debug for TransactionTarget {
                 .field("runtime", runtime)
                 .finish(),
             TransactionTarget::Session {
+                is_install_upgrade,
                 module_bytes,
                 runtime,
             } => {
@@ -249,6 +273,7 @@ impl Debug for TransactionTarget {
                     .debug_struct("Session")
                     .field("module_bytes", &BytesLen(module_bytes.len()))
                     .field("runtime", runtime)
+                    .field("is_install_upgrade", is_install_upgrade)
                     .finish()
             }
         }

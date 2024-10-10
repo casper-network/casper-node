@@ -1,6 +1,5 @@
-use std::{collections::BTreeMap, convert::TryInto, sync::Arc, time::Instant};
-
 use itertools::Itertools;
+use std::{collections::BTreeMap, convert::TryInto, sync::Arc, time::Instant};
 use tracing::{debug, error, info, trace, warn};
 
 use casper_execution_engine::engine_state::{
@@ -30,7 +29,7 @@ use casper_types::{
     execution::{Effects, ExecutionResult, TransformKindV2, TransformV2},
     system::handle_payment::ARG_AMOUNT,
     BlockHash, BlockHeader, BlockTime, BlockV2, CLValue, Chainspec, ChecksumRegistry, Digest,
-    EraEndV2, EraId, FeeHandling, Gas, GasLimited, Key, ProtocolVersion, PublicKey, RefundHandling,
+    EraEndV2, EraId, FeeHandling, Gas, Key, ProtocolVersion, PublicKey, RefundHandling,
     Transaction, AUCTION_LANE_ID, MINT_LANE_ID, U512,
 };
 
@@ -43,7 +42,7 @@ use super::{
 use crate::{
     components::fetcher::FetchItem,
     contract_runtime::types::ExecutionArtifactBuilder,
-    types::{self, Chunkable, ExecutableBlock, InternalEraReport},
+    types::{self, Chunkable, ExecutableBlock, InternalEraReport, MetaTransaction},
 };
 
 /// Executes a finalized block.
@@ -140,14 +139,17 @@ pub fn execute_finalized_block(
         }
     }
 
-    for transaction in executable_block.transactions {
-        let mut artifact_builder = ExecutionArtifactBuilder::new(&transaction);
+    let transaction_config = &chainspec.transaction_config;
 
+    for stored_transaction in executable_block.transactions {
+        let mut artifact_builder = ExecutionArtifactBuilder::new(&stored_transaction);
+        let transaction = MetaTransaction::from(&stored_transaction, transaction_config)
+            .map_err(|err| BlockExecutionError::TransactionConversion(err.to_string()))?;
         let initiator_addr = transaction.initiator_addr();
         let transaction_hash = transaction.hash();
         let runtime_args = transaction.session_args().clone();
         let entry_point = transaction.entry_point();
-        let authorization_keys = transaction.authorization_keys();
+        let authorization_keys = transaction.signers();
 
         /*
         we solve for halting state using a `gas limit` which is the maximum amount of
@@ -170,19 +172,24 @@ pub fn execute_finalized_block(
         */
 
         // NOTE: this is the allowed computation limit   (gas limit)
-        let gas_limit = match transaction.gas_limit(chainspec) {
-            Ok(gas) => gas,
-            Err(ite) => {
-                debug!(%transaction_hash, %ite, "invalid transaction (gas limit)");
-                artifact_builder.with_invalid_transaction(&ite);
-                artifacts.push(artifact_builder.build());
-                continue;
-            }
-        };
+        let gas_limit =
+            match stored_transaction.gas_limit(chainspec, transaction.transaction_lane()) {
+                Ok(gas) => gas,
+                Err(ite) => {
+                    debug!(%transaction_hash, %ite, "invalid transaction (gas limit)");
+                    artifact_builder.with_invalid_transaction(&ite);
+                    artifacts.push(artifact_builder.build());
+                    continue;
+                }
+            };
         artifact_builder.with_gas_limit(gas_limit);
 
         // NOTE: this is the actual adjusted cost that we charge for (gas limit * gas price)
-        let cost = match transaction.gas_cost(chainspec, current_gas_price) {
+        let cost = match stored_transaction.gas_cost(
+            chainspec,
+            transaction.transaction_lane(),
+            current_gas_price,
+        ) {
             Ok(motes) => motes.value(),
             Err(ite) => {
                 debug!(%transaction_hash, "invalid transaction (motes conversion)");
@@ -237,10 +244,11 @@ pub fn execute_finalized_block(
                     // using a multiple of a small value.
                     chainspec.transaction_config.native_transfer_minimum_motes * 5,
                 );
+                let session_input_data = transaction.to_session_input_data();
                 let pay_result = match WasmV1Request::new_custom_payment(
                     BlockInfo::new(state_root_hash, block_time, parent_block_hash, block_height),
                     custom_payment_gas_limit,
-                    &transaction,
+                    &session_input_data,
                 ) {
                     Ok(mut pay_request) => {
                         // We'll send a hint to the custom payment logic on the amount
@@ -280,12 +288,12 @@ pub fn execute_finalized_block(
             ProofHandling::NoProofs,
         ));
 
-        let category = transaction.transaction_category();
+        let lane_id = transaction.transaction_lane();
 
         let allow_execution = {
             let is_not_penalized = !balance_identifier.is_penalty();
             let sufficient_balance = initial_balance_result.is_sufficient(cost);
-            let is_supported = chainspec.is_supported(category);
+            let is_supported = chainspec.is_supported(lane_id);
             trace!(%transaction_hash, ?sufficient_balance, ?is_not_penalized, ?is_supported, "payment preprocessing");
             is_not_penalized && sufficient_balance && is_supported
         };
@@ -309,9 +317,9 @@ pub fn execute_finalized_block(
                     .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
             }
 
-            trace!(%transaction_hash, ?category, "eligible for execution");
-            match category {
-                category if category == MINT_LANE_ID => {
+            trace!(%transaction_hash, ?lane_id, "eligible for execution");
+            match lane_id {
+                lane_id if lane_id == MINT_LANE_ID => {
                     let transfer_result =
                         scratch_state.transfer(TransferRequest::with_runtime_args(
                             native_runtime_config.clone(),
@@ -330,7 +338,7 @@ pub fn execute_finalized_block(
                         .with_transfer_result(transfer_result)
                         .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
                 }
-                category if category == AUCTION_LANE_ID => {
+                lane_id if lane_id == AUCTION_LANE_ID => {
                     match AuctionMethod::from_parts(entry_point, &runtime_args, chainspec) {
                         Ok(auction_method) => {
                             let bidding_result = scratch_state.bidding(BiddingRequest::new(
@@ -364,6 +372,7 @@ pub fn execute_finalized_block(
                 }
                 _ => {
                     let wasm_v1_start = Instant::now();
+                    let session_input_data = transaction.to_session_input_data();
                     match WasmV1Request::new_session(
                         BlockInfo::new(
                             state_root_hash,
@@ -372,13 +381,13 @@ pub fn execute_finalized_block(
                             block_height,
                         ),
                         gas_limit,
-                        &transaction,
+                        &session_input_data,
                     ) {
                         Ok(wasm_v1_request) => {
-                            trace!(%transaction_hash, ?category, ?wasm_v1_request, "able to get wasm v1 request");
+                            trace!(%transaction_hash, ?lane_id, ?wasm_v1_request, "able to get wasm v1 request");
                             let wasm_v1_result =
                                 execution_engine_v1.execute(&scratch_state, wasm_v1_request);
-                            trace!(%transaction_hash, ?category, ?wasm_v1_result, "able to get wasm v1 result");
+                            trace!(%transaction_hash, ?lane_id, ?wasm_v1_result, "able to get wasm v1 result");
                             state_root_hash = scratch_state.commit_effects(
                                 state_root_hash,
                                 wasm_v1_result.effects().clone(),
@@ -389,7 +398,7 @@ pub fn execute_finalized_block(
                                 .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
                         }
                         Err(ire) => {
-                            debug!(%transaction_hash, ?category, ?ire, "unable to get wasm v1  request");
+                            debug!(%transaction_hash, ?lane_id, ?ire, "unable to get wasm v1  request");
                             artifact_builder.with_invalid_wasm_v1_request(&ire);
                         }
                     };
@@ -1017,21 +1026,27 @@ pub(super) fn speculatively_execute<S>(
     chainspec: &Chainspec,
     execution_engine_v1: &ExecutionEngineV1,
     block_header: BlockHeader,
-    transaction: Transaction,
+    input_transaction: Transaction,
 ) -> SpeculativeExecutionResult
 where
     S: StateProvider,
 {
+    let transaction_config = &chainspec.transaction_config;
+    let maybe_transaction = MetaTransaction::from(&input_transaction, transaction_config);
+    if let Err(error) = maybe_transaction {
+        return SpeculativeExecutionResult::invalid_transaction(error);
+    }
+    let transaction = maybe_transaction.unwrap();
     let state_root_hash = block_header.state_root_hash();
     let parent_block_hash = block_header.block_hash();
     let block_height = block_header.height();
     let block_time = block_header
         .timestamp()
         .saturating_add(chainspec.core_config.minimum_block_time);
-    let gas_limit = match transaction.gas_limit(chainspec) {
+    let gas_limit = match input_transaction.gas_limit(chainspec, transaction.transaction_lane()) {
         Ok(gas_limit) => gas_limit,
         Err(_) => {
-            return SpeculativeExecutionResult::invalid_gas_limit(transaction);
+            return SpeculativeExecutionResult::invalid_gas_limit(input_transaction);
         }
     };
 
@@ -1066,8 +1081,9 @@ where
                 parent_block_hash,
                 block_height,
             );
+            let session_input_data = transaction.to_session_input_data();
             let wasm_v1_result =
-                match WasmV1Request::new_session(block_info, gas_limit, &transaction) {
+                match WasmV1Request::new_session(block_info, gas_limit, &session_input_data) {
                     Ok(wasm_v1_request) => {
                         execution_engine_v1.execute(state_provider, wasm_v1_request)
                     }
