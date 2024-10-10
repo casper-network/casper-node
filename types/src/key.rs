@@ -323,7 +323,7 @@ pub enum Key {
     /// A `Key` under which bid information is stored.
     BidAddr(BidAddr),
     /// A `Key` under which package information is stored.
-    Package(PackageAddr),
+    Package(PackageAddr), // TODO: SmartContract
     /// A `Key` under which an addressable entity is stored.
     AddressableEntity(EntityAddr),
     /// A `Key` under which a byte code record is stored.

@@ -670,6 +670,11 @@ impl TransactionV1 {
     pub(super) fn apply_approvals(&mut self, approvals: Vec<Approval>) {
         self.approvals.extend(approvals);
     }
+
+    /// Seed to be used for hash generation.
+    pub(crate) fn seed(&self) -> Option<[u8; 32]> {
+        self.body.seed
+    }
 }
 
 #[cfg(any(feature = "std", test))]

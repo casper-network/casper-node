@@ -20,6 +20,11 @@ impl Default for UpgradableContract {
     }
 }
 
+// trait ContractPackage {
+//     fn versions: BTreeMap<>,
+
+// }
+
 #[casper]
 impl UpgradableContract {
     #[casper(constructor)]
@@ -48,6 +53,18 @@ impl UpgradableContract {
         CURRENT_VERSION
     }
 
+    // pub fn is_disabled(&self) {
+    //     self.disabled
+    // }
+
+    // pub fn do_something(&self) {
+    //     if self.disabled {
+    //         panic!("nope")
+
+    //     }
+    // }
+
+    #[skip_arg_parsing]
     pub fn perform_upgrade(&self, new_code: Vec<u8>) {
         if host::get_caller() != self.owner {
             panic!("Only the owner can perform upgrades");
@@ -55,6 +72,7 @@ impl UpgradableContract {
         log!("V1: starting upgrade process current value={}", self.value);
         log!("New code length: {}", new_code.len());
         log!("New code first 10 bytes: {:?}", &new_code[..10]);
+        // TODO: Enforce valid wasm validation
         host::casper_upgrade(&new_code, Some("migrate"), None).unwrap();
     }
 }

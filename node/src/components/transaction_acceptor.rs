@@ -112,6 +112,14 @@ impl TransactionAcceptor {
         debug!(%source, %transaction, "checking transaction before accepting");
         let event_metadata = Box::new(EventMetadata::new(transaction, source, maybe_responder));
 
+        if transaction.is_install_or_upgrade() && transaction.is_v2_wasm() && transaction.seed().is_none() {
+            return self.reject_transaction(
+                effect_builder,
+                *event_metadata,
+                Error::InvalidTransaction("missing seed for install or upgrade".to_string()),
+            );
+        }
+
         let is_config_compliant = event_metadata.transaction.is_config_compliant(
             &self.chainspec,
             self.acceptor_config.timestamp_leeway,

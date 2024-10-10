@@ -1387,6 +1387,19 @@ static ADDRESSABLE_ENTITY: Lazy<AddressableEntity> = Lazy::new(|| {
     }
 });
 
+pub struct MichalContract {
+    byte_code_hash: Option<ByteCodeHash>,
+    lock_status: PackageStatus,
+    named_keys: Option<NamedKeys>,
+    protocol_version: ProtocolVersion,
+    main_purse: Option<URef>,
+    // entry_points: EntryPoints,
+    // associated_keys: AssociatedKeys,
+    message_topics: Option<MessageTopics>,
+}
+
+pub type ContractAddress = PackageHash;
+
 /// Methods and type signatures supported by a contract.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]

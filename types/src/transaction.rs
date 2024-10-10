@@ -445,6 +445,30 @@ impl Transaction {
             Transaction::V1(TransactionV1::random(rng))
         }
     }
+
+    /// Does this transaction target wasm v2.
+    pub fn is_wasm_v2(&self) -> bool {
+        match self {
+            Transaction::Deploy(_) => false,
+            Transaction::V1(txn) => txn.is_wasm_v2(),
+        }
+    }
+
+    /// Returns true if this transaction is a smart contract installer or upgrader.
+    pub fn is_install_or_upgrade(&self) -> bool {
+        match self {
+            Transaction::Deploy(deploy) => false,
+            Transaction::V1(v1) => v1.is_install_or_upgrade(),
+        }
+    }
+
+    /// Returns the package identifier.
+    pub fn seed(&self) -> Option<[u8; 32]> {
+        match self {
+            Transaction::Deploy(deploy) => None,
+            Transaction::V1(transaction_v1) => transaction_v1.seed(),
+        }
+    }
 }
 
 /// Calculates gas limit.

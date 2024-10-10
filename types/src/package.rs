@@ -602,6 +602,7 @@ impl FromBytes for PackageStatus {
     }
 }
 
+
 /// Entity definition, metadata, and security container.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
@@ -619,6 +620,8 @@ pub struct Package {
     /// A flag that determines whether a entity is locked
     lock_status: PackageStatus,
 }
+
+
 
 impl CLTyped for Package {
     fn cl_type() -> CLType {

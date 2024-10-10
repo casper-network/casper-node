@@ -36,6 +36,8 @@ pub struct InstallContractRequest {
     pub(crate) chain_name: Arc<str>,
     /// Block time.
     pub(crate) block_time: Timestamp,
+    /// Seed used for smart contract hash computation.
+    pub(crate) seed: Option<[u8; 32]>,
 }
 
 #[derive(Default)]

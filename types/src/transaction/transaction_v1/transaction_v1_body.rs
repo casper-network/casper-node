@@ -53,6 +53,7 @@ pub struct TransactionV1Body {
     pub(crate) entry_point: TransactionEntryPoint,
     pub(crate) transaction_lane: u8,
     pub(crate) scheduling: TransactionScheduling,
+    pub(crate) seed: Option<[u8; 32]>,
 }
 
 /// The arguments of a transaction, which can be either a named set of runtime arguments or a
@@ -172,6 +173,7 @@ impl TransactionV1Body {
         entry_point: TransactionEntryPoint,
         transaction_lane: u8,
         scheduling: TransactionScheduling,
+        seed: Option<[u8; 32]>,
     ) -> Self {
         TransactionV1Body {
             args: TransactionArgs::Named(args),
@@ -179,6 +181,7 @@ impl TransactionV1Body {
             entry_point,
             transaction_lane,
             scheduling,
+            seed: todo!(),
         }
     }
 
