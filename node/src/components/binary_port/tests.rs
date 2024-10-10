@@ -30,7 +30,7 @@ use prometheus::Registry;
 use thiserror::Error as ThisError;
 
 use casper_binary_port::ErrorCode;
-use casper_types::{testing::TestRng, Chainspec, ChainspecRawBytes, ProtocolVersion};
+use casper_types::{testing::TestRng, Chainspec, ChainspecRawBytes};
 
 use crate::{
     components::{
@@ -164,8 +164,6 @@ async fn run_test_case(
         allow_request_get_trie,
         allow_request_speculative_exec,
         max_message_size_bytes: 1024,
-        client_request_limit: 2,
-        client_request_buffer_size: 16,
         max_connections: 2,
         ..Default::default()
     };
@@ -251,9 +249,6 @@ impl Reactor for MockReactor {
                 self.binary_port.handle_event(effect_builder, rng, event),
             ),
             Event::ControlAnnouncement(_) => panic!("unexpected control announcement"),
-            Event::ReactorInfoRequest(ReactorInfoRequest::ProtocolVersion { responder }) => {
-                responder.respond(ProtocolVersion::V1_0_0).ignore()
-            }
             Event::ContractRuntimeRequest(_) | Event::ReactorInfoRequest(_) => {
                 // We're only interested if the binary port actually created a request to Contract
                 // Runtime component, but we're not interested in the result.
