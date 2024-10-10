@@ -12,6 +12,7 @@ use casper_types::{
 
 use crate::tracking_copy::TrackingCopyError;
 
+/// Fee request.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FeeRequest {
     config: NativeRuntimeConfig,
@@ -21,6 +22,7 @@ pub struct FeeRequest {
 }
 
 impl FeeRequest {
+    /// Ctor.
     pub fn new(
         config: NativeRuntimeConfig,
         state_hash: Digest,
@@ -87,26 +89,37 @@ impl FeeRequest {
     }
 }
 
+/// Fee error.
 #[derive(Clone, Error, Debug)]
 pub enum FeeError {
+    /// No fees distributed error.
     #[error("Undistributed fees")]
     NoFeesDistributed,
+    /// Tracking copy error.
     #[error(transparent)]
     TrackingCopy(TrackingCopyError),
+    /// Registry entry not found.
     #[error("Registry entry not found: {0}")]
     RegistryEntryNotFound(String),
+    /// Transfer error.
     #[error(transparent)]
     Transfer(TransferError),
+    /// Named keys not found.
     #[error("Named keys not found")]
     NamedKeysNotFound,
+    /// Administrative accounts not found.
     #[error("Administrative accounts not found")]
     AdministrativeAccountsNotFound,
 }
 
+/// Fee result.
 #[derive(Debug, Clone)]
 pub enum FeeResult {
+    /// Root not found in global state.
     RootNotFound,
+    /// Failure result.
     Failure(FeeError),
+    /// Success result.
     Success {
         /// List of transfers that happened during execution.
         transfers: Vec<Transfer>,
@@ -118,6 +131,7 @@ pub enum FeeResult {
 }
 
 impl FeeResult {
+    /// Returns true if successful, else false.
     pub fn is_success(&self) -> bool {
         matches!(self, FeeResult::Success { .. })
     }

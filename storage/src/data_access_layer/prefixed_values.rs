@@ -41,5 +41,6 @@ pub enum PrefixedValuesResult {
         /// Current values.
         values: Vec<StoredValue>,
     },
+    /// Failure.
     Failure(TrackingCopyError),
 }
