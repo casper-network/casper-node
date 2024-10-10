@@ -24,7 +24,7 @@ pub use engine_config::{
 pub use error::Error;
 use execution_kind::ExecutionKind;
 pub use wasm_v1::{
-    ExecutableItem, InvalidRequest, SessionDataDeploy, SessionDataV1, SessionInputData,
+    BlockInfo, ExecutableItem, InvalidRequest, SessionDataDeploy, SessionDataV1, SessionInputData,
     WasmV1Request, WasmV1Result,
 };
 
@@ -63,8 +63,7 @@ impl ExecutionEngineV1 {
         &self,
         state_provider: &impl StateProvider,
         WasmV1Request {
-            state_hash,
-            block_time,
+            block_info,
             transaction_hash,
             gas_limit,
             initiator_addr,
@@ -83,6 +82,7 @@ impl ExecutionEngineV1 {
 
         let account_hash = initiator_addr.account_hash();
         let protocol_version = self.config.protocol_version();
+        let state_hash = block_info.state_hash;
         let tc = match state_provider.tracking_copy(state_hash) {
             Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
             Ok(None) => return WasmV1Result::root_not_found(gas_limit, state_hash),
@@ -136,7 +136,7 @@ impl ExecutionEngineV1 {
             access_rights,
             authorization_keys,
             account_hash,
-            block_time,
+            block_info,
             transaction_hash,
             gas_limit,
             protocol_version,

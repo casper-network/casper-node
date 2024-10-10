@@ -2,7 +2,9 @@ use itertools::Itertools;
 use std::{collections::BTreeMap, convert::TryInto, sync::Arc, time::Instant};
 use tracing::{debug, error, info, trace, warn};
 
-use casper_execution_engine::engine_state::{ExecutionEngineV1, WasmV1Request, WasmV1Result};
+use casper_execution_engine::engine_state::{
+    BlockInfo, ExecutionEngineV1, WasmV1Request, WasmV1Result,
+};
 use casper_storage::{
     block_store::types::ApprovalsHashes,
     data_access_layer::{
@@ -57,7 +59,8 @@ pub fn execute_finalized_block(
     next_era_gas_price: Option<u8>,
     last_switch_block_hash: Option<BlockHash>,
 ) -> Result<BlockAndExecutionArtifacts, BlockExecutionError> {
-    if executable_block.height != execution_pre_state.next_block_height() {
+    let block_height = executable_block.height;
+    if block_height != execution_pre_state.next_block_height() {
         return Err(BlockExecutionError::WrongBlockHeight {
             executable_block: Box::new(executable_block),
             execution_pre_state: Box::new(execution_pre_state),
@@ -77,11 +80,13 @@ pub fn execute_finalized_block(
     // scrape variables from execution pre state
     let parent_hash = execution_pre_state.parent_hash();
     let parent_seed = execution_pre_state.parent_seed();
+    let parent_block_hash = execution_pre_state.parent_hash();
     let pre_state_root_hash = execution_pre_state.pre_state_root_hash();
     let mut state_root_hash = pre_state_root_hash; // initial state root is parent's state root
 
     // scrape variables from executable block
     let block_time = BlockTime::new(executable_block.timestamp.millis());
+
     let proposer = executable_block.proposer.clone();
     let era_id = executable_block.era_id;
     let mut artifacts = Vec::with_capacity(executable_block.transactions.len());
@@ -241,8 +246,7 @@ pub fn execute_finalized_block(
                 );
                 let session_input_data = transaction.to_session_input_data();
                 let pay_result = match WasmV1Request::new_custom_payment(
-                    state_root_hash,
-                    block_time,
+                    BlockInfo::new(state_root_hash, block_time, parent_block_hash, block_height),
                     custom_payment_gas_limit,
                     &session_input_data,
                 ) {
@@ -370,8 +374,12 @@ pub fn execute_finalized_block(
                     let wasm_v1_start = Instant::now();
                     let session_input_data = transaction.to_session_input_data();
                     match WasmV1Request::new_session(
-                        state_root_hash,
-                        block_time,
+                        BlockInfo::new(
+                            state_root_hash,
+                            block_time,
+                            parent_block_hash,
+                            block_height,
+                        ),
                         gas_limit,
                         &session_input_data,
                     ) {
@@ -758,7 +766,7 @@ pub fn execute_finalized_block(
             protocol_version,
             state_root_hash,
             era_report.clone(),
-            executable_block.timestamp.millis(),
+            block_time.value(),
             executable_block.era_id.successor(),
         ) {
             StepResult::RootNotFound => {
@@ -811,7 +819,7 @@ pub fn execute_finalized_block(
 
     // Pruning -- this is orthogonal to the contents of the block, but we deliberately do it
     // at the end to avoid an read ordering issue during block execution.
-    if let Some(previous_block_height) = executable_block.height.checked_sub(1) {
+    if let Some(previous_block_height) = block_height.checked_sub(1) {
         if let Some(keys_to_prune) = calculate_prune_eras(
             activation_point_era_id,
             key_block_height_for_activation_point,
@@ -966,7 +974,7 @@ pub fn execute_finalized_block(
         era_end,
         executable_block.timestamp,
         executable_block.era_id,
-        executable_block.height,
+        block_height,
         protocol_version,
         (*proposer).clone(),
         executable_block.transaction_map,
@@ -1030,6 +1038,8 @@ where
     }
     let transaction = maybe_transaction.unwrap();
     let state_root_hash = block_header.state_root_hash();
+    let parent_block_hash = block_header.block_hash();
+    let block_height = block_header.height();
     let block_time = block_header
         .timestamp()
         .saturating_add(chainspec.core_config.minimum_block_time);
@@ -1065,16 +1075,20 @@ where
                 block_header.block_hash(),
             ))
         } else {
-            let session_input_data = transaction.to_session_input_data();
-            let wasm_v1_result = match WasmV1Request::new_session(
+            let block_info = BlockInfo::new(
                 *state_root_hash,
                 block_time.into(),
-                gas_limit,
-                &session_input_data,
-            ) {
-                Ok(wasm_v1_request) => execution_engine_v1.execute(state_provider, wasm_v1_request),
-                Err(error) => WasmV1Result::invalid_executable_item(gas_limit, error),
-            };
+                parent_block_hash,
+                block_height,
+            );
+            let session_input_data = transaction.to_session_input_data();
+            let wasm_v1_result =
+                match WasmV1Request::new_session(block_info, gas_limit, &session_input_data) {
+                    Ok(wasm_v1_request) => {
+                        execution_engine_v1.execute(state_provider, wasm_v1_request)
+                    }
+                    Err(error) => WasmV1Result::invalid_executable_item(gas_limit, error),
+                };
             SpeculativeExecutionResult::WasmV1(utils::spec_exec_from_wasm_v1_result(
                 wasm_v1_result,
                 block_header.block_hash(),
