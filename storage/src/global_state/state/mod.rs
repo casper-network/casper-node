@@ -127,13 +127,17 @@ pub enum CommitError {
     TrieNotFoundInCache(Digest),
 }
 
+/// Scratch provider.
 pub trait ScratchProvider: CommitProvider {
+    /// Get scratch state to db.
     fn get_scratch_global_state(&self) -> ScratchGlobalState;
+    /// Write scratch state to db.
     fn write_scratch_to_db(
         &self,
         state_root_hash: Digest,
         scratch_global_state: ScratchGlobalState,
     ) -> Result<Digest, GlobalStateError>;
+    /// Prune items for imputed keys.
     fn prune_keys(&self, state_root_hash: Digest, keys: &[Key]) -> TriePruneResult;
 }
 
@@ -147,6 +151,7 @@ pub trait CommitProvider: StateProvider {
         effects: Effects,
     ) -> Result<Digest, GlobalStateError>;
 
+    /// Commit values to global state.
     fn commit_values(
         &self,
         state_hash: Digest,
@@ -602,6 +607,7 @@ pub trait CommitProvider: StateProvider {
         }
     }
 
+    /// Gets block global data.
     fn block_global(&self, request: BlockGlobalRequest) -> BlockGlobalResult {
         let state_hash = request.state_hash();
         let tc = match self.tracking_copy(state_hash) {

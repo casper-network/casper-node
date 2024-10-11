@@ -11,7 +11,9 @@ use crate::system::transfer::{TransferArgs, TransferError};
 /// Transfer details.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TransferRequestArgs {
+    /// Provides opaque arguments in runtime format.
     Raw(RuntimeArgs),
+    /// Provides explicit structured args.
     Explicit(TransferArgs),
 }
 
@@ -81,10 +83,12 @@ impl TransferRequest {
         }
     }
 
+    /// Returns a reference to the runtime config.
     pub fn config(&self) -> &NativeRuntimeConfig {
         &self.config
     }
 
+    /// Returns a reference to the transfer config.
     pub fn transfer_config(&self) -> &TransferConfig {
         self.config.transfer_config()
     }
@@ -133,6 +137,7 @@ impl TransferRequest {
     }
 }
 
+/// Transfer result.
 #[derive(Debug, Clone)]
 pub enum TransferResult {
     /// Invalid state root hash.
@@ -157,6 +162,7 @@ impl TransferResult {
         }
     }
 
+    /// Returns transfers.
     pub fn transfers(&self) -> Vec<Transfer> {
         match self {
             TransferResult::RootNotFound | TransferResult::Failure(_) => vec![],
@@ -164,6 +170,7 @@ impl TransferResult {
         }
     }
 
+    /// Returns transfer error, if any.
     pub fn error(&self) -> Option<TransferError> {
         if let Self::Failure(error) = self {
             Some(error.clone())

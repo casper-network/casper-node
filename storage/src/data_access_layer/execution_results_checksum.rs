@@ -1,6 +1,7 @@
 use crate::tracking_copy::TrackingCopyError;
 use casper_types::Digest;
 
+/// Execution results checksum literal.
 pub const EXECUTION_RESULTS_CHECKSUM_NAME: &str = "execution_results_checksum";
 
 /// Represents a request to obtain current execution results checksum.

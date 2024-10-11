@@ -1,6 +1,8 @@
 mod block_provider;
 mod error;
+/// Block store lmdb logic.
 pub mod lmdb;
+/// Block store types.
 pub mod types;
 
 pub use block_provider::{BlockStoreProvider, BlockStoreTransaction, DataReader, DataWriter};

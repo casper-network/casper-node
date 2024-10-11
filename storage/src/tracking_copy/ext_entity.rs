@@ -25,9 +25,13 @@ use crate::{
 /// Fees purse handling.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FeesPurseHandling {
+    /// Transfer fees to proposer.
     ToProposer(AccountHash),
+    /// Transfer all fees to a system-wide accumulation purse, for future disbursement.
     Accumulate,
+    /// Burn all fees.
     Burn,
+    /// No fees are charged.
     None(URef),
 }
 
@@ -76,6 +80,8 @@ pub trait TrackingCopyEntityExt<R> {
         entity_addr: EntityAddr,
         named_keys: NamedKeys,
     ) -> Result<(), Self::Error>;
+
+    /// Migrate entry points from Contract to top level entries.
     fn migrate_entry_points(
         &mut self,
         entity_addr: EntityAddr,
@@ -92,12 +98,14 @@ pub trait TrackingCopyEntityExt<R> {
         stored_value: StoredValue,
     ) -> Result<(), Self::Error>;
 
+    /// Migrate Account to AddressableEntity.
     fn migrate_account(
         &mut self,
         account_hash: AccountHash,
         protocol_version: ProtocolVersion,
     ) -> Result<(), Self::Error>;
 
+    /// Create an addressable entity to receive transfer to a non-existent addressable entity.
     fn create_new_addressable_entity_on_transfer(
         &mut self,
         account_hash: AccountHash,
@@ -105,11 +113,14 @@ pub trait TrackingCopyEntityExt<R> {
         protocol_version: ProtocolVersion,
     ) -> Result<(), Self::Error>;
 
+    /// Create an addressable entity instance using the field data of an account instance.
     fn create_addressable_entity_from_account(
         &mut self,
         account: Account,
         protocol_version: ProtocolVersion,
     ) -> Result<(), Self::Error>;
+
+    /// Migrate ContractPackage to Package.
     fn migrate_package(
         &mut self,
         legacy_package_key: Key,
