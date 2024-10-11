@@ -10,7 +10,7 @@ use crate::{
     bytesrepr::{self, Error, FromBytes, ToBytes},
     crypto,
 };
-#[cfg(any(feature = "testing", test))]
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::{
     testing::TestRng, AUCTION_LANE_ID, INSTALL_UPGRADE_LANE_ID, LARGE_WASM_LANE_ID, MINT_LANE_ID,
 };
@@ -18,7 +18,7 @@ use crate::{
 use alloc::collections::BTreeMap;
 use alloc::{collections::BTreeSet, vec::Vec};
 use errors_v1::FieldDeserializationError;
-#[cfg(any(feature = "testing", test))]
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
 use fields_container::{ENTRY_POINT_MAP_KEY, TARGET_MAP_KEY};
 use tracing::debug;
 pub use transaction_v1_payload::TransactionV1Payload;
