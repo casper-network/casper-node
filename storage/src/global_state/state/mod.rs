@@ -1148,6 +1148,7 @@ pub trait StateProvider {
                         let snapshot = match cl_value.into_t() {
                             Ok(snapshot) => snapshot,
                             Err(cve) => {
+                                error!("Failed to convert snapshot from CLValue");
                                 return SeigniorageRecipientsResult::Failure(
                                     TrackingCopyError::CLValue(cve),
                                 );
@@ -1159,6 +1160,7 @@ pub trait StateProvider {
                         let snapshot = match cl_value.into_t() {
                             Ok(snapshot) => snapshot,
                             Err(cve) => {
+                                error!("Failed to convert snapshot from CLValue");
                                 return SeigniorageRecipientsResult::Failure(
                                     TrackingCopyError::CLValue(cve),
                                 );
