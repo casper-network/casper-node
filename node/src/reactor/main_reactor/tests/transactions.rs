@@ -2810,16 +2810,6 @@ async fn add_and_withdraw_bid_transaction() {
     )
     .await;
 
-    let transfer_cost: U512 =
-        U512::from(test.chainspec().system_costs_config.mint_costs().transfer) * MIN_GAS_PRICE;
-    let min_transfer_amount = U512::from(
-        test.chainspec()
-            .transaction_config
-            .native_transfer_minimum_motes,
-    );
-    let half_transfer_cost =
-        (Ratio::new(U512::from(1), U512::from(2)) * transfer_cost).to_integer();
-
     let bid_amount = test.chainspec().core_config.minimum_bid_amount + 10;
 
     let mut txn = Transaction::from(
