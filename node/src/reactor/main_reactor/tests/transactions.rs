@@ -2819,13 +2819,14 @@ async fn add_and_withdraw_bid_transaction() {
     );
     let half_transfer_cost =
         (Ratio::new(U512::from(1), U512::from(2)) * transfer_cost).to_integer();
-    let transfer_amount = min_transfer_amount * 2 + transfer_cost + half_transfer_cost;
+
+    let bid_amount = test.chainspec().core_config.minimum_bid_amount + 10;
 
     let mut txn = Transaction::from(
         TransactionV1Builder::new_add_bid(
             PublicKey::from(&**BOB_SECRET_KEY),
             0,
-            transfer_amount,
+            bid_amount,
             test.chainspec().core_config.minimum_delegation_amount,
             test.chainspec().core_config.maximum_delegation_amount,
         )
@@ -2843,6 +2844,7 @@ async fn add_and_withdraw_bid_transaction() {
 
     let (_, _bob_initial_balance, _) = test.get_balances(None);
     let (_txn_hash, _block_height, exec_result) = test.send_transaction(txn).await;
+    println!("{:?}", exec_result);
     assert!(exec_result_is_success(&exec_result));
 
     test.fixture
@@ -2850,7 +2852,7 @@ async fn add_and_withdraw_bid_transaction() {
         .await;
 
     let mut txn = Transaction::from(
-        TransactionV1Builder::new_withdraw_bid(PublicKey::from(&**BOB_SECRET_KEY), transfer_amount)
+        TransactionV1Builder::new_withdraw_bid(PublicKey::from(&**BOB_SECRET_KEY), bid_amount)
             .unwrap()
             .with_chain_name(CHAIN_NAME)
             .with_initiator_addr(PublicKey::from(&**BOB_SECRET_KEY))

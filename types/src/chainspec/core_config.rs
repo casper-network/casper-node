@@ -395,6 +395,7 @@ impl ToBytes for CoreConfig {
         buffer.extend(self.max_runtime_call_stack_height.to_bytes()?);
         buffer.extend(self.minimum_delegation_amount.to_bytes()?);
         buffer.extend(self.maximum_delegation_amount.to_bytes()?);
+        buffer.extend(self.minimum_bid_amount.to_bytes()?);
         buffer.extend(self.prune_batch_size.to_bytes()?);
         buffer.extend(self.strict_argument_checking.to_bytes()?);
         buffer.extend(self.simultaneous_peer_requests.to_bytes()?);
@@ -438,6 +439,7 @@ impl ToBytes for CoreConfig {
             + self.max_runtime_call_stack_height.serialized_length()
             + self.minimum_delegation_amount.serialized_length()
             + self.maximum_delegation_amount.serialized_length()
+            + self.minimum_bid_amount.serialized_length()
             + self.prune_batch_size.serialized_length()
             + self.strict_argument_checking.serialized_length()
             + self.simultaneous_peer_requests.serialized_length()
