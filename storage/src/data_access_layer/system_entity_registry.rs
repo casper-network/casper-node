@@ -7,7 +7,9 @@ use casper_types::{
 /// Used to specify is the requestor wants the registry itself or a named entry within it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SystemEntityRegistrySelector {
+    /// Requests all system entity entries.
     All,
+    /// Requests system entity by name.
     ByName(String),
 }
 
@@ -66,15 +68,17 @@ impl SystemEntityRegistryRequest {
         }
     }
 
+    /// Returns the state hash.
     pub fn state_hash(&self) -> Digest {
         self.state_hash
     }
 
-    /// The selector.
+    /// Returns the current selector.
     pub fn selector(&self) -> &SystemEntityRegistrySelector {
         &self.selector
     }
 
+    /// Protocol version.
     pub fn protocol_version(&self) -> ProtocolVersion {
         self.protocol_version
     }
@@ -83,7 +87,9 @@ impl SystemEntityRegistryRequest {
 /// The payload of a successful request.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SystemEntityRegistryPayload {
+    /// All registry entries.
     All(SystemEntityRegistry),
+    /// Specific system entity registry entry.
     EntityKey(Key),
 }
 
@@ -110,11 +116,13 @@ pub enum SystemEntityRegistryResult {
 }
 
 impl SystemEntityRegistryResult {
+    /// Is success.
     pub fn is_success(&self) -> bool {
         matches!(self, SystemEntityRegistryResult::Success { .. })
     }
 
-    pub fn as_legacy(&self) -> Result<SystemEntityRegistryPayload, String> {
+    /// As registry payload.
+    pub fn as_registry_payload(&self) -> Result<SystemEntityRegistryPayload, String> {
         match self {
             SystemEntityRegistryResult::RootNotFound => Err("Root not found".to_string()),
             SystemEntityRegistryResult::SystemEntityRegistryNotFound => {

@@ -37,6 +37,7 @@ pub enum AddressableEntityResult {
         /// An addressable entity.
         entity: AddressableEntity,
     },
+    /// Failure.
     Failure(TrackingCopyError),
 }
 
