@@ -29,9 +29,10 @@ use casper_types::{
             self, BidAddr, BidKind, DelegationRate, Delegator, SeigniorageRecipientV2,
             SeigniorageRecipients, SeigniorageRecipientsSnapshot, SeigniorageRecipientsSnapshotV2,
             SeigniorageRecipientsV2, Staking, ValidatorBid, AUCTION_DELAY_KEY,
-            DELEGATION_RATE_DENOMINATOR, ERA_END_TIMESTAMP_MILLIS_KEY, ERA_ID_KEY,
-            INITIAL_ERA_END_TIMESTAMP_MILLIS, INITIAL_ERA_ID, LOCKED_FUNDS_PERIOD_KEY,
-            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
+            DEFAULT_SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION, DELEGATION_RATE_DENOMINATOR,
+            ERA_END_TIMESTAMP_MILLIS_KEY, ERA_ID_KEY, INITIAL_ERA_END_TIMESTAMP_MILLIS,
+            INITIAL_ERA_ID, LOCKED_FUNDS_PERIOD_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
         },
         handle_payment::{self, ACCUMULATION_PURSE_KEY},
         mint::{
@@ -513,9 +514,29 @@ where
                 |_| GenesisError::CLValue(SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY.to_string()),
             )?),
         );
+
         named_keys.insert(
             SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY.into(),
             initial_seigniorage_recipients_uref.into(),
+        );
+
+        // initialize snapshot version flag
+        let initial_seigniorage_recipients_version_uref = self
+            .address_generator
+            .borrow_mut()
+            .new_uref(AccessRights::READ_ADD_WRITE);
+        self.tracking_copy.borrow_mut().write(
+            initial_seigniorage_recipients_version_uref.into(),
+            StoredValue::CLValue(
+                CLValue::from_t(DEFAULT_SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION).map_err(|_| {
+                    GenesisError::CLValue(SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION_KEY.to_string())
+                })?,
+            ),
+        );
+
+        named_keys.insert(
+            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION_KEY.into(),
+            initial_seigniorage_recipients_version_uref.into(),
         );
 
         // store all delegator and validator bids

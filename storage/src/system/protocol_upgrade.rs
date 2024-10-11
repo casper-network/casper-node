@@ -14,7 +14,8 @@ use casper_types::{
     system::{
         auction::{
             BidAddr, BidKind, SeigniorageRecipientsSnapshotV1, SeigniorageRecipientsSnapshotV2,
-            SeigniorageRecipientsV2, ValidatorBid, AUCTION_DELAY_KEY, LOCKED_FUNDS_PERIOD_KEY,
+            SeigniorageRecipientsV2, ValidatorBid, AUCTION_DELAY_KEY,
+            DEFAULT_SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION, LOCKED_FUNDS_PERIOD_KEY,
             SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION_KEY,
             UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
         },
@@ -1036,7 +1037,9 @@ where
 
             self.tracking_copy.write(
                 snapshot_version_uref_key,
-                StoredValue::CLValue(CLValue::from_t(2u8)?),
+                StoredValue::CLValue(CLValue::from_t(
+                    DEFAULT_SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION,
+                )?),
             );
 
             let auction_addr = EntityAddr::new_system(auction.value());

@@ -17,8 +17,9 @@ use casper_types::{
         self,
         auction::{
             SeigniorageRecipientsSnapshotV1, SeigniorageRecipientsSnapshotV2, AUCTION_DELAY_KEY,
-            LOCKED_FUNDS_PERIOD_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
-            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
+            DEFAULT_SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION, LOCKED_FUNDS_PERIOD_KEY,
+            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION_KEY,
+            UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
         },
         mint::ROUND_SEIGNIORAGE_RATE_KEY,
     },
@@ -846,7 +847,10 @@ fn should_migrate_seigniorage_snapshot_to_new_version() {
         .clone()
         .into_t()
         .expect("should be u8");
-    assert_eq!(snapshot_version, 2);
+    assert_eq!(
+        snapshot_version,
+        DEFAULT_SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION
+    );
 
     // fetch new snapshot
     let seigniorage_snapshot: SeigniorageRecipientsSnapshotV2 = {
