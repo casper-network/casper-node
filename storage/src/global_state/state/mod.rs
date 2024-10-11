@@ -82,7 +82,7 @@ use crate::{
         mint::Mint,
         protocol_upgrade::{ProtocolUpgradeError, ProtocolUpgrader},
         runtime_native::{Id, RuntimeNative},
-        transfer::{TransferError, TransferRuntimeArgsBuilder, TransferTargetMode},
+        transfer::{TransferArgs, TransferError, TransferRuntimeArgsBuilder, TransferTargetMode},
     },
     tracking_copy::{TrackingCopy, TrackingCopyEntityExt, TrackingCopyError, TrackingCopyExt},
 };
@@ -2002,6 +2002,33 @@ pub trait StateProvider {
             TransferRequestArgs::Raw(runtime_args) => runtime_args.clone(),
             TransferRequestArgs::Explicit(transfer_args) => {
                 match RuntimeArgs::try_from(*transfer_args) {
+                    Ok(runtime_args) => runtime_args,
+                    Err(cve) => return TransferResult::Failure(TransferError::CLValue(cve)),
+                }
+            }
+            TransferRequestArgs::Indirect(bita) => {
+                let source_uref = match bita
+                    .source()
+                    .purse_uref(&mut tc.borrow_mut(), protocol_version)
+                {
+                    Ok(source_uref) => source_uref,
+                    Err(tce) => return TransferResult::Failure(TransferError::TrackingCopy(tce)),
+                };
+                let target_uref = match bita
+                    .target()
+                    .purse_uref(&mut tc.borrow_mut(), protocol_version)
+                {
+                    Ok(target_uref) => target_uref,
+                    Err(tce) => return TransferResult::Failure(TransferError::TrackingCopy(tce)),
+                };
+                let transfer_args = TransferArgs::new(
+                    bita.to(),
+                    source_uref,
+                    target_uref,
+                    bita.amount(),
+                    bita.arg_id(),
+                );
+                match RuntimeArgs::try_from(transfer_args) {
                     Ok(runtime_args) => runtime_args,
                     Err(cve) => return TransferResult::Failure(TransferError::CLValue(cve)),
                 }
