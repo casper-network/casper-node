@@ -56,6 +56,8 @@ pub enum AuctionMethod {
         minimum_delegation_amount: u64,
         /// Maximum delegation amount for this validator bid.
         maximum_delegation_amount: u64,
+        /// The minimum bid amount a validator must submit to have
+        /// their bid considered as valid.
         minimum_bid_amount: u64,
     },
     /// Withdraw bid.
@@ -64,6 +66,8 @@ pub enum AuctionMethod {
         public_key: PublicKey,
         /// Bid amount.
         amount: U512,
+        /// The minimum bid amount a validator, if a validator reduces their stake
+        /// below this amount, then it is treated as a complete withdrawal.
         minimum_bid_amount: u64,
     },
     /// Delegate to validator.
