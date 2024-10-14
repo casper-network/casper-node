@@ -382,32 +382,27 @@ impl StdError for ExcessiveSizeErrorV1 {}
 #[non_exhaustive]
 pub enum ErrorV1 {
     /// Error while encoding to JSON.
-    #[cfg(feature = "json-schema")]
     EncodeToJson(serde_json::Error),
 
     /// Error while decoding from JSON.
-    #[cfg(feature = "json-schema")]
     DecodeFromJson(DecodeFromJsonErrorV1),
 
     /// Unable to calculate payment.
     InvalidPayment,
 }
 
-#[cfg(feature = "json-schema")]
 impl From<serde_json::Error> for ErrorV1 {
     fn from(error: serde_json::Error) -> Self {
         ErrorV1::EncodeToJson(error)
     }
 }
 
-#[cfg(feature = "json-schema")]
 impl From<DecodeFromJsonErrorV1> for ErrorV1 {
     fn from(error: DecodeFromJsonErrorV1) -> Self {
         ErrorV1::DecodeFromJson(error)
     }
 }
 
-#[cfg(feature = "json-schema")]
 impl Display for ErrorV1 {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match self {
@@ -417,15 +412,6 @@ impl Display for ErrorV1 {
             ErrorV1::DecodeFromJson(error) => {
                 write!(formatter, "decoding from json: {}", error)
             }
-            ErrorV1::InvalidPayment => write!(formatter, "invalid payment"),
-        }
-    }
-}
-
-#[cfg(not(feature = "json-schema"))]
-impl Display for ErrorV1 {
-    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        match self {
             ErrorV1::InvalidPayment => write!(formatter, "invalid payment"),
         }
     }
