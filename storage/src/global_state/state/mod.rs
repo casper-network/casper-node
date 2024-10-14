@@ -1380,6 +1380,22 @@ pub trait StateProvider {
                 .map_err(|auc_err| {
                     TrackingCopyError::SystemContract(system::Error::Auction(auc_err))
                 }),
+            AuctionMethod::AddReservations { reservations } => runtime
+                .add_reservations(reservations)
+                .map(|_| AuctionMethodRet::Unit)
+                .map_err(|auc_err| {
+                    TrackingCopyError::SystemContract(system::Error::Auction(auc_err))
+                }),
+            AuctionMethod::CancelReservations {
+                validator,
+                delegators,
+                max_delegators_per_validator,
+            } => runtime
+                .cancel_reservations(validator, delegators, max_delegators_per_validator)
+                .map(|_| AuctionMethodRet::Unit)
+                .map_err(|auc_err| {
+                    TrackingCopyError::SystemContract(system::Error::Auction(auc_err))
+                }),
         };
 
         let effects = tc.borrow_mut().effects();

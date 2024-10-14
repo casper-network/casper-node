@@ -835,7 +835,7 @@ where
 /// reservation. For a new reservation a bid record will be created to track the reservation,
 /// otherwise the existing tracking record will be updated.
 #[allow(clippy::too_many_arguments)]
-pub fn handle_add_reservation<P>(provider: &mut P, reservation: Reservation) -> Result<(), ApiError>
+pub fn handle_add_reservation<P>(provider: &mut P, reservation: Reservation) -> Result<(), Error>
 where
     P: StorageProvider + MintProvider + RuntimeProvider,
 {
@@ -859,13 +859,13 @@ where
                 "reservation_count {}, reserved_slots {}",
                 reservation_count, reserved_slots
             );
-            return Err(Error::ExceededReservationsLimit.into());
+            return Err(Error::ExceededReservationsLimit);
         }
     };
 
     // validate specified delegation rate
     if reservation.delegation_rate() > &DELEGATION_RATE_DENOMINATOR {
-        return Err(Error::DelegationRateTooLarge.into());
+        return Err(Error::DelegationRateTooLarge);
     }
 
     provider.write_bid(

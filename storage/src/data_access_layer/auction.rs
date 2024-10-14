@@ -8,7 +8,10 @@ use casper_types::{
     account::AccountHash,
     bytesrepr::FromBytes,
     execution::Effects,
-    system::{auction, auction::DelegationRate},
+    system::{
+        auction,
+        auction::{DelegationRate, Reservation},
+    },
     CLTyped, CLValue, CLValueError, Chainspec, Digest, InitiatorAddr, ProtocolVersion, PublicKey,
     RuntimeArgs, TransactionEntryPoint, TransactionHash, U512,
 };
@@ -73,6 +76,14 @@ pub enum AuctionMethod {
         public_key: PublicKey,
         new_public_key: PublicKey,
     },
+    AddReservations {
+        reservations: Vec<Reservation>,
+    },
+    CancelReservations {
+        validator: PublicKey,
+        delegators: Vec<PublicKey>,
+        max_delegators_per_validator: u32,
+    },
 }
 
 impl AuctionMethod {
@@ -103,9 +114,11 @@ impl AuctionMethod {
             TransactionEntryPoint::ChangeBidPublicKey => {
                 Self::new_change_bid_public_key(runtime_args)
             }
-            TransactionEntryPoint::AddReservations | TransactionEntryPoint::CancelReservations => {
-                todo!()
-            }
+            TransactionEntryPoint::AddReservations => Self::new_add_reservations(runtime_args),
+            TransactionEntryPoint::CancelReservations => Self::new_cancel_reservations(
+                runtime_args,
+                chainspec.core_config.max_delegators_per_validator,
+            ),
         }
     }
 
@@ -193,6 +206,26 @@ impl AuctionMethod {
         Ok(Self::ChangeBidPublicKey {
             public_key,
             new_public_key,
+        })
+    }
+
+    fn new_add_reservations(runtime_args: &RuntimeArgs) -> Result<Self, AuctionMethodError> {
+        let reservations = Self::get_named_argument(runtime_args, auction::ARG_RESERVATIONS)?;
+
+        Ok(Self::AddReservations { reservations })
+    }
+
+    fn new_cancel_reservations(
+        runtime_args: &RuntimeArgs,
+        max_delegators_per_validator: u32,
+    ) -> Result<Self, AuctionMethodError> {
+        let validator = Self::get_named_argument(runtime_args, auction::ARG_VALIDATOR)?;
+        let delegators = Self::get_named_argument(runtime_args, auction::ARG_DELEGATORS)?;
+
+        Ok(Self::CancelReservations {
+            validator,
+            delegators,
+            max_delegators_per_validator,
         })
     }
 

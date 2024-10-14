@@ -491,18 +491,18 @@ pub trait Auction:
     /// delegator slots is exceeded it returns an error.
     ///
     /// If given reservation exists already and the delegation rate was changed it's updated.
-    fn add_reservations(&mut self, reservations: Vec<Reservation>) -> Result<(), ApiError> {
+    fn add_reservations(&mut self, reservations: Vec<Reservation>) -> Result<(), Error> {
         if !self.allow_auction_bids() {
             // Validation set rotation might be disabled on some private chains and we should not
             // allow new bids to come in.
-            return Err(Error::AuctionBidsDisabled.into());
+            return Err(Error::AuctionBidsDisabled);
         }
 
         for reservation in reservations {
             if !self
                 .is_allowed_session_caller(&AccountHash::from(reservation.validator_public_key()))
             {
-                return Err(Error::InvalidContext.into());
+                return Err(Error::InvalidContext);
             }
 
             detail::handle_add_reservation(self, reservation)?;
@@ -517,9 +517,9 @@ pub trait Auction:
         validator: PublicKey,
         delegators: Vec<PublicKey>,
         max_delegators_per_validator: u32,
-    ) -> Result<(), ApiError> {
+    ) -> Result<(), Error> {
         if !self.is_allowed_session_caller(&AccountHash::from(&validator)) {
-            return Err(Error::InvalidContext.into());
+            return Err(Error::InvalidContext);
         }
 
         for delegator in delegators {
