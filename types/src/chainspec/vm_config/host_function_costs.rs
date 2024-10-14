@@ -339,6 +339,8 @@ pub struct HostFunctionCosts {
     pub manage_message_topic: HostFunction<[Cost; 4]>,
     /// Cost of calling the `casper_emit_message` host function.
     pub emit_message: HostFunction<[Cost; 4]>,
+    /// Cost of calling the `get_block_info` host function.
+    pub get_block_info: HostFunction<[Cost; 2]>,
     /// Cost of calling the `generic_hash` host function.
     pub generic_hash: HostFunction<[Cost; 5]>,
 }
@@ -394,6 +396,7 @@ impl Zero for HostFunctionCosts {
             manage_message_topic: HostFunction::zero(),
             emit_message: HostFunction::zero(),
             cost_increase_per_message: Zero::zero(),
+            get_block_info: HostFunction::zero(),
             generic_hash: HostFunction::zero(),
         }
     }
@@ -448,6 +451,7 @@ impl Zero for HostFunctionCosts {
             enable_contract_version,
             manage_message_topic,
             emit_message,
+            get_block_info,
             generic_hash,
         } = self;
         read_value.is_zero()
@@ -498,6 +502,7 @@ impl Zero for HostFunctionCosts {
             && emit_message.is_zero()
             && cost_increase_per_message.is_zero()
             && add_package_version.is_zero()
+            && get_block_info.is_zero()
             && generic_hash.is_zero()
     }
 }
@@ -690,6 +695,7 @@ impl Default for HostFunctionCosts {
                 [NOT_USED, NOT_USED, NOT_USED, NOT_USED, NOT_USED],
             ),
             cost_increase_per_message: DEFAULT_COST_INCREASE_PER_MESSAGE_EMITTED,
+            get_block_info: HostFunction::new(DEFAULT_FIXED_COST, [NOT_USED, NOT_USED]),
         }
     }
 }
@@ -745,6 +751,7 @@ impl ToBytes for HostFunctionCosts {
         ret.append(&mut self.manage_message_topic.to_bytes()?);
         ret.append(&mut self.emit_message.to_bytes()?);
         ret.append(&mut self.cost_increase_per_message.to_bytes()?);
+        ret.append(&mut self.get_block_info.to_bytes()?);
         ret.append(&mut self.generic_hash.to_bytes()?);
         Ok(ret)
     }
@@ -798,6 +805,7 @@ impl ToBytes for HostFunctionCosts {
             + self.manage_message_topic.serialized_length()
             + self.emit_message.serialized_length()
             + self.cost_increase_per_message.serialized_length()
+            + self.get_block_info.serialized_length()
             + self.generic_hash.serialized_length()
     }
 }
@@ -852,6 +860,7 @@ impl FromBytes for HostFunctionCosts {
         let (manage_message_topic, rem) = FromBytes::from_bytes(rem)?;
         let (emit_message, rem) = FromBytes::from_bytes(rem)?;
         let (cost_increase_per_message, rem) = FromBytes::from_bytes(rem)?;
+        let (get_block_info, rem) = FromBytes::from_bytes(rem)?;
         let (generic_hash, rem) = FromBytes::from_bytes(rem)?;
         Ok((
             HostFunctionCosts {
@@ -903,6 +912,7 @@ impl FromBytes for HostFunctionCosts {
                 manage_message_topic,
                 emit_message,
                 cost_increase_per_message,
+                get_block_info,
                 generic_hash,
             },
             rem,
@@ -962,6 +972,7 @@ impl Distribution<HostFunctionCosts> for Standard {
             manage_message_topic: rng.gen(),
             emit_message: rng.gen(),
             cost_increase_per_message: rng.gen(),
+            get_block_info: rng.gen(),
             generic_hash: rng.gen(),
         }
     }
@@ -1030,6 +1041,7 @@ pub mod gens {
             manage_message_topic in host_function_cost_arb(),
             emit_message in host_function_cost_arb(),
             cost_increase_per_message in num::u32::ANY,
+            get_block_info in host_function_cost_arb(),
             generic_hash in host_function_cost_arb(),
         ) -> HostFunctionCosts {
             HostFunctionCosts {
@@ -1081,6 +1093,7 @@ pub mod gens {
                 manage_message_topic,
                 emit_message,
                 cost_increase_per_message,
+                get_block_info
                 generic_hash,
             }
         }

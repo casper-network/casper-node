@@ -3,12 +3,15 @@ use std::{collections::BTreeMap, convert::TryInto, sync::Arc, time::Instant};
 use itertools::Itertools;
 use tracing::{debug, error, info, trace, warn};
 
-use casper_execution_engine::engine_state::{ExecutionEngineV1, WasmV1Request, WasmV1Result};
+use casper_execution_engine::engine_state::{
+    BlockInfo, ExecutionEngineV1, WasmV1Request, WasmV1Result,
+};
 use casper_storage::{
     block_store::types::ApprovalsHashes,
     data_access_layer::{
         balance::BalanceHandling,
         forced_undelegate::{ForcedUndelegateRequest, ForcedUndelegateResult},
+        mint::BalanceIdentifierTransferArgs,
         AuctionMethod, BalanceHoldKind, BalanceHoldRequest, BalanceIdentifier, BalanceRequest,
         BiddingRequest, BlockGlobalRequest, BlockGlobalResult, BlockRewardsRequest,
         BlockRewardsResult, DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, EvictItem,
@@ -58,7 +61,8 @@ pub fn execute_finalized_block(
     next_era_gas_price: Option<u8>,
     last_switch_block_hash: Option<BlockHash>,
 ) -> Result<BlockAndExecutionArtifacts, BlockExecutionError> {
-    if executable_block.height != execution_pre_state.next_block_height() {
+    let block_height = executable_block.height;
+    if block_height != execution_pre_state.next_block_height() {
         return Err(BlockExecutionError::WrongBlockHeight {
             executable_block: Box::new(executable_block),
             execution_pre_state: Box::new(execution_pre_state),
@@ -78,11 +82,13 @@ pub fn execute_finalized_block(
     // scrape variables from execution pre state
     let parent_hash = execution_pre_state.parent_hash();
     let parent_seed = execution_pre_state.parent_seed();
+    let parent_block_hash = execution_pre_state.parent_hash();
     let pre_state_root_hash = execution_pre_state.pre_state_root_hash();
     let mut state_root_hash = pre_state_root_hash; // initial state root is parent's state root
 
     // scrape variables from executable block
     let block_time = BlockTime::new(executable_block.timestamp.millis());
+
     let proposer = executable_block.proposer.clone();
     let era_id = executable_block.era_id;
     let mut artifacts = Vec::with_capacity(executable_block.transactions.len());
@@ -91,6 +97,7 @@ pub fn execute_finalized_block(
     let insufficient_balance_handling = InsufficientBalanceHandling::HoldRemaining;
     let refund_handling = chainspec.core_config.refund_handling;
     let fee_handling = chainspec.core_config.fee_handling;
+    let penalty_payment_amount = *casper_execution_engine::engine_state::MAX_PAYMENT;
     let balance_handling = BalanceHandling::Available;
 
     // get scratch state, which must be used for all processing and post processing data
@@ -126,7 +133,7 @@ pub fn execute_finalized_block(
             return Err(BlockExecutionError::RootNotFound(state_root_hash));
         }
         BlockGlobalResult::Failure(err) => {
-            return Err(BlockExecutionError::BlockGlobal(format!("{}", err)));
+            return Err(BlockExecutionError::BlockGlobal(format!("{:?}", err)));
         }
         BlockGlobalResult::Success {
             post_state_hash, ..
@@ -191,7 +198,7 @@ pub fn execute_finalized_block(
         let is_standard_payment = transaction.is_standard_payment();
         let refund_purse_active = !is_standard_payment;
         if refund_purse_active {
-            // if custom payment  before doing any processing, initialize the initiator's main purse
+            // if custom payment before doing any processing, initialize the initiator's main purse
             //  to be the refund purse for this transaction.
             // NOTE: when executed, custom payment logic has the option to call set_refund_purse
             //  on the handle payment contract to set up a different refund purse, if desired.
@@ -212,10 +219,35 @@ pub fn execute_finalized_block(
                     return Err(BlockExecutionError::RootNotFound(state_root_hash));
                 }
                 artifacts.push(artifact_builder.build());
-                continue; // no reason to commit the effects, move on
+                continue; // don't commit effects, move on
             }
             state_root_hash = scratch_state
                 .commit_effects(state_root_hash, handle_refund_result.effects().clone())?;
+        }
+
+        {
+            // Ensure the initiator's main purse can cover the penalty payment before proceeding.
+            let initial_balance_result = scratch_state.balance(BalanceRequest::new(
+                state_root_hash,
+                protocol_version,
+                initiator_addr.clone().into(),
+                balance_handling,
+                ProofHandling::NoProofs,
+            ));
+
+            if let Err(root_not_found) = artifact_builder
+                .with_initial_balance_result(initial_balance_result.clone(), penalty_payment_amount)
+            {
+                if root_not_found {
+                    return Err(BlockExecutionError::RootNotFound(state_root_hash));
+                }
+                trace!(%transaction_hash, "insufficient initial balance");
+                debug!(%transaction_hash, ?initial_balance_result, %penalty_payment_amount, "insufficient initial balance");
+                artifacts.push(artifact_builder.build());
+                // only reads have happened so far, and we can't charge due
+                // to insufficient balance, so move on with no effects committed
+                continue;
+            }
         }
 
         let mut balance_identifier = {
@@ -233,8 +265,7 @@ pub fn execute_finalized_block(
                     chainspec.transaction_config.native_transfer_minimum_motes * 5,
                 );
                 let pay_result = match WasmV1Request::new_custom_payment(
-                    state_root_hash,
-                    block_time,
+                    BlockInfo::new(state_root_hash, block_time, parent_block_hash, block_height),
                     custom_payment_gas_limit,
                     &transaction,
                 ) {
@@ -253,7 +284,29 @@ pub fn execute_finalized_block(
                 };
                 let balance_identifier = {
                     if pay_result.error().is_some() {
-                        BalanceIdentifier::PenalizedAccount(initiator_addr.account_hash())
+                        // Charge initiator for the penalty payment amount
+                        // the most expedient way to do this that aligns with later code
+                        // is to transfer from the initiator's main purse to the payment purse
+                        let transfer_result =
+                            scratch_state.transfer(TransferRequest::new_indirect(
+                                native_runtime_config.clone(),
+                                state_root_hash,
+                                protocol_version,
+                                transaction_hash,
+                                initiator_addr.clone(),
+                                authorization_keys.clone(),
+                                BalanceIdentifierTransferArgs::new(
+                                    None,
+                                    BalanceIdentifier::Account(initiator_addr.account_hash()),
+                                    BalanceIdentifier::Payment,
+                                    penalty_payment_amount,
+                                    None,
+                                ),
+                            ));
+                        artifact_builder
+                            .with_transfer_result(transfer_result)
+                            .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
+                        BalanceIdentifier::PenalizedPayment
                     } else {
                         BalanceIdentifier::Payment
                     }
@@ -268,7 +321,8 @@ pub fn execute_finalized_block(
             }
         };
 
-        let initial_balance_result = scratch_state.balance(BalanceRequest::new(
+        let category = transaction.transaction_category();
+        let post_payment_balance_result = scratch_state.balance(BalanceRequest::new(
             state_root_hash,
             protocol_version,
             balance_identifier.clone(),
@@ -276,12 +330,10 @@ pub fn execute_finalized_block(
             ProofHandling::NoProofs,
         ));
 
-        let category = transaction.transaction_category();
-
         let allow_execution = {
-            let is_not_penalized = !balance_identifier.is_penalty();
-            let sufficient_balance = initial_balance_result.is_sufficient(cost);
             let is_supported = chainspec.is_supported(category);
+            let is_not_penalized = !balance_identifier.is_penalty();
+            let sufficient_balance = post_payment_balance_result.is_sufficient(cost);
             trace!(%transaction_hash, ?sufficient_balance, ?is_not_penalized, ?is_supported, "payment preprocessing");
             is_not_penalized && sufficient_balance && is_supported
         };
@@ -361,8 +413,12 @@ pub fn execute_finalized_block(
                 _ => {
                     let wasm_v1_start = Instant::now();
                     match WasmV1Request::new_session(
-                        state_root_hash,
-                        block_time,
+                        BlockInfo::new(
+                            state_root_hash,
+                            block_time,
+                            parent_block_hash,
+                            block_height,
+                        ),
                         gas_limit,
                         &transaction,
                     ) {
@@ -567,6 +623,7 @@ pub fn execute_finalized_block(
         };
         state_root_hash =
             scratch_state.commit_effects(state_root_hash, handle_fee_result.effects().clone())?;
+
         artifact_builder
             .with_handle_fee_result(&handle_fee_result)
             .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
@@ -749,7 +806,7 @@ pub fn execute_finalized_block(
             protocol_version,
             state_root_hash,
             era_report.clone(),
-            executable_block.timestamp.millis(),
+            block_time.value(),
             executable_block.era_id.successor(),
         ) {
             StepResult::RootNotFound => {
@@ -802,7 +859,7 @@ pub fn execute_finalized_block(
 
     // Pruning -- this is orthogonal to the contents of the block, but we deliberately do it
     // at the end to avoid an read ordering issue during block execution.
-    if let Some(previous_block_height) = executable_block.height.checked_sub(1) {
+    if let Some(previous_block_height) = block_height.checked_sub(1) {
         if let Some(keys_to_prune) = calculate_prune_eras(
             activation_point_era_id,
             key_block_height_for_activation_point,
@@ -957,7 +1014,7 @@ pub fn execute_finalized_block(
         era_end,
         executable_block.timestamp,
         executable_block.era_id,
-        executable_block.height,
+        block_height,
         protocol_version,
         (*proposer).clone(),
         executable_block.transaction_map,
@@ -1015,6 +1072,8 @@ where
     S: StateProvider,
 {
     let state_root_hash = block_header.state_root_hash();
+    let parent_block_hash = block_header.block_hash();
+    let block_height = block_header.height();
     let block_time = block_header
         .timestamp()
         .saturating_add(chainspec.core_config.minimum_block_time);
@@ -1050,15 +1109,19 @@ where
                 block_header.block_hash(),
             ))
         } else {
-            let wasm_v1_result = match WasmV1Request::new_session(
+            let block_info = BlockInfo::new(
                 *state_root_hash,
                 block_time.into(),
-                gas_limit,
-                &transaction,
-            ) {
-                Ok(wasm_v1_request) => execution_engine_v1.execute(state_provider, wasm_v1_request),
-                Err(error) => WasmV1Result::invalid_executable_item(gas_limit, error),
-            };
+                parent_block_hash,
+                block_height,
+            );
+            let wasm_v1_result =
+                match WasmV1Request::new_session(block_info, gas_limit, &transaction) {
+                    Ok(wasm_v1_request) => {
+                        execution_engine_v1.execute(state_provider, wasm_v1_request)
+                    }
+                    Err(error) => WasmV1Result::invalid_executable_item(gas_limit, error),
+                };
             SpeculativeExecutionResult::WasmV1(utils::spec_exec_from_wasm_v1_result(
                 wasm_v1_result,
                 block_header.block_hash(),

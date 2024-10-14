@@ -185,7 +185,8 @@ impl<S: ScratchProvider> WasmTestBuilder<S> {
             .as_ref()
             .expect("scratch state should exist");
 
-        exec_request.state_hash = self.post_state_hash.expect("expected post_state_hash");
+        let state_hash = self.post_state_hash.expect("expected post_state_hash");
+        exec_request.block_info.with_state_hash(state_hash);
 
         // First execute the request against our scratch global state.
         let execution_result = self.execution_engine.execute(cached_state, exec_request);
@@ -828,7 +829,8 @@ where
     /// If the custom payment is `Some` and its execution fails, the session request is not
     /// attempted.
     pub fn exec_wasm_v1(&mut self, mut request: WasmV1Request) -> &mut Self {
-        request.state_hash = self.post_state_hash.expect("expected post_state_hash");
+        let state_hash = self.post_state_hash.expect("expected post_state_hash");
+        request.block_info.with_state_hash(state_hash);
         let result = self
             .execution_engine
             .execute(self.data_access_layer.as_ref(), request);
@@ -842,7 +844,8 @@ where
     pub fn exec(&mut self, mut exec_request: ExecuteRequest) -> &mut Self {
         let mut effects = Effects::new();
         if let Some(mut payment) = exec_request.custom_payment {
-            payment.state_hash = self.post_state_hash.expect("expected post_state_hash");
+            let state_hash = self.post_state_hash.expect("expected post_state_hash");
+            payment.block_info.with_state_hash(state_hash);
             let payment_result = self
                 .execution_engine
                 .execute(self.data_access_layer.as_ref(), payment);
@@ -856,7 +859,8 @@ where
                 return self;
             }
         }
-        exec_request.session.state_hash = self.post_state_hash.expect("expected post_state_hash");
+        let state_hash = self.post_state_hash.expect("expected post_state_hash");
+        exec_request.session.block_info.with_state_hash(state_hash);
 
         let session_result = self
             .execution_engine
@@ -1922,7 +1926,7 @@ where
         let req = TrieRequest::new(state_hash, None);
         self.data_access_layer()
             .trie(req)
-            .into_legacy()
+            .into_raw()
             .unwrap()
             .map(|bytes| bytesrepr::deserialize(bytes.into_inner().into()).unwrap())
     }

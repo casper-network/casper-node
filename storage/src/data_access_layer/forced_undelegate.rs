@@ -8,6 +8,7 @@ use crate::{
     tracking_copy::TrackingCopyError,
 };
 
+/// Forced undelegate request.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ForcedUndelegateRequest {
     config: Config,
@@ -17,6 +18,7 @@ pub struct ForcedUndelegateRequest {
 }
 
 impl ForcedUndelegateRequest {
+    /// Ctor.
     pub fn new(
         config: Config,
         state_hash: Digest,
@@ -52,22 +54,31 @@ impl ForcedUndelegateRequest {
     }
 }
 
+/// Forced undelegation error.
 #[derive(Clone, Error, Debug)]
 pub enum ForcedUndelegateError {
+    /// Tracking copy error.
     #[error(transparent)]
     TrackingCopy(TrackingCopyError),
+    /// Registry entry not found error.
     #[error("Registry entry not found: {0}")]
     RegistryEntryNotFound(String),
+    /// Transfer error.
     #[error(transparent)]
     Transfer(TransferError),
+    /// Auction error.
     #[error("Auction error: {0}")]
     Auction(AuctionError),
 }
 
+/// Forced undelegation result.
 #[derive(Debug, Clone)]
 pub enum ForcedUndelegateResult {
+    /// Root hash not found in global state.
     RootNotFound,
+    /// Forced undelegation failed.
     Failure(ForcedUndelegateError),
+    /// Forced undelgation succeeded.
     Success {
         /// State hash after distribution outcome is committed to the global state.
         post_state_hash: Digest,
@@ -77,6 +88,7 @@ pub enum ForcedUndelegateResult {
 }
 
 impl ForcedUndelegateResult {
+    /// Returns true if successful, else false.
     pub fn is_success(&self) -> bool {
         matches!(self, Self::Success { .. })
     }

@@ -61,7 +61,7 @@ where
             Ok((_, entity)) => Ok(Some(entity)),
             Err(tce) => {
                 error!(%tce, "error reading addressable entity by account hash");
-                Err(ProviderError::AddressableEntityByAccountHash(account_hash))
+                Err(ProviderError::AccountHash(account_hash))
             }
         }
     }

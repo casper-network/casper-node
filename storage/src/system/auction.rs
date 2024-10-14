@@ -1,5 +1,7 @@
 mod auction_native;
+/// Auction business logic.
 pub mod detail;
+/// System logic providers.
 pub mod providers;
 
 use std::collections::BTreeMap;
@@ -1025,6 +1027,7 @@ fn rewards_per_validator(
     Ok(results)
 }
 
+/// Aggregated rewards data for a validator.
 #[derive(Debug, Default)]
 pub struct RewardsPerValidator {
     validator_reward: U512,

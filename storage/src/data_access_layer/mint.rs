@@ -1,18 +1,80 @@
 use std::collections::BTreeSet;
 
-use crate::system::runtime_native::{Config as NativeRuntimeConfig, TransferConfig};
+use crate::{
+    data_access_layer::BalanceIdentifier,
+    system::runtime_native::{Config as NativeRuntimeConfig, TransferConfig},
+};
 use casper_types::{
     account::AccountHash, execution::Effects, Digest, InitiatorAddr, ProtocolVersion, RuntimeArgs,
-    TransactionHash, Transfer,
+    TransactionHash, Transfer, U512,
 };
 
 use crate::system::transfer::{TransferArgs, TransferError};
 
+/// Transfer arguments using balance identifiers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BalanceIdentifierTransferArgs {
+    to: Option<AccountHash>,
+    source: BalanceIdentifier,
+    target: BalanceIdentifier,
+    amount: U512,
+    arg_id: Option<u64>,
+}
+
+impl BalanceIdentifierTransferArgs {
+    /// Ctor.
+    pub fn new(
+        to: Option<AccountHash>,
+        source: BalanceIdentifier,
+        target: BalanceIdentifier,
+        amount: U512,
+        arg_id: Option<u64>,
+    ) -> Self {
+        BalanceIdentifierTransferArgs {
+            to,
+            source,
+            target,
+            amount,
+            arg_id,
+        }
+    }
+
+    /// Get to.
+    pub fn to(&self) -> Option<AccountHash> {
+        self.to
+    }
+
+    /// Get source.
+    pub fn source(&self) -> &BalanceIdentifier {
+        &self.source
+    }
+
+    /// Get target.
+    pub fn target(&self) -> &BalanceIdentifier {
+        &self.target
+    }
+
+    /// Get amount.
+    pub fn amount(&self) -> U512 {
+        self.amount
+    }
+
+    /// Get arg_id.
+    pub fn arg_id(&self) -> Option<u64> {
+        self.arg_id
+    }
+}
+
 /// Transfer details.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TransferRequestArgs {
+    /// Provides opaque arguments in runtime format.
     Raw(RuntimeArgs),
+    /// Provides explicit structured args.
     Explicit(TransferArgs),
+    /// Provides support for transfers using balance identifiers.
+    /// The source and target purses will get resolved on usage.
+    Indirect(Box<BalanceIdentifierTransferArgs>),
 }
 
 /// Request for motes transfer.
@@ -81,10 +143,35 @@ impl TransferRequest {
         }
     }
 
+    /// Creates new request object using balance identifiers.
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_indirect(
+        config: NativeRuntimeConfig,
+        state_hash: Digest,
+        protocol_version: ProtocolVersion,
+        transaction_hash: TransactionHash,
+        initiator: InitiatorAddr,
+        authorization_keys: BTreeSet<AccountHash>,
+        args: BalanceIdentifierTransferArgs,
+    ) -> Self {
+        let args = TransferRequestArgs::Indirect(Box::new(args));
+        Self {
+            config,
+            state_hash,
+            protocol_version,
+            transaction_hash,
+            initiator,
+            authorization_keys,
+            args,
+        }
+    }
+
+    /// Returns a reference to the runtime config.
     pub fn config(&self) -> &NativeRuntimeConfig {
         &self.config
     }
 
+    /// Returns a reference to the transfer config.
     pub fn transfer_config(&self) -> &TransferConfig {
         self.config.transfer_config()
     }
@@ -133,6 +220,7 @@ impl TransferRequest {
     }
 }
 
+/// Transfer result.
 #[derive(Debug, Clone)]
 pub enum TransferResult {
     /// Invalid state root hash.
@@ -157,6 +245,7 @@ impl TransferResult {
         }
     }
 
+    /// Returns transfers.
     pub fn transfers(&self) -> Vec<Transfer> {
         match self {
             TransferResult::RootNotFound | TransferResult::Failure(_) => vec![],
@@ -164,6 +253,7 @@ impl TransferResult {
         }
     }
 
+    /// Returns transfer error, if any.
     pub fn error(&self) -> Option<TransferError> {
         if let Self::Failure(error) = self {
             Some(error.clone())

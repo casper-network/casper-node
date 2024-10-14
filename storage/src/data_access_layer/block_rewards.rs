@@ -12,6 +12,7 @@ use crate::{
     tracking_copy::TrackingCopyError,
 };
 
+/// Block rewards request.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BlockRewardsRequest {
     config: Config,
@@ -22,6 +23,7 @@ pub struct BlockRewardsRequest {
 }
 
 impl BlockRewardsRequest {
+    /// Ctor.
     pub fn new(
         config: Config,
         state_hash: Digest,
@@ -64,24 +66,34 @@ impl BlockRewardsRequest {
     }
 }
 
+/// Block rewards error.
 #[derive(Clone, Error, Debug)]
 pub enum BlockRewardsError {
+    /// Undistributed rewards error.
     #[error("Undistributed rewards")]
     UndistributedRewards,
+    /// Tracking copy error.
     #[error(transparent)]
     TrackingCopy(TrackingCopyError),
+    /// Registry entry not found error.
     #[error("Registry entry not found: {0}")]
     RegistryEntryNotFound(String),
+    /// Transfer error.
     #[error(transparent)]
     Transfer(TransferError),
+    /// Auction error.
     #[error("Auction error: {0}")]
     Auction(AuctionError),
 }
 
+/// Block reward result.
 #[derive(Debug, Clone)]
 pub enum BlockRewardsResult {
+    /// Root not found in global state.
     RootNotFound,
+    /// Block rewards failure error.
     Failure(BlockRewardsError),
+    /// Success result.
     Success {
         /// State hash after distribution outcome is committed to the global state.
         post_state_hash: Digest,
@@ -91,6 +103,7 @@ pub enum BlockRewardsResult {
 }
 
 impl BlockRewardsResult {
+    /// Returns true if successful, else false.
     pub fn is_success(&self) -> bool {
         matches!(self, BlockRewardsResult::Success { .. })
     }
