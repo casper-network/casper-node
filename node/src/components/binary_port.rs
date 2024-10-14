@@ -394,7 +394,7 @@ where
                 BinaryResponse::new_error(ErrorCode::FunctionDisabled, protocol_version)
             } else {
                 let req = TrieRequest::new(trie_key, None);
-                match effect_builder.get_trie(req).await.into_legacy() {
+                match effect_builder.get_trie(req).await.into_raw() {
                     Ok(result) => BinaryResponse::from_value(
                         GetTrieFullResult::new(result.map(TrieRaw::into_inner)),
                         protocol_version,

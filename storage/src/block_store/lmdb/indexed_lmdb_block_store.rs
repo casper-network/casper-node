@@ -27,6 +27,7 @@ use casper_types::{
     BlockSignatures, Digest, EraId, ProtocolVersion, Transaction, TransactionHash, Transfer,
 };
 
+/// Indexed lmdb block store.
 #[derive(DataSize, Debug)]
 pub struct IndexedLmdbBlockStore {
     /// Block store
@@ -124,6 +125,7 @@ impl IndexedLmdbBlockStore {
         Ok(())
     }
 
+    /// Ctor.
     pub fn new(
         block_store: LmdbBlockStore,
         hard_reset_to_start_of_era: Option<EraId>,

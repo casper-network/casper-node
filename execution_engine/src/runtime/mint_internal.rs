@@ -64,7 +64,7 @@ where
             .read_addressable_entity_by_account_hash(account_hash)
             .map_err(|err| {
                 error!(%err, "error reading addressable entity by account hash");
-                ProviderError::AddressableEntityByAccountHash(account_hash)
+                ProviderError::AccountHash(account_hash)
             })
     }
 

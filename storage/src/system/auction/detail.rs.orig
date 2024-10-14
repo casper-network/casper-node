@@ -78,8 +78,10 @@ impl ValidatorBidsDetail {
         validator: PublicKey,
         validator_bid: Box<ValidatorBid>,
         delegators: Vec<Box<Delegator>>,
+        reservations: Vec<Box<Reservation>>,
     ) -> Option<Box<ValidatorBid>> {
         self.delegator_bids.insert(validator.clone(), delegators);
+        self.reservations.insert(validator.clone(), reservations);
         self.validator_bids.insert(validator, validator_bid)
     }
 
@@ -356,6 +358,7 @@ where
     read_from(provider, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY)
 }
 
+/// Set seigniorage recipients snapshot.
 pub fn set_seigniorage_recipients_snapshot<P>(
     provider: &mut P,
     snapshot: SeigniorageRecipientsSnapshotV2,
@@ -842,6 +845,7 @@ where
     Ok(updated_amount)
 }
 
+<<<<<<< HEAD
 /// If specified validator exists, and if validator is not yet at max reservations count, processes
 /// reservation. For a new reservation a bid record will be created to track the reservation,
 /// otherwise the existing tracking record will be updated.
@@ -934,7 +938,9 @@ where
     Ok(())
 }
 
+=======
 /// Returns validator bid by key.
+>>>>>>> feat-2.0
 pub fn read_validator_bid<P>(provider: &mut P, bid_key: &Key) -> Result<Box<ValidatorBid>, Error>
 where
     P: StorageProvider + ?Sized,
@@ -1017,6 +1023,7 @@ where
     }
 }
 
+<<<<<<< HEAD
 pub fn read_reservation_bids<P>(
     provider: &mut P,
     validator_public_key: &PublicKey,
@@ -1053,7 +1060,9 @@ where
     }
 }
 
+=======
 /// Applies seigniorage recipient changes.
+>>>>>>> feat-2.0
 pub fn seigniorage_recipients(
     validator_weights: &ValidatorWeights,
     validator_bids: &ValidatorBids,

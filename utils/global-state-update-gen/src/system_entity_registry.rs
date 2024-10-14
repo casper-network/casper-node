@@ -128,7 +128,7 @@ fn generate_system_entity_registry_using_global_state(data_dir: &Path, state_has
     let registry = match builder
         .data_access_layer()
         .system_entity_registry(registry_req)
-        .as_legacy()
+        .as_registry_payload()
         .expect("should have payload")
     {
         SystemEntityRegistryPayload::All(registry) => registry,

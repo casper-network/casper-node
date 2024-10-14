@@ -15,6 +15,7 @@ use crate::{
     tracking_copy::{TrackingCopy, TrackingCopyEntityExt, TrackingCopyError, TrackingCopyExt},
 };
 
+/// Transfer error.
 #[derive(Clone, Error, Debug)]
 pub enum TransferError {
     /// Invalid key variant.
@@ -78,20 +79,8 @@ impl From<TrackingCopyError> for TransferError {
 
 /// A target mode indicates if a native transfer's arguments will resolve to an existing purse, or
 /// will have to create a new account first.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum TransferTargetMode {
-    /// Unknown target mode.
-    Unknown,
-    /// Native transfer arguments resolved into a transfer to a purse.
-    PurseExists(URef),
-    /// Native transfer arguments resolved into a transfer to an account.
-    CreateAccount(AccountHash),
-}
-
-/// A target mode indicates if a native transfer's arguments will resolve to an existing purse, or
-/// will have to create a new account first.
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub enum NewTransferTargetMode {
+pub enum TransferTargetMode {
     /// Native transfer arguments resolved into a transfer to an existing account.
     ExistingAccount {
         /// Existing account hash.
@@ -110,19 +99,19 @@ pub enum NewTransferTargetMode {
     CreateAccount(AccountHash),
 }
 
-impl NewTransferTargetMode {
+impl TransferTargetMode {
     /// Target account hash, if any.
     pub fn target_account_hash(&self) -> Option<AccountHash> {
         match self {
-            NewTransferTargetMode::PurseExists {
+            TransferTargetMode::PurseExists {
                 target_account_hash,
                 ..
             } => *target_account_hash,
-            NewTransferTargetMode::ExistingAccount {
+            TransferTargetMode::ExistingAccount {
                 target_account_hash,
                 ..
             } => Some(*target_account_hash),
-            NewTransferTargetMode::CreateAccount(target_account_hash) => Some(*target_account_hash),
+            TransferTargetMode::CreateAccount(target_account_hash) => Some(*target_account_hash),
         }
     }
 }
@@ -311,12 +300,12 @@ impl TransferRuntimeArgsBuilder {
     /// If the "target" account hash is not existing, then a special variant is returned that
     /// indicates that the system has to create new account first.
     ///
-    /// Returns [`NewTransferTargetMode`] with a resolved variant.
+    /// Returns [`TransferTargetMode`] with a resolved variant.
     pub fn resolve_transfer_target_mode<R>(
         &mut self,
         protocol_version: ProtocolVersion,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
-    ) -> Result<NewTransferTargetMode, TransferError>
+    ) -> Result<TransferTargetMode, TransferError>
     where
         R: StateReader<Key, StoredValue, Error = GlobalStateError>,
     {
@@ -342,7 +331,7 @@ impl TransferRuntimeArgsBuilder {
                     return Err(TransferError::InvalidPurse);
                 }
 
-                return Ok(NewTransferTargetMode::PurseExists {
+                return Ok(TransferTargetMode::PurseExists {
                     purse_uref,
                     target_account_hash,
                 });
@@ -371,12 +360,12 @@ impl TransferRuntimeArgsBuilder {
         {
             Ok((_, entity)) => {
                 let main_purse_addable = entity.main_purse().with_access_rights(AccessRights::ADD);
-                Ok(NewTransferTargetMode::ExistingAccount {
+                Ok(TransferTargetMode::ExistingAccount {
                     target_account_hash: account_hash,
                     main_purse: main_purse_addable,
                 })
             }
-            Err(_) => Ok(NewTransferTargetMode::CreateAccount(account_hash)),
+            Err(_) => Ok(TransferTargetMode::CreateAccount(account_hash)),
         }
     }
 
@@ -428,15 +417,15 @@ impl TransferRuntimeArgsBuilder {
         let (to, target) = match self
             .resolve_transfer_target_mode(protocol_version, Rc::clone(&tracking_copy))?
         {
-            NewTransferTargetMode::ExistingAccount {
+            TransferTargetMode::ExistingAccount {
                 main_purse: purse_uref,
                 target_account_hash: target_account,
             } => (Some(target_account), purse_uref),
-            NewTransferTargetMode::PurseExists {
+            TransferTargetMode::PurseExists {
                 target_account_hash,
                 purse_uref,
             } => (target_account_hash, purse_uref),
-            NewTransferTargetMode::CreateAccount(_) => {
+            TransferTargetMode::CreateAccount(_) => {
                 // Method "build()" is called after `resolve_transfer_target_mode` is first called
                 // and handled by creating a new account. Calling `resolve_transfer_target_mode`
                 // for the second time should never return `CreateAccount` variant.

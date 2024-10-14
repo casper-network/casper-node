@@ -320,6 +320,7 @@ enable_contract_version = { cost = 200, arguments = [0, 0, 0, 0] }
 manage_message_topic = { cost = 200, arguments = [0, 30_000, 0, 0] }
 emit_message = { cost = 200, arguments = [0, 30_000, 0, 120_000] }
 cost_increase_per_message = 50
+get_block_info = { cost = 330, arguments = [0, 0] }
 
 [wasm.messages_limits]
 max_topic_name_size = 256

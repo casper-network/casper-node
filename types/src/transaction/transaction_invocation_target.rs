@@ -22,7 +22,7 @@ use rand::Rng;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-/// The identifier of a [`TransactionTarget::Stored`].
+/// The identifier of a [`crate::TransactionTarget::Stored`].
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(

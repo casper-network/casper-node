@@ -7,13 +7,13 @@ use casper_storage::{
 };
 use casper_types::{
     account::AccountHash, addressable_entity::NamedKeys, contract_messages::Messages,
-    execution::Effects, AddressableEntity, AddressableEntityHash, BlockTime, ContextAccessRights,
+    execution::Effects, AddressableEntity, AddressableEntityHash, ContextAccessRights,
     EntryPointType, Gas, Key, Phase, ProtocolVersion, RuntimeArgs, StoredValue, Tagged,
     TransactionHash, U512,
 };
 
 use crate::{
-    engine_state::{execution_kind::ExecutionKind, EngineConfig, WasmV1Result},
+    engine_state::{execution_kind::ExecutionKind, BlockInfo, EngineConfig, WasmV1Result},
     execution::ExecError,
     runtime::{Runtime, RuntimeStack},
     runtime_context::{CallingAddContractVersion, RuntimeContext},
@@ -53,7 +53,7 @@ impl Executor {
         access_rights: ContextAccessRights,
         authorization_keys: BTreeSet<AccountHash>,
         account_hash: AccountHash,
-        blocktime: BlockTime,
+        block_info: BlockInfo,
         txn_hash: TransactionHash,
         gas_limit: Gas,
         protocol_version: ProtocolVersion,
@@ -101,7 +101,7 @@ impl Executor {
             account_hash,
             address_generator,
             tracking_copy,
-            blocktime,
+            block_info,
             protocol_version,
             txn_hash,
             phase,
@@ -163,7 +163,7 @@ impl Executor {
         account_hash: AccountHash,
         address_generator: Rc<RefCell<AddressGenerator>>,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
-        blocktime: BlockTime,
+        block_info: BlockInfo,
         protocol_version: ProtocolVersion,
         txn_hash: TransactionHash,
         phase: Phase,
@@ -189,7 +189,7 @@ impl Executor {
             address_generator,
             tracking_copy,
             self.config.clone(),
-            blocktime,
+            block_info,
             protocol_version,
             txn_hash,
             phase,

@@ -2,6 +2,7 @@
 //!
 //! See the [lmdb](lmdb/index.html#usage) modules for usage examples.
 pub mod lmdb;
+/// Trie store operational logic.
 pub mod operations;
 
 // An in-mem cache backed up by a store that is used to optimize batch writes.

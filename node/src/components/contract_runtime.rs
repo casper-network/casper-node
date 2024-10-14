@@ -767,7 +767,7 @@ impl ContractRuntime {
             let req = TrieRequest::new(trie_key, Some(chunk_index));
             let maybe_raw = data_access_layer
                 .trie(req)
-                .into_legacy()
+                .into_raw()
                 .map_err(ContractRuntimeError::FailedToRetrieveTrieById)?;
             let ret = match maybe_raw {
                 Some(raw) => Some(TrieOrChunk::new(raw.into(), chunk_index)?),

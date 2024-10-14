@@ -434,11 +434,48 @@ where
             .map_err(|e| ExecError::Interpreter(e.into()).into())
     }
 
+    /// Writes requested field from runtime context's block info to dest_ptr in the Wasm memory.
+    fn get_block_info(&self, field_idx: u8, dest_ptr: u32) -> Result<(), Trap> {
+        if field_idx == 0 {
+            // original functionality
+            return self.get_blocktime(dest_ptr);
+        }
+        let block_info = self.context.get_block_info();
+
+        let mut data: Vec<u8> = vec![];
+        if field_idx == 1 {
+            data = block_info
+                .block_height()
+                .into_bytes()
+                .map_err(ExecError::BytesRepr)?;
+        }
+        if field_idx == 2 {
+            data = block_info
+                .parent_block_hash()
+                .into_bytes()
+                .map_err(ExecError::BytesRepr)?;
+        }
+        if field_idx == 3 {
+            data = block_info
+                .state_hash()
+                .into_bytes()
+                .map_err(ExecError::BytesRepr)?;
+        }
+        if data.is_empty() {
+            Err(ExecError::InvalidImputedOperation.into())
+        } else {
+            Ok(self
+                .try_get_memory()?
+                .set(dest_ptr, &data)
+                .map_err(|e| ExecError::Interpreter(e.into()))?)
+        }
+    }
+
     /// Writes current blocktime to dest_ptr in Wasm memory.
     fn get_blocktime(&self, dest_ptr: u32) -> Result<(), Trap> {
-        let blocktime = self
-            .context
-            .get_blocktime()
+        let block_info = self.context.get_block_info();
+        let blocktime = block_info
+            .block_time()
             .into_bytes()
             .map_err(ExecError::BytesRepr)?;
         self.try_get_memory()?
@@ -2047,10 +2084,8 @@ where
 
         for (_, topic_hash) in previous_message_topics.iter() {
             let topic_key = Key::message_topic(entity_addr, *topic_hash);
-            let summary = StoredValue::MessageTopic(MessageTopicSummary::new(
-                0,
-                self.context.get_blocktime(),
-            ));
+            let block_time = self.context.get_block_info().block_time();
+            let summary = StoredValue::MessageTopic(MessageTopicSummary::new(0, block_time));
             self.context.metered_write_gs_unsafe(topic_key, summary)?;
         }
 
@@ -3587,7 +3622,7 @@ where
             return Ok(Err(ApiError::MessageTopicNotRegistered));
         };
 
-        let current_blocktime = self.context.get_blocktime();
+        let current_blocktime = self.context.get_block_info().block_time();
         let topic_message_index = if prev_topic_summary.blocktime() != current_blocktime {
             for index in 1..prev_topic_summary.message_count() {
                 self.context
