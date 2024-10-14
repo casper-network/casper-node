@@ -78,8 +78,10 @@ impl ValidatorBidsDetail {
         validator: PublicKey,
         validator_bid: Box<ValidatorBid>,
         delegators: Vec<Box<Delegator>>,
+        reservations: Vec<Box<Reservation>>,
     ) -> Option<Box<ValidatorBid>> {
         self.delegator_bids.insert(validator.clone(), delegators);
+        self.reservations.insert(validator.clone(), reservations);
         self.validator_bids.insert(validator, validator_bid)
     }
 
@@ -337,7 +339,7 @@ where
     )
 }
 
-/// Returns seigniorage recipients snapshot.  
+/// Returns seigniorage recipients snapshot.
 pub fn get_seigniorage_recipients_snapshot<P>(
     provider: &mut P,
 ) -> Result<SeigniorageRecipientsSnapshotV2, Error>
@@ -347,6 +349,7 @@ where
     read_from(provider, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY)
 }
 
+/// Returns seigniorage recipients snapshot in legacy format.
 pub fn get_legacy_seigniorage_recipients_snapshot<P>(
     provider: &mut P,
 ) -> Result<SeigniorageRecipientsSnapshotV1, Error>
@@ -356,6 +359,7 @@ where
     read_from(provider, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY)
 }
 
+/// Sets the setigniorage recipients snapshot.
 pub fn set_seigniorage_recipients_snapshot<P>(
     provider: &mut P,
     snapshot: SeigniorageRecipientsSnapshotV2,
@@ -1017,6 +1021,7 @@ where
     }
 }
 
+/// Returns all delegator slot reservations for given validator.
 pub fn read_reservation_bids<P>(
     provider: &mut P,
     validator_public_key: &PublicKey,
@@ -1039,6 +1044,7 @@ where
     Ok(ret)
 }
 
+/// Returns delegator slot reservation bid by key.
 pub fn read_reservation_bid<P>(provider: &mut P, bid_key: &Key) -> Result<Box<Reservation>, Error>
 where
     P: RuntimeProvider + ?Sized + StorageProvider,
@@ -1216,6 +1222,7 @@ where
     Ok(ret)
 }
 
+/// Returns all delegator slot reservations for given validator.
 pub fn reservations<P>(
     provider: &mut P,
     validator_public_key: &PublicKey,

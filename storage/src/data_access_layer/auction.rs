@@ -106,12 +106,18 @@ pub enum AuctionMethod {
         /// New public key.
         new_public_key: PublicKey,
     },
+    /// Add delegator slot reservations.
     AddReservations {
+        /// List of reservations.
         reservations: Vec<Reservation>,
     },
+    /// Remove delegator slot reservations for delegators with specified public keys.
     CancelReservations {
+        /// Validator public key.
         validator: PublicKey,
+        /// List of delegator public keys.
         delegators: Vec<PublicKey>,
+        /// Max delegators per validator.
         max_delegators_per_validator: u32,
     },
 }
