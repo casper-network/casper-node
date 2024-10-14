@@ -259,7 +259,7 @@ impl ModuleImportResolver for RuntimeModuleImportResolver {
             ),
             "casper_generic_hash" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 5][..], Some(ValueType::I32)),
-                FunctionIndex::GenericHash.into()
+                FunctionIndex::GenericHash.into(),
             ),
             _ => {
                 return Err(InterpreterError::Function(format!(

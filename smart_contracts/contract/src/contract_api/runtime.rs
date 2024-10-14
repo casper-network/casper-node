@@ -10,9 +10,9 @@ use casper_types::{
     bytesrepr::{self, FromBytes, U64_SERIALIZED_LENGTH},
     contract_messages::{MessagePayload, MessageTopicOperation},
     system::Caller,
-    AddressableEntityHash, ApiError, BlockTime, CLTyped, CLValue, EntityVersion, HashAlgorithm,
-    Key, PackageHash, Phase, RuntimeArgs, URef, BLAKE2B_DIGEST_LENGTH, BLOCKTIME_SERIALIZED_LENGTH,
-    PHASE_SERIALIZED_LENGTH,
+    AddressableEntityHash, ApiError, BlockTime, CLTyped, CLValue, Digest, EntityVersion,
+    HashAlgorithm, Key, PackageHash, Phase, RuntimeArgs, URef, BLAKE2B_DIGEST_LENGTH,
+    BLOCKTIME_SERIALIZED_LENGTH, PHASE_SERIALIZED_LENGTH,
 };
 
 use crate::{contract_api, ext_ffi, unwrap_or_revert::UnwrapOrRevert};

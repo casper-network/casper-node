@@ -1093,7 +1093,7 @@ pub mod gens {
                 manage_message_topic,
                 emit_message,
                 cost_increase_per_message,
-                get_block_info
+                get_block_info,
                 generic_hash,
             }
         }

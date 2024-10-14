@@ -1281,7 +1281,7 @@ where
                 }
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(result))))
             }
-          
+
             FunctionIndex::GetBlockInfoIndex => {
                 // args(0) = field selector
                 // args(1) = pointer to output pointer where host will write argument bytes
@@ -1291,7 +1291,7 @@ where
                 self.get_block_info(field_idx, dest_ptr)?;
                 Ok(None)
             }
-          
+
             FunctionIndex::GenericHash => {
                 // args(0) = pointer to input in Wasm memory
                 // args(1) = size of input in Wasm memory
