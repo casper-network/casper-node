@@ -1041,7 +1041,9 @@ pub trait StateProvider {
                 seigniorage_recipients,
             } => {
                 let era_validators = match seigniorage_recipients {
-                    SeigniorageRecipientsSnapshot::V1(_) => todo!(),
+                    SeigniorageRecipientsSnapshot::V1(snapshot) => {
+                        auction::detail::era_validators_from_legacy_snapshot(snapshot)
+                    }
                     SeigniorageRecipientsSnapshot::V2(snapshot) => {
                         auction::detail::era_validators_from_snapshot(snapshot)
                     }

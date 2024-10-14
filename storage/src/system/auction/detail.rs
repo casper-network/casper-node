@@ -1096,28 +1096,22 @@ pub fn seigniorage_recipients(
 /// This is `pub` as it is used not just in the relevant auction entry point, but also by the
 /// engine state while directly querying for the era validators.
 pub fn era_validators_from_snapshot(snapshot: SeigniorageRecipientsSnapshotV2) -> EraValidators {
-    // match snapshot {
-    //     SeigniorageRecipientsSnapshot::V1(snapshot) => {snapshot
-    //         .into_iter()
-    //         .map(|(era_id, recipients)| {
-    //             let validator_weights = recipients
-    //                 .into_iter()
-    //                 .filter_map(|(public_key, bid)| bid.total_stake().map(|stake| (public_key,
-    // stake)))                 .collect::<ValidatorWeights>();
-    //             (era_id, validator_weights)
-    //         })
-    //         .collect()}
-    //     SeigniorageRecipientsSnapshot::V2(snapshot) => {snapshot
-    //         .into_iter()
-    //         .map(|(era_id, recipients)| {
-    //             let validator_weights = recipients
-    //                 .into_iter()
-    //                 .filter_map(|(public_key, bid)| bid.total_stake().map(|stake| (public_key,
-    // stake)))                 .collect::<ValidatorWeights>();
-    //             (era_id, validator_weights)
-    //         })
-    //         .collect()}
-    // }
+    snapshot
+        .into_iter()
+        .map(|(era_id, recipients)| {
+            let validator_weights = recipients
+                .into_iter()
+                .filter_map(|(public_key, bid)| bid.total_stake().map(|stake| (public_key, stake)))
+                .collect::<ValidatorWeights>();
+            (era_id, validator_weights)
+        })
+        .collect()
+}
+
+/// Returns the era validators from a legacy snapshot.
+pub(crate) fn era_validators_from_legacy_snapshot(
+    snapshot: SeigniorageRecipientsSnapshotV1,
+) -> EraValidators {
     snapshot
         .into_iter()
         .map(|(era_id, recipients)| {
