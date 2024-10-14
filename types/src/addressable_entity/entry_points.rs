@@ -720,7 +720,7 @@ impl EntryPointAddr {
         if let Some(entry_point_v2) = input.strip_prefix(V2_ENTRY_POINT_PREFIX) {
             if let Some((entity_addr_str, selector_str)) = entry_point_v2.rsplit_once('-') {
                 let entity_addr = EntityAddr::from_formatted_str(entity_addr_str)?;
-                let selector: u32 = str::parse(&selector_str)
+                let selector: u32 = str::parse(selector_str)
                     .map_err(|_| FromStrError::BytesRepr(Error::Formatting))?;
                 return Ok(Self::VmCasperV2 {
                     entity_addr,

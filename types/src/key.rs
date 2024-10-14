@@ -655,7 +655,7 @@ impl Key {
             Err(addressable_entity::FromStrError::InvalidPrefix) => {}
             Err(error) => return Err(error.into()),
         }
-        
+
         if let Some(hex) = input.strip_prefix(HASH_PREFIX) {
             let addr = checksummed_hex::decode(hex)
                 .map_err(|error| FromStrError::Hash(error.to_string()))?;
