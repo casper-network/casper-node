@@ -1,7 +1,6 @@
 pub mod call_stack_elements;
 
-use alloc::vec::Vec;
-use std::collections::BTreeMap;
+use alloc::{collections::BTreeMap, vec::Vec};
 
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::FromPrimitive;

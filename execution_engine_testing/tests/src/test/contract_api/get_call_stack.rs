@@ -6,7 +6,7 @@ use casper_engine_test_support::{
 use casper_execution_engine::{engine_state::Error as CoreError, execution::ExecError};
 use casper_types::{
     addressable_entity::NamedKeys,
-    system::{CallStackElement, Caller},
+    system::{CallStackElement, Caller, CallerInfo},
     AddressableEntity, AddressableEntityHash, CLValue, EntityAddr, EntryPointType, HashAddr,
     HoldBalanceHandling, Key, PackageAddr, PackageHash, ProtocolVersion, StoredValue, Timestamp,
     U512,
@@ -147,7 +147,10 @@ trait BuilderExt {
 }
 
 impl BuilderExt for LmdbWasmTestBuilder {
-    fn get_call_stack_from_session_context(&mut self, stored_call_stack_key: &str) -> Vec<Caller> {
+    fn get_call_stack_from_session_context(
+        &mut self,
+        stored_call_stack_key: &str,
+    ) -> Vec<CallerInfo> {
         let cl_value = self
             .query(
                 None,
@@ -158,7 +161,7 @@ impl BuilderExt for LmdbWasmTestBuilder {
 
         cl_value
             .into_cl_value()
-            .map(CLValue::into_t::<Vec<Caller>>)
+            .map(CLValue::into_t::<Vec<CallerInfo>>)
             .unwrap()
             .unwrap()
     }
