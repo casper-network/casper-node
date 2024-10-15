@@ -225,7 +225,10 @@ fn should_load_caller_information_based_on_action() {
         .map(PackageHash::new)
         .expect("must get package hash");
 
-    let frame = Caller::entity(package_hash, caller_info_entity_hash);
+    let frame = Caller::entity(
+        package_hash,
+        EntityAddr::SmartContract(caller_info_entity_hash.value()),
+    );
     let expected_stack = vec![expected_caller, frame];
     assert_eq!(expected_stack, full_call_stack);
 }

@@ -214,14 +214,14 @@ impl BuilderExt for LmdbWasmTestBuilder {
                     ..
                 } => Caller::Entity {
                     package_hash: PackageHash::new(contract_package_hash.value()),
-                    entity_hash: AddressableEntityHash::new(contract_hash.value()),
+                    entity_addr: EntityAddr::SmartContract(contract_hash.value()),
                 },
                 CallStackElement::StoredContract {
                     contract_hash,
                     contract_package_hash,
                 } => Caller::Entity {
                     package_hash: PackageHash::new(contract_package_hash.value()),
-                    entity_hash: AddressableEntityHash::new(contract_hash.value()),
+                    entity_addr: EntityAddr::SmartContract(contract_hash.value()),
                 },
             })
             .collect()
@@ -375,11 +375,11 @@ fn assert_call_stack_matches_calls(call_stack: Vec<Caller>, calls: &[Call]) {
                     ..
                 }),
                 Caller::Entity {
-                    entity_hash: contract_hash,
+                    entity_addr: contract_hash,
                     ..
                 },
             ) if *entry_point_type == EntryPointType::Called
-                && *contract_hash == *current_contract_hash => {}
+                && contract_hash.value() == current_contract_hash.value() => {}
 
             _ => panic!(
                 "call stack element {:#?} didn't match expected call {:#?} at index {}, {:#?}",

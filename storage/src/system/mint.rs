@@ -112,7 +112,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
             let immediate_caller = self.get_immediate_caller();
             match immediate_caller {
                 Some(Caller::Entity {
-                    entity_hash: contract_hash,
+                    entity_addr: contract_hash,
                     ..
                 }) if registry.has_contract_hash(&contract_hash.value()) => {
                     // System contract calling a mint is fine (i.e. standard payment calling mint's
@@ -188,7 +188,18 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
 
                 Some(Caller::Entity {
                     package_hash: _,
-                    entity_hash: _,
+                    entity_addr: _,
+                }) => {
+                    if self.get_caller() != PublicKey::System.to_account_hash()
+                        && !self.is_administrator(&self.get_caller())
+                    {
+                        return Err(Error::DisabledUnrestrictedTransfers);
+                    }
+                }
+
+                Some(Caller::SmartContract {
+                    contract_package_hash: _,
+                    contract_hash: _,
                 }) => {
                     if self.get_caller() != PublicKey::System.to_account_hash()
                         && !self.is_administrator(&self.get_caller())

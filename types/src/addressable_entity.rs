@@ -968,6 +968,12 @@ impl FromBytes for EntityAddr {
     }
 }
 
+impl CLTyped for EntityAddr {
+    fn cl_type() -> CLType {
+        CLType::Any
+    }
+}
+
 impl From<EntityAddr> for AddressableEntityHash {
     fn from(entity_addr: EntityAddr) -> Self {
         AddressableEntityHash::new(entity_addr.value())

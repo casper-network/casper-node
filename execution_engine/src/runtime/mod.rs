@@ -51,8 +51,8 @@ use casper_types::{
     system::{
         self,
         auction::{self, EraInfo},
-        handle_payment, mint, CallStackElement, Caller, SystemEntityType, AUCTION, HANDLE_PAYMENT,
-        MINT, STANDARD_PAYMENT,
+        handle_payment, mint, CallStackElement, Caller, CallerInfo, SystemEntityType, AUCTION,
+        HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     AccessRights, ApiError, BlockGlobalAddr, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash,
     ByteCodeKind, CLTyped, CLValue, ContextAccessRights, Contract, ContractWasm, EntityAddr,
@@ -532,14 +532,36 @@ where
         let caller = match caller_info {
             CallerInformation::Initiator => {
                 let initiator_account_hash = self.context.get_caller();
-                vec![Caller::initiator(initiator_account_hash)]
+                let caller = Caller::initiator(initiator_account_hash);
+                match CallerInfo::try_from(caller) {
+                    Ok(caller_info) => {
+                        vec![caller_info]
+                    }
+                    Err(_) => return Ok(Err(ApiError::CLTypeMismatch)),
+                }
             }
             CallerInformation::Immediate => match self.get_immediate_caller() {
-                Some(frame) => vec![*frame],
+                Some(frame) => match CallerInfo::try_from(*frame) {
+                    Ok(immediate_info) => {
+                        vec![immediate_info]
+                    }
+                    Err(_) => return Ok(Err(ApiError::CLTypeMismatch)),
+                },
                 None => return Ok(Err(ApiError::Unhandled)),
             },
             CallerInformation::FullCallChain => match self.try_get_stack() {
-                Ok(call_stack) => call_stack.call_stack_elements().clone(),
+                Ok(call_stack) => {
+                    let call_stack = call_stack.call_stack_elements().clone();
+
+                    let mut ret = vec![];
+                    for caller in call_stack {
+                        match CallerInfo::try_from(caller) {
+                            Ok(info) => ret.push(info),
+                            Err(_) => return Ok(Err(ApiError::CLTypeMismatch)),
+                        }
+                    }
+                    ret
+                }
                 Err(_) => return Ok(Err(ApiError::Unhandled)),
             },
         };
@@ -1665,7 +1687,16 @@ where
                 }
             };
 
-            stack.push(Caller::entity(package_hash, entity_hash))?;
+            let caller = if self.context.engine_config().enable_entity {
+                Caller::entity(package_hash, entity_addr)
+            } else {
+                Caller::smart_contract(
+                    ContractPackageHash::new(package_hash.value()),
+                    ContractHash::new(entity_addr.value()),
+                )
+            };
+
+            stack.push(caller)?;
 
             stack
         };
@@ -3920,8 +3951,11 @@ where
                 // This case can happen during genesis where we're setting up purses for accounts.
                 Ok(account_hash == &PublicKey::System.to_account_hash())
             }
+            Caller::SmartContract { contract_hash, .. } => Ok(self
+                .context
+                .is_system_addressable_entity(&contract_hash.value())?),
             Caller::Entity {
-                entity_hash: contract_hash,
+                entity_addr: contract_hash,
                 ..
             } => Ok(self
                 .context
