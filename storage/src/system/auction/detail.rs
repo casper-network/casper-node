@@ -51,6 +51,7 @@ where
     provider.write(uref, value)
 }
 
+/// Aggregated bid data for a Validator.
 #[derive(Debug, Default)]
 pub struct ValidatorBidsDetail {
     validator_bids: ValidatorBids,
@@ -59,6 +60,7 @@ pub struct ValidatorBidsDetail {
 }
 
 impl ValidatorBidsDetail {
+    /// Ctor.
     pub fn new() -> Self {
         ValidatorBidsDetail {
             validator_bids: BTreeMap::new(),
@@ -210,6 +212,7 @@ pub fn prune_validator_credits<P>(
     }
 }
 
+/// Returns the imputed validator bids.
 pub fn get_validator_bids<P>(provider: &mut P, era_id: EraId) -> Result<ValidatorBidsDetail, Error>
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
@@ -238,6 +241,7 @@ where
     Ok(ret)
 }
 
+/// Sets the imputed validator bids.
 pub fn set_validator_bids<P>(provider: &mut P, validators: ValidatorBids) -> Result<(), Error>
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
@@ -249,6 +253,7 @@ where
     Ok(())
 }
 
+/// Returns the unbonding purses.
 pub fn get_unbonding_purses<P>(provider: &mut P) -> Result<UnbondingPurses, Error>
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
@@ -269,6 +274,7 @@ where
     Ok(ret)
 }
 
+/// Sets the unbonding purses.
 pub fn set_unbonding_purses<P>(
     provider: &mut P,
     unbonding_purses: UnbondingPurses,
@@ -282,6 +288,7 @@ where
     Ok(())
 }
 
+/// Returns the era id.
 pub fn get_era_id<P>(provider: &mut P) -> Result<EraId, Error>
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
@@ -289,6 +296,7 @@ where
     read_from(provider, ERA_ID_KEY)
 }
 
+/// Sets the era id.
 pub fn set_era_id<P>(provider: &mut P, era_id: EraId) -> Result<(), Error>
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
@@ -296,6 +304,7 @@ where
     write_to(provider, ERA_ID_KEY, era_id)
 }
 
+/// Returns the era end timestamp.
 pub fn get_era_end_timestamp_millis<P>(provider: &mut P) -> Result<u64, Error>
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
@@ -303,6 +312,7 @@ where
     read_from(provider, ERA_END_TIMESTAMP_MILLIS_KEY)
 }
 
+/// Sets the era end timestamp.
 pub fn set_era_end_timestamp_millis<P>(
     provider: &mut P,
     era_end_timestamp_millis: u64,
@@ -317,6 +327,7 @@ where
     )
 }
 
+/// Returns seigniorage recipients snapshot.  
 pub fn get_seigniorage_recipients_snapshot<P>(
     provider: &mut P,
 ) -> Result<SeigniorageRecipientsSnapshot, Error>
@@ -326,6 +337,7 @@ where
     read_from(provider, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY)
 }
 
+/// Set seigniorage recipients snapshot.
 pub fn set_seigniorage_recipients_snapshot<P>(
     provider: &mut P,
     snapshot: SeigniorageRecipientsSnapshot,
@@ -336,6 +348,7 @@ where
     write_to(provider, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, snapshot)
 }
 
+/// Returns the number of validator slots.
 pub fn get_validator_slots<P>(provider: &mut P) -> Result<usize, Error>
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
@@ -353,6 +366,7 @@ where
     Ok(validator_slots)
 }
 
+/// Returns auction delay.
 pub fn get_auction_delay<P>(provider: &mut P) -> Result<u64, Error>
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
@@ -782,6 +796,7 @@ where
     Ok(updated_amount)
 }
 
+/// Returns validator bid by key.
 pub fn read_validator_bid<P>(provider: &mut P, bid_key: &Key) -> Result<Box<ValidatorBid>, Error>
 where
     P: StorageProvider + ?Sized,
@@ -826,6 +841,7 @@ where
     Err(Error::ValidatorNotFound)
 }
 
+/// Returns all delegator bids for imputed validator.
 pub fn read_delegator_bids<P>(
     provider: &mut P,
     validator_public_key: &PublicKey,
@@ -848,6 +864,7 @@ where
     Ok(ret)
 }
 
+/// Returns delegator bid by key.
 pub fn read_delegator_bid<P>(provider: &mut P, bid_key: &Key) -> Result<Box<Delegator>, Error>
 where
     P: RuntimeProvider + ?Sized + StorageProvider,
@@ -862,6 +879,7 @@ where
     }
 }
 
+/// Applies seigniorage recipient changes.
 pub fn seigniorage_recipients(
     validator_weights: &ValidatorWeights,
     validator_bids: &ValidatorBids,
@@ -972,6 +990,7 @@ where
     }
 }
 
+/// Returns all delegators for imputed validator.
 pub fn delegators<P>(
     provider: &mut P,
     validator_public_key: &PublicKey,

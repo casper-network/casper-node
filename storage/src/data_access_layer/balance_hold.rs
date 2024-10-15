@@ -11,10 +11,13 @@ use casper_types::{
 use std::fmt::{Display, Formatter};
 use thiserror::Error;
 
+/// Balance hold kind.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Default)]
 pub enum BalanceHoldKind {
+    /// All balance holds.
     #[default]
     All,
+    /// Selection of a specific kind of balance.
     Tag(BalanceHoldAddrTag),
 }
 
@@ -28,14 +31,21 @@ impl BalanceHoldKind {
     }
 }
 
+/// Balance hold mode.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BalanceHoldMode {
+    /// Balance hold request.
     Hold {
+        /// Balance identifier.
         identifier: BalanceIdentifier,
+        /// Hold amount.
         hold_amount: U512,
+        /// How should insufficient balance be handled.
         insufficient_handling: InsufficientBalanceHandling,
     },
+    /// Clear balance holds.
     Clear {
+        /// Identifier of balance to be cleared of holds.
         identifier: BalanceIdentifier,
     },
 }
@@ -60,6 +70,7 @@ pub enum InsufficientBalanceHandling {
     Noop,
 }
 
+/// Balance hold request.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct BalanceHoldRequest {
     state_hash: Digest,
@@ -156,10 +167,18 @@ impl BalanceHoldRequest {
 #[derive(Error, Debug, Clone)]
 #[non_exhaustive]
 pub enum BalanceHoldError {
+    /// Tracking copy error.
     TrackingCopy(TrackingCopyError),
+    /// Balance error.
     Balance(BalanceFailure),
-    InsufficientBalance { remaining_balance: U512 },
+    /// Insufficient balance error.
+    InsufficientBalance {
+        /// Remaining balance error.
+        remaining_balance: U512,
+    },
+    /// Unexpected wildcard variant error.
     UnexpectedWildcardVariant, // programmer error,
+    /// Unexpected hold value error.
     UnexpectedHoldValue(StoredValue),
 }
 
@@ -225,6 +244,7 @@ pub enum BalanceHoldResult {
 }
 
 impl BalanceHoldResult {
+    /// Success ctor.
     pub fn success(
         holds: Option<Vec<BalanceHoldAddr>>,
         total_balance: U512,
@@ -317,6 +337,7 @@ impl BalanceHoldResult {
         }
     }
 
+    /// Error message.
     pub fn error_message(&self) -> String {
         match self {
             BalanceHoldResult::Success { hold, held, .. } => {

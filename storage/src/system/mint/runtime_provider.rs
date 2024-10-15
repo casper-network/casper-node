@@ -12,11 +12,13 @@ pub trait RuntimeProvider {
     /// This method should return the immediate caller of the current context.
     fn get_immediate_caller(&self) -> Option<Caller>;
 
+    /// Is the caller standard payment logic?
     fn is_called_from_standard_payment(&self) -> bool;
 
     /// Get system entity registry.
     fn get_system_entity_registry(&self) -> Result<SystemEntityRegistry, ProviderError>;
 
+    /// Read addressable entity by account hash.
     fn read_addressable_entity_by_account_hash(
         &mut self,
         account_hash: AccountHash,

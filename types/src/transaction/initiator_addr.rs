@@ -28,7 +28,7 @@ const PUBLIC_KEY_FIELD_INDEX: u16 = 1;
 const ACCOUNT_HASH_VARIANT_TAG: u8 = 1;
 const ACCOUNT_HASH_FIELD_INDEX: u16 = 1;
 
-/// The address of the initiator of a [`super::TransactionV1`].
+/// The address of the initiator of a [`crate::transaction::transaction_v1::TransactionV1`].
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(

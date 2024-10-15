@@ -73,8 +73,11 @@ impl Distribution<GenesisRequest> for Standard {
 /// Represents a result of a `genesis` request.
 #[derive(Debug, Clone)]
 pub enum GenesisResult {
+    /// Genesis fatal.
     Fatal(String),
+    /// Genesis failure.
     Failure(GenesisError),
+    /// Genesis success.
     Success {
         /// State hash after genesis is committed to the global state.
         post_state_hash: Digest,

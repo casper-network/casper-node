@@ -168,6 +168,7 @@ where
         }
     }
 
+    /// Apply a protocol upgrade.
     pub fn upgrade(
         mut self,
         pre_state_hash: Digest,
@@ -492,6 +493,7 @@ where
         ))
     }
 
+    /// Migrate the system account to addressable entity if necessary.
     pub fn migrate_system_account(
         &mut self,
         pre_state_hash: Digest,
@@ -759,6 +761,7 @@ where
         Ok(())
     }
 
+    /// Applies the necessary changes if a new auction delay is part of the upgrade.
     pub fn handle_new_auction_delay(
         &mut self,
         auction: AddressableEntityHash,
@@ -781,6 +784,7 @@ where
         Ok(())
     }
 
+    /// Applies the necessary changes if a new locked funds period is part of the upgrade.
     pub fn handle_new_locked_funds_period_millis(
         &mut self,
         auction: AddressableEntityHash,
@@ -803,6 +807,7 @@ where
         Ok(())
     }
 
+    /// Applies the necessary changes if a new unbonding delay is part of the upgrade.
     pub fn handle_new_unbonding_delay(
         &mut self,
         auction: AddressableEntityHash,
@@ -827,6 +832,7 @@ where
         Ok(())
     }
 
+    /// Applies the necessary changes if a new round seigniorage rate is part of the upgrade.
     pub fn handle_new_round_seigniorage_rate(
         &mut self,
         mint: AddressableEntityHash,
