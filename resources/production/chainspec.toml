@@ -102,9 +102,10 @@ finders_fee = [1, 5]
 finality_signature_proportion = [1, 2]
 # Lookback interval indicating which past block we are looking at to reward.
 signature_rewards_max_delay = 3
-# Allows peer to peer transfers between users.
+# Allows transfers between accounts in the blockchain network.
 #
-# Setting this to false makes sense only for private chains.
+# Setting this to false restricts normal accounts from sending tokens to other accounts, allowing transfers only to administrators.
+# Changing this option makes sense only on private chains.
 allow_unrestricted_transfers = true
 # Enables the auction entry points 'delegate' and 'add_bid'.
 #

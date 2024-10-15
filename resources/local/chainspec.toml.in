@@ -99,7 +99,10 @@ signature_rewards_max_delay = 3
 #
 # Changing this option makes sense only for private chains which dont need auctioning new validator slots.
 allow_auction_bids = true
-# Allow peer to peer transfers between users. Setting this to false makes sense only on private chains.
+# Allows transfers between accounts in the blockchain network.
+#
+# Setting this to false restricts normal accounts from sending tokens to other accounts, allowing transfers only to administrators.
+# Changing this option makes sense only on private chains.
 allow_unrestricted_transfers = true
 # If set to false, then consensus doesn't compute rewards and always uses 0.
 compute_rewards = true
