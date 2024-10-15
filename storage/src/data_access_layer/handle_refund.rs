@@ -7,43 +7,75 @@ use casper_types::{
 };
 use num_rational::Ratio;
 
+/// Selects refund operation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HandleRefundMode {
+    /// Burn.
     Burn {
+        /// Refund limit.
         limit: U512,
+        /// Refund cost.
         cost: U512,
+        /// Refund consumed.
         consumed: U512,
+        /// Refund gas price.
         gas_price: u8,
+        /// Refund source.
         source: Box<BalanceIdentifier>,
+        /// Refund ratio.
         ratio: Ratio<u64>,
     },
+    /// Refund.
     Refund {
+        /// Refund initiator.
         initiator_addr: Box<InitiatorAddr>,
+        /// Refund limit.
         limit: U512,
+        /// Refund cost.
         cost: U512,
+        /// Refund consumed.
         consumed: U512,
+        /// Refund gas price.
         gas_price: u8,
+        /// Refund ratio.
         ratio: Ratio<u64>,
+        /// Refund source.
         source: Box<BalanceIdentifier>,
+        /// Target for refund.
         target: Box<BalanceIdentifier>,
     },
+    /// Place a custom hold.
     CustomHold {
+        /// Refund initiator.
         initiator_addr: Box<InitiatorAddr>,
+        /// Refund limit.
         limit: U512,
+        /// Refund cost.
         cost: U512,
+        /// Refund gas price.
         gas_price: u8,
     },
+    /// Refund amount.
     RefundAmount {
+        /// Refund limit.
         limit: U512,
+        /// Refund cost.
         cost: U512,
+        /// Refund consumed.
         consumed: U512,
+        /// Refund gas price.
         gas_price: u8,
+        /// Refund ratio.
         ratio: Ratio<u64>,
+        /// Refund source.
         source: Box<BalanceIdentifier>,
     },
+    /// Set refund purse.
     SetRefundPurse {
+        /// Target for refund.
         target: Box<BalanceIdentifier>,
     },
+    /// Clear refund purse.
     ClearRefundPurse,
 }
 
@@ -61,6 +93,7 @@ impl HandleRefundMode {
     }
 }
 
+/// Handle refund request.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HandleRefundRequest {
     /// The runtime config.
@@ -93,34 +126,42 @@ impl HandleRefundRequest {
         }
     }
 
+    /// Returns a reference to the config.
     pub fn config(&self) -> &NativeRuntimeConfig {
         &self.config
     }
 
+    /// Returns the state hash.
     pub fn state_hash(&self) -> Digest {
         self.state_hash
     }
 
+    /// Returns the protocol version.
     pub fn protocol_version(&self) -> ProtocolVersion {
         self.protocol_version
     }
 
+    /// Returns the transaction hash.
     pub fn transaction_hash(&self) -> TransactionHash {
         self.transaction_hash
     }
 
+    /// Returns the refund mode.
     pub fn refund_mode(&self) -> &HandleRefundMode {
         &self.refund_mode
     }
 }
 
+/// Handle refund result.
 #[derive(Debug)]
 pub enum HandleRefundResult {
     /// Invalid state root hash.
     RootNotFound,
     /// Handle refund request succeeded.
     Success {
+        /// The effects.
         effects: Effects,
+        /// The amount, if any.
         amount: Option<U512>,
     },
     /// Invalid phase selected (programmer error).

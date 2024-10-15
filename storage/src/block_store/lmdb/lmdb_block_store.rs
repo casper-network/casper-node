@@ -51,6 +51,7 @@ const OS_FLAGS: EnvironmentFlags = EnvironmentFlags::WRITE_MAP;
 #[cfg(target_os = "macos")]
 const OS_FLAGS: EnvironmentFlags = EnvironmentFlags::empty();
 
+/// Lmdb block store.
 #[derive(DataSize, Debug)]
 pub struct LmdbBlockStore {
     /// Storage location.
@@ -82,6 +83,7 @@ pub struct LmdbBlockStore {
 }
 
 impl LmdbBlockStore {
+    /// Ctor.
     pub fn new(root_path: &Path, total_size: usize) -> Result<Self, BlockStoreError> {
         // Create the environment and databases.
         let env = new_environment(total_size, root_path)?;
@@ -127,6 +129,7 @@ impl LmdbBlockStore {
         })
     }
 
+    /// Write finality signatures.
     pub fn write_finality_signatures(
         &self,
         txn: &mut RwTransaction,

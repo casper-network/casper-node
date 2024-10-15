@@ -27,11 +27,15 @@ use self::store_wrappers::NonDeserializingStore;
 
 use super::{cache::TrieCache, TrieStoreCacheError};
 
+/// Result of attemptint to read a record from the trie store.
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug, PartialEq, Eq)]
 pub enum ReadResult<V> {
+    /// Requested item found in trie store.
     Found(V),
+    /// Requested item not found in trie store.
     NotFound,
+    /// Root hash not found in trie store.
     RootNotFound,
 }
 
@@ -403,11 +407,16 @@ where
     }
 }
 
+/// Result of attempting to prune an item from the trie store.
 #[derive(Debug, PartialEq, Eq)]
 pub enum TriePruneResult {
+    /// Successfully pruned item from trie store.
     Pruned(Digest),
+    /// Requested key not found in trie store.
     MissingKey,
+    /// Root hash not found in trie store.
     RootNotFound,
+    /// Prune failure.
     Failure(GlobalStateError),
 }
 
@@ -852,13 +861,18 @@ where
     })
 }
 
+/// Result of attemptint to write to trie store.
 #[derive(Debug, PartialEq, Eq)]
 pub enum WriteResult {
+    /// Record written to trie store.
     Written(Digest),
+    /// Record already exists in trie store.
     AlreadyExists,
+    /// Requested global state root hash does not exist in trie store.
     RootNotFound,
 }
 
+/// Write to trie store.
 pub fn write<K, V, T, S, E>(
     txn: &mut T,
     store: &S,
@@ -952,6 +966,7 @@ where
     }
 }
 
+/// Batch write to trie store.
 pub fn batch_write<K, V, I, T, S, E>(
     txn: &mut T,
     store: &S,
@@ -1006,6 +1021,7 @@ struct VisitedTrieNode {
     path: Vec<u8>,
 }
 
+/// Iterator for trie store keys.
 pub struct KeysIterator<'a, 'b, K, V, T, S: TrieStore<K, V>> {
     initial_descend: VecDeque<u8>,
     visited: Vec<VisitedTrieNode>,

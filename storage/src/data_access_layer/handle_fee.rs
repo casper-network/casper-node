@@ -7,26 +7,40 @@ use casper_types::{
     U512,
 };
 
+/// Handle fee mode.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HandleFeeMode {
+    /// Pay the fee.
     Pay {
+        /// Initiator.
         initiator_addr: Box<InitiatorAddr>,
+        /// Source.
         source: Box<BalanceIdentifier>,
+        /// Target.
         target: Box<BalanceIdentifier>,
+        /// Amount.
         amount: U512,
     },
+    /// Burn the fee.
     Burn {
+        /// Source.
         source: BalanceIdentifier,
+        /// Amount.
         amount: Option<U512>,
     },
+    /// Validator credit (used in no fee mode).
     Credit {
+        /// Validator.
         validator: Box<PublicKey>,
+        /// Amount.
         amount: U512,
+        /// EraId.
         era_id: EraId,
     },
 }
 
 impl HandleFeeMode {
+    /// Ctor for Pay mode.
     pub fn pay(
         initiator_addr: Box<InitiatorAddr>,
         source: BalanceIdentifier,
@@ -60,6 +74,7 @@ impl HandleFeeMode {
     }
 }
 
+/// Handle fee request.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HandleFeeRequest {
     /// The runtime config.
@@ -93,22 +108,27 @@ impl HandleFeeRequest {
         }
     }
 
+    /// Returns config.
     pub fn config(&self) -> &NativeRuntimeConfig {
         &self.config
     }
 
+    /// Returns state hash.
     pub fn state_hash(&self) -> Digest {
         self.state_hash
     }
 
+    /// Returns handle protocol version.
     pub fn protocol_version(&self) -> ProtocolVersion {
         self.protocol_version
     }
 
+    /// Returns handle transaction hash.
     pub fn transaction_hash(&self) -> TransactionHash {
         self.transaction_hash
     }
 
+    /// Returns handle fee mode.
     pub fn handle_fee_mode(&self) -> &HandleFeeMode {
         &self.handle_fee_mode
     }
@@ -120,7 +140,10 @@ pub enum HandleFeeResult {
     /// Invalid state root hash.
     RootNotFound,
     /// Handle  request succeeded.
-    Success { effects: Effects },
+    Success {
+        /// Handle fee effects.
+        effects: Effects,
+    },
     /// Handle  request failed.
     Failure(TrackingCopyError),
 }

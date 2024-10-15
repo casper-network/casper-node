@@ -7,11 +7,11 @@ use casper_types::{
     account::AccountHash,
     addressable_entity::NamedKeys,
     api_error,
-    bytesrepr::{self, FromBytes},
+    bytesrepr::{self, FromBytes, U64_SERIALIZED_LENGTH},
     contract_messages::{MessagePayload, MessageTopicOperation},
     system::Caller,
-    AddressableEntityHash, ApiError, BlockTime, CLTyped, CLValue, EntityVersion, Key, PackageHash,
-    Phase, RuntimeArgs, URef, BLAKE2B_DIGEST_LENGTH, BLOCKTIME_SERIALIZED_LENGTH,
+    AddressableEntityHash, ApiError, BlockTime, CLTyped, CLValue, Digest, EntityVersion, Key,
+    PackageHash, Phase, RuntimeArgs, URef, BLAKE2B_DIGEST_LENGTH, BLOCKTIME_SERIALIZED_LENGTH,
     PHASE_SERIALIZED_LENGTH,
 };
 
@@ -247,6 +247,59 @@ pub fn get_blocktime() -> BlockTime {
             dest_non_null_ptr.as_ptr(),
             BLOCKTIME_SERIALIZED_LENGTH,
             BLOCKTIME_SERIALIZED_LENGTH,
+        )
+    };
+    bytesrepr::deserialize(bytes).unwrap_or_revert()
+}
+
+/// The default length of hashes such as account hash, state hash, hash addresses, etc.
+pub const DEFAULT_HASH_LENGTH: u8 = 32;
+/// Index for the block time field of block info.
+pub const BLOCK_TIME_FIELD_IDX: u8 = 0;
+/// Index for the block height field of block info.
+pub const BLOCK_HEIGHT_FIELD_IDX: u8 = 1;
+/// Index for the parent block hash field of block info.
+pub const PARENT_BLOCK_HASH_FIELD_IDX: u8 = 2;
+/// Index for the state hash field of block info.
+pub const STATE_HASH_FIELD_IDX: u8 = 3;
+
+/// Returns the block height.
+pub fn get_block_height() -> u64 {
+    let dest_non_null_ptr = contract_api::alloc_bytes(U64_SERIALIZED_LENGTH);
+    let bytes = unsafe {
+        ext_ffi::casper_get_block_info(BLOCK_HEIGHT_FIELD_IDX, dest_non_null_ptr.as_ptr());
+        Vec::from_raw_parts(
+            dest_non_null_ptr.as_ptr(),
+            U64_SERIALIZED_LENGTH,
+            U64_SERIALIZED_LENGTH,
+        )
+    };
+    bytesrepr::deserialize(bytes).unwrap_or_revert()
+}
+
+/// Returns the parent block hash.
+pub fn get_parent_block_hash() -> Digest {
+    let dest_non_null_ptr = contract_api::alloc_bytes(DEFAULT_HASH_LENGTH as usize);
+    let bytes = unsafe {
+        ext_ffi::casper_get_block_info(PARENT_BLOCK_HASH_FIELD_IDX, dest_non_null_ptr.as_ptr());
+        Vec::from_raw_parts(
+            dest_non_null_ptr.as_ptr(),
+            DEFAULT_HASH_LENGTH as usize,
+            DEFAULT_HASH_LENGTH as usize,
+        )
+    };
+    bytesrepr::deserialize(bytes).unwrap_or_revert()
+}
+
+/// Returns the state root hash.
+pub fn get_state_hash() -> Digest {
+    let dest_non_null_ptr = contract_api::alloc_bytes(DEFAULT_HASH_LENGTH as usize);
+    let bytes = unsafe {
+        ext_ffi::casper_get_block_info(STATE_HASH_FIELD_IDX, dest_non_null_ptr.as_ptr());
+        Vec::from_raw_parts(
+            dest_non_null_ptr.as_ptr(),
+            DEFAULT_HASH_LENGTH as usize,
+            DEFAULT_HASH_LENGTH as usize,
         )
     };
     bytesrepr::deserialize(bytes).unwrap_or_revert()

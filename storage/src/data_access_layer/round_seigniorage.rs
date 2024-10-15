@@ -43,5 +43,6 @@ pub enum RoundSeigniorageRateResult {
         /// The current rate.
         rate: Ratio<U512>,
     },
+    /// Failure.
     Failure(TrackingCopyError),
 }

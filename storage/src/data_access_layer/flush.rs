@@ -32,6 +32,7 @@ impl FlushResult {
         matches!(self, FlushResult::Success)
     }
 
+    /// Transforms flush result to global state error, if relevant.
     pub fn as_error(self) -> Result<(), GlobalStateError> {
         match self {
             FlushResult::ManualSyncDisabled | FlushResult::Success => Ok(()),

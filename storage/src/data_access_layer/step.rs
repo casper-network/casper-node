@@ -114,10 +114,12 @@ impl StepRequest {
         }
     }
 
+    /// Returns the config.
     pub fn config(&self) -> &Config {
         &self.config
     }
 
+    /// Returns the transfer config.
     pub fn transfer_config(&self) -> TransferConfig {
         self.config.transfer_config().clone()
     }
@@ -215,6 +217,7 @@ pub enum StepResult {
 }
 
 impl StepResult {
+    /// Returns if step is successful.
     pub fn is_success(&self) -> bool {
         matches!(self, StepResult::Success { .. })
     }
