@@ -830,7 +830,6 @@ pub fn casper_env_balance<S: GlobalStateReader, E: Executor>(
 
 pub fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
     mut caller: impl Caller<Context = Context<S, E>>,
-    entity_kind: u32,
     entity_addr_ptr: u32,
     entity_addr_len: u32,
     amount_ptr: u32,
@@ -840,57 +839,39 @@ pub fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
         return Ok(u32_from_host_result(Err(HostError::NotCallable)));
     }
 
-    let entity_kind = match EntityKindTag::from_u32(entity_kind) {
-        Some(entity_kind) => entity_kind,
-        None => {
-            // Unknown target entity kind; failing to proceed with the transfer
-            return Ok(u32_from_host_result(Err(HostError::NotCallable))); // fail
-        }
-    };
-
     let amount: u128 = {
         let mut amount_bytes = [0u8; 16];
         caller.memory_read_into(amount_ptr, &mut amount_bytes)?;
         u128::from_le_bytes(amount_bytes)
     };
 
-    let target_entity_addr = match entity_kind {
-        EntityKindTag::Account => {
-            let entity_addr = caller.memory_read(entity_addr_ptr, entity_addr_len as usize)?;
-            debug_assert_eq!(entity_addr.len(), 32);
+    let target_entity_addr = {
+        let entity_addr = caller.memory_read(entity_addr_ptr, entity_addr_len as usize)?;
+        debug_assert_eq!(entity_addr.len(), 32);
 
-            // SAFETY: entity_addr is 32 bytes long
-            let account_hash: AccountHash = AccountHash::new(entity_addr.try_into().unwrap());
+        // SAFETY: entity_addr is 32 bytes long
+        let account_hash: AccountHash = AccountHash::new(entity_addr.try_into().unwrap());
 
-            // Resolve indirection to get to the actual addressable entity
-            let account_key = Key::Account(account_hash);
-            match caller.context_mut().tracking_copy.read(&account_key) {
-                Ok(Some(StoredValue::CLValue(indirect))) => {
-                    // is it an account?
-                    let addressable_entity_key = indirect.into_t::<Key>().expect("should be key");
-                    addressable_entity_key
-                        .into_entity_addr()
-                        .expect("should be entity addr")
-                }
-                Ok(Some(other)) => panic!("should be cl value but got {other:?}"),
-                Ok(None) => return Ok(u32_from_host_result(Err(HostError::NotCallable))),
-                Err(error) => {
-                    error!(
-                        ?error,
-                        ?account_key,
-                        "Error while reading from storage; aborting"
-                    );
-                    panic!("Error while reading from storage")
-                }
+        // Resolve indirection to get to the actual addressable entity
+        let account_key = Key::Account(account_hash);
+        match caller.context_mut().tracking_copy.read(&account_key) {
+            Ok(Some(StoredValue::CLValue(indirect))) => {
+                // is it an account?
+                let addressable_entity_key = indirect.into_t::<Key>().expect("should be key");
+                addressable_entity_key
+                    .into_entity_addr()
+                    .expect("should be entity addr")
             }
-        }
-        EntityKindTag::Contract => {
-            let entity_addr = caller.memory_read(entity_addr_ptr, entity_addr_len as usize)?;
-            debug_assert_eq!(entity_addr.len(), 32);
-
-            // SAFETY: entity_addr is 32 bytes long
-            let entity_addr: HashAddr = entity_addr.try_into().unwrap();
-            EntityAddr::SmartContract(entity_addr)
+            Ok(Some(other)) => panic!("should be cl value but got {other:?}"),
+            Ok(None) => return Ok(u32_from_host_result(Err(HostError::NotCallable))),
+            Err(error) => {
+                error!(
+                    ?error,
+                    ?account_key,
+                    "Error while reading from storage; aborting"
+                );
+                panic!("Error while reading from storage")
+            }
         }
     };
 
@@ -918,10 +899,6 @@ pub fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
         other => panic!("should be account or addressable entity but got {other:?}"),
     };
 
-    let _callee_entity_addr = callee_addressable_entity_key
-        .into_entity_addr()
-        .expect("should be entity addr");
-
     let callee_stored_value = caller
         .context_mut()
         .tracking_copy
@@ -933,138 +910,48 @@ pub fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
         .expect("should be addressable entity");
     let callee_purse = callee_addressable_entity.main_purse();
 
-    match entity_kind {
-        EntityKindTag::Account => {
-            let target_purse = match caller
-                .context_mut()
-                .tracking_copy
-                .read(&Key::AddressableEntity(target_entity_addr))
-            {
-                Ok(Some(StoredValue::Account(account))) => {
-                    panic!("Expected AddressableEntity but got {:?}", account)
-                }
-                Ok(Some(StoredValue::AddressableEntity(addressable_entity))) => {
-                    addressable_entity.main_purse()
-                }
-                Ok(Some(other_entity)) => {
-                    panic!("Unexpected entity type: {:?}", other_entity)
-                }
-                Ok(None) => {
-                    panic!("Addressable entity not found for key={target_entity_addr:?}");
-                }
-                Err(error) => {
-                    error!(?error, "Error while reading from storage; aborting");
-                    panic!("Error while reading from storage; aborting")
-                }
-            };
-            // We don't execute anything as it does not make sense to execute an account as there
-            // are no entry points.
-            let transaction_hash = caller.context().transaction_hash;
-            let address_generator = Arc::clone(&caller.context().address_generator);
-            let args = MintTransferArgs {
-                source: callee_purse,
-                target: target_purse,
-                amount: U512::from(amount),
-                maybe_to: None,
-                id: None,
-            };
-
-            let result = system::mint_transfer(
-                &mut caller.context_mut().tracking_copy,
-                transaction_hash,
-                address_generator,
-                args,
-            );
-
-            Ok(u32_from_host_result(result))
+    let target_purse = match caller
+        .context_mut()
+        .tracking_copy
+        .read(&Key::AddressableEntity(target_entity_addr))
+    {
+        Ok(Some(StoredValue::Account(account))) => {
+            panic!("Expected AddressableEntity but got {:?}", account)
         }
-        EntityKindTag::Contract => {
-            // let callee_purse = callee_stored_value.main_purse();
-
-            let transaction_hash = caller.context().transaction_hash;
-            let _address_generator = Arc::clone(&caller.context().address_generator);
-
-            let tracking_copy = caller.context().tracking_copy.fork2();
-
-            // Take the gas spent so far and use it as a limit for the new VM.
-            let gas_limit = caller
-                .gas_consumed()
-                .try_into_remaining()
-                .expect("should be remaining");
-
-            let address_generator = Arc::clone(&caller.context().address_generator);
-            let execute_request = ExecuteRequestBuilder::default()
-                .with_initiator(caller.context().initiator)
-                .with_caller_key(caller.context().callee)
-                // .with_callee_key(Key::AddressableEntity(EntityAddr::new_smart_contract(
-                //     address,
-                // )))
-                .with_callee_key(Key::AddressableEntity(target_entity_addr))
-                .with_gas_limit(gas_limit)
-                .with_target(ExecutionKind::Stored {
-                    address: target_entity_addr,
-                    entry_point: "__casper_fallback".to_string(),
-                })
-                .with_transferred_value(amount)
-                .with_input(Bytes::new())
-                .with_transaction_hash(transaction_hash)
-                // We're using shared address generator there as we need to preserve and advance the
-                // state of deterministic address generator across chain of calls.
-                .with_shared_address_generator(address_generator)
-                .with_chain_name(caller.context().chain_name.clone())
-                .with_block_time(caller.context().block_time)
-                .build()
-                .expect("should build");
-
-            match caller
-                .context()
-                .executor
-                .execute(tracking_copy, execute_request)
-            {
-                Ok(ExecuteResult {
-                    host_error,
-                    output,
-                    gas_usage,
-                    effects,
-                    cache,
-                }) => {
-                    caller.consume_gas(gas_usage.gas_spent());
-                    let _ = output; // TODO: What to do with the output of a fallback code? Need to emit a message
-                                    // with this
-
-                    let host_result = match host_error {
-                        Some(host_error) => Err(host_error),
-                        None => {
-                            caller
-                                .context_mut()
-                                .tracking_copy
-                                .apply_changes(effects, cache);
-                            Ok(())
-                        }
-                    };
-
-                    let gas_spent = gas_usage
-                        .gas_limit()
-                        .checked_sub(gas_usage.remaining_points())
-                        .expect("remaining points always below or equal to the limit");
-
-                    match caller.consume_gas(gas_spent) {
-                        MeteringPoints::Remaining(_) => {}
-                        MeteringPoints::Exhausted => {
-                            todo!("exhausted")
-                        }
-                    }
-
-                    Ok(u32_from_host_result(host_result))
-                }
-                Err(ExecuteError::WasmPreparation(preparation_error)) => {
-                    // This is a bug in the EE, as it should have been caught during the preparation
-                    // phase when the contract was stored in the global state.
-                    unreachable!("Preparation error: {:?}", preparation_error)
-                }
-            }
+        Ok(Some(StoredValue::AddressableEntity(addressable_entity))) => {
+            addressable_entity.main_purse()
         }
-    }
+        Ok(Some(other_entity)) => {
+            panic!("Unexpected entity type: {:?}", other_entity)
+        }
+        Ok(None) => {
+            panic!("Addressable entity not found for key={target_entity_addr:?}");
+        }
+        Err(error) => {
+            error!(?error, "Error while reading from storage; aborting");
+            panic!("Error while reading from storage; aborting")
+        }
+    };
+    // We don't execute anything as it does not make sense to execute an account as there
+    // are no entry points.
+    let transaction_hash = caller.context().transaction_hash;
+    let address_generator = Arc::clone(&caller.context().address_generator);
+    let args = MintTransferArgs {
+        source: callee_purse,
+        target: target_purse,
+        amount: U512::from(amount),
+        maybe_to: None,
+        id: None,
+    };
+
+    let result = system::mint_transfer(
+        &mut caller.context_mut().tracking_copy,
+        transaction_hash,
+        address_generator,
+        args,
+    );
+
+    Ok(u32_from_host_result(result))
 }
 
 pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(

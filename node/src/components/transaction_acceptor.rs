@@ -112,7 +112,10 @@ impl TransactionAcceptor {
         debug!(%source, %transaction, "checking transaction before accepting");
         let event_metadata = Box::new(EventMetadata::new(transaction, source, maybe_responder));
 
-        if transaction.is_install_or_upgrade() && transaction.is_v2_wasm() && transaction.seed().is_none() {
+        if transaction.is_install_or_upgrade()
+            && transaction.is_v2_wasm()
+            && transaction.seed().is_none()
+        {
             return self.reject_transaction(
                 effect_builder,
                 *event_metadata,

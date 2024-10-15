@@ -488,10 +488,10 @@ pub fn get_value() -> u128 {
 }
 
 /// Transfer tokens from the current contract to another account or contract.
-pub fn casper_transfer(target: &Entity, amount: u128) -> Result<(), CallError> {
+pub fn casper_transfer(target_account: &Address, amount: u128) -> Result<(), CallError> {
     let amount: *const c_void = &amount as *const _ as *const c_void;
     let result_code = unsafe {
-        casper_sdk_sys::casper_transfer(target.tag(), target.as_ptr(), target.len(), amount)
+        casper_sdk_sys::casper_transfer(target_account.as_ptr(), target_account.len(), amount)
     };
     call_result_from_code(result_code)
 }

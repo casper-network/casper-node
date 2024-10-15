@@ -280,6 +280,25 @@ impl Harness {
         Ok(())
     }
 
+    // enum Error {
+    //     TooLow { expected: u64}
+    // }
+
+    // // #[casper(payable)]
+    // pub fn mint_wrapped_token(&mut self) -> Result<(), Error> {
+
+    //     if host::get_transferred_value() < EXPECTED_AMOUNT {
+    //         // abort!("This function is not payable");
+    //         return Err(Error::TooLow { expected: EXPECTED_AMOUNT });
+    //         // abort!("This function is not payable");
+    //         // panic_str
+    //         // abort!("")
+    //     }
+
+    //     let transferred_value = host::get_transferred_value();
+    //     self.balances[sender] += transferred_value;
+    // }
+
     #[casper(payable, revert_on_error)]
     pub fn payable_failing_entrypoint(&self) -> Result<(), CustomError> {
         log!(
@@ -327,14 +346,22 @@ impl Harness {
             return Err(CustomError::WithBody("Insufficient balance".into()));
         }
 
-        // if this fails, the transfer will be reverted and the state will be rolled back
-        match host::casper_transfer(&caller, amount) {
-            Ok(()) => {}
-            Err(call_error) => {
-                log!("Unable to perform a transfer: {call_error:?}");
-                return Err(CustomError::Transfer(call_error.to_string()));
+        match caller {
+            Entity::Account(account) => {
+                // if this fails, the transfer will be reverted and the state will be rolled back
+                match host::casper_transfer(&account, amount) {
+                    Ok(()) => {}
+                    Err(call_error) => {
+                        log!("Unable to perform a transfer: {call_error:?}");
+                        return Err(CustomError::Transfer(call_error.to_string()));
+                    }
+                }
+            }
+            Entity::Contract(contract) => {
+                todo!("call contract to transfer tokens");
             }
         }
+
         // TODO: transfer should probably pass CallError (i.e. reverted means mint transfer failed
         // with error, or something like that) return Err(CustomError::WithBody("Transfer
         // failed".into())); }

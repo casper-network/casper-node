@@ -578,14 +578,12 @@ where
                     &mut store,
                     &function_env,
                     |env: FunctionEnvMut<WasmerEnv<S, E>>,
-                     entity_kind,
                      address_ptr,
                      address_len,
                      amount: WasmPtr<u128>| {
                         let wasmer_caller = WasmerCaller { env };
                         host::casper_transfer(
                             wasmer_caller,
-                            entity_kind,
                             address_ptr,
                             address_len,
                             amount.offset(),

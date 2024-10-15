@@ -146,6 +146,7 @@ impl ExecutorV2 {
             transaction_hash,
             chain_name,
             block_time,
+            seed,
         } = install_request;
 
         let caller_key = Key::Account(initiator);
@@ -166,6 +167,7 @@ impl ExecutorV2 {
             chain_name.as_bytes(),
             initiator,
             bytecode_hash,
+            seed,
         );
 
         {
@@ -880,6 +882,7 @@ impl WasmV2Request {
             Install {
                 module_bytes: Bytes,
                 entry_point: String,
+                seed: Option<[u8; 32]>,
             },
             Session {
                 module_bytes: Bytes,
@@ -907,6 +910,7 @@ impl WasmV2Request {
                 module_bytes,
                 runtime: _,
                 transferred_value: _,
+                seed,
             } => match transaction_v1.body().entry_point() {
                 TransactionEntryPoint::Call => Target::Session {
                     module_bytes: module_bytes.clone().take_inner().into(),
@@ -914,6 +918,7 @@ impl WasmV2Request {
                 TransactionEntryPoint::Custom(entry_point) => Target::Install {
                     module_bytes: module_bytes.clone().take_inner().into(),
                     entry_point: entry_point.to_string(),
+                    seed: *seed,
                 },
                 _ => todo!(),
             },
@@ -925,6 +930,7 @@ impl WasmV2Request {
             Target::Install {
                 module_bytes,
                 entry_point,
+                seed,
             } => {
                 let mut builder = InstallContractRequestBuilder::default();
 
@@ -944,6 +950,10 @@ impl WasmV2Request {
                                 || matches!(input_data, Some(input_data) if input_data.is_empty())
                         );
                     }
+                }
+
+                if let Some(seed) = seed {
+                    builder = builder.with_seed(seed);
                 }
 
                 let install_request = builder

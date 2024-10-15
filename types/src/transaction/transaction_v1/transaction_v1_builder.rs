@@ -269,11 +269,13 @@ impl<'a> TransactionV1Builder<'a> {
         module_bytes: Bytes,
         runtime: TransactionRuntime,
         transferred_value: u64,
+        seed: Option<[u8; 32]>,
     ) -> Self {
         let target = TransactionTarget::Session {
             module_bytes,
             runtime,
             transferred_value,
+            seed,
         };
         let body = TransactionV1Body::new(
             RuntimeArgs::new(),

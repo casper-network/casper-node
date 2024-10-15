@@ -52,6 +52,7 @@ pub struct InstallContractRequestBuilder {
     address_generator: Option<Arc<RwLock<AddressGenerator>>>,
     chain_name: Option<Arc<str>>,
     block_time: Option<Timestamp>,
+    seed: Option<[u8; 32]>,
 }
 
 impl InstallContractRequestBuilder {
@@ -113,6 +114,11 @@ impl InstallContractRequestBuilder {
         self
     }
 
+    pub(crate) fn with_seed(mut self, seed: [u8; 32]) -> Self {
+        self.seed = Some(seed);
+        self
+    }
+
     pub fn build(self) -> Result<InstallContractRequest, &'static str> {
         let initiator = self.initiator.ok_or("Initiator not set")?;
         let gas_limit = self.gas_limit.ok_or("Gas limit not set")?;
@@ -124,6 +130,7 @@ impl InstallContractRequestBuilder {
         let transaction_hash = self.transaction_hash.ok_or("Transaction hash not set")?;
         let chain_name = self.chain_name.ok_or("Chain name not set")?;
         let block_time = self.block_time.ok_or("Block time not set")?;
+        let seed = self.seed;
         Ok(InstallContractRequest {
             initiator,
             gas_limit,
@@ -135,6 +142,7 @@ impl InstallContractRequestBuilder {
             transaction_hash,
             chain_name,
             block_time,
+            seed,
         })
     }
 }

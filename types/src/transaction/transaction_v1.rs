@@ -673,7 +673,7 @@ impl TransactionV1 {
 
     /// Seed to be used for hash generation.
     pub(crate) fn seed(&self) -> Option<[u8; 32]> {
-        self.body.seed
+        self.body.seed()
     }
 }
 

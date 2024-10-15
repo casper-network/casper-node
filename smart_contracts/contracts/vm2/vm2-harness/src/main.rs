@@ -537,17 +537,18 @@ fn perform_test(flipper_address: Address) {
         }
     }
 
-    {
-        let _current_test = next_test(
-            &mut counter,
-            "Plain transfer to a contract does not work without fallback",
-        );
-        let flipper_address = Entity::Contract(flipper_address);
-        assert_eq!(
-            host::casper_transfer(&flipper_address, 123),
-            Err(CallError::NotCallable)
-        );
-    }
+    // {
+    //     let _current_test = next_test(
+    //         &mut counter,
+    //         "Plain transfer to a contract does not work without fallback",
+    //     );
+    //     let flipper_address = Entity::Contract(flipper_address);
+
+    //     // assert_eq!(
+    //     //     host::casper_transfer(&flipper_address, 123),
+    //     //     Err(CallError::NotCallable)
+    //     // );
+    // }
 
     {
         let _current_test = next_test(

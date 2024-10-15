@@ -34,10 +34,12 @@ macro_rules! for_each_host_function {
                 input_size: usize,
                 result_ptr: *mut $crate::CreateResult,
             ) -> u32;
+
+            // We don't offer any special protection against smart contracts on the host side
             pub fn casper_call(
                 address_ptr: *const u8,
                 address_size: usize,
-                value: *const core::ffi::c_void,
+                transferred_amount: *const core::ffi::c_void,
                 entry_point_ptr: *const u8,
                 entry_point_size: usize,
                 input_ptr: *const u8,
@@ -58,7 +60,8 @@ macro_rules! for_each_host_function {
             #[doc = r"Get balance of an entity by its address."]
             pub fn casper_env_balance(entity_kind: u32, entity_addr_ptr: *const u8, entity_addr_len: usize, output_ptr: *mut core::ffi::c_void,) -> u32;
             pub fn casper_env_block_time() -> u64;
-            pub fn casper_transfer(entity_kind: u32, entity_addr_ptr: *const u8, entity_addr_len: usize, amount: *const core::ffi::c_void,) -> u32;
+
+            pub fn casper_transfer(entity_addr_ptr: *const u8, entity_addr_len: usize, amount: *const core::ffi::c_void,) -> u32;
         }
     };
 }

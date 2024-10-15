@@ -549,6 +549,7 @@ fn generate_impl_for_contract(
                     );
                     prelude.push(quote! {
                         if casper_sdk::host::get_value() != 0 {
+                            // TODO: Be precise and unambigious about the error
                             panic!(#panic_msg);
                         }
                     });

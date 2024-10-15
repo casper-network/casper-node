@@ -56,6 +56,8 @@ pub enum TransactionTarget {
         /// the balance of the caller account. The amount stated here is the maximum amount
         /// that can be transferred from the caller account to the session account.
         transferred_value: u64,
+        /// The seed for the session code that is used for an installer.
+        seed: Option<[u8; 32]>,
     },
 }
 
@@ -83,11 +85,13 @@ impl TransactionTarget {
         module_bytes: Bytes,
         runtime: TransactionRuntime,
         transferred_value: u64,
+        seed: Option<[u8; 32]>,
     ) -> Self {
         TransactionTarget::Session {
             module_bytes,
             runtime,
             transferred_value,
+            seed,
         }
     }
 
@@ -112,12 +116,14 @@ impl TransactionTarget {
                 module_bytes,
                 runtime,
                 transferred_value,
+                seed,
             } => {
                 vec![
                     crate::bytesrepr::U8_SERIALIZED_LENGTH,
                     module_bytes.serialized_length(),
                     runtime.serialized_length(),
                     transferred_value.serialized_length(),
+                    seed.serialized_length(),
                 ]
             }
         }
@@ -140,6 +146,7 @@ impl TransactionTarget {
                     Bytes::from(buffer),
                     TransactionRuntime::VmCasperV1,
                     rng.gen(),
+                    None,
                 )
             }
             _ => unreachable!(),
@@ -168,6 +175,7 @@ const SESSION_VARIANT: u8 = 2;
 const SESSION_MODULE_BYTES_INDEX: u16 = 1;
 const SESSION_RUNTIME_INDEX: u16 = 2;
 const SESSION_TRANSFERRED_VALUE_INDEX: u16 = 3;
+const SESSION_SEED_INDEX: u16 = 4;
 
 impl ToBytes for TransactionTarget {
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
@@ -191,11 +199,13 @@ impl ToBytes for TransactionTarget {
                 module_bytes,
                 runtime,
                 transferred_value,
+                seed,
             } => CalltableSerializationEnvelopeBuilder::new(self.serialized_field_lengths())?
                 .add_field(TAG_FIELD_INDEX, &SESSION_VARIANT)?
                 .add_field(SESSION_MODULE_BYTES_INDEX, &module_bytes)?
                 .add_field(SESSION_RUNTIME_INDEX, &runtime)?
                 .add_field(SESSION_TRANSFERRED_VALUE_INDEX, transferred_value)?
+                .add_field(SESSION_SEED_INDEX, seed)?
                 .binary_payload_bytes(),
         }
     }
@@ -250,6 +260,9 @@ impl FromBytes for TransactionTarget {
                 let window = window.ok_or(Formatting)?;
                 window.verify_index(SESSION_TRANSFERRED_VALUE_INDEX)?;
                 let (transferred_value, window) = window.deserialize_and_maybe_next::<u64>()?;
+                let window = window.ok_or(Formatting)?;
+                window.verify_index(SESSION_SEED_INDEX)?;
+                let (seed, window) = window.deserialize_and_maybe_next::<Option<[u8; 32]>>()?;
                 if window.is_some() {
                     return Err(Formatting);
                 }
@@ -257,6 +270,7 @@ impl FromBytes for TransactionTarget {
                     module_bytes,
                     runtime,
                     transferred_value,
+                    seed,
                 })
             }
             _ => Err(Formatting),
@@ -284,12 +298,14 @@ impl Display for TransactionTarget {
                 module_bytes,
                 runtime,
                 transferred_value,
+                seed,
             } => write!(
                 formatter,
-                "session({} module bytes, {}, {})",
+                "session({} module bytes, {}, {}, {:?})",
                 module_bytes.len(),
                 runtime,
                 transferred_value,
+                seed,
             ),
         }
     }
@@ -320,11 +336,13 @@ impl Debug for TransactionTarget {
                 module_bytes,
                 runtime,
                 transferred_value,
+                seed,
             } => formatter
                 .debug_struct("Session")
                 .field("module_bytes", &BytesLen(module_bytes.len()))
                 .field("runtime", runtime)
                 .field("transferred_value", transferred_value)
+                .field("seed", seed)
                 .finish(),
         }
     }

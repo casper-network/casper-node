@@ -53,7 +53,6 @@ pub struct TransactionV1Body {
     pub(crate) entry_point: TransactionEntryPoint,
     pub(crate) transaction_lane: u8,
     pub(crate) scheduling: TransactionScheduling,
-    pub(crate) seed: Option<[u8; 32]>,
 }
 
 /// The arguments of a transaction, which can be either a named set of runtime arguments or a
@@ -173,7 +172,6 @@ impl TransactionV1Body {
         entry_point: TransactionEntryPoint,
         transaction_lane: u8,
         scheduling: TransactionScheduling,
-        seed: Option<[u8; 32]>,
     ) -> Self {
         TransactionV1Body {
             args: TransactionArgs::Named(args),
@@ -181,7 +179,6 @@ impl TransactionV1Body {
             entry_point,
             transaction_lane,
             scheduling,
-            seed: todo!(),
         }
     }
 
@@ -469,6 +466,7 @@ impl TransactionV1Body {
             module_bytes: Bytes::from(rng.random_vec(0..100)),
             runtime: TransactionRuntime::VmCasperV1,
             transferred_value: rng.gen(),
+            seed: rng.gen(),
         };
         TransactionV1Body::new(
             RuntimeArgs::random(rng),
@@ -611,6 +609,7 @@ impl TransactionV1Body {
                     module_bytes: Bytes::from(buffer),
                     runtime: TransactionRuntime::VmCasperV1,
                     transferred_value,
+                    seed: None,
                 };
                 TransactionV1Body::new(
                     RuntimeArgs::random(rng),
@@ -632,10 +631,16 @@ impl TransactionV1Body {
                 transferred_value, ..
             } => *transferred_value,
             TransactionTarget::Session {
-                module_bytes,
-                runtime,
-                transferred_value,
+                transferred_value, ..
             } => *transferred_value,
+        }
+    }
+
+    pub(crate) fn seed(&self) -> Option<[u8; 32]> {
+        match self.target {
+            TransactionTarget::Native => None,
+            TransactionTarget::Stored { .. } => None,
+            TransactionTarget::Session { seed, .. } => seed,
         }
     }
 }

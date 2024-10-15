@@ -32,8 +32,8 @@ cfg_if::cfg_if! {
         pub fn set_panic_hook() {
             static SET_HOOK: std::sync::Once = std::sync::Once::new();
             SET_HOOK.call_once(|| {
-                std::panic::set_hook(Box::new(|info: &core::panic::PanicInfo| {
-                    let msg = info.to_string();
+                std::panic::set_hook(Box::new(|panic_info| {
+                    let msg = panic_info.to_string();
                     host::casper_print(&msg);
                 }));
             });
