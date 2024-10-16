@@ -36,7 +36,7 @@ const CONTRACT_PACKAGE: u8 = 2;
 const ENTITY: u8 = 3;
 const CONTRACT: u8 = 4;
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CallerInfo {
     kind: u8,
     fields: BTreeMap<u8, CLValue>,

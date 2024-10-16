@@ -5,7 +5,9 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{engine_state::Error as CoreError, execution::ExecError};
 use casper_types::{
+    account::AccountHash,
     addressable_entity::NamedKeys,
+    contracts::{ContractHash, ContractPackageHash},
     system::{CallStackElement, Caller, CallerInfo},
     AddressableEntity, AddressableEntityHash, CLValue, EntityAddr, EntryPointType, HashAddr,
     HoldBalanceHandling, Key, PackageAddr, PackageHash, ProtocolVersion, StoredValue, Timestamp,
@@ -147,10 +149,7 @@ trait BuilderExt {
 }
 
 impl BuilderExt for LmdbWasmTestBuilder {
-    fn get_call_stack_from_session_context(
-        &mut self,
-        stored_call_stack_key: &str,
-    ) -> Vec<CallerInfo> {
+    fn get_call_stack_from_session_context(&mut self, stored_call_stack_key: &str) -> Vec<Caller> {
         let cl_value = self
             .query(
                 None,
@@ -159,11 +158,77 @@ impl BuilderExt for LmdbWasmTestBuilder {
             )
             .unwrap();
 
-        cl_value
+        let caller_info = cl_value
             .into_cl_value()
             .map(CLValue::into_t::<Vec<CallerInfo>>)
             .unwrap()
-            .unwrap()
+            .unwrap();
+
+        let mut callers = vec![];
+
+        for info in caller_info {
+            let kind = info.kind();
+            match kind {
+                0 => {
+                    let account_hash = info
+                        .get_field_by_index(0)
+                        .map(|val| {
+                            val.to_t::<Option<AccountHash>>()
+                                .expect("must convert out of cl_value")
+                        })
+                        .expect("must have index 0 in fields")
+                        .expect("account hash must be some");
+                    callers.push(Caller::Initiator { account_hash });
+                }
+                3 => {
+                    let package_hash = info
+                        .get_field_by_index(1)
+                        .map(|val| {
+                            val.to_t::<Option<PackageHash>>()
+                                .expect("must convert out of cl_value")
+                        })
+                        .expect("must have index 1 in fields")
+                        .expect("package hash must be some");
+                    let entity_addr = info
+                        .get_field_by_index(3)
+                        .map(|val| {
+                            val.to_t::<Option<EntityAddr>>()
+                                .expect("must convert out of cl_value")
+                        })
+                        .expect("must have index 3 in fields")
+                        .expect("entity addr must be some");
+                    callers.push(Caller::Entity {
+                        package_hash,
+                        entity_addr,
+                    });
+                }
+                4 => {
+                    let contract_package_hash = info
+                        .get_field_by_index(2)
+                        .map(|val| {
+                            val.to_t::<Option<ContractPackageHash>>()
+                                .expect("must convert out of cl_value")
+                        })
+                        .expect("must have index 2 in fields")
+                        .expect("contract package hash must be some");
+                    let contract_hash = info
+                        .get_field_by_index(4)
+                        .map(|val| {
+                            val.to_t::<Option<ContractHash>>()
+                                .expect("must convert out of cl_value")
+                        })
+                        .expect("must have index 4 in fields")
+                        .expect("contract hash must be some");
+                    callers.push(Caller::SmartContract {
+                        contract_package_hash,
+                        contract_hash,
+                    });
+                }
+                _ => panic!("unhandled kind"),
+            }
+        }
+
+        callers
     }
 
     fn get_call_stack_from_contract_context(
