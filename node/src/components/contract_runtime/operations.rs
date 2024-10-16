@@ -329,7 +329,6 @@ pub fn execute_finalized_block(
             }
         };
 
-        let category = transaction.transaction_category();
         let post_payment_balance_result = scratch_state.balance(BalanceRequest::new(
             state_root_hash,
             protocol_version,
