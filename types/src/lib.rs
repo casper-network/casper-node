@@ -52,6 +52,7 @@ mod gas;
 #[cfg(any(feature = "testing", feature = "gens", test))]
 pub mod gens;
 pub mod global_state;
+#[cfg(feature = "json-schema")]
 mod json_pretty_printer;
 mod key;
 mod motes;
@@ -111,9 +112,11 @@ pub use block::{TestBlockBuilder, TestBlockV1Builder};
 pub use block_time::{BlockTime, HoldsEpoch, BLOCKTIME_SERIALIZED_LENGTH};
 pub use byte_code::{ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind};
 pub use cl_type::{named_key_type, CLType, CLTyped};
+#[cfg(feature = "json-schema")]
+pub use cl_value::cl_value_to_json;
 pub use cl_value::{
-    cl_value_to_json, handle_stored_dictionary_value, CLTypeMismatch, CLValue, CLValueError,
-    ChecksumRegistry, DictionaryValue as CLValueDictionary, SystemEntityRegistry,
+    handle_stored_dictionary_value, CLTypeMismatch, CLValue, CLValueError, ChecksumRegistry,
+    DictionaryValue as CLValueDictionary, SystemEntityRegistry,
 };
 pub use global_state::Pointer;
 
@@ -160,6 +163,7 @@ pub use digest::{
 pub use display_iter::DisplayIter;
 pub use era_id::EraId;
 pub use gas::Gas;
+#[cfg(feature = "json-schema")]
 pub use json_pretty_printer::json_pretty_print;
 #[doc(inline)]
 pub use key::{

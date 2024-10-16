@@ -172,8 +172,10 @@ fn should_charge_extra_per_amount_of_br_table_elements() {
     );
 
     assert_eq!(
-        gas_cost_2 - gas_cost_1,
-        Gas::from((M_ELEMENTS - N_ELEMENTS) * DEFAULT_CONTROL_FLOW_BR_TABLE_MULTIPLIER),
+        gas_cost_2.checked_sub(gas_cost_1),
+        Some(Gas::from(
+            (M_ELEMENTS - N_ELEMENTS) * DEFAULT_CONTROL_FLOW_BR_TABLE_MULTIPLIER
+        )),
         "the cost difference should equal to exactly the size of br_table difference "
     );
 }

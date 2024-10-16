@@ -11,8 +11,8 @@ use casper_execution_engine::engine_state::{
 use casper_storage::{
     block_store::types::ApprovalsHashes,
     data_access_layer::{
-        auction::AuctionMethodError, BalanceHoldResult, BiddingResult, EraValidatorsRequest,
-        HandleFeeResult, HandleRefundResult, TransferResult,
+        auction::AuctionMethodError, BalanceHoldResult, BalanceResult, BiddingResult,
+        EraValidatorsRequest, HandleFeeResult, HandleRefundResult, TransferResult,
     },
 };
 use casper_types::{
@@ -119,16 +119,43 @@ impl ExecutionArtifactBuilder {
         self
     }
 
+    pub fn with_initial_balance_result(
+        &mut self,
+        balance_result: BalanceResult,
+        minimum_amount: U512,
+    ) -> Result<&mut Self, bool> {
+        if let BalanceResult::RootNotFound = balance_result {
+            return Err(true);
+        }
+        if let (None, Some(err)) = (&self.error_message, balance_result.error()) {
+            self.error_message = Some(format!("{}", err));
+            return Err(false);
+        }
+        if let Some(purse) = balance_result.purse_addr() {
+            let is_sufficient = balance_result.is_sufficient(minimum_amount);
+            if !is_sufficient {
+                self.error_message = Some(format!(
+                    "Purse {} has less than {}",
+                    base16::encode_lower(&purse),
+                    minimum_amount
+                ));
+                return Ok(self);
+            }
+        }
+        Ok(self)
+    }
+
     pub fn with_wasm_v1_result(&mut self, wasm_v1_result: WasmV1Result) -> Result<&mut Self, ()> {
         if let Some(Error::RootNotFound(_)) = wasm_v1_result.error() {
             return Err(());
         }
+        self.with_added_consumed(wasm_v1_result.consumed());
         if let (None, Some(err)) = (&self.error_message, wasm_v1_result.error()) {
             self.error_message = Some(format!("{}", err));
+            return Ok(self);
         }
-        self.with_added_consumed(wasm_v1_result.consumed())
+        self.with_appended_transfers(&mut wasm_v1_result.transfers().clone())
             .with_appended_messages(&mut wasm_v1_result.messages().clone())
-            .with_appended_transfers(&mut wasm_v1_result.transfers().clone())
             .with_appended_effects(wasm_v1_result.effects().clone());
         Ok(self)
     }
