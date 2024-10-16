@@ -186,15 +186,7 @@ impl Transaction {
             Transaction::V1(v1) => v1.approvals().clone(),
         }
     }
-    /*
-        /// Returns the header.
-        pub fn header(&self) -> TransactionHeader {
-            match self {
-                Transaction::Deploy(deploy) => TransactionHeader::Deploy(deploy.header().clone()),
-                Transaction::V1(transaction) => TransactionHeader::V1(transaction.header().clone()),
-            }
-        }
-    */
+
     /// Returns the computed approvals hash identifying this transaction's approvals.
     pub fn compute_approvals_hash(&self) -> Result<ApprovalsHash, bytesrepr::Error> {
         let approvals_hash = match self {
