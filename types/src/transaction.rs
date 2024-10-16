@@ -196,18 +196,6 @@ impl Transaction {
         Ok(approvals_hash)
     }
 
-    /* TODO remove
-    /// Turns `self` into an invalid `Transaction` by clearing the `chain_name`, invalidating the
-    /// transaction hash.
-    #[cfg(any(all(feature = "std", feature = "testing"), test))]
-    pub fn invalidate(&mut self) {
-        match self {
-            Transaction::Deploy(deploy) => deploy.invalidate(),
-            Transaction::V1(v1) => v1.invalidate(),
-        }
-    }
-    */
-
     /// Returns the computed `TransactionId` uniquely identifying this transaction and its
     /// approvals.
     pub fn compute_id(&self) -> TransactionId {
