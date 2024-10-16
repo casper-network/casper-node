@@ -1512,7 +1512,7 @@ where
 
     if let LimiterResponse::Throttled = rate_limiter.lock().await.throttle() {
         return (
-            BinaryResponse::new_error(ErrorCode::TooManyRequests, protocol_version),
+            BinaryResponse::new_error(ErrorCode::RequestThrottled, protocol_version),
             request_id,
         );
     }

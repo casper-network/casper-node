@@ -282,7 +282,7 @@ pub enum ErrorCode {
     PurseNotFound = 87,
     /// Too many requests per second.
     #[error("request was throttled")]
-    TooManyRequests = 88,
+    RequestThrottled = 88,
 }
 
 impl TryFrom<u16> for ErrorCode {
@@ -378,7 +378,7 @@ impl TryFrom<u16> for ErrorCode {
             85 => Ok(ErrorCode::GasPriceToleranceTooLow),
             86 => Ok(ErrorCode::ReceivedV1Transaction),
             87 => Ok(ErrorCode::PurseNotFound),
-            88 => Ok(ErrorCode::TooManyRequests),
+            88 => Ok(ErrorCode::RequestThrottled),
             _ => Err(UnknownErrorCode),
         }
     }

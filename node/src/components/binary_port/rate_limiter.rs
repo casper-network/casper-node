@@ -116,9 +116,9 @@ impl Buffer {
 #[derive(Debug)]
 pub(crate) struct RateLimiter {
     /// window duration.
-    window_duration_in_ms: u64,
+    window_ms: u64,
     /// Log of unix epoch time in ms when requests were made.
-    recorder_timestamps: Buffer,
+    buffer: Buffer,
 }
 
 impl RateLimiter {
@@ -140,8 +140,8 @@ impl RateLimiter {
             return Err(RateLimiterError::WindowDurationTooSmall);
         }
         Ok(RateLimiter {
-            window_duration_in_ms,
-            recorder_timestamps: Buffer::new(max_requests),
+            window_ms: window_duration_in_ms,
+            buffer: Buffer::new(max_requests),
         })
     }
 
@@ -150,23 +150,21 @@ impl RateLimiter {
     }
 
     fn internal_throttle(&mut self, now: u64) -> LimiterResponse {
-        let is_full = self.recorder_timestamps.is_full();
+        let is_full = self.buffer.is_full();
         if !is_full {
-            self.recorder_timestamps.push(now);
+            self.buffer.push(now);
             return LimiterResponse::Allowed;
         } else {
             //The following subtraction could theoretically not fit in unsigned, but in real-life
             // cases we limit the window duration to 1 hour (it's checked in ctor). So unless
             // someone calls it from the perspective of 1970, it should be fine.
-            let no_of_pruned = self
-                .recorder_timestamps
-                .prune_lt(now - self.window_duration_in_ms);
+            let no_of_pruned = self.buffer.prune_lt(now - self.window_ms);
             if no_of_pruned == 0 {
                 //No pruning was done, so we are still at max_requests
                 return LimiterResponse::Throttled;
             }
         }
-        self.recorder_timestamps.push(now);
+        self.buffer.push(now);
         LimiterResponse::Allowed
     }
 }
