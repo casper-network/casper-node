@@ -17,8 +17,8 @@ use casper_engine_test_support::LmdbWasmTestBuilder;
 use casper_execution_engine::engine_state::engine_config::DEFAULT_PROTOCOL_VERSION;
 use casper_types::{
     system::auction::{
-        Bid, BidKind, BidsExt, Delegator, Reservation, SeigniorageRecipient,
-        SeigniorageRecipientsSnapshot, ValidatorBid, ValidatorCredit,
+        Bid, BidKind, BidsExt, Delegator, Reservation, SeigniorageRecipientV2,
+        SeigniorageRecipientsSnapshotV2, ValidatorBid, ValidatorCredit,
     },
     CLValue, EraId, PublicKey, StoredValue, U512,
 };
@@ -173,7 +173,7 @@ fn update_auction_state<T: StateReader>(
     )
 }
 
-/// Generates a new `SeigniorageRecipientsSnapshot` based on:
+/// Generates a new `SeigniorageRecipientsSnapshotV2` based on:
 /// - The starting era ID (the era ID at which the snapshot should start).
 /// - Count - the number of eras to be included in the snapshot.
 /// - The list of configured accounts.
@@ -181,7 +181,7 @@ fn gen_snapshot_only_listed(
     starting_era_id: EraId,
     count: u64,
     accounts: &[AccountConfig],
-) -> SeigniorageRecipientsSnapshot {
+) -> SeigniorageRecipientsSnapshotV2 {
     let mut new_snapshot = BTreeMap::new();
     let mut era_validators = BTreeMap::new();
     for account in accounts {
@@ -190,10 +190,11 @@ fn gen_snapshot_only_listed(
             Some(validator) if validator.bonded_amount != U512::zero() => validator,
             _ => continue,
         };
-        let seigniorage_recipient = SeigniorageRecipient::new(
+        let seigniorage_recipient = SeigniorageRecipientV2::new(
             validator_cfg.bonded_amount,
             validator_cfg.delegation_rate.unwrap_or_default(),
             validator_cfg.delegators_map().unwrap_or_default(),
+            validator_cfg.reservations_map().unwrap_or_default(),
         );
         let _ = era_validators.insert(account.public_key.clone(), seigniorage_recipient);
     }
@@ -203,12 +204,12 @@ fn gen_snapshot_only_listed(
     new_snapshot
 }
 
-/// Generates a new `SeigniorageRecipientsSnapshot` by modifying the stakes listed in the old
+/// Generates a new `SeigniorageRecipientsSnapshotV2` by modifying the stakes listed in the old
 /// snapshot according to the supplied list of configured accounts.
 fn gen_snapshot_from_old(
-    mut snapshot: SeigniorageRecipientsSnapshot,
+    mut snapshot: SeigniorageRecipientsSnapshotV2,
     accounts: &[AccountConfig],
-) -> SeigniorageRecipientsSnapshot {
+) -> SeigniorageRecipientsSnapshotV2 {
     // Read the modifications to be applied to the validators set from the config.
     let validators_map: BTreeMap<_, _> = accounts
         .iter()
@@ -230,7 +231,7 @@ fn gen_snapshot_from_old(
                 Some(validator) if validator.bonded_amount.is_zero() => false,
                 // Otherwise, we keep them, but modify the properties.
                 Some(validator) => {
-                    *recipient = SeigniorageRecipient::new(
+                    *recipient = SeigniorageRecipientV2::new(
                         validator.bonded_amount,
                         validator
                             .delegation_rate
@@ -242,6 +243,11 @@ fn gen_snapshot_from_old(
                             // If the delegators weren't specified in the config, keep the ones
                             // from the old snapshot.
                             .unwrap_or_else(|| recipient.delegator_stake().clone()),
+                        validator
+                            .reservations_map()
+                            // If the delegators weren't specified in the config, keep the ones
+                            // from the old snapshot.
+                            .unwrap_or_else(|| recipient.reservation_delegation_rates().clone()),
                     );
                     true
                 }
@@ -259,12 +265,15 @@ fn gen_snapshot_from_old(
             if validator.bonded_amount != U512::zero() {
                 recipients.insert(
                     public_key.clone(),
-                    SeigniorageRecipient::new(
+                    SeigniorageRecipientV2::new(
                         validator.bonded_amount,
                         // Unspecified delegation rate will be treated as 0.
                         validator.delegation_rate.unwrap_or_default(),
                         // Unspecified delegators will be treated as an empty list.
                         validator.delegators_map().unwrap_or_default(),
+                        // Unspecified reservation delegation rates will be treated as an empty
+                        // list.
+                        validator.reservations_map().unwrap_or_default(),
                     ),
                 );
             }
@@ -284,7 +293,7 @@ fn gen_snapshot_from_old(
 pub fn add_and_remove_bids<T: StateReader>(
     state: &mut StateTracker<T>,
     validators_diff: &ValidatorsDiff,
-    new_snapshot: &SeigniorageRecipientsSnapshot,
+    new_snapshot: &SeigniorageRecipientsSnapshotV2,
     only_listed_validators: bool,
     slash_instead_of_unbonding: bool,
 ) {
@@ -360,7 +369,7 @@ pub fn add_and_remove_bids<T: StateReader>(
 /// validators.
 fn find_large_bids<T: StateReader>(
     state: &mut StateTracker<T>,
-    snapshot: &SeigniorageRecipientsSnapshot,
+    snapshot: &SeigniorageRecipientsSnapshotV2,
 ) -> BTreeSet<PublicKey> {
     let seigniorage_recipients = snapshot.values().next().unwrap();
     let min_bid = seigniorage_recipients
@@ -425,7 +434,7 @@ fn find_large_bids<T: StateReader>(
 fn create_or_update_bid<T: StateReader>(
     state: &mut StateTracker<T>,
     validator_public_key: &PublicKey,
-    updated_recipient: &SeigniorageRecipient,
+    updated_recipient: &SeigniorageRecipientV2,
     slash_instead_of_unbonding: bool,
 ) {
     let existing_bids = state.get_bids();
@@ -436,27 +445,46 @@ fn create_or_update_bid<T: StateReader>(
             (x.is_unified() || x.is_validator())
                 && &x.validator_public_key() == validator_public_key
         })
-        .map(|existing_bid| match existing_bid {
-            BidKind::Unified(bid) => {
-                let delegator_stake = bid
-                    .delegators()
-                    .iter()
-                    .map(|(k, d)| (k.clone(), d.staked_amount()))
-                    .collect();
-                (
-                    bid.bonding_purse(),
-                    SeigniorageRecipient::new(
-                        *bid.staked_amount(),
-                        *bid.delegation_rate(),
-                        delegator_stake,
-                    ),
-                    0,
-                    u64::MAX,
-                )
-            }
-            BidKind::Validator(validator_bid) => {
-                let delegator_stake =
-                    match existing_bids.delegators_by_validator_public_key(validator_public_key) {
+        .map(|existing_bid| {
+            let reservation_delegation_rates =
+                match existing_bids.reservations_by_validator_public_key(validator_public_key) {
+                    None => BTreeMap::new(),
+                    Some(reservations) => reservations
+                        .iter()
+                        .map(|reservation| {
+                            (
+                                reservation.delegator_public_key().clone(),
+                                *reservation.delegation_rate(),
+                            )
+                        })
+                        .collect(),
+                };
+
+            match existing_bid {
+                BidKind::Unified(bid) => {
+                    let delegator_stake = bid
+                        .delegators()
+                        .iter()
+                        .map(|(k, d)| (k.clone(), d.staked_amount()))
+                        .collect();
+
+                    (
+                        bid.bonding_purse(),
+                        SeigniorageRecipientV2::new(
+                            *bid.staked_amount(),
+                            *bid.delegation_rate(),
+                            delegator_stake,
+                            reservation_delegation_rates,
+                        ),
+                        0,
+                        u64::MAX,
+                        0,
+                    )
+                }
+                BidKind::Validator(validator_bid) => {
+                    let delegator_stake = match existing_bids
+                        .delegators_by_validator_public_key(validator_public_key)
+                    {
                         None => BTreeMap::new(),
                         Some(delegators) => delegators
                             .iter()
@@ -464,23 +492,31 @@ fn create_or_update_bid<T: StateReader>(
                             .collect(),
                     };
 
-                (
-                    validator_bid.bonding_purse(),
-                    SeigniorageRecipient::new(
-                        validator_bid.staked_amount(),
-                        *validator_bid.delegation_rate(),
-                        delegator_stake,
-                    ),
-                    validator_bid.minimum_delegation_amount(),
-                    validator_bid.maximum_delegation_amount(),
-                )
+                    (
+                        validator_bid.bonding_purse(),
+                        SeigniorageRecipientV2::new(
+                            validator_bid.staked_amount(),
+                            *validator_bid.delegation_rate(),
+                            delegator_stake,
+                            reservation_delegation_rates,
+                        ),
+                        validator_bid.minimum_delegation_amount(),
+                        validator_bid.maximum_delegation_amount(),
+                        validator_bid.reserved_slots(),
+                    )
+                }
+                _ => unreachable!(),
             }
-            _ => unreachable!(),
         });
 
     // existing bid
-    if let Some((bonding_purse, existing_recipient, min_delegation_amount, max_delegation_amount)) =
-        maybe_existing_recipient
+    if let Some((
+        bonding_purse,
+        existing_recipient,
+        min_delegation_amount,
+        max_delegation_amount,
+        reserved_slots,
+    )) = maybe_existing_recipient
     {
         if existing_recipient == *updated_recipient {
             return; // noop
@@ -557,6 +593,7 @@ fn create_or_update_bid<T: StateReader>(
             *updated_recipient.delegation_rate(),
             min_delegation_amount,
             max_delegation_amount,
+            reserved_slots,
         );
 
         state.set_bid(
@@ -595,6 +632,7 @@ fn create_or_update_bid<T: StateReader>(
         *updated_recipient.delegation_rate(),
         0,
         u64::MAX,
+        0,
     );
     state.set_bid(
         BidKind::Validator(Box::new(validator_bid)),

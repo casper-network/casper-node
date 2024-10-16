@@ -7,9 +7,9 @@ use casper_types::{
     account::AccountHash,
     addressable_entity::{ActionThresholds, AssociatedKeys, MessageTopics, Weight},
     system::auction::{
-        BidKind, BidsExt, Delegator, SeigniorageRecipient, SeigniorageRecipients,
-        SeigniorageRecipientsSnapshot, UnbondingPurse, UnbondingPurses, ValidatorBid,
-        WithdrawPurse, WithdrawPurses,
+        BidKind, BidsExt, Delegator, SeigniorageRecipientV2, SeigniorageRecipientsSnapshotV2,
+        SeigniorageRecipientsV2, UnbondingPurse, UnbondingPurses, ValidatorBid, WithdrawPurse,
+        WithdrawPurses,
     },
     testing::TestRng,
     AccessRights, AddressableEntity, ByteCodeHash, CLValue, EntityKind, EraId, Key, PackageHash,
@@ -32,7 +32,7 @@ struct MockStateReader {
     accounts: BTreeMap<AccountHash, AddressableEntity>,
     purses: BTreeMap<URefAddr, U512>,
     total_supply: U512,
-    seigniorage_recipients: SeigniorageRecipientsSnapshot,
+    seigniorage_recipients: SeigniorageRecipientsSnapshotV2,
     bids: Vec<BidKind>,
     withdraws: WithdrawPurses,
     unbonds: UnbondingPurses,
@@ -45,7 +45,7 @@ impl MockStateReader {
             accounts: BTreeMap::new(),
             purses: BTreeMap::new(),
             total_supply: U512::zero(),
-            seigniorage_recipients: SeigniorageRecipientsSnapshot::new(),
+            seigniorage_recipients: SeigniorageRecipientsSnapshotV2::new(),
             bids: vec![],
             withdraws: WithdrawPurses::new(),
             unbonds: UnbondingPurses::new(),
@@ -84,13 +84,19 @@ impl MockStateReader {
         validators: Vec<(PublicKey, U512, ValidatorConfig)>,
         rng: &mut R,
     ) -> Self {
-        let mut recipients = SeigniorageRecipients::new();
+        let mut recipients = SeigniorageRecipientsV2::new();
         for (public_key, balance, validator_cfg) in validators {
             let stake = validator_cfg.bonded_amount;
             let delegation_rate = validator_cfg.delegation_rate.unwrap_or_default();
             let delegators = validator_cfg.delegators_map().unwrap_or_default();
+            let reservation_delegation_rates = validator_cfg.reservations_map().unwrap_or_default();
             // add an entry to the recipients snapshot
-            let recipient = SeigniorageRecipient::new(stake, delegation_rate, delegators.clone());
+            let recipient = SeigniorageRecipientV2::new(
+                stake,
+                delegation_rate,
+                delegators.clone(),
+                reservation_delegation_rates,
+            );
             recipients.insert(public_key.clone(), recipient);
 
             // create the account if it doesn't exist
@@ -133,6 +139,7 @@ impl MockStateReader {
                 delegation_rate,
                 0,
                 u64::MAX,
+                0,
             );
 
             self.bids.push(BidKind::Validator(Box::new(validator_bid)));
@@ -506,6 +513,7 @@ fn should_change_one_validator() {
                 bonded_amount: validator3_new_staked,
                 delegation_rate: None,
                 delegators: None,
+                reservations: None,
             }),
         }],
         ..Default::default()
@@ -543,6 +551,7 @@ fn should_change_one_validator() {
         Default::default(),
         0,
         u64::MAX,
+        0,
     );
     update.assert_written_bid(account3_hash, BidKind::Validator(Box::new(expected_bid)));
 
@@ -602,6 +611,7 @@ fn should_change_only_stake_of_one_validator() {
                 bonded_amount: U512::from(104),
                 delegation_rate: None,
                 delegators: None,
+                reservations: None,
             }),
         }],
         ..Default::default()
@@ -637,6 +647,7 @@ fn should_change_only_stake_of_one_validator() {
         Default::default(),
         0,
         u64::MAX,
+        0,
     );
     update.assert_written_bid(account3_hash, BidKind::Validator(Box::new(expected_bid)));
 
@@ -745,6 +756,7 @@ fn should_replace_one_validator() {
                 bonded_amount: U512::from(102),
                 delegation_rate: None,
                 delegators: None,
+                reservations: None,
             }),
         }],
         only_listed_validators: true,
@@ -778,6 +790,7 @@ fn should_replace_one_validator() {
         Default::default(),
         0,
         u64::MAX,
+        0,
     );
     expected_bid_1.deactivate();
     update.assert_written_bid(account1_hash, BidKind::Validator(Box::new(expected_bid_1)));
@@ -884,6 +897,7 @@ fn should_replace_one_validator_with_unbonding() {
         Default::default(),
         0,
         u64::MAX,
+        0,
     );
     expected_bid_1.deactivate();
     update.assert_written_bid(account1_hash, BidKind::Validator(Box::new(expected_bid_1)));
@@ -975,6 +989,7 @@ fn should_add_one_validator() {
                 bonded_amount: v4_stake,
                 delegation_rate: None,
                 delegators: None,
+                reservations: None,
             }),
         }],
         only_listed_validators: false,
@@ -1065,6 +1080,7 @@ fn should_add_one_validator_with_delegators() {
                     public_key: delegator1.clone(),
                     delegated_amount: U512::from(13),
                 }]),
+                reservations: None,
             }),
         }],
         only_listed_validators: false,
@@ -1157,6 +1173,7 @@ fn should_replace_a_delegator() {
                     public_key: delegator1.clone(),
                     delegated_amount: U512::from(d1_stake),
                 }]),
+                reservations: None,
             },
         )],
         &mut rng,
@@ -1174,6 +1191,7 @@ fn should_replace_a_delegator() {
                     public_key: delegator2.clone(),
                     delegated_amount: U512::from(d2_stake),
                 }]),
+                reservations: None,
             }),
         }],
         only_listed_validators: false,
@@ -1259,6 +1277,7 @@ fn should_replace_a_delegator_with_unbonding() {
                     public_key: delegator1.clone(),
                     delegated_amount: U512::from(d1_stake),
                 }]),
+                reservations: None,
             },
         )],
         &mut rng,
@@ -1276,6 +1295,7 @@ fn should_replace_a_delegator_with_unbonding() {
                     public_key: delegator2.clone(),
                     delegated_amount: U512::from(d2_stake),
                 }]),
+                reservations: None,
             }),
         }],
         only_listed_validators: false,
@@ -1364,6 +1384,7 @@ fn should_not_change_the_delegator() {
                     public_key: delegator1,
                     delegated_amount: U512::from(d1_stake),
                 }]),
+                reservations: None,
             },
         )],
         &mut rng,
@@ -1378,6 +1399,7 @@ fn should_not_change_the_delegator() {
                 bonded_amount: U512::from(v1_updated_stake),
                 delegation_rate: None,
                 delegators: None,
+                reservations: None,
             }),
         }],
         only_listed_validators: false,
@@ -1444,6 +1466,7 @@ fn should_remove_the_delegator() {
                     public_key: delegator1.clone(),
                     delegated_amount: d_stake,
                 }]),
+                reservations: None,
             },
         )],
         &mut rng,
@@ -1493,6 +1516,7 @@ fn should_remove_the_delegator() {
                 bonded_amount: v_updated_stake,
                 delegation_rate: None,
                 delegators: Some(vec![]),
+                reservations: None,
             }),
         }],
         only_listed_validators: false,
@@ -1557,6 +1581,7 @@ fn should_remove_the_delegator_with_unbonding() {
                     public_key: delegator1.clone(),
                     delegated_amount: U512::from(13),
                 }]),
+                reservations: None,
             },
         )],
         &mut rng,
@@ -1571,6 +1596,7 @@ fn should_remove_the_delegator_with_unbonding() {
                 bonded_amount: U512::from(111),
                 delegation_rate: None,
                 delegators: Some(vec![]),
+                reservations: None,
             }),
         }],
         only_listed_validators: false,
@@ -1651,6 +1677,7 @@ fn should_slash_a_validator_and_delegator_with_enqueued_withdraws() {
             public_key: delegator1.clone(),
             delegated_amount: amount,
         }]),
+        reservations: None,
     };
 
     let mut reader = MockStateReader::new()
@@ -1667,6 +1694,7 @@ fn should_slash_a_validator_and_delegator_with_enqueued_withdraws() {
                             public_key: delegator2.clone(),
                             delegated_amount: amount,
                         }]),
+                        reservations: None,
                     },
                 ),
             ],
@@ -1797,6 +1825,7 @@ fn should_slash_a_validator_and_delegator_with_enqueued_unbonds() {
             public_key: delegator1.clone(),
             delegated_amount: U512::from(d1_stake),
         }]),
+        reservations: None,
     };
 
     let mut reader = MockStateReader::new()
@@ -1817,6 +1846,7 @@ fn should_slash_a_validator_and_delegator_with_enqueued_unbonds() {
                             public_key: delegator2.clone(),
                             delegated_amount: U512::from(d2_stake),
                         }]),
+                        reservations: None,
                     },
                 ),
             ],
@@ -2005,6 +2035,7 @@ fn should_handle_unbonding_to_oneself_correctly() {
         Default::default(),
         0,
         u64::MAX,
+        0,
     );
     expected_bid_1.deactivate();
     update.assert_written_bid(account1_hash, BidKind::Validator(Box::new(expected_bid_1)));
@@ -2153,6 +2184,7 @@ fn should_handle_unbonding_to_a_delegator_correctly() {
         Default::default(),
         0,
         u64::MAX,
+        0,
     );
     expected_bid_1.deactivate();
     update.assert_written_bid(account1_hash, BidKind::Validator(Box::new(expected_bid_1)));
@@ -2281,6 +2313,7 @@ fn should_handle_legacy_unbonding_to_oneself_correctly() {
         Default::default(),
         0,
         u64::MAX,
+        0,
     );
     expected_bid_1.deactivate();
     update.assert_written_bid(account1_hash, BidKind::Validator(Box::new(expected_bid_1)));
@@ -2457,6 +2490,7 @@ fn should_handle_legacy_unbonding_to_a_delegator_correctly() {
         Default::default(),
         0,
         u64::MAX,
+        0,
     );
     expected_bid_1.deactivate();
     update.assert_written_bid(account1_hash, BidKind::Validator(Box::new(expected_bid_1)));

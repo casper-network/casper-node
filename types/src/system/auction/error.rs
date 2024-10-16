@@ -365,6 +365,30 @@ pub enum Error {
     /// assert_eq!(55, Error::DelegationAmountTooLarge as u8);
     /// ```
     DelegationAmountTooLarge = 55,
+    /// Reservation was not found in the map.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(56, Error::ReservationNotFound as u8);
+    /// ```
+    ReservationNotFound = 56,
+    /// Validator exceeded allowed number of reserved delegator slots.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(57, Error::ExceededReservationSlotsLimit as u8);
+    /// ```
+    ExceededReservationSlotsLimit = 57,
+    /// All reserved slots for validator are already occupied.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(58, Error::ExceededReservationsLimit as u8);
+    /// ```
+    ExceededReservationsLimit = 58,
+    /// Reserved slots count is less than number of existing reservations.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(59, Error::ReservationSlotsCountTooSmall as u8);
+    /// ```
+    ReservationSlotsCountTooSmall = 59,
 }
 
 impl Display for Error {
@@ -426,6 +450,10 @@ impl Display for Error {
             Error::BridgeRecordChainTooLong => formatter.write_str("Bridge record chain is too long to find current validator bid"),
             Error::UnexpectedBidVariant => formatter.write_str("Unexpected bid variant"),
             Error::DelegationAmountTooLarge => formatter.write_str("The delegated amount is above the maximum allowed"),
+            Error::ReservationNotFound => formatter.write_str("Reservation not found"),
+            Error::ExceededReservationSlotsLimit => formatter.write_str("Validator exceeded allowed number of reserved delegator slots"),
+            Error::ExceededReservationsLimit => formatter.write_str("All reserved slots for validator are already occupied"),
+            Error::ReservationSlotsCountTooSmall => formatter.write_str("Reserved slots count is less than number of existing reservations")
         }
     }
 }
@@ -515,6 +543,16 @@ impl TryFrom<u8> for Error {
             d if d == Error::BridgeRecordChainTooLong as u8 => Ok(Error::BridgeRecordChainTooLong),
             d if d == Error::UnexpectedBidVariant as u8 => Ok(Error::UnexpectedBidVariant),
             d if d == Error::DelegationAmountTooLarge as u8 => Ok(Error::DelegationAmountTooLarge),
+            d if d == Error::ReservationNotFound as u8 => Ok(Error::ReservationNotFound),
+            d if d == Error::ExceededReservationSlotsLimit as u8 => {
+                Ok(Error::ExceededReservationSlotsLimit)
+            }
+            d if d == Error::ExceededReservationsLimit as u8 => {
+                Ok(Error::ExceededReservationsLimit)
+            }
+            d if d == Error::ReservationSlotsCountTooSmall as u8 => {
+                Ok(Error::ReservationSlotsCountTooSmall)
+            }
             _ => Err(TryFromU8ForError(())),
         }
     }
@@ -537,7 +575,7 @@ impl FromBytes for Error {
         let error: Error = value
             .try_into()
             // In case an Error variant is unable to be determined it would return an
-            // Error::Formatting as if its unable to be correctly deserialized.
+            // Error::Formatting as if it's unable to be correctly deserialized.
             .map_err(|_| bytesrepr::Error::Formatting)?;
         Ok((error, rem))
     }

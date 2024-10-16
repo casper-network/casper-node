@@ -6,6 +6,7 @@ use tracing::debug;
 use crate::{account::AccountHash, system::auction::ARG_VALIDATOR, CLType};
 use crate::{
     bytesrepr::{FromBytes, ToBytes},
+    system::auction::Reservation,
     CLTyped, CLValue, CLValueError, InvalidTransactionV1, PublicKey, RuntimeArgs, TransferTarget,
     URef, U512,
 };
@@ -45,6 +46,13 @@ const ACTIVATE_BID_ARG_VALIDATOR: RequiredArg<PublicKey> = RequiredArg::new(ARG_
 const CHANGE_BID_PUBLIC_KEY_ARG_PUBLIC_KEY: RequiredArg<PublicKey> = RequiredArg::new("public_key");
 const CHANGE_BID_PUBLIC_KEY_ARG_NEW_PUBLIC_KEY: RequiredArg<PublicKey> =
     RequiredArg::new("new_public_key");
+
+const ADD_RESERVATIONS_ARG_RESERVATIONS: RequiredArg<Vec<Reservation>> =
+    RequiredArg::new("reservations");
+
+const CANCEL_RESERVATIONS_ARG_VALIDATOR: RequiredArg<PublicKey> = RequiredArg::new("validator");
+const CANCEL_RESERVATIONS_ARG_DELEGATORS: RequiredArg<Vec<PublicKey>> =
+    RequiredArg::new("delegators");
 
 struct RequiredArg<T> {
     name: &'static str,
@@ -354,12 +362,28 @@ pub(in crate::transaction::transaction_v1) fn has_valid_activate_bid_args(
 }
 
 /// Checks the given `RuntimeArgs` are suitable for use in a change bid public key transaction.
-#[allow(dead_code)]
 pub(super) fn has_valid_change_bid_public_key_args(
     args: &RuntimeArgs,
 ) -> Result<(), InvalidTransactionV1> {
     let _public_key = CHANGE_BID_PUBLIC_KEY_ARG_PUBLIC_KEY.get(args)?;
     let _new_public_key = CHANGE_BID_PUBLIC_KEY_ARG_NEW_PUBLIC_KEY.get(args)?;
+    Ok(())
+}
+
+/// Checks the given `RuntimeArgs` are suitable for use in a add reservations transaction.
+pub(super) fn has_valid_add_reservations_args(
+    args: &RuntimeArgs,
+) -> Result<(), InvalidTransactionV1> {
+    let _reservations = ADD_RESERVATIONS_ARG_RESERVATIONS.get(args)?;
+    Ok(())
+}
+
+/// Checks the given `RuntimeArgs` are suitable for use in a add reservations transaction.
+pub(super) fn has_valid_cancel_reservations_args(
+    args: &RuntimeArgs,
+) -> Result<(), InvalidTransactionV1> {
+    let _validator = CANCEL_RESERVATIONS_ARG_VALIDATOR.get(args)?;
+    let _delegators = CANCEL_RESERVATIONS_ARG_DELEGATORS.get(args)?;
     Ok(())
 }
 

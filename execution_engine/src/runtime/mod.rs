@@ -1010,6 +1010,9 @@ where
                     Self::try_get_named_argument(runtime_args, auction::ARG_RESERVED_SLOTS)?
                         .unwrap_or(0);
 
+                let max_delegators_per_validator =
+                    self.context.engine_config().max_delegators_per_validator();
+
                 let result = runtime
                     .add_bid(
                         account_hash,
@@ -1018,6 +1021,7 @@ where
                         minimum_delegation_amount,
                         maximum_delegation_amount,
                         reserved_slots,
+                        max_delegators_per_validator,
                     )
                     .map_err(Self::reverter)?;
 
@@ -1157,6 +1161,32 @@ where
 
                 runtime
                     .change_bid_public_key(public_key, new_public_key)
+                    .map_err(Self::reverter)?;
+
+                CLValue::from_t(()).map_err(Self::reverter)
+            })(),
+            auction::METHOD_ADD_RESERVATIONS => (|| {
+                runtime.charge_system_contract_call(auction_costs.add_reservations)?;
+
+                let reservations =
+                    Self::get_named_argument(runtime_args, auction::ARG_RESERVATIONS)?;
+
+                runtime
+                    .add_reservations(reservations)
+                    .map_err(Self::reverter)?;
+
+                CLValue::from_t(()).map_err(Self::reverter)
+            })(),
+            auction::METHOD_CANCEL_RESERVATIONS => (|| {
+                runtime.charge_system_contract_call(auction_costs.cancel_reservations)?;
+
+                let validator = Self::get_named_argument(runtime_args, auction::ARG_VALIDATOR)?;
+                let delegators = Self::get_named_argument(runtime_args, auction::ARG_DELEGATORS)?;
+                let max_delegators_per_validator =
+                    self.context.engine_config().max_delegators_per_validator();
+
+                runtime
+                    .cancel_reservations(validator, delegators, max_delegators_per_validator)
                     .map_err(Self::reverter)?;
 
                 CLValue::from_t(()).map_err(Self::reverter)

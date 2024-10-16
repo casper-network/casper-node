@@ -726,6 +726,7 @@ pub(crate) fn validator_bid_arb() -> impl Strategy<Value = BidKind> {
                         1u64,
                         0,
                         u64::MAX,
+                        0,
                     )
                 } else {
                     ValidatorBid::unlocked(
@@ -735,6 +736,7 @@ pub(crate) fn validator_bid_arb() -> impl Strategy<Value = BidKind> {
                         delegation_rate,
                         0,
                         u64::MAX,
+                        0,
                     )
                 };
                 BidKind::Validator(Box::new(validator_bid))

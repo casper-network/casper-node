@@ -14,7 +14,8 @@ use casper_storage::data_access_layer::{SlashItem, StepResult};
 use casper_types::{
     execution::TransformKindV2,
     system::auction::{
-        BidsExt, DelegationRate, SeigniorageRecipientsSnapshot, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+        BidsExt, DelegationRate, SeigniorageRecipientsSnapshotV2,
+        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
     },
     CLValue, EntityAddr, EraId, GenesisAccount, GenesisValidator, Key, Motes, ProtocolVersion,
     PublicKey, SecretKey, StoredValue, U512,
@@ -86,7 +87,7 @@ fn should_not_create_any_purse() {
         .with_era_end_timestamp_millis(eras_end_timestamp_millis_1.as_millis().try_into().unwrap())
         .build();
 
-    let before_auction_seigniorage: SeigniorageRecipientsSnapshot = builder.get_value(
+    let before_auction_seigniorage: SeigniorageRecipientsSnapshotV2 = builder.get_value(
         EntityAddr::System(auction_hash.value()),
         SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
     );
@@ -137,7 +138,7 @@ fn should_not_create_any_purse() {
     );
 
     // seigniorage snapshot should have changed after auction
-    let after_auction_seigniorage: SeigniorageRecipientsSnapshot = builder.get_value(
+    let after_auction_seigniorage: SeigniorageRecipientsSnapshotV2 = builder.get_value(
         EntityAddr::System(auction_hash.value()),
         SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
     );

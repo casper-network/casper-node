@@ -137,12 +137,23 @@ impl BidAddr {
         BidAddr::Validator(AccountHash::new(validator))
     }
 
-    /// Constructs a new [`BidAddr`] instance from the [`AccountHash`] pair of a validator
-    /// and a delegator.
+    /// Constructs a new [`BidAddr::Delegator`] instance from the [`AccountHash`] pair of a
+    /// validator and a delegator.
     pub const fn new_delegator_addr(
         pair: ([u8; ACCOUNT_HASH_LENGTH], [u8; ACCOUNT_HASH_LENGTH]),
     ) -> Self {
         BidAddr::Delegator {
+            validator: AccountHash::new(pair.0),
+            delegator: AccountHash::new(pair.1),
+        }
+    }
+
+    /// Constructs a new [`BidAddr::Reservation`] instance from the [`AccountHash`] pair of a
+    /// validator and a delegator.
+    pub const fn new_reservation_addr(
+        pair: ([u8; ACCOUNT_HASH_LENGTH], [u8; ACCOUNT_HASH_LENGTH]),
+    ) -> Self {
+        BidAddr::Reservation {
             validator: AccountHash::new(pair.0),
             delegator: AccountHash::new(pair.1),
         }
@@ -190,6 +201,16 @@ impl BidAddr {
         let mut ret = Vec::with_capacity(validator.serialized_length() + 2);
         ret.push(KeyTag::BidAddr as u8);
         ret.push(BidAddrTag::Delegator as u8);
+        validator.write_bytes(&mut ret)?;
+        Ok(ret)
+    }
+
+    /// Returns the common prefix of all reservations to the cited validator.
+    pub fn reservation_prefix(&self) -> Result<Vec<u8>, Error> {
+        let validator = self.validator_account_hash();
+        let mut ret = Vec::with_capacity(validator.serialized_length() + 2);
+        ret.push(KeyTag::BidAddr as u8);
+        ret.push(BidAddrTag::Reservation as u8);
         validator.write_bytes(&mut ret)?;
         Ok(ret)
     }
@@ -314,6 +335,17 @@ impl FromBytes for BidAddr {
                 let (era_id, remainder) = EraId::from_bytes(remainder)?;
                 Ok((BidAddr::Credit { validator, era_id }, remainder))
             }
+            tag if tag == BidAddrTag::Reservation as u8 => {
+                let (validator, remainder) = AccountHash::from_bytes(remainder)?;
+                let (delegator, remainder) = AccountHash::from_bytes(remainder)?;
+                Ok((
+                    BidAddr::Reservation {
+                        validator,
+                        delegator,
+                    },
+                    remainder,
+                ))
+            }
             _ => Err(bytesrepr::Error::Formatting),
         }
     }
@@ -419,6 +451,8 @@ mod tests {
             ),
             EraId::new(0),
         );
+        bytesrepr::test_serialization_roundtrip(&bid_addr);
+        let bid_addr = BidAddr::new_reservation_addr(([1; 32], [2; 32]));
         bytesrepr::test_serialization_roundtrip(&bid_addr);
     }
 }

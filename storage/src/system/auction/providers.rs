@@ -31,6 +31,12 @@ pub trait RuntimeProvider {
     /// Returns the current number of delegators for this validator.
     fn delegator_count(&mut self, bid_addr: &BidAddr) -> Result<usize, Error>;
 
+    /// Returns number of reservations for this validator.
+    fn reservation_count(&mut self, bid_addr: &BidAddr) -> Result<usize, Error>;
+
+    /// Returns number of reservations for which a delegator bid exists.
+    fn used_reservation_count(&mut self, bid_addr: &BidAddr) -> Result<usize, Error>;
+
     /// Returns a 32-byte BLAKE2b digest
     fn blake2b<T: AsRef<[u8]>>(&self, data: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {
         crypto::blake2b(data)

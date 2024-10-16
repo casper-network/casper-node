@@ -51,6 +51,7 @@ static AUCTION_INFO: Lazy<AuctionState> = Lazy::new(|| {
         DelegationRate::zero(),
         0,
         u64::MAX,
+        0,
     );
     bids.push(BidKind::Validator(Box::new(validator_bid)));
 
@@ -139,6 +140,7 @@ impl AuctionState {
                         *bid.delegation_rate(),
                         0,
                         u64::MAX,
+                        0,
                     );
                     staking.insert(public_key, (validator_bid, bid.delegators().clone()));
                 }
