@@ -135,7 +135,7 @@ use casper_types::{
     BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest, EntityAddr, EraId,
     ExecutionInfo, FinalitySignature, FinalitySignatureId, FinalitySignatureV2, Key, NextUpgrade,
     Package, ProtocolUpgradeConfig, PublicKey, TimeDiff, Timestamp, Transaction, TransactionHash,
-    TransactionHeader, TransactionId, Transfer, U512,
+    TransactionId, Transfer, U512,
 };
 
 use crate::{
