@@ -687,6 +687,7 @@ extern "C" {
     /// * `in_size` - length of bytes
     /// * `out_ptr` - pointer to the location where argument bytes will be copied from the host side
     /// * `out_size` - size of output pointer
+    #[deprecated(note = "Superseded by ext_ffi::casper_generic_hash")]
     pub fn casper_blake2b(
         in_ptr: *const u8,
         in_size: usize,
@@ -858,4 +859,21 @@ extern "C" {
     /// * 3 => state hash
     /// * `dest_ptr` => pointer in wasm memory where to write the result
     pub fn casper_get_block_info(field_idx: u8, dest_ptr: *const u8);
+
+    /// Computes digest hash, using provided algorithm type.
+    ///
+    /// # Arguments
+    ///
+    /// * `in_ptr` - pointer to the location where argument bytes will be copied from the host side
+    /// * `in_size` - size of output pointer
+    /// * `hash_algo_type` - integer representation of HashAlgorithm enum variant
+    /// * `out_ptr` - pointer to the location where argument bytes will be copied to the host side
+    /// * `out_size` - size of output pointer
+    pub fn casper_generic_hash(
+        in_ptr: *const u8,
+        in_size: usize,
+        hash_algo_type: u8,
+        out_ptr: *const u8,
+        out_size: usize,
+    ) -> i32;
 }
