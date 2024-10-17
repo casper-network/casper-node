@@ -224,21 +224,35 @@ impl Transaction {
         }
     }
 
-    /// Returns `true` if `self` represents a native transfer deploy or a native V1 transaction.
-    pub fn is_native(&self) -> bool {
+    /// Checks if the transaction is targeting a native contract.
+    /// Returns `Ok(true)` if the transaction is native, `Ok(false)` if it's not, or an error
+    /// if the transaction target could not be deserialized.
+    ///
+    /// # Errors
+    /// Returns `InvalidTransactionV1` if the transaction target cannot be retrieved.
+    pub fn is_native(&self) -> Result<bool, InvalidTransactionV1> {
         match self {
-            Transaction::Deploy(deploy) => deploy.is_transfer(),
+            Transaction::Deploy(deploy) => Ok(deploy.is_transfer()),
             Transaction::V1(v1_txn) => {
-                (*v1_txn).get_transaction_target().unwrap() == TransactionTarget::Native
+                let target = (*v1_txn).get_transaction_target()?;
+                Ok(target == TransactionTarget::Native)
             }
         }
     }
 
-    /// Returns the entry point name for the transaction, whether it's a `Deploy` or `V1` transaction.
-    pub fn entry_point(&self) -> String {
+    /// Retrieves the entry point name of the transaction.
+    /// Returns the entry point as a `String` for both `Deploy` and `V1` transactions, or an error
+    /// if the entry point could not be deserialized in `V1` transactions.
+    ///
+    /// # Errors
+    /// Returns `InvalidTransactionV1` if the entry point cannot be retrieved for a `V1` transaction.
+    pub fn entry_point(&self) -> Result<String, InvalidTransactionV1> {
         match self {
-            Transaction::Deploy(deploy) => deploy.session().entry_point_name().to_string(),
-            Transaction::V1(v1_txn) => (*v1_txn).get_transaction_entry_point().unwrap().to_string(),
+            Transaction::Deploy(deploy) => Ok(deploy.session().entry_point_name().to_string()),
+            Transaction::V1(v1_txn) => {
+                let entry_point = (*v1_txn).get_transaction_entry_point()?; // Bubble up the error
+                Ok(entry_point.to_string())
+            }
         }
     }
 
