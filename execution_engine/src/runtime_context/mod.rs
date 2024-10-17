@@ -1666,9 +1666,16 @@ where
             }
         }
 
-        let topic_key = Key::Message(MessageAddr::new_topic_addr(entity_addr.value(), topic_name_hash));
+        let topic_key = Key::Message(MessageAddr::new_topic_addr(
+            entity_addr.value(),
+            topic_name_hash,
+        ));
         let block_time = self.block_info.block_time();
-        let summary = StoredValue::MessageTopic(MessageTopicSummary::new(0, block_time, topic_name.to_string()));
+        let summary = StoredValue::MessageTopic(MessageTopicSummary::new(
+            0,
+            block_time,
+            topic_name.to_string(),
+        ));
 
         self.metered_write_gs_unsafe(topic_key, summary)?;
 
