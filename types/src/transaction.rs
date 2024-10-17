@@ -45,7 +45,7 @@ use crate::testing::TestRng;
 use crate::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    Digest, SecretKey, TimeDiff, Timestamp,
+    Digest, Phase, SecretKey, TimeDiff, Timestamp,
 };
 #[cfg(any(feature = "std", test))]
 use crate::{Chainspec, Gas, Motes};
@@ -224,38 +224,20 @@ impl Transaction {
         }
     }
 
-    /// Checks if the transaction is targeting a native contract.
-    /// Returns `Ok(true)` if the transaction is native, `Ok(false)` if it's not, or an error
-    /// if the transaction target could not be deserialized.
+    /// Checks if the transaction is a standard payment.
     ///
-    /// # Errors
-    /// Returns `InvalidTransactionV1` if the transaction target cannot be retrieved.
-    pub fn is_native(&self) -> Result<bool, InvalidTransactionV1> {
+    /// For `Deploy` transactions, it checks if the session is a standard payment
+    /// in the payment phase. For `V1` transactions, it returns the value of
+    /// `standard_payment` if the pricing mode is `Classic`, otherwise it returns `true`.
+    pub fn is_standard_payment(&self) -> bool {
         match self {
-            Transaction::Deploy(deploy) => Ok(deploy.is_transfer()),
-            Transaction::V1(v1_txn) => {
-                let target = (*v1_txn).get_transaction_target()?;
-                Ok(target == TransactionTarget::Native)
-            }
-        }
-    }
-
-    /// Retrieves the entry point of the transaction.
-    ///
-    /// For `Deploy` transactions, it returns the entry point as a `TransactionEntryPoint` derived
-    /// from the session. For `V1` transactions, it retrieves the entry point using the
-    /// `get_transaction_entry_point()` method, returning an error if the entry point cannot be
-    /// deserialized.
-    ///
-    /// # Errors
-    /// Returns `InvalidTransactionV1` if the entry point cannot be retrieved for a `V1` transaction.
-    pub fn entry_point(&self) -> Result<TransactionEntryPoint, InvalidTransactionV1> {
-        match self {
-            Transaction::Deploy(deploy) => Ok(deploy.session().entry_point_name().into()),
-            Transaction::V1(v1_txn) => {
-                let entry_point = (*v1_txn).get_transaction_entry_point()?;
-                Ok(entry_point)
-            }
+            Transaction::Deploy(txn) => txn.session().is_standard_payment(Phase::Payment),
+            Transaction::V1(txn) => match txn.pricing_mode() {
+                PricingMode::Classic {
+                    standard_payment, ..
+                } => *standard_payment,
+                _ => true,
+            },
         }
     }
 

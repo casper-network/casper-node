@@ -18,14 +18,14 @@ use crate::{
 use alloc::collections::BTreeMap;
 use alloc::{collections::BTreeSet, vec::Vec};
 use errors_v1::FieldDeserializationError;
-#[cfg(any(any(feature = "std", feature = "testing"), test))]
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
 use fields_container::{ENTRY_POINT_MAP_KEY, TARGET_MAP_KEY};
 use tracing::debug;
 pub use transaction_v1_payload::TransactionV1Payload;
 
 #[cfg(any(feature = "std", feature = "testing", test))]
 use super::InitiatorAddrAndSecretKey;
-#[cfg(any(any(feature = "std", feature = "testing"), test))]
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
 use super::{TransactionEntryPoint, TransactionTarget};
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
@@ -378,18 +378,14 @@ impl TransactionV1 {
         self.payload.invalidate();
     }
 
-    /// Deserializes and returns the target of the transaction.
-    /// Available when the `std` or `testing` features are enabled, or during tests.
-    #[cfg(any(any(feature = "std", feature = "testing"), test))]
-    pub fn get_transaction_target(&self) -> Result<TransactionTarget, InvalidTransactionV1> {
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
+    pub(crate) fn get_transaction_target(&self) -> Result<TransactionTarget, InvalidTransactionV1> {
         self.deserialize_field::<TransactionTarget>(TARGET_MAP_KEY)
             .map_err(|error| InvalidTransactionV1::CouldNotDeserializeField { error })
     }
 
-    /// Deserializes and returns the entry point of the transaction.
-    /// Available when the `std` or `testing` features are enabled, or during tests
-    #[cfg(any(any(feature = "std", feature = "testing"), test))]
-    pub fn get_transaction_entry_point(
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
+    pub(crate) fn get_transaction_entry_point(
         &self,
     ) -> Result<TransactionEntryPoint, InvalidTransactionV1> {
         self.deserialize_field::<TransactionEntryPoint>(ENTRY_POINT_MAP_KEY)
