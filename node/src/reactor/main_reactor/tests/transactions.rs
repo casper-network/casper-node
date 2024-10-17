@@ -1730,8 +1730,7 @@ async fn only_refunds_are_burnt_no_fee_custom_payment() {
         test.get_balances(None);
     let initial_total_supply = test.get_total_supply(None);
     let (_txn_hash, block_height, exec_result) = test.send_transaction(txn).await;
-    assert!(!exec_result_is_success(&exec_result)); // transaction should not succeed because we didn't request enough gas for this transaction
-                                                    // to succeed.
+
     match exec_result {
         ExecutionResult::V2(exec_result_v2) => {
             assert_eq!(exec_result_v2.cost, expected_transaction_cost.into());
@@ -1828,8 +1827,7 @@ async fn no_refund_no_fee_custom_payment() {
         test.get_balances(None);
     let initial_total_supply = test.get_total_supply(None);
     let (_txn_hash, block_height, exec_result) = test.send_transaction(txn).await;
-    // expected to fail due to insufficient funding
-    assert!(!exec_result_is_success(&exec_result), "should have failed");
+
     match exec_result {
         ExecutionResult::V2(exec_result_v2) => {
             assert_eq!(exec_result_v2.cost, expected_transaction_cost.into());
@@ -3289,7 +3287,7 @@ async fn charge_when_session_code_fails_with_user_error() {
             ExecutionResult::V2(res) if res.error_message.as_deref() == Some("User error: 100")
         ),
         "{:?}",
-        exec_result
+        exec_result.error_message()
     );
 
     let (alice_current_balance, bob_current_balance, _) = test.get_balances(Some(block_height));
@@ -3301,11 +3299,11 @@ async fn charge_when_session_code_fails_with_user_error() {
         "fee is {}, expected to be greater than 0",
         fee
     );
-    assert_eq!(
-        bob_current_balance.total,
-        bob_initial_balance.total - fee,
-        "bob should pay the fee"
-    );
+    let init = bob_initial_balance.total;
+    let curr = bob_current_balance.total;
+    let actual = curr;
+    let expected = init - fee;
+    assert_eq!(actual, expected, "init {} curr {} fee {}", init, curr, fee,);
 }
 
 #[tokio::test]

@@ -1,8 +1,11 @@
+#![cfg(feature = "json-schema")]
+
 extern crate alloc;
 
 use alloc::{format, string::String, vec::Vec};
 
 use serde::Serialize;
+
 use serde_json::{json, Value};
 
 const MAX_STRING_LEN: usize = 150;

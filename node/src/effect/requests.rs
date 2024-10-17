@@ -34,8 +34,8 @@ use casper_types::{
     execution::ExecutionResult, Approval, AvailableBlockRange, Block, BlockHash, BlockHeader,
     BlockSignatures, BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest,
     DisplayIter, EntityAddr, EraId, ExecutionInfo, FinalitySignature, FinalitySignatureId, Key,
-    NextUpgrade, ProtocolUpgradeConfig, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
-    Transaction, TransactionHash, TransactionId, Transfer,
+    NextUpgrade, ProtocolUpgradeConfig, PublicKey, TimeDiff, Timestamp, Transaction,
+    TransactionHash, TransactionId, Transfer,
 };
 
 use super::{AutoClosingResponder, GossipTarget, Responder};
@@ -1112,24 +1112,11 @@ impl Display for UpgradeWatcherRequest {
 
 #[derive(Debug, Serialize)]
 pub(crate) enum ReactorInfoRequest {
-    ReactorState {
-        responder: Responder<ReactorState>,
-    },
-    LastProgress {
-        responder: Responder<LastProgress>,
-    },
-    Uptime {
-        responder: Responder<Uptime>,
-    },
-    NetworkName {
-        responder: Responder<NetworkName>,
-    },
-    ProtocolVersion {
-        responder: Responder<ProtocolVersion>,
-    },
-    BalanceHoldsInterval {
-        responder: Responder<TimeDiff>,
-    },
+    ReactorState { responder: Responder<ReactorState> },
+    LastProgress { responder: Responder<LastProgress> },
+    Uptime { responder: Responder<Uptime> },
+    NetworkName { responder: Responder<NetworkName> },
+    BalanceHoldsInterval { responder: Responder<TimeDiff> },
 }
 
 impl Display for ReactorInfoRequest {
@@ -1142,7 +1129,6 @@ impl Display for ReactorInfoRequest {
                 ReactorInfoRequest::LastProgress { .. } => "LastProgress",
                 ReactorInfoRequest::Uptime { .. } => "Uptime",
                 ReactorInfoRequest::NetworkName { .. } => "NetworkName",
-                ReactorInfoRequest::ProtocolVersion { .. } => "ProtocolVersion",
                 ReactorInfoRequest::BalanceHoldsInterval { .. } => "BalanceHoldsInterval",
             }
         )

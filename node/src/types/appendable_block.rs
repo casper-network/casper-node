@@ -215,7 +215,12 @@ impl Display for AppendableBlock {
         let auction_count = self.category_count(AUCTION_LANE_ID);
         let install_upgrade_count = self.category_count(INSTALL_UPGRADE_LANE_ID);
         let wasm_count = total_count - mint_count - auction_count - install_upgrade_count;
-        let total_gas_limit: Gas = self.transactions.values().map(|f| f.gas_limit).sum();
+        let total_gas_limit: Gas = self
+            .transactions
+            .values()
+            .map(|f| f.gas_limit)
+            .try_fold(Gas::new(0), |acc, gas| acc.checked_add(gas))
+            .unwrap_or(Gas::MAX);
         let total_approvals_count: usize = self
             .transactions
             .values()

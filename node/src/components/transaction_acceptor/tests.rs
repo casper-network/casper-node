@@ -807,7 +807,7 @@ impl reactor::Reactor for Reactor {
                                 .ignore::<Self::Event>();
                             return Effects::new();
                         }
-                        BalanceIdentifier::Payment => {
+                        BalanceIdentifier::Payment | BalanceIdentifier::PenalizedPayment => {
                             responder
                                 .respond(BalanceResult::Failure(
                                     TrackingCopyError::NamedKeyNotFound("payment".to_string()),

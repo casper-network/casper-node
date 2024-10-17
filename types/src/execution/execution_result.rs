@@ -1,4 +1,4 @@
-use alloc::vec::Vec;
+use alloc::{string::String, vec::Vec};
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
@@ -53,6 +53,17 @@ impl ExecutionResult {
             Self::V2(ExecutionResultV2::random(rng))
         }
     }
+
+    /// Returns the error message, if any.
+    pub fn error_message(&self) -> Option<String> {
+        match self {
+            ExecutionResult::V1(v1) => match v1 {
+                ExecutionResultV1::Failure { error_message, .. } => Some(error_message.clone()),
+                ExecutionResultV1::Success { .. } => None,
+            },
+            ExecutionResult::V2(v2) => v2.error_message.clone(),
+        }
+    }
 }
 
 impl From<ExecutionResultV1> for ExecutionResult {
@@ -68,19 +79,6 @@ impl From<ExecutionResultV2> for ExecutionResult {
 }
 
 impl ToBytes for ExecutionResult {
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        match self {
-            ExecutionResult::V1(result) => {
-                V1_TAG.write_bytes(writer)?;
-                result.write_bytes(writer)
-            }
-            ExecutionResult::V2(result) => {
-                V2_TAG.write_bytes(writer)?;
-                result.write_bytes(writer)
-            }
-        }
-    }
-
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         self.write_bytes(&mut buffer)?;
@@ -93,6 +91,19 @@ impl ToBytes for ExecutionResult {
                 ExecutionResult::V1(result) => result.serialized_length(),
                 ExecutionResult::V2(result) => result.serialized_length(),
             }
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        match self {
+            ExecutionResult::V1(result) => {
+                V1_TAG.write_bytes(writer)?;
+                result.write_bytes(writer)
+            }
+            ExecutionResult::V2(result) => {
+                V2_TAG.write_bytes(writer)?;
+                result.write_bytes(writer)
+            }
+        }
     }
 }
 

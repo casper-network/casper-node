@@ -186,15 +186,7 @@ impl Transaction {
             Transaction::V1(v1) => v1.approvals().clone(),
         }
     }
-    /*
-        /// Returns the header.
-        pub fn header(&self) -> TransactionHeader {
-            match self {
-                Transaction::Deploy(deploy) => TransactionHeader::Deploy(deploy.header().clone()),
-                Transaction::V1(transaction) => TransactionHeader::V1(transaction.header().clone()),
-            }
-        }
-    */
+
     /// Returns the computed approvals hash identifying this transaction's approvals.
     pub fn compute_approvals_hash(&self) -> Result<ApprovalsHash, bytesrepr::Error> {
         let approvals_hash = match self {
@@ -203,18 +195,6 @@ impl Transaction {
         };
         Ok(approvals_hash)
     }
-
-    /* TODO remove
-    /// Turns `self` into an invalid `Transaction` by clearing the `chain_name`, invalidating the
-    /// transaction hash.
-    #[cfg(any(all(feature = "std", feature = "testing"), test))]
-    pub fn invalidate(&mut self) {
-        match self {
-            Transaction::Deploy(deploy) => deploy.invalidate(),
-            Transaction::V1(v1) => v1.invalidate(),
-        }
-    }
-    */
 
     /// Returns the chain name for the transaction, whether it's a `Deploy` or `V1` transaction.
     pub fn chain_name(&self) -> String {
