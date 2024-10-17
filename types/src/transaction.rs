@@ -250,7 +250,7 @@ impl Transaction {
         match self {
             Transaction::Deploy(deploy) => Ok(deploy.session().entry_point_name().to_string()),
             Transaction::V1(v1_txn) => {
-                let entry_point = (*v1_txn).get_transaction_entry_point()?; // Bubble up the error
+                let entry_point = (*v1_txn).get_transaction_entry_point()?;
                 Ok(entry_point.to_string())
             }
         }
