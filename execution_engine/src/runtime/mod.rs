@@ -2516,9 +2516,10 @@ where
 
         for (topic_name, topic_hash) in previous_message_topics.iter() {
             let topic_key = Key::message_topic(hash_addr, *topic_hash);
+            let block_time = self.context.get_block_info().block_time();
             let summary = StoredValue::MessageTopic(MessageTopicSummary::new(
                 0,
-                self.context.get_blocktime(),
+                block_time,
                 topic_name.clone(),
             ));
             self.context.metered_write_gs_unsafe(topic_key, summary)?;

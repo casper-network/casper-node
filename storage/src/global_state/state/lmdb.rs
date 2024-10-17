@@ -51,6 +51,7 @@ pub struct LmdbGlobalState {
     pub(crate) empty_root_hash: Digest,
     /// Max query depth
     pub max_query_depth: u64,
+    /// Enable the addressable entity and migrate accounts/contracts to entities.
     pub enable_entity: bool,
 }
 

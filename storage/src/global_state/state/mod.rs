@@ -1082,7 +1082,7 @@ pub trait StateProvider {
         let query_request = match tc.get_system_entity_registry() {
             Ok(scr) => match scr.get(AUCTION).copied() {
                 Some(auction_hash) => {
-                    let key = if !request.enable_entity() {
+                    let key = if !request.enable_addressable_entity() {
                         Key::Hash(auction_hash)
                     } else {
                         Key::AddressableEntity(EntityAddr::System(auction_hash))
@@ -1834,7 +1834,7 @@ pub trait StateProvider {
             },
             SystemEntityRegistrySelector::ByName(name) => match reg.get(name).copied() {
                 Some(entity_hash) => {
-                    let key = if !request.enable_to_entity() {
+                    let key = if !request.enable_addressable_entity() {
                         Key::Hash(entity_hash)
                     } else {
                         Key::AddressableEntity(EntityAddr::System(entity_hash))
@@ -1886,7 +1886,7 @@ pub trait StateProvider {
         let query_request = match tc.get_system_entity_registry() {
             Ok(scr) => match scr.get(MINT).copied() {
                 Some(mint_hash) => {
-                    let key = if !request.enable_to_entity() {
+                    let key = if !request.enable_addressable_entity() {
                         Key::Hash(mint_hash)
                     } else {
                         Key::AddressableEntity(EntityAddr::System(mint_hash))
@@ -1941,7 +1941,7 @@ pub trait StateProvider {
         let query_request = match tc.get_system_entity_registry() {
             Ok(scr) => match scr.get(MINT).copied() {
                 Some(mint_hash) => {
-                    let key = if !request.enable_to_entity() {
+                    let key = if !request.enable_addressable_entity() {
                         Key::Hash(mint_hash)
                     } else {
                         Key::AddressableEntity(EntityAddr::System(mint_hash))
@@ -2105,7 +2105,7 @@ pub trait StateProvider {
                     return TransferResult::Failure(TransferError::TrackingCopy(tce));
                 }
             };
-        let entity_key = if config.enable_entity() {
+        let entity_key = if config.enable_addressable_entity() {
             Key::AddressableEntity(entity_addr)
         } else {
             match entity_addr {

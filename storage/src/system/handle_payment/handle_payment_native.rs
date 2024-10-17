@@ -48,7 +48,7 @@ where
                 target_uref
             } // entity exists
             Ok(Some(StoredValue::Account(account))) => {
-                if self.config().enable_entity() {
+                if self.config().enable_addressable_entity() {
                     self.tracking_copy()
                         .borrow_mut()
                         .migrate_account(target, self.protocol_version())

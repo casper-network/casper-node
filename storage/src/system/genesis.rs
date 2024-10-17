@@ -143,11 +143,13 @@ impl fmt::Display for GenesisError {
 }
 
 /// State for genesis installer.
-pub struct GenesisInstaller<S>
+pub enum GenesisInstaller<S>
 where
     S: StateProvider + ?Sized,
 {
+    /// Install genesis using the Accounts/Contracts model.
     AccountContract(AccountContractInstaller<S>),
+    /// Install genesis using the Addressable Entity model.
     Entity(EntityGenesisInstaller<S>),
 }
 impl<S> GenesisInstaller<S>

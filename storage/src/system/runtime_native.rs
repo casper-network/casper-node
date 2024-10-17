@@ -26,7 +26,7 @@ pub struct Config {
     balance_hold_interval: u64,
     include_credits: bool,
     credit_cap: Ratio<U512>,
-    enable_entity: bool,
+    enable_addressable_entity: bool,
 }
 
 impl Config {
@@ -58,7 +58,7 @@ impl Config {
             balance_hold_interval,
             include_credits,
             credit_cap,
-            enable_entity,
+            enable_addressable_entity: enable_entity,
         }
     }
 
@@ -150,8 +150,9 @@ impl Config {
         self.credit_cap
     }
 
-    pub fn enable_entity(&self) -> bool {
-        self.enable_entity
+    /// Enable the addressable entity and migrate accounts/contracts to entities.
+    pub fn enable_addressable_entity(&self) -> bool {
+        self.enable_addressable_entity
     }
 
     /// Changes the transfer config.
@@ -168,7 +169,7 @@ impl Config {
             balance_hold_interval: self.balance_hold_interval,
             include_credits: self.include_credits,
             credit_cap: self.credit_cap,
-            enable_entity: self.enable_entity,
+            enable_addressable_entity: self.enable_addressable_entity,
         }
     }
 }
@@ -353,7 +354,7 @@ where
         let (entity_addr, runtime_footprint, access_rights) =
             tracking_copy.borrow_mut().system_entity(protocol_version)?;
         let address = PublicKey::System.to_account_hash();
-        let entity_key = if config.enable_entity {
+        let entity_key = if config.enable_addressable_entity {
             Key::AddressableEntity(entity_addr)
         } else {
             Key::Hash(entity_addr.value())
@@ -399,7 +400,7 @@ where
                 ));
             }
         };
-        let entity_key = if config.enable_entity {
+        let entity_key = if config.enable_addressable_entity {
             Key::AddressableEntity(EntityAddr::System(hash))
         } else {
             Key::Hash(hash)

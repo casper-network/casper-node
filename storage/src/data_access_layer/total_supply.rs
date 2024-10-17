@@ -33,7 +33,8 @@ impl TotalSupplyRequest {
         self.protocol_version
     }
 
-    pub fn enable_to_entity(&self) -> bool {
+    /// Enable the addressable entity and migrate accounts/contracts to entities.
+    pub fn enable_addressable_entity(&self) -> bool {
         self.enable_addressable_entity
     }
 }

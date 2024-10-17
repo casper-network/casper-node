@@ -30,6 +30,7 @@ mod genesis;
 pub mod handle_fee;
 mod handle_refund;
 mod key_prefix;
+/// Message topics.
 pub mod message_topics;
 /// Mint provider.
 pub mod mint;
@@ -127,6 +128,7 @@ pub struct DataAccessLayer<S> {
     pub state: S,
     /// Max query depth.
     pub max_query_depth: u64,
+    /// Enable the addressable entity capability.
     pub enable_addressable_entity: bool,
 }
 

@@ -266,7 +266,7 @@ where
         for (validator_public_key, delegator_public_key, _, delegated_amount) in
             genesis_delegators.iter()
         {
-            if delegated_amount.is_zero() {
+            if *delegated_amount == &Motes::zero() {
                 return Err(GenesisError::InvalidDelegatedAmount {
                     public_key: (*delegator_public_key).clone(),
                 }
