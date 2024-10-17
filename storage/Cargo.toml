@@ -6,7 +6,7 @@ description = "Storage for a node on the Casper network."
 readme = "README.md"
 documentation = "https://docs.rs/casper-storage"
 homepage = "https://casperlabs.io"
-repository = "https://github.com/CasperLabs/casper-node/tree/master/storage"
+repository = "https://github.com/casper-network/casper-node/tree/master/storage"
 license = "Apache-2.0"
 
 [dependencies]

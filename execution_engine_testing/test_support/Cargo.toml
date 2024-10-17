@@ -7,7 +7,7 @@ description = "Library to support testing of Wasm smart contracts for use on the
 documentation = "https://docs.rs/casper-engine-test-support"
 readme = "README.md"
 homepage = "https://casperlabs.io"
-repository = "https://github.com/CasperLabs/casper-node/tree/master/execution_engine_testing/test_support"
+repository = "https://github.com/casper-network/casper-node/tree/master/execution_engine_testing/test_support"
 license = "Apache-2.0"
 
 [dependencies]
