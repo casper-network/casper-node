@@ -2,7 +2,7 @@ use crate::{InitiatorAddr, PublicKey, SecretKey};
 
 /// Used when constructing a deploy or transaction.
 #[derive(Debug)]
-pub(super) enum InitiatorAddrAndSecretKey<'a> {
+pub(crate) enum InitiatorAddrAndSecretKey<'a> {
     /// Provides both the initiator address and the secret key (not necessarily for the same
     /// initiator address) used to sign the deploy or transaction.
     Both {

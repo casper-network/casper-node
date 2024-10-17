@@ -1,12 +1,12 @@
 use std::collections::BTreeSet;
 
 use casper_execution_engine::engine_state::{
-    deploy_item::DeployItem, BlockInfo, ExecutableItem, WasmV1Request,
+    deploy_item::DeployItem, BlockInfo, ExecutableItem, SessionInputData, WasmV1Request,
 };
 use casper_types::{
     account::AccountHash, addressable_entity::DEFAULT_ENTRY_POINT_NAME, runtime_args,
     AddressableEntityHash, BlockHash, BlockTime, Digest, EntityVersion, Gas, InitiatorAddr,
-    PackageHash, Phase, RuntimeArgs, Transaction, TransactionHash, TransactionV1Hash,
+    PackageHash, Phase, RuntimeArgs, TransactionHash, TransactionV1Hash,
 };
 
 use crate::{DeployItemBuilder, ARG_AMOUNT, DEFAULT_BLOCK_TIME, DEFAULT_PAYMENT};
@@ -50,19 +50,19 @@ impl ExecuteRequestBuilder {
     /// The default value used for `WasmV1Request::entry_point`.
     pub const DEFAULT_ENTRY_POINT: &'static str = "call";
 
-    /// Converts a `Transaction` into an `ExecuteRequestBuilder`.
-    pub fn from_transaction(txn: &Transaction) -> Self {
+    /// Converts a `SessionInputData` into an `ExecuteRequestBuilder`.
+    pub fn from_session_input_data(session_input_data: &SessionInputData) -> Self {
         let block_info = BlockInfo::new(
             Self::DEFAULT_STATE_HASH,
             BlockTime::new(DEFAULT_BLOCK_TIME),
             BlockHash::default(),
             0,
         );
-        let authorization_keys = txn.authorization_keys();
+        let authorization_keys = session_input_data.signers();
         let session = WasmV1Request::new_session(
             block_info,
             Gas::new(5_000_000_000_000_u64), // TODO - set proper value
-            txn,
+            session_input_data,
         )
         .unwrap();
 
@@ -70,7 +70,7 @@ impl ExecuteRequestBuilder {
         let payment_gas_limit: Gas;
         let payment_entry_point: String;
         let payment_args: RuntimeArgs;
-        if txn.is_standard_payment() {
+        if session_input_data.is_standard_payment() {
             payment = None;
             payment_gas_limit = Gas::zero();
             payment_entry_point = DEFAULT_ENTRY_POINT_NAME.to_string();
@@ -85,7 +85,7 @@ impl ExecuteRequestBuilder {
             let request = WasmV1Request::new_custom_payment(
                 block_info,
                 Gas::new(5_000_000_000_000_u64), // TODO - set proper value
-                txn,
+                session_input_data,
             )
             .unwrap();
             payment = Some(request.executable_item);

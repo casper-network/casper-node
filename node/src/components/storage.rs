@@ -69,8 +69,7 @@ use casper_types::{
     Approval, ApprovalsHash, AvailableBlockRange, Block, BlockBody, BlockHash, BlockHeader,
     BlockSignatures, BlockSignaturesV1, BlockSignaturesV2, BlockV2, ChainNameDigest, DeployHash,
     EraId, ExecutionInfo, FinalitySignature, ProtocolVersion, SignedBlockHeader, Timestamp,
-    Transaction, TransactionConfig, TransactionHash, TransactionHeader, TransactionId, Transfer,
-    U512,
+    Transaction, TransactionConfig, TransactionHash, TransactionId, Transfer, U512,
 };
 use datasize::DataSize;
 use num_rational::Ratio;
@@ -94,7 +93,7 @@ use crate::{
     types::{
         BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockWithMetadata,
         ExecutableBlock, LegacyDeploy, MaxTtl, NodeId, NodeRng, SyncLeap, SyncLeapIdentifier,
-        VariantMismatch,
+        TransactionHeader, VariantMismatch,
     },
     utils::{display_error, WithDir},
 };
@@ -2016,11 +2015,9 @@ impl Storage {
                     deploy.take_header().into(),
                     execution_result,
                 )),
-                Some(Transaction::V1(transaction_v1)) => ret.push((
-                    transaction_hash,
-                    transaction_v1.take_header().into(),
-                    execution_result,
-                )),
+                Some(Transaction::V1(transaction_v1)) => {
+                    ret.push((transaction_hash, (&transaction_v1).into(), execution_result))
+                }
             };
         }
         Ok(Some(ret))
