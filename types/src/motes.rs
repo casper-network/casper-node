@@ -1,15 +1,10 @@
 //! The `motes` module is used for working with Motes.
 
 use alloc::vec::Vec;
-use core::{
-    fmt,
-    iter::Sum,
-    ops::{Add, Div, Mul, Sub},
-};
+use core::fmt;
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
-use num::Zero;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -23,6 +18,9 @@ use crate::{
 pub struct Motes(U512);
 
 impl Motes {
+    /// The maximum value of `Motes`.
+    pub const MAX: Motes = Motes(U512::MAX);
+
     /// Constructs a new `Motes`.
     pub fn new<T: Into<U512>>(value: T) -> Self {
         Motes(value.into())
@@ -41,6 +39,17 @@ impl Motes {
     /// Checked integer subtraction. Computes `self - rhs`, returning `None` if underflow occurred.
     pub fn checked_sub(&self, rhs: Self) -> Option<Self> {
         self.0.checked_sub(rhs.value()).map(Self::new)
+    }
+
+    /// Checked integer multiplication. Computes `self * rhs`, returning `None` if overflow
+    /// occurred.
+    pub fn checked_mul(&self, rhs: Self) -> Option<Self> {
+        self.0.checked_mul(rhs.value()).map(Self::new)
+    }
+
+    /// Checked integer division. Computes `self / rhs`, returning `None` if `rhs == 0`.
+    pub fn checked_div(&self, rhs: Self) -> Option<Self> {
+        self.0.checked_div(rhs.value()).map(Self::new)
     }
 
     /// Returns the inner `U512` value.
@@ -68,58 +77,6 @@ impl Motes {
 impl fmt::Display for Motes {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:?}", self.0)
-    }
-}
-
-impl Add for Motes {
-    type Output = Motes;
-
-    fn add(self, rhs: Self) -> Self::Output {
-        let val = self.value() + rhs.value();
-        Motes::new(val)
-    }
-}
-
-impl Sub for Motes {
-    type Output = Motes;
-
-    fn sub(self, rhs: Self) -> Self::Output {
-        let val = self.value() - rhs.value();
-        Motes::new(val)
-    }
-}
-
-impl Div for Motes {
-    type Output = Motes;
-
-    fn div(self, rhs: Self) -> Self::Output {
-        let val = self.value() / rhs.value();
-        Motes::new(val)
-    }
-}
-
-impl Mul for Motes {
-    type Output = Motes;
-
-    fn mul(self, rhs: Self) -> Self::Output {
-        let val = self.value() * rhs.value();
-        Motes::new(val)
-    }
-}
-
-impl Zero for Motes {
-    fn zero() -> Self {
-        Motes::zero()
-    }
-
-    fn is_zero(&self) -> bool {
-        self.0.is_zero()
-    }
-}
-
-impl Sum for Motes {
-    fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
-        iter.fold(Motes::zero(), Add::add)
     }
 }
 
@@ -172,8 +129,8 @@ mod tests {
         let right_motes = Motes::new(1);
         let expected_motes = Motes::new(2);
         assert_eq!(
-            (left_motes + right_motes),
-            expected_motes,
+            left_motes.checked_add(right_motes),
+            Some(expected_motes),
             "should be equal"
         )
     }
@@ -184,8 +141,8 @@ mod tests {
         let right_motes = Motes::new(1);
         let expected_motes = Motes::new(0);
         assert_eq!(
-            (left_motes - right_motes),
-            expected_motes,
+            left_motes.checked_sub(right_motes),
+            Some(expected_motes),
             "should be equal"
         )
     }
@@ -196,8 +153,8 @@ mod tests {
         let right_motes = Motes::new(10);
         let expected_motes = Motes::new(1000);
         assert_eq!(
-            (left_motes * right_motes),
-            expected_motes,
+            left_motes.checked_mul(right_motes),
+            Some(expected_motes),
             "should be equal"
         )
     }
@@ -208,8 +165,8 @@ mod tests {
         let right_motes = Motes::new(100);
         let expected_motes = Motes::new(10);
         assert_eq!(
-            (left_motes / right_motes),
-            expected_motes,
+            left_motes.checked_div(right_motes),
+            Some(expected_motes),
             "should be equal"
         )
     }

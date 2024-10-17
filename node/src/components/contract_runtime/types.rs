@@ -1,5 +1,6 @@
 use std::{collections::BTreeMap, sync::Arc};
 
+use crate::types::TransactionHeader;
 use casper_types::{execution::PaymentInfo, InitiatorAddr, Transfer};
 use datasize::DataSize;
 use serde::Serialize;
@@ -18,8 +19,7 @@ use casper_types::{
     contract_messages::Messages,
     execution::{Effects, ExecutionResult, ExecutionResultV2},
     BlockHash, BlockHeaderV2, BlockV2, Digest, EraId, Gas, InvalidDeploy, InvalidTransaction,
-    InvalidTransactionV1, ProtocolVersion, PublicKey, Transaction, TransactionHash,
-    TransactionHeader, U512,
+    InvalidTransactionV1, ProtocolVersion, PublicKey, Transaction, TransactionHash, U512,
 };
 
 /// Request for validator weights for a specific era.
@@ -83,7 +83,7 @@ impl ExecutionArtifactBuilder {
         ExecutionArtifactBuilder {
             effects: Effects::new(),
             hash: transaction.hash(),
-            header: transaction.header(),
+            header: transaction.into(),
             error_message: None,
             transfers: vec![],
             messages: Default::default(),
@@ -413,6 +413,10 @@ impl SpeculativeExecutionResult {
                 InvalidTransaction::V1(InvalidTransactionV1::UnableToCalculateGasLimit),
             ),
         }
+    }
+
+    pub fn invalid_transaction(error: InvalidTransaction) -> Self {
+        SpeculativeExecutionResult::InvalidTransaction(error)
     }
 }
 

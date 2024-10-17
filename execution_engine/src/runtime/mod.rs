@@ -3321,7 +3321,9 @@ where
     where
         T: AsRef<[HostFunctionCost]> + Copy,
     {
-        let cost = host_function.calculate_gas_cost(weights);
+        let cost = host_function
+            .calculate_gas_cost(weights)
+            .ok_or(ExecError::GasLimit)?; // Overflowing gas calculation means gas limit was exceeded
         self.gas(cost)?;
         Ok(())
     }

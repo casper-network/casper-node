@@ -280,6 +280,9 @@ pub enum ErrorCode {
     /// Purse was not found for given identifier.
     #[error("purse was not found for given identifier")]
     PurseNotFound = 87,
+    /// Too many requests per second.
+    #[error("request was throttled")]
+    RequestThrottled = 88,
 }
 
 impl TryFrom<u16> for ErrorCode {
@@ -375,6 +378,7 @@ impl TryFrom<u16> for ErrorCode {
             85 => Ok(ErrorCode::GasPriceToleranceTooLow),
             86 => Ok(ErrorCode::ReceivedV1Transaction),
             87 => Ok(ErrorCode::PurseNotFound),
+            88 => Ok(ErrorCode::RequestThrottled),
             _ => Err(UnknownErrorCode),
         }
     }
@@ -507,7 +511,7 @@ impl From<InvalidTransactionV1> for ErrorCode {
             InvalidTransactionV1::EntryPointCannotBeCall => {
                 ErrorCode::InvalidTransactionEntryPointCannotBeCall
             }
-            InvalidTransactionV1::InvalidTransactionKind(_) => {
+            InvalidTransactionV1::InvalidTransactionLane(_) => {
                 ErrorCode::InvalidTransactionInvalidTransactionKind
             }
             InvalidTransactionV1::GasPriceToleranceTooLow { .. } => {
@@ -536,6 +540,7 @@ mod tests {
                 "variant {} not covered by TryFrom<u16> implementation",
                 as_int
             );
+            assert_eq!(decoded.unwrap(), variant);
         }
     }
 }

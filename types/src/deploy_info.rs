@@ -107,14 +107,13 @@ impl ToBytes for DeployInfo {
 /// Generators for a `DeployInfo`
 #[cfg(any(feature = "testing", feature = "gens", test))]
 pub(crate) mod gens {
-    use proptest::{collection, prelude::Strategy};
-
     use crate::{
         gens::{account_hash_arb, u512_arb, uref_arb},
         transaction::gens::deploy_hash_arb,
         transfer::gens::transfer_v1_addr_arb,
         DeployInfo,
     };
+    use proptest::{collection, prelude::Strategy};
 
     pub fn deploy_info_arb() -> impl Strategy<Value = DeployInfo> {
         let transfers_length_range = 0..5;

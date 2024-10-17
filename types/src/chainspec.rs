@@ -62,11 +62,12 @@ pub use next_upgrade::NextUpgrade;
 pub use pricing_handling::PricingHandling;
 pub use protocol_config::ProtocolConfig;
 pub use refund_handling::RefundHandling;
-pub use transaction_config::{DeployConfig, TransactionConfig, TransactionV1Config};
+pub use transaction_config::{
+    DeployConfig, TransactionConfig, TransactionLimitsDefinition, TransactionV1Config,
+};
 #[cfg(any(feature = "testing", test))]
 pub use transaction_config::{
-    DEFAULT_INSTALL_UPGRADE_GAS_LIMIT, DEFAULT_LARGE_TRANSACTION_GAS_LIMIT,
-    DEFAULT_MAX_PAYMENT_MOTES, DEFAULT_MIN_TRANSFER_MOTES,
+    DEFAULT_LARGE_TRANSACTION_GAS_LIMIT, DEFAULT_MAX_PAYMENT_MOTES, DEFAULT_MIN_TRANSFER_MOTES,
 };
 pub use upgrade_config::ProtocolUpgradeConfig;
 pub use vacancy_config::VacancyConfig;
@@ -222,39 +223,39 @@ impl Chainspec {
             .saturating_sub(self.core_config.gas_hold_interval.millis())
     }
 
-    /// Is the given transaction category supported.
-    pub fn is_supported(&self, category: u8) -> bool {
+    /// Is the given transaction lane supported.
+    pub fn is_supported(&self, lane: u8) -> bool {
         self.transaction_config
             .transaction_v1_config
-            .is_supported(category)
+            .is_supported(lane)
     }
 
     /// Returns the max serialized for the given category.
-    pub fn get_max_serialized_length_by_category(&self, category: u8) -> u64 {
+    pub fn get_max_serialized_length_by_category(&self, lane: u8) -> u64 {
         self.transaction_config
             .transaction_v1_config
-            .get_max_serialized_length(category)
+            .get_max_serialized_length(lane)
     }
 
     /// Returns the max args length for the given category.
-    pub fn get_max_args_length_by_category(&self, category: u8) -> u64 {
+    pub fn get_max_args_length_by_category(&self, lane: u8) -> u64 {
         self.transaction_config
             .transaction_v1_config
-            .get_max_args_length(category)
+            .get_max_args_length(lane)
     }
 
     /// Returns the max gas limit for the given category.
-    pub fn get_max_gas_limit_by_category(&self, category: u8) -> u64 {
+    pub fn get_max_gas_limit_by_category(&self, lane: u8) -> u64 {
         self.transaction_config
             .transaction_v1_config
-            .get_max_gas_limit(category)
+            .get_max_transaction_gas_limit(lane)
     }
 
     /// Returns the max transaction count for the given category.
-    pub fn get_max_transaction_count_by_category(&self, category: u8) -> u64 {
+    pub fn get_max_transaction_count_by_category(&self, lane: u8) -> u64 {
         self.transaction_config
             .transaction_v1_config
-            .get_max_transaction_count(category)
+            .get_max_transaction_count(lane)
     }
 }
 

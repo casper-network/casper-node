@@ -154,4 +154,6 @@ pub enum BlockExecutionError {
     #[error("Unsupported execution kind: {0}")]
     /// Unsupported execution kind
     UnsupportedTransactionKind(u8),
+    #[error("Error while converting transaction to internal representation: {0}")]
+    TransactionConversion(String),
 }

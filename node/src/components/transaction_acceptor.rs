@@ -17,7 +17,7 @@ use casper_types::{
     AddressableEntityHash, AddressableEntityIdentifier, BlockHeader, Chainspec, EntityAddr,
     EntityVersion, EntityVersionKey, EntryPoint, EntryPointAddr, ExecutableDeployItem,
     ExecutableDeployItemIdentifier, InitiatorAddr, Key, Package, PackageAddr, PackageHash,
-    PackageIdentifier, Transaction, TransactionEntryPoint, TransactionInvocationTarget,
+    PackageIdentifier, Timestamp, Transaction, TransactionEntryPoint, TransactionInvocationTarget,
     TransactionTarget, DEFAULT_ENTRY_POINT_NAME, U512,
 };
 
@@ -29,6 +29,7 @@ use crate::{
         EffectBuilder, EffectExt, Effects, Responder,
     },
     fatal,
+    types::MetaTransaction,
     utils::Source,
     NodeRng,
 };
@@ -105,29 +106,42 @@ impl TransactionAcceptor {
     fn accept<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        transaction: Transaction,
+        input_transaction: Transaction,
         source: Source,
         maybe_responder: Option<Responder<Result<(), Error>>>,
     ) -> Effects<Event> {
-        debug!(%source, %transaction, "checking transaction before accepting");
-        let event_metadata = Box::new(EventMetadata::new(transaction, source, maybe_responder));
-
-        let is_config_compliant = match &event_metadata.transaction {
-            Transaction::Deploy(deploy) => deploy
-                .is_config_compliant(
-                    &self.chainspec,
-                    self.acceptor_config.timestamp_leeway,
-                    event_metadata.verification_start_timestamp,
-                )
-                .map_err(|err| Error::InvalidTransaction(err.into())),
-            Transaction::V1(txn) => txn
-                .is_config_compliant(
-                    &self.chainspec,
-                    self.acceptor_config.timestamp_leeway,
-                    event_metadata.verification_start_timestamp,
-                )
-                .map_err(|err| Error::InvalidTransaction(err.into())),
+        debug!(%source, %input_transaction, "checking transaction before accepting");
+        let verification_start_timestamp = Timestamp::now();
+        let transaction_config = &self.chainspec.as_ref().transaction_config;
+        let maybe_meta_transaction = MetaTransaction::from(&input_transaction, transaction_config);
+        let meta_transaction = match maybe_meta_transaction {
+            Ok(transaction) => transaction,
+            Err(err) => {
+                return self.reject_transaction_direct(
+                    effect_builder,
+                    input_transaction,
+                    source,
+                    maybe_responder,
+                    verification_start_timestamp,
+                    Error::InvalidTransaction(err),
+                );
+            }
         };
+        let event_metadata = Box::new(EventMetadata::new(
+            input_transaction,
+            meta_transaction,
+            source,
+            maybe_responder,
+            verification_start_timestamp,
+        ));
+        let is_config_compliant = event_metadata
+            .meta_transaction
+            .is_config_compliant(
+                &self.chainspec,
+                self.acceptor_config.timestamp_leeway,
+                verification_start_timestamp,
+            )
+            .map_err(Error::InvalidTransaction);
 
         if let Err(error) = is_config_compliant {
             return self.reject_transaction(effect_builder, *event_metadata, error);
@@ -356,11 +370,11 @@ impl TransactionAcceptor {
         event_metadata: Box<EventMetadata>,
         block_header: Box<BlockHeader>,
     ) -> Effects<Event> {
-        match &event_metadata.transaction {
-            Transaction::Deploy(_) => {
+        match &event_metadata.meta_transaction {
+            MetaTransaction::Deploy(_) => {
                 self.verify_deploy_session(effect_builder, event_metadata, block_header)
             }
-            Transaction::V1(_) => {
+            MetaTransaction::V1(_) => {
                 self.verify_transaction_v1_body(effect_builder, event_metadata, block_header)
             }
         }
@@ -372,9 +386,9 @@ impl TransactionAcceptor {
         event_metadata: Box<EventMetadata>,
         block_header: Box<BlockHeader>,
     ) -> Effects<Event> {
-        let session = match &event_metadata.transaction {
-            Transaction::Deploy(deploy) => deploy.session(),
-            Transaction::V1(txn) => {
+        let session = match &event_metadata.meta_transaction {
+            MetaTransaction::Deploy(deploy) => deploy.session(),
+            MetaTransaction::V1(txn) => {
                 error!(%txn, "should only handle deploys in verify_deploy_session");
                 return self.reject_transaction(
                     effect_builder,
@@ -478,8 +492,8 @@ impl TransactionAcceptor {
             CryptoValidation,
         }
 
-        let next_step = match &event_metadata.transaction {
-            Transaction::Deploy(deploy) => {
+        let next_step = match &event_metadata.meta_transaction {
+            MetaTransaction::Deploy(deploy) => {
                 error!(
                     %deploy,
                     "should only handle version 1 transactions in verify_transaction_v1_body"
@@ -490,7 +504,7 @@ impl TransactionAcceptor {
                     Error::ExpectedTransactionV1,
                 );
             }
-            Transaction::V1(txn) => match txn.target() {
+            MetaTransaction::V1(txn) => match txn.target() {
                 TransactionTarget::Stored { id, .. } => match id {
                     TransactionInvocationTarget::ByHash(entity_addr) => {
                         NextStep::GetContract(EntityAddr::SmartContract(*entity_addr))
@@ -559,16 +573,18 @@ impl TransactionAcceptor {
             return self.reject_transaction(effect_builder, *event_metadata, error);
         }
 
-        let maybe_entry_point_name = match &event_metadata.transaction {
-            Transaction::Deploy(deploy) if is_payment => {
+        let maybe_entry_point_name = match &event_metadata.meta_transaction {
+            MetaTransaction::Deploy(deploy) if is_payment => {
                 Some(deploy.payment().entry_point_name().to_string())
             }
-            Transaction::Deploy(deploy) => Some(deploy.session().entry_point_name().to_string()),
-            Transaction::V1(_) if is_payment => {
+            MetaTransaction::Deploy(deploy) => {
+                Some(deploy.session().entry_point_name().to_string())
+            }
+            MetaTransaction::V1(_) if is_payment => {
                 error!("should not fetch a contract to validate payment logic for transaction v1s");
                 None
             }
-            Transaction::V1(txn) => match txn.entry_point() {
+            MetaTransaction::V1(txn) => match txn.entry_point() {
                 TransactionEntryPoint::Call => Some(DEFAULT_ENTRY_POINT_NAME.to_owned()),
                 TransactionEntryPoint::Custom(name) => Some(name.clone()),
                 TransactionEntryPoint::Transfer
@@ -737,11 +753,11 @@ impl TransactionAcceptor {
         effect_builder: EffectBuilder<REv>,
         event_metadata: Box<EventMetadata>,
     ) -> Effects<Event> {
-        let is_valid = match &event_metadata.transaction {
-            Transaction::Deploy(deploy) => deploy
+        let is_valid = match &event_metadata.meta_transaction {
+            MetaTransaction::Deploy(deploy) => deploy
                 .is_valid()
                 .map_err(|err| Error::InvalidTransaction(err.into())),
-            Transaction::V1(txn) => txn
+            MetaTransaction::V1(txn) => txn
                 .verify()
                 .map_err(|err| Error::InvalidTransaction(err.into())),
         };
@@ -775,11 +791,32 @@ impl TransactionAcceptor {
     ) -> Effects<Event> {
         debug!(%error, transaction = %event_metadata.transaction, "rejected transaction");
         let EventMetadata {
+            meta_transaction: _,
             transaction,
             source,
             maybe_responder,
             verification_start_timestamp,
         } = event_metadata;
+        self.reject_transaction_direct(
+            effect_builder,
+            transaction,
+            source,
+            maybe_responder,
+            verification_start_timestamp,
+            error,
+        )
+    }
+
+    fn reject_transaction_direct<REv: ReactorEventT>(
+        &self,
+        effect_builder: EffectBuilder<REv>,
+        transaction: Transaction,
+        source: Source,
+        maybe_responder: Option<Responder<Result<(), Error>>>,
+        verification_start_timestamp: Timestamp,
+        error: Error,
+    ) -> Effects<Event> {
+        debug!(%error, transaction = %transaction, "rejected transaction");
         self.metrics.observe_rejected(verification_start_timestamp);
         let mut effects = Effects::new();
         if let Some(responder) = maybe_responder {
@@ -847,6 +884,7 @@ impl TransactionAcceptor {
         is_new: bool,
     ) -> Effects<Event> {
         let EventMetadata {
+            meta_transaction: _,
             transaction,
             source,
             maybe_responder,

@@ -125,7 +125,7 @@ impl BlockValidationState {
             return (state, Some(responder));
         }
 
-        if Self::validate_transaction_category_counts(proposed_block, &chainspec.transaction_config)
+        if Self::validate_transaction_lane_counts(proposed_block, &chainspec.transaction_config)
             .is_err()
         {
             let state = BlockValidationState::Invalid(proposed_block.timestamp());
@@ -187,15 +187,15 @@ impl BlockValidationState {
         (state, None)
     }
 
-    fn validate_transaction_category_counts(
+    fn validate_transaction_lane_counts(
         block: &ProposedBlock<ClContext>,
         config: &TransactionConfig,
     ) -> Result<(), ()> {
-        for supported_category in config.transaction_v1_config.get_supported_categories() {
-            let transactions = block.value().count(Some(supported_category));
+        for supported_lane in config.transaction_v1_config.get_supported_lanes() {
+            let transactions = block.value().count(Some(supported_lane));
             let lane_count_limit = config
                 .transaction_v1_config
-                .get_max_transaction_count(supported_category);
+                .get_max_transaction_count(supported_lane);
             if lane_count_limit < transactions as u64 {
                 warn!("too many transactions in category: {lane_count_limit}");
                 return Err(());
@@ -550,7 +550,7 @@ mod tests {
     use rand::Rng;
 
     use casper_types::{
-        testing::TestRng, ChainspecRawBytes, TimeDiff, Transaction, TransactionHash,
+        testing::TestRng, ChainspecRawBytes, TimeDiff, Transaction, TransactionHash, TransactionV1,
     };
 
     use super::{super::tests::*, *};
@@ -611,8 +611,8 @@ mod tests {
                 let mut ret = vec![];
                 for _ in 0..auction_count {
                     let txn = new_auction(self.rng, timestamp, ttl);
-                    ret.push((TransactionHash::V1(*txn.hash()), txn.approvals().clone()));
-                    self.transactions.push(Transaction::V1(txn));
+                    ret.push((txn.hash(), txn.approvals().clone()));
+                    self.transactions.push(txn);
                 }
                 ret
             };
@@ -620,9 +620,11 @@ mod tests {
             let install_upgrade_for_block = {
                 let mut ret = vec![];
                 for _ in 0..install_upgrade_count {
-                    let txn = new_install_upgrade(self.rng, timestamp, ttl);
-                    ret.push((TransactionHash::V1(*txn.hash()), txn.approvals().clone()));
-                    self.transactions.push(Transaction::V1(txn));
+                    let txn: Transaction =
+                        TransactionV1::random_install_upgrade(self.rng, Some(timestamp), Some(ttl))
+                            .into();
+                    ret.push((txn.hash(), txn.approvals().clone()));
+                    self.transactions.push(txn);
                 }
                 ret
             };
