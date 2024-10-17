@@ -1,4 +1,4 @@
-use alloc::vec::Vec;
+use alloc::{string::String, vec::Vec};
 use core::fmt::{self, Display, Formatter};
 
 #[cfg(feature = "datasize")]
@@ -43,6 +43,11 @@ impl TransactionHash {
             TransactionHash::Deploy(deploy_hash) => *deploy_hash.inner(),
             TransactionHash::V1(transaction_hash) => *transaction_hash.inner(),
         }
+    }
+
+    /// Hexadecimal representation of the hash.
+    pub fn to_hex_string(&self) -> String {
+        base16::encode_lower(&self.digest())
     }
 
     /// Returns a random `TransactionHash`.

@@ -21,7 +21,11 @@ mod transaction_target;
 mod transaction_v1;
 mod transfer_target;
 
-use alloc::{collections::BTreeSet, vec::Vec};
+use alloc::{
+    collections::BTreeSet,
+    string::{String, ToString},
+    vec::Vec,
+};
 use core::fmt::{self, Debug, Display, Formatter};
 #[cfg(any(feature = "std", test))]
 use std::hash::Hash;
@@ -45,7 +49,7 @@ use crate::testing::TestRng;
 use crate::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    Digest, SecretKey, TimeDiff, Timestamp,
+    Digest, Phase, SecretKey, TimeDiff, Timestamp,
 };
 #[cfg(any(feature = "std", test))]
 use crate::{Chainspec, Gas, Motes};
@@ -194,6 +198,31 @@ impl Transaction {
             Transaction::V1(txn) => txn.compute_approvals_hash()?,
         };
         Ok(approvals_hash)
+    }
+
+    /// Returns the chain name for the transaction, whether it's a `Deploy` or `V1` transaction.
+    pub fn chain_name(&self) -> String {
+        match self {
+            Transaction::Deploy(txn) => txn.chain_name().to_string(),
+            Transaction::V1(txn) => txn.chain_name().to_string(),
+        }
+    }
+
+    /// Checks if the transaction is a standard payment.
+    ///
+    /// For `Deploy` transactions, it checks if the session is a standard payment
+    /// in the payment phase. For `V1` transactions, it returns the value of
+    /// `standard_payment` if the pricing mode is `Classic`, otherwise it returns `true`.
+    pub fn is_standard_payment(&self) -> bool {
+        match self {
+            Transaction::Deploy(txn) => txn.session().is_standard_payment(Phase::Payment),
+            Transaction::V1(txn) => match txn.pricing_mode() {
+                PricingMode::Classic {
+                    standard_payment, ..
+                } => *standard_payment,
+                _ => true,
+            },
+        }
     }
 
     /// Returns the computed `TransactionId` uniquely identifying this transaction and its
@@ -439,6 +468,11 @@ pub mod gens {
         prelude::{Arbitrary, Strategy},
     };
 
+    /// Generates a random `DeployHash` for testing purposes.
+    ///
+    /// This function is used to generate random `DeployHash` values for testing purposes.
+    /// It produces a proptest `Strategy` that can be used to generate arbitrary `DeployHash`
+    /// values.
     pub fn deploy_hash_arb() -> impl Strategy<Value = DeployHash> {
         array::uniform32(<u8>::arbitrary()).prop_map(DeployHash::from_raw)
     }

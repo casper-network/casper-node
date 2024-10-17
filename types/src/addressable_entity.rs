@@ -79,13 +79,24 @@ pub const MAX_GROUPS: u8 = 10;
 /// Maximum number of URefs which can be assigned across all user groups.
 pub const MAX_TOTAL_UREFS: usize = 100;
 
-const ADDRESSABLE_ENTITY_STRING_PREFIX: &str = "addressable-entity-";
-
-const ENTITY_PREFIX: &str = "entity-";
-const ACCOUNT_ENTITY_PREFIX: &str = "account-";
-const CONTRACT_ENTITY_PREFIX: &str = "contract-";
-const SYSTEM_ENTITY_PREFIX: &str = "system-";
-const NAMED_KEY_PREFIX: &str = "named-key-";
+/// The prefix applied to the hex-encoded `Addressable Entity` to produce a formatted string
+/// representation.
+pub const ADDRESSABLE_ENTITY_STRING_PREFIX: &str = "addressable-entity-";
+/// The prefix applied to the hex-encoded `Entity` to produce a formatted string
+/// representation.
+pub const ENTITY_PREFIX: &str = "entity-";
+/// The prefix applied to the hex-encoded `Account` to produce a formatted string
+/// representation.
+pub const ACCOUNT_ENTITY_PREFIX: &str = "account-";
+/// The prefix applied to the hex-encoded `Smart contract` to produce a formatted string
+/// representation.
+pub const CONTRACT_ENTITY_PREFIX: &str = "contract-";
+/// The prefix applied to the hex-encoded `System entity account or contract` to produce a formatted
+///  string representation.
+pub const SYSTEM_ENTITY_PREFIX: &str = "system-";
+/// The prefix applied to the hex-encoded `Named Key` to produce a formatted string
+/// representation.
+pub const NAMED_KEY_PREFIX: &str = "named-key-";
 
 /// Set of errors which may happen when working with contract headers.
 #[derive(Debug, PartialEq, Eq)]
@@ -277,6 +288,11 @@ impl AddressableEntityHash {
             ADDRESSABLE_ENTITY_STRING_PREFIX,
             base16::encode_lower(&self.0),
         )
+    }
+
+    /// Hexadecimal representation of the hash.
+    pub fn to_hex_string(&self) -> String {
+        base16::encode_lower(&self.0)
     }
 
     /// Parses a string formatted as per `Self::to_formatted_string()` into a

@@ -1,4 +1,4 @@
-use alloc::vec::Vec;
+use alloc::{string::String, vec::Vec};
 use core::fmt::{self, Display, Formatter};
 
 #[cfg(feature = "datasize")]
@@ -51,6 +51,11 @@ impl BlockHash {
     /// Returns the wrapped inner digest.
     pub fn inner(&self) -> &Digest {
         &self.0
+    }
+
+    /// Hexadecimal representation of the hash.
+    pub fn to_hex_string(&self) -> String {
+        base16::encode_lower(self.inner())
     }
 
     // This method is not intended to be used by third party crates.

@@ -6,7 +6,7 @@ use crate::testing::TestRng;
 use crate::{account::AccountHash, PublicKey, URef};
 
 /// The various types which can be used as the `target` runtime argument of a native transfer.
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]
 pub enum TransferTarget {
     /// A public key.
     PublicKey(PublicKey),
