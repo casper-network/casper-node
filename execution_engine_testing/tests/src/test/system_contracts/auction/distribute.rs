@@ -22,7 +22,8 @@ use casper_types::{
         ARG_DELEGATOR, ARG_PUBLIC_KEY, ARG_REWARDS_MAP, ARG_VALIDATOR, DELEGATION_RATE_DENOMINATOR,
         METHOD_DISTRIBUTE, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
     },
-    EntityAddr, EraId, Key, ProtocolVersion, PublicKey, SecretKey, Timestamp, U512,
+    EntityAddr, EraId, Key, ProtocolVersion, PublicKey, SecretKey, Timestamp,
+    DEFAULT_MINIMUM_BID_AMOUNT, U512,
 };
 
 const ARG_ENTRY_POINT: &str = "entry_point";
@@ -1028,11 +1029,13 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
                     delegation_rate: 0,
                     minimum_delegation_amount: updelegate_amount.as_u64(),
                     maximum_delegation_amount: updelegate_amount.as_u64(),
+                    minimum_bid_amount: DEFAULT_MINIMUM_BID_AMOUNT,
                 }
             } else {
                 AuctionMethod::WithdrawBid {
                     public_key: VALIDATOR_1.clone(),
                     amount,
+                    minimum_bid_amount: DEFAULT_MINIMUM_BID_AMOUNT,
                 }
             }
         };
