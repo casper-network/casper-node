@@ -216,6 +216,32 @@ impl Transaction {
     }
     */
 
+    /// Returns the chain name for the transaction, whether it's a `Deploy` or `V1` transaction.
+    pub fn chain_name(&self) -> String {
+        match self {
+            Transaction::Deploy(txn) => txn.chain_name().to_string(),
+            Transaction::V1(txn) => txn.chain_name().to_string(),
+        }
+    }
+
+    /// Returns `true` if `self` represents a native transfer deploy or a native V1 transaction.
+    pub fn is_native(&self) -> bool {
+        match self {
+            Transaction::Deploy(deploy) => deploy.is_transfer(),
+            Transaction::V1(v1_txn) => {
+                (*v1_txn).get_transaction_target().unwrap() == TransactionTarget::Native
+            }
+        }
+    }
+
+    /// Returns the entry point name for the transaction, whether it's a `Deploy` or `V1` transaction.
+    pub fn entry_point(&self) -> String {
+        match self {
+            Transaction::Deploy(deploy) => deploy.session().entry_point_name().to_string(),
+            Transaction::V1(v1_txn) => (*v1_txn).get_transaction_entry_point().unwrap().to_string(),
+        }
+    }
+
     /// Returns the computed `TransactionId` uniquely identifying this transaction and its
     /// approvals.
     pub fn compute_id(&self) -> TransactionId {
