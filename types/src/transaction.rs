@@ -240,18 +240,21 @@ impl Transaction {
         }
     }
 
-    /// Retrieves the entry point name of the transaction.
-    /// Returns the entry point as a `String` for both `Deploy` and `V1` transactions, or an error
-    /// if the entry point could not be deserialized in `V1` transactions.
+    /// Retrieves the entry point of the transaction.
+    ///
+    /// For `Deploy` transactions, it returns the entry point as a `TransactionEntryPoint` derived
+    /// from the session. For `V1` transactions, it retrieves the entry point using the
+    /// `get_transaction_entry_point()` method, returning an error if the entry point cannot be
+    /// deserialized.
     ///
     /// # Errors
     /// Returns `InvalidTransactionV1` if the entry point cannot be retrieved for a `V1` transaction.
-    pub fn entry_point(&self) -> Result<String, InvalidTransactionV1> {
+    pub fn entry_point(&self) -> Result<TransactionEntryPoint, InvalidTransactionV1> {
         match self {
-            Transaction::Deploy(deploy) => Ok(deploy.session().entry_point_name().to_string()),
+            Transaction::Deploy(deploy) => Ok(deploy.session().entry_point_name().into()),
             Transaction::V1(v1_txn) => {
                 let entry_point = (*v1_txn).get_transaction_entry_point()?;
-                Ok(entry_point.to_string())
+                Ok(entry_point)
             }
         }
     }
