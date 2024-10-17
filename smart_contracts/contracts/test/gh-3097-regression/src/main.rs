@@ -62,11 +62,11 @@ pub extern "C" fn call() {
 
     runtime::put_key(
         DISABLED_CONTRACT_HASH_KEY,
-        Key::contract_entity_key(disabled_contract_hash),
+        Key::Hash(disabled_contract_hash.value()),
     );
     runtime::put_key(
         ENABLED_CONTRACT_HASH_KEY,
-        Key::contract_entity_key(enabled_contract_hash),
+        Key::Hash(enabled_contract_hash.value()),
     );
 
     storage::disable_contract_version(contract_package_hash, disabled_contract_hash)

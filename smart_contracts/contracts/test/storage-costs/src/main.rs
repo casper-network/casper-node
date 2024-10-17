@@ -285,6 +285,6 @@ pub extern "C" fn call() {
         named_keys,
         BTreeMap::new(),
     );
-    runtime::put_key(CONTRACT_KEY_NAME, Key::contract_entity_key(contract_hash));
+    runtime::put_key(CONTRACT_KEY_NAME, Key::Hash(contract_hash.value()));
     runtime::put_key(ACCESS_KEY_NAME, access_uref.into());
 }

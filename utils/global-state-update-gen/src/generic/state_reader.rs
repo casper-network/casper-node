@@ -77,7 +77,7 @@ impl StateReader for LmdbWasmTestBuilder {
             let mint_legacy_contract_hash: ContractHash =
                 ContractHash::new(mint_contract_hash.value());
 
-            self.get_legacy_contract(mint_legacy_contract_hash)
+            self.get_contract(mint_legacy_contract_hash)
                 .expect("mint should exist")
                 .named_keys()
                 .get(TOTAL_SUPPLY_KEY)
@@ -100,7 +100,7 @@ impl StateReader for LmdbWasmTestBuilder {
         } else {
             let auction_legacy_contract_hash = ContractHash::new(auction_contract_hash.value());
 
-            self.get_legacy_contract(auction_legacy_contract_hash)
+            self.get_contract(auction_legacy_contract_hash)
                 .expect("auction should exist")
                 .named_keys()
                 .get(SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY)

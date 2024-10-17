@@ -17,7 +17,7 @@ use casper_types::{
         mint::{Error, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
         Caller,
     },
-    Key, PublicKey, SystemEntityRegistry, URef, U512,
+    Key, PublicKey, SystemHashRegistry, URef, U512,
 };
 
 use crate::system::mint::{
@@ -70,10 +70,9 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
             None => return Err(Error::PurseNotFound),
         };
 
-        let new_balance = match source_available_balance.checked_sub(amount) {
-            Some(value) => value,
-            None => U512::zero(),
-        };
+        let new_balance = source_available_balance
+            .checked_sub(amount)
+            .unwrap_or_else(U512::zero);
         // change balance
         self.write_balance(purse, new_balance)?;
         // reduce total supply AFTER changing balance in case changing balance errors
@@ -113,13 +112,13 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
         if !self.allow_unrestricted_transfers() {
             let registry = self
                 .get_system_entity_registry()
-                .unwrap_or_else(|_| SystemEntityRegistry::new());
+                .unwrap_or_else(|_| SystemHashRegistry::new());
             let immediate_caller = self.get_immediate_caller();
             match immediate_caller {
                 Some(Caller::Entity {
-                    entity_hash: contract_hash,
+                    entity_addr: contract_hash,
                     ..
-                }) if registry.has_contract_hash(&contract_hash) => {
+                }) if registry.has_contract_hash(&contract_hash.value()) => {
                     // System contract calling a mint is fine (i.e. standard payment calling mint's
                     // transfer)
                 }
@@ -146,11 +145,17 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
                             let maybe_account = self.read_addressable_entity_by_account_hash(to);
 
                             match maybe_account {
-                                Ok(Some(addressable_entity)) => {
+                                Ok(Some(runtime_footprint)) => {
                                     // This can happen when user tries to transfer funds by
                                     // calling mint
                                     // directly but tries to specify wrong account hash.
-                                    if addressable_entity.main_purse().addr() != target.addr() {
+                                    let addr = if let Some(uref) = runtime_footprint.main_purse() {
+                                        uref.addr()
+                                    } else {
+                                        return Err(Error::InvalidContext);
+                                    };
+
+                                    if addr != target.addr() {
                                         return Err(Error::DisabledUnrestrictedTransfers);
                                     }
                                     let is_target_system_account =
@@ -187,7 +192,18 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
 
                 Some(Caller::Entity {
                     package_hash: _,
-                    entity_hash: _,
+                    entity_addr: _,
+                }) => {
+                    if self.get_caller() != PublicKey::System.to_account_hash()
+                        && !self.is_administrator(&self.get_caller())
+                    {
+                        return Err(Error::DisabledUnrestrictedTransfers);
+                    }
+                }
+
+                Some(Caller::SmartContract {
+                    contract_package_hash: _,
+                    contract_hash: _,
                 }) => {
                     if self.get_caller() != PublicKey::System.to_account_hash()
                         && !self.is_administrator(&self.get_caller())

@@ -95,5 +95,5 @@ pub extern "C" fn call() {
     runtime::put_key(CONTRACT_VERSION_KEY, version_uref.into());
 
     // Hash of the installed contract will be reachable through named keys
-    runtime::put_key(COUNTER_KEY, Key::contract_entity_key(stored_contract_hash));
+    runtime::put_key(COUNTER_KEY, Key::Hash(stored_contract_hash.value()));
 }

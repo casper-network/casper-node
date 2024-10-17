@@ -3,6 +3,7 @@ use std::sync::Arc;
 use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, LOCAL_GENESIS_REQUEST,
 };
+use casper_execution_engine::engine_state::engine_config::DEFAULT_ENABLE_ENTITY;
 use casper_storage::global_state::{
     state::{lmdb::LmdbGlobalState, StateProvider},
     transaction_source::lmdb::LmdbEnvironment,
@@ -42,8 +43,13 @@ fn regression_test_genesis_hash_mismatch() {
                 LmdbTrieStore::new(&lmdb_environment, None, DatabaseFlags::default())
                     .expect("should create lmdb trie store");
 
-            LmdbGlobalState::empty(Arc::new(lmdb_environment), Arc::new(lmdb_trie_store), 6)
-                .expect("Empty GlobalState.")
+            LmdbGlobalState::empty(
+                Arc::new(lmdb_environment),
+                Arc::new(lmdb_trie_store),
+                6,
+                DEFAULT_ENABLE_ENTITY,
+            )
+            .expect("Empty GlobalState.")
         };
         gs.empty_root()
     };

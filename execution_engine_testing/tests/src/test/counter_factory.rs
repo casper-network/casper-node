@@ -87,28 +87,53 @@ fn should_not_call_undefined_entrypoints_on_factory() {
 fn contract_factory_wasm_should_have_expected_exports() {
     let (builder, contract_hash) = setup();
 
-    let factory_contract_entity_key =
-        Key::addressable_entity_key(EntityKindTag::SmartContract, contract_hash);
+    let enable_entity = builder.chainspec().core_config.enable_addressable_entity;
 
-    let factory_contract = builder
-        .query(None, factory_contract_entity_key, &[])
-        .expect("should have contract")
-        .as_addressable_entity()
-        .cloned()
-        .expect("should be contract");
+    let bytes = if enable_entity {
+        let factory_contract = builder
+            .query(
+                None,
+                Key::addressable_entity_key(EntityKindTag::SmartContract, contract_hash),
+                &[],
+            )
+            .expect("should have contract")
+            .as_addressable_entity()
+            .cloned()
+            .expect("should be contract");
 
-    let factory_contract_byte_code_key = Key::byte_code_key(ByteCodeAddr::new_wasm_addr(
-        factory_contract.byte_code_addr(),
-    ));
+        let factory_contract_byte_code_key = Key::byte_code_key(ByteCodeAddr::new_wasm_addr(
+            factory_contract.byte_code_addr(),
+        ));
 
-    let factory_contract_wasm = builder
-        .query(None, factory_contract_byte_code_key, &[])
-        .expect("should have contract wasm")
-        .as_byte_code()
-        .cloned()
-        .expect("should have wasm");
+        let factory_contract_wasm = builder
+            .query(None, factory_contract_byte_code_key, &[])
+            .expect("should have contract wasm")
+            .as_byte_code()
+            .cloned()
+            .expect("should have wasm");
+        factory_contract_wasm.take_bytes()
+    } else {
+        let factory_contract = builder
+            .query(None, Key::Hash(contract_hash.value()), &[])
+            .expect("should have contract")
+            .as_contract()
+            .cloned()
+            .expect("should be contract");
 
-    let factory_wasm_exports = wasm_utils::get_wasm_exports(factory_contract_wasm.bytes());
+        let factory_contract_byte_code_key =
+            Key::Hash(factory_contract.contract_wasm_hash().value());
+
+        let factory_contract_wasm = builder
+            .query(None, factory_contract_byte_code_key, &[])
+            .expect("should have contract wasm")
+            .as_contract_wasm()
+            .cloned()
+            .expect("should have wasm");
+
+        factory_contract_wasm.take_bytes()
+    };
+
+    let factory_wasm_exports = wasm_utils::get_wasm_exports(&bytes);
     let expected_entrypoints = BTreeSet::from_iter([
         INCREASE_ENTRY_POINT.to_string(),
         DECREASE_ENTRY_POINT.to_string(),
@@ -176,20 +201,35 @@ fn should_install_and_use_factory_pattern() {
         .get_addressable_entity(new_counter_2)
         .expect("should have contract instance");
 
-    let counter_1_wasm = builder
-        .query(
-            None,
-            Key::byte_code_key(ByteCodeAddr::new_wasm_addr(
-                new_counter_1_contract.byte_code_addr(),
-            )),
-            &[],
-        )
-        .expect("should have contract wasm")
-        .as_byte_code()
-        .cloned()
-        .expect("should have wasm");
+    let counter_1_wasm = if builder.chainspec().core_config.enable_addressable_entity {
+        builder
+            .query(
+                None,
+                Key::byte_code_key(ByteCodeAddr::new_wasm_addr(
+                    new_counter_1_contract.byte_code_addr(),
+                )),
+                &[],
+            )
+            .expect("should have contract wasm")
+            .as_byte_code()
+            .cloned()
+            .expect("should have wasm")
+            .take_bytes()
+    } else {
+        builder
+            .query(
+                None,
+                Key::Hash(new_counter_1_contract.byte_code_addr()),
+                &[],
+            )
+            .expect("should have contract wasm")
+            .as_contract_wasm()
+            .cloned()
+            .expect("should have wasm")
+            .take_bytes()
+    };
 
-    let new_counter_1_exports = wasm_utils::get_wasm_exports(counter_1_wasm.bytes());
+    let new_counter_1_exports = wasm_utils::get_wasm_exports(&counter_1_wasm);
     assert_eq!(
         new_counter_1_exports,
         BTreeSet::from_iter([

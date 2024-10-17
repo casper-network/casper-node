@@ -5,8 +5,10 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{engine_state::Error as CoreError, execution::ExecError};
 use casper_types::{
+    account::AccountHash,
     addressable_entity::NamedKeys,
-    system::{CallStackElement, Caller},
+    contracts::{ContractHash, ContractPackageHash},
+    system::{CallStackElement, Caller, CallerInfo},
     AddressableEntity, AddressableEntityHash, CLValue, EntityAddr, EntryPointType, HashAddr,
     HoldBalanceHandling, Key, PackageAddr, PackageHash, ProtocolVersion, StoredValue, Timestamp,
     U512,
@@ -156,11 +158,77 @@ impl BuilderExt for LmdbWasmTestBuilder {
             )
             .unwrap();
 
-        cl_value
+        let caller_info = cl_value
             .into_cl_value()
-            .map(CLValue::into_t::<Vec<Caller>>)
+            .map(CLValue::into_t::<Vec<CallerInfo>>)
             .unwrap()
-            .unwrap()
+            .unwrap();
+
+        let mut callers = vec![];
+
+        for info in caller_info {
+            let kind = info.kind();
+            match kind {
+                0 => {
+                    let account_hash = info
+                        .get_field_by_index(0)
+                        .map(|val| {
+                            val.to_t::<Option<AccountHash>>()
+                                .expect("must convert out of cl_value")
+                        })
+                        .expect("must have index 0 in fields")
+                        .expect("account hash must be some");
+                    callers.push(Caller::Initiator { account_hash });
+                }
+                3 => {
+                    let package_hash = info
+                        .get_field_by_index(1)
+                        .map(|val| {
+                            val.to_t::<Option<PackageHash>>()
+                                .expect("must convert out of cl_value")
+                        })
+                        .expect("must have index 1 in fields")
+                        .expect("package hash must be some");
+                    let entity_addr = info
+                        .get_field_by_index(3)
+                        .map(|val| {
+                            val.to_t::<Option<EntityAddr>>()
+                                .expect("must convert out of cl_value")
+                        })
+                        .expect("must have index 3 in fields")
+                        .expect("entity addr must be some");
+                    callers.push(Caller::Entity {
+                        package_hash,
+                        entity_addr,
+                    });
+                }
+                4 => {
+                    let contract_package_hash = info
+                        .get_field_by_index(2)
+                        .map(|val| {
+                            val.to_t::<Option<ContractPackageHash>>()
+                                .expect("must convert out of cl_value")
+                        })
+                        .expect("must have index 2 in fields")
+                        .expect("contract package hash must be some");
+                    let contract_hash = info
+                        .get_field_by_index(4)
+                        .map(|val| {
+                            val.to_t::<Option<ContractHash>>()
+                                .expect("must convert out of cl_value")
+                        })
+                        .expect("must have index 4 in fields")
+                        .expect("contract hash must be some");
+                    callers.push(Caller::SmartContract {
+                        contract_package_hash,
+                        contract_hash,
+                    });
+                }
+                _ => panic!("unhandled kind"),
+            }
+        }
+
+        callers
     }
 
     fn get_call_stack_from_contract_context(
@@ -168,23 +236,32 @@ impl BuilderExt for LmdbWasmTestBuilder {
         stored_call_stack_key: &str,
         contract_package_hash: HashAddr,
     ) -> Vec<Caller> {
-        let value = self
-            .query(None, Key::Package(contract_package_hash), &[])
-            .unwrap();
+        let enable_entity = self.chainspec().core_config.enable_addressable_entity;
+        let package_key = if enable_entity {
+            Key::Package(contract_package_hash)
+        } else {
+            Key::Hash(contract_package_hash)
+        };
+
+        let value = self.query(None, package_key, &[]).unwrap();
 
         let package = match value {
+            StoredValue::ContractPackage(contract_package) => contract_package.into(),
             StoredValue::Package(package) => package,
             _ => panic!("unreachable"),
         };
 
         let current_entity_hash = package.current_entity_hash().unwrap();
-        let current_contract_entity_key =
-            EntityAddr::new_smart_contract(current_entity_hash.value());
+        let current_contract_entity_key = if enable_entity {
+            Key::AddressableEntity(EntityAddr::SmartContract(current_entity_hash.value()))
+        } else {
+            Key::Hash(current_entity_hash.value())
+        };
 
         let cl_value = self
             .query(
                 None,
-                current_contract_entity_key.into(),
+                current_contract_entity_key,
                 &[stored_call_stack_key.to_string()],
             )
             .unwrap();
@@ -205,14 +282,14 @@ impl BuilderExt for LmdbWasmTestBuilder {
                     ..
                 } => Caller::Entity {
                     package_hash: PackageHash::new(contract_package_hash.value()),
-                    entity_hash: AddressableEntityHash::new(contract_hash.value()),
+                    entity_addr: EntityAddr::SmartContract(contract_hash.value()),
                 },
                 CallStackElement::StoredContract {
                     contract_hash,
                     contract_package_hash,
                 } => Caller::Entity {
                     package_hash: PackageHash::new(contract_package_hash.value()),
-                    entity_hash: AddressableEntityHash::new(contract_hash.value()),
+                    entity_addr: EntityAddr::SmartContract(contract_hash.value()),
                 },
             })
             .collect()
@@ -230,8 +307,8 @@ fn setup() -> LmdbWasmTestBuilder {
         .with_pre_state_hash(pre_upgrade_hash)
         .with_current_protocol_version(old_protocol_version)
         .with_new_protocol_version(ProtocolVersion::V2_0_0)
-        .with_migrate_legacy_accounts(true)
-        .with_migrate_legacy_contracts(true)
+        .with_migrate_legacy_accounts(false)
+        .with_migrate_legacy_contracts(false)
         .build();
 
     builder
@@ -366,11 +443,11 @@ fn assert_call_stack_matches_calls(call_stack: Vec<Caller>, calls: &[Call]) {
                     ..
                 }),
                 Caller::Entity {
-                    entity_hash: contract_hash,
+                    entity_addr: contract_hash,
                     ..
                 },
             ) if *entry_point_type == EntryPointType::Called
-                && *contract_hash == *current_contract_hash => {}
+                && contract_hash.value() == current_contract_hash.value() => {}
 
             _ => panic!(
                 "call stack element {:#?} didn't match expected call {:#?} at index {}, {:#?}",
@@ -1229,10 +1306,18 @@ mod session {
 
             let effects = builder.get_effects().last().unwrap().clone();
 
+            let key = if builder.chainspec().core_config.enable_addressable_entity {
+                Key::Package(current_contract_package_hash)
+            } else {
+                Key::Hash(current_contract_package_hash)
+            };
+
             assert!(
-                effects.transforms().iter().any(|transform| transform.key()
-                    == &Key::Package(current_contract_package_hash)
-                    && transform.kind() == &TransformKindV2::Identity),
+                effects
+                    .transforms()
+                    .iter()
+                    .any(|transform| transform.key() == &key
+                        && transform.kind() == &TransformKindV2::Identity),
                 "Missing `Identity` transform for a contract package being called."
             );
 
@@ -1412,7 +1497,7 @@ mod session {
 
             assert!(
                 effects.transforms().iter().any(|transform| transform.key()
-                    == &Key::contract_entity_key(current_contract_hash.into())
+                    == &Key::Hash(current_contract_hash)
                     && transform.kind() == &TransformKindV2::Identity),
                 "Missing `Identity` transform for a contract being called."
             );

@@ -50,6 +50,9 @@ pub const DEFAULT_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V2_0_0;
 /// Default period for balance holds to decay (currently 24 hours).
 pub const DEFAULT_BALANCE_HOLD_INTERVAL: TimeDiff = TimeDiff::from_seconds(24 * 60 * 60);
 
+/// Default entity flag.
+pub const DEFAULT_ENABLE_ENTITY: bool = false;
+
 /// The runtime configuration of the execution engine
 #[derive(Debug, Clone)]
 pub struct EngineConfig {
@@ -86,6 +89,7 @@ pub struct EngineConfig {
     pub(crate) fee_handling: FeeHandling,
     /// Compute auction rewards.
     pub(crate) compute_rewards: bool,
+    pub(crate) enable_entity: bool,
 }
 
 impl Default for EngineConfig {
@@ -108,6 +112,7 @@ impl Default for EngineConfig {
             fee_handling: DEFAULT_FEE_HANDLING,
             compute_rewards: DEFAULT_COMPUTE_REWARDS,
             protocol_version: DEFAULT_PROTOCOL_VERSION,
+            enable_entity: DEFAULT_ENABLE_ENTITY,
         }
     }
 }
@@ -244,6 +249,7 @@ pub struct EngineConfigBuilder {
     fee_handling: Option<FeeHandling>,
     compute_rewards: Option<bool>,
     balance_hold_interval: Option<TimeDiff>,
+    enable_entity: Option<bool>,
 }
 
 impl EngineConfigBuilder {
@@ -391,6 +397,12 @@ impl EngineConfigBuilder {
         self
     }
 
+    /// Sets the enable entity flag.
+    pub fn with_enable_entity(mut self, enable_entity: bool) -> Self {
+        self.enable_entity = Some(enable_entity);
+        self
+    }
+
     /// Builds a new [`EngineConfig`] object.
     pub fn build(self) -> EngineConfig {
         let max_associated_keys = self
@@ -437,6 +449,7 @@ impl EngineConfigBuilder {
             .max_delegators_per_validator
             .unwrap_or(DEFAULT_MAX_DELEGATORS_PER_VALIDATOR);
         let compute_rewards = self.compute_rewards.unwrap_or(DEFAULT_COMPUTE_REWARDS);
+        let enable_entity = self.enable_entity.unwrap_or(DEFAULT_ENABLE_ENTITY);
 
         EngineConfig {
             max_associated_keys,
@@ -456,6 +469,7 @@ impl EngineConfigBuilder {
             vesting_schedule_period_millis,
             max_delegators_per_validator,
             compute_rewards,
+            enable_entity,
         }
     }
 }

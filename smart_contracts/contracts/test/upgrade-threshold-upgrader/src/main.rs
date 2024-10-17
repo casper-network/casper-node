@@ -92,8 +92,5 @@ pub extern "C" fn call() {
         NamedKeys::new(),
         BTreeMap::new(),
     );
-    runtime::put_key(
-        CONTRACT_HASH_NAME,
-        Key::contract_entity_key(new_contract_hash),
-    );
+    runtime::put_key(CONTRACT_HASH_NAME, Key::Hash(new_contract_hash.value()));
 }

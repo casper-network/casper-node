@@ -219,6 +219,8 @@ pub struct ScratchGlobalState {
     pub(crate) empty_root_hash: Digest,
     /// Max query depth
     pub max_query_depth: u64,
+    /// Enable the addressable entity and migrate accounts/contracts to entities.
+    pub enable_addressable_entity: bool,
 }
 
 /// Represents a "view" of global state at a particular root hash.
@@ -247,6 +249,7 @@ impl ScratchGlobalState {
         trie_store: Arc<LmdbTrieStore>,
         empty_root_hash: Digest,
         max_query_depth: u64,
+        enable_entity: bool,
     ) -> Self {
         ScratchGlobalState {
             cache: Arc::new(RwLock::new(Cache::new())),
@@ -254,6 +257,7 @@ impl ScratchGlobalState {
             trie_store,
             empty_root_hash,
             max_query_depth,
+            enable_addressable_entity: enable_entity,
         }
     }
 
@@ -472,7 +476,11 @@ impl StateProvider for ScratchGlobalState {
         hash: Digest,
     ) -> Result<Option<TrackingCopy<Self::Reader>>, GlobalStateError> {
         match self.checkout(hash)? {
-            Some(tc) => Ok(Some(TrackingCopy::new(tc, self.max_query_depth))),
+            Some(tc) => Ok(Some(TrackingCopy::new(
+                tc,
+                self.max_query_depth,
+                self.enable_addressable_entity,
+            ))),
             None => Ok(None),
         }
     }
@@ -669,6 +677,7 @@ pub(crate) mod tests {
             environment,
             trie_store,
             crate::global_state::DEFAULT_MAX_QUERY_DEPTH,
+            crate::global_state::DEFAULT_ENABLE_ENTITY,
         )
         .unwrap();
         let mut current_root = state.empty_root_hash;

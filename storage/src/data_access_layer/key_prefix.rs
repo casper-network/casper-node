@@ -3,7 +3,7 @@ use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contract_messages::TopicNameHash,
     system::{auction::BidAddrTag, mint::BalanceHoldAddrTag},
-    EntityAddr, KeyTag, URefAddr,
+    EntityAddr, HashAddr, KeyTag, URefAddr,
 };
 
 /// Key prefixes used for querying the global state.
@@ -11,10 +11,10 @@ use casper_types::{
 pub enum KeyPrefix {
     /// Retrieves all delegator bid addresses for a given validator.
     DelegatorBidAddrsByValidator(AccountHash),
-    /// Retrieves all messages for a given entity.
-    MessagesByEntity(EntityAddr),
-    /// Retrieves all messages for a given entity and topic.
-    MessagesByEntityAndTopic(EntityAddr, TopicNameHash),
+    /// Retrieves all entries for a given hash addr.
+    MessageEntriesByEntity(HashAddr),
+    /// Retrieves all messages for a given hash addr and topic.
+    MessagesByEntityAndTopic(HashAddr, TopicNameHash),
     /// Retrieves all named keys for a given entity.
     NamedKeysByEntity(EntityAddr),
     /// Retrieves all gas balance holds for a given purse.
@@ -34,6 +34,32 @@ impl ToBytes for KeyPrefix {
         Ok(result)
     }
 
+    fn serialized_length(&self) -> usize {
+        U8_SERIALIZED_LENGTH
+            + match self {
+                KeyPrefix::DelegatorBidAddrsByValidator(validator) => {
+                    U8_SERIALIZED_LENGTH + validator.serialized_length()
+                }
+                KeyPrefix::MessageEntriesByEntity(hash_addr) => hash_addr.serialized_length(),
+                KeyPrefix::MessagesByEntityAndTopic(hash_addr, topic) => {
+                    hash_addr.serialized_length() + topic.serialized_length()
+                }
+                KeyPrefix::NamedKeysByEntity(entity) => entity.serialized_length(),
+                KeyPrefix::GasBalanceHoldsByPurse(uref) => {
+                    U8_SERIALIZED_LENGTH + uref.serialized_length()
+                }
+                KeyPrefix::ProcessingBalanceHoldsByPurse(uref) => {
+                    U8_SERIALIZED_LENGTH + uref.serialized_length()
+                }
+                KeyPrefix::EntryPointsV1ByEntity(entity) => {
+                    U8_SERIALIZED_LENGTH + entity.serialized_length()
+                }
+                KeyPrefix::EntryPointsV2ByEntity(entity) => {
+                    U8_SERIALIZED_LENGTH + entity.serialized_length()
+                }
+            }
+    }
+
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         match self {
             KeyPrefix::DelegatorBidAddrsByValidator(validator) => {
@@ -41,13 +67,13 @@ impl ToBytes for KeyPrefix {
                 writer.push(BidAddrTag::Delegator as u8);
                 validator.write_bytes(writer)?;
             }
-            KeyPrefix::MessagesByEntity(entity) => {
+            KeyPrefix::MessageEntriesByEntity(hash_addr) => {
                 writer.push(KeyTag::Message as u8);
-                entity.write_bytes(writer)?;
+                hash_addr.write_bytes(writer)?;
             }
-            KeyPrefix::MessagesByEntityAndTopic(entity, topic) => {
+            KeyPrefix::MessagesByEntityAndTopic(hash_addr, topic) => {
                 writer.push(KeyTag::Message as u8);
-                entity.write_bytes(writer)?;
+                hash_addr.write_bytes(writer)?;
                 topic.write_bytes(writer)?;
             }
             KeyPrefix::NamedKeysByEntity(entity) => {
@@ -77,32 +103,6 @@ impl ToBytes for KeyPrefix {
         }
         Ok(())
     }
-
-    fn serialized_length(&self) -> usize {
-        U8_SERIALIZED_LENGTH
-            + match self {
-                KeyPrefix::DelegatorBidAddrsByValidator(validator) => {
-                    U8_SERIALIZED_LENGTH + validator.serialized_length()
-                }
-                KeyPrefix::MessagesByEntity(entity) => entity.serialized_length(),
-                KeyPrefix::MessagesByEntityAndTopic(entity, topic) => {
-                    entity.serialized_length() + topic.serialized_length()
-                }
-                KeyPrefix::NamedKeysByEntity(entity) => entity.serialized_length(),
-                KeyPrefix::GasBalanceHoldsByPurse(uref) => {
-                    U8_SERIALIZED_LENGTH + uref.serialized_length()
-                }
-                KeyPrefix::ProcessingBalanceHoldsByPurse(uref) => {
-                    U8_SERIALIZED_LENGTH + uref.serialized_length()
-                }
-                KeyPrefix::EntryPointsV1ByEntity(entity) => {
-                    U8_SERIALIZED_LENGTH + entity.serialized_length()
-                }
-                KeyPrefix::EntryPointsV2ByEntity(entity) => {
-                    U8_SERIALIZED_LENGTH + entity.serialized_length()
-                }
-            }
-    }
 }
 
 impl FromBytes for KeyPrefix {
@@ -123,13 +123,13 @@ impl FromBytes for KeyPrefix {
                 }
             }
             tag if tag == KeyTag::Message as u8 => {
-                let (entity, remainder) = EntityAddr::from_bytes(remainder)?;
+                let (hash_addr, remainder) = HashAddr::from_bytes(remainder)?;
                 if remainder.is_empty() {
-                    (KeyPrefix::MessagesByEntity(entity), remainder)
+                    (KeyPrefix::MessageEntriesByEntity(hash_addr), remainder)
                 } else {
                     let (topic, remainder) = TopicNameHash::from_bytes(remainder)?;
                     (
-                        KeyPrefix::MessagesByEntityAndTopic(entity, topic),
+                        KeyPrefix::MessagesByEntityAndTopic(hash_addr, topic),
                         remainder,
                     )
                 }
@@ -185,9 +185,10 @@ mod tests {
     pub fn key_prefix_arb() -> impl Strategy<Value = KeyPrefix> {
         prop_oneof![
             account_hash_arb().prop_map(KeyPrefix::DelegatorBidAddrsByValidator),
-            entity_addr_arb().prop_map(KeyPrefix::MessagesByEntity),
-            (entity_addr_arb(), topic_name_hash_arb())
-                .prop_map(|(entity, topic)| KeyPrefix::MessagesByEntityAndTopic(entity, topic)),
+            u8_slice_32().prop_map(KeyPrefix::MessageEntriesByEntity),
+            (u8_slice_32(), topic_name_hash_arb()).prop_map(|(hash_addr, topic)| {
+                KeyPrefix::MessagesByEntityAndTopic(hash_addr, topic)
+            }),
             entity_addr_arb().prop_map(KeyPrefix::NamedKeysByEntity),
             u8_slice_32().prop_map(KeyPrefix::GasBalanceHoldsByPurse),
             u8_slice_32().prop_map(KeyPrefix::ProcessingBalanceHoldsByPurse),
@@ -221,14 +222,11 @@ mod tests {
             ),
             (
                 Key::Message(MessageAddr::new_message_addr(
-                    EntityAddr::Account(hash1),
+                    hash1,
                     TopicNameHash::new(hash2),
                     0,
                 )),
-                KeyPrefix::MessagesByEntityAndTopic(
-                    EntityAddr::Account(hash1),
-                    TopicNameHash::new(hash2),
-                ),
+                KeyPrefix::MessagesByEntityAndTopic(hash1, TopicNameHash::new(hash2)),
             ),
             (
                 Key::NamedKey(NamedKeyAddr::new_named_key_entry(

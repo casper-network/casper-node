@@ -10,7 +10,7 @@ use crate::{
         self, AddKeyFailure, MessageTopicError, RemoveKeyFailure, SetThresholdFailure,
         TryFromIntError, TryFromSliceForAccountHashError, UpdateKeyFailure,
     },
-    bytesrepr,
+    bytesrepr, contracts,
     system::{auction, handle_payment, mint},
     CLValueError,
 };
@@ -525,6 +525,12 @@ impl From<CLValueError> for ApiError {
 
 impl From<addressable_entity::Error> for ApiError {
     fn from(error: addressable_entity::Error) -> Self {
+        ApiError::ContractHeader(error as u8)
+    }
+}
+
+impl From<contracts::Error> for ApiError {
+    fn from(error: contracts::Error) -> Self {
         ApiError::ContractHeader(error as u8)
     }
 }

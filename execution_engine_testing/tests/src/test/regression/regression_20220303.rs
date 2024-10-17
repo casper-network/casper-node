@@ -7,8 +7,8 @@ use casper_engine_test_support::{LmdbWasmTestBuilder, UpgradeRequestBuilder};
 use casper_types::{
     contracts::ContractHash,
     system::{self, mint},
-    AccessRights, ByteCodeHash, CLValue, Digest, EntityAddr, EntryPoints, EraId, Key,
-    ProtocolVersion, StoredValue, SystemEntityRegistry, URef,
+    AccessRights, CLValue, Digest, EntityAddr, EntryPoints, EraId, Key, ProtocolVersion,
+    StoredValue, SystemHashRegistry, URef,
 };
 use rand::Rng;
 
@@ -51,8 +51,7 @@ fn test_upgrade(major_bump: u32, minor_bump: u32, patch_bump: u32, upgrade_entri
             .as_cl_value()
             .cloned()
             .expect("should have cl value");
-        let registry: SystemEntityRegistry =
-            cl_value.into_t().expect("should have system registry");
+        let registry: SystemHashRegistry = cl_value.into_t().expect("should have system registry");
         registry
             .get(system::MINT)
             .cloned()
@@ -60,10 +59,10 @@ fn test_upgrade(major_bump: u32, minor_bump: u32, patch_bump: u32, upgrade_entri
     };
     let old_protocol_version = lmdb_fixture_state.genesis_protocol_version();
 
-    let legacy_mint_hash = ContractHash::new(mint_contract_hash.value());
+    let legacy_mint_hash = ContractHash::new(mint_contract_hash);
 
     let old_mint_contract = builder
-        .get_legacy_contract(legacy_mint_hash)
+        .get_contract(legacy_mint_hash)
         .expect("should have mint contract");
     assert_eq!(old_mint_contract.protocol_version(), old_protocol_version);
     let new_protocol_version = ProtocolVersion::from_parts(
@@ -103,17 +102,17 @@ fn test_upgrade(major_bump: u32, minor_bump: u32, patch_bump: u32, upgrade_entri
         elapsed.as_millis()
     );
     let new_contract = builder
-        .get_addressable_entity(mint_contract_hash)
+        .get_addressable_entity(mint_contract_hash.into())
         .expect("should have mint contract");
     assert_eq!(
         old_mint_contract.contract_package_hash().value(),
         new_contract.package_hash().value()
     );
     assert_eq!(
-        ByteCodeHash::default().value(),
+        old_mint_contract.contract_wasm_hash().value(),
         new_contract.byte_code_hash().value()
     );
-    let new_entry_points = builder.get_entry_points(EntityAddr::System(mint_contract_hash.value()));
+    let new_entry_points = builder.get_entry_points(EntityAddr::System(mint_contract_hash));
     let old_entry_points = EntryPoints::from(old_mint_contract.entry_points().clone());
     assert_ne!(&old_entry_points, &new_entry_points);
     assert_eq!(
@@ -136,7 +135,7 @@ fn apply_global_state_update(
         .as_cl_value()
         .expect("must be CLValue")
         .clone()
-        .into_t::<SystemEntityRegistry>()
+        .into_t::<SystemHashRegistry>()
         .expect("must convert to btree map");
 
     let mut global_state_update = BTreeMap::<Key, StoredValue>::new();
