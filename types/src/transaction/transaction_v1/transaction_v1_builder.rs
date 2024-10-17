@@ -1,26 +1,25 @@
-mod error;
+pub mod error;
 
 use core::marker::PhantomData;
 
-#[cfg(any(feature = "testing", test))]
-use rand::Rng;
-
 use super::{
-    super::{
-        InitiatorAddr, TransactionEntryPoint, TransactionInvocationTarget, TransactionRuntime,
-        TransactionScheduling, TransactionTarget,
-    },
-    transaction_v1_body::arg_handling,
-    InitiatorAddrAndSecretKey, PricingMode, TransactionV1, TransactionV1Body,
+    super::{InitiatorAddr, TransactionRuntime, TransactionScheduling, TransactionTarget},
+    arg_handling,
+    fields_container::FieldsContainerError,
+    InitiatorAddrAndSecretKey, PricingMode, TransactionV1,
 };
 use crate::{
-    bytesrepr::Bytes, transaction::TransactionCategory, AddressableEntityHash, CLValue,
-    CLValueError, EntityVersion, PackageHash, PublicKey, RuntimeArgs, SecretKey, TimeDiff,
-    Timestamp, TransferTarget, URef, U512,
+    bytesrepr::Bytes, transaction::FieldsContainer, AddressableEntityHash, CLValue, CLValueError,
+    EntityVersion, PackageHash, PublicKey, RuntimeArgs, SecretKey, TimeDiff, Timestamp,
+    TransactionEntryPoint, TransactionInvocationTarget, TransferTarget, URef, U512,
 };
 #[cfg(any(feature = "testing", test))]
 use crate::{testing::TestRng, transaction::Approval, TransactionConfig, TransactionV1Hash};
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
+use alloc::collections::BTreeMap;
 pub use error::TransactionV1BuilderError;
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
+use rand::Rng;
 
 /// A builder for constructing a [`TransactionV1`].
 ///
@@ -36,18 +35,23 @@ pub use error::TransactionV1BuilderError;
 /// It can be signed later (multiple times if desired) to make it valid before sending to the
 /// network for execution.
 pub struct TransactionV1Builder<'a> {
+    args: RuntimeArgs,
+    target: TransactionTarget,
+    scheduling: TransactionScheduling,
+    entry_point: TransactionEntryPoint,
     chain_name: Option<String>,
     timestamp: Timestamp,
     ttl: TimeDiff,
-    body: TransactionV1Body,
     pricing_mode: PricingMode,
     initiator_addr: Option<InitiatorAddr>,
     #[cfg(not(any(feature = "testing", test)))]
     secret_key: Option<&'a SecretKey>,
-    #[cfg(any(feature = "testing", test))]
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
     secret_key: Option<SecretKey>,
-    #[cfg(any(feature = "testing", test))]
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
     invalid_approvals: Vec<Approval>,
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
+    additional_fields: BTreeMap<u16, Bytes>,
     _phantom_data: PhantomData<&'a ()>,
 }
 
@@ -57,24 +61,30 @@ impl<'a> TransactionV1Builder<'a> {
     /// The default pricing mode for v1 transactions, ie FIXED cost.
     pub const DEFAULT_PRICING_MODE: PricingMode = PricingMode::Fixed {
         gas_price_tolerance: 5,
+        additional_computation_factor: 0,
     };
     /// The default runtime for transactions, i.e. Casper Version 1 Virtual Machine.
     pub const DEFAULT_RUNTIME: TransactionRuntime = TransactionRuntime::VmCasperV1;
     /// The default scheduling for transactions, i.e. `Standard`.
     pub const DEFAULT_SCHEDULING: TransactionScheduling = TransactionScheduling::Standard;
 
-    pub(super) fn new(body: TransactionV1Body) -> Self {
+    pub(super) fn new() -> Self {
         TransactionV1Builder {
+            args: RuntimeArgs::new(),
+            entry_point: TransactionEntryPoint::Transfer,
+            target: TransactionTarget::Native,
+            scheduling: TransactionScheduling::Standard,
             chain_name: None,
             timestamp: Timestamp::now(),
             ttl: Self::DEFAULT_TTL,
-            body,
             pricing_mode: Self::DEFAULT_PRICING_MODE,
             initiator_addr: None,
             secret_key: None,
             _phantom_data: PhantomData,
-            #[cfg(any(feature = "testing", test))]
+            #[cfg(any(all(feature = "std", feature = "testing"), test))]
             invalid_approvals: vec![],
+            #[cfg(any(all(feature = "std", feature = "testing"), test))]
+            additional_fields: BTreeMap::new(),
         }
     }
 
@@ -86,14 +96,12 @@ impl<'a> TransactionV1Builder<'a> {
         maybe_id: Option<u64>,
     ) -> Result<Self, CLValueError> {
         let args = arg_handling::new_transfer_args(amount, maybe_source, target, maybe_id)?;
-        let body = TransactionV1Body::new(
-            args,
-            TransactionTarget::Native,
-            TransactionEntryPoint::Transfer,
-            TransactionCategory::Mint as u8,
-            Self::DEFAULT_SCHEDULING,
-        );
-        Ok(TransactionV1Builder::new(body))
+        let mut builder = TransactionV1Builder::new();
+        builder.args = args;
+        builder.target = TransactionTarget::Native;
+        builder.entry_point = TransactionEntryPoint::Transfer;
+        builder.scheduling = Self::DEFAULT_SCHEDULING;
+        Ok(builder)
     }
 
     /// Returns a new `TransactionV1Builder` suitable for building a native add_bid transaction.
@@ -111,14 +119,12 @@ impl<'a> TransactionV1Builder<'a> {
             minimum_delegation_amount,
             maximum_delegation_amount,
         )?;
-        let body = TransactionV1Body::new(
-            args,
-            TransactionTarget::Native,
-            TransactionEntryPoint::AddBid,
-            TransactionCategory::Auction as u8,
-            Self::DEFAULT_SCHEDULING,
-        );
-        Ok(TransactionV1Builder::new(body))
+        let mut builder = TransactionV1Builder::new();
+        builder.args = args;
+        builder.target = TransactionTarget::Native;
+        builder.entry_point = TransactionEntryPoint::AddBid;
+        builder.scheduling = Self::DEFAULT_SCHEDULING;
+        Ok(builder)
     }
 
     /// Returns a new `TransactionV1Builder` suitable for building a native withdraw_bid
@@ -128,14 +134,12 @@ impl<'a> TransactionV1Builder<'a> {
         amount: A,
     ) -> Result<Self, CLValueError> {
         let args = arg_handling::new_withdraw_bid_args(public_key, amount)?;
-        let body = TransactionV1Body::new(
-            args,
-            TransactionTarget::Native,
-            TransactionEntryPoint::WithdrawBid,
-            TransactionCategory::Auction as u8,
-            Self::DEFAULT_SCHEDULING,
-        );
-        Ok(TransactionV1Builder::new(body))
+        let mut builder = TransactionV1Builder::new();
+        builder.args = args;
+        builder.target = TransactionTarget::Native;
+        builder.entry_point = TransactionEntryPoint::WithdrawBid;
+        builder.scheduling = Self::DEFAULT_SCHEDULING;
+        Ok(builder)
     }
 
     /// Returns a new `TransactionV1Builder` suitable for building a native delegate transaction.
@@ -145,14 +149,12 @@ impl<'a> TransactionV1Builder<'a> {
         amount: A,
     ) -> Result<Self, CLValueError> {
         let args = arg_handling::new_delegate_args(delegator, validator, amount)?;
-        let body = TransactionV1Body::new(
-            args,
-            TransactionTarget::Native,
-            TransactionEntryPoint::Delegate,
-            TransactionCategory::Auction as u8,
-            Self::DEFAULT_SCHEDULING,
-        );
-        Ok(TransactionV1Builder::new(body))
+        let mut builder = TransactionV1Builder::new();
+        builder.args = args;
+        builder.target = TransactionTarget::Native;
+        builder.entry_point = TransactionEntryPoint::Delegate;
+        builder.scheduling = Self::DEFAULT_SCHEDULING;
+        Ok(builder)
     }
 
     /// Returns a new `TransactionV1Builder` suitable for building a native undelegate transaction.
@@ -162,14 +164,12 @@ impl<'a> TransactionV1Builder<'a> {
         amount: A,
     ) -> Result<Self, CLValueError> {
         let args = arg_handling::new_undelegate_args(delegator, validator, amount)?;
-        let body = TransactionV1Body::new(
-            args,
-            TransactionTarget::Native,
-            TransactionEntryPoint::Undelegate,
-            TransactionCategory::Auction as u8,
-            Self::DEFAULT_SCHEDULING,
-        );
-        Ok(TransactionV1Builder::new(body))
+        let mut builder = TransactionV1Builder::new();
+        builder.args = args;
+        builder.target = TransactionTarget::Native;
+        builder.entry_point = TransactionEntryPoint::Undelegate;
+        builder.scheduling = Self::DEFAULT_SCHEDULING;
+        Ok(builder)
     }
 
     /// Returns a new `TransactionV1Builder` suitable for building a native redelegate transaction.
@@ -180,14 +180,12 @@ impl<'a> TransactionV1Builder<'a> {
         new_validator: PublicKey,
     ) -> Result<Self, CLValueError> {
         let args = arg_handling::new_redelegate_args(delegator, validator, amount, new_validator)?;
-        let body = TransactionV1Body::new(
-            args,
-            TransactionTarget::Native,
-            TransactionEntryPoint::Redelegate,
-            TransactionCategory::Auction as u8,
-            Self::DEFAULT_SCHEDULING,
-        );
-        Ok(TransactionV1Builder::new(body))
+        let mut builder = TransactionV1Builder::new();
+        builder.args = args;
+        builder.target = TransactionTarget::Native;
+        builder.entry_point = TransactionEntryPoint::Redelegate;
+        builder.scheduling = Self::DEFAULT_SCHEDULING;
+        Ok(builder)
     }
 
     fn new_targeting_stored<E: Into<String>>(
@@ -198,14 +196,12 @@ impl<'a> TransactionV1Builder<'a> {
             id,
             runtime: Self::DEFAULT_RUNTIME,
         };
-        let body = TransactionV1Body::new(
-            RuntimeArgs::new(),
-            target,
-            TransactionEntryPoint::Custom(entry_point.into()),
-            TransactionCategory::Large as u8,
-            Self::DEFAULT_SCHEDULING,
-        );
-        TransactionV1Builder::new(body)
+        let mut builder = TransactionV1Builder::new();
+        builder.args = RuntimeArgs::new();
+        builder.target = target;
+        builder.entry_point = TransactionEntryPoint::Custom(entry_point.into());
+        builder.scheduling = Self::DEFAULT_SCHEDULING;
+        builder
     }
 
     /// Returns a new `TransactionV1Builder` suitable for building a transaction targeting a stored
@@ -252,19 +248,18 @@ impl<'a> TransactionV1Builder<'a> {
 
     /// Returns a new `TransactionV1Builder` suitable for building a transaction for running session
     /// logic, i.e. compiled Wasm.
-    pub fn new_session(category: TransactionCategory, module_bytes: Bytes) -> Self {
+    pub fn new_session(is_install_upgrade: bool, module_bytes: Bytes) -> Self {
         let target = TransactionTarget::Session {
+            is_install_upgrade,
             module_bytes,
             runtime: Self::DEFAULT_RUNTIME,
         };
-        let body = TransactionV1Body::new(
-            RuntimeArgs::new(),
-            target,
-            TransactionEntryPoint::Call,
-            category as u8,
-            Self::DEFAULT_SCHEDULING,
-        );
-        TransactionV1Builder::new(body)
+        let mut builder = TransactionV1Builder::new();
+        builder.args = RuntimeArgs::new();
+        builder.target = target;
+        builder.entry_point = TransactionEntryPoint::Call;
+        builder.scheduling = Self::DEFAULT_SCHEDULING;
+        builder
     }
 
     /// Returns a new `TransactionV1Builder` which will build a random, valid but possibly expired
@@ -273,23 +268,29 @@ impl<'a> TransactionV1Builder<'a> {
     /// The transaction can be made invalid in the following ways:
     ///   * unsigned by calling `with_no_secret_key`
     ///   * given an invalid approval by calling `with_invalid_approval`
-    #[cfg(any(feature = "testing", test))]
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub fn new_random(rng: &mut TestRng) -> Self {
         let secret_key = SecretKey::random(rng);
         let ttl_millis = rng.gen_range(60_000..TransactionConfig::default().max_ttl.millis());
-        let body = TransactionV1Body::random(rng);
+        let fields = FieldsContainer::random(rng);
         TransactionV1Builder {
             chain_name: Some(rng.random_string(5..10)),
             timestamp: Timestamp::random(rng),
             ttl: TimeDiff::from_millis(ttl_millis),
-            body,
+            args: RuntimeArgs::random(rng),
+            target: fields.target,
+            entry_point: fields.entry_point,
+            scheduling: fields.scheduling,
             pricing_mode: PricingMode::Fixed {
                 gas_price_tolerance: 5,
+                additional_computation_factor: 0,
             },
             initiator_addr: Some(InitiatorAddr::PublicKey(PublicKey::from(&secret_key))),
             secret_key: Some(secret_key),
             _phantom_data: PhantomData,
             invalid_approvals: vec![],
+            #[cfg(any(all(feature = "std", feature = "testing"), test))]
+            additional_fields: BTreeMap::new(),
         }
     }
 
@@ -299,10 +300,10 @@ impl<'a> TransactionV1Builder<'a> {
     /// The transaction can be made invalid in the following ways:
     ///   * unsigned by calling `with_no_secret_key`
     ///   * given an invalid approval by calling `with_invalid_approval`
-    #[cfg(any(feature = "testing", test))]
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub fn new_random_with_category_and_timestamp_and_ttl(
         rng: &mut TestRng,
-        category: u8,
+        lane: u8,
         timestamp: Option<Timestamp>,
         ttl: Option<TimeDiff>,
     ) -> Self {
@@ -311,19 +312,30 @@ impl<'a> TransactionV1Builder<'a> {
             rng.gen_range(60_000..TransactionConfig::default().max_ttl.millis()),
             |ttl| ttl.millis(),
         );
-        let body = TransactionV1Body::random_of_category(rng, category);
+        let FieldsContainer {
+            args,
+            target,
+            entry_point,
+            scheduling,
+        } = FieldsContainer::random_of_lane(rng, lane);
         TransactionV1Builder {
             chain_name: Some(rng.random_string(5..10)),
             timestamp: timestamp.unwrap_or(Timestamp::now()),
             ttl: TimeDiff::from_millis(ttl_millis),
-            body,
+            args,
+            target,
+            entry_point,
+            scheduling,
             pricing_mode: PricingMode::Fixed {
                 gas_price_tolerance: 5,
+                additional_computation_factor: 0,
             },
             initiator_addr: Some(InitiatorAddr::PublicKey(PublicKey::from(&secret_key))),
             secret_key: Some(secret_key),
             _phantom_data: PhantomData,
             invalid_approvals: vec![],
+            #[cfg(any(all(feature = "std", feature = "testing"), test))]
+            additional_fields: BTreeMap::new(),
         }
     }
 
@@ -377,7 +389,7 @@ impl<'a> TransactionV1Builder<'a> {
         {
             self.secret_key = Some(secret_key);
         }
-        #[cfg(any(feature = "testing", test))]
+        #[cfg(any(all(feature = "std", feature = "testing"), test))]
         {
             self.secret_key = Some(
                 SecretKey::from_der(secret_key.to_der().expect("should der-encode"))
@@ -389,7 +401,7 @@ impl<'a> TransactionV1Builder<'a> {
 
     /// Appends the given runtime arg into the body's `args`.
     pub fn with_runtime_arg<K: Into<String>>(mut self, key: K, cl_value: CLValue) -> Self {
-        self.body.args.insert_cl_value(key, cl_value);
+        self.args.insert_cl_value(key, cl_value);
         self
     }
 
@@ -398,7 +410,7 @@ impl<'a> TransactionV1Builder<'a> {
     /// NOTE: this overwrites any existing runtime args.  To append to existing args, use
     /// [`TransactionV1Builder::with_runtime_arg`].
     pub fn with_runtime_args(mut self, args: RuntimeArgs) -> Self {
-        self.body.args = args;
+        self.args = args;
         self
     }
 
@@ -409,7 +421,7 @@ impl<'a> TransactionV1Builder<'a> {
     /// NOTE: This has no effect for native transactions, i.e. where the `body.target` is
     /// `TransactionTarget::Native`.
     pub fn with_runtime(mut self, runtime: TransactionRuntime) -> Self {
-        match &mut self.body.target {
+        match &mut self.target {
             TransactionTarget::Native => {}
             TransactionTarget::Stored {
                 runtime: existing_runtime,
@@ -431,25 +443,32 @@ impl<'a> TransactionV1Builder<'a> {
     ///
     /// If not provided, the scheduling will be set to [`Self::DEFAULT_SCHEDULING`].
     pub fn with_scheduling(mut self, scheduling: TransactionScheduling) -> Self {
-        self.body.scheduling = scheduling;
+        self.scheduling = scheduling;
         self
     }
 
     /// Sets the secret key to `None`, meaning the transaction can still be built but will be
     /// unsigned and will be invalid until subsequently signed.
-    #[cfg(any(feature = "testing", test))]
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub fn with_no_secret_key(mut self) -> Self {
         self.secret_key = None;
         self
     }
 
     /// Sets an invalid approval in the transaction.
-    #[cfg(any(feature = "testing", test))]
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub fn with_invalid_approval(mut self, rng: &mut TestRng) -> Self {
         let secret_key = SecretKey::random(rng);
         let hash = TransactionV1Hash::random(rng).into();
         let approval = Approval::create(&hash, &secret_key);
         self.invalid_approvals.push(approval);
+        self
+    }
+
+    /// Manually sets additional fields
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
+    pub fn with_additional_fields(mut self, additional_fields: BTreeMap<u16, Bytes>) -> Self {
+        self.additional_fields = additional_fields;
         self
     }
 
@@ -478,19 +497,28 @@ impl<'a> TransactionV1Builder<'a> {
             .chain_name
             .ok_or(TransactionV1BuilderError::MissingChainName)?;
 
+        let container =
+            FieldsContainer::new(self.args, self.target, self.entry_point, self.scheduling)
+                .to_map()
+                .map_err(|err| match err {
+                    FieldsContainerError::CouldNotSerializeField { field_index } => {
+                        TransactionV1BuilderError::CouldNotSerializeField { field_index }
+                    }
+                })?;
+
         let transaction = TransactionV1::build(
             chain_name,
             self.timestamp,
             self.ttl,
-            self.body,
             self.pricing_mode,
+            container,
             initiator_addr_and_secret_key,
         );
 
         Ok(transaction)
     }
 
-    #[cfg(any(feature = "testing", test))]
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
     fn do_build(self) -> Result<TransactionV1, TransactionV1BuilderError> {
         let initiator_addr_and_secret_key = match (self.initiator_addr, &self.secret_key) {
             (Some(initiator_addr), Some(secret_key)) => InitiatorAddrAndSecretKey::Both {
@@ -507,13 +535,23 @@ impl<'a> TransactionV1Builder<'a> {
         let chain_name = self
             .chain_name
             .ok_or(TransactionV1BuilderError::MissingChainName)?;
+        let mut container =
+            FieldsContainer::new(self.args, self.target, self.entry_point, self.scheduling)
+                .to_map()
+                .map_err(|err| match err {
+                    FieldsContainerError::CouldNotSerializeField { field_index } => {
+                        TransactionV1BuilderError::CouldNotSerializeField { field_index }
+                    }
+                })?;
+        let mut additional_fields = self.additional_fields.clone();
+        container.append(&mut additional_fields);
 
         let mut transaction = TransactionV1::build(
             chain_name,
             self.timestamp,
             self.ttl,
-            self.body,
             self.pricing_mode,
+            container,
             initiator_addr_and_secret_key,
         );
 

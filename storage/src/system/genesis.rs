@@ -142,17 +142,8 @@ impl fmt::Display for GenesisError {
     }
 }
 
-// pub struct GenesisInstaller<S>
-// where
-//     S: StateProvider + ?Sized,
-// {
-//     protocol_version: ProtocolVersion,
-//     config: GenesisConfig,
-//     address_generator: Rc<RefCell<AddressGenerator>>,
-//     tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
-// }
-
-pub enum GenesisInstaller<S>
+/// State for genesis installer.
+pub struct GenesisInstaller<S>
 where
     S: StateProvider + ?Sized,
 {
@@ -163,6 +154,7 @@ impl<S> GenesisInstaller<S>
 where
     S: StateProvider + ?Sized,
 {
+    /// Ctor.
     pub fn new(
         genesis_config_hash: Digest,
         protocol_version: ProtocolVersion,
@@ -186,6 +178,7 @@ where
         }
     }
 
+    /// Finalize genesis.
     pub fn finalize(self) -> Effects {
         match self {
             GenesisInstaller::AccountContract(installer) => installer.finalize(),

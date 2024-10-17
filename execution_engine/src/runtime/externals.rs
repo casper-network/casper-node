@@ -606,6 +606,7 @@ where
                 )?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }
+
             FunctionIndex::AddContractVersion => {
                 // args(0) = pointer to package key in wasm memory
                 // args(1) = size of package key in wasm memory
@@ -745,6 +746,7 @@ where
                 )?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }
+
             FunctionIndex::AddPackageVersion => {
                 // args(0)  = pointer to package hash in wasm memory
                 // args(1)  = size of package hash in wasm memory
@@ -1237,6 +1239,7 @@ where
 
                 Ok(Some(RuntimeValue::I32(0)))
             }
+
             FunctionIndex::EnableContractVersion => {
                 // args(0) = pointer to package hash in wasm memory
                 // args(1) = size of package hash in wasm memory
@@ -1260,6 +1263,7 @@ where
 
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(result))))
             }
+
             FunctionIndex::ManageMessageTopic => {
                 // args(0) = pointer to the serialized topic name string in wasm memory
                 // args(1) = size of the serialized topic name string in wasm memory
@@ -1291,11 +1295,11 @@ where
                     .map_err(|e| Trap::from(ExecError::InvalidUtf8Encoding(e)))?;
 
                 if operation_size as usize > MessageTopicOperation::max_serialized_len() {
-                    return Err(Trap::from(ExecError::InvalidMessageTopicOperation));
+                    return Err(Trap::from(ExecError::InvalidImputedOperation));
                 }
                 let topic_operation = self
                     .t_from_mem(operation_ptr, operation_size)
-                    .map_err(|_e| Trap::from(ExecError::InvalidMessageTopicOperation))?;
+                    .map_err(|_e| Trap::from(ExecError::InvalidImputedOperation))?;
 
                 // only allow managing messages from stored contracts
                 if !self.context.get_entity_key().is_smart_contract_key() {
@@ -1310,6 +1314,7 @@ where
 
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(result))))
             }
+
             FunctionIndex::EmitMessage => {
                 // args(0) = pointer to the serialized topic name string in wasm memory
                 // args(1) = size of the serialized name string in wasm memory
@@ -1360,6 +1365,16 @@ where
                     self.context.set_emit_message_cost(new_cost);
                 }
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(result))))
+            }
+
+            FunctionIndex::GetBlockInfoIndex => {
+                // args(0) = field selector
+                // args(1) = pointer to output pointer where host will write argument bytes
+                let (field_idx, dest_ptr): (u8, u32) = Args::parse(args)?;
+
+                self.charge_host_function_call(&host_function_costs.get_block_info, [0u32, 0u32])?;
+                self.get_block_info(field_idx, dest_ptr)?;
+                Ok(None)
             }
         }
     }

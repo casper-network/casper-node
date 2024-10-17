@@ -1560,25 +1560,15 @@
       "type": "object",
       "required": [
         "approvals",
-        "body",
         "hash",
-        "header",
-        "serialization_version"
+        "payload"
       ],
       "properties": {
-        "serialization_version": {
-          "type": "integer",
-          "format": "uint8",
-          "minimum": 0.0
-        },
         "hash": {
           "$ref": "#/definitions/TransactionV1Hash"
         },
-        "header": {
-          "$ref": "#/definitions/TransactionV1Header"
-        },
-        "body": {
-          "$ref": "#/definitions/TransactionV1Body"
+        "payload": {
+          "$ref": "#/definitions/TransactionV1Payload"
         },
         "approvals": {
           "type": "array",
@@ -1590,20 +1580,20 @@
       },
       "additionalProperties": false
     },
-    "TransactionV1Header": {
-      "description": "The header portion of a TransactionV1.",
+    "TransactionV1Payload": {
+      "description": "A unit of work sent by a client to the network, which when executed can cause global state to be altered.",
       "type": "object",
       "required": [
-        "body_hash",
         "chain_name",
+        "fields",
         "initiator_addr",
         "pricing_mode",
         "timestamp",
         "ttl"
       ],
       "properties": {
-        "chain_name": {
-          "type": "string"
+        "initiator_addr": {
+          "$ref": "#/definitions/InitiatorAddr"
         },
         "timestamp": {
           "$ref": "#/definitions/Timestamp"
@@ -1611,17 +1601,55 @@
         "ttl": {
           "$ref": "#/definitions/TimeDiff"
         },
-        "body_hash": {
-          "$ref": "#/definitions/Digest"
+        "chain_name": {
+          "type": "string"
         },
         "pricing_mode": {
           "$ref": "#/definitions/PricingMode"
         },
-        "initiator_addr": {
-          "$ref": "#/definitions/InitiatorAddr"
+        "fields": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/Bytes"
+          }
         }
       },
       "additionalProperties": false
+    },
+    "InitiatorAddr": {
+      "description": "The address of the initiator of a TransactionV1.",
+      "oneOf": [
+        {
+          "description": "The public key of the initiator.",
+          "type": "object",
+          "required": [
+            "PublicKey"
+          ],
+          "properties": {
+            "PublicKey": {
+              "$ref": "#/definitions/PublicKey"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "The account hash derived from the public key of the initiator.",
+          "type": "object",
+          "required": [
+            "AccountHash"
+          ],
+          "properties": {
+            "AccountHash": {
+              "$ref": "#/definitions/AccountHash"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "AccountHash": {
+      "description": "Account hash as a formatted string.",
+      "type": "string"
     },
     "PricingMode": {
       "description": "Pricing mode of a Transaction.",
@@ -1673,9 +1701,16 @@
             "Fixed": {
               "type": "object",
               "required": [
+                "additional_computation_factor",
                 "gas_price_tolerance"
               ],
               "properties": {
+                "additional_computation_factor": {
+                  "description": "User-specified additional computation factor (minimum 0). If \"0\" is provided, no additional logic is applied to the computation limit. Each value above \"0\" tells the node that it needs to treat the transaction as if it uses more gas than it's serialized size indicates. Each \"1\" will increase the \"wasm lane\" size bucket for this transaction by 1. So if the size of the transaction indicates bucket \"0\" and \"additional_computation_factor = 2\", the transaction will be treated as a \"2\".",
+                  "type": "integer",
+                  "format": "uint8",
+                  "minimum": 0.0
+                },
                 "gas_price_tolerance": {
                   "description": "User-specified gas_price tolerance (minimum 1). This is interpreted to mean \"do not include this transaction in a block if the current gas price is greater than this number\"",
                   "type": "integer",
@@ -1711,403 +1746,6 @@
                 }
               },
               "additionalProperties": false
-            }
-          },
-          "additionalProperties": false
-        }
-      ]
-    },
-    "InitiatorAddr": {
-      "description": "The address of the initiator of a TransactionV1.",
-      "oneOf": [
-        {
-          "description": "The public key of the initiator.",
-          "type": "object",
-          "required": [
-            "PublicKey"
-          ],
-          "properties": {
-            "PublicKey": {
-              "$ref": "#/definitions/PublicKey"
-            }
-          },
-          "additionalProperties": false
-        },
-        {
-          "description": "The account hash derived from the public key of the initiator.",
-          "type": "object",
-          "required": [
-            "AccountHash"
-          ],
-          "properties": {
-            "AccountHash": {
-              "$ref": "#/definitions/AccountHash"
-            }
-          },
-          "additionalProperties": false
-        }
-      ]
-    },
-    "AccountHash": {
-      "description": "Account hash as a formatted string.",
-      "type": "string"
-    },
-    "TransactionV1Body": {
-      "description": "Body of a `TransactionV1`.",
-      "type": "object",
-      "required": [
-        "args",
-        "entry_point",
-        "scheduling",
-        "target",
-        "transaction_category"
-      ],
-      "properties": {
-        "args": {
-          "$ref": "#/definitions/RuntimeArgs"
-        },
-        "target": {
-          "$ref": "#/definitions/TransactionTarget"
-        },
-        "entry_point": {
-          "$ref": "#/definitions/TransactionEntryPoint"
-        },
-        "transaction_category": {
-          "type": "integer",
-          "format": "uint8",
-          "minimum": 0.0
-        },
-        "scheduling": {
-          "$ref": "#/definitions/TransactionScheduling"
-        }
-      },
-      "additionalProperties": false
-    },
-    "TransactionTarget": {
-      "description": "Execution target of a Transaction.",
-      "oneOf": [
-        {
-          "description": "The execution target is a native operation (e.g. a transfer).",
-          "type": "string",
-          "enum": [
-            "Native"
-          ]
-        },
-        {
-          "description": "The execution target is a stored entity or package.",
-          "type": "object",
-          "required": [
-            "Stored"
-          ],
-          "properties": {
-            "Stored": {
-              "type": "object",
-              "required": [
-                "id",
-                "runtime"
-              ],
-              "properties": {
-                "id": {
-                  "description": "The identifier of the stored execution target.",
-                  "allOf": [
-                    {
-                      "$ref": "#/definitions/TransactionInvocationTarget"
-                    }
-                  ]
-                },
-                "runtime": {
-                  "description": "The execution runtime to use.",
-                  "allOf": [
-                    {
-                      "$ref": "#/definitions/TransactionRuntime"
-                    }
-                  ]
-                }
-              },
-              "additionalProperties": false
-            }
-          },
-          "additionalProperties": false
-        },
-        {
-          "description": "The execution target is the included module bytes, i.e. compiled Wasm.",
-          "type": "object",
-          "required": [
-            "Session"
-          ],
-          "properties": {
-            "Session": {
-              "type": "object",
-              "required": [
-                "module_bytes",
-                "runtime"
-              ],
-              "properties": {
-                "module_bytes": {
-                  "description": "The compiled Wasm.",
-                  "allOf": [
-                    {
-                      "$ref": "#/definitions/Bytes"
-                    }
-                  ]
-                },
-                "runtime": {
-                  "description": "The execution runtime to use.",
-                  "allOf": [
-                    {
-                      "$ref": "#/definitions/TransactionRuntime"
-                    }
-                  ]
-                }
-              },
-              "additionalProperties": false
-            }
-          },
-          "additionalProperties": false
-        }
-      ]
-    },
-    "TransactionInvocationTarget": {
-      "description": "Identifier of a `Stored` transaction target.",
-      "oneOf": [
-        {
-          "description": "Hex-encoded entity address identifying the invocable entity.",
-          "type": "object",
-          "required": [
-            "ByHash"
-          ],
-          "properties": {
-            "ByHash": {
-              "type": "string"
-            }
-          },
-          "additionalProperties": false
-        },
-        {
-          "description": "The alias identifying the invocable entity.",
-          "type": "object",
-          "required": [
-            "ByName"
-          ],
-          "properties": {
-            "ByName": {
-              "type": "string"
-            }
-          },
-          "additionalProperties": false
-        },
-        {
-          "description": "The address and optional version identifying the package.",
-          "type": "object",
-          "required": [
-            "ByPackageHash"
-          ],
-          "properties": {
-            "ByPackageHash": {
-              "type": "object",
-              "required": [
-                "addr"
-              ],
-              "properties": {
-                "addr": {
-                  "description": "Hex-encoded address of the package.",
-                  "type": "string"
-                },
-                "version": {
-                  "description": "The package version.\n\nIf `None`, the latest enabled version is implied.",
-                  "type": [
-                    "integer",
-                    "null"
-                  ],
-                  "format": "uint32",
-                  "minimum": 0.0
-                }
-              },
-              "additionalProperties": false
-            }
-          },
-          "additionalProperties": false
-        },
-        {
-          "description": "The alias and optional version identifying the package.",
-          "type": "object",
-          "required": [
-            "ByPackageName"
-          ],
-          "properties": {
-            "ByPackageName": {
-              "type": "object",
-              "required": [
-                "name"
-              ],
-              "properties": {
-                "name": {
-                  "description": "The package name.",
-                  "type": "string"
-                },
-                "version": {
-                  "description": "The package version.\n\nIf `None`, the latest enabled version is implied.",
-                  "type": [
-                    "integer",
-                    "null"
-                  ],
-                  "format": "uint32",
-                  "minimum": 0.0
-                }
-              },
-              "additionalProperties": false
-            }
-          },
-          "additionalProperties": false
-        }
-      ]
-    },
-    "TransactionRuntime": {
-      "description": "Runtime used to execute a Transaction.",
-      "oneOf": [
-        {
-          "description": "The Casper Version 1 Virtual Machine.",
-          "type": "string",
-          "enum": [
-            "VmCasperV1"
-          ]
-        },
-        {
-          "description": "The Casper Version 2 Virtual Machine.",
-          "type": "string",
-          "enum": [
-            "VmCasperV2"
-          ]
-        }
-      ]
-    },
-    "TransactionEntryPoint": {
-      "description": "Entry point of a Transaction.",
-      "oneOf": [
-        {
-          "description": "The standard `call` entry point used in session code.",
-          "type": "string",
-          "enum": [
-            "Call"
-          ]
-        },
-        {
-          "description": "A non-native, arbitrary entry point.",
-          "type": "object",
-          "required": [
-            "Custom"
-          ],
-          "properties": {
-            "Custom": {
-              "type": "string"
-            }
-          },
-          "additionalProperties": false
-        },
-        {
-          "description": "The `transfer` native entry point, used to transfer `Motes` from a source purse to a target purse.",
-          "type": "string",
-          "enum": [
-            "Transfer"
-          ]
-        },
-        {
-          "description": "The `add_bid` native entry point, used to create or top off a bid purse.",
-          "type": "string",
-          "enum": [
-            "AddBid"
-          ]
-        },
-        {
-          "description": "The `withdraw_bid` native entry point, used to decrease a stake.",
-          "type": "string",
-          "enum": [
-            "WithdrawBid"
-          ]
-        },
-        {
-          "description": "The `delegate` native entry point, used to add a new delegator or increase an existing delegator's stake.",
-          "type": "string",
-          "enum": [
-            "Delegate"
-          ]
-        },
-        {
-          "description": "The `undelegate` native entry point, used to reduce a delegator's stake or remove the delegator if the remaining stake is 0.",
-          "type": "string",
-          "enum": [
-            "Undelegate"
-          ]
-        },
-        {
-          "description": "The `redelegate` native entry point, used to reduce a delegator's stake or remove the delegator if the remaining stake is 0, and after the unbonding delay, automatically delegate to a new validator.",
-          "type": "string",
-          "enum": [
-            "Redelegate"
-          ]
-        },
-        {
-          "description": "The `activate_bid` native entry point, used to used to reactivate an inactive bid.",
-          "type": "string",
-          "enum": [
-            "ActivateBid"
-          ]
-        },
-        {
-          "description": "The `change_bid_public_key` native entry point, used to change a bid's public key.",
-          "type": "string",
-          "enum": [
-            "ChangeBidPublicKey"
-          ]
-        },
-        {
-          "description": "The `add_reservations` native entry point, used to add delegator to validator's reserve list",
-          "type": "string",
-          "enum": [
-            "AddReservations"
-          ]
-        },
-        {
-          "description": "The `cancel_reservations` native entry point, used to remove delegator from validator's reserve list",
-          "type": "string",
-          "enum": [
-            "CancelReservations"
-          ]
-        }
-      ]
-    },
-    "TransactionScheduling": {
-      "description": "Scheduling mode of a Transaction.",
-      "oneOf": [
-        {
-          "description": "No special scheduling applied.",
-          "type": "string",
-          "enum": [
-            "Standard"
-          ]
-        },
-        {
-          "description": "Execution should be scheduled for the specified era.",
-          "type": "object",
-          "required": [
-            "FutureEra"
-          ],
-          "properties": {
-            "FutureEra": {
-              "$ref": "#/definitions/EraId"
-            }
-          },
-          "additionalProperties": false
-        },
-        {
-          "description": "Execution should be scheduled for the specified timestamp or later.",
-          "type": "object",
-          "required": [
-            "FutureTimestamp"
-          ],
-          "properties": {
-            "FutureTimestamp": {
-              "$ref": "#/definitions/Timestamp"
             }
           },
           "additionalProperties": false
@@ -4653,6 +4291,25 @@
           "type": "string",
           "enum": [
             "Auction"
+          ]
+        }
+      ]
+    },
+    "TransactionRuntime": {
+      "description": "Runtime used to execute a Transaction.",
+      "oneOf": [
+        {
+          "description": "The Casper Version 1 Virtual Machine.",
+          "type": "string",
+          "enum": [
+            "VmCasperV1"
+          ]
+        },
+        {
+          "description": "The Casper Version 2 Virtual Machine.",
+          "type": "string",
+          "enum": [
+            "VmCasperV2"
           ]
         }
       ]

@@ -3,7 +3,7 @@ mod tests;
 
 use std::{
     collections::HashMap,
-    fmt::{self, Debug, Display, Formatter},
+    fmt::{self, Display, Formatter},
 };
 
 use datasize::DataSize;

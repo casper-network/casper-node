@@ -1,7 +1,7 @@
 #![cfg(test)]
 
 use std::{
-    collections::VecDeque,
+    collections::{BTreeMap, VecDeque},
     fmt::{self, Debug, Display, Formatter},
     iter,
     sync::Arc,
@@ -37,8 +37,7 @@ use casper_types::{
     Block, BlockV2, CLValue, Chainspec, ChainspecRawBytes, Contract, Deploy, EntryPointValue,
     EraId, HashAddr, InvalidDeploy, InvalidTransaction, InvalidTransactionV1, Package, PricingMode,
     ProtocolVersion, PublicKey, SecretKey, StoredValue, TestBlockBuilder, TimeDiff, Timestamp,
-    Transaction, TransactionCategory, TransactionConfig, TransactionV1, TransactionV1Builder, URef,
-    U512,
+    Transaction, TransactionConfig, TransactionV1, TransactionV1Builder, URef, U512,
 };
 
 use super::*;
@@ -214,6 +213,8 @@ enum TestScenario {
     InvalidPricingModeForTransactionV1,
     TooLowGasPriceToleranceForTransactionV1,
     TooLowGasPriceToleranceForDeploy,
+    InvalidFields,
+    InvalidFieldsFromPeer,
 }
 
 impl TestScenario {
@@ -230,7 +231,8 @@ impl TestScenario {
             | TestScenario::FromPeerCustomPaymentContract(_)
             | TestScenario::FromPeerCustomPaymentContractPackage(_)
             | TestScenario::FromPeerSessionContract(..)
-            | TestScenario::FromPeerSessionContractPackage(..) => Source::Peer(NodeId::random(rng)),
+            | TestScenario::FromPeerSessionContractPackage(..)
+            | TestScenario::InvalidFieldsFromPeer => Source::Peer(NodeId::random(rng)),
             TestScenario::FromClientInvalidTransaction(_)
             | TestScenario::FromClientSlightlyFutureDatedTransaction(_)
             | TestScenario::FromClientFutureDatedTransaction(_)
@@ -256,7 +258,8 @@ impl TestScenario {
             | TestScenario::DeployWithNativeTransferInPayment
             | TestScenario::InvalidPricingModeForTransactionV1
             | TestScenario::TooLowGasPriceToleranceForTransactionV1
-            | TestScenario::TooLowGasPriceToleranceForDeploy => Source::Client,
+            | TestScenario::TooLowGasPriceToleranceForDeploy
+            | TestScenario::InvalidFields => Source::Client,
         }
     }
 
@@ -281,15 +284,12 @@ impl TestScenario {
             }
             TestScenario::FromPeerExpired(TxnType::V1)
             | TestScenario::FromClientExpired(TxnType::V1) => {
-                let txn = TransactionV1Builder::new_session(
-                    TransactionCategory::Large,
-                    Bytes::from(vec![1]),
-                )
-                .with_chain_name("casper-example")
-                .with_timestamp(Timestamp::zero())
-                .with_secret_key(&secret_key)
-                .build()
-                .unwrap();
+                let txn = TransactionV1Builder::new_session(false, Bytes::from(vec![1]))
+                    .with_chain_name("casper-example")
+                    .with_timestamp(Timestamp::zero())
+                    .with_secret_key(&secret_key)
+                    .build()
+                    .unwrap();
                 Transaction::from(txn)
             }
             TestScenario::FromPeerValidTransaction(txn_type)
@@ -305,15 +305,12 @@ impl TestScenario {
             | TestScenario::FromClientAccountWithInsufficientWeight(txn_type) => match txn_type {
                 TxnType::Deploy => Transaction::from(Deploy::random_valid_native_transfer(rng)),
                 TxnType::V1 => {
-                    let txn = TransactionV1Builder::new_session(
-                        TransactionCategory::Large,
-                        Bytes::from(vec![1]),
-                    )
-                    .with_chain_name("casper-example")
-                    .with_timestamp(Timestamp::now())
-                    .with_secret_key(&secret_key)
-                    .build()
-                    .unwrap();
+                    let txn = TransactionV1Builder::new_session(false, Bytes::from(vec![1]))
+                        .with_chain_name("casper-example")
+                        .with_timestamp(Timestamp::now())
+                        .with_secret_key(&secret_key)
+                        .build()
+                        .unwrap();
                     Transaction::from(txn)
                 }
             },
@@ -323,15 +320,12 @@ impl TestScenario {
                 Transaction::from(deploy)
             }
             TestScenario::FromClientSignedByAdmin(TxnType::V1) => {
-                let txn = TransactionV1Builder::new_session(
-                    TransactionCategory::Large,
-                    Bytes::from(vec![1]),
-                )
-                .with_chain_name("casper-example")
-                .with_timestamp(Timestamp::now())
-                .with_secret_key(admin)
-                .build()
-                .unwrap();
+                let txn = TransactionV1Builder::new_session(false, Bytes::from(vec![1]))
+                    .with_chain_name("casper-example")
+                    .with_timestamp(Timestamp::now())
+                    .with_secret_key(admin)
+                    .build()
+                    .unwrap();
                 Transaction::from(txn)
             }
             TestScenario::AccountWithUnknownBalance
@@ -518,16 +512,13 @@ impl TestScenario {
                         ),
                     ),
                     TxnType::V1 => {
-                        let txn = TransactionV1Builder::new_session(
-                            TransactionCategory::Large,
-                            Bytes::from(vec![1]),
-                        )
-                        .with_chain_name("casper-example")
-                        .with_timestamp(timestamp)
-                        .with_ttl(ttl)
-                        .with_secret_key(&secret_key)
-                        .build()
-                        .unwrap();
+                        let txn = TransactionV1Builder::new_session(false, Bytes::from(vec![1]))
+                            .with_chain_name("casper-example")
+                            .with_timestamp(timestamp)
+                            .with_ttl(ttl)
+                            .with_secret_key(&secret_key)
+                            .build()
+                            .unwrap();
                         Transaction::from(txn)
                     }
                 }
@@ -544,16 +535,13 @@ impl TestScenario {
                         ),
                     ),
                     TxnType::V1 => {
-                        let txn = TransactionV1Builder::new_session(
-                            TransactionCategory::Large,
-                            Bytes::from(vec![1]),
-                        )
-                        .with_chain_name("casper-example")
-                        .with_timestamp(timestamp)
-                        .with_ttl(ttl)
-                        .with_secret_key(&secret_key)
-                        .build()
-                        .unwrap();
+                        let txn = TransactionV1Builder::new_session(false, Bytes::from(vec![1]))
+                            .with_chain_name("casper-example")
+                            .with_timestamp(timestamp)
+                            .with_ttl(ttl)
+                            .with_secret_key(&secret_key)
+                            .build()
+                            .unwrap();
                         Transaction::from(txn)
                     }
                 }
@@ -576,6 +564,7 @@ impl TestScenario {
                 let fixed_mode_transaction = TransactionV1Builder::new_random(rng)
                     .with_pricing_mode(PricingMode::Fixed {
                         gas_price_tolerance: TOO_LOW_GAS_PRICE_TOLERANCE,
+                        additional_computation_factor: 0,
                     })
                     .with_chain_name("casper-example")
                     .build()
@@ -587,6 +576,18 @@ impl TestScenario {
 
                 let deploy = Deploy::random_with_gas_price(rng, TOO_LOW_GAS_PRICE_TOLERANCE);
                 Transaction::from(deploy)
+            }
+            TestScenario::InvalidFields | TestScenario::InvalidFieldsFromPeer => {
+                let mut additional_fields = BTreeMap::new();
+                additional_fields.insert(5, Bytes::from(vec![1]));
+                let txn = TransactionV1Builder::new_session(false, Bytes::from(vec![1]))
+                    .with_chain_name("casper-example")
+                    .with_ttl(TimeDiff::from_seconds(300))
+                    .with_secret_key(&secret_key)
+                    .with_additional_fields(additional_fields)
+                    .build()
+                    .unwrap();
+                Transaction::from(txn)
             }
         }
     }
@@ -644,6 +645,8 @@ impl TestScenario {
             TestScenario::InvalidPricingModeForTransactionV1 => false,
             TestScenario::TooLowGasPriceToleranceForTransactionV1 => false,
             TestScenario::TooLowGasPriceToleranceForDeploy => false,
+            TestScenario::InvalidFields => false,
+            TestScenario::InvalidFieldsFromPeer => false,
         }
     }
 
@@ -804,7 +807,7 @@ impl reactor::Reactor for Reactor {
                                 .ignore::<Self::Event>();
                             return Effects::new();
                         }
-                        BalanceIdentifier::Payment => {
+                        BalanceIdentifier::Payment | BalanceIdentifier::PenalizedPayment => {
                             responder
                                 .respond(BalanceResult::Failure(
                                     TrackingCopyError::NamedKeyNotFound("payment".to_string()),
@@ -1058,12 +1061,20 @@ fn inject_balance_check_for_peer(
     source: Source,
     rng: &mut TestRng,
     responder: Responder<Result<(), super::Error>>,
+    chainspec: &Chainspec,
 ) -> impl FnOnce(EffectBuilder<Event>) -> Effects<Event> {
     let txn = txn.clone();
     let block = TestBlockBuilder::new().build(rng);
     let block_header = Box::new(block.header().clone().into());
+    let meta_transaction = MetaTransaction::from(&txn, &chainspec.transaction_config).unwrap();
     |effect_builder: EffectBuilder<Event>| {
-        let event_metadata = Box::new(EventMetadata::new(txn, source, Some(responder)));
+        let event_metadata = Box::new(EventMetadata::new(
+            txn,
+            meta_transaction,
+            source,
+            Some(responder),
+            Timestamp::now(),
+        ));
         effect_builder
             .into_inner()
             .schedule(
@@ -1089,9 +1100,10 @@ async fn run_transaction_acceptor_without_timeout(
         <(Chainspec, ChainspecRawBytes)>::from_resources("local");
     chainspec.core_config.administrators = iter::once(PublicKey::from(&admin)).collect();
 
+    let chainspec = Arc::new(chainspec);
     let mut runner: Runner<ConditionCheckReactor<Reactor>> = Runner::new(
         test_scenario,
-        Arc::new(chainspec),
+        chainspec.clone(),
         Arc::new(chainspec_raw_bytes),
         rng,
     )
@@ -1141,12 +1153,14 @@ async fn run_transaction_acceptor_without_timeout(
         if test_scenario == TestScenario::BalanceCheckForDeploySentByPeer {
             let (txn_sender, _) = oneshot::channel();
             let txn_responder = Responder::without_shutdown(txn_sender);
+            let chainspec = chainspec.as_ref().clone();
             runner
                 .process_injected_effects(inject_balance_check_for_peer(
                     &txn,
                     source.clone(),
                     rng,
                     txn_responder,
+                    &chainspec,
                 ))
                 .await;
             while runner.try_crank(rng).await == TryCrankOutcome::NoEventsToProcess {
@@ -1182,7 +1196,8 @@ async fn run_transaction_acceptor_without_timeout(
             | TestScenario::InvalidPricingModeForTransactionV1
             | TestScenario::FromClientExpired(_)
             | TestScenario::TooLowGasPriceToleranceForTransactionV1
-            | TestScenario::TooLowGasPriceToleranceForDeploy => {
+            | TestScenario::TooLowGasPriceToleranceForDeploy
+            | TestScenario::InvalidFields => {
                 matches!(
                     event,
                     Event::TransactionAcceptorAnnouncement(
@@ -1244,7 +1259,8 @@ async fn run_transaction_acceptor_without_timeout(
             // Check that invalid transactions sent by a peer raise the `InvalidTransaction`
             // announcement with the appropriate source.
             TestScenario::FromPeerInvalidTransaction(_)
-            | TestScenario::BalanceCheckForDeploySentByPeer => {
+            | TestScenario::BalanceCheckForDeploySentByPeer
+            | TestScenario::InvalidFieldsFromPeer => {
                 matches!(
                     event,
                     Event::TransactionAcceptorAnnouncement(
@@ -2428,5 +2444,27 @@ async fn should_reject_deploy_with_too_low_gas_price_tolerance() {
         Err(super::Error::InvalidTransaction(
             InvalidTransaction::Deploy(InvalidDeploy::GasPriceToleranceTooLow { .. })
         ))
+    ))
+}
+
+#[tokio::test]
+async fn should_reject_transaction_with_unexpected_fields() {
+    let result = run_transaction_acceptor(TestScenario::InvalidFields).await;
+    assert!(matches!(
+        result,
+        Err(super::Error::InvalidTransaction(InvalidTransaction::V1(
+            InvalidTransactionV1::UnexpectedTransactionFieldEntries
+        )))
+    ))
+}
+
+#[tokio::test]
+async fn should_reject_transaction_from_peer_with_unexpected_fields() {
+    let result = run_transaction_acceptor(TestScenario::InvalidFieldsFromPeer).await;
+    assert!(matches!(
+        result,
+        Err(super::Error::InvalidTransaction(InvalidTransaction::V1(
+            InvalidTransactionV1::UnexpectedTransactionFieldEntries
+        )))
     ))
 }

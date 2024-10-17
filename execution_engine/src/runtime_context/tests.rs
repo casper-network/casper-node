@@ -17,8 +17,8 @@ use casper_types::{
     bytesrepr::ToBytes,
     execution::TransformKindV2,
     system::{AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT},
-    AccessRights, AddressableEntity, AddressableEntityHash, BlockGlobalAddr, BlockTime,
-    ByteCodeHash, CLValue, ContextAccessRights, EntityAddr, EntityKind, EntryPointType, Gas,
+    AccessRights, AddressableEntity, AddressableEntityHash, BlockGlobalAddr, BlockHash, BlockTime,
+    ByteCodeHash, CLValue, ContextAccessRights, Digest,EntityAddr, EntityKind, EntryPointType, Gas,
     HashAddr, Key, PackageHash, Phase, ProtocolVersion, PublicKey, RuntimeArgs, RuntimeFootprint,
     SecretKey, StoredValue, SystemHashRegistry, Tagged, Timestamp, TransactionHash,
     TransactionV1Hash, URef, KEY_HASH_LENGTH, U256, U512,
@@ -26,7 +26,7 @@ use casper_types::{
 use tempfile::TempDir;
 
 use super::{CallingAddContractVersion, ExecError, RuntimeContext};
-use crate::engine_state::EngineConfig;
+use crate::engine_state::{BlockInfo, EngineConfig};
 
 const TXN_HASH_RAW: [u8; 32] = [1u8; 32];
 const PHASE: Phase = Phase::Session;
@@ -174,7 +174,12 @@ fn new_runtime_context<'a>(
         Rc::new(RefCell::new(address_generator)),
         Rc::new(RefCell::new(tracking_copy)),
         TEST_ENGINE_CONFIG.clone(),
-        BlockTime::new(0),
+        BlockInfo::new(
+            Digest::default(),
+            BlockTime::new(0),
+            BlockHash::default(),
+            0,
+        ),
         ProtocolVersion::V1_0_0,
         TransactionHash::V1(TransactionV1Hash::from_raw([1u8; 32])),
         Phase::Session,
@@ -450,7 +455,12 @@ fn contract_key_addable_valid() {
         Rc::new(RefCell::new(address_generator)),
         Rc::clone(&tracking_copy),
         EngineConfig::default(),
-        BlockTime::new(0),
+        BlockInfo::new(
+            Digest::default(),
+            BlockTime::new(0),
+            BlockHash::default(),
+            0,
+        ),
         ProtocolVersion::V1_0_0,
         TransactionHash::V1(TransactionV1Hash::from_raw(TXN_HASH_RAW)),
         PHASE,
@@ -522,7 +532,12 @@ fn contract_key_addable_invalid() {
         Rc::new(RefCell::new(address_generator)),
         Rc::clone(&tracking_copy),
         EngineConfig::default(),
-        BlockTime::new(0),
+        BlockInfo::new(
+            Digest::default(),
+            BlockTime::new(0),
+            BlockHash::default(),
+            0,
+        ),
         ProtocolVersion::V1_0_0,
         TransactionHash::V1(TransactionV1Hash::from_raw(TXN_HASH_RAW)),
         PHASE,
@@ -1032,7 +1047,10 @@ fn should_meter_for_gas_storage_write() {
         gas_usage_before
     );
 
-    assert_eq!(gas_usage_after, gas_usage_before + expected_write_cost);
+    assert_eq!(
+        Some(gas_usage_after),
+        gas_usage_before.checked_add(expected_write_cost)
+    );
 }
 
 #[test]
@@ -1068,7 +1086,10 @@ fn should_meter_for_gas_storage_add() {
         gas_usage_before
     );
 
-    assert_eq!(gas_usage_after, gas_usage_before + expected_add_cost);
+    assert_eq!(
+        Some(gas_usage_after),
+        gas_usage_before.checked_add(expected_add_cost)
+    );
 }
 
 #[test]

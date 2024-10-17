@@ -3,7 +3,7 @@
 
 extern crate alloc;
 
-use alloc::{vec, vec::Vec};
+use alloc::vec::Vec;
 
 use casper_contract::{self, contract_api::storage, unwrap_or_revert::UnwrapOrRevert};
 use casper_types::{
@@ -46,7 +46,7 @@ pub fn my_call_contract(contract_hash: AddressableEntityHash, entry_point_name: 
     let (contract_hash_ptr, contract_hash_size, _bytes1) = to_ptr(contract_hash);
 
     let entry_point_name = ToBytes::to_bytes(entry_point_name).unwrap();
-    let malicious_args = vec![255, 255, 255, 255, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+    let malicious_args = [255, 255, 255, 255, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
 
     {
         let mut bytes_written = 0usize;

@@ -1,7 +1,11 @@
 pub(crate) mod detail;
+/// Provides native mint processing.
 mod mint_native;
+/// Provides runtime logic for mint processing.
 pub mod runtime_provider;
+/// Provides storage logic for mint processing.
 pub mod storage_provider;
+/// Provides system logic for mint processing.
 pub mod system_provider;
 
 use num_rational::Ratio;

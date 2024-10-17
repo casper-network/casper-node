@@ -39,6 +39,7 @@ pub struct ApprovalsHashes {
 }
 
 impl ApprovalsHashes {
+    /// Ctor.
     pub fn new(
         block_hash: BlockHash,
         approvals_hashes: Vec<ApprovalsHash>,
@@ -51,6 +52,7 @@ impl ApprovalsHashes {
         }
     }
 
+    /// Verify block.
     pub fn verify(&self, block: &Block) -> Result<(), ApprovalsHashesValidationError> {
         if *self.merkle_proof_approvals.key() != Key::ChecksumRegistry {
             return Err(ApprovalsHashesValidationError::InvalidKeyType);
@@ -92,6 +94,7 @@ impl ApprovalsHashes {
         Ok(())
     }
 
+    /// Deploy ids.
     pub(crate) fn deploy_ids(
         &self,
         v1_block: &BlockV1,
@@ -106,6 +109,7 @@ impl ApprovalsHashes {
             .collect())
     }
 
+    /// Transaction ids.
     pub fn transaction_ids(
         &self,
         v2_block: &BlockV2,
@@ -119,10 +123,12 @@ impl ApprovalsHashes {
             .collect()
     }
 
+    /// Block hash.
     pub fn block_hash(&self) -> &BlockHash {
         &self.block_hash
     }
 
+    /// Approvals hashes.
     pub fn approvals_hashes(&self) -> Vec<ApprovalsHash> {
         self.approvals_hashes.clone()
     }
@@ -197,7 +203,9 @@ pub enum ApprovalsHashesValidationError {
     /// The state root hash implied by the Merkle proof doesn't match that in the block.
     #[error("state root hash implied by the Merkle proof doesn't match that in the block")]
     StateRootHashMismatch {
+        /// Proof state root hash.
         proof_state_root_hash: Digest,
+        /// Block state root hash.
         block_state_root_hash: Digest,
     },
 
@@ -212,10 +220,13 @@ pub enum ApprovalsHashesValidationError {
     /// The approvals checksum provided doesn't match one calculated from the approvals.
     #[error("provided approvals checksum doesn't match one calculated from the approvals")]
     ApprovalsChecksumMismatch {
+        /// Computed approvals checksum.
         computed_approvals_checksum: Digest,
+        /// Value in proof.
         value_in_proof: Digest,
     },
 
+    /// Variant mismatch.
     #[error("mismatch in variants: {0:?}")]
     #[data_size(skip)]
     VariantMismatch(Box<dyn Debug + Send + Sync>),

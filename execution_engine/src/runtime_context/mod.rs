@@ -41,7 +41,10 @@ use casper_types::{
     DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
 };
 
-use crate::{engine_state::EngineConfig, execution::ExecError};
+use crate::{
+    engine_state::{BlockInfo, EngineConfig},
+    execution::ExecError,
+};
 
 /// Number of bytes returned from the `random_bytes` function.
 pub const RANDOM_BYTES_COUNT: usize = 32;
@@ -64,7 +67,7 @@ pub struct RuntimeContext<'a, R> {
     access_rights: ContextAccessRights,
     args: RuntimeArgs,
     authorization_keys: BTreeSet<AccountHash>,
-    blocktime: BlockTime,
+    block_info: BlockInfo,
     transaction_hash: TransactionHash,
     gas_limit: Gas,
     gas_counter: Gas,
@@ -104,7 +107,7 @@ where
         address_generator: Rc<RefCell<AddressGenerator>>,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
         engine_config: EngineConfig,
-        blocktime: BlockTime,
+        block_info: BlockInfo,
         protocol_version: ProtocolVersion,
         transaction_hash: TransactionHash,
         phase: Phase,
@@ -132,7 +135,7 @@ where
             entity_key,
             authorization_keys,
             account_hash,
-            blocktime,
+            block_info,
             transaction_hash,
             gas_limit,
             gas_counter,
@@ -165,7 +168,7 @@ where
         let tracking_copy = self.state();
         let engine_config = self.engine_config.clone();
 
-        let blocktime = self.blocktime;
+        let block_info = self.block_info;
         let protocol_version = self.protocol_version;
         let transaction_hash = self.transaction_hash;
         let phase = self.phase;
@@ -186,7 +189,7 @@ where
             entity_key,
             authorization_keys,
             account_hash,
-            blocktime,
+            block_info,
             transaction_hash,
             gas_limit,
             gas_counter,
@@ -308,9 +311,9 @@ where
         self.remove_key_from_entity(name)
     }
 
-    /// Returns the block time.
-    pub fn get_blocktime(&self) -> BlockTime {
-        self.blocktime
+    /// Returns block info.
+    pub fn get_block_info(&self) -> BlockInfo {
+        self.block_info
     }
 
     /// Returns the transaction hash.
@@ -1467,7 +1470,7 @@ where
     ) -> Result<Contract, ExecError> {
         self.tracking_copy
             .borrow_mut()
-            .get_legacy_contract(legacy_contract)
+            .get_contract(legacy_contract)
             .map_err(Into::into)
     }
 
@@ -1663,15 +1666,9 @@ where
             }
         }
 
-        let topic_key = Key::Message(MessageAddr::new_topic_addr(
-            entity_addr.value(),
-            topic_name_hash,
-        ));
-        let summary = StoredValue::MessageTopic(MessageTopicSummary::new(
-            0,
-            self.get_blocktime(),
-            topic_name.to_string(),
-        ));
+        let topic_key = Key::Message(MessageAddr::new_topic_addr(entity_addr.value(), topic_name_hash));
+        let block_time = self.block_info.block_time();
+        let summary = StoredValue::MessageTopic(MessageTopicSummary::new(0, block_time, topic_name.to_string()));
 
         self.metered_write_gs_unsafe(topic_key, summary)?;
 

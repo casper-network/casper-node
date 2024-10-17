@@ -239,6 +239,7 @@ impl<M: Meter<Key, StoredValue>> TrackingCopyCache<M> {
         self.reads_cached.get_refresh(key).map(|v| &*v)
     }
 
+    /// Get cached items by prefix.
     fn get_muts_cached_by_byte_prefix(&self, prefix: &[u8]) -> Vec<Key> {
         self.muts_cached
             .range(prefix.to_vec()..)
@@ -247,6 +248,7 @@ impl<M: Meter<Key, StoredValue>> TrackingCopyCache<M> {
             .collect()
     }
 
+    /// Does the prune cache contain key.
     pub fn is_pruned(&self, key: &Key) -> bool {
         self.prunes_cached.contains(key)
     }
@@ -396,6 +398,7 @@ where
         self.effects.clone()
     }
 
+    /// Destructure cached entries.
     pub fn destructure(self) -> (Vec<(Key, StoredValue)>, BTreeSet<Key>, Effects) {
         let (writes, prunes) = self.cache.into_muts();
         let writes: Vec<(Key, StoredValue)> = writes.into_iter().map(|(k, v)| (k.0, v)).collect();
@@ -407,6 +410,7 @@ where
         self.enable_addressable_entity
     }
 
+    /// Get record by key.
     pub fn get(&mut self, key: &Key) -> Result<Option<StoredValue>, TrackingCopyError> {
         if let Some(value) = self.cache.get(key) {
             return Ok(Some(value.to_owned()));
@@ -429,6 +433,7 @@ where
         self.get_by_byte_prefix(&[*key_tag as u8])
     }
 
+    /// Get keys by prefix.
     pub fn get_keys_by_prefix(
         &self,
         key_prefix: &KeyPrefix,

@@ -1,21 +1,27 @@
-use alloc::{string::String, vec::Vec};
+use alloc::vec::Vec;
 use core::fmt::{self, Display, Formatter};
 
+#[cfg(feature = "json-schema")]
+use crate::checksummed_hex;
+use crate::{
+    bytesrepr::{self, Bytes, FromBytes, ToBytes, U32_SERIALIZED_LENGTH},
+    CLType, CLTyped,
+};
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 #[cfg(feature = "json-schema")]
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
-use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
+#[cfg(feature = "json-schema")]
+use serde::de::Error as SerdeError;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+#[cfg(feature = "json-schema")]
 use serde_json::Value;
-
-use crate::{
-    bytesrepr::{self, Bytes, FromBytes, ToBytes, U32_SERIALIZED_LENGTH},
-    checksummed_hex, CLType, CLTyped,
-};
 
 mod checksum_registry;
 mod dictionary;
+#[cfg(feature = "json-schema")]
 pub use jsonrepr::cl_value_to_json;
+#[cfg(feature = "json-schema")]
 mod jsonrepr;
 mod system_entity_registry;
 
@@ -213,12 +219,14 @@ impl JsonSchema for CLValue {
 #[serde(deny_unknown_fields)]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[cfg_attr(feature = "json-schema", schemars(rename = "CLValue"))]
+#[cfg(feature = "json-schema")]
 struct CLValueJson {
     cl_type: CLType,
     bytes: String,
     parsed: Option<Value>,
 }
 
+#[cfg(feature = "json-schema")]
 impl Serialize for CLValue {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         if serializer.is_human_readable() {
@@ -234,6 +242,14 @@ impl Serialize for CLValue {
     }
 }
 
+#[cfg(not(feature = "json-schema"))]
+impl Serialize for CLValue {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        (&self.cl_type, &self.bytes).serialize(serializer)
+    }
+}
+
+#[cfg(feature = "json-schema")]
 impl<'de> Deserialize<'de> for CLValue {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let (cl_type, bytes) = if deserializer.is_human_readable() {
@@ -245,6 +261,17 @@ impl<'de> Deserialize<'de> for CLValue {
         } else {
             <(CLType, Vec<u8>)>::deserialize(deserializer)?
         };
+        Ok(CLValue {
+            cl_type,
+            bytes: bytes.into(),
+        })
+    }
+}
+
+#[cfg(not(feature = "json-schema"))]
+impl<'de> Deserialize<'de> for CLValue {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let (cl_type, bytes) = <(CLType, Vec<u8>)>::deserialize(deserializer)?;
         Ok(CLValue {
             cl_type,
             bytes: bytes.into(),

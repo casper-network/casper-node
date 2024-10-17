@@ -1,4 +1,4 @@
-#[cfg(any(feature = "testing", test))]
+#[cfg(test)]
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
@@ -54,7 +54,7 @@ impl GenesisRequest {
     }
 }
 
-#[cfg(any(feature = "testing", test))]
+#[cfg(test)]
 impl Distribution<GenesisRequest> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> GenesisRequest {
         let input: [u8; 32] = rng.gen();
@@ -73,8 +73,11 @@ impl Distribution<GenesisRequest> for Standard {
 /// Represents a result of a `genesis` request.
 #[derive(Debug, Clone)]
 pub enum GenesisResult {
+    /// Genesis fatal.
     Fatal(String),
+    /// Genesis failure.
     Failure(GenesisError),
+    /// Genesis success.
     Success {
         /// State hash after genesis is committed to the global state.
         post_state_hash: Digest,

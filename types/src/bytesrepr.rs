@@ -110,7 +110,7 @@ pub fn allocate_buffer<T: ToBytes>(to_be_serialized: &T) -> Result<Vec<u8>, Erro
 /// Returns a `Vec<u8>` initialized with sufficient capacity to hold `expected_size` bytes,
 /// or an error if the capacity would exceed `u32::max_value()`.
 pub fn allocate_buffer_for_size(expected_size: usize) -> Result<Vec<u8>, Error> {
-    if expected_size > u32::max_value() as usize {
+    if expected_size > u32::MAX as usize {
         return Err(Error::OutOfMemory);
     }
     Ok(Vec::with_capacity(expected_size))

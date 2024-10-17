@@ -35,13 +35,14 @@ use tokio::sync::{
 use tracing::{error, info, warn};
 use warp::Filter;
 
-use casper_types::{InitiatorAddr, ProtocolVersion, TransactionHeader};
+use casper_types::{InitiatorAddr, ProtocolVersion};
 
 use super::Component;
 use crate::{
     components::{ComponentState, InitializedComponent, PortBoundComponent},
     effect::{EffectBuilder, Effects},
     reactor::main_reactor::MainEvent,
+    types::TransactionHeader,
     utils::{self, ListeningError},
     NodeRng,
 };
@@ -232,7 +233,7 @@ where
 
     fn handle_event(
         &mut self,
-        _effect_builder: EffectBuilder<REv>,
+        effect_builder: EffectBuilder<REv>,
         _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
@@ -256,7 +257,7 @@ where
             }
             ComponentState::Initializing => match event {
                 Event::Initialize => {
-                    let (effects, state) = self.bind(self.config.enable_server, _effect_builder);
+                    let (effects, state) = self.bind(self.config.enable_server, effect_builder);
                     <Self as InitializedComponent<MainEvent>>::set_state(self, state);
                     effects
                 }
@@ -304,10 +305,10 @@ where
                             deploy_header.timestamp(),
                             deploy_header.ttl(),
                         ),
-                        TransactionHeader::V1(txn_header) => (
-                            txn_header.initiator_addr().clone(),
-                            txn_header.timestamp(),
-                            txn_header.ttl(),
+                        TransactionHeader::V1(metadata) => (
+                            metadata.initiator_addr().clone(),
+                            metadata.timestamp(),
+                            metadata.ttl(),
                         ),
                     };
                     self.broadcast(SseData::TransactionProcessed {

@@ -108,10 +108,9 @@ pub trait TrackingCopyExt<R> {
 
     /// Gets a package by hash.
     fn get_package(&mut self, package_hash: HashAddr) -> Result<Package, Self::Error>;
-    fn get_legacy_contract(
-        &mut self,
-        legacy_contract: ContractHash,
-    ) -> Result<Contract, Self::Error>;
+
+    /// Get a Contract record.
+    fn get_contract(&mut self, contract_hash: ContractHash) -> Result<Contract, Self::Error>;
 
     /// Gets the system entity registry.
     fn get_system_entity_registry(&self) -> Result<SystemHashRegistry, Self::Error>;
@@ -699,13 +698,10 @@ where
         }
     }
 
-    fn get_legacy_contract(
-        &mut self,
-        legacy_contract: ContractHash,
-    ) -> Result<Contract, Self::Error> {
-        let key = Key::Hash(legacy_contract.value());
+    fn get_contract(&mut self, contract_hash: ContractHash) -> Result<Contract, Self::Error> {
+        let key = Key::Hash(contract_hash.value());
         match self.read(&key)? {
-            Some(StoredValue::Contract(legacy_contract)) => Ok(legacy_contract),
+            Some(StoredValue::Contract(contract)) => Ok(contract),
             Some(other) => Err(Self::Error::TypeMismatch(StoredValueTypeMismatch::new(
                 "Contract".to_string(),
                 other.type_name(),

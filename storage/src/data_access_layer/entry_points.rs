@@ -37,6 +37,7 @@ pub enum EntryPointsResult {
         /// An addressable entity.
         entry_point: EntryPointValue,
     },
+    /// Failure result.
     Failure(TrackingCopyError),
 }
 

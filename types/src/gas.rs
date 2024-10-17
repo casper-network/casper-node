@@ -1,15 +1,10 @@
 //! The `gas` module is used for working with Gas including converting to and from Motes.
 
 use alloc::vec::Vec;
-use core::{
-    fmt,
-    iter::Sum,
-    ops::{Add, AddAssign, Div, Mul, Sub},
-};
+use core::fmt;
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
-use num::Zero;
 #[cfg(any(feature = "testing", test))]
 use rand::Rng;
 #[cfg(feature = "json-schema")]
@@ -32,6 +27,9 @@ use crate::{
 pub struct Gas(U512);
 
 impl Gas {
+    /// The maximum value of `Gas`.
+    pub const MAX: Gas = Gas(U512::MAX);
+
     /// Constructs a new `Gas`.
     pub fn new<T: Into<U512>>(value: T) -> Self {
         Gas(value.into())
@@ -86,6 +84,16 @@ impl Gas {
         self.0.checked_sub(rhs.value()).map(Self::new)
     }
 
+    /// Checked integer subtraction. Computes `self * rhs`, returning `None` if overflow occurred.
+    pub fn checked_mul(&self, rhs: Self) -> Option<Self> {
+        self.0.checked_mul(rhs.value()).map(Self::new)
+    }
+
+    /// Checked integer division. Computes `self / rhs`, returning `None` if overflow occurred.
+    pub fn checked_div(&self, rhs: Self) -> Option<Self> {
+        self.0.checked_div(rhs.value()).map(Self::new)
+    }
+
     /// Returns a random `Gas`.
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
@@ -117,64 +125,6 @@ impl FromBytes for Gas {
 impl fmt::Display for Gas {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:?}", self.0)
-    }
-}
-
-impl Add for Gas {
-    type Output = Gas;
-
-    fn add(self, rhs: Self) -> Self::Output {
-        let val = self.value() + rhs.value();
-        Gas::new(val)
-    }
-}
-
-impl Sub for Gas {
-    type Output = Gas;
-
-    fn sub(self, rhs: Self) -> Self::Output {
-        let val = self.value() - rhs.value();
-        Gas::new(val)
-    }
-}
-
-impl Div for Gas {
-    type Output = Gas;
-
-    fn div(self, rhs: Self) -> Self::Output {
-        let val = self.value() / rhs.value();
-        Gas::new(val)
-    }
-}
-
-impl Mul for Gas {
-    type Output = Gas;
-
-    fn mul(self, rhs: Self) -> Self::Output {
-        let val = self.value() * rhs.value();
-        Gas::new(val)
-    }
-}
-
-impl AddAssign for Gas {
-    fn add_assign(&mut self, rhs: Self) {
-        self.0 += rhs.0
-    }
-}
-
-impl Zero for Gas {
-    fn zero() -> Self {
-        Gas::new(U512::zero())
-    }
-
-    fn is_zero(&self) -> bool {
-        self.0.is_zero()
-    }
-}
-
-impl Sum for Gas {
-    fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
-        iter.fold(Gas::zero(), Add::add)
     }
 }
 
@@ -223,7 +173,11 @@ mod tests {
         let left_gas = Gas::new(U512::from(1));
         let right_gas = Gas::new(U512::from(1));
         let expected_gas = Gas::new(U512::from(2));
-        assert_eq!((left_gas + right_gas), expected_gas, "should be equal")
+        assert_eq!(
+            left_gas.checked_add(right_gas),
+            Some(expected_gas),
+            "should be equal"
+        )
     }
 
     #[test]
@@ -231,7 +185,11 @@ mod tests {
         let left_gas = Gas::new(U512::from(1));
         let right_gas = Gas::new(U512::from(1));
         let expected_gas = Gas::new(U512::from(0));
-        assert_eq!((left_gas - right_gas), expected_gas, "should be equal")
+        assert_eq!(
+            left_gas.checked_sub(right_gas),
+            Some(expected_gas),
+            "should be equal"
+        )
     }
 
     #[test]
@@ -239,7 +197,11 @@ mod tests {
         let left_gas = Gas::new(U512::from(100));
         let right_gas = Gas::new(U512::from(10));
         let expected_gas = Gas::new(U512::from(1000));
-        assert_eq!((left_gas * right_gas), expected_gas, "should be equal")
+        assert_eq!(
+            left_gas.checked_mul(right_gas),
+            Some(expected_gas),
+            "should be equal"
+        )
     }
 
     #[test]
@@ -247,7 +209,11 @@ mod tests {
         let left_gas = Gas::new(U512::from(1000));
         let right_gas = Gas::new(U512::from(100));
         let expected_gas = Gas::new(U512::from(10));
-        assert_eq!((left_gas / right_gas), expected_gas, "should be equal")
+        assert_eq!(
+            left_gas.checked_div(right_gas),
+            Some(expected_gas),
+            "should be equal"
+        )
     }
 
     #[test]

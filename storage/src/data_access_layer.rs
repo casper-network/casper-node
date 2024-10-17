@@ -7,32 +7,45 @@ use casper_types::{execution::Effects, Digest, EraId};
 use crate::tracking_copy::TrackingCopy;
 
 mod addressable_entity;
+/// Auction provider.
 pub mod auction;
+/// Balance provider.
 pub mod balance;
 mod balance_hold;
+/// Bids provider.
 pub mod bids;
 mod block_global;
+/// Block rewards provider.
 pub mod block_rewards;
 mod entry_points;
+/// Era validators provider.
 pub mod era_validators;
 mod execution_results_checksum;
 mod fee;
 mod flush;
+/// Forced undelegate provider.
 pub mod forced_undelegate;
 mod genesis;
+/// Handle fee provider.
 pub mod handle_fee;
 mod handle_refund;
 mod key_prefix;
 pub mod message_topics;
+/// Mint provider.
 pub mod mint;
+/// Prefixed values provider.
 pub mod prefixed_values;
 mod protocol_upgrade;
+/// Prune provider.
 pub mod prune;
+/// Query provider.
 pub mod query;
 mod round_seigniorage;
 mod seigniorage_recipients;
+/// Step provider.
 pub mod step;
 mod system_entity_registry;
+/// Tagged values provider.
 pub mod tagged_values;
 mod total_supply;
 mod trie;
@@ -77,38 +90,48 @@ pub use system_entity_registry::{
 pub use total_supply::{TotalSupplyRequest, TotalSupplyResult};
 pub use trie::{PutTrieRequest, PutTrieResult, TrieElement, TrieRequest, TrieResult};
 
+/// Block placeholder.
 pub struct Block {
     _era_id: EraId,
 }
 
+/// Block provider definition.
 pub trait BlockProvider {
+    /// Block provider error type.
     type Error;
 
+    /// Read block by height.
     fn read_block_by_height(&self, _height: usize) -> Result<Option<Block>, Self::Error> {
         // TODO: We need to implement this
         todo!()
     }
 }
 
+/// Anchor struct for block store functionality.
 #[derive(Default, Copy, Clone)]
 pub struct BlockStore(());
 
 impl BlockStore {
+    /// Ctor.
     pub fn new() -> Self {
         BlockStore(())
     }
 }
 
-// We're currently putting it here, but in future it needs to move to its own crate.
+/// Data access layer.
 #[derive(Copy, Clone)]
 pub struct DataAccessLayer<S> {
+    /// Block store instance.
     pub block_store: BlockStore,
+    /// Memoized state.
     pub state: S,
+    /// Max query depth.
     pub max_query_depth: u64,
     pub enable_addressable_entity: bool,
 }
 
 impl<S> DataAccessLayer<S> {
+    /// Returns reference to current state of the data access layer.
     pub fn state(&self) -> &S {
         &self.state
     }

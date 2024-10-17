@@ -261,9 +261,6 @@ impl reactor::Reactor for MainReactor {
                 ReactorInfoRequest::NetworkName { responder } => responder
                     .respond(NetworkName::new(self.chainspec.network_config.name.clone()))
                     .ignore(),
-                ReactorInfoRequest::ProtocolVersion { responder } => responder
-                    .respond(self.chainspec.protocol_version())
-                    .ignore(),
                 ReactorInfoRequest::BalanceHoldsInterval { responder } => responder
                     .respond(self.chainspec.core_config.gas_hold_interval)
                     .ignore(),
@@ -1553,21 +1550,9 @@ impl MainReactor {
                         ),
                     ));
                 }
-                MetaBlock::Historical(historical_meta_block) => {
-                    // Header type is the same for now so we can use the same `BlockAdded` event;
-                    // When the header will be versioned, a new event will be needed for the
-                    // consensus component.
-                    effects.extend(reactor::wrap_effects(
-                        MainEvent::Consensus,
-                        self.consensus.handle_event(
-                            effect_builder,
-                            rng,
-                            consensus::Event::BlockAdded {
-                                header: Box::new(historical_meta_block.block.clone_header()),
-                                header_hash: *historical_meta_block.block.hash(),
-                            },
-                        ),
-                    ));
+                MetaBlock::Historical(_historical_meta_block) => {
+                    // Historical meta blocks aren't of interest to consensus - consensus only
+                    // cares about new blocks. Hence, we can just do nothing here.
                 }
             }
         }

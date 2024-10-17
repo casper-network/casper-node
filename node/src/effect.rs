@@ -134,8 +134,8 @@ use casper_types::{
     Approval, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures,
     BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest, EntityAddr, EraId,
     ExecutionInfo, FinalitySignature, FinalitySignatureId, FinalitySignatureV2, Key, NextUpgrade,
-    Package, ProtocolUpgradeConfig, ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transaction,
-    TransactionHash, TransactionHeader, TransactionId, Transfer, U512,
+    Package, ProtocolUpgradeConfig, PublicKey, TimeDiff, Timestamp, Transaction, TransactionHash,
+    TransactionId, Transfer, U512,
 };
 
 use crate::{
@@ -158,7 +158,7 @@ use crate::{
     types::{
         appendable_block::AppendableBlock, BlockExecutionResultsOrChunk,
         BlockExecutionResultsOrChunkId, BlockWithMetadata, ExecutableBlock, FinalizedBlock,
-        LegacyDeploy, MetaBlock, MetaBlockState, NodeId,
+        LegacyDeploy, MetaBlock, MetaBlockState, NodeId, TransactionHeader,
     },
     utils::{fmt_limit::FmtLimit, SharedFlag, Source},
 };
@@ -252,12 +252,12 @@ impl<T> AutoClosingResponder<T> {
 impl<T: Debug> AutoClosingResponder<T> {
     /// Send `Some(data)` to the origin of the request.
     pub(crate) async fn respond(self, data: T) {
-        self.into_inner().respond(Some(data)).await
+        self.into_inner().respond(Some(data)).await;
     }
 
     /// Send `None` to the origin of the request.
     pub(crate) async fn respond_none(self) {
-        self.into_inner().respond(None).await
+        self.into_inner().respond(None).await;
     }
 }
 
@@ -273,7 +273,7 @@ impl<T> Drop for AutoClosingResponder<T> {
                 debug!(
                     unsent_value = %self.0,
                     "failed to auto-close responder, ignoring"
-                )
+                );
             }
         }
     }
@@ -379,17 +379,6 @@ pub(crate) trait EffectExt: Future + Send {
         U: 'static,
         Self: Sized;
 
-    /// Finalizes a future into an effect that returns an iterator of events.
-    ///
-    /// The function `f` is used to translate the returned value from an effect into an iterator of
-    /// events.
-    fn events<U, F, I>(self, f: F) -> Effects<U>
-    where
-        F: FnOnce(Self::Output) -> I + 'static + Send,
-        U: 'static,
-        I: Iterator<Item = U>,
-        Self: Sized;
-
     /// Finalizes a future into an effect that runs but drops the result.
     fn ignore<Ev>(self) -> Effects<Ev>;
 }
@@ -413,32 +402,6 @@ pub(crate) trait EffectResultExt {
         U: 'static;
 }
 
-/// Effect extension for futures, used to convert futures returning an `Option` into two different
-/// effects.
-pub(crate) trait EffectOptionExt {
-    /// The type the future will return if `Some`.
-    type Value;
-
-    /// Finalizes a future returning an `Option` into two different effects.
-    ///
-    /// The function `f_some` is used to translate the returned value from an effect into an event,
-    /// while the function `f_none` does the same for a returned `None`.
-    fn map_or_else<U, F, G>(self, f_some: F, f_none: G) -> Effects<U>
-    where
-        F: FnOnce(Self::Value) -> U + 'static + Send,
-        G: FnOnce() -> U + 'static + Send,
-        U: 'static;
-
-    /// Finalizes a future returning an `Option` into two different effects.
-    ///
-    /// The function `f` is used to translate the returned value from an effect into an event,
-    /// In the case of `None`, empty vector of effects is returned.
-    fn map_some<U, F>(self, f: F) -> Effects<U>
-    where
-        F: FnOnce(Self::Value) -> U + 'static + Send,
-        U: 'static;
-}
-
 impl<T: ?Sized> EffectExt for T
 where
     T: Future + Send + 'static + Sized,
@@ -449,15 +412,6 @@ where
         U: 'static,
     {
         smallvec![self.map(f).map(|item| smallvec![item]).boxed()]
-    }
-
-    fn events<U, F, I>(self, f: F) -> Effects<U>
-    where
-        F: FnOnce(Self::Output) -> I + 'static + Send,
-        U: 'static,
-        I: Iterator<Item = U>,
-    {
-        smallvec![self.map(f).map(|iter| iter.collect()).boxed()]
     }
 
     fn ignore<Ev>(self) -> Effects<Ev> {
@@ -482,42 +436,6 @@ where
         smallvec![self
             .map(|result| result.map_or_else(f_err, f_ok))
             .map(|item| smallvec![item])
-            .boxed()]
-    }
-}
-
-impl<T, V> EffectOptionExt for T
-where
-    T: Future<Output = Option<V>> + Send + 'static + Sized,
-    T: ?Sized,
-{
-    type Value = V;
-
-    fn map_or_else<U, F, G>(self, f_some: F, f_none: G) -> Effects<U>
-    where
-        F: FnOnce(V) -> U + 'static + Send,
-        G: FnOnce() -> U + 'static + Send,
-        U: 'static,
-    {
-        smallvec![self
-            .map(|option| option.map_or_else(f_none, f_some))
-            .map(|item| smallvec![item])
-            .boxed()]
-    }
-
-    /// Finalizes a future returning an `Option`.
-    ///
-    /// The function `f` is used to translate the returned value from an effect into an event,
-    /// In the case of `None`, empty vector is returned.
-    fn map_some<U, F>(self, f: F) -> Effects<U>
-    where
-        F: FnOnce(Self::Value) -> U + 'static + Send,
-        U: 'static,
-    {
-        smallvec![self
-            .map(|option| option
-                .map(|el| smallvec![f(el)])
-                .unwrap_or_else(|| smallvec![]))
             .boxed()]
     }
 }
@@ -615,7 +533,7 @@ impl<REv> EffectBuilder<REv> {
                     //
                     // If it does happen, we pretend nothing happened instead of crashing.
                     if self.event_queue.shutdown_flag().is_set() {
-                        debug!(%err, channel=?type_name::<T>(), "ignoring closed channel due to shutdown")
+                        debug!(%err, channel=?type_name::<T>(), "ignoring closed channel due to shutdown");
                     } else {
                         error!(%err, channel=?type_name::<T>(), "request for channel closed, this may be a bug? \
                             check if a component is stuck from now on");
@@ -653,14 +571,14 @@ impl<REv> EffectBuilder<REv> {
     {
         self.event_queue
             .schedule(FatalAnnouncement { file, line, msg }, QueueKind::Control)
-            .await
+            .await;
     }
 
     /// Sets a timeout.
     pub(crate) async fn set_timeout(self, timeout: Duration) -> Duration {
         let then = Instant::now();
         time::sleep(timeout).await;
-        Instant::now() - then
+        then.elapsed()
     }
 
     /// Retrieve a snapshot of the nodes current metrics formatted as string.
@@ -826,7 +744,7 @@ impl<REv> EffectBuilder<REv> {
                 <REv as FromIncoming<P>>::from_incoming(sender, payload),
                 QueueKind::NetworkIncoming,
             )
-            .await
+            .await;
     }
 
     /// Announces that a gossiper has received a new item, where the item's ID is the complete item.
@@ -1013,7 +931,7 @@ impl<REv> EffectBuilder<REv> {
                 UpgradeWatcherAnnouncement(maybe_next_upgrade),
                 QueueKind::Control,
             )
-            .await
+            .await;
     }
 
     /// Announces a committed Step success.
@@ -1026,7 +944,7 @@ impl<REv> EffectBuilder<REv> {
                 ContractRuntimeAnnouncement::CommitStepSuccess { era_id, effects },
                 QueueKind::ContractRuntime,
             )
-            .await
+            .await;
     }
 
     pub(crate) async fn update_contract_runtime_state(self, new_pre_state: ExecutionPreState)
@@ -1038,7 +956,7 @@ impl<REv> EffectBuilder<REv> {
                 ContractRuntimeRequest::UpdatePreState { new_pre_state },
                 QueueKind::ContractRuntime,
             )
-            .await
+            .await;
     }
 
     /// Announces validators for upcoming era.
@@ -1057,7 +975,7 @@ impl<REv> EffectBuilder<REv> {
                 },
                 QueueKind::ContractRuntime,
             )
-            .await
+            .await;
     }
 
     pub(crate) async fn announce_new_era_gas_price(self, era_id: EraId, next_era_gas_price: u8)
@@ -1072,7 +990,7 @@ impl<REv> EffectBuilder<REv> {
                 },
                 QueueKind::ContractRuntime,
             )
-            .await
+            .await;
     }
 
     /// Begins gossiping an item.
@@ -1090,7 +1008,7 @@ impl<REv> EffectBuilder<REv> {
             },
             QueueKind::Gossip,
         )
-        .await
+        .await;
     }
 
     /// Puts the given block into the linear block store.
@@ -1532,17 +1450,6 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    pub(crate) async fn get_protocol_version(self) -> ProtocolVersion
-    where
-        REv: From<ReactorInfoRequest>,
-    {
-        self.make_request(
-            |responder| ReactorInfoRequest::ProtocolVersion { responder },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
     #[allow(unused)]
     pub(crate) async fn get_balance_holds_interval(self) -> TimeDiff
     where
@@ -1726,7 +1633,7 @@ impl<REv> EffectBuilder<REv> {
             },
             QueueKind::ToStorage,
         )
-        .await
+        .await;
     }
 
     /// Gets the requested block and its finality signatures.
@@ -1888,7 +1795,7 @@ impl<REv> EffectBuilder<REv> {
                 },
                 QueueKind::ContractRuntime,
             )
-            .await
+            .await;
     }
 
     pub(crate) async fn enqueue_protocol_upgrade(
@@ -1910,7 +1817,7 @@ impl<REv> EffectBuilder<REv> {
                 },
                 QueueKind::Control,
             )
-            .await
+            .await;
     }
 
     /// Checks whether the transactions included in the block exist on the network and the block is
@@ -1946,7 +1853,7 @@ impl<REv> EffectBuilder<REv> {
                 ConsensusAnnouncement::Proposed(Box::new(proposed_block)),
                 QueueKind::Consensus,
             )
-            .await
+            .await;
     }
 
     /// Announces that a block has been finalized.
@@ -1959,7 +1866,7 @@ impl<REv> EffectBuilder<REv> {
                 ConsensusAnnouncement::Finalized(Box::new(finalized_block)),
                 QueueKind::Consensus,
             )
-            .await
+            .await;
     }
 
     /// Announces that a meta block has been created or its state has changed.
@@ -1969,7 +1876,7 @@ impl<REv> EffectBuilder<REv> {
     {
         self.event_queue
             .schedule(MetaBlockAnnouncement(meta_block), QueueKind::Regular)
-            .await
+            .await;
     }
 
     /// Announces that a finalized block has been created, but it was not
@@ -1983,7 +1890,7 @@ impl<REv> EffectBuilder<REv> {
                 UnexecutedBlockAnnouncement(block_height),
                 QueueKind::Regular,
             )
-            .await
+            .await;
     }
 
     /// An equivocation has been detected.
@@ -2004,7 +1911,7 @@ impl<REv> EffectBuilder<REv> {
                 },
                 QueueKind::Consensus,
             )
-            .await
+            .await;
     }
 
     /// Blocks a specific peer due to a transgression.
@@ -2026,7 +1933,7 @@ impl<REv> EffectBuilder<REv> {
                 },
                 QueueKind::NetworkInfo,
             )
-            .await
+            .await;
     }
 
     /// Gets the next scheduled upgrade, if any.
@@ -2244,7 +2151,7 @@ impl<REv> EffectBuilder<REv> {
             },
             QueueKind::Control,
         )
-        .await
+        .await;
     }
 
     /// Activates/deactivates a failpoint from a given activation.

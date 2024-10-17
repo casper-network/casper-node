@@ -1902,7 +1902,7 @@ async fn node_should_rejoin_after_ejection() {
         fixture.chainspec.network_config.name.clone(),
         fixture.system_contract_hash(AUCTION),
         stopped_public_key.clone(),
-        1_000_000_000_000_000_000_u64.into(),
+        100_000_000_000_000_000_u64.into(),
         10,
         Timestamp::now(),
         TimeDiff::from_seconds(60),
@@ -2922,7 +2922,7 @@ async fn run_gas_price_scenario(gas_price_scenario: GasPriceScenario) {
     let max_gas_price: u8 = 3;
 
     let mut transaction_config = TransactionV1Config::default();
-    transaction_config.native_mint_lane[4] = 1;
+    transaction_config.native_mint_lane.max_transaction_count = 1;
 
     let spec_override = match gas_price_scenario {
         GasPriceScenario::SlotUtilization => {
@@ -2966,6 +2966,7 @@ async fn run_gas_price_scenario(gas_price_scenario: GasPriceScenario) {
                 .with_ttl(TimeDiff::from_seconds(120 * 10))
                 .with_pricing_mode(PricingMode::Fixed {
                     gas_price_tolerance: max_gas_price,
+                    additional_computation_factor: 0,
                 })
                 .build()
                 .expect("must get transaction");
@@ -2998,6 +2999,7 @@ async fn run_gas_price_scenario(gas_price_scenario: GasPriceScenario) {
             .with_secret_key(&alice_secret_key)
             .with_pricing_mode(PricingMode::Fixed {
                 gas_price_tolerance: max_gas_price,
+                additional_computation_factor: 0,
             })
             .build()
             .expect("must get transaction");

@@ -122,7 +122,7 @@ impl TransactionBuffer {
                 }
             };
             debug!(
-                blocks = ?blocks.iter().map(|b| b.height()).collect_vec(),
+                blocks = ?blocks.iter().map(Block::height).collect_vec(),
                 "TransactionBuffer: initialization"
             );
             info!("initialized {}", <Self as Component<MainEvent>>::name(self));
@@ -162,7 +162,7 @@ impl TransactionBuffer {
         // clear expired transaction from all holds, then clear any entries that have no items
         // remaining
         self.hold.iter_mut().for_each(|(_, held_transactions)| {
-            held_transactions.retain(|transaction_hash| !freed.contains_key(transaction_hash))
+            held_transactions.retain(|transaction_hash| !freed.contains_key(transaction_hash));
         });
         self.hold.retain(|_, remaining| !remaining.is_empty());
 
@@ -208,7 +208,6 @@ impl TransactionBuffer {
     }
 
     fn register_transaction_gossiped<REv>(
-        &mut self,
         transaction_id: TransactionId,
         effect_builder: EffectBuilder<REv>,
     ) -> Effects<Event>
@@ -234,7 +233,7 @@ impl TransactionBuffer {
     where
         REv: From<ContractRuntimeRequest> + Send,
     {
-        if self.prices.get(&era_id).is_none() {
+        if !self.prices.contains_key(&era_id) {
             info!("Empty prices field, requesting gas price from contract runtime");
             return effect_builder
                 .get_current_gas_price(era_id)
@@ -261,6 +260,7 @@ impl TransactionBuffer {
             error!(%transaction_hash, "TransactionBuffer: invalid transaction must not be buffered");
             return;
         }
+
         if self
             .hold
             .values()
@@ -269,6 +269,7 @@ impl TransactionBuffer {
             info!(%transaction_hash, "TransactionBuffer: attempt to register already held transaction");
             return;
         }
+
         let footprint = match TransactionFootprint::new(&self.chainspec, &transaction) {
             Ok(footprint) => footprint,
             Err(invalid_transaction_error) => {
@@ -411,7 +412,7 @@ impl TransactionBuffer {
         let mut buckets: HashMap<_, Vec<_>> = HashMap::new();
         for (transaction_hash, footprint) in proposable {
             buckets
-                .entry(&footprint.body_hash)
+                .entry(&footprint.payload_hash)
                 .and_modify(|vec| vec.push((*transaction_hash, footprint)))
                 .or_insert(vec![(*transaction_hash, footprint)]);
         }
@@ -460,9 +461,9 @@ impl TransactionBuffer {
         let iter_limit = self.buffer.len() * 4;
 
         let mut buckets = self.buckets(current_era_gas_price);
-        let mut body_hashes_queue: VecDeque<_> = buckets.keys().cloned().collect();
+        let mut payload_hashes_queue: VecDeque<_> = buckets.keys().cloned().collect();
 
-        while let Some(body_hash) = body_hashes_queue.pop_front() {
+        while let Some(payload_hash) = payload_hashes_queue.pop_front() {
             if Timestamp::now() > request_expiry {
                 break;
             }
@@ -476,14 +477,14 @@ impl TransactionBuffer {
             }
 
             let Some((transaction_hash, footprint)) =
-                buckets.get_mut(body_hash).and_then(Vec::<_>::pop)
+                buckets.get_mut(payload_hash).and_then(Vec::<_>::pop)
             else {
                 continue;
             };
 
             // bucket wasn't empty - push the hash back into the queue to be processed again on the
             // next pass
-            body_hashes_queue.push_back(body_hash);
+            payload_hashes_queue.push_back(payload_hash);
 
             if footprint.is_mint() && have_hit_mint_limit {
                 continue;
@@ -523,15 +524,15 @@ impl TransactionBuffer {
                             );
                             dead.insert(transaction_hash);
                         }
-                        AddError::Count(category) => {
-                            match category {
-                                category if category == MINT_LANE_ID => {
+                        AddError::Count(lane_id) => {
+                            match lane_id {
+                                lane_id if lane_id == MINT_LANE_ID => {
                                     have_hit_mint_limit = true;
                                 }
-                                category if category == AUCTION_LANE_ID => {
+                                lane_id if lane_id == AUCTION_LANE_ID => {
                                     have_hit_auction_limit = true;
                                 }
-                                category if category == INSTALL_UPGRADE_LANE_ID => {
+                                lane_id if lane_id == INSTALL_UPGRADE_LANE_ID => {
                                     have_hit_install_upgrade_limit = true;
                                 }
                                 _ => {
@@ -788,7 +789,7 @@ where
                     Effects::new()
                 }
                 Event::ReceiveTransactionGossiped(transaction_id) => {
-                    self.register_transaction_gossiped(transaction_id, effect_builder)
+                    Self::register_transaction_gossiped(transaction_id, effect_builder)
                 }
                 Event::StoredTransaction(transaction_id, maybe_transaction) => {
                     match maybe_transaction {

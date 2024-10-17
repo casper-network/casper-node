@@ -11,8 +11,8 @@ use serde::{Deserialize, Serialize};
 use crate::{
     block::RewardedSignatures,
     bytesrepr::{self, FromBytes, ToBytes},
-    transaction::TransactionCategory,
-    Digest, TransactionHash,
+    Digest, TransactionHash, AUCTION_LANE_ID, INSTALL_UPGRADE_LANE_ID, LARGE_WASM_LANE_ID,
+    MEDIUM_WASM_LANE_ID, MINT_LANE_ID, SMALL_WASM_LANE_ID,
 };
 
 /// The body portion of a block. Version 2.
@@ -47,50 +47,33 @@ impl BlockBodyV2 {
         }
     }
 
-    fn transaction_by_category(
-        &self,
-        transaction_category: TransactionCategory,
-    ) -> Vec<TransactionHash> {
-        match self.transactions.get(&(transaction_category as u8)) {
+    /// Returns the hashes of the transactions within the block filtered by lane_id.
+    pub fn transaction_by_lane(&self, lane_id: u8) -> impl Iterator<Item = TransactionHash> {
+        match self.transactions.get(&lane_id) {
             Some(transactions) => transactions.to_vec(),
             None => vec![],
         }
+        .into_iter()
     }
 
     /// Returns the hashes of the mint transactions within the block.
     pub fn mint(&self) -> impl Iterator<Item = TransactionHash> {
-        self.transaction_by_category(TransactionCategory::Mint)
-            .into_iter()
+        self.transaction_by_lane(MINT_LANE_ID)
     }
 
     /// Returns the hashes of the auction transactions within the block.
     pub fn auction(&self) -> impl Iterator<Item = TransactionHash> {
-        self.transaction_by_category(TransactionCategory::Auction)
-            .into_iter()
+        self.transaction_by_lane(AUCTION_LANE_ID)
     }
 
     /// Returns the hashes of the installer/upgrader transactions within the block.
     pub fn install_upgrade(&self) -> impl Iterator<Item = TransactionHash> {
-        self.transaction_by_category(TransactionCategory::InstallUpgrade)
-            .into_iter()
+        self.transaction_by_lane(INSTALL_UPGRADE_LANE_ID)
     }
 
-    /// Returns the hashes of all other transactions within the block.
-    pub fn large(&self) -> impl Iterator<Item = TransactionHash> {
-        self.transaction_by_category(TransactionCategory::Large)
-            .into_iter()
-    }
-
-    /// Returns the hashes of all other transactions within the block.
-    pub fn medium(&self) -> impl Iterator<Item = TransactionHash> {
-        self.transaction_by_category(TransactionCategory::Medium)
-            .into_iter()
-    }
-
-    /// Returns the hashes of all other transactions within the block.
-    pub fn small(&self) -> impl Iterator<Item = TransactionHash> {
-        self.transaction_by_category(TransactionCategory::Small)
-            .into_iter()
+    /// Returns the hashes of the transactions filtered by lane id within the block.
+    pub fn transactions_by_lane_id(&self, lane_id: u8) -> impl Iterator<Item = TransactionHash> {
+        self.transaction_by_lane(lane_id)
     }
 
     /// Returns a reference to the collection of mapped transactions.
@@ -147,14 +130,13 @@ impl Display for BlockBodyV2 {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         write!(
             formatter,
-            "block body, {} mint, {} auction, {} \
-            installer/upgraders, {} large, {} medium, {} small",
+            "block body, {} mint, {} auction, {} install_upgrade, {} large wasm, {} medium wasm, {} small wasm",
             self.mint().count(),
             self.auction().count(),
             self.install_upgrade().count(),
-            self.large().count(),
-            self.medium().count(),
-            self.small().count()
+            self.transaction_by_lane(LARGE_WASM_LANE_ID).count(),
+            self.transaction_by_lane(MEDIUM_WASM_LANE_ID).count(),
+            self.transaction_by_lane(SMALL_WASM_LANE_ID).count(),
         )
     }
 }
