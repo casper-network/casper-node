@@ -26,10 +26,7 @@ impl FetchItem for Transaction {
     }
 
     fn validate(&self, _metadata: &EmptyValidationMetadata) -> Result<(), Self::ValidationError> {
-        match self {
-            Transaction::Deploy(deploy) => deploy.is_valid().map_err(Into::into),
-            Transaction::V1(txn) => txn.verify().map_err(Into::into),
-        }
+        self.verify()
     }
 }
 

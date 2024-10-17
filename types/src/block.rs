@@ -444,25 +444,44 @@ impl Block {
             Block::V1(_) => false,
             Block::V2(block_v2) => {
                 let mint_count = block_v2.mint().count();
-                if mint_count as u64 >= transaction_config.transaction_v1_config.native_mint_lane[4]
+                if mint_count as u64
+                    >= transaction_config
+                        .transaction_v1_config
+                        .native_mint_lane
+                        .max_transaction_count()
                 {
                     return true;
                 }
 
                 let auction_count = block_v2.auction().count();
                 if auction_count as u64
-                    >= transaction_config.transaction_v1_config.native_auction_lane[4]
+                    >= transaction_config
+                        .transaction_v1_config
+                        .native_auction_lane
+                        .max_transaction_count()
                 {
                     return true;
                 }
-                for (category, transactions) in block_v2.body.transactions() {
+
+                let install_upgrade_count = block_v2.install_upgrade().count();
+                if install_upgrade_count as u64
+                    >= transaction_config
+                        .transaction_v1_config
+                        .install_upgrade_lane
+                        .max_transaction_count()
+                {
+                    return true;
+                }
+
+                for (lane_id, transactions) in block_v2.body.transactions() {
                     let transaction_count = transactions.len();
-                    if *category < 2 {
+                    if *lane_id < 2 {
                         continue;
                     };
                     let max_transaction_count = transaction_config
                         .transaction_v1_config
-                        .get_max_transaction_count(*category);
+                        .get_max_transaction_count(*lane_id);
+
                     if transaction_count as u64 >= max_transaction_count {
                         return true;
                     }
