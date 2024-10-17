@@ -21,7 +21,7 @@ mod transaction_target;
 mod transaction_v1;
 mod transfer_target;
 
-use alloc::{collections::BTreeSet, vec::Vec};
+use alloc::{collections::BTreeSet, string::ToString, vec::Vec};
 use core::fmt::{self, Debug, Display, Formatter};
 #[cfg(any(feature = "std", test))]
 use std::hash::Hash;
