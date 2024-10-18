@@ -1,6 +1,4 @@
-[![LOGO](https://raw.githubusercontent.com/casper-network/casper-node/master/images/casper-association-logo-new.svg)](https://casper.network/)
-
-# casper-node
+[![LOGO](https://raw.githubusercontent.com/casper-network/casper-node/dev/images/Casper-association-logo-new.svg)](https://casper.network/)
 
 Reference node for the Casper Blockchain Protocol.
 
