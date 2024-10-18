@@ -1,12 +1,10 @@
-[![LOGO](https://raw.githubusercontent.com/casper-network/casper-node/master/images/casper-association-logo-new.svg)](https://casper.network/)
-
-# casper-node
+[![LOGO](https://raw.githubusercontent.com/casper-network/casper-node/dev/images/Casper-association-logo-new.svg)](https://casper.network/)
 
 Reference node for the Casper Blockchain Protocol.
 
 ## Casper Blockchain
 
-Casper is the blockchain platform purpose-built to scale opportunity for everyone. Building toward blockchain’s next frontier,
+[Casper](https://casper.network/) is the blockchain platform purpose-built to scale opportunity for everyone. Building toward blockchain’s next frontier,
 Casper is designed for real-world applications without sacrificing usability, cost, decentralization, or security. It removes
 the barriers that prevent mainstream blockchain adoption by making blockchain friendly to use, open to the world, and
 future-proof to support innovations today and tomorrow. Guided by open-source principles and built from the ground up to
@@ -32,7 +30,7 @@ The Casper MainNet is live.
 
 ### Community
 
-- [Discord Server](https://discord.gg/mpZ9AYD)
+- [Discord Server](https://discord.com/invite/caspernetwork)
 - [Telegram Channel](https://t.me/casperofficialann)
 
 
