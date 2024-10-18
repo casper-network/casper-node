@@ -1010,6 +1010,7 @@ where
                     Self::try_get_named_argument(runtime_args, auction::ARG_RESERVED_SLOTS)?
                         .unwrap_or(0);
 
+                let minimum_bid_amount = self.context().engine_config().minimum_bid_amount();
                 let result = runtime
                     .add_bid(
                         account_hash,
@@ -1017,6 +1018,7 @@ where
                         amount,
                         minimum_delegation_amount,
                         maximum_delegation_amount,
+                        minimum_bid_amount,
                         reserved_slots,
                     )
                     .map_err(Self::reverter)?;
@@ -1029,9 +1031,10 @@ where
 
                 let public_key = Self::get_named_argument(runtime_args, auction::ARG_PUBLIC_KEY)?;
                 let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
+                let min_bid_amount = self.context.engine_config().minimum_bid_amount();
 
                 let result = runtime
-                    .withdraw_bid(public_key, amount)
+                    .withdraw_bid(public_key, amount, min_bid_amount)
                     .map_err(Self::reverter)?;
                 CLValue::from_t(result).map_err(Self::reverter)
             })(),
@@ -3321,7 +3324,9 @@ where
     where
         T: AsRef<[HostFunctionCost]> + Copy,
     {
-        let cost = host_function.calculate_gas_cost(weights);
+        let cost = host_function
+            .calculate_gas_cost(weights)
+            .ok_or(ExecError::GasLimit)?; // Overflowing gas calculation means gas limit was exceeded
         self.gas(cost)?;
         Ok(())
     }

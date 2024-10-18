@@ -72,8 +72,10 @@ fn test_check_transfer_success_with_source_only() {
 
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_starting_balance;
     let expected_source_ending_balance = Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE)
-        - Motes::new(transfer_amount)
-        - Motes::new(transaction_fee);
+        .checked_sub(Motes::new(transfer_amount))
+        .unwrap()
+        .checked_sub(Motes::new(transaction_fee))
+        .unwrap();
     let actual_source_ending_balance = Motes::new(builder.get_purse_balance(source_purse));
 
     assert_eq!(expected_source_ending_balance, actual_source_ending_balance);
@@ -133,8 +135,10 @@ fn test_check_transfer_success_with_source_only_errors() {
 
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_starting_balance;
     let expected_source_ending_balance = Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE)
-        - Motes::new(transfer_amount)
-        - Motes::new(transaction_fee);
+        .checked_sub(Motes::new(transfer_amount))
+        .unwrap()
+        .checked_sub(Motes::new(transaction_fee))
+        .unwrap();
     let actual_source_ending_balance = Motes::new(builder.get_purse_balance(source_purse));
 
     assert!(expected_source_ending_balance != actual_source_ending_balance);
@@ -191,8 +195,10 @@ fn test_check_transfer_success_with_source_and_target() {
 
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_starting_balance;
     let expected_source_ending_balance = Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE)
-        - Motes::new(transfer_amount)
-        - Motes::new(transaction_fee);
+        .checked_sub(Motes::new(transfer_amount))
+        .unwrap()
+        .checked_sub(Motes::new(transaction_fee))
+        .unwrap();
     let actual_source_ending_balance = Motes::new(builder.get_purse_balance(source_purse));
 
     assert_eq!(expected_source_ending_balance, actual_source_ending_balance);

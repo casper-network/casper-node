@@ -261,9 +261,6 @@ impl reactor::Reactor for MainReactor {
                 ReactorInfoRequest::NetworkName { responder } => responder
                     .respond(NetworkName::new(self.chainspec.network_config.name.clone()))
                     .ignore(),
-                ReactorInfoRequest::ProtocolVersion { responder } => responder
-                    .respond(self.chainspec.protocol_version())
-                    .ignore(),
                 ReactorInfoRequest::BalanceHoldsInterval { responder } => responder
                     .respond(self.chainspec.core_config.gas_hold_interval)
                     .ignore(),

@@ -320,16 +320,12 @@ allow_request_speculative_exec = false
 # Maximum size of a message in bytes.
 max_message_size_bytes = 4_194_304
 
-# Maximum number of in-flight requests.
-# This is based on measurements captured on a local instance of the sidecar,
-# it might make sense to increase this value if the sidecar is running on a separate machine.
-client_request_limit = 10
-
-# Number of requests that can be buffered.
-client_request_buffer_size = 20
-
 # Maximum number of connections to the server.
 max_connections = 16
+
+# The global max rate of requests (per second) before they are limited.
+# The implementation uses a sliding window algorithm.
+qps_limit = 100
 
 # ==============================================
 # Configuration options for the REST HTTP server

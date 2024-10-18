@@ -9,9 +9,12 @@ use rand::Rng;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::serialization::CalltableSerializationEnvelope;
 #[cfg(doc)]
 use super::Transaction;
+use super::{
+    serialization::CalltableSerializationEnvelope, InvalidTransaction, InvalidTransactionV1,
+    TransactionEntryPoint,
+};
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
 use crate::{
@@ -22,6 +25,8 @@ use crate::{
     transaction::serialization::CalltableSerializationEnvelopeBuilder,
     Digest,
 };
+#[cfg(any(feature = "std", test))]
+use crate::{Chainspec, Gas, Motes, AUCTION_LANE_ID, MINT_LANE_ID, U512};
 
 /// The pricing mode of a [`Transaction`].
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
@@ -48,6 +53,14 @@ pub enum PricingMode {
     /// The cost of the transaction is determined by the cost table, per the
     /// transaction category.
     Fixed {
+        /// User-specified additional computation factor (minimum 0). If "0" is provided,
+        ///  no additional logic is applied to the computation limit. Each value above "0"
+        ///  tells the node that it needs to treat the transaction as if it uses more gas
+        ///  than it's serialized size indicates. Each "1" will increase the "wasm lane"
+        ///  size bucket for this transaction by 1. So if the size of the transaction
+        ///  indicates bucket "0" and "additional_computation_factor = 2", the transaction
+        ///  will be treated as a "2".
+        additional_computation_factor: u8,
         /// User-specified gas_price tolerance (minimum 1).
         /// This is interpreted to mean "do not include this transaction in a block
         /// if the current gas price is greater than this number"
@@ -73,6 +86,7 @@ impl PricingMode {
             },
             1 => PricingMode::Fixed {
                 gas_price_tolerance: rng.gen(),
+                additional_computation_factor: 1,
             },
             2 => PricingMode::Reserved { receipt: rng.gen() },
             _ => unreachable!(),
@@ -95,10 +109,12 @@ impl PricingMode {
             }
             PricingMode::Fixed {
                 gas_price_tolerance,
+                additional_computation_factor,
             } => {
                 vec![
                     crate::bytesrepr::U8_SERIALIZED_LENGTH,
                     gas_price_tolerance.serialized_length(),
+                    additional_computation_factor.serialized_length(),
                 ]
             }
             PricingMode::Reserved { receipt } => {
@@ -106,6 +122,155 @@ impl PricingMode {
                     crate::bytesrepr::U8_SERIALIZED_LENGTH,
                     receipt.serialized_length(),
                 ]
+            }
+        }
+    }
+
+    #[cfg(any(feature = "std", test))]
+    /// Returns the gas limit.
+    pub fn gas_limit(
+        &self,
+        chainspec: &Chainspec,
+        entry_point: &TransactionEntryPoint,
+        lane_id: u8,
+    ) -> Result<Gas, PricingModeError> {
+        let costs = chainspec.system_costs_config;
+        let gas = match self {
+            PricingMode::Classic { payment_amount, .. } => Gas::new(*payment_amount),
+            PricingMode::Fixed { .. } => {
+                let computation_limit = {
+                    if lane_id == MINT_LANE_ID {
+                        // Because we currently only support one native mint interaction,
+                        // native transfer, we can short circuit to return that value.
+                        // However if other direct mint interactions are supported
+                        // in the future (such as the upcoming burn feature),
+                        // this logic will need to be expanded to self.mint_costs().field?
+                        // for the value for each verb...see how auction is set up below.
+                        costs.mint_costs().transfer as u64
+                    } else if lane_id == AUCTION_LANE_ID {
+                        let amount = match entry_point {
+                            TransactionEntryPoint::Call => {
+                                return Err(PricingModeError::EntryPointCannotBeCall)
+                            }
+                            TransactionEntryPoint::Custom(_) | TransactionEntryPoint::Transfer => {
+                                return Err(PricingModeError::EntryPointCannotBeCustom {
+                                    entry_point: entry_point.clone(),
+                                });
+                            }
+                            TransactionEntryPoint::AddBid | TransactionEntryPoint::ActivateBid => {
+                                costs.auction_costs().add_bid
+                            }
+                            TransactionEntryPoint::WithdrawBid => {
+                                costs.auction_costs().withdraw_bid.into()
+                            }
+                            TransactionEntryPoint::Delegate => {
+                                costs.auction_costs().delegate.into()
+                            }
+                            TransactionEntryPoint::Undelegate => {
+                                costs.auction_costs().undelegate.into()
+                            }
+                            TransactionEntryPoint::Redelegate => {
+                                costs.auction_costs().redelegate.into()
+                            }
+                            TransactionEntryPoint::ChangeBidPublicKey => {
+                                costs.auction_costs().change_bid_public_key
+                            }
+                            TransactionEntryPoint::AddReservations => {
+                                costs.auction_costs().add_reservations.into()
+                            }
+                            TransactionEntryPoint::CancelReservations => {
+                                costs.auction_costs().cancel_reservations.into()
+                            }
+                        };
+                        amount
+                    } else {
+                        chainspec.get_max_gas_limit_by_category(lane_id)
+                    }
+                };
+                Gas::new(U512::from(computation_limit))
+            }
+            PricingMode::Reserved { receipt } => {
+                return Err(PricingModeError::InvalidPricingMode {
+                    price_mode: PricingMode::Reserved { receipt: *receipt },
+                });
+            }
+        };
+        Ok(gas)
+    }
+
+    #[cfg(any(feature = "std", test))]
+    /// Returns gas cost.
+    pub fn gas_cost(
+        &self,
+        chainspec: &Chainspec,
+        entry_point: &TransactionEntryPoint,
+        lane_id: u8,
+        gas_price: u8,
+    ) -> Result<Motes, PricingModeError> {
+        let gas_limit = self.gas_limit(chainspec, entry_point, lane_id)?;
+        let motes = match self {
+            PricingMode::Classic { .. } | PricingMode::Fixed { .. } => {
+                Motes::from_gas(gas_limit, gas_price)
+                    .ok_or(PricingModeError::UnableToCalculateGasCost)?
+            }
+            PricingMode::Reserved { .. } => {
+                Motes::zero() // prepaid
+            }
+        };
+        Ok(motes)
+    }
+
+    /// Returns gas cost.
+    pub fn additional_computation_factor(&self) -> u8 {
+        match self {
+            PricingMode::Classic { .. } => 0,
+            PricingMode::Fixed {
+                additional_computation_factor,
+                ..
+            } => *additional_computation_factor,
+            PricingMode::Reserved { .. } => 0,
+        }
+    }
+}
+
+///Errors that can occur when calling PricingMode functions
+pub enum PricingModeError {
+    /// The entry point for this transaction target cannot be `call`.
+    EntryPointCannotBeCall,
+    /// The entry point for this transaction target cannot be `TransactionEntryPoint::Custom`.
+    EntryPointCannotBeCustom {
+        /// The invalid entry point.
+        entry_point: TransactionEntryPoint,
+    },
+    /// Invalid combination of pricing handling and pricing mode.
+    InvalidPricingMode {
+        /// The pricing mode as specified by the transaction.
+        price_mode: PricingMode,
+    },
+    /// Unable to calculate gas cost.
+    UnableToCalculateGasCost,
+}
+
+impl From<PricingModeError> for InvalidTransaction {
+    fn from(err: PricingModeError) -> Self {
+        InvalidTransaction::V1(err.into())
+    }
+}
+
+impl From<PricingModeError> for InvalidTransactionV1 {
+    fn from(err: PricingModeError) -> Self {
+        match err {
+            PricingModeError::EntryPointCannotBeCall => {
+                InvalidTransactionV1::EntryPointCannotBeCall
+            }
+            PricingModeError::EntryPointCannotBeCustom { entry_point } => {
+                InvalidTransactionV1::EntryPointCannotBeCustom { entry_point }
+            }
+            PricingModeError::InvalidPricingMode { price_mode } => {
+                InvalidTransactionV1::InvalidPricingMode { price_mode }
+            }
+            PricingModeError::UnableToCalculateGasCost => {
+                InvalidTransactionV1::UnableToCalculateGasCost
             }
         }
     }
@@ -119,6 +284,7 @@ const CLASSIC_STANDARD_PAYMENT_INDEX: u16 = 3;
 
 const FIXED_VARIANT_TAG: u8 = 1;
 const FIXED_GAS_PRICE_TOLERANCE_INDEX: u16 = 1;
+const FIXED_ADDITIONAL_COMPUTATION_FACTOR_INDEX: u16 = 2;
 
 const RESERVED_VARIANT_TAG: u8 = 2;
 const RESERVED_RECEIPT_INDEX: u16 = 1;
@@ -138,9 +304,14 @@ impl ToBytes for PricingMode {
                 .binary_payload_bytes(),
             PricingMode::Fixed {
                 gas_price_tolerance,
+                additional_computation_factor,
             } => CalltableSerializationEnvelopeBuilder::new(self.serialized_field_lengths())?
                 .add_field(TAG_FIELD_INDEX, &FIXED_VARIANT_TAG)?
                 .add_field(FIXED_GAS_PRICE_TOLERANCE_INDEX, &gas_price_tolerance)?
+                .add_field(
+                    FIXED_ADDITIONAL_COMPUTATION_FACTOR_INDEX,
+                    &additional_computation_factor,
+                )?
                 .binary_payload_bytes(),
             PricingMode::Reserved { receipt } => {
                 CalltableSerializationEnvelopeBuilder::new(self.serialized_field_lengths())?
@@ -185,11 +356,16 @@ impl FromBytes for PricingMode {
                 let window = window.ok_or(Formatting)?;
                 window.verify_index(FIXED_GAS_PRICE_TOLERANCE_INDEX)?;
                 let (gas_price_tolerance, window) = window.deserialize_and_maybe_next::<u8>()?;
+                let window = window.ok_or(Formatting)?;
+                window.verify_index(FIXED_ADDITIONAL_COMPUTATION_FACTOR_INDEX)?;
+                let (additional_computation_factor, window) =
+                    window.deserialize_and_maybe_next::<u8>()?;
                 if window.is_some() {
                     return Err(Formatting);
                 }
                 Ok(PricingMode::Fixed {
                     gas_price_tolerance,
+                    additional_computation_factor,
                 })
             }
             RESERVED_VARIANT_TAG => {
@@ -224,7 +400,12 @@ impl Display for PricingMode {
             PricingMode::Reserved { receipt } => write!(formatter, "reserved: {}", receipt),
             PricingMode::Fixed {
                 gas_price_tolerance,
-            } => write!(formatter, "fixed pricing {}", gas_price_tolerance),
+                additional_computation_factor,
+            } => write!(
+                formatter,
+                "fixed pricing {} {}",
+                gas_price_tolerance, additional_computation_factor
+            ),
         }
     }
 }

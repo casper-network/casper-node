@@ -3,12 +3,12 @@ mod state;
 
 use std::{convert::TryFrom, sync::Arc};
 
+use crate::types::TransactionHeader;
 use datasize::DataSize;
 use serde::Serialize;
 
 use casper_types::{
     execution::ExecutionResult, ActivationPoint, Block, BlockHash, BlockV2, EraId, TransactionHash,
-    TransactionHeader,
 };
 
 pub(crate) use merge_mismatch_error::MergeMismatchError;
@@ -185,7 +185,7 @@ mod tests {
         let txn = TransactionV1::random(rng);
         let execution_results = vec![ExecutionArtifact::new(
             TransactionHash::V1(*txn.hash()),
-            TransactionHeader::V1(txn.take_header()),
+            (&txn).into(),
             ExecutionResult::from(ExecutionResultV2::random(rng)),
             Vec::new(),
         )];
@@ -240,7 +240,7 @@ mod tests {
         let txn = TransactionV1::random(rng);
         let execution_results = vec![ExecutionArtifact::new(
             TransactionHash::V1(*txn.hash()),
-            TransactionHeader::V1(txn.take_header()),
+            (&txn).into(),
             ExecutionResult::from(ExecutionResultV2::random(rng)),
             Vec::new(),
         )];
@@ -278,7 +278,7 @@ mod tests {
         let txn = TransactionV1::random(rng);
         let execution_results = vec![ExecutionArtifact::new(
             TransactionHash::V1(*txn.hash()),
-            TransactionHeader::V1(txn.take_header()),
+            (&txn).into(),
             ExecutionResult::from(ExecutionResultV2::random(rng)),
             Vec::new(),
         )];
@@ -311,14 +311,14 @@ mod tests {
         let txn1 = TransactionV1::random(rng);
         let execution_results1 = vec![ExecutionArtifact::new(
             TransactionHash::V1(*txn1.hash()),
-            TransactionHeader::V1(txn1.take_header()),
+            (&txn1).into(),
             ExecutionResult::from(ExecutionResultV2::random(rng)),
             Vec::new(),
         )];
         let txn2 = TransactionV1::random(rng);
         let execution_results2 = vec![ExecutionArtifact::new(
             TransactionHash::V1(*txn2.hash()),
-            TransactionHeader::V1(txn2.take_header()),
+            (&txn2).into(),
             ExecutionResult::from(ExecutionResultV2::random(rng)),
             Vec::new(),
         )];

@@ -1,13 +1,13 @@
-use core::convert::TryInto;
 use std::iter;
 
 use alloc::collections::BTreeMap;
 use rand::Rng;
 
 use crate::{
-    system::auction::ValidatorWeights, testing::TestRng, transaction::TransactionCategory, Block,
-    BlockHash, BlockV2, Digest, EraEndV2, EraId, ProtocolVersion, PublicKey, RewardedSignatures,
-    Timestamp, Transaction, U512,
+    system::auction::ValidatorWeights, testing::TestRng, Block, BlockHash, BlockV2, Digest,
+    EraEndV2, EraId, ProtocolVersion, PublicKey, RewardedSignatures, Timestamp, Transaction,
+    TransactionEntryPoint, TransactionTarget, AUCTION_LANE_ID, INSTALL_UPGRADE_LANE_ID,
+    LARGE_WASM_LANE_ID, MEDIUM_WASM_LANE_ID, MINT_LANE_ID, SMALL_WASM_LANE_ID, U512,
 };
 
 /// A helper to build the blocks with various properties required for tests.
@@ -180,30 +180,38 @@ impl TestBlockV2Builder {
         let mut small_hashes = vec![];
         for txn in txns {
             let txn_hash = txn.hash();
-            let category: TransactionCategory = txn
-                .transaction_category()
-                .try_into()
-                .expect("Expected a valid priority");
-            match category {
-                TransactionCategory::Mint => mint_hashes.push(txn_hash),
-                TransactionCategory::Auction => auction_hashes.push(txn_hash),
-                TransactionCategory::InstallUpgrade => install_upgrade_hashes.push(txn_hash),
-                TransactionCategory::Large => large_hashes.push(txn_hash),
-                TransactionCategory::Medium => medium_hashes.push(txn_hash),
-                TransactionCategory::Small => small_hashes.push(txn_hash),
+            let lane_id = match txn {
+                Transaction::Deploy(deploy) => {
+                    if deploy.is_transfer() {
+                        MINT_LANE_ID
+                    } else {
+                        LARGE_WASM_LANE_ID
+                    }
+                }
+                Transaction::V1(transaction_v1) => {
+                    let entry_point = transaction_v1.get_transaction_entry_point().unwrap();
+                    let target = transaction_v1.get_transaction_target().unwrap();
+                    simplified_calculate_transaction_lane_from_values(&entry_point, &target)
+                }
+            };
+            match lane_id {
+                MINT_LANE_ID => mint_hashes.push(txn_hash),
+                AUCTION_LANE_ID => auction_hashes.push(txn_hash),
+                INSTALL_UPGRADE_LANE_ID => install_upgrade_hashes.push(txn_hash),
+                LARGE_WASM_LANE_ID => large_hashes.push(txn_hash),
+                MEDIUM_WASM_LANE_ID => medium_hashes.push(txn_hash),
+                SMALL_WASM_LANE_ID => small_hashes.push(txn_hash),
+                _ => panic!("Invalid lane id"),
             }
         }
         let transactions = {
             let mut ret = BTreeMap::new();
-            ret.insert(TransactionCategory::Mint as u8, mint_hashes);
-            ret.insert(TransactionCategory::Auction as u8, auction_hashes);
-            ret.insert(
-                TransactionCategory::InstallUpgrade as u8,
-                install_upgrade_hashes,
-            );
-            ret.insert(TransactionCategory::Large as u8, large_hashes);
-            ret.insert(TransactionCategory::Medium as u8, medium_hashes);
-            ret.insert(TransactionCategory::Small as u8, small_hashes);
+            ret.insert(MINT_LANE_ID, mint_hashes);
+            ret.insert(AUCTION_LANE_ID, auction_hashes);
+            ret.insert(INSTALL_UPGRADE_LANE_ID, install_upgrade_hashes);
+            ret.insert(LARGE_WASM_LANE_ID, large_hashes);
+            ret.insert(MEDIUM_WASM_LANE_ID, medium_hashes);
+            ret.insert(SMALL_WASM_LANE_ID, small_hashes);
             ret
         };
         let rewarded_signatures = rewarded_signatures.unwrap_or_default();
@@ -235,6 +243,72 @@ impl TestBlockV2Builder {
     /// Builds a block that is invalid.
     pub fn build_invalid(self, rng: &mut TestRng) -> BlockV2 {
         self.build(rng).make_invalid(rng)
+    }
+}
+
+// A simplified way of calculating transaction lanes. It doesn't take
+// into consideration the size of the transaction against the chainspec
+// and doesn't take `additional_compufsdetation_factor` into consideration.
+// This is only used for tests purposes.
+fn simplified_calculate_transaction_lane_from_values(
+    entry_point: &TransactionEntryPoint,
+    target: &TransactionTarget,
+) -> u8 {
+    match target {
+        TransactionTarget::Native => match entry_point {
+            TransactionEntryPoint::Transfer => MINT_LANE_ID,
+            TransactionEntryPoint::AddBid
+            | TransactionEntryPoint::WithdrawBid
+            | TransactionEntryPoint::Delegate
+            | TransactionEntryPoint::Undelegate
+            | TransactionEntryPoint::Redelegate
+            | TransactionEntryPoint::ActivateBid
+            | TransactionEntryPoint::ChangeBidPublicKey
+            | TransactionEntryPoint::AddReservations
+            | TransactionEntryPoint::CancelReservations => AUCTION_LANE_ID,
+            TransactionEntryPoint::Call => panic!("EntryPointCannotBeCall"),
+            TransactionEntryPoint::Custom(_) => panic!("EntryPointCannotBeCustom"),
+        },
+        TransactionTarget::Stored { .. } => match entry_point {
+            TransactionEntryPoint::Custom(_) => LARGE_WASM_LANE_ID,
+            TransactionEntryPoint::Call
+            | TransactionEntryPoint::Transfer
+            | TransactionEntryPoint::AddBid
+            | TransactionEntryPoint::WithdrawBid
+            | TransactionEntryPoint::Delegate
+            | TransactionEntryPoint::Undelegate
+            | TransactionEntryPoint::Redelegate
+            | TransactionEntryPoint::ActivateBid
+            | TransactionEntryPoint::ChangeBidPublicKey
+            | TransactionEntryPoint::AddReservations
+            | TransactionEntryPoint::CancelReservations => {
+                panic!("EntryPointMustBeCustom")
+            }
+        },
+        TransactionTarget::Session {
+            is_install_upgrade, ..
+        } => match entry_point {
+            TransactionEntryPoint::Call => {
+                if *is_install_upgrade {
+                    INSTALL_UPGRADE_LANE_ID
+                } else {
+                    LARGE_WASM_LANE_ID
+                }
+            }
+            TransactionEntryPoint::Custom(_)
+            | TransactionEntryPoint::Transfer
+            | TransactionEntryPoint::AddBid
+            | TransactionEntryPoint::WithdrawBid
+            | TransactionEntryPoint::Delegate
+            | TransactionEntryPoint::Undelegate
+            | TransactionEntryPoint::Redelegate
+            | TransactionEntryPoint::ActivateBid
+            | TransactionEntryPoint::ChangeBidPublicKey
+            | TransactionEntryPoint::AddReservations
+            | TransactionEntryPoint::CancelReservations => {
+                panic!("EntryPointMustBeCall")
+            }
+        },
     }
 }
 
