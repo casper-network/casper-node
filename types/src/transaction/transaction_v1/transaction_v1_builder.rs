@@ -153,7 +153,7 @@ impl<'a> TransactionV1Builder<'a> {
     /// # Returns
     ///
     /// A new `TransactionV1Builder` instance.
-    pub(super) fn new() -> Self {
+    pub fn new() -> Self {
         #[cfg(any(feature = "std-fs-io", test))]
         let timestamp = Timestamp::now();
         #[cfg(not(any(feature = "std-fs-io", test)))]
