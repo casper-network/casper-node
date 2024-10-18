@@ -98,6 +98,8 @@ pub const DEFAULT_COST_INCREASE_PER_MESSAGE_EMITTED: u32 = 50;
 const DEFAULT_MESSAGE_TOPIC_NAME_SIZE_WEIGHT: u32 = 30_000;
 const DEFAULT_MESSAGE_PAYLOAD_SIZE_WEIGHT: u32 = 120_000;
 
+const DEFAULT_GENERIC_HASH_COST: u32 = 300;
+
 /// Representation of a host function cost.
 ///
 /// The total gas cost is equal to `cost` + sum of each argument weight multiplied by the byte size
@@ -340,6 +342,8 @@ pub struct HostFunctionCosts {
     pub emit_message: HostFunction<[Cost; 4]>,
     /// Cost of calling the `get_block_info` host function.
     pub get_block_info: HostFunction<[Cost; 2]>,
+    /// Cost of calling the `generic_hash` host function.
+    pub generic_hash: HostFunction<[Cost; 5]>,
 }
 
 impl Zero for HostFunctionCosts {
@@ -394,6 +398,7 @@ impl Zero for HostFunctionCosts {
             emit_message: HostFunction::zero(),
             cost_increase_per_message: Zero::zero(),
             get_block_info: HostFunction::zero(),
+            generic_hash: HostFunction::zero(),
         }
     }
 
@@ -448,6 +453,7 @@ impl Zero for HostFunctionCosts {
             manage_message_topic,
             emit_message,
             get_block_info,
+            generic_hash,
         } = self;
         read_value.is_zero()
             && dictionary_get.is_zero()
@@ -498,6 +504,7 @@ impl Zero for HostFunctionCosts {
             && cost_increase_per_message.is_zero()
             && add_package_version.is_zero()
             && get_block_info.is_zero()
+            && generic_hash.is_zero()
     }
 }
 
@@ -684,6 +691,10 @@ impl Default for HostFunctionCosts {
                     DEFAULT_MESSAGE_PAYLOAD_SIZE_WEIGHT,
                 ],
             ),
+            generic_hash: HostFunction::new(
+                DEFAULT_GENERIC_HASH_COST,
+                [NOT_USED, NOT_USED, NOT_USED, NOT_USED, NOT_USED],
+            ),
             cost_increase_per_message: DEFAULT_COST_INCREASE_PER_MESSAGE_EMITTED,
             get_block_info: HostFunction::new(DEFAULT_FIXED_COST, [NOT_USED, NOT_USED]),
         }
@@ -742,6 +753,7 @@ impl ToBytes for HostFunctionCosts {
         ret.append(&mut self.emit_message.to_bytes()?);
         ret.append(&mut self.cost_increase_per_message.to_bytes()?);
         ret.append(&mut self.get_block_info.to_bytes()?);
+        ret.append(&mut self.generic_hash.to_bytes()?);
         Ok(ret)
     }
 
@@ -795,6 +807,7 @@ impl ToBytes for HostFunctionCosts {
             + self.emit_message.serialized_length()
             + self.cost_increase_per_message.serialized_length()
             + self.get_block_info.serialized_length()
+            + self.generic_hash.serialized_length()
     }
 }
 
@@ -849,6 +862,7 @@ impl FromBytes for HostFunctionCosts {
         let (emit_message, rem) = FromBytes::from_bytes(rem)?;
         let (cost_increase_per_message, rem) = FromBytes::from_bytes(rem)?;
         let (get_block_info, rem) = FromBytes::from_bytes(rem)?;
+        let (generic_hash, rem) = FromBytes::from_bytes(rem)?;
         Ok((
             HostFunctionCosts {
                 read_value,
@@ -900,6 +914,7 @@ impl FromBytes for HostFunctionCosts {
                 emit_message,
                 cost_increase_per_message,
                 get_block_info,
+                generic_hash,
             },
             rem,
         ))
@@ -959,6 +974,7 @@ impl Distribution<HostFunctionCosts> for Standard {
             emit_message: rng.gen(),
             cost_increase_per_message: rng.gen(),
             get_block_info: rng.gen(),
+            generic_hash: rng.gen(),
         }
     }
 }
@@ -1027,6 +1043,7 @@ pub mod gens {
             emit_message in host_function_cost_arb(),
             cost_increase_per_message in num::u32::ANY,
             get_block_info in host_function_cost_arb(),
+            generic_hash in host_function_cost_arb(),
         ) -> HostFunctionCosts {
             HostFunctionCosts {
                 read_value,
@@ -1077,7 +1094,8 @@ pub mod gens {
                 manage_message_topic,
                 emit_message,
                 cost_increase_per_message,
-                get_block_info
+                get_block_info,
+                generic_hash,
             }
         }
     }
