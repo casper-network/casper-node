@@ -25,7 +25,7 @@ static ACCOUNT_1_PK: Lazy<PublicKey> = Lazy::new(|| {
 const GENESIS_VALIDATOR_STAKE: u64 = 50_000;
 
 static ACCOUNT_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*ACCOUNT_1_PK));
-static ACCOUNT_1_FUND: Lazy<U512> = Lazy::new(|| U512::from(1_500_000_000_000u64));
+static ACCOUNT_1_FUND: Lazy<U512> = Lazy::new(|| U512::from(10_000_000_000_000u64));
 static ACCOUNT_1_BALANCE: Lazy<U512> = Lazy::new(|| *ACCOUNT_1_FUND + 100_000);
 static ACCOUNT_1_BOND: Lazy<U512> = Lazy::new(|| U512::from(25_000));
 

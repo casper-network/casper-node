@@ -809,20 +809,20 @@ async fn ttl() {
         .with_num_validators(&mut rng, 1)
         .with_transactions(transactions.clone())
         .with_count_limits(Some(3000), Some(3000), Some(3000), Some(3000))
-        .with_block_gas_limit(10_300_000_000_000)
+        .with_block_gas_limit(15_300_000_000_000)
         .include_all_transactions();
     let mut transfers_context = ValidationContext::new()
         .with_num_validators(&mut rng, 1)
         .with_transfers(transfers.clone())
         .with_count_limits(Some(3000), Some(3000), Some(3000), Some(3000))
-        .with_block_gas_limit(10_300_000_000_000)
+        .with_block_gas_limit(15_300_000_000_000)
         .include_all_transfers();
     let mut both_context = ValidationContext::new()
         .with_num_validators(&mut rng, 1)
         .with_transactions(transactions)
         .with_transfers(transfers)
         .with_count_limits(Some(3000), Some(3000), Some(3000), Some(3000))
-        .with_block_gas_limit(10_300_000_000_000)
+        .with_block_gas_limit(15_300_000_000_000)
         .include_all_transactions()
         .include_all_transfers();
 

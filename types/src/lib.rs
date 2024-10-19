@@ -132,7 +132,7 @@ pub use chainspec::{
     ProtocolConfig, ProtocolUpgradeConfig, RefundHandling, StandardPaymentCosts, StorageCosts,
     SystemConfig, TransactionConfig, TransactionLimitsDefinition, TransactionV1Config,
     VacancyConfig, ValidatorConfig, WasmConfig, DEFAULT_GAS_HOLD_INTERVAL,
-    DEFAULT_HOST_FUNCTION_NEW_DICTIONARY, DEFAULT_REFUND_HANDLING,
+    DEFAULT_HOST_FUNCTION_NEW_DICTIONARY, DEFAULT_MINIMUM_BID_AMOUNT, DEFAULT_REFUND_HANDLING,
 };
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 pub use chainspec::{

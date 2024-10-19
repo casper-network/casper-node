@@ -8,7 +8,8 @@ use num_traits::One;
 
 use casper_types::{
     account::AccountHash, FeeHandling, ProtocolVersion, PublicKey, RefundHandling, SystemConfig,
-    TimeDiff, WasmConfig, DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING,
+    TimeDiff, WasmConfig, DEFAULT_FEE_HANDLING, DEFAULT_MINIMUM_BID_AMOUNT,
+    DEFAULT_REFUND_HANDLING,
 };
 
 /// Default value for a maximum query depth configuration option.
@@ -59,6 +60,7 @@ pub struct EngineConfig {
     max_runtime_call_stack_height: u32,
     minimum_delegation_amount: u64,
     maximum_delegation_amount: u64,
+    minimum_bid_amount: u64,
     /// This flag indicates if arguments passed to contracts are checked against the defined types.
     strict_argument_checking: bool,
     /// Vesting schedule period in milliseconds.
@@ -93,6 +95,7 @@ impl Default for EngineConfig {
             max_runtime_call_stack_height: DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
             minimum_delegation_amount: DEFAULT_MINIMUM_DELEGATION_AMOUNT,
             maximum_delegation_amount: DEFAULT_MAXIMUM_DELEGATION_AMOUNT,
+            minimum_bid_amount: DEFAULT_MINIMUM_BID_AMOUNT,
             strict_argument_checking: DEFAULT_STRICT_ARGUMENT_CHECKING,
             vesting_schedule_period_millis: DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
             max_delegators_per_validator: DEFAULT_MAX_DELEGATORS_PER_VALIDATOR,
@@ -143,6 +146,11 @@ impl EngineConfig {
     /// Returns the maximum delegation amount in motes.
     pub fn maximum_delegation_amount(&self) -> u64 {
         self.maximum_delegation_amount
+    }
+
+    /// Returns the minimum delegation amount in motes.
+    pub fn minimum_bid_amount(&self) -> u64 {
+        self.minimum_bid_amount
     }
 
     /// Get the engine config's strict argument checking flag.
@@ -222,6 +230,7 @@ pub struct EngineConfigBuilder {
     max_runtime_call_stack_height: Option<u32>,
     minimum_delegation_amount: Option<u64>,
     maximum_delegation_amount: Option<u64>,
+    minimum_bid_amount: Option<u64>,
     strict_argument_checking: Option<bool>,
     vesting_schedule_period_millis: Option<u64>,
     max_delegators_per_validator: Option<u32>,
@@ -319,6 +328,12 @@ impl EngineConfigBuilder {
         self
     }
 
+    /// Sets the minimum bid amount config option.
+    pub fn with_minimum_bid_amount(mut self, minimum_bid_amount: u64) -> Self {
+        self.minimum_bid_amount = Some(minimum_bid_amount);
+        self
+    }
+
     /// Sets the administrative accounts.
     pub fn with_administrative_accounts(
         mut self,
@@ -390,6 +405,9 @@ impl EngineConfigBuilder {
         let maximum_delegation_amount = self
             .maximum_delegation_amount
             .unwrap_or(DEFAULT_MAXIMUM_DELEGATION_AMOUNT);
+        let minimum_bid_amount = self
+            .minimum_bid_amount
+            .unwrap_or(DEFAULT_MINIMUM_BID_AMOUNT);
         let wasm_config = self.wasm_config.unwrap_or_default();
         let system_config = self.system_config.unwrap_or_default();
         let protocol_version = self.protocol_version.unwrap_or(DEFAULT_PROTOCOL_VERSION);
@@ -425,6 +443,7 @@ impl EngineConfigBuilder {
             max_runtime_call_stack_height,
             minimum_delegation_amount,
             maximum_delegation_amount,
+            minimum_bid_amount,
             wasm_config,
             system_config,
             protocol_version,
