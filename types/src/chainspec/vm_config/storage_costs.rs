@@ -99,6 +99,7 @@ pub mod tests {
     use crate::U512;
 
     use super::*;
+    use proptest::prelude::*;
 
     const SMALL_WEIGHT: usize = 123456789;
     const LARGE_WEIGHT: usize = usize::max_value();
@@ -122,22 +123,24 @@ pub mod tests {
         let expected_cost = U512::from(DEFAULT_GAS_PER_BYTE_COST) * U512::from(LARGE_WEIGHT);
         assert_eq!(cost, Gas::new(expected_cost));
     }
+
+    proptest! {
+        #[test]
+        fn bytesrepr_roundtrip(storage_costs in super::gens::storage_costs_arb()) {
+            bytesrepr::test_serialization_roundtrip(&storage_costs);
+        }
+    }
 }
 
 #[doc(hidden)]
-#[cfg(any(feature = "gens", test))]
+#[cfg(test)]
 pub mod gens {
-    use proptest::{num, prop_compose};
+    use crate::gens::example_u32_arb;
 
     use super::StorageCosts;
+    use proptest::prelude::*;
 
-    prop_compose! {
-        pub fn storage_costs_arb()(
-            gas_per_byte in num::u32::ANY,
-        ) -> StorageCosts {
-            StorageCosts {
-                gas_per_byte,
-            }
-        }
+    pub(super) fn storage_costs_arb() -> impl Strategy<Value = StorageCosts> {
+        example_u32_arb().prop_map(StorageCosts::new)
     }
 }

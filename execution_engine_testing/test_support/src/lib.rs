@@ -25,7 +25,7 @@ use casper_storage::data_access_layer::GenesisRequest;
 use casper_types::{
     account::AccountHash, testing::TestRng, ChainspecRegistry, Digest, GenesisAccount,
     GenesisConfig, GenesisConfigBuilder, Motes, ProtocolVersion, PublicKey, SecretKey,
-    SystemConfig, WasmConfig, U512,
+    StorageCosts, SystemConfig, WasmConfig, WasmV1Config, U512,
 };
 
 pub use chainspec_config::{ChainspecConfig, CHAINSPEC_SYMLINK};
@@ -142,8 +142,12 @@ pub const DEFAULT_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V2_0_0;
 pub static DEFAULT_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(10_000_000_000_000u64));
 /// Default [`WasmConfig`].
 pub static DEFAULT_WASM_CONFIG: Lazy<WasmConfig> = Lazy::new(WasmConfig::default);
+/// Default [`WasmV1Config`].
+pub static DEFAULT_WASM_V1_CONFIG: Lazy<WasmV1Config> = Lazy::new(WasmV1Config::default);
 /// Default [`SystemConfig`].
 pub static DEFAULT_SYSTEM_CONFIG: Lazy<SystemConfig> = Lazy::new(SystemConfig::default);
+/// Default [`StorageConfig`].
+pub static DEFAULT_STORAGE_COSTS: Lazy<StorageCosts> = Lazy::new(StorageCosts::default);
 
 /// Default [`GenesisConfig`].
 pub static DEFAULT_EXEC_CONFIG: Lazy<GenesisConfig> = Lazy::new(|| {
@@ -157,6 +161,7 @@ pub static DEFAULT_EXEC_CONFIG: Lazy<GenesisConfig> = Lazy::new(|| {
         .with_round_seigniorage_rate(DEFAULT_ROUND_SEIGNIORAGE_RATE)
         .with_unbonding_delay(DEFAULT_UNBONDING_DELAY)
         .with_genesis_timestamp_millis(DEFAULT_GENESIS_TIMESTAMP_MILLIS)
+        .with_storage_costs(*DEFAULT_STORAGE_COSTS)
         .build()
 });
 

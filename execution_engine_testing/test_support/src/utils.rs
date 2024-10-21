@@ -15,7 +15,7 @@ use super::{DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBON
 use crate::{
     DEFAULT_AUCTION_DELAY, DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG_HASH,
     DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROTOCOL_VERSION,
-    DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
+    DEFAULT_STORAGE_COSTS, DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
 };
 
 static RUST_WORKSPACE_PATH: Lazy<PathBuf> = Lazy::new(|| {
@@ -133,6 +133,7 @@ pub fn create_genesis_config(accounts: Vec<GenesisAccount>) -> GenesisConfig {
     let round_seigniorage_rate = DEFAULT_ROUND_SEIGNIORAGE_RATE;
     let unbonding_delay = DEFAULT_UNBONDING_DELAY;
     let genesis_timestamp_millis = DEFAULT_GENESIS_TIMESTAMP_MILLIS;
+    let storage_costs = *DEFAULT_STORAGE_COSTS;
 
     GenesisConfigBuilder::default()
         .with_accounts(accounts)
@@ -144,6 +145,7 @@ pub fn create_genesis_config(accounts: Vec<GenesisAccount>) -> GenesisConfig {
         .with_round_seigniorage_rate(round_seigniorage_rate)
         .with_unbonding_delay(unbonding_delay)
         .with_genesis_timestamp_millis(genesis_timestamp_millis)
+        .with_storage_costs(storage_costs)
         .build()
 }
 
