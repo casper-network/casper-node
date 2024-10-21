@@ -629,7 +629,6 @@ mod tests {
             spec.transaction_config.max_ttl,
             TimeDiff::from_seconds(26_300_160)
         );
-        assert_eq!(spec.transaction_config.deploy_config.max_dependencies, 11);
         assert_eq!(spec.transaction_config.max_block_size, 12);
         assert_eq!(
             spec.transaction_config

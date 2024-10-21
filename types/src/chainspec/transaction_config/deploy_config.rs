@@ -22,8 +22,6 @@ pub const DEFAULT_MAX_PAYMENT_MOTES: u64 = 2_500_000_000;
 pub struct DeployConfig {
     /// Maximum amount any deploy can pay.
     pub max_payment_cost: Motes,
-    /// Maximum time to live any deploy can specify.
-    pub max_dependencies: u8,
     /// Maximum length in bytes of payment args per deploy.
     pub payment_args_max_length: u32,
     /// Maximum length in bytes of session args per deploy.
@@ -35,13 +33,11 @@ impl DeployConfig {
     /// Generates a random instance using a `TestRng`.
     pub fn random(rng: &mut TestRng) -> Self {
         let max_payment_cost = Motes::new(rng.gen_range(1_000_000..1_000_000_000));
-        let max_dependencies = 0;
         let payment_args_max_length = rng.gen();
         let session_args_max_length = rng.gen();
 
         DeployConfig {
             max_payment_cost,
-            max_dependencies,
             payment_args_max_length,
             session_args_max_length,
         }
@@ -53,7 +49,6 @@ impl Default for DeployConfig {
     fn default() -> Self {
         DeployConfig {
             max_payment_cost: Motes::new(DEFAULT_MAX_PAYMENT_MOTES),
-            max_dependencies: 0,
             payment_args_max_length: 1024,
             session_args_max_length: 1024,
         }
@@ -63,7 +58,6 @@ impl Default for DeployConfig {
 impl ToBytes for DeployConfig {
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         self.max_payment_cost.write_bytes(writer)?;
-        self.max_dependencies.write_bytes(writer)?;
         self.payment_args_max_length.write_bytes(writer)?;
         self.session_args_max_length.write_bytes(writer)
     }
@@ -76,7 +70,6 @@ impl ToBytes for DeployConfig {
 
     fn serialized_length(&self) -> usize {
         self.max_payment_cost.value().serialized_length()
-            + self.max_dependencies.serialized_length()
             + self.payment_args_max_length.serialized_length()
             + self.session_args_max_length.serialized_length()
     }
@@ -85,12 +78,10 @@ impl ToBytes for DeployConfig {
 impl FromBytes for DeployConfig {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (max_payment_cost, remainder) = Motes::from_bytes(bytes)?;
-        let (max_dependencies, remainder) = u8::from_bytes(remainder)?;
         let (payment_args_max_length, remainder) = u32::from_bytes(remainder)?;
         let (session_args_max_length, remainder) = u32::from_bytes(remainder)?;
         let config = DeployConfig {
             max_payment_cost,
-            max_dependencies,
             payment_args_max_length,
             session_args_max_length,
         };
