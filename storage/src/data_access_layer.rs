@@ -88,11 +88,6 @@ pub use system_entity_registry::{
 pub use total_supply::{TotalSupplyRequest, TotalSupplyResult};
 pub use trie::{PutTrieRequest, PutTrieResult, TrieElement, TrieRequest, TrieResult};
 
-/// Block placeholder.
-pub struct Block {
-    _era_id: EraId,
-}
-
 /// Anchor struct for block store functionality.
 #[derive(Default, Copy, Clone)]
 pub struct BlockStore(());
