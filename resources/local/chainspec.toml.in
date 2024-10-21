@@ -212,7 +212,7 @@ payment_args_max_length = 1024
 # The limit of length of serialized session code arguments.
 session_args_max_length = 1024
 
-[wasm]
+[wasm.v1]
 # Amount of free memory (in 64kB pages) each contract can use for stack.
 max_memory = 64
 # Max stack height (native WebAssembly stack limiter).
