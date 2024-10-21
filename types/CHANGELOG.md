@@ -252,8 +252,6 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased] (node 1.5.4)
 
-Promoting "storage_costs" property in chainspec to root since it's not a wasm-specific property.)
-
 ### Changed
 
 - Remove filesystem I/O functionality from the `std` feature, and gated this behind a new feature `std-fs-io` which depends upon `std`.
