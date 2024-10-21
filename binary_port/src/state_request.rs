@@ -15,7 +15,7 @@ use rand::Rng;
 pub struct GlobalStateRequest {
     /// Global state identifier, `None` means "latest block state".
     state_identifier: Option<GlobalStateIdentifier>,
-    /// ualifier that points to a specific item (or items) in the global state.
+    /// qualifier that points to a specific item (or items) in the global state.
     qualifier: GlobalStateEntityQualifier,
 }
 
