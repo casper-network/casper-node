@@ -34,7 +34,8 @@ use serde::{Deserialize, Serialize};
 use casper_types::{
     bytesrepr::Bytes, file_utils, AccountsConfig, ActivationPoint, Chainspec, ChainspecRawBytes,
     CoreConfig, GlobalStateUpdate, GlobalStateUpdateConfig, HighwayConfig, NetworkConfig,
-    ProtocolConfig, ProtocolVersion, SystemConfig, TransactionConfig, VacancyConfig, WasmConfig,
+    ProtocolConfig, ProtocolVersion, StorageCosts, SystemConfig, TransactionConfig, VacancyConfig,
+    WasmConfig,
 };
 
 use crate::utils::{
@@ -80,6 +81,7 @@ pub(super) struct TomlChainspec {
     wasm: WasmConfig,
     system_costs: SystemConfig,
     vacancy: VacancyConfig,
+    storage_costs: StorageCosts,
 }
 
 impl From<&Chainspec> for TomlChainspec {
@@ -99,6 +101,7 @@ impl From<&Chainspec> for TomlChainspec {
         let wasm = chainspec.wasm_config;
         let system_costs = chainspec.system_costs_config;
         let vacancy = chainspec.vacancy_config;
+        let storage_costs = chainspec.storage_costs;
 
         TomlChainspec {
             protocol,
@@ -109,6 +112,7 @@ impl From<&Chainspec> for TomlChainspec {
             wasm,
             system_costs,
             vacancy,
+            storage_costs,
         }
     }
 }
@@ -163,6 +167,7 @@ pub(super) fn parse_toml<P: AsRef<Path>>(
         wasm_config: toml_chainspec.wasm,
         system_costs_config: toml_chainspec.system_costs,
         vacancy_config: toml_chainspec.vacancy,
+        storage_costs: toml_chainspec.storage_costs,
     };
     let chainspec_raw_bytes = ChainspecRawBytes::new(
         Bytes::from(chainspec_bytes),

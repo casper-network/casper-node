@@ -93,18 +93,6 @@ pub struct Block {
     _era_id: EraId,
 }
 
-/// Block provider definition.
-pub trait BlockProvider {
-    /// Block provider error type.
-    type Error;
-
-    /// Read block by height.
-    fn read_block_by_height(&self, _height: usize) -> Result<Option<Block>, Self::Error> {
-        // TODO: We need to implement this
-        todo!()
-    }
-}
-
 /// Anchor struct for block store functionality.
 #[derive(Default, Copy, Clone)]
 pub struct BlockStore(());

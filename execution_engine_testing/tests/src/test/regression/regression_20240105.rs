@@ -94,7 +94,7 @@ mod repeated_ffi_call_should_gas_out_quickly {
                     ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK).unwrap();
                 // Increase the `max_memory` available in order to avoid hitting unreachable
                 // instruction during execution.
-                chainspec_config.wasm_config.max_memory = 10_000;
+                *chainspec_config.wasm_config.v1_mut().max_memory_mut() = 10_000;
                 let mut builder = LmdbWasmTestBuilder::open(
                     data_dir.path(),
                     chainspec_config,

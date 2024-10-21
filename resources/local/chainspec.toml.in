@@ -218,11 +218,11 @@ max_memory = 64
 # Max stack height (native WebAssembly stack limiter).
 max_stack_height = 500
 
-[wasm.storage_costs]
+[storage_costs]
 # Gas charged per byte stored in the global state.
 gas_per_byte = 1_117_587
 
-[wasm.opcode_costs]
+[wasm.v1.opcode_costs]
 # Bit operations multiplier.
 bit = 300
 # Arithmetic add operations multiplier.
@@ -257,7 +257,7 @@ grow_memory = 240_000
 sign = 300
 
 # Control flow operations multiplier.
-[wasm.opcode_costs.control_flow]
+[wasm.v1.opcode_costs.control_flow]
 block = 440
 loop = 440
 if = 440
@@ -271,14 +271,14 @@ call = 68_000
 call_indirect = 68_000
 drop = 440
 
-[wasm.opcode_costs.control_flow.br_table]
+[wasm.v1.opcode_costs.control_flow.br_table]
 # Fixed cost per `br_table` opcode
 cost = 35_000
 # Size of target labels in the `br_table` opcode will be multiplied by `size_multiplier`
 size_multiplier = 100
 
 # Host function declarations are located in smart_contracts/contract/src/ext_ffi.rs
-[wasm.host_function_costs]
+[wasm.v1.host_function_costs]
 add = { cost = 5_800, arguments = [0, 0, 0, 0] }
 add_associated_key = { cost = 9_000, arguments = [0, 0, 0] }
 add_contract_version = { cost = 200, arguments = [0, 0, 0, 0, 120_000, 0, 0, 0, 0, 0] }
