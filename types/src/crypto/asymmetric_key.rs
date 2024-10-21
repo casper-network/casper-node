@@ -503,6 +503,11 @@ impl PublicKey {
         AccountHash::from(self)
     }
 
+    /// Hexadecimal representation of the key.
+    pub fn to_hex_string(&self) -> String {
+        self.to_hex()
+    }
+
     /// Returns `true` if this public key is of the `System` variant.
     pub fn is_system(&self) -> bool {
         matches!(self, PublicKey::System)
@@ -966,6 +971,11 @@ impl Signature {
             Signature::Ed25519(_) => ED25519,
             Signature::Secp256k1(_) => SECP256K1,
         }
+    }
+
+    /// Hexadecimal representation of the signature.
+    pub fn to_hex_string(&self) -> String {
+        self.to_hex()
     }
 }
 
