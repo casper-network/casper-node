@@ -250,13 +250,9 @@ All notable changes to this project will be documented in this file. The format 
 - methods `groups_mut`, `add_group`, `lookup_contract_hash`, `is_version_enabled`, `is_contract_enabled`, `insert_contract_version`, `disable_contract_version`, `enable_contract_version`, `enabled_versions`, `remove_group`, `next_contract_version_for`, `current_contract_version`, `current_contract_hash` in struct ContractPackage
 - in enum StoredValue removed variant Transfer (replaced with LegacyTransfer)
 
-<<<<<<< HEAD
-
-
-## [Unreleased] (node 1.6)
-=======
 ## [Unreleased] (node 1.5.4)
->>>>>>> 47964ccdf (Nesting wasm config into "v1" field so that we can have clear separation of configs between VMs in the future. Promoting "storage_costs" property in chainspec to root since it's not a wasm-specific property.)
+
+Promoting "storage_costs" property in chainspec to root since it's not a wasm-specific property.)
 
 ### Changed
 
