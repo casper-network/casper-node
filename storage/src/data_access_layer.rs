@@ -2,7 +2,7 @@ use crate::global_state::{
     error::Error as GlobalStateError,
     state::{CommitProvider, StateProvider},
 };
-use casper_types::{execution::Effects, Digest, EraId};
+use casper_types::{execution::Effects, Digest};
 
 use crate::tracking_copy::TrackingCopy;
 
