@@ -82,7 +82,7 @@ use crate::{
         mint::Mint,
         protocol_upgrade::{ProtocolUpgradeError, ProtocolUpgrader},
         runtime_native::{Id, RuntimeNative},
-        transfer::{NewTransferTargetMode, TransferError, TransferRuntimeArgsBuilder},
+        transfer::{TransferArgs, TransferError, TransferRuntimeArgsBuilder, TransferTargetMode},
     },
     tracking_copy::{TrackingCopy, TrackingCopyEntityExt, TrackingCopyError, TrackingCopyExt},
 };
@@ -127,13 +127,17 @@ pub enum CommitError {
     TrieNotFoundInCache(Digest),
 }
 
+/// Scratch provider.
 pub trait ScratchProvider: CommitProvider {
+    /// Get scratch state to db.
     fn get_scratch_global_state(&self) -> ScratchGlobalState;
+    /// Write scratch state to db.
     fn write_scratch_to_db(
         &self,
         state_root_hash: Digest,
         scratch_global_state: ScratchGlobalState,
     ) -> Result<Digest, GlobalStateError>;
+    /// Prune items for imputed keys.
     fn prune_keys(&self, state_root_hash: Digest, keys: &[Key]) -> TriePruneResult;
 }
 
@@ -147,6 +151,7 @@ pub trait CommitProvider: StateProvider {
         effects: Effects,
     ) -> Result<Digest, GlobalStateError>;
 
+    /// Commit values to global state.
     fn commit_values(
         &self,
         state_hash: Digest,
@@ -602,6 +607,7 @@ pub trait CommitProvider: StateProvider {
         }
     }
 
+    /// Gets block global data.
     fn block_global(&self, request: BlockGlobalRequest) -> BlockGlobalResult {
         let state_hash = request.state_hash();
         let tc = match self.tracking_copy(state_hash) {
@@ -1256,6 +1262,7 @@ pub trait StateProvider {
                 amount,
                 minimum_delegation_amount,
                 maximum_delegation_amount,
+                minimum_bid_amount,
             } => runtime
                 .add_bid(
                     public_key,
@@ -1263,12 +1270,17 @@ pub trait StateProvider {
                     amount,
                     minimum_delegation_amount,
                     maximum_delegation_amount,
+                    minimum_bid_amount,
                     0,
                 )
                 .map(AuctionMethodRet::UpdatedAmount)
                 .map_err(TrackingCopyError::Api),
-            AuctionMethod::WithdrawBid { public_key, amount } => runtime
-                .withdraw_bid(public_key, amount)
+            AuctionMethod::WithdrawBid {
+                public_key,
+                amount,
+                minimum_bid_amount,
+            } => runtime
+                .withdraw_bid(public_key, amount, minimum_bid_amount)
                 .map(AuctionMethodRet::UpdatedAmount)
                 .map_err(|auc_err| {
                     TrackingCopyError::SystemContract(system::Error::Auction(auc_err))
@@ -2000,6 +2012,33 @@ pub trait StateProvider {
                     Err(cve) => return TransferResult::Failure(TransferError::CLValue(cve)),
                 }
             }
+            TransferRequestArgs::Indirect(bita) => {
+                let source_uref = match bita
+                    .source()
+                    .purse_uref(&mut tc.borrow_mut(), protocol_version)
+                {
+                    Ok(source_uref) => source_uref,
+                    Err(tce) => return TransferResult::Failure(TransferError::TrackingCopy(tce)),
+                };
+                let target_uref = match bita
+                    .target()
+                    .purse_uref(&mut tc.borrow_mut(), protocol_version)
+                {
+                    Ok(target_uref) => target_uref,
+                    Err(tce) => return TransferResult::Failure(TransferError::TrackingCopy(tce)),
+                };
+                let transfer_args = TransferArgs::new(
+                    bita.to(),
+                    source_uref,
+                    target_uref,
+                    bita.amount(),
+                    bita.arg_id(),
+                );
+                match RuntimeArgs::try_from(transfer_args) {
+                    Ok(runtime_args) => runtime_args,
+                    Err(cve) => return TransferResult::Failure(TransferError::CLValue(cve)),
+                }
+            }
         };
 
         let remaining_spending_limit = match runtime_args.try_get_number(ARG_AMOUNT) {
@@ -2075,11 +2114,10 @@ pub trait StateProvider {
         );
 
         match transfer_target_mode {
-            NewTransferTargetMode::ExistingAccount { .. }
-            | NewTransferTargetMode::PurseExists { .. } => {
+            TransferTargetMode::ExistingAccount { .. } | TransferTargetMode::PurseExists { .. } => {
                 // Noop
             }
-            NewTransferTargetMode::CreateAccount(account_hash) => {
+            TransferTargetMode::CreateAccount(account_hash) => {
                 let main_purse = match runtime.mint(U512::zero()) {
                     Ok(uref) => uref,
                     Err(mint_error) => {

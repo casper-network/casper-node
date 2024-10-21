@@ -1,9 +1,6 @@
 use core::{convert::TryFrom, num::TryFromIntError, time::Duration};
 use std::collections::BTreeMap;
 
-#[cfg(feature = "datasize")]
-use datasize::DataSize;
-
 use casper_types::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     contracts::ContractHash,
@@ -76,7 +73,6 @@ impl TryFrom<Uptime> for TimeDiff {
 
 /// Type representing changes in consensus validators.
 #[derive(Debug, PartialEq, Eq, Serialize)]
-#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct ConsensusValidatorChanges(BTreeMap<PublicKey, Vec<(EraId, ValidatorChange)>>);
 
 impl ConsensusValidatorChanges {

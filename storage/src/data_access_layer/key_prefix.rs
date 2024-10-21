@@ -1,5 +1,3 @@
-#[cfg(any(feature = "testing", test))]
-use casper_types::testing::TestRng;
 use casper_types::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
@@ -7,8 +5,6 @@ use casper_types::{
     system::{auction::BidAddrTag, mint::BalanceHoldAddrTag},
     EntityAddr, KeyTag, URefAddr,
 };
-#[cfg(any(feature = "testing", test))]
-use rand::Rng;
 
 /// Key prefixes used for querying the global state.
 #[derive(Debug, PartialEq, Eq, Clone, PartialOrd, Ord, Hash)]
@@ -172,6 +168,9 @@ impl FromBytes for KeyPrefix {
 
 #[cfg(test)]
 mod tests {
+    use casper_types::testing::TestRng;
+    use rand::Rng;
+
     use casper_types::{
         addressable_entity::NamedKeyAddr,
         contract_messages::MessageAddr,

@@ -146,7 +146,9 @@ impl ExecutionResultV2 {
         let range = limit.value().as_u64();
 
         // can range from 0 to limit
-        let consumed = limit - Gas::new(rng.gen_range(0..=range));
+        let consumed = limit
+            .checked_sub(Gas::new(rng.gen_range(0..=range)))
+            .expect("consumed");
         let size_estimate = rng.gen();
 
         let payment = vec![PaymentInfo { source: rng.gen() }];

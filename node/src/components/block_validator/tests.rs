@@ -8,8 +8,8 @@ use casper_types::{
     bytesrepr::Bytes, runtime_args, system::standard_payment::ARG_AMOUNT, testing::TestRng, Block,
     BlockSignatures, BlockSignaturesV2, Chainspec, ChainspecRawBytes, Deploy, ExecutableDeployItem,
     FinalitySignatureV2, RuntimeArgs, SecretKey, TestBlockBuilder, TimeDiff, Transaction,
-    TransactionV1, TransactionV1Config, AUCTION_LANE_ID, INSTALL_UPGRADE_LANE_ID, MINT_LANE_ID,
-    U512,
+    TransactionHash, TransactionId, TransactionV1, TransactionV1Config, AUCTION_LANE_ID,
+    INSTALL_UPGRADE_LANE_ID, LARGE_WASM_LANE_ID, MINT_LANE_ID, U512,
 };
 
 use crate::{
@@ -24,8 +24,6 @@ use crate::{
 };
 
 use super::*;
-
-const LARGE_LANE_ID: u8 = 3;
 
 #[derive(Debug, From)]
 enum ReactorEvent {
@@ -154,7 +152,7 @@ pub(super) fn new_proposed_block_with_cited_signatures(
             INSTALL_UPGRADE_LANE_ID,
             install_upgrade.into_iter().collect(),
         );
-        ret.insert(LARGE_LANE_ID, standard.into_iter().collect());
+        ret.insert(LARGE_WASM_LANE_ID, standard.into_iter().collect());
         ret
     };
     let block_payload = BlockPayload::new(transactions, vec![], cited_signatures, true, 1u8);
@@ -182,23 +180,29 @@ pub(super) fn new_v1_standard(
     rng: &mut TestRng,
     timestamp: Timestamp,
     ttl: TimeDiff,
-) -> TransactionV1 {
-    TransactionV1::random_wasm(rng, Some(timestamp), Some(ttl))
+) -> Transaction {
+    let transaction_v1 = TransactionV1::random_wasm(rng, Some(timestamp), Some(ttl));
+    Transaction::V1(transaction_v1)
 }
 
-pub(super) fn new_auction(rng: &mut TestRng, timestamp: Timestamp, ttl: TimeDiff) -> TransactionV1 {
-    TransactionV1::random_auction(rng, Some(timestamp), Some(ttl))
+pub(super) fn new_auction(rng: &mut TestRng, timestamp: Timestamp, ttl: TimeDiff) -> Transaction {
+    let transaction_v1 = TransactionV1::random_auction(rng, Some(timestamp), Some(ttl));
+    Transaction::V1(transaction_v1)
 }
 
 pub(super) fn new_install_upgrade(
     rng: &mut TestRng,
     timestamp: Timestamp,
     ttl: TimeDiff,
-) -> TransactionV1 {
-    TransactionV1::random_install_upgrade(rng, Some(timestamp), Some(ttl))
+) -> Transaction {
+    TransactionV1::random_install_upgrade(rng, Some(timestamp), Some(ttl)).into()
 }
 
-pub(super) fn new_legacy_deploy(rng: &mut TestRng, timestamp: Timestamp, ttl: TimeDiff) -> Deploy {
+pub(super) fn new_legacy_deploy(
+    rng: &mut TestRng,
+    timestamp: Timestamp,
+    ttl: TimeDiff,
+) -> Transaction {
     let secret_key = SecretKey::random(rng);
     let chain_name = "chain".to_string();
     let payment = ExecutableDeployItem::ModuleBytes {
@@ -223,21 +227,22 @@ pub(super) fn new_legacy_deploy(rng: &mut TestRng, timestamp: Timestamp, ttl: Ti
         &secret_key,
         None,
     )
+    .into()
 }
 
 pub(super) fn new_v1_transfer(
     rng: &mut TestRng,
     timestamp: Timestamp,
     ttl: TimeDiff,
-) -> TransactionV1 {
-    TransactionV1::random_transfer(rng, Some(timestamp), Some(ttl))
+) -> Transaction {
+    TransactionV1::random_transfer(rng, Some(timestamp), Some(ttl)).into()
 }
 
 pub(super) fn new_legacy_transfer(
     rng: &mut TestRng,
     timestamp: Timestamp,
     ttl: TimeDiff,
-) -> Deploy {
+) -> Transaction {
     let secret_key = SecretKey::random(rng);
     let chain_name = "chain".to_string();
     let payment = ExecutableDeployItem::ModuleBytes {
@@ -261,21 +266,22 @@ pub(super) fn new_legacy_transfer(
         &secret_key,
         None,
     )
+    .into()
 }
 
 pub(super) fn new_mint(rng: &mut TestRng, timestamp: Timestamp, ttl: TimeDiff) -> Transaction {
     if rng.gen() {
-        new_v1_transfer(rng, timestamp, ttl).into()
+        new_v1_transfer(rng, timestamp, ttl)
     } else {
-        new_legacy_transfer(rng, timestamp, ttl).into()
+        new_legacy_transfer(rng, timestamp, ttl)
     }
 }
 
 pub(super) fn new_standard(rng: &mut TestRng, timestamp: Timestamp, ttl: TimeDiff) -> Transaction {
     if rng.gen() {
-        new_v1_standard(rng, timestamp, ttl).into()
+        new_v1_standard(rng, timestamp, ttl)
     } else {
-        new_legacy_deploy(rng, timestamp, ttl).into()
+        new_legacy_deploy(rng, timestamp, ttl)
     }
 }
 
@@ -286,8 +292,8 @@ pub(super) fn new_non_transfer(
 ) -> Transaction {
     match rng.gen_range(0..3) {
         0 => new_standard(rng, timestamp, ttl),
-        1 => new_install_upgrade(rng, timestamp, ttl).into(),
-        2 => new_auction(rng, timestamp, ttl).into(),
+        1 => new_install_upgrade(rng, timestamp, ttl),
+        2 => new_auction(rng, timestamp, ttl),
         _ => unreachable!(),
     }
 }
@@ -795,28 +801,28 @@ async fn ttl() {
         new_non_transfer(&mut rng, 900.into(), ttl),
     ];
     let transfers: Vec<Transaction> = vec![
-        new_v1_transfer(&mut rng, 1000.into(), ttl).into(),
-        new_v1_transfer(&mut rng, 900.into(), ttl).into(),
+        new_v1_transfer(&mut rng, 1000.into(), ttl),
+        new_v1_transfer(&mut rng, 900.into(), ttl),
     ];
 
     let mut transactions_context = ValidationContext::new()
         .with_num_validators(&mut rng, 1)
         .with_transactions(transactions.clone())
         .with_count_limits(Some(3000), Some(3000), Some(3000), Some(3000))
-        .with_block_gas_limit(10_300_000_000_000)
+        .with_block_gas_limit(15_300_000_000_000)
         .include_all_transactions();
     let mut transfers_context = ValidationContext::new()
         .with_num_validators(&mut rng, 1)
         .with_transfers(transfers.clone())
         .with_count_limits(Some(3000), Some(3000), Some(3000), Some(3000))
-        .with_block_gas_limit(10_300_000_000_000)
+        .with_block_gas_limit(15_300_000_000_000)
         .include_all_transfers();
     let mut both_context = ValidationContext::new()
         .with_num_validators(&mut rng, 1)
         .with_transactions(transactions)
         .with_transfers(transfers)
         .with_count_limits(Some(3000), Some(3000), Some(3000), Some(3000))
-        .with_block_gas_limit(10_300_000_000_000)
+        .with_block_gas_limit(15_300_000_000_000)
         .include_all_transactions()
         .include_all_transfers();
 
@@ -854,10 +860,10 @@ async fn transfer_transaction_mixup_and_replay() {
     let mut rng = TestRng::new();
     let ttl = TimeDiff::from_millis(200);
     let timestamp = Timestamp::from(1000);
-    let deploy_legacy = Transaction::from(new_legacy_deploy(&mut rng, timestamp, ttl));
-    let transaction_v1 = Transaction::from(new_v1_standard(&mut rng, timestamp, ttl));
-    let transfer_legacy = Transaction::from(new_legacy_transfer(&mut rng, timestamp, ttl));
-    let transfer_v1 = Transaction::from(new_v1_transfer(&mut rng, timestamp, ttl));
+    let deploy_legacy = new_legacy_deploy(&mut rng, timestamp, ttl);
+    let transaction_v1 = new_v1_standard(&mut rng, timestamp, ttl);
+    let transfer_legacy = new_legacy_transfer(&mut rng, timestamp, ttl);
+    let transfer_v1 = new_v1_transfer(&mut rng, timestamp, ttl);
 
     // First we make sure that our transfers and transactions would normally be valid.
     let transactions = vec![deploy_legacy.clone(), transaction_v1.clone()];
@@ -985,7 +991,7 @@ async fn should_fetch_from_multiple_peers() {
             .map(|i| new_non_transfer(&mut rng, (900 + i).into(), ttl))
             .collect_vec();
         let transfers = (0..peer_count)
-            .map(|i| Transaction::V1(new_v1_transfer(&mut rng, (1000 + i).into(), ttl)))
+            .map(|i| new_v1_transfer(&mut rng, (1000 + i).into(), ttl))
             .collect_vec();
 
         // Assemble the block to be validated.
@@ -1156,10 +1162,10 @@ async fn should_validate_block_with_signatures() {
     let mut rng = TestRng::new();
     let ttl = TimeDiff::from_millis(200);
     let timestamp = Timestamp::from(1000);
-    let deploy_legacy = Transaction::from(new_legacy_deploy(&mut rng, timestamp, ttl));
-    let transaction_v1 = Transaction::from(new_v1_standard(&mut rng, timestamp, ttl));
-    let transfer_legacy = Transaction::from(new_legacy_transfer(&mut rng, timestamp, ttl));
-    let transfer_v1 = Transaction::from(new_v1_transfer(&mut rng, timestamp, ttl));
+    let deploy_legacy = new_legacy_deploy(&mut rng, timestamp, ttl);
+    let transaction_v1 = new_v1_standard(&mut rng, timestamp, ttl);
+    let transfer_legacy = new_legacy_transfer(&mut rng, timestamp, ttl);
+    let transfer_v1 = new_v1_transfer(&mut rng, timestamp, ttl);
 
     let context = ValidationContext::new()
         .with_num_validators(&mut rng, 3)
@@ -1183,10 +1189,10 @@ async fn should_fetch_missing_signature() {
     let mut rng = TestRng::new();
     let ttl = TimeDiff::from_millis(200);
     let timestamp = Timestamp::from(1000);
-    let deploy_legacy = Transaction::from(new_legacy_deploy(&mut rng, timestamp, ttl));
-    let transaction_v1 = Transaction::from(new_v1_standard(&mut rng, timestamp, ttl));
-    let transfer_legacy = Transaction::from(new_legacy_transfer(&mut rng, timestamp, ttl));
-    let transfer_v1 = Transaction::from(new_v1_transfer(&mut rng, timestamp, ttl));
+    let deploy_legacy = new_legacy_deploy(&mut rng, timestamp, ttl);
+    let transaction_v1 = new_v1_standard(&mut rng, timestamp, ttl);
+    let transfer_legacy = new_legacy_transfer(&mut rng, timestamp, ttl);
+    let transfer_v1 = new_v1_transfer(&mut rng, timestamp, ttl);
 
     let context = ValidationContext::new()
         .with_num_validators(&mut rng, 3)
@@ -1213,10 +1219,10 @@ async fn should_fail_if_unable_to_fetch_signature() {
     let mut rng = TestRng::new();
     let ttl = TimeDiff::from_millis(200);
     let timestamp = Timestamp::from(1000);
-    let deploy_legacy = Transaction::from(new_legacy_deploy(&mut rng, timestamp, ttl));
-    let transaction_v1 = Transaction::from(new_v1_standard(&mut rng, timestamp, ttl));
-    let transfer_legacy = Transaction::from(new_legacy_transfer(&mut rng, timestamp, ttl));
-    let transfer_v1 = Transaction::from(new_v1_transfer(&mut rng, timestamp, ttl));
+    let deploy_legacy = new_legacy_deploy(&mut rng, timestamp, ttl);
+    let transaction_v1 = new_v1_standard(&mut rng, timestamp, ttl);
+    let transfer_legacy = new_legacy_transfer(&mut rng, timestamp, ttl);
+    let transfer_v1 = new_v1_transfer(&mut rng, timestamp, ttl);
 
     let context = ValidationContext::new()
         .with_num_validators(&mut rng, 3)
@@ -1263,10 +1269,10 @@ async fn should_validate_with_delayed_block() {
     let mut rng = TestRng::new();
     let ttl = TimeDiff::from_millis(200);
     let timestamp = Timestamp::from(1000);
-    let deploy_legacy = Transaction::from(new_legacy_deploy(&mut rng, timestamp, ttl));
-    let transaction_v1 = Transaction::from(new_v1_standard(&mut rng, timestamp, ttl));
-    let transfer_legacy = Transaction::from(new_legacy_transfer(&mut rng, timestamp, ttl));
-    let transfer_v1 = Transaction::from(new_v1_transfer(&mut rng, timestamp, ttl));
+    let deploy_legacy = new_legacy_deploy(&mut rng, timestamp, ttl);
+    let transaction_v1 = new_v1_standard(&mut rng, timestamp, ttl);
+    let transfer_legacy = new_legacy_transfer(&mut rng, timestamp, ttl);
+    let transfer_v1 = new_v1_transfer(&mut rng, timestamp, ttl);
 
     let context = ValidationContext::new()
         .with_num_validators(&mut rng, 3)

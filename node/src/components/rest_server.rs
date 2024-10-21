@@ -28,10 +28,16 @@ mod info;
 use std::{net::SocketAddr, sync::Arc};
 
 use datasize::DataSize;
-use futures::{future::BoxFuture, join, FutureExt};
+use futures::join;
 use once_cell::sync::OnceCell;
 use tokio::{sync::oneshot, task::JoinHandle};
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, warn};
+
+#[cfg(test)]
+use futures::{future::BoxFuture, FutureExt};
+
+#[cfg(test)]
+use tracing::debug;
 
 use casper_types::ProtocolVersion;
 
@@ -46,7 +52,7 @@ use crate::{
         },
         EffectBuilder, EffectExt, Effects,
     },
-    reactor::{main_reactor::MainEvent, Finalize},
+    reactor::main_reactor::MainEvent,
     types::{ChainspecInfo, StatusFeed},
     utils::{self, ListeningError},
     NodeRng,
@@ -95,11 +101,13 @@ impl<REv> ReactorEventT for REv where
 pub(crate) struct InnerRestServer {
     /// When the message is sent, it signals the server loop to exit cleanly.
     #[data_size(skip)]
+    #[allow(dead_code)]
     shutdown_sender: oneshot::Sender<()>,
     /// The address the server is listening on.
     local_addr: Arc<OnceCell<SocketAddr>>,
     /// The task handle which will only join once the server loop has exited.
     #[data_size(skip)]
+    #[allow(dead_code)]
     server_join_handle: Option<JoinHandle<()>>,
     /// The network name, as specified in the chainspec
     network_name: String,
@@ -321,7 +329,8 @@ where
     }
 }
 
-impl Finalize for RestServer {
+#[cfg(test)]
+impl crate::reactor::Finalize for RestServer {
     fn finalize(self) -> BoxFuture<'static, ()> {
         async {
             if let Some(mut rest_server) = self.inner_rest {

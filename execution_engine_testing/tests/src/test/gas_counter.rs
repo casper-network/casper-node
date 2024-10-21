@@ -163,7 +163,12 @@ fn should_correctly_measure_gas_for_opcodes() {
     builder.exec(exec_request).commit().expect_success();
 
     let gas_cost = builder.last_exec_gas_cost();
-    let expected_cost = accounted_opcodes.clone().into_iter().map(Gas::from).sum();
+    let expected_cost = accounted_opcodes
+        .clone()
+        .into_iter()
+        .map(Gas::from)
+        .try_fold(Gas::default(), |acc, cost| acc.checked_add(cost))
+        .expect("should add gas costs");
     assert_eq!(
         gas_cost, expected_cost,
         "accounted costs {:?}",

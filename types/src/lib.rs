@@ -52,6 +52,7 @@ mod gas;
 #[cfg(any(feature = "testing", feature = "gens", test))]
 pub mod gens;
 pub mod global_state;
+#[cfg(feature = "json-schema")]
 mod json_pretty_printer;
 mod key;
 mod motes;
@@ -74,7 +75,7 @@ mod uint;
 mod uref;
 mod validator_change;
 
-#[cfg(feature = "std")]
+#[cfg(all(feature = "std", any(feature = "std-fs-io", test)))]
 use libc::{c_long, sysconf, _SC_PAGESIZE};
 #[cfg(feature = "std")]
 use once_cell::sync::Lazy;
@@ -111,9 +112,11 @@ pub use block::{TestBlockBuilder, TestBlockV1Builder};
 pub use block_time::{BlockTime, HoldsEpoch, BLOCKTIME_SERIALIZED_LENGTH};
 pub use byte_code::{ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind};
 pub use cl_type::{named_key_type, CLType, CLTyped};
+#[cfg(feature = "json-schema")]
+pub use cl_value::cl_value_to_json;
 pub use cl_value::{
-    cl_value_to_json, handle_stored_dictionary_value, CLTypeMismatch, CLValue, CLValueError,
-    ChecksumRegistry, DictionaryValue as CLValueDictionary, SystemEntityRegistry,
+    handle_stored_dictionary_value, CLTypeMismatch, CLValue, CLValueError, ChecksumRegistry,
+    DictionaryValue as CLValueDictionary, SystemEntityRegistry,
 };
 pub use global_state::Pointer;
 
@@ -127,9 +130,9 @@ pub use chainspec::{
     HoldBalanceHandling, HostFunction, HostFunctionCost, HostFunctionCosts, LegacyRequiredFinality,
     MessageLimits, MintCosts, NetworkConfig, NextUpgrade, OpcodeCosts, PricingHandling,
     ProtocolConfig, ProtocolUpgradeConfig, RefundHandling, StandardPaymentCosts, StorageCosts,
-    SystemConfig, TransactionConfig, TransactionV1Config, VacancyConfig, ValidatorConfig,
-    WasmConfig, DEFAULT_GAS_HOLD_INTERVAL, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY,
-    DEFAULT_REFUND_HANDLING,
+    SystemConfig, TransactionConfig, TransactionLimitsDefinition, TransactionV1Config,
+    VacancyConfig, ValidatorConfig, WasmConfig, DEFAULT_GAS_HOLD_INTERVAL,
+    DEFAULT_HOST_FUNCTION_NEW_DICTIONARY, DEFAULT_MINIMUM_BID_AMOUNT, DEFAULT_REFUND_HANDLING,
 };
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 pub use chainspec::{
@@ -143,11 +146,10 @@ pub use chainspec::{
     DEFAULT_CONTROL_FLOW_RETURN_OPCODE, DEFAULT_CONTROL_FLOW_SELECT_OPCODE,
     DEFAULT_CONVERSION_COST, DEFAULT_CURRENT_MEMORY_COST, DEFAULT_DELEGATE_COST, DEFAULT_DIV_COST,
     DEFAULT_FEE_HANDLING, DEFAULT_GAS_HOLD_BALANCE_HANDLING, DEFAULT_GLOBAL_COST,
-    DEFAULT_GROW_MEMORY_COST, DEFAULT_INSTALL_UPGRADE_GAS_LIMIT, DEFAULT_INTEGER_COMPARISON_COST,
-    DEFAULT_LARGE_TRANSACTION_GAS_LIMIT, DEFAULT_LOAD_COST, DEFAULT_LOCAL_COST,
-    DEFAULT_MAX_PAYMENT_MOTES, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_MIN_TRANSFER_MOTES,
-    DEFAULT_MUL_COST, DEFAULT_NEW_DICTIONARY_COST, DEFAULT_NOP_COST, DEFAULT_STORE_COST,
-    DEFAULT_TRANSFER_COST, DEFAULT_UNREACHABLE_COST, DEFAULT_WASM_MAX_MEMORY,
+    DEFAULT_GROW_MEMORY_COST, DEFAULT_INTEGER_COMPARISON_COST, DEFAULT_LARGE_TRANSACTION_GAS_LIMIT,
+    DEFAULT_LOAD_COST, DEFAULT_LOCAL_COST, DEFAULT_MAX_PAYMENT_MOTES, DEFAULT_MAX_STACK_HEIGHT,
+    DEFAULT_MIN_TRANSFER_MOTES, DEFAULT_MUL_COST, DEFAULT_NEW_DICTIONARY_COST, DEFAULT_NOP_COST,
+    DEFAULT_STORE_COST, DEFAULT_TRANSFER_COST, DEFAULT_UNREACHABLE_COST, DEFAULT_WASM_MAX_MEMORY,
 };
 pub use contract_wasm::{ContractWasm, ContractWasmHash};
 #[doc(inline)]
@@ -161,6 +163,7 @@ pub use digest::{
 pub use display_iter::DisplayIter;
 pub use era_id::EraId;
 pub use gas::Gas;
+#[cfg(feature = "json-schema")]
 pub use json_pretty_printer::json_pretty_print;
 #[doc(inline)]
 pub use key::{
@@ -187,15 +190,14 @@ pub use timestamp::{TimeDiff, Timestamp};
 #[cfg(any(feature = "std", test))]
 pub use transaction::GasLimited;
 pub use transaction::{
-    AddressableEntityIdentifier, Approval, ApprovalsHash, Deploy, DeployDecodeFromJsonError,
-    DeployError, DeployExcessiveSizeError, DeployHash, DeployHeader, DeployId,
-    ExecutableDeployItem, ExecutableDeployItemIdentifier, ExecutionInfo, InitiatorAddr,
+    arg_handling, AddressableEntityIdentifier, Approval, ApprovalsHash, Deploy,
+    DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError, DeployHash, DeployHeader,
+    DeployId, ExecutableDeployItem, ExecutableDeployItemIdentifier, ExecutionInfo, InitiatorAddr,
     InvalidDeploy, InvalidTransaction, InvalidTransactionV1, NamedArg, PackageIdentifier,
-    PricingMode, RuntimeArgs, Transaction, TransactionCategory, TransactionEntryPoint,
-    TransactionHash, TransactionHeader, TransactionId, TransactionInvocationTarget,
-    TransactionRuntime, TransactionScheduling, TransactionTarget, TransactionV1, TransactionV1Body,
-    TransactionV1DecodeFromJsonError, TransactionV1Error, TransactionV1ExcessiveSizeError,
-    TransactionV1Hash, TransactionV1Header, TransferTarget,
+    PricingMode, PricingModeError, RuntimeArgs, Transaction, TransactionEntryPoint,
+    TransactionHash, TransactionId, TransactionInvocationTarget, TransactionRuntime,
+    TransactionScheduling, TransactionTarget, TransactionV1, TransactionV1DecodeFromJsonError,
+    TransactionV1Error, TransactionV1ExcessiveSizeError, TransactionV1Hash, TransferTarget,
 };
 #[cfg(any(feature = "std", test))]
 pub use transaction::{
@@ -214,8 +216,14 @@ pub use validator_change::ValidatorChange;
 pub const MINT_LANE_ID: u8 = 0;
 /// The lane identifier for the native auction interaction.
 pub const AUCTION_LANE_ID: u8 = 1;
-/// The lane identifier for the special Wasm `install_upgrade` lane.
+/// The lane identifier for the install/upgrade auction interaction.
 pub const INSTALL_UPGRADE_LANE_ID: u8 = 2;
+/// The lane identifier for large wasms.
+pub const LARGE_WASM_LANE_ID: u8 = 3;
+/// The lane identifier for medium wasms.
+pub const MEDIUM_WASM_LANE_ID: u8 = 4;
+/// The lane identifier for small wasms.
+pub const SMALL_WASM_LANE_ID: u8 = 5;
 
 /// OS page size.
 #[cfg(feature = "std")]
@@ -223,8 +231,13 @@ pub static OS_PAGE_SIZE: Lazy<usize> = Lazy::new(|| {
     /// Sensible default for many if not all systems.
     const DEFAULT_PAGE_SIZE: usize = 4096;
 
+    #[cfg(any(feature = "std-fs-io", test))]
     // https://www.gnu.org/software/libc/manual/html_node/Sysconf.html
     let value: c_long = unsafe { sysconf(_SC_PAGESIZE) };
+
+    #[cfg(not(any(feature = "std-fs-io", test)))]
+    let value = 0;
+
     if value <= 0 {
         DEFAULT_PAGE_SIZE
     } else {

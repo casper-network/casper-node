@@ -3,9 +3,12 @@ use casper_types::{execution::Effects, BlockTime, Digest, ProtocolVersion};
 use std::fmt::{Display, Formatter};
 use thiserror::Error;
 
+/// Block global kind.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum BlockGlobalKind {
+    /// Block time.
     BlockTime(BlockTime),
+    /// Message count.
     MessageCount(u64),
 }
 
@@ -15,6 +18,7 @@ impl Default for BlockGlobalKind {
     }
 }
 
+/// Block global request.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Default)]
 pub struct BlockGlobalRequest {
     state_hash: Digest,
@@ -53,6 +57,7 @@ impl BlockGlobalRequest {
     }
 }
 
+/// Block global result.
 #[derive(Error, Debug, Clone)]
 pub enum BlockGlobalResult {
     /// Returned if a passed state root hash is not found.

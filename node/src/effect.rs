@@ -134,8 +134,8 @@ use casper_types::{
     Approval, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures,
     BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest, EntityAddr, EraId,
     ExecutionInfo, FinalitySignature, FinalitySignatureId, FinalitySignatureV2, Key, NextUpgrade,
-    Package, ProtocolUpgradeConfig, ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transaction,
-    TransactionHash, TransactionHeader, TransactionId, Transfer, U512,
+    Package, ProtocolUpgradeConfig, PublicKey, TimeDiff, Timestamp, Transaction, TransactionHash,
+    TransactionId, Transfer, U512,
 };
 
 use crate::{
@@ -158,7 +158,7 @@ use crate::{
     types::{
         appendable_block::AppendableBlock, BlockExecutionResultsOrChunk,
         BlockExecutionResultsOrChunkId, BlockWithMetadata, ExecutableBlock, FinalizedBlock,
-        LegacyDeploy, MetaBlock, MetaBlockState, NodeId,
+        LegacyDeploy, MetaBlock, MetaBlockState, NodeId, TransactionHeader,
     },
     utils::{fmt_limit::FmtLimit, SharedFlag, Source},
 };
@@ -379,17 +379,6 @@ pub(crate) trait EffectExt: Future + Send {
         U: 'static,
         Self: Sized;
 
-    /// Finalizes a future into an effect that returns an iterator of events.
-    ///
-    /// The function `f` is used to translate the returned value from an effect into an iterator of
-    /// events.
-    fn events<U, F, I>(self, f: F) -> Effects<U>
-    where
-        F: FnOnce(Self::Output) -> I + 'static + Send,
-        U: 'static,
-        I: Iterator<Item = U>,
-        Self: Sized;
-
     /// Finalizes a future into an effect that runs but drops the result.
     fn ignore<Ev>(self) -> Effects<Ev>;
 }
@@ -413,32 +402,6 @@ pub(crate) trait EffectResultExt {
         U: 'static;
 }
 
-/// Effect extension for futures, used to convert futures returning an `Option` into two different
-/// effects.
-pub(crate) trait EffectOptionExt {
-    /// The type the future will return if `Some`.
-    type Value;
-
-    /// Finalizes a future returning an `Option` into two different effects.
-    ///
-    /// The function `f_some` is used to translate the returned value from an effect into an event,
-    /// while the function `f_none` does the same for a returned `None`.
-    fn map_or_else<U, F, G>(self, f_some: F, f_none: G) -> Effects<U>
-    where
-        F: FnOnce(Self::Value) -> U + 'static + Send,
-        G: FnOnce() -> U + 'static + Send,
-        U: 'static;
-
-    /// Finalizes a future returning an `Option` into two different effects.
-    ///
-    /// The function `f` is used to translate the returned value from an effect into an event,
-    /// In the case of `None`, empty vector of effects is returned.
-    fn map_some<U, F>(self, f: F) -> Effects<U>
-    where
-        F: FnOnce(Self::Value) -> U + 'static + Send,
-        U: 'static;
-}
-
 impl<T: ?Sized> EffectExt for T
 where
     T: Future + Send + 'static + Sized,
@@ -449,15 +412,6 @@ where
         U: 'static,
     {
         smallvec![self.map(f).map(|item| smallvec![item]).boxed()]
-    }
-
-    fn events<U, F, I>(self, f: F) -> Effects<U>
-    where
-        F: FnOnce(Self::Output) -> I + 'static + Send,
-        U: 'static,
-        I: Iterator<Item = U>,
-    {
-        smallvec![self.map(f).map(|iter| iter.collect()).boxed()]
     }
 
     fn ignore<Ev>(self) -> Effects<Ev> {
@@ -482,42 +436,6 @@ where
         smallvec![self
             .map(|result| result.map_or_else(f_err, f_ok))
             .map(|item| smallvec![item])
-            .boxed()]
-    }
-}
-
-impl<T, V> EffectOptionExt for T
-where
-    T: Future<Output = Option<V>> + Send + 'static + Sized,
-    T: ?Sized,
-{
-    type Value = V;
-
-    fn map_or_else<U, F, G>(self, f_some: F, f_none: G) -> Effects<U>
-    where
-        F: FnOnce(V) -> U + 'static + Send,
-        G: FnOnce() -> U + 'static + Send,
-        U: 'static,
-    {
-        smallvec![self
-            .map(|option| option.map_or_else(f_none, f_some))
-            .map(|item| smallvec![item])
-            .boxed()]
-    }
-
-    /// Finalizes a future returning an `Option`.
-    ///
-    /// The function `f` is used to translate the returned value from an effect into an event,
-    /// In the case of `None`, empty vector is returned.
-    fn map_some<U, F>(self, f: F) -> Effects<U>
-    where
-        F: FnOnce(Self::Value) -> U + 'static + Send,
-        U: 'static,
-    {
-        smallvec![self
-            .map(|option| option
-                .map(|el| smallvec![f(el)])
-                .unwrap_or_else(|| smallvec![]))
             .boxed()]
     }
 }
@@ -1527,17 +1445,6 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| ReactorInfoRequest::NetworkName { responder },
-            QueueKind::Regular,
-        )
-        .await
-    }
-
-    pub(crate) async fn get_protocol_version(self) -> ProtocolVersion
-    where
-        REv: From<ReactorInfoRequest>,
-    {
-        self.make_request(
-            |responder| ReactorInfoRequest::ProtocolVersion { responder },
             QueueKind::Regular,
         )
         .await

@@ -135,6 +135,7 @@ impl fmt::Display for GenesisError {
     }
 }
 
+/// State for genesis installer.
 pub struct GenesisInstaller<S>
 where
     S: StateProvider + ?Sized,
@@ -149,6 +150,7 @@ impl<S> GenesisInstaller<S>
 where
     S: StateProvider + ?Sized,
 {
+    /// Ctor.
     pub fn new(
         genesis_config_hash: Digest,
         protocol_version: ProtocolVersion,
@@ -171,6 +173,7 @@ where
         }
     }
 
+    /// Finalize genesis.
     pub fn finalize(self) -> Effects {
         self.tracking_copy.borrow().effects()
     }
@@ -360,7 +363,7 @@ where
         for (validator_public_key, delegator_public_key, _, delegated_amount) in
             genesis_delegators.iter()
         {
-            if delegated_amount.is_zero() {
+            if *delegated_amount == &Motes::zero() {
                 return Err(GenesisError::InvalidDelegatedAmount {
                     public_key: (*delegator_public_key).clone(),
                 }
@@ -605,6 +608,7 @@ where
         Ok(contract_hash)
     }
 
+    /// Create genesis accounts.
     pub fn create_accounts(&self, total_supply_key: Key) -> Result<(), Box<GenesisError>> {
         let accounts = {
             let mut ret: Vec<GenesisAccount> = self.config.accounts_iter().cloned().collect();

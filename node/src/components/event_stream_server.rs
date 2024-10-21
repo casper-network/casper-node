@@ -35,13 +35,14 @@ use tokio::sync::{
 use tracing::{error, info, warn};
 use warp::Filter;
 
-use casper_types::{InitiatorAddr, ProtocolVersion, TransactionHeader};
+use casper_types::{InitiatorAddr, ProtocolVersion};
 
 use super::Component;
 use crate::{
     components::{ComponentState, InitializedComponent, PortBoundComponent},
     effect::{EffectBuilder, Effects},
     reactor::main_reactor::MainEvent,
+    types::TransactionHeader,
     utils::{self, ListeningError},
     NodeRng,
 };
@@ -304,10 +305,10 @@ where
                             deploy_header.timestamp(),
                             deploy_header.ttl(),
                         ),
-                        TransactionHeader::V1(txn_header) => (
-                            txn_header.initiator_addr().clone(),
-                            txn_header.timestamp(),
-                            txn_header.ttl(),
+                        TransactionHeader::V1(metadata) => (
+                            metadata.initiator_addr().clone(),
+                            metadata.timestamp(),
+                            metadata.ttl(),
                         ),
                     };
                     self.broadcast(SseData::TransactionProcessed {

@@ -1,7 +1,10 @@
 mod handle_payment_native;
 mod internal;
+/// Provides mint logic for handle payment processing.
 pub mod mint_provider;
+/// Provides runtime logic for handle payment processing.
 pub mod runtime_provider;
+/// Provides storage logic for handle payment processing.
 pub mod storage_provider;
 
 use casper_types::{

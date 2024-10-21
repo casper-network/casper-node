@@ -2,6 +2,7 @@ use casper_types::{BlockHash, EraId, TransactionHash};
 use std::fmt::Debug;
 use thiserror::Error;
 
+/// Block store error.
 #[derive(Debug, Error)]
 pub enum BlockStoreError {
     /// Found a duplicate block entry of the specified height.

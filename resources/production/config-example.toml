@@ -320,14 +320,12 @@ allow_request_speculative_exec = false
 # Maximum size of a message in bytes.
 max_message_size_bytes = 4_194_304
 
-# Maximum number of in-flight requests per client.
-client_request_limit = 3
-
-# Number of requests that can be buffered per client.
-client_request_buffer_size = 16
-
 # Maximum number of connections to the server.
 max_connections = 16
+
+# The global max rate of requests (per second) before they are limited.
+# The implementation uses a sliding window algorithm.
+qps_limit = 10
 
 # ==============================================
 # Configuration options for the REST HTTP server

@@ -25,7 +25,7 @@ static ACCOUNT_1_PK: Lazy<PublicKey> = Lazy::new(|| {
 const GENESIS_VALIDATOR_STAKE: u64 = 50_000;
 
 static ACCOUNT_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*ACCOUNT_1_PK));
-static ACCOUNT_1_FUND: Lazy<U512> = Lazy::new(|| U512::from(1_500_000_000_000u64));
+static ACCOUNT_1_FUND: Lazy<U512> = Lazy::new(|| U512::from(10_000_000_000_000u64));
 static ACCOUNT_1_BALANCE: Lazy<U512> = Lazy::new(|| *ACCOUNT_1_FUND + 100_000);
 static ACCOUNT_1_BOND: Lazy<U512> = Lazy::new(|| U512::from(25_000));
 
@@ -38,7 +38,9 @@ fn should_handle_unbond_for_more_than_stake_as_full_unbond_of_stake_ee_598_regre
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
         let account = GenesisAccount::account(
             public_key,
-            Motes::new(GENESIS_VALIDATOR_STAKE) * Motes::new(2),
+            Motes::new(GENESIS_VALIDATOR_STAKE)
+                .checked_mul(Motes::new(2))
+                .unwrap(),
             Some(GenesisValidator::new(
                 Motes::new(GENESIS_VALIDATOR_STAKE),
                 DelegationRate::zero(),

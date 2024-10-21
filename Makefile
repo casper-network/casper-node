@@ -4,18 +4,11 @@ RUSTUP = $(or $(shell which rustup), $(HOME)/.cargo/bin/rustup)
 NPM    = $(or $(shell which npm),    /usr/bin/npm)
 
 PINNED_NIGHTLY := $(shell cat smart_contracts/rust-toolchain)
-# TODO: When `PINNED_NIGHTLY` is updated to something reletively new, we can get rid
-# of this specific 'NIGHTLY_FOR_DOC' variable and use `PINNED_NIGHTLY` in `make doc` instead.
-#
-# At the moment, we can't use STABLE for doc, due to 'doc_auto_cfg' feature being unstable.
-# We also can't use the nightly version that is pinned for the contracts, because it is too old.
-NIGHTLY_FOR_DOC = nightly-2024-01-01
 PINNED_STABLE  := $(shell sed -nr 's/channel *= *\"(.*)\"/\1/p' rust-toolchain.toml)
 WASM_STRIP_VERSION := $(shell wasm-strip --version)
 
 CARGO_OPTS := --locked
 CARGO_PINNED_NIGHTLY := $(CARGO) +$(PINNED_NIGHTLY) $(CARGO_OPTS)
-CARGO_NIGHTLY_FOR_DOC := $(CARGO) +$(NIGHTLY_FOR_DOC) $(CARGO_OPTS)
 CARGO := $(CARGO) $(CARGO_OPTS)
 
 DISABLE_LOGGING = RUST_LOG=MatchesNothing
@@ -119,7 +112,10 @@ check-std-features:
 	cd smart_contracts/contract && $(CARGO) check --all-targets --no-default-features --features=std
 	cd smart_contracts/contract && $(CARGO) check --all-targets --features=std
 
-.PHONY: check-testing-features
+check-std-fs-io-features:
+	cd types && $(CARGO) check --all-targets --features=std-fs-io
+	cd types && $(CARGO) check --lib --features=std-fs-io
+
 check-testing-features:
 	cd types && $(CARGO) check --all-targets --no-default-features --features=testing
 	cd types && $(CARGO) check --all-targets --features=testing
@@ -136,11 +132,15 @@ lint-contracts-rs:
 	cd smart_contracts/contracts && $(CARGO) clippy $(patsubst %, -p %, $(ALL_CONTRACTS)) -- -D warnings -A renamed_and_removed_lints
 
 .PHONY: lint
-lint: lint-contracts-rs lint-default-features lint-all-features lint-smart-contracts
+lint: lint-contracts-rs lint-default-features lint-all-features lint-smart-contracts lint-no-default-features
 
 .PHONY: lint-default-features
 lint-default-features:
 	$(CARGO) clippy --all-targets -- -D warnings
+
+.PHONY: lint-no-default-features
+lint-no-default-features:
+	$(CARGO) clippy --all-targets --no-default-features -- -D warnings
 
 .PHONY: lint-all-features
 lint-all-features:
@@ -164,7 +164,7 @@ audit: audit-rs
 
 .PHONY: doc
 doc:
-	RUSTFLAGS="-D warnings" RUSTDOCFLAGS="--cfg docsrs" $(CARGO_NIGHTLY_FOR_DOC) doc --all-features $(CARGO_FLAGS) --no-deps
+	RUSTFLAGS="-D warnings" RUSTDOCFLAGS="--cfg docsrs" $(CARGO_PINNED_NIGHTLY) doc --all-features $(CARGO_FLAGS) --no-deps
 	cd smart_contracts/contract && RUSTFLAGS="-D warnings" RUSTDOCFLAGS="--cfg docsrs" $(CARGO_PINNED_NIGHTLY) doc --all-features $(CARGO_FLAGS) --no-deps
 
 .PHONY: check-rs
@@ -175,6 +175,7 @@ check-rs: \
 	audit \
 	check-no-default-features \
 	check-std-features \
+	check-std-fs-io-features \
 	check-testing-features \
 	test-rs \
 	test-rs-no-default-features \
