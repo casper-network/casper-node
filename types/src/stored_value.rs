@@ -134,6 +134,13 @@ impl StoredValue {
         }
     }
 
+    pub fn as_contract_wasm(&self) -> Option<&ContractWasm> {
+        match self {
+            StoredValue::ContractWasm(contract_wasm) => Some(contract_wasm),
+            _ => None,
+        }
+    }
+
     /// Returns a reference to the wrapped `Contract` if this is a `Contract` variant.
     pub fn as_contract(&self) -> Option<&Contract> {
         match self {
@@ -572,6 +579,7 @@ impl TryFrom<StoredValue> for Package {
     fn try_from(stored_value: StoredValue) -> Result<Self, Self::Error> {
         match stored_value {
             StoredValue::Package(contract_package) => Ok(contract_package),
+            StoredValue::ContractPackage(contract_package) => Ok(contract_package.into()),
             _ => Err(TypeMismatch::new(
                 "ContractPackage".to_string(),
                 stored_value.type_name(),

@@ -4,7 +4,9 @@ use clap::ArgMatches;
 use lmdb::{self, Cursor, Environment, EnvironmentFlags, Transaction};
 
 use casper_engine_test_support::LmdbWasmTestBuilder;
-use casper_execution_engine::engine_state::engine_config::DEFAULT_PROTOCOL_VERSION;
+use casper_execution_engine::engine_state::engine_config::{
+    DEFAULT_ENABLE_ENTITY, DEFAULT_PROTOCOL_VERSION,
+};
 use casper_storage::{
     data_access_layer::{
         SystemEntityRegistryPayload, SystemEntityRegistryRequest, SystemEntityRegistrySelector,
@@ -14,7 +16,7 @@ use casper_storage::{
 use casper_types::{
     bytesrepr::FromBytes,
     system::{AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT},
-    AddressableEntityHash, CLValue, Key, ProtocolVersion, StoredValue, SystemEntityRegistry,
+    AddressableEntityHash, CLValue, Key, ProtocolVersion, StoredValue, SystemHashRegistry,
     KEY_HASH_LENGTH,
 };
 
@@ -99,11 +101,11 @@ fn generate_system_entity_registry_using_protocol_data(data_dir: &Path) {
         });
     assert!(remainder.is_empty());
 
-    let mut registry = SystemEntityRegistry::new();
-    registry.insert(MINT.to_string(), mint_hash);
-    registry.insert(HANDLE_PAYMENT.to_string(), handle_payment_hash);
-    registry.insert(STANDARD_PAYMENT.to_string(), standard_payment_hash);
-    registry.insert(AUCTION.to_string(), auction_hash);
+    let mut registry = SystemHashRegistry::new();
+    registry.insert(MINT.to_string(), mint_hash.value());
+    registry.insert(HANDLE_PAYMENT.to_string(), handle_payment_hash.value());
+    registry.insert(STANDARD_PAYMENT.to_string(), standard_payment_hash.value());
+    registry.insert(AUCTION.to_string(), auction_hash.value());
 
     print_entry(
         &Key::SystemEntityRegistry,
@@ -123,6 +125,7 @@ fn generate_system_entity_registry_using_global_state(data_dir: &Path, state_has
         builder.get_post_state_hash(),
         ProtocolVersion::V2_0_0,
         SystemEntityRegistrySelector::All,
+        DEFAULT_ENABLE_ENTITY,
     );
 
     let registry = match builder

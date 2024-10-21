@@ -52,7 +52,7 @@ pub extern "C" fn call() {
 
     let do_nothing_package_hash: PackageHash = runtime::get_key(DO_NOTHING_PACKAGE_HASH_KEY_NAME)
         .unwrap_or_revert()
-        .into_package_addr()
+        .into_hash_addr()
         .unwrap_or_revert()
         .into();
 
@@ -68,5 +68,5 @@ pub extern "C" fn call() {
         BTreeMap::new(),
     );
     runtime::put_key(CONTRACT_VERSION, storage::new_uref(contract_version).into());
-    runtime::put_key("end of upgrade", Key::contract_entity_key(contract_hash));
+    runtime::put_key("end of upgrade", Key::Hash(contract_hash.value()));
 }

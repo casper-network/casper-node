@@ -2,6 +2,7 @@
 
 use alloc::{
     collections::{BTreeMap, BTreeSet},
+    format,
     string::String,
     vec,
     vec::Vec,
@@ -13,6 +14,7 @@ use casper_types::{
     api_error,
     bytesrepr::{self, FromBytes, ToBytes},
     contract_messages::MessageTopicOperation,
+    contracts::ContractVersion,
     AccessRights, AddressableEntityHash, ApiError, CLTyped, CLValue, EntityVersion, HashAddr, Key,
     PackageHash, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, UREF_SERIALIZED_LENGTH,
 };
@@ -148,14 +150,6 @@ pub fn new_locked_contract(
     )
 }
 
-// fn foo(entry_points: EntryPoints) {
-//     let package_hash = my_package_hash;
-//
-//     add_contract_version(package_hash, entry_points, NamedKeys::new());
-//
-//     disable_contract_version(package_hash, my_previous_entity_hash);
-// }
-
 fn create_contract(
     entry_points: EntryPoints,
     named_keys: Option<NamedKeys>,
@@ -167,7 +161,7 @@ fn create_contract(
     let (contract_package_hash, access_uref) = create_contract_package(is_locked);
 
     if let Some(hash_name) = hash_name {
-        runtime::put_key(&hash_name, contract_package_hash.into());
+        runtime::put_key(&hash_name, Key::Hash(contract_package_hash.value()));
     };
 
     if let Some(uref_name) = uref_name {
@@ -333,13 +327,13 @@ pub fn add_contract_version(
     let mut output_ptr = vec![0u8; 32];
     // let mut total_bytes: usize = 0;
 
-    let mut entity_version: EntityVersion = 0;
+    let mut entity_version: ContractVersion = 0;
 
     let ret = unsafe {
-        ext_ffi::casper_add_package_version(
+        ext_ffi::casper_add_contract_version_with_message_topics(
             package_hash_ptr,
             package_hash_size,
-            &mut entity_version as *mut EntityVersion, // Fixed width
+            &mut entity_version as *mut ContractVersion, // Fixed width
             entry_points_ptr,
             entry_points_size,
             named_keys_ptr,
@@ -356,7 +350,10 @@ pub fn add_contract_version(
         Err(e) => revert(e),
     }
     // output_ptr.truncate(32usize);
-    let entity_hash = bytesrepr::deserialize(output_ptr).unwrap_or_revert();
+    let entity_hash: AddressableEntityHash = match bytesrepr::deserialize(output_ptr) {
+        Ok(hash) => hash,
+        Err(err) => panic!("{}", format!("{:?}", err)),
+    };
     (entity_hash, entity_version)
 }
 

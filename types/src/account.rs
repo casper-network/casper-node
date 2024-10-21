@@ -118,6 +118,11 @@ impl Account {
         &self.named_keys
     }
 
+    /// Returns a mutable reference to named keys.
+    pub fn named_keys_mut(&mut self) -> &mut NamedKeys {
+        &mut self.named_keys
+    }
+
     /// Removes the key under the given name from named keys.
     pub fn remove_named_key(&mut self, name: &str) -> Option<Key> {
         self.named_keys.remove(name)
@@ -220,6 +225,21 @@ impl Account {
             }
         }
         self.associated_keys.update_key(account_hash, weight)
+    }
+
+    /// Sets a new action threshold for a given action type for the account without checking against
+    /// the total weight of the associated keys.
+    ///
+    /// This should only be called when authorized by an administrator account.
+    ///
+    /// Returns an error if setting the action would cause the `ActionType::Deployment` threshold to
+    /// be greater than any of the other action types.
+    pub fn set_action_threshold_unchecked(
+        &mut self,
+        action_type: ActionType,
+        threshold: Weight,
+    ) -> Result<(), SetThresholdFailure> {
+        self.action_thresholds.set_threshold(action_type, threshold)
     }
 
     /// Sets a new action threshold for a given action type for the account.

@@ -1,6 +1,6 @@
 use crate::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    checksummed_hex, crypto, EntityAddr, Key,
+    checksummed_hex, crypto, HashAddr, Key,
 };
 
 use alloc::{string::String, vec::Vec};
@@ -212,7 +212,7 @@ impl FromBytes for MessagePayload {
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct Message {
     /// The identity of the entity that produced the message.
-    entity_hash: EntityAddr, // TODO: this should be EntityAddr
+    hash_addr: HashAddr,
     /// The payload of the message.
     message: MessagePayload,
     /// The name of the topic on which the message was emitted on.
@@ -228,7 +228,7 @@ pub struct Message {
 impl Message {
     /// Creates new instance of [`Message`] with the specified source and message payload.
     pub fn new(
-        source: EntityAddr,
+        source: HashAddr,
         message: MessagePayload,
         topic_name: String,
         topic_name_hash: TopicNameHash,
@@ -236,7 +236,7 @@ impl Message {
         block_index: u64,
     ) -> Self {
         Self {
-            entity_hash: source,
+            hash_addr: source,
             message,
             topic_name,
             topic_name_hash,
@@ -246,8 +246,8 @@ impl Message {
     }
 
     /// Returns a reference to the identity of the entity that produced the message.
-    pub fn entity_hash(&self) -> &EntityAddr {
-        &self.entity_hash
+    pub fn hash_addr(&self) -> &HashAddr {
+        &self.hash_addr
     }
 
     /// Returns a reference to the payload of the message.
@@ -278,14 +278,14 @@ impl Message {
     /// Returns a new [`Key::Message`] based on the information in the message.
     /// This key can be used to query the checksum record for the message in global state.
     pub fn message_key(&self) -> Key {
-        Key::message(self.entity_hash, self.topic_name_hash, self.topic_index)
+        Key::message(self.hash_addr, self.topic_name_hash, self.topic_index)
     }
 
     /// Returns a new [`Key::Message`] based on the information in the message.
     /// This key can be used to query the control record for the topic of this message in global
     /// state.
     pub fn topic_key(&self) -> Key {
-        Key::message_topic(self.entity_hash, self.topic_name_hash)
+        Key::message_topic(self.hash_addr, self.topic_name_hash)
     }
 
     /// Returns the checksum of the message.
@@ -301,7 +301,7 @@ impl Message {
     pub fn random(rng: &mut TestRng) -> Self {
         let count = rng.gen_range(16..128);
         Self {
-            entity_hash: rng.gen(),
+            hash_addr: rng.gen(),
             message: MessagePayload::random(rng),
             topic_name: Alphanumeric.sample_string(rng, count),
             topic_name_hash: rng.gen(),
@@ -314,7 +314,7 @@ impl Message {
 impl ToBytes for Message {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
-        buffer.append(&mut self.entity_hash.to_bytes()?);
+        buffer.append(&mut self.hash_addr.to_bytes()?);
         buffer.append(&mut self.message.to_bytes()?);
         buffer.append(&mut self.topic_name.to_bytes()?);
         buffer.append(&mut self.topic_name_hash.to_bytes()?);
@@ -324,7 +324,7 @@ impl ToBytes for Message {
     }
 
     fn serialized_length(&self) -> usize {
-        self.entity_hash.serialized_length()
+        self.hash_addr.serialized_length()
             + self.message.serialized_length()
             + self.topic_name.serialized_length()
             + self.topic_name_hash.serialized_length()
@@ -335,7 +335,7 @@ impl ToBytes for Message {
 
 impl FromBytes for Message {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (entity_addr, rem) = FromBytes::from_bytes(bytes)?;
+        let (hash_addr, rem) = FromBytes::from_bytes(bytes)?;
         let (message, rem) = FromBytes::from_bytes(rem)?;
         let (topic_name, rem) = FromBytes::from_bytes(rem)?;
         let (topic_name_hash, rem) = FromBytes::from_bytes(rem)?;
@@ -343,7 +343,7 @@ impl FromBytes for Message {
         let (block_index, rem) = FromBytes::from_bytes(rem)?;
         Ok((
             Message {
-                entity_hash: entity_addr,
+                hash_addr,
                 message,
                 topic_name,
                 topic_name_hash,
@@ -359,11 +359,11 @@ impl FromBytes for Message {
 impl Distribution<Message> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Message {
         let topic_name = Alphanumeric.sample_string(rng, 32);
-        let topic_name_hash = crate::crypto::blake2b(&topic_name).into();
+        let topic_name_hash = crypto::blake2b(&topic_name).into();
         let message = Alphanumeric.sample_string(rng, 64).into();
 
         Message {
-            entity_hash: rng.gen(),
+            hash_addr: rng.gen(),
             message,
             topic_name,
             topic_name_hash,

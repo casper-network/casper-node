@@ -105,10 +105,16 @@ impl TransformKindV2 {
             TransformKindV2::AddUInt128(to_add) => wrapping_addition(stored_value, to_add),
             TransformKindV2::AddUInt256(to_add) => wrapping_addition(stored_value, to_add),
             TransformKindV2::AddUInt512(to_add) => wrapping_addition(stored_value, to_add),
-            TransformKindV2::AddKeys(_) => match stored_value {
-                StoredValue::Account(_)
-                | StoredValue::Contract(_)
-                | StoredValue::AddressableEntity(_) => Err(TransformError::Deprecated),
+            TransformKindV2::AddKeys(keys) => match stored_value {
+                StoredValue::Contract(mut contract) => {
+                    contract.named_keys_append(keys);
+                    Ok(store(StoredValue::Contract(contract)))
+                }
+                StoredValue::Account(mut account) => {
+                    account.named_keys_append(keys);
+                    Ok(store(StoredValue::Account(account)))
+                }
+                StoredValue::AddressableEntity(_) => Err(TransformError::Deprecated),
                 StoredValue::CLValue(cl_value) => {
                     let expected = "Contract or Account".to_string();
                     let found = format!("{:?}", cl_value.cl_type());

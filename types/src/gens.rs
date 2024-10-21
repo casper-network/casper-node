@@ -541,7 +541,6 @@ pub fn addressable_entity_arb() -> impl Strategy<Value = AddressableEntity> {
         uref_arb(),
         associated_keys_arb(),
         action_thresholds_arb(),
-        message_topics_arb(),
         entity_kind_arb(),
     )
         .prop_map(
@@ -552,7 +551,6 @@ pub fn addressable_entity_arb() -> impl Strategy<Value = AddressableEntity> {
                 main_purse,
                 associated_keys,
                 action_thresholds,
-                message_topics,
                 entity_kind,
             )| {
                 AddressableEntity::new(
@@ -562,7 +560,6 @@ pub fn addressable_entity_arb() -> impl Strategy<Value = AddressableEntity> {
                     main_purse,
                     associated_keys,
                     action_thresholds,
-                    message_topics,
                     entity_kind,
                 )
             },
@@ -810,9 +807,12 @@ fn unbondings_arb(size: impl Into<SizeRange>) -> impl Strategy<Value = Vec<Unbon
 }
 
 fn message_topic_summary_arb() -> impl Strategy<Value = MessageTopicSummary> {
-    (any::<u32>(), any::<u64>()).prop_map(|(message_count, blocktime)| MessageTopicSummary {
-        message_count,
-        blocktime: BlockTime::new(blocktime),
+    (any::<u32>(), any::<u64>(), "test").prop_map(|(message_count, blocktime, topic_name)| {
+        MessageTopicSummary {
+            message_count,
+            blocktime: BlockTime::new(blocktime),
+            topic_name,
+        }
     })
 }
 

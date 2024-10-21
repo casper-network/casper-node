@@ -131,6 +131,10 @@ impl AssociatedKeys {
     pub fn total_keys_weight_excluding(&self, account_hash: AccountHash) -> Weight {
         self.calculate_any_keys_weight(self.0.keys().filter(|&&element| element != account_hash))
     }
+
+    pub fn empty_keys() -> Self {
+        AssociatedKeys(BTreeMap::new())
+    }
 }
 
 impl From<BTreeMap<AccountHash, Weight>> for AssociatedKeys {
