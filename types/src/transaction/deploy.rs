@@ -1846,13 +1846,7 @@ mod tests {
 
         let ttl = config.max_ttl + TimeDiff::from(Duration::from_secs(1));
 
-        let deploy = create_deploy(
-            &mut rng,
-            ttl,
-            0,
-            chain_name,
-            GAS_PRICE_TOLERANCE as u64,
-        );
+        let deploy = create_deploy(&mut rng, ttl, 0, chain_name, GAS_PRICE_TOLERANCE as u64);
 
         let expected_error = InvalidDeploy::ExcessiveTimeToLive {
             max_ttl: config.max_ttl,
