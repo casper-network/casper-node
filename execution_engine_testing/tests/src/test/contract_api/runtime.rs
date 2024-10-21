@@ -6,9 +6,12 @@ use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_PAYMENT, LOCAL_GENESIS_REQUEST,
 };
-use casper_execution_engine::runtime_context::RANDOM_BYTES_COUNT;
+use casper_execution_engine::{
+    runtime::{cryptography, cryptography::DIGEST_LENGTH},
+    runtime_context::RANDOM_BYTES_COUNT,
+};
 use casper_storage::address_generator::ADDRESS_LENGTH;
-use casper_types::{crypto, runtime_args, BLAKE2B_DIGEST_LENGTH};
+use casper_types::runtime_args;
 
 const ARG_BYTES: &str = "bytes";
 const ARG_AMOUNT: &str = "amount";
@@ -123,8 +126,8 @@ fn should_hash() {
 
         builder.exec(exec_request).commit().expect_success();
 
-        let digest = get_value::<BLAKE2B_DIGEST_LENGTH>(&builder, HASH_RESULT);
-        let expected_digest = crypto::blake2b(input);
+        let digest = get_value::<DIGEST_LENGTH>(&builder, HASH_RESULT);
+        let expected_digest = cryptography::blake2b(input);
         assert_eq!(digest, expected_digest);
     }
 }
