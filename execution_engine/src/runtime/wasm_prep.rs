@@ -402,11 +402,11 @@ pub(crate) fn preprocess(
     ensure_parameter_limit(&module, DEFAULT_MAX_PARAMETER_COUNT)?;
     ensure_valid_imports(&module)?;
 
-    let costs = RuledOpcodeCosts(wasm_config.opcode_costs());
-    let module = casper_wasm_utils::externalize_mem(module, None, wasm_config.max_memory);
+    let costs = RuledOpcodeCosts(wasm_config.v1().opcode_costs());
+    let module = casper_wasm_utils::externalize_mem(module, None, wasm_config.v1().max_memory());
     let module = casper_wasm_utils::inject_gas_counter(module, &costs, DEFAULT_GAS_MODULE_NAME)
         .map_err(|_| PreprocessingError::OperationForbiddenByGasRules)?;
-    let module = stack_height::inject_limiter(module, wasm_config.max_stack_height)
+    let module = stack_height::inject_limiter(module, wasm_config.v1().max_stack_height())
         .map_err(|_| PreprocessingError::StackLimiter)?;
     Ok(module)
 }

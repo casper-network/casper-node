@@ -148,6 +148,7 @@ impl ContractRuntime {
             .with_refund_handling(chainspec.core_config.refund_handling)
             .with_fee_handling(chainspec.core_config.fee_handling)
             .with_protocol_version(chainspec.protocol_version())
+            .with_storage_costs(chainspec.storage_costs)
             .build();
 
         let data_access_layer = Arc::new(

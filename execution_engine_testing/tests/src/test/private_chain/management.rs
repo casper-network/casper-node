@@ -3,8 +3,8 @@ use casper_engine_test_support::{
     TransferRequestBuilder, DEFAULT_AUCTION_DELAY, DEFAULT_CHAINSPEC_REGISTRY,
     DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
     DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
-    DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY,
-    DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
+    DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_STORAGE_COSTS, DEFAULT_SYSTEM_CONFIG,
+    DEFAULT_UNBONDING_DELAY, DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
 };
 use casper_execution_engine::{engine_state::Error, execution::ExecError};
 use casper_storage::{data_access_layer::GenesisRequest, tracking_copy::TrackingCopyError};
@@ -74,6 +74,7 @@ fn should_not_run_genesis_with_duplicated_administrator_accounts() {
         core_config,
         wasm_config: Default::default(),
         system_costs_config: Default::default(),
+        storage_costs: Default::default(),
     };
 
     let data_dir = TempDir::new().expect("should create temp dir");
@@ -100,6 +101,7 @@ fn should_not_run_genesis_with_duplicated_administrator_accounts() {
         .with_round_seigniorage_rate(DEFAULT_ROUND_SEIGNIORAGE_RATE)
         .with_unbonding_delay(DEFAULT_UNBONDING_DELAY)
         .with_genesis_timestamp_millis(DEFAULT_GENESIS_TIMESTAMP_MILLIS)
+        .with_storage_costs(*DEFAULT_STORAGE_COSTS)
         .build();
 
     let modified_genesis_request = GenesisRequest::new(

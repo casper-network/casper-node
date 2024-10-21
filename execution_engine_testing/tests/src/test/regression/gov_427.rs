@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_WASM_CONFIG,
+    ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_WASM_V1_CONFIG,
     LOCAL_GENESIS_REQUEST,
 };
 use casper_execution_engine::{engine_state::Error, execution::ExecError};
@@ -63,7 +63,7 @@ fn too_many_locals_should_exceed_stack_height() {
     const CALL_COST: usize = 1;
     let extra_types = [ValType::I32];
     let repeat_pattern = [ValType::I64];
-    let max_stack_height = DEFAULT_WASM_CONFIG.max_stack_height as usize;
+    let max_stack_height = DEFAULT_WASM_V1_CONFIG.max_stack_height() as usize;
 
     let success_wasm_bytes: Vec<u8> = make_arbitrary_local_count(
         max_stack_height - extra_types.len() - CALL_COST - 1,

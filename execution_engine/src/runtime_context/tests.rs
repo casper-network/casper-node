@@ -987,7 +987,6 @@ fn should_meter_for_gas_storage_write() {
 
     let value = StoredValue::CLValue(CLValue::from_t(43_i32).unwrap());
     let expected_write_cost = test_engine_config()
-        .wasm_config()
         .storage_costs()
         .calculate_gas_cost(value.serialized_length());
 
@@ -1025,7 +1024,6 @@ fn should_meter_for_gas_storage_add() {
 
     let value = StoredValue::CLValue(CLValue::from_t(43_i32).unwrap());
     let expected_add_cost = test_engine_config()
-        .wasm_config()
         .storage_costs()
         .calculate_gas_cost(value.serialized_length());
 

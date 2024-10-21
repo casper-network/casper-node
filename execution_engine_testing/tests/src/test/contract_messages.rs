@@ -10,8 +10,8 @@ use casper_types::{
     contract_messages::{MessageChecksum, MessagePayload, MessageTopicSummary, TopicNameHash},
     crypto, runtime_args, AddressableEntity, AddressableEntityHash, BlockGlobalAddr, BlockTime,
     CLValue, CoreConfig, Digest, EntityAddr, HostFunction, HostFunctionCosts, Key, MessageLimits,
-    OpcodeCosts, RuntimeArgs, StorageCosts, StoredValue, SystemConfig, WasmConfig,
-    DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY, U512,
+    OpcodeCosts, RuntimeArgs, StorageCosts, StoredValue, SystemConfig, WasmConfig, WasmV1Config,
+    DEFAULT_V1_MAX_STACK_HEIGHT, DEFAULT_V1_WASM_MAX_MEMORY, U512,
 };
 
 const MESSAGE_EMITTER_INSTALLER_WASM: &str = "contract_messages_emitter.wasm";
@@ -491,23 +491,26 @@ fn should_not_add_duplicate_topics() {
 #[ignore]
 #[test]
 fn should_not_exceed_configured_limits() {
-    let default_wasm_config = WasmConfig::default();
-    let wasm_config = WasmConfig::new(
-        default_wasm_config.max_memory,
-        default_wasm_config.max_stack_height,
+    let default_wasm_config = WasmV1Config::default();
+    let wasm_v1_config = WasmV1Config::new(
+        default_wasm_config.max_memory(),
+        default_wasm_config.max_stack_height(),
         default_wasm_config.opcode_costs(),
-        default_wasm_config.storage_costs(),
         default_wasm_config.take_host_function_costs(),
+    );
+    let wasm_config = WasmConfig::new(
         MessageLimits {
             max_topic_name_size: 32,
             max_message_size: 100,
             max_topics_per_contract: 2,
         },
+        wasm_v1_config,
     );
     let chainspec = ChainspecConfig {
         system_costs_config: SystemConfig::default(),
         core_config: CoreConfig::default(),
         wasm_config,
+        storage_costs: StorageCosts::default(),
     };
 
     let builder = RefCell::new(LmdbWasmTestBuilder::new_temporary_with_config(chainspec));
@@ -659,18 +662,18 @@ fn should_not_emit_messages_from_account() {
 fn should_charge_expected_gas_for_storage() {
     const GAS_PER_BYTE_COST: u32 = 100;
 
-    let wasm_config = WasmConfig::new(
-        DEFAULT_WASM_MAX_MEMORY,
-        DEFAULT_MAX_STACK_HEIGHT,
+    let wasm_v1_config = WasmV1Config::new(
+        DEFAULT_V1_WASM_MAX_MEMORY,
+        DEFAULT_V1_MAX_STACK_HEIGHT,
         OpcodeCosts::zero(),
-        StorageCosts::new(GAS_PER_BYTE_COST),
         HostFunctionCosts::zero(),
-        MessageLimits::default(),
     );
+    let wasm_config = WasmConfig::new(MessageLimits::default(), wasm_v1_config);
     let chainspec = ChainspecConfig {
         wasm_config,
         core_config: CoreConfig::default(),
         system_costs_config: SystemConfig::default(),
+        storage_costs: StorageCosts::new(GAS_PER_BYTE_COST),
     };
     let builder = RefCell::new(LmdbWasmTestBuilder::new_temporary_with_config(chainspec));
     builder
@@ -759,22 +762,22 @@ fn should_charge_increasing_gas_cost_for_multiple_messages_emitted() {
     const EMIT_MESSAGES_FROM_MULTIPLE_CONTRACTS: u32 =
         emit_cost_per_execution(EMIT_MESSAGE_FROM_EACH_VERSION_NUM_MESSAGES);
 
-    let wasm_config = WasmConfig::new(
-        DEFAULT_WASM_MAX_MEMORY,
-        DEFAULT_MAX_STACK_HEIGHT,
+    let wasm_v1_config = WasmV1Config::new(
+        DEFAULT_V1_WASM_MAX_MEMORY,
+        DEFAULT_V1_MAX_STACK_HEIGHT,
         OpcodeCosts::zero(),
-        StorageCosts::zero(),
         HostFunctionCosts {
             emit_message: HostFunction::fixed(FIRST_MESSAGE_EMIT_COST),
             cost_increase_per_message: COST_INCREASE_PER_MESSAGE,
             ..Zero::zero()
         },
-        MessageLimits::default(),
     );
+    let wasm_config = WasmConfig::new(MessageLimits::default(), wasm_v1_config);
     let chainspec = ChainspecConfig {
         wasm_config,
         core_config: CoreConfig::default(),
         system_costs_config: SystemConfig::default(),
+        storage_costs: StorageCosts::zero(),
     };
 
     let builder = RefCell::new(LmdbWasmTestBuilder::new_temporary_with_config(chainspec));
@@ -875,23 +878,26 @@ fn should_register_topic_on_contract_creation() {
 #[ignore]
 #[test]
 fn should_not_exceed_configured_topic_name_limits_on_contract_upgrade_no_init() {
-    let default_wasm_config = WasmConfig::default();
+    let default_wasm_v1_config = WasmV1Config::default();
+    let wasm_v1_config = WasmV1Config::new(
+        default_wasm_v1_config.max_memory(),
+        default_wasm_v1_config.max_stack_height(),
+        default_wasm_v1_config.opcode_costs(),
+        default_wasm_v1_config.take_host_function_costs(),
+    );
     let wasm_config = WasmConfig::new(
-        default_wasm_config.max_memory,
-        default_wasm_config.max_stack_height,
-        default_wasm_config.opcode_costs(),
-        default_wasm_config.storage_costs(),
-        default_wasm_config.take_host_function_costs(),
         MessageLimits {
             max_topic_name_size: 16, //length of MESSAGE_EMITTER_GENERIC_TOPIC
             max_message_size: 100,
             max_topics_per_contract: 3,
         },
+        wasm_v1_config,
     );
     let chainspec = ChainspecConfig {
         wasm_config,
         core_config: CoreConfig::default(),
         system_costs_config: SystemConfig::default(),
+        storage_costs: StorageCosts::default(),
     };
 
     let builder = RefCell::new(LmdbWasmTestBuilder::new_temporary_with_config(chainspec));
@@ -906,24 +912,27 @@ fn should_not_exceed_configured_topic_name_limits_on_contract_upgrade_no_init() 
 #[ignore]
 #[test]
 fn should_not_exceed_configured_max_topics_per_contract_upgrade_no_init() {
-    let default_wasm_config = WasmConfig::default();
-    let wasm_config = WasmConfig::new(
-        default_wasm_config.max_memory,
-        default_wasm_config.max_stack_height,
+    let default_wasm_config = WasmV1Config::default();
+    let wasm_v1_config = WasmV1Config::new(
+        default_wasm_config.max_memory(),
+        default_wasm_config.max_stack_height(),
         default_wasm_config.opcode_costs(),
-        default_wasm_config.storage_costs(),
         default_wasm_config.take_host_function_costs(),
+    );
+    let wasm_config = WasmConfig::new(
         MessageLimits {
             max_topic_name_size: 32,
             max_message_size: 100,
             max_topics_per_contract: 1, /* only allow 1 topic. Since on upgrade previous
                                          * topics carry over, the upgrade should fail. */
         },
+        wasm_v1_config,
     );
     let chainspec = ChainspecConfig {
         wasm_config,
         system_costs_config: SystemConfig::default(),
         core_config: CoreConfig::default(),
+        storage_costs: StorageCosts::default(),
     };
 
     let builder = RefCell::new(LmdbWasmTestBuilder::new_temporary_with_config(chainspec));
@@ -1117,12 +1126,10 @@ fn emit_message_should_charge_variable_gas_cost_based_on_topic_and_message_size(
     const COST_PER_MESSAGE_TOPIC_NAME_SIZE: u32 = 2;
     const COST_PER_MESSAGE_LENGTH: u32 = 1_000;
     const MESSAGE_SUFFIX: &str = "test";
-
-    let wasm_config = WasmConfig::new(
-        DEFAULT_WASM_MAX_MEMORY,
-        DEFAULT_MAX_STACK_HEIGHT,
+    let wasm_v1_config = WasmV1Config::new(
+        DEFAULT_V1_WASM_MAX_MEMORY,
+        DEFAULT_V1_MAX_STACK_HEIGHT,
         OpcodeCosts::zero(),
-        StorageCosts::zero(),
         HostFunctionCosts {
             emit_message: HostFunction::new(
                 MESSAGE_EMIT_COST,
@@ -1135,12 +1142,13 @@ fn emit_message_should_charge_variable_gas_cost_based_on_topic_and_message_size(
             ),
             ..Zero::zero()
         },
-        MessageLimits::default(),
     );
+    let wasm_config = WasmConfig::new(MessageLimits::default(), wasm_v1_config);
     let chainspec = ChainspecConfig {
         wasm_config,
         core_config: CoreConfig::default(),
         system_costs_config: SystemConfig::default(),
+        storage_costs: StorageCosts::zero(),
     };
 
     let builder = RefCell::new(LmdbWasmTestBuilder::new_temporary_with_config(chainspec));

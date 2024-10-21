@@ -153,9 +153,9 @@ mod tests {
     use casper_types::{
         bytesrepr::FromBytes, ActivationPoint, BrTableCost, ChainspecRawBytes, ControlFlowCosts,
         CoreConfig, EraId, GlobalStateUpdate, HighwayConfig, HostFunction, HostFunctionCosts,
-        MessageLimits, Motes, OpcodeCosts, ProtocolConfig, ProtocolVersion, StorageCosts,
-        StoredValue, TestBlockBuilder, TimeDiff, Timestamp, TransactionConfig, TransactionV1Config,
-        WasmConfig, MINT_LANE_ID,
+        MessageLimits, Motes, OpcodeCosts, ProtocolConfig, ProtocolVersion, StoredValue,
+        TestBlockBuilder, TimeDiff, Timestamp, TransactionConfig, TransactionV1Config, WasmConfig,
+        WasmV1Config, MINT_LANE_ID,
     };
 
     use super::*;
@@ -164,7 +164,6 @@ mod tests {
         utils::{Loadable, RESOURCES_PATH},
     };
 
-    const EXPECTED_GENESIS_STORAGE_COSTS: StorageCosts = StorageCosts::new(101);
     const EXPECTED_GENESIS_COSTS: OpcodeCosts = OpcodeCosts {
         bit: 13,
         add: 14,
@@ -254,14 +253,13 @@ mod tests {
             get_block_info: HostFunction::new(330, [0, 0]),
         });
     static EXPECTED_GENESIS_WASM_COSTS: Lazy<WasmConfig> = Lazy::new(|| {
-        WasmConfig::new(
+        let wasm_v1_config = WasmV1Config::new(
             17, // initial_memory
             19, // max_stack_height
             EXPECTED_GENESIS_COSTS,
-            EXPECTED_GENESIS_STORAGE_COSTS,
             *EXPECTED_GENESIS_HOST_FUNCTION_COSTS,
-            MessageLimits::default(),
-        )
+        );
+        WasmConfig::new(MessageLimits::default(), wasm_v1_config)
     });
 
     #[test]

@@ -22,7 +22,7 @@ pub(crate) fn create_module_resolver(
     // TODO: revisit how protocol_version check here is meant to combine with upgrade
     if protocol_version >= ProtocolVersion::V1_0_0 {
         return Ok(v1_resolver::RuntimeModuleImportResolver::new(
-            engine_config.wasm_config().max_memory,
+            engine_config.wasm_config().v1().max_memory(),
         ));
     }
     Err(ResolverError::UnknownProtocolVersion(protocol_version))

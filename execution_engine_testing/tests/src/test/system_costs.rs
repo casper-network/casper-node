@@ -17,8 +17,9 @@ use casper_types::{
     AuctionCosts, BrTableCost, ControlFlowCosts, CoreConfig, EraId, Gas, GenesisAccount,
     GenesisValidator, HandlePaymentCosts, HostFunction, HostFunctionCost, HostFunctionCosts,
     MessageLimits, MintCosts, Motes, OpcodeCosts, ProtocolVersion, PublicKey, RuntimeArgs,
-    SecretKey, StandardPaymentCosts, StorageCosts, SystemConfig, WasmConfig, DEFAULT_ADD_BID_COST,
-    DEFAULT_MAX_STACK_HEIGHT, DEFAULT_MINIMUM_BID_AMOUNT, DEFAULT_WASM_MAX_MEMORY, U512,
+    SecretKey, StandardPaymentCosts, StorageCosts, SystemConfig, WasmConfig, WasmV1Config,
+    DEFAULT_ADD_BID_COST, DEFAULT_MINIMUM_BID_AMOUNT, DEFAULT_V1_MAX_STACK_HEIGHT,
+    DEFAULT_V1_WASM_MAX_MEMORY, U512,
 };
 
 use crate::wasm_utils;
@@ -837,15 +838,13 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
         call_contract: HostFunction::fixed(UPDATED_CALL_CONTRACT_COST),
         ..Zero::zero()
     };
-
-    let wasm_config = WasmConfig::new(
-        DEFAULT_WASM_MAX_MEMORY,
-        DEFAULT_MAX_STACK_HEIGHT,
+    let wasm_v1_config = WasmV1Config::new(
+        DEFAULT_V1_WASM_MAX_MEMORY,
+        DEFAULT_V1_MAX_STACK_HEIGHT,
         new_opcode_costs,
-        new_storage_costs,
         new_host_function_costs,
-        MessageLimits::default(),
     );
+    let wasm_config = WasmConfig::new(MessageLimits::default(), wasm_v1_config);
 
     let new_max_associated_keys = DEFAULT_MAX_ASSOCIATED_KEYS;
     let new_auction_costs = AuctionCosts::default();
@@ -872,6 +871,7 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
         system_costs_config,
         wasm_config,
         core_config,
+        storage_costs: new_storage_costs,
     };
     builder.with_chainspec(chainspec);
 

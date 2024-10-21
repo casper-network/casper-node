@@ -1211,7 +1211,7 @@ where
         let engine_config = self.context.engine_config();
         let wasm_config = engine_config.wasm_config();
         #[cfg(feature = "test-support")]
-        let max_stack_height = wasm_config.max_stack_height;
+        let max_stack_height = wasm_config.v1().max_stack_height();
         let module = wasm_prep::preprocess(*wasm_config, module_bytes)?;
         let (instance, memory) =
             utils::instance_and_memory(module.clone(), protocol_version, engine_config)?;
@@ -1683,7 +1683,11 @@ where
                 #[cfg(feature = "test-support")]
                 dump_runtime_stack_info(
                     instance,
-                    self.context.engine_config().wasm_config().max_stack_height,
+                    self.context
+                        .engine_config()
+                        .wasm_config()
+                        .v1()
+                        .max_stack_height(),
                 );
                 if let Some(host_error) = error.as_host_error() {
                     // If the "error" was in fact a trap caused by calling `ret` then this is normal

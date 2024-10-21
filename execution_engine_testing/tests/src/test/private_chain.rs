@@ -9,8 +9,8 @@ use casper_engine_test_support::{
     ChainspecConfig, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_AUCTION_DELAY,
     DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
     DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROPOSER_PUBLIC_KEY, DEFAULT_PROTOCOL_VERSION,
-    DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY,
-    DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
+    DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_STORAGE_COSTS, DEFAULT_SYSTEM_CONFIG,
+    DEFAULT_UNBONDING_DELAY, DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
 };
 use num_rational::Ratio;
 use once_cell::sync::Lazy;
@@ -20,7 +20,8 @@ use casper_types::{
     account::AccountHash, system::auction::DELEGATION_RATE_DENOMINATOR, AdministratorAccount,
     CoreConfig, FeeHandling, GenesisAccount, GenesisConfig, GenesisConfigBuilder, GenesisValidator,
     HostFunction, HostFunctionCosts, MessageLimits, Motes, OpcodeCosts, PublicKey, RefundHandling,
-    SecretKey, StorageCosts, WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY, U512,
+    SecretKey, StorageCosts, WasmConfig, WasmV1Config, DEFAULT_V1_MAX_STACK_HEIGHT,
+    DEFAULT_V1_WASM_MAX_MEMORY, U512,
 };
 use tempfile::TempDir;
 
@@ -144,6 +145,7 @@ static DEFUALT_PRIVATE_CHAIN_EXEC_CONFIG: Lazy<GenesisConfig> = Lazy::new(|| {
         .with_round_seigniorage_rate(DEFAULT_ROUND_SEIGNIORAGE_RATE)
         .with_unbonding_delay(DEFAULT_UNBONDING_DELAY)
         .with_genesis_timestamp_millis(DEFAULT_GENESIS_TIMESTAMP_MILLIS)
+        .with_storage_costs(*DEFAULT_STORAGE_COSTS)
         .build()
 });
 
@@ -194,14 +196,13 @@ fn make_wasm_config() -> WasmConfig {
         transfer_from_purse_to_account: HostFunction::fixed(0),
         ..HostFunctionCosts::default()
     };
-    WasmConfig::new(
-        DEFAULT_WASM_MAX_MEMORY,
-        DEFAULT_MAX_STACK_HEIGHT,
+    let wasm_v1_config = WasmV1Config::new(
+        DEFAULT_V1_WASM_MAX_MEMORY,
+        DEFAULT_V1_MAX_STACK_HEIGHT,
         OpcodeCosts::default(),
-        StorageCosts::default(),
         host_functions,
-        MessageLimits::default(),
-    )
+    );
+    WasmConfig::new(MessageLimits::default(), wasm_v1_config)
 }
 
 fn make_private_chain_config(
@@ -222,10 +223,12 @@ fn make_private_chain_config(
         ..Default::default()
     };
     let wasm_config = make_wasm_config();
+    let storage_costs = StorageCosts::default();
     ChainspecConfig {
         core_config,
         wasm_config,
         system_costs_config: Default::default(),
+        storage_costs,
     }
 }
 

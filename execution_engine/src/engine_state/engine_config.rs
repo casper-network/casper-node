@@ -7,8 +7,8 @@ use num_rational::Ratio;
 use num_traits::One;
 
 use casper_types::{
-    account::AccountHash, FeeHandling, ProtocolVersion, PublicKey, RefundHandling, SystemConfig,
-    TimeDiff, WasmConfig, DEFAULT_FEE_HANDLING, DEFAULT_MINIMUM_BID_AMOUNT,
+    account::AccountHash, FeeHandling, ProtocolVersion, PublicKey, RefundHandling, StorageCosts,
+    SystemConfig, TimeDiff, WasmConfig, DEFAULT_FEE_HANDLING, DEFAULT_MINIMUM_BID_AMOUNT,
     DEFAULT_REFUND_HANDLING,
 };
 
@@ -86,6 +86,7 @@ pub struct EngineConfig {
     pub(crate) fee_handling: FeeHandling,
     /// Compute auction rewards.
     pub(crate) compute_rewards: bool,
+    storage_costs: StorageCosts,
 }
 
 impl Default for EngineConfig {
@@ -108,6 +109,7 @@ impl Default for EngineConfig {
             fee_handling: DEFAULT_FEE_HANDLING,
             compute_rewards: DEFAULT_COMPUTE_REWARDS,
             protocol_version: DEFAULT_PROTOCOL_VERSION,
+            storage_costs: Default::default(),
         }
     }
 }
@@ -198,6 +200,11 @@ impl EngineConfig {
         self.fee_handling
     }
 
+    /// Returns the engine config's storage_costs.
+    pub fn storage_costs(&self) -> &StorageCosts {
+        &self.storage_costs
+    }
+
     /// Returns the engine config's compute rewards flag.
     pub fn compute_rewards(&self) -> bool {
         self.compute_rewards
@@ -215,7 +222,7 @@ impl EngineConfig {
     /// Sets the `wasm_config.max_memory` to `new_value`.
     #[cfg(feature = "test-support")]
     pub fn set_max_memory(&mut self, new_value: u32) {
-        self.wasm_config.max_memory = new_value;
+        *self.wasm_config.v1_mut().max_memory_mut() = new_value;
     }
 }
 
@@ -244,6 +251,7 @@ pub struct EngineConfigBuilder {
     fee_handling: Option<FeeHandling>,
     compute_rewards: Option<bool>,
     balance_hold_interval: Option<TimeDiff>,
+    storage_costs: Option<StorageCosts>,
 }
 
 impl EngineConfigBuilder {
@@ -312,7 +320,7 @@ impl EngineConfigBuilder {
     /// Sets the maximum wasm stack height config option.
     pub fn with_wasm_max_stack_height(mut self, wasm_stack_height: u32) -> Self {
         let wasm_config = self.wasm_config.get_or_insert_with(WasmConfig::default);
-        wasm_config.max_stack_height = wasm_stack_height;
+        *wasm_config.v1_mut().max_stack_height_mut() = wasm_stack_height;
         self
     }
 
@@ -391,6 +399,12 @@ impl EngineConfigBuilder {
         self
     }
 
+    /// Sets the storage_costs config option.
+    pub fn with_storage_costs(mut self, storage_costs: StorageCosts) -> Self {
+        self.storage_costs = Some(storage_costs);
+        self
+    }
+
     /// Builds a new [`EngineConfig`] object.
     pub fn build(self) -> EngineConfig {
         let max_associated_keys = self
@@ -437,6 +451,7 @@ impl EngineConfigBuilder {
             .max_delegators_per_validator
             .unwrap_or(DEFAULT_MAX_DELEGATORS_PER_VALIDATOR);
         let compute_rewards = self.compute_rewards.unwrap_or(DEFAULT_COMPUTE_REWARDS);
+        let storage_costs = self.storage_costs.unwrap_or_default();
 
         EngineConfig {
             max_associated_keys,
@@ -456,6 +471,7 @@ impl EngineConfigBuilder {
             vesting_schedule_period_millis,
             max_delegators_per_validator,
             compute_rewards,
+            storage_costs,
         }
     }
 }

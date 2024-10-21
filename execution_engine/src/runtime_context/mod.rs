@@ -119,8 +119,7 @@ where
         entry_point_type: EntryPointType,
         calling_add_contract_version: CallingAddContractVersion,
     ) -> Self {
-        let emit_message_cost = engine_config
-            .wasm_config()
+        let emit_message_cost = (*engine_config.wasm_config().v1())
             .take_host_function_costs()
             .emit_message
             .cost()
@@ -842,7 +841,7 @@ where
             }
         }
 
-        let storage_costs = self.engine_config.wasm_config().storage_costs();
+        let storage_costs = self.engine_config.storage_costs();
 
         let gas_cost = storage_costs.calculate_gas_cost(bytes_count);
 

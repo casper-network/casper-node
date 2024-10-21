@@ -9,6 +9,7 @@ mod standard_payment_costs;
 mod storage_costs;
 mod system_config;
 mod wasm_config;
+mod wasm_v1_config;
 
 pub use auction_costs::AuctionCosts;
 #[cfg(any(feature = "testing", test))]
@@ -43,5 +44,6 @@ pub use standard_payment_costs::StandardPaymentCosts;
 pub use storage_costs::StorageCosts;
 pub use system_config::SystemConfig;
 pub use wasm_config::WasmConfig;
+pub use wasm_v1_config::WasmV1Config;
 #[cfg(any(feature = "testing", test))]
-pub use wasm_config::{DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY};
+pub use wasm_v1_config::{DEFAULT_V1_MAX_STACK_HEIGHT, DEFAULT_V1_WASM_MAX_MEMORY};

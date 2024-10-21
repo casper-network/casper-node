@@ -16,6 +16,8 @@ use crate::{
     SystemConfig, WasmConfig,
 };
 
+use super::StorageCosts;
+
 /// Default number of validator slots.
 pub const DEFAULT_VALIDATOR_SLOTS: u32 = 5;
 /// Default auction delay.
@@ -54,6 +56,7 @@ pub struct GenesisConfig {
     genesis_timestamp_millis: u64,
     gas_hold_balance_handling: HoldBalanceHandling,
     gas_hold_interval_millis: u64,
+    storage_costs: StorageCosts,
 }
 
 impl GenesisConfig {
@@ -78,6 +81,7 @@ impl GenesisConfig {
         genesis_timestamp_millis: u64,
         gas_hold_balance_handling: HoldBalanceHandling,
         gas_hold_interval_millis: u64,
+        storage_costs: StorageCosts,
     ) -> GenesisConfig {
         GenesisConfig {
             accounts,
@@ -91,6 +95,7 @@ impl GenesisConfig {
             genesis_timestamp_millis,
             gas_hold_balance_handling,
             gas_hold_interval_millis,
+            storage_costs,
         }
     }
 
@@ -209,6 +214,7 @@ impl Distribution<GenesisConfig> for Standard {
         let genesis_timestamp_millis = rng.gen();
         let gas_hold_balance_handling = rng.gen();
         let gas_hold_interval_millis = rng.gen();
+        let storage_costs = rng.gen();
 
         GenesisConfig {
             accounts,
@@ -222,6 +228,7 @@ impl Distribution<GenesisConfig> for Standard {
             genesis_timestamp_millis,
             gas_hold_balance_handling,
             gas_hold_interval_millis,
+            storage_costs,
         }
     }
 }
@@ -243,6 +250,7 @@ pub struct GenesisConfigBuilder {
     genesis_timestamp_millis: Option<u64>,
     gas_hold_balance_handling: Option<HoldBalanceHandling>,
     gas_hold_interval_millis: Option<u64>,
+    storage_costs: Option<StorageCosts>,
 }
 
 impl GenesisConfigBuilder {
@@ -320,6 +328,12 @@ impl GenesisConfigBuilder {
         self
     }
 
+    /// Sets the storage_costs handling.
+    pub fn with_storage_costs(mut self, storage_costs: StorageCosts) -> Self {
+        self.storage_costs = Some(storage_costs);
+        self
+    }
+
     /// Builds a new [`GenesisConfig`] object.
     pub fn build(self) -> GenesisConfig {
         GenesisConfig {
@@ -344,6 +358,7 @@ impl GenesisConfigBuilder {
             gas_hold_interval_millis: self
                 .gas_hold_interval_millis
                 .unwrap_or(DEFAULT_GAS_HOLD_INTERVAL_MILLIS),
+            storage_costs: self.storage_costs.unwrap_or_default(),
         }
     }
 }
@@ -357,6 +372,7 @@ impl From<&Chainspec> for GenesisConfig {
             .map_or(0, |timestamp| timestamp.millis());
         let gas_hold_interval_millis = chainspec.core_config.gas_hold_interval.millis();
         let gas_hold_balance_handling = chainspec.core_config.gas_hold_balance_handling;
+        let storage_costs = chainspec.storage_costs;
 
         // TODO: maybe construct this instead of accreting the values
         //GenesisConfigBuilder::new(account,..)
@@ -372,6 +388,7 @@ impl From<&Chainspec> for GenesisConfig {
             .with_genesis_timestamp_millis(genesis_timestamp_millis)
             .with_gas_hold_balance_handling(gas_hold_balance_handling)
             .with_gas_hold_interval_millis(gas_hold_interval_millis)
+            .with_storage_costs(storage_costs)
             .build()
     }
 }

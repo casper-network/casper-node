@@ -13,7 +13,7 @@ use casper_storage::data_access_layer::GenesisRequest;
 use casper_types::{
     system::auction::VESTING_SCHEDULE_LENGTH_MILLIS, CoreConfig, FeeHandling, GenesisAccount,
     GenesisConfig, GenesisConfigBuilder, MintCosts, PricingHandling, ProtocolVersion,
-    RefundHandling, SystemConfig, TimeDiff, WasmConfig,
+    RefundHandling, StorageCosts, SystemConfig, TimeDiff, WasmConfig,
 };
 
 use crate::{
@@ -58,6 +58,8 @@ pub struct ChainspecConfig {
     /// SystemConfig
     #[serde(rename = "system_costs")]
     pub system_costs_config: SystemConfig,
+    /// Storage costs.
+    pub storage_costs: StorageCosts,
 }
 
 impl ChainspecConfig {
@@ -121,6 +123,7 @@ impl ChainspecConfig {
             core_config,
             wasm_config,
             system_costs_config,
+            storage_costs,
         } = self;
         let CoreConfig {
             validator_slots,
@@ -141,6 +144,7 @@ impl ChainspecConfig {
             .with_round_seigniorage_rate(*round_seigniorage_rate)
             .with_unbonding_delay(*unbonding_delay)
             .with_genesis_timestamp_millis(DEFAULT_GENESIS_TIMESTAMP_MILLIS)
+            .with_storage_costs(*storage_costs)
             .build();
 
         Ok(GenesisRequest::new(
@@ -207,7 +211,7 @@ impl ChainspecConfig {
 
     /// Sets wasm max stack height.
     pub fn with_wasm_max_stack_height(mut self, max_stack_height: u32) -> Self {
-        self.wasm_config.max_stack_height = max_stack_height;
+        *self.wasm_config.v1_mut().max_stack_height_mut() = max_stack_height;
         self
     }
 
@@ -251,6 +255,7 @@ impl ChainspecConfig {
             .with_allow_unrestricted_transfers(self.core_config.allow_unrestricted_transfers)
             .with_refund_handling(self.core_config.refund_handling)
             .with_fee_handling(self.core_config.fee_handling)
+            .with_storage_costs(self.storage_costs)
             .build()
     }
 }
@@ -296,6 +301,7 @@ impl TryFrom<ChainspecConfig> for GenesisConfig {
             .with_round_seigniorage_rate(chainspec_config.core_config.round_seigniorage_rate)
             .with_unbonding_delay(chainspec_config.core_config.unbonding_delay)
             .with_genesis_timestamp_millis(DEFAULT_GENESIS_TIMESTAMP_MILLIS)
+            .with_storage_costs(chainspec_config.storage_costs)
             .build())
     }
 }
