@@ -501,8 +501,8 @@ extern "C" {
     /// * `version_ptr` - output parameter where new version assigned by host is set
     /// * `entry_points_ptr` - pointer to serialized [`casper_types::EntryPoints`]
     /// * `entry_points_size` - size of serialized [`casper_types::EntryPoints`]
-    /// * `named_keys_ptr` - pointer to serialized [`casper_types::contracts::NamedKeys`]
-    /// * `named_keys_size` - size of serialized [`casper_types::contracts::NamedKeys`]
+    /// * `named_keys_ptr` - pointer to serialized [`casper_types::addressable_entity::NamedKeys`]
+    /// * `named_keys_size` - size of serialized [`casper_types::addressable_entity::NamedKeys`]
     /// * `message_topics_ptr` - pointer to serialized BTreeMap<String, MessageTopicOperation>
     ///   containing message topic names and the operation to pe performed on each one.
     /// * `message_topics_size` - size of serialized BTreeMap<String, MessageTopicOperation>

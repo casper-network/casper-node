@@ -49,7 +49,7 @@ where
             })
     }
 
-    fn read_addressable_entity_by_account_hash(
+    fn runtime_footprint_by_account_hash(
         &mut self,
         account_hash: AccountHash,
     ) -> Result<Option<RuntimeFootprint>, ProviderError> {

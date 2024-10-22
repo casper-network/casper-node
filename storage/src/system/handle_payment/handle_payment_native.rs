@@ -136,14 +136,14 @@ where
 
     fn put_key(&mut self, name: &str, key: Key) -> Result<(), Error> {
         let name = name.to_string();
-        match self.entity_key() {
+        match self.context_key() {
             Key::Account(_) | Key::Hash(_) => {
                 let name: String = name.clone();
                 let value = CLValue::from_t((name.clone(), key)).map_err(|_| Error::PutKey)?;
                 let named_key_value = StoredValue::CLValue(value);
                 self.tracking_copy()
                     .borrow_mut()
-                    .add(*self.entity_key(), named_key_value)
+                    .add(*self.context_key(), named_key_value)
                     .map_err(|_| Error::PutKey)?;
                 self.named_keys_mut().insert(name, key);
                 Ok(())
@@ -169,7 +169,7 @@ where
 
     fn remove_key(&mut self, name: &str) -> Result<(), Error> {
         self.named_keys_mut().remove(name);
-        match self.entity_key() {
+        match self.context_key() {
             Key::AddressableEntity(entity_addr) => {
                 let named_key_addr = NamedKeyAddr::new_from_string(*entity_addr, name.to_string())
                     .map_err(|_| Error::RemoveKey)?;
@@ -187,7 +187,7 @@ where
                 let mut contract = self
                     .tracking_copy()
                     .borrow_mut()
-                    .read(self.entity_key())
+                    .read(self.context_key())
                     .map_err(|_| Error::RemoveKey)?
                     .ok_or(Error::RemoveKey)?
                     .as_contract()
@@ -200,14 +200,14 @@ where
 
                 self.tracking_copy()
                     .borrow_mut()
-                    .write(*self.entity_key(), StoredValue::Contract(contract))
+                    .write(*self.context_key(), StoredValue::Contract(contract))
             }
             Key::Account(_) => {
                 let account = {
                     let mut account = match self
                         .tracking_copy()
                         .borrow_mut()
-                        .read(self.entity_key())
+                        .read(self.context_key())
                         .map_err(|_| Error::RemoveKey)?
                     {
                         Some(StoredValue::Account(account)) => account,
@@ -218,7 +218,7 @@ where
                 };
                 self.tracking_copy()
                     .borrow_mut()
-                    .write(*self.entity_key(), StoredValue::Account(account));
+                    .write(*self.context_key(), StoredValue::Account(account));
             }
             _ => return Err(Error::UnexpectedKeyVariant),
         }

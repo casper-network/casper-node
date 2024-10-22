@@ -141,7 +141,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
                     let is_source_admin = self.is_administrator(&account_hash);
                     match maybe_to {
                         Some(to) => {
-                            let maybe_account = self.read_addressable_entity_by_account_hash(to);
+                            let maybe_account = self.runtime_footprint_by_account_hash(to);
 
                             match maybe_account {
                                 Ok(Some(runtime_footprint)) => {

@@ -19,7 +19,7 @@ pub trait RuntimeProvider {
     fn get_system_entity_registry(&self) -> Result<SystemHashRegistry, ProviderError>;
 
     /// Read addressable entity by account hash.
-    fn read_addressable_entity_by_account_hash(
+    fn runtime_footprint_by_account_hash(
         &mut self,
         account_hash: AccountHash,
     ) -> Result<Option<RuntimeFootprint>, ProviderError>;

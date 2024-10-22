@@ -38,7 +38,7 @@ where
     R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
     fn get_caller(&self) -> AccountHash {
-        self.context.get_caller()
+        self.context.get_initiator()
     }
 
     fn get_immediate_caller(&self) -> Option<Caller> {
@@ -56,14 +56,14 @@ where
         })
     }
 
-    fn read_addressable_entity_by_account_hash(
+    fn runtime_footprint_by_account_hash(
         &mut self,
         account_hash: AccountHash,
     ) -> Result<Option<RuntimeFootprint>, ProviderError> {
         self.context
-            .read_addressable_entity_by_account_hash(account_hash)
+            .runtime_footprint_by_account_hash(account_hash)
             .map_err(|err| {
-                error!(%err, "error reading addressable entity by account hash");
+                error!(%err, "error getting runtime footprint by account hash");
                 ProviderError::AccountHash(account_hash)
             })
     }
