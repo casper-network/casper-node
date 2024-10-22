@@ -2368,7 +2368,7 @@ where
         message_topics: BTreeMap<String, MessageTopicOperation>,
         output_ptr: u32,
     ) -> Result<Result<(), ApiError>, ExecError> {
-        if !self.context.allow_casper_add_contract_version() {
+        if !self.context.install_upgrade_allowed() {
             // NOTE: This is not a permission check on the caller,
             // it is enforcing the rule that only legacy standard deploys (which are grandfathered)
             // and install / upgrade transactions are allowed to call this method

@@ -51,7 +51,7 @@ pub const RANDOM_BYTES_COUNT: usize = 32;
 
 /// Whether the execution is permitted to call FFI `casper_add_contract_version()` or not.
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
-pub enum CallingAddContractVersion {
+pub enum AllowInstallUpgrade {
     /// Allowed.
     Allowed,
     /// Forbidden.
@@ -86,7 +86,7 @@ pub struct RuntimeContext<'a, R> {
     entity_key: Key,
     account_hash: AccountHash,
     emit_message_cost: U512,
-    calling_add_contract_version: CallingAddContractVersion,
+    allow_install_upgrade: AllowInstallUpgrade,
 }
 
 impl<'a, R> RuntimeContext<'a, R>
@@ -117,7 +117,7 @@ where
         transfers: Vec<Transfer>,
         remaining_spending_limit: U512,
         entry_point_type: EntryPointType,
-        calling_add_contract_version: CallingAddContractVersion,
+        allow_install_upgrade: AllowInstallUpgrade,
     ) -> Self {
         let emit_message_cost = (*engine_config.wasm_config().v1())
             .take_host_function_costs()
@@ -145,7 +145,7 @@ where
             transfers,
             remaining_spending_limit,
             emit_message_cost,
-            calling_add_contract_version,
+            allow_install_upgrade,
         }
     }
 
@@ -199,7 +199,7 @@ where
             transfers,
             remaining_spending_limit,
             emit_message_cost: self.emit_message_cost,
-            calling_add_contract_version: self.calling_add_contract_version,
+            allow_install_upgrade: self.allow_install_upgrade,
         }
     }
 
@@ -390,8 +390,8 @@ where
     }
 
     /// Returns `true` if the execution is permitted to call `casper_add_contract_version()`.
-    pub fn allow_casper_add_contract_version(&self) -> bool {
-        self.calling_add_contract_version == CallingAddContractVersion::Allowed
+    pub fn install_upgrade_allowed(&self) -> bool {
+        self.allow_install_upgrade == AllowInstallUpgrade::Allowed
     }
 
     /// Generates new deterministic hash for uses as an address.

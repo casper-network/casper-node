@@ -15,7 +15,7 @@ use crate::{
     engine_state::{execution_kind::ExecutionKind, BlockInfo, EngineConfig, WasmV1Result},
     execution::ExecError,
     runtime::{Runtime, RuntimeStack},
-    runtime_context::{CallingAddContractVersion, RuntimeContext},
+    runtime_context::{AllowInstallUpgrade, RuntimeContext},
 };
 
 const ARG_AMOUNT: &str = "amount";
@@ -91,11 +91,11 @@ impl Executor {
             }
         };
 
-        let calling_add_contract_version = match execution_kind {
+        let allow_install_upgrade = match execution_kind {
             ExecutionKind::InstallerUpgrader(_)
             | ExecutionKind::Stored { .. }
-            | ExecutionKind::Deploy(_) => CallingAddContractVersion::Allowed,
-            ExecutionKind::Standard(_) => CallingAddContractVersion::Forbidden,
+            | ExecutionKind::Deploy(_) => AllowInstallUpgrade::Allowed,
+            ExecutionKind::Standard(_) => AllowInstallUpgrade::Forbidden,
         };
 
         let context = self.create_runtime_context(
@@ -115,7 +115,7 @@ impl Executor {
             gas_limit,
             spending_limit,
             EntryPointType::Caller,
-            calling_add_contract_version,
+            allow_install_upgrade,
         );
 
         let mut runtime = Runtime::new(context);
@@ -177,7 +177,7 @@ impl Executor {
         gas_limit: Gas,
         remaining_spending_limit: U512,
         entry_point_type: EntryPointType,
-        calling_add_contract_version: CallingAddContractVersion,
+        allow_install_upgrade: AllowInstallUpgrade,
     ) -> RuntimeContext<'a, R>
     where
         R: StateReader<Key, StoredValue, Error = GlobalStateError>,
@@ -205,7 +205,7 @@ impl Executor {
             transfers,
             remaining_spending_limit,
             entry_point_type,
-            calling_add_contract_version,
+            allow_install_upgrade,
         )
     }
 }
