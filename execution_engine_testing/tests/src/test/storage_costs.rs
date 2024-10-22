@@ -17,7 +17,7 @@ use casper_types::{
     contracts::{ContractHash, ContractPackage, ContractVersionKey},
     AddressableEntityHash, BrTableCost, CLValue, ControlFlowCosts, EraId, Gas, Group, Groups,
     HostFunctionCosts, Key, MessageLimits, OpcodeCosts, ProtocolVersion, RuntimeArgs, StorageCosts,
-    StoredValue, URef, WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY, U512,
+    StoredValue, URef, WasmConfig, WasmV1Config, DEFAULT_V1_MAX_STACK_HEIGHT, DEFAULT_V1_WASM_MAX_MEMORY, U512,
 };
 #[cfg(not(feature = "use-as-wasm"))]
 use casper_types::{
@@ -93,15 +93,14 @@ const NEW_OPCODE_COSTS: OpcodeCosts = OpcodeCosts {
 };
 
 static NEW_HOST_FUNCTION_COSTS: Lazy<HostFunctionCosts> = Lazy::new(HostFunctionCosts::zero);
-static STORAGE_COSTS_ONLY: Lazy<WasmConfig> = Lazy::new(|| {
-    WasmConfig::new(
-        DEFAULT_WASM_MAX_MEMORY,
-        DEFAULT_MAX_STACK_HEIGHT,
+static NO_COSTS_WASM_CONFIG: Lazy<WasmConfig> = Lazy::new(|| {
+    let wasm_v1_config = WasmV1Config::new(
+        DEFAULT_V1_WASM_MAX_MEMORY,
+        DEFAULT_V1_MAX_STACK_HEIGHT,
         NEW_OPCODE_COSTS,
-        StorageCosts::default(),
         *NEW_HOST_FUNCTION_COSTS,
-        MessageLimits::default(),
-    )
+    );
+    WasmConfig::new(MessageLimits::default(), wasm_v1_config)
 });
 
 static NEW_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| {
@@ -142,7 +141,7 @@ fn initialize_isolated_storage_costs() -> LmdbWasmTestBuilder {
     let updated_chainspec = builder
         .chainspec()
         .clone()
-        .with_wasm_config(*STORAGE_COSTS_ONLY);
+        .with_wasm_config(*NO_COSTS_WASM_CONFIG);
 
     builder
         .with_chainspec(updated_chainspec)
@@ -730,7 +729,7 @@ fn should_verify_new_uref_storage_cost() {
     assert_eq!(
         // should charge for storage of a u64 behind a URef
         builder.last_exec_gas_cost(),
-        STORAGE_COSTS_ONLY.storage_costs().calculate_gas_cost(
+        StorageCosts::default().calculate_gas_cost(
             StoredValue::CLValue(CLValue::from_t(0u64).expect("should create CLValue"))
                 .serialized_length()
         )
@@ -775,7 +774,7 @@ fn should_verify_put_key_is_charging_for_storage() {
     assert_eq!(
         // should charge for storage of a named key
         builder.last_exec_gas_cost(),
-        STORAGE_COSTS_ONLY.storage_costs().calculate_gas_cost(
+        StorageCosts::default().calculate_gas_cost(
             StoredValue::CLValue(
                 CLValue::from_t(("new_key".to_string(), Key::Hash([0u8; 32]))).unwrap()
             )
@@ -823,7 +822,7 @@ fn should_verify_remove_key_is_not_charging_for_storage() {
         assert_eq!(
             // should charge zero, because we do not charge for storage when removing a key
             builder.last_exec_gas_cost(),
-            STORAGE_COSTS_ONLY.storage_costs().calculate_gas_cost(0),
+            StorageCosts::default().calculate_gas_cost(0),
         )
     } else {
         assert!(builder.last_exec_gas_cost() > Gas::zero())
@@ -868,7 +867,7 @@ fn should_verify_create_contract_at_hash_is_charging_for_storage() {
     assert_eq!(
         // should charge at least enough for storage of a package and unit CLValue (for a URef)
         builder.last_exec_gas_cost(),
-        STORAGE_COSTS_ONLY.storage_costs().calculate_gas_cost(
+        StorageCosts::default().calculate_gas_cost(
             StoredValue::ContractPackage(ContractPackage::default()).serialized_length()
                 + StoredValue::CLValue(CLValue::unit()).serialized_length()
         )
@@ -927,8 +926,7 @@ fn should_verify_create_contract_user_group_is_charging_for_storage() {
     assert_eq!(
         // should charge for storage of the new package
         builder.last_exec_gas_cost(),
-        STORAGE_COSTS_ONLY
-            .storage_costs()
+        StorageCosts::default()
             .calculate_gas_cost(StoredValue::ContractPackage(package.clone()).serialized_length()),
     );
 
@@ -1029,7 +1027,7 @@ fn should_verify_subcall_new_uref_is_charging_for_storage() {
     assert_eq!(
         // should charge for storage of a u64 behind a URef
         builder.last_exec_gas_cost(),
-        STORAGE_COSTS_ONLY.storage_costs().calculate_gas_cost(
+        StorageCosts::default().calculate_gas_cost(
             StoredValue::CLValue(CLValue::from_t(0u64).expect("should create CLValue"))
                 .serialized_length()
         )

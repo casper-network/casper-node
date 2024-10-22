@@ -1,4 +1,4 @@
-use casper_engine_test_support::DEFAULT_WASM_CONFIG;
+use casper_engine_test_support::DEFAULT_WASM_V1_CONFIG;
 use casper_types::addressable_entity::DEFAULT_ENTRY_POINT_NAME;
 use casper_wasm::{
     builder,
@@ -8,7 +8,7 @@ use casper_wasm::{
 /// Prepare malicious payload with amount of opcodes that could potentially overflow injected gas
 /// counter.
 pub(crate) fn make_gas_counter_overflow() -> Vec<u8> {
-    let opcode_costs = DEFAULT_WASM_CONFIG.opcode_costs();
+    let opcode_costs = DEFAULT_WASM_V1_CONFIG.opcode_costs();
 
     // Create a lot of `nop` opcodes to potentially overflow gas injector's batching counter.
     let upper_bound = (u32::max_value() as usize / opcode_costs.nop as usize) + 1;

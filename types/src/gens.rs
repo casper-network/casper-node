@@ -1191,3 +1191,6 @@ pub fn transaction_arb() -> impl Strategy<Value = Transaction> {
 pub fn legal_transaction_arb() -> impl Strategy<Value = Transaction> {
     (legal_v1_transaction_arb()).prop_map(Transaction::V1)
 }
+pub fn example_u32_arb() -> impl Strategy<Value = u32> {
+    prop_oneof![Just(0), Just(1), Just(u32::MAX / 2), Just(u32::MAX)]
+}

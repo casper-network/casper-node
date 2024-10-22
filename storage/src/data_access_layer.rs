@@ -2,7 +2,7 @@ use crate::global_state::{
     error::Error as GlobalStateError,
     state::{CommitProvider, StateProvider},
 };
-use casper_types::{execution::Effects, Digest, EraId};
+use casper_types::{execution::Effects, Digest};
 
 use crate::tracking_copy::TrackingCopy;
 
@@ -90,23 +90,6 @@ pub use system_entity_registry::{
 };
 pub use total_supply::{TotalSupplyRequest, TotalSupplyResult};
 pub use trie::{PutTrieRequest, PutTrieResult, TrieElement, TrieRequest, TrieResult};
-
-/// Block placeholder.
-pub struct Block {
-    _era_id: EraId,
-}
-
-/// Block provider definition.
-pub trait BlockProvider {
-    /// Block provider error type.
-    type Error;
-
-    /// Read block by height.
-    fn read_block_by_height(&self, _height: usize) -> Result<Option<Block>, Self::Error> {
-        // TODO: We need to implement this
-        todo!()
-    }
-}
 
 /// Anchor struct for block store functionality.
 #[derive(Default, Copy, Clone)]

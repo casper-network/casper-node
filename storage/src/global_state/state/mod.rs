@@ -1276,6 +1276,7 @@ pub trait StateProvider {
                 amount,
                 minimum_delegation_amount,
                 maximum_delegation_amount,
+                minimum_bid_amount,
             } => runtime
                 .add_bid(
                     public_key,
@@ -1283,12 +1284,17 @@ pub trait StateProvider {
                     amount,
                     minimum_delegation_amount,
                     maximum_delegation_amount,
+                    minimum_bid_amount,
                     0,
                 )
                 .map(AuctionMethodRet::UpdatedAmount)
                 .map_err(TrackingCopyError::Api),
-            AuctionMethod::WithdrawBid { public_key, amount } => runtime
-                .withdraw_bid(public_key, amount)
+            AuctionMethod::WithdrawBid {
+                public_key,
+                amount,
+                minimum_bid_amount,
+            } => runtime
+                .withdraw_bid(public_key, amount, minimum_bid_amount)
                 .map(AuctionMethodRet::UpdatedAmount)
                 .map_err(|auc_err| {
                     TrackingCopyError::SystemContract(system::Error::Auction(auc_err))

@@ -6,10 +6,12 @@ use casper_wasm::{
 
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, ARG_AMOUNT,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, DEFAULT_WASM_CONFIG, LOCAL_GENESIS_REQUEST,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, LOCAL_GENESIS_REQUEST,
 };
 use casper_execution_engine::{engine_state::Error, runtime::PreprocessingError};
-use casper_types::{addressable_entity::DEFAULT_ENTRY_POINT_NAME, runtime_args, Gas, RuntimeArgs};
+use casper_types::{
+    addressable_entity::DEFAULT_ENTRY_POINT_NAME, runtime_args, Gas, OpcodeCosts, RuntimeArgs,
+};
 
 use crate::test::regression::test_utils::make_gas_counter_overflow;
 
@@ -71,7 +73,7 @@ fn should_fail_to_overflow_gas_counter() {
 #[ignore]
 #[test]
 fn should_correctly_measure_gas_for_opcodes() {
-    let opcode_costs = DEFAULT_WASM_CONFIG.opcode_costs();
+    let opcode_costs = OpcodeCosts::default();
 
     const GROW_PAGES: u32 = 1;
 

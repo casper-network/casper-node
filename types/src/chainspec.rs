@@ -50,6 +50,7 @@ pub use core_config::DEFAULT_GAS_HOLD_BALANCE_HANDLING;
 pub use core_config::DEFAULT_REFUND_HANDLING;
 pub use core_config::{
     ConsensusProtocolName, CoreConfig, LegacyRequiredFinality, DEFAULT_GAS_HOLD_INTERVAL,
+    DEFAULT_MINIMUM_BID_AMOUNT,
 };
 pub use fee_handling::FeeHandling;
 #[cfg(any(feature = "std", test))]
@@ -74,7 +75,7 @@ pub use vacancy_config::VacancyConfig;
 pub use vm_config::{
     AuctionCosts, BrTableCost, ChainspecRegistry, ControlFlowCosts, HandlePaymentCosts,
     HostFunction, HostFunctionCost, HostFunctionCosts, MessageLimits, MintCosts, OpcodeCosts,
-    StandardPaymentCosts, StorageCosts, SystemConfig, WasmConfig,
+    StandardPaymentCosts, StorageCosts, SystemConfig, WasmConfig, WasmV1Config,
     DEFAULT_HOST_FUNCTION_NEW_DICTIONARY,
 };
 #[cfg(any(feature = "testing", test))]
@@ -89,9 +90,9 @@ pub use vm_config::{
     DEFAULT_CONTROL_FLOW_RETURN_OPCODE, DEFAULT_CONTROL_FLOW_SELECT_OPCODE,
     DEFAULT_CONVERSION_COST, DEFAULT_CURRENT_MEMORY_COST, DEFAULT_DELEGATE_COST, DEFAULT_DIV_COST,
     DEFAULT_GLOBAL_COST, DEFAULT_GROW_MEMORY_COST, DEFAULT_INTEGER_COMPARISON_COST,
-    DEFAULT_LOAD_COST, DEFAULT_LOCAL_COST, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_MUL_COST,
-    DEFAULT_NEW_DICTIONARY_COST, DEFAULT_NOP_COST, DEFAULT_STORE_COST, DEFAULT_TRANSFER_COST,
-    DEFAULT_UNREACHABLE_COST, DEFAULT_WASM_MAX_MEMORY,
+    DEFAULT_LOAD_COST, DEFAULT_LOCAL_COST, DEFAULT_MUL_COST, DEFAULT_NEW_DICTIONARY_COST,
+    DEFAULT_NOP_COST, DEFAULT_STORE_COST, DEFAULT_TRANSFER_COST, DEFAULT_UNREACHABLE_COST,
+    DEFAULT_V1_MAX_STACK_HEIGHT, DEFAULT_V1_WASM_MAX_MEMORY,
 };
 
 /// A collection of configuration settings describing the state of the system at genesis and after
@@ -131,6 +132,9 @@ pub struct Chainspec {
     /// Vacancy behavior config
     #[serde(rename = "vacancy")]
     pub vacancy_config: VacancyConfig,
+
+    /// Storage costs.
+    pub storage_costs: StorageCosts,
 }
 
 impl Chainspec {
@@ -283,6 +287,7 @@ impl Chainspec {
             wasm_config,
             system_costs_config,
             vacancy_config,
+            storage_costs: rng.gen(),
         }
     }
 
@@ -320,7 +325,8 @@ impl ToBytes for Chainspec {
         self.transaction_config.write_bytes(writer)?;
         self.wasm_config.write_bytes(writer)?;
         self.system_costs_config.write_bytes(writer)?;
-        self.vacancy_config.write_bytes(writer)
+        self.vacancy_config.write_bytes(writer)?;
+        self.storage_costs.write_bytes(writer)
     }
 
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
@@ -338,6 +344,7 @@ impl ToBytes for Chainspec {
             + self.wasm_config.serialized_length()
             + self.system_costs_config.serialized_length()
             + self.vacancy_config.serialized_length()
+            + self.storage_costs.serialized_length()
     }
 }
 
@@ -351,6 +358,7 @@ impl FromBytes for Chainspec {
         let (wasm_config, remainder) = WasmConfig::from_bytes(remainder)?;
         let (system_costs_config, remainder) = SystemConfig::from_bytes(remainder)?;
         let (vacancy_config, remainder) = VacancyConfig::from_bytes(remainder)?;
+        let (storage_costs, remainder) = FromBytes::from_bytes(remainder)?;
         let chainspec = Chainspec {
             protocol_config,
             network_config,
@@ -360,6 +368,7 @@ impl FromBytes for Chainspec {
             wasm_config,
             system_costs_config,
             vacancy_config,
+            storage_costs,
         };
         Ok((chainspec, remainder))
     }

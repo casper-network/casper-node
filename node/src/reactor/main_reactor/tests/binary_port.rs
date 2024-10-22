@@ -11,10 +11,10 @@ use casper_binary_port::{
     BinaryMessageCodec, BinaryRequest, BinaryRequestHeader, BinaryResponse,
     BinaryResponseAndRequest, ConsensusStatus, ConsensusValidatorChanges, ContractInformation,
     DictionaryItemIdentifier, DictionaryQueryResult, EntityIdentifier, EraIdentifier, ErrorCode,
-    GetRequest, GetTrieFullResult, GlobalStateQueryResult, GlobalStateRequest, InformationRequest,
-    InformationRequestTag, KeyPrefix, LastProgress, NetworkName, NodeStatus, PackageIdentifier,
-    PurseIdentifier, ReactorStateName, RecordId, ResponseType, RewardResponse, Uptime,
-    ValueWithProof,
+    GetRequest, GetTrieFullResult, GlobalStateEntityQualifier, GlobalStateQueryResult,
+    GlobalStateRequest, InformationRequest, InformationRequestTag, KeyPrefix, LastProgress,
+    NetworkName, NodeStatus, PackageIdentifier, PurseIdentifier, ReactorStateName, RecordId,
+    ResponseType, RewardResponse, Uptime, ValueWithProof,
 };
 use casper_storage::global_state::state::CommitProvider;
 use casper_types::{
@@ -834,11 +834,13 @@ fn get_block_transfers(expected: BlockHeader) -> TestCase {
 fn get_era_summary(state_root_hash: Digest) -> TestCase {
     TestCase {
         name: "get_era_summary",
-        request: BinaryRequest::Get(GetRequest::State(Box::new(GlobalStateRequest::Item {
-            state_identifier: Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
-            base_key: Key::EraSummary,
-            path: vec![],
-        }))),
+        request: BinaryRequest::Get(GetRequest::State(Box::new(GlobalStateRequest::new(
+            Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
+            GlobalStateEntityQualifier::Item {
+                base_key: Key::EraSummary,
+                path: vec![],
+            },
+        )))),
         asserter: Box::new(|response| {
             assert_response::<GlobalStateQueryResult, _>(
                 response,
@@ -855,10 +857,12 @@ fn get_era_summary(state_root_hash: Digest) -> TestCase {
 fn get_all_bids(state_root_hash: Digest) -> TestCase {
     TestCase {
         name: "get_all_bids",
-        request: BinaryRequest::Get(GetRequest::State(Box::new(GlobalStateRequest::AllItems {
-            state_identifier: Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
-            key_tag: KeyTag::Bid,
-        }))),
+        request: BinaryRequest::Get(GetRequest::State(Box::new(GlobalStateRequest::new(
+            Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
+            GlobalStateEntityQualifier::AllItems {
+                key_tag: KeyTag::Bid,
+            },
+        )))),
         asserter: Box::new(|response| {
             assert_response::<Vec<StoredValue>, _>(
                 response,
@@ -872,9 +876,7 @@ fn get_all_bids(state_root_hash: Digest) -> TestCase {
 fn get_trie(digest: Digest) -> TestCase {
     TestCase {
         name: "get_trie",
-        request: BinaryRequest::Get(GetRequest::State(Box::new(GlobalStateRequest::Trie {
-            trie_key: digest,
-        }))),
+        request: BinaryRequest::Get(GetRequest::Trie { trie_key: digest }),
         asserter: Box::new(|response| {
             assert_response::<GetTrieFullResult, _>(
                 response,
@@ -888,12 +890,12 @@ fn get_trie(digest: Digest) -> TestCase {
 fn get_dictionary_item_by_addr(state_root_hash: Digest, addr: DictionaryAddr) -> TestCase {
     TestCase {
         name: "get_dictionary_item_by_addr",
-        request: BinaryRequest::Get(GetRequest::State(Box::new(
-            GlobalStateRequest::DictionaryItem {
-                state_identifier: Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
+        request: BinaryRequest::Get(GetRequest::State(Box::new(GlobalStateRequest::new(
+            Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
+            GlobalStateEntityQualifier::DictionaryItem {
                 identifier: DictionaryItemIdentifier::DictionaryItem(addr),
             },
-        ))),
+        )))),
         asserter: Box::new(move |response| {
             assert_response::<DictionaryQueryResult, _>(
                 response,
@@ -916,15 +918,15 @@ fn get_dictionary_item_by_seed_uref(
 ) -> TestCase {
     TestCase {
         name: "get_dictionary_item_by_seed_uref",
-        request: BinaryRequest::Get(GetRequest::State(Box::new(
-            GlobalStateRequest::DictionaryItem {
-                state_identifier: Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
+        request: BinaryRequest::Get(GetRequest::State(Box::new(GlobalStateRequest::new(
+            Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
+            GlobalStateEntityQualifier::DictionaryItem {
                 identifier: DictionaryItemIdentifier::URef {
                     seed_uref,
                     dictionary_item_key: dictionary_item_key.clone(),
                 },
             },
-        ))),
+        )))),
         asserter: Box::new(move |response| {
             assert_response::<DictionaryQueryResult, _>(
                 response,
@@ -949,16 +951,16 @@ fn get_dictionary_item_by_legacy_named_key(
 ) -> TestCase {
     TestCase {
         name: "get_dictionary_item_by_legacy_named_key",
-        request: BinaryRequest::Get(GetRequest::State(Box::new(
-            GlobalStateRequest::DictionaryItem {
-                state_identifier: Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
+        request: BinaryRequest::Get(GetRequest::State(Box::new(GlobalStateRequest::new(
+            Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
+            GlobalStateEntityQualifier::DictionaryItem {
                 identifier: DictionaryItemIdentifier::AccountNamedKey {
                     hash,
                     dictionary_name,
                     dictionary_item_key,
                 },
             },
-        ))),
+        )))),
         asserter: Box::new(|response| {
             assert_response::<DictionaryQueryResult, _>(
                 response,
@@ -977,16 +979,16 @@ fn get_dictionary_item_by_named_key(
 ) -> TestCase {
     TestCase {
         name: "get_dictionary_item_by_named_key",
-        request: BinaryRequest::Get(GetRequest::State(Box::new(
-            GlobalStateRequest::DictionaryItem {
-                state_identifier: Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
+        request: BinaryRequest::Get(GetRequest::State(Box::new(GlobalStateRequest::new(
+            Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
+            GlobalStateEntityQualifier::DictionaryItem {
                 identifier: DictionaryItemIdentifier::EntityNamedKey {
                     addr,
                     dictionary_name,
                     dictionary_item_key,
                 },
             },
-        ))),
+        )))),
         asserter: Box::new(|response| {
             assert_response::<DictionaryQueryResult, _>(
                 response,
@@ -1000,10 +1002,12 @@ fn get_dictionary_item_by_named_key(
 fn get_balance(state_root_hash: Digest, account_hash: AccountHash) -> TestCase {
     TestCase {
         name: "get_balance",
-        request: BinaryRequest::Get(GetRequest::State(Box::new(GlobalStateRequest::Balance {
-            state_identifier: Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
-            purse_identifier: PurseIdentifier::Account(account_hash),
-        }))),
+        request: BinaryRequest::Get(GetRequest::State(Box::new(GlobalStateRequest::new(
+            Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
+            GlobalStateEntityQualifier::Balance {
+                purse_identifier: PurseIdentifier::Account(account_hash),
+            },
+        )))),
         asserter: Box::new(|response| {
             assert_response::<BalanceResponse, _>(
                 response,
@@ -1017,10 +1021,12 @@ fn get_balance(state_root_hash: Digest, account_hash: AccountHash) -> TestCase {
 fn get_balance_account_not_found(state_root_hash: Digest) -> TestCase {
     TestCase {
         name: "get_balance_account_not_found",
-        request: BinaryRequest::Get(GetRequest::State(Box::new(GlobalStateRequest::Balance {
-            state_identifier: Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
-            purse_identifier: PurseIdentifier::Account(AccountHash([9; 32])),
-        }))),
+        request: BinaryRequest::Get(GetRequest::State(Box::new(GlobalStateRequest::new(
+            Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
+            GlobalStateEntityQualifier::Balance {
+                purse_identifier: PurseIdentifier::Account(AccountHash([9; 32])),
+            },
+        )))),
         asserter: Box::new(|response| response.error_code() == ErrorCode::PurseNotFound as u16),
     }
 }
@@ -1028,10 +1034,12 @@ fn get_balance_account_not_found(state_root_hash: Digest) -> TestCase {
 fn get_balance_purse_uref_not_found(state_root_hash: Digest) -> TestCase {
     TestCase {
         name: "get_balance_purse_uref_not_found",
-        request: BinaryRequest::Get(GetRequest::State(Box::new(GlobalStateRequest::Balance {
-            state_identifier: Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
-            purse_identifier: PurseIdentifier::Purse(URef::new([9; 32], Default::default())),
-        }))),
+        request: BinaryRequest::Get(GetRequest::State(Box::new(GlobalStateRequest::new(
+            Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
+            GlobalStateEntityQualifier::Balance {
+                purse_identifier: PurseIdentifier::Purse(URef::new([9; 32], Default::default())),
+            },
+        )))),
         asserter: Box::new(|response| response.error_code() == ErrorCode::PurseNotFound as u16),
     }
 }
@@ -1039,12 +1047,12 @@ fn get_balance_purse_uref_not_found(state_root_hash: Digest) -> TestCase {
 fn get_named_keys_by_prefix(state_root_hash: Digest, entity_addr: EntityAddr) -> TestCase {
     TestCase {
         name: "get_named_keys_by_prefix",
-        request: BinaryRequest::Get(GetRequest::State(Box::new(
-            GlobalStateRequest::ItemsByPrefix {
-                state_identifier: Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
+        request: BinaryRequest::Get(GetRequest::State(Box::new(GlobalStateRequest::new(
+            Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
+            GlobalStateEntityQualifier::ItemsByPrefix {
                 key_prefix: KeyPrefix::NamedKeysByEntity(entity_addr),
             },
-        ))),
+        )))),
         asserter: Box::new(|response| {
             assert_response::<Vec<StoredValue>, _>(
                 response,

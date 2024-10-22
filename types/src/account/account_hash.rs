@@ -65,6 +65,11 @@ impl AccountHash {
         )
     }
 
+    /// Hexadecimal representation of the hash.
+    pub fn to_hex_string(&self) -> String {
+        base16::encode_lower(&self.0)
+    }
+
     /// Parses a string formatted as per `Self::to_formatted_string()` into an `AccountHash`.
     pub fn from_formatted_str(input: &str) -> Result<Self, FromStrError> {
         let remainder = input

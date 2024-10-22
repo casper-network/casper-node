@@ -5,7 +5,7 @@
 [![Build Status](https://drone-auto-casper-network.casperlabs.io/api/badges/casper-network/casper-node/status.svg?branch=dev)](http://drone-auto-casper-network.casperlabs.io/casper-network/casper-node)
 [![Crates.io](https://img.shields.io/crates/v/casper-types)](https://crates.io/crates/casper-types)
 [![Documentation](https://docs.rs/casper-types/badge.svg)](https://docs.rs/casper-types)
-[![License](https://img.shields.io/badge/license-Apache-blue)](https://github.com/CasperLabs/casper-node/blob/master/LICENSE)
+[![License](https://img.shields.io/badge/license-Apache-blue)](https://github.com/casper-network/casper-node/blob/master/LICENSE)
 
 Types shared by many casper crates for use on the Casper network.
 

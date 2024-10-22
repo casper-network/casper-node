@@ -83,6 +83,9 @@ max_runtime_call_stack_height = 12
 minimum_delegation_amount = 500_000_000_000
 # Maximum allowed delegation amount in motes
 maximum_delegation_amount = 1_000_000_000_000_000_000
+# Minimum bid amount allowed in motes. Withdrawing one's bid to an amount strictly less than
+# the value specified will be treated as a full unbond of a validator and their associated delegators
+minimum_bid_amount = 10_000_000_000_000
 # Global state prune batch size (0 = this feature is off)
 prune_batch_size = 0
 # Enables strict arguments checking when calling a contract; i.e. that all non-optional args are provided and of the correct `CLType`.
@@ -211,24 +214,22 @@ wasm_lanes = [[3, 344_064, 1024, 500_000_000_000, 3], [4, 172_032, 1024, 50_000_
 [transactions.deploy]
 # The maximum number of Motes allowed to be spent during payment.  0 means unlimited.
 max_payment_cost = '0'
-# The maximum number of other deploys a deploy can depend on (require to have been executed before it can execute).
-max_dependencies = 10
 # The limit of length of serialized payment code arguments.
 payment_args_max_length = 1024
 # The limit of length of serialized session code arguments.
 session_args_max_length = 1024
 
-[wasm]
+[wasm.v1]
 # Amount of free memory (in 64kB pages) each contract can use for stack.
 max_memory = 64
 # Max stack height (native WebAssembly stack limiter).
 max_stack_height = 500
 
-[wasm.storage_costs]
+[storage_costs]
 # Gas charged per byte stored in the global state.
 gas_per_byte = 1_117_587
 
-[wasm.opcode_costs]
+[wasm.v1.opcode_costs]
 # Bit operations multiplier.
 bit = 300
 # Arithmetic add operations multiplier.
@@ -263,7 +264,7 @@ grow_memory = 240_000
 sign = 300
 
 # Control flow operations multiplier.
-[wasm.opcode_costs.control_flow]
+[wasm.v1.opcode_costs.control_flow]
 block = 440
 loop = 440
 if = 440
@@ -277,14 +278,14 @@ call = 68_000
 call_indirect = 68_000
 drop = 440
 
-[wasm.opcode_costs.control_flow.br_table]
+[wasm.v1.opcode_costs.control_flow.br_table]
 # Fixed cost per `br_table` opcode
 cost = 35_000
 # Size of target labels in the `br_table` opcode will be multiplied by `size_multiplier`
 size_multiplier = 100
 
 # Host function declarations are located in smart_contracts/contract/src/ext_ffi.rs
-[wasm.host_function_costs]
+[wasm.v1.host_function_costs]
 add = { cost = 5_800, arguments = [0, 0, 0, 0] }
 add_associated_key = { cost = 1_200_000, arguments = [0, 0, 0] }
 add_contract_version = { cost = 200, arguments = [0, 0, 0, 0, 120_000, 0, 0, 0, 0, 0] }
@@ -346,7 +347,7 @@ max_message_size = 1_024
 [system_costs.auction_costs]
 get_era_validators = 10_000
 read_seigniorage_recipients = 10_000
-add_bid = 2_500_000_000
+add_bid = 5_000_000_000_000
 withdraw_bid = 2_500_000_000
 delegate = 2_500_000_000
 undelegate = 2_500_000_000

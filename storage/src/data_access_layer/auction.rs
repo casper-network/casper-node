@@ -56,6 +56,9 @@ pub enum AuctionMethod {
         minimum_delegation_amount: u64,
         /// Maximum delegation amount for this validator bid.
         maximum_delegation_amount: u64,
+        /// The minimum bid amount a validator must submit to have
+        /// their bid considered as valid.
+        minimum_bid_amount: u64,
     },
     /// Withdraw bid.
     WithdrawBid {
@@ -63,6 +66,9 @@ pub enum AuctionMethod {
         public_key: PublicKey,
         /// Bid amount.
         amount: U512,
+        /// The minimum bid amount a validator, if a validator reduces their stake
+        /// below this amount, then it is treated as a complete withdrawal.
+        minimum_bid_amount: u64,
     },
     /// Delegate to validator.
     Delegate {
@@ -123,8 +129,11 @@ impl AuctionMethod {
                 runtime_args,
                 chainspec.core_config.minimum_delegation_amount,
                 chainspec.core_config.maximum_delegation_amount,
+                chainspec.core_config.minimum_bid_amount,
             ),
-            TransactionEntryPoint::WithdrawBid => Self::new_withdraw_bid(runtime_args),
+            TransactionEntryPoint::WithdrawBid => {
+                Self::new_withdraw_bid(runtime_args, chainspec.core_config.minimum_bid_amount)
+            }
             TransactionEntryPoint::Delegate => Self::new_delegate(
                 runtime_args,
                 chainspec.core_config.max_delegators_per_validator,
@@ -149,6 +158,7 @@ impl AuctionMethod {
         runtime_args: &RuntimeArgs,
         global_minimum_delegation: u64,
         global_maximum_delegation: u64,
+        global_minimum_bid_amount: u64,
     ) -> Result<Self, AuctionMethodError> {
         let public_key = Self::get_named_argument(runtime_args, auction::ARG_PUBLIC_KEY)?;
         let delegation_rate = Self::get_named_argument(runtime_args, auction::ARG_DELEGATION_RATE)?;
@@ -166,13 +176,21 @@ impl AuctionMethod {
             amount,
             minimum_delegation_amount,
             maximum_delegation_amount,
+            minimum_bid_amount: global_minimum_bid_amount,
         })
     }
 
-    fn new_withdraw_bid(runtime_args: &RuntimeArgs) -> Result<Self, AuctionMethodError> {
+    fn new_withdraw_bid(
+        runtime_args: &RuntimeArgs,
+        global_minimum_bid_amount: u64,
+    ) -> Result<Self, AuctionMethodError> {
         let public_key = Self::get_named_argument(runtime_args, auction::ARG_PUBLIC_KEY)?;
         let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
-        Ok(Self::WithdrawBid { public_key, amount })
+        Ok(Self::WithdrawBid {
+            public_key,
+            amount,
+            minimum_bid_amount: global_minimum_bid_amount,
+        })
     }
 
     fn new_delegate(
