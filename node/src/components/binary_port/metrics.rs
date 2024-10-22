@@ -26,6 +26,9 @@ const BINARY_PORT_CONNECTIONS_COUNT_NAME: &str = "binary_port_connections_count"
 const BINARY_PORT_CONNECTIONS_COUNT_HELP: &str =
     "total number of external connections established to binary port";
 
+const BINARY_PORT_TRIE_COUNT_NAME: &str = "binary_port_get_trie_count";
+const BINARY_PORT_TRIE_COUNT_HELP: &str = "number of Get queries received for the trie state";
+
 /// Metrics.
 #[derive(Debug)]
 pub(super) struct Metrics {
@@ -41,6 +44,8 @@ pub(super) struct Metrics {
     pub(super) binary_port_get_state_count: IntCounter,
     /// Number of distinct connections to binary port.
     pub(super) binary_port_connections_count: IntCounter,
+    /// Number of `Get::Trie` queries received.
+    pub(super) binary_port_get_trie_count: IntCounter,
 
     registry: Registry,
 }
@@ -78,12 +83,18 @@ impl Metrics {
             BINARY_PORT_CONNECTIONS_COUNT_HELP.to_string(),
         )?;
 
+        let binary_port_get_trie_count = IntCounter::new(
+            BINARY_PORT_TRIE_COUNT_NAME.to_string(),
+            BINARY_PORT_TRIE_COUNT_HELP.to_string(),
+        )?;
+
         registry.register(Box::new(binary_port_try_accept_transaction_count.clone()))?;
         registry.register(Box::new(binary_port_try_speculative_exec_count.clone()))?;
         registry.register(Box::new(binary_port_get_record_count.clone()))?;
         registry.register(Box::new(binary_port_get_info_count.clone()))?;
         registry.register(Box::new(binary_port_get_state_count.clone()))?;
         registry.register(Box::new(binary_port_connections_count.clone()))?;
+        registry.register(Box::new(binary_port_get_trie_count.clone()))?;
 
         Ok(Metrics {
             binary_port_try_accept_transaction_count,
@@ -92,6 +103,7 @@ impl Metrics {
             binary_port_get_info_count,
             binary_port_get_state_count,
             binary_port_connections_count,
+            binary_port_get_trie_count,
             registry: registry.clone(),
         })
     }
