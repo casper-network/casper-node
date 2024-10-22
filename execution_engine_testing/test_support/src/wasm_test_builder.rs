@@ -810,6 +810,7 @@ where
             balance_hold_interval,
             include_credits,
             credit_cap,
+            config.system_costs_config.mint_costs().transfer,
         );
 
         let bidding_req = BiddingRequest::new(
@@ -975,6 +976,7 @@ where
             self.chainspec.core_config.gas_hold_interval.millis(),
             include_credits,
             credit_cap,
+            self.chainspec.system_costs_config.mint_costs().transfer,
         )
     }
 

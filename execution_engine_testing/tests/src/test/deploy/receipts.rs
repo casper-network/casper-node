@@ -97,7 +97,16 @@ fn should_record_wasmless_transfer() {
     assert_eq!(transfer.source, default_account.main_purse());
     assert_eq!(transfer.target, alice_attenuated_main_purse);
     assert_eq!(transfer.amount, *TRANSFER_AMOUNT_1);
-    assert_eq!(transfer.gas, Gas::zero());
+    assert_eq!(
+        transfer.gas,
+        Gas::from(
+            builder
+                .chainspec()
+                .system_costs_config
+                .mint_costs()
+                .transfer
+        )
+    );
     assert_eq!(transfer.id, Some(id));
 }
 
@@ -153,7 +162,16 @@ fn should_record_wasm_transfer() {
     assert_eq!(transfer.source, default_account.main_purse());
     assert_eq!(transfer.target, alice_attenuated_main_purse);
     assert_eq!(transfer.amount, *TRANSFER_AMOUNT_1);
-    assert_eq!(transfer.gas, Gas::zero()) // TODO
+    assert_eq!(
+        transfer.gas,
+        Gas::from(
+            builder
+                .chainspec()
+                .system_costs_config
+                .mint_costs()
+                .transfer
+        )
+    )
 }
 
 #[ignore]
@@ -211,7 +229,16 @@ fn should_record_wasm_transfer_with_id() {
     assert_eq!(transfer.source, default_account.main_purse());
     assert_eq!(transfer.target, alice_attenuated_main_purse);
     assert_eq!(transfer.amount, *TRANSFER_AMOUNT_1);
-    assert_eq!(transfer.gas, Gas::zero()); // TODO
+    assert_eq!(
+        transfer.gas,
+        Gas::from(
+            builder
+                .chainspec()
+                .system_costs_config
+                .mint_costs()
+                .transfer
+        )
+    );
     assert_eq!(transfer.id, id);
 }
 
@@ -309,7 +336,13 @@ fn should_record_wasm_transfers() {
         source: default_account.main_purse(),
         target: alice_attenuated_main_purse,
         amount: *TRANSFER_AMOUNT_1,
-        gas: Gas::zero(),
+        gas: Gas::from(
+            builder
+                .chainspec()
+                .system_costs_config
+                .mint_costs()
+                .transfer
+        ),
         id: alice_id,
     })));
 
@@ -320,7 +353,13 @@ fn should_record_wasm_transfers() {
         source: default_account.main_purse(),
         target: bob_attenuated_main_purse,
         amount: *TRANSFER_AMOUNT_2,
-        gas: Gas::zero(),
+        gas: Gas::from(
+            builder
+                .chainspec()
+                .system_costs_config
+                .mint_costs()
+                .transfer
+        ),
         id: bob_id,
     })));
 
@@ -331,7 +370,13 @@ fn should_record_wasm_transfers() {
         source: default_account.main_purse(),
         target: carol_attenuated_main_purse,
         amount: *TRANSFER_AMOUNT_3,
-        gas: Gas::zero(),
+        gas: Gas::from(
+            builder
+                .chainspec()
+                .system_costs_config
+                .mint_costs()
+                .transfer
+        ),
         id: carol_id,
     })));
 }
@@ -469,7 +514,13 @@ fn should_record_wasm_transfers_with_subcall() {
         source: default_account.main_purse(),
         target: alice_attenuated_main_purse,
         amount: *TRANSFER_AMOUNT_1,
-        gas: Gas::zero(),
+        gas: Gas::from(
+            builder
+                .chainspec()
+                .system_costs_config
+                .mint_costs()
+                .transfer,
+        ),
         id: alice_id,
     });
 
@@ -480,7 +531,13 @@ fn should_record_wasm_transfers_with_subcall() {
         source: default_account.main_purse(),
         target: bob_attenuated_main_purse,
         amount: *TRANSFER_AMOUNT_2,
-        gas: Gas::zero(),
+        gas: Gas::from(
+            builder
+                .chainspec()
+                .system_costs_config
+                .mint_costs()
+                .transfer,
+        ),
         id: bob_id,
     });
 
@@ -491,7 +548,13 @@ fn should_record_wasm_transfers_with_subcall() {
         source: default_account.main_purse(),
         target: carol_attenuated_main_purse,
         amount: *TRANSFER_AMOUNT_3,
-        gas: Gas::zero(),
+        gas: Gas::from(
+            builder
+                .chainspec()
+                .system_costs_config
+                .mint_costs()
+                .transfer,
+        ),
         id: carol_id,
     });
 
@@ -519,7 +582,13 @@ fn should_record_wasm_transfers_with_subcall() {
         source: contract_purse,
         target: alice_attenuated_main_purse,
         amount: *TRANSFER_AMOUNT_1,
-        gas: Gas::zero(),
+        gas: Gas::from(
+            builder
+                .chainspec()
+                .system_costs_config
+                .mint_costs()
+                .transfer,
+        ),
         id: alice_id,
     });
 
@@ -530,7 +599,13 @@ fn should_record_wasm_transfers_with_subcall() {
         source: contract_purse,
         target: bob_attenuated_main_purse,
         amount: *TRANSFER_AMOUNT_2,
-        gas: Gas::zero(),
+        gas: Gas::from(
+            builder
+                .chainspec()
+                .system_costs_config
+                .mint_costs()
+                .transfer,
+        ),
         id: bob_id,
     });
 
@@ -541,7 +616,13 @@ fn should_record_wasm_transfers_with_subcall() {
         source: contract_purse,
         target: carol_attenuated_main_purse,
         amount: *TRANSFER_AMOUNT_3,
-        gas: Gas::zero(),
+        gas: Gas::from(
+            builder
+                .chainspec()
+                .system_costs_config
+                .mint_costs()
+                .transfer,
+        ),
         id: carol_id,
     });
 
