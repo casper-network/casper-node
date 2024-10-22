@@ -4,7 +4,9 @@ use derive_more::From;
 use rand::Rng;
 use serde::Serialize;
 
-use casper_binary_port::{BinaryRequest, BinaryResponse, GetRequest, GlobalStateRequest};
+use casper_binary_port::{
+    BinaryRequest, BinaryResponse, GetRequest, GlobalStateEntityQualifier, GlobalStateRequest,
+};
 
 use casper_types::{
     BlockHeader, Digest, GlobalStateIdentifier, KeyTag, PublicKey, Timestamp, Transaction,
@@ -379,16 +381,18 @@ impl ReactorEvent for Event {
 
 fn all_values_request() -> BinaryRequest {
     let state_identifier = GlobalStateIdentifier::StateRootHash(Digest::hash([1u8; 32]));
-    BinaryRequest::Get(GetRequest::State(Box::new(GlobalStateRequest::AllItems {
-        state_identifier: Some(state_identifier),
-        key_tag: KeyTag::Account,
-    })))
+    BinaryRequest::Get(GetRequest::State(Box::new(GlobalStateRequest::new(
+        Some(state_identifier),
+        GlobalStateEntityQualifier::AllItems {
+            key_tag: KeyTag::Account,
+        },
+    ))))
 }
 
 fn trie_request() -> BinaryRequest {
-    BinaryRequest::Get(GetRequest::State(Box::new(GlobalStateRequest::Trie {
+    BinaryRequest::Get(GetRequest::Trie {
         trie_key: Digest::hash([1u8; 32]),
-    })))
+    })
 }
 
 fn try_speculative_exec_request(rng: &mut TestRng) -> BinaryRequest {

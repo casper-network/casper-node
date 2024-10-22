@@ -7,7 +7,7 @@ description = "Casper execution engine crates."
 readme = "README.md"
 documentation = "https://docs.rs/casper-execution-engine"
 homepage = "https://casperlabs.io"
-repository = "https://github.com/CasperLabs/casper-node/tree/master/execution_engine"
+repository = "https://github.com/casper-network/casper-node/tree/master/execution_engine"
 license = "Apache-2.0"
 
 [dependencies]

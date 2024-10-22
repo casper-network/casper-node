@@ -6,7 +6,7 @@ description = "Types for the casper node binary port"
 documentation = "https://docs.rs/casper-binary-port"
 readme = "README.md"
 homepage = "https://casperlabs.io"
-repository = "https://github.com/CasperLabs/casper-node/tree/master/binary_port"
+repository = "https://github.com/casper-network/casper-node/tree/master/binary_port"
 license = "Apache-2.0"
 exclude = ["proptest-regressions"]
 

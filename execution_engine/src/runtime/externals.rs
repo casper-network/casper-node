@@ -32,11 +32,8 @@ where
     ) -> Result<Option<RuntimeValue>, Trap> {
         let func = FunctionIndex::try_from(index).expect("unknown function index");
 
-        let host_function_costs = self
-            .context
-            .engine_config()
-            .wasm_config()
-            .take_host_function_costs();
+        let host_function_costs =
+            (*self.context.engine_config().wasm_config().v1()).take_host_function_costs();
 
         match func {
             FunctionIndex::ReadFuncIndex => {
