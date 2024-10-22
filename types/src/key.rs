@@ -290,7 +290,7 @@ pub enum Key {
     Hash(HashAddr),
     /// A `Key` which is a [`URef`], under which most types of data can be stored.
     URef(URef),
-    /// A `Key` under which a (legacy) transfer is stored.
+    /// A `Key` under which a transfer is stored.
     Transfer(TransferAddr),
     /// A `Key` under which a deploy info is stored.
     DeployInfo(DeployHash),

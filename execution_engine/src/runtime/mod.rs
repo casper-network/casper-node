@@ -679,8 +679,8 @@ where
     }
 
     /// Checks if a [`Key`] is a system contract.
-    fn is_system_contract(&self, entity_hash: HashAddr) -> Result<bool, ExecError> {
-        self.context.is_system_addressable_entity(&entity_hash)
+    fn is_system_contract(&self, hash_addr: HashAddr) -> Result<bool, ExecError> {
+        self.context.is_system_addressable_entity(&hash_addr)
     }
 
     fn get_named_argument<T: FromBytes + CLTyped>(

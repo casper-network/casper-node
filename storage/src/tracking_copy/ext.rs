@@ -595,7 +595,7 @@ where
 
     fn get_named_keys(&self, entity_addr: EntityAddr) -> Result<NamedKeys, Self::Error> {
         if !self.enable_addressable_entity {
-            let footprint = self.get_runtime_footprint(entity_addr)?;
+            let footprint = self.runtime_footprint_by_entity_addr(entity_addr)?;
             return Ok(footprint.take_named_keys());
         }
 
@@ -637,7 +637,7 @@ where
 
     fn get_v1_entry_points(&self, entity_addr: EntityAddr) -> Result<EntryPoints, Self::Error> {
         if !self.enable_addressable_entity {
-            let footprint = self.get_runtime_footprint(entity_addr)?;
+            let footprint = self.runtime_footprint_by_entity_addr(entity_addr)?;
             return Ok(footprint.entry_points().clone());
         }
 

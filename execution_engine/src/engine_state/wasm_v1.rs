@@ -226,8 +226,8 @@ pub enum SessionKind {
 /// The item to be executed.
 #[derive(Debug, Clone)]
 pub enum ExecutableItem {
-    /// Legacy deploy byte code.
-    LegacyDeploy(Bytes),
+    /// Deploy model byte code.
+    Deploy(Bytes),
     /// Payment byte code.
     PaymentBytes(Bytes),
     /// Session byte code.
@@ -653,7 +653,7 @@ fn build_session_info_for_executable_item(
     let session_args: RuntimeArgs;
     match session_item {
         ExecutableDeployItem::ModuleBytes { module_bytes, args } => {
-            session = ExecutableItem::LegacyDeploy(module_bytes.clone());
+            session = ExecutableItem::Deploy(module_bytes.clone());
             session_entry_point = DEFAULT_ENTRY_POINT.to_string();
             session_args = args.clone();
         }

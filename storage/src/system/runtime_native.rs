@@ -351,8 +351,9 @@ where
         let seed = id.seed();
         let address_generator = AddressGenerator::new(&seed, phase);
         let transfers = vec![];
-        let (entity_addr, runtime_footprint, access_rights) =
-            tracking_copy.borrow_mut().system_entity(protocol_version)?;
+        let (entity_addr, runtime_footprint, access_rights) = tracking_copy
+            .borrow_mut()
+            .system_entity_runtime_footprint(protocol_version)?;
         let address = PublicKey::System.to_account_hash();
         let entity_key = if config.enable_addressable_entity {
             Key::AddressableEntity(entity_addr)
@@ -407,7 +408,7 @@ where
         };
         let runtime_footprint = tracking_copy
             .borrow_mut()
-            .get_runtime_footprint_by_hash(hash)?;
+            .runtime_footprint_by_hash_addr(hash)?;
         let access_rights =
             runtime_footprint.extract_access_rights(hash, runtime_footprint.named_keys());
         let address = PublicKey::System.to_account_hash();

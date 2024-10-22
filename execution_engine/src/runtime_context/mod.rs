@@ -745,7 +745,7 @@ where
             | StoredValue::Contract(_)
             | StoredValue::AddressableEntity(_)
             | StoredValue::Package(_)
-            | StoredValue::LegacyTransfer(_)
+            | StoredValue::Transfer(_)
             | StoredValue::DeployInfo(_)
             | StoredValue::EraInfo(_)
             | StoredValue::Bid(_)
@@ -894,11 +894,9 @@ where
     /// Checks if we are calling a system addressable entity.
     pub(crate) fn is_system_addressable_entity(
         &self,
-        contract_hash: &HashAddr,
+        hash_addr: &HashAddr,
     ) -> Result<bool, ExecError> {
-        Ok(self
-            .system_entity_registry()?
-            .has_contract_hash(contract_hash))
+        Ok(self.system_entity_registry()?.exists(hash_addr))
     }
 
     /// Charges gas for specified amount of bytes used.

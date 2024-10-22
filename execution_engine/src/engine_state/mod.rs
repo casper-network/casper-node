@@ -94,7 +94,7 @@ impl ExecutionEngineV1 {
             }
         };
         let (runtime_footprint, entity_addr) = {
-            match tc.borrow_mut().get_authorized_addressable_entity(
+            match tc.borrow_mut().authorized_runtime_footprint_by_account(
                 protocol_version,
                 account_hash,
                 &authorization_keys,
