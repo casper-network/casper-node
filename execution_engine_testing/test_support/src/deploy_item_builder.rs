@@ -2,13 +2,12 @@ use std::{collections::BTreeSet, path::Path};
 
 use rand::Rng;
 
-use casper_execution_engine::engine_state::deploy_item::DeployItem;
 use casper_types::{
     account::AccountHash, bytesrepr::Bytes, AddressableEntityHash, DeployHash, EntityVersion,
     ExecutableDeployItem, HashAddr, PackageHash, RuntimeArgs,
 };
 
-use crate::{utils, DEFAULT_GAS_PRICE};
+use crate::{deploy_item::DeployItem, utils, DEFAULT_GAS_PRICE};
 
 #[derive(Default)]
 struct DeployItemData {

@@ -1,5 +1,4 @@
 //!  This module contains all the execution related code.
-pub mod deploy_item;
 pub mod engine_config;
 mod error;
 pub(crate) mod execution_kind;
@@ -16,7 +15,6 @@ use casper_storage::{
 use casper_types::U512;
 
 use crate::{execution::Executor, runtime::RuntimeStack};
-pub use deploy_item::DeployItem;
 pub use engine_config::{
     EngineConfig, EngineConfigBuilder, DEFAULT_MAX_QUERY_DEPTH,
     DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,

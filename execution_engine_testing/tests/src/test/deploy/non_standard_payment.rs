@@ -3,7 +3,7 @@ use casper_engine_test_support::{
     DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION, LOCAL_GENESIS_REQUEST,
     MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
-use casper_execution_engine::engine_state::{BlockInfo, WasmV1Request};
+use casper_execution_engine::engine_state::BlockInfo;
 use casper_storage::data_access_layer::BalanceIdentifier;
 use casper_types::{
     account::AccountHash, runtime_args, BlockHash, Digest, Gas, RuntimeArgs, Timestamp, U512,
@@ -94,12 +94,9 @@ fn should_charge_non_main_purse() {
     let block_info = BlockInfo::new(Digest::default(), block_time.into(), parent_block_hash, 1);
     builder
         .exec_wasm_v1(
-            WasmV1Request::new_custom_payment_from_deploy_item(
-                block_info,
-                Gas::from(12_500_000_000_u64),
-                &deploy_item,
-            )
-            .expect("should be valid req"),
+            deploy_item
+                .new_custom_payment_from_deploy_item(block_info, Gas::from(12_500_000_000_u64))
+                .expect("should be valid req"),
         )
         .expect_success()
         .commit();

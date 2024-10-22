@@ -3542,13 +3542,13 @@
           "additionalProperties": false
         },
         {
-          "description": "A version 1 (legacy) transfer.",
+          "description": "A version 1 transfer.",
           "type": "object",
           "required": [
-            "LegacyTransfer"
+            "Transfer"
           ],
           "properties": {
-            "LegacyTransfer": {
+            "Transfer": {
               "$ref": "#/definitions/TransferV1"
             }
           },

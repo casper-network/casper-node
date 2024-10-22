@@ -195,7 +195,7 @@ impl Caller {
         }
     }
 
-    /// Gets the [`AddressableEntityHash`] for both stored session and stored contract variants.
+    /// Gets the [`HashAddr`] for both stored session and stored contract variants.
     pub fn contract_hash(&self) -> Option<HashAddr> {
         match self {
             Caller::Initiator { .. } => None,
