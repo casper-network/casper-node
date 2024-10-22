@@ -2280,7 +2280,13 @@ where
 
         let txn_hash = self.context.get_transaction_hash();
         let from = InitiatorAddr::AccountHash(self.context.get_caller());
-        let fee = Gas::zero(); // TODO
+        let fee = Gas::from(
+            self.context
+                .engine_config()
+                .system_config()
+                .mint_costs()
+                .transfer,
+        );
         let transfer = Transfer::V2(TransferV2::new(
             txn_hash, from, maybe_to, source, target, amount, fee, id,
         ));
