@@ -17,7 +17,8 @@ use casper_types::{
     contracts::{ContractHash, ContractPackage, ContractVersionKey},
     AddressableEntityHash, BrTableCost, CLValue, ControlFlowCosts, EraId, Gas, Group, Groups,
     HostFunctionCosts, Key, MessageLimits, OpcodeCosts, ProtocolVersion, RuntimeArgs, StorageCosts,
-    StoredValue, URef, WasmConfig, WasmV1Config, DEFAULT_V1_MAX_STACK_HEIGHT, DEFAULT_V1_WASM_MAX_MEMORY, U512,
+    StoredValue, URef, WasmConfig, WasmV1Config, DEFAULT_V1_MAX_STACK_HEIGHT,
+    DEFAULT_V1_WASM_MAX_MEMORY, U512,
 };
 #[cfg(not(feature = "use-as-wasm"))]
 use casper_types::{

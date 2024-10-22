@@ -20,8 +20,8 @@ use casper_types::{
         },
         mint::ROUND_SEIGNIORAGE_RATE_KEY,
     },
-    Account, CLValue, CoreConfig, EntityAddr, EraId, Key, ProtocolVersion, StorageCosts,
-    StoredValue, SystemEntityRegistry, U256, U512,
+    Account, AddressableEntityHash, CLValue, CoreConfig, EntityAddr, EraId, Key, ProtocolVersion,
+    StorageCosts, StoredValue, SystemHashRegistry, U256, U512,
 };
 use rand::Rng;
 
@@ -706,7 +706,6 @@ fn should_correctly_migrate_and_prune_system_contract_records() {
         let legacy_contract_key = Key::Hash(legacy_hash);
         let _legacy_query = builder.query(None, legacy_contract_key, &[]);
 
-        // assert!(legacy_query.is_err());
         builder
             .get_addressable_entity(AddressableEntityHash::new(legacy_hash))
             .expect("must have system entity");

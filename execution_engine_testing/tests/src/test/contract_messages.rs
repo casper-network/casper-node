@@ -13,8 +13,8 @@ use casper_types::{
     },
     crypto, runtime_args, AddressableEntityHash, BlockGlobalAddr, BlockTime, CLValue, CoreConfig,
     Digest, HostFunction, HostFunctionCosts, Key, MessageLimits, OpcodeCosts, RuntimeArgs,
-    StorageCosts, StoredValue, SystemConfig, WasmConfig, WasmV1Config,
-    DEFAULT_V1_MAX_STACK_HEIGHT, DEFAULT_V1_WASM_MAX_MEMORY, U512,
+    StorageCosts, StoredValue, SystemConfig, WasmConfig, WasmV1Config, DEFAULT_V1_MAX_STACK_HEIGHT,
+    DEFAULT_V1_WASM_MAX_MEMORY, U512,
 };
 
 const MESSAGE_EMITTER_INSTALLER_WASM: &str = "contract_messages_emitter.wasm";
