@@ -1,0 +1,16 @@
+[package]
+name = "generic-hash"
+version = "0.1.0"
+authors = ["Igor Bunar <igor@casper.network>"]
+edition = "2021"
+
+[[bin]]
+name = "generic_hash"
+path = "src/main.rs"
+bench = false
+doctest = false
+test = false
+
+[dependencies]
+casper-contract = { path = "../../../contract" }
+casper-types = { path = "../../../../types" }

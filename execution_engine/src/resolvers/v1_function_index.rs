@@ -61,6 +61,7 @@ pub(crate) enum FunctionIndex {
     EmitMessage,
     LoadCallerInformation,
     GetBlockInfoIndex,
+    GenericHash,
 }
 
 impl From<FunctionIndex> for usize {
