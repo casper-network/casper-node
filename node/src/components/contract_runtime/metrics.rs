@@ -3,7 +3,7 @@ use prometheus::{self, Gauge, Histogram, IntGauge, Registry};
 use crate::{unregister_metric, utils};
 
 /// Value of upper bound of histogram.
-const EXPONENTIAL_BUCKET_START: f64 = 0.01;
+const EXPONENTIAL_BUCKET_START: f64 = 0.2;
 
 /// Multiplier of previous upper bound for next bound.
 const EXPONENTIAL_BUCKET_FACTOR: f64 = 2.0;

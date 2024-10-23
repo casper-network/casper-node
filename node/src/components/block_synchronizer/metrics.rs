@@ -9,8 +9,8 @@ const FWD_SYNC_DURATION_HELP: &str = "duration (in sec) to synchronize a forward
 
 // We use exponential buckets to observe the time it takes to synchronize blocks.
 // Coverage is ~7.7s with higher resolution in the first buckets.
-const EXPONENTIAL_BUCKET_START: f64 = 0.05;
-const EXPONENTIAL_BUCKET_FACTOR: f64 = 1.75;
+const EXPONENTIAL_BUCKET_START: f64 = 0.2;
+const EXPONENTIAL_BUCKET_FACTOR: f64 = 2.0;
 const EXPONENTIAL_BUCKET_COUNT: usize = 10;
 
 /// Metrics for the block synchronizer component.
