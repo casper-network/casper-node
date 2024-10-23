@@ -350,6 +350,12 @@ impl CLTyped for ContractHash {
     }
 }
 
+impl From<AddressableEntityHash> for ContractHash {
+    fn from(entity_hash: AddressableEntityHash) -> Self {
+        ContractHash::new(entity_hash.value())
+    }
+}
+
 impl ToBytes for ContractHash {
     #[inline(always)]
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {

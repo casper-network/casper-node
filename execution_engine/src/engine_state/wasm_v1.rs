@@ -6,9 +6,9 @@ use thiserror::Error;
 use casper_storage::data_access_layer::TransferResult;
 use casper_types::{
     account::AccountHash, bytesrepr::Bytes, contract_messages::Messages, execution::Effects,
-    BlockHash, BlockTime, DeployHash, Digest, ExecutableDeployItem, Gas, InitiatorAddr, Phase,
-    PricingMode, RuntimeArgs, TransactionEntryPoint, TransactionHash, TransactionInvocationTarget,
-    TransactionTarget, TransactionV1Hash, Transfer,
+    BlockHash, BlockTime, DeployHash, Digest, ExecutableDeployItem, Gas, InitiatorAddr,
+    PackageHash, Phase, PricingMode, RuntimeArgs, TransactionEntryPoint, TransactionHash,
+    TransactionInvocationTarget, TransactionTarget, TransactionV1Hash, Transfer,
 };
 
 use crate::engine_state::{DeployItem, Error as EngineError};
@@ -663,7 +663,7 @@ fn build_session_info_for_executable_item(
             args,
         } => {
             session = ExecutableItem::Invocation(
-                TransactionInvocationTarget::new_invocable_entity(*hash),
+                TransactionInvocationTarget::new_invocable_entity((*hash).into()),
             );
             session_entry_point = entry_point.clone();
             session_args = args.clone();
@@ -686,7 +686,8 @@ fn build_session_info_for_executable_item(
             args,
         } => {
             session = ExecutableItem::Invocation(TransactionInvocationTarget::new_package(
-                *hash, *version,
+                PackageHash::new(hash.value()),
+                *version,
             ));
             session_entry_point = entry_point.clone();
             session_args = args.clone();

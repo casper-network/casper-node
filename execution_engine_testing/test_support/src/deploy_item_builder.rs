@@ -4,8 +4,8 @@ use rand::Rng;
 
 use casper_execution_engine::engine_state::deploy_item::DeployItem;
 use casper_types::{
-    account::AccountHash, bytesrepr::Bytes, AddressableEntityHash, DeployHash, EntityVersion,
-    ExecutableDeployItem, HashAddr, PackageHash, RuntimeArgs,
+    account::AccountHash, bytesrepr::Bytes, contracts::ContractPackageHash, AddressableEntityHash,
+    DeployHash, EntityVersion, ExecutableDeployItem, HashAddr, PackageHash, RuntimeArgs,
 };
 
 use crate::{utils, DEFAULT_GAS_PRICE};
@@ -69,7 +69,7 @@ impl DeployItemBuilder {
         args: RuntimeArgs,
     ) -> Self {
         self.deploy_item.payment_code = Some(ExecutableDeployItem::StoredContractByHash {
-            hash,
+            hash: hash.into(),
             entry_point: entry_point.into(),
             args,
         });
@@ -99,7 +99,7 @@ impl DeployItemBuilder {
         args: RuntimeArgs,
     ) -> Self {
         self.deploy_item.payment_code = Some(ExecutableDeployItem::StoredVersionedContractByHash {
-            hash: package_hash,
+            hash: ContractPackageHash::new(package_hash.value()),
             version: None,
             entry_point: entry_point.into(),
             args,
@@ -157,7 +157,7 @@ impl DeployItemBuilder {
         args: RuntimeArgs,
     ) -> Self {
         self.deploy_item.session_code = Some(ExecutableDeployItem::StoredContractByHash {
-            hash,
+            hash: hash.into(),
             entry_point: entry_point.into(),
             args,
         });
