@@ -14,10 +14,9 @@ use casper_types::{
     contract_messages::{
         MessageChecksum, MessagePayload, MessageTopicOperation, MessageTopicSummary, TopicNameHash,
     },
-    runtime_args, AddressableEntityHash, BlockGlobalAddr, BlockTime, CLValue,
-    CoreConfig,
-    Digest, HostFunction, HostFunctionCosts, Key, MessageLimits, OpcodeCosts, RuntimeArgs,
-    StorageCosts, StoredValue, SystemConfig, WasmConfig, WasmV1Config, DEFAULT_V1_MAX_STACK_HEIGHT,
+    runtime_args, AddressableEntityHash, BlockGlobalAddr, BlockTime, CLValue, CoreConfig, Digest,
+    HostFunction, HostFunctionCosts, Key, MessageLimits, OpcodeCosts, RuntimeArgs, StorageCosts,
+    StoredValue, SystemConfig, WasmConfig, WasmV1Config, DEFAULT_V1_MAX_STACK_HEIGHT,
     DEFAULT_V1_WASM_MAX_MEMORY, U512,
 };
 
