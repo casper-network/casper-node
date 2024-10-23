@@ -4,7 +4,9 @@ use derive_more::From;
 use rand::Rng;
 use serde::Serialize;
 
-use casper_binary_port::{BinaryRequest, BinaryResponse, GetRequest, GlobalStateRequest};
+use casper_binary_port::{
+    BinaryRequest, BinaryResponse, GetRequest, GlobalStateEntityQualifier, GlobalStateRequest,
+};
 
 use casper_types::{
     BlockHeader, Digest, GlobalStateIdentifier, KeyTag, PublicKey, Timestamp, Transaction,
@@ -30,7 +32,7 @@ use prometheus::Registry;
 use thiserror::Error as ThisError;
 
 use casper_binary_port::ErrorCode;
-use casper_types::{testing::TestRng, Chainspec, ChainspecRawBytes, ProtocolVersion};
+use casper_types::{testing::TestRng, Chainspec, ChainspecRawBytes};
 
 use crate::{
     components::{
@@ -164,8 +166,6 @@ async fn run_test_case(
         allow_request_get_trie,
         allow_request_speculative_exec,
         max_message_size_bytes: 1024,
-        client_request_limit: 2,
-        client_request_buffer_size: 16,
         max_connections: 2,
         ..Default::default()
     };
@@ -251,9 +251,6 @@ impl Reactor for MockReactor {
                 self.binary_port.handle_event(effect_builder, rng, event),
             ),
             Event::ControlAnnouncement(_) => panic!("unexpected control announcement"),
-            Event::ReactorInfoRequest(ReactorInfoRequest::ProtocolVersion { responder }) => {
-                responder.respond(ProtocolVersion::V1_0_0).ignore()
-            }
             Event::ContractRuntimeRequest(_) | Event::ReactorInfoRequest(_) => {
                 // We're only interested if the binary port actually created a request to Contract
                 // Runtime component, but we're not interested in the result.
@@ -384,16 +381,18 @@ impl ReactorEvent for Event {
 
 fn all_values_request() -> BinaryRequest {
     let state_identifier = GlobalStateIdentifier::StateRootHash(Digest::hash([1u8; 32]));
-    BinaryRequest::Get(GetRequest::State(Box::new(GlobalStateRequest::AllItems {
-        state_identifier: Some(state_identifier),
-        key_tag: KeyTag::Account,
-    })))
+    BinaryRequest::Get(GetRequest::State(Box::new(GlobalStateRequest::new(
+        Some(state_identifier),
+        GlobalStateEntityQualifier::AllItems {
+            key_tag: KeyTag::Account,
+        },
+    ))))
 }
 
 fn trie_request() -> BinaryRequest {
-    BinaryRequest::Get(GetRequest::State(Box::new(GlobalStateRequest::Trie {
+    BinaryRequest::Get(GetRequest::Trie {
         trie_key: Digest::hash([1u8; 32]),
-    })))
+    })
 }
 
 fn try_speculative_exec_request(rng: &mut TestRng) -> BinaryRequest {

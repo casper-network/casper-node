@@ -1,6 +1,7 @@
 //! This module contains executor state of the WASM code.
 mod args;
 mod auction_internal;
+pub mod cryptography;
 mod externals;
 mod handle_payment_internal;
 mod host_function_flag;
@@ -44,7 +45,6 @@ use casper_types::{
         Message, MessageAddr, MessagePayload, MessageTopicOperation, MessageTopicSummary,
     },
     contracts::ContractHash,
-    crypto,
     system::{
         self,
         auction::{self, EraInfo},
@@ -1013,6 +1013,8 @@ where
                 let max_delegators_per_validator =
                     self.context.engine_config().max_delegators_per_validator();
 
+                let minimum_bid_amount = self.context().engine_config().minimum_bid_amount();
+
                 let result = runtime
                     .add_bid(
                         account_hash,
@@ -1020,8 +1022,9 @@ where
                         amount,
                         minimum_delegation_amount,
                         maximum_delegation_amount,
-                        reserved_slots,
+                        minimum_bid_amount,
                         max_delegators_per_validator,
+                        reserved_slots,
                     )
                     .map_err(Self::reverter)?;
 
@@ -1033,9 +1036,10 @@ where
 
                 let public_key = Self::get_named_argument(runtime_args, auction::ARG_PUBLIC_KEY)?;
                 let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
+                let min_bid_amount = self.context.engine_config().minimum_bid_amount();
 
                 let result = runtime
-                    .withdraw_bid(public_key, amount)
+                    .withdraw_bid(public_key, amount, min_bid_amount)
                     .map_err(Self::reverter)?;
                 CLValue::from_t(result).map_err(Self::reverter)
             })(),
@@ -1238,7 +1242,7 @@ where
         let engine_config = self.context.engine_config();
         let wasm_config = engine_config.wasm_config();
         #[cfg(feature = "test-support")]
-        let max_stack_height = wasm_config.max_stack_height;
+        let max_stack_height = wasm_config.v1().max_stack_height();
         let module = wasm_prep::preprocess(*wasm_config, module_bytes)?;
         let (instance, memory) =
             utils::instance_and_memory(module.clone(), protocol_version, engine_config)?;
@@ -1710,7 +1714,11 @@ where
                 #[cfg(feature = "test-support")]
                 dump_runtime_stack_info(
                     instance,
-                    self.context.engine_config().wasm_config().max_stack_height,
+                    self.context
+                        .engine_config()
+                        .wasm_config()
+                        .v1()
+                        .max_stack_height(),
                 );
                 if let Some(host_error) = error.as_host_error() {
                     // If the "error" was in fact a trap caused by calling `ret` then this is normal
@@ -2018,7 +2026,7 @@ where
 
         // Extend the previous topics with the newly added ones.
         for (new_topic, _) in topics_to_add {
-            let topic_name_hash = crypto::blake2b(new_topic.as_bytes()).into();
+            let topic_name_hash = cryptography::blake2b(new_topic.as_bytes()).into();
             if let Err(e) = previous_message_topics.add_topic(new_topic.as_str(), topic_name_hash) {
                 return Ok(Err(e.into()));
             }
@@ -2303,7 +2311,13 @@ where
 
         let txn_hash = self.context.get_transaction_hash();
         let from = InitiatorAddr::AccountHash(self.context.get_caller());
-        let fee = Gas::zero(); // TODO
+        let fee = Gas::from(
+            self.context
+                .engine_config()
+                .system_config()
+                .mint_costs()
+                .transfer,
+        );
         let transfer = Transfer::V2(TransferV2::new(
             txn_hash, from, maybe_to, source, target, amount, fee, id,
         ));
@@ -3351,7 +3365,9 @@ where
     where
         T: AsRef<[HostFunctionCost]> + Copy,
     {
-        let cost = host_function.calculate_gas_cost(weights);
+        let cost = host_function
+            .calculate_gas_cost(weights)
+            .ok_or(ExecError::GasLimit)?; // Overflowing gas calculation means gas limit was exceeded
         self.gas(cost)?;
         Ok(())
     }
@@ -3594,7 +3610,7 @@ where
     }
 
     fn add_message_topic(&mut self, topic_name: &str) -> Result<Result<(), ApiError>, ExecError> {
-        let topic_hash = crypto::blake2b(topic_name).into();
+        let topic_hash = cryptography::blake2b(topic_name).into();
 
         self.context
             .add_message_topic(topic_name, topic_hash)
@@ -3612,7 +3628,7 @@ where
             .as_entity_addr()
             .ok_or(ExecError::InvalidContext)?;
 
-        let topic_name_hash = crypto::blake2b(topic_name).into();
+        let topic_name_hash = cryptography::blake2b(topic_name).into();
         let topic_key = Key::Message(MessageAddr::new_topic_addr(entity_addr, topic_name_hash));
 
         // Check if the topic exists and get the summary.

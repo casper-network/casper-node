@@ -13,7 +13,6 @@ use crate::{
 use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
-    crypto,
     system::{
         auction::{BidAddr, BidKind, EraInfo, Error, UnbondingPurse},
         mint,
@@ -261,8 +260,8 @@ where
     S: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
     fn unbond(&mut self, unbonding_purse: &UnbondingPurse) -> Result<(), Error> {
-        let account_hash =
-            AccountHash::from_public_key(unbonding_purse.unbonder_public_key(), crypto::blake2b);
+        let unbonder_key = unbonding_purse.unbonder_public_key();
+        let account_hash = AccountHash::from(unbonder_key);
 
         // Do a migration if the account hasn't been migrated yet. This is just a read if it has
         // been migrated already.

@@ -987,7 +987,6 @@ fn should_meter_for_gas_storage_write() {
 
     let value = StoredValue::CLValue(CLValue::from_t(43_i32).unwrap());
     let expected_write_cost = test_engine_config()
-        .wasm_config()
         .storage_costs()
         .calculate_gas_cost(value.serialized_length());
 
@@ -1008,7 +1007,10 @@ fn should_meter_for_gas_storage_write() {
         gas_usage_before
     );
 
-    assert_eq!(gas_usage_after, gas_usage_before + expected_write_cost);
+    assert_eq!(
+        Some(gas_usage_after),
+        gas_usage_before.checked_add(expected_write_cost)
+    );
 }
 
 #[test]
@@ -1022,7 +1024,6 @@ fn should_meter_for_gas_storage_add() {
 
     let value = StoredValue::CLValue(CLValue::from_t(43_i32).unwrap());
     let expected_add_cost = test_engine_config()
-        .wasm_config()
         .storage_costs()
         .calculate_gas_cost(value.serialized_length());
 
@@ -1044,7 +1045,10 @@ fn should_meter_for_gas_storage_add() {
         gas_usage_before
     );
 
-    assert_eq!(gas_usage_after, gas_usage_before + expected_add_cost);
+    assert_eq!(
+        Some(gas_usage_after),
+        gas_usage_before.checked_add(expected_add_cost)
+    );
 }
 
 #[test]

@@ -1,4 +1,7 @@
-use casper_types::bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
+use casper_types::{
+    bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    Digest,
+};
 
 use crate::state_request::GlobalStateRequest;
 
@@ -10,6 +13,7 @@ use rand::Rng;
 const RECORD_TAG: u8 = 0;
 const INFORMATION_TAG: u8 = 1;
 const STATE_TAG: u8 = 2;
+const TRIE_TAG: u8 = 3;
 
 /// A request to get data from the node.
 #[derive(Clone, Debug, PartialEq)]
@@ -30,12 +34,17 @@ pub enum GetRequest {
     },
     /// Retrieves data from the global state.
     State(Box<GlobalStateRequest>),
+    /// Get a trie by its Digest.
+    Trie {
+        /// A trie key.
+        trie_key: Digest,
+    },
 }
 
 impl GetRequest {
     #[cfg(test)]
     pub(crate) fn random(rng: &mut TestRng) -> Self {
-        match rng.gen_range(0..3) {
+        match rng.gen_range(0..4) {
             0 => GetRequest::Record {
                 record_type_tag: rng.gen(),
                 key: rng.random_vec(16..32),
@@ -45,6 +54,9 @@ impl GetRequest {
                 key: rng.random_vec(16..32),
             },
             2 => GetRequest::State(Box::new(GlobalStateRequest::random(rng))),
+            3 => GetRequest::Trie {
+                trie_key: Digest::random(rng),
+            },
             _ => unreachable!(),
         }
     }
@@ -76,6 +88,10 @@ impl ToBytes for GetRequest {
                 STATE_TAG.write_bytes(writer)?;
                 req.write_bytes(writer)
             }
+            GetRequest::Trie { trie_key } => {
+                TRIE_TAG.write_bytes(writer)?;
+                trie_key.write_bytes(writer)
+            }
         }
     }
 
@@ -90,6 +106,7 @@ impl ToBytes for GetRequest {
                     info_type_tag.serialized_length() + key.serialized_length()
                 }
                 GetRequest::State(req) => req.serialized_length(),
+                GetRequest::Trie { trie_key } => trie_key.serialized_length(),
             }
     }
 }
@@ -123,6 +140,10 @@ impl FromBytes for GetRequest {
             STATE_TAG => {
                 let (req, remainder) = FromBytes::from_bytes(remainder)?;
                 Ok((GetRequest::State(Box::new(req)), remainder))
+            }
+            TRIE_TAG => {
+                let (trie_key, remainder) = FromBytes::from_bytes(remainder)?;
+                Ok((GetRequest::Trie { trie_key }, remainder))
             }
             _ => Err(bytesrepr::Error::Formatting),
         }

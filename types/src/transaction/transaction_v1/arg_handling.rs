@@ -1,15 +1,21 @@
+//! Collection of helper functions and structures to reason about amorphic RuntimeArgs.
 use core::marker::PhantomData;
 
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
 use tracing::debug;
 
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
-use crate::{account::AccountHash, system::auction::ARG_VALIDATOR, CLType};
 use crate::{
-    bytesrepr::{FromBytes, ToBytes},
-    system::auction::Reservation,
-    CLTyped, CLValue, CLValueError, InvalidTransactionV1, PublicKey, RuntimeArgs, TransferTarget,
-    URef, U512,
+    account::AccountHash,
+    bytesrepr::FromBytes,
+    system::auction::{Reservation, ARG_VALIDATOR},
+    CLType, CLValue, InvalidTransactionV1,
 };
+use crate::{
+    bytesrepr::ToBytes, CLTyped, CLValueError, PublicKey, RuntimeArgs, TransferTarget, URef, U512,
+};
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
+use alloc::string::ToString;
 
 const TRANSFER_ARG_AMOUNT: RequiredArg<U512> = RequiredArg::new("amount");
 const TRANSFER_ARG_SOURCE: OptionalArg<URef> = OptionalArg::new("source");
@@ -43,7 +49,9 @@ const REDELEGATE_ARG_NEW_VALIDATOR: RequiredArg<PublicKey> = RequiredArg::new("n
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 const ACTIVATE_BID_ARG_VALIDATOR: RequiredArg<PublicKey> = RequiredArg::new(ARG_VALIDATOR);
 
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
 const CHANGE_BID_PUBLIC_KEY_ARG_PUBLIC_KEY: RequiredArg<PublicKey> = RequiredArg::new("public_key");
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
 const CHANGE_BID_PUBLIC_KEY_ARG_NEW_PUBLIC_KEY: RequiredArg<PublicKey> =
     RequiredArg::new("new_public_key");
 
@@ -67,6 +75,7 @@ impl<T> RequiredArg<T> {
         }
     }
 
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
     fn get(&self, args: &RuntimeArgs) -> Result<T, InvalidTransactionV1>
     where
         T: CLTyped + FromBytes,
@@ -122,6 +131,7 @@ impl<T> OptionalArg<T> {
     }
 }
 
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
 fn parse_cl_value<T: CLTyped + FromBytes>(
     cl_value: &CLValue,
     arg_name: &str,
@@ -144,10 +154,7 @@ fn parse_cl_value<T: CLTyped + FromBytes>(
 }
 
 /// Creates a `RuntimeArgs` suitable for use in a transfer transaction.
-pub(in crate::transaction::transaction_v1) fn new_transfer_args<
-    A: Into<U512>,
-    T: Into<TransferTarget>,
->(
+pub fn new_transfer_args<A: Into<U512>, T: Into<TransferTarget>>(
     amount: A,
     maybe_source: Option<URef>,
     target: T,
@@ -173,7 +180,7 @@ pub(in crate::transaction::transaction_v1) fn new_transfer_args<
 
 /// Checks the given `RuntimeArgs` are suitable for use in a transfer transaction.
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
-pub(in crate::transaction::transaction_v1) fn has_valid_transfer_args(
+pub fn has_valid_transfer_args(
     args: &RuntimeArgs,
     native_transfer_minimum_motes: u64,
 ) -> Result<(), InvalidTransactionV1> {
@@ -229,7 +236,7 @@ pub(in crate::transaction::transaction_v1) fn has_valid_transfer_args(
 }
 
 /// Creates a `RuntimeArgs` suitable for use in an add_bid transaction.
-pub(in crate::transaction::transaction_v1) fn new_add_bid_args<A: Into<U512>>(
+pub fn new_add_bid_args<A: Into<U512>>(
     public_key: PublicKey,
     delegation_rate: u8,
     amount: A,
@@ -247,9 +254,7 @@ pub(in crate::transaction::transaction_v1) fn new_add_bid_args<A: Into<U512>>(
 
 /// Checks the given `RuntimeArgs` are suitable for use in an add_bid transaction.
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
-pub(in crate::transaction::transaction_v1) fn has_valid_add_bid_args(
-    args: &RuntimeArgs,
-) -> Result<(), InvalidTransactionV1> {
+pub fn has_valid_add_bid_args(args: &RuntimeArgs) -> Result<(), InvalidTransactionV1> {
     let _public_key = ADD_BID_ARG_PUBLIC_KEY.get(args)?;
     let _delegation_rate = ADD_BID_ARG_DELEGATION_RATE.get(args)?;
     let _amount = ADD_BID_ARG_AMOUNT.get(args)?;
@@ -257,7 +262,7 @@ pub(in crate::transaction::transaction_v1) fn has_valid_add_bid_args(
 }
 
 /// Creates a `RuntimeArgs` suitable for use in a withdraw_bid transaction.
-pub(in crate::transaction::transaction_v1) fn new_withdraw_bid_args<A: Into<U512>>(
+pub fn new_withdraw_bid_args<A: Into<U512>>(
     public_key: PublicKey,
     amount: A,
 ) -> Result<RuntimeArgs, CLValueError> {
@@ -269,16 +274,14 @@ pub(in crate::transaction::transaction_v1) fn new_withdraw_bid_args<A: Into<U512
 
 /// Checks the given `RuntimeArgs` are suitable for use in an withdraw_bid transaction.
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
-pub(in crate::transaction::transaction_v1) fn has_valid_withdraw_bid_args(
-    args: &RuntimeArgs,
-) -> Result<(), InvalidTransactionV1> {
+pub fn has_valid_withdraw_bid_args(args: &RuntimeArgs) -> Result<(), InvalidTransactionV1> {
     let _public_key = WITHDRAW_BID_ARG_PUBLIC_KEY.get(args)?;
     let _amount = WITHDRAW_BID_ARG_AMOUNT.get(args)?;
     Ok(())
 }
 
 /// Creates a `RuntimeArgs` suitable for use in a delegate transaction.
-pub(in crate::transaction::transaction_v1) fn new_delegate_args<A: Into<U512>>(
+pub fn new_delegate_args<A: Into<U512>>(
     delegator: PublicKey,
     validator: PublicKey,
     amount: A,
@@ -292,9 +295,7 @@ pub(in crate::transaction::transaction_v1) fn new_delegate_args<A: Into<U512>>(
 
 /// Checks the given `RuntimeArgs` are suitable for use in a delegate transaction.
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
-pub(in crate::transaction::transaction_v1) fn has_valid_delegate_args(
-    args: &RuntimeArgs,
-) -> Result<(), InvalidTransactionV1> {
+pub fn has_valid_delegate_args(args: &RuntimeArgs) -> Result<(), InvalidTransactionV1> {
     let _delegator = DELEGATE_ARG_DELEGATOR.get(args)?;
     let _validator = DELEGATE_ARG_VALIDATOR.get(args)?;
     let _amount = DELEGATE_ARG_AMOUNT.get(args)?;
@@ -302,7 +303,7 @@ pub(in crate::transaction::transaction_v1) fn has_valid_delegate_args(
 }
 
 /// Creates a `RuntimeArgs` suitable for use in an undelegate transaction.
-pub(in crate::transaction::transaction_v1) fn new_undelegate_args<A: Into<U512>>(
+pub fn new_undelegate_args<A: Into<U512>>(
     delegator: PublicKey,
     validator: PublicKey,
     amount: A,
@@ -316,9 +317,7 @@ pub(in crate::transaction::transaction_v1) fn new_undelegate_args<A: Into<U512>>
 
 /// Checks the given `RuntimeArgs` are suitable for use in an undelegate transaction.
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
-pub(in crate::transaction::transaction_v1) fn has_valid_undelegate_args(
-    args: &RuntimeArgs,
-) -> Result<(), InvalidTransactionV1> {
+pub fn has_valid_undelegate_args(args: &RuntimeArgs) -> Result<(), InvalidTransactionV1> {
     let _delegator = UNDELEGATE_ARG_DELEGATOR.get(args)?;
     let _validator = UNDELEGATE_ARG_VALIDATOR.get(args)?;
     let _amount = UNDELEGATE_ARG_AMOUNT.get(args)?;
@@ -326,7 +325,7 @@ pub(in crate::transaction::transaction_v1) fn has_valid_undelegate_args(
 }
 
 /// Creates a `RuntimeArgs` suitable for use in a redelegate transaction.
-pub(in crate::transaction::transaction_v1) fn new_redelegate_args<A: Into<U512>>(
+pub fn new_redelegate_args<A: Into<U512>>(
     delegator: PublicKey,
     validator: PublicKey,
     amount: A,
@@ -342,9 +341,7 @@ pub(in crate::transaction::transaction_v1) fn new_redelegate_args<A: Into<U512>>
 
 /// Checks the given `RuntimeArgs` are suitable for use in a redelegate transaction.
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
-pub(in crate::transaction::transaction_v1) fn has_valid_redelegate_args(
-    args: &RuntimeArgs,
-) -> Result<(), InvalidTransactionV1> {
+pub fn has_valid_redelegate_args(args: &RuntimeArgs) -> Result<(), InvalidTransactionV1> {
     let _delegator = REDELEGATE_ARG_DELEGATOR.get(args)?;
     let _validator = REDELEGATE_ARG_VALIDATOR.get(args)?;
     let _amount = REDELEGATE_ARG_AMOUNT.get(args)?;
@@ -354,15 +351,15 @@ pub(in crate::transaction::transaction_v1) fn has_valid_redelegate_args(
 
 /// Checks the given `RuntimeArgs` are suitable for use in an activate bid transaction.
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
-pub(in crate::transaction::transaction_v1) fn has_valid_activate_bid_args(
-    args: &RuntimeArgs,
-) -> Result<(), InvalidTransactionV1> {
+pub fn has_valid_activate_bid_args(args: &RuntimeArgs) -> Result<(), InvalidTransactionV1> {
     let _validator = ACTIVATE_BID_ARG_VALIDATOR.get(args)?;
     Ok(())
 }
 
 /// Checks the given `RuntimeArgs` are suitable for use in a change bid public key transaction.
-pub(super) fn has_valid_change_bid_public_key_args(
+#[allow(dead_code)]
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
+pub fn has_valid_change_bid_public_key_args(
     args: &RuntimeArgs,
 ) -> Result<(), InvalidTransactionV1> {
     let _public_key = CHANGE_BID_PUBLIC_KEY_ARG_PUBLIC_KEY.get(args)?;
@@ -371,17 +368,13 @@ pub(super) fn has_valid_change_bid_public_key_args(
 }
 
 /// Checks the given `RuntimeArgs` are suitable for use in a add reservations transaction.
-pub(super) fn has_valid_add_reservations_args(
-    args: &RuntimeArgs,
-) -> Result<(), InvalidTransactionV1> {
+pub fn has_valid_add_reservations_args(args: &RuntimeArgs) -> Result<(), InvalidTransactionV1> {
     let _reservations = ADD_RESERVATIONS_ARG_RESERVATIONS.get(args)?;
     Ok(())
 }
 
 /// Checks the given `RuntimeArgs` are suitable for use in a add reservations transaction.
-pub(super) fn has_valid_cancel_reservations_args(
-    args: &RuntimeArgs,
-) -> Result<(), InvalidTransactionV1> {
+pub fn has_valid_cancel_reservations_args(args: &RuntimeArgs) -> Result<(), InvalidTransactionV1> {
     let _validator = CANCEL_RESERVATIONS_ARG_VALIDATOR.get(args)?;
     let _delegators = CANCEL_RESERVATIONS_ARG_DELEGATORS.get(args)?;
     Ok(())

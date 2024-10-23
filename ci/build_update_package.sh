@@ -23,7 +23,7 @@ readme="$BIN_DIR/README.md"
 {
   echo "Build for Ubuntu 18.04."
   echo ""
-  echo "To run on other platforms, build from https://github.com/CasperLabs/casper-node"
+  echo "To run on other platforms, build from https://github.com/casper-network/casper-node"
   echo " cd node"
   echo " cargo build --release"
   echo ""

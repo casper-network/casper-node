@@ -15,15 +15,15 @@ pub const DEFAULT_GET_ERA_VALIDATORS_COST: u32 = 10_000;
 /// Default cost of the `read_seigniorage_recipients` auction entry point.
 pub const DEFAULT_READ_SEIGNIORAGE_RECIPIENTS_COST: u32 = 10_000;
 /// Default cost of the `add_bid` auction entry point.
-pub const DEFAULT_ADD_BID_COST: u32 = 2_500_000_000;
+pub const DEFAULT_ADD_BID_COST: u64 = 2_500_000_000;
 /// Default cost of the `withdraw_bid` auction entry point.
-pub const DEFAULT_WITHDRAW_BID_COST: u32 = DEFAULT_ADD_BID_COST;
+pub const DEFAULT_WITHDRAW_BID_COST: u32 = 2_500_000_000;
 /// Default cost of the `delegate` auction entry point.
-pub const DEFAULT_DELEGATE_COST: u32 = DEFAULT_ADD_BID_COST;
+pub const DEFAULT_DELEGATE_COST: u32 = DEFAULT_WITHDRAW_BID_COST;
 /// Default cost of the `redelegate` auction entry point.
-pub const DEFAULT_REDELEGATE_COST: u32 = DEFAULT_ADD_BID_COST;
+pub const DEFAULT_REDELEGATE_COST: u32 = DEFAULT_WITHDRAW_BID_COST;
 /// Default cost of the `undelegate` auction entry point.
-pub const DEFAULT_UNDELEGATE_COST: u32 = DEFAULT_ADD_BID_COST;
+pub const DEFAULT_UNDELEGATE_COST: u32 = DEFAULT_WITHDRAW_BID_COST;
 /// Default cost of the `run_auction` auction entry point.
 pub const DEFAULT_RUN_AUCTION_COST: u32 = 10_000;
 /// Default cost of the `slash` auction entry point.
@@ -41,9 +41,9 @@ pub const DEFAULT_ACTIVATE_BID_COST: u32 = 10_000;
 /// Default cost of the `change_bid_public_key` auction entry point.
 pub const DEFAULT_CHANGE_BID_PUBLIC_KEY_COST: u64 = 5_000_000_000;
 /// Default cost of the `add_reservations` auction entry point.
-pub const DEFAULT_ADD_RESERVATIONS_COST: u32 = DEFAULT_ADD_BID_COST;
+pub const DEFAULT_ADD_RESERVATIONS_COST: u32 = DEFAULT_WITHDRAW_BID_COST;
 /// Default cost of the `cancel_reservations` auction entry point.
-pub const DEFAULT_CANCEL_RESERVATIONS_COST: u32 = DEFAULT_ADD_BID_COST;
+pub const DEFAULT_CANCEL_RESERVATIONS_COST: u32 = DEFAULT_WITHDRAW_BID_COST;
 
 /// Description of the costs of calling auction entrypoints.
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug)]
@@ -55,7 +55,7 @@ pub struct AuctionCosts {
     /// Cost of calling the `read_seigniorage_recipients` entry point.
     pub read_seigniorage_recipients: u32,
     /// Cost of calling the `add_bid` entry point.
-    pub add_bid: u32,
+    pub add_bid: u64,
     /// Cost of calling the `withdraw_bid` entry point.
     pub withdraw_bid: u32,
     /// Cost of calling the `delegate` entry point.
@@ -246,11 +246,12 @@ impl Distribution<AuctionCosts> for Standard {
         // there's a bug in toml...under the hood it uses an i64 when it should use a u64
         // this causes flaky test failures if the random result exceeds i64::MAX
         let change_bid_public_key = rng.gen::<u32>() as u64;
+        let add_bid = rng.gen::<u32>() as u64;
 
         AuctionCosts {
             get_era_validators: rng.gen(),
             read_seigniorage_recipients: rng.gen(),
-            add_bid: rng.gen(),
+            add_bid,
             withdraw_bid: rng.gen(),
             delegate: rng.gen(),
             undelegate: rng.gen(),
@@ -280,7 +281,7 @@ pub mod gens {
         pub fn auction_costs_arb()(
             get_era_validators in num::u32::ANY,
             read_seigniorage_recipients in num::u32::ANY,
-            add_bid in num::u32::ANY,
+            add_bid in num::u64::ANY,
             withdraw_bid in num::u32::ANY,
             delegate in num::u32::ANY,
             undelegate in num::u32::ANY,

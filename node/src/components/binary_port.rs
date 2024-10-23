@@ -3,6 +3,7 @@ mod config;
 mod error;
 mod event;
 mod metrics;
+mod rate_limiter;
 #[cfg(test)]
 mod tests;
 
@@ -13,9 +14,10 @@ use casper_binary_port::{
     BinaryMessageCodec, BinaryRequest, BinaryRequestHeader, BinaryRequestTag, BinaryResponse,
     BinaryResponseAndRequest, ContractInformation, DictionaryItemIdentifier, DictionaryQueryResult,
     EntityIdentifier, EraIdentifier, ErrorCode, GetRequest, GetTrieFullResult,
-    GlobalStateQueryResult, GlobalStateRequest, InformationRequest, InformationRequestTag,
-    KeyPrefix, NodeStatus, PackageIdentifier, PurseIdentifier, ReactorStateName, RecordId,
-    ResponseType, RewardResponse, TransactionWithExecutionInfo, ValueWithProof,
+    GlobalStateEntityQualifier, GlobalStateQueryResult, GlobalStateRequest, InformationRequest,
+    InformationRequestTag, KeyPrefix, NodeStatus, PackageIdentifier, PurseIdentifier,
+    ReactorStateName, RecordId, ResponseType, RewardResponse, TransactionWithExecutionInfo,
+    ValueWithProof,
 };
 use casper_storage::{
     data_access_layer::{
@@ -40,16 +42,18 @@ use casper_types::{
     ContractWasmHash, Digest, EntityAddr, GlobalStateIdentifier, Key, Package, PackageAddr, Peers,
     ProtocolVersion, Rewards, SignedBlock, StoredValue, TimeDiff, Transaction, URef,
 };
+use thiserror::Error as ThisError;
 
 use datasize::DataSize;
 use either::Either;
 use futures::{SinkExt, StreamExt};
 use once_cell::sync::OnceCell;
 use prometheus::Registry;
+use rate_limiter::{LimiterResponse, RateLimiter, RateLimiterError};
 use tokio::{
     join,
     net::{TcpListener, TcpStream},
-    sync::{Notify, OwnedSemaphorePermit, Semaphore},
+    sync::{Mutex, Notify, OwnedSemaphorePermit, Semaphore},
 };
 use tokio_util::codec::Framed;
 use tracing::{debug, error, info, warn};
@@ -81,6 +85,26 @@ pub(crate) use event::Event;
 
 const COMPONENT_NAME: &str = "binary_port";
 
+#[derive(Debug, ThisError)]
+pub(crate) enum BinaryPortInitializationError {
+    #[error("could not initialize rate limiter: {0}")]
+    CannotInitializeRateLimiter(String),
+    #[error("could not initialize metrics: {0}")]
+    CannotInitializeMetrics(prometheus::Error),
+}
+
+impl From<RateLimiterError> for BinaryPortInitializationError {
+    fn from(value: RateLimiterError) -> Self {
+        BinaryPortInitializationError::CannotInitializeRateLimiter(value.to_string())
+    }
+}
+
+impl From<prometheus::Error> for BinaryPortInitializationError {
+    fn from(value: prometheus::Error) -> Self {
+        BinaryPortInitializationError::CannotInitializeMetrics(value)
+    }
+}
+
 #[derive(Debug, DataSize)]
 pub(crate) struct BinaryPort {
     #[data_size(skip)]
@@ -89,6 +113,8 @@ pub(crate) struct BinaryPort {
     config: Arc<Config>,
     #[data_size(skip)]
     chainspec: Arc<Chainspec>,
+    #[data_size(skip)]
+    protocol_version: ProtocolVersion,
     #[data_size(skip)]
     connection_limit: Arc<Semaphore>,
     #[data_size(skip)]
@@ -99,6 +125,8 @@ pub(crate) struct BinaryPort {
     shutdown_trigger: Arc<Notify>,
     #[data_size(skip)]
     server_join_handle: OnceCell<tokio::task::JoinHandle<()>>,
+    #[data_size(skip)]
+    rate_limiter: Arc<Mutex<RateLimiter>>,
 }
 
 impl BinaryPort {
@@ -106,16 +134,23 @@ impl BinaryPort {
         config: Config,
         chainspec: Arc<Chainspec>,
         registry: &Registry,
-    ) -> Result<Self, prometheus::Error> {
+    ) -> Result<Self, BinaryPortInitializationError> {
+        let rate_limiter = Arc::new(Mutex::new(
+            RateLimiter::new(config.qps_limit, TimeDiff::from_seconds(1))
+                .map_err(BinaryPortInitializationError::from)?,
+        ));
+        let protocol_version = chainspec.protocol_version();
         Ok(Self {
             state: ComponentState::Uninitialized,
             connection_limit: Arc::new(Semaphore::new(config.max_connections)),
             config: Arc::new(config),
             chainspec,
-            metrics: Arc::new(Metrics::new(registry)?),
+            protocol_version,
+            metrics: Arc::new(Metrics::new(registry).map_err(BinaryPortInitializationError::from)?),
             local_addr: Arc::new(OnceCell::new()),
             shutdown_trigger: Arc::new(Notify::new()),
             server_join_handle: OnceCell::new(),
+            rate_limiter,
         })
     }
 
@@ -134,6 +169,7 @@ async fn handle_request<REv>(
     config: &Config,
     chainspec: &Chainspec,
     metrics: &Metrics,
+    protocol_version: ProtocolVersion,
 ) -> BinaryResponse
 where
     REv: From<Event>
@@ -148,7 +184,6 @@ where
         + From<ChainspecRawBytesRequest>
         + Send,
 {
-    let protocol_version = effect_builder.get_protocol_version().await;
     match req {
         BinaryRequest::TryAcceptTransaction { transaction } => {
             metrics.binary_port_try_accept_transaction_count.inc();
@@ -271,6 +306,17 @@ where
             metrics.binary_port_get_state_count.inc();
             handle_state_request(effect_builder, *req, protocol_version, config, chainspec).await
         }
+        GetRequest::Trie { trie_key } => {
+            metrics.binary_port_get_trie_count.inc();
+            handle_trie_request(
+                effect_builder,
+                trie_key,
+                protocol_version,
+                config,
+                chainspec,
+            )
+            .await
+        }
     }
 }
 
@@ -359,12 +405,9 @@ where
         + From<StorageRequest>
         + From<ReactorInfoRequest>,
 {
-    match request {
-        GlobalStateRequest::Item {
-            state_identifier,
-            base_key,
-            path,
-        } => {
+    let (state_identifier, qualifier) = request.destructure();
+    match qualifier {
+        GlobalStateEntityQualifier::Item { base_key, path } => {
             let Some(state_root_hash) =
                 resolve_state_root_hash(effect_builder, state_identifier).await
             else {
@@ -376,10 +419,7 @@ where
                 Err(err) => BinaryResponse::new_error(err, protocol_version),
             }
         }
-        GlobalStateRequest::AllItems {
-            state_identifier,
-            key_tag,
-        } => {
+        GlobalStateEntityQualifier::AllItems { key_tag } => {
             if !config.allow_request_get_all_values {
                 debug!(%key_tag, "received a request for items by key tag while the feature is disabled");
                 BinaryResponse::new_error(ErrorCode::FunctionDisabled, protocol_version)
@@ -388,28 +428,7 @@ where
                     .await
             }
         }
-        GlobalStateRequest::Trie { trie_key } => {
-            if !config.allow_request_get_trie {
-                debug!(%trie_key, "received a trie request while the feature is disabled");
-                BinaryResponse::new_error(ErrorCode::FunctionDisabled, protocol_version)
-            } else {
-                let req = TrieRequest::new(trie_key, None);
-                match effect_builder.get_trie(req).await.into_raw() {
-                    Ok(result) => BinaryResponse::from_value(
-                        GetTrieFullResult::new(result.map(TrieRaw::into_inner)),
-                        protocol_version,
-                    ),
-                    Err(error) => {
-                        debug!(%error, "failed when querying for a trie");
-                        BinaryResponse::new_error(ErrorCode::InternalError, protocol_version)
-                    }
-                }
-            }
-        }
-        GlobalStateRequest::DictionaryItem {
-            state_identifier,
-            identifier,
-        } => {
+        GlobalStateEntityQualifier::DictionaryItem { identifier } => {
             let Some(state_root_hash) =
                 resolve_state_root_hash(effect_builder, state_identifier).await
             else {
@@ -480,10 +499,7 @@ where
                 Err(err) => BinaryResponse::new_error(err, protocol_version),
             }
         }
-        GlobalStateRequest::Balance {
-            state_identifier,
-            purse_identifier,
-        } => {
+        GlobalStateEntityQualifier::Balance { purse_identifier } => {
             let Some(state_root_hash) =
                 resolve_state_root_hash(effect_builder, state_identifier).await
             else {
@@ -497,10 +513,7 @@ where
             )
             .await
         }
-        GlobalStateRequest::ItemsByPrefix {
-            state_identifier,
-            key_prefix,
-        } => {
+        GlobalStateEntityQualifier::ItemsByPrefix { key_prefix } => {
             handle_get_items_by_prefix(
                 state_identifier,
                 key_prefix,
@@ -508,6 +521,37 @@ where
                 protocol_version,
             )
             .await
+        }
+    }
+}
+
+async fn handle_trie_request<REv>(
+    effect_builder: EffectBuilder<REv>,
+    trie_key: Digest,
+    protocol_version: ProtocolVersion,
+    config: &Config,
+    _chainspec: &Chainspec,
+) -> BinaryResponse
+where
+    REv: From<Event>
+        + From<ContractRuntimeRequest>
+        + From<StorageRequest>
+        + From<ReactorInfoRequest>,
+{
+    if !config.allow_request_get_trie {
+        debug!(%trie_key, "received a trie request while the feature is disabled");
+        BinaryResponse::new_error(ErrorCode::FunctionDisabled, protocol_version)
+    } else {
+        let req = TrieRequest::new(trie_key, None);
+        match effect_builder.get_trie(req).await.into_raw() {
+            Ok(result) => BinaryResponse::from_value(
+                GetTrieFullResult::new(result.map(TrieRaw::into_inner)),
+                protocol_version,
+            ),
+            Err(error) => {
+                debug!(%error, "failed when querying for a trie");
+                BinaryResponse::new_error(ErrorCode::InternalError, protocol_version)
+            }
         }
     }
 }
@@ -1396,6 +1440,8 @@ async fn handle_client_loop<REv>(
     stream: TcpStream,
     effect_builder: EffectBuilder<REv>,
     max_message_size_bytes: u32,
+    rate_limiter: Arc<Mutex<RateLimiter>>,
+    version: ProtocolVersion,
 ) -> Result<(), Error>
 where
     REv: From<Event>
@@ -1423,8 +1469,8 @@ where
             return Err(Error::NoPayload);
         };
 
-        let version = effect_builder.get_protocol_version().await;
-        let (response, id) = handle_payload(effect_builder, payload, version).await;
+        let (response, id) =
+            handle_payload(effect_builder, payload, version, Arc::clone(&rate_limiter)).await;
         framed
             .send(BinaryMessage::new(
                 BinaryResponseAndRequest::new(response, payload, id).to_bytes()?,
@@ -1462,6 +1508,7 @@ async fn handle_payload<REv>(
     effect_builder: EffectBuilder<REv>,
     payload: &[u8],
     protocol_version: ProtocolVersion,
+    rate_limiter: Arc<Mutex<RateLimiter>>,
 ) -> (BinaryResponse, u16)
 where
     REv: From<Event>,
@@ -1472,6 +1519,13 @@ where
     };
 
     let request_id = header.id();
+
+    if let LimiterResponse::Throttled = rate_limiter.lock().await.throttle() {
+        return (
+            BinaryResponse::new_error(ErrorCode::RequestThrottled, protocol_version),
+            request_id,
+        );
+    }
 
     if !header
         .protocol_version()
@@ -1519,6 +1573,8 @@ async fn handle_client<REv>(
     effect_builder: EffectBuilder<REv>,
     config: Arc<Config>,
     _permit: OwnedSemaphorePermit,
+    rate_limiter: Arc<Mutex<RateLimiter>>,
+    protocol_version: ProtocolVersion,
 ) where
     REv: From<Event>
         + From<StorageRequest>
@@ -1532,8 +1588,14 @@ async fn handle_client<REv>(
         + From<ChainspecRawBytesRequest>
         + Send,
 {
-    if let Err(err) =
-        handle_client_loop(stream, effect_builder, config.max_message_size_bytes).await
+    if let Err(err) = handle_client_loop(
+        stream,
+        effect_builder,
+        config.max_message_size_bytes,
+        rate_limiter,
+        protocol_version,
+    )
+    .await
     {
         // Low severity is used to prevent malicious clients from causing log floods.
         info!(%addr, err=display_error(&err), "binary port client handler error");
@@ -1783,7 +1845,16 @@ where
                     if let Ok(permit) = Arc::clone(&self.connection_limit).try_acquire_owned() {
                         self.metrics.binary_port_connections_count.inc();
                         let config = Arc::clone(&self.config);
-                        tokio::spawn(handle_client(peer, stream, effect_builder, config, permit));
+                        let rate_limiter = Arc::clone(&self.rate_limiter);
+                        tokio::spawn(handle_client(
+                            peer,
+                            stream,
+                            effect_builder,
+                            config,
+                            permit,
+                            rate_limiter,
+                            self.protocol_version,
+                        ));
                     } else {
                         warn!(
                             "connection limit reached, dropping connection from {}",
@@ -1796,10 +1867,17 @@ where
                     let config = Arc::clone(&self.config);
                     let chainspec = Arc::clone(&self.chainspec);
                     let metrics = Arc::clone(&self.metrics);
+                    let protocol_version = self.protocol_version;
                     async move {
-                        let response =
-                            handle_request(request, effect_builder, &config, &chainspec, &metrics)
-                                .await;
+                        let response = handle_request(
+                            request,
+                            effect_builder,
+                            &config,
+                            &chainspec,
+                            &metrics,
+                            protocol_version,
+                        )
+                        .await;
                         responder.respond(response).await;
                     }
                     .ignore()

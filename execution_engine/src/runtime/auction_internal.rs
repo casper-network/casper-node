@@ -11,7 +11,6 @@ use casper_storage::{
 use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
-    crypto,
     system::{
         auction::{BidAddr, BidKind, EraInfo, Error, UnbondingPurse},
         mint,
@@ -19,7 +18,7 @@ use casper_types::{
     CLTyped, CLValue, Key, KeyTag, PublicKey, RuntimeArgs, StoredValue, URef, U512,
 };
 
-use super::Runtime;
+use super::{cryptography, Runtime};
 use crate::execution::ExecError;
 
 impl From<ExecError> for Option<Error> {
@@ -263,8 +262,11 @@ where
     R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
     fn unbond(&mut self, unbonding_purse: &UnbondingPurse) -> Result<(), Error> {
-        let account_hash =
-            AccountHash::from_public_key(unbonding_purse.unbonder_public_key(), crypto::blake2b);
+        let account_hash = AccountHash::from_public_key(
+            unbonding_purse.unbonder_public_key(),
+            cryptography::blake2b,
+        );
+
         let maybe_value = self
             .context
             .read_gs_unsafe(&Key::Account(account_hash))

@@ -17,8 +17,9 @@ use casper_types::{
     AuctionCosts, BrTableCost, ControlFlowCosts, CoreConfig, EraId, Gas, GenesisAccount,
     GenesisValidator, HandlePaymentCosts, HostFunction, HostFunctionCost, HostFunctionCosts,
     MessageLimits, MintCosts, Motes, OpcodeCosts, ProtocolVersion, PublicKey, RuntimeArgs,
-    SecretKey, StandardPaymentCosts, StorageCosts, SystemConfig, WasmConfig, DEFAULT_ADD_BID_COST,
-    DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY, U512,
+    SecretKey, StandardPaymentCosts, StorageCosts, SystemConfig, WasmConfig, WasmV1Config,
+    DEFAULT_ADD_BID_COST, DEFAULT_MINIMUM_BID_AMOUNT, DEFAULT_V1_MAX_STACK_HEIGHT,
+    DEFAULT_V1_WASM_MAX_MEMORY, U512,
 };
 
 use crate::wasm_utils;
@@ -34,12 +35,12 @@ const VALIDATOR_1_STAKE: u64 = 250_000;
 static VALIDATOR_2_SECRET_KEY: Lazy<SecretKey> =
     Lazy::new(|| SecretKey::ed25519_from_bytes([124; SecretKey::ED25519_LENGTH]).unwrap());
 static VALIDATOR_2: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&*VALIDATOR_2_SECRET_KEY));
-const BOND_AMOUNT: u64 = 42;
+const BOND_AMOUNT: u64 = DEFAULT_MINIMUM_BID_AMOUNT + 42;
 const BID_AMOUNT: u64 = 99 + DEFAULT_MINIMUM_DELEGATION_AMOUNT;
 const TRANSFER_AMOUNT: u64 = 123;
 const BID_DELEGATION_RATE: DelegationRate = auction::DELEGATION_RATE_DENOMINATOR;
 const UPDATED_CALL_CONTRACT_COST: HostFunctionCost = 12_345;
-const NEW_ADD_BID_COST: u32 = 2_500_000_000;
+const NEW_ADD_BID_COST: u64 = 2_500_000_000;
 const NEW_WITHDRAW_BID_COST: u32 = 2_500_000_000;
 const NEW_DELEGATE_COST: u32 = 2_500_000_000;
 const NEW_UNDELEGATE_COST: u32 = NEW_DELEGATE_COST;
@@ -640,62 +641,62 @@ fn should_charge_for_erroneous_system_contract_calls() {
         (
             auction_hash,
             auction::METHOD_WITHDRAW_BID,
-            system_config.auction_costs().withdraw_bid,
+            system_config.auction_costs().withdraw_bid.into(),
         ),
         (
             auction_hash,
             auction::METHOD_DELEGATE,
-            system_config.auction_costs().delegate,
+            system_config.auction_costs().delegate.into(),
         ),
         (
             auction_hash,
             auction::METHOD_UNDELEGATE,
-            system_config.auction_costs().undelegate,
+            system_config.auction_costs().undelegate.into(),
         ),
         (
             auction_hash,
             auction::METHOD_REDELEGATE,
-            system_config.auction_costs().redelegate,
+            system_config.auction_costs().redelegate.into(),
         ),
         (
             auction_hash,
             auction::METHOD_RUN_AUCTION,
-            system_config.auction_costs().run_auction,
+            system_config.auction_costs().run_auction.into(),
         ),
         (
             auction_hash,
             auction::METHOD_SLASH,
-            system_config.auction_costs().slash,
+            system_config.auction_costs().slash.into(),
         ),
         (
             auction_hash,
             auction::METHOD_DISTRIBUTE,
-            system_config.auction_costs().distribute,
+            system_config.auction_costs().distribute.into(),
         ),
         (
             mint_hash,
             mint::METHOD_MINT,
-            system_config.mint_costs().mint,
+            system_config.mint_costs().mint.into(),
         ),
         (
             mint_hash,
             mint::METHOD_REDUCE_TOTAL_SUPPLY,
-            system_config.mint_costs().reduce_total_supply,
+            system_config.mint_costs().reduce_total_supply.into(),
         ),
         (
             mint_hash,
             mint::METHOD_BALANCE,
-            system_config.mint_costs().balance,
+            system_config.mint_costs().balance.into(),
         ),
         (
             mint_hash,
             mint::METHOD_TRANSFER,
-            system_config.mint_costs().transfer,
+            system_config.mint_costs().transfer.into(),
         ),
         (
             handle_payment_hash,
             handle_payment::METHOD_SET_REFUND_PURSE,
-            system_config.handle_payment_costs().set_refund_purse,
+            system_config.handle_payment_costs().set_refund_purse.into(),
         ),
         // (
         //     handle_payment_hash,
@@ -837,15 +838,13 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
         call_contract: HostFunction::fixed(UPDATED_CALL_CONTRACT_COST),
         ..Zero::zero()
     };
-
-    let wasm_config = WasmConfig::new(
-        DEFAULT_WASM_MAX_MEMORY,
-        DEFAULT_MAX_STACK_HEIGHT,
+    let wasm_v1_config = WasmV1Config::new(
+        DEFAULT_V1_WASM_MAX_MEMORY,
+        DEFAULT_V1_MAX_STACK_HEIGHT,
         new_opcode_costs,
-        new_storage_costs,
         new_host_function_costs,
-        MessageLimits::default(),
     );
+    let wasm_config = WasmConfig::new(MessageLimits::default(), wasm_v1_config);
 
     let new_max_associated_keys = DEFAULT_MAX_ASSOCIATED_KEYS;
     let new_auction_costs = AuctionCosts::default();
@@ -872,6 +871,7 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
         system_costs_config,
         wasm_config,
         core_config,
+        storage_costs: new_storage_costs,
     };
     builder.with_chainspec(chainspec);
 

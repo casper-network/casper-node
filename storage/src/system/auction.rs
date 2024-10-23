@@ -77,8 +77,9 @@ pub trait Auction:
         amount: U512,
         minimum_delegation_amount: u64,
         maximum_delegation_amount: u64,
-        reserved_slots: u32,
+        minimum_bid_amount: u64,
         max_delegators_per_validator: u32,
+        reserved_slots: u32,
     ) -> Result<U512, ApiError> {
         if !self.allow_auction_bids() {
             // The validator set may be closed on some side chains,
@@ -86,7 +87,8 @@ pub trait Auction:
             return Err(Error::AuctionBidsDisabled.into());
         }
 
-        if amount.is_zero() {
+        if amount < U512::from(minimum_bid_amount) {
+            println!("bond too small");
             return Err(Error::BondTooSmall.into());
         }
 
@@ -98,7 +100,7 @@ pub trait Auction:
             return Err(Error::ExceededReservationSlotsLimit.into());
         }
 
-        let provided_account_hash = AccountHash::from_public_key(&public_key, |x| self.blake2b(x));
+        let provided_account_hash = AccountHash::from(&public_key);
 
         if !self.is_allowed_session_caller(&provided_account_hash) {
             return Err(Error::InvalidContext.into());
@@ -185,8 +187,13 @@ pub trait Auction:
     /// An attempt to reduce stake by more than is staked will instead 0 the stake.
     ///
     /// The function returns the remaining staked amount (we allow partial unbonding).
-    fn withdraw_bid(&mut self, public_key: PublicKey, amount: U512) -> Result<U512, Error> {
-        let provided_account_hash = AccountHash::from_public_key(&public_key, |x| self.blake2b(x));
+    fn withdraw_bid(
+        &mut self,
+        public_key: PublicKey,
+        amount: U512,
+        minimum_bid_amount: u64,
+    ) -> Result<U512, Error> {
+        let provided_account_hash = AccountHash::from(&public_key);
 
         if !self.is_allowed_session_caller(&provided_account_hash) {
             return Err(Error::InvalidContext);
@@ -217,7 +224,7 @@ pub trait Auction:
             "withdrawing bid for {} reducing {} by {} to {}",
             validator_bid_addr, initial_amount, unbonding_amount, updated_stake
         );
-        if updated_stake.is_zero() {
+        if updated_stake < U512::from(minimum_bid_amount) {
             // Unbond all delegators and zero them out
             let delegators = read_delegator_bids(self, &public_key)?;
             for mut delegator in delegators {
@@ -292,8 +299,7 @@ pub trait Auction:
         validator_public_key: PublicKey,
         amount: U512,
     ) -> Result<U512, Error> {
-        let provided_account_hash =
-            AccountHash::from_public_key(&delegator_public_key, |x| self.blake2b(x));
+        let provided_account_hash = AccountHash::from(&delegator_public_key);
 
         if !self.is_allowed_session_caller(&provided_account_hash) {
             return Err(Error::InvalidContext);
@@ -363,8 +369,7 @@ pub trait Auction:
         amount: U512,
         new_validator: PublicKey,
     ) -> Result<U512, Error> {
-        let delegator_account_hash =
-            AccountHash::from_public_key(&delegator_public_key, |x| self.blake2b(x));
+        let delegator_account_hash = AccountHash::from(&delegator_public_key);
 
         if !self.is_allowed_session_caller(&delegator_account_hash) {
             return Err(Error::InvalidContext);
@@ -841,7 +846,7 @@ pub trait Auction:
     /// Activates a given validator's bid.  To be used when a validator has been marked as inactive
     /// by consensus (aka "evicted").
     fn activate_bid(&mut self, validator: PublicKey) -> Result<(), Error> {
-        let provided_account_hash = AccountHash::from_public_key(&validator, |x| self.blake2b(x));
+        let provided_account_hash = AccountHash::from(&validator);
 
         if !self.is_allowed_session_caller(&provided_account_hash) {
             return Err(Error::InvalidContext);

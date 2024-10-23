@@ -8,12 +8,13 @@ use casper_types::{
 };
 
 use super::{Error, Source};
-use crate::effect::Responder;
+use crate::{effect::Responder, types::MetaTransaction};
 
 /// A utility struct to hold duplicated information across events.
 #[derive(Debug, Serialize)]
 pub(crate) struct EventMetadata {
     pub(crate) transaction: Transaction,
+    pub(crate) meta_transaction: MetaTransaction,
     pub(crate) source: Source,
     pub(crate) maybe_responder: Option<Responder<Result<(), Error>>>,
     pub(crate) verification_start_timestamp: Timestamp,
@@ -22,14 +23,17 @@ pub(crate) struct EventMetadata {
 impl EventMetadata {
     pub(crate) fn new(
         transaction: Transaction,
+        meta_transaction: MetaTransaction,
         source: Source,
         maybe_responder: Option<Responder<Result<(), Error>>>,
+        verification_start_timestamp: Timestamp,
     ) -> Self {
         EventMetadata {
             transaction,
+            meta_transaction,
             source,
             maybe_responder,
-            verification_start_timestamp: Timestamp::now(),
+            verification_start_timestamp,
         }
     }
 }

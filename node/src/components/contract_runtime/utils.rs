@@ -35,9 +35,7 @@ use casper_storage::{
     },
     global_state::state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
 };
-use casper_types::{
-    BlockHash, Chainspec, Digest, EraId, Gas, GasLimited, Key, ProtocolUpgradeConfig,
-};
+use casper_types::{BlockHash, Chainspec, Digest, EraId, Gas, Key, ProtocolUpgradeConfig};
 
 /// Maximum number of resource intensive tasks that can be run in parallel.
 ///
@@ -137,12 +135,18 @@ pub(super) async fn exec_or_requeue<REv>(
 
         let switch_block_utilization_score = {
             let mut has_hit_slot_limt = false;
+            let mut transaction_hash_to_lane_id = HashMap::new();
 
-            for (category, transactions) in executable_block.transaction_map.iter() {
+            for (lane_id, transactions) in executable_block.transaction_map.iter() {
+                transaction_hash_to_lane_id.extend(
+                    transactions
+                        .iter()
+                        .map(|transaction| (transaction, *lane_id)),
+                );
                 let max_count = chainspec
                     .transaction_config
                     .transaction_v1_config
-                    .get_max_transaction_count(*category);
+                    .get_max_transaction_count(*lane_id);
                 if max_count == transactions.len() as u64 {
                     has_hit_slot_limt = true;
                 }
@@ -162,16 +166,25 @@ pub(super) async fn exec_or_requeue<REv>(
 
                     Ratio::new(total_size_of_transactions * 100, max_block_size).to_integer()
                 };
-
                 let gas_utilization: u64 = {
                     let total_gas_limit: u64 = executable_block
                         .transactions
                         .iter()
-                        .map(|transaction| match transaction.gas_limit(&chainspec) {
-                            Ok(gas_limit) => gas_limit.value().as_u64(),
-                            Err(_) => {
-                                warn!("Unable to determine gas limit");
-                                0u64
+                        .map(|transaction| {
+                            match transaction_hash_to_lane_id.get(&transaction.hash()) {
+                                Some(lane_id) => {
+                                    match &transaction.gas_limit(&chainspec, *lane_id) {
+                                        Ok(gas_limit) => gas_limit.value().as_u64(),
+                                        Err(_) => {
+                                            warn!("Unable to determine gas limit");
+                                            0u64
+                                        }
+                                    }
+                                }
+                                None => {
+                                    warn!("Unable to determine gas limit");
+                                    0u64
+                                }
                             }
                         })
                         .sum();

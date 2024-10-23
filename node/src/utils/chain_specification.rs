@@ -153,9 +153,9 @@ mod tests {
     use casper_types::{
         bytesrepr::FromBytes, ActivationPoint, BrTableCost, ChainspecRawBytes, ControlFlowCosts,
         CoreConfig, EraId, GlobalStateUpdate, HighwayConfig, HostFunction, HostFunctionCosts,
-        MessageLimits, Motes, OpcodeCosts, ProtocolConfig, ProtocolVersion, StorageCosts,
-        StoredValue, TestBlockBuilder, TimeDiff, Timestamp, TransactionConfig, TransactionV1Config,
-        WasmConfig, MINT_LANE_ID,
+        MessageLimits, Motes, OpcodeCosts, ProtocolConfig, ProtocolVersion, StoredValue,
+        TestBlockBuilder, TimeDiff, Timestamp, TransactionConfig, TransactionV1Config, WasmConfig,
+        WasmV1Config, MINT_LANE_ID,
     };
 
     use super::*;
@@ -164,7 +164,6 @@ mod tests {
         utils::{Loadable, RESOURCES_PATH},
     };
 
-    const EXPECTED_GENESIS_STORAGE_COSTS: StorageCosts = StorageCosts::new(101);
     const EXPECTED_GENESIS_COSTS: OpcodeCosts = OpcodeCosts {
         bit: 13,
         add: 14,
@@ -248,20 +247,20 @@ mod tests {
             blake2b: HostFunction::new(133, [0, 1, 2, 3]),
             random_bytes: HostFunction::new(123, [0, 1]),
             enable_contract_version: HostFunction::new(142, [0, 1, 2, 3]),
+            generic_hash: HostFunction::new(152, [0, 1, 2, 3, 4]),
             manage_message_topic: HostFunction::new(100, [0, 1, 2, 4]),
             emit_message: HostFunction::new(100, [0, 1, 2, 3]),
             cost_increase_per_message: 50,
             get_block_info: HostFunction::new(330, [0, 0]),
         });
     static EXPECTED_GENESIS_WASM_COSTS: Lazy<WasmConfig> = Lazy::new(|| {
-        WasmConfig::new(
+        let wasm_v1_config = WasmV1Config::new(
             17, // initial_memory
             19, // max_stack_height
             EXPECTED_GENESIS_COSTS,
-            EXPECTED_GENESIS_STORAGE_COSTS,
             *EXPECTED_GENESIS_HOST_FUNCTION_COSTS,
-            MessageLimits::default(),
-        )
+        );
+        WasmConfig::new(MessageLimits::default(), wasm_v1_config)
     });
 
     #[test]
@@ -629,7 +628,6 @@ mod tests {
             spec.transaction_config.max_ttl,
             TimeDiff::from_seconds(26_300_160)
         );
-        assert_eq!(spec.transaction_config.deploy_config.max_dependencies, 11);
         assert_eq!(spec.transaction_config.max_block_size, 12);
         assert_eq!(
             spec.transaction_config

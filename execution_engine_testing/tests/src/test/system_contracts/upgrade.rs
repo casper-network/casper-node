@@ -23,8 +23,8 @@ use casper_types::{
         },
         mint::ROUND_SEIGNIORAGE_RATE_KEY,
     },
-    Account, CLValue, CoreConfig, EntityAddr, EraId, Key, ProtocolVersion, StoredValue,
-    SystemEntityRegistry, U256, U512,
+    Account, CLValue, CoreConfig, EntityAddr, EraId, Key, ProtocolVersion, StorageCosts,
+    StoredValue, SystemEntityRegistry, U256, U512,
 };
 use rand::Rng;
 
@@ -621,6 +621,7 @@ fn should_increase_max_associated_keys_after_upgrade() {
         core_config,
         wasm_config: Default::default(),
         system_costs_config: Default::default(),
+        storage_costs: StorageCosts::default(),
     };
     builder.with_chainspec(chainspec);
 

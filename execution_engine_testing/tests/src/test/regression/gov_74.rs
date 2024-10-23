@@ -7,7 +7,7 @@ use casper_execution_engine::{
     execution::ExecError,
     runtime::{PreprocessingError, WasmValidationError, DEFAULT_MAX_PARAMETER_COUNT},
 };
-use casper_types::{EraId, ProtocolVersion, RuntimeArgs, WasmConfig};
+use casper_types::{EraId, ProtocolVersion, RuntimeArgs, WasmV1Config};
 
 use crate::wasm_utils;
 
@@ -79,7 +79,7 @@ fn should_pass_max_parameter_count() {
 fn should_observe_stack_height_limit() {
     let mut builder = initialize_builder();
 
-    assert!(WasmConfig::default().max_stack_height > NEW_WASM_STACK_HEIGHT);
+    assert!(WasmV1Config::default().max_stack_height() > NEW_WASM_STACK_HEIGHT);
 
     // This runs out of the interpreter stack limit
     let exec_request_1 = {

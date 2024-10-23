@@ -50,6 +50,7 @@ pub use core_config::DEFAULT_GAS_HOLD_BALANCE_HANDLING;
 pub use core_config::DEFAULT_REFUND_HANDLING;
 pub use core_config::{
     ConsensusProtocolName, CoreConfig, LegacyRequiredFinality, DEFAULT_GAS_HOLD_INTERVAL,
+    DEFAULT_MINIMUM_BID_AMOUNT,
 };
 pub use fee_handling::FeeHandling;
 #[cfg(any(feature = "std", test))]
@@ -62,18 +63,19 @@ pub use next_upgrade::NextUpgrade;
 pub use pricing_handling::PricingHandling;
 pub use protocol_config::ProtocolConfig;
 pub use refund_handling::RefundHandling;
-pub use transaction_config::{DeployConfig, TransactionConfig, TransactionV1Config};
+pub use transaction_config::{
+    DeployConfig, TransactionConfig, TransactionLimitsDefinition, TransactionV1Config,
+};
 #[cfg(any(feature = "testing", test))]
 pub use transaction_config::{
-    DEFAULT_INSTALL_UPGRADE_GAS_LIMIT, DEFAULT_LARGE_TRANSACTION_GAS_LIMIT,
-    DEFAULT_MAX_PAYMENT_MOTES, DEFAULT_MIN_TRANSFER_MOTES,
+    DEFAULT_LARGE_TRANSACTION_GAS_LIMIT, DEFAULT_MAX_PAYMENT_MOTES, DEFAULT_MIN_TRANSFER_MOTES,
 };
 pub use upgrade_config::ProtocolUpgradeConfig;
 pub use vacancy_config::VacancyConfig;
 pub use vm_config::{
     AuctionCosts, BrTableCost, ChainspecRegistry, ControlFlowCosts, HandlePaymentCosts,
     HostFunction, HostFunctionCost, HostFunctionCosts, MessageLimits, MintCosts, OpcodeCosts,
-    StandardPaymentCosts, StorageCosts, SystemConfig, WasmConfig,
+    StandardPaymentCosts, StorageCosts, SystemConfig, WasmConfig, WasmV1Config,
     DEFAULT_HOST_FUNCTION_NEW_DICTIONARY,
 };
 #[cfg(any(feature = "testing", test))]
@@ -88,9 +90,9 @@ pub use vm_config::{
     DEFAULT_CONTROL_FLOW_RETURN_OPCODE, DEFAULT_CONTROL_FLOW_SELECT_OPCODE,
     DEFAULT_CONVERSION_COST, DEFAULT_CURRENT_MEMORY_COST, DEFAULT_DELEGATE_COST, DEFAULT_DIV_COST,
     DEFAULT_GLOBAL_COST, DEFAULT_GROW_MEMORY_COST, DEFAULT_INTEGER_COMPARISON_COST,
-    DEFAULT_LOAD_COST, DEFAULT_LOCAL_COST, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_MUL_COST,
-    DEFAULT_NEW_DICTIONARY_COST, DEFAULT_NOP_COST, DEFAULT_STORE_COST, DEFAULT_TRANSFER_COST,
-    DEFAULT_UNREACHABLE_COST, DEFAULT_WASM_MAX_MEMORY,
+    DEFAULT_LOAD_COST, DEFAULT_LOCAL_COST, DEFAULT_MUL_COST, DEFAULT_NEW_DICTIONARY_COST,
+    DEFAULT_NOP_COST, DEFAULT_STORE_COST, DEFAULT_TRANSFER_COST, DEFAULT_UNREACHABLE_COST,
+    DEFAULT_V1_MAX_STACK_HEIGHT, DEFAULT_V1_WASM_MAX_MEMORY,
 };
 
 /// A collection of configuration settings describing the state of the system at genesis and after
@@ -130,6 +132,9 @@ pub struct Chainspec {
     /// Vacancy behavior config
     #[serde(rename = "vacancy")]
     pub vacancy_config: VacancyConfig,
+
+    /// Storage costs.
+    pub storage_costs: StorageCosts,
 }
 
 impl Chainspec {
@@ -222,39 +227,39 @@ impl Chainspec {
             .saturating_sub(self.core_config.gas_hold_interval.millis())
     }
 
-    /// Is the given transaction category supported.
-    pub fn is_supported(&self, category: u8) -> bool {
+    /// Is the given transaction lane supported.
+    pub fn is_supported(&self, lane: u8) -> bool {
         self.transaction_config
             .transaction_v1_config
-            .is_supported(category)
+            .is_supported(lane)
     }
 
     /// Returns the max serialized for the given category.
-    pub fn get_max_serialized_length_by_category(&self, category: u8) -> u64 {
+    pub fn get_max_serialized_length_by_category(&self, lane: u8) -> u64 {
         self.transaction_config
             .transaction_v1_config
-            .get_max_serialized_length(category)
+            .get_max_serialized_length(lane)
     }
 
     /// Returns the max args length for the given category.
-    pub fn get_max_args_length_by_category(&self, category: u8) -> u64 {
+    pub fn get_max_args_length_by_category(&self, lane: u8) -> u64 {
         self.transaction_config
             .transaction_v1_config
-            .get_max_args_length(category)
+            .get_max_args_length(lane)
     }
 
     /// Returns the max gas limit for the given category.
-    pub fn get_max_gas_limit_by_category(&self, category: u8) -> u64 {
+    pub fn get_max_gas_limit_by_category(&self, lane: u8) -> u64 {
         self.transaction_config
             .transaction_v1_config
-            .get_max_gas_limit(category)
+            .get_max_transaction_gas_limit(lane)
     }
 
     /// Returns the max transaction count for the given category.
-    pub fn get_max_transaction_count_by_category(&self, category: u8) -> u64 {
+    pub fn get_max_transaction_count_by_category(&self, lane: u8) -> u64 {
         self.transaction_config
             .transaction_v1_config
-            .get_max_transaction_count(category)
+            .get_max_transaction_count(lane)
     }
 }
 
@@ -280,6 +285,7 @@ impl Chainspec {
             wasm_config,
             system_costs_config,
             vacancy_config,
+            storage_costs: rng.gen(),
         }
     }
 
@@ -317,7 +323,8 @@ impl ToBytes for Chainspec {
         self.transaction_config.write_bytes(writer)?;
         self.wasm_config.write_bytes(writer)?;
         self.system_costs_config.write_bytes(writer)?;
-        self.vacancy_config.write_bytes(writer)
+        self.vacancy_config.write_bytes(writer)?;
+        self.storage_costs.write_bytes(writer)
     }
 
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
@@ -335,6 +342,7 @@ impl ToBytes for Chainspec {
             + self.wasm_config.serialized_length()
             + self.system_costs_config.serialized_length()
             + self.vacancy_config.serialized_length()
+            + self.storage_costs.serialized_length()
     }
 }
 
@@ -348,6 +356,7 @@ impl FromBytes for Chainspec {
         let (wasm_config, remainder) = WasmConfig::from_bytes(remainder)?;
         let (system_costs_config, remainder) = SystemConfig::from_bytes(remainder)?;
         let (vacancy_config, remainder) = VacancyConfig::from_bytes(remainder)?;
+        let (storage_costs, remainder) = FromBytes::from_bytes(remainder)?;
         let chainspec = Chainspec {
             protocol_config,
             network_config,
@@ -357,6 +366,7 @@ impl FromBytes for Chainspec {
             wasm_config,
             system_costs_config,
             vacancy_config,
+            storage_costs,
         };
         Ok((chainspec, remainder))
     }

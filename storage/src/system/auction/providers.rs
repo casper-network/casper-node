@@ -3,12 +3,11 @@ use std::collections::BTreeSet;
 use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
-    crypto,
     system::{
         auction::{BidAddr, BidKind, EraInfo, Error, UnbondingPurse},
         mint,
     },
-    CLTyped, Key, KeyTag, URef, BLAKE2B_DIGEST_LENGTH, U512,
+    CLTyped, Key, KeyTag, URef, U512,
 };
 
 /// Provider of runtime host functionality.
@@ -36,11 +35,6 @@ pub trait RuntimeProvider {
 
     /// Returns number of reservations for which a delegator bid exists.
     fn used_reservation_count(&mut self, bid_addr: &BidAddr) -> Result<usize, Error>;
-
-    /// Returns a 32-byte BLAKE2b digest
-    fn blake2b<T: AsRef<[u8]>>(&self, data: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {
-        crypto::blake2b(data)
-    }
 
     /// Returns vesting schedule period.
     fn vesting_schedule_period_millis(&self) -> u64;

@@ -26,6 +26,7 @@ pub struct Config {
     balance_hold_interval: u64,
     include_credits: bool,
     credit_cap: Ratio<U512>,
+    native_transfer_cost: u32,
 }
 
 impl Config {
@@ -43,6 +44,7 @@ impl Config {
         balance_hold_interval: u64,
         include_credits: bool,
         credit_cap: Ratio<U512>,
+        native_transfer_cost: u32,
     ) -> Self {
         Config {
             transfer_config,
@@ -56,6 +58,7 @@ impl Config {
             balance_hold_interval,
             include_credits,
             credit_cap,
+            native_transfer_cost,
         }
     }
 
@@ -75,6 +78,7 @@ impl Config {
             U512::from(*chainspec.core_config.validator_credit_cap.numer()),
             U512::from(*chainspec.core_config.validator_credit_cap.denom()),
         );
+        let native_transfer_cost = chainspec.system_costs_config.mint_costs().transfer;
         Config::new(
             transfer_config,
             fee_handling,
@@ -87,6 +91,7 @@ impl Config {
             balance_hold_interval,
             include_credits,
             credit_cap,
+            native_transfer_cost,
         )
     }
 
@@ -159,6 +164,7 @@ impl Config {
             balance_hold_interval: self.balance_hold_interval,
             include_credits: self.include_credits,
             credit_cap: self.credit_cap,
+            native_transfer_cost: self.native_transfer_cost,
         }
     }
 }
@@ -540,5 +546,9 @@ where
     /// Extracts transfer items.
     pub fn into_transfers(self) -> Vec<Transfer> {
         self.transfers
+    }
+
+    pub(crate) fn native_transfer_cost(&self) -> u32 {
+        self.config.native_transfer_cost
     }
 }

@@ -7,7 +7,7 @@ description = "Types shared by many casper crates for use on the Casper network.
 readme = "README.md"
 documentation = "https://docs.rs/casper-types"
 homepage = "https://casperlabs.io"
-repository = "https://github.com/CasperLabs/casper-node/tree/master/types"
+repository = "https://github.com/casper-network/casper-node/tree/master/types"
 license = "Apache-2.0"
 
 [dependencies]
