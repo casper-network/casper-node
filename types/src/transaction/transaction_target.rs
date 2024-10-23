@@ -13,6 +13,7 @@ use crate::{
         FromBytes, ToBytes,
     },
     transaction::serialization::CalltableSerializationEnvelopeBuilder,
+    HashAddr,
 };
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
@@ -100,6 +101,23 @@ impl TransactionTarget {
                     module_bytes.serialized_length(),
                 ]
             }
+        }
+    }
+
+    /// Returns a `hash_addr` for a targeted contract, if known.
+    pub fn contract_hash_addr(&self) -> Option<HashAddr> {
+        if let Some(invocation_target) = self.invocation_target() {
+            invocation_target.contract_by_hash()
+        } else {
+            None
+        }
+    }
+
+    /// Returns the invocation target, if any.
+    pub fn invocation_target(&self) -> Option<TransactionInvocationTarget> {
+        match self {
+            TransactionTarget::Native | TransactionTarget::Session { .. } => None,
+            TransactionTarget::Stored { id, .. } => Some(id.clone()),
         }
     }
 

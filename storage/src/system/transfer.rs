@@ -367,7 +367,7 @@ impl TransferRuntimeArgsBuilder {
 
         match tracking_copy
             .borrow_mut()
-            .get_addressable_entity_by_account_hash(protocol_version, account_hash)
+            .runtime_footprint_by_account_hash(protocol_version, account_hash)
         {
             Ok((_, entity)) => {
                 let main_purse_addable = entity

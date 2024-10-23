@@ -115,10 +115,9 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
                 .unwrap_or_else(|_| SystemHashRegistry::new());
             let immediate_caller = self.get_immediate_caller();
             match immediate_caller {
-                Some(Caller::Entity {
-                    entity_addr: contract_hash,
-                    ..
-                }) if registry.has_contract_hash(&contract_hash.value()) => {
+                Some(Caller::Entity { entity_addr, .. })
+                    if registry.exists(&entity_addr.value()) =>
+                {
                     // System contract calling a mint is fine (i.e. standard payment calling mint's
                     // transfer)
                 }
@@ -142,7 +141,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
                     let is_source_admin = self.is_administrator(&account_hash);
                     match maybe_to {
                         Some(to) => {
-                            let maybe_account = self.read_addressable_entity_by_account_hash(to);
+                            let maybe_account = self.runtime_footprint_by_account_hash(to);
 
                             match maybe_account {
                                 Ok(Some(runtime_footprint)) => {

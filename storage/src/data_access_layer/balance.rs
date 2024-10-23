@@ -101,7 +101,7 @@ impl BalanceIdentifier {
             BalanceIdentifier::Purse(purse_uref) => *purse_uref,
             BalanceIdentifier::Public(public_key) => {
                 let account_hash = public_key.to_account_hash();
-                match tc.get_addressable_entity_by_account_hash(protocol_version, account_hash) {
+                match tc.runtime_footprint_by_account_hash(protocol_version, account_hash) {
                     Ok((_, entity)) => entity
                         .main_purse()
                         .ok_or_else(|| TrackingCopyError::Authorization)?,
@@ -110,7 +110,7 @@ impl BalanceIdentifier {
             }
             BalanceIdentifier::Account(account_hash)
             | BalanceIdentifier::PenalizedAccount(account_hash) => {
-                match tc.get_addressable_entity_by_account_hash(protocol_version, *account_hash) {
+                match tc.runtime_footprint_by_account_hash(protocol_version, *account_hash) {
                     Ok((_, entity)) => entity
                         .main_purse()
                         .ok_or_else(|| TrackingCopyError::Authorization)?,
@@ -118,7 +118,7 @@ impl BalanceIdentifier {
                 }
             }
             BalanceIdentifier::Entity(entity_addr) => {
-                match tc.get_runtime_footprint(*entity_addr) {
+                match tc.runtime_footprint_by_entity_addr(*entity_addr) {
                     Ok(entity) => entity
                         .main_purse()
                         .ok_or_else(|| TrackingCopyError::Authorization)?,
@@ -157,7 +157,7 @@ impl BalanceIdentifier {
             })?;
 
         let named_keys = tc
-            .get_runtime_footprint(EntityAddr::System(*entity_hash))?
+            .runtime_footprint_by_entity_addr(EntityAddr::System(*entity_hash))?
             .take_named_keys();
 
         let named_key =

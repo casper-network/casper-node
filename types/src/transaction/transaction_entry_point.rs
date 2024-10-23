@@ -249,6 +249,15 @@ impl TransactionEntryPoint {
             }
         }
     }
+
+    /// Returns custom entry point name if relevant.
+    pub fn custom_entry_point(&self) -> Option<String> {
+        if let TransactionEntryPoint::Custom(entry_point) = self {
+            Some(entry_point.clone())
+        } else {
+            None
+        }
+    }
 }
 
 const TAG_FIELD_INDEX: u16 = 0;

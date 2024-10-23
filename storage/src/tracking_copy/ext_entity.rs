@@ -41,33 +41,27 @@ pub trait TrackingCopyEntityExt<R> {
     /// The type for the returned errors.
     type Error;
 
-    /// Gets an addressable entity by address.
-    fn get_runtime_footprint(
+    /// Gets a runtime information by entity_addr.
+    fn runtime_footprint_by_entity_addr(
         &self,
         entity_addr: EntityAddr,
     ) -> Result<RuntimeFootprint, Self::Error>;
 
-    /// Gets an addressable entity by hash.
-    fn get_runtime_footprint_by_hash(
+    /// Gets a runtime information by hash_addr.
+    fn runtime_footprint_by_hash_addr(
         &mut self,
-        addressable_entity_hash: HashAddr,
+        hash_addr: HashAddr,
     ) -> Result<RuntimeFootprint, Self::Error>;
 
-    // /// Gets the entity hash for an account hash.
-    // fn get_entity_hash_by_account_hash(
-    //     &mut self,
-    //     account_hash: AccountHash,
-    // ) -> Result<AddressableEntityHash, Self::Error>;
-
-    /// Gets the entity for a given account by its account hash.
-    fn get_addressable_entity_by_account_hash(
+    /// Gets a runtime information by account hash.
+    fn runtime_footprint_by_account_hash(
         &mut self,
         protocol_version: ProtocolVersion,
         account_hash: AccountHash,
     ) -> Result<(EntityAddr, RuntimeFootprint), Self::Error>;
 
-    /// Get entity if authorized, else error.
-    fn get_authorized_addressable_entity(
+    /// Get runtime information for an account if authorized, else error.
+    fn authorized_runtime_footprint_by_account(
         &mut self,
         protocol_version: ProtocolVersion,
         account_hash: AccountHash,
@@ -75,14 +69,29 @@ pub trait TrackingCopyEntityExt<R> {
         administrative_accounts: &BTreeSet<AccountHash>,
     ) -> Result<(RuntimeFootprint, EntityAddr), Self::Error>;
 
-    /// Migrate the NamedKeys for a Contract or Account.
+    /// Returns runtime information and access rights if authorized, else error.
+    fn authorized_runtime_footprint_with_access_rights(
+        &mut self,
+        protocol_version: ProtocolVersion,
+        initiating_address: AccountHash,
+        authorization_keys: &BTreeSet<AccountHash>,
+        administrative_accounts: &BTreeSet<AccountHash>,
+    ) -> Result<(EntityAddr, RuntimeFootprint, ContextAccessRights), TrackingCopyError>;
+
+    /// Returns runtime information for systemic functionality.
+    fn system_entity_runtime_footprint(
+        &mut self,
+        protocol_version: ProtocolVersion,
+    ) -> Result<(EntityAddr, RuntimeFootprint, ContextAccessRights), TrackingCopyError>;
+
+    /// Migrate the NamedKeys for a entity.
     fn migrate_named_keys(
         &mut self,
         entity_addr: EntityAddr,
         named_keys: NamedKeys,
     ) -> Result<(), Self::Error>;
 
-    /// Migrate entry points from Contract to top level entries.
+    /// Migrate entry points from and older structure to top level entries.
     fn migrate_entry_points(
         &mut self,
         entity_addr: EntityAddr,
@@ -106,7 +115,7 @@ pub trait TrackingCopyEntityExt<R> {
         protocol_version: ProtocolVersion,
     ) -> Result<(), Self::Error>;
 
-    /// Create an addressable entity to receive transfer to a non-existent addressable entity.
+    /// Create an addressable entity to receive transfer.
     fn create_new_addressable_entity_on_transfer(
         &mut self,
         account_hash: AccountHash,
@@ -124,24 +133,9 @@ pub trait TrackingCopyEntityExt<R> {
     /// Migrate ContractPackage to Package.
     fn migrate_package(
         &mut self,
-        legacy_package_key: Key,
+        contract_package_key: Key,
         protocol_version: ProtocolVersion,
     ) -> Result<(), Self::Error>;
-
-    /// Returns entity, named keys, and access rights for the system.
-    fn system_entity(
-        &mut self,
-        protocol_version: ProtocolVersion,
-    ) -> Result<(EntityAddr, RuntimeFootprint, ContextAccessRights), TrackingCopyError>;
-
-    /// Returns entity, named keys, and access rights.
-    fn resolved_entity(
-        &mut self,
-        protocol_version: ProtocolVersion,
-        initiating_address: AccountHash,
-        authorization_keys: &BTreeSet<AccountHash>,
-        administrative_accounts: &BTreeSet<AccountHash>,
-    ) -> Result<(EntityAddr, RuntimeFootprint, ContextAccessRights), TrackingCopyError>;
 
     /// Returns fee purse.
     fn fees_purse(
@@ -151,7 +145,7 @@ pub trait TrackingCopyEntityExt<R> {
     ) -> Result<URef, TrackingCopyError>;
 
     /// Returns named key from selected system contract.
-    fn get_system_contract_named_key(
+    fn system_contract_named_key(
         &mut self,
         system_contract_name: &str,
         name: &str,
@@ -164,7 +158,7 @@ where
 {
     type Error = TrackingCopyError;
 
-    fn get_runtime_footprint(
+    fn runtime_footprint_by_entity_addr(
         &self,
         entity_addr: EntityAddr,
     ) -> Result<RuntimeFootprint, Self::Error> {
@@ -227,43 +221,20 @@ where
         }
     }
 
-    fn get_runtime_footprint_by_hash(
+    fn runtime_footprint_by_hash_addr(
         &mut self,
-        entity_hash: HashAddr,
+        hash_addr: HashAddr,
     ) -> Result<RuntimeFootprint, Self::Error> {
-        let entity_addr = if self
-            .get_system_entity_registry()?
-            .has_contract_hash(&entity_hash)
-        {
-            EntityAddr::new_system(entity_hash)
+        let entity_addr = if self.get_system_entity_registry()?.exists(&hash_addr) {
+            EntityAddr::new_system(hash_addr)
         } else {
-            EntityAddr::new_smart_contract(entity_hash)
+            EntityAddr::new_smart_contract(hash_addr)
         };
 
-        self.get_runtime_footprint(entity_addr)
+        self.runtime_footprint_by_entity_addr(entity_addr)
     }
 
-    // fn get_entity_hash_by_account_hash(
-    //     &mut self,
-    //     account_hash: AccountHash,
-    // ) -> Result<AddressableEntityHash, Self::Error> {
-    //     let account_key = Key::Account(account_hash);
-    //     match self.get(&account_key)? {
-    //         Some(StoredValue::CLValue(cl_value)) => {
-    //             let entity_key = CLValue::into_t::<Key>(cl_value)?;
-    //             let entity_hash = AddressableEntityHash::try_from(entity_key)
-    //                 .map_err(|_| TrackingCopyError::BytesRepr(bytesrepr::Error::Formatting))?;
-    //
-    //             Ok(entity_hash)
-    //         }
-    //         Some(other) => Err(TrackingCopyError::TypeMismatch(
-    //             StoredValueTypeMismatch::new("CLValue".to_string(), other.type_name()),
-    //         )),
-    //         None => Err(TrackingCopyError::KeyNotFound(account_key)),
-    //     }
-    // }
-
-    fn get_addressable_entity_by_account_hash(
+    fn runtime_footprint_by_account_hash(
         &mut self,
         protocol_version: ProtocolVersion,
         account_hash: AccountHash,
@@ -310,7 +281,7 @@ where
                 Ok((entity_addr, runtime_footprint))
             }
             Some(other) => Err(TrackingCopyError::TypeMismatch(
-                StoredValueTypeMismatch::new("Contract".to_string(), other.type_name()),
+                StoredValueTypeMismatch::new("AddressableEntity".to_string(), other.type_name()),
             )),
             None => Err(TrackingCopyError::KeyNotFound(Key::AddressableEntity(
                 entity_addr,
@@ -318,7 +289,7 @@ where
         }
     }
 
-    fn get_authorized_addressable_entity(
+    fn authorized_runtime_footprint_by_account(
         &mut self,
         protocol_version: ProtocolVersion,
         account_hash: AccountHash,
@@ -326,7 +297,7 @@ where
         administrative_accounts: &BTreeSet<AccountHash>,
     ) -> Result<(RuntimeFootprint, EntityAddr), Self::Error> {
         let (entity_addr, entity_record) =
-            self.get_addressable_entity_by_account_hash(protocol_version, account_hash)?;
+            self.runtime_footprint_by_account_hash(protocol_version, account_hash)?;
 
         if !administrative_accounts.is_empty()
             && administrative_accounts
@@ -349,6 +320,97 @@ where
         }
 
         Ok((entity_record, entity_addr))
+    }
+
+    fn authorized_runtime_footprint_with_access_rights(
+        &mut self,
+        protocol_version: ProtocolVersion,
+        initiating_address: AccountHash,
+        authorization_keys: &BTreeSet<AccountHash>,
+        administrative_accounts: &BTreeSet<AccountHash>,
+    ) -> Result<(EntityAddr, RuntimeFootprint, ContextAccessRights), TrackingCopyError> {
+        if initiating_address == PublicKey::System.to_account_hash() {
+            return self.system_entity_runtime_footprint(protocol_version);
+        }
+
+        let (footprint, entity_addr) = self.authorized_runtime_footprint_by_account(
+            protocol_version,
+            initiating_address,
+            authorization_keys,
+            administrative_accounts,
+        )?;
+        let access_rights =
+            footprint.extract_access_rights(entity_addr.value(), footprint.named_keys());
+        Ok((entity_addr, footprint, access_rights))
+    }
+
+    fn system_entity_runtime_footprint(
+        &mut self,
+        protocol_version: ProtocolVersion,
+    ) -> Result<(EntityAddr, RuntimeFootprint, ContextAccessRights), TrackingCopyError> {
+        let system_account_hash = PublicKey::System.to_account_hash();
+        let (system_entity_addr, mut system_entity) =
+            self.runtime_footprint_by_account_hash(protocol_version, system_account_hash)?;
+
+        let system_entity_registry = self.get_system_entity_registry()?;
+
+        let (auction_named_keys, mut auction_access_rights) = {
+            let auction_hash = match system_entity_registry.get(AUCTION).copied() {
+                Some(auction_hash) => auction_hash,
+                None => {
+                    error!("unexpected failure; auction not found");
+                    return Err(TrackingCopyError::MissingSystemContractHash(
+                        AUCTION.to_string(),
+                    ));
+                }
+            };
+            let auction = self.runtime_footprint_by_hash_addr(auction_hash)?;
+            let auction_access_rights =
+                auction.extract_access_rights(auction_hash, auction.named_keys());
+            (auction.take_named_keys(), auction_access_rights)
+        };
+        let (mint_named_keys, mint_access_rights) = {
+            let mint_hash = match system_entity_registry.get(MINT).copied() {
+                Some(mint_hash) => mint_hash,
+                None => {
+                    error!("unexpected failure; mint not found");
+                    return Err(TrackingCopyError::MissingSystemContractHash(
+                        MINT.to_string(),
+                    ));
+                }
+            };
+            let mint = self.runtime_footprint_by_hash_addr(mint_hash)?;
+            let mint_named_keys = mint.named_keys();
+            let mint_access_rights = mint.extract_access_rights(mint_hash, mint_named_keys);
+            (mint.take_named_keys(), mint_access_rights)
+        };
+
+        let (payment_named_keys, payment_access_rights) = {
+            let payment_hash = match system_entity_registry.get(HANDLE_PAYMENT).copied() {
+                Some(payment_hash) => payment_hash,
+                None => {
+                    error!("unexpected failure; handle payment not found");
+                    return Err(TrackingCopyError::MissingSystemContractHash(
+                        HANDLE_PAYMENT.to_string(),
+                    ));
+                }
+            };
+            let payment = self.runtime_footprint_by_hash_addr(payment_hash)?;
+            let payment_access_rights =
+                payment.extract_access_rights(payment_hash, &mint_named_keys);
+            (payment.take_named_keys(), payment_access_rights)
+        };
+
+        // the auction calls the mint for total supply behavior, so extending the context to include
+        // mint named keys & access rights
+        system_entity.named_keys_mut().append(auction_named_keys);
+        system_entity.named_keys_mut().append(mint_named_keys);
+        system_entity.named_keys_mut().append(payment_named_keys);
+
+        auction_access_rights.extend_access_rights(mint_access_rights.take_access_rights());
+        auction_access_rights.extend_access_rights(payment_access_rights.take_access_rights());
+
+        Ok((system_entity_addr, system_entity, auction_access_rights))
     }
 
     fn migrate_named_keys(
@@ -728,97 +790,6 @@ where
         Ok(())
     }
 
-    fn system_entity(
-        &mut self,
-        protocol_version: ProtocolVersion,
-    ) -> Result<(EntityAddr, RuntimeFootprint, ContextAccessRights), TrackingCopyError> {
-        let system_account_hash = PublicKey::System.to_account_hash();
-        let (system_entity_addr, mut system_entity) =
-            self.get_addressable_entity_by_account_hash(protocol_version, system_account_hash)?;
-
-        let system_entity_registry = self.get_system_entity_registry()?;
-
-        let (auction_named_keys, mut auction_access_rights) = {
-            let auction_hash = match system_entity_registry.get(AUCTION).copied() {
-                Some(auction_hash) => auction_hash,
-                None => {
-                    error!("unexpected failure; auction not found");
-                    return Err(TrackingCopyError::MissingSystemContractHash(
-                        AUCTION.to_string(),
-                    ));
-                }
-            };
-            let auction = self.get_runtime_footprint_by_hash(auction_hash)?;
-            let auction_access_rights =
-                auction.extract_access_rights(auction_hash, auction.named_keys());
-            (auction.take_named_keys(), auction_access_rights)
-        };
-        let (mint_named_keys, mint_access_rights) = {
-            let mint_hash = match system_entity_registry.get(MINT).copied() {
-                Some(mint_hash) => mint_hash,
-                None => {
-                    error!("unexpected failure; mint not found");
-                    return Err(TrackingCopyError::MissingSystemContractHash(
-                        MINT.to_string(),
-                    ));
-                }
-            };
-            let mint = self.get_runtime_footprint_by_hash(mint_hash)?;
-            let mint_named_keys = mint.named_keys();
-            let mint_access_rights = mint.extract_access_rights(mint_hash, mint_named_keys);
-            (mint.take_named_keys(), mint_access_rights)
-        };
-
-        let (payment_named_keys, payment_access_rights) = {
-            let payment_hash = match system_entity_registry.get(HANDLE_PAYMENT).copied() {
-                Some(payment_hash) => payment_hash,
-                None => {
-                    error!("unexpected failure; handle payment not found");
-                    return Err(TrackingCopyError::MissingSystemContractHash(
-                        HANDLE_PAYMENT.to_string(),
-                    ));
-                }
-            };
-            let payment = self.get_runtime_footprint_by_hash(payment_hash)?;
-            let payment_access_rights =
-                payment.extract_access_rights(payment_hash, &mint_named_keys);
-            (payment.take_named_keys(), payment_access_rights)
-        };
-
-        // the auction calls the mint for total supply behavior, so extending the context to include
-        // mint named keys & access rights
-        system_entity.named_keys_mut().append(auction_named_keys);
-        system_entity.named_keys_mut().append(mint_named_keys);
-        system_entity.named_keys_mut().append(payment_named_keys);
-
-        auction_access_rights.extend_access_rights(mint_access_rights.take_access_rights());
-        auction_access_rights.extend_access_rights(payment_access_rights.take_access_rights());
-
-        Ok((system_entity_addr, system_entity, auction_access_rights))
-    }
-
-    fn resolved_entity(
-        &mut self,
-        protocol_version: ProtocolVersion,
-        initiating_address: AccountHash,
-        authorization_keys: &BTreeSet<AccountHash>,
-        administrative_accounts: &BTreeSet<AccountHash>,
-    ) -> Result<(EntityAddr, RuntimeFootprint, ContextAccessRights), TrackingCopyError> {
-        if initiating_address == PublicKey::System.to_account_hash() {
-            return self.system_entity(protocol_version);
-        }
-
-        let (footprint, entity_addr) = self.get_authorized_addressable_entity(
-            protocol_version,
-            initiating_address,
-            authorization_keys,
-            administrative_accounts,
-        )?;
-        let access_rights =
-            footprint.extract_access_rights(entity_addr.value(), footprint.named_keys());
-        Ok((entity_addr, footprint, access_rights))
-    }
-
     fn fees_purse(
         &mut self,
         protocol_version: ProtocolVersion,
@@ -829,7 +800,7 @@ where
             FeesPurseHandling::None(uref) => Ok(uref),
             FeesPurseHandling::ToProposer(proposer) => {
                 let (_, entity) =
-                    self.get_addressable_entity_by_account_hash(protocol_version, proposer)?;
+                    self.runtime_footprint_by_account_hash(protocol_version, proposer)?;
 
                 println!("foo");
                 Ok(entity
@@ -874,7 +845,7 @@ where
         }
     }
 
-    fn get_system_contract_named_key(
+    fn system_contract_named_key(
         &mut self,
         system_contract_name: &str,
         name: &str,
@@ -892,7 +863,7 @@ where
                 ));
             }
         };
-        let runtime_footprint = self.get_runtime_footprint_by_hash(hash)?;
+        let runtime_footprint = self.runtime_footprint_by_hash_addr(hash)?;
         Ok(runtime_footprint.take_named_keys().get(name).copied())
     }
 }

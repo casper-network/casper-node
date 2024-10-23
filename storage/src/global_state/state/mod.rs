@@ -1189,24 +1189,25 @@ pub trait StateProvider {
         };
 
         let source_account_hash = initiator.account_hash();
-        let (entity_addr, mut footprint, mut entity_access_rights) =
-            match tc.borrow_mut().resolved_entity(
+        let (entity_addr, mut footprint, mut entity_access_rights) = match tc
+            .borrow_mut()
+            .authorized_runtime_footprint_with_access_rights(
                 protocol_version,
                 source_account_hash,
                 &authorization_keys,
                 &BTreeSet::default(),
             ) {
-                Ok(ret) => ret,
-                Err(tce) => {
-                    return BiddingResult::Failure(tce);
-                }
-            };
+            Ok(ret) => ret,
+            Err(tce) => {
+                return BiddingResult::Failure(tce);
+            }
+        };
         let entity_key = Key::AddressableEntity(entity_addr);
 
         // extend named keys with era end timestamp
         match tc
             .borrow_mut()
-            .get_system_contract_named_key(AUCTION, ERA_END_TIMESTAMP_MILLIS_KEY)
+            .system_contract_named_key(AUCTION, ERA_END_TIMESTAMP_MILLIS_KEY)
         {
             Ok(Some(k)) => {
                 match k.as_uref() {
@@ -1229,7 +1230,7 @@ pub trait StateProvider {
         // extend named keys with era id
         match tc
             .borrow_mut()
-            .get_system_contract_named_key(AUCTION, ERA_ID_KEY)
+            .system_contract_named_key(AUCTION, ERA_ID_KEY)
         {
             Ok(Some(k)) => {
                 match k.as_uref() {
@@ -2099,18 +2100,19 @@ pub trait StateProvider {
             }
         }
 
-        let (entity_addr, runtime_footprint, entity_access_rights) =
-            match tc.borrow_mut().resolved_entity(
+        let (entity_addr, runtime_footprint, entity_access_rights) = match tc
+            .borrow_mut()
+            .authorized_runtime_footprint_with_access_rights(
                 protocol_version,
                 source_account_hash,
                 authorization_keys,
                 &administrative_accounts,
             ) {
-                Ok(ret) => ret,
-                Err(tce) => {
-                    return TransferResult::Failure(TransferError::TrackingCopy(tce));
-                }
-            };
+            Ok(ret) => ret,
+            Err(tce) => {
+                return TransferResult::Failure(TransferError::TrackingCopy(tce));
+            }
+        };
         let entity_key = if config.enable_addressable_entity() {
             Key::AddressableEntity(entity_addr)
         } else {

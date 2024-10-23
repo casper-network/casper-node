@@ -345,14 +345,14 @@ where
     /// and bump the contract version at a major version upgrade.
     fn refresh_system_entity_entry_points(
         &mut self,
-        entity_hash: HashAddr,
+        hash_addr: HashAddr,
         system_entity_type: SystemEntityType,
     ) -> Result<(), ProtocolUpgradeError> {
         debug!(%system_entity_type, "refresh system contract entry points");
         let entity_name = system_entity_type.entity_name();
 
         let (mut entity, maybe_named_keys, must_prune) =
-            match self.retrieve_system_entity(entity_hash, system_entity_type) {
+            match self.retrieve_system_entity(hash_addr, system_entity_type) {
                 Ok(ret) => ret,
                 Err(err) => {
                     error!("{:?}", err);
@@ -363,7 +363,7 @@ where
         let mut package =
             self.retrieve_system_package(entity.package_hash(), system_entity_type)?;
 
-        let entity_hash = AddressableEntityHash::new(entity_hash);
+        let entity_hash = AddressableEntityHash::new(hash_addr);
         package.disable_entity_version(entity_hash).map_err(|_| {
             ProtocolUpgradeError::FailedToDisablePreviousVersion(entity_name.to_string())
         })?;
@@ -482,13 +482,13 @@ where
 
     fn retrieve_system_entity(
         &mut self,
-        entity_hash: HashAddr,
+        hash_addr: HashAddr,
         system_contract_type: SystemEntityType,
     ) -> Result<(AddressableEntity, Option<NamedKeys>, bool), ProtocolUpgradeError> {
         debug!(%system_contract_type, "retrieve system entity");
         if let Some(StoredValue::Contract(system_contract)) = self
             .tracking_copy
-            .read(&Key::Hash(entity_hash))
+            .read(&Key::Hash(hash_addr))
             .map_err(|_| {
                 ProtocolUpgradeError::UnableToRetrieveSystemContract(
                     system_contract_type.to_string(),
@@ -501,7 +501,7 @@ where
 
         if let Some(StoredValue::AddressableEntity(system_entity)) = self
             .tracking_copy
-            .read(&Key::AddressableEntity(EntityAddr::new_system(entity_hash)))
+            .read(&Key::AddressableEntity(EntityAddr::new_system(hash_addr)))
             .map_err(|_| {
                 ProtocolUpgradeError::UnableToRetrieveSystemContract(
                     system_contract_type.to_string(),

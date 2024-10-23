@@ -44,7 +44,7 @@ impl Config {
         balance_hold_interval: u64,
         include_credits: bool,
         credit_cap: Ratio<U512>,
-        enable_entity: bool,
+        enable_addressable_entity: bool,
     ) -> Self {
         Config {
             transfer_config,
@@ -58,7 +58,7 @@ impl Config {
             balance_hold_interval,
             include_credits,
             credit_cap,
-            enable_addressable_entity: enable_entity,
+            enable_addressable_entity,
         }
     }
 
@@ -78,7 +78,7 @@ impl Config {
             U512::from(*chainspec.core_config.validator_credit_cap.numer()),
             U512::from(*chainspec.core_config.validator_credit_cap.denom()),
         );
-        let enable_entity = chainspec.core_config.enable_addressable_entity;
+        let enable_addressable_entity = chainspec.core_config.enable_addressable_entity;
         Config::new(
             transfer_config,
             fee_handling,
@@ -91,7 +91,7 @@ impl Config {
             balance_hold_interval,
             include_credits,
             credit_cap,
-            enable_entity,
+            enable_addressable_entity,
         )
     }
 
@@ -294,7 +294,7 @@ pub struct RuntimeNative<S> {
 
     tracking_copy: Rc<RefCell<TrackingCopy<S>>>,
     address: AccountHash,
-    entity_key: Key,
+    context_key: Key,
     runtime_footprint: RuntimeFootprint,
     access_rights: ContextAccessRights,
     remaining_spending_limit: U512,
@@ -314,7 +314,7 @@ where
         id: Id,
         tracking_copy: Rc<RefCell<TrackingCopy<S>>>,
         address: AccountHash,
-        entity_key: Key,
+        context_key: Key,
         runtime_footprint: RuntimeFootprint,
         access_rights: ContextAccessRights,
         remaining_spending_limit: U512,
@@ -331,7 +331,7 @@ where
 
             tracking_copy,
             address,
-            entity_key,
+            context_key,
             runtime_footprint,
             access_rights,
             remaining_spending_limit,
@@ -351,10 +351,11 @@ where
         let seed = id.seed();
         let address_generator = AddressGenerator::new(&seed, phase);
         let transfers = vec![];
-        let (entity_addr, runtime_footprint, access_rights) =
-            tracking_copy.borrow_mut().system_entity(protocol_version)?;
+        let (entity_addr, runtime_footprint, access_rights) = tracking_copy
+            .borrow_mut()
+            .system_entity_runtime_footprint(protocol_version)?;
         let address = PublicKey::System.to_account_hash();
-        let entity_key = if config.enable_addressable_entity {
+        let context_key = if config.enable_addressable_entity {
             Key::AddressableEntity(entity_addr)
         } else {
             Key::Hash(entity_addr.value())
@@ -368,7 +369,7 @@ where
 
             tracking_copy,
             address,
-            entity_key,
+            context_key,
             runtime_footprint,
             access_rights,
             remaining_spending_limit,
@@ -400,14 +401,14 @@ where
                 ));
             }
         };
-        let entity_key = if config.enable_addressable_entity {
+        let context_key = if config.enable_addressable_entity {
             Key::AddressableEntity(EntityAddr::System(hash))
         } else {
             Key::Hash(hash)
         };
         let runtime_footprint = tracking_copy
             .borrow_mut()
-            .get_runtime_footprint_by_hash(hash)?;
+            .runtime_footprint_by_hash_addr(hash)?;
         let access_rights =
             runtime_footprint.extract_access_rights(hash, runtime_footprint.named_keys());
         let address = PublicKey::System.to_account_hash();
@@ -420,7 +421,7 @@ where
 
             tracking_copy,
             address,
-            entity_key,
+            context_key,
             runtime_footprint,
             access_rights,
             remaining_spending_limit,
@@ -464,9 +465,9 @@ where
         self.address = account_hash;
     }
 
-    /// Returns the entity key being used by this instance.
-    pub fn entity_key(&self) -> &Key {
-        &self.entity_key
+    /// Returns the context key being used by this instance.
+    pub fn context_key(&self) -> &Key {
+        &self.context_key
     }
 
     /// Returns the addressable entity being used by this instance.

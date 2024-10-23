@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 
 use casper_execution_engine::engine_state::{
-    deploy_item::DeployItem, BlockInfo, ExecutableItem, SessionInputData, WasmV1Request,
+    BlockInfo, ExecutableItem, SessionInputData, WasmV1Request,
 };
 use casper_types::{
     account::AccountHash, addressable_entity::DEFAULT_ENTRY_POINT_NAME, runtime_args,
@@ -9,7 +9,9 @@ use casper_types::{
     PackageHash, Phase, RuntimeArgs, TransactionHash, TransactionV1Hash,
 };
 
-use crate::{DeployItemBuilder, ARG_AMOUNT, DEFAULT_BLOCK_TIME, DEFAULT_PAYMENT};
+use crate::{
+    deploy_item::DeployItem, DeployItemBuilder, ARG_AMOUNT, DEFAULT_BLOCK_TIME, DEFAULT_PAYMENT,
+};
 
 /// A request comprising a [`WasmV1Request`] for use as session code, and an optional custom
 /// payment `WasmV1Request`.
@@ -122,12 +124,12 @@ impl ExecuteRequestBuilder {
             BlockHash::default(),
             0,
         );
-        let session = WasmV1Request::new_session_from_deploy_item(
-            block_info,
-            Gas::new(5_000_000_000_000_u64), // TODO - set proper value
-            deploy_item,
-        )
-        .unwrap();
+        let session = deploy_item
+            .new_session_from_deploy_item(
+                block_info,
+                Gas::new(5_000_000_000_000_u64), // TODO - set proper value
+            )
+            .unwrap();
 
         let payment: Option<ExecutableItem>;
         let payment_gas_limit: Gas;
@@ -145,12 +147,12 @@ impl ExecuteRequestBuilder {
                 BlockHash::default(),
                 0,
             );
-            let request = WasmV1Request::new_custom_payment_from_deploy_item(
-                block_info,
-                Gas::new(5_000_000_000_000_u64), // TODO - set proper value
-                deploy_item,
-            )
-            .unwrap();
+            let request = deploy_item
+                .new_custom_payment_from_deploy_item(
+                    block_info,
+                    Gas::new(5_000_000_000_000_u64), // TODO - set proper value
+                )
+                .unwrap();
             payment = Some(request.executable_item);
             payment_gas_limit = request.gas_limit;
             payment_entry_point = request.entry_point;

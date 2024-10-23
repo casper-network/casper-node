@@ -20,6 +20,20 @@ use crate::{
     types::{ChunkingError, ExecutableBlock, InternalEraReport},
 };
 
+/// Common state result errors.
+#[derive(Debug, Error)]
+pub(crate) enum StateResultError {
+    /// Invalid state root hash.
+    #[error("invalid state root hash")]
+    RootNotFound,
+    /// Value not found.
+    #[error("{0}")]
+    ValueNotFound(String),
+    /// Failure result.
+    #[error("{0}")]
+    Failure(TrackingCopyError),
+}
+
 /// An error returned from mis-configuring the contract runtime component.
 #[derive(Debug, Error)]
 pub(crate) enum ConfigError {

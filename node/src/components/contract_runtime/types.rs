@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, sync::Arc};
 
-use crate::types::TransactionHeader;
+use crate::{contract_runtime::StateResultError, types::TransactionHeader};
 use casper_types::{execution::PaymentInfo, InitiatorAddr, Transfer};
 use datasize::DataSize;
 use serde::Serialize;
@@ -117,6 +117,16 @@ impl ExecutionArtifactBuilder {
     pub fn with_appended_messages(&mut self, messages: &mut Messages) -> &mut Self {
         self.messages.append(messages);
         self
+    }
+
+    pub fn with_state_result_error(&mut self, error: StateResultError) -> Result<&mut Self, ()> {
+        if let StateResultError::RootNotFound = error {
+            return Err(());
+        }
+        if self.error_message.is_none() {
+            self.error_message = Some(format!("{:?}", error));
+        }
+        Ok(self)
     }
 
     pub fn with_initial_balance_result(

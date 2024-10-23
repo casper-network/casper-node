@@ -198,11 +198,7 @@ pub(super) fn new_install_upgrade(
     TransactionV1::random_install_upgrade(rng, Some(timestamp), Some(ttl)).into()
 }
 
-pub(super) fn new_legacy_deploy(
-    rng: &mut TestRng,
-    timestamp: Timestamp,
-    ttl: TimeDiff,
-) -> Transaction {
+pub(super) fn new_deploy(rng: &mut TestRng, timestamp: Timestamp, ttl: TimeDiff) -> Transaction {
     let secret_key = SecretKey::random(rng);
     let chain_name = "chain".to_string();
     let payment = ExecutableDeployItem::ModuleBytes {
@@ -238,11 +234,7 @@ pub(super) fn new_v1_transfer(
     TransactionV1::random_transfer(rng, Some(timestamp), Some(ttl)).into()
 }
 
-pub(super) fn new_legacy_transfer(
-    rng: &mut TestRng,
-    timestamp: Timestamp,
-    ttl: TimeDiff,
-) -> Transaction {
+pub(super) fn new_transfer(rng: &mut TestRng, timestamp: Timestamp, ttl: TimeDiff) -> Transaction {
     let secret_key = SecretKey::random(rng);
     let chain_name = "chain".to_string();
     let payment = ExecutableDeployItem::ModuleBytes {
@@ -273,7 +265,7 @@ pub(super) fn new_mint(rng: &mut TestRng, timestamp: Timestamp, ttl: TimeDiff) -
     if rng.gen() {
         new_v1_transfer(rng, timestamp, ttl)
     } else {
-        new_legacy_transfer(rng, timestamp, ttl)
+        new_transfer(rng, timestamp, ttl)
     }
 }
 
@@ -281,7 +273,7 @@ pub(super) fn new_standard(rng: &mut TestRng, timestamp: Timestamp, ttl: TimeDif
     if rng.gen() {
         new_v1_standard(rng, timestamp, ttl)
     } else {
-        new_legacy_deploy(rng, timestamp, ttl)
+        new_deploy(rng, timestamp, ttl)
     }
 }
 
@@ -860,14 +852,14 @@ async fn transfer_transaction_mixup_and_replay() {
     let mut rng = TestRng::new();
     let ttl = TimeDiff::from_millis(200);
     let timestamp = Timestamp::from(1000);
-    let deploy_legacy = new_legacy_deploy(&mut rng, timestamp, ttl);
+    let deploy = new_deploy(&mut rng, timestamp, ttl);
     let transaction_v1 = new_v1_standard(&mut rng, timestamp, ttl);
-    let transfer_legacy = new_legacy_transfer(&mut rng, timestamp, ttl);
+    let transfer_orig = new_transfer(&mut rng, timestamp, ttl);
     let transfer_v1 = new_v1_transfer(&mut rng, timestamp, ttl);
 
     // First we make sure that our transfers and transactions would normally be valid.
-    let transactions = vec![deploy_legacy.clone(), transaction_v1.clone()];
-    let transfers = vec![transfer_legacy.clone(), transfer_v1.clone()];
+    let transactions = vec![deploy.clone(), transaction_v1.clone()];
+    let transfers = vec![transfer_orig.clone(), transfer_v1.clone()];
     let mut context = ValidationContext::new()
         .with_num_validators(&mut rng, 1)
         .with_transactions(transactions)
@@ -877,13 +869,13 @@ async fn transfer_transaction_mixup_and_replay() {
     assert!(context.validate_block(&mut rng, timestamp).await);
 
     // Now we test for different invalid combinations of transactions and transfers:
-    // 1. Legacy transfer in the deploys/transactions section.
+    // 1. Original style transfer in the deploys/transactions section.
     let transactions = vec![
-        transfer_legacy.clone(),
+        transfer_orig.clone(),
         transaction_v1.clone(),
-        deploy_legacy.clone(),
+        deploy.clone(),
     ];
-    let transfers = vec![transfer_legacy.clone(), transfer_v1.clone()];
+    let transfers = vec![transfer_orig.clone(), transfer_v1.clone()];
     let mut context = ValidationContext::new()
         .with_num_validators(&mut rng, 1)
         .with_transactions(transactions)
@@ -892,12 +884,8 @@ async fn transfer_transaction_mixup_and_replay() {
         .include_all_transfers();
     assert!(!context.validate_block(&mut rng, timestamp).await);
     // 2. V1 transfer in the deploys/transactions section.
-    let transactions = vec![
-        transfer_v1.clone(),
-        transaction_v1.clone(),
-        deploy_legacy.clone(),
-    ];
-    let transfers = vec![transfer_legacy.clone(), transfer_v1.clone()];
+    let transactions = vec![transfer_v1.clone(), transaction_v1.clone(), deploy.clone()];
+    let transfers = vec![transfer_orig.clone(), transfer_v1.clone()];
     let mut context = ValidationContext::new()
         .with_num_validators(&mut rng, 1)
         .with_transactions(transactions)
@@ -906,12 +894,8 @@ async fn transfer_transaction_mixup_and_replay() {
         .include_all_transfers();
     assert!(!context.validate_block(&mut rng, timestamp).await);
     // 3. Legacy deploy in the transfers section.
-    let transactions = vec![transaction_v1.clone(), deploy_legacy.clone()];
-    let transfers = vec![
-        transfer_legacy.clone(),
-        transfer_v1.clone(),
-        deploy_legacy.clone(),
-    ];
+    let transactions = vec![transaction_v1.clone(), deploy.clone()];
+    let transfers = vec![transfer_orig.clone(), transfer_v1.clone(), deploy.clone()];
     let mut context = ValidationContext::new()
         .with_num_validators(&mut rng, 1)
         .with_transactions(transactions)
@@ -920,9 +904,9 @@ async fn transfer_transaction_mixup_and_replay() {
         .include_all_transfers();
     assert!(!context.validate_block(&mut rng, timestamp).await);
     // 4. V1 transaction in the transfers section.
-    let transactions = vec![transaction_v1.clone(), deploy_legacy.clone()];
+    let transactions = vec![transaction_v1.clone(), deploy.clone()];
     let transfers = vec![
-        transfer_legacy.clone(),
+        transfer_orig.clone(),
         transfer_v1.clone(),
         transaction_v1.clone(),
     ];
@@ -935,18 +919,18 @@ async fn transfer_transaction_mixup_and_replay() {
     assert!(!context.validate_block(&mut rng, timestamp).await);
 
     // Each transaction must be unique
-    let transactions = vec![deploy_legacy.clone(), transaction_v1.clone()];
-    let transfers = vec![transfer_legacy.clone(), transfer_v1.clone()];
+    let transactions = vec![deploy.clone(), transaction_v1.clone()];
+    let transfers = vec![transfer_orig.clone(), transfer_v1.clone()];
     let mut context = ValidationContext::new()
         .with_num_validators(&mut rng, 1)
         .with_transactions(transactions)
         .with_transfers(transfers)
         .include_all_transactions()
         .include_all_transfers()
-        .include_transactions(vec![(deploy_legacy.hash(), deploy_legacy.approvals())]);
+        .include_transactions(vec![(deploy.hash(), deploy.approvals())]);
     assert!(!context.validate_block(&mut rng, timestamp).await);
-    let transactions = vec![deploy_legacy.clone(), transaction_v1.clone()];
-    let transfers = vec![transfer_legacy.clone(), transfer_v1.clone()];
+    let transactions = vec![deploy.clone(), transaction_v1.clone()];
+    let transfers = vec![transfer_orig.clone(), transfer_v1.clone()];
     let mut context = ValidationContext::new()
         .with_num_validators(&mut rng, 1)
         .with_transactions(transactions)
@@ -957,8 +941,8 @@ async fn transfer_transaction_mixup_and_replay() {
     assert!(!context.validate_block(&mut rng, timestamp).await);
 
     // And each transfer must be unique, too.
-    let transactions = vec![deploy_legacy.clone(), transaction_v1.clone()];
-    let transfers = vec![transfer_v1.clone(), transfer_legacy.clone()];
+    let transactions = vec![deploy.clone(), transaction_v1.clone()];
+    let transfers = vec![transfer_v1.clone(), transfer_orig.clone()];
     let mut context = ValidationContext::new()
         .with_num_validators(&mut rng, 1)
         .with_transactions(transactions)
@@ -967,15 +951,15 @@ async fn transfer_transaction_mixup_and_replay() {
         .include_all_transfers()
         .include_transfers(vec![(transfer_v1.hash(), transfer_v1.approvals())]);
     assert!(!context.validate_block(&mut rng, timestamp).await);
-    let transactions = vec![deploy_legacy.clone(), transaction_v1.clone()];
-    let transfers = vec![transfer_legacy.clone(), transfer_v1.clone()];
+    let transactions = vec![deploy.clone(), transaction_v1.clone()];
+    let transfers = vec![transfer_orig.clone(), transfer_v1.clone()];
     let mut context = ValidationContext::new()
         .with_num_validators(&mut rng, 1)
         .with_transactions(transactions)
         .with_transfers(transfers)
         .include_all_transactions()
         .include_all_transfers()
-        .include_transactions(vec![(transfer_legacy.hash(), transfer_legacy.approvals())]);
+        .include_transactions(vec![(transfer_orig.hash(), transfer_orig.approvals())]);
     assert!(!context.validate_block(&mut rng, timestamp).await);
 }
 
@@ -1162,16 +1146,16 @@ async fn should_validate_block_with_signatures() {
     let mut rng = TestRng::new();
     let ttl = TimeDiff::from_millis(200);
     let timestamp = Timestamp::from(1000);
-    let deploy_legacy = new_legacy_deploy(&mut rng, timestamp, ttl);
+    let deploy = new_deploy(&mut rng, timestamp, ttl);
     let transaction_v1 = new_v1_standard(&mut rng, timestamp, ttl);
-    let transfer_legacy = new_legacy_transfer(&mut rng, timestamp, ttl);
+    let transfer = new_transfer(&mut rng, timestamp, ttl);
     let transfer_v1 = new_v1_transfer(&mut rng, timestamp, ttl);
 
     let context = ValidationContext::new()
         .with_num_validators(&mut rng, 3)
         .with_past_blocks(&mut rng, 0, 5, 0.into())
-        .with_transactions(vec![deploy_legacy, transaction_v1])
-        .with_transfers(vec![transfer_legacy, transfer_v1])
+        .with_transactions(vec![deploy, transaction_v1])
+        .with_transfers(vec![transfer, transfer_v1])
         .include_all_transactions()
         .include_all_transfers();
 
@@ -1189,16 +1173,16 @@ async fn should_fetch_missing_signature() {
     let mut rng = TestRng::new();
     let ttl = TimeDiff::from_millis(200);
     let timestamp = Timestamp::from(1000);
-    let deploy_legacy = new_legacy_deploy(&mut rng, timestamp, ttl);
+    let deploy = new_deploy(&mut rng, timestamp, ttl);
     let transaction_v1 = new_v1_standard(&mut rng, timestamp, ttl);
-    let transfer_legacy = new_legacy_transfer(&mut rng, timestamp, ttl);
+    let transfer = new_transfer(&mut rng, timestamp, ttl);
     let transfer_v1 = new_v1_transfer(&mut rng, timestamp, ttl);
 
     let context = ValidationContext::new()
         .with_num_validators(&mut rng, 3)
         .with_past_blocks(&mut rng, 0, 5, 0.into())
-        .with_transactions(vec![deploy_legacy, transaction_v1])
-        .with_transfers(vec![transfer_legacy, transfer_v1])
+        .with_transactions(vec![deploy, transaction_v1])
+        .with_transfers(vec![transfer, transfer_v1])
         .include_all_transactions()
         .include_all_transfers();
 
@@ -1219,16 +1203,16 @@ async fn should_fail_if_unable_to_fetch_signature() {
     let mut rng = TestRng::new();
     let ttl = TimeDiff::from_millis(200);
     let timestamp = Timestamp::from(1000);
-    let deploy_legacy = new_legacy_deploy(&mut rng, timestamp, ttl);
+    let deploy = new_deploy(&mut rng, timestamp, ttl);
     let transaction_v1 = new_v1_standard(&mut rng, timestamp, ttl);
-    let transfer_legacy = new_legacy_transfer(&mut rng, timestamp, ttl);
+    let transfer = new_transfer(&mut rng, timestamp, ttl);
     let transfer_v1 = new_v1_transfer(&mut rng, timestamp, ttl);
 
     let context = ValidationContext::new()
         .with_num_validators(&mut rng, 3)
         .with_past_blocks(&mut rng, 0, 5, 0.into())
-        .with_transactions(vec![deploy_legacy, transaction_v1])
-        .with_transfers(vec![transfer_legacy, transfer_v1])
+        .with_transactions(vec![deploy, transaction_v1])
+        .with_transfers(vec![transfer, transfer_v1])
         .include_all_transactions()
         .include_all_transfers();
 
@@ -1269,17 +1253,17 @@ async fn should_validate_with_delayed_block() {
     let mut rng = TestRng::new();
     let ttl = TimeDiff::from_millis(200);
     let timestamp = Timestamp::from(1000);
-    let deploy_legacy = new_legacy_deploy(&mut rng, timestamp, ttl);
+    let deploy = new_deploy(&mut rng, timestamp, ttl);
     let transaction_v1 = new_v1_standard(&mut rng, timestamp, ttl);
-    let transfer_legacy = new_legacy_transfer(&mut rng, timestamp, ttl);
+    let transfer = new_transfer(&mut rng, timestamp, ttl);
     let transfer_v1 = new_v1_transfer(&mut rng, timestamp, ttl);
 
     let context = ValidationContext::new()
         .with_num_validators(&mut rng, 3)
         .with_past_blocks(&mut rng, 0, 4, 0.into())
         .with_delayed_blocks(&mut rng, 5, 5, 0.into())
-        .with_transactions(vec![deploy_legacy, transaction_v1])
-        .with_transfers(vec![transfer_legacy, transfer_v1])
+        .with_transactions(vec![deploy, transaction_v1])
+        .with_transfers(vec![transfer, transfer_v1])
         .include_all_transactions()
         .include_all_transfers();
 

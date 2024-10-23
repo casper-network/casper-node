@@ -68,7 +68,7 @@ use crate::{
     NodeRng,
 };
 pub(crate) use config::Config;
-pub(crate) use error::{BlockExecutionError, ConfigError, ContractRuntimeError};
+pub(crate) use error::{BlockExecutionError, ConfigError, ContractRuntimeError, StateResultError};
 pub(crate) use event::Event;
 use exec_queue::{ExecQueue, QueueItem};
 use metrics::Metrics;
