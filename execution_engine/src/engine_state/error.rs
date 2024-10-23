@@ -27,18 +27,6 @@ pub enum Error {
     /// Contract execution error.
     #[error(transparent)]
     Exec(ExecError),
-    /// Payment code provided insufficient funds for execution.
-    #[error("Insufficient payment")]
-    InsufficientPayment,
-    /// Motes to gas conversion resulted in an overflow.
-    #[error("Gas conversion overflow")]
-    GasConversionOverflow,
-    /// General deploy error.
-    #[error("Deploy error")]
-    Deploy,
-    /// Executing a payment finalization code resulted in an error.
-    #[error("Payment finalization error")]
-    Finalization,
     /// Serialization/deserialization error.
     #[error("Bytesrepr error: {0}")]
     Bytesrepr(String),
@@ -48,12 +36,6 @@ pub enum Error {
     /// Invalid key variant.
     #[error("Unsupported key type: {0}")]
     InvalidKeyVariant(Key),
-    /// Invalid deploy item variant.
-    #[error("Unsupported deploy item variant: {0}")]
-    InvalidDeployItemVariant(String),
-    /// Missing system contract hash.
-    #[error("Missing system contract hash: {0}")]
-    MissingSystemContractHash(String),
     /// An attempt to push to the runtime stack while already at the maximum height.
     #[error("Runtime stack overflow")]
     RuntimeStackOverflow,
@@ -63,9 +45,6 @@ pub enum Error {
     /// Native transfer error.
     #[error("Transfer error: {0}")]
     Transfer(TransferError),
-    /// Deprecated functionality.
-    #[error("Deprecated: {0}")]
-    Deprecated(String),
     /// Could not derive a valid item to execute.
     #[error("Invalid executable item: {0}")]
     InvalidExecutableItem(#[from] InvalidRequest),

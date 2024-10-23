@@ -62,16 +62,12 @@ where
     R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
     fn get_payment_purse(&mut self) -> Result<URef, ApiError> {
-        let handle_payment_contract_hash = self
+        let hash = self
             .get_handle_payment_contract()
             .map_err(|_| ApiError::MissingSystemContractHash)?;
 
         let cl_value = self
-            .call_contract(
-                handle_payment_contract_hash,
-                METHOD_GET_PAYMENT_PURSE,
-                RuntimeArgs::new(),
-            )
+            .call_contract(hash, METHOD_GET_PAYMENT_PURSE, RuntimeArgs::new())
             .map_err(|exec_error| {
                 let maybe_api_error: Option<ApiError> = exec_error.into();
                 maybe_api_error

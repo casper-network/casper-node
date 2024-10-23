@@ -11,7 +11,7 @@ use casper_types::{
     TransactionInvocationTarget, TransactionTarget, TransactionV1Hash, Transfer,
 };
 
-use crate::engine_state::{DeployItem, Error as EngineError};
+use crate::engine_state::Error as EngineError;
 
 const DEFAULT_ENTRY_POINT: &str = "call";
 
@@ -226,8 +226,8 @@ pub enum SessionKind {
 /// The item to be executed.
 #[derive(Debug, Clone)]
 pub enum ExecutableItem {
-    /// Legacy deploy byte code.
-    LegacyDeploy(Bytes),
+    /// Deploy model byte code.
+    Deploy(Bytes),
     /// Payment byte code.
     PaymentBytes(Bytes),
     /// Session byte code.
@@ -320,6 +320,27 @@ pub struct WasmV1Request {
 }
 
 impl WasmV1Request {
+    /// New from executable deploy item or InvalidRequest error.
+    pub fn new_from_executable_deploy_item(
+        block_info: BlockInfo,
+        gas_limit: Gas,
+        transaction_hash: TransactionHash,
+        initiator_addr: InitiatorAddr,
+        authorization_keys: BTreeSet<AccountHash>,
+        session_item: &ExecutableDeployItem,
+    ) -> Result<Self, InvalidRequest> {
+        let executable_info =
+            build_session_info_for_executable_item(session_item, transaction_hash)?;
+        Ok(Self::new_from_executable_info(
+            block_info,
+            gas_limit,
+            transaction_hash,
+            initiator_addr,
+            authorization_keys,
+            executable_info,
+        ))
+    }
+
     pub(crate) fn new_from_executable_info(
         block_info: BlockInfo,
         gas_limit: Gas,
@@ -372,60 +393,6 @@ impl WasmV1Request {
         let transaction_hash = session_input_data.transaction_hash();
         let initiator_addr = session_input_data.initiator_addr().clone();
         let authorization_keys = session_input_data.signers().clone();
-        Ok(WasmV1Request::new_from_executable_info(
-            block_info,
-            gas_limit,
-            transaction_hash,
-            initiator_addr,
-            authorization_keys,
-            payment_info,
-        ))
-    }
-
-    /// Creates a new request from a deploy item for use as the session code.
-    pub fn new_session_from_deploy_item(
-        block_info: BlockInfo,
-        gas_limit: Gas,
-        DeployItem {
-            ref address,
-            ref session,
-            ref authorization_keys,
-            ref deploy_hash,
-            ..
-        }: &DeployItem,
-    ) -> Result<Self, InvalidRequest> {
-        let transaction_hash = TransactionHash::Deploy(*deploy_hash);
-        let session_info = build_session_info_for_executable_item(session, transaction_hash)?;
-        let transaction_hash = TransactionHash::Deploy(*deploy_hash);
-        let initiator_addr = InitiatorAddr::AccountHash(*address);
-        let authorization_keys = authorization_keys.clone();
-        Ok(WasmV1Request::new_from_executable_info(
-            block_info,
-            gas_limit,
-            transaction_hash,
-            initiator_addr,
-            authorization_keys,
-            session_info,
-        ))
-    }
-
-    /// Creates a new request from a deploy item for use as custom payment.
-    pub fn new_custom_payment_from_deploy_item(
-        block_info: BlockInfo,
-        gas_limit: Gas,
-        DeployItem {
-            ref address,
-            ref payment,
-            ref authorization_keys,
-            ref deploy_hash,
-            ..
-        }: &DeployItem,
-    ) -> Result<Self, InvalidRequest> {
-        let transaction_hash = TransactionHash::Deploy(*deploy_hash);
-        let payment_info = build_payment_info_for_executable_item(payment, transaction_hash)?;
-        let transaction_hash = TransactionHash::Deploy(*deploy_hash);
-        let initiator_addr = InitiatorAddr::AccountHash(*address);
-        let authorization_keys = authorization_keys.clone();
         Ok(WasmV1Request::new_from_executable_info(
             block_info,
             gas_limit,
@@ -653,7 +620,7 @@ fn build_session_info_for_executable_item(
     let session_args: RuntimeArgs;
     match session_item {
         ExecutableDeployItem::ModuleBytes { module_bytes, args } => {
-            session = ExecutableItem::LegacyDeploy(module_bytes.clone());
+            session = ExecutableItem::Deploy(module_bytes.clone());
             session_entry_point = DEFAULT_ENTRY_POINT.to_string();
             session_args = args.clone();
         }

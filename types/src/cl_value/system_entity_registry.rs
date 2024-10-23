@@ -33,11 +33,11 @@ impl SystemHashRegistry {
         self.0.get(contract_name)
     }
 
-    /// Returns `true` if the given contract hash exists as a value in the registry.
-    pub fn has_contract_hash(&self, contract_hash: &HashAddr) -> bool {
+    /// Returns `true` if the given hash_addr exists as a value in the registry.
+    pub fn exists(&self, hash_addr: &HashAddr) -> bool {
         self.0
             .values()
-            .any(|system_contract_hash| system_contract_hash == contract_hash)
+            .any(|system_contract_hash| system_contract_hash == hash_addr)
     }
 
     /// Remove standard payment from the contract registry.

@@ -45,7 +45,7 @@ impl<'a> ExecutionKind<'a> {
         R: StateReader<Key, StoredValue, Error = GlobalStateError>,
     {
         match executable_item {
-            ExecutableItem::Invocation(target) => Self::new_stored(
+            ExecutableItem::Invocation(target) => Self::new_direct_invocation(
                 tracking_copy,
                 named_keys,
                 target,
@@ -61,11 +61,11 @@ impl<'a> ExecutionKind<'a> {
                 kind: SessionKind::InstallUpgradeBytecode,
                 module_bytes,
             } => Ok(ExecutionKind::InstallerUpgrader(module_bytes)),
-            ExecutableItem::LegacyDeploy(module_bytes) => Ok(ExecutionKind::Deploy(module_bytes)),
+            ExecutableItem::Deploy(module_bytes) => Ok(ExecutionKind::Deploy(module_bytes)),
         }
     }
 
-    fn new_stored<R>(
+    fn new_direct_invocation<R>(
         tracking_copy: &mut TrackingCopy<R>,
         named_keys: &NamedKeys,
         target: &TransactionInvocationTarget,

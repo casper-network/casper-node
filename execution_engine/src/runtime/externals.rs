@@ -1299,7 +1299,7 @@ where
                     .map_err(|_e| Trap::from(ExecError::InvalidImputedOperation))?;
 
                 // only allow managing messages from stored contracts
-                if !self.context.get_entity_key().is_smart_contract_key() {
+                if !self.context.get_context_key().is_smart_contract_key() {
                     return Err(Trap::from(ExecError::InvalidContext));
                 }
 

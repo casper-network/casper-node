@@ -752,7 +752,7 @@ where
                 StoredValue::ByteCode(_) => {
                     return Ok(query.into_not_found_result("ByteCode value found."));
                 }
-                StoredValue::LegacyTransfer(_) => {
+                StoredValue::Transfer(_) => {
                     return Ok(query.into_not_found_result("Legacy Transfer value found."));
                 }
                 StoredValue::DeployInfo(_) => {

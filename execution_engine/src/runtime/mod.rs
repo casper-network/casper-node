@@ -395,7 +395,7 @@ where
             // Exit early if the host buffer is already occupied
             return Ok(Err(ApiError::HostBufferFull));
         }
-        let value = CLValue::from_t(self.context.get_caller()).map_err(ExecError::CLValue)?;
+        let value = CLValue::from_t(self.context.get_initiator()).map_err(ExecError::CLValue)?;
         let value_size = value.inner_bytes().len();
 
         // Save serialized public key into host buffer
@@ -419,7 +419,7 @@ where
     /// Checks if immediate caller is of session type of the same account as the provided account
     /// hash.
     fn is_allowed_session_caller(&self, provided_account_hash: &AccountHash) -> bool {
-        if self.context.get_caller() == PublicKey::System.to_account_hash() {
+        if self.context.get_initiator() == PublicKey::System.to_account_hash() {
             return true;
         }
 
@@ -568,7 +568,7 @@ where
 
         let caller = match caller_info {
             CallerInformation::Initiator => {
-                let initiator_account_hash = self.context.get_caller();
+                let initiator_account_hash = self.context.get_initiator();
                 let caller = Caller::initiator(initiator_account_hash);
                 match CallerInfo::try_from(caller) {
                     Ok(caller_info) => {
@@ -679,8 +679,8 @@ where
     }
 
     /// Checks if a [`Key`] is a system contract.
-    fn is_system_contract(&self, entity_hash: HashAddr) -> Result<bool, ExecError> {
-        self.context.is_system_addressable_entity(&entity_hash)
+    fn is_system_contract(&self, hash_addr: HashAddr) -> Result<bool, ExecError> {
+        self.context.is_system_addressable_entity(&hash_addr)
     }
 
     fn get_named_argument<T: FromBytes + CLTyped>(
@@ -886,7 +886,6 @@ where
         access_rights: ContextAccessRights,
         stack: RuntimeStack,
     ) -> Result<CLValue, ExecError> {
-        println!("calling handle payment");
         let gas_counter = self.gas_counter();
 
         let handle_payment_hash = self.context.get_system_contract(HANDLE_PAYMENT)?;
@@ -971,14 +970,14 @@ where
     ) -> Result<CLValue, ExecError> {
         let gas_counter = self.gas_counter();
 
-        let auction_hash = self.context.get_system_contract(AUCTION)?;
-        let auction_key = Key::addressable_entity_key(EntityKindTag::System, auction_hash);
+        let entity_hash = self.context.get_system_contract(AUCTION)?;
+        let auction_key = Key::addressable_entity_key(EntityKindTag::System, entity_hash);
 
         let auction_named_keys = self
             .context
             .state()
             .borrow_mut()
-            .get_named_keys(EntityAddr::System(auction_hash.value()))?;
+            .get_named_keys(EntityAddr::System(entity_hash.value()))?;
 
         let mut named_keys = auction_named_keys;
 
@@ -1340,7 +1339,7 @@ where
             }
             (EntryPointType::Caller, EntryPointType::Caller) => {
                 // Session code called from session reuses current base key
-                match self.context.get_entity_key().into_entity_hash() {
+                match self.context.get_context_key().into_entity_hash() {
                     Some(entity_hash) => Ok(entity_hash),
                     None => Err(ExecError::InvalidEntity(entity_hash)),
                 }
@@ -1452,9 +1451,7 @@ where
                 let footprint = match self.context.read_gs(&Key::Hash(contract_hash))? {
                     Some(StoredValue::Contract(contract)) => {
                         if self.context.engine_config().enable_entity {
-                            self.migrate_contract_and_contract_package(
-                                AddressableEntityHash::new(contract_hash),
-                            )?;
+                            self.migrate_contract_and_contract_package(contract_hash)?;
                         };
 
                         let maybe_system_entity_type = self.maybe_system_type(contract_hash);
@@ -1535,28 +1532,26 @@ where
                     return Err(ExecError::DisabledEntityVersion(entity_version_key));
                 }
 
-                let entity_hash = package
+                let hash_addr = package
                     .lookup_entity_hash(entity_version_key)
                     .copied()
                     .ok_or(ExecError::MissingEntityVersion(entity_version_key))?
                     .value();
 
-                let entity_addr = if self.context.is_system_addressable_entity(&entity_hash)? {
-                    EntityAddr::new_system(entity_hash)
+                let entity_addr = if self.context.is_system_addressable_entity(&hash_addr)? {
+                    EntityAddr::new_system(hash_addr)
                 } else {
-                    EntityAddr::new_smart_contract(entity_hash)
+                    EntityAddr::new_smart_contract(hash_addr)
                 };
 
-                let footprint = match self.context.read_gs(&Key::Hash(entity_hash))? {
+                let footprint = match self.context.read_gs(&Key::Hash(hash_addr))? {
                     Some(StoredValue::Contract(contract)) => {
                         if self.context.engine_config().enable_entity {
-                            self.migrate_contract_and_contract_package(
-                                AddressableEntityHash::new(entity_hash),
-                            )?;
+                            self.migrate_contract_and_contract_package(hash_addr)?;
                         };
-                        let maybe_system_entity_type = self.maybe_system_type(entity_hash);
+                        let maybe_system_entity_type = self.maybe_system_type(hash_addr);
                         RuntimeFootprint::new_contract_footprint(
-                            ContractHash::new(entity_hash),
+                            ContractHash::new(hash_addr),
                             contract,
                             maybe_system_entity_type,
                         )
@@ -1564,7 +1559,7 @@ where
                     Some(_) => return Err(ExecError::UnexpectedStoredValueVariant),
                     None => {
                         if !self.context.engine_config().enable_entity {
-                            return Err(ExecError::KeyNotFound(Key::Hash(entity_hash)));
+                            return Err(ExecError::KeyNotFound(Key::Hash(hash_addr)));
                         }
                         let key = Key::AddressableEntity(entity_addr);
                         let entity = self.context.read_gs_typed::<AddressableEntity>(&key)?;
@@ -1664,7 +1659,7 @@ where
             // Determines if this call originated from the system account based on a first
             // element of the call stack.
             let is_system_account =
-                self.context.get_caller() == PublicKey::System.to_account_hash();
+                self.context.get_initiator() == PublicKey::System.to_account_hash();
             // Is the immediate caller a system contract, such as when the auction calls the mint.
             let is_caller_system_contract =
                 self.is_system_contract(self.context.access_rights().context_key())?;
@@ -2368,7 +2363,7 @@ where
         message_topics: BTreeMap<String, MessageTopicOperation>,
         output_ptr: u32,
     ) -> Result<Result<(), ApiError>, ExecError> {
-        if !self.context.allow_casper_add_contract_version() {
+        if !self.context.install_upgrade_allowed() {
             // NOTE: This is not a permission check on the caller,
             // it is enforcing the rule that only legacy standard deploys (which are grandfathered)
             // and install / upgrade transactions are allowed to call this method
@@ -2401,10 +2396,10 @@ where
         // must exist for a contract record to exist.
         let byte_code_hash = self.context.new_hash_address()?;
 
-        let entity_hash = self.context.new_hash_address()?;
+        let hash_addr = self.context.new_hash_address()?;
 
         if let Err(err) =
-            self.carry_forward_message_topics(previous_hash_addr, entity_hash, message_topics)?
+            self.carry_forward_message_topics(previous_hash_addr, hash_addr, message_topics)?
         {
             return Ok(Err(err));
         };
@@ -2412,7 +2407,7 @@ where
         let protocol_version = self.context.protocol_version();
 
         let insert_entity_version_result =
-            package.insert_entity_version(protocol_version.value().major, entity_hash.into());
+            package.insert_entity_version(protocol_version.value().major, hash_addr.into());
 
         let byte_code = {
             let module_bytes = self.get_module_from_entry_points(&entry_points)?;
@@ -2424,7 +2419,7 @@ where
             byte_code,
         )?;
 
-        let entity_addr = EntityAddr::new_smart_contract(entity_hash);
+        let entity_addr = EntityAddr::new_smart_contract(hash_addr);
 
         {
             // DO NOT EXTRACT INTO SEPARATE FUNCTION.
@@ -2462,7 +2457,7 @@ where
 
         // set return values to buffer
         {
-            let hash_bytes = match entity_hash.to_bytes() {
+            let hash_bytes = match hash_addr.to_bytes() {
                 Ok(bytes) => bytes,
                 Err(error) => return Ok(Err(error.into())),
             };
@@ -2568,7 +2563,7 @@ where
             if !previous_entity.can_upgrade_with(self.context.authorization_keys()) {
                 // Check if the calling entity must be grandfathered into the new
                 // addressable entity format
-                let account_hash = self.context.get_caller();
+                let account_hash = self.context.get_initiator();
 
                 let (_package_key, access_key) = match self
                     .context
@@ -2616,7 +2611,7 @@ where
             self.create_purse()?,
             NamedKeys::new(),
             ActionThresholds::default(),
-            AssociatedKeys::new(self.context.get_caller(), Weight::new(1)),
+            AssociatedKeys::new(self.context.get_initiator(), Weight::new(1)),
             None,
         ))
     }
@@ -2759,7 +2754,7 @@ where
         amount: U512,
         id: Option<u64>,
     ) -> Result<(), ExecError> {
-        if self.context.get_entity_key() != self.context.get_system_entity_key(MINT)? {
+        if self.context.get_context_key() != self.context.get_system_entity_key(MINT)? {
             return Err(ExecError::InvalidContext);
         }
 
@@ -2768,7 +2763,7 @@ where
         }
 
         let txn_hash = self.context.get_transaction_hash();
-        let from = InitiatorAddr::AccountHash(self.context.get_caller());
+        let from = InitiatorAddr::AccountHash(self.context.get_initiator());
         let fee = Gas::zero(); // TODO
         let transfer = Transfer::V2(TransferV2::new(
             txn_hash, from, maybe_to, source, target, amount, fee, id,
@@ -2779,11 +2774,11 @@ where
 
     /// Records given auction info at a given era id
     fn record_era_info(&mut self, era_info: EraInfo) -> Result<(), ExecError> {
-        if self.context.get_caller() != PublicKey::System.to_account_hash() {
+        if self.context.get_initiator() != PublicKey::System.to_account_hash() {
             return Err(ExecError::InvalidContext);
         }
 
-        if self.context.get_entity_key() != self.context.get_system_entity_key(AUCTION)? {
+        if self.context.get_context_key() != self.context.get_system_entity_key(AUCTION)? {
             return Err(ExecError::InvalidContext);
         }
 
@@ -2879,7 +2874,7 @@ where
         if self
             .context
             .engine_config()
-            .is_administrator(&self.context.get_caller())
+            .is_administrator(&self.context.get_initiator())
         {
             return true;
         }
@@ -3002,28 +2997,28 @@ where
     /// Looks up the public mint contract key in the context's protocol data.
     ///
     /// Returned URef is already attenuated depending on the calling account.
-    fn get_mint_contract(&self) -> Result<AddressableEntityHash, ExecError> {
+    fn get_mint_hash(&self) -> Result<AddressableEntityHash, ExecError> {
         self.context.get_system_contract(MINT)
     }
 
     /// Looks up the public handle payment contract key in the context's protocol data.
     ///
     /// Returned URef is already attenuated depending on the calling account.
-    fn get_handle_payment_contract(&self) -> Result<AddressableEntityHash, ExecError> {
+    fn get_handle_payment_hash(&self) -> Result<AddressableEntityHash, ExecError> {
         self.context.get_system_contract(HANDLE_PAYMENT)
     }
 
     /// Looks up the public standard payment contract key in the context's protocol data.
     ///
     /// Returned URef is already attenuated depending on the calling account.
-    fn get_standard_payment_contract(&self) -> Result<AddressableEntityHash, ExecError> {
+    fn get_standard_payment_hash(&self) -> Result<AddressableEntityHash, ExecError> {
         self.context.get_system_contract(STANDARD_PAYMENT)
     }
 
     /// Looks up the public auction contract key in the context's protocol data.
     ///
     /// Returned URef is already attenuated depending on the calling account.
-    fn get_auction_contract(&self) -> Result<AddressableEntityHash, ExecError> {
+    fn get_auction_hash(&self) -> Result<AddressableEntityHash, ExecError> {
         self.context.get_system_contract(AUCTION)
     }
 
@@ -3103,7 +3098,7 @@ where
 
     fn create_purse(&mut self) -> Result<URef, ExecError> {
         let _scoped_host_function_flag = self.host_function_flag.enter_host_function_scope();
-        self.mint_create(self.get_mint_contract()?)
+        self.mint_create(self.get_mint_hash()?)
     }
 
     /// Calls the "transfer" method on the mint contract at the given mint
@@ -3146,17 +3141,17 @@ where
         amount: U512,
         id: Option<u64>,
     ) -> Result<TransferResult, ExecError> {
-        let mint_contract_hash = self.get_mint_contract()?;
+        let mint_contract_hash = self.get_mint_hash()?;
 
         let allow_unrestricted_transfers =
             self.context.engine_config().allow_unrestricted_transfers();
 
         if !allow_unrestricted_transfers
-            && self.context.get_caller() != PublicKey::System.to_account_hash()
+            && self.context.get_initiator() != PublicKey::System.to_account_hash()
             && !self
                 .context
                 .engine_config()
-                .is_administrator(&self.context.get_caller())
+                .is_administrator(&self.context.get_initiator())
             && !self.context.engine_config().is_administrator(&target)
         {
             return Err(ExecError::DisabledUnrestrictedTransfers);
@@ -3265,7 +3260,7 @@ where
         amount: U512,
         id: Option<u64>,
     ) -> Result<TransferResult, ExecError> {
-        let mint_contract_key = self.get_mint_contract()?;
+        let mint_contract_key = self.get_mint_hash()?;
 
         match self.mint_transfer(mint_contract_key, to, source, target, amount, id)? {
             Ok(()) => Ok(Ok(TransferredTo::ExistingAccount)),
@@ -3410,7 +3405,7 @@ where
         id: Option<u64>,
     ) -> Result<Result<(), mint::Error>, ExecError> {
         self.context.validate_uref(&source)?;
-        let mint_contract_key = self.get_mint_contract()?;
+        let mint_contract_key = self.get_mint_hash()?;
         match self.mint_transfer(mint_contract_key, None, source, target, amount, id)? {
             Ok(()) => Ok(Ok(())),
             Err(mint_error) => Ok(Err(mint_error)),
@@ -3482,16 +3477,15 @@ where
         dest_ptr: u32,
         _dest_size: u32,
     ) -> Result<Result<(), ApiError>, Trap> {
-        let contract_hash: AddressableEntityHash =
-            match SystemEntityType::try_from(system_contract_index) {
-                Ok(SystemEntityType::Mint) => self.get_mint_contract()?,
-                Ok(SystemEntityType::HandlePayment) => self.get_handle_payment_contract()?,
-                Ok(SystemEntityType::StandardPayment) => self.get_standard_payment_contract()?,
-                Ok(SystemEntityType::Auction) => self.get_auction_contract()?,
-                Err(error) => return Ok(Err(error)),
-            };
+        let hash: AddressableEntityHash = match SystemEntityType::try_from(system_contract_index) {
+            Ok(SystemEntityType::Mint) => self.get_mint_hash()?,
+            Ok(SystemEntityType::HandlePayment) => self.get_handle_payment_hash()?,
+            Ok(SystemEntityType::StandardPayment) => self.get_standard_payment_hash()?,
+            Ok(SystemEntityType::Auction) => self.get_auction_hash()?,
+            Err(error) => return Ok(Err(error)),
+        };
 
-        match self.try_get_memory()?.set(dest_ptr, contract_hash.as_ref()) {
+        match self.try_get_memory()?.set(dest_ptr, hash.as_ref()) {
             Ok(_) => Ok(Ok(())),
             Err(error) => Err(ExecError::Interpreter(error.into()).into()),
         }
@@ -4001,12 +3995,9 @@ where
             Caller::SmartContract { contract_hash, .. } => Ok(self
                 .context
                 .is_system_addressable_entity(&contract_hash.value())?),
-            Caller::Entity {
-                entity_addr: contract_hash,
-                ..
-            } => Ok(self
+            Caller::Entity { entity_addr, .. } => Ok(self
                 .context
-                .is_system_addressable_entity(&contract_hash.value())?),
+                .is_system_addressable_entity(&entity_addr.value())?),
         }
     }
 
@@ -4061,17 +4052,16 @@ where
 
     pub(crate) fn migrate_contract_and_contract_package(
         &mut self,
-        contract_hash: AddressableEntityHash,
+        hash_addr: HashAddr,
     ) -> Result<AddressableEntity, ExecError> {
         let protocol_version = self.context.protocol_version();
-        let legacy_contract = self
-            .context
-            .get_legacy_contract(ContractHash::new(contract_hash.value()))?;
-        let package_hash = legacy_contract.contract_package_hash();
+        let contract = self.context.get_contract(ContractHash::new(hash_addr))?;
+        let package_hash = contract.contract_package_hash();
         self.context
             .migrate_package(package_hash, protocol_version)?;
-        self.context
-            .read_gs_typed(&Key::contract_entity_key(contract_hash))
+        let entity_hash = AddressableEntityHash::new(hash_addr);
+        let key = Key::contract_entity_key(entity_hash);
+        self.context.read_gs_typed(&key)
     }
 
     fn add_message_topic(&mut self, topic_name: &str) -> Result<Result<(), ApiError>, ExecError> {
@@ -4087,7 +4077,7 @@ where
         topic_name: &str,
         message: MessagePayload,
     ) -> Result<Result<(), ApiError>, Trap> {
-        let hash_addr = self.context.base_key_to_entity_addr()?.value();
+        let hash_addr = self.context.context_key_to_entity_addr()?.value();
 
         let topic_name_hash = crypto::blake2b(topic_name).into();
         let topic_key = Key::Message(MessageAddr::new_topic_addr(hash_addr, topic_name_hash));

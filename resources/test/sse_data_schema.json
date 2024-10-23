@@ -3542,13 +3542,13 @@
           "additionalProperties": false
         },
         {
-          "description": "A version 1 (legacy) transfer.",
+          "description": "A version 1 transfer.",
           "type": "object",
           "required": [
-            "LegacyTransfer"
+            "Transfer"
           ],
           "properties": {
-            "LegacyTransfer": {
+            "Transfer": {
               "$ref": "#/definitions/TransferV1"
             }
           },
@@ -4673,21 +4673,21 @@
       "description": "An enum specifying who pays for the invocation and execution of the entrypoint.",
       "oneOf": [
         {
-          "description": "The caller must cover cost",
+          "description": "The caller must cover costs",
           "type": "string",
           "enum": [
             "Caller"
           ]
         },
         {
-          "description": "Will cover cost to execute self but not cost of any subsequent invoked contracts",
+          "description": "Will cover costs if directly invoked.",
           "type": "string",
           "enum": [
-            "SelfOnly"
+            "DirectInvocationOnly"
           ]
         },
         {
-          "description": "will cover cost to execute self and the cost of any subsequent invoked contracts",
+          "description": "will cover costs to execute self including any subsequent invoked contracts",
           "type": "string",
           "enum": [
             "SelfOnward"
