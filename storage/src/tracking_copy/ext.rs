@@ -9,13 +9,14 @@ use crate::{
         AvailableBalanceChecker, BalanceHolds, BalanceHoldsWithProof, ProcessingHoldBalanceHandling,
     },
     global_state::{error::Error as GlobalStateError, state::StateReader},
-    tracking_copy::{TrackingCopy, TrackingCopyError},
+    tracking_copy::{TrackingCopy, TrackingCopyEntityExt, TrackingCopyError},
     KeyPrefix,
 };
 use casper_types::{
     account::AccountHash,
-    addressable_entity::NamedKeys,
+    addressable_entity::{MessageTopics, NamedKeys},
     bytesrepr::ToBytes,
+    contract_messages::TopicNameHash,
     contracts::ContractHash,
     global_state::TrieMerkleProof,
     system::{
@@ -26,9 +27,9 @@ use casper_types::{
         MINT,
     },
     BlockGlobalAddr, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash, CLValue, ChecksumRegistry,
-    Contract, EntityAddr, EntryPointValue, EntryPoints, HoldBalanceHandling, HoldsEpoch, Key,
-    Motes, Package, PackageHash, StoredValue, StoredValueTypeMismatch, SystemEntityRegistry, URef,
-    URefAddr, U512,
+    Contract, EntityAddr, EntryPointValue, EntryPoints, HashAddr, HoldBalanceHandling, HoldsEpoch,
+    Key, Motes, Package, StoredValue, StoredValueTypeMismatch, SystemHashRegistry, URef, URefAddr,
+    U512,
 };
 
 /// Higher-level operations on the state via a `TrackingCopy`.
@@ -96,20 +97,23 @@ pub trait TrackingCopyExt<R> {
         purse_addr: URefAddr,
     ) -> Result<BTreeMap<BlockTime, BalanceHoldsWithProof>, Self::Error>;
 
+    /// Returns the collection of message topics (if any) for a given HashAddr.
+    fn get_message_topics(&self, hash_addr: HashAddr) -> Result<MessageTopics, Self::Error>;
+
     /// Returns the collection of named keys for a given AddressableEntity.
     fn get_named_keys(&self, entity_addr: EntityAddr) -> Result<NamedKeys, Self::Error>;
 
     /// Returns the collection of entry points for a given AddresableEntity.
-    fn get_v1_entry_points(&mut self, entity_addr: EntityAddr) -> Result<EntryPoints, Self::Error>;
+    fn get_v1_entry_points(&self, entity_addr: EntityAddr) -> Result<EntryPoints, Self::Error>;
 
     /// Gets a package by hash.
-    fn get_package(&mut self, package_hash: PackageHash) -> Result<Package, Self::Error>;
+    fn get_package(&mut self, package_hash: HashAddr) -> Result<Package, Self::Error>;
 
     /// Get a Contract record.
     fn get_contract(&mut self, contract_hash: ContractHash) -> Result<Contract, Self::Error>;
 
     /// Gets the system entity registry.
-    fn get_system_entity_registry(&self) -> Result<SystemEntityRegistry, Self::Error>;
+    fn get_system_entity_registry(&self) -> Result<SystemHashRegistry, Self::Error>;
 
     /// Gets the system checksum registry.
     fn get_checksum_registry(&mut self) -> Result<Option<ChecksumRegistry>, Self::Error>;
@@ -166,12 +170,12 @@ where
 
         let system_contract_registry = self.get_system_entity_registry()?;
 
-        let entity_hash = system_contract_registry.get(MINT).ok_or_else(|| {
+        let entity_hash = *system_contract_registry.get(MINT).ok_or_else(|| {
             error!("Missing system mint contract hash");
             TrackingCopyError::MissingSystemContractHash(MINT.to_string())
         })?;
 
-        let named_keys = self.get_named_keys(EntityAddr::System(entity_hash.value()))?;
+        let named_keys = self.get_named_keys(EntityAddr::System(entity_hash))?;
 
         // get the handling
         let handling = {
@@ -549,7 +553,52 @@ where
         Ok(ret)
     }
 
+    fn get_message_topics(&self, hash_addr: HashAddr) -> Result<MessageTopics, Self::Error> {
+        let keys = self.get_keys_by_prefix(&KeyPrefix::MessageEntriesByEntity(hash_addr))?;
+
+        let mut topics: BTreeMap<String, TopicNameHash> = BTreeMap::new();
+
+        for entry_key in &keys {
+            if let Some(topic_name_hash) = entry_key.as_message_topic_name_hash() {
+                match self.read(entry_key)? {
+                    Some(StoredValue::Message(_)) => {
+                        continue;
+                    }
+                    Some(StoredValue::MessageTopic(summary)) => {
+                        topics.insert(summary.topic_name(), topic_name_hash);
+                    }
+                    Some(other) => {
+                        return Err(TrackingCopyError::TypeMismatch(
+                            StoredValueTypeMismatch::new(
+                                "MessageTopic".to_string(),
+                                other.type_name(),
+                            ),
+                        ));
+                    }
+                    None => match self.cache.reads_cached.get(entry_key) {
+                        Some(StoredValue::Message(_)) => {
+                            continue;
+                        }
+                        Some(StoredValue::MessageTopic(summary)) => {
+                            topics.insert(summary.topic_name(), topic_name_hash);
+                        }
+                        Some(_) | None => {
+                            return Err(TrackingCopyError::KeyNotFound(*entry_key));
+                        }
+                    },
+                };
+            }
+        }
+
+        Ok(MessageTopics::from(topics))
+    }
+
     fn get_named_keys(&self, entity_addr: EntityAddr) -> Result<NamedKeys, Self::Error> {
+        if !self.enable_addressable_entity {
+            let footprint = self.runtime_footprint_by_entity_addr(entity_addr)?;
+            return Ok(footprint.take_named_keys());
+        }
+
         let keys = self.get_keys_by_prefix(&KeyPrefix::NamedKeysByEntity(entity_addr))?;
 
         let mut named_keys = NamedKeys::new();
@@ -586,7 +635,12 @@ where
         Ok(named_keys)
     }
 
-    fn get_v1_entry_points(&mut self, entity_addr: EntityAddr) -> Result<EntryPoints, Self::Error> {
+    fn get_v1_entry_points(&self, entity_addr: EntityAddr) -> Result<EntryPoints, Self::Error> {
+        if !self.enable_addressable_entity {
+            let footprint = self.runtime_footprint_by_entity_addr(entity_addr)?;
+            return Ok(footprint.entry_points().clone());
+        }
+
         let keys = self.get_keys_by_prefix(&KeyPrefix::EntryPointsV1ByEntity(entity_addr))?;
 
         let mut entry_points_v1 = EntryPoints::new();
@@ -626,25 +680,18 @@ where
         Ok(entry_points_v1)
     }
 
-    fn get_package(&mut self, package_hash: PackageHash) -> Result<Package, Self::Error> {
-        let key = package_hash.into();
+    fn get_package(&mut self, package_hash: HashAddr) -> Result<Package, Self::Error> {
+        let key = Key::Hash(package_hash);
         match self.read(&key)? {
-            Some(StoredValue::Package(contract_package)) => Ok(contract_package),
+            Some(StoredValue::ContractPackage(contract_package)) => Ok(contract_package.into()),
             Some(other) => Err(Self::Error::TypeMismatch(StoredValueTypeMismatch::new(
-                "Package".to_string(),
+                "ContractPackage".to_string(),
                 other.type_name(),
             ))),
-            None => match self.read(&Key::Hash(package_hash.value()))? {
-                Some(StoredValue::ContractPackage(contract_package)) => {
-                    let package: Package = contract_package.into();
-                    self.write(
-                        Key::Package(package_hash.value()),
-                        StoredValue::Package(package.clone()),
-                    );
-                    Ok(package)
-                }
+            None => match self.read(&Key::Package(package_hash))? {
+                Some(StoredValue::Package(contract_package)) => Ok(contract_package),
                 Some(other) => Err(TrackingCopyError::TypeMismatch(
-                    StoredValueTypeMismatch::new("ContractPackage".to_string(), other.type_name()),
+                    StoredValueTypeMismatch::new("Package".to_string(), other.type_name()),
                 )),
                 None => Err(Self::Error::ValueNotFound(key.to_formatted_string())),
             },
@@ -663,10 +710,10 @@ where
         }
     }
 
-    fn get_system_entity_registry(&self) -> Result<SystemEntityRegistry, Self::Error> {
+    fn get_system_entity_registry(&self) -> Result<SystemHashRegistry, Self::Error> {
         match self.read(&Key::SystemEntityRegistry)? {
             Some(StoredValue::CLValue(registry)) => {
-                let registry: SystemEntityRegistry =
+                let registry: SystemHashRegistry =
                     CLValue::into_t(registry).map_err(Self::Error::from)?;
                 Ok(registry)
             }

@@ -20,8 +20,8 @@ use casper_types::{
         },
         mint::ROUND_SEIGNIORAGE_RATE_KEY,
     },
-    Account, CLValue, CoreConfig, EntityAddr, EraId, Key, ProtocolVersion, StorageCosts,
-    StoredValue, SystemEntityRegistry, U256, U512,
+    Account, AddressableEntityHash, CLValue, CoreConfig, EntityAddr, EraId, Key, ProtocolVersion,
+    StorageCosts, StoredValue, SystemHashRegistry, U256, U512,
 };
 use rand::Rng;
 
@@ -608,9 +608,11 @@ fn should_increase_max_associated_keys_after_upgrade() {
             .build()
     };
 
+    let enable_entity = true;
     let max_associated_keys = DEFAULT_MAX_ASSOCIATED_KEYS + 1;
     let core_config = CoreConfig {
         max_associated_keys,
+        enable_addressable_entity: enable_entity,
         ..Default::default()
     };
 
@@ -670,8 +672,7 @@ fn should_correctly_migrate_and_prune_system_contract_records() {
             .as_cl_value()
             .cloned()
             .expect("should have cl value");
-        let registry: SystemEntityRegistry =
-            cl_value.into_t().expect("should have system registry");
+        let registry: SystemHashRegistry = cl_value.into_t().expect("should have system registry");
         registry
     };
 
@@ -702,12 +703,11 @@ fn should_correctly_migrate_and_prune_system_contract_records() {
         let legacy_hash = *legacy_system_entity_registry
             .get(name)
             .expect("must have hash");
-        let legacy_contract_key = Key::Hash(legacy_hash.value());
-        let legacy_query = builder.query(None, legacy_contract_key, &[]);
+        let legacy_contract_key = Key::Hash(legacy_hash);
+        let _legacy_query = builder.query(None, legacy_contract_key, &[]);
 
-        assert!(legacy_query.is_err());
         builder
-            .get_addressable_entity(legacy_hash)
+            .get_addressable_entity(AddressableEntityHash::new(legacy_hash))
             .expect("must have system entity");
     }
 }

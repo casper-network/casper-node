@@ -7,16 +7,15 @@ use casper_storage::{
 };
 use casper_types::{
     account::AccountHash, addressable_entity::NamedKeys, contract_messages::Messages,
-    execution::Effects, AddressableEntity, AddressableEntityHash, ContextAccessRights,
-    EntryPointType, Gas, Key, Phase, ProtocolVersion, RuntimeArgs, StoredValue, Tagged,
-    TransactionHash, U512,
+    execution::Effects, ContextAccessRights, EntityAddr, EntryPointType, Gas, Key, Phase,
+    ProtocolVersion, RuntimeArgs, RuntimeFootprint, StoredValue, TransactionHash, U512,
 };
 
 use crate::{
     engine_state::{execution_kind::ExecutionKind, BlockInfo, EngineConfig, WasmV1Result},
     execution::ExecError,
     runtime::{Runtime, RuntimeStack},
-    runtime_context::{CallingAddContractVersion, RuntimeContext},
+    runtime_context::{AllowInstallUpgrade, RuntimeContext},
 };
 
 const ARG_AMOUNT: &str = "amount";
@@ -47,8 +46,8 @@ impl Executor {
         &self,
         execution_kind: ExecutionKind,
         args: RuntimeArgs,
-        entity_hash: AddressableEntityHash,
-        entity: &AddressableEntity,
+        entity_addr: EntityAddr,
+        entity: &RuntimeFootprint,
         named_keys: &mut NamedKeys,
         access_rights: ContextAccessRights,
         authorization_keys: BTreeSet<AccountHash>,
@@ -83,13 +82,20 @@ impl Executor {
             Rc::new(RefCell::new(generator))
         };
 
-        let entity_key = Key::addressable_entity_key(entity.kind().tag(), entity_hash);
+        let entity_key = if self.config.enable_entity {
+            Key::AddressableEntity(entity_addr)
+        } else {
+            match entity_addr {
+                EntityAddr::System(hash) | EntityAddr::SmartContract(hash) => Key::Hash(hash),
+                EntityAddr::Account(hash) => Key::Account(AccountHash::new(hash)),
+            }
+        };
 
-        let calling_add_contract_version = match execution_kind {
+        let allow_install_upgrade = match execution_kind {
             ExecutionKind::InstallerUpgrader(_)
             | ExecutionKind::Stored { .. }
-            | ExecutionKind::Deploy(_) => CallingAddContractVersion::Allowed,
-            ExecutionKind::Standard(_) => CallingAddContractVersion::Forbidden,
+            | ExecutionKind::Deploy(_) => AllowInstallUpgrade::Allowed,
+            ExecutionKind::Standard(_) => AllowInstallUpgrade::Forbidden,
         };
 
         let context = self.create_runtime_context(
@@ -109,7 +115,7 @@ impl Executor {
             gas_limit,
             spending_limit,
             EntryPointType::Caller,
-            calling_add_contract_version,
+            allow_install_upgrade,
         );
 
         let mut runtime = Runtime::new(context);
@@ -156,7 +162,7 @@ impl Executor {
     fn create_runtime_context<'a, R>(
         &self,
         named_keys: &'a mut NamedKeys,
-        entity: &'a AddressableEntity,
+        runtime_footprint: &'a RuntimeFootprint,
         entity_key: Key,
         authorization_keys: BTreeSet<AccountHash>,
         access_rights: ContextAccessRights,
@@ -171,7 +177,7 @@ impl Executor {
         gas_limit: Gas,
         remaining_spending_limit: U512,
         entry_point_type: EntryPointType,
-        calling_add_contract_version: CallingAddContractVersion,
+        allow_install_upgrade: AllowInstallUpgrade,
     ) -> RuntimeContext<'a, R>
     where
         R: StateReader<Key, StoredValue, Error = GlobalStateError>,
@@ -181,7 +187,7 @@ impl Executor {
 
         RuntimeContext::new(
             named_keys,
-            entity,
+            runtime_footprint,
             entity_key,
             authorization_keys,
             access_rights,
@@ -199,7 +205,7 @@ impl Executor {
             transfers,
             remaining_spending_limit,
             entry_point_type,
-            calling_add_contract_version,
+            allow_install_upgrade,
         )
     }
 }

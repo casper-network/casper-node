@@ -2,7 +2,13 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT,
     LOCAL_GENESIS_REQUEST,
 };
-use casper_types::{account::AccountHash, runtime_args, system::Caller, CLValue, EntityAddr};
+use casper_types::{
+    account::AccountHash,
+    contracts::{ContractHash, ContractPackageHash},
+    runtime_args,
+    system::{Caller, CallerInfo},
+    CLValue, EntityAddr,
+};
 
 const CONTRACT_GET_CALLER: &str = "get_caller.wasm";
 const CONTRACT_GET_CALLER_SUBCALL: &str = "get_caller_subcall.wasm";
@@ -191,7 +197,7 @@ fn should_load_caller_information_based_on_action() {
         .get("immediate")
         .expect("must have key entry for initiator");
 
-    let caller = builder
+    let caller: CallerInfo = builder
         .query(None, immediate, &[])
         .expect("must have stored value")
         .as_cl_value()
@@ -199,7 +205,8 @@ fn should_load_caller_information_based_on_action() {
         .expect("must have cl value")
         .expect("must get caller");
 
-    let expected_caller = Caller::initiator(*DEFAULT_ACCOUNT_ADDR);
+    let expected_caller = CallerInfo::try_from(Caller::initiator(*DEFAULT_ACCOUNT_ADDR))
+        .expect("must get caller info");
 
     assert_eq!(expected_caller, caller);
 
@@ -207,7 +214,7 @@ fn should_load_caller_information_based_on_action() {
         .get("full")
         .expect("must have key entry for full call stack");
 
-    let full_call_stack: Vec<Caller> = builder
+    let full_call_stack: Vec<CallerInfo> = builder
         .query(None, full, &[])
         .expect("must have stored value")
         .as_cl_value()
@@ -219,10 +226,15 @@ fn should_load_caller_information_based_on_action() {
         .get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .get(LOAD_CALLER_INFO_PACKAGE_HASH)
         .expect("must get package key")
-        .into_package_hash()
+        .into_hash_addr()
+        .map(ContractPackageHash::new)
         .expect("must get package hash");
 
-    let frame = Caller::entity(package_hash, caller_info_entity_hash);
+    let frame = CallerInfo::try_from(Caller::smart_contract(
+        package_hash,
+        ContractHash::new(caller_info_entity_hash.value()),
+    ))
+    .expect("must get frame");
     let expected_stack = vec![expected_caller, frame];
     assert_eq!(expected_stack, full_call_stack);
 }

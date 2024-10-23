@@ -7,8 +7,8 @@ use casper_engine_test_support::{
     TransferRequestBuilder, CHAINSPEC_SYMLINK, DEFAULT_PAYMENT, LOCAL_GENESIS_REQUEST,
 };
 use casper_types::{
-    account::AccountHash, addressable_entity::EntityKindTag, runtime_args, ApiError, FeeHandling,
-    Key, PricingHandling, PublicKey, RefundHandling, SecretKey, Transfer, U512,
+    account::AccountHash, runtime_args, ApiError, FeeHandling, Key, PricingHandling, PublicKey,
+    RefundHandling, SecretKey, Transfer, U512,
 };
 
 // test constants.
@@ -62,20 +62,24 @@ fn should_install_faucet_contract() {
     let faucet_purse_id = format!("{}_{}", FAUCET_PURSE_NAMED_KEY, FAUCET_ID);
     assert!(installer_named_keys.get(&faucet_purse_id).is_some());
 
-    let faucet_named_key = installer_named_keys
-        .get(&format!("{}_{}", FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID))
-        .expect("failed to find faucet named key");
+    let faucet_named_key = Key::Hash(
+        installer_named_keys
+            .get(&format!("{}_{}", FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID))
+            .expect("failed to find faucet named key")
+            .into_entity_hash_addr()
+            .expect("must get hash addr"),
+    );
 
     // check installer is set.
     builder
-        .query(None, *faucet_named_key, &[INSTALLER_NAMED_KEY.to_string()])
+        .query(None, faucet_named_key, &[INSTALLER_NAMED_KEY.to_string()])
         .expect("failed to find installer named key");
 
     // check time interval
     builder
         .query(
             None,
-            *faucet_named_key,
+            faucet_named_key,
             &[TIME_INTERVAL_NAMED_KEY.to_string()],
         )
         .expect("failed to find time interval named key");
@@ -84,7 +88,7 @@ fn should_install_faucet_contract() {
     builder
         .query(
             None,
-            *faucet_named_key,
+            faucet_named_key,
             &[LAST_DISTRIBUTION_TIME_NAMED_KEY.to_string()],
         )
         .expect("failed to find last distribution named key");
@@ -93,7 +97,7 @@ fn should_install_faucet_contract() {
     builder
         .query(
             None,
-            *faucet_named_key,
+            faucet_named_key,
             &[FAUCET_PURSE_NAMED_KEY.to_string()],
         )
         .expect("failed to find faucet purse named key");
@@ -102,7 +106,7 @@ fn should_install_faucet_contract() {
     builder
         .query(
             None,
-            *faucet_named_key,
+            faucet_named_key,
             &[AVAILABLE_AMOUNT_NAMED_KEY.to_string()],
         )
         .expect("failed to find available amount named key");
@@ -111,7 +115,7 @@ fn should_install_faucet_contract() {
     builder
         .query(
             None,
-            *faucet_named_key,
+            faucet_named_key,
             &[REMAINING_REQUESTS_NAMED_KEY.to_string()],
         )
         .expect("failed to find remaining requests named key");
@@ -119,7 +123,7 @@ fn should_install_faucet_contract() {
     builder
         .query(
             None,
-            *faucet_named_key,
+            faucet_named_key,
             &[AUTHORIZED_ACCOUNT_NAMED_KEY.to_string()],
         )
         .expect("failed to find authorized account named key");
@@ -149,8 +153,7 @@ fn should_allow_installer_to_set_variables() {
         .commit();
 
     let faucet_contract_hash = helper.query_and_set_faucet_contract_hash(&builder);
-    let faucet_entity_key =
-        Key::addressable_entity_key(EntityKindTag::SmartContract, faucet_contract_hash);
+    let faucet_entity_key = Key::Hash(faucet_contract_hash.value());
 
     assert_eq!(
         helper.query_faucet_purse_balance(&builder),
@@ -385,8 +388,7 @@ fn should_allow_installer_to_fund_freely() {
     helper.query_and_set_faucet_contract_hash(&builder);
 
     let faucet_contract_hash = get_faucet_entity_hash(&builder, installer_account);
-    let faucet_entity_key =
-        Key::addressable_entity_key(EntityKindTag::SmartContract, faucet_contract_hash);
+    let faucet_entity_key = Key::Hash(faucet_contract_hash.value());
     let faucet_purse = get_faucet_purse(&builder, installer_account);
 
     let faucet_purse_balance = builder.get_purse_balance(faucet_purse);
@@ -552,10 +554,11 @@ fn should_allow_funding_by_an_authorized_account() {
         .get(&format!("{}_{}", FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID))
         .expect("failed to find faucet named key");
 
-    let key = Key::contract_entity_key(faucet_named_key.into_entity_hash().expect(
+    let hash = faucet_named_key.into_entity_hash().expect(
         "must convert to entity hash\
     ",
-    ));
+    );
+    let key = Key::Hash(hash.value());
 
     let maybe_authorized_account_public_key = builder
         .query(None, key, &[AUTHORIZED_ACCOUNT_NAMED_KEY.to_string()])
@@ -660,11 +663,11 @@ fn faucet_costs() {
     // This test will fail if execution costs vary.  The expected costs should not be updated
     // without understanding why the cost has changed.  If the costs do change, it should be
     // reflected in the "Costs by Entry Point" section of the faucet crate's README.md.
-    const EXPECTED_FAUCET_INSTALL_COST: u64 = 142_640_262_074;
+    const EXPECTED_FAUCET_INSTALL_COST: u64 = 141_102_331_276;
 
-    const EXPECTED_FAUCET_SET_VARIABLES_COST: u64 = 134_259_210;
-    const EXPECTED_FAUCET_CALL_BY_INSTALLER_COST: u64 = 2_879_594_967;
-    const EXPECTED_FAUCET_CALL_BY_USER_COST: u64 = 2_615_492_876;
+    const EXPECTED_FAUCET_SET_VARIABLES_COST: u64 = 134_025_670;
+    const EXPECTED_FAUCET_CALL_BY_INSTALLER_COST: u64 = 2_687_132_903;
+    const EXPECTED_FAUCET_CALL_BY_USER_COST: u64 = 2_615_067_736;
 
     let installer_account = AccountHash::new([1u8; 32]);
     let user_account: AccountHash = AccountHash::new([2u8; 32]);

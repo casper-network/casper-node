@@ -18,3 +18,5 @@ pub(crate) const DEFAULT_MAX_DB_SIZE: usize = 52_428_800; // 50 MiB
 pub(crate) const DEFAULT_MAX_READERS: u32 = 512;
 
 pub(crate) const DEFAULT_MAX_QUERY_DEPTH: u64 = 5;
+
+pub(crate) const DEFAULT_ENABLE_ENTITY: bool = false;

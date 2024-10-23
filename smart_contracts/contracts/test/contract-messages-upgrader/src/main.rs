@@ -129,7 +129,7 @@ pub extern "C" fn call() {
     let message_emitter_package_hash: PackageHash = runtime::get_key(PACKAGE_HASH_KEY_NAME)
         .unwrap_or_revert()
         .into_package_addr()
-        .unwrap()
+        .unwrap_or_revert()
         .into();
 
     let mut named_keys = NamedKeys::new();

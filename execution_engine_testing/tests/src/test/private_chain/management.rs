@@ -479,13 +479,8 @@ fn administrator_account_should_disable_any_contract_used_as_session() {
         let addressable_entity = builder
             .get_addressable_entity(stored_entity_hash)
             .expect("should be entity");
-        Key::from(addressable_entity.package_hash())
+        Key::Hash(addressable_entity.package_hash().value())
     };
-
-    let do_nothing_contract_package_hash = do_nothing_contract_package_key
-        .into_package_addr()
-        .map(PackageHash::new)
-        .expect("should be package hash");
 
     let contract_package_before = Package::try_from(
         builder
@@ -507,6 +502,9 @@ fn administrator_account_should_disable_any_contract_used_as_session() {
     )
     .build();
     builder.exec(exec_request_1).expect_success().commit();
+
+    let do_nothing_contract_package_hash =
+        PackageHash::new(do_nothing_contract_package_key.into_hash_addr().unwrap());
 
     // Disable stored contract
     let disable_request = {
@@ -672,17 +670,13 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
         .map(AddressableEntityHash::new)
         .expect("should have stored entity hash");
 
-    let test_payment_stored_package_key = {
-        let addressable_entity = builder
-            .get_addressable_entity(stored_entity_hash)
-            .expect("should be addressable entity");
-        Key::from(addressable_entity.package_hash())
-    };
+    let addressable_entity = builder
+        .get_addressable_entity(stored_entity_hash)
+        .expect("should be addressable entity");
+    let test_payment_stored_package_key = { Key::Hash(addressable_entity.package_hash().value()) };
 
-    let test_payment_stored_package_hash = test_payment_stored_package_key
-        .into_package_addr()
-        .map(PackageHash::new)
-        .expect("should have contract package");
+    let test_payment_stored_package_hash =
+        PackageHash::new(addressable_entity.package_hash().value());
 
     let contract_package_before = Package::try_from(
         builder

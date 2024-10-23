@@ -2,7 +2,11 @@
 
 use std::collections::BTreeSet;
 
-use casper_types::{account::AccountHash, Deploy, DeployHash, ExecutableDeployItem};
+use casper_execution_engine::engine_state::{BlockInfo, InvalidRequest, WasmV1Request};
+use casper_types::{
+    account::AccountHash, Deploy, DeployHash, ExecutableDeployItem, Gas, InitiatorAddr,
+    TransactionHash,
+};
 
 /// Definition of a deploy with all the details that make it possible to execute it.
 /// Corresponds to the similarly-named IPC protobuf message.
@@ -47,6 +51,55 @@ impl DeployItem {
     /// Is this a native transfer?
     pub fn is_native_transfer(&self) -> bool {
         matches!(self.session, ExecutableDeployItem::Transfer { .. })
+    }
+
+    /// Creates a new request from a deploy item for use as the session code.
+    pub fn new_session_from_deploy_item(
+        &self,
+        block_info: BlockInfo,
+        gas_limit: Gas,
+    ) -> Result<WasmV1Request, InvalidRequest> {
+        let address = &self.address;
+        let session = &self.session;
+        let authorization_keys = &self.authorization_keys;
+        let deploy_hash = &self.deploy_hash;
+
+        let transaction_hash = TransactionHash::Deploy(*deploy_hash);
+        let initiator_addr = InitiatorAddr::AccountHash(*address);
+        let authorization_keys = authorization_keys.clone();
+        WasmV1Request::new_from_executable_deploy_item(
+            block_info,
+            gas_limit,
+            transaction_hash,
+            initiator_addr,
+            authorization_keys,
+            session,
+        )
+    }
+
+    /// Creates a new request from a deploy item for use as custom payment.
+    pub fn new_custom_payment_from_deploy_item(
+        &self,
+        block_info: BlockInfo,
+        gas_limit: Gas,
+    ) -> Result<WasmV1Request, InvalidRequest> {
+        let address = &self.address;
+        let payment = &self.payment;
+        let authorization_keys = &self.authorization_keys;
+        let deploy_hash = &self.deploy_hash;
+
+        let transaction_hash = TransactionHash::Deploy(*deploy_hash);
+        let initiator_addr = InitiatorAddr::AccountHash(*address);
+        let authorization_keys = authorization_keys.clone();
+
+        WasmV1Request::new_payment_from_executable_deploy_item(
+            block_info,
+            gas_limit,
+            transaction_hash,
+            initiator_addr,
+            authorization_keys,
+            payment,
+        )
     }
 }
 

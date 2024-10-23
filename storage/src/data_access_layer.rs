@@ -30,6 +30,8 @@ mod genesis;
 pub mod handle_fee;
 mod handle_refund;
 mod key_prefix;
+/// Message topics.
+pub mod message_topics;
 /// Mint provider.
 pub mod mint;
 /// Prefixed values provider.
@@ -74,6 +76,7 @@ pub use genesis::{GenesisRequest, GenesisResult};
 pub use handle_fee::{HandleFeeMode, HandleFeeRequest, HandleFeeResult};
 pub use handle_refund::{HandleRefundMode, HandleRefundRequest, HandleRefundResult};
 pub use key_prefix::KeyPrefix;
+pub use message_topics::{MessageTopicsRequest, MessageTopicsResult};
 pub use mint::{TransferRequest, TransferResult};
 pub use protocol_upgrade::{ProtocolUpgradeRequest, ProtocolUpgradeResult};
 pub use prune::{PruneRequest, PruneResult};
@@ -108,6 +111,8 @@ pub struct DataAccessLayer<S> {
     pub state: S,
     /// Max query depth.
     pub max_query_depth: u64,
+    /// Enable the addressable entity capability.
+    pub enable_addressable_entity: bool,
 }
 
 impl<S> DataAccessLayer<S> {
@@ -159,7 +164,11 @@ where
         hash: Digest,
     ) -> Result<Option<TrackingCopy<S::Reader>>, GlobalStateError> {
         match self.state.checkout(hash)? {
-            Some(reader) => Ok(Some(TrackingCopy::new(reader, self.max_query_depth))),
+            Some(reader) => Ok(Some(TrackingCopy::new(
+                reader,
+                self.max_query_depth,
+                self.enable_addressable_entity,
+            ))),
             None => Ok(None),
         }
     }

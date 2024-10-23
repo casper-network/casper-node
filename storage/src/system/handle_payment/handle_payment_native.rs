@@ -14,8 +14,8 @@ use casper_types::{
     account::AccountHash,
     addressable_entity::{NamedKeyAddr, NamedKeyValue},
     system::handle_payment::Error,
-    AccessRights, AddressableEntityHash, CLValue, FeeHandling, GrantedAccess, Key, Phase,
-    RefundHandling, StoredValue, TransferredTo, URef, U512,
+    AccessRights, CLValue, FeeHandling, GrantedAccess, Key, Phase, RefundHandling, StoredValue,
+    TransferredTo, URef, U512,
 };
 use std::collections::BTreeSet;
 use tracing::error;
@@ -31,37 +31,33 @@ where
         amount: U512,
     ) -> Result<TransferredTo, Error> {
         let target_key = Key::Account(target);
-        let entity_key_value = match self.tracking_copy().borrow_mut().read(&target_key) {
-            Ok(Some(StoredValue::CLValue(cl_value))) => cl_value, // entity exists
-            Ok(Some(StoredValue::Account(_))) => {
-                // legacy account exists; attempt to migrate to entity
-                self.tracking_copy()
-                    .borrow_mut()
-                    .migrate_account(target, self.protocol_version())
-                    .map_err(|_| Error::Transfer)?;
-                // attempt to read back migrated entity
-                if let Ok(Some(StoredValue::CLValue(cl_value))) =
-                    self.tracking_copy().borrow_mut().read(&target_key)
-                {
-                    cl_value
-                } else {
-                    return Err(Error::Transfer);
+        let target_uref = match self.tracking_copy().borrow_mut().read(&target_key) {
+            Ok(Some(StoredValue::CLValue(cl_value))) => {
+                let entity_key = CLValue::into_t::<Key>(cl_value)
+                    .map_err(|_| Error::FailedTransferToAccountPurse)?;
+                // get entity
+                let target_uref = {
+                    if let Ok(Some(StoredValue::AddressableEntity(entity))) =
+                        self.tracking_copy().borrow_mut().read(&entity_key)
+                    {
+                        entity.main_purse_add_only()
+                    } else {
+                        return Err(Error::Transfer);
+                    }
+                };
+                target_uref
+            } // entity exists
+            Ok(Some(StoredValue::Account(account))) => {
+                if self.config().enable_addressable_entity() {
+                    self.tracking_copy()
+                        .borrow_mut()
+                        .migrate_account(target, self.protocol_version())
+                        .map_err(|_| Error::Transfer)?;
                 }
+
+                account.main_purse_add_only()
             }
             Ok(_) | Err(_) => return Err(Error::Transfer),
-        };
-
-        let entity_key = CLValue::into_t::<Key>(entity_key_value)
-            .map_err(|_| Error::FailedTransferToAccountPurse)?;
-        // get entity
-        let target_uref = {
-            if let Ok(Some(StoredValue::AddressableEntity(entity))) =
-                self.tracking_copy().borrow_mut().read(&entity_key)
-            {
-                entity.main_purse_add_only()
-            } else {
-                return Err(Error::Transfer);
-            }
         };
 
         // source and target are the same, noop
@@ -140,40 +136,93 @@ where
 
     fn put_key(&mut self, name: &str, key: Key) -> Result<(), Error> {
         let name = name.to_string();
-        let entity_addr = self
-            .entity_key()
-            .as_entity_addr()
-            .ok_or(Error::UnexpectedKeyVariant)?;
-        let named_key_value = StoredValue::NamedKey(
-            NamedKeyValue::from_concrete_values(key, name.clone()).map_err(|_| Error::PutKey)?,
-        );
-        let named_key_addr =
-            NamedKeyAddr::new_from_string(entity_addr, name.clone()).map_err(|_| Error::PutKey)?;
-        let named_key = Key::NamedKey(named_key_addr);
-        // write to both tracking copy and in-mem named keys cache
-        self.tracking_copy()
-            .borrow_mut()
-            .write(named_key, named_key_value);
-        self.named_keys_mut().insert(name, key);
-        Ok(())
+        match self.context_key() {
+            Key::Account(_) | Key::Hash(_) => {
+                let name: String = name.clone();
+                let value = CLValue::from_t((name.clone(), key)).map_err(|_| Error::PutKey)?;
+                let named_key_value = StoredValue::CLValue(value);
+                self.tracking_copy()
+                    .borrow_mut()
+                    .add(*self.context_key(), named_key_value)
+                    .map_err(|_| Error::PutKey)?;
+                self.named_keys_mut().insert(name, key);
+                Ok(())
+            }
+            Key::AddressableEntity(entity_addr) => {
+                let named_key_value = StoredValue::NamedKey(
+                    NamedKeyValue::from_concrete_values(key, name.clone())
+                        .map_err(|_| Error::PutKey)?,
+                );
+                let named_key_addr = NamedKeyAddr::new_from_string(*entity_addr, name.clone())
+                    .map_err(|_| Error::PutKey)?;
+                let named_key = Key::NamedKey(named_key_addr);
+                // write to both tracking copy and in-mem named keys cache
+                self.tracking_copy()
+                    .borrow_mut()
+                    .write(named_key, named_key_value);
+                self.named_keys_mut().insert(name, key);
+                Ok(())
+            }
+            _ => Err(Error::UnexpectedKeyVariant),
+        }
     }
 
     fn remove_key(&mut self, name: &str) -> Result<(), Error> {
         self.named_keys_mut().remove(name);
-        let entity = self.addressable_entity();
-        let addressable_entity_hash = AddressableEntityHash::new(self.address().value());
-        let entity_addr = entity.entity_addr(addressable_entity_hash);
-        let named_key_addr = NamedKeyAddr::new_from_string(entity_addr, name.to_string())
-            .map_err(|_| Error::RemoveKey)?;
-        let key = Key::NamedKey(named_key_addr);
-        let value = self
-            .tracking_copy()
-            .borrow_mut()
-            .read(&key)
-            .map_err(|_| Error::RemoveKey)?;
-        if let Some(StoredValue::NamedKey(_)) = value {
-            self.tracking_copy().borrow_mut().prune(key);
+        match self.context_key() {
+            Key::AddressableEntity(entity_addr) => {
+                let named_key_addr = NamedKeyAddr::new_from_string(*entity_addr, name.to_string())
+                    .map_err(|_| Error::RemoveKey)?;
+                let key = Key::NamedKey(named_key_addr);
+                let value = self
+                    .tracking_copy()
+                    .borrow_mut()
+                    .read(&key)
+                    .map_err(|_| Error::RemoveKey)?;
+                if let Some(StoredValue::NamedKey(_)) = value {
+                    self.tracking_copy().borrow_mut().prune(key);
+                }
+            }
+            Key::Hash(_) => {
+                let mut contract = self
+                    .tracking_copy()
+                    .borrow_mut()
+                    .read(self.context_key())
+                    .map_err(|_| Error::RemoveKey)?
+                    .ok_or(Error::RemoveKey)?
+                    .as_contract()
+                    .ok_or(Error::RemoveKey)?
+                    .clone();
+
+                if contract.remove_named_key(name).is_none() {
+                    return Ok(());
+                }
+
+                self.tracking_copy()
+                    .borrow_mut()
+                    .write(*self.context_key(), StoredValue::Contract(contract))
+            }
+            Key::Account(_) => {
+                let account = {
+                    let mut account = match self
+                        .tracking_copy()
+                        .borrow_mut()
+                        .read(self.context_key())
+                        .map_err(|_| Error::RemoveKey)?
+                    {
+                        Some(StoredValue::Account(account)) => account,
+                        Some(_) | None => return Err(Error::UnexpectedKeyVariant),
+                    };
+                    account.named_keys_mut().remove(name);
+                    account
+                };
+                self.tracking_copy()
+                    .borrow_mut()
+                    .write(*self.context_key(), StoredValue::Account(account));
+            }
+            _ => return Err(Error::UnexpectedKeyVariant),
         }
+
         Ok(())
     }
 

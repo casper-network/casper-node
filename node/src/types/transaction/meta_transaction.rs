@@ -5,10 +5,11 @@ pub(crate) use transaction_header::*;
 
 use casper_execution_engine::engine_state::{SessionDataDeploy, SessionDataV1, SessionInputData};
 use casper_types::{
-    account::AccountHash, bytesrepr::ToBytes, Approval, Chainspec, Deploy, Digest, Gas, GasLimited,
-    InitiatorAddr, InvalidTransaction, Phase, PricingMode, RuntimeArgs, TimeDiff, Timestamp,
-    Transaction, TransactionConfig, TransactionEntryPoint, TransactionHash, TransactionTarget,
-    INSTALL_UPGRADE_LANE_ID, LARGE_WASM_LANE_ID, MINT_LANE_ID,
+    account::AccountHash, bytesrepr::ToBytes, Approval, Chainspec, Deploy, Digest,
+    ExecutableDeployItem, Gas, GasLimited, HashAddr, InitiatorAddr, InvalidTransaction, Phase,
+    PricingMode, RuntimeArgs, TimeDiff, Timestamp, Transaction, TransactionConfig,
+    TransactionEntryPoint, TransactionHash, TransactionTarget, INSTALL_UPGRADE_LANE_ID,
+    LARGE_WASM_LANE_ID, MINT_LANE_ID,
 };
 use core::fmt::{self, Debug, Display, Formatter};
 #[cfg(feature = "datasize")]
@@ -171,12 +172,35 @@ impl MetaTransaction {
         }
     }
 
-    /// Is the transaction the legacy deploy variant.
-    pub fn is_legacy_transaction(&self) -> bool {
+    /// Is the transaction the original transaction variant.
+    pub fn is_deploy_transaction(&self) -> bool {
         match self {
             MetaTransaction::Deploy(_) => true,
             MetaTransaction::V1(_) => false,
         }
+    }
+
+    /// Does this transaction provide the hash addr for a specific contract to invoke directly?
+    pub fn is_contract_by_hash_invocation(&self) -> bool {
+        self.contract_direct_address().is_some()
+    }
+
+    /// Returns a `hash_addr` for a targeted contract, if known.
+    pub fn contract_direct_address(&self) -> Option<(HashAddr, String)> {
+        match self {
+            MetaTransaction::Deploy(deploy) => {
+                if let ExecutableDeployItem::StoredContractByHash {
+                    hash, entry_point, ..
+                } = deploy.session()
+                {
+                    return Some((hash.value(), entry_point.clone()));
+                }
+            }
+            MetaTransaction::V1(v1) => {
+                return v1.contract_direct_address();
+            }
+        }
+        None
     }
 
     pub fn from(

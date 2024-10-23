@@ -1,7 +1,7 @@
 use crate::tracking_copy::TrackingCopyError;
 use casper_types::{
     system::{AUCTION, HANDLE_PAYMENT, MINT},
-    Digest, Key, ProtocolVersion, SystemEntityRegistry,
+    Digest, Key, ProtocolVersion, SystemHashRegistry,
 };
 
 /// Used to specify is the requestor wants the registry itself or a named entry within it.
@@ -52,6 +52,7 @@ pub struct SystemEntityRegistryRequest {
     protocol_version: ProtocolVersion,
     /// Selector.
     selector: SystemEntityRegistrySelector,
+    enable_addressable_entity: bool,
 }
 
 impl SystemEntityRegistryRequest {
@@ -60,11 +61,13 @@ impl SystemEntityRegistryRequest {
         state_hash: Digest,
         protocol_version: ProtocolVersion,
         selector: SystemEntityRegistrySelector,
+        enable_addressable_entity: bool,
     ) -> Self {
         SystemEntityRegistryRequest {
             state_hash,
             protocol_version,
             selector,
+            enable_addressable_entity,
         }
     }
 
@@ -82,13 +85,18 @@ impl SystemEntityRegistryRequest {
     pub fn protocol_version(&self) -> ProtocolVersion {
         self.protocol_version
     }
+
+    /// Enable the addressable entity and migrate accounts/contracts to entities.
+    pub fn enable_addressable_entity(&self) -> bool {
+        self.enable_addressable_entity
+    }
 }
 
 /// The payload of a successful request.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SystemEntityRegistryPayload {
     /// All registry entries.
-    All(SystemEntityRegistry),
+    All(SystemHashRegistry),
     /// Specific system entity registry entry.
     EntityKey(Key),
 }

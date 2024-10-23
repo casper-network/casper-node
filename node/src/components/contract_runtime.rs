@@ -68,7 +68,7 @@ use crate::{
     NodeRng,
 };
 pub(crate) use config::Config;
-pub(crate) use error::{BlockExecutionError, ConfigError, ContractRuntimeError};
+pub(crate) use error::{BlockExecutionError, ConfigError, ContractRuntimeError, StateResultError};
 pub(crate) use event::Event;
 use exec_queue::{ExecQueue, QueueItem};
 use metrics::Metrics;
@@ -205,12 +205,19 @@ impl ContractRuntime {
             let block_store = BlockStore::new();
 
             let max_query_depth = contract_runtime_config.max_query_depth_or_default();
-            let global_state = LmdbGlobalState::empty(environment, trie_store, max_query_depth)?;
+            let enable_addressable_entity = contract_runtime_config.enable_addressable_entity();
+            let global_state = LmdbGlobalState::empty(
+                environment,
+                trie_store,
+                max_query_depth,
+                enable_addressable_entity,
+            )?;
 
             DataAccessLayer {
                 state: global_state,
                 block_store,
                 max_query_depth,
+                enable_addressable_entity,
             }
         };
         Ok(data_access_layer)

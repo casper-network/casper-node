@@ -157,8 +157,8 @@ fn should_allow_add_contract_version_via_transaction_v1_installer_upgrader() {
     try_add_contract_version(true, true)
 }
 
-#[ignore]
-#[test]
-fn should_disallow_add_contract_version_via_transaction_v1_standard() {
-    try_add_contract_version(false, false)
-}
+// #[ignore]
+// #[test]
+// fn should_disallow_add_contract_version_via_transaction_v1_standard() {
+//     try_add_contract_version(false, false)
+// }

@@ -45,7 +45,7 @@ impl<'a> ExecutionKind<'a> {
         R: StateReader<Key, StoredValue, Error = GlobalStateError>,
     {
         match executable_item {
-            ExecutableItem::Invocation(target) => Self::new_stored(
+            ExecutableItem::Invocation(target) => Self::new_direct_invocation(
                 tracking_copy,
                 named_keys,
                 target,
@@ -61,11 +61,11 @@ impl<'a> ExecutionKind<'a> {
                 kind: SessionKind::InstallUpgradeBytecode,
                 module_bytes,
             } => Ok(ExecutionKind::InstallerUpgrader(module_bytes)),
-            ExecutableItem::LegacyDeploy(module_bytes) => Ok(ExecutionKind::Deploy(module_bytes)),
+            ExecutableItem::Deploy(module_bytes) => Ok(ExecutionKind::Deploy(module_bytes)),
         }
     }
 
-    fn new_stored<R>(
+    fn new_direct_invocation<R>(
         tracking_copy: &mut TrackingCopy<R>,
         named_keys: &NamedKeys,
         target: &TransactionInvocationTarget,
@@ -92,7 +92,7 @@ impl<'a> ExecutionKind<'a> {
             }
             TransactionInvocationTarget::ByPackageHash { addr, version } => {
                 let package_hash = PackageHash::from(*addr);
-                let package = tracking_copy.get_package(package_hash)?;
+                let package = tracking_copy.get_package(*addr)?;
 
                 let maybe_version_key =
                     version.map(|ver| EntityVersionKey::new(protocol_version.value().major, ver));
@@ -132,7 +132,7 @@ impl<'a> ExecutionKind<'a> {
                     _ => return Err(Error::InvalidKeyVariant(*package_key)),
                 };
 
-                let package = tracking_copy.get_package(package_hash)?;
+                let package = tracking_copy.get_package(package_hash.value())?;
 
                 let maybe_version_key =
                     version.map(|ver| EntityVersionKey::new(protocol_version.value().major, ver));

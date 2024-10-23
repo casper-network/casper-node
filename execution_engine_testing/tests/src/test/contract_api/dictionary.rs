@@ -76,27 +76,63 @@ fn query_dictionary_item(
     let empty_path = vec![];
     let dictionary_key_bytes = dictionary_item_key.as_bytes();
     let address = match key {
+        Key::Hash(_) => {
+            if dictionary_name.is_none() {
+                return Err("No dictionary name was provided".to_string());
+            }
+            let name = dictionary_name.unwrap();
+            let named_keys = builder
+                .query(None, key, &[])?
+                .as_contract()
+                .expect("must get contract")
+                .named_keys()
+                .clone();
+
+            let dictionary_uref = named_keys
+                .get(&name)
+                .and_then(Key::as_uref)
+                .ok_or_else(|| "No dictionary uref was found in named keys".to_string())?;
+
+            Key::dictionary(*dictionary_uref, dictionary_key_bytes)
+        }
         Key::Account(_) => {
             if dictionary_name.is_none() {
                 return Err("No dictionary name was provided".to_string());
             }
             let stored_value = builder.query(None, key, &[])?;
-            if let StoredValue::CLValue(cl_value) = stored_value {
-                let entity_hash: AddressableEntityHash = CLValue::into_t::<Key>(cl_value)
-                    .expect("must convert to contract hash")
-                    .into_entity_hash()
-                    .expect("must convert to contract hash");
+            match stored_value {
+                StoredValue::CLValue(cl_value) => {
+                    let entity_hash: AddressableEntityHash = CLValue::into_t::<Key>(cl_value)
+                        .expect("must convert to contract hash")
+                        .into_entity_hash()
+                        .expect("must convert to contract hash");
 
-                let entity_key = Key::addressable_entity_key(EntityKindTag::Account, entity_hash);
+                    let entity_key =
+                        Key::addressable_entity_key(EntityKindTag::Account, entity_hash);
 
-                return query_dictionary_item(
-                    builder,
-                    entity_key,
-                    dictionary_name,
-                    dictionary_item_key,
-                );
-            } else {
-                return Err("Provided base key is not an account".to_string());
+                    return query_dictionary_item(
+                        builder,
+                        entity_key,
+                        dictionary_name,
+                        dictionary_item_key,
+                    );
+                }
+                StoredValue::Account(account) => {
+                    if let Some(name) = dictionary_name {
+                        let dictionary_uref = account
+                            .named_keys()
+                            .get(&name)
+                            .and_then(Key::as_uref)
+                            .ok_or_else(|| {
+                                "No dictionary uref was found in named keys".to_string()
+                            })?;
+
+                        Key::dictionary(*dictionary_uref, dictionary_key_bytes)
+                    } else {
+                        return Err("No dictionary name was provided".to_string());
+                    }
+                }
+                _ => return Err("Unhandled stored value".to_string()),
             }
         }
         Key::AddressableEntity(entity_addr) => {
@@ -597,7 +633,7 @@ fn should_query_dictionary_items_with_test_builder() {
         // Query through contract's named keys
         let queried_value = query_dictionary_item(
             &builder,
-            Key::addressable_entity_key(EntityKindTag::SmartContract, entity_hash),
+            Key::Hash(entity_hash.value()),
             Some(dictionary::DICTIONARY_NAME.to_string()),
             dictionary::DEFAULT_DICTIONARY_NAME.to_string(),
         )

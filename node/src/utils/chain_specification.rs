@@ -234,6 +234,10 @@ mod tests {
             create_contract_package_at_hash: HostFunction::new(106, [0, 1]),
             create_contract_user_group: HostFunction::new(107, [0, 1, 2, 3, 4, 5, 6, 7]),
             add_contract_version: HostFunction::new(102, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]),
+            add_contract_version_with_message_topics: HostFunction::new(
+                102,
+                [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+            ),
             add_package_version: HostFunction::new(102, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
             disable_contract_version: HostFunction::new(109, [0, 1, 2, 3]),
             call_contract: HostFunction::new(104, [0, 1, 2, 3, 4, 5, 6]),

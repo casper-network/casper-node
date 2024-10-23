@@ -1059,7 +1059,7 @@ impl Deploy {
             ARG_DELEGATION_RATE => delegation_rate,
         };
         let session = ExecutableDeployItem::StoredContractByHash {
-            hash: auction_contract_hash,
+            hash: auction_contract_hash.into(),
             entry_point: METHOD_ADD_BID.to_string(),
             args,
         };
@@ -1095,7 +1095,7 @@ impl Deploy {
             ARG_AUCTION_PUBLIC_KEY => public_key.clone(),
         };
         let session = ExecutableDeployItem::StoredContractByHash {
-            hash: auction_contract_hash,
+            hash: auction_contract_hash.into(),
             entry_point: METHOD_WITHDRAW_BID.to_string(),
             args,
         };
@@ -1133,7 +1133,7 @@ impl Deploy {
             ARG_AUCTION_AMOUNT => amount,
         };
         let session = ExecutableDeployItem::StoredContractByHash {
-            hash: auction_contract_hash,
+            hash: auction_contract_hash.into(),
             entry_point: METHOD_DELEGATE.to_string(),
             args,
         };
@@ -1173,7 +1173,7 @@ impl Deploy {
             ARG_AUCTION_AMOUNT => amount,
         };
         let session = ExecutableDeployItem::StoredContractByHash {
-            hash: auction_contract_hash,
+            hash: auction_contract_hash.into(),
             entry_point: METHOD_UNDELEGATE.to_string(),
             args,
         };
@@ -1216,7 +1216,7 @@ impl Deploy {
             ARG_AUCTION_AMOUNT => amount,
         };
         let session = ExecutableDeployItem::StoredContractByHash {
-            hash: auction_contract_hash,
+            hash: auction_contract_hash.into(),
             entry_point: METHOD_REDELEGATE.to_string(),
             args,
         };

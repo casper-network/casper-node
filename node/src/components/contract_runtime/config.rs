@@ -1,3 +1,4 @@
+use casper_execution_engine::engine_state::engine_config::DEFAULT_ENABLE_ENTITY;
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 use tracing::warn;
@@ -32,6 +33,10 @@ pub struct Config {
     ///
     /// Defaults to `true`.
     pub enable_manual_sync: Option<bool>,
+    /// Enables the addressable entity
+    ///
+    /// Defaults to `false`.
+    pub enable_addressable_entity: Option<bool>,
 }
 
 impl Config {
@@ -64,6 +69,11 @@ impl Config {
         self.enable_manual_sync
             .unwrap_or(DEFAULT_MANUAL_SYNC_ENABLED)
     }
+
+    pub fn enable_addressable_entity(&self) -> bool {
+        self.enable_addressable_entity
+            .unwrap_or(DEFAULT_ENABLE_ENTITY)
+    }
 }
 
 impl Default for Config {
@@ -73,6 +83,7 @@ impl Default for Config {
             max_readers: Some(DEFAULT_MAX_READERS),
             max_query_depth: Some(DEFAULT_MAX_QUERY_DEPTH),
             enable_manual_sync: Some(DEFAULT_MANUAL_SYNC_ENABLED),
+            enable_addressable_entity: Some(DEFAULT_ENABLE_ENTITY),
         }
     }
 }

@@ -128,12 +128,22 @@ pub type Parameters = Vec<Parameter>;
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[repr(u8)]
 pub enum EntryPointPayment {
-    /// The caller must cover cost
+    /// The caller must cover costs
     Caller = 0,
-    /// Will cover cost to execute self but not cost of any subsequent invoked contracts
-    SelfOnly = 1,
-    /// will cover cost to execute self and the cost of any subsequent invoked contracts
+    /// Will cover costs if directly invoked.
+    DirectInvocationOnly = 1,
+    /// will cover costs to execute self including any subsequent invoked contracts
     SelfOnward = 2,
+}
+
+impl EntryPointPayment {
+    /// Contract will pay if directly invoked.
+    pub fn will_pay_direct_invocation(&self) -> bool {
+        match self {
+            EntryPointPayment::Caller => false,
+            EntryPointPayment::DirectInvocationOnly | EntryPointPayment::SelfOnward => true,
+        }
+    }
 }
 
 impl ToBytes for EntryPointPayment {
@@ -158,7 +168,9 @@ impl FromBytes for EntryPointPayment {
         let (id, rem) = u8::from_bytes(bytes)?;
         let tag = match id {
             tag if tag == EntryPointPayment::Caller as u8 => EntryPointPayment::Caller,
-            tag if tag == EntryPointPayment::SelfOnly as u8 => EntryPointPayment::SelfOnly,
+            tag if tag == EntryPointPayment::DirectInvocationOnly as u8 => {
+                EntryPointPayment::DirectInvocationOnly
+            }
             tag if tag == EntryPointPayment::SelfOnward as u8 => EntryPointPayment::SelfOnward,
             _ => return Err(Error::Formatting),
         };
@@ -884,6 +896,14 @@ impl EntryPointValue {
     /// Returns [`EntryPointValue::V2CasperVm`] variant.
     pub fn new_v2_entry_point_value(entry_point: EntryPointV2) -> Self {
         Self::V2CasperVm(entry_point)
+    }
+
+    /// Entry point will cover payment if directly invoked.
+    pub fn will_pay_direct_invocation(&self) -> bool {
+        match self {
+            EntryPointValue::V1CasperVm(ep) => ep.entry_point_payment.will_pay_direct_invocation(),
+            EntryPointValue::V2CasperVm(_) => false,
+        }
     }
 }
 

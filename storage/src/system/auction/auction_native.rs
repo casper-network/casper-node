@@ -237,6 +237,18 @@ where
             })?;
 
         let contract_key: Key = match maybe_value {
+            Some(StoredValue::Account(account)) => {
+                self.mint_transfer_direct(
+                    Some(account_hash),
+                    *unbonding_purse.bonding_purse(),
+                    account.main_purse(),
+                    *unbonding_purse.amount(),
+                    None,
+                )
+                .map_err(|_| Error::Transfer)?
+                .map_err(|_| Error::Transfer)?;
+                return Ok(());
+            }
             Some(StoredValue::CLValue(cl_value)) => {
                 let contract_key: Key = cl_value.into_t().map_err(|_| Error::CLValue)?;
                 contract_key
@@ -280,9 +292,12 @@ where
         amount: U512,
         id: Option<u64>,
     ) -> Result<Result<(), mint::Error>, Error> {
-        if !(self.addressable_entity().main_purse().addr() == source.addr()
-            || self.get_caller() == PublicKey::System.to_account_hash())
-        {
+        let addr = if let Some(uref) = self.runtime_footprint().main_purse() {
+            uref.addr()
+        } else {
+            return Err(Error::InvalidContext);
+        };
+        if !(addr == source.addr() || self.get_caller() == PublicKey::System.to_account_hash()) {
             return Err(Error::InvalidCaller);
         }
 
@@ -378,7 +393,10 @@ where
     fn get_main_purse(&self) -> Result<URef, Error> {
         // NOTE: this is used by the system and is not (and should not be made to be) accessible
         // from userland.
-        Ok(self.addressable_entity().main_purse())
+        return self
+            .runtime_footprint()
+            .main_purse()
+            .ok_or(Error::InvalidContext);
     }
 }
 

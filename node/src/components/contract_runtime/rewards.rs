@@ -244,8 +244,10 @@ impl RewardsInfo {
                         .1
                 };
 
+                let enable_entity = data_access_layer.enable_addressable_entity;
+
                 let total_supply_request =
-                    TotalSupplyRequest::new(state_root_hash, protocol_version);
+                    TotalSupplyRequest::new(state_root_hash, protocol_version, enable_entity);
                 let total_supply = match data_access_layer.total_supply(total_supply_request) {
                     TotalSupplyResult::RootNotFound
                     | TotalSupplyResult::MintNotFound
@@ -256,8 +258,11 @@ impl RewardsInfo {
                     TotalSupplyResult::Success { total_supply } => total_supply,
                 };
 
-                let seignorate_rate_request =
-                    RoundSeigniorageRateRequest::new(state_root_hash, protocol_version);
+                let seignorate_rate_request = RoundSeigniorageRateRequest::new(
+                    state_root_hash,
+                    protocol_version,
+                    enable_entity,
+                );
                 let seignorate_rate =
                     match data_access_layer.round_seigniorage_rate(seignorate_rate_request) {
                         RoundSeigniorageRateResult::RootNotFound

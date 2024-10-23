@@ -97,6 +97,15 @@ impl TransactionInvocationTarget {
         }
     }
 
+    /// Returns the contract `hash_addr`, if any.
+    pub fn contract_by_hash(&self) -> Option<HashAddr> {
+        if let TransactionInvocationTarget::ByHash(hash_addr) = self {
+            Some(*hash_addr)
+        } else {
+            None
+        }
+    }
+
     /// Returns the identifier of the addressable entity, if present.
     pub fn addressable_entity_identifier(&self) -> Option<AddressableEntityIdentifier> {
         match self {

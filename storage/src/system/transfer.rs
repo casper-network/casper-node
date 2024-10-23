@@ -3,11 +3,10 @@ use thiserror::Error;
 
 use casper_types::{
     account::AccountHash,
-    addressable_entity::NamedKeys,
     bytesrepr::FromBytes,
     system::{mint, mint::Error as MintError},
-    AccessRights, AddressableEntity, CLType, CLTyped, CLValue, CLValueError, Key, ProtocolVersion,
-    RuntimeArgs, StoredValue, StoredValueTypeMismatch, URef, U512,
+    AccessRights, CLType, CLTyped, CLValue, CLValueError, Key, ProtocolVersion, RuntimeArgs,
+    RuntimeFootprint, StoredValue, StoredValueTypeMismatch, URef, U512,
 };
 
 use crate::{
@@ -233,9 +232,9 @@ impl TransferRuntimeArgsBuilder {
     /// Returns resolved [`URef`].
     fn resolve_source_uref<R>(
         &self,
-        account: &AddressableEntity,
-        named_keys: NamedKeys, /* TODO: consider passing in URef values inside named keys
-                                * instead of entire named keys */
+        /* TODO: consider passing in URef values inside named keys
+         * instead of entire named keys */
+        account: &RuntimeFootprint,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
     ) -> Result<URef, TransferError>
     where
@@ -249,20 +248,32 @@ impl TransferRuntimeArgsBuilder {
             }
             Some(cl_value) if *cl_value.cl_type() == CLType::Option(CLType::URef.into()) => {
                 let Some(uref): Option<URef> = self.map_cl_value(cl_value)? else {
-                    return Ok(account.main_purse());
+                    return account
+                        .main_purse()
+                        .ok_or_else(|| TransferError::InvalidOperation);
                 };
                 uref
             }
             Some(_) => return Err(TransferError::InvalidArgument),
-            None => return Ok(account.main_purse()), /* if no source purse passed use account
-                                                      * main purse */
+            None => {
+                return account
+                    .main_purse()
+                    .ok_or_else(|| TransferError::InvalidOperation)
+            } /* if no source purse passed use account
+               * main purse */
         };
-        if account.main_purse().addr() == uref.addr() {
+        if account
+            .main_purse()
+            .ok_or_else(|| TransferError::InvalidOperation)?
+            .addr()
+            == uref.addr()
+        {
             return Ok(uref);
         }
 
         let normalized_uref = Key::URef(uref).normalize();
-        let maybe_named_key = named_keys
+        let maybe_named_key = account
+            .named_keys()
             .keys()
             .find(|&named_key| named_key.normalize() == normalized_uref);
 
@@ -356,10 +367,13 @@ impl TransferRuntimeArgsBuilder {
 
         match tracking_copy
             .borrow_mut()
-            .get_addressable_entity_by_account_hash(protocol_version, account_hash)
+            .runtime_footprint_by_account_hash(protocol_version, account_hash)
         {
             Ok((_, entity)) => {
-                let main_purse_addable = entity.main_purse().with_access_rights(AccessRights::ADD);
+                let main_purse_addable = entity
+                    .main_purse()
+                    .ok_or_else(|| TransferError::InvalidPurse)?
+                    .with_access_rights(AccessRights::ADD);
                 Ok(TransferTargetMode::ExistingAccount {
                     target_account_hash: account_hash,
                     main_purse: main_purse_addable,
@@ -406,8 +420,7 @@ impl TransferRuntimeArgsBuilder {
     /// Creates new [`TransferArgs`] instance.
     pub fn build<R>(
         mut self,
-        from: &AddressableEntity,
-        entity_named_keys: NamedKeys,
+        from: &RuntimeFootprint,
         protocol_version: ProtocolVersion,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
     ) -> Result<TransferArgs, TransferError>
@@ -433,8 +446,7 @@ impl TransferRuntimeArgsBuilder {
             }
         };
 
-        let source =
-            self.resolve_source_uref(from, entity_named_keys, Rc::clone(&tracking_copy))?;
+        let source = self.resolve_source_uref(from, Rc::clone(&tracking_copy))?;
 
         if source.addr() == target.addr() {
             return Err(TransferError::InvalidPurse);

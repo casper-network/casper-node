@@ -9,7 +9,7 @@ use casper_types::{
         AssociatedKeys as AccountAssociatedKeys, Weight as AccountWeight,
     },
     addressable_entity::{
-        ActionThresholds, AddressableEntity, AssociatedKeys, EntityKind, MessageTopics, NamedKeys,
+        ActionThresholds, AddressableEntity, AssociatedKeys, EntityKind, NamedKeys,
     },
     system::{
         auction::{
@@ -381,7 +381,6 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
             URef::default(),
             AssociatedKeys::default(),
             ActionThresholds::default(),
-            MessageTopics::default(),
             EntityKind::SmartContract(TransactionRuntime::VmCasperV1),
         );
         stored_value.insert(
@@ -421,7 +420,7 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
 
         stored_value.insert(
             "LegacyTransfer".to_string(),
-            ABITestCase::from_inputs(vec![StoredValue::LegacyTransfer(legacy_transfer).into()])?,
+            ABITestCase::from_inputs(vec![StoredValue::Transfer(legacy_transfer).into()])?,
         );
         stored_value.insert(
             "DeployInfo".to_string(),

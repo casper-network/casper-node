@@ -7,6 +7,7 @@ use blake2::{
     digest::{Update, VariableOutput},
     VarBlake2b,
 };
+use casper_execution_engine::engine_state::engine_config::DEFAULT_ENABLE_ENTITY;
 use num_rational::Ratio;
 
 use casper_storage::{
@@ -56,6 +57,7 @@ impl TransferRequestBuilder {
         DEFAULT_GAS_HOLD_INTERVAL.millis(),
         false,
         Ratio::new_raw(U512::zero(), U512::zero()),
+        DEFAULT_ENABLE_ENTITY,
         2_500_000_000,
     );
     /// The default value used for `TransferRequest::state_hash`.

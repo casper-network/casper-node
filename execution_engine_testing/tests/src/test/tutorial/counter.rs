@@ -38,10 +38,17 @@ fn should_run_counter_example() {
 
     builder.exec(install_request_1).expect_success().commit();
 
+    let binding = builder
+        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
+        .expect("must have value");
+    let result = binding.as_account().unwrap().named_keys();
+
+    println!("Named keys, {:?}", result);
+
     let query_result = builder
         .query(
             None,
-            Key::from(*DEFAULT_ACCOUNT_ADDR),
+            Key::Account(*DEFAULT_ACCOUNT_ADDR),
             &[COUNTER_KEY.into(), COUNT_KEY.into()],
         )
         .expect("should query");
