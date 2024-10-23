@@ -1,17 +1,21 @@
 use num_traits::Zero;
 use std::{cell::RefCell, collections::BTreeMap};
 
+use casper_execution_engine::runtime::cryptography;
+
 use casper_engine_test_support::{
     ChainspecConfig, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_BLOCK_TIME, LOCAL_GENESIS_REQUEST,
 };
+
 use casper_types::{
     addressable_entity::MessageTopics,
     bytesrepr::ToBytes,
     contract_messages::{
         MessageChecksum, MessagePayload, MessageTopicOperation, MessageTopicSummary, TopicNameHash,
     },
-    crypto, runtime_args, AddressableEntityHash, BlockGlobalAddr, BlockTime, CLValue, CoreConfig,
+    runtime_args, AddressableEntityHash, BlockGlobalAddr, BlockTime, CLValue,
+    CoreConfig,
     Digest, HostFunction, HostFunctionCosts, Key, MessageLimits, OpcodeCosts, RuntimeArgs,
     StorageCosts, StoredValue, SystemConfig, WasmConfig, WasmV1Config, DEFAULT_V1_MAX_STACK_HEIGHT,
     DEFAULT_V1_WASM_MAX_MEMORY, U512,
@@ -267,7 +271,7 @@ fn should_emit_messages() {
     // Now call the entry point to emit some messages.
     emit_message_with_suffix(&builder, "test", &contract_hash, DEFAULT_BLOCK_TIME);
     let expected_message = MessagePayload::from(format!("{}{}", EMITTER_MESSAGE_PREFIX, "test"));
-    let expected_message_hash = crypto::blake2b(
+    let expected_message_hash = cryptography::blake2b(
         [
             0u64.to_bytes().unwrap(),
             expected_message.to_bytes().unwrap(),
@@ -288,7 +292,7 @@ fn should_emit_messages() {
 
     // call again to emit a new message and check that the index in the topic incremented.
     emit_message_with_suffix(&builder, "test", &contract_hash, DEFAULT_BLOCK_TIME);
-    let expected_message_hash = crypto::blake2b(
+    let expected_message_hash = cryptography::blake2b(
         [
             1u64.to_bytes().unwrap(),
             expected_message.to_bytes().unwrap(),
@@ -318,7 +322,7 @@ fn should_emit_messages() {
     );
     let expected_message =
         MessagePayload::from(format!("{}{}", EMITTER_MESSAGE_PREFIX, "new block time"));
-    let expected_message_hash = crypto::blake2b(
+    let expected_message_hash = cryptography::blake2b(
         [
             0u64.to_bytes().unwrap(),
             expected_message.to_bytes().unwrap(),
@@ -1001,7 +1005,7 @@ fn should_produce_per_block_message_ordering() {
     );
 
     let expected_message = MessagePayload::from(format!("{}{}", EMITTER_MESSAGE_PREFIX, "test 0"));
-    let expected_message_hash = crypto::blake2b(
+    let expected_message_hash = cryptography::blake2b(
         [
             0u64.to_bytes().unwrap(),
             expected_message.to_bytes().unwrap(),
@@ -1028,7 +1032,7 @@ fn should_produce_per_block_message_ordering() {
     );
 
     let expected_message = MessagePayload::from(format!("{}{}", EMITTER_MESSAGE_PREFIX, "test 1"));
-    let expected_message_hash = crypto::blake2b(
+    let expected_message_hash = cryptography::blake2b(
         [
             1u64.to_bytes().unwrap(),
             expected_message.to_bytes().unwrap(),
@@ -1074,7 +1078,7 @@ fn should_produce_per_block_message_ordering() {
     );
 
     let expected_message = MessagePayload::from(format!("{}{}", EMITTER_MESSAGE_PREFIX, "test 2"));
-    let expected_message_hash = crypto::blake2b(
+    let expected_message_hash = cryptography::blake2b(
         [
             2u64.to_bytes().unwrap(),
             expected_message.to_bytes().unwrap(),
@@ -1101,7 +1105,7 @@ fn should_produce_per_block_message_ordering() {
         Some((BlockTime::new(DEFAULT_BLOCK_TIME + 1), 1))
     );
     let expected_message = MessagePayload::from(format!("{}{}", EMITTER_MESSAGE_PREFIX, "test 3"));
-    let expected_message_hash = crypto::blake2b(
+    let expected_message_hash = cryptography::blake2b(
         [
             0u64.to_bytes().unwrap(),
             expected_message.to_bytes().unwrap(),

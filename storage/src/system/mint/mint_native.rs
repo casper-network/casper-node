@@ -243,7 +243,7 @@ where
             Id::Seed(_) => return Ok(()),
         };
         let from = InitiatorAddr::AccountHash(self.get_caller());
-        let fee = Gas::zero(); // TODO
+        let fee = Gas::from(self.native_transfer_cost());
         let transfer = Transfer::V2(TransferV2::new(
             txn_hash, from, maybe_to, source, target, amount, fee, id,
         ));

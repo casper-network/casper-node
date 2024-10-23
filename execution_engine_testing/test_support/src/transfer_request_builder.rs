@@ -58,6 +58,7 @@ impl TransferRequestBuilder {
         false,
         Ratio::new_raw(U512::zero(), U512::zero()),
         DEFAULT_ENABLE_ENTITY,
+        2_500_000_000,
     );
     /// The default value used for `TransferRequest::state_hash`.
     pub const DEFAULT_STATE_HASH: Digest = Digest::from_raw([1; 32]);

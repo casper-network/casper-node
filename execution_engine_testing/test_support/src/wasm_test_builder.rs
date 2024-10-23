@@ -849,6 +849,7 @@ where
             include_credits,
             credit_cap,
             DEFAULT_ENABLE_ENTITY,
+            config.system_costs_config.mint_costs().transfer,
         );
 
         let bidding_req = BiddingRequest::new(
@@ -1015,6 +1016,7 @@ where
             include_credits,
             credit_cap,
             DEFAULT_ENABLE_ENTITY,
+            self.chainspec.system_costs_config.mint_costs().transfer,
         )
     }
 

@@ -1,6 +1,7 @@
 //! This module contains executor state of the WASM code.
 mod args;
 mod auction_internal;
+pub mod cryptography;
 mod externals;
 mod handle_payment_internal;
 mod host_function_flag;
@@ -2392,6 +2393,33 @@ where
             previous_hash_addr,
         ) = self.new_version_entity_parts(&package)?;
 
+        let max_topics_per_contract = self
+            .context
+            .engine_config()
+            .wasm_config()
+            .messages_limits()
+            .max_topics_per_contract();
+
+        let topics_to_add = message_topics
+            .iter()
+            .filter(|(_, operation)| match operation {
+                MessageTopicOperation::Add => true,
+            });
+        // Check if registering the new topics would exceed the limit per contract
+        if previous_message_topics.len() + topics_to_add.clone().count()
+            > max_topics_per_contract as usize
+        {
+            return Ok(Err(ApiError::from(MessageTopicError::MaxTopicsExceeded)));
+        }
+
+        // Extend the previous topics with the newly added ones.
+        for (new_topic, _) in topics_to_add {
+            let topic_name_hash = crypto::blake2b(new_topic.as_bytes()).into();
+            if let Err(e) = previous_message_topics.add_topic(new_topic.as_str(), topic_name_hash) {
+                return Ok(Err(e.into()));
+            }
+        }
+
         // We generate the byte code hash because a byte code record
         // must exist for a contract record to exist.
         let byte_code_hash = self.context.new_hash_address()?;
@@ -2764,7 +2792,13 @@ where
 
         let txn_hash = self.context.get_transaction_hash();
         let from = InitiatorAddr::AccountHash(self.context.get_initiator());
-        let fee = Gas::zero(); // TODO
+        let fee = Gas::from(
+            self.context
+                .engine_config()
+                .system_config()
+                .mint_costs()
+                .transfer,
+        );
         let transfer = Transfer::V2(TransferV2::new(
             txn_hash, from, maybe_to, source, target, amount, fee, id,
         ));
@@ -4065,7 +4099,7 @@ where
     }
 
     fn add_message_topic(&mut self, topic_name: &str) -> Result<Result<(), ApiError>, ExecError> {
-        let topic_hash = crypto::blake2b(topic_name).into();
+        let topic_hash = cryptography::blake2b(topic_name).into();
 
         self.context
             .add_message_topic(topic_name, topic_hash)
@@ -4079,7 +4113,7 @@ where
     ) -> Result<Result<(), ApiError>, Trap> {
         let hash_addr = self.context.context_key_to_entity_addr()?.value();
 
-        let topic_name_hash = crypto::blake2b(topic_name).into();
+        let topic_name_hash = cryptography::blake2b(topic_name).into();
         let topic_key = Key::Message(MessageAddr::new_topic_addr(hash_addr, topic_name_hash));
 
         // Check if the topic exists and get the summary.

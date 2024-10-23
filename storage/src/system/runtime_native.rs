@@ -27,6 +27,7 @@ pub struct Config {
     include_credits: bool,
     credit_cap: Ratio<U512>,
     enable_addressable_entity: bool,
+    native_transfer_cost: u32,
 }
 
 impl Config {
@@ -45,6 +46,7 @@ impl Config {
         include_credits: bool,
         credit_cap: Ratio<U512>,
         enable_addressable_entity: bool,
+        native_transfer_cost: u32,
     ) -> Self {
         Config {
             transfer_config,
@@ -59,6 +61,7 @@ impl Config {
             include_credits,
             credit_cap,
             enable_addressable_entity,
+            native_transfer_cost,
         }
     }
 
@@ -79,6 +82,7 @@ impl Config {
             U512::from(*chainspec.core_config.validator_credit_cap.denom()),
         );
         let enable_addressable_entity = chainspec.core_config.enable_addressable_entity;
+        let native_transfer_cost = chainspec.system_costs_config.mint_costs().transfer;
         Config::new(
             transfer_config,
             fee_handling,
@@ -92,6 +96,7 @@ impl Config {
             include_credits,
             credit_cap,
             enable_addressable_entity,
+            native_transfer_cost,
         )
     }
 
@@ -170,6 +175,7 @@ impl Config {
             include_credits: self.include_credits,
             credit_cap: self.credit_cap,
             enable_addressable_entity: self.enable_addressable_entity,
+            native_transfer_cost: self.native_transfer_cost,
         }
     }
 }
@@ -553,5 +559,9 @@ where
     /// Extracts transfer items.
     pub fn into_transfers(self) -> Vec<Transfer> {
         self.transfers
+    }
+
+    pub(crate) fn native_transfer_cost(&self) -> u32 {
+        self.config.native_transfer_cost
     }
 }
