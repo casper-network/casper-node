@@ -13,16 +13,18 @@ use casper_storage::{
         mint::BalanceIdentifierTransferArgs,
         AuctionMethod, BalanceHoldKind, BalanceHoldRequest, BalanceIdentifier, BalanceRequest,
         BiddingRequest, BlockGlobalRequest, BlockGlobalResult, BlockRewardsRequest,
-        BlockRewardsResult, DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, EvictItem,
-        FeeRequest, FeeResult, FlushRequest, HandleFeeMode, HandleFeeRequest, HandleRefundMode,
-        HandleRefundRequest, InsufficientBalanceHandling, ProofHandling, PruneRequest, PruneResult,
-        StepRequest, StepResult, TransferRequest,
+        BlockRewardsResult, DataAccessLayer, EntryPointsRequest, EntryPointsResult,
+        EraValidatorsRequest, EraValidatorsResult, EvictItem, FeeRequest, FeeResult, FlushRequest,
+        HandleFeeMode, HandleFeeRequest, HandleRefundMode, HandleRefundRequest,
+        InsufficientBalanceHandling, ProofHandling, PruneRequest, PruneResult, StepRequest,
+        StepResult, TransferRequest,
     },
     global_state::state::{
         lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, ScratchProvider,
         StateProvider, StateReader,
     },
     system::runtime_native::Config as NativeRuntimeConfig,
+    tracking_copy::TrackingCopyError,
 };
 
 use casper_types::{
@@ -30,14 +32,14 @@ use casper_types::{
     execution::{Effects, ExecutionResult, TransformKindV2, TransformV2},
     system::handle_payment::ARG_AMOUNT,
     BlockHash, BlockHeader, BlockTime, BlockV2, CLValue, Chainspec, ChecksumRegistry, Digest,
-    EraEndV2, EraId, FeeHandling, Gas, Key, ProtocolVersion, PublicKey, RefundHandling,
-    Transaction, AUCTION_LANE_ID, MINT_LANE_ID, U512,
+    EntityAddr, EntryPointAddr, EraEndV2, EraId, FeeHandling, Gas, Key, ProtocolVersion, PublicKey,
+    RefundHandling, Transaction, AUCTION_LANE_ID, MINT_LANE_ID, U512,
 };
 
 use super::{
     types::{SpeculativeExecutionResult, StepOutcome},
     utils::{self, calculate_prune_eras},
-    BlockAndExecutionArtifacts, BlockExecutionError, ExecutionPreState, Metrics,
+    BlockAndExecutionArtifacts, BlockExecutionError, ExecutionPreState, Metrics, StateResultError,
     APPROVALS_CHECKSUM_NAME, EXECUTION_RESULTS_CHECKSUM_NAME,
 };
 use crate::{
@@ -77,6 +79,7 @@ pub fn execute_finalized_block(
     let activation_point_era_id = chainspec.protocol_config.activation_point.era_id();
     let prune_batch_size = chainspec.core_config.prune_batch_size;
     let native_runtime_config = NativeRuntimeConfig::from_chainspec(chainspec);
+    let addressable_entity_enabled = chainspec.core_config.enable_addressable_entity();
 
     // scrape variables from execution pre state
     let parent_hash = execution_pre_state.parent_hash();
@@ -259,18 +262,37 @@ pub fn execute_finalized_block(
 
         let mut balance_identifier = {
             if is_standard_payment {
-                // this is the typical scenario; the initiating account pays using its main
-                // purse
-                trace!(%transaction_hash, "account session with standard payment");
-                initiator_addr.clone().into()
+                let contract_might_pay =
+                    addressable_entity_enabled && transaction.is_contract_by_hash_invocation();
+
+                if contract_might_pay {
+                    match invoked_contract_will_pay(&scratch_state, state_root_hash, &transaction) {
+                        Ok(Some(entity_addr)) => BalanceIdentifier::Entity(entity_addr),
+                        Ok(None) => {
+                            // the initiating account pays using its main purse
+                            trace!(%transaction_hash, "direct invocation with account payment");
+                            initiator_addr.clone().into()
+                        }
+                        Err(err) => {
+                            trace!(%transaction_hash, "failed to resolve contract self payment");
+                            artifact_builder
+                                .with_state_result_error(err)
+                                .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
+                            BalanceIdentifier::PenalizedAccount(
+                                initiator_addr.clone().account_hash(),
+                            )
+                        }
+                    }
+                } else {
+                    // the initiating account pays using its main purse
+                    trace!(%transaction_hash, "account session with standard payment");
+                    initiator_addr.clone().into()
+                }
             } else {
                 // the initiating account will pay, but wants to do so with a different purse or
                 // in a custom way. If anything goes wrong, penalize the sender, do not execute
-                let custom_payment_gas_limit = Gas::new(
-                    // TODO: this should have it's own chainspec value; in the meantime
-                    // using a multiple of a small value.
-                    chainspec.transaction_config.native_transfer_minimum_motes * 5,
-                );
+                let custom_payment_gas_limit =
+                    Gas::new(chainspec.transaction_config.native_transfer_minimum_motes * 5);
                 let session_input_data = transaction.to_session_input_data();
                 let pay_result = match WasmV1Request::new_custom_payment(
                     BlockInfo::new(state_root_hash, block_time, parent_block_hash, block_height),
@@ -1100,7 +1122,7 @@ where
         }
     };
 
-    if transaction.is_legacy_transaction() {
+    if transaction.is_deploy_transaction() {
         if transaction.is_native() {
             let limit = Gas::from(chainspec.system_costs_config.mint_costs().transfer);
             let protocol_version = chainspec.protocol_version();
@@ -1146,6 +1168,42 @@ where
         }
     } else {
         SpeculativeExecutionResult::ReceivedV1Transaction
+    }
+}
+
+fn invoked_contract_will_pay(
+    state_provider: &ScratchGlobalState,
+    state_root_hash: Digest,
+    transaction: &MetaTransaction,
+) -> Result<Option<EntityAddr>, StateResultError> {
+    let (hash_addr, entry_point_name) = match transaction.contract_direct_address() {
+        None => {
+            return Err(StateResultError::ValueNotFound(
+                "contract direct address not found".to_string(),
+            ))
+        }
+        Some((hash_addr, entry_point_name)) => (hash_addr, entry_point_name),
+    };
+    let entity_addr = EntityAddr::new_smart_contract(hash_addr);
+    let entry_point_addr =
+        match EntryPointAddr::new_v1_entry_point_addr(entity_addr, &entry_point_name) {
+            Ok(addr) => addr,
+            Err(bre) => return Err(StateResultError::Failure(TrackingCopyError::BytesRepr(bre))),
+        };
+    let entry_point_key = Key::entry_point(entry_point_addr);
+    let entry_point_request = EntryPointsRequest::new(state_root_hash, entry_point_key);
+    let entry_point_response = state_provider.entry_point(entry_point_request);
+    match entry_point_response {
+        EntryPointsResult::RootNotFound => Err(StateResultError::RootNotFound),
+        EntryPointsResult::ValueNotFound(msg) => Err(StateResultError::ValueNotFound(msg)),
+        EntryPointsResult::Failure(tce) => Err(StateResultError::Failure(tce)),
+        EntryPointsResult::Success { entry_point } => {
+            if entry_point.will_pay_direct_invocation() {
+                Ok(Some(entity_addr))
+            } else {
+                Ok(None)
+            }
+        }
     }
 }
 

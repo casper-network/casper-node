@@ -366,7 +366,7 @@ pub fn entry_point_type_arb() -> impl Strategy<Value = EntryPointType> {
 pub fn entry_point_payment_arb() -> impl Strategy<Value = EntryPointPayment> {
     prop_oneof![
         Just(EntryPointPayment::Caller),
-        Just(EntryPointPayment::SelfOnly),
+        Just(EntryPointPayment::DirectInvocationOnly),
         Just(EntryPointPayment::SelfOnward),
     ]
 }

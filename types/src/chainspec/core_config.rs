@@ -188,10 +188,16 @@ pub struct CoreConfig {
     /// Administrative accounts are a valid option for a private chain only.
     //#[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub administrators: BTreeSet<PublicKey>,
+    /// Turn on migration to addressable entity behavior.
     pub enable_addressable_entity: bool,
 }
 
 impl CoreConfig {
+    /// Turn on migration to addressable entity behavior.
+    pub fn enable_addressable_entity(&self) -> bool {
+        self.enable_addressable_entity
+    }
+
     /// The number of eras that have already started and whose validators are still bonded.
     pub fn recent_era_count(&self) -> u64 {
         // Safe to use naked `-` operation assuming `CoreConfig::is_valid()` has been checked.
