@@ -341,6 +341,27 @@ impl WasmV1Request {
         ))
     }
 
+    /// New payment from executable deploy item or InvalidRequest error.
+    pub fn new_payment_from_executable_deploy_item(
+        block_info: BlockInfo,
+        gas_limit: Gas,
+        transaction_hash: TransactionHash,
+        initiator_addr: InitiatorAddr,
+        authorization_keys: BTreeSet<AccountHash>,
+        payment_item: &ExecutableDeployItem,
+    ) -> Result<Self, InvalidRequest> {
+        let executable_info =
+            build_payment_info_for_executable_item(payment_item, transaction_hash)?;
+        Ok(Self::new_from_executable_info(
+            block_info,
+            gas_limit,
+            transaction_hash,
+            initiator_addr,
+            authorization_keys,
+            executable_info,
+        ))
+    }
+
     pub(crate) fn new_from_executable_info(
         block_info: BlockInfo,
         gas_limit: Gas,

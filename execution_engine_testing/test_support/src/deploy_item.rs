@@ -91,7 +91,8 @@ impl DeployItem {
         let transaction_hash = TransactionHash::Deploy(*deploy_hash);
         let initiator_addr = InitiatorAddr::AccountHash(*address);
         let authorization_keys = authorization_keys.clone();
-        WasmV1Request::new_from_executable_deploy_item(
+
+        WasmV1Request::new_payment_from_executable_deploy_item(
             block_info,
             gas_limit,
             transaction_hash,

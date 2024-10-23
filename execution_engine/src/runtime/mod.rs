@@ -48,7 +48,6 @@ use casper_types::{
         ContractHash, ContractPackage, ContractPackageHash, ContractPackageStatus,
         ContractVersions, DisabledVersions,
     },
-    crypto,
     system::{
         self,
         auction::{self, EraInfo},
@@ -2393,33 +2392,6 @@ where
             previous_hash_addr,
         ) = self.new_version_entity_parts(&package)?;
 
-        let max_topics_per_contract = self
-            .context
-            .engine_config()
-            .wasm_config()
-            .messages_limits()
-            .max_topics_per_contract();
-
-        let topics_to_add = message_topics
-            .iter()
-            .filter(|(_, operation)| match operation {
-                MessageTopicOperation::Add => true,
-            });
-        // Check if registering the new topics would exceed the limit per contract
-        if previous_message_topics.len() + topics_to_add.clone().count()
-            > max_topics_per_contract as usize
-        {
-            return Ok(Err(ApiError::from(MessageTopicError::MaxTopicsExceeded)));
-        }
-
-        // Extend the previous topics with the newly added ones.
-        for (new_topic, _) in topics_to_add {
-            let topic_name_hash = crypto::blake2b(new_topic.as_bytes()).into();
-            if let Err(e) = previous_message_topics.add_topic(new_topic.as_str(), topic_name_hash) {
-                return Ok(Err(e.into()));
-            }
-        }
-
         // We generate the byte code hash because a byte code record
         // must exist for a contract record to exist.
         let byte_code_hash = self.context.new_hash_address()?;
@@ -2538,7 +2510,7 @@ where
 
         // Extend the previous topics with the newly added ones.
         for (new_topic, _) in topics_to_add {
-            let topic_name_hash = crypto::blake2b(new_topic.as_bytes()).into();
+            let topic_name_hash = cryptography::blake2b(new_topic.as_bytes()).into();
             if let Err(e) = previous_message_topics.add_topic(new_topic.as_str(), topic_name_hash) {
                 return Ok(Err(e.into()));
             }
