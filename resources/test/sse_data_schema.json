@@ -1042,7 +1042,7 @@
                   "description": "Hex-encoded contract hash.",
                   "allOf": [
                     {
-                      "$ref": "#/definitions/AddressableEntityHash"
+                      "$ref": "#/definitions/ContractHash"
                     }
                   ]
                 },
@@ -1120,7 +1120,7 @@
                   "description": "Hex-encoded contract package hash.",
                   "allOf": [
                     {
-                      "$ref": "#/definitions/PackageHash"
+                      "$ref": "#/definitions/ContractPackageHash"
                     }
                   ]
                 },
@@ -1526,12 +1526,12 @@
         }
       ]
     },
-    "AddressableEntityHash": {
-      "description": "The hex-encoded address of the addressable entity.",
+    "ContractHash": {
+      "description": "The hash address of the contract",
       "type": "string"
     },
-    "PackageHash": {
-      "description": "The hex-encoded address of the Package.",
+    "ContractPackageHash": {
+      "description": "The hash address of the contract package",
       "type": "string"
     },
     "Approval": {
@@ -3892,10 +3892,6 @@
         }
       }
     },
-    "ContractPackageHash": {
-      "description": "The hash address of the contract package",
-      "type": "string"
-    },
     "ContractWasmHash": {
       "description": "The hash address of the contract wasm",
       "type": "string"
@@ -4112,10 +4108,6 @@
         }
       }
     },
-    "ContractHash": {
-      "description": "The hash address of the contract",
-      "type": "string"
-    },
     "ContractVersionKey": {
       "description": "Major element of `ProtocolVersion` combined with `ContractVersion`.",
       "type": "array",
@@ -4314,6 +4306,10 @@
         }
       ]
     },
+    "PackageHash": {
+      "description": "The hex-encoded address of the Package.",
+      "type": "string"
+    },
     "ByteCodeHash": {
       "description": "The hash address of the contract wasm",
       "type": "string"
@@ -4461,6 +4457,10 @@
           "minimum": 0.0
         }
       }
+    },
+    "AddressableEntityHash": {
+      "description": "The hex-encoded address of the addressable entity.",
+      "type": "string"
     },
     "PackageStatus": {
       "description": "A enum to determine the lock status of the package.",
