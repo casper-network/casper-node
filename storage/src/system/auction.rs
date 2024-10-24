@@ -441,20 +441,32 @@ pub trait Auction:
                         amount,
                         None,
                     )?;
-                    match delegator.decrease_stake(amount, era_end_timestamp_millis) {
-                        Ok(_) => (),
-                        // Work around the case when the locked amounts table has yet to be
-                        // initialized (likely pre-90 day mark).
-                        Err(Error::DelegatorFundsLocked) => continue,
-                        Err(err) => return Err(err),
-                    }
+                    let updated_stake =
+                        match delegator.decrease_stake(amount, era_end_timestamp_millis) {
+                            Ok(updated_stake) => updated_stake,
+                            // Work around the case when the locked amounts table has yet to be
+                            // initialized (likely pre-90 day mark).
+                            Err(Error::DelegatorFundsLocked) => continue,
+                            Err(err) => return Err(err),
+                        };
                     let delegator_bid_addr = BidAddr::new_from_public_keys(
                         validator_public_key,
                         Some(&delegator_public_key),
                     );
 
-                    debug!("pruning delegator bid {}", delegator_bid_addr);
-                    self.prune_bid(delegator_bid_addr);
+                    if updated_stake.is_zero() {
+                        debug!("pruning delegator bid {}", delegator_bid_addr);
+                        self.prune_bid(delegator_bid_addr);
+                    } else {
+                        debug!(
+                            "forced undelegation for {} reducing {} by {} to {}",
+                            delegator_bid_addr, staked_amount, amount, updated_stake
+                        );
+                        self.write_bid(
+                            delegator_bid_addr.into(),
+                            BidKind::Delegator(Box::new(delegator)),
+                        )?;
+                    }
                 }
             }
         }

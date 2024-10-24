@@ -823,8 +823,7 @@ fn should_forcibly_undelegate_after_setting_validator_limits() {
     builder.forced_undelegate(None, DEFAULT_PROTOCOL_VERSION, DEFAULT_BLOCK_TIME);
 
     let bids = builder.get_bids();
-    // The undelegation itself doesn't remove bids, only process_unbond does.
-    assert_eq!(bids.len(), 3);
+    assert_eq!(bids.len(), 2);
 
     assert!(builder.get_validator_weights(new_era + 1).is_none());
 
