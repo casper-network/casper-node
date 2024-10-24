@@ -108,7 +108,7 @@ impl MemoryMetrics {
                 "time in seconds to estimate memory usage",
             )
             //  Create buckets from one nanosecond to eight seconds.
-            .buckets(prometheus::exponential_buckets(0.000_000_004, 2.0, 32)?),
+            .buckets(prometheus::exponential_buckets(0.000_4, 2.0, 13)?),
         )?;
 
         registry.register(Box::new(mem_total.clone()))?;
