@@ -415,11 +415,16 @@ pub trait Auction:
             for mut delegator in delegators {
                 let staked_amount = delegator.staked_amount();
                 if staked_amount.is_zero() {
-                    // A delegator who has unbonded - nothing to do here, this will be removed when
-                    // unbonding is processed.
-                    continue;
-                }
-                if staked_amount < minimum_delegation_amount
+                    // If the stake is zero, we don't need to unbond anything - we can just prune
+                    // the bid outright. Also, we don't want to keep zero bids even if the minimum
+                    // allowed amount is zero, as they only use up space for no reason.
+                    let delegator_bid_addr = BidAddr::new_from_public_keys(
+                        validator_public_key,
+                        Some(delegator.delegator_public_key()),
+                    );
+                    debug!("pruning delegator bid {}", delegator_bid_addr);
+                    self.prune_bid(delegator_bid_addr);
+                } else if staked_amount < minimum_delegation_amount
                     || staked_amount > maximum_delegation_amount
                 {
                     let amount = if staked_amount < minimum_delegation_amount {
@@ -436,29 +441,20 @@ pub trait Auction:
                         amount,
                         None,
                     )?;
-                    let updated_stake =
-                        match delegator.decrease_stake(amount, era_end_timestamp_millis) {
-                            Ok(updated_stake) => updated_stake,
-                            // Work around the case when the locked amounts table has yet to be
-                            // initialized (likely pre-90 day mark).
-                            Err(Error::DelegatorFundsLocked) => continue,
-                            Err(err) => return Err(err),
-                        };
+                    match delegator.decrease_stake(amount, era_end_timestamp_millis) {
+                        Ok(_) => (),
+                        // Work around the case when the locked amounts table has yet to be
+                        // initialized (likely pre-90 day mark).
+                        Err(Error::DelegatorFundsLocked) => continue,
+                        Err(err) => return Err(err),
+                    }
                     let delegator_bid_addr = BidAddr::new_from_public_keys(
                         validator_public_key,
                         Some(&delegator_public_key),
                     );
 
-                    debug!(
-                        "forced undelegation for {} reducing {} by {} to {}",
-                        delegator_bid_addr, staked_amount, amount, updated_stake
-                    );
-
-                    // Keep the bid for now - it will get pruned when the unbonds are processed.
-                    self.write_bid(
-                        delegator_bid_addr.into(),
-                        BidKind::Delegator(Box::new(delegator)),
-                    )?;
+                    debug!("pruning delegator bid {}", delegator_bid_addr);
+                    self.prune_bid(delegator_bid_addr);
                 }
             }
         }
