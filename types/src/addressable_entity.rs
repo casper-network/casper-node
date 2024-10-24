@@ -313,13 +313,13 @@ impl From<ContractHash> for AddressableEntityHash {
 }
 
 impl Display for AddressableEntityHash {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}", base16::encode_lower(&self.0))
     }
 }
 
 impl Debug for AddressableEntityHash {
-    fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(
             f,
             "AddressableEntityHash({})",
@@ -984,6 +984,12 @@ impl FromBytes for EntityAddr {
     }
 }
 
+impl CLTyped for EntityAddr {
+    fn cl_type() -> CLType {
+        CLType::Any
+    }
+}
+
 impl From<EntityAddr> for AddressableEntityHash {
     fn from(entity_addr: EntityAddr) -> Self {
         AddressableEntityHash::new(entity_addr.value())
@@ -1387,10 +1393,6 @@ static ADDRESSABLE_ENTITY: Lazy<AddressableEntity> = Lazy::new(|| {
     let associated_keys = AssociatedKeys::new(account_hash, weight);
     let action_thresholds = ActionThresholds::new(weight, weight, weight).unwrap();
     let protocol_version = ProtocolVersion::from_parts(2, 0, 0);
-    let mut message_topics = MessageTopics::default();
-    message_topics
-        .add_topic("topic", TopicNameHash::new([0; 32]))
-        .unwrap();
     AddressableEntity {
         protocol_version,
         entity_kind: EntityKind::Account(account_hash),
@@ -1399,7 +1401,6 @@ static ADDRESSABLE_ENTITY: Lazy<AddressableEntity> = Lazy::new(|| {
         main_purse,
         associated_keys,
         action_thresholds,
-        message_topics,
     }
 });
 
@@ -1416,7 +1417,6 @@ pub struct AddressableEntity {
 
     associated_keys: AssociatedKeys,
     action_thresholds: ActionThresholds,
-    message_topics: MessageTopics,
 }
 
 impl From<AddressableEntity>
@@ -1451,7 +1451,6 @@ impl AddressableEntity {
         main_purse: URef,
         associated_keys: AssociatedKeys,
         action_thresholds: ActionThresholds,
-        message_topics: MessageTopics,
         entity_kind: EntityKind,
     ) -> Self {
         AddressableEntity {
@@ -1461,7 +1460,6 @@ impl AddressableEntity {
             main_purse,
             action_thresholds,
             associated_keys,
-            message_topics,
             entity_kind,
         }
     }
@@ -1474,6 +1472,10 @@ impl AddressableEntity {
             EntityKind::Account(_) => EntityAddr::new_account(hash_addr),
             EntityKind::SmartContract(_) => EntityAddr::new_smart_contract(hash_addr),
         }
+    }
+
+    pub fn entity_kind(&self) -> EntityKind {
+        self.entity_kind
     }
 
     /// Hash for accessing contract package
@@ -1668,20 +1670,6 @@ impl AddressableEntity {
         self.byte_code_hash.value()
     }
 
-    /// Returns a reference to the message topics
-    pub fn message_topics(&self) -> &MessageTopics {
-        &self.message_topics
-    }
-
-    /// Adds a new message topic to the entity
-    pub fn add_message_topic(
-        &mut self,
-        topic_name: &str,
-        topic_name_hash: TopicNameHash,
-    ) -> Result<(), MessageTopicError> {
-        self.message_topics.add_topic(topic_name, topic_name_hash)
-    }
-
     /// Set protocol_version.
     pub fn set_protocol_version(&mut self, protocol_version: ProtocolVersion) {
         self.protocol_version = protocol_version;
@@ -1736,7 +1724,7 @@ impl AddressableEntity {
             .keys()
             .filter_map(|key| key.as_uref().copied())
             .chain(iter::once(self.main_purse));
-        ContextAccessRights::new(entity_hash, urefs_iter)
+        ContextAccessRights::new(entity_hash.value(), urefs_iter)
     }
 
     // This method is not intended to be used by third party crates.
@@ -1756,7 +1744,6 @@ impl ToBytes for AddressableEntity {
         self.main_purse().write_bytes(&mut result)?;
         self.associated_keys().write_bytes(&mut result)?;
         self.action_thresholds().write_bytes(&mut result)?;
-        self.message_topics().write_bytes(&mut result)?;
         self.kind().write_bytes(&mut result)?;
         Ok(result)
     }
@@ -1768,7 +1755,6 @@ impl ToBytes for AddressableEntity {
             + ToBytes::serialized_length(&self.main_purse)
             + ToBytes::serialized_length(&self.associated_keys)
             + ToBytes::serialized_length(&self.action_thresholds)
-            + ToBytes::serialized_length(&self.message_topics)
             + ToBytes::serialized_length(&self.entity_kind)
     }
 
@@ -1779,7 +1765,6 @@ impl ToBytes for AddressableEntity {
         self.main_purse().write_bytes(writer)?;
         self.associated_keys().write_bytes(writer)?;
         self.action_thresholds().write_bytes(writer)?;
-        self.message_topics().write_bytes(writer)?;
         self.kind().write_bytes(writer)?;
         Ok(())
     }
@@ -1793,7 +1778,6 @@ impl FromBytes for AddressableEntity {
         let (main_purse, bytes) = URef::from_bytes(bytes)?;
         let (associated_keys, bytes) = AssociatedKeys::from_bytes(bytes)?;
         let (action_thresholds, bytes) = ActionThresholds::from_bytes(bytes)?;
-        let (message_topics, bytes) = MessageTopics::from_bytes(bytes)?;
         let (entity_kind, bytes) = EntityKind::from_bytes(bytes)?;
         Ok((
             AddressableEntity {
@@ -1803,7 +1787,6 @@ impl FromBytes for AddressableEntity {
                 main_purse,
                 associated_keys,
                 action_thresholds,
-                message_topics,
                 entity_kind,
             },
             bytes,
@@ -1820,7 +1803,6 @@ impl Default for AddressableEntity {
             main_purse: URef::default(),
             action_thresholds: ActionThresholds::default(),
             associated_keys: AssociatedKeys::default(),
-            message_topics: MessageTopics::default(),
             entity_kind: EntityKind::SmartContract(TransactionRuntime::VmCasperV1),
         }
     }
@@ -1835,7 +1817,6 @@ impl From<Contract> for AddressableEntity {
             URef::default(),
             AssociatedKeys::default(),
             ActionThresholds::default(),
-            MessageTopics::default(),
             EntityKind::SmartContract(TransactionRuntime::VmCasperV1),
         )
     }
@@ -1850,7 +1831,6 @@ impl From<Account> for AddressableEntity {
             value.main_purse(),
             value.associated_keys().clone().into(),
             value.action_thresholds().clone().into(),
-            MessageTopics::default(),
             EntityKind::Account(value.account_hash()),
         )
     }
@@ -2008,7 +1988,6 @@ mod tests {
             associated_keys,
             ActionThresholds::new(Weight::new(1), Weight::new(1), Weight::new(1))
                 .expect("should create thresholds"),
-            MessageTopics::default(),
             EntityKind::SmartContract(TransactionRuntime::VmCasperV1),
         );
         let access_rights = contract.extract_access_rights(entity_hash, &named_keys);

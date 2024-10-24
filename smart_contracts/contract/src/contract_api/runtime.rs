@@ -9,7 +9,7 @@ use casper_types::{
     api_error,
     bytesrepr::{self, FromBytes, U64_SERIALIZED_LENGTH},
     contract_messages::{MessagePayload, MessageTopicOperation},
-    system::Caller,
+    system::CallerInfo,
     AddressableEntityHash, ApiError, BlockTime, CLTyped, CLValue, Digest, EntityVersion,
     HashAlgorithm, Key, PackageHash, Phase, RuntimeArgs, URef, BLAKE2B_DIGEST_LENGTH,
     BLOCKTIME_SERIALIZED_LENGTH, PHASE_SERIALIZED_LENGTH,
@@ -20,8 +20,10 @@ use crate::{contract_api, ext_ffi, unwrap_or_revert::UnwrapOrRevert};
 /// Number of random bytes returned from the `random_bytes()` function.
 const RANDOM_BYTES_COUNT: usize = 32;
 
+const ACCOUNT: u8 = 0;
+
 #[repr(u8)]
-enum CallerInformation {
+enum CallerIndex {
     Initiator = 0,
     Immediate = 1,
     FullStack = 2,
@@ -477,13 +479,13 @@ pub(crate) fn read_host_buffer(size: usize) -> Result<Vec<u8>, ApiError> {
 }
 
 /// Returns the call stack.
-pub fn get_call_stack() -> Vec<Caller> {
+pub fn get_call_stack() -> Vec<CallerInfo> {
     let (call_stack_len, result_size) = {
         let mut call_stack_len: usize = 0;
         let mut result_size: usize = 0;
         let ret = unsafe {
             ext_ffi::casper_load_caller_information(
-                CallerInformation::FullStack as u8,
+                CallerIndex::FullStack as u8,
                 &mut call_stack_len as *mut usize,
                 &mut result_size as *mut usize,
             )
@@ -498,7 +500,7 @@ pub fn get_call_stack() -> Vec<Caller> {
     bytesrepr::deserialize(bytes).unwrap_or_revert()
 }
 
-fn get_initiator_or_immediate(action: u8) -> Result<Caller, ApiError> {
+fn get_initiator_or_immediate(action: u8) -> Result<CallerInfo, ApiError> {
     let (call_stack_len, result_size) = {
         let mut call_stack_len: usize = 0;
         let mut result_size: usize = 0;
@@ -516,27 +518,37 @@ fn get_initiator_or_immediate(action: u8) -> Result<Caller, ApiError> {
         return Err(ApiError::InvalidCallerInfoRequest);
     }
     let bytes = read_host_buffer(result_size).unwrap_or_revert();
-    let caller: Vec<Caller> = bytesrepr::deserialize(bytes).unwrap_or_revert();
+    let caller: Vec<CallerInfo> = bytesrepr::deserialize(bytes).unwrap_or_revert();
 
     if caller.len() != 1 {
         return Err(ApiError::Unhandled);
     };
-    Ok(caller[0])
+    let first = caller.first().unwrap_or_revert().clone();
+    Ok(first)
 }
 
 /// Returns the call stack initiator
 pub fn get_call_initiator() -> Result<AccountHash, ApiError> {
-    let caller = get_initiator_or_immediate(CallerInformation::Initiator as u8)?;
-    if let Caller::Initiator { account_hash } = caller {
-        Ok(account_hash)
+    let caller = get_initiator_or_immediate(CallerIndex::Initiator as u8)?;
+    if caller.kind() != ACCOUNT {
+        return Err(ApiError::Unhandled);
+    };
+    if let Some(cl_value) = caller.get_field_by_index(ACCOUNT) {
+        let maybe_account_hash = cl_value
+            .to_t::<Option<AccountHash>>()
+            .map_err(|_| ApiError::CLTypeMismatch)?;
+        match maybe_account_hash {
+            Some(hash) => Ok(hash),
+            None => Err(ApiError::None),
+        }
     } else {
-        Err(ApiError::Unhandled)
+        Err(ApiError::PurseNotCreated)
     }
 }
 
 /// Returns the immidiate caller within the call stack.
-pub fn get_immediate_caller() -> Result<Caller, ApiError> {
-    get_initiator_or_immediate(CallerInformation::Immediate as u8)
+pub fn get_immediate_caller() -> Result<CallerInfo, ApiError> {
+    get_initiator_or_immediate(CallerIndex::Immediate as u8)
 }
 
 /// Manages a message topic.

@@ -1,5 +1,5 @@
 use num_traits::Zero;
-use std::cell::RefCell;
+use std::{cell::RefCell, collections::BTreeMap};
 
 use casper_execution_engine::runtime::cryptography;
 
@@ -9,12 +9,15 @@ use casper_engine_test_support::{
 };
 
 use casper_types::{
+    addressable_entity::MessageTopics,
     bytesrepr::ToBytes,
-    contract_messages::{MessageChecksum, MessagePayload, MessageTopicSummary, TopicNameHash},
-    runtime_args, AddressableEntity, AddressableEntityHash, BlockGlobalAddr, BlockTime, CLValue,
-    CoreConfig, Digest, EntityAddr, HostFunction, HostFunctionCosts, Key, MessageLimits,
-    OpcodeCosts, RuntimeArgs, StorageCosts, StoredValue, SystemConfig, WasmConfig, WasmV1Config,
-    DEFAULT_V1_MAX_STACK_HEIGHT, DEFAULT_V1_WASM_MAX_MEMORY, U512,
+    contract_messages::{
+        MessageChecksum, MessagePayload, MessageTopicOperation, MessageTopicSummary, TopicNameHash,
+    },
+    runtime_args, AddressableEntityHash, BlockGlobalAddr, BlockTime, CLValue, CoreConfig, Digest,
+    HostFunction, HostFunctionCosts, Key, MessageLimits, OpcodeCosts, RuntimeArgs, StorageCosts,
+    StoredValue, SystemConfig, WasmConfig, WasmV1Config, DEFAULT_V1_MAX_STACK_HEIGHT,
+    DEFAULT_V1_WASM_MAX_MEMORY, U512,
 };
 
 const MESSAGE_EMITTER_INSTALLER_WASM: &str = "contract_messages_emitter.wasm";
@@ -69,17 +72,18 @@ fn install_messages_emitter_contract(
         )
         .expect("should query");
 
-    let message_emitter_package = if let StoredValue::Package(package) = query_result {
+    let message_emitter_package = if let StoredValue::ContractPackage(package) = query_result {
         package
     } else {
         panic!("Stored value is not a contract package: {:?}", query_result);
     };
 
     // Get the contract hash of the messages_emitter contract.
-    *message_emitter_package
+    message_emitter_package
         .versions()
-        .contract_hashes()
+        .values()
         .last()
+        .map(|contract_hash| AddressableEntityHash::new(contract_hash.value()))
         .expect("Should have contract hash")
 }
 
@@ -96,6 +100,13 @@ fn upgrade_messages_emitter_contract(
         },
     )
     .build();
+
+    let new_topics = BTreeMap::from([(
+        MESSAGE_EMITTER_GENERIC_TOPIC.to_string(),
+        MessageTopicOperation::Add,
+    )]);
+
+    println!("{}", new_topics.into_bytes().unwrap().len());
 
     // Execute the request to upgrade the message emitting contract.
     // This will also register a new topic for the contract to emit messages on.
@@ -123,17 +134,18 @@ fn upgrade_messages_emitter_contract(
         )
         .expect("should query");
 
-    let message_emitter_package = if let StoredValue::Package(package) = query_result {
+    let message_emitter_package = if let StoredValue::ContractPackage(package) = query_result {
         package
     } else {
         panic!("Stored value is not a contract package: {:?}", query_result);
     };
 
     // Get the contract hash of the latest version of the messages emitter contract.
-    *message_emitter_package
+    message_emitter_package
         .versions()
-        .contract_hashes()
+        .values()
         .last()
+        .map(|contract_hash| AddressableEntityHash::new(contract_hash.value()))
         .expect("Should have contract hash")
 }
 
@@ -177,21 +189,14 @@ impl<'a> ContractQueryView<'a> {
         }
     }
 
-    fn entity(&self) -> AddressableEntity {
-        let query_result = self
+    fn message_topics(&self) -> MessageTopics {
+        let message_topics_result = self
             .builder
             .borrow_mut()
-            .query(None, Key::contract_entity_key(self.contract_hash), &[])
-            .expect("should query");
+            .message_topics(None, self.contract_hash.value())
+            .expect("must get message topics");
 
-        if let StoredValue::AddressableEntity(entity) = query_result {
-            entity
-        } else {
-            panic!(
-                "Stored value is not an adressable entity: {:?}",
-                query_result
-            );
-        }
+        message_topics_result
     }
 
     fn message_topic(&self, topic_name_hash: TopicNameHash) -> MessageTopicSummary {
@@ -200,10 +205,7 @@ impl<'a> ContractQueryView<'a> {
             .borrow_mut()
             .query(
                 None,
-                Key::message_topic(
-                    EntityAddr::new_smart_contract(self.contract_hash.value()),
-                    topic_name_hash,
-                ),
+                Key::message_topic(self.contract_hash.value(), topic_name_hash),
                 &[],
             )
             .expect("should query");
@@ -227,11 +229,7 @@ impl<'a> ContractQueryView<'a> {
     ) -> Result<MessageChecksum, String> {
         let query_result = self.builder.borrow_mut().query(
             state_hash,
-            Key::message(
-                EntityAddr::new_smart_contract(self.contract_hash.value()),
-                topic_name_hash,
-                message_index,
-            ),
+            Key::message(self.contract_hash.value(), topic_name_hash, message_index),
             &[],
         )?;
 
@@ -252,10 +250,10 @@ fn should_emit_messages() {
 
     let contract_hash = install_messages_emitter_contract(&builder, true);
     let query_view = ContractQueryView::new(&builder, contract_hash);
-    let entity = query_view.entity();
 
-    let (topic_name, message_topic_hash) = entity
-        .message_topics()
+    let message_topics = query_view.message_topics();
+
+    let (topic_name, message_topic_hash) = message_topics
         .iter()
         .next()
         .expect("should have at least one topic");
@@ -363,10 +361,10 @@ fn should_emit_message_on_empty_topic_in_new_block() {
 
     let contract_hash = install_messages_emitter_contract(&builder, true);
     let query_view = ContractQueryView::new(&builder, contract_hash);
-    let entity = query_view.entity();
 
-    let (_, message_topic_hash) = entity
-        .message_topics()
+    let message_topics = query_view.message_topics();
+
+    let (_, message_topic_hash) = message_topics
         .iter()
         .next()
         .expect("should have at least one topic");
@@ -419,7 +417,6 @@ fn should_add_topics() {
         .commit();
 
     let topic_1_hash = *query_view
-        .entity()
         .message_topics()
         .get("topic_1")
         .expect("should have added topic `topic_1");
@@ -442,16 +439,11 @@ fn should_add_topics() {
         .commit();
 
     let topic_2_hash = *query_view
-        .entity()
         .message_topics()
         .get("topic_2")
         .expect("should have added topic `topic_2");
 
-    assert!(query_view
-        .entity()
-        .message_topics()
-        .get("topic_1")
-        .is_some());
+    assert!(query_view.message_topics().get("topic_1").is_some());
     assert_eq!(query_view.message_topic(topic_1_hash).message_count(), 0);
     assert_eq!(query_view.message_topic(topic_2_hash).message_count(), 0);
 }
@@ -466,10 +458,8 @@ fn should_not_add_duplicate_topics() {
 
     let contract_hash = install_messages_emitter_contract(&builder, true);
     let query_view = ContractQueryView::new(&builder, contract_hash);
-
-    let entity = query_view.entity();
-    let (first_topic_name, _) = entity
-        .message_topics()
+    let message_topics = query_view.message_topics();
+    let (first_topic_name, _) = message_topics
         .iter()
         .next()
         .expect("should have at least one topic");
@@ -609,10 +599,10 @@ fn should_carry_message_topics_on_upgraded_contract(use_initializer: bool) {
     let contract_hash = upgrade_messages_emitter_contract(&builder, use_initializer, false);
     let query_view = ContractQueryView::new(&builder, contract_hash);
 
-    let entity = query_view.entity();
-    assert_eq!(entity.message_topics().len(), 2);
+    let message_topics = query_view.message_topics();
+    assert_eq!(message_topics.len(), 2);
     let mut expected_topic_names = 0;
-    for (topic_name, topic_hash) in entity.message_topics().iter() {
+    for (topic_name, topic_hash) in message_topics.iter() {
         if topic_name == MESSAGE_EMITTER_GENERIC_TOPIC
             || topic_name == MESSAGE_EMITTER_UPGRADED_TOPIC
         {
@@ -684,7 +674,8 @@ fn should_charge_expected_gas_for_storage() {
         .run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let contract_hash = install_messages_emitter_contract(&builder, true);
-    let query_view = ContractQueryView::new(&builder, contract_hash);
+
+    let topic_name = "cost_topic";
 
     // check the cost of adding a new topic
     let add_topic_request = ExecuteRequestBuilder::contract_call_by_hash(
@@ -692,7 +683,7 @@ fn should_charge_expected_gas_for_storage() {
         contract_hash,
         ENTRY_POINT_ADD_TOPIC,
         runtime_args! {
-            ARG_TOPIC_NAME => "cost_topic",
+            ARG_TOPIC_NAME => topic_name,
         },
     )
     .build();
@@ -705,24 +696,24 @@ fn should_charge_expected_gas_for_storage() {
 
     let add_topic_cost = builder.borrow().last_exec_gas_cost().value();
 
-    // cost depends on the entity size since we store the topic names in the entity record.
-    let entity = query_view.entity();
-    let default_topic_summary = MessageTopicSummary::new(0, BlockTime::new(0));
-    let written_size_expected = StoredValue::MessageTopic(default_topic_summary.clone())
-        .serialized_length()
-        + StoredValue::AddressableEntity(entity).serialized_length();
+    let default_topic_summary =
+        MessageTopicSummary::new(0, BlockTime::new(0), topic_name.to_string());
+    let written_size_expected =
+        StoredValue::MessageTopic(default_topic_summary.clone()).serialized_length();
     assert_eq!(
         U512::from(written_size_expected * GAS_PER_BYTE_COST as usize),
         add_topic_cost
     );
 
-    // check that the storage cost charged is invariable with message size that is emitted.
+    let message_topic =
+        MessageTopicSummary::new(0, BlockTime::new(0), "generic_messages".to_string());
+    emit_message_with_suffix(&builder, "test", &contract_hash, DEFAULT_BLOCK_TIME);
+    // check that the storage cost charged is variable since the message topic hash a variable
+    // string field with message size that is emitted.
     let written_size_expected = StoredValue::Message(MessageChecksum([0; 32])).serialized_length()
-        + StoredValue::MessageTopic(default_topic_summary).serialized_length()
+        + StoredValue::MessageTopic(message_topic).serialized_length()
         + StoredValue::CLValue(CLValue::from_t((BlockTime::new(0), 0u64)).unwrap())
             .serialized_length();
-
-    emit_message_with_suffix(&builder, "test", &contract_hash, DEFAULT_BLOCK_TIME);
     let emit_message_gas_cost = builder.borrow().last_exec_gas_cost().value();
     assert_eq!(
         U512::from(written_size_expected * GAS_PER_BYTE_COST as usize),
@@ -730,6 +721,15 @@ fn should_charge_expected_gas_for_storage() {
     );
 
     emit_message_with_suffix(&builder, "test 12345", &contract_hash, DEFAULT_BLOCK_TIME);
+    let written_size_expected = StoredValue::Message(MessageChecksum([0; 32])).serialized_length()
+        + StoredValue::MessageTopic(MessageTopicSummary::new(
+            0,
+            BlockTime::new(0),
+            "generic_messages".to_string(),
+        ))
+        .serialized_length()
+        + StoredValue::CLValue(CLValue::from_t((BlockTime::new(0), 0u64)).unwrap())
+            .serialized_length();
     let emit_message_gas_cost = builder.borrow().last_exec_gas_cost().value();
     assert_eq!(
         U512::from(written_size_expected * GAS_PER_BYTE_COST as usize),
@@ -860,10 +860,9 @@ fn should_register_topic_on_contract_creation() {
 
     let contract_hash = install_messages_emitter_contract(&builder, false);
     let query_view = ContractQueryView::new(&builder, contract_hash);
-    let entity = query_view.entity();
 
-    let (topic_name, message_topic_hash) = entity
-        .message_topics()
+    let message_topics = query_view.message_topics();
+    let (topic_name, message_topic_hash) = message_topics
         .iter()
         .next()
         .expect("should have at least one topic");
@@ -957,10 +956,9 @@ fn should_produce_per_block_message_ordering() {
 
     let emitter_contract_hash = install_messages_emitter_contract(&builder, true);
     let query_view = ContractQueryView::new(&builder, emitter_contract_hash);
-    let entity = query_view.entity();
 
-    let (_, message_topic_hash) = entity
-        .message_topics()
+    let message_topics = query_view.message_topics();
+    let (_, message_topic_hash) = message_topics
         .iter()
         .next()
         .expect("should have at least one topic");
@@ -1050,10 +1048,9 @@ fn should_produce_per_block_message_ordering() {
     // as before. The block index of the message should be 2 since the block hasn't changed.
     let upgraded_contract_hash = upgrade_messages_emitter_contract(&builder, true, false);
     let upgraded_contract_query_view = ContractQueryView::new(&builder, upgraded_contract_hash);
-    let entity = upgraded_contract_query_view.entity();
 
-    let upgraded_message_topic_hash = entity
-        .message_topics()
+    let upgraded_topics = upgraded_contract_query_view.message_topics();
+    let upgraded_message_topic_hash = upgraded_topics
         .get(MESSAGE_EMITTER_UPGRADED_TOPIC)
         .expect("should have upgraded topic");
 

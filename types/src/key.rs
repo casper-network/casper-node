@@ -115,7 +115,7 @@ const KEY_CHECKSUM_REGISTRY_SERIALIZED_LENGTH: usize =
     KEY_ID_SERIALIZED_LENGTH + PADDING_BYTES.len();
 const KEY_PACKAGE_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + 32;
 const KEY_MESSAGE_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH
-    + EntityAddr::LENGTH
+    + KEY_HASH_LENGTH
     + TOPIC_NAME_HASH_LENGTH
     + U8_SERIALIZED_LENGTH
     + U32_SERIALIZED_LENGTH;
@@ -290,7 +290,7 @@ pub enum Key {
     Hash(HashAddr),
     /// A `Key` which is a [`URef`], under which most types of data can be stored.
     URef(URef),
-    /// A `Key` under which a (legacy) transfer is stored.
+    /// A `Key` under which a transfer is stored.
     Transfer(TransferAddr),
     /// A `Key` under which a deploy info is stored.
     DeployInfo(DeployHash),
@@ -911,23 +911,27 @@ impl Key {
     pub fn into_entity_hash_addr(self) -> Option<HashAddr> {
         match self {
             Key::AddressableEntity(entity_addr) => Some(entity_addr.value()),
+            Key::Account(account_hash) => Some(account_hash.value()),
+            Key::Hash(hash) => Some(hash),
             _ => None,
         }
     }
 
-    /// Returns [`EntityAddr`] of `self` if `self` is of type [`Key::AddressableEntity`], otherwise
-    /// returns `None`.
-    pub fn as_entity_addr(&self) -> Option<EntityAddr> {
-        match self {
-            Key::AddressableEntity(addr) => Some(*addr),
-            _ => None,
-        }
-    }
+    // /// Returns [`EntityAddr`] of `self` if `self` is of type [`Key::AddressableEntity`],
+    // ///  otherwise returns `None`.
+    // pub fn as_entity_addr(&self) -> Option<EntityAddr> {
+    //     match self {
+    //         Key::AddressableEntity(addr) => Some(*addr),
+    //         Key::Account(account_hash) => Some(EntityAddr::Account(account_hash.value())),
+    //         _ => None,
+    //     }
+    // }
 
     /// Returns the inner bytes of `self` if `self` is of type [`Key::Package`], otherwise returns
     /// `None`.
     pub fn into_package_addr(self) -> Option<PackageAddr> {
         match self {
+            Key::Hash(hash) => Some(hash),
             Key::Package(package_addr) => Some(package_addr),
             _ => None,
         }
@@ -952,6 +956,14 @@ impl Key {
     pub fn into_named_key_addr(self) -> Option<NamedKeyAddr> {
         match self {
             Key::NamedKey(addr) => Some(addr),
+            _ => None,
+        }
+    }
+
+    /// Returns the inner [`URef`] if `self` is of type [`Key::URef`], otherwise returns `None`.
+    pub fn into_uref(self) -> Option<URef> {
+        match self {
+            Key::URef(uref) => Some(uref),
             _ => None,
         }
     }
@@ -994,20 +1006,32 @@ impl Key {
         }
     }
 
-    /// Returns the inner [`URef`] if `self` is of type [`Key::URef`], otherwise returns `None`.
-    pub fn into_uref(self) -> Option<URef> {
-        match self {
-            Key::URef(uref) => Some(uref),
-            _ => None,
-        }
-    }
-
     /// Returns a reference to the inner [`DictionaryAddr`] if `self` is of type
     /// [`Key::Dictionary`], otherwise returns `None`.
     pub fn as_dictionary(&self) -> Option<&DictionaryAddr> {
         match self {
             Key::Dictionary(v) => Some(v),
             _ => None,
+        }
+    }
+
+    /// Returns a reference to the inner `BidAddr` if `self` is of type [`Key::Bid`],
+    /// otherwise returns `None`.
+    pub fn as_bid_addr(&self) -> Option<&BidAddr> {
+        if let Self::BidAddr(addr) = self {
+            Some(addr)
+        } else {
+            None
+        }
+    }
+
+    /// Returns a reference to the inner `TopicNameHash` if `self` is of the type [`Key::Message`]
+    /// otherwise returns `None`.
+    pub fn as_message_topic_name_hash(&self) -> Option<TopicNameHash> {
+        if let Self::Message(addr) = self {
+            Some(addr.topic_name_hash())
+        } else {
+            None
         }
     }
 
@@ -1065,19 +1089,19 @@ impl Key {
     }
 
     /// Creates a new [`Key::Message`] variant that identifies an indexed message based on an
-    /// `entity_addr`, `topic_name_hash` and message `index`.
-    pub fn message(entity_addr: EntityAddr, topic_name_hash: TopicNameHash, index: u32) -> Key {
+    /// `hash_addr`, `topic_name_hash` and message `index`.
+    pub fn message(hash_addr: HashAddr, topic_name_hash: TopicNameHash, index: u32) -> Key {
         Key::Message(MessageAddr::new_message_addr(
-            entity_addr,
+            hash_addr,
             topic_name_hash,
             index,
         ))
     }
 
     /// Creates a new [`Key::Message`] variant that identifies a message topic based on an
-    /// `entity_addr` and a hash of the topic name.
-    pub fn message_topic(entity_addr: EntityAddr, topic_name_hash: TopicNameHash) -> Key {
-        Key::Message(MessageAddr::new_topic_addr(entity_addr, topic_name_hash))
+    /// `hash_addr` and a hash of the topic name.
+    pub fn message_topic(hash_addr: HashAddr, topic_name_hash: TopicNameHash) -> Key {
+        Key::Message(MessageAddr::new_topic_addr(hash_addr, topic_name_hash))
     }
 
     /// Creates a new [`Key::EntryPoint`] variant from an entrypoint addr.
@@ -1118,16 +1142,6 @@ impl Key {
         false
     }
 
-    /// Returns a reference to the inner `BidAddr` if `self` is of type [`Key::Bid`],
-    /// otherwise returns `None`.
-    pub fn as_bid_addr(&self) -> Option<&BidAddr> {
-        if let Self::BidAddr(addr) = self {
-            Some(addr)
-        } else {
-            None
-        }
-    }
-
     /// Returns if the inner address is for a system contract entity.
     pub fn is_system_key(&self) -> bool {
         if let Self::AddressableEntity(entity_addr) = self {
@@ -1141,11 +1155,10 @@ impl Key {
 
     /// Return true if the inner Key is of the smart contract type.
     pub fn is_smart_contract_key(&self) -> bool {
-        if let Self::AddressableEntity(EntityAddr::SmartContract(_)) = self {
-            return true;
-        }
-
-        false
+        matches!(
+            self,
+            Self::AddressableEntity(EntityAddr::SmartContract(_)) | Self::Hash(_)
+        )
     }
 
     /// Returns true if the key is of type [`Key::NamedKey`] and its Entry variant.
@@ -1905,11 +1918,11 @@ mod tests {
     const BYTE_CODE_EMPTY_KEY: Key = Key::ByteCode(ByteCodeAddr::Empty);
     const BYTE_CODE_V1_WASM_KEY: Key = Key::ByteCode(ByteCodeAddr::V1CasperWasm([42; 32]));
     const MESSAGE_TOPIC_KEY: Key = Key::Message(MessageAddr::new_topic_addr(
-        EntityAddr::new_smart_contract([42; 32]),
+        [42; 32],
         TopicNameHash::new([42; 32]),
     ));
     const MESSAGE_KEY: Key = Key::Message(MessageAddr::new_message_addr(
-        EntityAddr::new_smart_contract([42u8; 32]),
+        [42; 32],
         TopicNameHash::new([2; 32]),
         15,
     ));
@@ -2123,15 +2136,12 @@ mod tests {
         );
         assert_eq!(
             format!("{}", MESSAGE_TOPIC_KEY),
-            format!(
-                "Key::Message(entity-contract-{}-{})",
-                HEX_STRING, HEX_STRING
-            )
+            format!("Key::Message({}-{})", HEX_STRING, HEX_STRING)
         );
         assert_eq!(
             format!("{}", MESSAGE_KEY),
             format!(
-                "Key::Message(entity-contract-{}-{}-{})",
+                "Key::Message({}-{}-{})",
                 HEX_STRING, TOPIC_NAME_HEX_STRING, MESSAGE_INDEX_HEX_STRING
             )
         );
@@ -2189,7 +2199,7 @@ mod tests {
         let account_hash = AccountHash::new(account);
         let key1 = Key::Account(account_hash);
         assert_eq!(key1.into_account(), Some(account_hash));
-        assert!(key1.into_entity_hash_addr().is_none());
+        assert!(key1.into_entity_hash_addr().is_some());
         assert!(key1.as_uref().is_none());
     }
 
@@ -2551,11 +2561,11 @@ mod tests {
         round_trip(&Key::ByteCode(ByteCodeAddr::Empty));
         round_trip(&Key::ByteCode(ByteCodeAddr::V1CasperWasm(zeros)));
         round_trip(&Key::Message(MessageAddr::new_topic_addr(
-            EntityAddr::new_smart_contract(zeros),
+            zeros,
             nines.into(),
         )));
         round_trip(&Key::Message(MessageAddr::new_message_addr(
-            EntityAddr::new_smart_contract(zeros),
+            zeros,
             nines.into(),
             1,
         )));

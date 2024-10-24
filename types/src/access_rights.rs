@@ -11,7 +11,7 @@ use rand::{
 };
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::{bytesrepr, AddressableEntityHash, URef, URefAddr};
+use crate::{bytesrepr, HashAddr, URef, URefAddr};
 pub use private::AccessRights;
 
 /// The number of bytes in a serialized [`AccessRights`].
@@ -166,19 +166,16 @@ pub enum GrantedAccess {
 /// Access rights for a given runtime context.
 #[derive(Debug, PartialEq, Eq)]
 pub struct ContextAccessRights {
-    context_entity_hash: AddressableEntityHash,
+    hash_addr: HashAddr,
     access_rights: BTreeMap<URefAddr, AccessRights>,
 }
 
 impl ContextAccessRights {
     /// Creates a new instance of access rights from an iterator of URefs merging any duplicates,
     /// taking the union of their rights.
-    pub fn new<T: IntoIterator<Item = URef>>(
-        context_entity_hash: AddressableEntityHash,
-        uref_iter: T,
-    ) -> Self {
+    pub fn new<T: IntoIterator<Item = URef>>(hash_addr: HashAddr, uref_iter: T) -> Self {
         let mut context_access_rights = ContextAccessRights {
-            context_entity_hash,
+            hash_addr,
             access_rights: BTreeMap::new(),
         };
         context_access_rights.do_extend(uref_iter);
@@ -200,8 +197,8 @@ impl ContextAccessRights {
     }
 
     /// Returns the current context key.
-    pub fn context_key(&self) -> AddressableEntityHash {
-        self.context_entity_hash
+    pub fn context_key(&self) -> HashAddr {
+        self.hash_addr
     }
 
     /// Extends the current access rights from a given set of URefs.
@@ -278,7 +275,7 @@ mod tests {
     use super::*;
     use crate::UREF_ADDR_LENGTH;
 
-    const ENTITY_HASH: AddressableEntityHash = AddressableEntityHash::new([1u8; 32]);
+    const ENTITY_HASH: HashAddr = [1u8; 32];
     const UREF_ADDRESS: [u8; UREF_ADDR_LENGTH] = [1; UREF_ADDR_LENGTH];
     const UREF_NO_PERMISSIONS: URef = URef::new(UREF_ADDRESS, AccessRights::empty());
     const UREF_READ: URef = URef::new(UREF_ADDRESS, AccessRights::READ);

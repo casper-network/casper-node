@@ -171,6 +171,7 @@ gas_hold_interval = '24 hours'
 # List of public keys of administrator accounts. Setting this option makes only on private chains which require
 # administrator accounts for regulatory reasons.
 administrators = []
+enable_addressable_entity = false
 
 [highway]
 # Highway dynamically chooses its round length, between minimum_block_time and maximum_round_length.
@@ -288,6 +289,7 @@ size_multiplier = 100
 add = { cost = 5_800, arguments = [0, 0, 0, 0] }
 add_associated_key = { cost = 1_200_000, arguments = [0, 0, 0] }
 add_contract_version = { cost = 200, arguments = [0, 0, 0, 0, 120_000, 0, 0, 0, 0, 0] }
+add_contract_version_with_message_topics = { cost = 200, arguments = [0, 0, 0, 0, 120_000, 0, 0, 0, 30_000, 0, 0] }
 add_package_version = { cost = 200, arguments = [0, 0, 0, 0, 120_000, 0, 0, 0, 30_000, 0, 0] }
 blake2b = { cost = 1_200_000, arguments = [0, 120_000, 0, 0] }
 call_contract = { cost = 300_000_000, arguments = [0, 0, 0, 120_000, 0, 120_000, 0] }

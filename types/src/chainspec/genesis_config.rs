@@ -42,6 +42,8 @@ pub const DEFAULT_GAS_HOLD_INTERVAL_MILLIS: u64 = 24 * 60 * 60 * 60;
 /// Default gas hold balance handling.
 pub const DEFAULT_GAS_HOLD_BALANCE_HANDLING: HoldBalanceHandling = HoldBalanceHandling::Accrued;
 
+pub const DEFAULT_ENABLE_ENTITY: bool = false;
+
 /// Represents the details of a genesis process.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GenesisConfig {
@@ -56,6 +58,7 @@ pub struct GenesisConfig {
     genesis_timestamp_millis: u64,
     gas_hold_balance_handling: HoldBalanceHandling,
     gas_hold_interval_millis: u64,
+    enable_addressable_entity: bool,
     storage_costs: StorageCosts,
 }
 
@@ -81,6 +84,7 @@ impl GenesisConfig {
         genesis_timestamp_millis: u64,
         gas_hold_balance_handling: HoldBalanceHandling,
         gas_hold_interval_millis: u64,
+        enable_addressable_entity: bool,
         storage_costs: StorageCosts,
     ) -> GenesisConfig {
         GenesisConfig {
@@ -95,6 +99,7 @@ impl GenesisConfig {
             genesis_timestamp_millis,
             gas_hold_balance_handling,
             gas_hold_interval_millis,
+            enable_addressable_entity,
             storage_costs,
         }
     }
@@ -185,6 +190,10 @@ impl GenesisConfig {
     pub fn gas_hold_interval_millis(&self) -> u64 {
         self.gas_hold_interval_millis
     }
+
+    pub fn enable_entity(&self) -> bool {
+        self.enable_addressable_entity
+    }
 }
 
 #[cfg(any(feature = "testing", test))]
@@ -228,6 +237,7 @@ impl Distribution<GenesisConfig> for Standard {
             genesis_timestamp_millis,
             gas_hold_balance_handling,
             gas_hold_interval_millis,
+            enable_addressable_entity: false,
             storage_costs,
         }
     }
@@ -250,6 +260,7 @@ pub struct GenesisConfigBuilder {
     genesis_timestamp_millis: Option<u64>,
     gas_hold_balance_handling: Option<HoldBalanceHandling>,
     gas_hold_interval_millis: Option<u64>,
+    enable_addressable_entity: Option<bool>,
     storage_costs: Option<StorageCosts>,
 }
 
@@ -328,6 +339,11 @@ impl GenesisConfigBuilder {
         self
     }
 
+    pub fn with_enable_addressable_entity(mut self, enable_addressable_entity: bool) -> Self {
+        self.enable_addressable_entity = Some(enable_addressable_entity);
+        self
+    }
+
     /// Sets the storage_costs handling.
     pub fn with_storage_costs(mut self, storage_costs: StorageCosts) -> Self {
         self.storage_costs = Some(storage_costs);
@@ -358,6 +374,9 @@ impl GenesisConfigBuilder {
             gas_hold_interval_millis: self
                 .gas_hold_interval_millis
                 .unwrap_or(DEFAULT_GAS_HOLD_INTERVAL_MILLIS),
+            enable_addressable_entity: self
+                .enable_addressable_entity
+                .unwrap_or(DEFAULT_ENABLE_ENTITY),
             storage_costs: self.storage_costs.unwrap_or_default(),
         }
     }
@@ -388,6 +407,7 @@ impl From<&Chainspec> for GenesisConfig {
             .with_genesis_timestamp_millis(genesis_timestamp_millis)
             .with_gas_hold_balance_handling(gas_hold_balance_handling)
             .with_gas_hold_interval_millis(gas_hold_interval_millis)
+            .with_enable_addressable_entity(chainspec.core_config.enable_addressable_entity)
             .with_storage_costs(storage_costs)
             .build()
     }

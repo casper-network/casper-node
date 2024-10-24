@@ -136,14 +136,17 @@ pub struct MessageTopicSummary {
     pub(crate) message_count: u32,
     /// Block timestamp in which these messages were emitted.
     pub(crate) blocktime: BlockTime,
+    /// Name of the topic.
+    pub(crate) topic_name: String,
 }
 
 impl MessageTopicSummary {
     /// Creates a new topic summary.
-    pub fn new(message_count: u32, blocktime: BlockTime) -> Self {
+    pub fn new(message_count: u32, blocktime: BlockTime, topic_name: String) -> Self {
         Self {
             message_count,
             blocktime,
+            topic_name,
         }
     }
 
@@ -156,6 +159,11 @@ impl MessageTopicSummary {
     pub fn blocktime(&self) -> BlockTime {
         self.blocktime
     }
+
+    /// Returns the topic name.
+    pub fn topic_name(&self) -> String {
+        self.topic_name.clone()
+    }
 }
 
 impl ToBytes for MessageTopicSummary {
@@ -163,11 +171,14 @@ impl ToBytes for MessageTopicSummary {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         buffer.append(&mut self.message_count.to_bytes()?);
         buffer.append(&mut self.blocktime.to_bytes()?);
+        buffer.append(&mut self.topic_name.to_bytes()?);
         Ok(buffer)
     }
 
     fn serialized_length(&self) -> usize {
-        self.message_count.serialized_length() + self.blocktime.serialized_length()
+        self.message_count.serialized_length()
+            + self.blocktime.serialized_length()
+            + self.topic_name.serialized_length()
     }
 }
 
@@ -175,10 +186,12 @@ impl FromBytes for MessageTopicSummary {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (message_count, rem) = FromBytes::from_bytes(bytes)?;
         let (blocktime, rem) = FromBytes::from_bytes(rem)?;
+        let (topic_name, rem) = FromBytes::from_bytes(rem)?;
         Ok((
             MessageTopicSummary {
                 message_count,
                 blocktime,
+                topic_name,
             },
             rem,
         ))
@@ -239,7 +252,8 @@ mod tests {
         let topic_name_hash = TopicNameHash::new([0x4du8; TOPIC_NAME_HASH_LENGTH]);
         bytesrepr::test_serialization_roundtrip(&topic_name_hash);
 
-        let topic_summary = MessageTopicSummary::new(10, BlockTime::new(100));
+        let topic_summary =
+            MessageTopicSummary::new(10, BlockTime::new(100), "topic_name".to_string());
         bytesrepr::test_serialization_roundtrip(&topic_summary);
 
         let topic_operation = MessageTopicOperation::Add;
@@ -253,7 +267,8 @@ mod tests {
         let decoded: TopicNameHash = serde_json::from_str(&json_string).unwrap();
         assert_eq!(decoded, topic_name_hash);
 
-        let topic_summary = MessageTopicSummary::new(10, BlockTime::new(100));
+        let topic_summary =
+            MessageTopicSummary::new(10, BlockTime::new(100), "topic_name".to_string());
         let json_string = serde_json::to_string_pretty(&topic_summary).unwrap();
         let decoded: MessageTopicSummary = serde_json::from_str(&json_string).unwrap();
         assert_eq!(decoded, topic_summary);

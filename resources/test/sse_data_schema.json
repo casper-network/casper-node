@@ -1042,7 +1042,7 @@
                   "description": "Hex-encoded contract hash.",
                   "allOf": [
                     {
-                      "$ref": "#/definitions/AddressableEntityHash"
+                      "$ref": "#/definitions/ContractHash"
                     }
                   ]
                 },
@@ -1120,7 +1120,7 @@
                   "description": "Hex-encoded contract package hash.",
                   "allOf": [
                     {
-                      "$ref": "#/definitions/PackageHash"
+                      "$ref": "#/definitions/ContractPackageHash"
                     }
                   ]
                 },
@@ -1526,12 +1526,12 @@
         }
       ]
     },
-    "AddressableEntityHash": {
-      "description": "The hex-encoded address of the addressable entity.",
+    "ContractHash": {
+      "description": "The hash address of the contract",
       "type": "string"
     },
-    "PackageHash": {
-      "description": "The hex-encoded address of the Package.",
+    "ContractPackageHash": {
+      "description": "The hash address of the contract package",
       "type": "string"
     },
     "Approval": {
@@ -3542,13 +3542,13 @@
           "additionalProperties": false
         },
         {
-          "description": "A version 1 (legacy) transfer.",
+          "description": "A version 1 transfer.",
           "type": "object",
           "required": [
-            "LegacyTransfer"
+            "Transfer"
           ],
           "properties": {
-            "LegacyTransfer": {
+            "Transfer": {
               "$ref": "#/definitions/TransferV1"
             }
           },
@@ -3892,10 +3892,6 @@
         }
       }
     },
-    "ContractPackageHash": {
-      "description": "The hash address of the contract package",
-      "type": "string"
-    },
     "ContractWasmHash": {
       "description": "The hash address of the contract wasm",
       "type": "string"
@@ -4112,10 +4108,6 @@
         }
       }
     },
-    "ContractHash": {
-      "description": "The hash address of the contract",
-      "type": "string"
-    },
     "ContractVersionKey": {
       "description": "Major element of `ProtocolVersion` combined with `ContractVersion`.",
       "type": "array",
@@ -4191,7 +4183,6 @@
         "byte_code_hash",
         "entity_kind",
         "main_purse",
-        "message_topics",
         "package_hash",
         "protocol_version"
       ],
@@ -4216,9 +4207,6 @@
         },
         "action_thresholds": {
           "$ref": "#/definitions/EntityActionThresholds"
-        },
-        "message_topics": {
-          "$ref": "#/definitions/Array_of_MessageTopic"
         }
       }
     },
@@ -4318,6 +4306,10 @@
         }
       ]
     },
+    "PackageHash": {
+      "description": "The hex-encoded address of the Package.",
+      "type": "string"
+    },
     "ByteCodeHash": {
       "description": "The hash address of the contract wasm",
       "type": "string"
@@ -4370,35 +4362,6 @@
       "type": "integer",
       "format": "uint8",
       "minimum": 0.0
-    },
-    "Array_of_MessageTopic": {
-      "type": "array",
-      "items": {
-        "$ref": "#/definitions/MessageTopic"
-      }
-    },
-    "MessageTopic": {
-      "type": "object",
-      "required": [
-        "topic_name",
-        "topic_name_hash"
-      ],
-      "properties": {
-        "topic_name": {
-          "type": "string"
-        },
-        "topic_name_hash": {
-          "allOf": [
-            {
-              "$ref": "#/definitions/TopicNameHash"
-            }
-          ]
-        }
-      }
-    },
-    "TopicNameHash": {
-      "description": "The hash of the name of the message topic.",
-      "type": "string"
     },
     "Package": {
       "description": "Entity definition, metadata, and security container.",
@@ -4495,6 +4458,10 @@
         }
       }
     },
+    "AddressableEntityHash": {
+      "description": "The hex-encoded address of the addressable entity.",
+      "type": "string"
+    },
     "PackageStatus": {
       "description": "A enum to determine the lock status of the package.",
       "oneOf": [
@@ -4554,7 +4521,8 @@
       "type": "object",
       "required": [
         "blocktime",
-        "message_count"
+        "message_count",
+        "topic_name"
       ],
       "properties": {
         "message_count": {
@@ -4570,6 +4538,10 @@
               "$ref": "#/definitions/BlockTime"
             }
           ]
+        },
+        "topic_name": {
+          "description": "Name of the topic.",
+          "type": "string"
         }
       }
     },
@@ -4701,21 +4673,21 @@
       "description": "An enum specifying who pays for the invocation and execution of the entrypoint.",
       "oneOf": [
         {
-          "description": "The caller must cover cost",
+          "description": "The caller must cover costs",
           "type": "string",
           "enum": [
             "Caller"
           ]
         },
         {
-          "description": "Will cover cost to execute self but not cost of any subsequent invoked contracts",
+          "description": "Will cover costs if directly invoked.",
           "type": "string",
           "enum": [
-            "SelfOnly"
+            "DirectInvocationOnly"
           ]
         },
         {
-          "description": "will cover cost to execute self and the cost of any subsequent invoked contracts",
+          "description": "will cover costs to execute self including any subsequent invoked contracts",
           "type": "string",
           "enum": [
             "SelfOnward"
@@ -4853,20 +4825,23 @@
       "type": "object",
       "required": [
         "block_index",
-        "entity_hash",
+        "hash_addr",
         "message",
         "topic_index",
         "topic_name",
         "topic_name_hash"
       ],
       "properties": {
-        "entity_hash": {
+        "hash_addr": {
           "description": "The identity of the entity that produced the message.",
-          "allOf": [
-            {
-              "$ref": "#/definitions/EntityAddr"
-            }
-          ]
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0.0
+          },
+          "maxItems": 32,
+          "minItems": 32
         },
         "message": {
           "description": "The payload of the message.",
@@ -4902,23 +4877,6 @@
         }
       }
     },
-    "EntityAddr": {
-      "description": "The address for an AddressableEntity which contains the 32 bytes and tagging information.",
-      "anyOf": [
-        {
-          "description": "The address for a system entity account or contract.",
-          "type": "string"
-        },
-        {
-          "description": "The address of an entity that corresponds to an Account.",
-          "type": "string"
-        },
-        {
-          "description": "The address of an entity that corresponds to a Userland smart contract.",
-          "type": "string"
-        }
-      ]
-    },
     "MessagePayload": {
       "description": "The payload of the message emitted by an addressable entity during execution.",
       "oneOf": [
@@ -4949,6 +4907,10 @@
           "additionalProperties": false
         }
       ]
+    },
+    "TopicNameHash": {
+      "description": "The hash of the name of the message topic.",
+      "type": "string"
     },
     "FinalitySignature": {
       "description": "A validator's signature of a block, confirming it is finalized.",

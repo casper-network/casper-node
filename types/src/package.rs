@@ -270,7 +270,7 @@ impl KeyValueJsonSchema for EntityVersionLabels {
 #[serde(transparent, deny_unknown_fields)]
 pub struct Groups(
     #[serde(with = "BTreeMapToArray::<Group, BTreeSet::<URef>, GroupLabels>")]
-    BTreeMap<Group, BTreeSet<URef>>,
+    pub(crate)  BTreeMap<Group, BTreeSet<URef>>,
 );
 
 impl Groups {

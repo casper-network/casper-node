@@ -14,7 +14,7 @@ use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
     system::{mint::Error, Caller},
-    AddressableEntity, CLTyped, CLValue, Key, Phase, StoredValue, SystemEntityRegistry, URef, U512,
+    CLTyped, CLValue, Key, Phase, RuntimeFootprint, StoredValue, SystemHashRegistry, URef, U512,
 };
 
 use super::Runtime;
@@ -38,7 +38,7 @@ where
     R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
     fn get_caller(&self) -> AccountHash {
-        self.context.get_caller()
+        self.context.get_initiator()
     }
 
     fn get_immediate_caller(&self) -> Option<Caller> {
@@ -49,21 +49,21 @@ where
         self.context.phase() == Phase::Payment && self.module.is_none()
     }
 
-    fn get_system_entity_registry(&self) -> Result<SystemEntityRegistry, ProviderError> {
+    fn get_system_entity_registry(&self) -> Result<SystemHashRegistry, ProviderError> {
         self.context.system_entity_registry().map_err(|err| {
             error!(%err, "unable to obtain system entity registry during transfer");
             ProviderError::SystemEntityRegistry
         })
     }
 
-    fn read_addressable_entity_by_account_hash(
+    fn runtime_footprint_by_account_hash(
         &mut self,
         account_hash: AccountHash,
-    ) -> Result<Option<AddressableEntity>, ProviderError> {
+    ) -> Result<Option<RuntimeFootprint>, ProviderError> {
         self.context
-            .read_addressable_entity_by_account_hash(account_hash)
+            .runtime_footprint_by_account_hash(account_hash)
             .map_err(|err| {
-                error!(%err, "error reading addressable entity by account hash");
+                error!(%err, "error getting runtime footprint by account hash");
                 ProviderError::AccountHash(account_hash)
             })
     }
@@ -87,7 +87,10 @@ where
     }
 
     fn get_main_purse(&self) -> URef {
-        self.context.entity().main_purse()
+        self.context
+            .runtime_footprint()
+            .main_purse()
+            .expect("did not have purse in mint internal")
     }
 
     fn is_administrator(&self, account_hash: &AccountHash) -> bool {

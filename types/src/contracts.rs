@@ -37,8 +37,8 @@ use crate::{
     serde_helpers::contract_package::HumanReadableContractPackage,
     uref::{self, URef},
     AddressableEntityHash, CLType, CLTyped, EntityVersionKey, EntryPoint as EntityEntryPoint,
-    EntryPointAccess, EntryPointPayment, EntryPointType, EntryPoints as EntityEntryPoints, Groups,
-    HashAddr, Key, Package, Parameter, Parameters, ProtocolVersion, KEY_HASH_LENGTH,
+    EntryPointAccess, EntryPointPayment, EntryPointType, EntryPoints as EntityEntryPoints, Group,
+    Groups, HashAddr, Key, Package, Parameter, Parameters, ProtocolVersion, KEY_HASH_LENGTH,
 };
 
 const CONTRACT_STRING_PREFIX: &str = "contract-";
@@ -347,6 +347,12 @@ impl Debug for ContractHash {
 impl CLTyped for ContractHash {
     fn cl_type() -> CLType {
         CLType::ByteArray(KEY_HASH_LENGTH as u32)
+    }
+}
+
+impl From<AddressableEntityHash> for ContractHash {
+    fn from(entity_hash: AddressableEntityHash) -> Self {
+        ContractHash::new(entity_hash.value())
     }
 }
 
@@ -753,7 +759,53 @@ impl ContractPackage {
         self.lock_status.clone()
     }
 
-    #[cfg(test)]
+    pub fn is_locked(&self) -> bool {
+        match self.lock_status {
+            ContractPackageStatus::Locked => true,
+            ContractPackageStatus::Unlocked => false,
+        }
+    }
+
+    /// Disable the contract version corresponding to the given hash (if it exists).
+    pub fn disable_contract_version(&mut self, contract_hash: ContractHash) -> Result<(), Error> {
+        let contract_version_key = self
+            .find_contract_version_key_by_hash(&contract_hash)
+            .copied()
+            .ok_or(Error::ContractNotFound)?;
+
+        if !self.disabled_versions.contains(&contract_version_key) {
+            self.disabled_versions.insert(contract_version_key);
+        }
+
+        Ok(())
+    }
+
+    /// Enable the contract version corresponding to the given hash (if it exists).
+    pub fn enable_contract_version(&mut self, contract_hash: ContractHash) -> Result<(), Error> {
+        let contract_version_key = self
+            .find_contract_version_key_by_hash(&contract_hash)
+            .copied()
+            .ok_or(Error::ContractNotFound)?;
+
+        self.disabled_versions.remove(&contract_version_key);
+
+        Ok(())
+    }
+
+    fn find_contract_version_key_by_hash(
+        &self,
+        contract_hash: &ContractHash,
+    ) -> Option<&ContractVersionKey> {
+        self.versions
+            .iter()
+            .filter_map(|(k, v)| if v == contract_hash { Some(k) } else { None })
+            .next()
+    }
+
+    /// Removes a group from this entity (if it exists).
+    pub fn remove_group(&mut self, group: &Group) -> bool {
+        self.groups.0.remove(group).is_some()
+    }
     fn next_contract_version_for(&self, protocol_version: ProtocolVersionMajor) -> ContractVersion {
         let current_version = self
             .versions
@@ -771,8 +823,35 @@ impl ContractPackage {
         current_version + 1
     }
 
-    #[cfg(test)]
-    fn insert_contract_version(
+    /// Returns `true` if the given contract version exists and is enabled.
+    pub fn is_version_enabled(&self, contract_version_key: ContractVersionKey) -> bool {
+        !self.disabled_versions.contains(&contract_version_key)
+            && self.versions.contains_key(&contract_version_key)
+    }
+
+    /// Returns all of this contract's enabled contract versions.
+    pub fn enabled_versions(&self) -> ContractVersions {
+        let mut ret = ContractVersions::new();
+        for version in &self.versions {
+            if !self.is_version_enabled(*version.0) {
+                continue;
+            }
+            ret.insert(*version.0, *version.1);
+        }
+        ret
+    }
+
+    /// Return the contract version key for the newest enabled contract version.
+    pub fn current_contract_version(&self) -> Option<ContractVersionKey> {
+        self.enabled_versions().keys().next_back().copied()
+    }
+
+    /// Return the contract hash for the newest enabled contract version.
+    pub fn current_contract_hash(&self) -> Option<ContractHash> {
+        self.enabled_versions().values().next_back().copied()
+    }
+
+    pub fn insert_contract_version(
         &mut self,
         protocol_version_major: ProtocolVersionMajor,
         contract_hash: ContractHash,
@@ -783,8 +862,7 @@ impl ContractPackage {
         key
     }
 
-    #[cfg(test)]
-    fn groups_mut(&mut self) -> &mut Groups {
+    pub fn groups_mut(&mut self) -> &mut Groups {
         &mut self.groups
     }
 }
@@ -1047,6 +1125,23 @@ pub struct EntryPoints(
     #[serde(with = "BTreeMapToArray::<String, EntryPoint, EntryPointLabels>")]
     BTreeMap<String, EntryPoint>,
 );
+
+impl From<crate::addressable_entity::EntryPoints> for EntryPoints {
+    fn from(value: EntityEntryPoints) -> Self {
+        let mut ret = EntryPoints::new();
+        for entity_entry_point in value.take_entry_points() {
+            let entry_point = EntryPoint::new(
+                entity_entry_point.name(),
+                Parameters::from(entity_entry_point.args()),
+                entity_entry_point.ret().clone(),
+                entity_entry_point.access().clone(),
+                entity_entry_point.entry_point_type(),
+            );
+            ret.add_entry_point(entry_point);
+        }
+        ret
+    }
+}
 
 impl ToBytes for EntryPoints {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {

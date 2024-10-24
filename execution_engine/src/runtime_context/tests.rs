@@ -11,17 +11,17 @@ use casper_storage::{
 use casper_types::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
     addressable_entity::{
-        ActionType, AddKeyFailure, AssociatedKeys, MessageTopics, NamedKeys, RemoveKeyFailure,
-        SetThresholdFailure, Weight,
+        ActionType, AddKeyFailure, AssociatedKeys, EntryPoints, MessageTopics, NamedKeys,
+        RemoveKeyFailure, SetThresholdFailure, Weight,
     },
     bytesrepr::ToBytes,
     execution::TransformKindV2,
     system::{AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT},
     AccessRights, AddressableEntity, AddressableEntityHash, BlockGlobalAddr, BlockHash, BlockTime,
-    ByteCodeHash, CLValue, ContextAccessRights, Digest, EntityAddr, EntityKind, EntryPointType,
-    Gas, Key, PackageHash, Phase, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StoredValue,
-    SystemEntityRegistry, Tagged, Timestamp, TransactionHash, TransactionV1Hash, URef,
-    KEY_HASH_LENGTH, U256, U512,
+    ByteCodeHash, CLValue, ContextAccessRights, Digest,EntityAddr, EntityKind, EntryPointType, Gas,
+    HashAddr, Key, PackageHash, Phase, ProtocolVersion, PublicKey, RuntimeArgs, RuntimeFootprint,
+    SecretKey, StoredValue, SystemHashRegistry, Tagged, Timestamp, TransactionHash,
+    TransactionV1Hash, URef, KEY_HASH_LENGTH, U256, U512,
 };
 use tempfile::TempDir;
 
@@ -123,21 +123,22 @@ fn new_runtime_context<'a>(
     named_keys: &'a mut NamedKeys,
     access_rights: ContextAccessRights,
     address_generator: AddressGenerator,
-) -> (RuntimeContext<'a, LmdbGlobalStateView>, TempDir) {
+) -> (
+    RuntimeContext<'a, LmdbGlobalStateView>,
+    TempDir,
+    RuntimeFootprint,
+) {
     let (mut tracking_copy, tempdir) =
         new_tracking_copy(account_hash, entity_address, addressable_entity.clone());
 
-    let mint_hash = AddressableEntityHash::default();
+    let mint_hash = HashAddr::default();
 
     let default_system_registry = {
-        let mut registry = SystemEntityRegistry::new();
+        let mut registry = SystemHashRegistry::new();
         registry.insert(MINT.to_string(), mint_hash);
-        registry.insert(HANDLE_PAYMENT.to_string(), AddressableEntityHash::default());
-        registry.insert(
-            STANDARD_PAYMENT.to_string(),
-            AddressableEntityHash::default(),
-        );
-        registry.insert(AUCTION.to_string(), AddressableEntityHash::default());
+        registry.insert(HANDLE_PAYMENT.to_string(), HashAddr::default());
+        registry.insert(STANDARD_PAYMENT.to_string(), HashAddr::default());
+        registry.insert(AUCTION.to_string(), HashAddr::default());
         StoredValue::CLValue(CLValue::from_t(registry).unwrap())
     };
 
@@ -149,9 +150,23 @@ fn new_runtime_context<'a>(
     let stored_value = StoredValue::CLValue(cl_value);
     tracking_copy.write(Key::BlockGlobal(BlockGlobalAddr::BlockTime), stored_value);
 
+    let addr = match entity_address {
+        Key::AddressableEntity(entity_addr) => entity_addr,
+        Key::Account(account_hash) => EntityAddr::Account(account_hash.value()),
+        Key::Hash(hash) => EntityAddr::SmartContract(hash),
+        _ => panic!("unexpected key"),
+    };
+
+    let footprint = RuntimeFootprint::new_entity_footprint(
+        addr,
+        addressable_entity.clone(),
+        named_keys.clone(),
+        EntryPoints::new(),
+    );
+
     let runtime_context = RuntimeContext::new(
         named_keys,
-        addressable_entity,
+        &footprint,
         entity_address,
         BTreeSet::from_iter(vec![account_hash]),
         access_rights,
@@ -177,7 +192,7 @@ fn new_runtime_context<'a>(
         CallingAddContractVersion::Forbidden,
     );
 
-    (runtime_context, tempdir)
+    (runtime_context, tempdir, footprint)
 }
 
 #[allow(clippy::assertions_on_constants)]
@@ -220,7 +235,7 @@ where
 
     let address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);
     let access_rights = addressable_entity.extract_access_rights(entity_hash, &named_keys);
-    let (runtime_context, _tempdir) = new_runtime_context(
+    let (runtime_context, _tempdir, _) = new_runtime_context(
         &addressable_entity,
         account_hash,
         entity_key,
@@ -297,12 +312,10 @@ fn entity_key_readable_valid() {
         let base_key = rc.get_entity_key();
         let entity = rc.get_entity();
 
-        let result = rc
-            .read_gs(&base_key)
-            .expect("Account key is readable.")
-            .expect("Account is found in GS.");
+        let entity_hash = entity.hash_addr();
+        let key_hash = base_key.into_entity_hash_addr().expect("must get hash");
 
-        assert_eq!(result, StoredValue::AddressableEntity(entity));
+        assert_eq!(entity_hash, key_hash);
         Ok(())
     });
 
@@ -397,14 +410,11 @@ fn contract_key_addable_valid() {
         .write(contract_key, entity_as_stored_value.clone());
 
     let default_system_registry = {
-        let mut registry = SystemEntityRegistry::new();
-        registry.insert(MINT.to_string(), AddressableEntityHash::default());
-        registry.insert(HANDLE_PAYMENT.to_string(), AddressableEntityHash::default());
-        registry.insert(
-            STANDARD_PAYMENT.to_string(),
-            AddressableEntityHash::default(),
-        );
-        registry.insert(AUCTION.to_string(), AddressableEntityHash::default());
+        let mut registry = SystemHashRegistry::new();
+        registry.insert(MINT.to_string(), HashAddr::default());
+        registry.insert(HANDLE_PAYMENT.to_string(), HashAddr::default());
+        registry.insert(STANDARD_PAYMENT.to_string(), HashAddr::default());
+        registry.insert(AUCTION.to_string(), HashAddr::default());
         StoredValue::CLValue(CLValue::from_t(registry).unwrap())
     };
 
@@ -421,9 +431,23 @@ fn contract_key_addable_valid() {
 
     access_rights.extend(&[uref_as_key.into_uref().expect("should be a URef")]);
 
+    let addr = match contract_key {
+        Key::AddressableEntity(entity_addr) => entity_addr,
+        Key::Account(account_hash) => EntityAddr::Account(account_hash.value()),
+        Key::Hash(hash) => EntityAddr::SmartContract(hash),
+        _ => panic!("unexpected key"),
+    };
+
+    let footprint = RuntimeFootprint::new_entity_footprint(
+        addr,
+        AddressableEntity::default(),
+        named_keys.clone(),
+        EntryPoints::new(),
+    );
+
     let mut runtime_context = RuntimeContext::new(
         &mut named_keys,
-        entity_as_stored_value.as_addressable_entity().unwrap(),
+        &footprint,
         contract_key,
         authorization_keys,
         access_rights,
@@ -484,9 +508,23 @@ fn contract_key_addable_invalid() {
 
     access_rights.extend(&[uref_as_key.into_uref().expect("should be a URef")]);
 
+    let addr = match entity_key {
+        Key::AddressableEntity(entity_addr) => entity_addr,
+        Key::Account(account_hash) => EntityAddr::Account(account_hash.value()),
+        Key::Hash(hash) => EntityAddr::SmartContract(hash),
+        _ => panic!("unexpected key"),
+    };
+
+    let footprint = RuntimeFootprint::new_entity_footprint(
+        addr,
+        AddressableEntity::default(),
+        named_keys.clone(),
+        EntryPoints::new(),
+    );
+
     let mut runtime_context = RuntimeContext::new(
         &mut named_keys,
-        &entity,
+        &footprint,
         other_contract_key,
         authorization_keys,
         access_rights,
@@ -868,7 +906,7 @@ fn remove_uref_works() {
 
     let access_rights = addressable_entity.extract_access_rights(entity_hash, &named_keys);
 
-    let (mut runtime_context, _tempdir) = new_runtime_context(
+    let (mut runtime_context, _tempdir, _) = new_runtime_context(
         &addressable_entity,
         account_hash,
         entity_key,
@@ -891,10 +929,11 @@ fn remove_uref_works() {
     assert!(!entity_named_keys.contains(&uref_name));
     // The next time the account is used, the access right is gone for the removed
     // named key.
-    let next_session_access_rights = entity.extract_access_rights(entity_hash, &named_keys);
+    let next_session_access_rights = entity.extract_access_rights(entity_hash.value(), &named_keys);
     let address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);
-    let (runtime_context, _tempdir) = new_runtime_context(
-        &entity,
+
+    let (runtime_context, _tempdir, _) = new_runtime_context(
+        &addressable_entity,
         account_hash,
         entity_key,
         &mut named_keys,
@@ -950,7 +989,7 @@ fn validate_valid_purse_of_an_account() {
     access_rights.extend(&[test_main_purse]);
 
     let address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);
-    let (runtime_context, _tempdir) = new_runtime_context(
+    let (runtime_context, _tempdir, _) = new_runtime_context(
         &entity,
         account_hash,
         base_key,
@@ -1054,7 +1093,7 @@ fn should_meter_for_gas_storage_add() {
 #[test]
 fn associated_keys_add_full() {
     let final_add_result = build_runtime_context_and_execute(NamedKeys::new(), |mut rc| {
-        let associated_keys_before = rc.entity().associated_keys().len();
+        let associated_keys_before = rc.runtime_footprint().associated_keys().len();
 
         for count in 0..(rc.engine_config.max_associated_keys() as usize - associated_keys_before) {
             let account_hash = {

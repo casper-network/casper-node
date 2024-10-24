@@ -28,6 +28,7 @@ pub struct ProtocolUpgradeConfig {
     migrate_legacy_contracts: bool,
     maximum_delegation_amount: u64,
     minimum_delegation_amount: u64,
+    enable_addressable_entity: bool,
 }
 
 impl ProtocolUpgradeConfig {
@@ -52,6 +53,7 @@ impl ProtocolUpgradeConfig {
         migrate_legacy_contracts: bool,
         maximum_delegation_amount: u64,
         minimum_delegation_amount: u64,
+        enable_addressable_entity: bool,
     ) -> Self {
         ProtocolUpgradeConfig {
             pre_state_hash,
@@ -72,6 +74,7 @@ impl ProtocolUpgradeConfig {
             migrate_legacy_contracts,
             maximum_delegation_amount,
             minimum_delegation_amount,
+            enable_addressable_entity,
         }
     }
 
@@ -168,5 +171,9 @@ impl ProtocolUpgradeConfig {
     /// Minimum delegation amount for validator.
     pub fn minimum_delegation_amount(&self) -> u64 {
         self.minimum_delegation_amount
+    }
+
+    pub fn enable_addressable_entity(&self) -> bool {
+        self.enable_addressable_entity
     }
 }

@@ -97,7 +97,7 @@ pub extern "C" fn call() {
     );
     runtime::put_key(
         PURSE_HOLDER_STORED_CONTRACT_NAME,
-        Key::contract_entity_key(new_contract_hash),
+        Key::Hash(new_contract_hash.value()),
     );
     runtime::put_key(
         CONTRACT_VERSION,

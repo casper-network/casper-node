@@ -7,10 +7,11 @@ use tracing::{debug, error, info};
 
 use casper_types::{
     addressable_entity::{
-        ActionThresholds, AssociatedKeys, EntityKind, EntityKindTag, MessageTopics, NamedKeyAddr,
-        NamedKeyValue, NamedKeys, Weight,
+        ActionThresholds, AssociatedKeys, EntityKind, NamedKeyAddr, NamedKeyValue, NamedKeys,
+        Weight,
     },
     bytesrepr::{self, ToBytes},
+    contracts::ContractHash,
     system::{
         auction::{
             BidAddr, BidKind, SeigniorageRecipientsSnapshotV1, SeigniorageRecipientsSnapshotV2,
@@ -25,11 +26,11 @@ use casper_types::{
         },
         SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
     },
-    AccessRights, AddressableEntity, AddressableEntityHash, ByteCode, ByteCodeAddr, ByteCodeHash,
-    ByteCodeKind, CLValue, CLValueError, Digest, EntityAddr, EntityVersions, EntryPointAddr,
-    EntryPointValue, FeeHandling, Groups, Key, KeyTag, Package, PackageHash, PackageStatus, Phase,
-    ProtocolUpgradeConfig, ProtocolVersion, PublicKey, StoredValue, SystemEntityRegistry, URef,
-    U512,
+    AccessRights, Account, AddressableEntity, AddressableEntityHash, ByteCode, ByteCodeAddr,
+    ByteCodeHash, ByteCodeKind, CLValue, CLValueError, Contract, Digest, EntityAddr,
+    EntityVersions, EntryPointAddr, EntryPointValue, EntryPoints, FeeHandling, Groups, HashAddr,
+    Key, KeyTag, Package, PackageHash, PackageStatus, Phase, ProtocolUpgradeConfig,
+    ProtocolVersion, PublicKey, StoredValue, SystemHashRegistry, URef, U512,
 };
 
 use crate::{
@@ -101,20 +102,16 @@ impl From<bytesrepr::Error> for ProtocolUpgradeError {
 }
 
 /// Addresses for system entities.
-pub struct SystemEntityAddresses {
-    mint: AddressableEntityHash,
-    auction: AddressableEntityHash,
-    handle_payment: AddressableEntityHash,
+pub struct SystemHashAddresses {
+    mint: HashAddr,
+    auction: HashAddr,
+    handle_payment: HashAddr,
 }
 
-impl SystemEntityAddresses {
+impl SystemHashAddresses {
     /// Creates a new instance of system entity addresses.
-    pub fn new(
-        mint: AddressableEntityHash,
-        auction: AddressableEntityHash,
-        handle_payment: AddressableEntityHash,
-    ) -> Self {
-        SystemEntityAddresses {
+    pub fn new(mint: HashAddr, auction: HashAddr, handle_payment: HashAddr) -> Self {
+        SystemHashAddresses {
             mint,
             auction,
             handle_payment,
@@ -122,17 +119,17 @@ impl SystemEntityAddresses {
     }
 
     /// Mint address.
-    pub fn mint(&self) -> AddressableEntityHash {
+    pub fn mint(&self) -> HashAddr {
         self.mint
     }
 
     /// Auction address.
-    pub fn auction(&self) -> AddressableEntityHash {
+    pub fn auction(&self) -> HashAddr {
         self.auction
     }
 
     /// Handle payment address.
-    pub fn handle_payment(&self) -> AddressableEntityHash {
+    pub fn handle_payment(&self) -> HashAddr {
         self.handle_payment
     }
 }
@@ -178,21 +175,31 @@ where
     ) -> Result<TrackingCopy<<S as StateProvider>::Reader>, ProtocolUpgradeError> {
         self.check_next_protocol_version_validity()?;
         self.handle_global_state_updates();
-        let system_entity_addresses = self.handle_system_entities()?;
+        let system_entity_addresses = self.handle_system_hashes()?;
         self.migrate_system_account(pre_state_hash)?;
-        self.create_accumulation_purse_if_required(
-            &system_entity_addresses.handle_payment(),
-            self.config.fee_handling(),
-        )?;
-        self.refresh_system_contracts(&system_entity_addresses)?;
+
+        if self.config.enable_addressable_entity() {
+            self.create_accumulation_purse_if_required(
+                &system_entity_addresses.handle_payment(),
+                self.config.fee_handling(),
+            )?;
+            self.refresh_system_entities(&system_entity_addresses)?;
+        } else {
+            self.create_accumulation_purse_if_required_by_contract(
+                &system_entity_addresses.handle_payment(),
+                self.config.fee_handling(),
+            )?;
+            self.refresh_system_contracts(&system_entity_addresses)?;
+        }
+
         self.handle_new_gas_hold_config(system_entity_addresses.mint())?;
         self.handle_new_validator_slots(system_entity_addresses.auction())?;
         self.handle_new_auction_delay(system_entity_addresses.auction())?;
         self.handle_new_locked_funds_period_millis(system_entity_addresses.auction())?;
         self.handle_new_unbonding_delay(system_entity_addresses.auction())?;
         self.handle_new_round_seigniorage_rate(system_entity_addresses.mint())?;
-        self.handle_legacy_accounts_migration()?;
-        self.handle_legacy_contracts_migration()?;
+        // self.handle_legacy_accounts_migration()?;
+        // self.handle_legacy_contracts_migration()?;
         self.handle_bids_migration(
             self.config.minimum_delegation_amount(),
             self.config.maximum_delegation_amount(),
@@ -221,7 +228,7 @@ where
         }
     }
 
-    fn system_entity_registry(&self) -> Result<SystemEntityRegistry, ProtocolUpgradeError> {
+    fn system_hash_registry(&self) -> Result<SystemHashRegistry, ProtocolUpgradeError> {
         debug!("system entity registry");
         let registry = if let Ok(registry) = self.tracking_copy.get_system_entity_registry() {
             registry
@@ -237,7 +244,7 @@ where
                 })?
                 .to_owned();
             if let StoredValue::CLValue(cl_registry) = upgrade_registry {
-                CLValue::into_t::<SystemEntityRegistry>(cl_registry).map_err(|error| {
+                CLValue::into_t::<SystemHashRegistry>(cl_registry).map_err(|error| {
                     let error_msg = format!("Conversion to system registry failed: {:?}", error);
                     error!("{}", error_msg);
                     ProtocolUpgradeError::Bytesrepr(error_msg)
@@ -251,11 +258,9 @@ where
     }
 
     /// Handle system entities.
-    pub fn handle_system_entities(
-        &mut self,
-    ) -> Result<SystemEntityAddresses, ProtocolUpgradeError> {
+    pub fn handle_system_hashes(&mut self) -> Result<SystemHashAddresses, ProtocolUpgradeError> {
         debug!("handle system entities");
-        let mut registry = self.system_entity_registry()?;
+        let mut registry = self.system_hash_registry()?;
 
         let mint = *registry.get(MINT).ok_or_else(|| {
             error!("Missing system mint entity hash");
@@ -280,8 +285,7 @@ where
             );
 
             // Prune away standard payment from global state.
-            self.tracking_copy
-                .prune(Key::Hash(standard_payment_hash.value()));
+            self.tracking_copy.prune(Key::Hash(standard_payment_hash));
         };
 
         // Write the chainspec registry to global state
@@ -293,17 +297,38 @@ where
             StoredValue::CLValue(cl_value_chainspec_registry),
         );
 
-        let system_entity_addresses = SystemEntityAddresses::new(mint, auction, handle_payment);
+        let system_hash_addresses = SystemHashAddresses::new(mint, auction, handle_payment);
 
-        Ok(system_entity_addresses)
+        Ok(system_hash_addresses)
+    }
+
+    /// Bump major version and/or update the entry points for system contracts.
+    pub fn refresh_system_entities(
+        &mut self,
+        system_entity_addresses: &SystemHashAddresses,
+    ) -> Result<(), ProtocolUpgradeError> {
+        debug!("refresh system contracts");
+        self.refresh_system_entity_entry_points(
+            system_entity_addresses.mint(),
+            SystemEntityType::Mint,
+        )?;
+        self.refresh_system_entity_entry_points(
+            system_entity_addresses.auction(),
+            SystemEntityType::Auction,
+        )?;
+        self.refresh_system_entity_entry_points(
+            system_entity_addresses.handle_payment(),
+            SystemEntityType::HandlePayment,
+        )?;
+
+        Ok(())
     }
 
     /// Bump major version and/or update the entry points for system contracts.
     pub fn refresh_system_contracts(
         &mut self,
-        system_entity_addresses: &SystemEntityAddresses,
+        system_entity_addresses: &SystemHashAddresses,
     ) -> Result<(), ProtocolUpgradeError> {
-        debug!("refresh system contracts");
         self.refresh_system_contract_entry_points(
             system_entity_addresses.mint(),
             SystemEntityType::Mint,
@@ -322,16 +347,16 @@ where
 
     /// Refresh the system contracts with an updated set of entry points,
     /// and bump the contract version at a major version upgrade.
-    fn refresh_system_contract_entry_points(
+    fn refresh_system_entity_entry_points(
         &mut self,
-        entity_hash: AddressableEntityHash,
+        hash_addr: HashAddr,
         system_entity_type: SystemEntityType,
     ) -> Result<(), ProtocolUpgradeError> {
         debug!(%system_entity_type, "refresh system contract entry points");
         let entity_name = system_entity_type.entity_name();
 
         let (mut entity, maybe_named_keys, must_prune) =
-            match self.retrieve_system_entity(entity_hash, system_entity_type) {
+            match self.retrieve_system_entity(hash_addr, system_entity_type) {
                 Ok(ret) => ret,
                 Err(err) => {
                     error!("{:?}", err);
@@ -342,6 +367,7 @@ where
         let mut package =
             self.retrieve_system_package(entity.package_hash(), system_entity_type)?;
 
+        let entity_hash = AddressableEntityHash::new(hash_addr);
         package.disable_entity_version(entity_hash).map_err(|_| {
             ProtocolUpgradeError::FailedToDisablePreviousVersion(entity_name.to_string())
         })?;
@@ -355,7 +381,6 @@ where
             URef::default(),
             AssociatedKeys::default(),
             ActionThresholds::default(),
-            MessageTopics::default(),
             EntityKind::System(system_entity_type),
         );
 
@@ -461,13 +486,13 @@ where
 
     fn retrieve_system_entity(
         &mut self,
-        entity_hash: AddressableEntityHash,
+        hash_addr: HashAddr,
         system_contract_type: SystemEntityType,
     ) -> Result<(AddressableEntity, Option<NamedKeys>, bool), ProtocolUpgradeError> {
         debug!(%system_contract_type, "retrieve system entity");
         if let Some(StoredValue::Contract(system_contract)) = self
             .tracking_copy
-            .read(&Key::Hash(entity_hash.value()))
+            .read(&Key::Hash(hash_addr))
             .map_err(|_| {
                 ProtocolUpgradeError::UnableToRetrieveSystemContract(
                     system_contract_type.to_string(),
@@ -480,9 +505,7 @@ where
 
         if let Some(StoredValue::AddressableEntity(system_entity)) = self
             .tracking_copy
-            .read(&Key::AddressableEntity(EntityAddr::new_system(
-                entity_hash.value(),
-            )))
+            .read(&Key::AddressableEntity(EntityAddr::new_system(hash_addr)))
             .map_err(|_| {
                 ProtocolUpgradeError::UnableToRetrieveSystemContract(
                     system_contract_type.to_string(),
@@ -497,6 +520,95 @@ where
         ))
     }
 
+    /// Refresh the system contracts with an updated set of entry points,
+    /// and bump the contract version at a major version upgrade.
+    fn refresh_system_contract_entry_points(
+        &mut self,
+        contract_hash: HashAddr,
+        system_entity_type: SystemEntityType,
+    ) -> Result<(), ProtocolUpgradeError> {
+        let contract_name = system_entity_type.entity_name();
+        let entry_points = system_entity_type.entry_points();
+
+        let mut contract = if let StoredValue::Contract(contract) = self
+            .tracking_copy
+            .read(&Key::Hash(contract_hash))
+            .map_err(|_| {
+                ProtocolUpgradeError::UnableToRetrieveSystemContract(contract_name.to_string())
+            })?
+            .ok_or_else(|| {
+                ProtocolUpgradeError::UnableToRetrieveSystemContract(contract_name.to_string())
+            })? {
+            contract
+        } else {
+            return Err(ProtocolUpgradeError::UnableToRetrieveSystemContract(
+                contract_name,
+            ));
+        };
+
+        let is_major_bump = self
+            .config
+            .current_protocol_version()
+            .check_next_version(&self.config.new_protocol_version())
+            .is_major_version();
+
+        let contract_entry_points: EntryPoints = (contract.entry_points().clone()).into();
+        let entry_points_unchanged = contract_entry_points == entry_points;
+        if entry_points_unchanged && !is_major_bump {
+            // We don't need to do anything if entry points are unchanged, or there's no major
+            // version bump.
+            return Ok(());
+        }
+
+        let contract_package_key = Key::Hash(contract.contract_package_hash().value());
+
+        let mut contract_package = if let StoredValue::ContractPackage(contract_package) = self
+            .tracking_copy
+            .read(&contract_package_key)
+            .map_err(|_| {
+                ProtocolUpgradeError::UnableToRetrieveSystemContractPackage(
+                    contract_name.to_string(),
+                )
+            })?
+            .ok_or_else(|| {
+                ProtocolUpgradeError::UnableToRetrieveSystemContractPackage(
+                    contract_name.to_string(),
+                )
+            })? {
+            contract_package
+        } else {
+            return Err(ProtocolUpgradeError::UnableToRetrieveSystemContractPackage(
+                contract_name,
+            ));
+        };
+
+        contract.set_protocol_version(self.config.new_protocol_version());
+
+        let new_contract = Contract::new(
+            contract.contract_package_hash(),
+            contract.contract_wasm_hash(),
+            contract.named_keys().clone(),
+            entry_points.into(),
+            self.config.new_protocol_version(),
+        );
+        self.tracking_copy.write(
+            Key::Hash(contract_hash),
+            StoredValue::Contract(new_contract),
+        );
+
+        contract_package.insert_contract_version(
+            self.config.new_protocol_version().value().major,
+            ContractHash::new(contract_hash),
+        );
+
+        self.tracking_copy.write(
+            contract_package_key,
+            StoredValue::ContractPackage(contract_package),
+        );
+
+        Ok(())
+    }
+
     /// Migrate the system account to addressable entity if necessary.
     pub fn migrate_system_account(
         &mut self,
@@ -505,14 +617,7 @@ where
         debug!("migrate system account");
         let mut address_generator = AddressGenerator::new(pre_state_hash.as_ref(), Phase::System);
 
-        let byte_code_hash = ByteCodeHash::default();
-        let entity_hash = AddressableEntityHash::new(PublicKey::System.to_account_hash().value());
-        let package_hash = PackageHash::new(address_generator.new_hash_address());
-
-        let byte_code = ByteCode::new(ByteCodeKind::Empty, vec![]);
-
         let account_hash = PublicKey::System.to_account_hash();
-        let associated_keys = AssociatedKeys::new(account_hash, Weight::new(1));
 
         let main_purse = {
             let purse_addr = address_generator.new_hash_address();
@@ -532,6 +637,22 @@ where
             purse_uref
         };
 
+        if !self.config.enable_addressable_entity() {
+            let system_account = Account::create(account_hash, NamedKeys::new(), main_purse);
+            self.tracking_copy.write(
+                Key::Account(account_hash),
+                StoredValue::Account(system_account),
+            );
+            return Ok(());
+        }
+
+        let associated_keys = AssociatedKeys::new(account_hash, Weight::new(1));
+        let byte_code_hash = ByteCodeHash::default();
+        let entity_hash = AddressableEntityHash::new(PublicKey::System.to_account_hash().value());
+        let package_hash = PackageHash::new(address_generator.new_hash_address());
+
+        let byte_code = ByteCode::new(ByteCodeKind::Empty, vec![]);
+
         let system_account_entity = AddressableEntity::new(
             package_hash,
             byte_code_hash,
@@ -539,7 +660,6 @@ where
             main_purse,
             associated_keys,
             ActionThresholds::default(),
-            MessageTopics::default(),
             EntityKind::Account(account_hash),
         );
 
@@ -589,7 +709,7 @@ where
     /// create an accumulation purse.
     pub fn create_accumulation_purse_if_required(
         &mut self,
-        handle_payment_hash: &AddressableEntityHash,
+        handle_payment_hash: &HashAddr,
         fee_handling: FeeHandling,
     ) -> Result<(), ProtocolUpgradeError> {
         debug!(?fee_handling, "create accumulation purse if required");
@@ -611,7 +731,7 @@ where
         let (addressable_entity, maybe_named_keys, _) =
             self.retrieve_system_entity(*handle_payment_hash, system_contract)?;
 
-        let entity_addr = EntityAddr::new_system(handle_payment_hash.value());
+        let entity_addr = EntityAddr::new_system(*handle_payment_hash);
 
         if let Some(named_keys) = maybe_named_keys {
             for (string, key) in named_keys.into_inner().into_iter() {
@@ -658,8 +778,7 @@ where
             self.tracking_copy
                 .write(Key::NamedKey(named_key_addr), StoredValue::NamedKey(purse));
 
-            let entity_key =
-                Key::addressable_entity_key(EntityKindTag::System, *handle_payment_hash);
+            let entity_key = Key::AddressableEntity(EntityAddr::System(*handle_payment_hash));
 
             self.tracking_copy.write(
                 entity_key,
@@ -670,10 +789,105 @@ where
         Ok(())
     }
 
+    /// Creates an accumulation purse in the handle payment system contract if its not present.
+    ///
+    /// This can happen on older networks that did not have support for [`FeeHandling::Accumulate`]
+    /// at the genesis. In such cases we have to check the state of handle payment contract and
+    /// create an accumulation purse.
+    pub fn create_accumulation_purse_if_required_by_contract(
+        &mut self,
+        handle_payment_hash: &HashAddr,
+        fee_handling: FeeHandling,
+    ) -> Result<(), ProtocolUpgradeError> {
+        match fee_handling {
+            FeeHandling::PayToProposer | FeeHandling::Burn => return Ok(()),
+            FeeHandling::Accumulate | FeeHandling::NoFee => {}
+        }
+
+        let mut address_generator = {
+            let seed_bytes = (
+                self.config.current_protocol_version(),
+                self.config.new_protocol_version(),
+            )
+                .to_bytes()?;
+
+            let phase = Phase::System;
+
+            AddressGenerator::new(&seed_bytes, phase)
+        };
+
+        let system_contract = SystemEntityType::HandlePayment;
+        let contract_name = system_contract.entity_name();
+        let mut contract = if let StoredValue::Contract(contract) = self
+            .tracking_copy
+            .read(&Key::Hash(*handle_payment_hash))
+            .map_err(|_| {
+                ProtocolUpgradeError::UnableToRetrieveSystemContract(contract_name.to_string())
+            })?
+            .ok_or_else(|| {
+                ProtocolUpgradeError::UnableToRetrieveSystemContract(contract_name.to_string())
+            })? {
+            contract
+        } else {
+            return Err(ProtocolUpgradeError::UnableToRetrieveSystemContract(
+                contract_name,
+            ));
+        };
+
+        if !contract.named_keys().contains(ACCUMULATION_PURSE_KEY) {
+            let purse_uref = address_generator.new_uref(AccessRights::READ_ADD_WRITE);
+            let balance_clvalue = CLValue::from_t(U512::zero())?;
+            self.tracking_copy.write(
+                Key::Balance(purse_uref.addr()),
+                StoredValue::CLValue(balance_clvalue),
+            );
+            self.tracking_copy
+                .write(Key::URef(purse_uref), StoredValue::CLValue(CLValue::unit()));
+
+            let mut new_named_keys = NamedKeys::new();
+            new_named_keys.insert(ACCUMULATION_PURSE_KEY.into(), Key::from(purse_uref));
+            contract.named_keys_append(new_named_keys);
+
+            self.tracking_copy.write(
+                Key::Hash(*handle_payment_hash),
+                StoredValue::Contract(contract),
+            );
+        }
+
+        Ok(())
+    }
+
+    fn get_named_keys(
+        &mut self,
+        contract_hash: HashAddr,
+    ) -> Result<NamedKeys, ProtocolUpgradeError> {
+        if self.config.enable_addressable_entity() {
+            let named_keys = self
+                .tracking_copy
+                .get_named_keys(EntityAddr::System(contract_hash))?;
+            Ok(named_keys)
+        } else {
+            let named_keys = self
+                .tracking_copy
+                .read(&Key::Hash(contract_hash))?
+                .ok_or_else(|| {
+                    ProtocolUpgradeError::UnableToRetrieveSystemContract(format!(
+                        "{:?}",
+                        contract_hash
+                    ))
+                })?
+                .as_contract()
+                .map(|contract| contract.named_keys().clone())
+                .ok_or_else(|| ProtocolUpgradeError::UnexpectedStoredValueVariant)?;
+
+            Ok(named_keys)
+        }
+    }
+
     /// Upsert gas hold interval to mint named keys.
     pub fn handle_new_gas_hold_config(
         &mut self,
-        mint: AddressableEntityHash,
+        mint: HashAddr,
     ) -> Result<(), ProtocolUpgradeError> {
         if self.config.new_gas_hold_handling().is_none()
             && self.config.new_gas_hold_interval().is_none()
@@ -681,8 +895,8 @@ where
             return Ok(());
         }
 
-        let mint_addr = EntityAddr::new_system(mint.value());
-        let named_keys = self.tracking_copy.get_named_keys(mint_addr)?;
+        let mint_addr = EntityAddr::System(mint);
+        let named_keys = self.get_named_keys(mint)?;
 
         if let Some(new_gas_hold_handling) = self.config.new_gas_hold_handling() {
             debug!(%new_gas_hold_handling, "handle new gas hold handling");
@@ -745,13 +959,12 @@ where
     /// Handle new validator slots.
     pub fn handle_new_validator_slots(
         &mut self,
-        auction: AddressableEntityHash,
+        auction: HashAddr,
     ) -> Result<(), ProtocolUpgradeError> {
         if let Some(new_validator_slots) = self.config.new_validator_slots() {
             debug!(%new_validator_slots, "handle new validator slots");
             // if new total validator slots is provided, update auction contract state
-            let auction_addr = EntityAddr::new_system(auction.value());
-            let auction_named_keys = self.tracking_copy.get_named_keys(auction_addr)?;
+            let auction_named_keys = self.get_named_keys(auction)?;
 
             let validator_slots_key = auction_named_keys
                 .get(VALIDATOR_SLOTS_KEY)
@@ -768,13 +981,11 @@ where
     /// Applies the necessary changes if a new auction delay is part of the upgrade.
     pub fn handle_new_auction_delay(
         &mut self,
-        auction: AddressableEntityHash,
+        auction: HashAddr,
     ) -> Result<(), ProtocolUpgradeError> {
         if let Some(new_auction_delay) = self.config.new_auction_delay() {
             debug!(%new_auction_delay, "handle new auction delay");
-            let auction_addr = EntityAddr::new_system(auction.value());
-
-            let auction_named_keys = self.tracking_copy.get_named_keys(auction_addr)?;
+            let auction_named_keys = self.get_named_keys(auction)?;
 
             let auction_delay_key = auction_named_keys
                 .get(AUCTION_DELAY_KEY)
@@ -791,13 +1002,12 @@ where
     /// Applies the necessary changes if a new locked funds period is part of the upgrade.
     pub fn handle_new_locked_funds_period_millis(
         &mut self,
-        auction: AddressableEntityHash,
+        auction: HashAddr,
     ) -> Result<(), ProtocolUpgradeError> {
         if let Some(new_locked_funds_period) = self.config.new_locked_funds_period_millis() {
             debug!(%new_locked_funds_period,"handle new locked funds period millis");
-            let auction_addr = EntityAddr::new_system(auction.value());
 
-            let auction_named_keys = self.tracking_copy.get_named_keys(auction_addr)?;
+            let auction_named_keys = self.get_named_keys(auction)?;
 
             let locked_funds_period_key = auction_named_keys
                 .get(LOCKED_FUNDS_PERIOD_KEY)
@@ -814,15 +1024,14 @@ where
     /// Applies the necessary changes if a new unbonding delay is part of the upgrade.
     pub fn handle_new_unbonding_delay(
         &mut self,
-        auction: AddressableEntityHash,
+        auction: HashAddr,
     ) -> Result<(), ProtocolUpgradeError> {
         // We insert the new unbonding delay once the purses to be paid out have been transformed
         // based on the previous unbonding delay.
         if let Some(new_unbonding_delay) = self.config.new_unbonding_delay() {
             debug!(%new_unbonding_delay,"handle new unbonding delay");
-            let auction_addr = EntityAddr::new_system(auction.value());
 
-            let auction_named_keys = self.tracking_copy.get_named_keys(auction_addr)?;
+            let auction_named_keys = self.get_named_keys(auction)?;
 
             let unbonding_delay_key = auction_named_keys
                 .get(UNBONDING_DELAY_KEY)
@@ -839,7 +1048,7 @@ where
     /// Applies the necessary changes if a new round seigniorage rate is part of the upgrade.
     pub fn handle_new_round_seigniorage_rate(
         &mut self,
-        mint: AddressableEntityHash,
+        mint: HashAddr,
     ) -> Result<(), ProtocolUpgradeError> {
         if let Some(new_round_seigniorage_rate) = self.config.new_round_seigniorage_rate() {
             debug!(%new_round_seigniorage_rate,"handle new round seigniorage rate");
@@ -848,9 +1057,7 @@ where
                 Ratio::new(numer.into(), denom.into())
             };
 
-            let mint_addr = EntityAddr::new_system(mint.value());
-
-            let mint_named_keys = self.tracking_copy.get_named_keys(mint_addr)?;
+            let mint_named_keys = self.get_named_keys(mint)?;
 
             let locked_funds_period_key = mint_named_keys
                 .get(ROUND_SEIGNIORAGE_RATE_KEY)

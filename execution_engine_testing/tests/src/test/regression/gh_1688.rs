@@ -1,8 +1,7 @@
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PAYMENT, LOCAL_GENESIS_REQUEST,
+    deploy_item::DeployItem, DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, LOCAL_GENESIS_REQUEST,
 };
-use casper_execution_engine::engine_state::DeployItem;
 use casper_types::{
     runtime_args, system::standard_payment::ARG_AMOUNT, AddressableEntityHash, PackageHash,
     RuntimeArgs,
@@ -46,7 +45,7 @@ fn setup() -> (LmdbWasmTestBuilder, PackageHash, AddressableEntityHash) {
         .expect("should have hash");
 
     let contract_package_hash = package_hash_key
-        .into_package_addr()
+        .into_hash_addr()
         .map(PackageHash::new)
         .expect("should be hash");
 

@@ -196,6 +196,7 @@ impl Chainspec {
         let migrate_legacy_contracts = self.core_config.migrate_legacy_contracts;
         let maximum_delegation_amount = self.core_config.maximum_delegation_amount;
         let minimum_delegation_amount = self.core_config.minimum_delegation_amount;
+        let enable_addressable_entity = self.core_config.enable_addressable_entity;
 
         Ok(ProtocolUpgradeConfig::new(
             pre_state_hash,
@@ -216,6 +217,7 @@ impl Chainspec {
             migrate_legacy_contracts,
             maximum_delegation_amount,
             minimum_delegation_amount,
+            enable_addressable_entity,
         ))
     }
 

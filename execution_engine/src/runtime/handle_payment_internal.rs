@@ -2,8 +2,9 @@ use casper_storage::global_state::{error::Error as GlobalStateError, state::Stat
 use std::collections::BTreeSet;
 
 use casper_types::{
-    account::AccountHash, addressable_entity::NamedKeyAddr, system::handle_payment::Error, CLValue,
-    FeeHandling, Key, Phase, RefundHandling, StoredValue, TransferredTo, URef, U512,
+    account::AccountHash, addressable_entity::NamedKeyAddr, system::handle_payment::Error, Account,
+    CLValue, Contract, FeeHandling, Key, Phase, RefundHandling, StoredValue, TransferredTo, URef,
+    U512,
 };
 
 use casper_storage::system::handle_payment::{
@@ -50,13 +51,13 @@ where
         target: URef,
         amount: U512,
     ) -> Result<(), Error> {
-        let mint_contract_key = match self.get_mint_contract() {
+        let contract_hash = match self.get_mint_hash() {
             Ok(mint_hash) => mint_hash,
             Err(exec_error) => {
                 return Err(<Option<Error>>::from(exec_error).unwrap_or(Error::Transfer));
             }
         };
-        match self.mint_transfer(mint_contract_key, None, source, target, amount, None) {
+        match self.mint_transfer(contract_hash, None, source, target, amount, None) {
             Ok(Ok(_)) => Ok(()),
             Ok(Err(_mint_error)) => Err(Error::Transfer),
             Err(exec_error) => Err(<Option<Error>>::from(exec_error).unwrap_or(Error::Transfer)),
@@ -69,13 +70,13 @@ where
     }
 
     fn reduce_total_supply(&mut self, amount: U512) -> Result<(), Error> {
-        let mint_contract_key = match self.get_mint_contract() {
+        let contract_hash = match self.get_mint_hash() {
             Ok(mint_hash) => mint_hash,
             Err(exec_error) => {
                 return Err(<Option<Error>>::from(exec_error).unwrap_or(Error::Transfer));
             }
         };
-        if let Err(exec_error) = self.mint_reduce_total_supply(mint_contract_key, amount) {
+        if let Err(exec_error) = self.mint_reduce_total_supply(contract_hash, amount) {
             Err(<Option<Error>>::from(exec_error).unwrap_or(Error::ReduceTotalSupply))
         } else {
             Ok(())
@@ -90,24 +91,41 @@ where
 {
     fn get_key(&mut self, name: &str) -> Option<Key> {
         match self.context.named_keys_get(name).cloned() {
-            None => {
-                let entity_addr = match self.context.get_entity_key().as_entity_addr() {
-                    Some(addr) => addr,
-                    None => return None,
-                };
-                let key = if let Ok(addr) =
-                    NamedKeyAddr::new_from_string(entity_addr, name.to_string())
-                {
-                    Key::NamedKey(addr)
-                } else {
-                    return None;
-                };
-                if let Ok(Some(StoredValue::NamedKey(value))) = self.context.read_gs(&key) {
-                    value.get_key().ok()
-                } else {
-                    None
+            None => match self.context.get_context_key() {
+                Key::AddressableEntity(entity_addr) => {
+                    let key = if let Ok(addr) =
+                        NamedKeyAddr::new_from_string(entity_addr, name.to_string())
+                    {
+                        Key::NamedKey(addr)
+                    } else {
+                        return None;
+                    };
+                    if let Ok(Some(StoredValue::NamedKey(value))) = self.context.read_gs(&key) {
+                        value.get_key().ok()
+                    } else {
+                        None
+                    }
                 }
-            }
+                Key::Hash(_) => {
+                    match self
+                        .context
+                        .read_gs_typed::<Contract>(&self.context.get_context_key())
+                    {
+                        Ok(contract) => contract.named_keys().get(name).copied(),
+                        Err(_) => None,
+                    }
+                }
+                Key::Account(_) => {
+                    match self
+                        .context
+                        .read_gs_typed::<Account>(&self.context.get_context_key())
+                    {
+                        Ok(account) => account.named_keys().get(name).copied(),
+                        Err(_) => None,
+                    }
+                }
+                _ => None,
+            },
             Some(key) => Some(key),
         }
     }
@@ -129,7 +147,7 @@ where
     }
 
     fn get_caller(&self) -> AccountHash {
-        self.context.get_caller()
+        self.context.get_initiator()
     }
 
     fn refund_handling(&self) -> RefundHandling {
