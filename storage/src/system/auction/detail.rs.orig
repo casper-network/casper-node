@@ -339,7 +339,7 @@ where
     )
 }
 
-/// Returns seigniorage recipients snapshot.
+/// Returns seigniorage recipients snapshot.  
 pub fn get_seigniorage_recipients_snapshot<P>(
     provider: &mut P,
 ) -> Result<SeigniorageRecipientsSnapshotV2, Error>
@@ -349,7 +349,6 @@ where
     read_from(provider, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY)
 }
 
-/// Returns seigniorage recipients snapshot in legacy format.
 pub fn get_legacy_seigniorage_recipients_snapshot<P>(
     provider: &mut P,
 ) -> Result<SeigniorageRecipientsSnapshotV1, Error>
@@ -359,7 +358,7 @@ where
     read_from(provider, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY)
 }
 
-/// Sets the setigniorage recipients snapshot.
+/// Set seigniorage recipients snapshot.
 pub fn set_seigniorage_recipients_snapshot<P>(
     provider: &mut P,
     snapshot: SeigniorageRecipientsSnapshotV2,
@@ -846,6 +845,7 @@ where
     Ok(updated_amount)
 }
 
+<<<<<<< HEAD
 /// If specified validator exists, and if validator is not yet at max reservations count, processes
 /// reservation. For a new reservation a bid record will be created to track the reservation,
 /// otherwise the existing tracking record will be updated.
@@ -938,7 +938,9 @@ where
     Ok(())
 }
 
+=======
 /// Returns validator bid by key.
+>>>>>>> feat-2.0
 pub fn read_validator_bid<P>(provider: &mut P, bid_key: &Key) -> Result<Box<ValidatorBid>, Error>
 where
     P: StorageProvider + ?Sized,
@@ -1021,7 +1023,7 @@ where
     }
 }
 
-/// Returns all delegator slot reservations for given validator.
+<<<<<<< HEAD
 pub fn read_reservation_bids<P>(
     provider: &mut P,
     validator_public_key: &PublicKey,
@@ -1044,7 +1046,6 @@ where
     Ok(ret)
 }
 
-/// Returns delegator slot reservation bid by key.
 pub fn read_reservation_bid<P>(provider: &mut P, bid_key: &Key) -> Result<Box<Reservation>, Error>
 where
     P: RuntimeProvider + ?Sized + StorageProvider,
@@ -1059,7 +1060,9 @@ where
     }
 }
 
+=======
 /// Applies seigniorage recipient changes.
+>>>>>>> feat-2.0
 pub fn seigniorage_recipients(
     validator_weights: &ValidatorWeights,
     validator_bids: &ValidatorBids,
@@ -1222,7 +1225,6 @@ where
     Ok(ret)
 }
 
-/// Returns all delegator slot reservations for given validator.
 pub fn reservations<P>(
     provider: &mut P,
     validator_public_key: &PublicKey,

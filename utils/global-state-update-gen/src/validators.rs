@@ -45,6 +45,7 @@ pub(crate) fn generate_validators_update(matches: &ArgMatches<'_>) {
                         bonded_amount: stake,
                         delegation_rate: None,
                         delegators: None,
+                        reservations: None,
                     }),
                 }
             })

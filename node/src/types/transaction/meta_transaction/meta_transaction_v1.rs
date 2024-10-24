@@ -464,10 +464,10 @@ impl MetaTransactionV1 {
                     arg_handling::has_valid_change_bid_public_key_args(&self.args)
                 }
                 TransactionEntryPoint::AddReservations => {
-                    todo!()
+                    arg_handling::has_valid_add_reservations_args(&self.args)
                 }
                 TransactionEntryPoint::CancelReservations => {
-                    todo!()
+                    arg_handling::has_valid_cancel_reservations_args(&self.args)
                 }
             },
             TransactionTarget::Stored { .. } => match &self.entry_point {

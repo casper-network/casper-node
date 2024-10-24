@@ -8,7 +8,7 @@ use casper_storage::data_access_layer::SlashItem;
 use casper_types::{
     system::{
         auction::{
-            BidsExt, DelegationRate, SeigniorageRecipientsSnapshot,
+            BidsExt, DelegationRate, SeigniorageRecipientsSnapshotV2,
             SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
         },
         mint::TOTAL_SUPPLY_KEY,
@@ -82,7 +82,7 @@ fn should_step() {
 
     let auction_hash = builder.get_auction_contract_hash();
 
-    let before_auction_seigniorage: SeigniorageRecipientsSnapshot = builder.get_value(
+    let before_auction_seigniorage: SeigniorageRecipientsSnapshotV2 = builder.get_value(
         EntityAddr::System(auction_hash.value()),
         SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
     );
@@ -108,7 +108,7 @@ fn should_step() {
     );
 
     // seigniorage snapshot should have changed after auction
-    let after_auction_seigniorage: SeigniorageRecipientsSnapshot = builder.get_value(
+    let after_auction_seigniorage: SeigniorageRecipientsSnapshotV2 = builder.get_value(
         EntityAddr::System(auction_hash.value()),
         SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
     );

@@ -72,6 +72,55 @@ where
         Ok(keys.len())
     }
 
+    fn reservation_count(&mut self, bid_addr: &BidAddr) -> Result<usize, Error> {
+        let reservation_prefix = bid_addr.reservation_prefix()?;
+        let reservation_keys = self
+            .get_keys_by_prefix(&reservation_prefix)
+            .map_err(|err| {
+                error!("RuntimeProvider::reservation_count {:?}", err);
+                Error::Storage
+            })?;
+        Ok(reservation_keys.len())
+    }
+
+    fn used_reservation_count(&mut self, bid_addr: &BidAddr) -> Result<usize, Error> {
+        let delegator_prefix = bid_addr.delegators_prefix()?;
+        let delegator_keys = self.get_keys_by_prefix(&delegator_prefix).map_err(|err| {
+            error!("RuntimeProvider::used_reservation_count {:?}", err);
+            Error::Storage
+        })?;
+        let delegator_account_hashes: Vec<AccountHash> = delegator_keys
+            .into_iter()
+            .filter_map(|key| {
+                if let Key::BidAddr(BidAddr::Delegator { delegator, .. }) = key {
+                    Some(delegator)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        let reservation_prefix = bid_addr.reservation_prefix()?;
+        let reservation_keys = self
+            .get_keys_by_prefix(&reservation_prefix)
+            .map_err(|err| {
+                error!("RuntimeProvider::delegator_count {:?}", err);
+                Error::Storage
+            })?;
+
+        let used_reservations_count = reservation_keys
+            .iter()
+            .filter(|reservation| {
+                if let Key::BidAddr(BidAddr::Reservation { delegator, .. }) = reservation {
+                    delegator_account_hashes.contains(delegator)
+                } else {
+                    false
+                }
+            })
+            .count();
+        Ok(used_reservations_count)
+    }
+
     fn vesting_schedule_period_millis(&self) -> u64 {
         self.vesting_schedule_period_millis()
     }
