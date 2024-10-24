@@ -18,9 +18,10 @@ use crate::system::auction::detail::{
 use casper_types::{
     account::AccountHash,
     system::auction::{
-        BidAddr, BidKind, Bridge, DelegationRate, EraInfo, EraValidators, Error,
-        SeigniorageRecipients, SeigniorageRecipientsSnapshot, UnbondingPurse, ValidatorBid,
-        ValidatorCredit, ValidatorWeights, DELEGATION_RATE_DENOMINATOR,
+        BidAddr, BidKind, Bridge, DelegationRate, EraInfo, EraValidators, Error, Reservation,
+        SeigniorageRecipient, SeigniorageRecipientsSnapshot, SeigniorageRecipientsV2,
+        UnbondingPurse, ValidatorBid, ValidatorCredit, ValidatorWeights,
+        DELEGATION_RATE_DENOMINATOR,
     },
     ApiError, EraId, Key, PublicKey, U512,
 };
@@ -43,7 +44,7 @@ pub trait Auction:
     /// rates and lists of delegators together with their delegated quantities from delegators.
     /// This function is publicly accessible, but intended for system use by the Handle Payment
     /// contract, because this data is necessary for distributing seigniorage.
-    fn read_seigniorage_recipients(&mut self) -> Result<SeigniorageRecipients, Error> {
+    fn read_seigniorage_recipients(&mut self) -> Result<SeigniorageRecipientsV2, Error> {
         // `era_validators` are assumed to be computed already by calling "run_auction" entrypoint.
         let era_index = detail::get_era_id(self)?;
         let mut seigniorage_recipients_snapshot =
@@ -77,8 +78,8 @@ pub trait Auction:
         minimum_delegation_amount: u64,
         maximum_delegation_amount: u64,
         minimum_bid_amount: u64,
-        // TODO: reservation list functionality implementation
-        _reserved_slots: u32,
+        max_delegators_per_validator: u32,
+        reserved_slots: u32,
     ) -> Result<U512, ApiError> {
         if !self.allow_auction_bids() {
             // The validator set may be closed on some side chains,
@@ -95,6 +96,10 @@ pub trait Auction:
             return Err(Error::DelegationRateTooLarge.into());
         }
 
+        if reserved_slots > max_delegators_per_validator {
+            return Err(Error::ExceededReservationSlotsLimit.into());
+        }
+
         let provided_account_hash = AccountHash::from(&public_key);
 
         if !self.is_allowed_session_caller(&provided_account_hash) {
@@ -105,6 +110,7 @@ pub trait Auction:
         let (target, validator_bid) = if let Some(BidKind::Validator(mut validator_bid)) =
             self.read_bid(&validator_bid_key)?
         {
+            // update an existing validator bid
             if validator_bid.inactive() {
                 validator_bid.activate();
             }
@@ -114,8 +120,29 @@ pub trait Auction:
                 minimum_delegation_amount,
                 maximum_delegation_amount,
             );
+            // perform validation if number of reserved slots has changed
+            if reserved_slots != validator_bid.reserved_slots() {
+                let validator_bid_addr = BidAddr::from(public_key.clone());
+                // cannot reserve fewer slots than there are reservations
+                let reservation_count = self.reservation_count(&validator_bid_addr)?;
+                if reserved_slots < reservation_count as u32 {
+                    return Err(Error::ReservationSlotsCountTooSmall.into());
+                }
+
+                // cannot reserve more slots than there are free delegator slots
+                let used_reservation_count = self.used_reservation_count(&validator_bid_addr)?;
+                let delegator_count = self.delegator_count(&validator_bid_addr)?;
+                let normal_delegators = delegator_count - used_reservation_count;
+                let max_reserved_slots = max_delegators_per_validator - normal_delegators as u32;
+                if reserved_slots > max_reserved_slots {
+                    return Err(Error::ExceededReservationSlotsLimit.into());
+                }
+                validator_bid.with_reserved_slots(reserved_slots);
+            }
+
             (*validator_bid.bonding_purse(), validator_bid)
         } else {
+            // create new validator bid
             let bonding_purse = self.create_purse()?;
             let validator_bid = ValidatorBid::unlocked(
                 public_key,
@@ -124,6 +151,7 @@ pub trait Auction:
                 delegation_rate,
                 minimum_delegation_amount,
                 maximum_delegation_amount,
+                reserved_slots,
             );
             (bonding_purse, Box::new(validator_bid))
         };
@@ -465,6 +493,53 @@ pub trait Auction:
         Ok(())
     }
 
+    /// Adds new reservations for a given validator with specified delegator public keys
+    /// and delegation rates. If during adding reservations configured number of reserved
+    /// delegator slots is exceeded it returns an error.
+    ///
+    /// If given reservation exists already and the delegation rate was changed it's updated.
+    fn add_reservations(&mut self, reservations: Vec<Reservation>) -> Result<(), Error> {
+        if !self.allow_auction_bids() {
+            // Validation set rotation might be disabled on some private chains and we should not
+            // allow new bids to come in.
+            return Err(Error::AuctionBidsDisabled);
+        }
+
+        for reservation in reservations {
+            if !self
+                .is_allowed_session_caller(&AccountHash::from(reservation.validator_public_key()))
+            {
+                return Err(Error::InvalidContext);
+            }
+
+            detail::handle_add_reservation(self, reservation)?;
+        }
+        Ok(())
+    }
+
+    /// Removes reservations for given delegator public keys. If a reservation for one of the keys
+    /// does not exist it returns an error.
+    fn cancel_reservations(
+        &mut self,
+        validator: PublicKey,
+        delegators: Vec<PublicKey>,
+        max_delegators_per_validator: u32,
+    ) -> Result<(), Error> {
+        if !self.is_allowed_session_caller(&AccountHash::from(&validator)) {
+            return Err(Error::InvalidContext);
+        }
+
+        for delegator in delegators {
+            detail::handle_cancel_reservation(
+                self,
+                validator.clone(),
+                delegator.clone(),
+                max_delegators_per_validator,
+            )?;
+        }
+        Ok(())
+    }
+
     /// Slashes each validator.
     ///
     /// This can be only invoked through a system call.
@@ -640,7 +715,7 @@ pub trait Auction:
             }
         };
 
-        let (validator_bids, validator_credits, delegator_bids) =
+        let (validator_bids, validator_credits, delegator_bids, reservations) =
             validator_bids_detail.destructure();
 
         // call prune BEFORE incrementing the era
@@ -656,7 +731,8 @@ pub trait Auction:
         // Update seigniorage recipients for current era
         {
             let mut snapshot = detail::get_seigniorage_recipients_snapshot(self)?;
-            let recipients = seigniorage_recipients(&winners, &validator_bids, &delegator_bids)?;
+            let recipients =
+                seigniorage_recipients(&winners, &validator_bids, &delegator_bids, &reservations)?;
             let previous_recipients = snapshot.insert(delayed_era, recipients);
             assert!(previous_recipients.is_none());
 
@@ -702,7 +778,7 @@ pub trait Auction:
                     &proposer,
                     current_era_id,
                     &amounts,
-                    &seigniorage_recipients_snapshot,
+                    &SeigniorageRecipientsSnapshot::V2(seigniorage_recipients_snapshot.clone()),
                 )
                 .map(|infos| infos.into_iter().map(move |info| (proposer.clone(), info)))
             })
@@ -960,12 +1036,24 @@ fn rewards_per_validator(
         let rewarded_era = era_id
             .checked_sub(eras_back)
             .ok_or(Error::MissingSeigniorageRecipients)?;
-        let Some(recipient) = seigniorage_recipients_snapshot
-            .get(&rewarded_era)
-            .ok_or(Error::MissingSeigniorageRecipients)?
-            .get(validator)
-            .cloned()
-        else {
+
+        // try to find validator in seigniorage snapshot
+        let maybe_seigniorage_recipient = match seigniorage_recipients_snapshot {
+            SeigniorageRecipientsSnapshot::V1(snapshot) => snapshot
+                .get(&rewarded_era)
+                .ok_or(Error::MissingSeigniorageRecipients)?
+                .get(validator)
+                .cloned()
+                .map(SeigniorageRecipient::V1),
+            SeigniorageRecipientsSnapshot::V2(snapshot) => snapshot
+                .get(&rewarded_era)
+                .ok_or(Error::MissingSeigniorageRecipients)?
+                .get(validator)
+                .cloned()
+                .map(SeigniorageRecipient::V2),
+        };
+
+        let Some(recipient) = maybe_seigniorage_recipient else {
             // We couldn't find the validator. If the reward amount is zero, we don't care -
             // the validator wasn't supposed to be rewarded in this era, anyway. Otherwise,
             // return an error.
@@ -995,32 +1083,37 @@ fn rewards_per_validator(
             .delegator_total_stake()
             .ok_or(Error::ArithmeticOverflow)?;
 
-        let delegators_part: Ratio<U512> = {
-            let commission_rate = Ratio::new(
-                U512::from(*recipient.delegation_rate()),
-                U512::from(DELEGATION_RATE_DENOMINATOR),
-            );
+        // calculate part of reward to be distributed to delegators before commission
+        let base_delegators_part: Ratio<U512> = {
             let reward_multiplier: Ratio<U512> = Ratio::new(delegator_total_stake, total_stake);
-            let delegator_reward: Ratio<U512> = total_reward
+            total_reward
                 .checked_mul(&reward_multiplier)
-                .ok_or(Error::ArithmeticOverflow)?;
-            let commission: Ratio<U512> = delegator_reward
-                .checked_mul(&commission_rate)
-                .ok_or(Error::ArithmeticOverflow)?;
-            delegator_reward
-                .checked_sub(&commission)
                 .ok_or(Error::ArithmeticOverflow)?
         };
 
-        let delegator_rewards: BTreeMap<PublicKey, U512> = recipient
-            .delegator_stake()
-            .iter()
-            .map(|(delegator_key, delegator_stake)| {
-                let reward_multiplier = Ratio::new(*delegator_stake, delegator_total_stake);
-                let reward = delegators_part * reward_multiplier;
-                (delegator_key.clone(), reward.to_integer())
-            })
-            .collect();
+        let default = BTreeMap::new();
+        let reservation_delegation_rates =
+            recipient.reservation_delegation_rates().unwrap_or(&default);
+        // calculate commission and final reward for each delegator
+        let mut delegator_rewards: BTreeMap<PublicKey, U512> = BTreeMap::new();
+        for (delegator_key, delegator_stake) in recipient.delegator_stake().iter() {
+            let reward_multiplier = Ratio::new(*delegator_stake, delegator_total_stake);
+            let base_reward = base_delegators_part * reward_multiplier;
+            let delegation_rate = *reservation_delegation_rates
+                .get(delegator_key)
+                .unwrap_or(recipient.delegation_rate());
+            let commission_rate = Ratio::new(
+                U512::from(delegation_rate),
+                U512::from(DELEGATION_RATE_DENOMINATOR),
+            );
+            let commission: Ratio<U512> = base_reward
+                .checked_mul(&commission_rate)
+                .ok_or(Error::ArithmeticOverflow)?;
+            let reward = base_reward
+                .checked_sub(&commission)
+                .ok_or(Error::ArithmeticOverflow)?;
+            delegator_rewards.insert(delegator_key.clone(), reward.to_integer());
+        }
 
         let total_delegator_payout: U512 =
             delegator_rewards.iter().map(|(_, &amount)| amount).sum();

@@ -30,6 +30,12 @@ pub trait RuntimeProvider {
     /// Returns the current number of delegators for this validator.
     fn delegator_count(&mut self, bid_addr: &BidAddr) -> Result<usize, Error>;
 
+    /// Returns number of reservations for this validator.
+    fn reservation_count(&mut self, bid_addr: &BidAddr) -> Result<usize, Error>;
+
+    /// Returns number of reservations for which a delegator bid exists.
+    fn used_reservation_count(&mut self, bid_addr: &BidAddr) -> Result<usize, Error>;
+
     /// Returns vesting schedule period.
     fn vesting_schedule_period_millis(&self) -> u64;
 

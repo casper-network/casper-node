@@ -104,6 +104,12 @@ pub const ERA_ID_KEY: &str = "era_id";
 pub const ERA_END_TIMESTAMP_MILLIS_KEY: &str = "era_end_timestamp_millis";
 /// Storage for `SeigniorageRecipientsSnapshot`.
 pub const SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY: &str = "seigniorage_recipients_snapshot";
+/// Storage for a flag determining current version of `SeigniorageRecipientsSnapshot`.
+pub const SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION_KEY: &str =
+    "seigniorage_recipients_snapshot_version";
+/// Default value for the current version of `SeigniorageRecipientsSnapshot`.
+pub const DEFAULT_SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION: u8 = 2;
+
 /// Total validator slots allowed.
 pub const VALIDATOR_SLOTS_KEY: &str = "validator_slots";
 /// Amount of auction delay.

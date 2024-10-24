@@ -26,11 +26,13 @@ use casper_types::{
     execution::Effects,
     system::{
         auction::{
-            self, BidAddr, BidKind, DelegationRate, Delegator, SeigniorageRecipient,
-            SeigniorageRecipients, SeigniorageRecipientsSnapshot, Staking, ValidatorBid,
-            AUCTION_DELAY_KEY, DELEGATION_RATE_DENOMINATOR, ERA_END_TIMESTAMP_MILLIS_KEY,
-            ERA_ID_KEY, INITIAL_ERA_END_TIMESTAMP_MILLIS, INITIAL_ERA_ID, LOCKED_FUNDS_PERIOD_KEY,
-            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
+            self, BidAddr, BidKind, DelegationRate, Delegator, SeigniorageRecipientV2,
+            SeigniorageRecipients, SeigniorageRecipientsSnapshot, SeigniorageRecipientsSnapshotV2,
+            SeigniorageRecipientsV2, Staking, ValidatorBid, AUCTION_DELAY_KEY,
+            DEFAULT_SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION, DELEGATION_RATE_DENOMINATOR,
+            ERA_END_TIMESTAMP_MILLIS_KEY, ERA_ID_KEY, INITIAL_ERA_END_TIMESTAMP_MILLIS,
+            INITIAL_ERA_ID, LOCKED_FUNDS_PERIOD_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
         },
         handle_payment::{self, ACCUMULATION_PURSE_KEY},
         mint::{

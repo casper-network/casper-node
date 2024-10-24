@@ -5,7 +5,7 @@ use std::{
 };
 
 use casper_types::{
-    bytesrepr::ToBytes, checksummed_hex, system::auction::SeigniorageRecipientsSnapshot,
+    bytesrepr::ToBytes, checksummed_hex, system::auction::SeigniorageRecipientsSnapshotV2,
     AsymmetricType, Digest, Key, ProtocolVersion, PublicKey, StoredValue, U512,
 };
 
@@ -62,8 +62,8 @@ pub struct ValidatorsDiff {
 
 /// Calculates the sets of added and removed validators between the two snapshots.
 pub fn validators_diff(
-    old_snapshot: &SeigniorageRecipientsSnapshot,
-    new_snapshot: &SeigniorageRecipientsSnapshot,
+    old_snapshot: &SeigniorageRecipientsSnapshotV2,
+    new_snapshot: &SeigniorageRecipientsSnapshotV2,
 ) -> ValidatorsDiff {
     let old_validators: BTreeSet<_> = old_snapshot
         .values()

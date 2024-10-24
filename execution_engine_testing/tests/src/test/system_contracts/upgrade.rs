@@ -16,7 +16,10 @@ use casper_types::{
     system::{
         self,
         auction::{
-            AUCTION_DELAY_KEY, LOCKED_FUNDS_PERIOD_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
+            SeigniorageRecipientsSnapshotV1, SeigniorageRecipientsSnapshotV2, AUCTION_DELAY_KEY,
+            DEFAULT_SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION, LOCKED_FUNDS_PERIOD_KEY,
+            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION_KEY,
+            UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
         },
         mint::ROUND_SEIGNIORAGE_RATE_KEY,
     },
@@ -778,4 +781,111 @@ fn should_upgrade_legacy_accounts() {
     builder
         .upgrade(&mut upgrade_request)
         .expect_upgrade_success();
+}
+
+#[ignore]
+#[test]
+fn should_migrate_seigniorage_snapshot_to_new_version() {
+    let (mut builder, lmdb_fixture_state, _temp_dir) =
+        lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_4_3);
+
+    let auction_contract_hash = builder.get_auction_contract_hash();
+
+    // get legacy auction contract
+    let auction_contract = builder
+        .query(None, Key::Hash(auction_contract_hash.value()), &[])
+        .expect("should have auction contract")
+        .into_contract()
+        .expect("should have legacy Contract under the Key::Contract variant");
+
+    // check that snapshot version key does not exist yet
+    let auction_named_keys = auction_contract.named_keys();
+    let maybe_snapshot_version_named_key =
+        auction_named_keys.get(SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION_KEY);
+    assert!(maybe_snapshot_version_named_key.is_none());
+
+    // fetch legacy snapshot
+    let legacy_seigniorage_snapshot: SeigniorageRecipientsSnapshotV1 = {
+        let snapshot_key = auction_named_keys
+            .get(SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY)
+            .expect("snapshot named key should exist");
+        builder
+            .query(None, *snapshot_key, &[])
+            .expect("should have seigniorage snapshot")
+            .as_cl_value()
+            .expect("should be a CLValue")
+            .clone()
+            .into_t()
+            .expect("should be SeigniorageRecipientsSnapshotV1")
+    };
+
+    // prepare upgrade request
+    let old_protocol_version = lmdb_fixture_state.genesis_protocol_version();
+    let mut upgrade_request = UpgradeRequestBuilder::new()
+        .with_current_protocol_version(old_protocol_version)
+        .with_new_protocol_version(ProtocolVersion::from_parts(2, 0, 0))
+        .with_activation_point(DEFAULT_ACTIVATION_POINT)
+        .build();
+
+    // execute upgrade
+    builder
+        .upgrade(&mut upgrade_request)
+        .expect_upgrade_success();
+
+    // fetch updated named keys
+    let auction_named_keys =
+        builder.get_named_keys(EntityAddr::System(auction_contract_hash.value()));
+
+    // check that snapshot version named key was populated
+    let snapshot_version_key = auction_named_keys
+        .get(SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION_KEY)
+        .expect("auction should have snapshot version named key");
+    let snapshot_version: u8 = builder
+        .query(None, *snapshot_version_key, &[])
+        .expect("should have seigniorage snapshot version")
+        .as_cl_value()
+        .expect("should be a CLValue")
+        .clone()
+        .into_t()
+        .expect("should be u8");
+    assert_eq!(
+        snapshot_version,
+        DEFAULT_SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION
+    );
+
+    // fetch new snapshot
+    let seigniorage_snapshot: SeigniorageRecipientsSnapshotV2 = {
+        let snapshot_key = auction_named_keys
+            .get(SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY)
+            .expect("snapshot named key should exist");
+        builder
+            .query(None, *snapshot_key, &[])
+            .expect("should have seigniorage snapshot")
+            .as_cl_value()
+            .expect("should be a CLValue")
+            .clone()
+            .into_t()
+            .expect("should be SeigniorageRecipientsSnapshotV2")
+    };
+
+    // compare snapshots
+    for era_id in legacy_seigniorage_snapshot.keys() {
+        let legacy_seigniorage_recipients = legacy_seigniorage_snapshot.get(era_id).unwrap();
+        let new_seigniorage_recipient = seigniorage_snapshot.get(era_id).unwrap();
+
+        for pubkey in legacy_seigniorage_recipients.keys() {
+            let legacy_recipient = legacy_seigniorage_recipients.get(pubkey).unwrap();
+            let new_recipient = new_seigniorage_recipient.get(pubkey).unwrap();
+
+            assert_eq!(legacy_recipient.stake(), new_recipient.stake());
+            assert_eq!(
+                legacy_recipient.delegation_rate(),
+                new_recipient.delegation_rate()
+            );
+            assert_eq!(
+                legacy_recipient.delegator_stake(),
+                new_recipient.delegator_stake()
+            );
+        }
+    }
 }

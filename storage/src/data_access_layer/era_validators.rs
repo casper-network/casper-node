@@ -31,7 +31,7 @@ impl EraValidatorsRequest {
     }
 }
 
-/// Result enum that represents all possible outcomes of a balance request.
+/// Result enum that represents all possible outcomes of a era validators request.
 #[derive(Debug)]
 pub enum EraValidatorsResult {
     /// Returned if auction is not found. This is a catastrophic outcome.

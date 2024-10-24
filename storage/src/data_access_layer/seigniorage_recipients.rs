@@ -38,7 +38,7 @@ impl SeigniorageRecipientsRequest {
     }
 }
 
-/// Result enum that represents all possible outcomes of a balance request.
+/// Result enum that represents all possible outcomes of a seignorage recipients request.
 #[derive(Debug)]
 pub enum SeigniorageRecipientsResult {
     /// Returned if auction is not found. This is a catastrophic outcome.
