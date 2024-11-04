@@ -170,4 +170,6 @@ pub enum BlockExecutionError {
     UnsupportedTransactionKind(u8),
     #[error("Error while converting transaction to internal representation: {0}")]
     TransactionConversion(String),
+    #[error("Data Access Layer conflicts with chainspec setting: {0}")]
+    InvalidAESetting(bool),
 }

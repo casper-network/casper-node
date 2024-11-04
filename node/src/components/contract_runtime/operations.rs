@@ -81,6 +81,12 @@ pub fn execute_finalized_block(
     let native_runtime_config = NativeRuntimeConfig::from_chainspec(chainspec);
     let addressable_entity_enabled = chainspec.core_config.enable_addressable_entity();
 
+    if addressable_entity_enabled != data_access_layer.enable_addressable_entity {
+        return Err(BlockExecutionError::InvalidAESetting(
+            data_access_layer.enable_addressable_entity,
+        ));
+    }
+
     // scrape variables from execution pre state
     let parent_hash = execution_pre_state.parent_hash();
     let parent_seed = execution_pre_state.parent_seed();

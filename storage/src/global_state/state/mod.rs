@@ -1092,7 +1092,7 @@ pub trait StateProvider {
             match tc.get_system_entity_registry() {
                 Ok(scr) => match scr.get(AUCTION).copied() {
                     Some(auction_hash) => {
-                        let key = if !request.enable_addressable_entity() {
+                        let key = if !tc.enable_addressable_entity() {
                             Key::Hash(auction_hash)
                         } else {
                             Key::AddressableEntity(EntityAddr::System(auction_hash))

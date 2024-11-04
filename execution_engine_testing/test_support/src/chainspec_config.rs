@@ -255,6 +255,7 @@ impl ChainspecConfig {
             .with_allow_unrestricted_transfers(self.core_config.allow_unrestricted_transfers)
             .with_refund_handling(self.core_config.refund_handling)
             .with_fee_handling(self.core_config.fee_handling)
+            .with_enable_entity(self.core_config.enable_addressable_entity)
             .with_storage_costs(self.storage_costs)
             .build()
     }
@@ -281,6 +282,7 @@ impl From<ChainspecConfig> for EngineConfig {
             )
             .with_wasm_config(chainspec_config.wasm_config)
             .with_system_config(chainspec_config.system_costs_config)
+            .with_enable_entity(chainspec_config.core_config.enable_addressable_entity)
             .build()
     }
 }
@@ -302,6 +304,7 @@ impl TryFrom<ChainspecConfig> for GenesisConfig {
             .with_unbonding_delay(chainspec_config.core_config.unbonding_delay)
             .with_genesis_timestamp_millis(DEFAULT_GENESIS_TIMESTAMP_MILLIS)
             .with_storage_costs(chainspec_config.storage_costs)
+            .with_enable_addressable_entity(chainspec_config.core_config.enable_addressable_entity)
             .build())
     }
 }
