@@ -1173,8 +1173,7 @@ impl SingleTransactionTestCase {
             .unwrap()
             .state_root_hash();
 
-        let total_supply_req =
-            TotalSupplyRequest::new(state_hash, protocol_version, DEFAULT_ENABLE_ENTITY);
+        let total_supply_req = TotalSupplyRequest::new(state_hash, protocol_version);
         let result = runner
             .main_reactor()
             .contract_runtime()

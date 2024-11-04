@@ -6,20 +6,14 @@ use casper_types::{Digest, ProtocolVersion, U512};
 pub struct TotalSupplyRequest {
     state_hash: Digest,
     protocol_version: ProtocolVersion,
-    enable_addressable_entity: bool,
 }
 
 impl TotalSupplyRequest {
     /// Creates an instance of TotalSupplyRequest.
-    pub fn new(
-        state_hash: Digest,
-        protocol_version: ProtocolVersion,
-        enable_addressable_entity: bool,
-    ) -> Self {
+    pub fn new(state_hash: Digest, protocol_version: ProtocolVersion) -> Self {
         TotalSupplyRequest {
             state_hash,
             protocol_version,
-            enable_addressable_entity,
         }
     }
 
@@ -31,11 +25,6 @@ impl TotalSupplyRequest {
     /// Returns the protocol version.
     pub fn protocol_version(&self) -> ProtocolVersion {
         self.protocol_version
-    }
-
-    /// Enable the addressable entity and migrate accounts/contracts to entities.
-    pub fn enable_addressable_entity(&self) -> bool {
-        self.enable_addressable_entity
     }
 }
 

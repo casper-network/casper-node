@@ -1977,7 +1977,7 @@ pub trait StateProvider {
         let query_request = match tc.get_system_entity_registry() {
             Ok(scr) => match scr.get(MINT).copied() {
                 Some(mint_hash) => {
-                    let key = if !request.enable_addressable_entity() {
+                    let key = if !tc.enable_addressable_entity() {
                         Key::Hash(mint_hash)
                     } else {
                         Key::AddressableEntity(EntityAddr::System(mint_hash))
@@ -2032,7 +2032,7 @@ pub trait StateProvider {
         let query_request = match tc.get_system_entity_registry() {
             Ok(scr) => match scr.get(MINT).copied() {
                 Some(mint_hash) => {
-                    let key = if !request.enable_addressable_entity() {
+                    let key = if !tc.enable_addressable_entity() {
                         Key::Hash(mint_hash)
                     } else {
                         Key::AddressableEntity(EntityAddr::System(mint_hash))

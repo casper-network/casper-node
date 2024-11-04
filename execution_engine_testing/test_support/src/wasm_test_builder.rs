@@ -749,11 +749,9 @@ where
         let post_state = maybe_post_state
             .or(self.post_state_hash)
             .expect("builder must have a post-state hash");
-        let result = self.data_access_layer.total_supply(TotalSupplyRequest::new(
-            post_state,
-            protocol_version,
-            DEFAULT_ENABLE_ENTITY,
-        ));
+        let result = self
+            .data_access_layer
+            .total_supply(TotalSupplyRequest::new(post_state, protocol_version));
         if let TotalSupplyResult::Success { total_supply } = result {
             total_supply
         } else {
@@ -777,7 +775,6 @@ where
                 .round_seigniorage_rate(RoundSeigniorageRateRequest::new(
                     post_state,
                     protocol_version,
-                    DEFAULT_ENABLE_ENTITY,
                 ));
         if let RoundSeigniorageRateResult::Success { rate } = result {
             rate

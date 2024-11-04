@@ -11,7 +11,6 @@ use std::{
     time::Duration,
 };
 
-use casper_execution_engine::engine_state::engine_config::DEFAULT_ENABLE_ENTITY;
 use either::Either;
 use num::Zero;
 use num_rational::Ratio;
@@ -2325,8 +2324,7 @@ async fn run_rewards_network_scenario(
                 .expect("failure to read block header")
                 .unwrap()
                 .state_root_hash();
-            let total_supply_req =
-                TotalSupplyRequest::new(state_hash, protocol_version, DEFAULT_ENABLE_ENTITY);
+            let total_supply_req = TotalSupplyRequest::new(state_hash, protocol_version);
             let result = representative_runtime
                 .data_access_layer()
                 .total_supply(total_supply_req);
