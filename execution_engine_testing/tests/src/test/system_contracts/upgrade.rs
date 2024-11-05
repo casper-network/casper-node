@@ -611,7 +611,7 @@ fn should_increase_max_associated_keys_after_upgrade() {
             .build()
     };
 
-    let enable_entity = true;
+    let enable_entity = false;
     let max_associated_keys = DEFAULT_MAX_ASSOCIATED_KEYS + 1;
     let core_config = CoreConfig {
         max_associated_keys,
