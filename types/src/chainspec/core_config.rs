@@ -90,16 +90,6 @@ pub struct CoreConfig {
     /// `start_protocol_version_with_strict_finality_signatures_required`.
     pub legacy_required_finality: LegacyRequiredFinality,
 
-    /// If true, the protocol upgrade will migrate ALL userland accounts to addressable entity.
-    /// If false, userland accounts will instead be left as is and will be lazily migrated
-    ///    on a per-account basis if / when that account is used during transaction execution.
-    pub migrate_legacy_accounts: bool,
-
-    /// If true, the protocol upgrade will migrate ALL userland contracts to addressable entity.
-    /// If false, userland contracts will instead be left as is and will be lazily migrated
-    ///    on a per-contract basis if / when that contract is used during transaction execution.
-    pub migrate_legacy_contracts: bool,
-
     /// Number of eras before an auction actually defines the set of validators.
     /// If you bond with a sufficient bid in era N, you will be a validator in era N +
     /// auction_delay + 1
@@ -288,9 +278,6 @@ impl CoreConfig {
 
         let gas_hold_interval = TimeDiff::from_seconds(rng.gen_range(600..604_800));
 
-        let migrate_legacy_accounts = false;
-        let migrate_legacy_contracts = false;
-
         let validator_credit_cap = Ratio::new(rng.gen_range(1..100), 100);
 
         CoreConfig {
@@ -329,8 +316,6 @@ impl CoreConfig {
             fee_handling,
             gas_hold_balance_handling,
             gas_hold_interval,
-            migrate_legacy_accounts,
-            migrate_legacy_contracts,
             validator_credit_cap,
             enable_addressable_entity: false,
         }
@@ -376,8 +361,6 @@ impl Default for CoreConfig {
             allow_prepaid: DEFAULT_ALLOW_PREPAID,
             gas_hold_balance_handling: DEFAULT_GAS_HOLD_BALANCE_HANDLING,
             gas_hold_interval: DEFAULT_GAS_HOLD_INTERVAL,
-            migrate_legacy_accounts: false,
-            migrate_legacy_contracts: false,
             validator_credit_cap: Ratio::new(1, 5),
             enable_addressable_entity: DEFAULT_ENABLE_ENTITY,
         }
@@ -425,8 +408,6 @@ impl ToBytes for CoreConfig {
         buffer.extend(self.allow_prepaid.to_bytes()?);
         buffer.extend(self.gas_hold_balance_handling.to_bytes()?);
         buffer.extend(self.gas_hold_interval.to_bytes()?);
-        buffer.extend(self.migrate_legacy_accounts.to_bytes()?);
-        buffer.extend(self.migrate_legacy_contracts.to_bytes()?);
         buffer.extend(self.validator_credit_cap.to_bytes()?);
         buffer.extend(self.enable_addressable_entity.to_bytes()?);
         Ok(buffer)
@@ -470,8 +451,6 @@ impl ToBytes for CoreConfig {
             + self.allow_prepaid.serialized_length()
             + self.gas_hold_balance_handling.serialized_length()
             + self.gas_hold_interval.serialized_length()
-            + self.migrate_legacy_accounts.serialized_length()
-            + self.migrate_legacy_contracts.serialized_length()
             + self.validator_credit_cap.serialized_length()
             + self.enable_addressable_entity.serialized_length()
     }
@@ -515,8 +494,6 @@ impl FromBytes for CoreConfig {
         let (allow_prepaid, remainder) = FromBytes::from_bytes(remainder)?;
         let (gas_hold_balance_handling, remainder) = FromBytes::from_bytes(remainder)?;
         let (gas_hold_interval, remainder) = TimeDiff::from_bytes(remainder)?;
-        let (migrate_legacy_accounts, remainder) = FromBytes::from_bytes(remainder)?;
-        let (migrate_legacy_contracts, remainder) = FromBytes::from_bytes(remainder)?;
         let (validator_credit_cap, remainder) = Ratio::from_bytes(remainder)?;
         let (enable_addressable_entity, remainder) = FromBytes::from_bytes(remainder)?;
         let config = CoreConfig {
@@ -555,8 +532,6 @@ impl FromBytes for CoreConfig {
             allow_prepaid,
             gas_hold_balance_handling,
             gas_hold_interval,
-            migrate_legacy_accounts,
-            migrate_legacy_contracts,
             validator_credit_cap,
             enable_addressable_entity,
         };

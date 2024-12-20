@@ -60,7 +60,7 @@ pub(super) fn attenuate_uref_in_args(
 
 /// Extracts a copy of every uref able to be deserialized from `cl_value`.
 pub(super) fn extract_urefs(cl_value: &CLValue) -> Result<Vec<URef>, ExecError> {
-    let mut vec: Vec<URef> = Vec::new();
+    let mut vec: Vec<URef> = Default::default();
     rewrite_urefs(cl_value.clone(), |uref| {
         vec.push(*uref);
     })?;

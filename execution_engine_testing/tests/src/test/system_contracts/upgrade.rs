@@ -774,7 +774,6 @@ fn should_upgrade_legacy_accounts() {
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
             .with_minimum_delegation_amount(250_000_000_000)
             .with_maximum_delegation_amount(500_000_000_000)
-            .with_migrate_legacy_accounts(true)
             .build()
     };
 

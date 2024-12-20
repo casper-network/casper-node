@@ -428,7 +428,7 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
         );
 
         stored_value.insert(
-            "Package".to_string(),
+            "SmartContract".to_string(),
             ABITestCase::from_inputs(vec![StoredValue::SmartContract(package).into()])?,
         );
 

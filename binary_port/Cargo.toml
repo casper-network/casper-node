@@ -16,9 +16,7 @@ bytes = "1.0.1"
 casper-types = { version = "5.0.0", path = "../types", features = ["datasize", "json-schema", "std"] }
 once_cell = { version = "1.5.2" }
 rand = "0.8.3"
-schemars = { version = "0.8.16", features = ["preserve_order", "impl_json_schema"] }
 serde = { version = "1.0.183", features = ["derive"] }
-serde-map-to-array = "1.1.0"
 strum = "0.26.2"
 strum_macros = "0.26.4"
 thiserror = "1.0.45"

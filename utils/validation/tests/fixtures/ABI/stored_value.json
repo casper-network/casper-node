@@ -245,12 +245,12 @@
     ],
     "output": "052c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c64646464646464646464646464646464646464646464646464646464646464640165656565656565656565656565656565656565656565656565656565656565650a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a020b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b020500d6117e030400f90295010100000000000000"
   },
-  "Package": {
+  "SmartContract": {
     "input": [
       {
         "type": "StoredValue",
         "value": {
-          "Package": {
+          "SmartContract": {
             "versions": [
               {
                 "entity_version_key": {

@@ -442,6 +442,7 @@ impl TransactionBuffer {
             timestamp,
         );
         if Timestamp::now() >= request_expiry {
+            debug!("TransactionBuffer: request expiry reached, returning empty proposal");
             return ret;
         }
 
@@ -463,6 +464,7 @@ impl TransactionBuffer {
 
         while let Some(payload_hash) = payload_hashes_queue.pop_front() {
             if Timestamp::now() > request_expiry {
+                debug!("TransactionBuffer: request expiry reached, returning proposal");
                 break;
             }
             #[cfg(test)]

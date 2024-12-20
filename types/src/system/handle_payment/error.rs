@@ -3,7 +3,6 @@ use alloc::vec::Vec;
 use core::{
     convert::TryFrom,
     fmt::{self, Display, Formatter},
-    result,
 };
 
 use crate::{
@@ -263,6 +262,12 @@ pub enum Error {
     /// assert_eq!(39, Error::UnexpectedKeyVariant as u8);
     /// ```
     UnexpectedKeyVariant = 39,
+    /// Attempt to persist payment purse.
+    /// ```
+    /// # use casper_types::system::handle_payment::Error;
+    /// assert_eq!(40, Error::AttemptToPersistPaymentPurse as u8);
+    /// ```
+    AttemptToPersistPaymentPurse = 40,
 }
 
 impl Display for Error {
@@ -338,6 +343,9 @@ impl Display for Error {
                 formatter.write_str("Incompatible payment settings")
             }
             Error::UnexpectedKeyVariant => formatter.write_str("Unexpected key variant"),
+            Error::AttemptToPersistPaymentPurse => {
+                formatter.write_str("Attempt to persist payment purse")
+            }
         }
     }
 }
@@ -414,6 +422,9 @@ impl TryFrom<u8> for Error {
                 Error::IncompatiblePaymentSettings
             }
             v if v == Error::UnexpectedKeyVariant as u8 => Error::UnexpectedKeyVariant,
+            v if v == Error::AttemptToPersistPaymentPurse as u8 => {
+                Error::AttemptToPersistPaymentPurse
+            }
             _ => return Err(()),
         };
         Ok(error)
@@ -427,7 +438,7 @@ impl CLTyped for Error {
 }
 
 impl ToBytes for Error {
-    fn to_bytes(&self) -> result::Result<Vec<u8>, bytesrepr::Error> {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let value = *self as u8;
         value.to_bytes()
     }

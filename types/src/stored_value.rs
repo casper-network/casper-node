@@ -439,7 +439,7 @@ impl StoredValue {
             StoredValue::AddressableEntity(_) => "AddressableEntity".to_string(),
             StoredValue::BidKind(_) => "BidKind".to_string(),
             StoredValue::ByteCode(_) => "ByteCode".to_string(),
-            StoredValue::SmartContract(_) => "Package".to_string(),
+            StoredValue::SmartContract(_) => "SmartContract".to_string(),
             StoredValue::MessageTopic(_) => "MessageTopic".to_string(),
             StoredValue::Message(_) => "Message".to_string(),
             StoredValue::NamedKey(_) => "NamedKey".to_string(),
@@ -904,7 +904,7 @@ mod serde_helpers {
         Unbonding(&'a Vec<UnbondingPurse>),
         AddressableEntity(&'a AddressableEntity),
         BidKind(&'a BidKind),
-        Package(&'a Package),
+        SmartContract(&'a Package),
         ByteCode(&'a ByteCode),
         MessageTopic(&'a MessageTopicSummary),
         Message(&'a MessageChecksum),
@@ -930,7 +930,7 @@ mod serde_helpers {
         Unbonding(Vec<UnbondingPurse>),
         AddressableEntity(AddressableEntity),
         BidKind(BidKind),
-        Package(Package),
+        SmartContract(Package),
         ByteCode(ByteCode),
         MessageTopic(MessageTopicSummary),
         Message(MessageChecksum),
@@ -960,7 +960,9 @@ mod serde_helpers {
                     HumanReadableSerHelper::AddressableEntity(payload)
                 }
                 StoredValue::BidKind(payload) => HumanReadableSerHelper::BidKind(payload),
-                StoredValue::SmartContract(payload) => HumanReadableSerHelper::Package(payload),
+                StoredValue::SmartContract(payload) => {
+                    HumanReadableSerHelper::SmartContract(payload)
+                }
                 StoredValue::ByteCode(payload) => HumanReadableSerHelper::ByteCode(payload),
                 StoredValue::MessageTopic(message_topic_summary) => {
                     HumanReadableSerHelper::MessageTopic(message_topic_summary)
@@ -1001,7 +1003,9 @@ mod serde_helpers {
                 }
                 HumanReadableDeserHelper::BidKind(payload) => StoredValue::BidKind(payload),
                 HumanReadableDeserHelper::ByteCode(payload) => StoredValue::ByteCode(payload),
-                HumanReadableDeserHelper::Package(payload) => StoredValue::SmartContract(payload),
+                HumanReadableDeserHelper::SmartContract(payload) => {
+                    StoredValue::SmartContract(payload)
+                }
                 HumanReadableDeserHelper::MessageTopic(message_topic_summary) => {
                     StoredValue::MessageTopic(message_topic_summary)
                 }

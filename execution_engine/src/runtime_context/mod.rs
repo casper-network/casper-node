@@ -90,6 +90,7 @@ pub struct RuntimeContext<'a, R> {
     account_hash: AccountHash,
     emit_message_cost: U512,
     allow_install_upgrade: AllowInstallUpgrade,
+    payment_purse: Option<URef>,
 }
 
 impl<'a, R> RuntimeContext<'a, R>
@@ -149,6 +150,7 @@ where
             remaining_spending_limit,
             emit_message_cost,
             allow_install_upgrade,
+            payment_purse: None,
         }
     }
 
@@ -180,6 +182,7 @@ where
         let remaining_spending_limit = self.remaining_spending_limit();
 
         let transfers = self.transfers.clone();
+        let payment_purse = self.payment_purse;
 
         RuntimeContext {
             tracking_copy,
@@ -203,6 +206,7 @@ where
             remaining_spending_limit,
             emit_message_cost: self.emit_message_cost,
             allow_install_upgrade: self.allow_install_upgrade,
+            payment_purse,
         }
     }
 
@@ -229,6 +233,16 @@ where
     /// Checks if named keys contains a key referenced by name.
     pub fn named_keys_contains_key(&self, name: &str) -> bool {
         self.named_keys.contains(name)
+    }
+
+    /// Returns the payment purse, if set.
+    pub fn maybe_payment_purse(&self) -> Option<URef> {
+        self.payment_purse
+    }
+
+    /// Sets the payment purse to the imputed uref.
+    pub fn set_payment_purse(&mut self, uref: URef) {
+        self.payment_purse = Some(uref);
     }
 
     /// Returns an instance of the engine config.

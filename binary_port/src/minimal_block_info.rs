@@ -6,13 +6,12 @@ use serde::{Deserialize, Serialize};
 
 #[cfg(test)]
 use rand::Rng;
-use schemars::JsonSchema;
 
 #[cfg(test)]
 use casper_types::testing::TestRng;
 
 /// Minimal info about a `Block` needed to satisfy the node status request.
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MinimalBlockInfo {
     hash: BlockHash,

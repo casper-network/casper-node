@@ -24,8 +24,6 @@ pub struct ProtocolUpgradeConfig {
     global_state_update: BTreeMap<Key, StoredValue>,
     chainspec_registry: ChainspecRegistry,
     fee_handling: FeeHandling,
-    migrate_legacy_accounts: bool,
-    migrate_legacy_contracts: bool,
     maximum_delegation_amount: u64,
     minimum_delegation_amount: u64,
     enable_addressable_entity: bool,
@@ -49,8 +47,6 @@ impl ProtocolUpgradeConfig {
         global_state_update: BTreeMap<Key, StoredValue>,
         chainspec_registry: ChainspecRegistry,
         fee_handling: FeeHandling,
-        migrate_legacy_accounts: bool,
-        migrate_legacy_contracts: bool,
         maximum_delegation_amount: u64,
         minimum_delegation_amount: u64,
         enable_addressable_entity: bool,
@@ -70,8 +66,6 @@ impl ProtocolUpgradeConfig {
             global_state_update,
             chainspec_registry,
             fee_handling,
-            migrate_legacy_accounts,
-            migrate_legacy_contracts,
             maximum_delegation_amount,
             minimum_delegation_amount,
             enable_addressable_entity,
@@ -151,16 +145,6 @@ impl ProtocolUpgradeConfig {
     /// Fee handling setting.
     pub fn fee_handling(&self) -> FeeHandling {
         self.fee_handling
-    }
-
-    /// Migrate legacy accounts.
-    pub fn migrate_legacy_accounts(&self) -> bool {
-        self.migrate_legacy_accounts
-    }
-
-    /// Migrate legacy contracts.
-    pub fn migrate_legacy_contracts(&self) -> bool {
-        self.migrate_legacy_contracts
     }
 
     /// Maximum delegation amount for validator.

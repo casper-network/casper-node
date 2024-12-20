@@ -23,8 +23,6 @@ pub struct UpgradeRequestBuilder {
     global_state_update: BTreeMap<Key, StoredValue>,
     chainspec_registry: ChainspecRegistry,
     fee_handling: FeeHandling,
-    migrate_legacy_accounts: bool,
-    migrate_legacy_contracts: bool,
     maximum_delegation_amount: u64,
     minimum_delegation_amount: u64,
     enable_addressable_entity: bool,
@@ -126,18 +124,6 @@ impl UpgradeRequestBuilder {
         self
     }
 
-    /// Sets the migrate legacy accounts.
-    pub fn with_migrate_legacy_accounts(mut self, migrate_legacy_accounts: bool) -> Self {
-        self.migrate_legacy_accounts = migrate_legacy_accounts;
-        self
-    }
-
-    /// Sets the migrate legacy contracts.
-    pub fn with_migrate_legacy_contracts(mut self, migrate_legacy_contracts: bool) -> Self {
-        self.migrate_legacy_contracts = migrate_legacy_contracts;
-        self
-    }
-
     /// Sets the maximum delegation for the validators bid during migration.
     pub fn with_maximum_delegation_amount(mut self, maximum_delegation_amount: u64) -> Self {
         self.maximum_delegation_amount = maximum_delegation_amount;
@@ -173,8 +159,6 @@ impl UpgradeRequestBuilder {
             self.global_state_update,
             self.chainspec_registry,
             self.fee_handling,
-            self.migrate_legacy_accounts,
-            self.migrate_legacy_contracts,
             self.maximum_delegation_amount,
             self.minimum_delegation_amount,
             self.enable_addressable_entity,
@@ -199,8 +183,6 @@ impl Default for UpgradeRequestBuilder {
             global_state_update: Default::default(),
             chainspec_registry: ChainspecRegistry::new_with_optional_global_state(&[], None),
             fee_handling: FeeHandling::default(),
-            migrate_legacy_accounts: false,
-            migrate_legacy_contracts: false,
             maximum_delegation_amount: u64::MAX,
             minimum_delegation_amount: 0,
             enable_addressable_entity: false,

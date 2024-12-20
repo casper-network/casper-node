@@ -1,7 +1,6 @@
 use once_cell::sync::Lazy;
 #[cfg(any(feature = "testing", test))]
 use rand::Rng;
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 #[cfg(any(feature = "testing", test))]
@@ -28,7 +27,7 @@ static SPECULATIVE_EXECUTION_RESULT: Lazy<SpeculativeExecutionResult> = Lazy::ne
     )
 });
 
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct SpeculativeExecutionResult {
     /// Block hash against which the execution was performed.
     block_hash: BlockHash,

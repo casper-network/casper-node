@@ -3,16 +3,18 @@ use casper_engine_test_support::{
     DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION, LOCAL_GENESIS_REQUEST,
     MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
-use casper_execution_engine::engine_state::BlockInfo;
+use casper_execution_engine::{engine_state::BlockInfo, execution::ExecError};
 use casper_storage::data_access_layer::BalanceIdentifier;
 use casper_types::{
-    account::AccountHash, runtime_args, BlockHash, Digest, Gas, RuntimeArgs, Timestamp, U512,
+    account::AccountHash, runtime_args, ApiError, BlockHash, Digest, Gas, RuntimeArgs, Timestamp,
+    U512,
 };
 
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([42u8; 32]);
 const DO_NOTHING_WASM: &str = "do_nothing.wasm";
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
 const TRANSFER_MAIN_PURSE_TO_NEW_PURSE_WASM: &str = "transfer_main_purse_to_new_purse.wasm";
+const PAYMENT_PURSE_PERSIST_WASM: &str = "payment_purse_persist.wasm";
 const NAMED_PURSE_PAYMENT_WASM: &str = "named_purse_payment.wasm";
 const ARG_TARGET: &str = "target";
 const ARG_AMOUNT: &str = "amount";
@@ -20,7 +22,6 @@ const ARG_PURSE_NAME: &str = "purse_name";
 const ARG_DESTINATION: &str = "destination";
 
 #[ignore]
-#[allow(unused)]
 #[test]
 fn should_charge_non_main_purse() {
     // as account_1, create & fund a new purse and use that to pay for something
@@ -125,4 +126,120 @@ fn should_charge_non_main_purse() {
         U512::zero(),
         "since we zero'd out the paying purse, the final balance should be zero"
     );
+}
+
+const ARG_METHOD: &str = "method";
+
+#[ignore]
+#[test]
+fn should_not_allow_custom_payment_purse_persistence_1() {
+    let mut builder = LmdbWasmTestBuilder::default();
+
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
+
+    let account_hash = *DEFAULT_ACCOUNT_ADDR;
+
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(account_hash)
+        .with_session_code(DO_NOTHING_WASM, RuntimeArgs::default())
+        .with_payment_code(
+            PAYMENT_PURSE_PERSIST_WASM,
+            runtime_args! {ARG_AMOUNT => *DEFAULT_PAYMENT, ARG_METHOD => "put_key"},
+        )
+        .with_deploy_hash([1; 32])
+        .with_authorization_keys(&[account_hash])
+        .build();
+    let block_info = BlockInfo::new(
+        Digest::default(),
+        Timestamp::now().millis().into(),
+        BlockHash::default(),
+        1,
+    );
+    let limit = Gas::from(12_500_000_000_u64);
+
+    let request = deploy_item
+        .new_custom_payment_from_deploy_item(block_info, limit)
+        .expect("should be valid req");
+
+    builder.exec_wasm_v1(request).expect_failure();
+
+    builder.assert_error(casper_execution_engine::engine_state::Error::Exec(
+        ExecError::Revert(ApiError::HandlePayment(40)),
+    ));
+}
+
+#[ignore]
+#[test]
+fn should_not_allow_custom_payment_purse_persistence_2() {
+    let mut builder = LmdbWasmTestBuilder::default();
+
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
+
+    let account_hash = *DEFAULT_ACCOUNT_ADDR;
+
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(account_hash)
+        .with_session_code(DO_NOTHING_WASM, RuntimeArgs::default())
+        .with_payment_code(
+            PAYMENT_PURSE_PERSIST_WASM,
+            runtime_args! {ARG_AMOUNT => *DEFAULT_PAYMENT, ARG_METHOD => "call_contract"},
+        )
+        .with_deploy_hash([1; 32])
+        .with_authorization_keys(&[account_hash])
+        .build();
+    let block_info = BlockInfo::new(
+        Digest::default(),
+        Timestamp::now().millis().into(),
+        BlockHash::default(),
+        1,
+    );
+    let limit = Gas::from(12_500_000_000_u64);
+
+    let request = deploy_item
+        .new_custom_payment_from_deploy_item(block_info, limit)
+        .expect("should be valid req");
+
+    builder.exec_wasm_v1(request).expect_failure();
+
+    builder.assert_error(casper_execution_engine::engine_state::Error::Exec(
+        ExecError::Revert(ApiError::HandlePayment(40)),
+    ));
+}
+
+#[ignore]
+#[test]
+fn should_not_allow_custom_payment_purse_persistence_3() {
+    let mut builder = LmdbWasmTestBuilder::default();
+
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
+
+    let account_hash = *DEFAULT_ACCOUNT_ADDR;
+
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(account_hash)
+        .with_session_code(DO_NOTHING_WASM, RuntimeArgs::default())
+        .with_payment_code(
+            PAYMENT_PURSE_PERSIST_WASM,
+            runtime_args! {ARG_AMOUNT => *DEFAULT_PAYMENT, ARG_METHOD => "call_versioned_contract"},
+        )
+        .with_deploy_hash([1; 32])
+        .with_authorization_keys(&[account_hash])
+        .build();
+    let block_info = BlockInfo::new(
+        Digest::default(),
+        Timestamp::now().millis().into(),
+        BlockHash::default(),
+        1,
+    );
+    let limit = Gas::from(12_500_000_000_u64);
+
+    let request = deploy_item
+        .new_custom_payment_from_deploy_item(block_info, limit)
+        .expect("should be valid req");
+
+    builder.exec_wasm_v1(request).expect_failure();
+
+    builder.assert_error(casper_execution_engine::engine_state::Error::Exec(
+        ExecError::Revert(ApiError::HandlePayment(40)),
+    ));
 }

@@ -3,7 +3,7 @@ use num_rational::Ratio;
 use std::{cell::RefCell, collections::BTreeSet, rc::Rc};
 
 use thiserror::Error;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 use casper_types::{
     addressable_entity::{
@@ -19,17 +19,18 @@ use casper_types::{
             LOCKED_FUNDS_PERIOD_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
             SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
         },
-        handle_payment::ACCUMULATION_PURSE_KEY,
+        handle_payment::{ACCUMULATION_PURSE_KEY, PAYMENT_PURSE_KEY},
         mint::{
             MINT_GAS_HOLD_HANDLING_KEY, MINT_GAS_HOLD_INTERVAL_KEY, ROUND_SEIGNIORAGE_RATE_KEY,
+            TOTAL_SUPPLY_KEY,
         },
         SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
     },
     AccessRights, AddressableEntity, AddressableEntityHash, ByteCode, ByteCodeAddr, ByteCodeHash,
     ByteCodeKind, CLValue, CLValueError, Contract, Digest, EntityAddr, EntityVersions,
     EntryPointAddr, EntryPointValue, EntryPoints, FeeHandling, Groups, HashAddr, Key, KeyTag,
-    Package, PackageHash, PackageStatus, Phase, ProtocolUpgradeConfig, ProtocolVersion, PublicKey,
-    StoredValue, SystemHashRegistry, URef, U512,
+    Motes, Package, PackageHash, PackageStatus, Phase, ProtocolUpgradeConfig, ProtocolVersion,
+    PublicKey, StoredValue, SystemHashRegistry, URef, U512,
 };
 
 use crate::{
@@ -191,6 +192,10 @@ where
             self.refresh_system_contracts(&system_entity_addresses)?;
         }
 
+        self.handle_payment_purse_check(
+            system_entity_addresses.handle_payment(),
+            system_entity_addresses.mint(),
+        )?;
         self.handle_new_gas_hold_config(system_entity_addresses.mint())?;
         self.handle_new_validator_slots(system_entity_addresses.auction())?;
         self.handle_new_auction_delay(system_entity_addresses.auction())?;
@@ -892,6 +897,74 @@ where
         }
     }
 
+    /// Check payment purse balance.
+    pub fn handle_payment_purse_check(
+        &mut self,
+        handle_payment: HashAddr,
+        mint: HashAddr,
+    ) -> Result<(), ProtocolUpgradeError> {
+        let payment_named_keys = self.get_named_keys(handle_payment)?;
+        let payment_purse_key = payment_named_keys
+            .get(PAYMENT_PURSE_KEY)
+            .expect("payment purse key must exist in handle payment contract's named keys");
+        let balance = self
+            .tracking_copy
+            .get_total_balance(*payment_purse_key)
+            .expect("must be able to get payment purse balance");
+        if balance <= Motes::zero() {
+            return Ok(());
+        }
+        warn!("payment purse had remaining balance at upgrade {}", balance);
+        let balance_key = {
+            let uref_addr = payment_purse_key
+                .as_uref()
+                .expect("payment purse key must be uref.")
+                .addr();
+            Key::Balance(uref_addr)
+        };
+
+        let mint_named_keys = self.get_named_keys(mint)?;
+        let total_supply_key = mint_named_keys
+            .get(TOTAL_SUPPLY_KEY)
+            .expect("total supply key must exist in mint contract's named keys");
+
+        let stored_value = self
+            .tracking_copy
+            .read(total_supply_key)
+            .expect("must be able to read total supply")
+            .expect("total supply must have a value");
+
+        // by convention, we only store CLValues under Key::URef
+        if let StoredValue::CLValue(value) = stored_value {
+            // Only CLTyped instances should be stored as a CLValue.
+            let total_supply: U512 =
+                CLValue::into_t(value).expect("total supply must have expected type.");
+
+            let new_total_supply = total_supply.saturating_sub(balance.value());
+            info!(
+                "adjusting total supply from {} to {}",
+                total_supply, new_total_supply
+            );
+            let cl_value = CLValue::from_t(new_total_supply)
+                .expect("new total supply must convert to CLValue.");
+            self.tracking_copy
+                .write(*total_supply_key, StoredValue::CLValue(cl_value));
+            info!(
+                "adjusting payment purse balance from {} to {}",
+                balance.value(),
+                U512::zero()
+            );
+            let cl_value = CLValue::from_t(U512::zero()).expect("zero must convert to CLValue.");
+            self.tracking_copy
+                .write(balance_key, StoredValue::CLValue(cl_value));
+            Ok(())
+        } else {
+            Err(ProtocolUpgradeError::CLValue(
+                "failure to retrieve total supply".to_string(),
+            ))
+        }
+    }
+
     /// Upsert gas hold interval to mint named keys.
     pub fn handle_new_gas_hold_config(
         &mut self,
@@ -1075,61 +1148,6 @@ where
             )?);
             self.tracking_copy.write(*locked_funds_period_key, value);
         }
-        Ok(())
-    }
-
-    /// Handle legacy account migration.
-    pub fn handle_legacy_accounts_migration(&mut self) -> Result<(), ProtocolUpgradeError> {
-        if !self.config.migrate_legacy_accounts() {
-            return Ok(());
-        }
-        info!("handling one time accounts migration");
-        let tc = &mut self.tracking_copy;
-        let existing_keys = match tc.get_keys(&KeyTag::Account) {
-            Ok(keys) => keys,
-            Err(err) => return Err(ProtocolUpgradeError::TrackingCopy(err)),
-        };
-        let protocol_version = self.config.new_protocol_version();
-        for existing_key in existing_keys {
-            match existing_key.into_account() {
-                None => {
-                    // should we skip this and keep going or error?
-                    // for now, skipping.
-                    continue;
-                }
-                Some(account_hash) => {
-                    if let Err(tce) = tc.migrate_account(account_hash, protocol_version) {
-                        return Err(ProtocolUpgradeError::TrackingCopy(tce));
-                    }
-                }
-            }
-        }
-        info!("ending one time accounts migration");
-        Ok(())
-    }
-
-    /// Handle legacy contract migration.
-    pub fn handle_legacy_contracts_migration(&mut self) -> Result<(), ProtocolUpgradeError> {
-        if !self.config.migrate_legacy_contracts() {
-            return Ok(());
-        }
-        info!("handling one time contracts migration");
-        let tc = &mut self.tracking_copy;
-        let existing_keys = match tc.get_keys(&KeyTag::Hash) {
-            Ok(keys) => keys,
-            Err(err) => return Err(ProtocolUpgradeError::TrackingCopy(err)),
-        };
-        let protocol_version = self.config.new_protocol_version();
-        for existing_key in existing_keys {
-            if let Some(StoredValue::ContractPackage(_)) = tc.read(&existing_key)? {
-                if let Err(tce) = tc.migrate_package(existing_key, protocol_version) {
-                    return Err(ProtocolUpgradeError::TrackingCopy(tce));
-                }
-            } else {
-                continue;
-            }
-        }
-        info!("ending one time contracts migration");
         Ok(())
     }
 

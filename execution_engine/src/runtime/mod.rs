@@ -19,7 +19,7 @@ use std::{
 
 use casper_wasm::elements::Module;
 use casper_wasmi::{MemoryRef, Trap, TrapCode};
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
 
 #[cfg(feature = "test-support")]
 use casper_wasmi::RuntimeValue;
@@ -372,6 +372,15 @@ where
     ) -> Result<(), Trap> {
         let name = self.string_from_mem(name_ptr, name_size)?;
         let key = self.key_from_mem(key_ptr, key_size)?;
+
+        if let Some(payment_purse) = self.context.maybe_payment_purse() {
+            if Key::URef(payment_purse).normalize() == key.normalize() {
+                warn!("attempt to put_key payment purse");
+                return Err(Into::into(ExecError::Revert(ApiError::HandlePayment(
+                    handle_payment::Error::AttemptToPersistPaymentPurse as u8,
+                ))));
+            }
+        }
         self.context.put_key(name, key).map_err(Into::into)
     }
 
@@ -923,13 +932,17 @@ where
         let handle_payment_costs = system_config.handle_payment_costs();
 
         let result = match entry_point_name {
-            handle_payment::METHOD_GET_PAYMENT_PURSE => (|| {
+            handle_payment::METHOD_GET_PAYMENT_PURSE => {
                 runtime.charge_system_contract_call(handle_payment_costs.get_payment_purse)?;
-
-                let rights_controlled_purse =
-                    runtime.get_payment_purse().map_err(Self::reverter)?;
-                CLValue::from_t(rights_controlled_purse).map_err(Self::reverter)
-            })(),
+                match self.context.maybe_payment_purse() {
+                    Some(payment_purse) => CLValue::from_t(payment_purse).map_err(Self::reverter),
+                    None => {
+                        let payment_purse = runtime.get_payment_purse().map_err(Self::reverter)?;
+                        self.context.set_payment_purse(payment_purse);
+                        CLValue::from_t(payment_purse).map_err(Self::reverter)
+                    }
+                }
+            }
             handle_payment::METHOD_SET_REFUND_PURSE => (|| {
                 runtime.charge_system_contract_call(handle_payment_costs.set_refund_purse)?;
 
@@ -2040,6 +2053,22 @@ where
             return Ok(Err(err));
         }
         let args: RuntimeArgs = bytesrepr::deserialize_from_slice(args_bytes)?;
+
+        if let Some(payment_purse) = self.context.maybe_payment_purse() {
+            for named_arg in args.named_args() {
+                if utils::extract_urefs(named_arg.cl_value())?
+                    .into_iter()
+                    .any(|uref| uref.remove_access_rights() == payment_purse.remove_access_rights())
+                {
+                    warn!("attempt to call_contract with payment purse");
+
+                    return Err(Into::into(ExecError::Revert(ApiError::HandlePayment(
+                        handle_payment::Error::AttemptToPersistPaymentPurse as u8,
+                    ))));
+                }
+            }
+        }
+
         let result = self.call_contract(contract_hash, entry_point_name, args)?;
         self.manage_call_contract_host_buffer(result_size_ptr, result)
     }
@@ -2057,6 +2086,22 @@ where
             return Ok(Err(err));
         }
         let args: RuntimeArgs = bytesrepr::deserialize_from_slice(args_bytes)?;
+
+        if let Some(payment_purse) = self.context.maybe_payment_purse() {
+            for named_arg in args.named_args() {
+                if utils::extract_urefs(named_arg.cl_value())?
+                    .into_iter()
+                    .any(|uref| uref.remove_access_rights() == payment_purse.remove_access_rights())
+                {
+                    warn!("attempt to call_versioned_contract with payment purse");
+
+                    return Err(Into::into(ExecError::Revert(ApiError::HandlePayment(
+                        handle_payment::Error::AttemptToPersistPaymentPurse as u8,
+                    ))));
+                }
+            }
+        }
+
         let result = self.call_versioned_contract(
             contract_package_hash,
             contract_version,
