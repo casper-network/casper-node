@@ -1,11 +1,11 @@
 use casper_engine_test_support::{
     LmdbWasmTestBuilder, TransferRequestBuilder, DEFAULT_ACCOUNT_ADDR, LOCAL_GENESIS_REQUEST,
 };
-use casper_execution_engine::engine_state::{Error, WASMLESS_TRANSFER_FIXED_GAS_PRICE};
+use casper_execution_engine::engine_state::Error;
 use casper_storage::{data_access_layer::TransferRequest, system::transfer::TransferError};
 use casper_types::{
-    account::AccountHash, system::handle_payment, FeeHandling, Gas, MintCosts, Motes, RuntimeArgs,
-    SystemConfig, U512,
+    account::AccountHash, system::handle_payment, Gas, MintCosts, Motes, RuntimeArgs, SystemConfig,
+    U512,
 };
 
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);
@@ -21,38 +21,15 @@ fn should_enforce_limit_for_user_error(
     request: TransferRequest,
 ) -> Error {
     let transfer_cost = Gas::from(SystemConfig::default().mint_costs().transfer);
-    let transfer_cost_motes =
-        Motes::from_gas(transfer_cost, WASMLESS_TRANSFER_FIXED_GAS_PRICE).expect("gas overflow");
-
-    let default_account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
-        .expect("should have default account");
-    let main_purse = default_account.main_purse();
-    let purse_balance_before = builder.get_purse_balance(main_purse);
-    let proposer_purse_balance_before = builder.get_proposer_purse_balance();
 
     builder.transfer_and_commit(request);
-
-    let purse_balance_after = builder.get_purse_balance(main_purse);
-    let proposer_purse_balance_after = builder.get_proposer_purse_balance();
 
     let response = builder
         .get_exec_result_owned(0)
         .expect("should have result");
 
     assert_eq!(response.limit(), transfer_cost);
-    let fee_handling = builder.chainspec().core_config.fee_handling;
-    if fee_handling == FeeHandling::PayToProposer {
-        assert_eq!(
-            purse_balance_before - transfer_cost_motes.value(),
-            purse_balance_after
-        );
-        assert_eq!(
-            proposer_purse_balance_before + transfer_cost_motes.value(),
-            proposer_purse_balance_after
-        );
-    }
-    // Verify handle payment postconditions
+    assert_eq!(response.consumed(), transfer_cost);
 
     let handle_payment = builder.get_handle_payment_contract();
     let payment_purse = handle_payment

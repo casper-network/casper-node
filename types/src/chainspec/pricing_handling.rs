@@ -18,12 +18,12 @@ const PRICING_HANDLING_FIXED_TAG: u8 = 1;
 #[serde(tag = "type", rename_all = "snake_case")]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 pub enum PricingHandling {
+    #[default]
     /// The transaction sender self-specifies how much token they pay, which becomes their gas
     /// limit.
     Classic,
     /// The costs are fixed, per the cost tables.
     // in 2.0 the default pricing handling is Fixed
-    #[default]
     Fixed,
 }
 

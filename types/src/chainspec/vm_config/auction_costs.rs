@@ -11,39 +11,39 @@ use serde::{Deserialize, Serialize};
 use crate::bytesrepr::{self, FromBytes, ToBytes};
 
 /// Default cost of the `get_era_validators` auction entry point.
-pub const DEFAULT_GET_ERA_VALIDATORS_COST: u32 = 10_000;
+pub const DEFAULT_GET_ERA_VALIDATORS_COST: u64 = 2_500_000_000;
 /// Default cost of the `read_seigniorage_recipients` auction entry point.
-pub const DEFAULT_READ_SEIGNIORAGE_RECIPIENTS_COST: u32 = 10_000;
+pub const DEFAULT_READ_SEIGNIORAGE_RECIPIENTS_COST: u64 = 5_000_000_000;
 /// Default cost of the `add_bid` auction entry point.
 pub const DEFAULT_ADD_BID_COST: u64 = 2_500_000_000;
 /// Default cost of the `withdraw_bid` auction entry point.
-pub const DEFAULT_WITHDRAW_BID_COST: u32 = 2_500_000_000;
+pub const DEFAULT_WITHDRAW_BID_COST: u64 = 2_500_000_000;
 /// Default cost of the `delegate` auction entry point.
-pub const DEFAULT_DELEGATE_COST: u32 = DEFAULT_WITHDRAW_BID_COST;
+pub const DEFAULT_DELEGATE_COST: u64 = DEFAULT_WITHDRAW_BID_COST;
 /// Default cost of the `redelegate` auction entry point.
-pub const DEFAULT_REDELEGATE_COST: u32 = DEFAULT_WITHDRAW_BID_COST;
+pub const DEFAULT_REDELEGATE_COST: u64 = DEFAULT_WITHDRAW_BID_COST;
 /// Default cost of the `undelegate` auction entry point.
-pub const DEFAULT_UNDELEGATE_COST: u32 = DEFAULT_WITHDRAW_BID_COST;
+pub const DEFAULT_UNDELEGATE_COST: u64 = DEFAULT_WITHDRAW_BID_COST;
 /// Default cost of the `run_auction` auction entry point.
-pub const DEFAULT_RUN_AUCTION_COST: u32 = 10_000;
+pub const DEFAULT_RUN_AUCTION_COST: u64 = 2_500_000_000;
 /// Default cost of the `slash` auction entry point.
-pub const DEFAULT_SLASH_COST: u32 = 10_000;
+pub const DEFAULT_SLASH_COST: u64 = 2_500_000_000;
 /// Default cost of the `distribute` auction entry point.
-pub const DEFAULT_DISTRIBUTE_COST: u32 = 10_000;
+pub const DEFAULT_DISTRIBUTE_COST: u64 = 2_500_000_000;
 /// Default cost of the `withdraw_delegator_reward` auction entry point.
-pub const DEFAULT_WITHDRAW_DELEGATOR_REWARD_COST: u32 = 10_000;
+pub const DEFAULT_WITHDRAW_DELEGATOR_REWARD_COST: u64 = 5_000_000_000;
 /// Default cost of the `withdraw_validator_reward` auction entry point.
-pub const DEFAULT_WITHDRAW_VALIDATOR_REWARD_COST: u32 = 10_000;
+pub const DEFAULT_WITHDRAW_VALIDATOR_REWARD_COST: u64 = 5_000_000_000;
 /// Default cost of the `read_era_id` auction entry point.
-pub const DEFAULT_READ_ERA_ID_COST: u32 = 10_000;
+pub const DEFAULT_READ_ERA_ID_COST: u64 = 10_000;
 /// Default cost of the `activate_bid` auction entry point.
-pub const DEFAULT_ACTIVATE_BID_COST: u32 = 10_000;
+pub const DEFAULT_ACTIVATE_BID_COST: u64 = 10_000;
 /// Default cost of the `change_bid_public_key` auction entry point.
 pub const DEFAULT_CHANGE_BID_PUBLIC_KEY_COST: u64 = 5_000_000_000;
 /// Default cost of the `add_reservations` auction entry point.
-pub const DEFAULT_ADD_RESERVATIONS_COST: u32 = DEFAULT_WITHDRAW_BID_COST;
+pub const DEFAULT_ADD_RESERVATIONS_COST: u64 = DEFAULT_WITHDRAW_BID_COST;
 /// Default cost of the `cancel_reservations` auction entry point.
-pub const DEFAULT_CANCEL_RESERVATIONS_COST: u32 = DEFAULT_WITHDRAW_BID_COST;
+pub const DEFAULT_CANCEL_RESERVATIONS_COST: u64 = DEFAULT_WITHDRAW_BID_COST;
 
 /// Description of the costs of calling auction entrypoints.
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug)]
@@ -51,39 +51,39 @@ pub const DEFAULT_CANCEL_RESERVATIONS_COST: u32 = DEFAULT_WITHDRAW_BID_COST;
 #[serde(deny_unknown_fields)]
 pub struct AuctionCosts {
     /// Cost of calling the `get_era_validators` entry point.
-    pub get_era_validators: u32,
+    pub get_era_validators: u64,
     /// Cost of calling the `read_seigniorage_recipients` entry point.
-    pub read_seigniorage_recipients: u32,
+    pub read_seigniorage_recipients: u64,
     /// Cost of calling the `add_bid` entry point.
     pub add_bid: u64,
     /// Cost of calling the `withdraw_bid` entry point.
-    pub withdraw_bid: u32,
+    pub withdraw_bid: u64,
     /// Cost of calling the `delegate` entry point.
-    pub delegate: u32,
+    pub delegate: u64,
     /// Cost of calling the `undelegate` entry point.
-    pub undelegate: u32,
+    pub undelegate: u64,
     /// Cost of calling the `run_auction` entry point.
-    pub run_auction: u32,
+    pub run_auction: u64,
     /// Cost of calling the `slash` entry point.
-    pub slash: u32,
+    pub slash: u64,
     /// Cost of calling the `distribute` entry point.
-    pub distribute: u32,
+    pub distribute: u64,
     /// Cost of calling the `withdraw_delegator_reward` entry point.
-    pub withdraw_delegator_reward: u32,
+    pub withdraw_delegator_reward: u64,
     /// Cost of calling the `withdraw_validator_reward` entry point.
-    pub withdraw_validator_reward: u32,
+    pub withdraw_validator_reward: u64,
     /// Cost of calling the `read_era_id` entry point.
-    pub read_era_id: u32,
+    pub read_era_id: u64,
     /// Cost of calling the `activate_bid` entry point.
-    pub activate_bid: u32,
+    pub activate_bid: u64,
     /// Cost of calling the `redelegate` entry point.
-    pub redelegate: u32,
+    pub redelegate: u64,
     /// Cost of calling the `change_bid_public_key` entry point.
     pub change_bid_public_key: u64,
     /// Cost of calling the `add_reservations` entry point.
-    pub add_reservations: u32,
+    pub add_reservations: u64,
     /// Cost of calling the `cancel_reservations` entry point.
-    pub cancel_reservations: u32,
+    pub cancel_reservations: u64,
 }
 
 impl Default for AuctionCosts {
@@ -243,29 +243,24 @@ impl FromBytes for AuctionCosts {
 #[cfg(any(feature = "testing", test))]
 impl Distribution<AuctionCosts> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> AuctionCosts {
-        // there's a bug in toml...under the hood it uses an i64 when it should use a u64
-        // this causes flaky test failures if the random result exceeds i64::MAX
-        let change_bid_public_key = rng.gen::<u32>() as u64;
-        let add_bid = rng.gen::<u32>() as u64;
-
         AuctionCosts {
-            get_era_validators: rng.gen(),
-            read_seigniorage_recipients: rng.gen(),
-            add_bid,
-            withdraw_bid: rng.gen(),
-            delegate: rng.gen(),
-            undelegate: rng.gen(),
-            run_auction: rng.gen(),
-            slash: rng.gen(),
-            distribute: rng.gen(),
-            withdraw_delegator_reward: rng.gen(),
-            withdraw_validator_reward: rng.gen(),
-            read_era_id: rng.gen(),
-            activate_bid: rng.gen(),
-            redelegate: rng.gen(),
-            change_bid_public_key,
-            add_reservations: rng.gen(),
-            cancel_reservations: rng.gen(),
+            get_era_validators: rng.gen_range(0..i64::MAX) as u64,
+            read_seigniorage_recipients: rng.gen_range(0..i64::MAX) as u64,
+            add_bid: rng.gen_range(0..i64::MAX) as u64,
+            withdraw_bid: rng.gen_range(0..i64::MAX) as u64,
+            delegate: rng.gen_range(0..i64::MAX) as u64,
+            undelegate: rng.gen_range(0..i64::MAX) as u64,
+            run_auction: rng.gen_range(0..i64::MAX) as u64,
+            slash: rng.gen_range(0..i64::MAX) as u64,
+            distribute: rng.gen_range(0..i64::MAX) as u64,
+            withdraw_delegator_reward: rng.gen_range(0..i64::MAX) as u64,
+            withdraw_validator_reward: rng.gen_range(0..i64::MAX) as u64,
+            read_era_id: rng.gen_range(0..i64::MAX) as u64,
+            activate_bid: rng.gen_range(0..i64::MAX) as u64,
+            redelegate: rng.gen_range(0..i64::MAX) as u64,
+            change_bid_public_key: rng.gen_range(0..i64::MAX) as u64,
+            add_reservations: rng.gen_range(0..i64::MAX) as u64,
+            cancel_reservations: rng.gen_range(0..i64::MAX) as u64,
         }
     }
 }
@@ -273,29 +268,29 @@ impl Distribution<AuctionCosts> for Standard {
 #[doc(hidden)]
 #[cfg(any(feature = "gens", test))]
 pub mod gens {
-    use proptest::{num, prop_compose};
+    use proptest::prelude::*;
 
     use super::AuctionCosts;
 
     prop_compose! {
         pub fn auction_costs_arb()(
-            get_era_validators in num::u32::ANY,
-            read_seigniorage_recipients in num::u32::ANY,
-            add_bid in num::u64::ANY,
-            withdraw_bid in num::u32::ANY,
-            delegate in num::u32::ANY,
-            undelegate in num::u32::ANY,
-            run_auction in num::u32::ANY,
-            slash in num::u32::ANY,
-            distribute in num::u32::ANY,
-            withdraw_delegator_reward in num::u32::ANY,
-            withdraw_validator_reward in num::u32::ANY,
-            read_era_id in num::u32::ANY,
-            activate_bid in num::u32::ANY,
-            redelegate in num::u32::ANY,
-            change_bid_public_key in num::u64::ANY,
-            add_reservations in num::u32::ANY,
-            cancel_reservations in num::u32::ANY,
+            get_era_validators in 0..=(i64::MAX as u64),
+            read_seigniorage_recipients in 0..=(i64::MAX as u64),
+            add_bid in 0..=(i64::MAX as u64),
+            withdraw_bid in 0..=(i64::MAX as u64),
+            delegate in 0..=(i64::MAX as u64),
+            undelegate in 0..=(i64::MAX as u64),
+            run_auction in 0..=(i64::MAX as u64),
+            slash in 0..=(i64::MAX as u64),
+            distribute in 0..=(i64::MAX as u64),
+            withdraw_delegator_reward in 0..=(i64::MAX as u64),
+            withdraw_validator_reward in 0..=(i64::MAX as u64),
+            read_era_id in 0..=(i64::MAX as u64),
+            activate_bid in 0..=(i64::MAX as u64),
+            redelegate in 0..=(i64::MAX as u64),
+            change_bid_public_key in 0..=(i64::MAX as u64),
+            add_reservations in 0..=(i64::MAX as u64),
+            cancel_reservations in 0..=(i64::MAX as u64),
         ) -> AuctionCosts {
             AuctionCosts {
                 get_era_validators,

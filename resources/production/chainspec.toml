@@ -123,7 +123,7 @@ compute_rewards = true
 # This causes excess payment amounts to be sent to either a
 # pre-defined purse, or back to the sender.  The refunded amount is calculated as the given ratio of the payment amount
 # minus the execution costs.
-refund_handling = { type = 'no_refund' }
+refund_handling = { type = 'refund', refund_ratio = [99, 100] }
 # Defines how fees are handled.
 #
 # Valid options are:
@@ -132,7 +132,7 @@ refund_handling = { type = 'no_refund' }
 #   'accumulate': fees are accumulated in a special purse and distributed at the end of each era evenly among all
 #                 administrator accounts
 #   'burn': fees are burned
-fee_handling = { type = 'no_fee' }
+fee_handling = { type = 'pay_to_proposer' }
 # If a validator would recieve a validator credit, it cannot exceed this percentage of their total stake.
 validator_credit_cap = [1, 5]
 # Defines how pricing is handled.
@@ -211,7 +211,7 @@ vm_casper_v2 = false
 # [2] -> Max args length size in bytes for a given transaction in a certain lane
 # [3] -> Transaction gas limit size in bytes for a given transaction in a certain lane
 # [4] -> The maximum number of transactions the lane can contain
-native_mint_lane = [0, 2048, 1024, 2_500_000_000, 650]
+native_mint_lane = [0, 2048, 1024, 100_000_000, 650]
 native_auction_lane = [1, 3096, 2048, 2_500_000_000, 650]
 install_upgrade_lane = [2, 750_000, 2048, 100_000_000_000, 1]
 wasm_lanes = [
@@ -354,19 +354,21 @@ max_topics_per_contract = 128
 max_message_size = 1_024
 
 [system_costs]
+# Penalty charge for calling invalid entry point in a system contract.
+no_such_entrypoint = 2_500_000_000
 
 [system_costs.auction_costs]
-get_era_validators = 10_000
-read_seigniorage_recipients = 10_000
+get_era_validators = 2_500_000_000
+read_seigniorage_recipients = 5_000_000_000
 add_bid = 2_500_000_000
 withdraw_bid = 2_500_000_000
 delegate = 2_500_000_000
 undelegate = 2_500_000_000
-run_auction = 10_000
-slash = 10_000
-distribute = 10_000
-withdraw_delegator_reward = 10_000
-withdraw_validator_reward = 10_000
+run_auction = 2_500_000_000
+slash = 2_500_000_000
+distribute = 2_500_000_000
+withdraw_delegator_reward = 5_000_000_000
+withdraw_validator_reward = 5_000_000_000
 read_era_id = 10_000
 activate_bid = 10_000
 redelegate = 2_500_000_000
@@ -376,23 +378,22 @@ cancel_reservations = 2_500_000_000
 
 [system_costs.mint_costs]
 mint = 2_500_000_000
-reduce_total_supply = 10_000
+reduce_total_supply = 2_500_000_000
 create = 2_500_000_000
 balance = 10_000
 burn = 10_000
 transfer = 100_000_000
-read_base_round_reward = 10_000
+read_base_round_reward = 2_500_000_000
 mint_into_existing_purse = 2_500_000_000
 
 [system_costs.handle_payment_costs]
 get_payment_purse = 10_000
 set_refund_purse = 10_000
 get_refund_purse = 10_000
-finalize_payment = 10_000
+finalize_payment = 2_500_000_000
 
 [system_costs.standard_payment_costs]
 pay = 10_000
-
 
 [vacancy]
 # The cost of a transaction is based on a multiplier. This allows for economic disincentives for misuse of the network.

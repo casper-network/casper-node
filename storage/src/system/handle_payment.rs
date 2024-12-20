@@ -24,7 +24,6 @@ pub trait HandlePayment: MintProvider + RuntimeProvider + StorageProvider + Size
     /// Get payment purse.
     fn get_payment_purse(&mut self) -> Result<URef, Error> {
         let purse = internal::get_payment_purse(self)?;
-        println!("{purse}");
         // Limit the access rights so only balance query and deposit are allowed.
         Ok(URef::new(purse.addr(), AccessRights::READ_ADD))
     }

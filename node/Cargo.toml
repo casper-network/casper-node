@@ -83,7 +83,7 @@ tokio-serde = { version = "0.8.0", features = ["bincode"] }
 tokio-stream = { version = "0.1.4", features = ["sync"] }
 tokio-util = { version = "0.6.4", features = ["codec"] }
 mio = "0.8.11"
-toml = { version = "0.7.8", features = ["preserve_order"] }
+toml = { version = "0.8.19", features = ["preserve_order"] }
 tower = { version = "0.4.6", features = ["limit"] }
 tracing = "0.1.18"
 tracing-futures = "0.2.5"

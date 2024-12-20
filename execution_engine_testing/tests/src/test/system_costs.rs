@@ -625,10 +625,6 @@ fn should_charge_for_erroneous_system_contract_calls() {
     let mint_hash = builder.get_mint_contract_hash();
     let handle_payment_hash = builder.get_handle_payment_contract_hash();
 
-    let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
-        .expect("should have account");
-
     let system_config = builder.chainspec().system_costs_config;
 
     // Entrypoints that could fail early due to missing arguments
@@ -641,37 +637,37 @@ fn should_charge_for_erroneous_system_contract_calls() {
         (
             auction_hash,
             auction::METHOD_WITHDRAW_BID,
-            system_config.auction_costs().withdraw_bid.into(),
+            system_config.auction_costs().withdraw_bid,
         ),
         (
             auction_hash,
             auction::METHOD_DELEGATE,
-            system_config.auction_costs().delegate.into(),
+            system_config.auction_costs().delegate,
         ),
         (
             auction_hash,
             auction::METHOD_UNDELEGATE,
-            system_config.auction_costs().undelegate.into(),
+            system_config.auction_costs().undelegate,
         ),
         (
             auction_hash,
             auction::METHOD_REDELEGATE,
-            system_config.auction_costs().redelegate.into(),
+            system_config.auction_costs().redelegate,
         ),
         (
             auction_hash,
             auction::METHOD_RUN_AUCTION,
-            system_config.auction_costs().run_auction.into(),
+            system_config.auction_costs().run_auction,
         ),
         (
             auction_hash,
             auction::METHOD_SLASH,
-            system_config.auction_costs().slash.into(),
+            system_config.auction_costs().slash,
         ),
         (
             auction_hash,
             auction::METHOD_DISTRIBUTE,
-            system_config.auction_costs().distribute.into(),
+            system_config.auction_costs().distribute,
         ),
         (
             mint_hash,
@@ -703,6 +699,21 @@ fn should_charge_for_erroneous_system_contract_calls() {
         //     handle_payment::METHOD_FINALIZE_PAYMENT,
         //     system_config.handle_payment_costs().finalize_payment,
         // ),
+        (
+            auction_hash,
+            "this_entrypoint_does_not_exists_1",
+            system_config.no_such_entrypoint(),
+        ),
+        (
+            mint_hash,
+            "this_entrypoint_does_not_exists_2",
+            system_config.no_such_entrypoint(),
+        ),
+        (
+            handle_payment_hash,
+            "this_entrypoint_does_not_exists_3",
+            system_config.no_such_entrypoint(),
+        ),
     ];
 
     for (contract_hash, entrypoint, expected_cost) in entrypoint_calls {
@@ -714,31 +725,22 @@ fn should_charge_for_erroneous_system_contract_calls() {
         )
         .build();
 
-        let balance_before = builder.get_purse_balance(account.main_purse());
-
-        let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
-
         builder.exec(exec_request).commit();
 
         let _error = builder
             .get_last_exec_result()
             .expect("should have results")
             .error()
+            .cloned()
             .unwrap_or_else(|| panic!("should have error while executing {}", entrypoint));
 
-        let transaction_fee =
-            builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
-
-        let balance_after = builder.get_purse_balance(account.main_purse());
+        // assert!(matches!(
+        //     error,
+        //     Error::Exec(ExecError::NoSuchMethod(ref no_such_method)) if no_such_method ==
+        // entrypoint), "{:?}",  error);
 
         let call_cost = U512::from(expected_cost);
-        assert_eq!(
-            balance_after,
-            balance_before - transaction_fee,
-            "Calling a failed entrypoint {} does not incur expected cost of {}",
-            entrypoint,
-            expected_cost,
-        );
+
         assert_eq!(
             builder.last_exec_gas_consumed().value(),
             call_cost,
@@ -856,6 +858,7 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
     let new_handle_payment_costs = HandlePaymentCosts::default();
 
     let system_costs_config = SystemConfig::new(
+        1,
         new_auction_costs,
         new_mint_costs,
         new_handle_payment_costs,

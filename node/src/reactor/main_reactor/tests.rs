@@ -3283,8 +3283,14 @@ async fn run_gas_price_scenario(gas_price_scenario: GasPriceScenario) {
         .highest_complete_block()
         .maybe_current_gas_price()
         .expect("must have gas price");
-    let cost =
-        fixture.chainspec.system_costs_config.mint_costs().transfer * (current_gas_price as u32);
+
+    let cost = match fixture.chainspec.core_config.pricing_handling {
+        PricingHandling::Classic => 0,
+        PricingHandling::Fixed => {
+            fixture.chainspec.system_costs_config.mint_costs().transfer * (current_gas_price as u32)
+        }
+    };
+
     assert_eq!(holds_after, holds_before + U512::from(cost));
 
     // Run the network at zero load and ensure the value falls back to the floor.

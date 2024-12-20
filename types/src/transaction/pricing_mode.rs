@@ -172,25 +172,19 @@ impl PricingMode {
                                 costs.auction_costs().add_bid
                             }
                             TransactionEntryPoint::WithdrawBid => {
-                                costs.auction_costs().withdraw_bid.into()
+                                costs.auction_costs().withdraw_bid
                             }
-                            TransactionEntryPoint::Delegate => {
-                                costs.auction_costs().delegate.into()
-                            }
-                            TransactionEntryPoint::Undelegate => {
-                                costs.auction_costs().undelegate.into()
-                            }
-                            TransactionEntryPoint::Redelegate => {
-                                costs.auction_costs().redelegate.into()
-                            }
+                            TransactionEntryPoint::Delegate => costs.auction_costs().delegate,
+                            TransactionEntryPoint::Undelegate => costs.auction_costs().undelegate,
+                            TransactionEntryPoint::Redelegate => costs.auction_costs().redelegate,
                             TransactionEntryPoint::ChangeBidPublicKey => {
                                 costs.auction_costs().change_bid_public_key
                             }
                             TransactionEntryPoint::AddReservations => {
-                                costs.auction_costs().add_reservations.into()
+                                costs.auction_costs().add_reservations
                             }
                             TransactionEntryPoint::CancelReservations => {
-                                costs.auction_costs().cancel_reservations.into()
+                                costs.auction_costs().cancel_reservations
                             }
                         };
                         amount

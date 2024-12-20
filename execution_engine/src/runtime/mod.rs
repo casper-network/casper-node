@@ -850,8 +850,11 @@ where
                     mint_runtime.mint_into_existing_purse(existing_purse, amount);
                 CLValue::from_t(result).map_err(Self::reverter)
             })(),
-
-            _ => CLValue::from_t(()).map_err(Self::reverter),
+            _ => {
+                // Code should never reach this point as existence of the entrypoint is validated
+                // before reaching this pointt.
+                Ok(CLValue::unit())
+            }
         };
 
         // Charge just for the amount that particular entry point cost - using gas cost from the
@@ -941,7 +944,11 @@ where
                 let maybe_purse = runtime.get_refund_purse().map_err(Self::reverter)?;
                 CLValue::from_t(maybe_purse).map_err(Self::reverter)
             })(),
-            _ => CLValue::from_t(()).map_err(Self::reverter),
+            _ => {
+                // Code should never reach here as existence of the entrypoint is validated before
+                // reaching this point.
+                Ok(CLValue::unit())
+            }
         };
 
         self.gas(
@@ -1277,8 +1284,11 @@ where
 
                 CLValue::from_t(()).map_err(Self::reverter)
             })(),
-
-            _ => CLValue::from_t(()).map_err(Self::reverter),
+            _ => {
+                // Code should never reach here as existence of the entrypoint is validated before
+                // reaching this point.
+                Ok(CLValue::unit())
+            }
         };
 
         // Charge for the gas spent during execution in an isolated runtime.
@@ -1680,11 +1690,24 @@ where
             return Err(ExecError::InvalidContext);
         }
 
-        let entry_point = footprint
-            .entry_points()
-            .get(entry_point_name)
-            .cloned()
-            .ok_or_else(|| ExecError::NoSuchMethod(entry_point_name.to_owned()))?;
+        let entry_point = match footprint.entry_points().get(entry_point_name) {
+            Some(entry_point) => entry_point,
+            None => {
+                match footprint.entity_kind() {
+                    EntityKind::System(_) => {
+                        self.charge_system_contract_call(
+                            self.context()
+                                .engine_config()
+                                .system_config()
+                                .no_such_entrypoint(),
+                        )?;
+                    }
+                    EntityKind::Account(_) => {}
+                    EntityKind::SmartContract(_) => {}
+                }
+                return Err(ExecError::NoSuchMethod(entry_point_name.to_owned()));
+            }
+        };
 
         let entry_point_type = entry_point.entry_point_type();
 
@@ -1744,7 +1767,7 @@ where
         // if session the caller's context
         // else the called contract's context
         let context_entity_key =
-            self.get_context_key_for_contract_call(entity_addr, &entry_point)?;
+            self.get_context_key_for_contract_call(entity_addr, entry_point)?;
 
         let context_entity_hash = context_entity_key
             .into_entity_hash_addr()
