@@ -216,12 +216,6 @@ pub const MINT_LANE_ID: u8 = 0;
 pub const AUCTION_LANE_ID: u8 = 1;
 /// The lane identifier for the install/upgrade auction interaction.
 pub const INSTALL_UPGRADE_LANE_ID: u8 = 2;
-/// The lane identifier for large wasms.
-pub(crate) const LARGE_WASM_LANE_ID: u8 = 3;
-/// The lane identifier for medium wasms.
-pub(crate) const MEDIUM_WASM_LANE_ID: u8 = 4;
-/// The lane identifier for small wasms.
-pub(crate) const SMALL_WASM_LANE_ID: u8 = 5;
 
 /// OS page size.
 #[cfg(feature = "std")]
@@ -242,3 +236,13 @@ pub static OS_PAGE_SIZE: Lazy<usize> = Lazy::new(|| {
         value as usize
     }
 });
+
+/// The lane identifier for large wasms.
+#[cfg(any(feature = "testing", test))]
+pub(crate) const LARGE_WASM_LANE_ID: u8 = 3;
+/// The lane identifier for medium wasms.
+#[cfg(any(feature = "testing", test))]
+pub(crate) const MEDIUM_WASM_LANE_ID: u8 = 4;
+/// The lane identifier for small wasms.
+#[cfg(any(feature = "testing", test))]
+pub(crate) const SMALL_WASM_LANE_ID: u8 = 5;

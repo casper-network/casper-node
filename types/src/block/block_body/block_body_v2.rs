@@ -11,8 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     block::RewardedSignatures,
     bytesrepr::{self, FromBytes, ToBytes},
-    Digest, TransactionHash, AUCTION_LANE_ID, INSTALL_UPGRADE_LANE_ID, LARGE_WASM_LANE_ID,
-    MEDIUM_WASM_LANE_ID, MINT_LANE_ID, SMALL_WASM_LANE_ID,
+    Digest, TransactionHash, AUCTION_LANE_ID, INSTALL_UPGRADE_LANE_ID, MINT_LANE_ID,
 };
 
 /// The body portion of a block. Version 2.
@@ -76,6 +75,19 @@ impl BlockBodyV2 {
         self.transaction_by_lane(lane_id)
     }
 
+    /// Returns the user defined wasm lanes
+    pub(crate) fn wasm_lanes(&self) -> Vec<(u8, usize)> {
+        self.transactions
+            .iter()
+            .filter(|(lane, _)| {
+                !(**lane == MINT_LANE_ID
+                    || **lane == AUCTION_LANE_ID
+                    || **lane == INSTALL_UPGRADE_LANE_ID)
+            })
+            .map(|(lane_id, transactions)| (*lane_id, transactions.len()))
+            .collect::<Vec<_>>()
+    }
+
     /// Returns a reference to the collection of mapped transactions.
     pub fn transactions(&self) -> &BTreeMap<u8, Vec<TransactionHash>> {
         &self.transactions
@@ -130,14 +142,15 @@ impl Display for BlockBodyV2 {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         write!(
             formatter,
-            "block body, {} mint, {} auction, {} install_upgrade, {} large wasm, {} medium wasm, {} small wasm",
+            "block body, {} mint, {} auction, {} install_upgrade\n",
             self.mint().count(),
             self.auction().count(),
             self.install_upgrade().count(),
-            self.transaction_by_lane(LARGE_WASM_LANE_ID).count(),
-            self.transaction_by_lane(MEDIUM_WASM_LANE_ID).count(),
-            self.transaction_by_lane(SMALL_WASM_LANE_ID).count(),
-        )
+        )?;
+        for (lane, count) in self.wasm_lanes() {
+            write!(formatter, "{} wasm lane id {} \n", count, lane)?;
+        }
+        Ok(())
     }
 }
 

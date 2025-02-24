@@ -600,7 +600,9 @@ impl From<JsonBlockWithSignatures> for Block {
 
 #[cfg(test)]
 mod tests {
-    use crate::{bytesrepr, testing::TestRng};
+    use crate::{
+        bytesrepr, testing::TestRng, LARGE_WASM_LANE_ID, MEDIUM_WASM_LANE_ID, SMALL_WASM_LANE_ID,
+    };
 
     use super::*;
 
@@ -614,5 +616,20 @@ mod tests {
         let block_v2 = TestBlockBuilder::new().build(rng);
         let block = Block::V2(block_v2);
         bytesrepr::test_serialization_roundtrip(&block);
+    }
+
+    #[test]
+    fn should_only_return_wasm_lanes() {
+        let rng = &mut TestRng::new();
+
+        let block_v2 = TestBlockBuilder::new().build(rng);
+        let actual_lanes: Vec<u8> = block_v2
+            .body
+            .wasm_lanes()
+            .iter()
+            .map(|(lane_id, _)| *lane_id)
+            .collect();
+        let expected_lanes = vec![LARGE_WASM_LANE_ID, MEDIUM_WASM_LANE_ID, SMALL_WASM_LANE_ID];
+        assert_eq!(expected_lanes, actual_lanes);
     }
 }
