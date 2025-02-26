@@ -276,7 +276,7 @@ pub struct ContractBuilder<'a, T: ContractRef> {
     marker: PhantomData<T>,
 }
 
-impl<'a, T: ContractRef> Default for ContractBuilder<'a, T> {
+impl<T: ContractRef> Default for ContractBuilder<'_, T> {
     fn default() -> Self {
         Self::new()
     }

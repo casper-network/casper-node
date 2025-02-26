@@ -1,6 +1,5 @@
 use super::*;
 use crate::{testing::LARGE_WASM_LANE_ID, types::MetaTransaction};
-use casper_execution_engine::engine_state::MAX_PAYMENT_AMOUNT;
 use casper_storage::data_access_layer::{
     AddressableEntityRequest, BalanceIdentifier, ProofHandling, QueryRequest, QueryResult,
 };
@@ -516,7 +515,7 @@ async fn transfer_cost_fixed_price_no_fee_no_refund() {
 
     // since FeeHandling is set to NoFee, we expect that there's a hold on Alice's balance for the
     // cost of the transfer. The total balance of Alice now should be the initial balance - the
-    // amount transfered to Charlie.
+    // amount transferred to Charlie.
     let alice_expected_total_balance = alice_initial_balance - TRANSFER_AMOUNT;
     // The available balance is the initial balance - the amount transferred to Charlie - the hold
     // for the transfer cost.
@@ -709,7 +708,7 @@ async fn transfer_cost_classic_price_no_fee_no_refund() {
 
     // since FeeHandling is set to NoFee, we expect that there's a hold on Alice's balance for the
     // cost of the transfer. The total balance of Alice now should be the initial balance - the
-    // amount transfered to Charlie.
+    // amount transferred to Charlie.
     let alice_expected_total_balance = alice_initial_balance - TRANSFER_AMOUNT;
     // The available balance is the initial balance - the amount transferred to Charlie - the hold
     // for the transfer cost.
@@ -950,12 +949,8 @@ async fn wasm_transaction_fees_are_refunded() {
         .chainspec
         .get_max_gas_limit_by_category(LARGE_WASM_LANE_ID);
     let expected_transaction_cost = expected_transaction_gas * MIN_GAS_PRICE as u64;
-    assert_exec_result_cost(
-        exec_result,
-        expected_transaction_cost.into(),
-        Gas::new(0), /* expect that this transaction doesn't consume any gas since it has
-                      * invalid wasm. */
-    );
+    let baseline = Gas::new(fixture.chainspec.core_config.baseline_motes_amount);
+    assert_exec_result_cost(exec_result, expected_transaction_cost.into(), baseline);
 
     let bob_available_balance =
         *get_balance(&mut fixture, &bob_public_key, Some(block_height), false)
@@ -974,11 +969,12 @@ async fn wasm_transaction_fees_are_refunded() {
             .total_balance()
             .expect("Expected Alice to have a balance");
 
-    // Bob should get back half of the cost for the unspent gas. Since this transaction consumed 0
-    // gas, the unspent gas is equal to the limit.
-    let refund_amount: U512 = (refund_ratio * Ratio::from(expected_transaction_cost))
-        .to_integer()
-        .into();
+    // Bob should get back half of the cost for the unspent gas. Since this transaction consumed
+    // baseline gas, the unspent gas is equal to the limit.
+    let refund_amount: U512 = (refund_ratio
+        * Ratio::from(expected_transaction_cost - baseline.value().as_u64()))
+    .to_integer()
+    .into();
 
     let bob_expected_total_balance =
         bob_initial_balance - expected_transaction_cost + refund_amount;
@@ -1265,19 +1261,16 @@ async fn wasm_transaction_refunds_are_burnt(txn_pricing_mode: PricingMode) {
     );
     let expected_transaction_cost = expected_transaction_gas * min_gas_price as u64;
 
+    let baseline = Gas::new(test.fixture.chainspec.core_config.baseline_motes_amount);
     assert!(!exec_result_is_success(&exec_result)); // transaction should not succeed because the wasm bytes are invalid.
-    assert_exec_result_cost(
-        exec_result,
-        expected_transaction_cost.into(),
-        Gas::new(0), /* expect that this transaction doesn't consume any gas since it has
-                      * invalid wasm. */
-    );
+    assert_exec_result_cost(exec_result, expected_transaction_cost.into(), baseline);
 
     // Bob should get back half of the cost for the unspent gas. Since this transaction consumed 0
     // gas, the unspent gas is equal to the limit.
-    let refund_amount: U512 = (refund_ratio * Ratio::from(expected_transaction_cost))
-        .to_integer()
-        .into();
+    let refund_amount: U512 = (refund_ratio
+        * Ratio::from(expected_transaction_cost.saturating_sub(baseline.value().as_u64())))
+    .to_integer()
+    .into();
 
     // The refund should have been burnt. So expect the total supply should have been reduced by the
     // refund amount that was burnt.
@@ -1367,19 +1360,16 @@ async fn only_refunds_are_burnt_no_fee(txn_pricing_mode: PricingMode) {
     );
     let expected_transaction_cost = expected_transaction_gas * min_gas_price as u64;
 
+    let expected_consumed = Gas::new(test.fixture.chainspec.core_config.baseline_motes_amount);
     assert!(!exec_result_is_success(&exec_result)); // transaction should not succeed because the wasm bytes are invalid.
     assert_exec_result_cost(
         exec_result,
         expected_transaction_cost.into(),
-        Gas::new(0), /* expect that this transaction doesn't consume any gas since it has
-                      * invalid wasm. */
+        expected_consumed,
     );
 
-    // This transaction consumed 0 gas, the unspent gas is equal to the limit, so we apply the
-    // refund ratio to the full transaction cost.
-    let refund_amount: U512 = (refund_ratio * Ratio::from(expected_transaction_cost))
-        .to_integer()
-        .into();
+    let unconsumed = expected_transaction_cost.saturating_sub(expected_consumed.value().as_u64());
+    let refund_amount: U512 = (refund_ratio * Ratio::from(unconsumed)).to_integer().into();
 
     // We set it up so that the refunds are burnt so check this.
     assert_eq!(
@@ -1388,13 +1378,13 @@ async fn only_refunds_are_burnt_no_fee(txn_pricing_mode: PricingMode) {
     );
 
     let (alice_current_balance, bob_current_balance, _) = test.get_balances(Some(block_height));
-    // Bob doesn't get a refund. The refund is burnt. A hold is put in in place for the
+    // Bob doesn't get a refund. The refund is burnt. A hold is put in place for the
     // transaction cost.
     let bob_balance_hold = U512::from(expected_transaction_cost) - refund_amount;
     let bob_expected_total_balance = bob_initial_balance.total - refund_amount;
     let bob_expected_available_balance = bob_current_balance.total - bob_balance_hold;
 
-    // Alice should't get anything since we are operating with no fees
+    // Alice shouldn't get anything since we are operating with no fees
     let alice_expected_total_balance = alice_initial_balance.total;
     let alice_expected_available_balance = alice_expected_total_balance;
 
@@ -1428,7 +1418,7 @@ async fn only_refunds_are_burnt_no_fee_fixed_pricing() {
 #[tokio::test]
 async fn only_refunds_are_burnt_no_fee_classic_pricing() {
     only_refunds_are_burnt_no_fee(PricingMode::PaymentLimited {
-        payment_amount: 5000,
+        payment_amount: 5_000_000_000,
         gas_price_tolerance: MIN_GAS_PRICE,
         standard_payment: true,
     })
@@ -1473,8 +1463,7 @@ async fn fees_and_refunds_are_burnt_separately(txn_pricing_mode: PricingMode) {
     assert_exec_result_cost(
         exec_result,
         expected_transaction_cost.into(),
-        Gas::new(0), /* expect that this transaction doesn't consume any gas since it has
-                      * invalid wasm. */
+        Gas::new(test.fixture.chainspec.core_config.baseline_motes_amount),
     );
 
     // Both refunds and fees should be burnt (even though they are burnt separately). Refund + fee
@@ -1489,7 +1478,7 @@ async fn fees_and_refunds_are_burnt_separately(txn_pricing_mode: PricingMode) {
     let bob_expected_total_balance = bob_initial_balance.total - expected_transaction_cost;
     let bob_expected_available_balance = bob_current_balance.total;
 
-    // Alice should't get anything since we are operating with no fees
+    // Alice shouldn't get anything since we are operating with no fees
     let alice_expected_total_balance = alice_initial_balance.total;
     let alice_expected_available_balance = alice_expected_total_balance;
 
@@ -1565,19 +1554,19 @@ async fn refunds_are_payed_and_fees_are_burnt(txn_pricing_mode: PricingMode) {
 
     let (_txn_hash, block_height, exec_result) = test.send_transaction(txn).await;
 
+    let expected_consumed_gas = Gas::new(test.fixture.chainspec.core_config.baseline_motes_amount);
     assert!(!exec_result_is_success(&exec_result)); // transaction should not succeed because the wasm bytes are invalid.
     assert_exec_result_cost(
         exec_result,
         expected_transaction_cost.into(),
-        Gas::new(0), /* expect that this transaction doesn't consume any gas since it has
-                      * invalid wasm. */
+        expected_consumed_gas,
     );
 
-    // This transaction consumed 0 gas, the unspent gas is equal to the limit, so we apply the
-    // refund ratio to the full transaction cost.
-    let refund_amount: U512 = (refund_ratio * Ratio::from(expected_transaction_cost))
-        .to_integer()
-        .into();
+    let unconsumed =
+        expected_transaction_cost.saturating_sub(expected_consumed_gas.value().as_u64());
+    // This transaction consumed baseline gas, the unspent gas is equal to the limit,
+    // so we apply the refund ratio to the full transaction cost.
+    let refund_amount: U512 = (refund_ratio * Ratio::from(unconsumed)).to_integer().into();
 
     // Only fees are burnt, so the refund_amount should still be in the total supply.
     assert_eq!(
@@ -1591,7 +1580,7 @@ async fn refunds_are_payed_and_fees_are_burnt(txn_pricing_mode: PricingMode) {
         bob_initial_balance.total - expected_transaction_cost + refund_amount;
     let bob_expected_available_balance = bob_current_balance.total;
 
-    // Alice should't get anything since we are operating with no fees
+    // Alice shouldn't get anything since we are operating with no fees
     let alice_expected_total_balance = alice_initial_balance.total;
     let alice_expected_available_balance = alice_expected_total_balance;
 
@@ -1653,12 +1642,14 @@ async fn refunds_are_payed_and_fees_are_on_hold(txn_pricing_mode: PricingMode) {
     let meta_transaction =
         MetaTransaction::from_transaction(&txn, &test.chainspec().transaction_config).unwrap();
     // Fixed transaction pricing.
-    let expected_consumed_gas = Gas::new(0); // expect that this transaction doesn't consume any gas since it has invalid wasm.
+    let expected_consumed_gas = Gas::new(test.fixture.chainspec.core_config.baseline_motes_amount);
     let expected_transaction_cost = meta_transaction
         .gas_limit(test.chainspec())
         .unwrap()
         .value()
         * min_gas_price;
+
+    let unconsumed = expected_transaction_cost.saturating_sub(expected_consumed_gas.value());
 
     test.fixture
         .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
@@ -1681,7 +1672,7 @@ async fn refunds_are_payed_and_fees_are_on_hold(txn_pricing_mode: PricingMode) {
     let refund_amount: U512 = (Ratio::<U512>::new(
         (*refund_ratio.numer()).into(),
         (*refund_ratio.denom()).into(),
-    ) * Ratio::from(expected_transaction_cost))
+    ) * Ratio::from(unconsumed))
     .to_integer();
 
     // Nothing is burnt so total supply should be the same.
@@ -1697,7 +1688,7 @@ async fn refunds_are_payed_and_fees_are_on_hold(txn_pricing_mode: PricingMode) {
     let bob_expected_available_balance =
         bob_current_balance.total - expected_transaction_cost + refund_amount;
 
-    // Alice should't get anything since we are operating with no fees
+    // Alice shouldn't get anything since we are operating with no fees
     let alice_expected_total_balance = alice_initial_balance.total;
     let alice_expected_available_balance = alice_expected_total_balance;
 
@@ -1818,7 +1809,7 @@ async fn only_refunds_are_burnt_no_fee_custom_payment() {
         bob_initial_balance.total - expected_transaction_cost + refund_amount;
     let bob_expected_available_balance = bob_expected_total_balance; // No holds expected.
 
-    // Alice should't get anything since we are operating with no fees
+    // Alice shouldn't get anything since we are operating with no fees
     let alice_expected_total_balance = alice_initial_balance.total;
     let alice_expected_available_balance = alice_expected_total_balance;
 
@@ -2200,13 +2191,9 @@ async fn wasm_transaction_fees_are_refunded_to_proposer(txn_pricing_mode: Pricin
     );
     let expected_transaction_cost = expected_transaction_gas * min_gas_price as u64;
 
+    let baseline = Gas::new(test.fixture.chainspec.core_config.baseline_motes_amount);
     assert!(!exec_result_is_success(&exec_result)); // transaction should not succeed because the wasm bytes are invalid.
-    assert_exec_result_cost(
-        exec_result,
-        expected_transaction_cost.into(),
-        Gas::new(0), /* expect that this transaction doesn't consume any gas since it has
-                      * invalid wasm. */
-    );
+    assert_exec_result_cost(exec_result, expected_transaction_cost.into(), baseline);
 
     // Nothing is burnt so total supply should be the same.
     assert_eq!(
@@ -2214,11 +2201,12 @@ async fn wasm_transaction_fees_are_refunded_to_proposer(txn_pricing_mode: Pricin
         test.get_total_supply(Some(block_height))
     );
 
-    // Bob should get back half of the cost for the unspent gas. Since this transaction consumed 0
-    // gas, the unspent gas is equal to the limit.
-    let refund_amount: U512 = (refund_ratio * Ratio::from(expected_transaction_cost))
-        .to_integer()
-        .into();
+    // Bob should get back half of the cost for the unspent gas. Since this transaction consumed
+    // the baseline  gas, the unspent gas is equal to the limit minus baseline.
+    let refund_amount: U512 = (refund_ratio
+        * Ratio::from(expected_transaction_cost.saturating_sub(baseline.value().as_u64())))
+    .to_integer()
+    .into();
 
     let (alice_current_balance, bob_current_balance, _) = test.get_balances(Some(block_height));
     let bob_expected_total_balance =
@@ -2620,19 +2608,22 @@ async fn fee_holds_are_amortized() {
 
     let expected_transaction_cost = expected_transaction_gas * MIN_GAS_PRICE as u64;
 
-    assert!(!exec_result_is_success(&exec_result)); // transaction should not succeed because the wasm bytes are invalid.
+    // transaction should not succeed because the wasm bytes are invalid.
+    // this transaction has invalid wasm, so the baseline will be used as consumed
+    assert!(!exec_result_is_success(&exec_result));
+
+    let expected_consumed = Gas::new(test.fixture.chainspec.core_config.baseline_motes_amount);
     assert_exec_result_cost(
         exec_result,
         expected_transaction_cost.into(),
-        Gas::new(0), /* expect that this transaction doesn't consume any gas since it has
-                      * invalid wasm. */
+        expected_consumed,
     );
 
-    // This transaction consumed 0 gas, the unspent gas is equal to the limit, so we apply the
+    let unconsumed = expected_transaction_cost - expected_consumed.value().as_u64();
+
+    // This transaction consumed 2.5 gas, the unspent gas is equal to the limit, so we apply the
     // refund ratio to the full transaction cost.
-    let refund_amount: U512 = (refund_ratio * Ratio::from(expected_transaction_cost))
-        .to_integer()
-        .into();
+    let refund_amount: U512 = (refund_ratio * Ratio::from(unconsumed)).to_integer().into();
 
     // We set it up so that the refunds are burnt so check this.
     assert_eq!(
@@ -2641,13 +2632,13 @@ async fn fee_holds_are_amortized() {
     );
 
     let (alice_current_balance, bob_current_balance, _) = test.get_balances(Some(block_height));
-    // Bob doesn't get a refund. The refund is burnt. A hold is put in in place for the
+    // Bob doesn't get a refund. The refund is burnt. A hold is put in place for the
     // transaction cost.
     let bob_balance_hold = U512::from(expected_transaction_cost) - refund_amount;
     let bob_expected_total_balance = bob_initial_balance.total - refund_amount;
     let bob_expected_available_balance = bob_current_balance.total - bob_balance_hold;
 
-    // Alice should't get anything since we are operating with no fees
+    // Alice shouldn't get anything since we are operating with no fees
     let alice_expected_total_balance = alice_initial_balance.total;
     let alice_expected_available_balance = alice_expected_total_balance;
 
@@ -3474,15 +3465,25 @@ async fn successful_purse_to_purse_transfer() {
     let module_bytes =
         Bytes::from(std::fs::read(purse_create_contract).expect("cannot read module bytes"));
 
+    let baseline_motes = test
+        .fixture
+        .chainspec
+        .core_config
+        .baseline_motes_amount_u512();
+
     let mut txn = Transaction::from(
-        TransactionV1Builder::new_session(false, module_bytes, TransactionRuntimeParams::VmCasperV1)
-            .with_runtime_args(
-                runtime_args! { "destination" => purse_name, "amount" => U512::from(MAX_PAYMENT_AMOUNT) + U512::one() },
-            )
-            .with_chain_name(CHAIN_NAME)
-            .with_initiator_addr(BOB_PUBLIC_KEY.clone())
-            .build()
-            .unwrap(),
+        TransactionV1Builder::new_session(
+            false,
+            module_bytes,
+            TransactionRuntimeParams::VmCasperV1,
+        )
+        .with_runtime_args(
+            runtime_args! { "destination" => purse_name, "amount" => baseline_motes + U512::one() },
+        )
+        .with_chain_name(CHAIN_NAME)
+        .with_initiator_addr(BOB_PUBLIC_KEY.clone())
+        .build()
+        .unwrap(),
     );
     txn.sign(&BOB_SECRET_KEY);
     let (_txn_hash, _block_height, exec_result) = test.send_transaction(txn).await;
@@ -3567,15 +3568,24 @@ async fn successful_purse_to_account_transfer() {
     let module_bytes =
         Bytes::from(std::fs::read(purse_create_contract).expect("cannot read module bytes"));
 
+    let baseline_motes = test
+        .fixture
+        .chainspec
+        .core_config
+        .baseline_motes_amount_u512();
     let mut txn = Transaction::from(
-        TransactionV1Builder::new_session(false, module_bytes, TransactionRuntimeParams::VmCasperV1)
-            .with_runtime_args(
-                runtime_args! { "destination" => purse_name, "amount" => U512::from(MAX_PAYMENT_AMOUNT) + U512::one() },
-            )
-            .with_chain_name(CHAIN_NAME)
-            .with_initiator_addr(BOB_PUBLIC_KEY.clone())
-            .build()
-            .unwrap(),
+        TransactionV1Builder::new_session(
+            false,
+            module_bytes,
+            TransactionRuntimeParams::VmCasperV1,
+        )
+        .with_runtime_args(
+            runtime_args! { "destination" => purse_name, "amount" => baseline_motes + U512::one() },
+        )
+        .with_chain_name(CHAIN_NAME)
+        .with_initiator_addr(BOB_PUBLIC_KEY.clone())
+        .build()
+        .unwrap(),
     );
     txn.sign(&BOB_SECRET_KEY);
     let (_txn_hash, _block_height, exec_result) = test.send_transaction(txn).await;

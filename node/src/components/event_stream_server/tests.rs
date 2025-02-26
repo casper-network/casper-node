@@ -548,11 +548,12 @@ async fn handle_response(
 ///   * a keepalive: line contains exactly ":"
 ///
 /// The expected order is:
-///   * data:<JSON-encoded ApiVersion> (note, no ID line follows this first event)
-/// then the following three repeated for as many events as are applicable to that stream:
+///   * data:<JSON-encoded ApiVersion> (note, no ID line follows this first event) then the
+///     following three repeated for as many events as are applicable to that stream:
 ///   * data:<JSON-encoded event>
 ///   * id:<integer>
 ///   * empty line
+///
 /// then finally, repeated keepalive lines until the server is shut down.
 fn parse_response(response_text: String, client_id: &str) -> Vec<ReceivedEvent> {
     let mut received_events = Vec::new();

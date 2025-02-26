@@ -1,4 +1,4 @@
-use alloc::{string::String, vec::Vec};
+use alloc::{boxed::Box, string::String, vec::Vec};
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
@@ -33,7 +33,7 @@ pub enum ExecutionResult {
     V1(ExecutionResultV1),
     /// Version 2 of execution result type.
     #[serde(rename = "Version2")]
-    V2(ExecutionResultV2),
+    V2(Box<ExecutionResultV2>),
 }
 
 impl ExecutionResult {
@@ -51,7 +51,7 @@ impl ExecutionResult {
         if rng.gen_bool(0.5) {
             Self::V1(rand::distributions::Standard.sample(rng))
         } else {
-            Self::V2(ExecutionResultV2::random(rng))
+            Self::V2(Box::new(ExecutionResultV2::random(rng)))
         }
     }
 
@@ -75,7 +75,7 @@ impl From<ExecutionResultV1> for ExecutionResult {
 
 impl From<ExecutionResultV2> for ExecutionResult {
     fn from(value: ExecutionResultV2) -> Self {
-        ExecutionResult::V2(value)
+        ExecutionResult::V2(Box::new(value))
     }
 }
 
@@ -127,7 +127,7 @@ impl FromBytes for ExecutionResult {
             }
             V2_TAG => {
                 let (result, remainder) = ExecutionResultV2::from_bytes(remainder)?;
-                Ok((ExecutionResult::V2(result), remainder))
+                Ok((ExecutionResult::V2(Box::new(result)), remainder))
             }
             _ => {
                 error!(%tag, rem_len = remainder.len(), "FromBytes for ExecutionResult: unknown tag");

@@ -83,6 +83,7 @@ enum OutgoingStateInsight {
     Blocked {
         since: SystemTime,
         justification: String,
+        until: SystemTime,
     },
     Loopback,
 }
@@ -138,9 +139,11 @@ impl OutgoingStateInsight {
             OutgoingState::Blocked {
                 since,
                 justification,
+                until,
             } => OutgoingStateInsight::Blocked {
                 since: anchor.convert(*since),
                 justification: justification.to_string(),
+                until: anchor.convert(*until),
             },
             OutgoingState::Loopback => OutgoingStateInsight::Loopback,
         }
@@ -193,11 +196,13 @@ impl OutgoingStateInsight {
             OutgoingStateInsight::Blocked {
                 since,
                 justification,
+                until,
             } => {
                 write!(
                     f,
-                    "blocked since {}: {}",
+                    "blocked since {}, until {}: {}",
                     time_delta(now, *since),
+                    time_delta(now, *until),
                     justification
                 )
             }

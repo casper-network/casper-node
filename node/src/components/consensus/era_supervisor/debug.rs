@@ -39,7 +39,7 @@ pub(crate) struct EraDump<'a> {
     pub(crate) highway_state: &'a State<ClContext>,
 }
 
-impl<'a> Display for EraDump<'a> {
+impl Display for EraDump<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "era {}: TBD", self.id)
     }

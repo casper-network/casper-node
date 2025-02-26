@@ -40,6 +40,7 @@ pub enum ReadResult<V> {
 }
 
 impl<V> ReadResult<V> {
+    /// Returns `true` if the result is [`ReadResult::Found`].
     #[cfg(test)]
     pub fn is_found(&self) -> bool {
         matches!(self, ReadResult::Found(_))
@@ -1030,7 +1031,7 @@ pub struct KeysIterator<'a, 'b, K, V, T, S: TrieStore<K, V>> {
     state: KeysIteratorState<K, V, S>,
 }
 
-impl<'a, 'b, K, V, T, S> Iterator for KeysIterator<'a, 'b, K, V, T, S>
+impl<K, V, T, S> Iterator for KeysIterator<'_, '_, K, V, T, S>
 where
     K: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
     V: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
@@ -1253,6 +1254,7 @@ where
     keys_with_prefix(txn, store, root, &[])
 }
 
+/// Checks the integrity of the trie store.
 #[cfg(test)]
 pub fn check_integrity<K, V, T, S, E>(
     txn: &T,
@@ -1341,11 +1343,11 @@ where
 /// Recomputes a state root hash from a [`TrieMerkleProof`].
 /// This is done in the following steps:
 ///
-/// 1. Using [`TrieMerkleProof::key`] and [`TrieMerkleProof::value`], construct a
-/// [`Trie::Leaf`] and compute a hash for that leaf.
+/// 1. Using [`TrieMerkleProof::key`] and [`TrieMerkleProof::value`], construct a [`Trie::Leaf`] and
+///    compute a hash for that leaf.
 ///
-/// 2. We then iterate over [`TrieMerkleProof::proof_steps`] left to right, using the hash from
-/// the previous step combined with the next step to compute a new hash.
+/// 2. We then iterate over [`TrieMerkleProof::proof_steps`] left to right, using the hash from the
+///    previous step combined with the next step to compute a new hash.
 ///
 /// 3. When there are no more steps, we return the final hash we have computed.
 ///

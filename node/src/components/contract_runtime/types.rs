@@ -79,10 +79,11 @@ pub(crate) struct ExecutionArtifactBuilder {
     limit: Gas,
     consumed: Gas,
     size_estimate: u64,
+    baseline_amount: U512,
 }
 
 impl ExecutionArtifactBuilder {
-    pub fn new(transaction: &Transaction) -> Self {
+    pub fn new(transaction: &Transaction, baseline_amount: U512) -> Self {
         ExecutionArtifactBuilder {
             effects: Effects::new(),
             hash: transaction.hash(),
@@ -95,6 +96,7 @@ impl ExecutionArtifactBuilder {
             limit: Gas::zero(),
             consumed: Gas::zero(),
             size_estimate: transaction.size_estimate() as u64,
+            baseline_amount,
         }
     }
 
@@ -103,7 +105,18 @@ impl ExecutionArtifactBuilder {
     }
 
     pub fn consumed(&self) -> U512 {
-        self.consumed.value()
+        // to prevent do-nothing exhaustion, if consumed == 0 we raise consumed to baseline
+        let consumed = self.consumed;
+        if consumed == Gas::zero() {
+            self.baseline_amount
+        } else {
+            consumed.value()
+        }
+    }
+
+    pub fn with_added_consumed(&mut self, consumed: Gas) -> &mut Self {
+        self.consumed = self.consumed.saturating_add(consumed);
+        self
     }
 
     pub fn with_appended_transfers(&mut self, transfers: &mut Vec<Transfer>) -> &mut Self {
@@ -265,11 +278,6 @@ impl ExecutionArtifactBuilder {
         self
     }
 
-    pub fn with_added_consumed(&mut self, consumed: Gas) -> &mut Self {
-        self.consumed = self.consumed.saturating_add(consumed);
-        self
-    }
-
     pub fn with_invalid_transaction(
         &mut self,
         invalid_transaction: &InvalidTransaction,
@@ -342,17 +350,18 @@ impl ExecutionArtifactBuilder {
     }
 
     pub(crate) fn build(self) -> ExecutionArtifact {
+        let consumed = Gas::new(self.consumed());
         let result = ExecutionResultV2 {
             effects: self.effects,
             transfers: self.transfers,
             initiator: self.initiator,
             limit: self.limit,
-            consumed: self.consumed,
+            consumed,
             cost: self.cost,
             size_estimate: self.size_estimate,
             error_message: self.error_message,
         };
-        let execution_result = ExecutionResult::V2(result);
+        let execution_result = ExecutionResult::V2(Box::new(result));
         ExecutionArtifact::new(self.hash, self.header, execution_result, self.messages)
     }
 
@@ -438,7 +447,7 @@ pub struct BlockAndExecutionArtifacts {
 #[derive(Debug)]
 pub enum SpeculativeExecutionResult {
     InvalidTransaction(InvalidTransaction),
-    WasmV1(casper_binary_port::SpeculativeExecutionResult),
+    WasmV1(Box<casper_binary_port::SpeculativeExecutionResult>),
     ReceivedV1Transaction,
 }
 

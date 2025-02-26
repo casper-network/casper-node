@@ -21,7 +21,7 @@ pub(crate) enum InitiatorAddrAndSecretKey<'a> {
     SecretKey(&'a SecretKey),
 }
 
-impl<'a> InitiatorAddrAndSecretKey<'a> {
+impl InitiatorAddrAndSecretKey<'_> {
     /// The address of the initiator of a `TransactionV1`.
     pub fn initiator_addr(&self) -> InitiatorAddr {
         match self {

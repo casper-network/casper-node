@@ -158,9 +158,9 @@ impl UpgradeWatcher {
     }
 
     pub(crate) fn should_upgrade_after(&self, era_id: EraId) -> bool {
-        self.next_upgrade.as_ref().map_or(false, |upgrade| {
-            upgrade.activation_point().should_upgrade(&era_id)
-        })
+        self.next_upgrade
+            .as_ref()
+            .is_some_and(|upgrade| upgrade.activation_point().should_upgrade(&era_id))
     }
 
     pub(crate) fn next_upgrade_activation_point(&self) -> Option<EraId> {

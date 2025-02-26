@@ -1371,7 +1371,7 @@ fn prepare_exec_result_with_transfer(
         Some(rng.gen()),
     ));
     let limit = Gas::new(rng.gen::<u64>());
-    let exec_result = ExecutionResult::V2(ExecutionResultV2 {
+    let exec_result = ExecutionResult::V2(Box::new(ExecutionResultV2 {
         initiator: initiator_addr,
         error_message: None,
         limit,
@@ -1380,7 +1380,7 @@ fn prepare_exec_result_with_transfer(
         transfers: vec![transfer.clone()],
         effects: Effects::new(),
         size_estimate: rng.gen(),
-    });
+    }));
     (exec_result, transfer)
 }
 
@@ -2679,14 +2679,13 @@ fn assert_block_exists_in_storage(
 
     // GetBlock should return only blocks from storage that are of the current version.
     assert_eq!(
-        get_block(harness, storage, *block_hash)
-            .map_or(false, |block| matches!(block, Block::V2(_))),
+        get_block(harness, storage, *block_hash).is_some_and(|block| matches!(block, Block::V2(_))),
         expect_exists_as_latest_version
     );
 
     // Check if we can get the block as a versioned Block.
     let block = get_block(harness, storage, *block_hash);
-    assert_eq!(block.map_or(false, |_| true), expect_exists_as_versioned);
+    assert_eq!(block.is_some_and(|_| true), expect_exists_as_versioned);
 
     // Check if the header can be fetched from storage.
     assert_eq!(
@@ -2696,18 +2695,18 @@ fn assert_block_exists_in_storage(
             *block_hash,
             only_from_available_block_range,
         )
-        .map_or(false, |_| true),
+        .is_some_and(|_| true),
         expect_exists
     );
     assert_eq!(
-        get_block_header(harness, storage, *block_hash, false).map_or(false, |_| true),
+        get_block_header(harness, storage, *block_hash, false).is_some_and(|_| true),
         expect_exists
     );
     assert_eq!(
         storage
             .read_block_header_by_hash(block_hash)
             .unwrap()
-            .map_or(false, |_| true),
+            .is_some_and(|_| true),
         expect_exists
     );
 
@@ -2718,21 +2717,21 @@ fn assert_block_exists_in_storage(
             block_height,
             only_from_available_block_range,
         )
-        .map_or(false, |_| true),
+        .is_some_and(|_| true),
         expect_exists
     );
     assert_eq!(
         storage
             .read_block_header_by_height(block_height, only_from_available_block_range)
             .unwrap()
-            .map_or(false, |_| true),
+            .is_some_and(|_| true),
         expect_exists
     );
     assert_eq!(
         storage
             .read_block_header_by_height(block_height, false)
             .unwrap()
-            .map_or(false, |_| true),
+            .is_some_and(|_| true),
         expect_exists
     );
 

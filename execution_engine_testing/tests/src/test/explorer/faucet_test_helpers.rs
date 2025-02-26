@@ -424,8 +424,6 @@ pub struct FaucetDeployHelper {
     fund_account_request_builder: FundAccountRequestBuilder,
     pub faucet_install_session_request_builder: FaucetInstallSessionRequestBuilder,
     pub faucet_config_request_builder: FaucetConfigRequestBuilder,
-    pub faucet_authorize_account_request_builder: FaucetAuthorizeAccountRequestBuilder,
-    pub faucet_fund_request_builder: FaucetFundRequestBuilder,
 }
 
 impl FaucetDeployHelper {
@@ -570,8 +568,6 @@ impl Default for FaucetDeployHelper {
             fund_account_request_builder: Default::default(),
             faucet_install_session_request_builder: Default::default(),
             faucet_config_request_builder: Default::default(),
-            faucet_authorize_account_request_builder: Default::default(),
-            faucet_fund_request_builder: Default::default(),
         }
     }
 }

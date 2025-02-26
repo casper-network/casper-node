@@ -173,16 +173,6 @@ fn build_transaction(
     transaction
 }
 
-/// if it becomes necessary to extract deploy session data:
-// let data = SessionDataDeploy::new(
-//     deploy.hash(),
-//     deploy.session(),
-//     initiator_addr,
-//     txn.signers().clone(),
-//     is_standard_payment,
-// );
-// SessionInputData::DeploySessionData { data }
-
 fn to_v1_session_input_data<'a>(
     is_standard_payment: bool,
     initiator_addr: InitiatorAddr,

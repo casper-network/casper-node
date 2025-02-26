@@ -187,89 +187,78 @@ fn rewrite_urefs(cl_value: CLValue, mut func: impl FnMut(&mut URef)) -> Result<C
             }
             (CLType::Key, CLType::Bool) => {
                 let mut res: Result<Key, bool> = cl_value.to_owned().into_t()?;
-                match &mut res {
-                    Ok(Key::URef(uref)) => func(uref),
-                    Ok(_) | Err(_) => {}
+                if let Ok(Key::URef(uref)) = &mut res {
+                    func(uref);
                 }
                 CLValue::from_t(res)?
             }
             (CLType::Key, CLType::I32) => {
                 let mut res: Result<Key, i32> = cl_value.to_owned().into_t()?;
-                match &mut res {
-                    Ok(Key::URef(uref)) => func(uref),
-                    Ok(_) | Err(_) => {}
+                if let Ok(Key::URef(uref)) = &mut res {
+                    func(uref);
                 }
                 CLValue::from_t(res)?
             }
             (CLType::Key, CLType::I64) => {
                 let mut res: Result<Key, i64> = cl_value.to_owned().into_t()?;
-                match &mut res {
-                    Ok(Key::URef(uref)) => func(uref),
-                    Ok(_) | Err(_) => {}
+                if let Ok(Key::URef(uref)) = &mut res {
+                    func(uref);
                 }
                 CLValue::from_t(res)?
             }
             (CLType::Key, CLType::U8) => {
                 let mut res: Result<Key, u8> = cl_value.to_owned().into_t()?;
-                match &mut res {
-                    Ok(Key::URef(uref)) => func(uref),
-                    Ok(_) | Err(_) => {}
+                if let Ok(Key::URef(uref)) = &mut res {
+                    func(uref);
                 }
                 CLValue::from_t(res)?
             }
             (CLType::Key, CLType::U32) => {
                 let mut res: Result<Key, u32> = cl_value.to_owned().into_t()?;
-                match &mut res {
-                    Ok(Key::URef(uref)) => func(uref),
-                    Ok(_) | Err(_) => {}
+                if let Ok(Key::URef(uref)) = &mut res {
+                    func(uref);
                 }
                 CLValue::from_t(res)?
             }
             (CLType::Key, CLType::U64) => {
                 let mut res: Result<Key, u64> = cl_value.to_owned().into_t()?;
-                match &mut res {
-                    Ok(Key::URef(uref)) => func(uref),
-                    Ok(_) | Err(_) => {}
+                if let Ok(Key::URef(uref)) = &mut res {
+                    func(uref);
                 }
                 CLValue::from_t(res)?
             }
             (CLType::Key, CLType::U128) => {
                 let mut res: Result<Key, U128> = cl_value.to_owned().into_t()?;
-                match &mut res {
-                    Ok(Key::URef(uref)) => func(uref),
-                    Ok(_) | Err(_) => {}
+                if let Ok(Key::URef(uref)) = &mut res {
+                    func(uref);
                 }
                 CLValue::from_t(res)?
             }
             (CLType::Key, CLType::U256) => {
                 let mut res: Result<Key, U256> = cl_value.to_owned().into_t()?;
-                match &mut res {
-                    Ok(Key::URef(uref)) => func(uref),
-                    Ok(_) | Err(_) => {}
+                if let Ok(Key::URef(uref)) = &mut res {
+                    func(uref);
                 }
                 CLValue::from_t(res)?
             }
             (CLType::Key, CLType::U512) => {
                 let mut res: Result<Key, U512> = cl_value.to_owned().into_t()?;
-                match &mut res {
-                    Ok(Key::URef(uref)) => func(uref),
-                    Ok(_) | Err(_) => {}
+                if let Ok(Key::URef(uref)) = &mut res {
+                    func(uref);
                 }
                 CLValue::from_t(res)?
             }
             (CLType::Key, CLType::Unit) => {
                 let mut res: Result<Key, ()> = cl_value.to_owned().into_t()?;
-                match &mut res {
-                    Ok(Key::URef(uref)) => func(uref),
-                    Ok(_) | Err(_) => {}
+                if let Ok(Key::URef(uref)) = &mut res {
+                    func(uref);
                 }
                 CLValue::from_t(res)?
             }
             (CLType::Key, CLType::String) => {
                 let mut res: Result<Key, String> = cl_value.to_owned().into_t()?;
-                match &mut res {
-                    Ok(Key::URef(uref)) => func(uref),
-                    Ok(_) | Err(_) => {}
+                if let Ok(Key::URef(uref)) = &mut res {
+                    func(uref);
                 }
                 CLValue::from_t(res)?
             }

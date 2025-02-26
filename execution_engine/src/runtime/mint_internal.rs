@@ -33,7 +33,7 @@ impl From<ExecError> for Option<Error> {
     }
 }
 
-impl<'a, R> RuntimeProvider for Runtime<'a, R>
+impl<R> RuntimeProvider for Runtime<'_, R>
 where
     R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
@@ -42,7 +42,7 @@ where
     }
 
     fn get_immediate_caller(&self) -> Option<Caller> {
-        Runtime::<'a, R>::get_immediate_caller(self).cloned()
+        Runtime::<'_, R>::get_immediate_caller(self).cloned()
     }
 
     fn is_called_from_standard_payment(&self) -> bool {
@@ -104,7 +104,7 @@ where
     }
 }
 
-impl<'a, R> StorageProvider for Runtime<'a, R>
+impl<R> StorageProvider for Runtime<'_, R>
 where
     R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
@@ -169,7 +169,7 @@ where
     }
 }
 
-impl<'a, R> SystemProvider for Runtime<'a, R>
+impl<R> SystemProvider for Runtime<'_, R>
 where
     R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
@@ -188,7 +188,7 @@ where
     }
 }
 
-impl<'a, R> Mint for Runtime<'a, R>
+impl<R> Mint for Runtime<'_, R>
 where
     R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {

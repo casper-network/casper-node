@@ -117,9 +117,6 @@ impl SeigniorageRecipientsSnapshot {
     }
 }
 
-/// Validators and delegators mapped to their unbonding purses.
-// pub type UnbondingPurses = BTreeMap<AccountHash, Vec<UnbondingPurse>>;
-
 /// Validators and delegators mapped to their withdraw purses.
 pub type WithdrawPurses = BTreeMap<AccountHash, Vec<WithdrawPurse>>;
 

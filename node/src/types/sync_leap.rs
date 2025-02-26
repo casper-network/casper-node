@@ -132,9 +132,7 @@ impl SyncLeap {
         let validators_changed_in_current_protocol = protocol_config
             .global_state_update
             .as_ref()
-            .map_or(false, |global_state_update| {
-                global_state_update.validators.is_some()
-            });
+            .is_some_and(|global_state_update| global_state_update.validators.is_some());
         let current_protocol_version = protocol_config.version;
 
         let block_protocol_versions: HashMap<_, _> = self
@@ -191,7 +189,7 @@ impl SyncLeap {
         let maybe_header_before_upgrade = self.switch_blocks_headers().find(|header| {
             headers_by_height
                 .get(&(header.height() + 1))
-                .map_or(false, |other_header| {
+                .is_some_and(|other_header| {
                     other_header.protocol_version() != header.protocol_version()
                 })
         });
@@ -2257,7 +2255,7 @@ mod tests {
         }
     }
 
-    impl<'a> Iterator for TestBlockIterator<'a> {
+    impl Iterator for TestBlockIterator<'_> {
         type Item = BlockV2;
 
         fn next(&mut self) -> Option<Self::Item> {
@@ -2273,7 +2271,7 @@ mod tests {
                         && self
                             .upgrades_indices
                             .as_ref()
-                            .map_or(false, |upgrades_indices| {
+                            .is_some_and(|upgrades_indices| {
                                 upgrades_indices.contains(&prev_height)
                             });
                     (
@@ -2289,7 +2287,7 @@ mod tests {
                         && self
                             .upgrades_indices
                             .as_ref()
-                            .map_or(false, |upgrades_indices| {
+                            .is_some_and(|upgrades_indices| {
                                 upgrades_indices.contains(&prev_height)
                             });
                     (is_successor_of_switch_block, is_upgrade, None)

@@ -162,7 +162,7 @@ pub enum SessionInputData<'a> {
     },
 }
 
-impl<'a> SessionInputData<'a> {
+impl SessionInputData<'_> {
     /// Transaction hash for the session
     pub fn transaction_hash(&self) -> TransactionHash {
         match self {

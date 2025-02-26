@@ -24,7 +24,7 @@ static TRANSFER_1_AMOUNT: Lazy<U512> =
     Lazy::new(|| U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE) + 1000);
 static TRANSFER_2_AMOUNT: Lazy<U512> = Lazy::new(|| U512::from(750));
 static TRANSFER_2_AMOUNT_WITH_ADV: Lazy<U512> = Lazy::new(|| *DEFAULT_PAYMENT + *TRANSFER_2_AMOUNT);
-static TRANSFER_TOO_MUCH: Lazy<U512> = Lazy::new(|| U512::from(u64::max_value()));
+static TRANSFER_TOO_MUCH: Lazy<U512> = Lazy::new(|| U512::from(u64::MAX));
 static ACCOUNT_1_INITIAL_BALANCE: Lazy<U512> =
     Lazy::new(|| U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE));
 

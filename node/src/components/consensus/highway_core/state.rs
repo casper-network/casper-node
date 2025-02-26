@@ -521,7 +521,7 @@ impl<C: Context> State<C> {
     pub fn has_ping(&self, creator: ValidatorIndex, timestamp: Timestamp) -> bool {
         self.pings
             .get(creator)
-            .map_or(false, |ping_time| *ping_time >= timestamp)
+            .is_some_and(|ping_time| *ping_time >= timestamp)
     }
 
     /// Returns whether the validator's latest unit or ping is at most `PING_TIMEOUT` maximum round
@@ -798,7 +798,7 @@ impl<C: Context> State<C> {
         if wunit.value.is_some() {
             // If this unit is a block, it must be the first unit in this round, its timestamp must
             // match the round ID, and the creator must be the round leader.
-            if maybe_prev_unit.map_or(false, |pv| pv.round_id() == r_id)
+            if maybe_prev_unit.is_some_and(|pv| pv.round_id() == r_id)
                 || timestamp != r_id
                 || self.leader(r_id) != creator
             {
@@ -806,7 +806,7 @@ impl<C: Context> State<C> {
             }
             // It's not allowed to create a child block of a terminal block.
             let is_terminal = |hash: &C::Hash| self.is_terminal_block(hash);
-            if self.fork_choice(panorama).map_or(false, is_terminal) {
+            if self.fork_choice(panorama).is_some_and(is_terminal) {
                 return Err(UnitError::ValueAfterTerminalBlock);
             }
         }
@@ -818,7 +818,7 @@ impl<C: Context> State<C> {
 
     /// Returns `true` if the `bhash` is a block that can have no children.
     pub(crate) fn is_terminal_block(&self, bhash: &C::Hash) -> bool {
-        self.blocks.get(bhash).map_or(false, |block| {
+        self.blocks.get(bhash).is_some_and(|block| {
             block.height.saturating_add(1) >= self.params.end_height()
                 && self.unit(bhash).timestamp >= self.params.end_timestamp()
         })

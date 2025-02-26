@@ -246,23 +246,17 @@ impl TransferRuntimeArgsBuilder {
             }
             Some(cl_value) if *cl_value.cl_type() == CLType::Option(CLType::URef.into()) => {
                 let Some(uref): Option<URef> = self.map_cl_value(cl_value)? else {
-                    return account
-                        .main_purse()
-                        .ok_or_else(|| TransferError::InvalidOperation);
+                    return account.main_purse().ok_or(TransferError::InvalidOperation);
                 };
                 uref
             }
             Some(_) => return Err(TransferError::InvalidArgument),
-            None => {
-                return account
-                    .main_purse()
-                    .ok_or_else(|| TransferError::InvalidOperation)
-            } /* if no source purse passed use account
-               * main purse */
+            None => return account.main_purse().ok_or(TransferError::InvalidOperation), /* if no source purse passed use account
+                                                                                         * main purse */
         };
         if account
             .main_purse()
-            .ok_or_else(|| TransferError::InvalidOperation)?
+            .ok_or(TransferError::InvalidOperation)?
             .addr()
             == uref.addr()
         {
@@ -352,7 +346,7 @@ impl TransferRuntimeArgsBuilder {
                 let account_key: Key = self.map_cl_value(cl_value)?;
                 let account_hash: AccountHash = account_key
                     .into_account()
-                    .ok_or_else(|| TransferError::UnexpectedKeyVariant(account_key))?;
+                    .ok_or(TransferError::UnexpectedKeyVariant(account_key))?;
                 account_hash
             }
             Some(cl_value) if *cl_value.cl_type() == CLType::PublicKey => {
@@ -370,7 +364,7 @@ impl TransferRuntimeArgsBuilder {
             Ok((_, entity)) => {
                 let main_purse_addable = entity
                     .main_purse()
-                    .ok_or_else(|| TransferError::InvalidPurse)?
+                    .ok_or(TransferError::InvalidPurse)?
                     .with_access_rights(AccessRights::ADD);
                 Ok(TransferTargetMode::ExistingAccount {
                     target_account_hash: account_hash,

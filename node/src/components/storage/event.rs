@@ -1,7 +1,4 @@
-use std::{
-    fmt::{self, Display, Formatter},
-    mem,
-};
+use std::fmt::{self, Display, Formatter};
 
 use derive_more::From;
 use serde::Serialize;
@@ -12,7 +9,7 @@ use crate::effect::{
     requests::{MakeBlockExecutableRequest, MarkBlockCompletedRequest, StorageRequest},
 };
 
-const _STORAGE_EVENT_SIZE: usize = mem::size_of::<Event>();
+const _STORAGE_EVENT_SIZE: usize = size_of::<Event>();
 const_assert!(_STORAGE_EVENT_SIZE <= 32);
 
 /// A storage component event.

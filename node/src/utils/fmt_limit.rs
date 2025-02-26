@@ -11,9 +11,8 @@ pub(crate) struct FmtLimit<'a, T> {
 }
 
 impl<'a, T> FmtLimit<'a, T> {
-    #[inline]
-
     /// Creates a new limited formatter.
+    #[inline]
     pub(crate) fn new(limit: usize, item: &'a T) -> Self {
         FmtLimit { limit, item }
     }
@@ -44,7 +43,7 @@ impl<'a, W> LimitWriter<'a, W> {
     }
 }
 
-impl<'a, W> Write for LimitWriter<'a, W>
+impl<W> Write for LimitWriter<'_, W>
 where
     W: Write,
 {
@@ -85,7 +84,7 @@ where
     }
 }
 
-impl<'a, T> Debug for FmtLimit<'a, T>
+impl<T> Debug for FmtLimit<'_, T>
 where
     T: Debug,
 {

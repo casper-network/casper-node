@@ -896,14 +896,6 @@ impl<R: StateReader<Key, StoredValue>> StateReader<Key, StoredValue> for &Tracki
     }
 }
 
-/// An alias for a `TrackingCopy` that uses a `GlobalState` as the state reader.
-///
-/// This is aliasing the `TrackingCopy` to use the `GlobalState` as the state reader without the
-/// explicit verbose generic types and bounds.
-// pub trait GlobalState: StateReader<Key, StoredValue> {}
-
-// impl<R: StateReader<Key, StoredValue>> GlobalState for TrackingCopy<R> {}
-
 /// Error conditions of a proof validation.
 #[derive(Error, Debug, PartialEq, Eq)]
 pub enum ValidationError {

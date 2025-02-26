@@ -56,15 +56,16 @@ const FATAL_GRACE_TIME: time::Duration = time::Duration::from_secs(3);
 /// The IANA ephemeral port range is 49152–65535, while Linux uses 32768–60999 by default. Windows
 /// on the other hand uses 1025–60000. Mac OS X seems to use 49152-65535. For this reason this
 /// constant uses different values on different systems.
-
-// Note: Ensure the range is prime, so that any chosen `TEST_PORT_STRIDE` wraps around without
-// conflicting.
-
-// All reasonable non-Windows systems seem to have a "hole" just below port 30000.
-//
-// This also does not conflict with nctl ports.
 #[cfg(not(target_os = "windows"))]
-const TEST_PORT_RANGE: Range<u16> = 29000..29997;
+const TEST_PORT_RANGE: Range<u16> = {
+    // Note: Ensure the range is prime, so that any chosen `TEST_PORT_STRIDE` wraps around without
+    // conflicting.
+
+    // All reasonable non-Windows systems seem to have a "hole" just below port 30000.
+    //
+    // This also does not conflict with nctl ports.
+    29000..29997
+};
 
 // On windows, we sneak into the upper end instead.
 #[cfg(target_os = "windows")]

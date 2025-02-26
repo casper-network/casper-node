@@ -19,7 +19,7 @@ use crate::unwrap_or_revert::UnwrapOrRevert;
 
 /// Calculates size and alignment for an array of T.
 const fn size_align_for_array<T>(n: usize) -> (usize, usize) {
-    (n * mem::size_of::<T>(), mem::align_of::<T>())
+    (n * size_of::<T>(), mem::align_of::<T>())
 }
 
 /// Allocates bytes

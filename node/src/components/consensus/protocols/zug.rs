@@ -429,13 +429,13 @@ impl<C: Context + 'static> Zug<C> {
     /// Returns whether the validator has already sent an `Echo` in this round.
     fn has_echoed(&self, round_id: RoundId, validator_idx: ValidatorIndex) -> bool {
         self.round(round_id)
-            .map_or(false, |round| round.has_echoed(validator_idx))
+            .is_some_and(|round| round.has_echoed(validator_idx))
     }
 
     /// Returns whether the validator has already cast a `true` or `false` vote.
     fn has_voted(&self, round_id: RoundId, validator_idx: ValidatorIndex) -> bool {
         self.round(round_id)
-            .map_or(false, |round| round.has_voted(validator_idx))
+            .is_some_and(|round| round.has_voted(validator_idx))
     }
 
     /// Request the latest state from a random peer.
@@ -2477,7 +2477,7 @@ where
         self.validators
             .get_index(vid)
             .and_then(|idx| self.faults.get(&idx))
-            .map_or(false, Fault::is_direct)
+            .is_some_and(Fault::is_direct)
     }
 
     fn mark_faulty(&mut self, vid: &C::ValidatorId) {

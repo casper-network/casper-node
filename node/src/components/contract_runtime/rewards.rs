@@ -15,6 +15,7 @@ use futures::stream::{self, StreamExt as _, TryStreamExt as _};
 use itertools::Itertools;
 use num_rational::Ratio;
 use num_traits::{CheckedAdd, CheckedMul, ToPrimitive};
+use thiserror::Error;
 use tracing::trace;
 
 use crate::{
@@ -79,25 +80,34 @@ pub(crate) struct EraInfo {
     reward_per_round: Ratio<U512>,
 }
 
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub enum RewardsError {
     /// We got a block height which is not in the era range it should be in (should not happen).
+    #[error("block height {0} is not in the era range")]
     HeightNotInEraRange(u64),
     /// The era is not in the range we have (should not happen).
+    #[error("era {0} is not in the era range")]
     EraIdNotInEraRange(EraId),
     /// The validator public key is not in the era it should be in (should not happen).
+    #[error("validator key {0:?} is not in the era")]
     ValidatorKeyNotInEra(Box<PublicKey>),
     /// We didn't have a required switch block.
+    #[error("missing switch block for era {0}")]
     MissingSwitchBlock(EraId),
     /// We got an overflow while computing something.
+    #[error("arithmetic overflow")]
     ArithmeticOverflow,
-
+    #[error("failed to fetch block with height {0}")]
     FailedToFetchBlockWithHeight(u64),
+    #[error("failed to fetch era {0}")]
     FailedToFetchEra(String),
     /// Fetching the era validators succedeed, but no info is present (should not happen).
     /// The `Digest` is the one that was queried.
+    #[error("failed to fetch era validators for {0}")]
     FailedToFetchEraValidators(Digest),
+    #[error("failed to fetch total supply")]
     FailedToFetchTotalSupply,
+    #[error("failed to fetch seigniorage rate")]
     FailedToFetchSeigniorageRate,
 }
 
@@ -191,7 +201,7 @@ impl RewardsInfo {
 
         // If the oldest block is genesis, we add the validator information for genesis (era 0) from
         // era 1, because it's the same:
-        let oldest_block_is_genesis = oldest_block.map_or(false, |block| block.is_genesis);
+        let oldest_block_is_genesis = oldest_block.is_some_and(|block| block.is_genesis);
 
         // Here, we gather a list of all of the era ID we need to fetch to calculate the rewards,
         // as well as the state root hash allowing to query this information.
@@ -239,7 +249,7 @@ impl RewardsInfo {
                         // We consume the map to not clone the value:
                         .into_iter()
                         .find(|(key, _)| key == &era_id)
-                        .ok_or_else(|| RewardsError::FailedToFetchEraValidators(state_root_hash))?
+                        .ok_or(RewardsError::FailedToFetchEraValidators(state_root_hash))?
                         .1
                 };
 
@@ -352,7 +362,7 @@ impl RewardsInfo {
         self.cited_blocks
             .iter()
             .find_map(|block| (block.height == height).then_some(block.era_id))
-            .ok_or_else(|| RewardsError::HeightNotInEraRange(height))
+            .ok_or(RewardsError::HeightNotInEraRange(height))
     }
 
     /// Returns all the blocks belonging to an era.
@@ -423,31 +433,28 @@ pub(crate) async fn fetch_data_and_calculate_rewards_for_era<REv: ReactorEventT>
         let rewards = rewards_for_era(rewards_info, current_era_id, &chainspec.core_config);
 
         // Calculate and push reward metric(s)
-        match &rewards {
-            Ok(rewards_map) => {
-                let expected_total_seigniorage = reward_per_round_current_era
-                    .to_integer()
-                    .saturating_mul(U512::from(cited_blocks_count_current_era as u64));
-                let actual_total_seigniorage =
-                    rewards_map
-                        .iter()
-                        .fold(U512::zero(), |acc, (_, rewards_vec)| {
-                            let current_era_reward = rewards_vec
-                                .first()
-                                .expect("expected current era reward amount");
-                            acc.saturating_add(*current_era_reward)
-                        });
-                let seigniorage_target_fraction = Ratio::new(
-                    actual_total_seigniorage.low_u128(),
-                    expected_total_seigniorage.low_u128(),
-                );
-                let gauge_value = match Ratio::to_f64(&seigniorage_target_fraction) {
-                    Some(v) => v,
-                    None => f64::NAN,
-                };
-                metrics.seigniorage_target_fraction.set(gauge_value)
-            }
-            Err(_) => (),
+        if let Ok(rewards_map) = &rewards {
+            let expected_total_seigniorage = reward_per_round_current_era
+                .to_integer()
+                .saturating_mul(U512::from(cited_blocks_count_current_era as u64));
+            let actual_total_seigniorage =
+                rewards_map
+                    .iter()
+                    .fold(U512::zero(), |acc, (_, rewards_vec)| {
+                        let current_era_reward = rewards_vec
+                            .first()
+                            .expect("expected current era reward amount");
+                        acc.saturating_add(*current_era_reward)
+                    });
+            let seigniorage_target_fraction = Ratio::new(
+                actual_total_seigniorage.low_u128(),
+                expected_total_seigniorage.low_u128(),
+            );
+            let gauge_value = match Ratio::to_f64(&seigniorage_target_fraction) {
+                Some(v) => v,
+                None => f64::NAN,
+            };
+            metrics.seigniorage_target_fraction.set(gauge_value)
         }
 
         rewards

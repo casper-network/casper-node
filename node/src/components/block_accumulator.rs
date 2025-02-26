@@ -238,7 +238,7 @@ impl BlockAccumulator {
             let purge_interval = self.purge_interval;
             while block_timestamps
                 .front()
-                .map_or(false, |(_, timestamp)| timestamp.elapsed() > purge_interval)
+                .is_some_and(|(_, timestamp)| timestamp.elapsed() > purge_interval)
             {
                 block_timestamps.pop_front();
             }
@@ -282,7 +282,7 @@ impl BlockAccumulator {
         if self
             .local_tip
             .as_ref()
-            .map_or(false, |local_tip| block_height < local_tip.height)
+            .is_some_and(|local_tip| block_height < local_tip.height)
         {
             debug!(%block_hash, "ignoring outdated block");
             return Effects::new();
@@ -647,7 +647,7 @@ impl BlockAccumulator {
         self.peer_block_timestamps.retain(|_, block_timestamps| {
             while block_timestamps
                 .front()
-                .map_or(false, |(_, timestamp)| timestamp.elapsed() > purge_interval)
+                .is_some_and(|(_, timestamp)| timestamp.elapsed() > purge_interval)
             {
                 block_timestamps.pop_front();
             }

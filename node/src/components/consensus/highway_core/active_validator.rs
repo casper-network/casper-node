@@ -272,7 +272,7 @@ impl<C: Context> ActiveValidator<C> {
         let panorama = self.panorama_at(state, timestamp);
         let maybe_parent_hash = state.fork_choice(&panorama);
         // If the parent is a terminal block, just create a unit without a new block.
-        if maybe_parent_hash.map_or(false, |hash| state.is_terminal_block(hash)) {
+        if maybe_parent_hash.is_some_and(|hash| state.is_terminal_block(hash)) {
             return self
                 .new_unit(panorama, timestamp, None, state, instance_id)
                 .map(|proposal_unit| Effect::NewVertex(ValidVertex(Vertex::Unit(proposal_unit))));
@@ -473,7 +473,7 @@ impl<C: Context> ActiveValidator<C> {
         state
             .panorama()
             .get(self.vidx)
-            .map_or(false, |obs| obs.is_faulty())
+            .is_some_and(|obs| obs.is_faulty())
     }
 
     /// Returns the duration after the beginning of a round when the witness units are sent.

@@ -11,7 +11,6 @@ use datasize::DataSize;
 use prometheus::Registry;
 use tracing::{debug, error, trace};
 
-use casper_execution_engine::engine_state::MAX_PAYMENT;
 use casper_storage::data_access_layer::{balance::BalanceHandling, BalanceRequest, ProofHandling};
 use casper_types::{
     account::AccountHash, addressable_entity::AddressableEntity, system::auction::ARG_AMOUNT,
@@ -295,7 +294,8 @@ impl TransactionAcceptor {
                 self.reject_transaction(effect_builder, *event_metadata, error)
             }
             Some(balance) => {
-                let has_minimum_balance = balance >= *MAX_PAYMENT;
+                let has_minimum_balance =
+                    balance >= self.chainspec.core_config.baseline_motes_amount_u512();
                 if !has_minimum_balance {
                     let initiator_addr = event_metadata.transaction.initiator_addr();
                     let error = Error::parameter_failure(

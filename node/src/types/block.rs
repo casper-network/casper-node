@@ -5,6 +5,7 @@ mod block_payload;
 mod block_with_metadata;
 mod executable_block;
 mod finalized_block;
+mod invalid_proposal_error;
 mod meta_block;
 
 use casper_types::{
@@ -18,6 +19,7 @@ pub use block_payload::BlockPayload;
 pub(crate) use block_with_metadata::BlockWithMetadata;
 pub use executable_block::ExecutableBlock;
 pub use finalized_block::{FinalizedBlock, InternalEraReport};
+pub(crate) use invalid_proposal_error::InvalidProposalError;
 pub(crate) use meta_block::{
     ForwardMetaBlock, MergeMismatchError as MetaBlockMergeError, MetaBlock, State as MetaBlockState,
 };

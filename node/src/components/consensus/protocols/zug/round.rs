@@ -116,7 +116,7 @@ impl<C: Context> Round<C> {
         if self
             .proposal
             .as_ref()
-            .map_or(false, |proposal| *proposal.hash() != hash)
+            .is_some_and(|proposal| *proposal.hash() != hash)
         {
             self.proposal = None;
         }
@@ -193,7 +193,7 @@ impl<C: Context> Round<C> {
             Content::Echo(hash) => self
                 .echoes
                 .get(hash)
-                .map_or(false, |echo_map| echo_map.contains_key(&validator_idx)),
+                .is_some_and(|echo_map| echo_map.contains_key(&validator_idx)),
             Content::Vote(vote) => self.votes[vote][validator_idx].is_some(),
         }
     }

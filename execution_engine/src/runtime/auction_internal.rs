@@ -36,7 +36,7 @@ impl From<ExecError> for Option<Error> {
     }
 }
 
-impl<'a, R> StorageProvider for Runtime<'a, R>
+impl<R> StorageProvider for Runtime<'_, R>
 where
     R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
@@ -148,7 +148,7 @@ where
     }
 }
 
-impl<'a, R> RuntimeProvider for Runtime<'a, R>
+impl<R> RuntimeProvider for Runtime<'_, R>
 where
     R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
@@ -306,7 +306,7 @@ where
     }
 }
 
-impl<'a, R> MintProvider for Runtime<'a, R>
+impl<R> MintProvider for Runtime<'_, R>
 where
     R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
@@ -509,7 +509,7 @@ where
     }
 }
 
-impl<'a, R> AccountProvider for Runtime<'a, R>
+impl<R> AccountProvider for Runtime<'_, R>
 where
     R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
@@ -538,7 +538,4 @@ where
     }
 }
 
-impl<'a, R> Auction for Runtime<'a, R> where
-    R: StateReader<Key, StoredValue, Error = GlobalStateError>
-{
-}
+impl<R> Auction for Runtime<'_, R> where R: StateReader<Key, StoredValue, Error = GlobalStateError> {}

@@ -167,7 +167,7 @@ impl<C: Context> Panorama<C> {
         };
         self.get(unit.creator)
             .and_then(Observation::correct)
-            .map_or(false, can_see)
+            .is_some_and(can_see)
     }
 
     /// Returns `true` if `self` sees the unit with the specified `hash`.

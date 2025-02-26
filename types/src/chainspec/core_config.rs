@@ -17,7 +17,7 @@ use serde::{
 use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    ProtocolVersion, PublicKey, TimeDiff,
+    ProtocolVersion, PublicKey, TimeDiff, U512,
 };
 
 use super::{
@@ -57,7 +57,11 @@ pub const DEFAULT_GAS_HOLD_BALANCE_HANDLING: HoldBalanceHandling = HoldBalanceHa
 /// Default gas hold interval.
 pub const DEFAULT_GAS_HOLD_INTERVAL: TimeDiff = TimeDiff::from_seconds(24 * 60 * 60);
 
+/// Default enable entity setting.
 pub const DEFAULT_ENABLE_ENTITY: bool = false;
+
+/// Default baseline motes amount.
+pub const DEFAULT_BASELINE_MOTES_AMOUNT: u64 = 2_500_000_000;
 
 /// Configuration values associated with the core protocol.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
@@ -180,6 +184,9 @@ pub struct CoreConfig {
     pub administrators: BTreeSet<PublicKey>,
     /// Turn on migration to addressable entity behavior.
     pub enable_addressable_entity: bool,
+    /// This value is used as the penalty payment amount, the minimum balance amount,
+    /// and the minimum consumed amount.
+    pub baseline_motes_amount: u64,
 }
 
 impl CoreConfig {
@@ -208,6 +215,11 @@ impl CoreConfig {
     /// The proportion of the total rewards going to finality signatures collection.
     pub fn contribution_rewards_proportion(&self) -> Ratio<u64> {
         (Ratio::new(1, 1) - self.finders_fee) * self.finality_signature_proportion
+    }
+
+    /// The baseline motes amount as a U512.
+    pub fn baseline_motes_amount_u512(&self) -> U512 {
+        U512::from(self.baseline_motes_amount)
     }
 }
 
@@ -317,7 +329,8 @@ impl CoreConfig {
             gas_hold_balance_handling,
             gas_hold_interval,
             validator_credit_cap,
-            enable_addressable_entity: false,
+            enable_addressable_entity: DEFAULT_ENABLE_ENTITY,
+            baseline_motes_amount: DEFAULT_BASELINE_MOTES_AMOUNT,
         }
     }
 }
@@ -363,6 +376,7 @@ impl Default for CoreConfig {
             gas_hold_interval: DEFAULT_GAS_HOLD_INTERVAL,
             validator_credit_cap: Ratio::new(1, 5),
             enable_addressable_entity: DEFAULT_ENABLE_ENTITY,
+            baseline_motes_amount: DEFAULT_BASELINE_MOTES_AMOUNT,
         }
     }
 }
@@ -410,6 +424,7 @@ impl ToBytes for CoreConfig {
         buffer.extend(self.gas_hold_interval.to_bytes()?);
         buffer.extend(self.validator_credit_cap.to_bytes()?);
         buffer.extend(self.enable_addressable_entity.to_bytes()?);
+        buffer.extend(self.baseline_motes_amount.to_bytes()?);
         Ok(buffer)
     }
 
@@ -453,6 +468,7 @@ impl ToBytes for CoreConfig {
             + self.gas_hold_interval.serialized_length()
             + self.validator_credit_cap.serialized_length()
             + self.enable_addressable_entity.serialized_length()
+            + self.baseline_motes_amount.serialized_length()
     }
 }
 
@@ -496,6 +512,7 @@ impl FromBytes for CoreConfig {
         let (gas_hold_interval, remainder) = TimeDiff::from_bytes(remainder)?;
         let (validator_credit_cap, remainder) = Ratio::from_bytes(remainder)?;
         let (enable_addressable_entity, remainder) = FromBytes::from_bytes(remainder)?;
+        let (baseline_motes_amount, remainder) = u64::from_bytes(remainder)?;
         let config = CoreConfig {
             era_duration,
             minimum_era_height,
@@ -534,6 +551,7 @@ impl FromBytes for CoreConfig {
             gas_hold_interval,
             validator_credit_cap,
             enable_addressable_entity,
+            baseline_motes_amount,
         };
         Ok((config, remainder))
     }

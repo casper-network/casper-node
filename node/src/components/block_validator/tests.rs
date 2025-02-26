@@ -607,8 +607,16 @@ impl ValidationContext {
         )
     }
 
+    async fn proposal_is_valid(&mut self, rng: &mut TestRng, timestamp: Timestamp) -> bool {
+        self.validate_proposed_block(rng, timestamp).await.is_ok()
+    }
+
     /// Validates a block using a `BlockValidator` component, and returns the result.
-    async fn validate_block(&mut self, rng: &mut TestRng, timestamp: Timestamp) -> bool {
+    async fn validate_proposed_block(
+        &mut self,
+        rng: &mut TestRng,
+        timestamp: Timestamp,
+    ) -> Result<(), Box<InvalidProposalError>> {
         let proposed_block = self.proposed_block(timestamp);
 
         // Create the reactor and component.
@@ -779,7 +787,7 @@ impl ValidationContext {
 async fn empty_block() {
     let mut rng = TestRng::new();
     let mut empty_context = ValidationContext::new().with_num_validators(&mut rng, 1);
-    assert!(empty_context.validate_block(&mut rng, 1000.into()).await);
+    assert!(empty_context.proposal_is_valid(&mut rng, 1000.into()).await);
 }
 
 /// Verifies that the block validator checks transaction and transfer timestamps and ttl.
@@ -820,33 +828,37 @@ async fn ttl() {
         .include_all_transfers();
 
     // Both 1000 and 1100 are timestamps compatible with the transactions and transfers.
-    assert!(both_context.validate_block(&mut rng, 1000.into()).await);
-    assert!(both_context.validate_block(&mut rng, 1100.into()).await);
+    assert!(both_context.proposal_is_valid(&mut rng, 1000.into()).await);
+    assert!(both_context.proposal_is_valid(&mut rng, 1100.into()).await);
 
     // A block with timestamp 999 can't contain a transfer or transactions with timestamp 1000.
     assert!(
         !transactions_context
-            .validate_block(&mut rng, 999.into())
-            .await
-    );
-    assert!(!transfers_context.validate_block(&mut rng, 999.into()).await);
-    assert!(!both_context.validate_block(&mut rng, 999.into()).await);
-
-    // At time 1101, the transactions and transfer from time 900 have expired.
-    assert!(
-        !transactions_context
-            .validate_block(&mut rng, 1101.into())
+            .proposal_is_valid(&mut rng, 999.into())
             .await
     );
     assert!(
         !transfers_context
-            .validate_block(&mut rng, 1101.into())
+            .proposal_is_valid(&mut rng, 999.into())
             .await
     );
-    assert!(!both_context.validate_block(&mut rng, 1101.into()).await);
+    assert!(!both_context.proposal_is_valid(&mut rng, 999.into()).await);
+
+    // At time 1101, the transactions and transfer from time 900 have expired.
+    assert!(
+        !transactions_context
+            .proposal_is_valid(&mut rng, 1101.into())
+            .await
+    );
+    assert!(
+        !transfers_context
+            .proposal_is_valid(&mut rng, 1101.into())
+            .await
+    );
+    assert!(!both_context.proposal_is_valid(&mut rng, 1101.into()).await);
 }
 
-/// Verifies that a block is invalid if it contains a transfer in the deploys/transactions section
+/// Verifies that a block is invalid if it contains a transfer in the transactions section
 /// or vice versa.
 #[tokio::test]
 async fn transfer_transaction_mixup_and_replay() {
@@ -867,10 +879,10 @@ async fn transfer_transaction_mixup_and_replay() {
         .with_transfers(transfers)
         .include_all_transactions()
         .include_all_transfers();
-    assert!(context.validate_block(&mut rng, timestamp).await);
+    assert!(context.proposal_is_valid(&mut rng, timestamp).await);
 
     // Now we test for different invalid combinations of transactions and transfers:
-    // 1. Original style transfer in the deploys/transactions section.
+    // 1. Original style transfer in the transactions section.
     let transactions = vec![
         transfer_orig.clone(),
         transaction_v1.clone(),
@@ -883,8 +895,8 @@ async fn transfer_transaction_mixup_and_replay() {
         .with_transfers(transfers)
         .include_all_transactions()
         .include_all_transfers();
-    assert!(!context.validate_block(&mut rng, timestamp).await);
-    // 2. V1 transfer in the deploys/transactions section.
+    assert!(!context.proposal_is_valid(&mut rng, timestamp).await);
+    // 2. V1 transfer in the transactions section.
     let transactions = vec![transfer_v1.clone(), transaction_v1.clone(), deploy.clone()];
     let transfers = vec![transfer_orig.clone(), transfer_v1.clone()];
     let mut context = ValidationContext::new()
@@ -893,7 +905,7 @@ async fn transfer_transaction_mixup_and_replay() {
         .with_transfers(transfers)
         .include_all_transactions()
         .include_all_transfers();
-    assert!(!context.validate_block(&mut rng, timestamp).await);
+    assert!(!context.proposal_is_valid(&mut rng, timestamp).await);
     // 3. Legacy deploy in the transfers section.
     let transactions = vec![transaction_v1.clone(), deploy.clone()];
     let transfers = vec![transfer_orig.clone(), transfer_v1.clone(), deploy.clone()];
@@ -903,7 +915,7 @@ async fn transfer_transaction_mixup_and_replay() {
         .with_transfers(transfers)
         .include_all_transactions()
         .include_all_transfers();
-    assert!(!context.validate_block(&mut rng, timestamp).await);
+    assert!(!context.proposal_is_valid(&mut rng, timestamp).await);
     // 4. V1 transaction in the transfers section.
     let transactions = vec![transaction_v1.clone(), deploy.clone()];
     let transfers = vec![
@@ -917,7 +929,7 @@ async fn transfer_transaction_mixup_and_replay() {
         .with_transfers(transfers)
         .include_all_transactions()
         .include_all_transfers();
-    assert!(!context.validate_block(&mut rng, timestamp).await);
+    assert!(!context.proposal_is_valid(&mut rng, timestamp).await);
 
     // Each transaction must be unique
     let transactions = vec![deploy.clone(), transaction_v1.clone()];
@@ -929,7 +941,7 @@ async fn transfer_transaction_mixup_and_replay() {
         .include_all_transactions()
         .include_all_transfers()
         .include_transactions(vec![(deploy.hash(), deploy.approvals())]);
-    assert!(!context.validate_block(&mut rng, timestamp).await);
+    assert!(!context.proposal_is_valid(&mut rng, timestamp).await);
     let transactions = vec![deploy.clone(), transaction_v1.clone()];
     let transfers = vec![transfer_orig.clone(), transfer_v1.clone()];
     let mut context = ValidationContext::new()
@@ -939,7 +951,7 @@ async fn transfer_transaction_mixup_and_replay() {
         .include_all_transactions()
         .include_all_transfers()
         .include_transactions(vec![(transaction_v1.hash(), transaction_v1.approvals())]);
-    assert!(!context.validate_block(&mut rng, timestamp).await);
+    assert!(!context.proposal_is_valid(&mut rng, timestamp).await);
 
     // And each transfer must be unique, too.
     let transactions = vec![deploy.clone(), transaction_v1.clone()];
@@ -951,7 +963,7 @@ async fn transfer_transaction_mixup_and_replay() {
         .include_all_transactions()
         .include_all_transfers()
         .include_transfers(vec![(transfer_v1.hash(), transfer_v1.approvals())]);
-    assert!(!context.validate_block(&mut rng, timestamp).await);
+    assert!(!context.proposal_is_valid(&mut rng, timestamp).await);
     let transactions = vec![deploy.clone(), transaction_v1.clone()];
     let transfers = vec![transfer_orig.clone(), transfer_v1.clone()];
     let mut context = ValidationContext::new()
@@ -961,7 +973,7 @@ async fn transfer_transaction_mixup_and_replay() {
         .include_all_transactions()
         .include_all_transfers()
         .include_transactions(vec![(transfer_orig.hash(), transfer_orig.approvals())]);
-    assert!(!context.validate_block(&mut rng, timestamp).await);
+    assert!(!context.proposal_is_valid(&mut rng, timestamp).await);
 }
 
 /// Verifies that the block validator fetches from multiple peers.
@@ -1135,7 +1147,7 @@ async fn should_fetch_from_multiple_peers() {
         }
 
         for validation_result in validation_results {
-            assert!(validation_result.await.unwrap());
+            assert!(validation_result.await.unwrap().is_ok());
         }
     })
     .await
@@ -1165,7 +1177,7 @@ async fn should_validate_block_with_signatures() {
         .with_signatures_for_block(3, 5, &validators)
         .include_signatures(3, 5, &validators);
 
-    assert!(context.validate_block(&mut rng, timestamp).await);
+    assert!(context.proposal_is_valid(&mut rng, timestamp).await);
 }
 
 #[tokio::test]
@@ -1194,7 +1206,7 @@ async fn should_fetch_missing_signature() {
         .with_fetchable_signatures(3, 5, &[leftover])
         .include_signatures(3, 5, &validators);
 
-    assert!(context.validate_block(&mut rng, timestamp).await);
+    assert!(context.proposal_is_valid(&mut rng, timestamp).await);
 }
 
 #[tokio::test]
@@ -1223,7 +1235,7 @@ async fn should_fail_if_unable_to_fetch_signature() {
         .with_signatures_for_block(3, 5, &signing_validators)
         .include_signatures(3, 5, &validators);
 
-    assert!(!context.validate_block(&mut rng, timestamp).await);
+    assert!(!context.proposal_is_valid(&mut rng, timestamp).await);
 }
 
 #[tokio::test]
@@ -1244,7 +1256,7 @@ async fn should_fail_if_unable_to_fetch_signature_for_block_without_transactions
         .with_signatures_for_block(3, 5, &signing_validators)
         .include_signatures(3, 5, &validators);
 
-    assert!(!context.validate_block(&mut rng, timestamp).await);
+    assert!(!context.proposal_is_valid(&mut rng, timestamp).await);
 }
 
 #[tokio::test]
@@ -1271,5 +1283,5 @@ async fn should_validate_with_delayed_block() {
         .with_signatures_for_block(3, 5, &validators)
         .include_signatures(3, 5, &validators);
 
-    assert!(context.validate_block(&mut rng, timestamp).await);
+    assert!(context.proposal_is_valid(&mut rng, timestamp).await);
 }

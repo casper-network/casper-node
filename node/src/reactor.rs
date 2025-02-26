@@ -39,7 +39,6 @@ use std::{
     env,
     fmt::{Debug, Display},
     io::Write,
-    mem,
     num::NonZeroU64,
     str::FromStr,
     sync::{atomic::Ordering, Arc},
@@ -59,8 +58,7 @@ use serde::Serialize;
 use signal_hook::consts::signal::{SIGINT, SIGQUIT, SIGTERM};
 use stats_alloc::{Stats, INSTRUMENTED_SYSTEM};
 use tokio::time::{Duration, Instant};
-use tracing::{debug_span, error, info, instrument, trace, warn, Span};
-use tracing_futures::Instrument;
+use tracing::{debug_span, error, info, instrument, trace, warn, Instrument, Span};
 
 #[cfg(test)]
 use crate::components::ComponentState;
@@ -505,12 +503,12 @@ where
     ) -> Result<Self, R::Error> {
         adjust_open_files_limit();
 
-        let event_size = mem::size_of::<R::Event>();
+        let event_size = size_of::<R::Event>();
 
         // Check if the event is of a reasonable size. This only emits a runtime warning at startup
         // right now, since storage size of events is not an issue per se, but copying might be
         // expensive if events get too large.
-        if event_size > 16 * mem::size_of::<usize>() {
+        if event_size > 16 * size_of::<usize>() {
             warn!(
                 %event_size, type_name = ?any::type_name::<R::Event>(),
                 "large event size, consider reducing it or boxing"
@@ -542,7 +540,8 @@ where
         );
         // Run all effects from component instantiation.
         process_effects(None, scheduler, initial_effects, QueueKind::Regular)
-            .instrument(debug_span!("process initial effects"));
+            .instrument(debug_span!("process initial effects"))
+            .await;
 
         info!("reactor main loop is ready");
 
@@ -718,7 +717,9 @@ where
             self.scheduler,
             effects,
             queue_kind,
-        );
+        )
+        .in_current_span()
+        .await;
 
         self.current_event_id += 1;
 
@@ -837,15 +838,19 @@ where
     where
         F: FnOnce(EffectBuilder<R::Event>) -> Effects<R::Event>,
     {
+        use tracing::{debug_span, Instrument};
+
         let event_queue = EventQueueHandle::new(self.scheduler, self.is_shutting_down);
         let effect_builder = EffectBuilder::new(event_queue);
 
         let effects = create_effects(effect_builder);
 
-        process_effects(None, self.scheduler, effects, QueueKind::Regular).instrument(debug_span!(
-            "process injected effects",
-            ev = self.current_event_id
-        ));
+        process_effects(None, self.scheduler, effects, QueueKind::Regular)
+            .instrument(debug_span!(
+                "process injected effects",
+                ev = self.current_event_id
+            ))
+            .await
     }
 
     /// Processes a single event if there is one and we haven't previously handled an exit code.
@@ -941,7 +946,7 @@ where
 /// Spawns tasks that will process the given effects.
 ///
 /// Result events from processing the events will be scheduled with the given ancestor.
-fn process_effects<Ev>(
+async fn process_effects<Ev>(
     ancestor: Option<NonZeroU64>,
     scheduler: &'static Scheduler<Ev>,
     effects: Effects<Ev>,

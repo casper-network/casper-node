@@ -392,7 +392,7 @@ where
 {
     validate_metadata(response, payload_type)
         && payload_type.map_or(true, |_| {
-            validate_deserialization::<T>(response).map_or(false, validator)
+            validate_deserialization::<T>(response).is_some_and(validator)
         })
 }
 

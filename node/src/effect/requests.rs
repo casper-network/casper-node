@@ -6,7 +6,6 @@
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     fmt::{self, Display, Formatter},
-    mem,
     sync::Arc,
 };
 
@@ -58,13 +57,13 @@ use crate::{
     reactor::main_reactor::ReactorState,
     types::{
         appendable_block::AppendableBlock, BlockExecutionResultsOrChunk,
-        BlockExecutionResultsOrChunkId, BlockWithMetadata, ExecutableBlock, LegacyDeploy,
-        MetaBlockState, NodeId, StatusFeed, TransactionHeader,
+        BlockExecutionResultsOrChunkId, BlockWithMetadata, ExecutableBlock, InvalidProposalError,
+        LegacyDeploy, MetaBlockState, NodeId, StatusFeed, TransactionHeader,
     },
     utils::Source,
 };
 
-const _STORAGE_REQUEST_SIZE: usize = mem::size_of::<StorageRequest>();
+const _STORAGE_REQUEST_SIZE: usize = size_of::<StorageRequest>();
 const_assert!(_STORAGE_REQUEST_SIZE < 129);
 
 /// A metrics request.
@@ -85,7 +84,7 @@ impl Display for MetricsRequest {
     }
 }
 
-const _NETWORK_EVENT_SIZE: usize = mem::size_of::<NetworkRequest<String>>();
+const _NETWORK_EVENT_SIZE: usize = size_of::<NetworkRequest<String>>();
 const_assert!(_NETWORK_EVENT_SIZE < 105);
 
 /// A networking request.
@@ -309,12 +308,12 @@ pub(crate) enum StorageRequest {
         /// in local storage.
         responder: Responder<Option<ApprovalsHashes>>,
     },
-    /// Retrieve highest complete block.
+    /// Retrieve the highest complete block.
     GetHighestCompleteBlock {
         /// Responder.
         responder: Responder<Option<Block>>,
     },
-    /// Retrieve highest complete block header.
+    /// Retrieve the highest complete block header.
     GetHighestCompleteBlockHeader {
         /// Responder.
         responder: Responder<Option<BlockHeader>>,
@@ -986,7 +985,7 @@ impl Display for ContractRuntimeRequest {
             ContractRuntimeRequest::UpdatePreState { new_pre_state } => {
                 write!(
                     formatter,
-                    "Updating contract runtimes execution presate: {:?}",
+                    "Updating contract runtimes execution prestate: {:?}",
                     new_pre_state
                 )
             }
@@ -1063,8 +1062,8 @@ pub(crate) struct BlockValidationRequest {
     pub(crate) sender: NodeId,
     /// Responder to call with the result.
     ///
-    /// Indicates whether or not validation was successful.
-    pub(crate) responder: Responder<bool>,
+    /// Indicates whether validation was successful.
+    pub(crate) responder: Responder<Result<(), Box<InvalidProposalError>>>,
 }
 
 impl Display for BlockValidationRequest {

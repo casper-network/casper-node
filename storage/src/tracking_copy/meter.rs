@@ -17,7 +17,7 @@ pub mod heap_meter {
 
     impl<K: ByteSize, V: ByteSize> super::Meter<K, V> for HeapSize {
         fn measure(&self, _: &K, v: &V) -> usize {
-            std::mem::size_of::<V>() + v.byte_size()
+            size_of::<V>() + v.byte_size()
         }
 
         fn measure_keys(&self, keys: &BTreeSet<K>) -> usize {

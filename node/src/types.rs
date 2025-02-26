@@ -24,8 +24,8 @@ use thiserror::Error;
 
 pub(crate) use block::{
     compute_approvals_checksum, create_single_block_rewarded_signatures,
-    BlockExecutionResultsOrChunkId, BlockPayload, BlockWithMetadata, ForwardMetaBlock, MetaBlock,
-    MetaBlockMergeError, MetaBlockState,
+    BlockExecutionResultsOrChunkId, BlockPayload, BlockWithMetadata, ForwardMetaBlock,
+    InvalidProposalError, MetaBlock, MetaBlockMergeError, MetaBlockState,
 };
 pub use block::{BlockExecutionResultsOrChunk, ExecutableBlock, FinalizedBlock, InternalEraReport};
 pub use chunkable::Chunkable;

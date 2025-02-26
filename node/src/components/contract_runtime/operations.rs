@@ -124,7 +124,7 @@ pub fn execute_finalized_block(
     let insufficient_balance_handling = InsufficientBalanceHandling::HoldRemaining;
     let refund_handling = chainspec.core_config.refund_handling;
     let fee_handling = chainspec.core_config.fee_handling;
-    let penalty_payment_amount = *casper_execution_engine::engine_state::MAX_PAYMENT;
+    let baseline_motes_amount = chainspec.core_config.baseline_motes_amount_u512();
     let balance_handling = BalanceHandling::Available;
 
     // get scratch state, which must be used for all processing and post-processing data
@@ -209,7 +209,8 @@ pub fn execute_finalized_block(
     let transaction_config = &chainspec.transaction_config;
 
     for stored_transaction in executable_block.transactions {
-        let mut artifact_builder = ExecutionArtifactBuilder::new(&stored_transaction);
+        let mut artifact_builder =
+            ExecutionArtifactBuilder::new(&stored_transaction, baseline_motes_amount);
         let transaction =
             MetaTransaction::from_transaction(&stored_transaction, transaction_config)
                 .map_err(|err| BlockExecutionError::TransactionConversion(err.to_string()))?;
@@ -314,13 +315,13 @@ pub fn execute_finalized_block(
             ));
 
             if let Err(root_not_found) = artifact_builder
-                .with_initial_balance_result(initial_balance_result.clone(), penalty_payment_amount)
+                .with_initial_balance_result(initial_balance_result.clone(), baseline_motes_amount)
             {
                 if root_not_found {
                     return Err(BlockExecutionError::RootNotFound(state_root_hash));
                 }
                 trace!(%transaction_hash, "insufficient initial balance");
-                debug!(%transaction_hash, ?initial_balance_result, %penalty_payment_amount, "insufficient initial balance");
+                debug!(%transaction_hash, ?initial_balance_result, %baseline_motes_amount, "insufficient initial balance");
                 artifacts.push(artifact_builder.build());
                 // only reads have happened so far, and we can't charge due
                 // to insufficient balance, so move on with no effects committed
@@ -408,7 +409,7 @@ pub fn execute_finalized_block(
                             None,
                             initiator_addr.clone().into(),
                             BalanceIdentifier::Payment,
-                            penalty_payment_amount,
+                            baseline_motes_amount,
                             None,
                         ),
                     ));
@@ -1332,11 +1333,11 @@ where
                 authorization_keys,
                 runtime_args,
             ));
-            SpeculativeExecutionResult::WasmV1(utils::spec_exec_from_transfer_result(
+            SpeculativeExecutionResult::WasmV1(Box::new(utils::spec_exec_from_transfer_result(
                 limit,
                 result,
                 block_header.block_hash(),
-            ))
+            )))
         } else {
             let block_info = BlockInfo::new(
                 *state_root_hash,
@@ -1353,10 +1354,10 @@ where
                     }
                     Err(error) => WasmV1Result::invalid_executable_item(gas_limit, error),
                 };
-            SpeculativeExecutionResult::WasmV1(utils::spec_exec_from_wasm_v1_result(
+            SpeculativeExecutionResult::WasmV1(Box::new(utils::spec_exec_from_wasm_v1_result(
                 wasm_v1_result,
                 block_header.block_hash(),
-            ))
+            )))
         }
     } else {
         SpeculativeExecutionResult::ReceivedV1Transaction

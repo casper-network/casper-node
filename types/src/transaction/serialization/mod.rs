@@ -145,7 +145,7 @@ pub struct CalltableFieldsIterator<'a> {
     parent: &'a CalltableSerializationEnvelope,
 }
 
-impl<'a> CalltableFieldsIterator<'a> {
+impl CalltableFieldsIterator<'_> {
     pub fn verify_index(&self, expected_index: u16) -> Result<(), Error> {
         let field = self.field;
         if field.index != expected_index {

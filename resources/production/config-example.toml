@@ -249,8 +249,15 @@ tarpit_duration = '10 minutes'
 # legacy nodes running this software.
 tarpit_chance = 0.2
 
-# How long peers remain blocked after they get blocklisted.
-blocklist_retain_duration = '10 minutes'
+# Minimum time a peer is kept on block list before being redeemed. The actual
+# timeout duration is calculated by selecting a random value between
+# <blocklist_retain_min_duration, blocklist_retain_max_duration>.
+blocklist_retain_min_duration = '2 minutes'
+
+# Maximum time a peer is kept on block list before being redeemed. The actual
+# timeout duration is calculated by selecting a random value between
+# <blocklist_retain_min_duration, blocklist_retain_max_duration>.
+blocklist_retain_max_duration = '10 minutes'
 
 # Identity of a node
 #

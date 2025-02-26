@@ -218,7 +218,7 @@ impl datasize::DataSize for Bytes {
     const STATIC_HEAP_SIZE: usize = 0;
 
     fn estimate_heap_size(&self) -> usize {
-        self.0.capacity() * std::mem::size_of::<u8>()
+        self.0.capacity() * size_of::<u8>()
     }
 }
 

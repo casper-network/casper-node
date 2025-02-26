@@ -108,7 +108,7 @@ impl<'a, C: Context> Tally<'a, C> {
 /// they most recently voted for.
 pub(crate) struct Tallies<'a, C: Context>(BTreeMap<u64, Tally<'a, C>>);
 
-impl<'a, C: Context> Default for Tallies<'a, C> {
+impl<C: Context> Default for Tallies<'_, C> {
     fn default() -> Self {
         Tallies(BTreeMap::new())
     }
@@ -204,7 +204,7 @@ mod tests {
         *,
     };
 
-    impl<'a> Tallies<'a, TestContext> {
+    impl Tallies<'_, TestContext> {
         /// Returns the number of tallies.
         pub(crate) fn len(&self) -> usize {
             self.0.len()

@@ -6,7 +6,7 @@ use std::{
 use datasize::DataSize;
 use itertools::Itertools;
 use once_cell::sync::Lazy;
-use tracing::{debug, warn};
+use tracing::{debug, info, warn};
 
 use casper_types::{PublicKey, Timestamp, U512};
 
@@ -113,7 +113,7 @@ impl Era {
     }
 
     /// Marks the block payload as valid or invalid. Returns `false` if the block was not present
-    /// or is still missing evidence. Otherwise it returns `true`: The block can now be processed
+    /// or is still missing evidence. Otherwise, it returns `true`: The block can now be processed
     /// by the consensus protocol.
     pub(crate) fn resolve_validity(
         &mut self,
@@ -123,6 +123,7 @@ impl Era {
         if valid {
             if let Some(vs) = self.validation_states.get_mut(proposed_block) {
                 if !vs.missing_evidence.is_empty() {
+                    info!("Cannot resolve validity of proposed block (timestamp {}) due to missing_evidence still present.", proposed_block.context().timestamp());
                     vs.validated = true;
                     return false;
                 }

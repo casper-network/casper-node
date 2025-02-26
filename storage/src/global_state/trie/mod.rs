@@ -575,7 +575,7 @@ pub enum DescendantsIterator<'a> {
     },
 }
 
-impl<'a> Iterator for DescendantsIterator<'a> {
+impl Iterator for DescendantsIterator<'_> {
     type Item = Digest;
 
     fn next(&mut self) -> Option<Self::Item> {

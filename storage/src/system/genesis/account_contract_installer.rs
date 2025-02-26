@@ -57,7 +57,7 @@ use casper_types::{
 
 pub struct AccountContractInstaller<S>
 where
-    S: StateProvider + ?Sized,
+    S: StateProvider,
 {
     protocol_version: ProtocolVersion,
     config: GenesisConfig,
@@ -67,7 +67,7 @@ where
 
 impl<S> AccountContractInstaller<S>
 where
-    S: StateProvider + ?Sized,
+    S: StateProvider,
 {
     pub(crate) fn new(
         genesis_config_hash: Digest,

@@ -5,10 +5,12 @@ use casper_engine_test_support::{
     LmdbWasmTestBuilder, TransferRequestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_ACCOUNT_INITIAL_BALANCE, LOCAL_GENESIS_REQUEST,
 };
-use casper_execution_engine::engine_state::MAX_PAYMENT_AMOUNT;
 use casper_types::{account::AccountHash, MintCosts, PublicKey, SecretKey, U512};
 
-static TRANSFER_AMOUNT: Lazy<U512> = Lazy::new(|| U512::from(MAX_PAYMENT_AMOUNT));
+/// The maximum amount of motes that payment code execution can cost.
+const TRANSFER_MOTES_AMOUNT: u64 = 2_500_000_000;
+
+static TRANSFER_AMOUNT: Lazy<U512> = Lazy::new(|| U512::from(TRANSFER_MOTES_AMOUNT));
 
 static ACCOUNT_1_SECRET_KEY: Lazy<SecretKey> =
     Lazy::new(|| SecretKey::secp256k1_from_bytes([234u8; 32]).unwrap());

@@ -434,7 +434,7 @@ where
 /// a specific era is reached.
 ///
 /// This function can be called by the system only.
-pub fn process_unbond_requests<P: Auction + ?Sized>(
+pub fn process_unbond_requests<P: Auction>(
     provider: &mut P,
     max_delegators_per_validator: u32,
 ) -> Result<(), ApiError> {
@@ -466,9 +466,8 @@ pub fn process_unbond_requests<P: Auction + ?Sized>(
                     &unbond_era,
                     max_delegators_per_validator,
                 )
-                .map_err(|err| {
+                .inspect_err(|err| {
                     error!(?err, ?unbond_kind, ?unbond_era, "error processing unbond");
-                    err
                 })?;
 
                 match redelegation_result {
@@ -501,7 +500,7 @@ pub fn process_unbond_requests<P: Auction + ?Sized>(
 
 /// Creates a new purse in unbonding_purses given a validator's key, amount, and a destination
 /// unbonding purse. Returns the amount of motes remaining in the validator's bid purse.
-pub fn create_unbonding_purse<P: Auction + ?Sized>(
+pub fn create_unbonding_purse<P: Auction>(
     provider: &mut P,
     validator_public_key: PublicKey,
     unbond_kind: UnbondKind,

@@ -3,6 +3,7 @@
 
 mod block_signatures;
 pub(crate) mod chain_specification;
+pub(crate) mod config_specification;
 mod display_error;
 pub(crate) mod ds;
 mod external;

@@ -119,9 +119,6 @@ impl EntityWithNamedKeys {
     }
 }
 
-/// Wasm test builder where Lmdb state is held in a automatically cleaned up temporary directory.
-// pub type TempLmdbWasmTestBuilder = WasmTestBuilder<TemporaryLmdbGlobalState>;
-
 /// Builder for simple WASM test
 pub struct WasmTestBuilder<S> {
     /// Data access layer.

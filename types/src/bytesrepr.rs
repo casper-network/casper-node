@@ -2,6 +2,7 @@
 mod bytes;
 
 use alloc::{
+    boxed::Box,
     collections::{BTreeMap, BTreeSet, VecDeque},
     str,
     string::String,
@@ -13,7 +14,6 @@ use core::any;
 use core::{
     convert::TryInto,
     fmt::{self, Display, Formatter},
-    mem,
 };
 #[cfg(feature = "std")]
 use std::error::Error as StdError;
@@ -33,19 +33,19 @@ pub const UNIT_SERIALIZED_LENGTH: usize = 0;
 /// The number of bytes in a serialized `bool`.
 pub const BOOL_SERIALIZED_LENGTH: usize = 1;
 /// The number of bytes in a serialized `i32`.
-pub const I32_SERIALIZED_LENGTH: usize = mem::size_of::<i32>();
+pub const I32_SERIALIZED_LENGTH: usize = size_of::<i32>();
 /// The number of bytes in a serialized `i64`.
-pub const I64_SERIALIZED_LENGTH: usize = mem::size_of::<i64>();
+pub const I64_SERIALIZED_LENGTH: usize = size_of::<i64>();
 /// The number of bytes in a serialized `u8`.
-pub const U8_SERIALIZED_LENGTH: usize = mem::size_of::<u8>();
+pub const U8_SERIALIZED_LENGTH: usize = size_of::<u8>();
 /// The number of bytes in a serialized `u16`.
-pub const U16_SERIALIZED_LENGTH: usize = mem::size_of::<u16>();
+pub const U16_SERIALIZED_LENGTH: usize = size_of::<u16>();
 /// The number of bytes in a serialized `u32`.
-pub const U32_SERIALIZED_LENGTH: usize = mem::size_of::<u32>();
+pub const U32_SERIALIZED_LENGTH: usize = size_of::<u32>();
 /// The number of bytes in a serialized `u64`.
-pub const U64_SERIALIZED_LENGTH: usize = mem::size_of::<u64>();
+pub const U64_SERIALIZED_LENGTH: usize = size_of::<u64>();
 /// The number of bytes in a serialized [`U128`](crate::U128).
-pub const U128_SERIALIZED_LENGTH: usize = mem::size_of::<u128>();
+pub const U128_SERIALIZED_LENGTH: usize = size_of::<u128>();
 /// The number of bytes in a serialized [`U256`](crate::U256).
 pub const U256_SERIALIZED_LENGTH: usize = U128_SERIALIZED_LENGTH * 2;
 /// The number of bytes in a serialized [`U512`](crate::U512).
@@ -108,7 +108,7 @@ pub fn allocate_buffer<T: ToBytes>(to_be_serialized: &T) -> Result<Vec<u8>, Erro
 }
 
 /// Returns a `Vec<u8>` initialized with sufficient capacity to hold `expected_size` bytes,
-/// or an error if the capacity would exceed `u32::max_value()`.
+/// or an error if the capacity would exceed `u32::MAX`.
 pub fn allocate_buffer_for_size(expected_size: usize) -> Result<Vec<u8>, Error> {
     if expected_size > u32::MAX as usize {
         return Err(Error::OutOfMemory);
@@ -541,7 +541,7 @@ fn vec_from_vec<T: FromBytes>(bytes: Vec<u8>) -> Result<(Vec<T>, Vec<u8>), Error
 /// 4096 bytes. This function will never return less than 1.
 #[inline]
 fn cautious<T>(hint: usize) -> usize {
-    let el_size = mem::size_of::<T>();
+    let el_size = size_of::<T>();
     core::cmp::max(core::cmp::min(hint, 4096 / el_size), 1)
 }
 
@@ -1284,6 +1284,19 @@ where
 
     fn serialized_length(&self) -> usize {
         (*self).serialized_length()
+    }
+}
+
+impl<T> ToBytes for Box<T>
+where
+    T: ToBytes,
+{
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        self.as_ref().to_bytes()
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.as_ref().serialized_length()
     }
 }
 

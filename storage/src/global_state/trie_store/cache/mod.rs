@@ -324,7 +324,7 @@ where
 mod tests {
     use super::*;
 
-    impl<'a, K, V, S> TrieCache<'a, K, V, S>
+    impl<K, V, S> TrieCache<'_, K, V, S>
     where
         K: ToBytes + FromBytes + Clone + Eq,
         V: ToBytes + FromBytes + Clone + Eq,

@@ -1449,7 +1449,7 @@ where
 }
 
 fn extract_header(payload: &[u8]) -> Result<(CommandHeader, &[u8]), ErrorCode> {
-    const BINARY_VERSION_LENGTH_BYTES: usize = std::mem::size_of::<u16>();
+    const BINARY_VERSION_LENGTH_BYTES: usize = size_of::<u16>();
 
     if payload.len() < BINARY_VERSION_LENGTH_BYTES {
         return Err(ErrorCode::TooLittleBytesForRequestHeaderVersion);

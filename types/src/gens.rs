@@ -1,9 +1,6 @@
 //! Contains functions for generating arbitrary values for use by
 //! [`Proptest`](https://crates.io/crates/proptest).
 #![allow(missing_docs)]
-
-use core::u32;
-
 use alloc::{
     boxed::Box,
     collections::{BTreeMap, BTreeSet},

@@ -637,7 +637,7 @@ pub(crate) fn within_message_size_limit_tolerance(chainspec: &Chainspec) -> bool
     within_tolerance
 }
 
-impl<'a> SizeEstimator for NetworkMessageEstimator<'a> {
+impl SizeEstimator for NetworkMessageEstimator<'_> {
     fn estimate<T: Serialize>(&self, val: &T) -> usize {
         serialize_net_message(&val).len()
     }

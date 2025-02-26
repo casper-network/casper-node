@@ -451,7 +451,7 @@ impl BlockAcceptor {
     pub(super) fn executed(&self) -> bool {
         self.meta_block
             .as_ref()
-            .map_or(false, |meta_block| meta_block.state.is_executed())
+            .is_some_and(|meta_block| meta_block.state.is_executed())
     }
 
     pub(super) fn meta_block(&self) -> Option<ForwardMetaBlock> {

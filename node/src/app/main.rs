@@ -4,7 +4,7 @@
 //! command-line arguments.
 
 use std::{
-    panic::{self, PanicInfo},
+    panic::{self, PanicHookInfo},
     process,
 };
 
@@ -18,7 +18,7 @@ use casper_node::{cli::Cli, MAX_THREAD_COUNT};
 /// Aborting panic hook.
 ///
 /// Will exit the application using `abort` when an error occurs. Always shows a backtrace.
-fn panic_hook(info: &PanicInfo) {
+fn panic_hook(info: &PanicHookInfo<'_>) {
     let backtrace = Backtrace::new();
 
     eprintln!("{:?}", backtrace);
@@ -26,9 +26,6 @@ fn panic_hook(info: &PanicInfo) {
     // Print panic info
     if let Some(s) = info.payload().downcast_ref::<&str>() {
         eprintln!("node panicked: {s}");
-    // TODO - use `info.message()` once https://github.com/rust-lang/rust/issues/66745 is fixed
-    // } else if let Some(message) = info.message() {
-    //     eprintln!("{message}");
     } else {
         eprintln!("{info}");
     }

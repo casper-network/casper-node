@@ -158,7 +158,7 @@ use crate::{
     types::{
         appendable_block::AppendableBlock, BlockExecutionResultsOrChunk,
         BlockExecutionResultsOrChunkId, BlockWithMetadata, ExecutableBlock, FinalizedBlock,
-        LegacyDeploy, MetaBlock, MetaBlockState, NodeId, TransactionHeader,
+        InvalidProposalError, LegacyDeploy, MetaBlock, MetaBlockState, NodeId, TransactionHeader,
     },
     utils::{fmt_limit::FmtLimit, SharedFlag, Source},
 };
@@ -402,7 +402,7 @@ pub(crate) trait EffectResultExt {
         U: 'static;
 }
 
-impl<T: ?Sized> EffectExt for T
+impl<T> EffectExt for T
 where
     T: Future + Send + 'static + Sized,
 {
@@ -422,7 +422,6 @@ where
 impl<T, V, E> EffectResultExt for T
 where
     T: Future<Output = Result<V, E>> + Send + 'static + Sized,
-    T: ?Sized,
 {
     type Value = V;
     type Error = E;
@@ -446,7 +445,7 @@ where
 /// event queue, without giving direct access to this queue.
 ///
 /// The `REv` type parameter indicates which reactor event effects created by this builder will
-/// produce as side-effects.
+/// produce as side effects.
 #[derive(Debug)]
 pub(crate) struct EffectBuilder<REv: 'static> {
     /// A handle to the referenced event queue.
@@ -486,8 +485,8 @@ impl<REv> EffectBuilder<REv> {
     ///
     /// # Cancellation safety
     ///
-    /// This future is cancellation safe: If it is dropped without being polled, it merely indicates
-    /// the original requester is not longer interested in the result, which will be discarded.
+    /// This future is cancellation safe: If it is dropped without being polled, it indicates
+    /// that the original requester is no longer interested in the result, which will be discarded.
     pub(crate) async fn make_request<T, Q, F>(self, f: F, queue_kind: QueueKind) -> T
     where
         T: Send + 'static,
@@ -1556,7 +1555,7 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets the requested deploy from the deploy store by DeployHash only.
+    /// Gets the requested legacy deploy from the legacy deploy store by DeployHash only.
     ///
     /// Returns the legacy deploy containing the set of approvals used during execution of the
     /// recorded block, if known.
@@ -1820,14 +1819,14 @@ impl<REv> EffectBuilder<REv> {
             .await;
     }
 
-    /// Checks whether the transactions included in the block exist on the network and the block is
-    /// valid.
+    /// Checks whether the transactions included in the block exist on the network and that
+    /// the block is valid.
     pub(crate) async fn validate_block(
         self,
         sender: NodeId,
         proposed_block_height: u64,
         block: ProposedBlock<ClContext>,
-    ) -> bool
+    ) -> Result<(), Box<InvalidProposalError>>
     where
         REv: From<BlockValidationRequest>,
     {

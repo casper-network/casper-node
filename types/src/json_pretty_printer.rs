@@ -1,5 +1,3 @@
-#![cfg(feature = "json-schema")]
-
 extern crate alloc;
 
 use alloc::{format, string::String, vec::Vec};

@@ -50,7 +50,7 @@ use casper_types::{
 
 pub struct EntityGenesisInstaller<S>
 where
-    S: StateProvider + ?Sized,
+    S: StateProvider,
 {
     protocol_version: ProtocolVersion,
     config: GenesisConfig,
@@ -60,7 +60,7 @@ where
 
 impl<S> EntityGenesisInstaller<S>
 where
-    S: StateProvider + ?Sized,
+    S: StateProvider,
 {
     pub fn new(
         genesis_config_hash: Digest,

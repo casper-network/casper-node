@@ -891,7 +891,7 @@ where
                     self.runtime_footprint_by_account_hash(protocol_version, proposer)?;
                 Ok(entity
                     .main_purse()
-                    .ok_or_else(|| TrackingCopyError::AddressableEntityDisable)?)
+                    .ok_or(TrackingCopyError::AddressableEntityDisable)?)
             }
             FeesPurseHandling::Accumulate => {
                 let registry = self.get_system_entity_registry()?;

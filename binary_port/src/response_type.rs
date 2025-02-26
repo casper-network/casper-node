@@ -452,6 +452,13 @@ impl PayloadEntity for AddressableEntityInformation {
     const RESPONSE_TYPE: ResponseType = ResponseType::AddressableEntityInformation;
 }
 
+impl<T> PayloadEntity for Box<T>
+where
+    T: PayloadEntity,
+{
+    const RESPONSE_TYPE: ResponseType = T::RESPONSE_TYPE;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

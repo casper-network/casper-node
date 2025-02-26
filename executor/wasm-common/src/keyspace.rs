@@ -33,7 +33,7 @@ pub enum Keyspace<'a> {
     PaymentInfo(&'a str),
 }
 
-impl<'a> Keyspace<'a> {
+impl Keyspace<'_> {
     pub fn as_tag(&self) -> KeyspaceTag {
         match self {
             Keyspace::State => KeyspaceTag::State,

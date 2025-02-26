@@ -268,7 +268,8 @@ where
             OutgoingConfig {
                 retry_attempts: RECONNECTION_ATTEMPTS,
                 base_timeout: BASE_RECONNECTION_TIMEOUT,
-                unblock_after: cfg.blocklist_retain_duration.into(),
+                unblock_after_min: cfg.blocklist_retain_min_duration.into(),
+                unblock_after_max: cfg.blocklist_retain_max_duration.into(),
                 sweep_timeout: cfg.max_addr_pending_time.into(),
                 health: HealthConfig {
                     ping_interval: PING_INTERVAL,
@@ -704,6 +705,7 @@ where
         &mut self,
         outgoing: OutgoingConnection<P>,
         span: Span,
+        rng: &mut NodeRng,
     ) -> Effects<Event<P>> {
         let now = Instant::now();
         span.clone().in_scope(|| match outgoing {
@@ -722,6 +724,7 @@ where
                         peer_addr,
                         now,
                         justification,
+                        rng,
                     ));
                 }
 
@@ -1205,7 +1208,7 @@ where
                     span,
                 } => self.handle_incoming_closed(result, *peer_id, peer_addr, *span),
                 Event::OutgoingConnection { outgoing, span } => {
-                    self.handle_outgoing_connection(*outgoing, span)
+                    self.handle_outgoing_connection(*outgoing, span, rng)
                 }
                 Event::OutgoingDropped { peer_id, peer_addr } => {
                     self.handle_outgoing_dropped(*peer_id, peer_addr)
@@ -1277,6 +1280,7 @@ where
                                 addr,
                                 Instant::now(),
                                 *justification,
+                                rng,
                             );
                             self.process_dial_requests(requests)
                         } else {

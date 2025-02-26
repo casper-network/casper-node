@@ -165,6 +165,8 @@ where
         since: Instant,
         /// The justification given for blocking.
         justification: BlocklistJustification,
+        /// Until when the block took effect.
+        until: Instant,
     },
     /// The address is owned by ourselves and will not be tried again.
     Loopback,
@@ -288,7 +290,8 @@ pub struct OutgoingConfig {
     /// The basic time slot for exponential backoff when reconnecting.
     pub(crate) base_timeout: Duration,
     /// Time until an outgoing address is unblocked.
-    pub(crate) unblock_after: Duration,
+    pub(crate) unblock_after_min: Duration,
+    pub(crate) unblock_after_max: Duration,
     /// Safety timeout, after which a connection is no longer expected to finish dialing.
     pub(crate) sweep_timeout: Duration,
     /// Health check configuration.
@@ -578,11 +581,12 @@ where
     /// Blocks an address.
     ///
     /// Causes any current connection to the address to be terminated and future ones prohibited.
-    pub(crate) fn block_addr(
+    pub(crate) fn block_addr<R: Rng>(
         &mut self,
         addr: SocketAddr,
         now: Instant,
         justification: BlocklistJustification,
+        rng: &mut R,
     ) -> Option<DialRequest<H>> {
         let span = make_span(addr, self.outgoing.get(&addr));
 
@@ -590,11 +594,13 @@ where
             .in_scope(move || match self.outgoing.entry(addr) {
                 Entry::Vacant(_vacant) => {
                     info!("unknown address blocked");
+                    let until = self.calculate_block_until(now, rng);
                     self.change_outgoing_state(
                         addr,
                         OutgoingState::Blocked {
                             since: now,
                             justification,
+                            until,
                         },
                     );
                     None
@@ -611,22 +617,26 @@ where
                     OutgoingState::Connected { ref handle, .. } => {
                         info!("connected address blocked, disconnecting");
                         let handle = handle.clone();
+                        let until = self.calculate_block_until(now, rng);
                         self.change_outgoing_state(
                             addr,
                             OutgoingState::Blocked {
                                 since: now,
                                 justification,
+                                until,
                             },
                         );
                         Some(DialRequest::Disconnect { span, handle })
                     }
                     OutgoingState::Waiting { .. } | OutgoingState::Connecting { .. } => {
+                        let until = self.calculate_block_until(now, rng);
                         info!("address blocked");
                         self.change_outgoing_state(
                             addr,
                             OutgoingState::Blocked {
                                 since: now,
                                 justification,
+                                until,
                             },
                         );
                         None
@@ -747,8 +757,8 @@ where
                     }
                 }
 
-                OutgoingState::Blocked { since, .. } => {
-                    if now >= since + self.config.unblock_after {
+                OutgoingState::Blocked { until, .. } => {
+                    if now >= until {
                         info!("address unblocked");
 
                         to_reconnect.push((addr, 0));
@@ -1010,6 +1020,16 @@ where
             }
         })
     }
+
+    fn calculate_block_until<R: Rng>(&self, now: Instant, rng: &mut R) -> Instant {
+        let min = self.config.unblock_after_min;
+        let max = self.config.unblock_after_max;
+        if min == max {
+            return now + min;
+        }
+        let block_duration = rng.gen_range(min..=max);
+        now + block_duration
+    }
 }
 
 #[cfg(test)]
@@ -1044,7 +1064,20 @@ mod tests {
         OutgoingConfig {
             retry_attempts: 3,
             base_timeout: Duration::from_secs(1),
-            unblock_after: Duration::from_secs(60),
+            unblock_after_min: Duration::from_secs(60),
+            unblock_after_max: Duration::from_secs(60),
+            sweep_timeout: Duration::from_secs(45),
+            health: HealthConfig::test_config(),
+        }
+    }
+
+    /// Setup an outgoing configuration for testing.
+    fn config_variant_unblock() -> OutgoingConfig {
+        OutgoingConfig {
+            retry_attempts: 3,
+            base_timeout: Duration::from_secs(1),
+            unblock_after_min: Duration::from_secs(60),
+            unblock_after_max: Duration::from_secs(80),
             sweep_timeout: Duration::from_secs(45),
             health: HealthConfig::test_config(),
         }
@@ -1354,7 +1387,8 @@ mod tests {
             .block_addr(
                 addr_a,
                 clock.now(),
-                BlocklistJustification::MissingChainspecHash
+                BlocklistJustification::MissingChainspecHash,
+                &mut rng,
             )
             .is_none());
 
@@ -1395,7 +1429,8 @@ mod tests {
             &manager.block_addr(
                 addr_b,
                 clock.now(),
-                BlocklistJustification::MissingChainspecHash
+                BlocklistJustification::MissingChainspecHash,
+                &mut rng,
             )
         ));
 
@@ -1408,7 +1443,8 @@ mod tests {
             .block_addr(
                 addr_c,
                 clock.now(),
-                BlocklistJustification::MissingChainspecHash
+                BlocklistJustification::MissingChainspecHash,
+                &mut rng,
             )
             .is_none());
 
@@ -1507,7 +1543,8 @@ mod tests {
             .block_addr(
                 loopback_addr,
                 clock.now(),
-                BlocklistJustification::MissingChainspecHash
+                BlocklistJustification::MissingChainspecHash,
+                &mut rng,
             )
             .is_none());
 
@@ -1639,7 +1676,8 @@ mod tests {
             .block_addr(
                 addr_a,
                 clock.now(),
-                BlocklistJustification::MissingChainspecHash
+                BlocklistJustification::MissingChainspecHash,
+                &mut rng,
             )
             .is_none());
         assert!(manager.is_blocked(addr_a));
@@ -1818,5 +1856,35 @@ mod tests {
         assert!(!manager.record_pong(id, TaggedTimestamp::from_parts(clock.now(), rng.gen())));
         assert!(!manager.record_pong(id, TaggedTimestamp::from_parts(clock.now(), rng.gen())));
         assert!(manager.record_pong(id, TaggedTimestamp::from_parts(clock.now(), rng.gen())));
+    }
+
+    #[test]
+    fn unblocking_in_variant_block_time() {
+        init_logging();
+
+        let mut rng = crate::new_rng();
+        let mut clock = TestClock::new();
+        let addr_a: SocketAddr = "1.2.3.4:1234".parse().unwrap();
+        let mut manager = OutgoingManager::<u32, TestDialerError>::new(config_variant_unblock());
+
+        assert!(!manager.is_blocked(addr_a));
+
+        // Block `addr_a` from the start.
+        assert!(manager
+            .block_addr(
+                addr_a,
+                clock.now(),
+                BlocklistJustification::MissingChainspecHash,
+                &mut rng,
+            )
+            .is_none());
+        assert!(manager.is_blocked(addr_a));
+
+        clock.advance_time(config_variant_unblock().unblock_after_max.as_millis() as u64 + 1);
+        assert!(dials(
+            addr_a,
+            &manager.perform_housekeeping(&mut rng, clock.now())
+        ));
+        assert!(!manager.is_blocked(addr_a));
     }
 }

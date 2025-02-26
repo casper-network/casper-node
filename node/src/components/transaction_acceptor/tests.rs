@@ -20,7 +20,6 @@ use tempfile::TempDir;
 use thiserror::Error;
 use tokio::time;
 
-use casper_execution_engine::engine_state::MAX_PAYMENT_AMOUNT;
 use casper_storage::{
     data_access_layer::{
         AddressableEntityResult, BalanceIdentifier, BalanceResult, EntryPointExistsResult,
@@ -39,7 +38,7 @@ use casper_types::{
     InvalidDeploy, InvalidTransaction, InvalidTransactionV1, Key, PricingHandling, PricingMode,
     ProtocolVersion, PublicKey, SecretKey, StoredValue, TestBlockBuilder, TimeDiff, Timestamp,
     Transaction, TransactionArgs, TransactionConfig, TransactionRuntimeParams, TransactionV1, URef,
-    U512,
+    DEFAULT_BASELINE_MOTES_AMOUNT,
 };
 
 use super::*;
@@ -934,13 +933,14 @@ impl reactor::Reactor for Reactor {
                         StoredValue::CLValue(CLValue::from_t(()).expect("should get CLValue")),
                         VecDeque::new(),
                     );
+                    let baseline_amount = U512::from(DEFAULT_BASELINE_MOTES_AMOUNT);
                     let motes = if matches!(
                         self.test_scenario,
                         TestScenario::FromClientInsufficientBalance(_)
                     ) {
-                        MAX_PAYMENT_AMOUNT - 1
+                        baseline_amount - 1
                     } else {
-                        MAX_PAYMENT_AMOUNT
+                        baseline_amount
                     };
                     let balance_result =
                         if self.test_scenario == TestScenario::AccountWithUnknownBalance {
@@ -953,7 +953,7 @@ impl reactor::Reactor for Reactor {
                             BalanceResult::Success {
                                 purse_addr,
                                 total_balance: Default::default(),
-                                available_balance: U512::from(motes),
+                                available_balance: motes,
                                 proofs_result,
                             }
                         };
@@ -1061,13 +1061,13 @@ impl reactor::Reactor for Reactor {
         _rng: &mut NodeRng,
     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
         let (storage_config, storage_tempdir) = storage::Config::new_for_tests(1);
-        let storage_withdir = WithDir::new(storage_tempdir.path(), storage_config);
+        let storage_with_dir = WithDir::new(storage_tempdir.path(), storage_config);
 
         let transaction_acceptor =
-            TransactionAcceptor::new(Config::default(), Arc::clone(&chainspec), registry).unwrap();
+            TransactionAcceptor::new(Config::default(), Arc::clone(&chainspec), registry)?;
 
         let storage = Storage::new(
-            &storage_withdir,
+            &storage_with_dir,
             None,
             ProtocolVersion::from_parts(1, 0, 0),
             EraId::default(),
@@ -1375,7 +1375,7 @@ async fn run_transaction_acceptor_without_timeout(
                     )
                 )
             }
-            // Check that a, new and valid, transaction sent by a peer raises an
+            // Check that a new and valid, transaction sent by a peer raises an
             // `AcceptedNewTransaction` announcement with the appropriate source.
             TestScenario::FromPeerValidTransaction(_)
             | TestScenario::FromPeerMissingAccount(_)

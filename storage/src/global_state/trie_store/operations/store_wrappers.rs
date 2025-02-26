@@ -34,7 +34,7 @@ where
     }
 }
 
-impl<'a, K, V, S> Store<Digest, Trie<K, V>> for NonDeserializingStore<'a, K, V, S>
+impl<K, V, S> Store<Digest, Trie<K, V>> for NonDeserializingStore<'_, K, V, S>
 where
     S: TrieStore<K, V>,
 {
@@ -145,7 +145,7 @@ where
     }
 }
 
-impl<'a, K, V, S> Store<Digest, Trie<K, V>> for OnceDeserializingStore<'a, K, V, S>
+impl<K, V, S> Store<Digest, Trie<K, V>> for OnceDeserializingStore<'_, K, V, S>
 where
     K: ToBytes,
     V: ToBytes,

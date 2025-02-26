@@ -9,7 +9,7 @@ use datasize::DataSize;
 use tracing::{debug, error};
 
 use casper_types::{
-    execution::{execution_result_v1, ExecutionResult, ExecutionResultV1, ExecutionResultV2},
+    execution::{execution_result_v1, ExecutionResult, ExecutionResultV1},
     Approval, Block, BlockBody, BlockHash, BlockHeader, BlockSignatures, Digest, Transaction,
     TransactionHash, Transfer,
 };
@@ -590,13 +590,9 @@ fn successful_transfers(execution_result: &ExecutionResult) -> Vec<Transfer> {
                 }
             }
         }
-        ExecutionResult::V2(ExecutionResultV2 {
-            transfers,
-            error_message,
-            ..
-        }) => {
-            if error_message.is_none() {
-                for transfer in transfers {
+        ExecutionResult::V2(execution_result_v2) => {
+            if execution_result_v2.error_message.is_none() {
+                for transfer in &execution_result_v2.transfers {
                     all_transfers.push(transfer.clone());
                 }
             }
@@ -646,7 +642,7 @@ where
     block_store: &'t LmdbBlockStore,
 }
 
-impl<'t, T> BlockStoreTransaction for LmdbBlockStoreTransaction<'t, T>
+impl<T> BlockStoreTransaction for LmdbBlockStoreTransaction<'_, T>
 where
     T: LmdbTransaction,
 {
@@ -661,7 +657,7 @@ where
     }
 }
 
-impl<'t, T> DataReader<BlockHash, Block> for LmdbBlockStoreTransaction<'t, T>
+impl<T> DataReader<BlockHash, Block> for LmdbBlockStoreTransaction<'_, T>
 where
     T: LmdbTransaction,
 {
@@ -674,7 +670,7 @@ where
     }
 }
 
-impl<'t, T> DataReader<BlockHash, BlockHeader> for LmdbBlockStoreTransaction<'t, T>
+impl<T> DataReader<BlockHash, BlockHeader> for LmdbBlockStoreTransaction<'_, T>
 where
     T: LmdbTransaction,
 {
@@ -687,7 +683,7 @@ where
     }
 }
 
-impl<'t, T> DataReader<BlockHash, ApprovalsHashes> for LmdbBlockStoreTransaction<'t, T>
+impl<T> DataReader<BlockHash, ApprovalsHashes> for LmdbBlockStoreTransaction<'_, T>
 where
     T: LmdbTransaction,
 {
@@ -700,7 +696,7 @@ where
     }
 }
 
-impl<'t, T> DataReader<BlockHash, BlockSignatures> for LmdbBlockStoreTransaction<'t, T>
+impl<T> DataReader<BlockHash, BlockSignatures> for LmdbBlockStoreTransaction<'_, T>
 where
     T: LmdbTransaction,
 {
@@ -713,7 +709,7 @@ where
     }
 }
 
-impl<'t, T> DataReader<TransactionHash, Transaction> for LmdbBlockStoreTransaction<'t, T>
+impl<T> DataReader<TransactionHash, Transaction> for LmdbBlockStoreTransaction<'_, T>
 where
     T: LmdbTransaction,
 {
@@ -729,7 +725,7 @@ where
     }
 }
 
-impl<'t, T> DataReader<TransactionHash, BTreeSet<Approval>> for LmdbBlockStoreTransaction<'t, T>
+impl<T> DataReader<TransactionHash, BTreeSet<Approval>> for LmdbBlockStoreTransaction<'_, T>
 where
     T: LmdbTransaction,
 {
@@ -748,7 +744,7 @@ where
     }
 }
 
-impl<'t, T> DataReader<TransactionHash, ExecutionResult> for LmdbBlockStoreTransaction<'t, T>
+impl<T> DataReader<TransactionHash, ExecutionResult> for LmdbBlockStoreTransaction<'_, T>
 where
     T: LmdbTransaction,
 {
@@ -767,7 +763,7 @@ where
     }
 }
 
-impl<'t, T> DataReader<BlockHash, Vec<Transfer>> for LmdbBlockStoreTransaction<'t, T>
+impl<T> DataReader<BlockHash, Vec<Transfer>> for LmdbBlockStoreTransaction<'_, T>
 where
     T: LmdbTransaction,
 {
@@ -780,7 +776,7 @@ where
     }
 }
 
-impl<'t, T, K> DataReader<K, Vec<u8>> for LmdbBlockStoreTransaction<'t, T>
+impl<T, K> DataReader<K, Vec<u8>> for LmdbBlockStoreTransaction<'_, T>
 where
     K: AsRef<[u8]>,
     T: LmdbTransaction,

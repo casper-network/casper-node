@@ -15,10 +15,12 @@ use casper_types::{
 use crate::{
     components::consensus::{ClContext, ProposedBlock},
     effect::Responder,
-    types::{appendable_block::AppendableBlock, NodeId, TransactionFootprint},
+    types::{
+        appendable_block::AppendableBlock, InvalidProposalError, NodeId, TransactionFootprint,
+    },
 };
 
-/// The state of a peer which claims to be a holder of the deploys.
+/// The state of a peer which claims to be a holder of the transactions.
 #[derive(Clone, Copy, Eq, PartialEq, DataSize, Debug)]
 pub(super) enum HolderState {
     /// No fetch attempt has been made using this peer.
@@ -36,8 +38,8 @@ pub(super) enum AddResponderResult {
     Added,
     /// Validation is completed, so the responder should be called with the provided value.
     ValidationCompleted {
-        responder: Responder<bool>,
-        response_to_send: bool,
+        responder: Responder<Result<(), Box<InvalidProposalError>>>,
+        response_to_send: Result<(), Box<InvalidProposalError>>,
     },
 }
 
@@ -77,7 +79,7 @@ impl ApprovalInfo {
 
 /// State of the current process of block validation.
 ///
-/// Tracks whether or not there are transactions still missing and who is interested in the final
+/// Tracks whether there are transactions still missing and who is interested in the final
 /// result.
 #[derive(DataSize, Debug)]
 pub(super) enum BlockValidationState {
@@ -93,18 +95,24 @@ pub(super) enum BlockValidationState {
         /// The set of peers which each claim to hold all the transactions.
         holders: HashMap<NodeId, HolderState>,
         /// A list of responders that are awaiting an answer.
-        responders: Vec<Responder<bool>>,
+        responders: Vec<Responder<Result<(), Box<InvalidProposalError>>>>,
     },
     /// The proposed block with the given timestamp is valid.
     Valid(Timestamp),
-    /// The proposed block with the given timestamp is invalid.
+    /// The proposed block with the given timestamp is invalid, and the validation error.
     ///
     /// Note that only hard failures in validation will result in this state.  For soft failures,
     /// like failing to fetch from a peer, the state will remain `Unknown`, even if there are no
     /// more peers to ask, since more peers could be provided before this `BlockValidationState` is
     /// purged.
-    Invalid(Timestamp),
+    Invalid {
+        timestamp: Timestamp,
+        error: Box<InvalidProposalError>,
+    },
 }
+
+pub(super) type MaybeBlockValidationStateResponder =
+    Option<Responder<Result<(), Box<InvalidProposalError>>>>;
 
 impl BlockValidationState {
     /// Returns a new `BlockValidationState`.
@@ -115,69 +123,81 @@ impl BlockValidationState {
         proposed_block: &ProposedBlock<ClContext>,
         missing_signatures: HashSet<FinalitySignatureId>,
         sender: NodeId,
-        responder: Responder<bool>,
+        responder: Responder<Result<(), Box<InvalidProposalError>>>,
         current_gas_price: u8,
         chainspec: &Chainspec,
-    ) -> (Self, Option<Responder<bool>>) {
+    ) -> (Self, MaybeBlockValidationStateResponder) {
         let transaction_count = proposed_block.transaction_count();
         if transaction_count == 0 && missing_signatures.is_empty() {
             let state = BlockValidationState::Valid(proposed_block.timestamp());
             return (state, Some(responder));
         }
 
-        if Self::validate_transaction_lane_counts(proposed_block, &chainspec.transaction_config)
-            .is_err()
+        // this is an optimization, rejects proposal that exceeds lane limits OR
+        // proposes a transaction in an unsupported lane
+        if let Err(err) =
+            Self::validate_transaction_lane_counts(proposed_block, &chainspec.transaction_config)
         {
-            let state = BlockValidationState::Invalid(proposed_block.timestamp());
+            let state = BlockValidationState::Invalid {
+                timestamp: proposed_block.timestamp(),
+                error: err,
+            };
             return (state, Some(responder));
         }
 
         let proposed_gas_price = proposed_block.value().current_gas_price();
         if current_gas_price != proposed_gas_price {
-            let state = BlockValidationState::Invalid(proposed_block.timestamp());
+            let state = BlockValidationState::Invalid {
+                timestamp: proposed_block.timestamp(),
+                error: Box::new(InvalidProposalError::InvalidGasPrice {
+                    proposed_gas_price,
+                    current_gas_price,
+                }),
+            };
             return (state, Some(responder));
         }
-
-        let appendable_block = AppendableBlock::new(
-            chainspec.transaction_config.clone(),
-            current_gas_price,
-            proposed_block.timestamp(),
-        );
 
         let mut missing_transactions = HashMap::new();
 
         for (transaction_hash, approvals) in proposed_block.all_transactions() {
-            let approval_info: ApprovalInfo = match transaction_hash {
-                TransactionHash::Deploy(_) => match ApprovalsHash::compute(approvals) {
-                    Ok(approvals_hash) => ApprovalInfo::new(approvals.clone(), approvals_hash),
-                    Err(error) => {
-                        warn!(%transaction_hash, %error, "could not compute approvals hash");
-                        let state = BlockValidationState::Invalid(proposed_block.timestamp());
-                        return (state, Some(responder));
-                    }
-                },
-                TransactionHash::V1(_) => match ApprovalsHash::compute(approvals) {
-                    Ok(approvals_hash) => ApprovalInfo::new(approvals.clone(), approvals_hash),
-                    Err(error) => {
-                        warn!(%transaction_hash, %error, "could not compute approvals hash");
-                        let state = BlockValidationState::Invalid(proposed_block.timestamp());
-                        return (state, Some(responder));
-                    }
-                },
+            let approval_info: ApprovalInfo = match ApprovalsHash::compute(approvals) {
+                Ok(approvals_hash) => ApprovalInfo::new(approvals.clone(), approvals_hash),
+                Err(error) => {
+                    warn!(%transaction_hash, %error, "could not compute approvals hash");
+                    let state = BlockValidationState::Invalid {
+                        timestamp: proposed_block.timestamp(),
+                        error: Box::new(InvalidProposalError::InvalidApprovalsHash(format!(
+                            "{}",
+                            error
+                        ))),
+                    };
+                    return (state, Some(responder));
+                }
             };
 
+            // this checks to see if the same transaction has been included multiple
+            // times with different approvals, which is invalid
             if missing_transactions
                 .insert(*transaction_hash, approval_info)
                 .is_some()
             {
                 warn!(%transaction_hash, "duplicated transaction in proposed block");
-                let state = BlockValidationState::Invalid(proposed_block.timestamp());
+                let state = BlockValidationState::Invalid {
+                    timestamp: proposed_block.timestamp(),
+                    error: Box::new(InvalidProposalError::CompetingApprovals {
+                        transaction_hash: *transaction_hash,
+                    }),
+                };
                 return (state, Some(responder));
             }
         }
 
         let state = BlockValidationState::InProgress {
-            appendable_block,
+            appendable_block: AppendableBlock::new(
+                chainspec.transaction_config.clone(),
+                current_gas_price,
+                proposed_block.timestamp(),
+            ),
             missing_transactions,
             missing_signatures,
             holders: iter::once((sender, HolderState::Unasked)).collect(),
@@ -190,8 +210,12 @@ impl BlockValidationState {
     fn validate_transaction_lane_counts(
         block: &ProposedBlock<ClContext>,
         config: &TransactionConfig,
-    ) -> Result<(), ()> {
-        for supported_lane in config.transaction_v1_config.get_supported_lanes() {
+    ) -> Result<(), Box<InvalidProposalError>> {
+        let lanes = config.transaction_v1_config.get_supported_lanes();
+        if block.value().has_transaction_in_unsupported_lane(&lanes) {
+            return Err(Box::new(InvalidProposalError::UnsupportedLane));
+        }
+        for supported_lane in lanes {
             let transactions = block.value().count(Some(supported_lane));
             let lane_count_limit = config
                 .transaction_v1_config
@@ -201,7 +225,9 @@ impl BlockValidationState {
                     supported_lane,
                     lane_count_limit, transactions, "too many transactions in lane"
                 );
-                return Err(());
+                return Err(Box::new(InvalidProposalError::ExceedsLaneLimit {
+                    lane_id: supported_lane,
+                }));
             }
         }
 
@@ -213,7 +239,10 @@ impl BlockValidationState {
     ///
     /// If the state is not `InProgress`, `ValidationCompleted` is returned with the responder and
     /// the value which should be provided to the responder.
-    pub(super) fn add_responder(&mut self, responder: Responder<bool>) -> AddResponderResult {
+    pub(super) fn add_responder(
+        &mut self,
+        responder: Responder<Result<(), Box<InvalidProposalError>>>,
+    ) -> AddResponderResult {
         match self {
             BlockValidationState::InProgress { responders, .. } => {
                 responders.push(responder);
@@ -221,17 +250,19 @@ impl BlockValidationState {
             }
             BlockValidationState::Valid(_) => AddResponderResult::ValidationCompleted {
                 responder,
-                response_to_send: true,
+                response_to_send: Ok(()),
             },
-            BlockValidationState::Invalid(_) => AddResponderResult::ValidationCompleted {
-                responder,
-                response_to_send: false,
-            },
+            BlockValidationState::Invalid { error, .. } => {
+                AddResponderResult::ValidationCompleted {
+                    responder,
+                    response_to_send: Err(error.clone()),
+                }
+            }
         }
     }
 
     /// If the current state is `InProgress` and the peer isn't already known, adds the peer.
-    /// Otherwise any existing entry is not updated and `false` is returned.
+    /// Otherwise, any existing entry is not updated and `false` is returned.
     pub(super) fn add_holder(&mut self, holder: NodeId) {
         match self {
             BlockValidationState::InProgress {
@@ -250,8 +281,8 @@ impl BlockValidationState {
                     entry.insert(HolderState::Unasked);
                 }
             },
-            BlockValidationState::Valid(_) | BlockValidationState::Invalid(_) => {
-                error!(state = %self, "unexpected state when adding holder");
+            BlockValidationState::Valid(_) | BlockValidationState::Invalid { .. } => {
+                warn!(state = %self, "unexpected state when adding holder");
             }
         }
     }
@@ -319,14 +350,16 @@ impl BlockValidationState {
                 }
             }
             BlockValidationState::Valid(_) => MaybeStartFetching::ValidationSucceeded,
-            BlockValidationState::Invalid(_) => MaybeStartFetching::ValidationFailed,
+            BlockValidationState::Invalid { .. } => MaybeStartFetching::ValidationFailed,
         }
     }
 
-    pub(super) fn take_responders(&mut self) -> Vec<Responder<bool>> {
+    pub(super) fn take_responders(
+        &mut self,
+    ) -> Vec<Responder<Result<(), Box<InvalidProposalError>>>> {
         match self {
             BlockValidationState::InProgress { responders, .. } => mem::take(responders),
-            BlockValidationState::Valid(_) | BlockValidationState::Invalid(_) => vec![],
+            BlockValidationState::Valid(_) | BlockValidationState::Invalid { .. } => vec![],
         }
     }
 
@@ -336,7 +369,7 @@ impl BlockValidationState {
         &mut self,
         transaction_hash: &TransactionHash,
         footprint: &TransactionFootprint,
-    ) -> Vec<Responder<bool>> {
+    ) -> Vec<Responder<Result<(), Box<InvalidProposalError>>>> {
         let (new_state, responders) = match self {
             BlockValidationState::InProgress {
                 appendable_block,
@@ -348,7 +381,7 @@ impl BlockValidationState {
                 let approvals_info = match missing_transactions.remove(transaction_hash) {
                     Some(info) => info,
                     None => {
-                        // If this deploy is not present, just return.
+                        // If this transaction is not present, just return.
                         return vec![];
                     }
                 };
@@ -377,12 +410,15 @@ impl BlockValidationState {
                     }
                     Err(error) => {
                         warn!(%transaction_hash, ?footprint, %error, "block invalid");
-                        let new_state = BlockValidationState::Invalid(appendable_block.timestamp());
+                        let new_state = BlockValidationState::Invalid {
+                            timestamp: appendable_block.timestamp(),
+                            error: error.into(),
+                        };
                         (new_state, mem::take(responders))
                     }
                 }
             }
-            BlockValidationState::Valid(_) | BlockValidationState::Invalid(_) => return vec![],
+            BlockValidationState::Valid(_) | BlockValidationState::Invalid { .. } => return vec![],
         };
         *self = new_state;
         responders
@@ -393,7 +429,7 @@ impl BlockValidationState {
     pub(super) fn try_add_signature(
         &mut self,
         finality_signature_id: &FinalitySignatureId,
-    ) -> Vec<Responder<bool>> {
+    ) -> Vec<Responder<Result<(), Box<InvalidProposalError>>>> {
         let (new_state, responders) = match self {
             BlockValidationState::InProgress {
                 appendable_block,
@@ -420,7 +456,7 @@ impl BlockValidationState {
                     return vec![];
                 }
             }
-            BlockValidationState::Valid(_) | BlockValidationState::Invalid(_) => return vec![],
+            BlockValidationState::Valid(_) | BlockValidationState::Invalid { .. } => return vec![],
         };
         *self = new_state;
         responders
@@ -431,7 +467,7 @@ impl BlockValidationState {
     pub(super) fn try_mark_invalid(
         &mut self,
         transaction_hash: &TransactionHash,
-    ) -> Vec<Responder<bool>> {
+    ) -> Vec<Responder<Result<(), Box<InvalidProposalError>>>> {
         let (timestamp, responders) = match self {
             BlockValidationState::InProgress {
                 appendable_block,
@@ -444,9 +480,14 @@ impl BlockValidationState {
                 }
                 (appendable_block.timestamp(), mem::take(responders))
             }
-            BlockValidationState::Valid(_) | BlockValidationState::Invalid(_) => return vec![],
+            BlockValidationState::Valid(_) | BlockValidationState::Invalid { .. } => return vec![],
         };
-        *self = BlockValidationState::Invalid(timestamp);
+        *self = BlockValidationState::Invalid {
+            timestamp,
+            error: Box::new(InvalidProposalError::UnfetchedTransaction {
+                transaction_hash: *transaction_hash,
+            }),
+        };
         responders
     }
 
@@ -455,7 +496,7 @@ impl BlockValidationState {
     pub(super) fn try_mark_invalid_signature(
         &mut self,
         finality_signature_id: &FinalitySignatureId,
-    ) -> Vec<Responder<bool>> {
+    ) -> Vec<Responder<Result<(), Box<InvalidProposalError>>>> {
         let (timestamp, responders) = match self {
             BlockValidationState::InProgress {
                 appendable_block,
@@ -468,18 +509,22 @@ impl BlockValidationState {
                 }
                 (appendable_block.timestamp(), mem::take(responders))
             }
-            BlockValidationState::Valid(_) | BlockValidationState::Invalid(_) => return vec![],
+            BlockValidationState::Valid(_) | BlockValidationState::Invalid { .. } => return vec![],
         };
-        *self = BlockValidationState::Invalid(timestamp);
+        *self = BlockValidationState::Invalid {
+            timestamp,
+            error: Box::new(InvalidProposalError::InvalidFinalitySignature(
+                finality_signature_id.clone(),
+            )),
+        };
         responders
     }
 
     pub(super) fn block_timestamp_if_completed(&self) -> Option<Timestamp> {
         match self {
             BlockValidationState::InProgress { .. } => None,
-            BlockValidationState::Valid(timestamp) | BlockValidationState::Invalid(timestamp) => {
-                Some(*timestamp)
-            }
+            BlockValidationState::Valid(timestamp)
+            | BlockValidationState::Invalid { timestamp, .. } => Some(*timestamp),
         }
     }
 
@@ -490,7 +535,7 @@ impl BlockValidationState {
                 missing_transactions,
                 ..
             } => missing_transactions.keys().copied().collect(),
-            BlockValidationState::Valid(_) | BlockValidationState::Invalid(_) => vec![],
+            BlockValidationState::Valid(_) | BlockValidationState::Invalid { .. } => vec![],
         }
     }
 
@@ -498,7 +543,7 @@ impl BlockValidationState {
     pub(super) fn holders_mut(&mut self) -> Option<&mut HashMap<NodeId, HolderState>> {
         match self {
             BlockValidationState::InProgress { holders, .. } => Some(holders),
-            BlockValidationState::Valid(_) | BlockValidationState::Invalid(_) => None,
+            BlockValidationState::Valid(_) | BlockValidationState::Invalid { .. } => None,
         }
     }
 
@@ -506,7 +551,7 @@ impl BlockValidationState {
     pub(super) fn responder_count(&self) -> usize {
         match self {
             BlockValidationState::InProgress { responders, .. } => responders.len(),
-            BlockValidationState::Valid(_) | BlockValidationState::Invalid(_) => 0,
+            BlockValidationState::Valid(_) | BlockValidationState::Invalid { .. } => 0,
         }
     }
 
@@ -540,8 +585,12 @@ impl Display for BlockValidationState {
             BlockValidationState::Valid(timestamp) => {
                 write!(formatter, "BlockValidationState::Valid({timestamp})")
             }
-            BlockValidationState::Invalid(timestamp) => {
-                write!(formatter, "BlockValidationState::Invalid({timestamp})")
+            BlockValidationState::Invalid { timestamp, error } => {
+                write!(
+                    formatter,
+                    "BlockValidationState::Invalid({timestamp} {:?})",
+                    error
+                )
             }
         }
     }
@@ -604,7 +653,7 @@ mod tests {
             auction_count: u64,
             install_upgrade_count: u64,
             standard_count: u64,
-        ) -> (BlockValidationState, Option<Responder<bool>>) {
+        ) -> (BlockValidationState, MaybeBlockValidationStateResponder) {
             let total_non_transfer_count = standard_count + auction_count + install_upgrade_count;
             let ttl = TimeDiff::from_seconds(10);
             let timestamp = Timestamp::from(1000 + total_non_transfer_count + mint_count);
@@ -671,7 +720,7 @@ mod tests {
         }
     }
 
-    fn new_responder() -> Responder<bool> {
+    fn new_responder() -> Responder<Result<(), Box<InvalidProposalError>>> {
         let (sender, _receiver) = oneshot::channel();
         Responder::without_shutdown(sender)
     }
@@ -688,7 +737,7 @@ mod tests {
         auction_count: u64,
         install_upgrade_count: u64,
         standard_count: u64,
-        state_validator: fn((BlockValidationState, Option<Responder<bool>>)) -> bool,
+        state_validator: fn((BlockValidationState, MaybeBlockValidationStateResponder)) -> bool,
     }
 
     const NO_TRANSACTIONS: TestCase = TestCase {
@@ -722,7 +771,7 @@ mod tests {
     const TOO_MANY_AUCTION: TestCase = TestCase {
         auction_count: FULL_AUCTION.auction_count + 1,
         state_validator: |(state, responder)| {
-            responder.is_some() && matches!(state, BlockValidationState::Invalid(_))
+            responder.is_some() && matches!(state, BlockValidationState::Invalid { .. })
         },
         ..FULL_AUCTION
     };
@@ -749,7 +798,7 @@ mod tests {
     const TOO_MANY_INSTALL_UPGRADE: TestCase = TestCase {
         install_upgrade_count: FULL_INSTALL_UPGRADE.install_upgrade_count + 1,
         state_validator: |(state, responder)| {
-            responder.is_some() && matches!(state, BlockValidationState::Invalid(_))
+            responder.is_some() && matches!(state, BlockValidationState::Invalid { .. })
         },
         ..FULL_INSTALL_UPGRADE
     };
@@ -775,7 +824,7 @@ mod tests {
     const TOO_MANY_STANDARD: TestCase = TestCase {
         standard_count: FULL_STANDARD.standard_count + 1,
         state_validator: |(state, responder)| {
-            responder.is_some() && matches!(state, BlockValidationState::Invalid(_))
+            responder.is_some() && matches!(state, BlockValidationState::Invalid { .. })
         },
         ..FULL_STANDARD
     };
@@ -801,7 +850,7 @@ mod tests {
     const TOO_MANY_MINT: TestCase = TestCase {
         mint_count: FULL_MINT.mint_count + 1,
         state_validator: |(state, responder)| {
-            responder.is_some() && matches!(state, BlockValidationState::Invalid(_))
+            responder.is_some() && matches!(state, BlockValidationState::Invalid { .. })
         },
         ..FULL_MINT
     };
@@ -890,7 +939,7 @@ mod tests {
             &fixture.chainspec,
         );
 
-        assert!(matches!(state, BlockValidationState::Invalid(_)));
+        assert!(matches!(state, BlockValidationState::Invalid { .. }));
         assert!(maybe_responder.is_some());
     }
 
@@ -905,7 +954,7 @@ mod tests {
             let auction_count = fixture.rng.gen_range(0..20);
             let install_upgrade_count = fixture.rng.gen_range(0..2);
             let standard_count = fixture.rng.gen_range(0..2);
-            // Ensure at least one transaction is generated. Otherwise the state will be Valid.
+            // Ensure at least one transaction is generated. Otherwise, the state will be Valid.
             if transfer_count + auction_count + install_upgrade_count + standard_count > 0 {
                 break (
                     transfer_count,
@@ -937,7 +986,7 @@ mod tests {
                 assert_eq!(holders.values().next().unwrap(), &HolderState::Unasked);
                 assert_eq!(responders.len(), 1);
             }
-            BlockValidationState::Valid(_) | BlockValidationState::Invalid(_) => {
+            BlockValidationState::Valid(_) | BlockValidationState::Invalid { .. } => {
                 panic!("unexpected state")
             }
         }
@@ -964,7 +1013,7 @@ mod tests {
         assert!(matches!(
             add_responder_result,
             AddResponderResult::ValidationCompleted {
-                response_to_send: true,
+                response_to_send: Ok(()),
                 ..
             }
         ));
@@ -973,12 +1022,18 @@ mod tests {
 
     #[test]
     fn should_not_add_responder_if_invalid() {
-        let mut state = BlockValidationState::Invalid(Timestamp::from(1000));
+        let err = InvalidProposalError::InvalidTransaction(
+            "should_not_add_responder_if_invalid".to_string(),
+        );
+        let mut state = BlockValidationState::Invalid {
+            timestamp: Timestamp::from(1000),
+            error: Box::new(err),
+        };
         let add_responder_result = state.add_responder(new_responder());
         assert!(matches!(
             add_responder_result,
             AddResponderResult::ValidationCompleted {
-                response_to_send: false,
+                response_to_send: Err(_err),
                 ..
             }
         ));
@@ -1159,7 +1214,12 @@ mod tests {
 
     #[test]
     fn start_fetching_should_return_validation_failed_if_invalid() {
-        let mut state = BlockValidationState::Invalid(Timestamp::from(1000));
+        let mut state = BlockValidationState::Invalid {
+            timestamp: Timestamp::from(1000),
+            error: Box::new(InvalidProposalError::InvalidTransaction(
+                "start_fetching_should_return_validation_failed_if_invalid".to_string(),
+            )),
+        };
         let maybe_start_fetching = state.start_fetching();
         assert_eq!(maybe_start_fetching, MaybeStartFetching::ValidationFailed);
     }
@@ -1209,7 +1269,7 @@ mod tests {
                 missing_transactions.clone(),
                 holders.clone(),
             ),
-            BlockValidationState::Valid(_) | BlockValidationState::Invalid(_) => {
+            BlockValidationState::Valid(_) | BlockValidationState::Invalid { .. } => {
                 panic!("unexpected state")
             }
         };
@@ -1237,7 +1297,7 @@ mod tests {
                 assert_eq!(&missing_transactions_before, missing_deploys);
                 assert_eq!(&holders_before, holders);
             }
-            BlockValidationState::Valid(_) | BlockValidationState::Invalid(_) => {
+            BlockValidationState::Valid(_) | BlockValidationState::Invalid { .. } => {
                 panic!("unexpected state")
             }
         };
@@ -1284,6 +1344,6 @@ mod tests {
         let footprint = TransactionFootprint::new(&chainspec, &invalid_transaction).unwrap();
         let responders = state.try_add_transaction_footprint(&transaction_hash, &footprint);
         assert_eq!(responders.len(), 1);
-        assert!(matches!(state, BlockValidationState::Invalid(_)));
+        assert!(matches!(state, BlockValidationState::Invalid { .. }));
     }
 }

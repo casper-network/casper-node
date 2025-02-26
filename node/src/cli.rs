@@ -28,7 +28,10 @@ use crate::{
     reactor::{main_reactor, Runner},
     setup_signal_hooks,
     types::ExitCode,
-    utils::{chain_specification::validate_chainspec, Loadable, WithDir},
+    utils::{
+        chain_specification::validate_chainspec, config_specification::validate_config, Loadable,
+        WithDir,
+    },
 };
 
 // We override the standard allocator to gather metrics and tune the allocator via the MALLOC_CONF
@@ -177,6 +180,10 @@ impl Cli {
 
                 if !validate_chainspec(&chainspec) {
                     bail!("invalid chainspec");
+                }
+
+                if !validate_config(reactor_config.value()) {
+                    bail!("invalid config");
                 }
 
                 reactor_config.value_mut().ensure_valid(&chainspec);

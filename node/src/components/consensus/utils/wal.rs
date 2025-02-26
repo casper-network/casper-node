@@ -2,7 +2,6 @@ use std::{
     fs::{File, OpenOptions},
     io::{self, BufReader, BufWriter, Read, Seek, Write},
     marker::PhantomData,
-    mem,
     path::PathBuf,
 };
 
@@ -116,7 +115,7 @@ impl<E: WalEntry> ReadWal<E> {
         let position = self.reader.stream_position()?;
 
         // Deserialize the size of the entry, in bytes, as a u64.
-        let mut entry_size_buf = [0u8; mem::size_of::<u64>()];
+        let mut entry_size_buf = [0u8; size_of::<u64>()];
         if let Err(err) = self.reader.read_exact(&mut entry_size_buf) {
             if err.kind() == io::ErrorKind::UnexpectedEof {
                 self.trim_file(position)?;

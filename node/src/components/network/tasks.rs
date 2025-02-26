@@ -143,7 +143,7 @@ where
     };
 
     // Register the `peer_id` on the [`Span`].
-    Span::current().record("peer_id", &field::display(peer_id));
+    Span::current().record("peer_id", field::display(peer_id));
 
     if peer_id == context.our_id {
         info!("outgoing loopback connection");
@@ -165,7 +165,7 @@ where
             is_peer_syncing: is_syncing,
         }) => {
             if let Some(ref public_key) = peer_consensus_public_key {
-                Span::current().record("consensus_key", &field::display(public_key));
+                Span::current().record("consensus_key", field::display(public_key));
             }
 
             if public_addr != peer_addr {
@@ -346,7 +346,7 @@ where
     };
 
     // Register the `peer_id` on the [`Span`] for logging the ID from here on out.
-    Span::current().record("peer_id", &field::display(peer_id));
+    Span::current().record("peer_id", field::display(peer_id));
 
     if peer_id == context.our_id {
         info!("incoming loopback connection");
@@ -376,7 +376,7 @@ where
             }
 
             if let Some(ref public_key) = peer_consensus_public_key {
-                Span::current().record("consensus_key", &field::display(public_key));
+                Span::current().record("consensus_key", field::display(public_key));
             }
 
             // Establish full transport and close the receiving end.

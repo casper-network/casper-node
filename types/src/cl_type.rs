@@ -4,10 +4,7 @@ use alloc::{
     string::String,
     vec::Vec,
 };
-use core::{
-    fmt::{self, Display, Formatter},
-    mem,
-};
+use core::fmt::{self, Display, Formatter};
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
@@ -119,7 +116,7 @@ pub enum CLType {
 impl CLType {
     /// The `len()` of the `Vec<u8>` resulting from `self.to_bytes()`.
     pub fn serialized_length(&self) -> usize {
-        mem::size_of::<u8>()
+        size_of::<u8>()
             + match self {
                 CLType::Bool
                 | CLType::I32

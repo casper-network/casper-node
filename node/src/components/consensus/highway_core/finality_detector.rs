@@ -142,7 +142,12 @@ impl<C: Context> FinalityDetector<C> {
         let denominator = 2 * pow_lvl - 2;
         // The numerator is positive because  ftt > 0.
         // Since this is a lower bound for the quorum, we round up when dividing.
-        Weight(((numerator + denominator - 1) / denominator) as u64)
+        Weight(
+            numerator
+                .div_ceil(denominator)
+                .try_into()
+                .expect("quorum overflow"),
+        )
     }
 
     /// Returns the next candidate for finalization, i.e. the lowest block in the fork choice that

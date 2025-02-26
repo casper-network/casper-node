@@ -21,7 +21,7 @@ use casper_types::{
 use super::{args::Args, ExecError, Runtime};
 use crate::{resolvers::v1_function_index::FunctionIndex, runtime::cryptography};
 
-impl<'a, R> Externals for Runtime<'a, R>
+impl<R> Externals for Runtime<'_, R>
 where
     R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {

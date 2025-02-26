@@ -39,7 +39,9 @@ use crate::{
         EffectBuilder, EffectExt, Effects, Responder,
     },
     fatal,
-    types::{BlockWithMetadata, NodeId, TransactionFootprint, ValidatorMatrix},
+    types::{
+        BlockWithMetadata, InvalidProposalError, NodeId, TransactionFootprint, ValidatorMatrix,
+    },
     NodeRng,
 };
 pub use config::Config;
@@ -136,7 +138,10 @@ impl BlockValidator {
                     responder,
                     response_to_send,
                 } => {
-                    debug!(%response_to_send, "proposed block validation already completed");
+                    debug!(
+                        ?response_to_send,
+                        "proposed block validation already completed"
+                    );
                     return MaybeHandled::Handled(responder.respond(response_to_send).ignore());
                 }
             }
@@ -159,7 +164,10 @@ impl BlockValidator {
                 }
                 MaybeStartFetching::Unable => {
                     debug!("no new info while validating proposed block - responding `false`");
-                    respond(false, state.take_responders())
+                    respond_invalid(
+                        Box::new(InvalidProposalError::UnableToFetch),
+                        state.take_responders(),
+                    )
                 }
                 MaybeStartFetching::ValidationSucceeded | MaybeStartFetching::ValidationFailed => {
                     // If validation is already completed, we should have exited in the
@@ -229,7 +237,10 @@ impl BlockValidator {
         past_blocks_with_metadata: &'b [Option<BlockWithMetadata>],
         proposed_block_height: u64,
         rewarded_signatures: &'c RewardedSignatures,
-    ) -> Result<Vec<(&'b BlockWithMetadata, &'c SingleBlockRewardedSignatures)>, Option<u64>> {
+    ) -> Result<
+        Vec<(&'b BlockWithMetadata, &'c SingleBlockRewardedSignatures)>,
+        Box<InvalidProposalError>,
+    > {
         let mut result = Vec::new();
         // Check whether we know all the blocks for which the proposed block cites some signatures,
         // and if no signatures are doubly cited.
@@ -240,8 +251,11 @@ impl BlockValidator {
             match maybe_block {
                 None if signatures.has_some() => {
                     trace!(%past_block_height, "maybe_block = None if signatures.has_some() - returning");
-
-                    return Err(Some(past_block_height));
+                    return Err(Box::new(
+                        InvalidProposalError::RewardSignaturesMissingCitedBlock {
+                            cited_block_height: past_block_height,
+                        },
+                    ));
                 }
                 None => {
                     // we have no block, but there are also no signatures cited for this block, so
@@ -267,7 +281,9 @@ impl BlockValidator {
                             %past_block_height,
                             "maybe_block is Some, nonzero intersection with previous"
                         );
-                        return Err(None);
+                        return Err(Box::new(InvalidProposalError::RewardSignatureReplay {
+                            cited_block_height: past_block_height,
+                        }));
                     }
                     // everything is OK - save the block in the result
                     result.push((block, signatures));
@@ -280,7 +296,7 @@ impl BlockValidator {
     fn era_ids_vec(past_blocks_with_metadata: &[Option<BlockWithMetadata>]) -> Vec<Option<EraId>> {
         // This will create a vector of era ids for the past blocks corresponding to cited
         // signatures. The index of the entry in the vector will be the number of blocks in the
-        // past relative to the current block, minus 1 (ie., 0 is the previous block, 1 is the one
+        // past relative to the current block, minus 1 (i.e., 0 is the previous block, 1 is the one
         // before that, etc.) - these indices will correspond directly to the indices in
         // RewardedSignatures.
         past_blocks_with_metadata
@@ -371,18 +387,22 @@ impl BlockValidator {
 
                 self.handle_new_request_with_signatures(effect_builder, request, missing_sigs)
             }
-            Err(Some(missing_block_height)) => {
-                // We are missing some blocks necessary for unpacking signatures from storage - put
-                // the request on hold for now.
-                self.requests_on_hold
-                    .entry(missing_block_height)
-                    .or_default()
-                    .push(request);
-                Effects::new()
-            }
-            Err(None) => {
-                // Rewarded signatures pre-validation failed
-                respond(false, Some(request.responder))
+            Err(error) => {
+                if let InvalidProposalError::RewardSignaturesMissingCitedBlock {
+                    cited_block_height,
+                } = *error
+                {
+                    // We are missing some blocks necessary for unpacking signatures from storage -
+                    // put the request on hold for now.
+                    self.requests_on_hold
+                        .entry(cited_block_height)
+                        .or_default()
+                        .push(request);
+                    Effects::new()
+                } else {
+                    // Rewarded signatures pre-validation failed
+                    respond_invalid(error, Some(request.responder))
+                }
             }
         }
     }
@@ -405,7 +425,7 @@ impl BlockValidator {
         while self
             .requests_on_hold
             .first_key_value()
-            .map_or(false, |(height, _)| *height <= stored_block_height)
+            .is_some_and(|(height, _)| *height <= stored_block_height)
         {
             // unwrap is safe - we'd break the loop if there were no elements
             pending_requests.extend(self.requests_on_hold.pop_first().unwrap().1);
@@ -447,7 +467,10 @@ impl BlockValidator {
                     responder,
                     response_to_send,
                 } => {
-                    debug!(%response_to_send, "proposed block validation already completed");
+                    debug!(
+                        ?response_to_send,
+                        "proposed block validation already completed"
+                    );
                     return responder.respond(response_to_send).ignore();
                 }
             }
@@ -477,17 +500,23 @@ impl BlockValidator {
             MaybeStartFetching::ValidationSucceeded => {
                 debug!("no transactions - block validation complete");
                 debug_assert!(maybe_responder.is_some());
-                respond(true, maybe_responder)
+                respond_valid(maybe_responder)
             }
             MaybeStartFetching::ValidationFailed => {
                 debug_assert!(maybe_responder.is_some());
-                respond(false, maybe_responder)
+                respond_invalid(
+                    Box::new(InvalidProposalError::FailedFetcherValidation),
+                    maybe_responder,
+                )
             }
             MaybeStartFetching::Ongoing | MaybeStartFetching::Unable => {
                 // This `MaybeStartFetching` variant should never be returned here.
                 error!(%state, "invalid state while handling new block validation");
                 debug_assert!(false, "invalid state {}", state);
-                respond(false, state.take_responders())
+                respond_invalid(
+                    Box::new(InvalidProposalError::UnexpectedFetchStatus),
+                    state.take_responders(),
+                )
             }
         };
         self.validation_states.insert(block, state);
@@ -556,11 +585,18 @@ impl BlockValidator {
                 let item_hash = item.hash();
                 if item_hash != transaction_hash {
                     // Hard failure - change state to Invalid.
+                    // this should not be reachable
                     let responders = self
                         .validation_states
                         .values_mut()
                         .flat_map(|state| state.try_mark_invalid(&transaction_hash));
-                    return respond(false, responders);
+                    return respond_invalid(
+                        Box::new(InvalidProposalError::FetchedIncorrectTransactionById {
+                            expected_transaction_hash: transaction_hash,
+                            actual_transaction_hash: item_hash,
+                        }),
+                        responders,
+                    );
                 }
                 let transaction_footprint = match TransactionFootprint::new(&self.chainspec, &item)
                 {
@@ -575,7 +611,7 @@ impl BlockValidator {
                             .validation_states
                             .values_mut()
                             .flat_map(|state| state.try_mark_invalid(&transaction_hash));
-                        return respond(false, responders);
+                        return respond_invalid(invalid_transaction_error.into(), responders);
                     }
                 };
 
@@ -584,8 +620,20 @@ impl BlockValidator {
                     let responders = state
                         .try_add_transaction_footprint(&transaction_hash, &transaction_footprint);
                     if !responders.is_empty() {
-                        let is_valid = matches!(state, BlockValidationState::Valid(_));
-                        effects.extend(respond(is_valid, responders));
+                        let ret = match &state {
+                            BlockValidationState::InProgress { .. } => {
+                                // this seems to be unreachable as currently written
+                                respond_invalid(
+                                    Box::new(InvalidProposalError::TransactionFetchingAborted),
+                                    responders,
+                                )
+                            }
+                            BlockValidationState::Invalid { error, .. } => {
+                                respond_invalid(error.clone(), responders)
+                            }
+                            BlockValidationState::Valid(_) => respond_valid(responders),
+                        };
+                        effects.extend(ret);
                     }
                 }
                 effects
@@ -623,7 +671,13 @@ impl BlockValidator {
                                         "exhausted peers while validating proposed block - \
                                         responding `false`"
                                     );
-                                    effects.extend(respond(false, state.take_responders()));
+                                    effects.extend(respond_invalid(
+                                        Box::new(InvalidProposalError::FetcherError(format!(
+                                            "{:?}",
+                                            error
+                                        ))),
+                                        state.take_responders(),
+                                    ));
                                 }
                                 MaybeStartFetching::Ongoing
                                 | MaybeStartFetching::ValidationSucceeded
@@ -639,7 +693,10 @@ impl BlockValidator {
                             .validation_states
                             .values_mut()
                             .flat_map(|state| state.try_mark_invalid(&transaction_hash));
-                        respond(false, responders)
+                        respond_invalid(
+                            Box::new(InvalidProposalError::FetcherError(format!("{:?}", error))),
+                            responders,
+                        )
                     }
                 }
             }
@@ -675,8 +732,22 @@ impl BlockValidator {
                 for state in self.validation_states.values_mut() {
                     let responders = state.try_add_signature(&finality_signature_id);
                     if !responders.is_empty() {
-                        let is_valid = matches!(state, BlockValidationState::Valid(_));
-                        effects.extend(respond(is_valid, responders));
+                        let ret = match &state {
+                            BlockValidationState::InProgress { .. } => {
+                                // this seems to be unreachable as currently written
+                                respond_invalid(
+                                    Box::new(
+                                        InvalidProposalError::FinalitySignatureFetchingAborted,
+                                    ),
+                                    responders,
+                                )
+                            }
+                            BlockValidationState::Invalid { error, .. } => {
+                                respond_invalid(error.clone(), responders)
+                            }
+                            BlockValidationState::Valid(_) => respond_valid(responders),
+                        };
+                        effects.extend(ret);
                     }
                 }
                 effects
@@ -715,7 +786,9 @@ impl BlockValidator {
                                         "exhausted peers while validating proposed block - \
                                         responding `false`"
                                     );
-                                    effects.extend(respond(false, state.take_responders()));
+                                    effects.extend(respond_invalid(
+                                        Box::new(InvalidProposalError::FetcherError(format!("{:?}", error))),
+                                        state.take_responders()));
                                 }
                                 MaybeStartFetching::Ongoing
                                 | MaybeStartFetching::ValidationSucceeded
@@ -730,7 +803,10 @@ impl BlockValidator {
                         let responders = self.validation_states.values_mut().flat_map(|state| {
                             state.try_mark_invalid_signature(&finality_signature_id)
                         });
-                        respond(false, responders)
+                        respond_invalid(
+                            Box::new(InvalidProposalError::FetcherError(format!("{:?}", error))),
+                            responders,
+                        )
                     }
                 }
             }
@@ -786,13 +862,22 @@ where
     effects
 }
 
-fn respond(
-    is_valid: bool,
-    responders: impl IntoIterator<Item = Responder<bool>>,
+fn respond_valid(
+    responders: impl IntoIterator<Item = Responder<Result<(), Box<InvalidProposalError>>>>,
 ) -> Effects<Event> {
     responders
         .into_iter()
-        .flat_map(|responder| responder.respond(is_valid).ignore())
+        .flat_map(|responder| responder.respond(Ok(())).ignore())
+        .collect()
+}
+
+fn respond_invalid(
+    error: Box<InvalidProposalError>,
+    responders: impl IntoIterator<Item = Responder<Result<(), Box<InvalidProposalError>>>>,
+) -> Effects<Event> {
+    responders
+        .into_iter()
+        .flat_map(|responder| responder.respond(Err(error.clone())).ignore())
         .collect()
 }
 

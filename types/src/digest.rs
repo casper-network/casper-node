@@ -315,7 +315,7 @@ impl From<[u8; Digest::LENGTH]> for Digest {
     }
 }
 
-impl<'a> TryFrom<&'a [u8]> for Digest {
+impl TryFrom<&[u8]> for Digest {
     type Error = TryFromSliceError;
 
     fn try_from(slice: &[u8]) -> Result<Digest, Self::Error> {

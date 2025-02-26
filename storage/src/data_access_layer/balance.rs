@@ -104,7 +104,7 @@ impl BalanceIdentifier {
                 match tc.runtime_footprint_by_account_hash(protocol_version, account_hash) {
                     Ok((_, entity)) => entity
                         .main_purse()
-                        .ok_or_else(|| TrackingCopyError::Authorization)?,
+                        .ok_or(TrackingCopyError::Authorization)?,
                     Err(tce) => return Err(tce),
                 }
             }
@@ -113,7 +113,7 @@ impl BalanceIdentifier {
                 match tc.runtime_footprint_by_account_hash(protocol_version, *account_hash) {
                     Ok((_, entity)) => entity
                         .main_purse()
-                        .ok_or_else(|| TrackingCopyError::Authorization)?,
+                        .ok_or(TrackingCopyError::Authorization)?,
                     Err(tce) => return Err(tce),
                 }
             }
@@ -121,7 +121,7 @@ impl BalanceIdentifier {
                 match tc.runtime_footprint_by_entity_addr(*entity_addr) {
                     Ok(entity) => entity
                         .main_purse()
-                        .ok_or_else(|| TrackingCopyError::Authorization)?,
+                        .ok_or(TrackingCopyError::Authorization)?,
                     Err(tce) => return Err(tce),
                 }
             }

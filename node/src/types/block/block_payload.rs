@@ -18,7 +18,7 @@ use casper_types::{
 ///
 /// From the view of the consensus protocol this is the "consensus value": The protocol deals with
 /// finalizing an order of `BlockPayload`s. Only after consensus has been reached, the block's
-/// deploys actually get executed, and the executed block gets signed.
+/// transactions actually get executed, and the executed block gets signed.
 #[derive(Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct BlockPayload {
     transactions: BTreeMap<u8, Vec<(TransactionHash, BTreeSet<Approval>)>>,
@@ -79,7 +79,7 @@ impl BlockPayload {
         ret.into_iter()
     }
 
-    /// Returns the hashes and approvals of the install / upgrade transactions within the block.
+    /// Returns the hashes and approvals of the installer / upgrader transactions within the block.
     pub fn install_upgrade(&self) -> impl Iterator<Item = &(TransactionHash, BTreeSet<Approval>)> {
         let mut ret = vec![];
         if let Some(transactions) = self.transactions.get(&INSTALL_UPGRADE_LANE_ID) {
@@ -90,7 +90,7 @@ impl BlockPayload {
         ret.into_iter()
     }
 
-    /// Returns all of the transaction hashes and approvals within the block by lane.
+    /// Returns all the transaction hashes and approvals within the block by lane.
     pub fn transactions_by_lane(
         &self,
         lane: u8,
@@ -114,6 +114,14 @@ impl BlockPayload {
         ret
     }
 
+    /// Returns true if even 1 transaction is in a lane other than supported.
+    pub fn has_transaction_in_unsupported_lane(&self, supported_lanes: &[u8]) -> bool {
+        // for all transaction lanes, if any of them are not in supported_lanes, true
+        self.transactions
+            .keys()
+            .any(|lane_id| !supported_lanes.contains(lane_id))
+    }
+
     /// Returns count of transactions by category.
     pub fn count(&self, lane: Option<u8>) -> usize {
         match lane {
@@ -125,7 +133,7 @@ impl BlockPayload {
         }
     }
 
-    /// Returns all of the transaction hashes and approvals within the block.
+    /// Returns all the transaction hashes and approvals within the block.
     pub fn all_transactions(&self) -> impl Iterator<Item = &(TransactionHash, BTreeSet<Approval>)> {
         self.transactions.values().flatten()
     }

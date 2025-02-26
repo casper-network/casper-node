@@ -470,7 +470,7 @@ impl Codegen {
                                     panic!("Missing type mapping for {}", item.decl)
                                 });
                             let field = Field::new(&item.name, Type::new(mapped_type))
-                                .doc(&format!("Declared as {}", item.decl))
+                                .doc(format!("Declared as {}", item.decl))
                                 .to_owned();
 
                             r#struct.push_field(field);

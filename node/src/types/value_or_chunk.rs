@@ -197,7 +197,7 @@ impl TrieOrChunkId {
 /// Helper struct to on-demand deserialize a trie or chunk ID for display purposes.
 pub struct TrieOrChunkIdDisplay<'a>(pub &'a [u8]);
 
-impl<'a> Display for TrieOrChunkIdDisplay<'a> {
+impl Display for TrieOrChunkIdDisplay<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         TrieOrChunkId::fmt_serialized(f, self.0)
     }

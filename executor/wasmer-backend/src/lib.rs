@@ -106,7 +106,7 @@ pub(crate) struct WasmerCaller<'a, S: GlobalStateReader, E: Executor> {
     env: FunctionEnvMut<'a, WasmerEnv<S, E>>,
 }
 
-impl<'a, S: GlobalStateReader + 'static, E: Executor + 'static> WasmerCaller<'a, S, E> {
+impl<S: GlobalStateReader + 'static, E: Executor + 'static> WasmerCaller<'_, S, E> {
     fn with_memory<T>(&self, f: impl FnOnce(MemoryView<'_>) -> T) -> T {
         let mem = &self.env.data().exported_runtime().memory;
         let binding = self.env.as_store_ref();
@@ -143,7 +143,7 @@ impl<'a, S: GlobalStateReader + 'static, E: Executor + 'static> WasmerCaller<'a,
     }
 }
 
-impl<'a, S: GlobalStateReader + 'static, E: Executor + 'static> Caller for WasmerCaller<'a, S, E> {
+impl<S: GlobalStateReader + 'static, E: Executor + 'static> Caller for WasmerCaller<'_, S, E> {
     type Context = Context<S, E>;
 
     fn memory_write(&self, offset: u32, data: &[u8]) -> Result<(), VMError> {

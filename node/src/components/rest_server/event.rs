@@ -1,14 +1,11 @@
-use std::{
-    fmt::{self, Display, Formatter},
-    mem,
-};
+use std::fmt::{self, Display, Formatter};
 
 use derive_more::From;
 use static_assertions::const_assert;
 
 use crate::effect::{requests::RestRequest, Responder};
 
-const _REST_EVENT_SIZE: usize = mem::size_of::<Event>();
+const _REST_EVENT_SIZE: usize = size_of::<Event>();
 const_assert!(_REST_EVENT_SIZE < 89);
 
 #[derive(Debug, From)]

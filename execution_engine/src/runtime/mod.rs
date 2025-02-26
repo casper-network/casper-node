@@ -1611,9 +1611,7 @@ where
                     }
                 };
 
-                let package_hash = footprint
-                    .package_hash()
-                    .ok_or_else(|| ExecError::InvalidContext)?;
+                let package_hash = footprint.package_hash().ok_or(ExecError::InvalidContext)?;
                 let package: Package = self.context.get_package(package_hash)?;
 
                 // System contract hashes are disabled at upgrade point
@@ -1793,7 +1791,7 @@ where
 
         let context_entity_hash = context_entity_key
             .into_entity_hash_addr()
-            .ok_or_else(|| ExecError::UnexpectedKeyVariant(context_entity_key))?;
+            .ok_or(ExecError::UnexpectedKeyVariant(context_entity_key))?;
 
         let (should_attenuate_urefs, should_validate_urefs) = {
             // Determines if this call originated from the system account based on a first
@@ -1929,9 +1927,7 @@ where
         }
 
         let module: Module = {
-            let byte_code_addr = footprint
-                .wasm_hash()
-                .ok_or_else(|| ExecError::InvalidContext)?;
+            let byte_code_addr = footprint.wasm_hash().ok_or(ExecError::InvalidContext)?;
 
             let byte_code_key = match footprint.entity_kind() {
                 EntityKind::System(_) | EntityKind::Account(_) => {

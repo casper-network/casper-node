@@ -399,7 +399,7 @@ impl<C: Context> Highway<C> {
     pub(crate) fn has_evidence(&self, vid: &C::ValidatorId) -> bool {
         self.validators
             .get_index(vid)
-            .map_or(false, |vidx| self.state.has_evidence(vidx))
+            .is_some_and(|vidx| self.state.has_evidence(vidx))
     }
 
     /// Marks the given validator as faulty, if it exists.
@@ -743,7 +743,7 @@ impl<C: Context> Highway<C> {
     pub(crate) fn is_doppelganger_vertex(&self, vertex: &Vertex<C>) -> bool {
         self.active_validator
             .as_ref()
-            .map_or(false, |av| av.is_doppelganger_vertex(vertex, &self.state))
+            .is_some_and(|av| av.is_doppelganger_vertex(vertex, &self.state))
     }
 
     /// Returns whether this instance of protocol is an active validator.

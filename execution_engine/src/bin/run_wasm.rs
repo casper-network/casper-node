@@ -118,7 +118,7 @@ fn load_wasm_file<P: AsRef<Path>>(path: P) -> Vec<u8> {
     let path = path.as_ref();
     let bytes = fs::read(path).expect("valid file");
     match path.extension() {
-        Some(ext) if ext.to_ascii_lowercase() == "wat" => {
+        Some(ext) if ext.eq_ignore_ascii_case("wat") => {
             wat::parse_bytes(&bytes).expect("valid wat").into_owned()
         }
         None | Some(_) => bytes,

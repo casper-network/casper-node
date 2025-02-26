@@ -51,7 +51,7 @@ use crate::{
     failpoints::FailpointActivation,
     protocol::Message,
     reactor::ReactorEvent,
-    types::{BlockPayload, NodeId},
+    types::{BlockPayload, InvalidProposalError, NodeId},
     NodeRng,
 };
 use protocols::{highway::HighwayProtocol, zug::Zug};
@@ -137,7 +137,7 @@ pub struct ResolveValidity {
     era_id: EraId,
     sender: NodeId,
     proposed_block: ProposedBlock<ClContext>,
-    valid: bool,
+    maybe_error: Option<Box<InvalidProposalError>>,
 }
 
 /// Consensus component event.
@@ -283,13 +283,17 @@ impl Display for Event {
                 era_id,
                 sender,
                 proposed_block,
-                valid,
+                maybe_error,
             }) => write!(
                 f,
                 "Proposed block received from {:?} for {} is {}: {:?}",
                 sender,
                 era_id,
-                if *valid { "valid" } else { "invalid" },
+                if maybe_error.is_none() {
+                    "valid".to_string()
+                } else {
+                    format!("invalid ({:?})", maybe_error).to_string()
+                },
                 proposed_block,
             ),
             Event::DeactivateEra {
@@ -416,6 +420,15 @@ where
 {
     type Event = Event;
 
+    fn name(&self) -> &str {
+        COMPONENT_NAME
+    }
+
+    fn activate_failpoint(&mut self, activation: &FailpointActivation) {
+        self.message_delay_failpoint.update_from(activation);
+        self.proposal_delay_failpoint.update_from(activation);
+    }
+
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
@@ -505,14 +518,5 @@ where
                 }
             }
         }
-    }
-
-    fn name(&self) -> &str {
-        COMPONENT_NAME
-    }
-
-    fn activate_failpoint(&mut self, activation: &FailpointActivation) {
-        self.message_delay_failpoint.update_from(activation);
-        self.proposal_delay_failpoint.update_from(activation);
     }
 }

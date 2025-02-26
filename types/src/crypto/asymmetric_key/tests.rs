@@ -848,11 +848,6 @@ fn should_construct_secp256k1_from_uncompressed_bytes() {
             + &base16::encode_lower(&secp256k1_public_key.to_encoded_point(false).as_bytes())
     };
 
-    format!(
-        "02{}",
-        base16::encode_lower(secp256k1_public_key.to_encoded_point(false).as_bytes())
-            .to_lowercase()
-    );
     let from_uncompressed_hex = PublicKey::from_hex(uncompressed_hex).unwrap();
     assert_eq!(public_key, from_uncompressed_hex);
 }

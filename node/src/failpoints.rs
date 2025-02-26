@@ -242,7 +242,7 @@ impl FailpointActivation {
     #[inline(always)]
     pub(crate) fn probability(mut self, probability: f32) -> Self {
         // Note: We do not use `clamp`, since it does not remove `NaN`s.
-        self.probability = Some(probability.max(0.0).min(1.0));
+        self.probability = Some(probability.clamp(0.0, 1.0));
         self
     }
 

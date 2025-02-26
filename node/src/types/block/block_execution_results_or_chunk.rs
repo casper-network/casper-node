@@ -444,7 +444,7 @@ mod tests {
         let v2_result = ExecutionResultV2::random(rng);
         // Ensure we fill with enough copies to cause three chunks.
         let count = (2 * ChunkWithProof::CHUNK_SIZE_BYTES / v2_result.serialized_length()) + 1;
-        let execution_results = vec![ExecutionResult::V2(v2_result); count];
+        let execution_results = vec![ExecutionResult::V2(Box::new(v2_result)); count];
         let checksum = ExecutionResultsChecksum::Checkable(
             compute_execution_results_checksum(execution_results.iter()).unwrap(),
         );

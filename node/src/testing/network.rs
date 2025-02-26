@@ -3,7 +3,6 @@
 use std::{
     collections::{hash_map::Entry, HashMap},
     fmt::Debug,
-    mem,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -50,7 +49,7 @@ pub(crate) trait NetworkedReactor: Sized {
         #[allow(trivial_casts)]
         let addr = self as *const _ as usize;
         let mut raw: [u8; KeyFingerprint::LENGTH] = [0; KeyFingerprint::LENGTH];
-        raw[0..(mem::size_of::<usize>())].copy_from_slice(&addr.to_be_bytes());
+        raw[0..(size_of::<usize>())].copy_from_slice(&addr.to_be_bytes());
         NodeId::from(KeyFingerprint::from(raw))
     }
 }
@@ -86,7 +85,7 @@ where
     pub(crate) async fn add_node<'a, 'b: 'a>(
         &'a mut self,
         rng: &'b mut TestRng,
-    ) -> Result<(NodeId, &'_ mut Runner<ConditionCheckReactor<R>>), R::Error> {
+    ) -> Result<(NodeId, &'a mut Runner<ConditionCheckReactor<R>>), R::Error> {
         self.add_node_with_config(Default::default(), rng).await
     }
 
@@ -123,7 +122,7 @@ where
         &'a mut self,
         cfg: R::Config,
         rng: &'b mut NodeRng,
-    ) -> Result<(NodeId, &mut Runner<ConditionCheckReactor<R>>), R::Error> {
+    ) -> Result<(NodeId, &'a mut Runner<ConditionCheckReactor<R>>), R::Error> {
         let (chainspec, chainspec_raw_bytes) =
             <(Chainspec, ChainspecRawBytes)>::from_resources("local");
         self.add_node_with_config_and_chainspec(
@@ -146,7 +145,7 @@ where
         chainspec: Arc<Chainspec>,
         chainspec_raw_bytes: Arc<ChainspecRawBytes>,
         rng: &'b mut NodeRng,
-    ) -> Result<(NodeId, &mut Runner<ConditionCheckReactor<R>>), R::Error> {
+    ) -> Result<(NodeId, &'a mut Runner<ConditionCheckReactor<R>>), R::Error> {
         let runner: Runner<ConditionCheckReactor<R>> =
             Runner::new(cfg, chainspec, chainspec_raw_bytes, rng).await?;
 

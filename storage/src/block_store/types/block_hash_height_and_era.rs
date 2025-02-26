@@ -27,6 +27,7 @@ impl BlockHashHeightAndEra {
         }
     }
 
+    /// Returns the block hash.
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
         Self {

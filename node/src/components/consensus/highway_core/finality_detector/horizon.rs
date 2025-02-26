@@ -137,12 +137,12 @@ impl<'a, C: Context> Horizon<'a, C> {
     /// Returns whether `unit` can see `idx`'s unit in `self`, where `unit` is considered to see
     /// itself.
     fn can_see(&self, unit: &Unit<C>, idx: ValidatorIndex) -> bool {
-        self.sequence_numbers[idx].map_or(false, |self_sn| {
+        self.sequence_numbers[idx].is_some_and(|self_sn| {
             if unit.creator == idx {
                 unit.seq_number >= self_sn
             } else {
                 let sees_self_sn = |vhash| self.state.unit(vhash).seq_number >= self_sn;
-                unit.panorama[idx].correct().map_or(false, sees_self_sn)
+                unit.panorama[idx].correct().is_some_and(sees_self_sn)
             }
         })
     }

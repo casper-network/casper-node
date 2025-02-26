@@ -10,7 +10,7 @@ use tokio::net::unix::SocketAddr;
 #[derive(Debug)]
 pub(super) struct ShowUnixAddr<'a>(pub &'a SocketAddr);
 
-impl<'a> Display for ShowUnixAddr<'a> {
+impl Display for ShowUnixAddr<'_> {
     #[inline]
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self.0.as_pathname() {

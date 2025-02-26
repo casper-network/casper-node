@@ -146,7 +146,7 @@ impl fmt::Display for GenesisError {
 /// State for genesis installer.
 pub enum GenesisInstaller<S>
 where
-    S: StateProvider + ?Sized,
+    S: StateProvider,
 {
     /// Install genesis using the Accounts/Contracts model.
     AccountContract(AccountContractInstaller<S>),
@@ -155,7 +155,7 @@ where
 }
 impl<S> GenesisInstaller<S>
 where
-    S: StateProvider + ?Sized,
+    S: StateProvider,
 {
     /// Ctor.
     pub fn new(

@@ -213,7 +213,7 @@ impl MetaTransactionV1 {
     ///   * approvals are non empty, and
     ///   * all approvals are valid signatures of the signed hash
     pub fn verify(&self) -> Result<(), InvalidTransactionV1> {
-        return self.is_verified.get_or_init(|| self.do_verify()).clone();
+        self.is_verified.get_or_init(|| self.do_verify()).clone()
     }
 
     /// Returns `Ok` if and only if this transaction's body hashes to the value of `body_hash()`,
@@ -250,14 +250,8 @@ impl MetaTransactionV1 {
 
     /// Returns the hash_addr and entry point name of a smart contract, if applicable.
     pub fn contract_direct_address(&self) -> Option<(HashAddr, String)> {
-        let hash_addr = match self.target().contract_hash_addr() {
-            Some(hash_addr) => hash_addr,
-            None => return None,
-        };
-        let entry_point = match self.entry_point.custom_entry_point() {
-            Some(entry_point) => entry_point,
-            None => return None,
-        };
+        let hash_addr = self.target().contract_hash_addr()?;
+        let entry_point = self.entry_point.custom_entry_point()?;
         Some((hash_addr, entry_point))
     }
 

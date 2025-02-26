@@ -17,7 +17,7 @@ pub struct OptDisplay<'a, T> {
     empty_display: &'a str,
 }
 
-impl<'a, T> Serialize for OptDisplay<'a, T>
+impl<T> Serialize for OptDisplay<'_, T>
 where
     T: Serialize,
 {
@@ -40,7 +40,7 @@ impl<'a, T: Display> OptDisplay<'a, T> {
     }
 }
 
-impl<'a, T: Display> Display for OptDisplay<'a, T> {
+impl<T: Display> Display for OptDisplay<'_, T> {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self.inner {

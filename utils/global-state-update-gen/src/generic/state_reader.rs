@@ -33,7 +33,7 @@ pub trait StateReader {
     fn get_unbonds(&mut self) -> BTreeMap<UnbondKind, Vec<Unbond>>;
 }
 
-impl<'a, T> StateReader for &'a mut T
+impl<T> StateReader for &mut T
 where
     T: StateReader,
 {

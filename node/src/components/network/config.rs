@@ -51,7 +51,8 @@ impl Default for Config {
             tarpit_duration: TimeDiff::from_seconds(600),
             tarpit_chance: 0.2,
             max_in_flight_demands: 50,
-            blocklist_retain_duration: TimeDiff::from_seconds(600),
+            blocklist_retain_min_duration: TimeDiff::from_seconds(600),
+            blocklist_retain_max_duration: TimeDiff::from_seconds(1600),
             identity: None,
         }
     }
@@ -109,8 +110,14 @@ pub struct Config {
     pub tarpit_chance: f32,
     /// Maximum number of demands for objects that can be in-flight.
     pub max_in_flight_demands: u32,
-    /// Duration peers are kept on the block list, before being redeemed.
-    pub blocklist_retain_duration: TimeDiff,
+    /// Minimum time a peer is kept on block list before being redeemed. The actual
+    /// timeout duration is calculated by selecting a random value between
+    /// <blocklist_retain_min_duration, blocklist_retain_max_duration>.
+    pub blocklist_retain_min_duration: TimeDiff,
+    /// Maximum time a peer is kept on block list before being redeemed. The actual
+    /// timeout duration is calculated by selecting a random value between
+    /// <blocklist_retain_min_duration, blocklist_retain_max_duration>.
+    pub blocklist_retain_max_duration: TimeDiff,
     /// Network identity configuration option.
     ///
     /// An identity will be automatically generated when starting up a node if this option is

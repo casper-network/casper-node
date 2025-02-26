@@ -82,7 +82,6 @@ impl<T> OptionalArg<T> {
 }
 
 /// Creates a `RuntimeArgs` suitable for use in a transfer transaction.
-
 pub(crate) fn new_transfer_args<A: Into<U512>, T: Into<TransferTarget>>(
     amount: A,
     maybe_source: Option<URef>,
@@ -108,7 +107,6 @@ pub(crate) fn new_transfer_args<A: Into<U512>, T: Into<TransferTarget>>(
 }
 
 /// Creates a `RuntimeArgs` suitable for use in an add_bid transaction.
-
 pub(crate) fn new_add_bid_args<A: Into<U512>>(
     public_key: PublicKey,
     delegation_rate: u8,
@@ -158,7 +156,6 @@ pub(crate) fn new_delegate_args<A: Into<U512>>(
 }
 
 /// Creates a `RuntimeArgs` suitable for use in an undelegate transaction.
-
 pub(crate) fn new_undelegate_args<A: Into<U512>>(
     delegator: PublicKey,
     validator: PublicKey,

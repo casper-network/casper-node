@@ -58,7 +58,7 @@ impl<'a> TransactionSource<'a> for ScratchTrieStore {
     }
 }
 
-impl<'a> Transaction for RoTransaction<'a> {
+impl Transaction for RoTransaction<'_> {
     type Error = lmdb::Error;
 
     type Handle = Database;
@@ -68,7 +68,7 @@ impl<'a> Transaction for RoTransaction<'a> {
     }
 }
 
-impl<'a> Readable for RoTransaction<'a> {
+impl Readable for RoTransaction<'_> {
     fn read(&self, handle: Self::Handle, key: &[u8]) -> Result<Option<Bytes>, Self::Error> {
         match lmdb::Transaction::get(self, handle, &key) {
             Ok(bytes) => Ok(Some(Bytes::from(bytes))),
@@ -88,7 +88,7 @@ impl<'a> Transaction for RwTransaction<'a> {
     }
 }
 
-impl<'a> Readable for RwTransaction<'a> {
+impl Readable for RwTransaction<'_> {
     fn read(&self, handle: Self::Handle, key: &[u8]) -> Result<Option<Bytes>, Self::Error> {
         match lmdb::Transaction::get(self, handle, &key) {
             Ok(bytes) => Ok(Some(Bytes::from(bytes))),
@@ -98,7 +98,7 @@ impl<'a> Readable for RwTransaction<'a> {
     }
 }
 
-impl<'a> Writable for RwTransaction<'a> {
+impl Writable for RwTransaction<'_> {
     fn write(&mut self, handle: Self::Handle, key: &[u8], value: &[u8]) -> Result<(), Self::Error> {
         self.put(handle, &key, &value, WriteFlags::empty())
             .map_err(Into::into)

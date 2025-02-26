@@ -457,7 +457,7 @@ impl<C: Context + 'static> HighwayProtocol<C> {
         let is_switch = |block_hash: &C::Hash| self.highway.state().is_terminal_block(block_hash);
         self.finality_detector
             .last_finalized()
-            .map_or(false, is_switch)
+            .is_some_and(is_switch)
     }
 
     /// Request the latest state from a random peer.

@@ -87,7 +87,7 @@ impl ToBytes for TrieMerkleProofStep {
     }
 
     fn serialized_length(&self) -> usize {
-        core::mem::size_of::<u8>()
+        size_of::<u8>()
             + match self {
                 TrieMerkleProofStep::Node {
                     hole_index,

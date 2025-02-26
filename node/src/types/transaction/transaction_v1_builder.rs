@@ -55,10 +55,10 @@ use std::collections::{BTreeMap, BTreeSet};
 ///
 /// ## Signing Fields
 /// - `secret_key`: The secret key used to sign the transaction. This field is conditional based on
-/// the compilation environment:
-///     - In normal mode, it holds a reference to the secret key (`Option<&'a SecretKey>`).
-///     - In testing mode or with the `std` feature enabled, it holds an owned secret key
-///  (`Option<SecretKey>`).
+///   the compilation environment:
+///    - In normal mode, it holds a reference to the secret key (`Option<&'a SecretKey>`).
+///    - In testing mode or with the `std` feature enabled, it holds an owned secret key
+///      (`Option<SecretKey>`).
 ///
 /// ## Invalid Approvals
 /// - `invalid_approvals`: A collection of invalid approvals used for testing purposes. This field
@@ -418,7 +418,7 @@ impl<'a> TransactionV1Builder<'a> {
             secret_key: Some(secret_key),
             _phantom_data: PhantomData,
             invalid_approvals: vec![],
-            #[cfg(any(all(feature = "std", feature = "testing"), test))]
+            #[cfg(test)]
             additional_fields: BTreeMap::new(),
         }
     }

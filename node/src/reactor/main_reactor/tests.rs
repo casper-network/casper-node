@@ -39,7 +39,7 @@ use casper_storage::{
 };
 use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
-    execution::{ExecutionResult, ExecutionResultV2, TransformKindV2, TransformV2},
+    execution::{ExecutionResult, TransformKindV2, TransformV2},
     system::{
         auction::{BidAddr, BidKind, BidsExt, DelegationRate, DelegatorKind},
         AUCTION,
@@ -285,7 +285,7 @@ impl TestFixture {
                 stakes.into_iter().map(|stake| stake.into()).collect()
             }
             InitialStakes::Random { count } => {
-                // By default we use very large stakes so we would catch overflow issues.
+                // By default, we use very large stakes so we would catch overflow issues.
                 iter::from_fn(|| Some(U512::from(rng.gen_range(100..999)) * U512::from(u128::MAX)))
                     .take(count)
                     .collect()
@@ -760,7 +760,7 @@ impl TestFixture {
                         .read_highest_switch_block_headers(1)
                         .unwrap()
                         .last()
-                        .map_or(false, |header| {
+                        .is_some_and(|header| {
                             header.era_id() == era_id
                                 && available_block_range.contains(header.height())
                         })
@@ -1038,18 +1038,13 @@ impl TestFixture {
             .expect("node 0 should have given execution result")
         {
             ExecutionResult::V1(_) => unreachable!(),
-            ExecutionResult::V2(ExecutionResultV2 {
-                effects,
-                consumed: gas,
-                error_message,
-                ..
-            }) => {
-                if error_message.is_none() {
-                    effects.transforms().to_vec()
+            ExecutionResult::V2(execution_result_v2) => {
+                if execution_result_v2.error_message.is_none() {
+                    execution_result_v2.effects.transforms().to_vec()
                 } else {
                     panic!(
                         "transaction execution failed: {:?} gas: {}",
-                        error_message, gas
+                        execution_result_v2.error_message, execution_result_v2.consumed
                     );
                 }
             }
@@ -2116,7 +2111,7 @@ async fn run_withdraw_bid_network() {
     // The bid record should have been pruned once unbonding ran.
     fixture.check_bid_existence_at_tip(&alice_public_key, None, false);
 
-    // Crank the network forward until the unbonds are processed.
+    // Crank the network forward until the unbonding queue is processed.
     fixture
         .run_until_stored_switch_block_header(
             ERA_ONE.saturating_add(unbonding_delay + 1),
@@ -2321,7 +2316,7 @@ async fn run_undelegate_bid_network() {
     fixture.check_bid_existence_at_tip(&bob_public_key, None, true);
     fixture.check_bid_existence_at_tip(&bob_public_key, Some(&alice_public_key), false);
 
-    // Crank the network forward until the unbonds are processed.
+    // Crank the network forward until the unbonding queue is processed.
     fixture
         .run_until_stored_switch_block_header(
             ERA_ONE.saturating_add(unbonding_delay + 1),

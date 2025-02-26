@@ -1,5 +1,3 @@
-use std::mem;
-
 use casper_types::{account::Account, bytesrepr::ToBytes, ByteCode, Key, StoredValue};
 
 /// Returns byte size of the element - both heap size and stack size.
@@ -9,19 +7,19 @@ pub trait ByteSize {
 
 impl ByteSize for Key {
     fn byte_size(&self) -> usize {
-        mem::size_of::<Self>() + self.heap_size()
+        size_of::<Self>() + self.heap_size()
     }
 }
 
 impl ByteSize for String {
     fn byte_size(&self) -> usize {
-        mem::size_of::<Self>() + self.heap_size()
+        size_of::<Self>() + self.heap_size()
     }
 }
 
 impl ByteSize for StoredValue {
     fn byte_size(&self) -> usize {
-        mem::size_of::<Self>()
+        size_of::<Self>()
             + match self {
                 StoredValue::CLValue(cl_value) => cl_value.serialized_length(),
                 StoredValue::Account(account) => account.serialized_length(),
@@ -86,7 +84,7 @@ impl HeapSizeOf for ByteCode {
 impl<T: HeapSizeOf> ByteSize for [T] {
     fn byte_size(&self) -> usize {
         self.iter()
-            .fold(0, |sum, el| sum + mem::size_of::<T>() + el.heap_size())
+            .fold(0, |sum, el| sum + size_of::<T>() + el.heap_size())
     }
 }
 
@@ -98,8 +96,6 @@ impl HeapSizeOf for String {
 
 #[cfg(test)]
 mod tests {
-    use std::mem;
-
     use super::ByteSize;
 
     fn assert_byte_size<T: ByteSize>(el: T, expected: usize) {
@@ -108,6 +104,6 @@ mod tests {
 
     #[test]
     fn byte_size_of_string() {
-        assert_byte_size("Hello".to_owned(), 5 + mem::size_of::<String>())
+        assert_byte_size("Hello".to_owned(), 5 + size_of::<String>())
     }
 }

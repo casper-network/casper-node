@@ -13,7 +13,6 @@ use std::{
     borrow::Borrow,
     collections::HashMap,
     hash::Hash,
-    mem,
     sync::{Arc, Weak},
 };
 
@@ -64,9 +63,7 @@ impl DataSize for ObjectPool<Box<[u8]>> {
     fn estimate_heap_size(&self) -> usize {
         // See https://docs.rs/datasize/0.2.9/src/datasize/std.rs.html#213-224 for details.
         let base = self.items.capacity()
-            * (mem::size_of::<Box<[u8]>>()
-                + mem::size_of::<Weak<[u8]>>()
-                + mem::size_of::<usize>());
+            * (size_of::<Box<[u8]>>() + size_of::<Weak<[u8]>>() + size_of::<usize>());
 
         base + self
             .items

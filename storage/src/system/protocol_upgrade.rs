@@ -137,7 +137,7 @@ impl SystemHashAddresses {
 /// The system upgrader deals with conducting an actual protocol upgrade.
 pub struct ProtocolUpgrader<S>
 where
-    S: StateProvider + ?Sized,
+    S: StateProvider,
 {
     config: ProtocolUpgradeConfig,
     address_generator: Rc<RefCell<AddressGenerator>>,
@@ -146,7 +146,7 @@ where
 
 impl<S> ProtocolUpgrader<S>
 where
-    S: StateProvider + ?Sized,
+    S: StateProvider,
 {
     /// Creates new system upgrader instance.
     pub fn new(
@@ -891,7 +891,7 @@ where
                 })?
                 .as_contract()
                 .map(|contract| contract.named_keys().clone())
-                .ok_or_else(|| ProtocolUpgradeError::UnexpectedStoredValueVariant)?;
+                .ok_or(ProtocolUpgradeError::UnexpectedStoredValueVariant)?;
 
             Ok(named_keys)
         }

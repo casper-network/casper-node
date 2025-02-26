@@ -157,7 +157,7 @@ administrators = []
 # Flag that triggers a migration of all accounts and contracts present in global state to the addressable
 # entity in lazy manner.
 # If the flag is set to false then no accounts and contracts are migrated during a protocol upgrade;
-# i.e all Account records will be present under Key::Account and Contracts and their associated ContractPackage
+# i.e. all Account records will be present under Key::Account and Contracts and their associated ContractPackage
 # will be written underneath Key::Hash.
 # If the flag is set to true then accounts and contracts are migrated lazily; i.e on first use of the Account
 # and/or Contract as part of the execution of a Transaction. This means the Accounts/Contracts will be migrated
@@ -167,6 +167,9 @@ administrators = []
 # Note: Enabling of the AddressableEntity feature is one-way; i.e once enabled as part of a protocol upgrade
 # the flag cannot be disabled in a future protocol upgrade.
 enable_addressable_entity = false
+# This value is used as the penalty payment amount, the minimum balance amount,
+# and the minimum consumed amount.
+baseline_motes_amount = 2_500_000_000
 
 [highway]
 # Highway dynamically chooses its round length, between minimum_block_time and maximum_round_length.

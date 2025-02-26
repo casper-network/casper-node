@@ -46,7 +46,7 @@ linked-hash-map = "0.5.3"
 lmdb-rkv = "0.14"
 log = { version = "0.4.8", features = ["std", "serde", "kv_unstable"] }
 num = { version = "0.4.0", default-features = false }
-num-derive = "0.3.0"
+num-derive = "0.4.2"
 num-rational = { version = "0.4.0", features = ["serde"] }
 num-traits = "0.2.10"
 num_cpus = "1"
@@ -105,7 +105,7 @@ fake_instant = "0.4.0"
 pnet = "0.28.0"
 pretty_assertions = "0.7.2"
 proptest = "1.0.0"
-proptest-derive = "0.3.0"
+proptest-derive = "0.5.1"
 rand_core = "0.6.2"
 reqwest = { version = "0.11.27", features = ["stream"] }
 tokio = { version = "1", features = ["test-util"] }

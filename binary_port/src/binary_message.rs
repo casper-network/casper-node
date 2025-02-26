@@ -9,7 +9,7 @@ use tokio_util::codec::{self};
 use crate::error::Error;
 
 type LengthEncoding = u32;
-const LENGTH_ENCODING_SIZE_BYTES: usize = std::mem::size_of::<LengthEncoding>();
+const LENGTH_ENCODING_SIZE_BYTES: usize = size_of::<LengthEncoding>();
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct BinaryMessage(Bytes);

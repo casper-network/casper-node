@@ -39,6 +39,7 @@ pub enum DbTableId {
 }
 
 impl DbTableId {
+    /// Returns a random `DbTableId`.
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
         match rng.gen_range(0..8) {

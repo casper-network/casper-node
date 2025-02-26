@@ -8,7 +8,10 @@ use casper_types::{Digest, EraId};
 use datasize::DataSize;
 use serde::Serialize;
 
-use crate::components::{block_accumulator, fetcher::Tag};
+use crate::{
+    components::{block_accumulator, fetcher::Tag},
+    types::InvalidProposalError,
+};
 
 /// Reasons why a peer was blocked.
 #[derive(DataSize, Debug, Serialize)]
@@ -31,10 +34,13 @@ pub(crate) enum BlocklistJustification {
         #[data_size(skip)]
         error: block_accumulator::Error,
     },
-    /// An invalid consensus value was received.
-    SentInvalidConsensusValue {
+    /// An invalid proposal was received.
+    SentInvalidProposal {
         /// The era for which the invalid value was destined.
         era: EraId,
+        /// The specific error.
+        #[serde(skip_serializing)]
+        error: Box<InvalidProposalError>,
     },
     /// Too many unasked or expired pongs were sent by the peer.
     #[allow(dead_code)] // Disabled as per 1.5.5 for stability reasons.
@@ -73,8 +79,8 @@ impl Display for BlocklistJustification {
                 "sent a finality signature that is invalid or unexpected ({})",
                 error
             ),
-            BlocklistJustification::SentInvalidConsensusValue { era } => {
-                write!(f, "sent an invalid consensus value in {}", era)
+            BlocklistJustification::SentInvalidProposal { era, error } => {
+                write!(f, "sent an invalid proposal in {} ({:?})", era, error)
             }
             BlocklistJustification::PongLimitExceeded => {
                 f.write_str("wrote too many expired or invalid pongs")

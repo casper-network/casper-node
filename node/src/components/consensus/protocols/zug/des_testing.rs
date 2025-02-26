@@ -660,7 +660,7 @@ where
 
 struct MutableHandle<'a, DS: DeliveryStrategy>(&'a mut ZugTestHarness<DS>);
 
-impl<'a, DS: DeliveryStrategy> MutableHandle<'a, DS> {
+impl<DS: DeliveryStrategy> MutableHandle<'_, DS> {
     /// Drops all messages from the queue.
     fn clear_message_queue(&mut self) {
         self.0.virtual_net.empty_queue();
@@ -836,8 +836,7 @@ impl<DS: DeliveryStrategy> ZugTestHarnessBuilder<DS> {
                 let honest_weights = {
                     let faulty_sum = faulty_weights.iter().sum::<u64>();
                     let mut weights_to_distribute: u64 =
-                        (faulty_sum * 100 + self.faulty_percent - 1) / self.faulty_percent
-                            - faulty_sum;
+                        (faulty_sum * 100).div_ceil(self.faulty_percent) - faulty_sum;
                     let mut weights = vec![];
                     while weights_to_distribute > 0 {
                         let weight = if weights_to_distribute < upper {

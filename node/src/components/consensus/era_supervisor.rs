@@ -68,11 +68,10 @@ use crate::{
 };
 
 pub use self::era::Era;
-use crate::components::consensus::error::CreateNewEraError;
-
 use super::{traits::ConsensusNetworkMessage, BlockContext};
+use crate::{components::consensus::error::CreateNewEraError, types::InvalidProposalError};
 
-/// The delay in milliseconds before we shutdown after the number of faulty validators exceeded the
+/// The delay in milliseconds before we shut down after the number of faulty validators exceeded the
 /// fault tolerance threshold.
 const FTT_EXCEEDED_SHUTDOWN_DELAY_MILLIS: u64 = 60 * 1000;
 /// A warning is printed if a timer is delayed by more than this.
@@ -261,7 +260,7 @@ impl EraSupervisor {
 
     fn era_seed(booking_block_hash: BlockHash, key_block_seed: Digest) -> u64 {
         let result = Digest::hash_pair(booking_block_hash, key_block_seed).value();
-        u64::from_le_bytes(result[0..std::mem::size_of::<u64>()].try_into().unwrap())
+        u64::from_le_bytes(result[0..size_of::<u64>()].try_into().unwrap())
     }
 
     /// Returns an iterator over era IDs of `num_eras` past eras, plus the provided one.
@@ -555,7 +554,7 @@ impl EraSupervisor {
         let our_id = self.validator_matrix.public_signing_key().clone();
         if self
             .current_era()
-            .map_or(false, |current_era| current_era > era_id)
+            .is_some_and(|current_era| current_era > era_id)
         {
             trace!(
                 era = era_id.value(),
@@ -563,7 +562,7 @@ impl EraSupervisor {
                 "not voting; initializing past era"
             );
             // We're creating an era that's not the current era - which means we're currently
-            // initializing consensus and we want to set all the older eras to be evidence only.
+            // initializing consensus, and we want to set all the older eras to be evidence only.
             if let Some(era) = self.open_eras.get_mut(&era_id) {
                 era.consensus.set_evidence_only();
             }
@@ -912,16 +911,18 @@ impl EraSupervisor {
             era_id,
             sender,
             proposed_block,
-            valid,
+            maybe_error,
         } = resolve_validity;
         self.metrics.proposed_block();
         let mut effects = Effects::new();
-        if !valid {
+        let valid = maybe_error.is_none();
+        if let Some(error) = maybe_error {
+            debug!(%era_id, %sender, ?error, "announcing block peer due to invalid proposal");
             effects.extend({
                 effect_builder
                     .announce_block_peer_with_justification(
                         sender,
-                        BlocklistJustification::SentInvalidConsensusValue { era: era_id },
+                        BlocklistJustification::SentInvalidProposal { era: era_id, error },
                     )
                     .ignore()
             });
@@ -929,7 +930,7 @@ impl EraSupervisor {
         if self
             .open_eras
             .get_mut(&era_id)
-            .map_or(false, |era| era.resolve_validity(&proposed_block, valid))
+            .is_some_and(|era| era.resolve_validity(&proposed_block, valid))
         {
             effects.extend(
                 self.delegate_to_era(effect_builder, rng, era_id, |consensus, _| {
@@ -1206,6 +1207,7 @@ impl EraSupervisor {
                 if era_id.saturating_add(PAST_EVIDENCE_ERAS) < current_era
                     || !self.open_eras.contains_key(&era_id)
                 {
+                    debug!(%sender, %era_id, "validate_consensus_value: skipping outdated era");
                     return Effects::new(); // Outdated era; we don't need the value anymore.
                 }
                 let missing_evidence: Vec<PublicKey> = proposed_block
@@ -1217,8 +1219,8 @@ impl EraSupervisor {
                     .collect();
                 self.era_mut(era_id)
                     .add_block(proposed_block.clone(), missing_evidence.clone());
-                if let Some(deploy_hash) = proposed_block.contains_replay() {
-                    info!(%sender, %deploy_hash, "block contains a replayed deploy");
+                if let Some(transaction_hash) = proposed_block.contains_replay() {
+                    warn!(%sender, %transaction_hash, "block contains a replayed transaction");
                     return self.resolve_validity(
                         effect_builder,
                         rng,
@@ -1226,7 +1228,11 @@ impl EraSupervisor {
                             era_id,
                             sender,
                             proposed_block,
-                            valid: false,
+                            maybe_error: Some(Box::new(
+                                InvalidProposalError::AncestorTransactionReplay {
+                                    replayed_transaction_hash: transaction_hash,
+                                },
+                            )),
                         },
                     );
                 }
@@ -1370,7 +1376,7 @@ impl SerializedMessage {
 
 #[cfg(test)]
 impl SerializedMessage {
-    /// Deserializes a message into a the given value.
+    /// Deserializes a message into the given value.
     ///
     /// # Panics
     ///
@@ -1476,29 +1482,36 @@ where
         // block_payload within the current era to determine if we are facing a replay
         // attack.
         if txn_era_id < proposed_block_era_id {
+            debug!(%sender, %txn_era_id, %proposed_block_era_id, "consensus replay detection: transaction from previous era");
             return Event::ResolveValidity(ResolveValidity {
                 era_id: proposed_block_era_id,
                 sender,
                 proposed_block: proposed_block.clone(),
-                valid: false,
+                maybe_error: Some(Box::new(
+                    InvalidProposalError::TransactionReplayPreviousEra {
+                        transaction_era_id: txn_era_id.value(),
+                        proposed_block_era_id: proposed_block_era_id.value(),
+                    },
+                )),
             });
         }
     }
 
     let sender_for_validate_block: NodeId = sender;
-    let valid = effect_builder
+    let maybe_error = effect_builder
         .validate_block(
             sender_for_validate_block,
             proposed_block_height,
             proposed_block.clone(),
         )
-        .await;
+        .await
+        .err();
 
     Event::ResolveValidity(ResolveValidity {
         era_id: proposed_block_era_id,
         sender,
         proposed_block,
-        valid,
+        maybe_error,
     })
 }
 

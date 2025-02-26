@@ -484,6 +484,22 @@ mod tests {
     const ONE_U512: U512 = U512([1, 0, 0, 0, 0, 0, 0, 0]);
     const MAX_U512: U512 = U512([MAX_U64; 8]);
 
+    impl From<U128> for TransformKindV2 {
+        fn from(x: U128) -> Self {
+            TransformKindV2::AddUInt128(x)
+        }
+    }
+    impl From<U256> for TransformKindV2 {
+        fn from(x: U256) -> Self {
+            TransformKindV2::AddUInt256(x)
+        }
+    }
+    impl From<U512> for TransformKindV2 {
+        fn from(x: U512) -> Self {
+            TransformKindV2::AddUInt512(x)
+        }
+    }
+
     #[test]
     fn i32_overflow() {
         let max = i32::MAX;
@@ -532,31 +548,16 @@ mod tests {
 
     #[test]
     fn u128_overflow() {
-        impl From<U128> for TransformKindV2 {
-            fn from(x: U128) -> Self {
-                TransformKindV2::AddUInt128(x)
-            }
-        }
         uint_overflow_test::<U128>();
     }
 
     #[test]
     fn u256_overflow() {
-        impl From<U256> for TransformKindV2 {
-            fn from(x: U256) -> Self {
-                TransformKindV2::AddUInt256(x)
-            }
-        }
         uint_overflow_test::<U256>();
     }
 
     #[test]
     fn u512_overflow() {
-        impl From<U512> for TransformKindV2 {
-            fn from(x: U512) -> Self {
-                TransformKindV2::AddUInt512(x)
-            }
-        }
         uint_overflow_test::<U512>();
     }
 

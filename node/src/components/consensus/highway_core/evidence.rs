@@ -95,7 +95,7 @@ impl<C: Context> Evidence<C> {
     /// "Validation" can mean different things for different type of evidence.
     ///
     /// - For an equivocation, it checks whether the creators, sequence numbers and instance IDs of
-    /// the two units are the same.
+    ///   the two units are the same.
     pub fn validate(
         &self,
         validators: &Validators<C::ValidatorId>,

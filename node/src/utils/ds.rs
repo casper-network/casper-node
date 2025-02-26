@@ -1,6 +1,6 @@
 //! Datasize helper functions.
 
-use std::{collections::HashMap, mem};
+use std::collections::HashMap;
 
 use datasize::DataSize;
 use either::Either;
@@ -47,7 +47,7 @@ where
     if vec.len() < SAMPLE_SIZE {
         vec.estimate_heap_size()
     } else {
-        let base_size = vec.capacity() * mem::size_of::<T>();
+        let base_size = vec.capacity() * size_of::<T>();
 
         let mut rng = sampling_rng(vec.len());
         let sampled = vec
@@ -77,7 +77,7 @@ where
         } else {
             (capacity * 8 / 7).next_power_of_two()
         };
-        let size = mem::size_of::<T>();
+        let size = size_of::<T>();
         let ctrl_offset = size * buckets;
         ctrl_offset + buckets
     }
