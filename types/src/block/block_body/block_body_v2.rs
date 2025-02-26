@@ -140,15 +140,15 @@ impl PartialEq for BlockBodyV2 {
 
 impl Display for BlockBodyV2 {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        write!(
+        writeln!(
             formatter,
-            "block body, {} mint, {} auction, {} install_upgrade\n",
+            "block body, {} mint, {} auction, {} install_upgrade",
             self.mint().count(),
             self.auction().count(),
             self.install_upgrade().count(),
         )?;
         for (lane, count) in self.wasm_lanes() {
-            write!(formatter, "{} wasm lane id {} \n", count, lane)?;
+            writeln!(formatter, "{} wasm lane id {}", count, lane)?;
         }
         Ok(())
     }
