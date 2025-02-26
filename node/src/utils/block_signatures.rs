@@ -45,7 +45,7 @@ where
                         continue;
                     }
                     Some(validator_weight) => {
-                        if minimum_weight.map_or(true, |min_w| *validator_weight < min_w) {
+                        if minimum_weight.is_none_or(|min_w| *validator_weight < min_w) {
                             minimum_weight = Some(*validator_weight);
                         }
                         signature_weight += *validator_weight;

@@ -835,7 +835,7 @@ impl EraSupervisor {
 
         if self
             .current_era()
-            .map_or(true, |current_era| era_id < current_era)
+            .is_none_or(|current_era| era_id < current_era)
         {
             trace!(era = era_id.value(), "executed block in old era");
             return effects;
@@ -1526,7 +1526,6 @@ impl ProposedBlock<ClContext> {
             .iter()
             .flat_map(|ancestor| ancestor.all_transaction_hashes())
             .find(|typed_txn_hash| block_txns_set.contains(typed_txn_hash))
-            .map(TransactionHash::from)
     }
 }
 

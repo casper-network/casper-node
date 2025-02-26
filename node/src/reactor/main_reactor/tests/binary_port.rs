@@ -366,7 +366,7 @@ fn validate_metadata(
     response.is_success()
         && response.returned_data_type_tag()
             == expected_payload_type.map(|payload_type| payload_type as u8)
-        && expected_payload_type.map_or(true, |_| !response.payload().is_empty())
+        && expected_payload_type.is_none_or(|_| !response.payload().is_empty())
 }
 
 fn validate_deserialization<T>(response: &BinaryResponse) -> Option<T>
@@ -391,9 +391,8 @@ where
     F: FnOnce(T) -> bool,
 {
     validate_metadata(response, payload_type)
-        && payload_type.map_or(true, |_| {
-            validate_deserialization::<T>(response).is_some_and(validator)
-        })
+        && payload_type
+            .is_none_or(|_| validate_deserialization::<T>(response).is_some_and(validator))
 }
 
 #[tokio::test]

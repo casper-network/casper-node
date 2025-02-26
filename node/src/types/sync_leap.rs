@@ -162,7 +162,7 @@ impl SyncLeap {
                     .filter(move |block_header| {
                         block_protocol_versions
                             .get(&(block_header.height() + 1))
-                            .map_or(true, |other_protocol_version| {
+                            .is_none_or(|other_protocol_version| {
                                 if block_header.protocol_version() == *other_protocol_version {
                                     true
                                 } else if *other_protocol_version == current_protocol_version {

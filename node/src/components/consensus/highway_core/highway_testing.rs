@@ -689,7 +689,7 @@ fn crank_until_time<DS: DeliveryStrategy>(
     crank_until(hth, rng, |hth| {
         hth.virtual_net
             .peek_message()
-            .map_or(true, |qe| qe.delivery_time > timestamp)
+            .is_none_or(|qe| qe.delivery_time > timestamp)
     })
 }
 

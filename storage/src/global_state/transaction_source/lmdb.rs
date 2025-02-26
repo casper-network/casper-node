@@ -101,7 +101,6 @@ impl Readable for RwTransaction<'_> {
 impl Writable for RwTransaction<'_> {
     fn write(&mut self, handle: Self::Handle, key: &[u8], value: &[u8]) -> Result<(), Self::Error> {
         self.put(handle, &key, &value, WriteFlags::empty())
-            .map_err(Into::into)
     }
 }
 

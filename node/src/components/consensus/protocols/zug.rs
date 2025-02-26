@@ -1302,9 +1302,10 @@ impl<C: Context + 'static> Zug<C> {
 
         let hashed_prop = HashedProposal::new(proposal);
 
-        if self.round(round_id).map_or(true, |round| {
-            !round.has_echoes_for_proposal(hashed_prop.hash())
-        }) {
+        if self
+            .round(round_id)
+            .is_none_or(|round| !round.has_echoes_for_proposal(hashed_prop.hash()))
+        {
             log_proposal!(
                 Level::DEBUG,
                 hashed_prop.inner(),
@@ -1555,7 +1556,7 @@ impl<C: Context + 'static> Zug<C> {
     fn add_content(&mut self, signed_msg: SignedMessage<C>) -> bool {
         if self.active[signed_msg.validator_idx]
             .as_ref()
-            .map_or(true, |old_msg| old_msg.round_id < signed_msg.round_id)
+            .is_none_or(|old_msg| old_msg.round_id < signed_msg.round_id)
         {
             if self.active[signed_msg.validator_idx].is_none() {
                 // We considered this validator inactive until now, and didn't accept proposals that
@@ -2053,7 +2054,7 @@ impl<C: Context + 'static> Zug<C> {
                 if now >= timestamp {
                     return Some((Some(round_id), timestamp));
                 }
-                if maybe_parent.map_or(true, |(_, timestamp2)| timestamp2 > timestamp) {
+                if maybe_parent.is_none_or(|(_, timestamp2)| timestamp2 > timestamp) {
                     maybe_parent = Some((Some(round_id), timestamp));
                 }
             }
@@ -2194,9 +2195,7 @@ impl<C: Context + 'static> Zug<C> {
     /// Marks a round as dirty so that the next `upgrade` call will reevaluate it.
     fn mark_dirty(&mut self, round_id: RoundId) {
         if round_id <= self.current_round
-            && self
-                .maybe_dirty_round_id
-                .map_or(true, |r_id| r_id > round_id)
+            && self.maybe_dirty_round_id.is_none_or(|r_id| r_id > round_id)
         {
             self.maybe_dirty_round_id = Some(round_id);
         }

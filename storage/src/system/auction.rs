@@ -872,12 +872,10 @@ pub trait Auction:
             debug!(?validator_public_key, "validator payout finished");
 
             // mint new token and put it to the recipients' purses
-            self.mint_into_existing_purse(reward_info.validator_reward, validator_bonding_purse)
-                .map_err(Error::from)?;
+            self.mint_into_existing_purse(reward_info.validator_reward, validator_bonding_purse)?;
 
             for (_delegator_account_hash, delegator_payout, bonding_purse) in delegator_payouts {
-                self.mint_into_existing_purse(delegator_payout, bonding_purse)
-                    .map_err(Error::from)?;
+                self.mint_into_existing_purse(delegator_payout, bonding_purse)?;
             }
             debug!("rewards minted into recipient purses");
         }

@@ -300,7 +300,7 @@ impl Graph {
         for unit_hash in &units_set.order {
             let unit = state.unit(unit_hash);
             let block = state.block(&unit.block);
-            if highest_block.map_or(true, |(height, _)| height < block.height) {
+            if highest_block.is_none_or( |(height, _)| height < block.height) {
                 highest_block = Some((block.height, unit.block));
             }
             let block_id = if let Some(b_id) = blocks.get(&unit.block) {

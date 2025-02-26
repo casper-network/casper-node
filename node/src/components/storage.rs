@@ -1052,7 +1052,6 @@ impl Storage {
         transaction_hashes
             .map(|transaction_hash| {
                 Self::get_transaction_with_finalized_approvals(&ro_txn, transaction_hash)
-                    .map_err(FatalStorageError::from)
             })
             .collect()
     }

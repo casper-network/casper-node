@@ -156,7 +156,7 @@ impl<C: Context> ActiveValidator<C> {
                 {
                     if self
                         .latest_unit(state)
-                        .map_or(true, |latest_unit| latest_unit.round_id() != r_id)
+                        .is_none_or(|latest_unit| latest_unit.round_id() != r_id)
                     {
                         info!(round_id = %r_id, "sending witness in round with no proposal");
                     }
