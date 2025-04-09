@@ -31,7 +31,7 @@ impl ConnectionTerminator {
     /// Updates or sets the termination deadline.
     /// There will be no update if the termination already happened.
     /// Both set and update won't happen if the `in_terminate_at` is in the past.
-    /// Updating an already running termination countdown happens only if the incoming
+    /// Updating an already running termination countdown happens only if the incomming
     /// `in_terminate_at` is > then the existing one. Returns true if the update was in effect.
     /// False otherwise
     pub(super) async fn terminate_at(&self, in_terminate_at: Timestamp) -> bool {

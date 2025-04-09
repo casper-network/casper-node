@@ -79,7 +79,7 @@ use tracing::{debug, error, info, trace, warn, Instrument, Span};
 #[cfg(test)]
 use futures::{future::BoxFuture, FutureExt};
 
-use casper_types::{EraId, PublicKey, SecretKey, TimeDiff, Timestamp};
+use casper_types::{EraId, PublicKey, SecretKey};
 
 pub(crate) use self::{
     bincode_format::BincodeFormat,
@@ -163,117 +163,6 @@ impl<P> Display for OutgoingHandle<P> {
     }
 }
 
-/// Struct encapsulating state that is needed to
-/// perform a peer drop in the "network flakiness" test case
-#[derive(DataSize)]
-enum PeerDropData {
-    #[data_size(skip)]
-    IncomingOnly {
-        drop_on: Timestamp,
-        cancel_incoming: Vec<watch::Sender<()>>,
-    },
-    #[data_size(skip)]
-    OutgoingOnly {
-        drop_on: Timestamp,
-        cancel_outgoing: Vec<watch::Sender<()>>,
-    },
-    #[data_size(skip)]
-    IncomingAndOutgoing {
-        drop_on: Timestamp,
-        cancel_outgoing: Vec<watch::Sender<()>>,
-        cancel_incoming: Vec<watch::Sender<()>>,
-    },
-    #[data_size(skip)]
-    /// We keep track of the fact that the peer is
-    /// currently blocked so that we don't handle
-    /// new incoming/outgoing connections to that peer
-    CurrentlyBlocked,
-}
-
-impl PeerDropData {
-    fn add_outgoing_cancel(self, cancel_callback: watch::Sender<()>) -> PeerDropData {
-        match self {
-            PeerDropData::OutgoingOnly {
-                drop_on,
-                mut cancel_outgoing,
-            } => {
-                cancel_outgoing.push(cancel_callback);
-                PeerDropData::OutgoingOnly {
-                    drop_on,
-                    cancel_outgoing,
-                }
-            }
-            PeerDropData::IncomingOnly {
-                drop_on,
-                cancel_incoming,
-            } => PeerDropData::IncomingAndOutgoing {
-                drop_on,
-                cancel_incoming,
-                cancel_outgoing: vec![cancel_callback],
-            },
-            PeerDropData::IncomingAndOutgoing {
-                drop_on,
-                mut cancel_outgoing,
-                cancel_incoming,
-            } => {
-                cancel_outgoing.push(cancel_callback);
-                PeerDropData::IncomingAndOutgoing {
-                    drop_on,
-                    cancel_outgoing,
-                    cancel_incoming,
-                }
-            }
-            PeerDropData::CurrentlyBlocked => {
-                //This means that the peer was already dropped,
-                // this generally shouldn't happen, because we
-                // shouldn't schedule a new drop if we didn't clear data from the last one
-                PeerDropData::CurrentlyBlocked
-            }
-        }
-    }
-
-    fn extend_with_incoming(self, cancel_callback: watch::Sender<()>) -> PeerDropData {
-        match self {
-            PeerDropData::IncomingOnly {
-                drop_on,
-                mut cancel_incoming,
-            } => {
-                cancel_incoming.push(cancel_callback);
-                PeerDropData::IncomingOnly {
-                    drop_on,
-                    cancel_incoming,
-                }
-            }
-            PeerDropData::OutgoingOnly {
-                drop_on,
-                cancel_outgoing,
-            } => PeerDropData::IncomingAndOutgoing {
-                drop_on,
-                cancel_incoming: vec![cancel_callback],
-                cancel_outgoing,
-            },
-            PeerDropData::IncomingAndOutgoing {
-                drop_on,
-                cancel_outgoing,
-                mut cancel_incoming,
-            } => {
-                cancel_incoming.push(cancel_callback);
-                PeerDropData::IncomingAndOutgoing {
-                    drop_on,
-                    cancel_outgoing,
-                    cancel_incoming,
-                }
-            }
-            PeerDropData::CurrentlyBlocked => {
-                //This means that the peer was already dropped,
-                // this generally shouldn't happen, because we
-                // shouldn't schedule a new drop if we didn't clear data from the last one
-                PeerDropData::CurrentlyBlocked
-            }
-        }
-    }
-}
-
 #[derive(DataSize)]
 pub(crate) struct Network<REv, P>
 where
@@ -314,8 +203,6 @@ where
 
     /// The state of this component.
     state: ComponentState,
-
-    peer_drop_handles: BTreeMap<NodeId, PeerDropData>,
 }
 
 struct ChannelManagement {
@@ -416,7 +303,6 @@ where
             // We start with an empty set of validators for era 0 and expect to be updated.
             active_era: EraId::new(0),
             state: ComponentState::Uninitialized,
-            peer_drop_handles: BTreeMap::new(),
         };
 
         Ok(component)
@@ -629,10 +515,8 @@ where
 
     fn handle_incoming_connection(
         &mut self,
-        effect_builder: EffectBuilder<REv>,
         incoming: Box<IncomingConnection<P>>,
         span: Span,
-        rng: &mut NodeRng,
     ) -> Effects<Event<P>> {
         span.clone().in_scope(|| match *incoming {
             IncomingConnection::FailedEarly {
@@ -687,14 +571,6 @@ where
                     }
                 }
 
-                if self.cfg.flakiness.is_some() {
-                    if let Some(PeerDropData::CurrentlyBlocked) = self.peer_drop_handles.get(&peer_id) {
-                        //We don't want to accept new connections if the peer is simulated as flaky
-                        debug!(%public_addr, %peer_addr, %peer_id, "rejecting new incoming connection, due to the peer being currently banned");
-                        return Effects::new();
-                    }
-                }
-
                 info!(%public_addr, "new incoming connection established");
 
                 // Learn the address the peer gave us.
@@ -725,17 +601,6 @@ where
 
                 // Now we can start the message reader.
                 let boxed_span = Box::new(span.clone());
-                let (close_this_reader_sender, close_this_reader_receiver) = watch::channel(());
-
-                effects.extend(self.schedule_incoming_drop(
-                    effect_builder,
-                    peer_id,
-                    close_this_reader_sender,
-                    public_addr,
-                    peer_addr,
-                    rng,
-                ));
-
                 effects.extend(
                     tasks::message_reader(
                         self.context.clone(),
@@ -745,7 +610,6 @@ where
                         self.channel_management().close_incoming_receiver.clone(),
                         peer_id,
                         span.clone(),
-                        close_this_reader_receiver,
                     )
                     .instrument(span)
                     .event(move |result| Event::IncomingClosed {
@@ -839,7 +703,6 @@ where
     #[allow(clippy::redundant_clone)]
     fn handle_outgoing_connection(
         &mut self,
-        effect_builder: EffectBuilder<REv>,
         outgoing: OutgoingConnection<P>,
         span: Span,
         rng: &mut NodeRng,
@@ -892,11 +755,6 @@ where
                 sink,
                 is_syncing,
             } => {
-                if let Some(PeerDropData::CurrentlyBlocked) = self.peer_drop_handles.get(&peer_id) {
-                    //We don't want to accept new connections if the peer is simulated as flaky
-                    debug!(%peer_addr, %peer_id, "rejecting new outgoing connection, due to the peer being currently banned");
-                    return Effects::new();
-                }
                 info!("new outgoing connection established");
 
                 let (sender, receiver) = mpsc::unbounded_channel();
@@ -923,17 +781,6 @@ where
                     self.connection_completed(peer_id);
                     self.update_syncing_nodes_set(peer_id, is_syncing);
                 }
-                let (close_outgoing_connection_sender, close_outgoing_connection_receiver) =
-                    watch::channel(());
-
-                effects.extend(self.schedule_outgoing_drop(
-                    effect_builder,
-                    peer_id,
-                    close_outgoing_connection_sender,
-                    peer_addr,
-                    peer_addr,
-                    rng,
-                ));
 
                 effects.extend(
                     tasks::message_sender(
@@ -942,7 +789,6 @@ where
                         self.outgoing_limiter
                             .create_handle(peer_id, peer_consensus_public_key),
                         self.net_metrics.queued_messages.clone(),
-                        close_outgoing_connection_receiver,
                     )
                     .instrument(span)
                     .event(move |_| Event::OutgoingDropped {
@@ -1183,161 +1029,6 @@ where
     pub(crate) fn node_id(&self) -> NodeId {
         self.context.our_id()
     }
-
-    fn drop_peer(&mut self, peer_id: NodeId, drop_for: Duration) -> Effects<Event<P>> {
-        debug!("In drop_peer: {peer_id}");
-        let mut requests = Vec::new();
-        let (maybe_cancel_incoming, maybe_cancel_outgoing) =
-            match self.peer_drop_handles.remove(&peer_id) {
-                Some(data) => match data {
-                    PeerDropData::IncomingOnly {
-                        cancel_incoming, ..
-                    } => (Some(cancel_incoming), None),
-                    PeerDropData::OutgoingOnly {
-                        cancel_outgoing, ..
-                    } => (None, Some(cancel_outgoing)),
-                    PeerDropData::IncomingAndOutgoing {
-                        cancel_incoming,
-                        cancel_outgoing,
-                        ..
-                    } => (Some(cancel_incoming), Some(cancel_outgoing)),
-                    PeerDropData::CurrentlyBlocked => {
-                        //This means that the peer was already dropped,
-                        // this generally shouldn't happen, because we
-                        // shouldn't schedule a new drop if we didn't clear data from the last one
-                        (None, None)
-                    }
-                },
-                None => {
-                    //We are setting two timeouts (on incoming and outgoing), so
-                    // the second one will likely miss the handle, but that's OK
-                    // since we dropped both connections on first timeout
-                    (None, None)
-                }
-            };
-        if let Some(cancel_incomings) = maybe_cancel_incoming {
-            for cancel_incoming in cancel_incomings {
-                let _ = cancel_incoming.send(());
-            }
-        }
-
-        if let Some(cancel_outgoings) = maybe_cancel_outgoing {
-            for cancel_outgoing in cancel_outgoings {
-                let _ = cancel_outgoing.send(());
-            }
-            if let Some(addr) = self.outgoing_manager.get_addr(peer_id) {
-                let maybe_requests = self.outgoing_manager.block_addr_for_duration(
-                    addr,
-                    Instant::now(),
-                    BlocklistJustification::FlakyNetworkForcedMode,
-                    drop_for,
-                );
-                if let Some(r) = maybe_requests {
-                    requests.push(r)
-                }
-            }
-        }
-        self.peer_drop_handles
-            .insert(peer_id, PeerDropData::CurrentlyBlocked);
-        self.process_dial_requests(requests)
-    }
-
-    fn schedule_incoming_drop(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-        peer_id: NodeId,
-        close_this_reader_sender: watch::Sender<()>,
-        public_addr: SocketAddr,
-        peer_addr: SocketAddr,
-        rng: &mut NodeRng,
-    ) -> Effects<Event<P>> {
-        if let Some(flakiness_config) = &self.cfg.flakiness {
-            let mut results = Effects::new();
-            if let Some(data) = self.peer_drop_handles.remove(&peer_id) {
-                self.peer_drop_handles
-                    .insert(peer_id, data.extend_with_incoming(close_this_reader_sender));
-            } else {
-                let min: Duration = flakiness_config.drop_peer_after_min.into();
-                let max: Duration = flakiness_config.drop_peer_after_max.into();
-                let sleep_for: Duration = rng.gen_range(min..=max);
-                let now = Timestamp::now();
-                let drop_on = now + TimeDiff::from_millis(sleep_for.as_millis() as u64);
-                debug!(
-                    "Scheduling incoming drop to: {}, peer: {} after: {}",
-                    drop_on.to_string(),
-                    peer_id,
-                    sleep_for.as_secs()
-                );
-                results.extend(effect_builder.set_timeout(sleep_for).event(move |_| {
-                    Event::TimedPeerDrop {
-                        peer_id: Box::new(peer_id),
-                        drop_on,
-                        public_addr: Box::new(public_addr),
-                        peer_addr: Box::new(peer_addr),
-                    }
-                }));
-                self.peer_drop_handles.insert(
-                    peer_id,
-                    PeerDropData::IncomingOnly {
-                        drop_on,
-                        cancel_incoming: vec![close_this_reader_sender],
-                    },
-                );
-            }
-            results
-        } else {
-            Effects::new()
-        }
-    }
-
-    fn schedule_outgoing_drop(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-        peer_id: NodeId,
-        cancel_callback: watch::Sender<()>,
-        peer_addr: SocketAddr,
-        public_addr: SocketAddr,
-        rng: &mut NodeRng,
-    ) -> Effects<Event<P>> {
-        if let Some(flakiness_config) = &self.cfg.flakiness {
-            let mut results = Effects::new();
-            if let Some(data) = self.peer_drop_handles.remove(&peer_id) {
-                self.peer_drop_handles
-                    .insert(peer_id, data.add_outgoing_cancel(cancel_callback));
-            } else {
-                let min: Duration = flakiness_config.drop_peer_after_min.into();
-                let max: Duration = flakiness_config.drop_peer_after_max.into();
-                let sleep_for: Duration = rng.gen_range(min..=max);
-                let now = Timestamp::now();
-                let drop_on = now + TimeDiff::from_millis(sleep_for.as_millis() as u64);
-                debug!(
-                    "Scheduling outgoing drop to: {}, peer: {} after: {}",
-                    drop_on.to_string(),
-                    peer_id,
-                    sleep_for.as_secs()
-                );
-
-                results.extend(effect_builder.set_timeout(sleep_for).event(move |_| {
-                    Event::TimedPeerDrop {
-                        peer_id: Box::new(peer_id),
-                        peer_addr: Box::new(peer_addr),
-                        public_addr: Box::new(public_addr),
-                        drop_on,
-                    }
-                }));
-                self.peer_drop_handles.insert(
-                    peer_id,
-                    PeerDropData::OutgoingOnly {
-                        drop_on,
-                        cancel_outgoing: vec![cancel_callback],
-                    },
-                );
-            }
-            results
-        } else {
-            Effects::new()
-        }
-    }
 }
 
 #[cfg(test)]
@@ -1486,8 +1177,7 @@ where
                 | Event::GossipOurAddress
                 | Event::PeerAddressReceived(_)
                 | Event::SweepOutgoing
-                | Event::BlocklistAnnouncement(_)
-                | Event::TimedPeerDrop { .. } => {
+                | Event::BlocklistAnnouncement(_) => {
                     warn!(
                         ?event,
                         name = <Self as Component<REv>>::name(self),
@@ -1506,7 +1196,7 @@ where
                     Effects::new()
                 }
                 Event::IncomingConnection { incoming, span } => {
-                    self.handle_incoming_connection(effect_builder, incoming, span, rng)
+                    self.handle_incoming_connection(incoming, span)
                 }
                 Event::IncomingMessage { peer_id, msg, span } => {
                     self.handle_incoming_message(effect_builder, *peer_id, *msg, span)
@@ -1518,7 +1208,7 @@ where
                     span,
                 } => self.handle_incoming_closed(result, *peer_id, peer_addr, *span),
                 Event::OutgoingConnection { outgoing, span } => {
-                    self.handle_outgoing_connection(effect_builder, *outgoing, span, rng)
+                    self.handle_outgoing_connection(*outgoing, span, rng)
                 }
                 Event::OutgoingDropped { peer_id, peer_addr } => {
                     self.handle_outgoing_dropped(*peer_id, peer_addr)
@@ -1564,11 +1254,7 @@ where
                 }
                 Event::SweepOutgoing => {
                     let now = Instant::now();
-                    let (requests, unblocked_peers) =
-                        self.outgoing_manager.perform_housekeeping(rng, now);
-                    for unblocked_peer in unblocked_peers {
-                        self.peer_drop_handles.remove(&unblocked_peer);
-                    }
+                    let requests = self.outgoing_manager.perform_housekeeping(rng, now);
 
                     let mut effects = self.process_dial_requests(requests);
 
@@ -1603,35 +1289,6 @@ where
                         }
                     }
                 },
-                Event::TimedPeerDrop {
-                    peer_id,
-                    public_addr,
-                    peer_addr,
-                    drop_on,
-                } => {
-                    let now = Timestamp::now();
-                    if now >= drop_on {
-                        if let Some(flakiness_config) = &self.cfg.flakiness {
-                            let min: Duration = flakiness_config.block_peer_after_drop_min.into();
-                            let max: Duration = flakiness_config.block_peer_after_drop_max.into();
-                            let block_for: Duration = rng.gen_range(min..=max);
-
-                            debug!(
-                                %public_addr,
-                                %peer_addr,
-                                %peer_id,
-                                "Dropping peer. Blocking for: {} [ms]",
-                                block_for.as_millis()
-                            );
-
-                            self.drop_peer(*peer_id, block_for)
-                        } else {
-                            Effects::new()
-                        }
-                    } else {
-                        Effects::new()
-                    }
-                }
             },
         }
     }

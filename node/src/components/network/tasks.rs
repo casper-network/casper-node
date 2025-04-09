@@ -29,7 +29,6 @@ use rand::Rng;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tokio::{
     net::TcpStream,
-    select,
     sync::{mpsc::UnboundedReceiver, watch, Semaphore},
 };
 use tokio_openssl::SslStream;
@@ -674,7 +673,6 @@ pub(super) async fn message_reader<REv, P>(
     mut close_incoming_receiver: watch::Receiver<()>,
     peer_id: NodeId,
     span: Span,
-    mut close_this: watch::Receiver<()>,
 ) -> io::Result<()>
 where
     P: DeserializeOwned + Send + Display + Payload,
@@ -793,21 +791,15 @@ where
         Ok(())
     };
 
-    let cancel_message = async move { while close_this.changed().await.is_err() {} };
     let shutdown_messages = async move { while close_incoming_receiver.changed().await.is_ok() {} };
 
     // Now we can wait for either the `shutdown` channel's remote end to do be dropped or the
     // while loop to terminate.
-    select! {
-        _ = Box::pin(shutdown_messages) => {
-            info!("shutting down incoming connection message reader")
-        },
-        _ = Box::pin(cancel_message) => {
-            info!("shutting down incoming connection")
-        },
-        _ = Box::pin(read_messages) => {
-        },
+    match future::select(Box::pin(shutdown_messages), Box::pin(read_messages)).await {
+        Either::Left(_) => info!("shutting down incoming connection message reader"),
+        Either::Right(_) => (),
     }
+
     Ok(())
 }
 
@@ -819,62 +811,47 @@ pub(super) async fn message_sender<P>(
     mut sink: SplitSink<FullTransport<P>, Arc<Message<P>>>,
     limiter: LimiterHandle,
     counter: IntGauge,
-    mut close_this: watch::Receiver<()>,
 ) where
     P: Payload,
 {
-    loop {
-        select! {
-            maybe_response = queue.recv() => {
-                if let Some((message, opt_responder)) = maybe_response {
-                    counter.dec();
+    while let Some((message, opt_responder)) = queue.recv().await {
+        counter.dec();
 
-                    let estimated_wire_size = match BincodeFormat::default().0.serialized_size(&*message) {
-                        Ok(size) => size as u32,
-                        Err(error) => {
-                            error!(
-                                error = display_error(&error),
-                                "failed to get serialized size of outgoing message, closing outgoing connection"
-                            );
-                            break;
-                        }
-                    };
-                    limiter.request_allowance(estimated_wire_size).await;
+        let estimated_wire_size = match BincodeFormat::default().0.serialized_size(&*message) {
+            Ok(size) => size as u32,
+            Err(error) => {
+                error!(
+                    error = display_error(&error),
+                    "failed to get serialized size of outgoing message, closing outgoing connection"
+                );
+                break;
+            }
+        };
+        limiter.request_allowance(estimated_wire_size).await;
 
-                    let mut outcome = sink.send(message).await;
+        let mut outcome = sink.send(message).await;
 
-                    // Notify via responder that the message has been buffered by the kernel.
-                    if let Some(auto_closing_responder) = opt_responder {
-                        // Since someone is interested in the message, flush the socket to ensure it was sent.
-                        outcome = outcome.and(sink.flush().await);
-                        auto_closing_responder.respond(()).await;
-                    }
-
-                    // We simply error-out if the sink fails, it means that our connection broke.
-                    if let Err(ref err) = outcome {
-                        info!(
-                            err = display_error(err),
-                            "message send failed, closing outgoing connection"
-                        );
-
-                        // To ensure, metrics are up to date, we close the queue and drain it.
-                        queue.close();
-                        while queue.recv().await.is_some() {
-                            counter.dec();
-                        }
-
-                        break;
-                    };
-                } else {
-                    break;
-                }
-            },
-            closed_res = close_this.changed() => {
-                if closed_res.is_ok() {
-                    debug!("shutting down outgoing connection");
-                    break;
-                }
-            },
+        // Notify via responder that the message has been buffered by the kernel.
+        if let Some(auto_closing_responder) = opt_responder {
+            // Since someone is interested in the message, flush the socket to ensure it was sent.
+            outcome = outcome.and(sink.flush().await);
+            auto_closing_responder.respond(()).await;
         }
+
+        // We simply error-out if the sink fails, it means that our connection broke.
+        if let Err(ref err) = outcome {
+            info!(
+                err = display_error(err),
+                "message send failed, closing outgoing connection"
+            );
+
+            // To ensure, metrics are up to date, we close the queue and drain it.
+            queue.close();
+            while queue.recv().await.is_some() {
+                counter.dec();
+            }
+
+            break;
+        };
     }
 }

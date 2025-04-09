@@ -4,14 +4,6 @@ pub fn validate_config(config: &Config) -> bool {
     if config.network.blocklist_retain_max_duration < config.network.blocklist_retain_min_duration {
         return false;
     }
-    if let Some(flakiness) = &config.network.flakiness {
-        if flakiness.block_peer_after_drop_max < flakiness.block_peer_after_drop_min {
-            return false;
-        }
-        if flakiness.drop_peer_after_max < flakiness.drop_peer_after_min {
-            return false;
-        }
-    }
     true
 }
 
