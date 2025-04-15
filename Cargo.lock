@@ -1173,7 +1173,7 @@ dependencies = [
 
 [[package]]
 name = "casper-types"
-version = "5.0.0"
+version = "5.0.1"
 dependencies = [
  "base16",
  "base64 0.13.1",
