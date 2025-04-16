@@ -1,8 +1,8 @@
 #![cfg_attr(target_arch = "wasm32", no_main)]
 #![cfg_attr(target_arch = "wasm32", no_std)]
 
-use casper_macros::{casper, PanicOnDefault};
-use casper_sdk::{casper, log, types::Address};
+use casper_contract_macros::{casper, PanicOnDefault};
+use casper_contract_sdk::{casper, log, types::Address};
 
 /// This contract implements a simple LegacyCounterProxy.
 #[derive(PanicOnDefault)]

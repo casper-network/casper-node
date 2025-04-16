@@ -1,5 +1,5 @@
 [package]
-name = "casper-macros"
+name = "casper-contract-macros"
 version = "0.1.0"
 edition = "2021"
 authors = ["Michał Papierski <michal@casperlabs.io>"]
@@ -10,8 +10,8 @@ proc-macro = true
 [dependencies]
 syn = { version = "2", features = ["full", "extra-traits"] }
 quote = "1"
-casper-executor-wasm-common = { path = "../../executor/wasm-common" }
-casper-sdk-sys = { path = "../sdk-sys" }
+casper-executor-wasm-common = { version = "0.1.0", path = "../../executor/wasm_common" }
+casper-contract-sdk-sys = { version = "0.1.0", path = "../sdk_sys" }
 paste = "1"
 darling = "0.20"
 proc-macro2 = "1.0"

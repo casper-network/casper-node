@@ -1,6 +1,6 @@
 use std::{fs, io::Write, path::PathBuf, str::FromStr};
 
-use casper_sdk_codegen::Codegen;
+use casper_contract_sdk_codegen::Codegen;
 
 const FIXTURE_1: &str = include_str!("fixtures/cep18_schema.json");
 

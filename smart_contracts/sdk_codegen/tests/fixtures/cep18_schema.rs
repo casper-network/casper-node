@@ -1,6 +1,6 @@
 #![allow(dead_code, unused_variables, non_camel_case_types)]use borsh::{self, BorshSerialize, BorshDeserialize};
-use casper_sdk_codegen::support::{IntoResult, IntoOption};
-use casper_sdk::{Selector, ToCallData};
+use casper_contract_sdk_codegen::support::{IntoResult, IntoOption};
+use casper_contract_sdk::{Selector, ToCallData};
 
 pub type U8 = u8;
 type FixedSequence0_32_U8 = [U8; 32];
@@ -109,8 +109,8 @@ pub struct TokenContractClient {
 }
 
 impl TokenContractClient {
-    pub fn new<C>(token_name: String) -> Result<TokenContractClient, casper_sdk::types::CallError>
-    where C: casper_sdk::Contract,
+    pub fn new<C>(token_name: String) -> Result<TokenContractClient, casper_contract_sdk::types::CallError>
+    where C: casper_contract_sdk::Contract,
     {
         const SELECTOR: Selector = Selector::new(2611912030);
         let value = 0; // TODO: Transferring values
@@ -122,101 +122,101 @@ impl TokenContractClient {
         Ok(result)
     }
 
-    pub fn my_balance(&self) -> Result<casper_sdk::host::CallResult<U64>, casper_sdk::types::CallError> {
+    pub fn my_balance(&self) -> Result<casper_contract_sdk::host::CallResult<U64>, casper_contract_sdk::types::CallError> {
         const SELECTOR: Selector = Selector::new(926069361);
         let value = 0; // TODO: Transferring values
         let call_data = TokenContract_my_balance;
-        casper_sdk::host::call(&self.address, value, call_data)
+        casper_contract_sdk::host::call(&self.address, value, call_data)
     }
 
-    pub fn name(&self) -> Result<casper_sdk::host::CallResult<String>, casper_sdk::types::CallError> {
+    pub fn name(&self) -> Result<casper_contract_sdk::host::CallResult<String>, casper_contract_sdk::types::CallError> {
         const SELECTOR: Selector = Selector::new(987428621);
         let value = 0; // TODO: Transferring values
         let call_data = TokenContract_name;
-        casper_sdk::host::call(&self.address, value, call_data)
+        casper_contract_sdk::host::call(&self.address, value, call_data)
     }
 
-    pub fn symbol(&self) -> Result<casper_sdk::host::CallResult<String>, casper_sdk::types::CallError> {
+    pub fn symbol(&self) -> Result<casper_contract_sdk::host::CallResult<String>, casper_contract_sdk::types::CallError> {
         const SELECTOR: Selector = Selector::new(2614203198);
         let value = 0; // TODO: Transferring values
         let call_data = TokenContract_symbol;
-        casper_sdk::host::call(&self.address, value, call_data)
+        casper_contract_sdk::host::call(&self.address, value, call_data)
     }
 
-    pub fn decimals(&self) -> Result<casper_sdk::host::CallResult<U8>, casper_sdk::types::CallError> {
+    pub fn decimals(&self) -> Result<casper_contract_sdk::host::CallResult<U8>, casper_contract_sdk::types::CallError> {
         const SELECTOR: Selector = Selector::new(2176884103);
         let value = 0; // TODO: Transferring values
         let call_data = TokenContract_decimals;
-        casper_sdk::host::call(&self.address, value, call_data)
+        casper_contract_sdk::host::call(&self.address, value, call_data)
     }
 
-    pub fn total_supply(&self) -> Result<casper_sdk::host::CallResult<U64>, casper_sdk::types::CallError> {
+    pub fn total_supply(&self) -> Result<casper_contract_sdk::host::CallResult<U64>, casper_contract_sdk::types::CallError> {
         const SELECTOR: Selector = Selector::new(3680728488);
         let value = 0; // TODO: Transferring values
         let call_data = TokenContract_total_supply;
-        casper_sdk::host::call(&self.address, value, call_data)
+        casper_contract_sdk::host::call(&self.address, value, call_data)
     }
 
-    pub fn balance_of(&self, address: FixedSequence0_32_U8) -> Result<casper_sdk::host::CallResult<U64>, casper_sdk::types::CallError> {
+    pub fn balance_of(&self, address: FixedSequence0_32_U8) -> Result<casper_contract_sdk::host::CallResult<U64>, casper_contract_sdk::types::CallError> {
         const SELECTOR: Selector = Selector::new(259349078);
         let value = 0; // TODO: Transferring values
         let call_data = TokenContract_balance_of { 
         address,
         };
-        casper_sdk::host::call(&self.address, value, call_data)
+        casper_contract_sdk::host::call(&self.address, value, call_data)
     }
 
-    pub fn allowance(&self, spender: FixedSequence0_32_U8, owner: FixedSequence0_32_U8) -> Result<casper_sdk::host::CallResult<()>, casper_sdk::types::CallError> {
+    pub fn allowance(&self, spender: FixedSequence0_32_U8, owner: FixedSequence0_32_U8) -> Result<casper_contract_sdk::host::CallResult<()>, casper_contract_sdk::types::CallError> {
         const SELECTOR: Selector = Selector::new(1778390622);
         let value = 0; // TODO: Transferring values
         let call_data = TokenContract_allowance { 
         spender,
         owner,
         };
-        casper_sdk::host::call(&self.address, value, call_data)
+        casper_contract_sdk::host::call(&self.address, value, call_data)
     }
 
-    pub fn approve(&self, spender: FixedSequence0_32_U8, amount: U64) -> Result<casper_sdk::host::CallResult<Result_____vm2_cep18__error__Cep18Error_>, casper_sdk::types::CallError> {
+    pub fn approve(&self, spender: FixedSequence0_32_U8, amount: U64) -> Result<casper_contract_sdk::host::CallResult<Result_____vm2_cep18__error__Cep18Error_>, casper_contract_sdk::types::CallError> {
         const SELECTOR: Selector = Selector::new(1746036384);
         let value = 0; // TODO: Transferring values
         let call_data = TokenContract_approve { 
         spender,
         amount,
         };
-        casper_sdk::host::call(&self.address, value, call_data)
+        casper_contract_sdk::host::call(&self.address, value, call_data)
     }
 
-    pub fn decrease_allowance(&self, spender: FixedSequence0_32_U8, amount: U64) -> Result<casper_sdk::host::CallResult<Result_____vm2_cep18__error__Cep18Error_>, casper_sdk::types::CallError> {
+    pub fn decrease_allowance(&self, spender: FixedSequence0_32_U8, amount: U64) -> Result<casper_contract_sdk::host::CallResult<Result_____vm2_cep18__error__Cep18Error_>, casper_contract_sdk::types::CallError> {
         const SELECTOR: Selector = Selector::new(4187548633);
         let value = 0; // TODO: Transferring values
         let call_data = TokenContract_decrease_allowance { 
         spender,
         amount,
         };
-        casper_sdk::host::call(&self.address, value, call_data)
+        casper_contract_sdk::host::call(&self.address, value, call_data)
     }
 
-    pub fn increase_allowance(&self, spender: FixedSequence0_32_U8, amount: U64) -> Result<casper_sdk::host::CallResult<Result_____vm2_cep18__error__Cep18Error_>, casper_sdk::types::CallError> {
+    pub fn increase_allowance(&self, spender: FixedSequence0_32_U8, amount: U64) -> Result<casper_contract_sdk::host::CallResult<Result_____vm2_cep18__error__Cep18Error_>, casper_contract_sdk::types::CallError> {
         const SELECTOR: Selector = Selector::new(4115780642);
         let value = 0; // TODO: Transferring values
         let call_data = TokenContract_increase_allowance { 
         spender,
         amount,
         };
-        casper_sdk::host::call(&self.address, value, call_data)
+        casper_contract_sdk::host::call(&self.address, value, call_data)
     }
 
-    pub fn transfer(&self, recipient: FixedSequence0_32_U8, amount: U64) -> Result<casper_sdk::host::CallResult<Result_____vm2_cep18__error__Cep18Error_>, casper_sdk::types::CallError> {
+    pub fn transfer(&self, recipient: FixedSequence0_32_U8, amount: U64) -> Result<casper_contract_sdk::host::CallResult<Result_____vm2_cep18__error__Cep18Error_>, casper_contract_sdk::types::CallError> {
         const SELECTOR: Selector = Selector::new(2225167777);
         let value = 0; // TODO: Transferring values
         let call_data = TokenContract_transfer { 
         recipient,
         amount,
         };
-        casper_sdk::host::call(&self.address, value, call_data)
+        casper_contract_sdk::host::call(&self.address, value, call_data)
     }
 
-    pub fn transfer_from(&self, owner: FixedSequence0_32_U8, recipient: FixedSequence0_32_U8, amount: U64) -> Result<casper_sdk::host::CallResult<Result_____vm2_cep18__error__Cep18Error_>, casper_sdk::types::CallError> {
+    pub fn transfer_from(&self, owner: FixedSequence0_32_U8, recipient: FixedSequence0_32_U8, amount: U64) -> Result<casper_contract_sdk::host::CallResult<Result_____vm2_cep18__error__Cep18Error_>, casper_contract_sdk::types::CallError> {
         const SELECTOR: Selector = Selector::new(188313368);
         let value = 0; // TODO: Transferring values
         let call_data = TokenContract_transfer_from { 
@@ -224,27 +224,27 @@ impl TokenContractClient {
         recipient,
         amount,
         };
-        casper_sdk::host::call(&self.address, value, call_data)
+        casper_contract_sdk::host::call(&self.address, value, call_data)
     }
 
-    pub fn mint(&self, owner: FixedSequence0_32_U8, amount: U64) -> Result<casper_sdk::host::CallResult<Result_____vm2_cep18__error__Cep18Error_>, casper_sdk::types::CallError> {
+    pub fn mint(&self, owner: FixedSequence0_32_U8, amount: U64) -> Result<casper_contract_sdk::host::CallResult<Result_____vm2_cep18__error__Cep18Error_>, casper_contract_sdk::types::CallError> {
         const SELECTOR: Selector = Selector::new(3487406754);
         let value = 0; // TODO: Transferring values
         let call_data = TokenContract_mint { 
         owner,
         amount,
         };
-        casper_sdk::host::call(&self.address, value, call_data)
+        casper_contract_sdk::host::call(&self.address, value, call_data)
     }
 
-    pub fn burn(&self, owner: FixedSequence0_32_U8, amount: U64) -> Result<casper_sdk::host::CallResult<Result_____vm2_cep18__error__Cep18Error_>, casper_sdk::types::CallError> {
+    pub fn burn(&self, owner: FixedSequence0_32_U8, amount: U64) -> Result<casper_contract_sdk::host::CallResult<Result_____vm2_cep18__error__Cep18Error_>, casper_contract_sdk::types::CallError> {
         const SELECTOR: Selector = Selector::new(2985279867);
         let value = 0; // TODO: Transferring values
         let call_data = TokenContract_burn { 
         owner,
         amount,
         };
-        casper_sdk::host::call(&self.address, value, call_data)
+        casper_contract_sdk::host::call(&self.address, value, call_data)
     }
 }
 

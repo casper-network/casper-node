@@ -2,12 +2,16 @@
 name = "casper-executor-wasm-common"
 version = "0.1.0"
 edition = "2021"
+description = "Casper executor common package"
+homepage = "https://casper.network"
+repository = "https://github.com/casper-network/casper-node/tree/dev/executor/wasm-common"
+license = "Apache-2.0"
 
 [dependencies]
 bitflags = "2.9"
 blake2 = "0.10"
 borsh = { version = "1.5", features = ["derive"] }
-casper-sdk-sys = { path = "../../smart_contracts/sdk-sys" }
+casper-contract-sdk-sys = { version = "0.1.0", path = "../../smart_contracts/sdk_sys" }
 num-derive = { workspace = true }
 num-traits = { workspace = true }
 thiserror = "2"

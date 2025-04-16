@@ -1,6 +1,6 @@
 // use std::{env, fs, path::Path};
 
-// use casper_sdk_codegen::Codegen;
+// use casper_contract_sdk_codegen::Codegen;
 
 // const SCHEMA: &str = include_str!("cep18_schema.json");
 

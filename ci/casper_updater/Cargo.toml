@@ -5,7 +5,7 @@ edition = "2021"
 license = "Apache-2.0"
 name = "casper-updater"
 readme = "README.md"
-version = "0.3.0"
+version = "0.4.0"
 
 [dependencies]
 clap = { version = "4.2.7", features = ["cargo", "deprecated", "wrap_help"] }

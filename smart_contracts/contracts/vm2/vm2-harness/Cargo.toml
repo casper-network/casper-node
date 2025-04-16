@@ -8,8 +8,8 @@ edition = "2021"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-casper-macros = { path = "../../../macros" }
-casper-sdk = { path = "../../../sdk" }
+casper-contract-macros = { path = "../../../macros" }
+casper-contract-sdk = { path = "../../../sdk" }
 
 impls = "1"
 thiserror = "2"

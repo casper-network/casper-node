@@ -1,6 +1,6 @@
 pub mod support;
 
-use casper_sdk::{
+use casper_contract_sdk::{
     abi::{Declaration, Definition, Primitive},
     casper_executor_wasm_common::flags::EntryPointFlags,
     schema::{Schema, SchemaType},
@@ -84,10 +84,10 @@ impl Codegen {
         scope.import("borsh", "self");
         scope.import("borsh", "BorshSerialize");
         scope.import("borsh", "BorshDeserialize");
-        scope.import("casper_sdk_codegen::support", "IntoResult");
-        scope.import("casper_sdk_codegen::support", "IntoOption");
-        scope.import("casper_sdk", "Selector");
-        scope.import("casper_sdk", "ToCallData");
+        scope.import("casper_contract_sdk_codegen::support", "IntoResult");
+        scope.import("casper_contract_sdk_codegen::support", "IntoOption");
+        scope.import("casper_contract_sdk", "Selector");
+        scope.import("casper_contract_sdk", "ToCallData");
 
         let _head = self
             .schema
@@ -345,7 +345,7 @@ impl Codegen {
                     Definition::Enum { items } => {
                         println!("Processing enum type {decl} {items:?}");
 
-                        let mut items: Vec<&casper_sdk::abi::EnumVariant> = items.iter().collect();
+                        let mut items: Vec<&casper_contract_sdk::abi::EnumVariant> = items.iter().collect();
 
                         let mut specialized = None;
 
@@ -506,14 +506,14 @@ impl Codegen {
 
             if entry_point.flags.contains(EntryPointFlags::CONSTRUCTOR) {
                 func.ret(Type::new(format!(
-                    "Result<{}, casper_sdk::types::CallError>",
+                    "Result<{}, casper_contract_sdk::types::CallError>",
                     &struct_name
                 )))
                 .generic("C")
-                .bound("C", "casper_sdk::Contract");
+                .bound("C", "casper_contract_sdk::Contract");
             } else {
                 func.ret(Type::new(format!(
-                    "Result<casper_sdk::host::CallResult<{result_type}>, casper_sdk::types::CallError>"
+                    "Result<casper_contract_sdk::host::CallResult<{result_type}>, casper_contract_sdk::types::CallError>"
                 )));
                 func.arg_ref_self();
             }
@@ -556,7 +556,7 @@ impl Codegen {
                 func.line("Ok(result)");
                 continue;
             } else {
-                func.line(r#"casper_sdk::host::call(&self.address, value, call_data)"#);
+                func.line(r#"casper_contract_sdk::host::call(&self.address, value, call_data)"#);
             }
         }
 

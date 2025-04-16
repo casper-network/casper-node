@@ -8,8 +8,8 @@ mod tests {
 
     use alloc::collections::{BTreeMap, BTreeSet};
 
-    use casper_macros::selector;
-    use casper_sdk::{
+    use casper_contract_macros::selector;
+    use casper_contract_sdk::{
         casper::native::{self, dispatch, ExportKind},
         schema::CasperSchema,
     };

@@ -3,7 +3,7 @@ use casper_executor_wasm_interface::{executor::Executor, VMError, VMResult};
 use casper_storage::global_state::GlobalStateReader;
 use wasmer::{FunctionEnv, FunctionEnvMut, Imports, Store};
 
-use casper_sdk_sys::for_each_host_function;
+use casper_contract_sdk_sys::for_each_host_function;
 
 use crate::WasmerEnv;
 

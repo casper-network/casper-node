@@ -1,8 +1,8 @@
 #![cfg_attr(target_arch = "wasm32", no_main)]
 #![cfg_attr(target_arch = "wasm32", no_std)]
 
-use casper_macros::casper;
-use casper_sdk::{
+use casper_contract_macros::casper;
+use casper_contract_sdk::{
     casper::{self, Entity},
     collections::{sorted_vector::SortedVector, Map},
     log,
@@ -74,7 +74,7 @@ pub struct OwnableState {
 impl Default for OwnableState {
     fn default() -> Self {
         Self {
-            owner: Some(casper_sdk::casper::get_caller()),
+            owner: Some(casper_contract_sdk::casper::get_caller()),
         }
     }
 }
@@ -93,7 +93,7 @@ pub trait Ownable {
     fn state_mut(&mut self) -> &mut OwnableState;
 
     fn only_owner(&self) -> Result<(), OwnableError> {
-        let caller = casper_sdk::casper::get_caller();
+        let caller = casper_contract_sdk::casper::get_caller();
         match self.state().owner {
             Some(owner) if caller != owner => {
                 return Err(OwnableError::NotAuthorized);
@@ -332,8 +332,8 @@ mod tests {
     use crate::{CounterExt, HasTraits, HasTraitsRef, Trait1};
 
     use alloc::collections::BTreeSet;
-    use casper_macros::selector;
-    use casper_sdk::{
+    use casper_contract_macros::selector;
+    use casper_contract_sdk::{
         abi::StructField,
         casper::{
             self,
@@ -382,7 +382,7 @@ mod tests {
     }
 
     use super::Counter;
-    // use casper_sdk::abi::CasperABI;
+    // use casper_contract_sdk::abi::CasperABI;
     #[test]
     fn unit_test() {
         let mut has_traits = HasTraits::default();

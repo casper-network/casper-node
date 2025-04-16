@@ -5,7 +5,7 @@ use crate::{
     serializers::borsh::{BorshDeserialize, BorshSerialize},
 };
 
-// use casper_macros::casper;
+// use casper_contract_macros::casper;
 use casper_executor_wasm_common::keyspace::Keyspace;
 use const_fnv1a_hash::fnv1a_hash_str_64;
 

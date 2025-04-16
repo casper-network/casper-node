@@ -1,4 +1,4 @@
-use casper_sdk::prelude::*;
+use casper_contract_sdk::prelude::*;
 
 /// While the code consuming this contract needs to define further error variants, it can
 /// return those via the [`Error::User`] variant or equivalently via the [`ApiError::User`]

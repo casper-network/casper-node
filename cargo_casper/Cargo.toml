@@ -7,8 +7,8 @@ edition = "2021"
 clap = { version = "4.4.11", features = ["derive"] }
 clap-cargo = { version = "0.14.0", features = ["cargo_metadata"] }
 libloading = "0.8.6"
-casper-sdk-sys = { path = "../smart_contracts/sdk-sys" }
-casper-sdk = { path = "../smart_contracts/sdk", features = ["__abi_generator"] }
+casper-contract-sdk-sys = { path = "../smart_contracts/sdk_sys" }
+casper-contract-sdk = { path = "../smart_contracts/sdk", features = ["__abi_generator"] }
 include_dir = "0.7.4"
 anyhow = "1.0.86"
 serde = { version = "1.0", features = ["derive"] }

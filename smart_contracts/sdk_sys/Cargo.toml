@@ -1,5 +1,5 @@
 [package]
-name = "casper-sdk-sys"
+name = "casper-contract-sdk-sys"
 version = "0.1.0"
 edition = "2021"
 

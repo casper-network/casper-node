@@ -4,8 +4,8 @@ use anyhow::Context;
 
 use include_dir::{include_dir, Dir};
 
-static TEMPLATE_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/project-template");
-const TEMPLATE_NAME_MARKER: &str = "project-template";
+static TEMPLATE_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/project_template");
+const TEMPLATE_NAME_MARKER: &str = "project_template";
 
 /// The `new` subcommand flow.
 pub fn new_impl(name: &str) -> Result<(), anyhow::Error> {

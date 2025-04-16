@@ -2,25 +2,29 @@
 name = "casper-executor-wasm"
 version = "0.1.0"
 edition = "2021"
+description = "Casper executor wasm package"
+homepage = "https://casper.network"
+repository = "https://github.com/casper-network/casper-node/tree/dev/executor/wasm"
+license = "Apache-2.0"
 
 [dependencies]
 blake2 = "0.10"
 borsh = { version = "1.5", features = ["derive"] }
 bytes = "1.10"
-casper-executor-wasm-common = { path = "../wasm-common" }
-casper-executor-wasm-host = { path = "../wasm-host" }
-casper-executor-wasm-interface = { path = "../wasm-interface" }
-casper-executor-wasmer-backend = { path = "../wasmer-backend" }
-casper-storage = { path = "../../storage" }
-casper-types = { path = "../../types", features = ["std"] }
+casper-executor-wasm-common = { version = "0.1.0", path = "../wasm_common" }
+casper-executor-wasm-host = { version = "0.1.0", path = "../wasm_host" }
+casper-executor-wasm-interface = { version = "0.1.0", path = "../wasm_interface" }
+casper-executor-wasmer-backend = { version = "0.1.0", path = "../wasmer_backend" }
+casper-storage = { version = "2.0.0", path = "../../storage" }
+casper-types = { version = "5.0.1", path = "../../types", features = ["std"] }
+casper-execution-engine = { version = "8.0.0", path = "../../execution_engine", features = [
+    "test-support",
+] }
 digest = "0.10.7"
 either = "1.10"
 parking_lot = "0.12.1"
 thiserror = "2.0"
 tracing = "0.1.40"
-casper-execution-engine = { path = "../../execution_engine", features = [
-    "test-support",
-] }
 
 [dev-dependencies]
 tempfile = "3.10.1"

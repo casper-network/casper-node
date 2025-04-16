@@ -648,8 +648,8 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "cargo_metadata 0.19.2",
- "casper-sdk 0.1.0",
- "casper-sdk-sys 0.1.0",
+ "casper-contract-sdk",
+ "casper-contract-sdk-sys",
  "clap 4.5.35",
  "clap-cargo",
  "include_dir",
@@ -727,6 +727,62 @@ dependencies = [
  "version-sync",
  "wee_alloc",
 ]
+
+[[package]]
+name = "casper-contract-macros"
+version = "0.1.0"
+dependencies = [
+ "blake2-rfc",
+ "casper-contract-sdk-sys",
+ "casper-executor-wasm-common 0.1.0",
+ "darling",
+ "paste",
+ "proc-macro2",
+ "quote",
+ "static_assertions",
+ "syn 2.0.100",
+]
+
+[[package]]
+name = "casper-contract-sdk"
+version = "0.1.0"
+dependencies = [
+ "bitflags 2.9.0",
+ "borsh",
+ "bytes",
+ "casper-contract-macros",
+ "casper-contract-sdk-sys",
+ "casper-executor-wasm-common 0.1.0",
+ "cfg-if 1.0.0",
+ "clap 4.5.35",
+ "const-fnv1a-hash",
+ "impl-trait-for-tuples",
+ "linkme",
+ "once_cell",
+ "rand",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "casper-contract-sdk-codegen"
+version = "0.1.0"
+dependencies = [
+ "borsh",
+ "casper-contract-sdk",
+ "codegen",
+ "indexmap 2.8.0",
+ "serde",
+ "serde_json",
+ "syn 2.0.100",
+ "tempfile",
+ "trybuild",
+]
+
+[[package]]
+name = "casper-contract-sdk-sys"
+version = "0.1.0"
 
 [[package]]
 name = "casper-engine-test-support"
@@ -870,7 +926,7 @@ dependencies = [
  "bitflags 2.9.0",
  "blake2 0.10.6",
  "borsh",
- "casper-sdk-sys 0.1.0",
+ "casper-contract-sdk-sys",
  "hex",
  "num-derive",
  "num-traits",
@@ -886,7 +942,7 @@ dependencies = [
  "bitflags 2.9.0",
  "blake2 0.10.6",
  "borsh",
- "casper-sdk-sys 0.1.0 (git+https://github.com/casper-network/casper-node.git?branch=dev)",
+ "casper-sdk-sys",
  "num-derive",
  "num-traits",
  "serde",
@@ -929,10 +985,10 @@ name = "casper-executor-wasmer-backend"
 version = "0.1.0"
 dependencies = [
  "bytes",
+ "casper-contract-sdk-sys",
  "casper-executor-wasm-common 0.1.0",
  "casper-executor-wasm-host",
  "casper-executor-wasm-interface",
- "casper-sdk-sys 0.1.0",
  "casper-storage",
  "casper-types",
  "once_cell",
@@ -947,26 +1003,11 @@ dependencies = [
 [[package]]
 name = "casper-macros"
 version = "0.1.0"
-dependencies = [
- "blake2-rfc",
- "casper-executor-wasm-common 0.1.0",
- "casper-sdk-sys 0.1.0",
- "darling",
- "paste",
- "proc-macro2",
- "quote",
- "static_assertions",
- "syn 2.0.100",
-]
-
-[[package]]
-name = "casper-macros"
-version = "0.1.0"
 source = "git+https://github.com/casper-network/casper-node.git?branch=dev#5ecb8a33a47e8c156ade3328e4dbb03f9d8c2e7f"
 dependencies = [
  "blake2-rfc",
  "casper-executor-wasm-common 0.1.0 (git+https://github.com/casper-network/casper-node.git?branch=dev)",
- "casper-sdk-sys 0.1.0 (git+https://github.com/casper-network/casper-node.git?branch=dev)",
+ "casper-sdk-sys",
  "darling",
  "paste",
  "proc-macro2",
@@ -1074,36 +1115,14 @@ dependencies = [
 [[package]]
 name = "casper-sdk"
 version = "0.1.0"
-dependencies = [
- "bitflags 2.9.0",
- "borsh",
- "bytes",
- "casper-executor-wasm-common 0.1.0",
- "casper-macros 0.1.0",
- "casper-sdk-sys 0.1.0",
- "cfg-if 1.0.0",
- "clap 4.5.35",
- "const-fnv1a-hash",
- "impl-trait-for-tuples",
- "linkme",
- "once_cell",
- "rand",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
-]
-
-[[package]]
-name = "casper-sdk"
-version = "0.1.0"
 source = "git+https://github.com/casper-network/casper-node.git?branch=dev#5ecb8a33a47e8c156ade3328e4dbb03f9d8c2e7f"
 dependencies = [
  "bitflags 2.9.0",
  "borsh",
  "bytes",
  "casper-executor-wasm-common 0.1.0 (git+https://github.com/casper-network/casper-node.git?branch=dev)",
- "casper-macros 0.1.0 (git+https://github.com/casper-network/casper-node.git?branch=dev)",
- "casper-sdk-sys 0.1.0 (git+https://github.com/casper-network/casper-node.git?branch=dev)",
+ "casper-macros",
+ "casper-sdk-sys",
  "cfg-if 1.0.0",
  "const-fnv1a-hash",
  "impl-trait-for-tuples",
@@ -1113,25 +1132,6 @@ dependencies = [
  "serde",
  "serde_json",
 ]
-
-[[package]]
-name = "casper-sdk-codegen"
-version = "0.1.0"
-dependencies = [
- "borsh",
- "casper-sdk 0.1.0",
- "codegen",
- "indexmap 2.8.0",
- "serde",
- "serde_json",
- "syn 2.0.100",
- "tempfile",
- "trybuild",
-]
-
-[[package]]
-name = "casper-sdk-sys"
-version = "0.1.0"
 
 [[package]]
 name = "casper-sdk-sys"
@@ -1223,7 +1223,7 @@ dependencies = [
 
 [[package]]
 name = "casper-updater"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "clap 4.5.35",
  "once_cell",
@@ -4924,8 +4924,8 @@ dependencies = [
 name = "project-template"
 version = "0.1.0"
 dependencies = [
- "casper-macros 0.1.0 (git+https://github.com/casper-network/casper-node.git?branch=dev)",
- "casper-sdk 0.1.0 (git+https://github.com/casper-network/casper-node.git?branch=dev)",
+ "casper-macros",
+ "casper-sdk",
 ]
 
 [[package]]
@@ -7232,8 +7232,8 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 name = "vm2-cep18"
 version = "0.1.0"
 dependencies = [
- "casper-sdk 0.1.0",
- "casper-sdk-codegen",
+ "casper-contract-sdk",
+ "casper-contract-sdk-codegen",
  "serde_json",
 ]
 
@@ -7242,7 +7242,7 @@ name = "vm2-cep18-caller"
 version = "0.1.0"
 dependencies = [
  "borsh",
- "casper-sdk 0.1.0",
+ "casper-contract-sdk",
  "vm2-cep18",
 ]
 
@@ -7250,15 +7250,15 @@ dependencies = [
 name = "vm2-flipper"
 version = "0.1.0"
 dependencies = [
- "casper-sdk 0.1.0",
+ "casper-contract-sdk",
 ]
 
 [[package]]
 name = "vm2-harness"
 version = "0.1.0"
 dependencies = [
- "casper-macros 0.1.0",
- "casper-sdk 0.1.0",
+ "casper-contract-macros",
+ "casper-contract-sdk",
  "impls",
  "serde_json",
  "thiserror 2.0.12",
@@ -7268,17 +7268,17 @@ dependencies = [
 name = "vm2-host"
 version = "0.1.0"
 dependencies = [
- "casper-macros 0.1.0",
- "casper-sdk 0.1.0",
+ "casper-contract-macros",
+ "casper-contract-sdk",
 ]
 
 [[package]]
 name = "vm2-legacy-counter-proxy"
 version = "0.1.0"
 dependencies = [
- "casper-macros 0.1.0",
- "casper-sdk 0.1.0",
- "casper-sdk-codegen",
+ "casper-contract-macros",
+ "casper-contract-sdk",
+ "casper-contract-sdk-codegen",
  "serde_json",
 ]
 
@@ -7287,8 +7287,8 @@ name = "vm2-trait"
 version = "0.1.0"
 dependencies = [
  "base16",
- "casper-macros 0.1.0",
- "casper-sdk 0.1.0",
+ "casper-contract-macros",
+ "casper-contract-sdk",
  "serde_json",
 ]
 
@@ -7296,16 +7296,16 @@ dependencies = [
 name = "vm2-upgradable"
 version = "0.1.0"
 dependencies = [
- "casper-macros 0.1.0",
- "casper-sdk 0.1.0",
+ "casper-contract-macros",
+ "casper-contract-sdk",
 ]
 
 [[package]]
 name = "vm2-upgradable-v2"
 version = "0.1.0"
 dependencies = [
- "casper-macros 0.1.0",
- "casper-sdk 0.1.0",
+ "casper-contract-macros",
+ "casper-contract-sdk",
 ]
 
 [[package]]
