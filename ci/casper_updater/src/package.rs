@@ -9,8 +9,7 @@ use semver::Version;
 use crate::{
     dependent_file::DependentFile,
     regex_data::{
-        MANIFEST_NAME_REGEX, MANIFEST_VERSION_REGEX, PACKAGE_JSON_NAME_REGEX,
-        PACKAGE_JSON_VERSION_REGEX,
+        MANIFEST_NAME_REGEX, MANIFEST_VERSION_REGEX,
     },
 };
 
@@ -48,19 +47,6 @@ impl PackageConsts for CargoPackage {
     }
 }
 
-struct AssemblyScriptPackage;
-
-impl PackageConsts for AssemblyScriptPackage {
-    const MANIFEST: &'static str = "package.json";
-
-    fn name_regex() -> &'static Regex {
-        &PACKAGE_JSON_NAME_REGEX
-    }
-
-    fn version_regex() -> &'static Regex {
-        &PACKAGE_JSON_VERSION_REGEX
-    }
-}
 
 #[allow(clippy::ptr_arg)]
 impl Package {
@@ -69,15 +55,6 @@ impl Package {
         dependent_files: &'static Vec<DependentFile>,
     ) -> Self {
         Self::new::<_, CargoPackage>(relative_path, dependent_files)
-    }
-
-    pub fn assembly_script<P: AsRef<Path>>(
-        relative_path: P,
-        dependent_files: &'static Vec<DependentFile>,
-    ) -> Self {
-        let mut package = Self::new::<_, AssemblyScriptPackage>(relative_path, dependent_files);
-        package.name = format!("{} (AssemblyScript)", package.name);
-        package
     }
 
     pub fn name(&self) -> &str {
