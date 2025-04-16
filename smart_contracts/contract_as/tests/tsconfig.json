@@ -1,7 +1,0 @@
-{
-    "extends": "../node_modules/assemblyscript/std/portable.json",
-    "include": [
-      "./**/*.ts", "*.ts",
-    ]
-  }
-  
