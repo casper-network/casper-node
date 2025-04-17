@@ -2,6 +2,7 @@
 name = "casper-executor-wasmer-backend"
 version = "0.1.0"
 edition = "2021"
+authors = ["Michał Papierski <michal@casper.network>"]
 description = "Casper executor wasmer backend package"
 homepage = "https://casper.network"
 repository = "https://github.com/casper-network/casper-node/tree/dev/executor/wasmer-backend"

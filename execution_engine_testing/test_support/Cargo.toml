@@ -1,7 +1,7 @@
 [package]
 name = "casper-engine-test-support"
 version = "8.0.0" # when updating, also update 'html_root_url' in lib.rs
-authors = ["Fraser Hutchison <fraser@casperlabs.io>"]
+authors = ["Fraser Hutchison <fraser@casperlabs.io>", "Michał Papierski <michal@casper.network>"]
 edition = "2021"
 description = "Library to support testing of Wasm smart contracts for use on the Casper network."
 documentation = "https://docs.rs/casper-engine-test-support"

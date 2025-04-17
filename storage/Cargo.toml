@@ -2,6 +2,7 @@
 name = "casper-storage"
 version = "2.0.0"
 edition = "2018"
+authors = ["Ed Hastings <ed@casper.network>"]
 description = "Storage for a node on the Casper network."
 readme = "README.md"
 documentation = "https://docs.rs/casper-storage"
