@@ -345,7 +345,8 @@ impl Codegen {
                     Definition::Enum { items } => {
                         println!("Processing enum type {decl} {items:?}");
 
-                        let mut items: Vec<&casper_contract_sdk::abi::EnumVariant> = items.iter().collect();
+                        let mut items: Vec<&casper_contract_sdk::abi::EnumVariant> =
+                            items.iter().collect();
 
                         let mut specialized = None;
 

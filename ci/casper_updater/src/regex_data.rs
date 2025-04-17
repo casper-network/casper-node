@@ -35,7 +35,7 @@ pub mod types {
                 Regex::new(
                     r#"(?m)(#!\[doc\(html_root_url = "https://docs.rs/casper-types)/(?:[^"]+)"#,
                 )
-                    .unwrap(),
+                .unwrap(),
                 replacement_with_slash,
             ),
             DependentFile::new(
@@ -94,9 +94,9 @@ pub mod binary_port {
     pub static DEPENDENT_FILES: Lazy<Vec<DependentFile>> = Lazy::new(|| {
         vec![
             DependentFile::new(
-            "binary_port/Cargo.toml",
-            MANIFEST_VERSION_REGEX.clone(),
-            replacement,
+                "binary_port/Cargo.toml",
+                MANIFEST_VERSION_REGEX.clone(),
+                replacement,
             ),
             DependentFile::new(
                 "node/Cargo.toml",
@@ -123,7 +123,7 @@ pub mod storage {
                 Regex::new(
                     r#"(?m)(#!\[doc\(html_root_url = "https://docs.rs/casper-storage)/(?:[^"]+)"#,
                 )
-                    .unwrap(),
+                .unwrap(),
                 replacement_with_slash,
             ),
             DependentFile::new(
@@ -165,7 +165,9 @@ pub mod storage {
     });
 }
 
-pub static EXECUTION_ENGINE_VERSION_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r#"(?m)(^casper-execution-engine = \{[^\}]*version = )"(?:[^"]+)"#).unwrap());
+pub static EXECUTION_ENGINE_VERSION_REGEX: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"(?m)(^casper-execution-engine = \{[^\}]*version = )"(?:[^"]+)"#).unwrap()
+});
 pub mod execution_engine {
     use super::*;
 
@@ -263,7 +265,9 @@ pub mod smart_contracts_contract {
     });
 }
 
-pub static SMART_CONTRACTS_SDK_SYS_VERSION_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r#"(?m)(^casper-contract-sdk-sys = \{[^\}]*version = )"(?:[^"]+)"#).unwrap());
+pub static SMART_CONTRACTS_SDK_SYS_VERSION_REGEX: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"(?m)(^casper-contract-sdk-sys = \{[^\}]*version = )"(?:[^"]+)"#).unwrap()
+});
 
 pub mod smart_contracts_sdk_sys {
     use super::*;
@@ -322,13 +326,11 @@ pub mod smart_contracts_sdk_codegen {
     use super::*;
 
     pub static DEPENDENT_FILES: Lazy<Vec<DependentFile>> = Lazy::new(|| {
-        vec![
-            DependentFile::new(
-                "smart_contracts/sdk_codegen/Cargo.toml",
-                MANIFEST_VERSION_REGEX.clone(),
-                replacement,
-            ),
-        ]
+        vec![DependentFile::new(
+            "smart_contracts/sdk_codegen/Cargo.toml",
+            MANIFEST_VERSION_REGEX.clone(),
+            replacement,
+        )]
     });
 }
 pub mod smart_contracts_macros {
@@ -343,14 +345,17 @@ pub mod smart_contracts_macros {
             ),
             DependentFile::new(
                 "smart_contracts/sdk/Cargo.toml",
-                Regex::new(r#"(?m)(^casper-contract-macros = \{[^\}]*version = )"(?:[^"]+)"#).unwrap(),
+                Regex::new(r#"(?m)(^casper-contract-macros = \{[^\}]*version = )"(?:[^"]+)"#)
+                    .unwrap(),
                 replacement,
             ),
         ]
     });
 }
 
-pub static EXECUTOR_WASM_COMMON_VERSION_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r#"(?m)(^casper-executor-wasm-common = \{[^\}]*version = )"(?:[^"]+)"#).unwrap());
+pub static EXECUTOR_WASM_COMMON_VERSION_REGEX: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"(?m)(^casper-executor-wasm-common = \{[^\}]*version = )"(?:[^"]+)"#).unwrap()
+});
 pub mod executor_wasm_common {
     use super::*;
 
@@ -395,7 +400,9 @@ pub mod executor_wasm_common {
     });
 }
 
-pub static EXECUTOR_WASM_INTERFACE_VERSION_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r#"(?m)(^casper-executor-wasm-interface = \{[^\}]*version = )"(?:[^"]+)"#).unwrap());
+pub static EXECUTOR_WASM_INTERFACE_VERSION_REGEX: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"(?m)(^casper-executor-wasm-interface = \{[^\}]*version = )"(?:[^"]+)"#).unwrap()
+});
 pub mod executor_wasm_interface {
     use super::*;
 
@@ -430,7 +437,9 @@ pub mod executor_wasm_interface {
     });
 }
 
-pub static EXECUTOR_WASM_HOST_VERSION_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r#"(?m)(^casper-executor-wasm-host = \{[^\}]*version = )"(?:[^"]+)"#).unwrap());
+pub static EXECUTOR_WASM_HOST_VERSION_REGEX: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"(?m)(^casper-executor-wasm-host = \{[^\}]*version = )"(?:[^"]+)"#).unwrap()
+});
 pub mod executor_wasm_host {
     use super::*;
 
@@ -450,7 +459,9 @@ pub mod executor_wasm_host {
     });
 }
 
-pub static EXECUTOR_WASMER_BACKEND_VERSION_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r#"(?m)(^casper-executor-wasmer-backend = \{[^\}]*version = )"(?:[^"]+)"#).unwrap());
+pub static EXECUTOR_WASMER_BACKEND_VERSION_REGEX: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"(?m)(^casper-executor-wasmer-backend = \{[^\}]*version = )"(?:[^"]+)"#).unwrap()
+});
 pub mod executor_wasmer_backend {
     use super::*;
 
@@ -481,9 +492,10 @@ pub mod executor_wasm {
                 replacement,
             ),
             DependentFile::new(
-              "node/Cargo.toml",
-              Regex::new(r#"(?m)(^casper-executor-wasm = \{[^\}]*version = )"(?:[^"]+)"#).unwrap(),
-              replacement,
+                "node/Cargo.toml",
+                Regex::new(r#"(?m)(^casper-executor-wasm = \{[^\}]*version = )"(?:[^"]+)"#)
+                    .unwrap(),
+                replacement,
             ),
         ]
     });

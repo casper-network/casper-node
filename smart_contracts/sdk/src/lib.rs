@@ -22,9 +22,9 @@ use crate::prelude::{marker::PhantomData, ptr::NonNull};
 
 use crate::serializers::borsh::{BorshDeserialize, BorshSerialize};
 use casper::{CallResult, Entity};
-pub use casper_executor_wasm_common;
 pub use casper_contract_macros as macros;
 pub use casper_contract_sdk_sys as sys;
+pub use casper_executor_wasm_common;
 use types::{Address, CallError};
 
 cfg_if::cfg_if! {

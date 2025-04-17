@@ -12,12 +12,12 @@ use crate::{
     Message,
 };
 
+use casper_contract_sdk_sys::casper_env_caller;
 use casper_executor_wasm_common::{
     error::{result_from_code, CommonResult, HOST_ERROR_SUCCESS},
     flags::ReturnFlags,
     keyspace::{Keyspace, KeyspaceTag},
 };
-use casper_contract_sdk_sys::casper_env_caller;
 
 use crate::{
     abi::{CasperABI, EnumVariant},
@@ -55,7 +55,10 @@ pub fn copy_input_into<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
     alloc: Option<F>,
 ) -> Option<NonNull<u8>> {
     let ret = unsafe {
-        casper_contract_sdk_sys::casper_copy_input(alloc_callback::<F>, &alloc as *const _ as *mut c_void)
+        casper_contract_sdk_sys::casper_copy_input(
+            alloc_callback::<F>,
+            &alloc as *const _ as *mut c_void,
+        )
     };
     NonNull::<u8>::new(ret)
 }
@@ -493,7 +496,11 @@ pub fn transferred_value() -> u128 {
 pub fn transfer(target_account: &Address, amount: u128) -> Result<(), CallError> {
     let amount: *const c_void = &amount as *const _ as *const c_void;
     let result_code = unsafe {
-        casper_contract_sdk_sys::casper_transfer(target_account.as_ptr(), target_account.len(), amount)
+        casper_contract_sdk_sys::casper_transfer(
+            target_account.as_ptr(),
+            target_account.len(),
+            amount,
+        )
     };
     call_result_from_code(result_code)
 }
@@ -507,7 +514,12 @@ pub fn get_block_time() -> u64 {
 #[doc(hidden)]
 pub fn emit_raw(topic: &str, payload: &[u8]) -> Result<(), CommonResult> {
     let ret = unsafe {
-        casper_contract_sdk_sys::casper_emit(topic.as_ptr(), topic.len(), payload.as_ptr(), payload.len())
+        casper_contract_sdk_sys::casper_emit(
+            topic.as_ptr(),
+            topic.len(),
+            payload.as_ptr(),
+            payload.len(),
+        )
     };
     result_from_code(ret)
 }

@@ -247,11 +247,7 @@ fn main() {
             "executor/wasmer_backend",
             &regex_data::executor_wasmer_backend::DEPENDENT_FILES,
         ),
-        Package::cargo(
-            "executor/wasm",
-            &regex_data::executor_wasm::DEPENDENT_FILES,
-        ),
-
+        Package::cargo("executor/wasm", &regex_data::executor_wasm::DEPENDENT_FILES),
     ];
 
     for rust_package in &rust_packages {

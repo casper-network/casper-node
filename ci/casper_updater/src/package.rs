@@ -8,9 +8,7 @@ use semver::Version;
 
 use crate::{
     dependent_file::DependentFile,
-    regex_data::{
-        MANIFEST_NAME_REGEX, MANIFEST_VERSION_REGEX,
-    },
+    regex_data::{MANIFEST_NAME_REGEX, MANIFEST_VERSION_REGEX},
 };
 
 const CAPTURE_INDEX: usize = 2;
@@ -46,7 +44,6 @@ impl PackageConsts for CargoPackage {
         &MANIFEST_VERSION_REGEX
     }
 }
-
 
 #[allow(clippy::ptr_arg)]
 impl Package {
