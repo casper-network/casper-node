@@ -46,7 +46,7 @@ pub static MESSAGES: [Message] = [..];
 /// This function is called by the host to collect the schema from the contract.
 ///
 /// This is considered internal implementation detail and should not be used directly.
-/// Primary user of this API is `cargo-casper` tool that will use it to extract scheama from the
+/// Primary user of this API is `cargo_casper` tool that will use it to extract scheama from the
 /// contract.
 ///
 /// # Safety

@@ -1,4 +1,4 @@
-use casper_sdk::{collections::Map, prelude::*};
+use casper_contract_sdk::{collections::Map, prelude::*};
 
 use crate::{
     error::Cep18Error,

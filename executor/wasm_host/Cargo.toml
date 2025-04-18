@@ -1,0 +1,24 @@
+[package]
+name = "casper-executor-wasm-host"
+version = "0.1.0"
+edition = "2021"
+authors = ["Michał Papierski <michal@casper.network>"]
+description = "Casper executor host package"
+homepage = "https://casper.network"
+repository = "https://github.com/casper-network/casper-node/tree/dev/executor/wasm-host"
+license = "Apache-2.0"
+
+[dependencies]
+base16 = "0.2"
+bytes = "1.10"
+casper-executor-wasm-common = { version = "0.1.0", path = "../wasm_common" }
+casper-executor-wasm-interface = { version = "0.1.0", path = "../wasm_interface" }
+casper-storage = { version = "2.0.0", path = "../../storage" }
+casper-types = { version = "5.0.1", path = "../../types" }
+either = "1.15"
+num-derive = { workspace = true }
+num-traits = { workspace = true }
+parking_lot = "0.12"
+safe-transmute = "0.11"
+thiserror = "2"
+tracing = "0.1"

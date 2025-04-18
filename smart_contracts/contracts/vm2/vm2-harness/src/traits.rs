@@ -1,4 +1,4 @@
-use casper_macros::casper;
+use casper_contract_macros::casper;
 
 /// Deposit interface for contracts to receive tokens.
 ///

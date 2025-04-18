@@ -1,4 +1,4 @@
-use casper_sdk::prelude::*;
+use casper_contract_sdk::prelude::*;
 
 use crate::{
     security_badge::SecurityBadge,
@@ -75,7 +75,7 @@ mod tests {
 
     use super::*;
 
-    use casper_sdk::{
+    use casper_contract_sdk::{
         casper::{
             self,
             native::{current_environment, Environment, DEFAULT_ADDRESS},

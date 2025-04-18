@@ -1,4 +1,4 @@
-use casper_sdk::prelude::*;
+use casper_contract_sdk::prelude::*;
 
 #[derive(PartialEq, Debug)]
 #[casper]

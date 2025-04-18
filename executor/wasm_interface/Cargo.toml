@@ -1,0 +1,18 @@
+[package]
+name = "casper-executor-wasm-interface"
+version = "0.1.0"
+edition = "2021"
+authors = ["Michał Papierski <michal@casper.network>"]
+description = "Casper executor interface package"
+homepage = "https://casper.network"
+repository = "https://github.com/casper-network/casper-node/tree/dev/executor/wasm-interface"
+license = "Apache-2.0"
+
+[dependencies]
+bytes = "1.10"
+borsh = { version = "1.5", features = ["derive"] }
+casper-executor-wasm-common = { version = "0.1.0", path = "../wasm_common" }
+casper-storage = { version = "2.0.0", path = "../../storage" }
+casper-types = { version = "5.0.1", path = "../../types" }
+parking_lot = "0.12"
+thiserror = "2"

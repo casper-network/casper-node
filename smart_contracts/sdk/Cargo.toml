@@ -1,8 +1,13 @@
 [package]
-name = "casper-sdk"
+name = "casper-contract-sdk"
 version = "0.1.0"
 edition = "2021"
+description = "Casper contract sdk package"
 authors = ["Michał Papierski <michal@casperlabs.io>"]
+documentation = "https://docs.rs/casper-contract-sdk"
+homepage = "https://casper.network"
+repository = "https://github.com/casper-network/casper-node/tree/dev/smart_contracts/sdk"
+license = "Apache-2.0"
 
 [dependencies]
 borsh = { version = "1.5", features = ["derive"] }
@@ -10,9 +15,9 @@ bytes = "1.10"
 bitflags = "2.9"
 const-fnv1a-hash = "1.1.0"
 impl-trait-for-tuples = "0.2.2"
-casper-sdk-sys = { path = "../sdk-sys" }
-casper-executor-wasm-common = { path = "../../executor/wasm-common" }
-casper-macros = { path = "../macros" }
+casper-contract-sdk-sys = { version = "0.1.0", path = "../sdk_sys" }
+casper-executor-wasm-common = { version = "0.1.0", path = "../../executor/wasm_common" }
+casper-contract-macros = { version = "0.1.0", path = "../macros" }
 
 once_cell = "1"
 serde = { version = "1", features = ["derive"] }
@@ -34,5 +39,5 @@ default = ["std"]
 std = []
 
 cli = ["clap", "thiserror"]
-__abi_generator = ["casper-macros/__abi_generator"]
-__embed_schema = ["casper-macros/__embed_schema"]
+__abi_generator = ["casper-contract-macros/__abi_generator"]
+__embed_schema = ["casper-contract-macros/__embed_schema"]

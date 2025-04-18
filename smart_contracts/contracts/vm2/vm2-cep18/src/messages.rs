@@ -1,4 +1,4 @@
-use casper_sdk::prelude::*;
+use casper_contract_sdk::prelude::*;
 
 #[casper(message)]
 pub struct Transfer {

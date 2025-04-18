@@ -206,26 +206,53 @@ fn main() {
             "execution_engine",
             &regex_data::execution_engine::DEPENDENT_FILES,
         ),
+        Package::cargo(
+            "execution_engine_testing/test_support",
+            &regex_data::execution_engine_testing_test_support::DEPENDENT_FILES,
+        ),
         Package::cargo("node", &regex_data::node::DEPENDENT_FILES),
         Package::cargo(
             "smart_contracts/contract",
             &regex_data::smart_contracts_contract::DEPENDENT_FILES,
         ),
         Package::cargo(
-            "execution_engine_testing/test_support",
-            &regex_data::execution_engine_testing_test_support::DEPENDENT_FILES,
+            "smart_contracts/sdk_sys",
+            &regex_data::smart_contracts_sdk_sys::DEPENDENT_FILES,
         ),
+        Package::cargo(
+            "smart_contracts/sdk",
+            &regex_data::smart_contracts_sdk::DEPENDENT_FILES,
+        ),
+        Package::cargo(
+            "smart_contracts/sdk_codegen",
+            &regex_data::smart_contracts_sdk_codegen::DEPENDENT_FILES,
+        ),
+        Package::cargo(
+            "smart_contracts/macros",
+            &regex_data::smart_contracts_macros::DEPENDENT_FILES,
+        ),
+        Package::cargo(
+            "executor/wasm_common",
+            &regex_data::executor_wasm_common::DEPENDENT_FILES,
+        ),
+        Package::cargo(
+            "executor/wasm_interface",
+            &regex_data::executor_wasm_interface::DEPENDENT_FILES,
+        ),
+        Package::cargo(
+            "executor/wasm_host",
+            &regex_data::executor_wasm_host::DEPENDENT_FILES,
+        ),
+        Package::cargo(
+            "executor/wasmer_backend",
+            &regex_data::executor_wasmer_backend::DEPENDENT_FILES,
+        ),
+        Package::cargo("executor/wasm", &regex_data::executor_wasm::DEPENDENT_FILES),
     ];
 
     for rust_package in &rust_packages {
         rust_package.update()
     }
-
-    let smart_contracts_contract_as = Package::assembly_script(
-        "smart_contracts/contract_as",
-        &regex_data::smart_contracts_contract_as::DEPENDENT_FILES,
-    );
-    smart_contracts_contract_as.update();
 
     // Update Cargo.lock if this isn't a dry run.
     if !is_dry_run() {

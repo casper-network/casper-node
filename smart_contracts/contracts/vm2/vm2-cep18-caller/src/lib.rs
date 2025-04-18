@@ -1,7 +1,7 @@
 #![cfg_attr(target_family = "wasm", no_main)]
 
 pub mod exports {
-    use casper_sdk::{prelude::*, types::Address, ContractHandle};
+    use casper_contract_sdk::{prelude::*, types::Address, ContractHandle};
 
     use vm2_cep18::{
         contract::TokenContractRef,
@@ -10,7 +10,7 @@ pub mod exports {
 
     #[casper(export)]
     pub fn call(address: Address) -> String {
-        use casper_sdk::casper::Entity;
+        use casper_contract_sdk::casper::Entity;
 
         log!("Hello {address:?}");
         let handle = ContractHandle::<TokenContractRef>::from_address(address);

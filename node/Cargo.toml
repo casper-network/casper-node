@@ -1,7 +1,7 @@
 [package]
 name = "casper-node"
 version = "2.0.0" # when updating, also update 'html_root_url' in lib.rs
-authors = ["Ed Hastings <ed@casper.network>", "Karan Dhareshwar <karan@csper.network>"]
+authors = ["Ed Hastings <ed@casper.network>", "Karan Dhareshwar <karan@casper.network>"]
 edition = "2021"
 description = "The Casper blockchain node"
 documentation = "https://docs.rs/casper-node"
@@ -24,8 +24,10 @@ bincode = "1"
 bytes = "1.0.1"
 casper-binary-port = { version = "1.0.0", path = "../binary_port" }
 casper-storage = { version = "2.0.0", path = "../storage" }
-casper-types = { version = "5.0.0", path = "../types", features = ["datasize", "json-schema", "std-fs-io"] }
+casper-types = { version = "5.0.1", path = "../types", features = ["datasize", "json-schema", "std-fs-io"] }
 casper-execution-engine = { version = "8.0.0", path = "../execution_engine" }
+casper-executor-wasm = { version = "0.1.0", path = "../executor/wasm" }
+casper-executor-wasm-interface = { version = "0.1.0", path = "../executor/wasm_interface" }
 datasize = { version = "0.2.11", features = ["detailed", "fake_clock-types", "futures-types", "smallvec-types"] }
 derive_more = "0.99.7"
 either = { version = "1", features = ["serde"] }
@@ -93,9 +95,6 @@ uuid = { version = "0.8.1", features = ["serde", "v4"] }
 warp = { version = "0.3.6", features = ["compression"] }
 wheelbuf = "0.2.0"
 
-casper-executor-wasm = { path = "../executor/wasm" }
-casper-executor-wasm-interface = { path = "../executor/wasm-interface" }
-
 [dev-dependencies]
 casper-binary-port = { version = "1.0.0", path = "../binary_port", features = ["testing"] }
 assert-json-diff = "2.0.1"
@@ -122,30 +121,3 @@ path = "src/app/main.rs"
 bench = false
 doctest = false
 test = false
-
-[package.metadata.deb]
-features = ["vendored-openssl"]
-revision = "0"
-depends = "curl"
-assets = [
-    ["../target/release/casper-node", "/usr/bin/casper-node", "755"],
-    ["../resources/maintainer_scripts/logrotate.d/casper-node", "/etc/logrotate.d/casper-node", "644"],
-    ["../resources/maintainer_scripts/pull_genesis.sh", "/etc/casper/pull_genesis.sh", "755"],
-    ["../resources/maintainer_scripts/delete_local_db.sh", "/etc/casper/delete_local_db.sh", "755"],
-    ["../resources/maintainer_scripts/config_from_example.sh", "/etc/casper/config_from_example.sh", "755"],
-    ["../resources/maintainer_scripts/systemd_pre_start.sh", "/etc/casper/systemd_pre_start.sh", "755"],
-    ["../resources/production/README.md", "/etc/casper/README.md", "644"],
-    ["../resources/production/CHANGE_LOG.md", "/etc/casper/CHANGE_LOG.md", "644"],
-    ["../resources/production/config-example.toml", "/etc/casper/config-example.toml", "644"],
-    ["../resources/production/validator_keys/README.md", "/etc/casper/validator_keys/README.md", "644"]
-]
-maintainer-scripts = "../resources/maintainer_scripts/debian"
-extended-description = """
-Package for Casper Node.
-
-For information on using package, see https://github.com/casper-network/casper-node
-"""
-
-[package.metadata.deb.systemd-units]
-unit-scripts = "../resources/maintainer_scripts/casper_node"
-restart-after-upgrade = false

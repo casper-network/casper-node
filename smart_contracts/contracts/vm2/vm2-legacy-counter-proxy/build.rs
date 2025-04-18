@@ -1,6 +1,6 @@
 // use std::{env, fs, path::Path};
 
-// use casper_sdk_codegen::Codegen;
+// use casper_contract_sdk_codegen::Codegen;
 
 // const SCHEMA: &str = include_str!("cep18_schema.json");
 
@@ -11,7 +11,7 @@ fn main() {
         println!("cargo:rustc-link-arg=--export-table");
     }
 
-    // casper_sdk::build_flags();
+    // casper_contract_sdk::build_flags();
 
     // let mut codegen = Codegen::from_str(SCHEMA).unwrap();
     // let source = codegen.gen();

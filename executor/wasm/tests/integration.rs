@@ -49,7 +49,7 @@ static DEFAULT_ACCOUNT_HASH: Lazy<AccountHash> =
 
 const CSPR: u64 = 10u64.pow(9);
 
-const VM2_HARNESS: Bytes = Bytes::from_static(include_bytes!("../vm2-harness.wasm"));
+const VM2_HARNESS: Bytes = Bytes::from_static(include_bytes!("../vm2_harness.wasm"));
 const VM2_CEP18: Bytes = Bytes::from_static(include_bytes!("../vm2_cep18.wasm"));
 const VM2_LEGACY_COUNTER_PROXY: Bytes =
     Bytes::from_static(include_bytes!("../vm2_legacy_counter_proxy.wasm"));

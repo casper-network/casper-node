@@ -12,12 +12,12 @@ use crate::{
     Message,
 };
 
+use casper_contract_sdk_sys::casper_env_caller;
 use casper_executor_wasm_common::{
     error::{result_from_code, CommonResult, HOST_ERROR_SUCCESS},
     flags::ReturnFlags,
     keyspace::{Keyspace, KeyspaceTag},
 };
-use casper_sdk_sys::casper_env_caller;
 
 use crate::{
     abi::{CasperABI, EnumVariant},
@@ -29,7 +29,7 @@ use crate::{
 /// Print a message.
 #[inline]
 pub fn print(msg: &str) {
-    unsafe { casper_sdk_sys::casper_print(msg.as_ptr(), msg.len()) };
+    unsafe { casper_contract_sdk_sys::casper_print(msg.as_ptr(), msg.len()) };
 }
 
 pub enum Alloc<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>> {
@@ -55,7 +55,10 @@ pub fn copy_input_into<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
     alloc: Option<F>,
 ) -> Option<NonNull<u8>> {
     let ret = unsafe {
-        casper_sdk_sys::casper_copy_input(alloc_callback::<F>, &alloc as *const _ as *mut c_void)
+        casper_contract_sdk_sys::casper_copy_input(
+            alloc_callback::<F>,
+            &alloc as *const _ as *mut c_void,
+        )
     };
     NonNull::<u8>::new(ret)
 }
@@ -98,7 +101,7 @@ pub fn ret(flags: ReturnFlags, data: Option<&[u8]>) {
         Some(data) => (data.as_ptr(), data.len()),
         None => (ptr::null(), 0),
     };
-    unsafe { casper_sdk_sys::casper_return(flags.bits(), data_ptr, data_len) };
+    unsafe { casper_contract_sdk_sys::casper_return(flags.bits(), data_ptr, data_len) };
     #[cfg(target_arch = "wasm32")]
     unreachable!()
 }
@@ -115,7 +118,7 @@ pub fn read<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
         Keyspace::PaymentInfo(payload) => (KeyspaceTag::PaymentInfo as u64, payload.as_bytes()),
     };
 
-    let mut info = casper_sdk_sys::ReadInfo {
+    let mut info = casper_contract_sdk_sys::ReadInfo {
         data: ptr::null(),
         size: 0,
     };
@@ -135,11 +138,11 @@ pub fn read<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
     let ctx = &Some(f) as *const _ as *mut _;
 
     let ret = unsafe {
-        casper_sdk_sys::casper_read(
+        casper_contract_sdk_sys::casper_read(
             key_space,
             key_bytes.as_ptr(),
             key_bytes.len(),
-            &mut info as *mut casper_sdk_sys::ReadInfo,
+            &mut info as *mut casper_contract_sdk_sys::ReadInfo,
             alloc_cb::<F>,
             ctx,
         )
@@ -161,7 +164,7 @@ pub fn write(key: Keyspace, value: &[u8]) -> Result<(), CommonResult> {
         Keyspace::PaymentInfo(payload) => (KeyspaceTag::PaymentInfo as u64, payload.as_bytes()),
     };
     let ret = unsafe {
-        casper_sdk_sys::casper_write(
+        casper_contract_sdk_sys::casper_write(
             key_space,
             key_bytes.as_ptr(),
             key_bytes.len(),
@@ -179,7 +182,7 @@ pub fn create(
     constructor: Option<&str>,
     input_data: Option<&[u8]>,
     seed: Option<&[u8; 32]>,
-) -> Result<casper_sdk_sys::CreateResult, CallError> {
+) -> Result<casper_contract_sdk_sys::CreateResult, CallError> {
     let (code_ptr, code_size): (*const u8, usize) = match code {
         Some(code) => (code.as_ptr(), code.len()),
         None => (ptr::null(), 0),
@@ -190,7 +193,7 @@ pub fn create(
     let ptr = NonNull::from(&transferred_value);
 
     let call_error = unsafe {
-        casper_sdk_sys::casper_create(
+        casper_contract_sdk_sys::casper_create(
             code_ptr,
             code_size,
             ptr.as_ptr() as *const c_void,
@@ -221,7 +224,7 @@ pub(crate) fn call_into<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
 ) -> Result<(), CallError> {
     let ptr = NonNull::from(&transferred_value);
     let result_code = unsafe {
-        casper_sdk_sys::casper_call(
+        casper_contract_sdk_sys::casper_call(
             address.as_ptr(),
             address.len(),
             ptr.as_ptr() as *const c_void,
@@ -282,7 +285,7 @@ pub fn upgrade(
     let input_size = input_data.map(|s| s.len()).unwrap_or(0);
 
     let result_code = unsafe {
-        casper_sdk_sys::casper_upgrade(
+        casper_contract_sdk_sys::casper_upgrade(
             code_ptr,
             code_size,
             entry_point_ptr,
@@ -465,7 +468,7 @@ pub fn get_balance_of(entity_kind: &Entity) -> u128 {
     };
     let mut output: MaybeUninit<u128> = MaybeUninit::uninit();
     let ret = unsafe {
-        casper_sdk_sys::casper_env_balance(
+        casper_contract_sdk_sys::casper_env_balance(
             kind,
             addr.as_ptr(),
             addr.len(),
@@ -484,7 +487,7 @@ pub fn get_balance_of(entity_kind: &Entity) -> u128 {
 pub fn transferred_value() -> u128 {
     let mut value = MaybeUninit::<u128>::uninit();
     unsafe {
-        casper_sdk_sys::casper_env_transferred_value(value.as_mut_ptr().cast());
+        casper_contract_sdk_sys::casper_env_transferred_value(value.as_mut_ptr().cast());
         value.assume_init()
     }
 }
@@ -493,7 +496,11 @@ pub fn transferred_value() -> u128 {
 pub fn transfer(target_account: &Address, amount: u128) -> Result<(), CallError> {
     let amount: *const c_void = &amount as *const _ as *const c_void;
     let result_code = unsafe {
-        casper_sdk_sys::casper_transfer(target_account.as_ptr(), target_account.len(), amount)
+        casper_contract_sdk_sys::casper_transfer(
+            target_account.as_ptr(),
+            target_account.len(),
+            amount,
+        )
     };
     call_result_from_code(result_code)
 }
@@ -501,13 +508,18 @@ pub fn transfer(target_account: &Address, amount: u128) -> Result<(), CallError>
 /// Get the current block time.
 #[inline]
 pub fn get_block_time() -> u64 {
-    unsafe { casper_sdk_sys::casper_env_block_time() }
+    unsafe { casper_contract_sdk_sys::casper_env_block_time() }
 }
 
 #[doc(hidden)]
 pub fn emit_raw(topic: &str, payload: &[u8]) -> Result<(), CommonResult> {
     let ret = unsafe {
-        casper_sdk_sys::casper_emit(topic.as_ptr(), topic.len(), payload.as_ptr(), payload.len())
+        casper_contract_sdk_sys::casper_emit(
+            topic.as_ptr(),
+            topic.len(),
+            payload.as_ptr(),
+            payload.len(),
+        )
     };
     result_from_code(ret)
 }

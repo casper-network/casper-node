@@ -14,10 +14,8 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: ubuntu-20.04
-            code_name: focal
-#          - os: ubuntu-22.04
-#            code_name: jammy
+          - os: ubuntu-22.04
+            code_name: jammy
 #          - os: ubuntu-24.04
 #            code_name: noble
 
@@ -25,8 +23,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@2541b1294d2704b0964813337f33b291d3f8596b #v3.0.2
-        with:
-          key: ${{ matrix.code_name }}
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
