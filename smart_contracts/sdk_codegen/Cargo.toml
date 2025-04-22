@@ -2,6 +2,12 @@
 name = "casper-contract-sdk-codegen"
 version = "0.1.0"
 edition = "2021"
+description = "Casper contract sdk package"
+authors = ["Michał Papierski <michal@casperlabs.io>"]
+documentation = "https://docs.rs/casper-contract-sdk"
+homepage = "https://casper.network"
+repository = "https://github.com/casper-network/casper-node/tree/dev/smart_contracts/sdk"
+license = "Apache-2.0"
 
 [dependencies]
 casper-contract-sdk = { version = "0.1.0", path = "../sdk" }
