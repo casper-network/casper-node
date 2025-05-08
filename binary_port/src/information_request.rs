@@ -84,6 +84,16 @@ pub enum InformationRequest {
         /// Whether to return the bytecode with the entity.
         include_bytecode: bool,
     },
+    ValidatorBid {
+        state_identifier: Option<GlobalStateIdentifier>,
+        public_key: Box<PublicKey>,
+    },
+    DelegatorBid {
+        // if there exists a delegator return the delegator record + validator record
+        state_identifier: Option<GlobalStateIdentifier>,
+        validator_public_key: Box<PublicKey>, //the validator public key
+        delegator: Box<DelegatorKind>,
+    },
 }
 
 impl InformationRequest {
@@ -118,6 +128,8 @@ impl InformationRequest {
             InformationRequest::ProtocolVersion => InformationRequestTag::ProtocolVersion,
             InformationRequest::Package { .. } => InformationRequestTag::Package,
             InformationRequest::Entity { .. } => InformationRequestTag::Entity,
+            InformationRequest::ValidatorBid { .. } => InformationRequestTag::ValidatorBid,
+            InformationRequest::DelegatorBid { .. } => InformationRequestTag::DelegatorBid,
         }
     }
 
@@ -174,6 +186,26 @@ impl InformationRequest {
                 identifier: EntityIdentifier::random(rng),
                 include_bytecode: rng.gen(),
             },
+            InformationRequestTag::ValidatorBid => {
+                let public_key = Box::new(PublicKey::random(rng));
+                InformationRequest::ValidatorBid {
+                    state_identifier: rng
+                        .gen::<bool>()
+                        .then(|| GlobalStateIdentifier::random(rng)),
+                    public_key,
+                }
+            }
+            InformationRequestTag::DelegatorBid => {
+                let validator_public_key = Box::new(PublicKey::random(rng));
+                let delegator = Box::new(rng.gen());
+                InformationRequest::DelegatorBid {
+                    state_identifier: rng
+                        .gen::<bool>()
+                        .then(|| GlobalStateIdentifier::random(rng)),
+                    validator_public_key,
+                    delegator,
+                }
+            }
         }
     }
 }
@@ -240,6 +272,22 @@ impl ToBytes for InformationRequest {
                 identifier.write_bytes(writer)?;
                 include_bytecode.write_bytes(writer)
             }
+            InformationRequest::ValidatorBid {
+                state_identifier,
+                public_key,
+            } => {
+                state_identifier.write_bytes(writer)?;
+                public_key.write_bytes(writer)
+            }
+            InformationRequest::DelegatorBid {
+                state_identifier,
+                validator_public_key,
+                delegator,
+            } => {
+                state_identifier.write_bytes(writer)?;
+                validator_public_key.write_bytes(writer)?;
+                delegator.write_bytes(writer)
+            }
         }
     }
 
@@ -290,6 +338,19 @@ impl ToBytes for InformationRequest {
                 state_identifier.serialized_length()
                     + identifier.serialized_length()
                     + include_bytecode.serialized_length()
+            }
+            InformationRequest::ValidatorBid {
+                state_identifier,
+                public_key,
+            } => state_identifier.serialized_length() + public_key.serialized_length(),
+            InformationRequest::DelegatorBid {
+                state_identifier,
+                validator_public_key,
+                delegator,
+            } => {
+                state_identifier.serialized_length()
+                    + validator_public_key.serialized_length()
+                    + delegator.serialized_length()
             }
         }
     }
@@ -387,6 +448,30 @@ impl TryFrom<(InformationRequestTag, &[u8])> for InformationRequest {
                     remainder,
                 )
             }
+            InformationRequestTag::ValidatorBid => {
+                let (state_identifier, remainder) = FromBytes::from_bytes(key_bytes)?;
+                let (public_key, remainder) = FromBytes::from_bytes(remainder)?;
+                (
+                    InformationRequest::ValidatorBid {
+                        state_identifier,
+                        public_key: Box::new(public_key),
+                    },
+                    remainder,
+                )
+            }
+            InformationRequestTag::DelegatorBid => {
+                let (state_identifier, remainder) = FromBytes::from_bytes(key_bytes)?;
+                let (validator_public_key, remainder) = FromBytes::from_bytes(remainder)?;
+                let (delegator_kind, remainder) = FromBytes::from_bytes(remainder)?;
+                (
+                    InformationRequest::DelegatorBid {
+                        state_identifier,
+                        validator_public_key: Box::new(validator_public_key),
+                        delegator: Box::new(delegator_kind),
+                    },
+                    remainder,
+                )
+            }
         };
         if !remainder.is_empty() {
             return Err(bytesrepr::Error::LeftOverBytes);
@@ -450,12 +535,16 @@ pub enum InformationRequestTag {
     Package = 18,
     /// Addressable entity request.
     Entity = 19,
+    /// Validator bid
+    ValidatorBid = 20,
+    /// Delegator bid
+    DelegatorBid = 21,
 }
 
 impl InformationRequestTag {
     #[cfg(test)]
     pub(crate) fn random(rng: &mut TestRng) -> Self {
-        match rng.gen_range(0..20) {
+        match rng.gen_range(0..22) {
             0 => InformationRequestTag::BlockHeader,
             1 => InformationRequestTag::BlockWithSignatures,
             2 => InformationRequestTag::Transaction,
@@ -476,6 +565,8 @@ impl InformationRequestTag {
             17 => InformationRequestTag::ProtocolVersion,
             18 => InformationRequestTag::Package,
             19 => InformationRequestTag::Entity,
+            20 => InformationRequestTag::ValidatorBid,
+            21 => InformationRequestTag::DelegatorBid,
             _ => unreachable!(),
         }
     }
@@ -506,6 +597,8 @@ impl TryFrom<u16> for InformationRequestTag {
             17 => Ok(InformationRequestTag::ProtocolVersion),
             18 => Ok(InformationRequestTag::Package),
             19 => Ok(InformationRequestTag::Entity),
+            20 => Ok(InformationRequestTag::ValidatorBid),
+            21 => Ok(InformationRequestTag::DelegatorBid),
             _ => Err(UnknownInformationRequestTag(value)),
         }
     }

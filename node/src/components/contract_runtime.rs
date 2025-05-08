@@ -31,6 +31,7 @@ use tracing::{debug, error, info, trace};
 use casper_execution_engine::engine_state::{EngineConfigBuilder, ExecutionEngineV1};
 use casper_storage::{
     data_access_layer::{
+        bids::{DelegatorBidRequest, ValidatorBidRequest},
         AddressableEntityRequest, AddressableEntityResult, BlockStore, DataAccessLayer,
         EntryPointExistsRequest, ExecutionResultsChecksumRequest, FlushRequest, FlushResult,
         GenesisRequest, GenesisResult, TrieRequest,
@@ -423,37 +424,37 @@ impl ContractRuntime {
                 let metrics = Arc::clone(&self.metrics);
                 let data_access_layer = Arc::clone(&self.data_access_layer);
                 async move {
-                    let start = Instant::now();
-                    let entity_key = match entity_addr {
-                        EntityAddr::SmartContract(_) | EntityAddr::System(_) => Key::AddressableEntity(entity_addr),
-                        EntityAddr::Account(account) => Key::Account(AccountHash::new(account)),
-                    };
-                    let request = AddressableEntityRequest::new(state_root_hash, entity_key);
-                    let result = data_access_layer.addressable_entity(request);
-                    let result = match &result {
-                        AddressableEntityResult::ValueNotFound(msg) => {
-                            if entity_addr.is_contract() {
-                                trace!(%msg, "can not read addressable entity by Key::AddressableEntity or Key::Account, will try by Key::Hash");
-                                let entity_key = Key::Hash(entity_addr.value());
-                                let request = AddressableEntityRequest::new(state_root_hash, entity_key);
-                                data_access_layer.addressable_entity(request)
-                            }
-                            else {
-                                result
-                            }
-                        },
-                        AddressableEntityResult::RootNotFound |
-                        AddressableEntityResult::Success { .. } |
-                        AddressableEntityResult::Failure(_) => result,
-                    };
+                            let start = Instant::now();
+                            let entity_key = match entity_addr {
+                                EntityAddr::SmartContract(_) | EntityAddr::System(_) => Key::AddressableEntity(entity_addr),
+                                EntityAddr::Account(account) => Key::Account(AccountHash::new(account)),
+                            };
+                            let request = AddressableEntityRequest::new(state_root_hash, entity_key);
+                            let result = data_access_layer.addressable_entity(request);
+                            let result = match &result {
+                                AddressableEntityResult::ValueNotFound(msg) => {
+                                    if entity_addr.is_contract() {
+                                        trace!(%msg, "can not read addressable entity by Key::AddressableEntity or Key::Account, will try by Key::Hash");
+                                        let entity_key = Key::Hash(entity_addr.value());
+                                        let request = AddressableEntityRequest::new(state_root_hash, entity_key);
+                                        data_access_layer.addressable_entity(request)
+                                    }
+                                    else {
+                                        result
+                                    }
+                                },
+                                AddressableEntityResult::RootNotFound |
+                                AddressableEntityResult::Success { .. } |
+                                AddressableEntityResult::Failure(_) => result,
+                            };
 
-                    metrics
-                        .addressable_entity
-                        .observe(start.elapsed().as_secs_f64());
-                    trace!(?result, "get addressable entity");
-                    responder.respond(result).await
-                }
-                .ignore()
+                            metrics
+                                .addressable_entity
+                                .observe(start.elapsed().as_secs_f64());
+                            trace!(?result, "get addressable entity");
+                            responder.respond(result).await
+                        }
+                        .ignore()
             }
             ContractRuntimeRequest::GetEntryPointExists {
                 state_root_hash,
@@ -496,7 +497,6 @@ impl ContractRuntime {
                 }
                 .ignore()
             }
-            // trie related events
             ContractRuntimeRequest::GetTrie {
                 request: trie_request,
                 responder,
@@ -733,6 +733,31 @@ impl ContractRuntime {
                 self.current_gas_price = EraPrice::new(era_id, new_gas_price);
                 Effects::new()
             }
+            ContractRuntimeRequest::ValidatorBids {
+                state_root_hash,
+                validator,
+                responder,
+            } => responder
+                .respond(
+                    self.data_access_layer
+                        .validator_bids(ValidatorBidRequest::new(state_root_hash, validator)),
+                )
+                .ignore(),
+            ContractRuntimeRequest::DelegatorBids {
+                state_root_hash,
+                validator,
+                delegator,
+                responder,
+            } => responder
+                .respond(
+                    self.data_access_layer
+                        .delegator_bids(DelegatorBidRequest::new(
+                            state_root_hash,
+                            validator,
+                            delegator,
+                        )),
+                )
+                .ignore(),
         }
     }
 

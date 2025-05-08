@@ -22,6 +22,7 @@ num-rational = { version = "0.4.0", features = ["serde"] }
 num-traits = { workspace = true }
 proptest = { version = "1.0.0", optional = true }
 serde = { version = "1", features = ["derive"] }
+strum = { version = "0.27", features = ["derive"] }
 tempfile = "3.1.0"
 thiserror = "1.0.18"
 tracing = "0.1.18"

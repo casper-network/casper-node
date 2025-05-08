@@ -11,18 +11,21 @@ mod tests;
 use std::{convert::TryFrom, net::SocketAddr, sync::Arc};
 
 use casper_binary_port::{
-    AccountInformation, AddressableEntityInformation, BalanceResponse, BinaryMessage,
-    BinaryMessageCodec, BinaryResponse, BinaryResponseAndRequest, Command, CommandHeader,
-    CommandTag, ContractInformation, DictionaryItemIdentifier, DictionaryQueryResult,
-    EntityIdentifier, EraIdentifier, ErrorCode, GetRequest, GetTrieFullResult,
-    GlobalStateEntityQualifier, GlobalStateQueryResult, GlobalStateRequest, InformationRequest,
-    InformationRequestTag, KeyPrefix, NodeStatus, PackageIdentifier, PurseIdentifier,
-    ReactorStateName, RecordId, ResponseType, RewardResponse, TransactionWithExecutionInfo,
-    ValueWithProof,
+    AccountInformation, AddressableEntityInformation, BalanceResponse, BidsInformation,
+    BinaryMessage, BinaryMessageCodec, BinaryResponse, BinaryResponseAndRequest, Command,
+    CommandHeader, CommandTag, ContractInformation, DictionaryItemIdentifier,
+    DictionaryQueryResult, EntityIdentifier, EraIdentifier, ErrorCode, GetRequest,
+    GetTrieFullResult, GlobalStateEntityQualifier, GlobalStateQueryResult, GlobalStateRequest,
+    InformationRequest, InformationRequestTag, KeyPrefix, NodeStatus, PackageIdentifier,
+    PurseIdentifier, ReactorStateName, RecordId, ResponseType, RewardResponse,
+    TransactionWithExecutionInfo, ValueWithProof,
 };
 use casper_storage::{
     data_access_layer::{
         balance::BalanceHandling,
+        bids::{
+            DelegatorBidRequest, DelegatorBidsResult, ValidatorBidRequest, ValidatorBidsResult,
+        },
         prefixed_values::{PrefixedValuesRequest, PrefixedValuesResult},
         tagged_values::{TaggedValuesRequest, TaggedValuesResult, TaggedValuesSelection},
         BalanceIdentifier, BalanceRequest, BalanceResult, ProofHandling, ProofsResult,
@@ -39,10 +42,11 @@ use casper_types::{
     addressable_entity::NamedKeyAddr,
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     contracts::{ContractHash, ContractPackage, ContractPackageHash},
+    system::auction::{BidKind, DelegatorKind},
     BlockHeader, BlockIdentifier, BlockWithSignatures, ByteCode, ByteCodeAddr, ByteCodeHash,
     Chainspec, ContractWasm, ContractWasmHash, Digest, EntityAddr, GlobalStateIdentifier, Key,
-    Package, PackageAddr, Peers, ProtocolVersion, Rewards, StoredValue, TimeDiff, Timestamp,
-    Transaction, URef,
+    Package, PackageAddr, Peers, ProtocolVersion, PublicKey, Rewards, StoredValue, TimeDiff,
+    Timestamp, Transaction, URef,
 };
 use connection_terminator::ConnectionTerminator;
 use thiserror::Error as ThisError;
@@ -904,6 +908,51 @@ where
     }
 }
 
+async fn get_get_validator_bids<REv>(
+    effect_builder: EffectBuilder<REv>,
+    state_root_hash: Digest,
+    validator_key: Box<PublicKey>,
+) -> Result<Vec<BidKind>, ErrorCode>
+where
+    REv: From<Event>
+        + From<StorageRequest>
+        + From<ContractRuntimeRequest>
+        + From<ReactorInfoRequest>,
+{
+    let request = ValidatorBidRequest::new(state_root_hash, *validator_key);
+    match effect_builder.get_get_validator_bids(request).await {
+        ValidatorBidsResult::RootNotFound => Err(ErrorCode::RootNotFound),
+        ValidatorBidsResult::Success { bids } => Ok(bids),
+        ValidatorBidsResult::Failure(error) => {
+            warn!(%error, "failed when querying for ValidatorBid");
+            Err(ErrorCode::FailedQuery)
+        }
+    }
+}
+
+async fn get_delegator_bid<REv>(
+    effect_builder: EffectBuilder<REv>,
+    state_root_hash: Digest,
+    public_key: PublicKey,
+    delegator: DelegatorKind,
+) -> Result<Vec<BidKind>, ErrorCode>
+where
+    REv: From<Event>
+        + From<StorageRequest>
+        + From<ContractRuntimeRequest>
+        + From<ReactorInfoRequest>,
+{
+    let request = DelegatorBidRequest::new(state_root_hash, public_key, delegator);
+    match effect_builder.get_delegator_bid(request).await {
+        DelegatorBidsResult::RootNotFound => Err(ErrorCode::RootNotFound),
+        DelegatorBidsResult::Success { bids } => Ok(bids),
+        DelegatorBidsResult::Failure(error) => {
+            warn!(%error, "failed when querying for DelegatorBid");
+            Err(ErrorCode::FailedQuery)
+        }
+    }
+}
+
 async fn get_entity<REv>(
     effect_builder: EffectBuilder<REv>,
     state_root_hash: Digest,
@@ -1333,6 +1382,42 @@ where
                         Err(err) => BinaryResponse::new_error(err),
                     }
                 }
+            }
+        }
+        InformationRequest::ValidatorBid {
+            state_identifier,
+            public_key,
+        } => {
+            let Some(state_root_hash) =
+                resolve_state_root_hash(effect_builder, state_identifier).await
+            else {
+                return BinaryResponse::new_error(ErrorCode::RootNotFound);
+            };
+            match get_get_validator_bids(effect_builder, state_root_hash, public_key).await {
+                Ok(bids) => BinaryResponse::from_value(BidsInformation::new(bids)),
+                Err(err) => BinaryResponse::new_error(err),
+            }
+        }
+        InformationRequest::DelegatorBid {
+            state_identifier,
+            validator_public_key,
+            delegator,
+        } => {
+            let Some(state_root_hash) =
+                resolve_state_root_hash(effect_builder, state_identifier).await
+            else {
+                return BinaryResponse::new_error(ErrorCode::RootNotFound);
+            };
+            match get_delegator_bid(
+                effect_builder,
+                state_root_hash,
+                *validator_public_key,
+                *delegator,
+            )
+            .await
+            {
+                Ok(bids) => BinaryResponse::from_value(BidsInformation::new(bids)),
+                Err(err) => BinaryResponse::new_error(err),
             }
         }
     }

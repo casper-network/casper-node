@@ -27,8 +27,10 @@ use casper_types::{
     system::{
         self,
         auction::{
-            SeigniorageRecipientsSnapshot, ERA_END_TIMESTAMP_MILLIS_KEY, ERA_ID_KEY,
-            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION_KEY,
+            BidAddrTag, BidKind, DelegatorBid, DelegatorKind, SeigniorageRecipientsSnapshot,
+            Unbond, UnbondEra, UnbondKind, UnbondingPurse, ERA_END_TIMESTAMP_MILLIS_KEY,
+            ERA_ID_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_VERSION_KEY,
         },
         mint::{
             BalanceHoldAddr, BalanceHoldAddrTag, ARG_AMOUNT, ROUND_SEIGNIORAGE_RATE_KEY,
@@ -49,6 +51,9 @@ use crate::{
     data_access_layer::{
         auction::{AuctionMethodRet, BiddingRequest, BiddingResult},
         balance::BalanceHandling,
+        bids::{
+            DelegatorBidRequest, DelegatorBidsResult, ValidatorBidRequest, ValidatorBidsResult,
+        },
         era_validators::EraValidatorsResult,
         handle_fee::{HandleFeeMode, HandleFeeRequest, HandleFeeResult},
         mint::{
@@ -98,6 +103,29 @@ use crate::{
     tracking_copy::{TrackingCopy, TrackingCopyEntityExt, TrackingCopyError, TrackingCopyExt},
     AddressGenerator,
 };
+
+const BID_ADDR_TAGS_RELEVANT_FOR_CONTEMPORARY_VALIDATORS: &[BidAddrTag] = &[
+    BidAddrTag::Validator,
+    BidAddrTag::DelegatedAccount,
+    BidAddrTag::DelegatedPurse,
+    BidAddrTag::Credit,
+    BidAddrTag::ReservedDelegationAccount,
+    BidAddrTag::ReservedDelegationPurse,
+    BidAddrTag::UnbondAccount,
+    BidAddrTag::UnbondPurse,
+];
+
+const BID_ADDR_TAGS_RELEVANT_FOR_CONTEMPORARY_DELEGATORS_ACCOUNT: &[BidAddrTag] = &[
+    BidAddrTag::DelegatedAccount,
+    BidAddrTag::ReservedDelegationAccount,
+    BidAddrTag::UnbondAccount,
+];
+
+const BID_ADDR_TAGS_RELEVANT_FOR_CONTEMPORARY_DELEGATORS_PURSE: &[BidAddrTag] = &[
+    BidAddrTag::DelegatedPurse,
+    BidAddrTag::ReservedDelegationPurse,
+    BidAddrTag::UnbondPurse,
+];
 
 /// A trait expressing the reading of state. This trait is used to abstract the underlying store.
 pub trait StateReader<K = Key, V = StoredValue>: Sized + Send + Sync {
@@ -1136,6 +1164,68 @@ pub trait StateProvider: Send + Sync + Sized {
             }
         }
         BidsResult::Success { bids }
+    }
+
+    /// Fetches the validator bid
+    fn validator_bids(&self, request: ValidatorBidRequest) -> ValidatorBidsResult {
+        let state_hash = request.state_root_hash();
+        let mut tc = match self.tracking_copy(state_hash) {
+            Ok(Some(tc)) => tc,
+            Ok(None) => return ValidatorBidsResult::RootNotFound,
+            Err(err) => return ValidatorBidsResult::Failure(TrackingCopyError::Storage(err)),
+        };
+        let account_hash = request.validator_key().to_account_hash();
+
+        let result = find_contemporary_validator_bids(&mut tc, &account_hash);
+        match result {
+            ValidatorBidsResult::RootNotFound => ValidatorBidsResult::RootNotFound,
+            ValidatorBidsResult::Success { bids } => {
+                if bids.is_empty() {
+                    find_historic_validator_bids(&mut tc, &account_hash)
+                } else {
+                    ValidatorBidsResult::Success { bids }
+                }
+            }
+            ValidatorBidsResult::Failure(error) => ValidatorBidsResult::Failure(error),
+        }
+    }
+
+    /// Fetches the delegator bid
+    fn delegator_bids(&self, request: DelegatorBidRequest) -> DelegatorBidsResult {
+        let state_hash = request.state_root_hash();
+        let mut tc = match self.tracking_copy(state_hash) {
+            Ok(Some(tc)) => tc,
+            Ok(None) => return DelegatorBidsResult::RootNotFound,
+            Err(err) => return DelegatorBidsResult::Failure(TrackingCopyError::Storage(err)),
+        };
+        let validator_public_key = request.validator_key();
+        let account_hash = validator_public_key.to_account_hash();
+        let delegator_kind = request.delegator();
+        match find_contemporary_delegator_bids(&mut tc, &account_hash, delegator_kind) {
+            Ok(bids) => {
+                if bids.is_empty() {
+                    match delegator_kind {
+                        DelegatorKind::PublicKey(delegator_public_key) => {
+                            match find_historic_delegator_bids(
+                                &mut tc,
+                                validator_public_key,
+                                delegator_public_key,
+                            ) {
+                                Ok(bids) => DelegatorBidsResult::Success { bids },
+                                Err(err) => DelegatorBidsResult::Failure(err),
+                            }
+                        }
+                        DelegatorKind::Purse(_) => {
+                            /* Cannot retrofit purse */
+                            DelegatorBidsResult::Success { bids: vec![] }
+                        }
+                    }
+                } else {
+                    DelegatorBidsResult::Success { bids }
+                }
+            }
+            Err(err) => DelegatorBidsResult::Failure(err),
+        }
     }
 
     /// Direct auction interaction for all variations of bid management.
@@ -2808,4 +2898,340 @@ where
     txn.commit()?;
 
     Ok(state_root)
+}
+
+fn find_historic_delegator_bids<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
+    tc: &mut TrackingCopy<R>,
+    validator_public_key: &PublicKey,
+    delgator_public_key: &PublicKey,
+) -> Result<Vec<BidKind>, TrackingCopyError> {
+    let validator_account_hash = validator_public_key.to_account_hash();
+    let validator_account_hash_bytes = match validator_account_hash.to_bytes() {
+        Ok(account_hash_bytes) => account_hash_bytes,
+        Err(e) => return Err(TrackingCopyError::BytesRepr(e)),
+    };
+    let bid_key_bytes = [
+        vec![KeyTag::Bid as u8],
+        validator_account_hash_bytes.clone(),
+    ]
+    .concat();
+    let keys = tc.get_by_byte_prefix(&bid_key_bytes)?;
+    let mut bids = vec![];
+    for key in keys {
+        match tc.get(&key)? {
+            Some(StoredValue::Bid(bid)) => {
+                if let Some(delegator) = bid.delegators().get(delgator_public_key) {
+                    let delegator_kind = match bid.vesting_schedule() {
+                        Some(vesting_schedule) => {
+                            let mut delegator_bid = DelegatorBid::locked(
+                                DelegatorKind::PublicKey(delgator_public_key.clone()),
+                                delegator.staked_amount(),
+                                *delegator.bonding_purse(),
+                                validator_public_key.clone(),
+                                vesting_schedule.initial_release_timestamp_millis(),
+                            );
+                            if let Some(output_vesting_schedule) =
+                                delegator_bid.vesting_schedule_mut()
+                            {
+                                *output_vesting_schedule = vesting_schedule.clone();
+                            }
+                            delegator_bid
+                        }
+                        None => DelegatorBid::unlocked(
+                            DelegatorKind::PublicKey(delgator_public_key.clone()),
+                            delegator.staked_amount(),
+                            *delegator.bonding_purse(),
+                            validator_public_key.clone(),
+                        ),
+                    };
+
+                    let bid_kind = BidKind::Delegator(Box::new(delegator_kind));
+                    bids.push(bid_kind);
+                }
+            }
+            Some(_) => {
+                return Err(TrackingCopyError::UnexpectedStoredValueVariant);
+            }
+            None => {
+                return Err(TrackingCopyError::ValueNotFound(format!(
+                    "BidKind entry with key {} not found",
+                    key
+                )));
+            }
+        }
+    }
+    Ok(bids)
+}
+
+fn find_contemporary_delegator_bids<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
+    tc: &mut TrackingCopy<R>,
+    validator_account_hash: &AccountHash,
+    delgator_kind: &DelegatorKind,
+) -> Result<Vec<BidKind>, TrackingCopyError> {
+    let validator_account_hash_bytes = match validator_account_hash.to_bytes() {
+        Ok(account_hash_bytes) => account_hash_bytes,
+        Err(e) => return Err(TrackingCopyError::BytesRepr(e)),
+    };
+    let mut bids = vec![];
+    let mut keys = BTreeSet::new();
+    match delgator_kind {
+        DelegatorKind::PublicKey(public_key) => {
+            let delegator_account_hash = public_key.to_account_hash();
+            let delegator_account_hash_bytes = match delegator_account_hash.to_bytes() {
+                Ok(delegator_account_hash_bytes) => delegator_account_hash_bytes,
+                Err(e) => return Err(TrackingCopyError::BytesRepr(e)),
+            };
+
+            for infix in BID_ADDR_TAGS_RELEVANT_FOR_CONTEMPORARY_DELEGATORS_ACCOUNT {
+                let key_bytes = [
+                    vec![KeyTag::BidAddr as u8, (*infix) as u8],
+                    validator_account_hash_bytes.clone(),
+                    delegator_account_hash_bytes.clone(),
+                ]
+                .concat();
+                match tc.get_by_byte_prefix(&key_bytes) {
+                    Ok(mut k) => {
+                        keys.append(&mut k);
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
+        }
+        DelegatorKind::Purse(purse) => {
+            for infix in BID_ADDR_TAGS_RELEVANT_FOR_CONTEMPORARY_DELEGATORS_PURSE {
+                let validator_bytes = validator_account_hash_bytes.clone();
+                let key_bytes = [
+                    vec![KeyTag::BidAddr as u8, (*infix) as u8],
+                    validator_bytes,
+                    purse.to_vec(),
+                ]
+                .concat();
+                match tc.get_by_byte_prefix(&key_bytes) {
+                    Ok(mut k) => {
+                        keys.append(&mut k);
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
+        }
+    }
+
+    for key in keys {
+        match tc.get(&key)? {
+            Some(StoredValue::BidKind(bid_kind)) => {
+                bids.push(bid_kind);
+            }
+            Some(_) => {
+                return Err(TrackingCopyError::UnexpectedStoredValueVariant);
+            }
+            None => {
+                return Err(TrackingCopyError::ValueNotFound(format!(
+                    "BidKind entry with key {} not found",
+                    key
+                )));
+            }
+        }
+    }
+    Ok(bids)
+}
+
+fn find_contemporary_validator_bids<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
+    tc: &mut TrackingCopy<R>,
+    account_hash: &AccountHash,
+) -> ValidatorBidsResult {
+    let account_hash_bytes = match account_hash.to_bytes() {
+        Ok(account_hash_bytes) => account_hash_bytes,
+        Err(e) => return ValidatorBidsResult::Failure(TrackingCopyError::BytesRepr(e)),
+    };
+    let mut bids = vec![];
+    let mut keys = BTreeSet::new();
+    for infix in BID_ADDR_TAGS_RELEVANT_FOR_CONTEMPORARY_VALIDATORS {
+        let key_bytes = [
+            vec![KeyTag::BidAddr as u8, (*infix) as u8],
+            account_hash_bytes.clone(),
+        ]
+        .concat();
+        match tc.get_by_byte_prefix(&key_bytes) {
+            Ok(mut k) => {
+                keys.append(&mut k);
+            }
+            Err(e) => return ValidatorBidsResult::Failure(e),
+        }
+    }
+    for key in keys {
+        match tc.get(&key) {
+            Ok(Some(StoredValue::BidKind(bid_kind))) => {
+                bids.push(bid_kind);
+            }
+            Ok(Some(_)) => {
+                return ValidatorBidsResult::Failure(
+                    TrackingCopyError::UnexpectedStoredValueVariant,
+                );
+            }
+            Ok(None) => {
+                return ValidatorBidsResult::Failure(TrackingCopyError::ValueNotFound(format!(
+                    "BidKind entry with key {} not found",
+                    key
+                )))
+            }
+            Err(error) => return ValidatorBidsResult::Failure(error),
+        }
+    }
+    ValidatorBidsResult::Success { bids }
+}
+
+fn find_historic_validator_bids<R: StateReader<Key, StoredValue, Error = GlobalStateError>>(
+    tc: &mut TrackingCopy<R>,
+    account_hash: &AccountHash,
+) -> ValidatorBidsResult {
+    let account_hash_bytes = match account_hash.to_bytes() {
+        Ok(account_hash_bytes) => account_hash_bytes,
+        Err(e) => return ValidatorBidsResult::Failure(TrackingCopyError::BytesRepr(e)),
+    };
+    let mut bids = vec![];
+    let key_bytes = [vec![KeyTag::Bid as u8], account_hash_bytes.clone()].concat();
+    let keys = match tc.get_by_byte_prefix(&key_bytes) {
+        Ok(keys) => keys,
+        Err(e) => return ValidatorBidsResult::Failure(e),
+    };
+
+    for key in keys {
+        //Technically there should never be more than one key here
+        match tc.get(&key) {
+            Ok(Some(StoredValue::Bid(bid))) => {
+                let key_bytes = [vec![KeyTag::Unbond as u8], account_hash_bytes.clone()].concat();
+                let unbond_keys = match tc.get_by_byte_prefix(&key_bytes) {
+                    Ok(keys) => keys,
+                    Err(e) => return ValidatorBidsResult::Failure(e),
+                };
+                for unbond_key in unbond_keys {
+                    match tc.get(&unbond_key) {
+                        Ok(Some(StoredValue::Unbonding(unbondings))) => {
+                            let mut unbonding_bid_kinds = rewrap_unbondings(unbondings);
+                            bids.append(&mut unbonding_bid_kinds);
+                        }
+                        Ok(Some(_)) => {
+                            return ValidatorBidsResult::Failure(
+                                TrackingCopyError::UnexpectedStoredValueVariant,
+                            );
+                        }
+                        Ok(None) => {
+                            return ValidatorBidsResult::Failure(TrackingCopyError::ValueNotFound(
+                                format!("Unbonding entry with key {} not found", unbond_key),
+                            ))
+                        }
+                        Err(err) => return ValidatorBidsResult::Failure(err),
+                    }
+                }
+
+                let validator_bid = BidKind::Unified(bid);
+                bids.push(validator_bid);
+            }
+            Ok(Some(_)) => {
+                return ValidatorBidsResult::Failure(
+                    TrackingCopyError::UnexpectedStoredValueVariant,
+                );
+            }
+            Ok(None) => {
+                return ValidatorBidsResult::Failure(TrackingCopyError::ValueNotFound(format!(
+                    "Bid entry with key {} not found",
+                    key
+                )))
+            }
+            Err(error) => return ValidatorBidsResult::Failure(error),
+        }
+    }
+
+    ValidatorBidsResult::Success { bids }
+}
+
+fn rewrap_unbondings(unbondings: Vec<UnbondingPurse>) -> Vec<BidKind> {
+    let mut unbondings_map: BTreeMap<(PublicKey, PublicKey), Vec<UnbondingPurse>> = BTreeMap::new();
+
+    for unbonding in unbondings {
+        let validator_public_key = unbonding.validator_public_key().clone();
+        let unbonder_public_key = unbonding.unbonder_public_key().clone();
+        let key = (validator_public_key, unbonder_public_key);
+        match unbondings_map.entry(key) {
+            std::collections::btree_map::Entry::Vacant(vacant_entry) => {
+                vacant_entry.insert(vec![unbonding]);
+            }
+            std::collections::btree_map::Entry::Occupied(occupied_entry) => {
+                occupied_entry.into_mut().push(unbonding);
+            }
+        }
+    }
+    let mut bid_kinds = vec![];
+    for ((validator_key, unbonder_key), purses) in unbondings_map {
+        let mut eras = vec![];
+        for unbonding_purse in purses {
+            eras.push(UnbondEra::new(
+                *unbonding_purse.bonding_purse(),
+                unbonding_purse.era_of_creation(),
+                *unbonding_purse.amount(),
+                unbonding_purse.new_validator().clone(),
+            ));
+        }
+        let unbond = Unbond::new(
+            validator_key,
+            UnbondKind::DelegatedPublicKey(unbonder_key),
+            eras,
+        );
+        bid_kinds.push(BidKind::Unbond(Box::new(unbond)));
+    }
+
+    bid_kinds
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::global_state::state::{
+        BID_ADDR_TAGS_RELEVANT_FOR_CONTEMPORARY_DELEGATORS_ACCOUNT,
+        BID_ADDR_TAGS_RELEVANT_FOR_CONTEMPORARY_DELEGATORS_PURSE,
+        BID_ADDR_TAGS_RELEVANT_FOR_CONTEMPORARY_VALIDATORS,
+    };
+    use casper_types::system::auction::BidAddrTag;
+    use strum::IntoEnumIterator;
+
+    #[test]
+    fn validate_bid_addr_tags_relevant_for_contemporary_validators() {
+        // The BID_ADDR_TAGS_RELEVANT_FOR_CONTEMPORARY_VALIDATORS constant should contain
+        // all the tags that can be found by using a validator account hash prefix.
+        // We should think about this as BidAddrTag entries that are "related" to a
+        // BidKind::Validator entity. If a new BidAddrTag variant is added
+        // this constant should be considered and expanded if necessary.
+        let number_of_bid_addr_tags = BidAddrTag::iter().len();
+        assert_eq!(BID_ADDR_TAGS_RELEVANT_FOR_CONTEMPORARY_VALIDATORS.len(), 8);
+        assert_eq!(number_of_bid_addr_tags, 10);
+    }
+
+    #[test]
+    fn validate_bid_addr_tags_relevant_for_contemporary_delegators_account() {
+        // The BID_ADDR_TAGS_RELEVANT_FOR_CONTEMPORARY_DELEGATORS_ACCOUNT constant should contain
+        // all the tags that can be found by using validator+delegator_public_key prefix.
+        // We should think about this as BidAddrTag entries that are "related" to a
+        // BidKind::Delegator entity that is of DelegatorKind::PublicKey. If a new BidAddrTag
+        // variant is added this constant should be considered and expanded if necessary.
+        let number_of_bid_addr_tags = BidAddrTag::iter().len();
+        assert_eq!(
+            BID_ADDR_TAGS_RELEVANT_FOR_CONTEMPORARY_DELEGATORS_ACCOUNT.len(),
+            3
+        );
+        assert_eq!(number_of_bid_addr_tags, 10);
+    }
+
+    #[test]
+    fn validate_bid_addr_tags_relevant_for_contemporary_delegators_purse() {
+        // The BID_ADDR_TAGS_RELEVANT_FOR_CONTEMPORARY_DELEGATORS_PURSE constant should contain
+        // all the tags that can be found by using validator+purse_uref prefix.
+        // We should think about this as BidAddrTag entries that are "related" to a
+        // BidKind::Delegator entity that is of DelegatorKind::Purse. If a new BidAddrTag
+        // variant is added this constant should be considered and expanded if necessary.
+        let number_of_bid_addr_tags = BidAddrTag::iter().len();
+        assert_eq!(
+            BID_ADDR_TAGS_RELEVANT_FOR_CONTEMPORARY_DELEGATORS_PURSE.len(),
+            3
+        );
+        assert_eq!(number_of_bid_addr_tags, 10);
+    }
 }
