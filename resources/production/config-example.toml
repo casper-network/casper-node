@@ -345,7 +345,7 @@ allow_request_get_trie = false
 allow_request_speculative_exec = false
 
 # Maximum size of a message in bytes.
-max_message_size_bytes = 4_194_304
+max_message_size_bytes = 134_217_728
 
 # Maximum number of connections to the server.
 max_connections = 5
