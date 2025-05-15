@@ -14,13 +14,13 @@ casper-executor-wasmer-backend = { path = "../wasmer-backend" }
 casper-storage = { path = "../../storage" }
 casper-types = { path = "../../types", features = ["std"] }
 digest = "0.10.7"
-either = "1.10"
 parking_lot = "0.12.1"
 thiserror = "2.0"
 tracing = "0.1.40"
 casper-execution-engine = { path = "../../execution_engine", features = [
     "test-support",
 ] }
+base16 = "0.2.1"
 
 [dev-dependencies]
 tempfile = "3.10.1"

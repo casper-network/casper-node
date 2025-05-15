@@ -43,16 +43,7 @@ pub static ABI_COLLECTORS: [fn(&mut crate::abi::Definitions)] = [..];
 #[linkme(crate = crate::linkme)]
 pub static MESSAGES: [Message] = [..];
 
-/// This function is called by the host to collect the schema from the contract.
-///
-/// This is considered internal implementation detail and should not be used directly.
-/// Primary user of this API is `cargo-casper` tool that will use it to extract scheama from the
-/// contract.
-///
-/// # Safety
-/// Pointer to json bytes passed to the callback is valid only within the scope of that function.
-#[export_name = "__cargo_casper_collect_schema"]
-pub unsafe extern "C" fn cargo_casper_collect_schema(size_ptr: *mut u64) -> *mut u8 {
+pub fn casper_collect_schema() -> Schema {
     // Collect definitions
     let definitions = {
         let mut definitions = Definitions::default();
@@ -88,7 +79,7 @@ pub unsafe extern "C" fn cargo_casper_collect_schema(size_ptr: *mut u64) -> *mut
     };
 
     // Construct a schema object from the extracted information
-    let schema = Schema {
+    Schema {
         name: "contract".to_string(),
         version: None,
         type_: SchemaType::Contract {
@@ -97,8 +88,20 @@ pub unsafe extern "C" fn cargo_casper_collect_schema(size_ptr: *mut u64) -> *mut
         definitions,
         entry_points,
         messages,
-    };
+    }
+}
 
+/// This function is called by the host to collect the schema from the contract.
+///
+/// This is considered internal implementation detail and should not be used directly.
+/// Primary user of this API is `cargo-casper` tool that will use it to extract scheama from the
+/// contract.
+///
+/// # Safety
+/// Pointer to json bytes passed to the callback is valid only within the scope of that function.
+#[export_name = "__cargo_casper_collect_schema"]
+pub unsafe extern "C" fn cargo_casper_collect_schema(size_ptr: *mut u64) -> *mut u8 {
+    let schema = casper_collect_schema();
     // Write the schema using the provided writer
     let mut json_bytes = serde_json::to_vec(&schema).expect("Serialized schema");
     NonNull::new(size_ptr)

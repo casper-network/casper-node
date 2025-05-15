@@ -11,7 +11,8 @@ use casper_executor_wasm::{
 };
 use casper_executor_wasm_common::error::CallError;
 use casper_executor_wasm_interface::executor::{
-    ExecuteRequest, ExecuteRequestBuilder, ExecuteWithProviderResult, ExecutionKind,
+    ExecuteError, ExecuteRequest, ExecuteRequestBuilder, ExecuteWithProviderError,
+    ExecuteWithProviderResult, ExecutionKind,
 };
 use casper_storage::{
     data_access_layer::{
@@ -931,12 +932,13 @@ fn write_n_bytes_at_limit(
 #[test]
 fn non_existing_smart_contract_does_not_panic() {
     let address_generator = make_address_generator();
-    let mut executor = make_executor();
+    let executor = make_executor();
     let (mut global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
 
+    let non_existing_address = [255; 32];
     let execute_request = base_execute_builder()
         .with_target(ExecutionKind::Stored {
-            address: [255; 32],
+            address: non_existing_address,
             entry_point: "non_existing".to_string(),
         })
         .with_input(Bytes::new())
@@ -945,10 +947,12 @@ fn non_existing_smart_contract_does_not_panic() {
         .with_shared_address_generator(Arc::clone(&address_generator))
         .build()
         .expect("should build");
-    let res = run_wasm_session(
-        &mut executor,
-        &mut global_state,
-        state_root_hash,
-        execute_request,
-    );
+
+    let result = executor
+        .execute_with_provider(state_root_hash, &mut global_state, execute_request)
+        .expect_err("Failure");
+
+    assert!(matches!(
+        result,
+        ExecuteWithProviderError::Execute(execute_error) if matches!(execute_error, ExecuteError::CodeNotFound(address) if address == non_existing_address)));
 }

@@ -18,7 +18,7 @@ use casper_executor_wasm_common::{
     keyspace::{Keyspace, KeyspaceTag},
 };
 use casper_executor_wasm_interface::{
-    executor::{ExecuteError, ExecuteRequestBuilder, ExecuteResult, ExecutionKind, Executor},
+    executor::{ExecuteRequestBuilder, ExecuteResult, ExecutionKind, Executor},
     u32_from_host_result, Caller, InternalHostError, VMError, VMResult,
 };
 use casper_storage::{
@@ -743,7 +743,7 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
                 .with_gas_limit(gas_limit)
                 .with_target(ExecutionKind::Stored {
                     address: smart_contract_addr,
-                    entry_point: entry_point_name,
+                    entry_point: entry_point_name.clone(),
                 })
                 .with_input(input_data.unwrap_or_default())
                 .with_transferred_value(transferred_value)
@@ -788,10 +788,11 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
 
                     output
                 }
-                Err(ExecuteError::WasmPreparation(_preparation_error)) => {
+                Err(execute_error) => {
                     // This is a bug in the EE, as it should have been caught during the preparation
                     // phase when the contract was stored in the global state.
-                    todo!()
+                    error!(?execute_error, "Failed to execute constructor entry point");
+                    return Err(VMError::Execute(execute_error));
                 }
             }
         }
@@ -885,7 +886,7 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
         .with_gas_limit(gas_limit)
         .with_target(ExecutionKind::Stored {
             address: smart_contract_addr,
-            entry_point,
+            entry_point: entry_point.clone(),
         })
         .with_transferred_value(transferred_value)
         .with_input(input_data)
@@ -940,10 +941,14 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
 
             (gas_usage, host_result)
         }
-        Err(ExecuteError::WasmPreparation(preparation_error)) => {
-            // This is a bug in the EE, as it should have been caught during the preparation phase
-            // when the contract was stored in the global state.
-            unreachable!("Preparation error: {:?}", preparation_error)
+        Err(execute_error) => {
+            error!(
+                ?execute_error,
+                ?smart_contract_addr,
+                ?entry_point,
+                "Failed to execute entry point"
+            );
+            return Err(VMError::Execute(execute_error));
         }
     };
 
@@ -1440,13 +1445,17 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
                     );
                 }
             }
-            Err(ExecuteError::WasmPreparation(preparation_error)) => {
-                // Unable to call contract because the wasm is broken.
+            Err(execute_error) => {
+                // Unable to call contract because of execution error or internal host error.
+                // This usually means an internal error that should not happen and has to be handled
+                // by the contract runtime.
                 error!(
-                    ?preparation_error,
-                    "Wasm preparation error while performing upgrade"
+                    ?execute_error,
+                    ?entry_point_name,
+                    smart_contract_addr = base16::encode_lower(&smart_contract_addr),
+                    "Failed to execute upgrade entry point"
                 );
-                return Ok(CALLEE_NOT_CALLABLE);
+                return Err(VMError::Execute(execute_error));
             }
         }
     }

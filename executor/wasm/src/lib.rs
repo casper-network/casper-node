@@ -41,7 +41,6 @@ use casper_types::{
     MessageLimits, Package, PackageHash, PackageStatus, Phase, ProtocolVersion, StorageCosts,
     StoredValue, TransactionInvocationTarget, URef, WasmV2Config, U512,
 };
-use either::Either;
 use install::{InstallContractError, InstallContractRequest, InstallContractResult};
 use parking_lot::RwLock;
 use system::{MintArgs, MintTransferArgs};
@@ -316,9 +315,9 @@ impl ExecutorV2 {
 
                         gas_usage
                     }
-                    Err(error) => {
-                        error!(%error, "unable to execute constructor");
-                        return Err(InstallContractError::Execute(error));
+                    Err(execute_error) => {
+                        error!(%execute_error, "unable to execute constructor");
+                        return Err(InstallContractError::Execute(execute_error));
                     }
                 }
             }
@@ -367,10 +366,10 @@ impl ExecutorV2 {
         // supported. let caller_entity_addr = EntityAddr::new_account(caller);
         let source_purse = get_purse_for_entity(&mut tracking_copy, caller_key);
 
-        let (wasm_bytes, export_or_selector): (_, Either<&str, u32>) = match &execution_kind {
+        let (wasm_bytes, export_name) = match &execution_kind {
             ExecutionKind::SessionBytes(wasm_bytes) => {
                 // self.execute_wasm(tracking_copy, address, gas_limit, wasm_bytes, input)
-                (wasm_bytes.clone(), Either::Left(DEFAULT_WASM_ENTRY_POINT))
+                (wasm_bytes.clone(), DEFAULT_WASM_ENTRY_POINT)
             }
             ExecutionKind::Stored {
                 address: smart_contract_addr,
@@ -383,11 +382,6 @@ impl ExecutorV2 {
                     .read_first(&[&legacy_key, &smart_contract_key])
                     .expect("should read contract");
 
-                // let entity_addr: EntityAddr;
-
-                // Resolve indirection - get the latest version from the smart contract package
-                // versions. let old_contract = contract.clone();
-                // let latest_version_key;
                 if let Some(StoredValue::SmartContract(smart_contract_package)) = &contract {
                     let contract_hash = smart_contract_package
                         .versions()
@@ -395,7 +389,7 @@ impl ExecutorV2 {
                         .expect("should have last entry");
                     let entity_addr = EntityAddr::SmartContract(contract_hash.value());
                     let latest_version_key = Key::AddressableEntity(entity_addr);
-                    assert_ne!(&entity_addr.value(), smart_contract_addr);
+                    assert_eq!(&entity_addr.value(), smart_contract_addr);
                     let new_contract = tracking_copy
                         .read(&latest_version_key)
                         .expect("should read latest version");
@@ -491,7 +485,7 @@ impl ExecutorV2 {
                             }
                         }
 
-                        (Bytes::from(wasm_bytes), Either::Left(entry_point.as_str()))
+                        (Bytes::from(wasm_bytes), entry_point.as_str())
                     }
                     Some(StoredValue::Contract(_legacy_contract)) => {
                         let block_info = BlockInfo::new(
@@ -522,7 +516,12 @@ impl ExecutorV2 {
                         );
                     }
                     None => {
-                        panic!("No code found in {smart_contract_key:?}");
+                        error!(
+                            smart_contract_addr = base16::encode_lower(&smart_contract_addr),
+                            ?execution_kind,
+                            "No contract code found",
+                        );
+                        return Err(ExecuteError::CodeNotFound(*smart_contract_addr));
                     }
                 }
             }
@@ -566,11 +565,7 @@ impl ExecutorV2 {
         let mut instance = vm.instantiate(wasm_bytes, context, wasm_instance_config)?;
 
         self.push_execution_stack(execution_kind.clone());
-        let (vm_result, gas_usage) = match export_or_selector {
-            Either::Left(export_name) => instance.call_export(export_name),
-            Either::Right(_entry_point) => todo!("Restore selectors"), /* instance.call_export(&
-                                                                        * entry_point), */
-        };
+        let (vm_result, gas_usage) = instance.call_export(export_name);
 
         let top_execution_kind = self
             .pop_execution_stack()
@@ -644,16 +639,23 @@ impl ExecutorV2 {
                     messages: initial_tracking_copy.messages(),
                 })
             }
-            Err(VMError::Internal(host_error)) => {
-                error!(?host_error, "host error");
-                Ok(ExecuteResult {
-                    host_error: Some(CallError::InternalHost),
-                    output: None,
-                    gas_usage,
-                    effects: initial_tracking_copy.effects(),
-                    cache: initial_tracking_copy.cache(),
-                    messages: initial_tracking_copy.messages(),
-                })
+            Err(VMError::Execute(execute_error)) => {
+                let effects = initial_tracking_copy.effects();
+                let cache = initial_tracking_copy.cache();
+                let messages = initial_tracking_copy.messages();
+                error!(
+                    ?execute_error,
+                    ?gas_usage,
+                    ?effects,
+                    ?cache,
+                    ?messages,
+                    "host error"
+                );
+                Err(execute_error)
+            }
+            Err(VMError::Internal(internal_error)) => {
+                error!(?internal_error, "internal host error");
+                Err(ExecuteError::InternalHost(internal_error))
             }
         }
     }
