@@ -465,8 +465,8 @@ fn keyspace_to_global_state_key<S: GlobalStateReader, E: Executor>(
 
     match keyspace {
         Keyspace::State => Some(Key::State(entity_addr)),
-        Keyspace::Context(payload) => {
-            let digest = Digest::hash(payload);
+        Keyspace::Context(bytes) => {
+            let digest = Digest::hash(bytes);
             Some(casper_types::Key::NamedKey(
                 NamedKeyAddr::new_named_key_entry(entity_addr, digest.value()),
             ))
@@ -651,9 +651,7 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
     let mut smart_contract_package = Package::default();
 
     let protocol_version = ProtocolVersion::V2_0_0;
-
-    let first_version =
-        smart_contract_package.next_entity_version_for(protocol_version.value().major);
+    let protocol_version_major = protocol_version.value().major;
 
     let callee_addr = context_to_entity_addr(caller.context()).value();
 
@@ -664,12 +662,9 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
         seed,
     );
 
-    let contract_hash =
-        chain_utils::compute_next_contract_hash_version(smart_contract_addr, first_version);
-
     smart_contract_package.insert_entity_version(
-        protocol_version.value().major,
-        EntityAddr::SmartContract(contract_hash),
+        protocol_version_major,
+        EntityAddr::SmartContract(smart_contract_addr),
     );
 
     if caller
@@ -697,7 +692,7 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
 
     // 3. Store addressable entity
 
-    let entity_addr = EntityAddr::SmartContract(contract_hash);
+    let entity_addr = EntityAddr::SmartContract(smart_contract_addr);
     let addressable_entity_key = Key::AddressableEntity(entity_addr);
 
     // TODO: abort(str) as an alternative to trap

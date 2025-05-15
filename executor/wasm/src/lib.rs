@@ -201,14 +201,13 @@ impl ExecutorV2 {
         );
 
         let protocol_version = ProtocolVersion::V2_0_0;
-
         let protocol_version_major = protocol_version.value().major;
+
         let next_version = smart_contract.next_entity_version_for(protocol_version_major);
-        let entity_hash =
-            chain_utils::compute_next_contract_hash_version(smart_contract_addr, next_version);
+
         let entity_version_key = smart_contract.insert_entity_version(
             protocol_version_major,
-            EntityAddr::SmartContract(entity_hash),
+            EntityAddr::SmartContract(smart_contract_addr),
         );
         debug_assert_eq!(entity_version_key.entity_version(), next_version);
 
@@ -235,7 +234,8 @@ impl ExecutorV2 {
         );
 
         // 3. Store addressable entity
-        let addressable_entity_key = Key::AddressableEntity(EntityAddr::SmartContract(entity_hash));
+        let addressable_entity_key =
+            Key::AddressableEntity(EntityAddr::SmartContract(smart_contract_addr));
 
         // TODO: abort(str) as an alternative to trap
         let main_purse: URef = match system::mint_mint(
