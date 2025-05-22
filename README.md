@@ -26,7 +26,7 @@ The Casper MainNet is live.
 - [Zug Consensus Whitepaper](http://arxiv.org/pdf/2205.06314)
 
 ### Get Started with Smart Contracts
-- [Writing Smart Contracts](https://docs.casperlabs.io/developers/)
+- [Writing Smart Contracts](https://docs.casper.network/developers)
 - [Rust Smart Contract SDK](https://crates.io/crates/cargo-casper)
 - [Rust Smart Contract API Docs](https://docs.rs/casper-contract/latest/casper_contract/contract_api/index.html)
 - [AssemblyScript Smart Contract API](https://www.npmjs.com/package/casper-contract)
