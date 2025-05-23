@@ -63,6 +63,7 @@ pub enum TransactionInvocationTarget {
         /// If `None`, the latest enabled version is implied. From a serializatoin point of view
         /// `None` means that this field should NOT have an entry in the calltable
         /// serialization representation
+        #[serde(skip_serializing_if = "Option::is_none")]
         version_key: Option<EntityVersionKey>,
     },
     /// The alias and optional version identifying the package.
@@ -77,6 +78,7 @@ pub enum TransactionInvocationTarget {
         /// If `None`, the latest enabled version is implied. From a serializatoin point of view
         /// `None` means that this field should NOT have an entry in the calltable
         /// serialization representation
+        #[serde(skip_serializing_if = "Option::is_none")]
         version_key: Option<EntityVersionKey>,
     },
 }
@@ -494,6 +496,20 @@ mod tests {
     use super::*;
     use crate::{bytesrepr, gens::transaction_invocation_target_arb};
     use proptest::prelude::*;
+
+    #[test]
+    fn json_should_not_produce_version_key_if_none() {
+        let alias = TransactionInvocationTarget::new_package_alias_with_key("abc".to_owned(), None);
+        assert!(!serde_json::to_string(&alias)
+            .unwrap()
+            .contains("\"version_key\""));
+
+        let package =
+            TransactionInvocationTarget::new_package_with_key(PackageHash::from([1; 32]), None);
+        assert!(!serde_json::to_string(&package)
+            .unwrap()
+            .contains("\"version_key\""));
+    }
 
     #[test]
     fn bytesrepr_roundtrip() {
