@@ -1275,14 +1275,12 @@ dependencies = [
 [[package]]
 name = "casper-wasm"
 version = "0.46.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b23c58e3ab6d99d509534a23c988be743d6383c5a329095262efae90b7d9725e"
+source = "git+https://github.com/igor-casper/casper-wasm.git?branch=core-78#97c2ed922b2ef07a6fa141ddfad2f5b396288864"
 
 [[package]]
 name = "casper-wasm-utils"
 version = "3.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "15d9f1a2269d52961812862f67d209ef29742d06b47634e2982a96e80d0fe2b4"
+source = "git+https://github.com/igor-casper/casper-wasm-utils.git?branch=core-78#fac02bdfa60ad4a650d59718c0a8d7eaf53e84a0"
 dependencies = [
  "byteorder",
  "casper-wasm",
@@ -1292,8 +1290,7 @@ dependencies = [
 [[package]]
 name = "casper-wasmi"
 version = "0.14.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0319f5a421cce8a5b87f441230607a53c57a065ddc45703ea1e355cd2831397e"
+source = "git+https://github.com/igor-casper/casper-wasmi.git?branch=core-78#4da3ce3e4b69c8924bc95c581dbb29ec55939177"
 dependencies = [
  "casper-wasm",
  "casper-wasmi-core",
@@ -1303,8 +1300,7 @@ dependencies = [
 [[package]]
 name = "casper-wasmi-core"
 version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "077494ae45ba9d6df93da1bc3e6e686c6f4cf8ea658f2a1152980edb2c0c60bd"
+source = "git+https://github.com/igor-casper/casper-wasmi.git?branch=core-78#4da3ce3e4b69c8924bc95c581dbb29ec55939177"
 dependencies = [
  "downcast-rs",
  "libm",
@@ -1316,8 +1312,7 @@ dependencies = [
 [[package]]
 name = "casper-wasmi-validation"
 version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "218e1bb3693233149b6ac945cd26ea3e5fb5e50ac523cc87fb3ee6579a9eb789"
+source = "git+https://github.com/igor-casper/casper-wasmi.git?branch=core-78#4da3ce3e4b69c8924bc95c581dbb29ec55939177"
 dependencies = [
  "casper-wasm",
 ]
