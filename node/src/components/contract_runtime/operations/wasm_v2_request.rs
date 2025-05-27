@@ -138,8 +138,8 @@ impl WasmV2Request {
             },
         }
 
-        let target = transaction.target().ok_or(InvalidRequest::ExpectedTarget)?;
-        let target = match target {
+        let transaction_target = transaction.target().ok_or(InvalidRequest::ExpectedTarget)?;
+        let target = match transaction_target {
             TransactionTarget::Native => todo!(), //
             TransactionTarget::Stored { id, runtime: _ } => match transaction.entry_point() {
                 TransactionEntryPoint::Custom(entry_point) => Target::Stored {
