@@ -1,6 +1,6 @@
 [package]
 name = "casper-executor-wasm-host"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 authors = ["Michał Papierski <michal@casper.network>"]
 description = "Casper executor host package"
@@ -11,10 +11,10 @@ license = "Apache-2.0"
 [dependencies]
 base16 = "0.2"
 bytes = "1.10"
-casper-executor-wasm-common = { version = "0.1.1", path = "../wasm_common" }
-casper-executor-wasm-interface = { version = "0.1.1", path = "../wasm_interface" }
-casper-storage = { version = "2.0.1", path = "../../storage" }
-casper-types = { version = "5.0.2", path = "../../types" }
+casper-executor-wasm-common = { version = "0.1.2", path = "../wasm_common" }
+casper-executor-wasm-interface = { version = "0.1.2", path = "../wasm_interface" }
+casper-storage = { version = "2.1.0", path = "../../storage" }
+casper-types = { version = "6.0.0", path = "../../types" }
 either = "1.15"
 num-derive = { workspace = true }
 num-traits = { workspace = true }

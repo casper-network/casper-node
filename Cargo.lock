@@ -682,7 +682,7 @@ dependencies = [
 
 [[package]]
 name = "casper-binary-port"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "bincode",
  "bytes",
@@ -703,7 +703,7 @@ dependencies = [
 
 [[package]]
 name = "casper-contract"
-version = "5.0.1"
+version = "5.1.0"
 dependencies = [
  "casper-types",
  "hex_fmt",
@@ -713,7 +713,7 @@ dependencies = [
 
 [[package]]
 name = "casper-contract-macros"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "blake2-rfc",
  "casper-contract-sdk-sys",
@@ -728,7 +728,7 @@ dependencies = [
 
 [[package]]
 name = "casper-contract-sdk"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "base16",
  "bitflags 2.9.1",
@@ -752,7 +752,7 @@ dependencies = [
 
 [[package]]
 name = "casper-contract-sdk-codegen"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "borsh",
  "casper-contract-sdk",
@@ -767,11 +767,11 @@ dependencies = [
 
 [[package]]
 name = "casper-contract-sdk-sys"
-version = "0.1.1"
+version = "0.1.2"
 
 [[package]]
 name = "casper-engine-test-support"
-version = "8.0.1"
+version = "8.1.0"
 dependencies = [
  "blake2 0.9.2",
  "casper-execution-engine",
@@ -830,7 +830,7 @@ dependencies = [
 
 [[package]]
 name = "casper-execution-engine"
-version = "8.0.1"
+version = "8.1.0"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -880,7 +880,7 @@ dependencies = [
 
 [[package]]
 name = "casper-executor-wasm"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "blake2 0.10.6",
  "borsh",
@@ -906,7 +906,7 @@ dependencies = [
 
 [[package]]
 name = "casper-executor-wasm-common"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "bitflags 2.9.1",
  "blake2 0.10.6",
@@ -922,7 +922,7 @@ dependencies = [
 
 [[package]]
 name = "casper-executor-wasm-host"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "base16",
  "bytes",
@@ -941,7 +941,7 @@ dependencies = [
 
 [[package]]
 name = "casper-executor-wasm-interface"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "borsh",
  "bytes",
@@ -954,7 +954,7 @@ dependencies = [
 
 [[package]]
 name = "casper-executor-wasmer-backend"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "bytes",
  "casper-contract-sdk-sys",
@@ -974,7 +974,7 @@ dependencies = [
 
 [[package]]
 name = "casper-node"
-version = "2.0.1"
+version = "2.1.0"
 dependencies = [
  "ansi_term",
  "anyhow",
@@ -1070,7 +1070,7 @@ dependencies = [
 
 [[package]]
 name = "casper-storage"
-version = "2.0.1"
+version = "2.1.0"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -1103,7 +1103,7 @@ dependencies = [
 
 [[package]]
 name = "casper-types"
-version = "5.0.2"
+version = "6.0.0"
 dependencies = [
  "base16",
  "base64 0.13.1",
