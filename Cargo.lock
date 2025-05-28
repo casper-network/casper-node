@@ -1290,7 +1290,7 @@ dependencies = [
 [[package]]
 name = "casper-wasmi"
 version = "0.14.0"
-source = "git+https://github.com/igor-casper/casper-wasmi.git?branch=core-78#4da3ce3e4b69c8924bc95c581dbb29ec55939177"
+source = "git+https://github.com/igor-casper/casper-wasmi.git?rev=6a053cc#6a053cc5f8b940015e60d5c51d741d8ea5a7aa54"
 dependencies = [
  "casper-wasm",
  "casper-wasmi-core",
@@ -1300,7 +1300,7 @@ dependencies = [
 [[package]]
 name = "casper-wasmi-core"
 version = "0.3.0"
-source = "git+https://github.com/igor-casper/casper-wasmi.git?branch=core-78#4da3ce3e4b69c8924bc95c581dbb29ec55939177"
+source = "git+https://github.com/igor-casper/casper-wasmi.git?rev=6a053cc#6a053cc5f8b940015e60d5c51d741d8ea5a7aa54"
 dependencies = [
  "downcast-rs",
  "libm",
@@ -1312,7 +1312,7 @@ dependencies = [
 [[package]]
 name = "casper-wasmi-validation"
 version = "0.6.0"
-source = "git+https://github.com/igor-casper/casper-wasmi.git?branch=core-78#4da3ce3e4b69c8924bc95c581dbb29ec55939177"
+source = "git+https://github.com/igor-casper/casper-wasmi.git?rev=6a053cc#6a053cc5f8b940015e60d5c51d741d8ea5a7aa54"
 dependencies = [
  "casper-wasm",
 ]

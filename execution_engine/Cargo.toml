@@ -21,7 +21,7 @@ casper-storage = { version = "2.0.0", path = "../storage", default-features = tr
 casper-types = { version = "5.0.1", path = "../types", default-features = false, features = ["datasize", "gens", "json-schema", "std"] }
 casper-wasm = { git = "https://github.com/igor-casper/casper-wasm.git", branch = "core-78", features = ["sign_ext", "call_indirect_overlong"] }
 casper-wasm-utils = { git = "https://github.com/igor-casper/casper-wasm-utils.git", branch = "core-78", features = ["sign_ext", "call_indirect_overlong"] }
-casper-wasmi = { git = "https://github.com/igor-casper/casper-wasmi.git", branch = "core-78", features = ["sign_ext", "call_indirect_overlong"] }
+casper-wasmi = { git = "https://github.com/igor-casper/casper-wasmi.git", rev = "6a053cc", features = ["sign_ext", "call_indirect_overlong"] }
 datasize = "0.2.4"
 either = "1.8.1"
 hex-buffer-serde = "0.2.1"

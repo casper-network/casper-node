@@ -65,4 +65,3 @@ mod regression_20240105;
 mod slow_input;
 pub(crate) mod test_utils;
 mod transforms_must_be_ordered;
-mod core_78;
