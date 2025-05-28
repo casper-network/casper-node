@@ -1,8 +1,8 @@
-use casper_sdk::{
+use casper_contract_sdk::{
     host::native::{dispatch_with, with_stub, Stub},
     Contract,
 };
-use casper_sdk_codegen::support::IntoResult;
+use casper_contract_sdk_codegen::support::IntoResult;
 use vm2_cep18::contract::CEP18;
 
 mod bindings {

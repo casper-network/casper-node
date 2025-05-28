@@ -1,7 +1,7 @@
 [package]
 name = "test-payment-stored"
 version = "0.1.0"
-authors = ["Henry Till <henrytill@gmail.com>", "Ed Hastings <ed@casperlabs.io>"]
+authors = ["Henry Till <henrytill@gmail.com>", "Ed Hastings <ed@casper.network>"]
 edition = "2021"
 
 [[bin]]

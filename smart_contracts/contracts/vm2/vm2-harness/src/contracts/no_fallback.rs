@@ -1,5 +1,5 @@
-use casper_macros::casper;
-use casper_sdk::casper;
+use casper_contract_macros::casper;
+use casper_contract_sdk::casper;
 
 /// A contract that can't receive tokens through a plain `fallback` method.
 #[derive(Default)]

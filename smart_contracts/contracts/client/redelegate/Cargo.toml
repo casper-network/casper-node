@@ -1,7 +1,7 @@
 [package]
 name = "redelegate"
 version = "0.1.0"
-authors = ["Karan Dhareshwar <karan@casperlabs.io>"]
+authors = ["Karan Dhareshwar <karan@casper.network>"]
 edition = "2021"
 
 [[bin]]

@@ -7,9 +7,9 @@ edition = "2021"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-casper-executor-wasm-common = { path = "../../../../executor/wasm-common" }
-casper-macros = { path = "../../../macros" }
-casper-sdk = { path = "../../../sdk" }
+casper-executor-wasm-common = { path = "../../../../executor/wasm_common" }
+casper-contract-macros = { path = "../../../macros" }
+casper-contract-sdk = { path = "../../../sdk" }
 impls = "1"
 thiserror = "2"
 

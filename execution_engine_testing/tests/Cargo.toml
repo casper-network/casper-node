@@ -1,7 +1,7 @@
 [package]
 name = "casper-engine-tests"
 version = "0.1.0"
-authors = ["Ed Hastings <ed@casperlabs.io>, Henry Till <henrytill@gmail.com>"]
+authors = ["Ed Hastings <ed@casper.network>, Henry Till <henrytill@gmail.com>"]
 edition = "2021"
 
 [dependencies]
@@ -40,5 +40,4 @@ walrus = "0.20.2"
 wat = "1.0.47"
 
 [features]
-use-as-wasm = ["casper-engine-test-support/use-as-wasm"]
 fixture-generators = []

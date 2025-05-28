@@ -4,7 +4,7 @@
 //! a single owner to control the contract. This module provides a simple implementation
 //! of this pattern, allowing for ownership to be transferred or renounced.
 #[allow(unused_imports)]
-use crate as casper_sdk;
+use crate as casper_contract_sdk;
 use crate::{casper::Entity, macros::casper};
 
 /// The state of the Ownable contract, which contains the owner of the contract.

@@ -10,7 +10,7 @@
 //!
 //! For security reasons you may want to combine [`AccessControl`] or [`Ownable`] with
 //! this trait to ensure that only selected entities can manage the pause state.
-use crate::{self as casper_sdk, casper, casper::Entity, macros::casper};
+use crate::{self as casper_contract_sdk, casper, casper::Entity, macros::casper};
 
 #[casper]
 pub struct PausedState {

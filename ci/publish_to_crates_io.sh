@@ -62,7 +62,7 @@ publish() {
         printf "Publishing...\n"
         pushd $ROOT_DIR/$CRATE_DIR >/dev/null
         set +u
-        cargo publish ${@:2} --token ${CARGO_TOKEN}
+        cargo publish "${@:2}" --token ${CARGO_TOKEN}
         set -u
         popd >/dev/null
         printf "Published version %s\n" $LOCAL_VERSION
@@ -76,9 +76,96 @@ check_python_has_toml
 
 # These are the subdirs of casper-node which contain packages for publishing.  They should remain ordered from
 # least-dependent to most.
+#
+# Header format for dependencies:
+# <directory> (<crate name>)
+#     <dependent crate name>
+
+# types (casper-types) -> None
 publish types
+
+# storage (casper-storage)
+#     casper-types
 publish storage
+
+# binary_port (casper-binary-port)
+#     casper-types
+publish binary_port
+
+# execution-engine (casper-execution-engine)
+#     casper-storage
+#     casper-types
 publish execution_engine
-publish node
-publish smart_contracts/contract
+
+# execution_engine_testing/test_support (casper-engine-test-support)
+#     casper-storage
+#     casper-types
+#     casper-execution-engine
 publish execution_engine_testing/test_support
+
+# smart_contracts/contract (casper-contract)
+#     casper-types
+publish smart_contracts/contract
+
+# smart_contracts/sdk_sys (casper-contract-sdk_sys) -> None
+publish smart_contracts/sdk_sys
+
+# executor/wasm_common (casper-executor-wasm_common)
+#     casper-contract-sdk_sys
+publish executor/wasm_common
+
+# smart_contracts/macros (casper-contract-macros)
+#     casper-executor-wasm_common
+#     casper-contract-sdk_sys
+publish smart_contracts/macros
+
+# smart_contracts/sdk (casper-contract-sdk)
+#     casper-contract-sdk_sys
+#     casper-executor-wasm_common
+#     casper-contract-macros
+publish smart_contracts/sdk
+
+# smart_contracts/sdk_codegen (casper-contract-sdk_codegen)
+#     casper-contract-sdk
+publish smart_contracts/sdk_codegen
+
+# executor/wasm_interface (casper-executor-wasm_interface)
+#     casper-executor-wasm_common
+#     casper-storage
+#     casper-types
+publish executor/wasm_interface
+
+# executor/wasm_host (casper-executor-wasm_host)
+#     casper-executor-wasm_common
+#     casper-executor-wasm_interface
+#     casper-storage
+#     casper-types
+publish executor/wasm_host
+
+# executor/wasmer_backend (casper-executor-wasmer_backend)
+#     casper-executor-wasm_common
+#     casper-executor-wasm_interface
+#     casper-executor-wasm_host
+#     casper-storage
+#     casper-contract-sdk_sys
+#     casper-types
+publish executor/wasmer_backend
+
+# executor/wasm (casper-executor-wasm)
+#     casper-executor-wasm_common
+#     casper-executor-wasm_host
+#     casper-executor-wasm_interface
+#     casper-executor-wasmer_backend
+#     casper-storage
+#     casper-types
+#     casper-execution-engine
+publish executor/wasm
+
+# node (casper-node)
+#     casper-binary-port
+#     casper-storage
+#     casper-types
+#     casper-execution-engine
+#     casper-executor-wasm
+#     casper-executor-wasm_interface
+publish node

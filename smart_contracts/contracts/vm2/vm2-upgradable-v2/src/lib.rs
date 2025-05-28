@@ -1,8 +1,8 @@
 #![cfg_attr(target_arch = "wasm32", no_main)]
 #![cfg_attr(target_arch = "wasm32", no_std)]
 
-use casper_macros::casper;
-use casper_sdk::{
+use casper_contract_macros::casper;
+use casper_contract_sdk::{
     casper::{self, Entity},
     log,
     serializers::borsh::BorshDeserialize,
@@ -11,7 +11,7 @@ use casper_sdk::{
 const CURRENT_VERSION: &str = "v2";
 
 #[derive(BorshDeserialize, Debug)]
-#[borsh(crate = "casper_sdk::serializers::borsh")]
+#[borsh(crate = "casper_contract_sdk::serializers::borsh")]
 pub struct UpgradableContractV1 {
     /// The current state of the flipper.
     value: u8,

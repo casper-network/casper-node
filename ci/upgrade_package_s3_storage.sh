@@ -2,10 +2,10 @@
 
 set -e
 
-# This script allows uploading, downloading and purging of files to genesis.casperlabs.io s3 for storing
+# This script allows uploading, downloading and purging of files to genesis.casper.network s3 for storing
 # possible upgrade package releases to promote to a network or use for testing.
 
-# Using drone/GIT_HASH/PROTOCOL_VERSION as s3 bucket location in genesis.casperlabs.io
+# Using drone/GIT_HASH/PROTOCOL_VERSION as s3 bucket location in genesis.casper.network
 
 # Check python has toml for getting PROTOCOL_VERSION
 set +e
@@ -58,7 +58,7 @@ export AWS_ACCESS_KEY_ID
 AWS_SECRET_ACCESS_KEY=$(echo "$CREDENTIALS" | jq -r .data.cicd_agent_to_s3.aws_secret_key)
 export AWS_SECRET_ACCESS_KEY
 
-CL_S3_BUCKET="genesis.casperlabs.io"
+CL_S3_BUCKET="genesis.casper.network"
 CL_S3_LOCATION="drone/$GIT_HASH"
 
 case "$ACTION" in

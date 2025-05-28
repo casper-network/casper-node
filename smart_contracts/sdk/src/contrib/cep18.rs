@@ -18,11 +18,11 @@
 //! # Example CEP18 token contract
 //!
 //! ```rust
-//! use casper_sdk::prelude::*;
-//! use casper_sdk::contrib::cep18::{CEP18, CEP18State, CEP18Ext, Mintable, Burnable};
-//! # use casper_sdk::collections::Map;
-//! # use casper_sdk::macros::casper;
-//! # use casper_sdk::types::U256;
+//! use casper_contract_sdk::prelude::*;
+//! use casper_contract_sdk::contrib::cep18::{CEP18, CEP18State, CEP18Ext, Mintable, Burnable};
+//! # use casper_contract_sdk::collections::Map;
+//! # use casper_contract_sdk::macros::casper;
+//! # use casper_contract_sdk::types::U256;
 //!
 //! #[casper(contract_state)]
 //! struct MyToken {
@@ -47,7 +47,7 @@
 //!   }
 //! }
 //!
-//! #[casper(path = casper_sdk::contrib::cep18)]
+//! #[casper(path = casper_contract_sdk::contrib::cep18)]
 //! impl CEP18 for MyToken {
 //!   fn state(&self) -> &CEP18State {
 //!     &self.state
@@ -62,7 +62,7 @@ use bnum::types::U256;
 
 use super::access_control::{AccessControl, AccessControlError, Role};
 #[allow(unused_imports)]
-use crate as casper_sdk;
+use crate as casper_contract_sdk;
 use crate::{collections::Map, macros::blake2b256, prelude::*};
 
 /// While the code consuming this contract needs to define further error variants, it can

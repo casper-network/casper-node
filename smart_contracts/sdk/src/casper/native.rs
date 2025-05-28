@@ -147,8 +147,8 @@ pub type Container = BTreeMap<u64, BTreeMap<Bytes, Bytes>>;
 #[allow(dead_code)]
 pub struct NativeParam(pub(crate) String);
 
-impl From<&casper_sdk_sys::Param> for NativeParam {
-    fn from(val: &casper_sdk_sys::Param) -> Self {
+impl From<&casper_contract_sdk_sys::Param> for NativeParam {
+    fn from(val: &casper_contract_sdk_sys::Param) -> Self {
         let name =
             String::from_utf8_lossy(unsafe { slice::from_raw_parts(val.name_ptr, val.name_len) })
                 .into_owned();
@@ -247,7 +247,7 @@ impl Environment {
         key_space: u64,
         key_ptr: *const u8,
         key_size: usize,
-        info: *mut casper_sdk_sys::ReadInfo,
+        info: *mut casper_contract_sdk_sys::ReadInfo,
         alloc: extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8,
         alloc_ctx: *const core::ffi::c_void,
     ) -> Result<u32, NativeTrap> {
@@ -390,10 +390,10 @@ impl Environment {
         input_size: usize,
         seed_ptr: *const u8,
         seed_size: usize,
-        result_ptr: *mut casper_sdk_sys::CreateResult,
+        result_ptr: *mut casper_contract_sdk_sys::CreateResult,
     ) -> Result<u32, NativeTrap> {
         // let manifest =
-        //     NonNull::new(manifest_ptr as *mut casper_sdk_sys::Manifest).expect("Manifest
+        //     NonNull::new(manifest_ptr as *mut casper_contract_sdk_sys::Manifest).expect("Manifest
         // instance");
         let code = if code_ptr.is_null() {
             None
@@ -699,7 +699,7 @@ mod symbols {
         key_space: u64,
         key_ptr: *const u8,
         key_size: usize,
-        info: *mut ::casper_sdk_sys::ReadInfo,
+        info: *mut ::casper_contract_sdk_sys::ReadInfo,
         alloc: extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8,
         alloc_ctx: *const core::ffi::c_void,
     ) -> u32 {
@@ -781,7 +781,7 @@ mod symbols {
         input_size: usize,
         seed_ptr: *const u8,
         seed_size: usize,
-        result_ptr: *mut casper_sdk_sys::CreateResult,
+        result_ptr: *mut casper_contract_sdk_sys::CreateResult,
     ) -> u32 {
         let _call_result = with_current_environment(|stub| {
             stub.casper_create(

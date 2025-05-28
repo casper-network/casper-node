@@ -14,8 +14,8 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: ubuntu-20.04
-            code_name: focal
+          - os: ubuntu-22.04
+            code_name: jammy
 
     runs-on: ${{ matrix.os }}
 
