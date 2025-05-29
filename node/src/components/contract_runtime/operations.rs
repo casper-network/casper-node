@@ -4,7 +4,7 @@ use casper_executor_wasm::ExecutorV2;
 use itertools::Itertools;
 use std::{collections::BTreeMap, convert::TryInto, sync::Arc, time::Instant};
 use tracing::{debug, error, info, trace, warn};
-use wasm_v2_request::WasmV2Request;
+use wasm_v2_request::{WasmV2Request, WasmV2Result};
 
 use casper_execution_engine::engine_state::{
     BlockInfo, ExecutionEngineV1, WasmV1Request, WasmV1Result,
@@ -645,20 +645,31 @@ pub fn execute_finalized_block(
                     &transaction,
                 ) {
                     Ok(wasm_v2_request) => {
-                        let result = wasm_v2_request.execute(
+                        match wasm_v2_request.execute(
                             &execution_engine_v2,
                             state_root_hash,
                             &scratch_state,
-                        );
-                        match result {
+                        ) {
                             Ok(wasm_v2_result) => {
-                                info!(contract_hash=wasm_v2_result.smart_contract_addr().map(base16::encode_lower).unwrap_or_default(),
-                                      pre_state_root_hash=%state_root_hash,
-                                      post_state_root_hash=%wasm_v2_result.post_state_hash(),
-                                      "install contract result");
+                                match &wasm_v2_result {
+                                    WasmV2Result::Install(install_result) => {
+                                        info!(
+                                            contract_hash=base16::encode_lower(&install_result.smart_contract_addr()),
+                                            pre_state_root_hash=%state_root_hash,
+                                            post_state_root_hash=%install_result.post_state_hash(),
+                                            "install contract result");
+                                    }
 
-                                state_root_hash = wasm_v2_result.state_root_hash();
+                                    WasmV2Result::Execute(execute_result) => {
+                                        info!(
+                                            pre_state_root_hash=%state_root_hash,
+                                            post_state_root_hash=%execute_result.post_state_hash(),
+                                            host_error=?execute_result.host_error.as_ref(),
+                                            "execute contract result");
+                                    }
+                                }
 
+                                state_root_hash = wasm_v2_result.post_state_hash();
                                 artifact_builder.with_wasm_v2_result(wasm_v2_result);
                             }
                             Err(wasm_v2_error) => {

@@ -1,6 +1,7 @@
 pub mod executor;
 
 use bytes::Bytes;
+use executor::ExecuteError;
 use thiserror::Error;
 
 use casper_executor_wasm_common::{
@@ -109,14 +110,16 @@ pub enum VMError {
     Export(ExportError),
     #[error("Out of gas")]
     OutOfGas,
-    #[error("Internal host error")]
-    Internal(InternalHostError),
     /// Error while executing Wasm: traps, memory access errors, etc.
     ///
     /// NOTE: for supporting multiple different backends we may want to abstract this a bit and
     /// extract memory access errors, trap codes, and unify error reporting.
     #[error("Trap: {0}")]
     Trap(TrapCode),
+    #[error("Internal host error")]
+    Internal(#[from] InternalHostError),
+    #[error("Execute error: {0}")]
+    Execute(#[from] ExecuteError),
 }
 
 impl VMError {
@@ -131,12 +134,6 @@ impl VMError {
 
 /// Result of a VM operation.
 pub type VMResult<T> = Result<T, VMError>;
-
-impl From<InternalHostError> for VMError {
-    fn from(value: InternalHostError) -> Self {
-        Self::Internal(value)
-    }
-}
 
 /// Configuration for the Wasm engine.
 #[derive(Clone, Debug)]

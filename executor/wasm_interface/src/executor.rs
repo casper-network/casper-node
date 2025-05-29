@@ -14,7 +14,7 @@ use casper_types::{
 use parking_lot::RwLock;
 use thiserror::Error;
 
-use crate::{CallError, GasUsage, WasmPreparationError};
+use crate::{CallError, GasUsage, InternalHostError, WasmPreparationError};
 
 /// Request to execute a Wasm contract.
 pub struct ExecuteRequest {
@@ -349,6 +349,11 @@ pub enum ExecuteError {
     /// No wasm was executed at this point.
     #[error("Wasm error error: {0}")]
     WasmPreparation(#[from] WasmPreparationError),
+    /// Error while executing Wasm: traps, memory access errors, etc.
+    #[error("Internal host error: {0}")]
+    InternalHost(#[from] InternalHostError),
+    #[error("Code not found")]
+    CodeNotFound(HashAddr),
 }
 
 #[derive(Debug, Error)]

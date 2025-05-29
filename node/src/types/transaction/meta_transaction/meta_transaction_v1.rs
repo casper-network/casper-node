@@ -3,9 +3,10 @@ use casper_types::{
     bytesrepr::ToBytes, calculate_transaction_lane, crypto, Approval, Chainspec,
     ContractRuntimeTag, Digest, DisplayIter, Gas, HashAddr, InitiatorAddr, InvalidTransaction,
     InvalidTransactionV1, PricingHandling, PricingMode, TimeDiff, Timestamp, TransactionArgs,
-    TransactionConfig, TransactionEntryPoint, TransactionRuntimeParams, TransactionScheduling,
-    TransactionTarget, TransactionV1, TransactionV1Config, TransactionV1ExcessiveSizeError,
-    TransactionV1Hash, AUCTION_LANE_ID, MINT_LANE_ID, U512,
+    TransactionConfig, TransactionEntryPoint, TransactionInvocationTarget,
+    TransactionRuntimeParams, TransactionScheduling, TransactionTarget, TransactionV1,
+    TransactionV1Config, TransactionV1ExcessiveSizeError, TransactionV1Hash, AUCTION_LANE_ID,
+    MINT_LANE_ID, U512,
 };
 use core::fmt::{self, Debug, Display, Formatter};
 use datasize::DataSize;
@@ -381,6 +382,16 @@ impl MetaTransactionV1 {
                     }
                     PricingMode::Fixed { .. } => {}
                     PricingMode::Prepaid { .. } => {}
+                }
+
+                if let TransactionTarget::Stored {
+                    id:
+                        id @ TransactionInvocationTarget::ByPackageHash { .. }
+                        | id @ TransactionInvocationTarget::ByPackageName { .. },
+                    runtime: _,
+                } = self.target.clone()
+                {
+                    return Err(InvalidTransactionV1::UnsupportedInvocationTarget { id: Some(id) });
                 }
             }
             None => {

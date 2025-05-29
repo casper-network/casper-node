@@ -220,7 +220,7 @@ const fn is_floating_point(operator: &wasmer::wasmparser::Operator<'_>) -> bool 
 impl Default for GatekeeperConfig {
     fn default() -> Self {
         Self {
-            bulk_memory: false,
+            bulk_memory: true,
             exceptions: false,
             function_references: false,
             gc: false,

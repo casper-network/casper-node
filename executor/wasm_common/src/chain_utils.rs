@@ -30,19 +30,6 @@ pub fn compute_wasm_bytecode_hash<T: AsRef<[u8]>>(wasm_bytes: T) -> [u8; 32] {
     hash.into()
 }
 
-#[must_use]
-pub fn compute_next_contract_hash_version(
-    smart_contract_addr: [u8; 32],
-    next_version: u32,
-) -> [u8; 32] {
-    let mut hasher = Blake2b::<U32>::new();
-
-    hasher.update(smart_contract_addr);
-    hasher.update(next_version.to_le_bytes());
-
-    hasher.finalize().into()
-}
-
 #[cfg(test)]
 mod tests {
     const SEED: [u8; 32] = [1u8; 32];
@@ -57,17 +44,5 @@ mod tests {
         let predictable_address_2 =
             super::compute_predictable_address("mainnet", initiator, bytecode_hash, Some(SEED));
         assert_ne!(predictable_address_1, predictable_address_2);
-    }
-
-    #[test]
-    fn test_compute_nth_version_hash() {
-        let smart_contract_addr = [1u8; 32];
-        let mut next_version = 1;
-
-        let hash_1 = super::compute_next_contract_hash_version(smart_contract_addr, next_version);
-        next_version += 1;
-
-        let hash_2 = super::compute_next_contract_hash_version(smart_contract_addr, next_version);
-        assert_ne!(hash_1, hash_2);
     }
 }

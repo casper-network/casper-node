@@ -24,7 +24,7 @@ pub enum Keyspace<'a> {
     ///
     /// There's no additional payload for this variant as the host implies the contract's address.
     State,
-    /// Stores contract's context date. Bytes can be any value as long as it uniquely identifies a
+    /// Stores contract's context data. Bytes can be any value as long as it uniquely identifies a
     /// value.
     Context(&'a [u8]),
     /// Stores contract's named keys.

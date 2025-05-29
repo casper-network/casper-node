@@ -882,6 +882,7 @@ dependencies = [
 name = "casper-executor-wasm"
 version = "0.1.2"
 dependencies = [
+ "base16",
  "blake2 0.10.6",
  "borsh",
  "bytes",
@@ -893,7 +894,6 @@ dependencies = [
  "casper-storage",
  "casper-types",
  "digest 0.10.7",
- "either",
  "fs_extra",
  "itertools 0.14.0",
  "once_cell",

@@ -339,7 +339,7 @@ pub fn init_with_config(config: &LoggingConfig) -> anyhow::Result<()> {
     let filter = EnvFilter::new(
         env::var(LOG_CONFIGURATION_ENVVAR)
             .as_deref()
-            .unwrap_or("warn,casper_node=info"),
+            .unwrap_or("warn,casper_node=debug"),
     );
 
     match config.format {
