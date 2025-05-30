@@ -7,8 +7,8 @@ use proc_macro::TokenStream;
 use proc_macro2::Span;
 use quote::{format_ident, quote, ToTokens};
 use syn::{
-    parse_macro_input, Fields, ItemEnum, ItemFn, ItemImpl, ItemStruct, ItemTrait, ItemUnion,
-    LitStr, Type,
+    parse_macro_input, DeriveInput, Fields, ItemEnum, ItemFn, ItemImpl, ItemStruct, ItemTrait,
+    ItemUnion, LitStr, Type,
 };
 
 use casper_executor_wasm_common::flags::EntryPointFlags;
@@ -1826,5 +1826,82 @@ pub fn derive_no_default(item: TokenStream) -> TokenStream {
             )
             .to_compile_error(),
         )
+    }
+}
+
+#[proc_macro_derive(TypeUid, attributes(type_uid))]
+pub fn derive_type_uid(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    let name = input.ident;
+
+    match &input.data {
+        syn::Data::Struct(ds) => {
+            let fields = &ds.fields;
+
+            let mut mixer = Vec::new();
+
+            for field in fields.iter() {
+                let ty = &field.ty;
+
+                mixer.push(quote! {
+                    <#ty>::UID
+                });
+            }
+
+            TokenStream::from(quote! {
+                impl casper_contract_sdk::type_uid::TypeUid for #name {
+                    const UID: casper_contract_sdk::type_uid::Uid = casper_contract_sdk::type_uid::Uid::from_fields(
+                        stringify!(#name),
+                        &[
+                            #(#mixer,)*
+                        ]
+                    );
+                }
+            })
+        }
+        syn::Data::Enum(de) => {
+            let mut mixer = Vec::new();
+
+            for variant in de.variants.iter() {
+                let variant_name = &variant.ident;
+
+                let mut field_mixers = Vec::new();
+
+                for field in variant.fields.iter() {
+                    let ty = &field.ty;
+
+                    field_mixers.push(quote! {
+                        <#ty>::UID
+                    });
+                }
+                if let Some((_, discriminant)) = &variant.discriminant {
+                    field_mixers.push(
+                        quote! { casper_contract_sdk::type_uid::Uid::from_u64(#discriminant) },
+                    );
+                }
+
+                mixer.push(quote! {
+                    casper_contract_sdk::type_uid::Uid::from_fields(
+                        stringify!(#variant_name),
+                        &[
+                            #(#field_mixers,)*
+                        ]
+                    )
+                });
+            }
+
+            TokenStream::from(quote! {
+                impl casper_contract_sdk::type_uid::TypeUid for #name {
+                    const UID: casper_contract_sdk::type_uid::Uid = casper_contract_sdk::type_uid::Uid::from_fields(
+                        stringify!(#name),
+                        &[#(#mixer,)*]
+                    );
+                }
+            })
+        }
+        syn::Data::Union(_) => TokenStream::from(
+            syn::Error::new(Span::call_site(), "TypeUid cannot be derived for unions")
+                .to_compile_error(),
+        ),
     }
 }

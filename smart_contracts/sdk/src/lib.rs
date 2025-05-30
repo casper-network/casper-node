@@ -17,6 +17,7 @@ pub mod collections;
 pub mod contrib;
 #[cfg(feature = "std")]
 pub mod schema;
+pub mod type_uid;
 pub mod types;
 
 use crate::prelude::{marker::PhantomData, ptr::NonNull};
