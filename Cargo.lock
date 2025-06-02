@@ -1207,8 +1207,7 @@ dependencies = [
 [[package]]
 name = "casper-wasmi-core"
 version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "077494ae45ba9d6df93da1bc3e6e686c6f4cf8ea658f2a1152980edb2c0c60bd"
+source = "git+https://github.com/igor-casper/casper-wasmi.git?rev=6a053cc#6a053cc5f8b940015e60d5c51d741d8ea5a7aa54"
 dependencies = [
  "downcast-rs",
  "libm",
