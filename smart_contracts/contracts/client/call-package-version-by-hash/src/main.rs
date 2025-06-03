@@ -14,8 +14,8 @@ pub extern "C" fn call() {
 
     runtime::call_package_version(
         package_hash,
-        major_version,
-        version,
+        Some(major_version),
+        Some(version),
         "delegate",
         runtime_args! {},
     )

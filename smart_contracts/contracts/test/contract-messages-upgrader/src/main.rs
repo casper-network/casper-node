@@ -66,8 +66,8 @@ pub extern "C" fn emit_message_from_each_version() {
     // Call previous contract version which will emit a message.
     runtime::call_package_version::<()>(
         contract_package_hash.into(),
-        2,
-        1,
+        Some(2),
+        Some(1),
         FIRST_VERSION_ENTRY_POINT_EMIT_MESSAGE,
         runtime_args! {
             ARG_MESSAGE_SUFFIX_NAME => suffix.clone(),
