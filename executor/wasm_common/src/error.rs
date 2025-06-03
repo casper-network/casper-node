@@ -127,9 +127,6 @@ pub enum CallError {
     /// Called contract is not callable.
     #[error("not callable")]
     NotCallable,
-    /// Encountered a host function error.
-    #[error("internal host")]
-    InternalHost,
 }
 
 impl CallError {
@@ -141,7 +138,6 @@ impl CallError {
             Self::CalleeTrapped(_) => CALLEE_TRAPPED,
             Self::CalleeGasDepleted => CALLEE_GAS_DEPLETED,
             Self::NotCallable => CALLEE_NOT_CALLABLE,
-            Self::InternalHost => CALLEE_HOST_ERROR,
         }
     }
 }

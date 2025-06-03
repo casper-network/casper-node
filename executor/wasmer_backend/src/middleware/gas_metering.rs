@@ -189,7 +189,17 @@ fn cycles(operator: &Operator) -> u64 {
         Operator::I64Store32 { .. } => 1,
         Operator::MemorySize { .. } => 31,
         Operator::MemoryGrow { .. } => 67,
-        Operator::MemoryCopy { .. } => 31,
+
+
+        Operator::MemoryInit { .. }
+        | Operator::DataDrop { .. }
+        | Operator::MemoryCopy { ..}
+        | Operator::MemoryFill { .. }
+        | Operator::TableInit { .. }
+        | Operator::ElemDrop { .. }
+        | Operator::TableCopy { .. } => 31, // memory.copy has cycle count of 31, rest needs benchmark validation (bulk memory extension)
+
+
         Operator::Select => 14,
         Operator::If { .. } => 1,
         Operator::Call { .. } => 17,
@@ -207,7 +217,7 @@ fn cycles(operator: &Operator) -> u64 {
         | Operator::Catch { .. }
         | Operator::Rethrow { .. }
         | Operator::Delegate { .. }
-        | Operator::CatchAll => todo!("{operator:?}"),
+        | Operator::CatchAll => todo!("try/catch operators are not metered yet; gatekeeper config should not enable this extension"),
         Operator::End
         | Operator::Return
         | Operator::ReturnCall { .. }
@@ -248,12 +258,6 @@ fn cycles(operator: &Operator) -> u64 {
         | Operator::RefI31
         | Operator::I31GetS
         | Operator::I31GetU
-        | Operator::MemoryInit { .. }
-        | Operator::DataDrop { .. }
-        | Operator::MemoryFill { .. }
-        | Operator::TableInit { .. }
-        | Operator::ElemDrop { .. }
-        | Operator::TableCopy { .. }
         | Operator::TableFill { .. }
         | Operator::TableSet { .. }
         | Operator::TableGrow { .. }
@@ -621,7 +625,7 @@ fn cycles(operator: &Operator) -> u64 {
         | Operator::ArrayAtomicRmwXor { .. }
         | Operator::ArrayAtomicRmwXchg { .. }
         | Operator::ArrayAtomicRmwCmpxchg { .. }
-        | Operator::RefI31Shared => todo!(),
+        | Operator::RefI31Shared => todo!("{operator:?}"),
     }
 }
 

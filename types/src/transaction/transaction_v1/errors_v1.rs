@@ -16,7 +16,7 @@ use serde::Serialize;
 use super::TransactionV1;
 use crate::{
     addressable_entity::ContractRuntimeTag, bytesrepr, crypto, CLType, DisplayIter, PricingMode,
-    TimeDiff, Timestamp, TransactionEntryPoint, U512,
+    TimeDiff, Timestamp, TransactionEntryPoint, TransactionInvocationTarget, U512,
 };
 
 #[derive(Clone, Eq, PartialEq, Debug)]
@@ -279,6 +279,13 @@ pub enum InvalidTransaction {
     // Passing TransactionInvocationTarget::ByPackageHash::version or
     // TransactionInvocationTarget::ByPackageName::version is no longer supported
     TargetingPackageVersionNotSupported,
+    /// The transaction invocation target is unsupported under V2 runtime.
+    ///
+    /// This error is returned when the transaction invocation target is not supported by the
+    /// current runtime version.
+    UnsupportedInvocationTarget {
+        id: Option<TransactionInvocationTarget>,
+    },
 }
 
 impl Display for InvalidTransaction {
@@ -513,6 +520,20 @@ impl Display for InvalidTransaction {
                         "the value provided for the delegation amount ({attempted}) cannot be higher than {ceiling}.",
                         )}
             InvalidTransaction::TargetingPackageVersionNotSupported =>  write!(formatter, "passing `version` in TransactionInvocationTarget::ByPackageHash or TransactionInvocationTarget::ByPackageName is not supported",),
+
+            InvalidTransaction::UnsupportedInvocationTarget { id: Some(target) } => {
+                write!(
+                    formatter,
+                    "the transaction invocation target is unsupported under V2 runtime: {target:?}",
+                )
+            }
+
+            InvalidTransaction::UnsupportedInvocationTarget { id :None} => {
+                write!(
+                    formatter,
+                    "the transaction invocation target is unsupported under V2 runtime",
+                )
+            }
         }
     }
 }
@@ -575,7 +596,8 @@ impl StdError for InvalidTransaction {
             | InvalidTransaction::InvalidMaximumDelegationAmount { .. }
             | InvalidTransaction::InvalidReservedSlots { .. }
             | InvalidTransaction::InvalidDelegationAmount { .. }
-            | InvalidTransaction::TargetingPackageVersionNotSupported => None,
+            | InvalidTransaction::TargetingPackageVersionNotSupported
+            | InvalidTransaction::UnsupportedInvocationTarget { .. } => None,
         }
     }
 }

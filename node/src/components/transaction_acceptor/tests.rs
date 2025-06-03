@@ -232,6 +232,8 @@ enum TestScenario {
     DeployPaymentStoredVersionedContractByNameTargetsVersion,
     DeploySessionStoredVersionedContractByHashTargetsVersion,
     DeploySessionStoredVersionedContractByNameTargetsVersion,
+
+    VmCasperV2ByPackageHash,
 }
 
 impl TestScenario {
@@ -291,9 +293,8 @@ impl TestScenario {
             | TestScenario::DeployPaymentStoredVersionedContractByHashTargetsVersion
             | TestScenario::DeployPaymentStoredVersionedContractByNameTargetsVersion
             | TestScenario::DeploySessionStoredVersionedContractByHashTargetsVersion
-            | TestScenario::DeploySessionStoredVersionedContractByNameTargetsVersion => {
-                Source::Client
-            }
+            | TestScenario::DeploySessionStoredVersionedContractByNameTargetsVersion
+            | TestScenario::VmCasperV2ByPackageHash => Source::Client,
         }
     }
 
@@ -868,6 +869,26 @@ impl TestScenario {
                     rng,
                 ))
             }
+            TestScenario::VmCasperV2ByPackageHash => {
+                let txn = TransactionV1Builder::new_targeting_stored(
+                    TransactionInvocationTarget::ByPackageHash {
+                        addr: [1; 32],
+                        version: None,
+                        version_key: None,
+                    },
+                    "x",
+                    TransactionRuntimeParams::VmCasperV2 {
+                        transferred_value: 0,
+                        seed: None,
+                    },
+                )
+                .with_chain_name("casper-example")
+                .with_secret_key(&secret_key)
+                .with_transaction_args(TransactionArgs::Bytesrepr(Bytes::new()))
+                .build()
+                .unwrap();
+                Transaction::from(txn)
+            }
         }
     }
 
@@ -940,7 +961,8 @@ impl TestScenario {
             | TestScenario::DeployPaymentStoredVersionedContractByHashTargetsVersion
             | TestScenario::DeployPaymentStoredVersionedContractByNameTargetsVersion
             | TestScenario::DeploySessionStoredVersionedContractByHashTargetsVersion
-            | TestScenario::DeploySessionStoredVersionedContractByNameTargetsVersion=> false,
+            | TestScenario::DeploySessionStoredVersionedContractByNameTargetsVersion
+            | TestScenario::VmCasperV2ByPackageHash => false,
         }
     }
 
@@ -962,6 +984,10 @@ impl TestScenario {
             }
             _ => None,
         }
+    }
+
+    fn is_v2_casper_vm(&self) -> bool {
+        matches!(self, TestScenario::VmCasperV2ByPackageHash)
     }
 }
 
@@ -1066,13 +1092,18 @@ impl reactor::Reactor for Reactor {
                                 | TestScenario::FromClientSessionContractPackage(
                                     _,
                                     ContractPackageScenario::MissingContractVersion,
-                                ) => QueryResult::Success {
+                                )
+                                | TestScenario::VmCasperV2ByPackageHash => QueryResult::Success {
                                     value: Box::new(StoredValue::ContractPackage(
                                         ContractPackage::default(),
                                     )),
                                     proofs: vec![],
                                 },
-                                _ => panic!("unexpected query: {:?}", query_request),
+
+                                _ => panic!(
+                                    "unexpected query: {query_request:?} in {:?}",
+                                    self.test_scenario
+                                ),
                             }
                         } else {
                             panic!("expect only queries using Key::Package variant");
@@ -1401,12 +1432,16 @@ async fn run_transaction_acceptor_without_timeout(
     let admin = SecretKey::random(rng);
     let (mut chainspec, chainspec_raw_bytes) =
         <(Chainspec, ChainspecRawBytes)>::from_resources("local");
-    let mut chainspec = if let TestScenario::TooLowGasPriceToleranceForTransactionV1 = test_scenario
-    {
-        chainspec.with_pricing_handling(PricingHandling::Fixed);
-        chainspec
-    } else {
-        chainspec
+    let mut chainspec = match test_scenario {
+        TestScenario::TooLowGasPriceToleranceForTransactionV1 => {
+            chainspec.with_pricing_handling(PricingHandling::Fixed);
+            chainspec
+        }
+        test_scenario if test_scenario.is_v2_casper_vm() => {
+            chainspec.with_vm_casper_v2(true);
+            chainspec
+        }
+        _ => chainspec,
     };
     chainspec.core_config.administrators = iter::once(PublicKey::from(&admin)).collect();
 
@@ -1521,7 +1556,8 @@ async fn run_transaction_acceptor_without_timeout(
             | TestScenario::DeployPaymentStoredVersionedContractByHashTargetsVersion
             | TestScenario::DeployPaymentStoredVersionedContractByNameTargetsVersion
             | TestScenario::DeploySessionStoredVersionedContractByHashTargetsVersion
-            | TestScenario::DeploySessionStoredVersionedContractByNameTargetsVersion => {
+            | TestScenario::DeploySessionStoredVersionedContractByNameTargetsVersion
+            | TestScenario::VmCasperV2ByPackageHash => {
                 matches!(
                     event,
                     Event::TransactionAcceptorAnnouncement(
@@ -2913,4 +2949,18 @@ async fn should_reject_transactions_targets_package_version_6() {
             InvalidTransaction::Deploy(InvalidDeploy::TargetingPackageVersionNotSupported)
         ))
     ));
+}
+
+#[tokio::test]
+async fn foobar() {
+    let result = run_transaction_acceptor(TestScenario::VmCasperV2ByPackageHash).await;
+    assert!(
+        matches!(
+            result,
+            Err(super::Error::InvalidTransaction(InvalidTransaction::V1(
+                InvalidTransactionV1::UnsupportedInvocationTarget { id: Some(_) }
+            )))
+        ),
+        "{result:?}"
+    );
 }

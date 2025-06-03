@@ -1,6 +1,6 @@
 [package]
 name = "casper-node"
-version = "2.1.0" # when updating, also update 'html_root_url' in lib.rs
+version = "2.0.2" # when updating, also update 'html_root_url' in lib.rs
 authors = ["Ed Hastings <ed@casper.network>", "Karan Dhareshwar <karan@casper.network>"]
 edition = "2021"
 description = "The Casper blockchain node"

@@ -316,6 +316,12 @@ impl Chainspec {
         self.transaction_config.block_gas_limit = block_gas_limit;
         self
     }
+
+    /// Set vm2 casper wasm.
+    pub fn with_vm_casper_v2(&mut self, vm_casper_v2: bool) -> &mut Self {
+        self.transaction_config.runtime_config.vm_casper_v2 = vm_casper_v2;
+        self
+    }
 }
 
 impl ToBytes for Chainspec {
