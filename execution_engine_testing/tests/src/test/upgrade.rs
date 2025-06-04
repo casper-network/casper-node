@@ -1030,19 +1030,14 @@ fn call_and_migrate_purse_holder_contract(migration_scenario: MigrationScenario)
             req
         }
         MigrationScenario::ByPackageHash(maybe_contract_version) => {
-            let req = ExecuteRequestBuilder::versioned_contract_call_by_hash(
+            ExecuteRequestBuilder::versioned_contract_call_by_hash(
                 *DEFAULT_ACCOUNT_ADDR,
                 package_hash,
                 maybe_contract_version,
                 ENTRY_POINT_ADD,
                 runtime_args,
             )
-            .build();
-            if maybe_contract_version.is_some() {
-                builder.exec(req).expect_failure();
-                return;
-            }
-            req
+            .build()
         }
         MigrationScenario::ByContractHash => ExecuteRequestBuilder::contract_call_by_hash(
             *DEFAULT_ACCOUNT_ADDR,
@@ -1119,8 +1114,9 @@ fn should_correct_migrate_contract_when_invoked_by_package_name() {
 fn should_correctly_migrate_contract_when_invoked_by_name_and_version() {
     /* TODO The current Execution Engine Testing framework doesn't support calling a specific package version
      // we should reinstantiate this test once we add that possibility
-    call_and_migrate_purse_holder_contract(MigrationScenario::ByPackageName(Some(INITIAL_VERSION)))
+
     */
+    call_and_migrate_purse_holder_contract(MigrationScenario::ByPackageName(Some(INITIAL_VERSION)))
 }
 
 #[ignore]
@@ -1132,10 +1128,10 @@ fn should_correct_migrate_contract_when_invoked_by_package_hash() {
 #[ignore]
 #[test]
 fn should_correct_migrate_contract_when_invoked_by_package_hash_and_specific_version() {
-    /* TODO The current Execution Engine Testing framework doesn't support calling a specific package version
-     // we should reinstantiate this test once we add that possibility
-    call_and_migrate_purse_holder_contract(MigrationScenario::ByPackageHash(Some(INITIAL_VERSION)))
-    */
+    /* TODO The current Execution Engine Testing framework doesn't support calling a specific
+     * package version we should reinstantiate this test once we add that possibility
+     */
+    call_and_migrate_purse_holder_contract(MigrationScenario::ByPackageHash(Some(10)))
 }
 
 #[ignore]
@@ -1244,8 +1240,6 @@ fn should_correctly_retain_disabled_contract_version() {
 
     let runtime_args = runtime_args! {
         "contract_package_hash" => package_hash,
-        "major_version" => 1u32,
-        "version" => 1u32,
     };
 
     let contract_name = format!("{}.wasm", "call_package_version_by_hash");

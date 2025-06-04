@@ -1514,9 +1514,13 @@ where
             return None;
         }
 
-        // If possible versions has more than one, then the last element to be popped
-        // will be the version key which
+        // If possible versions has more than one, then the element to be popped
+        // will be the version key which has the same entity version, but the highest protocol
+        // version If there is only one version key matching the entity version then we will
+        // correctly pop the singular element in the possible versions.
+        // This sort is load bearing.
         possible_versions.sort();
+        println!("{:?}", possible_versions);
         possible_versions.pop()
     }
 
@@ -1651,6 +1655,7 @@ where
         entry_point_name: &str,
         args: RuntimeArgs,
     ) -> Result<CLValue, ExecError> {
+        println!("in exe, {:?}", identifier);
         let (footprint, entity_addr, package) = match identifier {
             CallContractIdentifier::Contract { contract_hash } => {
                 let entity_addr = if self.context.is_system_addressable_entity(&contract_hash)? {
@@ -1725,7 +1730,10 @@ where
                     (Some(entity_version), None) => {
                         match self.get_protocol_version_for_entity_version(entity_version, &package)
                         {
-                            Some(entity_version_key) => entity_version_key,
+                            Some(entity_version_key) => {
+                                println!("{}", entity_version_key);
+                                entity_version_key
+                            }
                             None => {
                                 return Err(ExecError::NoActiveEntityVersions(
                                     contract_package_hash.into(),
