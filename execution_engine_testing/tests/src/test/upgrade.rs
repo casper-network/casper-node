@@ -1299,6 +1299,7 @@ fn should_correctly_manage_entity_version_calls() {
         "contract_package_hash" => contract_package_hash,
         "version" => Some(1),
         "major_version" => None::<u32>,
+        "entry_point" => "add_named_purse".to_string(),
         "purse_name" => "v_1_1_purse",
     };
 
@@ -1307,12 +1308,13 @@ fn should_correctly_manage_entity_version_calls() {
         ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, &contract_name, runtime_args)
             .build();
 
-    builder.exec(exec_request).expect_failure();
+    builder.exec(exec_request).expect_success().commit();
 
     let runtime_args = runtime_args! {
         "contract_package_hash" => contract_package_hash,
         "version" => Some(2),
         "major_version" => None::<u32>,
+        "entry_point" => "add".to_string(),
         "purse_name" => "v_1_2_purse",
     };
 
@@ -1327,6 +1329,7 @@ fn should_correctly_manage_entity_version_calls() {
         "contract_package_hash" => contract_package_hash,
         "version" => Some(3),
         "major_version" => None::<u32>,
+        "entry_point" => "add".to_string(),
         "purse_name" => "v_1_3_purse",
     };
 
@@ -1351,6 +1354,7 @@ fn should_correctly_manage_entity_version_calls() {
         "contract_package_hash" => contract_package_hash,
         "version" => Some(1),
         "major_version" => None::<u32>,
+        "entry_point" => "add".to_string(),
         "purse_name" => "v_1_1_purse",
     };
 
@@ -1365,6 +1369,7 @@ fn should_correctly_manage_entity_version_calls() {
         "contract_package_hash" => contract_package_hash,
         "version" => Some(1),
         "major_version" => Some(1),
+        "entry_point" => "add_named_purse".to_string(),
         "purse_name" => "v_1_1_purse",
     };
 
@@ -1373,12 +1378,50 @@ fn should_correctly_manage_entity_version_calls() {
         ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, &contract_name, runtime_args)
             .build();
 
-    builder.exec(exec_request).expect_failure();
+    builder.exec(exec_request).expect_success().commit();
 
     let runtime_args = runtime_args! {
         "contract_package_hash" => contract_package_hash,
         "version" => None::<u32>,
         "major_version" => None::<u32>,
+        "entry_point" => "add".to_string(),
+        "purse_name" => "v_1_1_purse",
+    };
+
+    let contract_name = format!("{}.wasm", "call_package_version_by_hash");
+    let exec_request =
+        ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, &contract_name, runtime_args)
+            .build();
+
+    builder.exec(exec_request).expect_success().commit();
+
+    let contract_package = builder
+        .query(None, Key::Hash(contract_package_hash.value()), &[])
+        .expect("must have contract package as stored value")
+        .into_contract_package()
+        .expect("must get contract package");
+
+    let disable_hash = contract_package
+        .current_contract_hash()
+        .expect("must get hash");
+
+    let runtime_args = runtime_args! {
+        "contract_package_hash" => contract_package_hash,
+        "contract_hash" => disable_hash,
+    };
+
+    let contract_name = format!("{}.wasm", "disable_contract_by_contract_hash");
+    let exec_request =
+        ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, &contract_name, runtime_args)
+            .build();
+
+    builder.exec(exec_request).expect_success().commit();
+
+    let runtime_args = runtime_args! {
+        "contract_package_hash" => contract_package_hash,
+        "version" => Some(1),
+        "major_version" => None::<u32>,
+        "entry_point" => "add_named_purse".to_string(),
         "purse_name" => "v_1_1_purse",
     };
 

@@ -2204,6 +2204,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "disable-contract-by-contract-hash"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "displaydoc"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
