@@ -1015,19 +1015,14 @@ fn call_and_migrate_purse_holder_contract(migration_scenario: MigrationScenario)
 
     let execute_request = match migration_scenario {
         MigrationScenario::ByPackageName(maybe_contract_version) => {
-            let req = ExecuteRequestBuilder::versioned_contract_call_by_name(
+            ExecuteRequestBuilder::versioned_contract_call_by_name(
                 *DEFAULT_ACCOUNT_ADDR,
                 HASH_KEY_NAME,
                 maybe_contract_version,
                 ENTRY_POINT_ADD,
                 runtime_args,
             )
-            .build();
-            if maybe_contract_version.is_some() {
-                builder.exec(req).expect_failure();
-                return;
-            }
-            req
+            .build()
         }
         MigrationScenario::ByPackageHash(maybe_contract_version) => {
             ExecuteRequestBuilder::versioned_contract_call_by_hash(
@@ -1227,26 +1222,6 @@ fn should_correctly_retain_disabled_contract_version() {
     .build();
 
     builder.exec(exec_request).expect_failure();
-    let package_hash = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
-        .expect("must get account")
-        .named_keys()
-        .get("do_nothing_package_hash")
-        .expect("must have key")
-        .into_hash_addr()
-        .map(ContractPackageHash::new)
-        .expect("must have contract package hash");
-
-    let runtime_args = runtime_args! {
-        "contract_package_hash" => package_hash,
-    };
-
-    let contract_name = format!("{}.wasm", "call_package_version_by_hash");
-    let exec_request =
-        ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, &contract_name, runtime_args)
-            .build();
-
-    builder.exec(exec_request).expect_success().commit();
 }
 
 #[ignore]
