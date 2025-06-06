@@ -4,7 +4,7 @@ use casper_engine_test_support::{
 };
 
 use crate::lmdb_fixture;
-use casper_execution_engine::{engine_state, execution::ExecError};
+use casper_execution_engine::{engine_state, engine_state::Error, execution::ExecError};
 use casper_types::{
     account::AccountHash,
     addressable_entity::{AssociatedKeys, Weight},
@@ -1224,9 +1224,7 @@ fn should_correctly_retain_disabled_contract_version() {
     builder.exec(exec_request).expect_failure();
 }
 
-#[ignore]
-#[test]
-fn should_correctly_manage_entity_version_calls() {
+fn setup_state_for_version_tests() -> (LmdbWasmTestBuilder, ContractPackageHash) {
     const THREE_VERSION_FIXTURE: &str = "three_version_fixture";
 
     let (mut builder, lmdb_fixture_state, _temp_dir) =
@@ -1268,7 +1266,13 @@ fn should_correctly_manage_entity_version_calls() {
         .map(ContractPackageHash::new)
         .expect("must have package hash");
 
-    println!("{:?}", contract_package_hash);
+    (builder, contract_package_hash)
+}
+
+#[ignore]
+#[test]
+fn should_correctly_manage_entity_version_calls() {
+    let (mut builder, contract_package_hash) = setup_state_for_version_tests();
 
     let runtime_args = runtime_args! {
         "contract_package_hash" => contract_package_hash,
@@ -1397,6 +1401,132 @@ fn should_correctly_manage_entity_version_calls() {
         "version" => Some(1),
         "major_version" => None::<u32>,
         "entry_point" => "add_named_purse".to_string(),
+        "purse_name" => "v_1_1_purse",
+    };
+
+    let contract_name = format!("{}.wasm", "call_package_version_by_hash");
+    let exec_request =
+        ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, &contract_name, runtime_args)
+            .build();
+
+    builder.exec(exec_request).expect_success().commit();
+}
+
+#[ignore]
+#[test]
+fn should_call_correct_version_when_specifying_only_major_version() {
+    let (mut builder, contract_package_hash) = setup_state_for_version_tests();
+
+    // There are three 1.x versions in the package.
+    // The 1.1 version has an entry point `add_named_purse` while the 1.2 and 1.3
+    // rename the entry point to `add`
+    // Thus a call specifying 1.1 should work, however as per the rules, if 1.*
+    // is specified, then 1.3 should be invoked and the call should fail with
+    // the 1.1 entry point name.
+    let runtime_args = runtime_args! {
+        "contract_package_hash" => contract_package_hash,
+        "version" => Some(1),
+        "major_version" => Some(1),
+        "entry_point" => "add_named_purse".to_string(),
+        "purse_name" => "v_1_1_purse",
+    };
+
+    let contract_name = format!("{}.wasm", "call_package_version_by_hash");
+    let exec_request =
+        ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, &contract_name, runtime_args)
+            .build();
+
+    builder.exec(exec_request).expect_success().commit();
+
+    let runtime_args = runtime_args! {
+        "contract_package_hash" => contract_package_hash,
+        "version" => None::<u32>,
+        "major_version" => Some(1),
+        "entry_point" => "add_named_purse".to_string(),
+        "purse_name" => "v_1_1_purse",
+    };
+
+    let contract_name = format!("{}.wasm", "call_package_version_by_hash");
+    let exec_request =
+        ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, &contract_name, runtime_args)
+            .build();
+
+    builder.exec(exec_request).expect_failure();
+
+    let expected_error = Error::Exec(ExecError::NoSuchMethod("add_named_purse".to_string()));
+
+    builder.assert_error(expected_error);
+
+    let runtime_args = runtime_args! {
+        "contract_package_hash" => contract_package_hash,
+        "version" => None::<u32>,
+        "major_version" => Some(1),
+        "entry_point" => "add".to_string(),
+        "purse_name" => "v_1_1_purse",
+    };
+
+    let contract_name = format!("{}.wasm", "call_package_version_by_hash");
+    let exec_request =
+        ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, &contract_name, runtime_args)
+            .build();
+
+    builder.exec(exec_request).expect_success().commit();
+}
+
+#[ignore]
+#[test]
+fn should_correctly_invoke_version_in_package_when_no_versions_are_specified() {
+    let (mut builder, contract_package_hash) = setup_state_for_version_tests();
+
+    let runtime_args = runtime_args! {
+        "contract_package_hash" => contract_package_hash,
+        "version" => None::<u32>,
+        "major_version" => None::<u32>,
+        "entry_point" => "add".to_string(),
+        "purse_name" => "v_1_1_purse",
+    };
+
+    let contract_name = format!("{}.wasm", "call_package_version_by_hash");
+    let exec_request =
+        ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, &contract_name, runtime_args)
+            .build();
+
+    builder.exec(exec_request).expect_success().commit();
+
+    let runtime_args = runtime_args! {
+        "contract_package" => contract_package_hash
+    };
+    let exec_request = {
+        let contract_name = format!("{}.wasm", "purse_holder_stored_upgrader_v2_2");
+        ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, &contract_name, runtime_args).build()
+    };
+
+    builder.exec(exec_request).expect_success().commit();
+
+    let runtime_args = runtime_args! {
+        "contract_package_hash" => contract_package_hash,
+        "version" => None::<u32>,
+        "major_version" => None::<u32>,
+        "entry_point" => "add".to_string(),
+        "purse_name" => "v_1_1_purse",
+    };
+
+    let contract_name = format!("{}.wasm", "call_package_version_by_hash");
+    let exec_request =
+        ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, &contract_name, runtime_args)
+            .build();
+
+    builder.exec(exec_request).expect_failure();
+
+    let expected_error = Error::Exec(ExecError::NoSuchMethod("add".to_string()));
+
+    builder.assert_error(expected_error);
+
+    let runtime_args = runtime_args! {
+        "contract_package_hash" => contract_package_hash,
+        "version" => None::<u32>,
+        "major_version" => None::<u32>,
+        "entry_point" => "delegate".to_string(),
         "purse_name" => "v_1_1_purse",
     };
 

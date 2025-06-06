@@ -5161,6 +5161,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "purse-holder-stored-upgrader-v2-2"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "quanta"
 version = "0.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"

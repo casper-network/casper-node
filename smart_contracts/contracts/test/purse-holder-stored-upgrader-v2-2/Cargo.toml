@@ -1,0 +1,16 @@
+[package]
+name = "purse-holder-stored-upgrader-v2-2"
+version = "0.1.0"
+authors = ["Karan Dhareshwar <karan@casper.network>"]
+edition = "2021"
+
+[[bin]]
+name = "purse_holder_stored_upgrader_v2_2"
+path = "src/main.rs"
+bench = false
+doctest = false
+test = false
+
+[dependencies]
+casper-contract = { path = "../../../contract" }
+casper-types = { path = "../../../../types" }
