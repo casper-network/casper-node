@@ -975,6 +975,8 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
     };
 
     let trait_name = &item_trait.ident;
+    let trait_name_lower = trait_name.to_string().to_lowercase();
+
     let vis = &item_trait.vis;
     let mut dispatch_functions = Vec::new();
     // let mut dispatch_table = Vec::new();
@@ -995,6 +997,7 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
                 }
 
                 let func_name = func.sig.ident.clone();
+                let func_name_str = func_name.to_string();
 
                 if func_name.to_string().starts_with("__casper_") {
                     return TokenStream::from(
@@ -1007,10 +1010,12 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
                 }
 
                 let export_name = if method_attribute.fallback {
-                    format_ident!("{}", CASPER_RESERVED_FALLBACK_EXPORT)
+                    CASPER_RESERVED_FALLBACK_EXPORT.to_string()
                 } else {
-                    format_ident!("{}", &func_name)
+                    format!("{}_{}", trait_name_lower, func_name_str)
                 };
+
+                let export_ident = format_ident!("{}", &func_name_str);
 
                 let _result = match &func.sig.output {
                     syn::ReturnType::Default => {
@@ -1144,7 +1149,7 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
                 };
 
                 macro_symbols.push(quote! {
-                    #vis #func_name as #export_name => #dispatch_func_name
+                    #vis #func_name as #export_ident => #dispatch_func_name
                 });
 
                 dispatch_functions.push(quote! { #handle_dispatch });
@@ -1169,6 +1174,7 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
                 let is_fallback = method_attribute.fallback;
 
                 if !is_fallback {
+                    let entry_point_lit = LitStr::new(&export_name, Span::call_site());
                     extra_code.push(quote! {
                     fn #func_name<'a>(#self_ty #(#arg_names: #arg_types,)*) -> impl #crate_path::ToCallData<Return<'a> = #call_data_return_lifetime> {
                         #[derive(#crate_path::serializers::borsh::BorshSerialize)]
@@ -1182,7 +1188,7 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
 
                             type Return<'a> = #call_data_return_lifetime;
 
-                            fn entry_point(&self) -> &str { stringify!(#func_name) }
+                            fn entry_point(&self) -> &str { #entry_point_lit }
                             fn input_data(&self) -> Option<Vec<u8>> {
                                 #input_data_content
                             }
