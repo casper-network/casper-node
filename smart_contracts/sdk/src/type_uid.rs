@@ -1,4 +1,3 @@
-use borsh::{BorshDeserialize, BorshSerialize};
 use xxhash_rust::const_xxh64::xxh64;
 
 const TYPE_UID_SEED: u64 = 0;
@@ -67,10 +66,6 @@ impl Uid {
             b_bytes[6], b_bytes[7],
         ];
         Uid::from_bytes(&preimage)
-    }
-
-    pub const fn serialized_length() -> usize {
-        8
     }
 }
 

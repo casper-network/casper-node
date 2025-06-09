@@ -87,13 +87,14 @@ pub fn copy_input_to(dest: &mut [u8]) -> Option<&[u8]> {
     Some(&dest[..length])
 }
 
-/// Return from the contract.
+/// Return from the contract, tagged as arbitrary u8 array.
 pub fn ret(flags: ReturnFlags, data: Option<&[u8]>) {
     let (data_ptr, data_len) = match data {
         Some(data) => (data.as_ptr(), data.len()),
         None => (ptr::null(), 0),
     };
-    unsafe { casper_contract_sdk_sys::casper_return(flags.bits(), data_ptr, data_len) };
+    let data_type_uid = <[u8]>::UID.as_u64();
+    unsafe { casper_contract_sdk_sys::casper_return(flags.bits(), data_ptr, data_len, data_type_uid) };
     #[cfg(target_arch = "wasm32")]
     unreachable!()
 }

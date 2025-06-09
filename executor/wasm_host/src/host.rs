@@ -550,6 +550,7 @@ pub fn casper_return<S: GlobalStateReader, E: Executor>(
     flags: u32,
     data_ptr: u32,
     data_len: u32,
+    data_type_uid: u64,
 ) -> VMResult<()> {
     let ret_cost = caller.context().config.host_function_costs().ret;
     charge_host_function_call(
@@ -562,10 +563,16 @@ pub fn casper_return<S: GlobalStateReader, E: Executor>(
     let data = if data_ptr == 0 {
         None
     } else {
-        let data = caller
+        caller
             .memory_read(data_ptr, data_len.try_into_wrapped()?)
-            .map(Bytes::from)?;
-        Some(data)
+            .map(|data| {
+                let mut buffer = Vec::with_capacity(
+                    data_type_uid.serialized_length() + data.serialized_length()
+                );
+                data_type_uid.write_bytes(&mut buffer).ok()?;
+                data.write_bytes(&mut buffer).ok()?;
+                Some(Bytes::from(data))
+            })?
     };
     Err(VMError::Return { flags, data })
 }
