@@ -1,6 +1,7 @@
 use std::{borrow::Cow, num::NonZeroU32, sync::Arc};
 
 use bytes::Bytes;
+use casper_contract_sdk::type_uid::TypeUid;
 use casper_executor_wasm_common::{
     chain_utils,
     entry_point::{
@@ -34,13 +35,12 @@ use casper_types::{
     ByteCodeKind, CLType, CLValue, ContractRuntimeTag, Digest, EntityAddr, EntityEntryPoint,
     EntityKind, EntryPointAccess, EntryPointAddr, EntryPointPayment, EntryPointType,
     EntryPointValue, HashAddr, HostFunctionV2, Key, Package, PackageHash, ProtocolVersion,
-    StoredValue, URef, U512, TaggedBytes,
+    StoredValue, TaggedBytes, URef, U512,
 };
 use either::Either;
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 use tracing::{error, info, warn};
-use casper_contract_sdk::type_uid::TypeUid;
 
 use crate::{
     abi::{CreateResult, ReadInfo},
@@ -412,7 +412,7 @@ pub fn casper_read<S: GlobalStateReader, E: Executor>(
         Ok(Some(StoredValue::TaggedBytes(raw_bytes))) => {
             let (type_uid, bytes) = raw_bytes.deconstruct();
             (type_uid, Cow::Owned(bytes.take_inner()))
-        },
+        }
         Ok(Some(StoredValue::EntryPoint(EntryPointValue::V1CasperVm(entry_point)))) => {
             let bytes: Cow<[u8]> = match entry_point.entry_point_payment() {
                 EntryPointPayment::Caller => Cow::Borrowed(&[ENTRY_POINT_PAYMENT_CALLER]),
@@ -567,7 +567,7 @@ pub fn casper_return<S: GlobalStateReader, E: Executor>(
             .memory_read(data_ptr, data_len.try_into_wrapped()?)
             .map(|data| {
                 let mut buffer = Vec::with_capacity(
-                    data_type_uid.serialized_length() + data.serialized_length()
+                    data_type_uid.serialized_length() + data.serialized_length(),
                 );
                 data_type_uid.write_bytes(&mut buffer).ok()?;
                 data.write_bytes(&mut buffer).ok()?;

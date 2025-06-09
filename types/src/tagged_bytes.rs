@@ -1,3 +1,5 @@
+use alloc::vec::Vec;
+
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 #[cfg(feature = "json-schema")]
@@ -18,10 +20,7 @@ pub struct TaggedBytes {
 impl TaggedBytes {
     // Ctor.
     pub fn new(type_uid: u64, bytes: Bytes) -> Self {
-        Self {
-            type_uid,
-            bytes,
-        }
+        Self { type_uid, bytes }
     }
 
     pub fn deconstruct(self) -> (u64, Bytes) {
@@ -37,8 +36,7 @@ impl ToBytes for TaggedBytes {
     }
 
     fn serialized_length(&self) -> usize {
-        self.type_uid.serialized_length() +
-        self.bytes.serialized_length()
+        self.type_uid.serialized_length() + self.bytes.serialized_length()
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
@@ -52,10 +50,7 @@ impl FromBytes for TaggedBytes {
         let (type_uid, remainder) = u64::from_bytes(bytes)?;
         let (bytes, remainder) = Bytes::from_bytes(remainder)?;
 
-        Ok((Self {
-            type_uid,
-            bytes
-        }, remainder))
+        Ok((Self { type_uid, bytes }, remainder))
     }
 }
 
@@ -63,15 +58,17 @@ impl FromBytes for TaggedBytes {
 #[cfg(any(feature = "testing", feature = "gens", test))]
 pub(crate) mod gens {
     use crate::{bytesrepr::Bytes, tagged_bytes::TaggedBytes};
-    use proptest::{collection, prelude::{any, Strategy}};
+    use proptest::{
+        collection,
+        prelude::{any, Strategy},
+    };
 
     pub fn tagged_bytes_arb() -> impl Strategy<Value = TaggedBytes> {
-        (
-            any::<u64>(),
-            collection::vec(any::<u8>(), 0..1000)
-        ).prop_map(|(type_uid, bytes)| TaggedBytes {
-            type_uid,
-            bytes: Bytes::from(bytes),
+        (any::<u64>(), collection::vec(any::<u8>(), 0..1000)).prop_map(|(type_uid, bytes)| {
+            TaggedBytes {
+                type_uid,
+                bytes: Bytes::from(bytes),
+            }
         })
     }
 }

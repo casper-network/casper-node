@@ -2,12 +2,18 @@
 pub mod native;
 
 use crate::{
-    abi::{CasperABI, EnumVariant}, prelude::{
+    abi::{CasperABI, EnumVariant},
+    prelude::{
         ffi::c_void,
         marker::PhantomData,
         mem::MaybeUninit,
         ptr::{self, NonNull},
-    }, reserve_vec_space, serializers::borsh::{BorshDeserialize, BorshSerialize}, type_uid::TypeUid, types::{Address, CallError}, Message, ToCallData
+    },
+    reserve_vec_space,
+    serializers::borsh::{BorshDeserialize, BorshSerialize},
+    type_uid::TypeUid,
+    types::{Address, CallError},
+    Message, ToCallData,
 };
 
 use casper_contract_sdk_sys::casper_env_info;
@@ -94,7 +100,9 @@ pub fn ret(flags: ReturnFlags, data: Option<&[u8]>) {
         None => (ptr::null(), 0),
     };
     let data_type_uid = <[u8]>::UID.as_u64();
-    unsafe { casper_contract_sdk_sys::casper_return(flags.bits(), data_ptr, data_len, data_type_uid) };
+    unsafe {
+        casper_contract_sdk_sys::casper_return(flags.bits(), data_ptr, data_len, data_type_uid)
+    };
     #[cfg(target_arch = "wasm32")]
     unreachable!()
 }
@@ -172,10 +180,7 @@ pub fn write(key: Keyspace, value: &[u8]) -> Result<(), CommonResult> {
 }
 
 /// Write typed to global state.
-pub fn write_t<T: BorshSerialize + TypeUid>(
-    key: Keyspace,
-    value: T,
-) -> Result<(), CommonResult> {
+pub fn write_t<T: BorshSerialize + TypeUid>(key: Keyspace, value: T) -> Result<(), CommonResult> {
     let value = borsh::to_vec(&value).map_err(|_| CommonResult::InvalidData)?;
     let value_type_uid = T::UID;
     let (key_space, key_bytes) = match key {

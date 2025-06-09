@@ -12,17 +12,28 @@ use crate::{
     account::{
         self, action_thresholds::gens::account_action_thresholds_arb,
         associated_keys::gens::account_associated_keys_arb, Account, AccountHash,
-    }, addressable_entity::{
+    },
+    addressable_entity::{
         action_thresholds::gens::action_thresholds_arb, associated_keys::gens::associated_keys_arb,
         ContractRuntimeTag, MessageTopics, NamedKeyAddr, NamedKeyValue, Parameters, Weight,
-    }, block::BlockGlobalAddr, byte_code::ByteCodeKind, bytesrepr::Bytes, contract_messages::{MessageAddr, MessageChecksum, MessageTopicSummary, TopicNameHash}, contracts::{
+    },
+    block::BlockGlobalAddr,
+    byte_code::ByteCodeKind,
+    bytesrepr::Bytes,
+    contract_messages::{MessageAddr, MessageChecksum, MessageTopicSummary, TopicNameHash},
+    contracts::{
         Contract, ContractHash, ContractPackage, ContractPackageStatus, ContractVersionKey,
         ContractVersions, EntryPoint as ContractEntryPoint, EntryPoints as ContractEntryPoints,
         NamedKeys,
-    }, crypto::{
+    },
+    crypto::{
         self,
         gens::{public_key_arb_no_system, secret_key_arb_no_system},
-    }, deploy_info::gens::deploy_info_arb, global_state::{Pointer, TrieMerkleProof, TrieMerkleProofStep}, package::{EntityVersionKey, EntityVersions, Groups, PackageStatus}, system::{
+    },
+    deploy_info::gens::deploy_info_arb,
+    global_state::{Pointer, TrieMerkleProof, TrieMerkleProofStep},
+    package::{EntityVersionKey, EntityVersions, Groups, PackageStatus},
+    system::{
         auction::{
             gens::era_info_arb, Bid, BidAddr, BidKind, DelegationRate, Delegator, DelegatorBid,
             DelegatorKind, Reservation, UnbondingPurse, ValidatorBid, ValidatorCredit,
@@ -30,13 +41,23 @@ use crate::{
         },
         mint::BalanceHoldAddr,
         SystemEntityType,
-    }, tagged_bytes::gens::tagged_bytes_arb, transaction::{
+    },
+    tagged_bytes::gens::tagged_bytes_arb,
+    transaction::{
         gens::deploy_hash_arb, FieldsContainer, InitiatorAddrAndSecretKey, TransactionArgs,
         TransactionRuntimeParams, TransactionV1Payload,
-    }, transfer::{
+    },
+    transfer::{
         gens::{transfer_v1_addr_arb, transfer_v1_arb},
         TransferAddr,
-    }, AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, ByteCode, ByteCodeAddr, CLType, CLValue, Digest, EntityAddr, EntityEntryPoint, EntityKind, EntryPointAccess, EntryPointAddr, EntryPointPayment, EntryPointType, EntryPoints, EraId, Group, InitiatorAddr, Key, NamedArg, Package, Parameter, Phase, PricingMode, ProtocolVersion, PublicKey, RuntimeArgs, SemVer, StoredValue, TimeDiff, Timestamp, Transaction, TransactionEntryPoint, TransactionInvocationTarget, TransactionScheduling, TransactionTarget, TransactionV1, URef, U128, U256, U512
+    },
+    AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, ByteCode, ByteCodeAddr,
+    CLType, CLValue, Digest, EntityAddr, EntityEntryPoint, EntityKind, EntryPointAccess,
+    EntryPointAddr, EntryPointPayment, EntryPointType, EntryPoints, EraId, Group, InitiatorAddr,
+    Key, NamedArg, Package, Parameter, Phase, PricingMode, ProtocolVersion, PublicKey, RuntimeArgs,
+    SemVer, StoredValue, TimeDiff, Timestamp, Transaction, TransactionEntryPoint,
+    TransactionInvocationTarget, TransactionScheduling, TransactionTarget, TransactionV1, URef,
+    U128, U256, U512,
 };
 use proptest::{
     array, bits, bool,

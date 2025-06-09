@@ -16,10 +16,19 @@ use serde::{de, ser, Deserialize, Deserializer, Serialize, Serializer};
 use serde_bytes::ByteBuf;
 
 use crate::{
-    account::Account, addressable_entity::NamedKeyValue, bytesrepr::{self, Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH}, contract_messages::{MessageChecksum, MessageTopicSummary}, contract_wasm::ContractWasm, contracts::{Contract, ContractPackage}, package::Package, system::{
+    account::Account,
+    addressable_entity::NamedKeyValue,
+    bytesrepr::{self, Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    contract_messages::{MessageChecksum, MessageTopicSummary},
+    contract_wasm::ContractWasm,
+    contracts::{Contract, ContractPackage},
+    package::Package,
+    system::{
         auction::{Bid, BidKind, EraInfo, Unbond, UnbondingPurse, WithdrawPurse},
         prepayment::PrepaymentKind,
-    }, tagged_bytes::TaggedBytes, AddressableEntity, ByteCode, CLValue, DeployInfo, EntryPointValue, TransferV1
+    },
+    tagged_bytes::TaggedBytes,
+    AddressableEntity, ByteCode, CLValue, DeployInfo, EntryPointValue, TransferV1,
 };
 pub use global_state_identifier::GlobalStateIdentifier;
 pub use type_mismatch::TypeMismatch;
@@ -122,8 +131,8 @@ pub enum StoredValue {
     Prepayment(PrepaymentKind),
     /// An entrypoint record.
     EntryPoint(EntryPointValue),
-    /// Bytes tagged with a unique type id. Similar to a [`crate::StoredValue::CLValue`] but does not incur overhead of a
-    /// [`crate::CLValue`] and [`crate::CLType`].
+    /// Bytes tagged with a unique type id. Similar to a [`crate::StoredValue::CLValue`] but does
+    /// not incur overhead of a [`crate::CLValue`] and [`crate::CLType`].
     TaggedBytes(TaggedBytes),
 }
 
@@ -869,11 +878,10 @@ impl FromBytes for StoredValue {
                     (StoredValue::EntryPoint(entry_point), remainder)
                 })
             }
-            tag if tag == StoredValueTag::TaggedBytes as u8 => {
-                TaggedBytes::from_bytes(remainder).map(|(tagged_bytes, remainder)| {
+            tag if tag == StoredValueTag::TaggedBytes as u8 => TaggedBytes::from_bytes(remainder)
+                .map(|(tagged_bytes, remainder)| {
                     (StoredValue::TaggedBytes(tagged_bytes), remainder)
-                })
-            }
+                }),
             _ => Err(Error::Formatting),
         }
     }
@@ -1272,10 +1280,7 @@ mod tests {
 
     #[test]
     fn json_serialization_of_tagged_bytes() {
-        let stored_value = StoredValue::TaggedBytes(TaggedBytes::new(
-            0,
-            vec![1, 2, 3, 4].into(),
-        ));
+        let stored_value = StoredValue::TaggedBytes(TaggedBytes::new(0, vec![1, 2, 3, 4].into()));
         assert_eq!(
             serde_json::to_string(&stored_value).unwrap(),
             r#"{"TaggedBytes":{"type_uid":0,"bytes":"01020304"}}"#

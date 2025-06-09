@@ -65,6 +65,7 @@ pub(crate) mod serde_helpers;
 mod stored_value;
 pub mod system;
 mod tagged;
+mod tagged_bytes;
 #[cfg(any(feature = "testing", test))]
 pub mod testing;
 mod timestamp;
@@ -74,7 +75,6 @@ mod transfer_result;
 mod uint;
 mod uref;
 mod validator_change;
-mod tagged_bytes;
 
 #[cfg(all(feature = "std", any(feature = "std-fs-io", test)))]
 use libc::{c_long, sysconf, _SC_PAGESIZE};
@@ -113,15 +113,6 @@ pub use block::{
 pub use block::{TestBlockBuilder, TestBlockV1Builder};
 pub use block_time::{BlockTime, HoldsEpoch, BLOCKTIME_SERIALIZED_LENGTH};
 pub use byte_code::{ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind};
-pub use cl_type::{named_key_type, CLType, CLTyped};
-#[cfg(feature = "json-schema")]
-pub use cl_value::cl_value_to_json;
-pub use cl_value::{
-    handle_stored_dictionary_value, CLTypeMismatch, CLValue, CLValueError, ChecksumRegistry,
-    DictionaryValue as CLValueDictionary, SystemHashRegistry,
-};
-pub use global_state::Pointer;
-pub use tagged_bytes::{TaggedBytes};
 #[cfg(any(feature = "std", test))]
 pub use chainspec::{
     AccountConfig, AccountsConfig, ActivationPoint, AdministratorAccount, AuctionCosts,
@@ -154,6 +145,13 @@ pub use chainspec::{
     DEFAULT_MIN_TRANSFER_MOTES, DEFAULT_MUL_COST, DEFAULT_NEW_DICTIONARY_COST, DEFAULT_NOP_COST,
     DEFAULT_STORE_COST, DEFAULT_TRANSFER_COST, DEFAULT_UNREACHABLE_COST, DEFAULT_WASM_MAX_MEMORY,
 };
+pub use cl_type::{named_key_type, CLType, CLTyped};
+#[cfg(feature = "json-schema")]
+pub use cl_value::cl_value_to_json;
+pub use cl_value::{
+    handle_stored_dictionary_value, CLTypeMismatch, CLValue, CLValueError, ChecksumRegistry,
+    DictionaryValue as CLValueDictionary, SystemHashRegistry,
+};
 pub use contract_wasm::{ContractWasm, ContractWasmHash};
 #[doc(inline)]
 pub use contracts::{Contract, NamedKeys};
@@ -166,6 +164,7 @@ pub use digest::{
 pub use display_iter::DisplayIter;
 pub use era_id::EraId;
 pub use gas::Gas;
+pub use global_state::Pointer;
 #[cfg(feature = "json-schema")]
 pub use json_pretty_printer::json_pretty_print;
 #[doc(inline)]
@@ -189,6 +188,7 @@ pub use stored_value::{
 };
 pub use system::mint::METHOD_TRANSFER;
 pub use tagged::Tagged;
+pub use tagged_bytes::TaggedBytes;
 #[cfg(any(feature = "std", test))]
 pub use timestamp::serde_option_time_diff;
 pub use timestamp::{TimeDiff, Timestamp};
