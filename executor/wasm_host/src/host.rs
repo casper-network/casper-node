@@ -34,12 +34,13 @@ use casper_types::{
     ByteCodeKind, CLType, CLValue, ContractRuntimeTag, Digest, EntityAddr, EntityEntryPoint,
     EntityKind, EntryPointAccess, EntryPointAddr, EntryPointPayment, EntryPointType,
     EntryPointValue, HashAddr, HostFunctionV2, Key, Package, PackageHash, ProtocolVersion,
-    StoredValue, URef, U512,
+    StoredValue, URef, U512, TaggedBytes,
 };
 use either::Either;
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 use tracing::{error, info, warn};
+use casper_contract_sdk::type_uid::TypeUid;
 
 use crate::{
     abi::{CreateResult, ReadInfo},
@@ -116,6 +117,7 @@ pub fn casper_write<S: GlobalStateReader, E: Executor>(
     key_size: u32,
     value_ptr: u32,
     value_size: u32,
+    value_type_uid: u64,
 ) -> VMResult<u32> {
     let write_cost = caller.context().config.host_function_costs().write;
     charge_host_function_call(
@@ -183,7 +185,8 @@ pub fn casper_write<S: GlobalStateReader, E: Executor>(
 
     let stored_value = match keyspace {
         Keyspace::State | Keyspace::Context(_) | Keyspace::NamedKey(_) => {
-            StoredValue::RawBytes(value)
+            let tagged_bytes = TaggedBytes::new(value_type_uid, value.into());
+            StoredValue::TaggedBytes(tagged_bytes)
         }
         Keyspace::PaymentInfo(_) => {
             let entry_point_payment = match value.as_slice() {
@@ -405,16 +408,20 @@ pub fn casper_read<S: GlobalStateReader, E: Executor>(
     };
     let global_state_read_result = caller.context_mut().tracking_copy.read(&global_state_key);
 
-    let global_state_raw_bytes: Cow<[u8]> = match global_state_read_result {
-        Ok(Some(StoredValue::RawBytes(raw_bytes))) => Cow::Owned(raw_bytes),
+    let (type_uid, global_state_raw_bytes): (u64, Cow<[u8]>) = match global_state_read_result {
+        Ok(Some(StoredValue::TaggedBytes(raw_bytes))) => {
+            let (type_uid, bytes) = raw_bytes.deconstruct();
+            (type_uid, Cow::Owned(bytes.take_inner()))
+        },
         Ok(Some(StoredValue::EntryPoint(EntryPointValue::V1CasperVm(entry_point)))) => {
-            match entry_point.entry_point_payment() {
+            let bytes: Cow<[u8]> = match entry_point.entry_point_payment() {
                 EntryPointPayment::Caller => Cow::Borrowed(&[ENTRY_POINT_PAYMENT_CALLER]),
                 EntryPointPayment::DirectInvocationOnly => {
                     Cow::Borrowed(&[ENTRY_POINT_PAYMENT_DIRECT_INVOCATION_ONLY])
                 }
                 EntryPointPayment::SelfOnward => Cow::Borrowed(&[ENTRY_POINT_PAYMENT_SELF_ONWARD]),
-            }
+            };
+            (u8::UID.as_u64(), bytes)
         }
         Ok(Some(stored_value)) => {
             // TODO: Backwards compatibility with old EE, although it's not clear if we should do it
@@ -447,6 +454,7 @@ pub fn casper_read<S: GlobalStateReader, E: Executor>(
     let read_info = ReadInfo {
         data: out_ptr,
         data_size: global_state_raw_bytes.len().try_into_wrapped()?,
+        data_type: type_uid,
     };
 
     let read_info_bytes = safe_transmute::transmute_one_to_bytes(&read_info);
@@ -454,6 +462,7 @@ pub fn casper_read<S: GlobalStateReader, E: Executor>(
     if out_ptr != 0 {
         caller.memory_write(out_ptr, &global_state_raw_bytes)?;
     }
+
     Ok(HOST_ERROR_SUCCESS)
 }
 

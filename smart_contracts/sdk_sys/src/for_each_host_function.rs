@@ -17,6 +17,7 @@ macro_rules! for_each_host_function {
                 key_size: usize,
                 value_ptr: *const u8,
                 value_size: usize,
+                value_type_uid: u64,
             ) -> u32;
             pub fn casper_remove(
                 key_space: u64,

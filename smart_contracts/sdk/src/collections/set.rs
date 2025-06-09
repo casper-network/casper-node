@@ -31,7 +31,8 @@ where
 
     pub fn insert(&mut self, key: T) {
         let lookup_key = self.lookup.lookup(self.prefix.as_bytes(), &key);
-        casper::write(Keyspace::Context(lookup_key.as_ref()), &[]).unwrap();
+        let value: [u8;0] = [];
+        casper::write(Keyspace::Context(lookup_key.as_ref()), &value).unwrap();
     }
 
     pub fn contains_key(&self, key: T) -> bool {

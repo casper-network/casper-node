@@ -764,7 +764,7 @@ where
             | StoredValue::Message(_)
             | StoredValue::Prepayment(_)
             | StoredValue::EntryPoint(_)
-            | StoredValue::RawBytes(_) => Ok(()),
+            | StoredValue::TaggedBytes(_) => Ok(()),
         }
     }
 

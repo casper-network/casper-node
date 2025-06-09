@@ -1,3 +1,4 @@
+use borsh::{BorshDeserialize, BorshSerialize};
 use xxhash_rust::const_xxh64::xxh64;
 
 const TYPE_UID_SEED: u64 = 0;
@@ -66,6 +67,10 @@ impl Uid {
             b_bytes[6], b_bytes[7],
         ];
         Uid::from_bytes(&preimage)
+    }
+
+    pub const fn serialized_length() -> usize {
+        8
     }
 }
 
@@ -157,6 +162,10 @@ impl_type_uid_for_tuple!(Tuple9: T1, T2, T3, T4, T5, T6, T7, T8, T9);
 impl_type_uid_for_tuple!(Tuple10: T1, T2, T3, T4, T5, T6, T7, T8, T9, T10);
 impl_type_uid_for_tuple!(Tuple11: T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11);
 impl_type_uid_for_tuple!(Tuple12: T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12);
+
+impl<T: TypeUid> TypeUid for &T {
+    const UID: Uid = T::UID;
+}
 
 #[cfg(test)]
 mod tests {

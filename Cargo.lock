@@ -927,6 +927,7 @@ version = "0.1.2"
 dependencies = [
  "base16",
  "bytes",
+ "casper-contract-sdk",
  "casper-executor-wasm-common",
  "casper-executor-wasm-interface",
  "casper-storage",

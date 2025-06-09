@@ -13,6 +13,7 @@ base16 = "0.2"
 bytes = "1.10"
 casper-executor-wasm-common = { version = "0.1.2", path = "../wasm_common" }
 casper-executor-wasm-interface = { version = "0.1.2", path = "../wasm_interface" }
+casper-contract-sdk = { version = "0.1.2", path = "../../smart_contracts/sdk" }
 casper-storage = { version = "2.1.0", path = "../../storage" }
 casper-types = { version = "6.0.0", path = "../../types" }
 either = "1.15"

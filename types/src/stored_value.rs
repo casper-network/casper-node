@@ -16,18 +16,10 @@ use serde::{de, ser, Deserialize, Deserializer, Serialize, Serializer};
 use serde_bytes::ByteBuf;
 
 use crate::{
-    account::Account,
-    addressable_entity::NamedKeyValue,
-    bytesrepr::{self, Bytes, Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    contract_messages::{MessageChecksum, MessageTopicSummary},
-    contract_wasm::ContractWasm,
-    contracts::{Contract, ContractPackage},
-    package::Package,
-    system::{
+    account::Account, addressable_entity::NamedKeyValue, bytesrepr::{self, Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH}, contract_messages::{MessageChecksum, MessageTopicSummary}, contract_wasm::ContractWasm, contracts::{Contract, ContractPackage}, package::Package, system::{
         auction::{Bid, BidKind, EraInfo, Unbond, UnbondingPurse, WithdrawPurse},
         prepayment::PrepaymentKind,
-    },
-    AddressableEntity, ByteCode, CLValue, DeployInfo, EntryPointValue, TransferV1,
+    }, tagged_bytes::TaggedBytes, AddressableEntity, ByteCode, CLValue, DeployInfo, EntryPointValue, TransferV1
 };
 pub use global_state_identifier::GlobalStateIdentifier;
 pub use type_mismatch::TypeMismatch;
@@ -76,8 +68,8 @@ pub enum StoredValueTag {
     Prepayment = 18,
     /// An entrypoint record.
     EntryPoint = 19,
-    /// Raw bytes.
-    RawBytes = 20,
+    /// Tagged bytes.
+    TaggedBytes = 20,
 }
 
 /// A value stored in Global State.
@@ -130,9 +122,9 @@ pub enum StoredValue {
     Prepayment(PrepaymentKind),
     /// An entrypoint record.
     EntryPoint(EntryPointValue),
-    /// Raw bytes. Similar to a [`crate::StoredValue::CLValue`] but does not incur overhead of a
+    /// Bytes tagged with a unique type id. Similar to a [`crate::StoredValue::CLValue`] but does not incur overhead of a
     /// [`crate::CLValue`] and [`crate::CLType`].
-    RawBytes(#[cfg_attr(feature = "json-schema", schemars(with = "String"))] Vec<u8>),
+    TaggedBytes(TaggedBytes),
 }
 
 impl StoredValue {
@@ -284,10 +276,10 @@ impl StoredValue {
         }
     }
 
-    /// Returns raw bytes if this is a `RawBytes` variant.
-    pub fn as_raw_bytes(&self) -> Option<&[u8]> {
+    /// Returns [`TaggedBytes`] if this is a `TaggedBytes` variant.
+    pub fn as_tagged_bytes(&self) -> Option<&TaggedBytes> {
         match self {
-            StoredValue::RawBytes(bytes) => Some(bytes),
+            StoredValue::TaggedBytes(tagged) => Some(tagged),
             _ => None,
         }
     }
@@ -445,7 +437,7 @@ impl StoredValue {
             StoredValue::NamedKey(_) => "NamedKey".to_string(),
             StoredValue::Prepayment(_) => "Prepayment".to_string(),
             StoredValue::EntryPoint(_) => "EntryPoint".to_string(),
-            StoredValue::RawBytes(_) => "RawBytes".to_string(),
+            StoredValue::TaggedBytes(_) => "RawBytes".to_string(),
         }
     }
 
@@ -472,7 +464,7 @@ impl StoredValue {
             StoredValue::NamedKey(_) => StoredValueTag::NamedKey,
             StoredValue::Prepayment(_) => StoredValueTag::Prepayment,
             StoredValue::EntryPoint(_) => StoredValueTag::EntryPoint,
-            StoredValue::RawBytes(_) => StoredValueTag::RawBytes,
+            StoredValue::TaggedBytes(_) => StoredValueTag::TaggedBytes,
         }
     }
 
@@ -780,7 +772,7 @@ impl ToBytes for StoredValue {
                 StoredValue::NamedKey(named_key_value) => named_key_value.serialized_length(),
                 StoredValue::Prepayment(prepayment_kind) => prepayment_kind.serialized_length(),
                 StoredValue::EntryPoint(entry_point_value) => entry_point_value.serialized_length(),
-                StoredValue::RawBytes(bytes) => bytes.serialized_length(),
+                StoredValue::TaggedBytes(bytes) => bytes.serialized_length(),
             }
     }
 
@@ -809,7 +801,7 @@ impl ToBytes for StoredValue {
             StoredValue::NamedKey(named_key_value) => named_key_value.write_bytes(writer),
             StoredValue::Prepayment(prepayment_kind) => prepayment_kind.write_bytes(writer),
             StoredValue::EntryPoint(entry_point_value) => entry_point_value.write_bytes(writer),
-            StoredValue::RawBytes(bytes) => bytes.write_bytes(writer),
+            StoredValue::TaggedBytes(bytes) => bytes.write_bytes(writer),
         }
     }
 }
@@ -877,9 +869,10 @@ impl FromBytes for StoredValue {
                     (StoredValue::EntryPoint(entry_point), remainder)
                 })
             }
-            tag if tag == StoredValueTag::RawBytes as u8 => {
-                let (bytes, remainder) = Bytes::from_bytes(remainder)?;
-                Ok((StoredValue::RawBytes(bytes.into()), remainder))
+            tag if tag == StoredValueTag::TaggedBytes as u8 => {
+                TaggedBytes::from_bytes(remainder).map(|(tagged_bytes, remainder)| {
+                    (StoredValue::TaggedBytes(tagged_bytes), remainder)
+                })
             }
             _ => Err(Error::Formatting),
         }
@@ -923,7 +916,7 @@ pub mod serde_helpers {
         NamedKey(&'a NamedKeyValue),
         Prepayment(&'a PrepaymentKind),
         EntryPoint(&'a EntryPointValue),
-        RawBytes(Bytes),
+        TaggedBytes(&'a TaggedBytes),
     }
 
     /// A value stored in Global State.
@@ -979,7 +972,7 @@ pub mod serde_helpers {
         Prepayment(PrepaymentKind),
         /// Raw bytes. Similar to a [`crate::StoredValue::CLValue`] but does not incur overhead of
         /// a [`crate::CLValue`] and [`crate::CLType`].
-        RawBytes(Bytes),
+        TaggedBytes(TaggedBytes),
     }
 
     impl<'a> From<&'a StoredValue> for HumanReadableSerHelper<'a> {
@@ -1015,9 +1008,7 @@ pub mod serde_helpers {
                 StoredValue::NamedKey(payload) => HumanReadableSerHelper::NamedKey(payload),
                 StoredValue::Prepayment(payload) => HumanReadableSerHelper::Prepayment(payload),
                 StoredValue::EntryPoint(payload) => HumanReadableSerHelper::EntryPoint(payload),
-                StoredValue::RawBytes(bytes) => {
-                    HumanReadableSerHelper::RawBytes(bytes.as_slice().into())
-                }
+                StoredValue::TaggedBytes(payload) => HumanReadableSerHelper::TaggedBytes(payload),
             }
         }
     }
@@ -1081,7 +1072,7 @@ pub mod serde_helpers {
                 }
                 HumanReadableDeserHelper::NamedKey(payload) => StoredValue::NamedKey(payload),
                 HumanReadableDeserHelper::EntryPoint(payload) => StoredValue::EntryPoint(payload),
-                HumanReadableDeserHelper::RawBytes(bytes) => StoredValue::RawBytes(bytes.into()),
+                HumanReadableDeserHelper::TaggedBytes(payload) => StoredValue::TaggedBytes(payload),
                 HumanReadableDeserHelper::Prepayment(prepayment_kind) => {
                     StoredValue::Prepayment(prepayment_kind)
                 }
@@ -1118,7 +1109,7 @@ impl<'de> Deserialize<'de> for StoredValue {
 
 #[cfg(test)]
 mod tests {
-    use crate::{bytesrepr, gens, StoredValue};
+    use crate::{bytesrepr, gens, tagged_bytes::TaggedBytes, StoredValue};
     use proptest::proptest;
     use serde_json::Value;
 
@@ -1280,11 +1271,14 @@ mod tests {
     }
 
     #[test]
-    fn json_serialization_of_raw_bytes() {
-        let stored_value = StoredValue::RawBytes(vec![1, 2, 3, 4]);
+    fn json_serialization_of_tagged_bytes() {
+        let stored_value = StoredValue::TaggedBytes(TaggedBytes::new(
+            0,
+            vec![1, 2, 3, 4].into(),
+        ));
         assert_eq!(
             serde_json::to_string(&stored_value).unwrap(),
-            r#"{"RawBytes":"01020304"}"#
+            r#"{"TaggedBytes":{"type_uid":0,"bytes":"01020304"}}"#
         );
     }
 

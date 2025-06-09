@@ -15,6 +15,8 @@ pub struct ReadInfo {
     pub data: *const u8,
     /// Size in bytes.
     pub size: usize,
+    /// UID of the stored type
+    pub type_uid: u64,
 }
 
 #[repr(C)]

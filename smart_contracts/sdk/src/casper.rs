@@ -2,17 +2,12 @@
 pub mod native;
 
 use crate::{
-    abi::{CasperABI, EnumVariant},
-    prelude::{
+    abi::{CasperABI, EnumVariant}, prelude::{
         ffi::c_void,
         marker::PhantomData,
         mem::MaybeUninit,
         ptr::{self, NonNull},
-    },
-    reserve_vec_space,
-    serializers::borsh::{BorshDeserialize, BorshSerialize},
-    types::{Address, CallError},
-    Message, ToCallData,
+    }, reserve_vec_space, serializers::borsh::{BorshDeserialize, BorshSerialize}, type_uid::TypeUid, types::{Address, CallError}, Message, ToCallData
 };
 
 use casper_contract_sdk_sys::casper_env_info;
@@ -118,6 +113,7 @@ pub fn read<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
     let mut info = casper_contract_sdk_sys::ReadInfo {
         data: ptr::null(),
         size: 0,
+        type_uid: 0,
     };
 
     extern "C" fn alloc_cb<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
@@ -152,8 +148,35 @@ pub fn read<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
     }
 }
 
-/// Write to the global state.
+/// Write to the global state, typed as an ordinary byte array.
 pub fn write(key: Keyspace, value: &[u8]) -> Result<(), CommonResult> {
+    let (key_space, key_bytes) = match key {
+        Keyspace::State => (KeyspaceTag::State as u64, &[][..]),
+        Keyspace::Context(key_bytes) => (KeyspaceTag::Context as u64, key_bytes),
+        Keyspace::NamedKey(key_bytes) => (KeyspaceTag::NamedKey as u64, key_bytes.as_bytes()),
+        Keyspace::PaymentInfo(payload) => (KeyspaceTag::PaymentInfo as u64, payload.as_bytes()),
+    };
+    let value_type_uid = <[u8]>::UID;
+    let ret = unsafe {
+        casper_contract_sdk_sys::casper_write(
+            key_space,
+            key_bytes.as_ptr(),
+            key_bytes.len(),
+            value.as_ptr(),
+            value.len(),
+            value_type_uid.as_u64(),
+        )
+    };
+    result_from_code(ret)
+}
+
+/// Write typed to global state.
+pub fn write_t<T: BorshSerialize + TypeUid>(
+    key: Keyspace,
+    value: T,
+) -> Result<(), CommonResult> {
+    let value = borsh::to_vec(&value).map_err(|_| CommonResult::InvalidData)?;
+    let value_type_uid = T::UID;
     let (key_space, key_bytes) = match key {
         Keyspace::State => (KeyspaceTag::State as u64, &[][..]),
         Keyspace::Context(key_bytes) => (KeyspaceTag::Context as u64, key_bytes),
@@ -167,6 +190,7 @@ pub fn write(key: Keyspace, value: &[u8]) -> Result<(), CommonResult> {
             key_bytes.len(),
             value.as_ptr(),
             value.len(),
+            value_type_uid.as_u64(),
         )
     };
     result_from_code(ret)
@@ -308,7 +332,7 @@ pub fn upgrade(
     }
 }
 
-/// Read from the global state into a vector.
+/// Read from the global state into a vector of bytes, disregarding the type uid.
 pub fn read_into_vec(key: Keyspace) -> Result<Option<Vec<u8>>, CommonResult> {
     let mut vec = Vec::new();
     let out = read(key, |size| reserve_vec_space(&mut vec, size))?.map(|()| vec);

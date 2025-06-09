@@ -74,6 +74,7 @@ mod transfer_result;
 mod uint;
 mod uref;
 mod validator_change;
+mod tagged_bytes;
 
 #[cfg(all(feature = "std", any(feature = "std-fs-io", test)))]
 use libc::{c_long, sysconf, _SC_PAGESIZE};
@@ -120,7 +121,7 @@ pub use cl_value::{
     DictionaryValue as CLValueDictionary, SystemHashRegistry,
 };
 pub use global_state::Pointer;
-
+pub use tagged_bytes::{TaggedBytes};
 #[cfg(any(feature = "std", test))]
 pub use chainspec::{
     AccountConfig, AccountsConfig, ActivationPoint, AdministratorAccount, AuctionCosts,

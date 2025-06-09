@@ -7,6 +7,7 @@ pub(crate) struct ReadInfo {
     pub(crate) data: u32,
     /// Size in bytes.
     pub(crate) data_size: u32,
+    pub(crate) data_type: u64,
 }
 
 unsafe impl TriviallyTransmutable for ReadInfo {}
