@@ -251,7 +251,7 @@ fn measure_arg_size(bytes: usize) {
         .expect("should have key")
         .into();
 
-    let argument: Vec<u8> = iter::repeat(b'1').take(bytes).collect();
+    let argument: Vec<u8> = iter::repeat_n(b'1', bytes).collect();
 
     runtime::call_versioned_contract::<()>(
         contract_package_hash,
