@@ -167,8 +167,6 @@ where
         justification: BlocklistJustification,
         /// Until when the block took effect.
         until: Instant,
-        /// NodeId of the blocked peer
-        maybe_peer_id: Option<NodeId>,
     },
     /// The address is owned by ourselves and will not be tried again.
     Loopback,
@@ -580,30 +578,25 @@ where
             })
     }
 
-    /// Blocks an address for a specified amount of time.
-    ///
-    /// Causes any current connection to the address to be terminated and future ones prohibited.
-    pub(crate) fn block_addr_for_duration(
+    pub(crate) fn block_addr<R: Rng>(
         &mut self,
         addr: SocketAddr,
         now: Instant,
         justification: BlocklistJustification,
-        duration: Duration,
+        rng: &mut R,
     ) -> Option<DialRequest<H>> {
         let span = make_span(addr, self.outgoing.get(&addr));
-        let until = now + duration;
         span.clone()
             .in_scope(move || match self.outgoing.entry(addr) {
                 Entry::Vacant(_vacant) => {
                     info!("unknown address blocked");
-                    let maybe_peer_id = Self::get_peer_from_routes(&self.routes, addr);
+                    let until = self.calculate_block_until(now, rng);
                     self.change_outgoing_state(
                         addr,
                         OutgoingState::Blocked {
                             since: now,
                             justification,
                             until,
-                            maybe_peer_id,
                         },
                     );
                     None
@@ -620,48 +613,32 @@ where
                     OutgoingState::Connected { ref handle, .. } => {
                         info!("connected address blocked, disconnecting");
                         let handle = handle.clone();
-                        let maybe_peer_id = Self::get_peer_from_routes(&self.routes, addr);
+                        let until = self.calculate_block_until(now, rng);
                         self.change_outgoing_state(
                             addr,
                             OutgoingState::Blocked {
                                 since: now,
                                 justification,
                                 until,
-                                maybe_peer_id,
                             },
                         );
                         Some(DialRequest::Disconnect { span, handle })
                     }
                     OutgoingState::Waiting { .. } | OutgoingState::Connecting { .. } => {
+                        let until = self.calculate_block_until(now, rng);
                         info!("address blocked");
-                        let maybe_peer_id = Self::get_peer_from_routes(&self.routes, addr);
                         self.change_outgoing_state(
                             addr,
                             OutgoingState::Blocked {
                                 since: now,
                                 justification,
                                 until,
-                                maybe_peer_id,
                             },
                         );
                         None
                     }
                 },
             })
-    }
-
-    /// Blocks an address.
-    ///
-    /// Causes any current connection to the address to be terminated and future ones prohibited.
-    pub(crate) fn block_addr<R: Rng>(
-        &mut self,
-        addr: SocketAddr,
-        now: Instant,
-        justification: BlocklistJustification,
-        rng: &mut R,
-    ) -> Option<DialRequest<H>> {
-        let block_duration = self.calculate_block_duration(rng);
-        self.block_addr_for_duration(addr, now, justification, block_duration)
     }
 
     /// Checks if an address is blocked.
@@ -734,13 +711,12 @@ where
         &mut self,
         rng: &mut R,
         now: Instant,
-    ) -> (Vec<DialRequest<H>>, Vec<NodeId>) {
+    ) -> Vec<DialRequest<H>> {
         let mut to_forget = Vec::new();
         let mut to_fail = Vec::new();
         let mut to_ping_timeout = Vec::new();
         let mut to_reconnect = Vec::new();
         let mut to_ping = Vec::new();
-        let mut unblocked_peers = Vec::new();
 
         for (&addr, outgoing) in &mut self.outgoing {
             // Note: `Span::in_scope` is no longer serviceable here due to borrow limitations.
@@ -777,16 +753,9 @@ where
                     }
                 }
 
-                OutgoingState::Blocked {
-                    until,
-                    maybe_peer_id,
-                    ..
-                } => {
+                OutgoingState::Blocked { until, .. } => {
                     if now >= until {
                         info!("address unblocked");
-                        if let Some(peer_id) = maybe_peer_id {
-                            unblocked_peers.push(peer_id);
-                        }
                         to_reconnect.push((addr, 0));
                     }
                 }
@@ -910,7 +879,7 @@ where
             }
         }));
 
-        (dial_requests, unblocked_peers)
+        dial_requests
     }
 
     /// Handles the outcome of a dialing attempt.
@@ -1047,20 +1016,14 @@ where
         })
     }
 
-    fn calculate_block_duration<R: Rng>(&self, rng: &mut R) -> Duration {
+    fn calculate_block_until<R: Rng>(&self, now: Instant, rng: &mut R) -> Instant {
         let min = self.config.unblock_after_min;
         let max = self.config.unblock_after_max;
         if min == max {
-            return min;
+            return now + min;
         }
-        rng.gen_range(min..=max)
-    }
-
-    fn get_peer_from_routes(
-        routes: &HashMap<NodeId, SocketAddr>,
-        addr: SocketAddr,
-    ) -> Option<NodeId> {
-        routes.iter().find(|(_, v)| (**v) == addr).map(|el| *el.0)
+        let block_duration = rng.gen_range(min..=max);
+        now + block_duration
     }
 }
 
@@ -1182,24 +1145,25 @@ mod tests {
         assert_eq!(manager.metrics().out_state_waiting.get(), 1);
 
         // Performing housekeeping multiple times should not make a difference.
-        let (dial_requests, unblocked_peers) = manager.perform_housekeeping(&mut rng, clock.now());
-        assert!(dial_requests.is_empty());
-        assert!(unblocked_peers.is_empty());
-        let (dial_requests, unblocked_peers) = manager.perform_housekeeping(&mut rng, clock.now());
-        assert!(dial_requests.is_empty());
-        assert!(unblocked_peers.is_empty());
-        let (dial_requests, unblocked_peers) = manager.perform_housekeeping(&mut rng, clock.now());
-        assert!(dial_requests.is_empty());
-        assert!(unblocked_peers.is_empty());
-        let (dial_requests, unblocked_peers) = manager.perform_housekeeping(&mut rng, clock.now());
-        assert!(dial_requests.is_empty());
-        assert!(unblocked_peers.is_empty());
+        assert!(manager
+            .perform_housekeeping(&mut rng, clock.now())
+            .is_empty());
+        assert!(manager
+            .perform_housekeeping(&mut rng, clock.now())
+            .is_empty());
+        assert!(manager
+            .perform_housekeeping(&mut rng, clock.now())
+            .is_empty());
+        assert!(manager
+            .perform_housekeeping(&mut rng, clock.now())
+            .is_empty());
 
         // Advancing the clock will trigger a reconnection on the next housekeeping.
         clock.advance_time(2_000);
-        let (dial_requests, unblocked_peers) = manager.perform_housekeeping(&mut rng, clock.now());
-        assert!(dials(addr_a, &dial_requests));
-        assert!(unblocked_peers.is_empty());
+        assert!(dials(
+            addr_a,
+            &manager.perform_housekeeping(&mut rng, clock.now())
+        ));
         assert_eq!(manager.metrics().out_state_connecting.get(), 1);
         assert_eq!(manager.metrics().out_state_waiting.get(), 0);
 
@@ -1220,9 +1184,9 @@ mod tests {
         assert_eq!(manager.get_addr(id_a), Some(addr_a));
 
         // Time passes, and our connection drops. Reconnecting should be immediate.
-        let (dial_requests, unblocked_peers) = manager.perform_housekeeping(&mut rng, clock.now());
-        assert!(dial_requests.is_empty());
-        assert!(unblocked_peers.is_empty());
+        assert!(manager
+            .perform_housekeeping(&mut rng, clock.now())
+            .is_empty());
         clock.advance_time(20_000);
         assert!(dials(
             addr_a,
@@ -1236,9 +1200,9 @@ mod tests {
         assert!(manager.get_addr(id_a).is_none());
 
         // Reconnection is already in progress, so we do not expect another request on housekeeping.
-        let (dial_requests, unblocked_peers) = manager.perform_housekeeping(&mut rng, clock.now());
-        assert!(dial_requests.is_empty());
-        assert!(unblocked_peers.is_empty());
+        assert!(manager
+            .perform_housekeeping(&mut rng, clock.now())
+            .is_empty());
     }
 
     #[test]
@@ -1284,32 +1248,31 @@ mod tests {
         assert!(manager.learn_addr(addr_a, false, clock.now()).is_none());
         assert!(manager.learn_addr(addr_b, false, clock.now()).is_none());
 
-        let (dial_requests, unblocked_peers) = manager.perform_housekeeping(&mut rng, clock.now());
-        assert!(dial_requests.is_empty());
-        assert!(unblocked_peers.is_empty());
+        assert!(manager
+            .perform_housekeeping(&mut rng, clock.now())
+            .is_empty());
         assert!(manager.learn_addr(addr_a, false, clock.now()).is_none());
         assert!(manager.learn_addr(addr_b, false, clock.now()).is_none());
 
         // After 1.999 seconds, reconnection should still be delayed.
         clock.advance_time(1_999);
-        let (dial_requests, unblocked_peers) = manager.perform_housekeeping(&mut rng, clock.now());
-        assert!(dial_requests.is_empty());
-        assert!(unblocked_peers.is_empty());
+        assert!(manager
+            .perform_housekeeping(&mut rng, clock.now())
+            .is_empty());
 
         // Adding 0.001 seconds finally is enough to reconnect.
         clock.advance_time(1);
-        let (dial_requests, unblocked_peers) = manager.perform_housekeeping(&mut rng, clock.now());
-        assert!(unblocked_peers.is_empty());
-        assert!(dials(addr_a, &dial_requests));
-        assert!(dials(addr_b, &dial_requests));
+        let requests = manager.perform_housekeeping(&mut rng, clock.now());
+        assert!(dials(addr_a, &requests));
+        assert!(dials(addr_b, &requests));
 
         // Waiting for more than the reconnection delay should not be harmful or change
         // anything, as  we are currently connecting.
         clock.advance_time(6_000);
 
-        let (dial_requests, unblocked_peers) = manager.perform_housekeeping(&mut rng, clock.now());
-        assert!(dial_requests.is_empty());
-        assert!(unblocked_peers.is_empty());
+        assert!(manager
+            .perform_housekeeping(&mut rng, clock.now())
+            .is_empty());
 
         // Fail the connection again, wait 3.999 seconds, expecting no reconnection.
         assert!(manager
@@ -1328,16 +1291,15 @@ mod tests {
             .is_none());
 
         clock.advance_time(3_999);
-        let (dial_requests, unblocked_peers) = manager.perform_housekeeping(&mut rng, clock.now());
-        assert!(dial_requests.is_empty());
-        assert!(unblocked_peers.is_empty());
+        assert!(manager
+            .perform_housekeeping(&mut rng, clock.now())
+            .is_empty());
 
         // Adding 0.001 seconds finally again pushes us over the threshold.
         clock.advance_time(1);
-        let (dial_requests, unblocked_peers) = manager.perform_housekeeping(&mut rng, clock.now());
-        assert!(unblocked_peers.is_empty());
-        assert!(dials(addr_a, &dial_requests));
-        assert!(dials(addr_b, &dial_requests));
+        let requests = manager.perform_housekeeping(&mut rng, clock.now());
+        assert!(dials(addr_a, &requests));
+        assert!(dials(addr_b, &requests));
 
         // Fail the connection quickly.
         clock.advance_time(25);
@@ -1355,21 +1317,20 @@ mod tests {
                 when: clock.now(),
             },)
             .is_none());
-        let (dial_requests, unblocked_peers) = manager.perform_housekeeping(&mut rng, clock.now());
-        assert!(dial_requests.is_empty());
-        assert!(unblocked_peers.is_empty());
+        assert!(manager
+            .perform_housekeeping(&mut rng, clock.now())
+            .is_empty());
 
         // The last attempt should happen 8 seconds after the error, not the last attempt.
         clock.advance_time(7_999);
-        let (dial_requests, unblocked_peers) = manager.perform_housekeeping(&mut rng, clock.now());
-        assert!(dial_requests.is_empty());
-        assert!(unblocked_peers.is_empty());
+        assert!(manager
+            .perform_housekeeping(&mut rng, clock.now())
+            .is_empty());
 
         clock.advance_time(1);
-        let (dial_requests, unblocked_peers) = manager.perform_housekeeping(&mut rng, clock.now());
-        assert!(unblocked_peers.is_empty());
-        assert!(dials(addr_a, &dial_requests));
-        assert!(dials(addr_b, &dial_requests));
+        let requests = manager.perform_housekeeping(&mut rng, clock.now());
+        assert!(dials(addr_a, &requests));
+        assert!(dials(addr_b, &requests));
 
         // Fail the last attempt. No more reconnections should be happening.
         assert!(manager
@@ -1388,16 +1349,15 @@ mod tests {
             .is_none());
 
         // Only the unforgettable address should be reconnecting.
-        let (dial_requests, unblocked_peers) = manager.perform_housekeeping(&mut rng, clock.now());
-        assert!(unblocked_peers.is_empty());
-        assert!(!dials(addr_a, &dial_requests));
-        assert!(dials(addr_b, &dial_requests));
+        let requests = manager.perform_housekeeping(&mut rng, clock.now());
+        assert!(!dials(addr_a, &requests));
+        assert!(dials(addr_b, &requests));
 
         // But not `addr_a`, even after a long wait.
         clock.advance_time(1_000_000_000);
-        let (dial_requests, unblocked_peers) = manager.perform_housekeeping(&mut rng, clock.now());
-        assert!(dial_requests.is_empty());
-        assert!(unblocked_peers.is_empty());
+        assert!(manager
+            .perform_housekeeping(&mut rng, clock.now())
+            .is_empty());
     }
 
     #[test]
@@ -1434,9 +1394,9 @@ mod tests {
             &manager.learn_addr(addr_b, true, clock.now())
         ));
 
-        let (dial_requests, unblocked_peers) = manager.perform_housekeeping(&mut rng, clock.now());
-        assert!(dial_requests.is_empty());
-        assert!(unblocked_peers.is_empty());
+        assert!(manager
+            .perform_housekeeping(&mut rng, clock.now())
+            .is_empty());
 
         // Fifteen seconds later we succeed in connecting to `addr_b`.
         clock.advance_time(15_000);
@@ -1451,9 +1411,9 @@ mod tests {
         assert_eq!(manager.get_route(id_b), Some(&101));
 
         // Invariant through housekeeping.
-        let (dial_requests, unblocked_peers) = manager.perform_housekeeping(&mut rng, clock.now());
-        assert!(dial_requests.is_empty());
-        assert!(unblocked_peers.is_empty());
+        assert!(manager
+            .perform_housekeeping(&mut rng, clock.now())
+            .is_empty());
 
         assert_eq!(manager.get_route(id_b), Some(&101));
 
@@ -1495,9 +1455,9 @@ mod tests {
             },)
         ));
 
-        let (dial_requests, unblocked_peers) = manager.perform_housekeeping(&mut rng, clock.now());
-        assert!(dial_requests.is_empty());
-        assert!(unblocked_peers.is_empty());
+        assert!(manager
+            .perform_housekeeping(&mut rng, clock.now())
+            .is_empty());
 
         assert!(manager.get_route(id_c).is_none());
 
@@ -1505,15 +1465,16 @@ mod tests {
         // unblocked due to the block timing out.
 
         clock.advance_time(30_000);
-        let (dial_requests, unblocked_peers) = manager.perform_housekeeping(&mut rng, clock.now());
-        assert!(unblocked_peers.is_empty());
-        assert!(dials(addr_a, &dial_requests));
+        assert!(dials(
+            addr_a,
+            &manager.perform_housekeeping(&mut rng, clock.now())
+        ));
 
         // Fifteen seconds later, B and C are still blocked, but we redeem B early.
         clock.advance_time(15_000);
-        let (dial_requests, unblocked_peers) = manager.perform_housekeeping(&mut rng, clock.now());
-        assert!(dial_requests.is_empty());
-        assert!(unblocked_peers.is_empty());
+        assert!(manager
+            .perform_housekeeping(&mut rng, clock.now())
+            .is_empty());
 
         assert!(dials(addr_b, &manager.redeem_addr(addr_b, clock.now())));
 
@@ -1562,9 +1523,9 @@ mod tests {
             },)
             .is_none());
 
-        let (dial_requests, unblocked_peers) = manager.perform_housekeeping(&mut rng, clock.now());
-        assert!(dial_requests.is_empty());
-        assert!(unblocked_peers.is_empty());
+        assert!(manager
+            .perform_housekeeping(&mut rng, clock.now())
+            .is_empty());
 
         // Learning loopbacks again should not trigger another connection
         assert!(manager
@@ -1584,9 +1545,9 @@ mod tests {
 
         clock.advance_time(1_000_000_000);
 
-        let (dial_requests, unblocked_peers) = manager.perform_housekeeping(&mut rng, clock.now());
-        assert!(dial_requests.is_empty());
-        assert!(unblocked_peers.is_empty());
+        assert!(manager
+            .perform_housekeeping(&mut rng, clock.now())
+            .is_empty());
     }
 
     #[test]
@@ -1651,16 +1612,17 @@ mod tests {
         // We now let enough time pass to cause the connection to be considered failed aborted.
         // No effects are expected at this point.
         clock.advance_time(50_000);
-        let (dial_requests, unblocked_peers) = manager.perform_housekeeping(&mut rng, clock.now());
-        assert!(dial_requests.is_empty());
-        assert!(unblocked_peers.is_empty());
+        assert!(manager
+            .perform_housekeeping(&mut rng, clock.now())
+            .is_empty());
 
         // The connection will now experience a regular failure. Since this is the first connection
         // failure, it should reconnect after 2 seconds.
         clock.advance_time(2_000);
-        let (dial_requests, unblocked_peers) = manager.perform_housekeeping(&mut rng, clock.now());
-        assert!(unblocked_peers.is_empty());
-        assert!(dials(addr_a, &dial_requests));
+        assert!(dials(
+            addr_a,
+            &manager.perform_housekeeping(&mut rng, clock.now())
+        ));
 
         // We now simulate the second connection (`handle: 2`) succeeding first, after 1 second.
         clock.advance_time(1_000);
@@ -1733,9 +1695,9 @@ mod tests {
         clock.advance_time(60);
         assert!(manager.is_blocked(addr_a));
 
-        let (dial_requests, unblocked_peers) = manager.perform_housekeeping(&mut rng, clock.now());
-        assert!(dial_requests.is_empty());
-        assert!(unblocked_peers.is_empty());
+        assert!(manager
+            .perform_housekeeping(&mut rng, clock.now())
+            .is_empty());
         assert!(manager.is_blocked(addr_a));
     }
 
@@ -1765,44 +1727,38 @@ mod tests {
             .is_none());
 
         // Initial housekeeping should do nothing.
-        let (dial_requests, unblocked_peers) = manager.perform_housekeeping(&mut rng, clock.now());
-        assert!(dial_requests.is_empty());
-        assert!(unblocked_peers.is_empty());
+        assert!(manager
+            .perform_housekeeping(&mut rng, clock.now())
+            .is_empty());
 
         // Go through 50 pings, which should be happening every 5 seconds.
         for _ in 0..50 {
             clock.advance(Duration::from_secs(3));
-            let (dial_requests, unblocked_peers) =
-                manager.perform_housekeeping(&mut rng, clock.now());
-            assert!(dial_requests.is_empty());
-            assert!(unblocked_peers.is_empty());
+            assert!(manager
+                .perform_housekeeping(&mut rng, clock.now())
+                .is_empty());
             clock.advance(Duration::from_secs(2));
 
-            let (dial_requests, unblocked_peers) =
-                manager.perform_housekeeping(&mut rng, clock.now());
-            assert!(unblocked_peers.is_empty());
             let (_first_nonce, peer_id) = assert_matches!(
-                dial_requests.as_slice(),
+                manager
+                    .perform_housekeeping(&mut rng, clock.now())
+                    .as_slice(),
                 &[DialRequest::SendPing { nonce, peer_id, ..  }] => (nonce, peer_id)
             );
             assert_eq!(peer_id, id);
 
             // After a second, nothing should have changed.
-            let (dial_requests, unblocked_peers) =
-                manager.perform_housekeeping(&mut rng, clock.now());
-            assert!(dial_requests.is_empty());
-            assert!(unblocked_peers.is_empty());
+            assert!(manager
+                .perform_housekeeping(&mut rng, clock.now())
+                .is_empty());
 
             clock.advance(Duration::from_secs(1));
             // Waiting another second (two in total) should trigger another ping.
             clock.advance(Duration::from_secs(1));
 
-            let (dial_requests, unblocked_peers) =
-                manager.perform_housekeeping(&mut rng, clock.now());
-            assert!(unblocked_peers.is_empty());
-
             let (second_nonce, peer_id) = assert_matches!(
-                dial_requests
+                manager
+                    .perform_housekeeping(&mut rng, clock.now())
                     .as_slice(),
                 &[DialRequest::SendPing { nonce, peer_id, ..  }] => (nonce, peer_id)
             );
@@ -1824,28 +1780,39 @@ mod tests {
 
         // Now we are going to miss 4 pings in a row and expect a disconnect.
         clock.advance(Duration::from_secs(5));
-        let (dial_requests, unblocked_peers) = manager.perform_housekeeping(&mut rng, clock.now());
-        assert!(unblocked_peers.is_empty());
-        assert_matches!(dial_requests.as_slice(), &[DialRequest::SendPing { .. }]);
+        assert_matches!(
+            manager
+                .perform_housekeeping(&mut rng, clock.now())
+                .as_slice(),
+            &[DialRequest::SendPing { .. }]
+        );
         clock.advance(Duration::from_secs(2));
-        let (dial_requests, unblocked_peers) = manager.perform_housekeeping(&mut rng, clock.now());
-        assert!(unblocked_peers.is_empty());
-        assert_matches!(dial_requests.as_slice(), &[DialRequest::SendPing { .. }]);
+        assert_matches!(
+            manager
+                .perform_housekeeping(&mut rng, clock.now())
+                .as_slice(),
+            &[DialRequest::SendPing { .. }]
+        );
         clock.advance(Duration::from_secs(2));
-        let (dial_requests, unblocked_peers) = manager.perform_housekeeping(&mut rng, clock.now());
-        assert!(unblocked_peers.is_empty());
-        assert_matches!(dial_requests.as_slice(), &[DialRequest::SendPing { .. }]);
+        assert_matches!(
+            manager
+                .perform_housekeeping(&mut rng, clock.now())
+                .as_slice(),
+            &[DialRequest::SendPing { .. }]
+        );
         clock.advance(Duration::from_secs(2));
-        let (dial_requests, unblocked_peers) = manager.perform_housekeeping(&mut rng, clock.now());
-        assert!(unblocked_peers.is_empty());
-        assert_matches!(dial_requests.as_slice(), &[DialRequest::SendPing { .. }]);
+        assert_matches!(
+            manager
+                .perform_housekeeping(&mut rng, clock.now())
+                .as_slice(),
+            &[DialRequest::SendPing { .. }]
+        );
 
         // This results in a disconnect, followed by a reconnect.
         clock.advance(Duration::from_secs(2));
-        let (dial_requests, unblocked_peers) = manager.perform_housekeeping(&mut rng, clock.now());
-        assert!(unblocked_peers.is_empty());
         let dial_addr = assert_matches!(
-            dial_requests
+            manager
+                .perform_housekeeping(&mut rng, clock.now())
                 .as_slice(),
             &[DialRequest::Disconnect { .. }, DialRequest::Dial { addr, .. }] => addr
         );
@@ -1909,9 +1876,10 @@ mod tests {
         assert!(manager.is_blocked(addr_a));
 
         clock.advance_time(config_variant_unblock().unblock_after_max.as_millis() as u64 + 1);
-        let (dial_requests, unblocked_peers) = manager.perform_housekeeping(&mut rng, clock.now());
-        assert!(unblocked_peers.is_empty());
-        assert!(dials(addr_a, &dial_requests));
+        assert!(dials(
+            addr_a,
+            &manager.perform_housekeeping(&mut rng, clock.now())
+        ));
         assert!(!manager.is_blocked(addr_a));
     }
 }
