@@ -1000,6 +1000,7 @@ dependencies = [
  "erased-serde",
  "fake_instant",
  "fs2",
+ "fs_extra",
  "futures",
  "futures-io",
  "hex-buffer-serde 0.3.0",

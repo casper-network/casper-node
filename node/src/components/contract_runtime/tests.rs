@@ -1,6 +1,7 @@
-use std::{collections::BTreeMap, iter, sync::Arc, time::Duration};
+use std::{collections::BTreeMap, iter, path::PathBuf, sync::Arc, time::Duration};
 
 use derive_more::{Display, From};
+use fs_extra::dir;
 use prometheus::Registry;
 use rand::RngCore;
 use serde::Serialize;
@@ -26,6 +27,11 @@ use crate::{
     utils::{Loadable, WithDir, RESOURCES_PATH},
     NodeRng,
 };
+
+const FIXTURES_DIRECTORY: &str = "../execution_engine_testing/tests/fixtures";
+fn path_to_lmdb_fixtures() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join(FIXTURES_DIRECTORY)
+}
 
 const RECENT_ERA_COUNT: u64 = 5;
 const MAX_TTL: TimeDiff = TimeDiff::from_seconds(86400);
@@ -75,6 +81,11 @@ impl Unhandled for NetworkRequest<Message> {}
 
 impl Unhandled for UnexecutedBlockAnnouncement {}
 
+struct TestConfig {
+    config: Config,
+    fixture_name: Option<String>,
+}
+
 struct Reactor {
     storage: Storage,
     contract_runtime: ContractRuntime,
@@ -83,7 +94,7 @@ struct Reactor {
 
 impl reactor::Reactor for Reactor {
     type Event = Event;
-    type Config = Config;
+    type Config = TestConfig;
     type Error = ConfigError;
 
     fn new(
@@ -96,6 +107,12 @@ impl reactor::Reactor for Reactor {
         _rng: &mut NodeRng,
     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
         let (storage_config, storage_tempdir) = storage::Config::new_for_tests(1);
+        if let Some(fixture_name) = config.fixture_name {
+            let source = path_to_lmdb_fixtures().join(&fixture_name);
+            fs_extra::copy_items(&[source], &storage_tempdir, &dir::CopyOptions::default())
+                .expect("should copy global state fixture");
+        }
+
         let storage_withdir = WithDir::new(storage_tempdir.path(), storage_config);
         let storage = Storage::new(
             &storage_withdir,
@@ -112,7 +129,7 @@ impl reactor::Reactor for Reactor {
         .unwrap();
 
         let contract_runtime =
-            ContractRuntime::new(storage.root_path(), &config, chainspec, registry)?;
+            ContractRuntime::new(storage.root_path(), &config.config, chainspec, registry)?;
 
         let reactor = Reactor {
             storage,
@@ -194,6 +211,10 @@ async fn should_not_set_shared_pre_state_to_lower_block_height() {
     let config = Config {
         max_global_state_size: Some(100 * 1024 * 1024),
         ..Config::default()
+    };
+    let config = TestConfig {
+        config,
+        fixture_name: Some("three_version_fixture".to_string()),
     };
     let (chainspec, chainspec_raw_bytes) =
         <(Chainspec, ChainspecRawBytes)>::from_resources("local");

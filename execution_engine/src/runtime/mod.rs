@@ -1495,7 +1495,7 @@ where
         &self,
         entity_version: EntityVersion,
         package: &Package,
-    ) -> Option<EntityVersionKey> {
+    ) -> Result<EntityVersionKey, ExecError> {
         let enabled_versions = package.enabled_versions();
 
         let current_protocol_version_major = self.context.protocol_version().value().major;
@@ -1511,7 +1511,11 @@ where
         }
 
         if possible_versions.is_empty() {
-            return None;
+            return Err(ExecError::NoMatchingEntityVersionKey);
+        }
+
+        if possible_versions.len() > 1 && self.context.engine_config().return_error_on_collision {
+            return Err(ExecError::CollisionInEntityVersion);
         }
 
         // If possible versions has more than one, then the element to be popped
@@ -1520,8 +1524,9 @@ where
         // correctly pop the singular element in the possible versions.
         // This sort is load bearing.
         possible_versions.sort();
-        println!("{:?}", possible_versions);
-        possible_versions.pop()
+        // This unwrap is safe as long as we exit early on possible versions being empty
+        let entity_version_key = possible_versions.pop().unwrap();
+        Ok(entity_version_key)
     }
 
     fn get_key_from_entity_addr(&self, entity_addr: EntityAddr) -> Key {
@@ -1729,14 +1734,9 @@ where
                     (Some(entity_version), None) => {
                         match self.get_protocol_version_for_entity_version(entity_version, &package)
                         {
-                            Some(entity_version_key) => {
-                                println!("{}", entity_version_key);
-                                entity_version_key
-                            }
-                            None => {
-                                return Err(ExecError::NoActiveEntityVersions(
-                                    contract_package_hash.into(),
-                                ));
+                            Ok(entity_version_key) => entity_version_key,
+                            Err(err) => {
+                                return Err(err);
                             }
                         }
                     }
