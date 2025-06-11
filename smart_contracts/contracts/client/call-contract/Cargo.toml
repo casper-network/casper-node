@@ -1,7 +1,7 @@
 [package]
 name = "call-contract"
 version = "0.1.0"
-authors = ["Michał Papierski <michal@casperlabs.io>"]
+authors = ["Michał Papierski <michal@casper.network>"]
 edition = "2021"
 
 [[bin]]

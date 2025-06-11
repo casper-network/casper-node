@@ -370,6 +370,8 @@ pub enum ErrorCode {
     InvalidDelegationAmount = 116,
     #[error("Calling a stored contract by targeting it's `version` is not supported")]
     TargetingPackageVersionNotSupported = 117,
+    #[error("the transaction invocation target is unsupported under V2 runtime")]
+    UnsupportedInvocationTarget = 118,
 }
 
 impl TryFrom<u16> for ErrorCode {
@@ -574,6 +576,9 @@ impl From<InvalidTransactionV1> for ErrorCode {
             InvalidTransactionV1::TargetingPackageVersionNotSupported => {
                 ErrorCode::TargetingPackageVersionNotSupported
             }
+            InvalidTransactionV1::UnsupportedInvocationTarget { .. } => {
+                ErrorCode::UnsupportedInvocationTarget
+            }
             _other => ErrorCode::InvalidTransactionUnspecified,
         }
     }
@@ -594,12 +599,12 @@ mod tests {
             assert_ne!(
                 code,
                 ErrorCode::InvalidTransactionUnspecified,
-                "Seems like InvalidTransactionV1 {error} has no corresponding error code"
+                "Seems like InvalidTransactionV1 {error:?} has no corresponding error code"
             );
             assert_ne!(
                 code,
                 ErrorCode::InvalidDeployUnspecified,
-                "Seems like InvalidTransactionV1 {error} has no corresponding error code"
+                "Seems like InvalidTransactionV1 {error:?} has no corresponding error code"
             )
         }
     }

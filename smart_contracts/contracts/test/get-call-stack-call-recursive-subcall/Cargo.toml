@@ -1,7 +1,7 @@
 [package]
 name = "get-call-stack-call-recursive-subcall"
 version = "0.1.0"
-authors = ["Daniel Werner <dan@casperlabs.io>"]
+authors = ["Daniel Werner <dan.werner@gmail.com>"]
 edition = "2021"
 
 [[bin]]

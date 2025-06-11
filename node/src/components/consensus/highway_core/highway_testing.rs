@@ -173,7 +173,7 @@ impl Display for TestRunError {
 
 enum Distribution {
     Uniform,
-    // TODO: Poisson(f64), https://casperlabs.atlassian.net/browse/HWY-116
+    // TODO: Poisson(f64)
 }
 
 impl Distribution {

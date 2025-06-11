@@ -1,7 +1,7 @@
 [package]
 name = "deserialize-error"
 version = "0.1.0"
-authors = ["Mateusz Górski <mateusz@casperlabs.io>"]
+authors = ["Mateusz Górski <gorski.mateusz@protonmail.ch>"]
 edition = "2021"
 
 [[bin]]

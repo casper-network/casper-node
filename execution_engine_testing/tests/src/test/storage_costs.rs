@@ -4,36 +4,27 @@ use num_rational::Ratio;
 use num_traits::Zero;
 use once_cell::sync::Lazy;
 
-#[cfg(not(feature = "use-as-wasm"))]
-use casper_engine_test_support::DEFAULT_ACCOUNT_PUBLIC_KEY;
 use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PROTOCOL_VERSION, LOCAL_GENESIS_REQUEST,
+    DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_PROTOCOL_VERSION, LOCAL_GENESIS_REQUEST,
 };
-#[cfg(not(feature = "use-as-wasm"))]
-use casper_types::DEFAULT_ADD_BID_COST;
 use casper_types::{
     bytesrepr::{Bytes, ToBytes},
     contracts::{ContractHash, ContractPackage, ContractVersionKey},
-    AddressableEntityHash, BrTableCost, CLValue, ControlFlowCosts, EraId, Gas, Group, Groups,
-    HostFunctionCostsV1, HostFunctionCostsV2, Key, MessageLimits, OpcodeCosts, ProtocolVersion,
-    RuntimeArgs, StorageCosts, StoredValue, URef, WasmConfig, WasmV1Config, WasmV2Config,
-    DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY, U512,
-};
-#[cfg(not(feature = "use-as-wasm"))]
-use casper_types::{
     runtime_args,
     system::{
         auction::{self, DelegationRate},
         AUCTION,
     },
+    AddressableEntityHash, BrTableCost, CLValue, ControlFlowCosts, EraId, Gas, Group, Groups,
+    HostFunctionCostsV1, HostFunctionCostsV2, Key, MessageLimits, OpcodeCosts, ProtocolVersion,
+    RuntimeArgs, StorageCosts, StoredValue, URef, WasmConfig, WasmV1Config, WasmV2Config,
+    DEFAULT_ADD_BID_COST, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY, U512,
 };
 
 const DEFAULT_ACTIVATION_POINT: EraId = EraId::new(0);
 const STORAGE_COSTS_NAME: &str = "storage_costs.wasm";
-#[cfg(not(feature = "use-as-wasm"))]
 const SYSTEM_CONTRACT_HASHES_NAME: &str = "system_contract_hashes.wasm";
-#[cfg(not(feature = "use-as-wasm"))]
 const DO_NOTHING_WASM: &str = "do_nothing.wasm";
 const CONTRACT_KEY_NAME: &str = "contract";
 
@@ -157,7 +148,6 @@ fn initialize_isolated_storage_costs() -> LmdbWasmTestBuilder {
     builder
 }
 
-#[cfg(not(feature = "use-as-wasm"))]
 #[ignore]
 #[test]
 fn should_verify_isolate_host_side_payment_code_is_free() {
@@ -191,7 +181,6 @@ fn should_verify_isolate_host_side_payment_code_is_free() {
     assert_eq!(builder.last_exec_gas_consumed().value(), U512::zero());
 }
 
-#[cfg(not(feature = "use-as-wasm"))]
 #[ignore]
 #[test]
 fn should_verify_isolated_auction_storage_is_free() {

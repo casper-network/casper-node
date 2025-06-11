@@ -6,8 +6,8 @@ pub mod traits;
 #[macro_use]
 extern crate alloc;
 
-use casper_macros::casper;
-use casper_sdk::{
+use casper_contract_macros::casper;
+use casper_contract_sdk::{
     casper::{self, emit, emit_raw, Entity},
     casper_executor_wasm_common::{error::CommonResult, keyspace::Keyspace},
     log,
@@ -46,7 +46,7 @@ fn next_test(counter: &mut u32, name: &str) -> u32 {
 }
 
 fn perform_test(seed: &mut Seed, flipper_address: Address) {
-    use casper_sdk::ContractBuilder;
+    use casper_contract_sdk::ContractBuilder;
     use contracts::harness::{CustomError, INITIAL_GREETING};
 
     use crate::contracts::{harness::HarnessRef, token_owner::FallbackHandler};
@@ -678,7 +678,7 @@ pub fn yet_another_exported_function(arg1: u64, arg2: String) {
 #[cfg(test)]
 mod tests {
     use casper::native::{dispatch_with, EntryPointKind, Environment, ENTRY_POINTS};
-    use casper_sdk::casper::native::{self, dispatch};
+    use casper_contract_sdk::casper::native::{self, dispatch};
     use contracts::harness::{Harness, INITIAL_GREETING};
 
     use super::*;
@@ -686,9 +686,11 @@ mod tests {
     fn can_call_exported_function() {
         super::yet_another_exported_function(1234u64, "Hello, world!".to_string());
 
-        let input_data =
-            casper_sdk::serializers::borsh::to_vec(&(4321u64, "!world, Hello".to_string()))
-                .unwrap();
+        let input_data = casper_contract_sdk::serializers::borsh::to_vec(&(
+            4321u64,
+            "!world, Hello".to_string(),
+        ))
+        .unwrap();
 
         dispatch_with(Environment::default().with_input_data(input_data), || {
             native::invoke_export_by_name("yet_another_exported_function");

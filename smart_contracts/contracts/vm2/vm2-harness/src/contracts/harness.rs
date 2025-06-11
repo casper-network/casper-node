@@ -3,8 +3,8 @@ use std::{
     ptr::NonNull,
 };
 
-use casper_macros::casper;
-use casper_sdk::{
+use casper_contract_macros::casper;
+use casper_contract_sdk::{
     casper::{self, Entity},
     casper_executor_wasm_common::{
         entry_point::{

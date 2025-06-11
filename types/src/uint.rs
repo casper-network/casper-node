@@ -31,7 +31,8 @@ use crate::bytesrepr::{self, Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
     clippy::manual_range_contains,
     clippy::range_plus_one,
     clippy::transmute_ptr_to_ptr,
-    clippy::reversed_empty_ranges
+    clippy::reversed_empty_ranges,
+    clippy::manual_div_ceil
 )]
 mod macro_code {
     #[cfg(feature = "datasize")]

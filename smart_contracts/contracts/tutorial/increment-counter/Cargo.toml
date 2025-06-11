@@ -1,7 +1,7 @@
 [package]
 name = "increment-counter"
 version = "1.0.0"
-authors = ["Maciej Zielinski <maciej@casperlabs.io>", "Michał Papierski <michal@casperlabs.io>"]
+authors = ["Maciej Zielinski", "Michał Papierski <michal@casper.network>"]
 edition = "2021"
 
 [[bin]]

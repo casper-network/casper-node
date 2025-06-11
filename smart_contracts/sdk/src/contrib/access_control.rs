@@ -1,7 +1,7 @@
 #[allow(unused_imports)]
-use crate as casper_sdk; // Worakround for absolute crate path in derive CasperABI macro
+use crate as casper_contract_sdk; // Workaround for absolute crate path in derive CasperABI macro
 
-use casper_macros::casper;
+use casper_contract_macros::casper;
 
 use crate::{
     casper::{self, Entity},

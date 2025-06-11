@@ -45,14 +45,6 @@ pub(crate) enum WasmV2Result {
 }
 
 impl WasmV2Result {
-    /// Returns the state root hash after the contract execution.
-    pub(crate) fn state_root_hash(&self) -> Digest {
-        match self {
-            WasmV2Result::Install(result) => result.post_state_hash(),
-            WasmV2Result::Execute(result) => result.post_state_hash(),
-        }
-    }
-
     /// Returns the gas usage of the contract execution.
     pub(crate) fn gas_usage(&self) -> &GasUsage {
         match self {
@@ -66,13 +58,6 @@ impl WasmV2Result {
         match self {
             WasmV2Result::Install(result) => result.effects(),
             WasmV2Result::Execute(result) => result.effects(),
-        }
-    }
-
-    pub(crate) fn smart_contract_addr(&self) -> Option<&[u8; 32]> {
-        match self {
-            WasmV2Result::Install(result) => Some(result.smart_contract_addr()),
-            WasmV2Result::Execute(_) => None,
         }
     }
 
@@ -153,8 +138,8 @@ impl WasmV2Request {
             },
         }
 
-        let target = transaction.target().ok_or(InvalidRequest::ExpectedTarget)?;
-        let target = match target {
+        let transaction_target = transaction.target().ok_or(InvalidRequest::ExpectedTarget)?;
+        let target = match transaction_target {
             TransactionTarget::Native => todo!(), //
             TransactionTarget::Stored { id, runtime: _ } => match transaction.entry_point() {
                 TransactionEntryPoint::Custom(entry_point) => Target::Stored {

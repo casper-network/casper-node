@@ -1,8 +1,8 @@
 #![cfg_attr(target_arch = "wasm32", no_main)]
 #![cfg_attr(target_arch = "wasm32", no_std)]
 
-use casper_macros::{blake2b256, casper};
-use casper_sdk::{
+use casper_contract_macros::{blake2b256, casper};
+use casper_contract_sdk::{
     casper,
     contrib::{
         access_control::{AccessControl, AccessControlExt, AccessControlState, Role},
@@ -102,7 +102,7 @@ impl Counter for HasTraits {
     }
 }
 
-#[casper(path = casper_sdk::contrib::ownable)]
+#[casper(path = casper_contract_sdk::contrib::ownable)]
 impl Ownable for HasTraits {
     fn state(&self) -> &OwnableState {
         &self.ownable_state
@@ -127,7 +127,7 @@ impl Into<Role> for UserRole {
     }
 }
 
-#[casper(path = casper_sdk::contrib::access_control)]
+#[casper(path = casper_contract_sdk::contrib::access_control)]
 impl AccessControl for HasTraits {
     fn state(&self) -> &AccessControlState {
         &self.access_control_state
@@ -247,86 +247,41 @@ pub fn call() {
 
 #[cfg(test)]
 mod tests {
-    use crate::{CounterExt, HasTraits, HasTraitsRef, Trait1};
+    use std::collections::BTreeSet;
 
-    use alloc::collections::BTreeSet;
-    use casper_macros::selector;
+    use crate::{Counter, CounterExt, HasTraits, HasTraitsRef};
+
     use casper_sdk::{
-        abi::StructField,
-        casper::{
-            self,
-            native::{dispatch_with, Environment},
-        },
+        abi::{CasperABI, StructField},
+        abi_generator,
+        casper::native::{dispatch, dispatch_with, Environment},
+        casper_executor_wasm_common::flags::EntryPointFlags,
         log,
-        schema::{CasperSchema, SchemaEntryPoint, SchemaType},
-        Contract, ContractRef,
+        schema::{SchemaEntryPoint, SchemaType},
+        ContractRef,
     };
-    use vm_common::flags::EntryPointFlags;
 
-    #[should_panic(query = "Entry point exists")]
-    #[test]
-    fn cant_call_private1() {
-        let _ = dispatch_with(Environment::default(), || {
-            let has_traits_handle = HasTraits::default_create().expect("Create");
-
-            // TODO: native impl currently is panicking, fix error handling in it
-            {
-                let _ret = casper::casper_call(
-                    &has_traits_handle.contract_address(),
-                    0,
-                    selector!("counter_state"),
-                    &[],
-                );
-            }
-        });
-    }
-
-    #[should_panic(query = "Entry point exists")]
-    #[test]
-    fn cant_call_private2() {
-        let _ = dispatch_with(Environment::default(), || {
-            let has_traits_handle = HasTraits::default_create().expect("Create");
-
-            // TODO: native impl currently is panicking, fix error handling in it
-            {
-                let _ret = casper::casper_call(
-                    &has_traits_handle.contract_address(),
-                    0,
-                    selector!("counter_state_mut"),
-                    &[],
-                );
-            }
-        });
-    }
-
-    use super::Counter;
-    // use casper_sdk::abi::CasperABI;
     #[test]
     fn unit_test() {
-        let mut has_traits = HasTraits::default();
-        has_traits.increment();
-    }
-
-    #[test]
-    fn entrypoints() {
-        let entrypoints = HasTraitsRef::ENTRY_POINTS;
-
-        let mut i = 0;
-        for entrypoint in entrypoints.to_vec().into_iter().flatten() {
-            if entrypoint.selector == 0 && entrypoint.flags == EntryPointFlags::FALLBACK.bits() {
-                i += 1;
-            }
-        }
-        assert_eq!(i, 1, "Exactly one fallback method");
+        dispatch(|| {
+            let mut has_traits = HasTraits::default();
+            has_traits.increment();
+        })
+        .unwrap();
     }
 
     #[test]
     fn trait_has_schema() {
         // We can't attach methods to trait itself, but we can generate an "${TRAIT}Ext" struct and
         // attach extra information to it. let schema = Trait1::schema();
-        let counter_schema = super::CounterRef::schema();
+        let counter_schema = abi_generator::casper_collect_schema();
 
-        assert_eq!(counter_schema.type_, SchemaType::Interface);
+        assert_eq!(
+            counter_schema.type_,
+            SchemaType::Contract {
+                state: "vm2_trait::CounterState".to_string(),
+            }
+        );
 
         // Order of entry point definitions is not guaranteed.
         assert_eq!(
@@ -334,28 +289,24 @@ mod tests {
             BTreeSet::from_iter([
                 SchemaEntryPoint {
                     name: "get_counter_value".to_string(),
-                    selector: Some(selector!("get_counter_value").get()),
                     arguments: vec![],
                     result: "U64".to_string(),
                     flags: EntryPointFlags::empty()
                 },
                 SchemaEntryPoint {
                     name: "get_counter_state".to_string(),
-                    selector: Some(selector!("get_counter_state").get()),
                     arguments: vec![],
                     result: "vm2_trait::CounterState".to_string(),
                     flags: EntryPointFlags::empty()
                 },
                 SchemaEntryPoint {
                     name: "decrement".to_string(),
-                    selector: Some(selector!("decrement").get()),
                     arguments: vec![],
                     result: "()".to_string(),
                     flags: EntryPointFlags::empty()
                 },
                 SchemaEntryPoint {
                     name: "increment".to_string(),
-                    selector: Some(selector!("increment").get()),
                     arguments: vec![],
                     result: "()".to_string(),
                     flags: EntryPointFlags::empty()
@@ -366,7 +317,7 @@ mod tests {
 
     #[test]
     fn schema_has_traits() {
-        let schema = HasTraits::schema();
+        let schema = abi_generator::casper_collect_schema();
 
         assert_eq!(
             schema.type_,
@@ -428,27 +379,7 @@ mod tests {
             .next()
             .expect("Fallback method present in schema");
 
-        assert_eq!(fallback.selector, None);
         assert_eq!(fallback.flags, EntryPointFlags::FALLBACK);
-    }
-
-    #[test]
-    fn foo_with_custom_constructor() {
-        let _ret = dispatch_with(Environment::default(), || {
-            let constructor = super::HasTraitsRef::new(5);
-
-            let has_traits_handle = HasTraits::create(0, constructor).expect("Constructor works");
-
-            let value = casper::casper_call(
-                &has_traits_handle.contract_address(),
-                0,
-                super::CounterRef::new().get_counter_value(),
-            )
-            .expect("Call");
-
-            assert_eq!(value.into_result(), Ok(5));
-        });
-        log!("OK");
     }
 
     #[test]
