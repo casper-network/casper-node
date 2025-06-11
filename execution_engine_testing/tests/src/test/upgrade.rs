@@ -4,7 +4,11 @@ use casper_engine_test_support::{
 };
 
 use crate::lmdb_fixture;
-use casper_execution_engine::{engine_state, engine_state::Error, execution::ExecError};
+use casper_execution_engine::{
+    engine_state,
+    engine_state::{EngineConfig, EngineConfigBuilder, Error},
+    execution::ExecError,
+};
 use casper_types::{
     account::AccountHash,
     addressable_entity::{AssociatedKeys, Weight},
@@ -1224,7 +1228,9 @@ fn should_correctly_retain_disabled_contract_version() {
     builder.exec(exec_request).expect_failure();
 }
 
-fn setup_state_for_version_tests() -> (LmdbWasmTestBuilder, ContractPackageHash) {
+fn setup_state_for_version_tests(
+    should_return_error_on_collision: bool,
+) -> (LmdbWasmTestBuilder, ContractPackageHash) {
     const THREE_VERSION_FIXTURE: &str = "three_version_fixture";
 
     let (mut builder, lmdb_fixture_state, _temp_dir) =
@@ -1246,10 +1252,18 @@ fn setup_state_for_version_tests() -> (LmdbWasmTestBuilder, ContractPackageHash)
         .with_enable_addressable_entity(false)
         .build();
 
+    let config = EngineConfigBuilder::new()
+        .with_return_error_on_collision(should_return_error_on_collision)
+        .build();
+
+    println!("{:?}", config);
+
     builder
         .with_block_time(Timestamp::now().into())
         .upgrade_using_scratch(&mut upgrade_request)
         .expect_upgrade_success();
+
+    builder.with_engine_config(config);
 
     let account = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
@@ -1269,10 +1283,15 @@ fn setup_state_for_version_tests() -> (LmdbWasmTestBuilder, ContractPackageHash)
     (builder, contract_package_hash)
 }
 
-#[ignore]
-#[test]
-fn should_correctly_manage_entity_version_calls() {
-    let (mut builder, contract_package_hash) = setup_state_for_version_tests();
+fn execute_no_major_some_entity_version_calls(should_return_error_on_collision: bool) {
+    let (mut builder, contract_package_hash) =
+        setup_state_for_version_tests(should_return_error_on_collision);
+
+    let config = builder.engine_config();
+    println!("{:?}", config);
+
+    let actual_return_err_flag = config.return_error_on_collision();
+    assert_eq!(should_return_error_on_collision, actual_return_err_flag);
 
     let runtime_args = runtime_args! {
         "contract_package_hash" => contract_package_hash,
@@ -1341,6 +1360,13 @@ fn should_correctly_manage_entity_version_calls() {
     let exec_request =
         ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, &contract_name, runtime_args)
             .build();
+
+    if actual_return_err_flag {
+        builder.exec(exec_request).expect_failure();
+        let expected_error = Error::Exec(ExecError::CollisionInEntityVersion);
+        builder.assert_error(expected_error);
+        return;
+    }
 
     builder.exec(exec_request).expect_success().commit();
 
@@ -1414,8 +1440,20 @@ fn should_correctly_manage_entity_version_calls() {
 
 #[ignore]
 #[test]
+fn should_correctly_manage_entity_version_calls_with_error_flag_off() {
+    execute_no_major_some_entity_version_calls(false)
+}
+
+#[ignore]
+#[test]
+fn should_correctly_return_error_for_multiple_entity_versions() {
+    execute_no_major_some_entity_version_calls(true)
+}
+
+#[ignore]
+#[test]
 fn should_call_correct_version_when_specifying_only_major_version() {
-    let (mut builder, contract_package_hash) = setup_state_for_version_tests();
+    let (mut builder, contract_package_hash) = setup_state_for_version_tests(false);
 
     // There are three 1.x versions in the package.
     // The 1.1 version has an entry point `add_named_purse` while the 1.2 and 1.3
@@ -1476,7 +1514,7 @@ fn should_call_correct_version_when_specifying_only_major_version() {
 #[ignore]
 #[test]
 fn should_correctly_invoke_version_in_package_when_no_versions_are_specified() {
-    let (mut builder, contract_package_hash) = setup_state_for_version_tests();
+    let (mut builder, contract_package_hash) = setup_state_for_version_tests(false);
 
     let runtime_args = runtime_args! {
         "contract_package_hash" => contract_package_hash,

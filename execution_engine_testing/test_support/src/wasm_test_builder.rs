@@ -1226,6 +1226,11 @@ where
         &self.chainspec
     }
 
+    /// The current engine config
+    pub fn engine_config(&self) -> &EngineConfig {
+        &self.execution_engine.config()
+    }
+
     /// Update chainspec
     pub fn with_chainspec(&mut self, chainspec: ChainspecConfig) -> &mut Self {
         self.chainspec = chainspec;
