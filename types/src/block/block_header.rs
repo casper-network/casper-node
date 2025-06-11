@@ -34,6 +34,7 @@ pub const BLOCK_HEADER_V2_TAG: u8 = 1;
 #[cfg_attr(any(feature = "std", test), derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+#[allow(clippy::large_enum_variant)]
 pub enum BlockHeader {
     /// The legacy, initial version of the header portion of a block.
     #[cfg_attr(any(feature = "std", test), serde(rename = "Version1"))]
