@@ -108,8 +108,7 @@ macro_rules! impl_type_uid {
 }
 
 impl_type_uid!(
-    u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize, bool, char, String, str, f32,
-    f64,
+    u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize, bool, char, String, f32, f64,
 );
 
 impl<T: TypeUid> TypeUid for Option<T> {
@@ -176,8 +175,13 @@ impl_type_uid_for_tuple!(Tuple10: T1, T2, T3, T4, T5, T6, T7, T8, T9, T10);
 impl_type_uid_for_tuple!(Tuple11: T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11);
 impl_type_uid_for_tuple!(Tuple12: T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12);
 
-impl<T: TypeUid> TypeUid for &T {
+impl<T: ?Sized + TypeUid> TypeUid for &T {
     const UID: Uid = T::UID;
+}
+
+impl TypeUid for str {
+    const UID: Uid = String::UID; // This makes str and &str's UID equivalent to a String's UID. This is intentional as other
+                                  // languages may not have a separate string type.
 }
 
 #[cfg(test)]
@@ -192,7 +196,6 @@ mod tests {
     fn test_type_tag() {
         assert_eq!(u8::UID, Uid::from_name("u8"));
         assert_eq!(String::UID, Uid::from_name("String"));
-        assert_eq!(str::UID, Uid::from_name("str"));
 
         assert_ne!(<(u64, u32)>::UID, <(u32, u64)>::UID,);
 
@@ -215,5 +218,14 @@ mod tests {
 
         assert_ne!(<[u8; 32]>::UID, <[u8; 33]>::UID,);
         assert_ne!(<[u64; 32]>::UID, <[u32; 32]>::UID,);
+    }
+
+    #[test]
+    fn equivalent() {
+        assert_eq!(<&str>::UID, String::UID,);
+        assert_eq!(<&String>::UID, String::UID,);
+        assert_eq!(str::UID, <&str>::UID,);
+
+        assert_eq!(<&[u8]>::UID, <[u8]>::UID,);
     }
 }
