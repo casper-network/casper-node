@@ -1130,7 +1130,7 @@ fn should_correct_migrate_contract_when_invoked_by_package_hash_and_specific_ver
     /* TODO The current Execution Engine Testing framework doesn't support calling a specific
      * package version we should reinstantiate this test once we add that possibility
      */
-    call_and_migrate_purse_holder_contract(MigrationScenario::ByPackageHash(Some(10)))
+    call_and_migrate_purse_holder_contract(MigrationScenario::ByPackageHash(Some(1)))
 }
 
 #[ignore]

@@ -263,6 +263,7 @@ impl ExecuteRequestBuilder {
     pub fn key_versioned_contract_call_by_hash(
         sender: AccountHash,
         contract_package_hash: PackageHash,
+        version: Option<EntityVersion>,
         version_key: Option<EntityVersionKey>,
         entry_point_name: &str,
         args: RuntimeArgs,
@@ -271,7 +272,7 @@ impl ExecuteRequestBuilder {
         let target = TransactionTarget::Stored {
             id: TransactionInvocationTarget::ByPackageHash {
                 addr: contract_package_hash.value(),
-                version: None,
+                version,
                 version_key,
             },
             runtime: TransactionRuntimeParams::VmCasperV1,
@@ -329,6 +330,7 @@ impl ExecuteRequestBuilder {
     pub fn key_versioned_contract_call_by_name(
         sender: AccountHash,
         contract_name: &str,
+        version: Option<EntityVersion>,
         version_key: Option<EntityVersionKey>,
         entry_point_name: &str,
         args: RuntimeArgs,
@@ -337,7 +339,7 @@ impl ExecuteRequestBuilder {
         let target = TransactionTarget::Stored {
             id: TransactionInvocationTarget::ByPackageName {
                 name: contract_name.to_owned(),
-                version: None,
+                version,
                 version_key,
             },
             runtime: TransactionRuntimeParams::VmCasperV1,

@@ -345,11 +345,11 @@ pub fn execute_finalized_block(
                         Ok(Some(entity_addr)) => BalanceIdentifier::Entity(entity_addr),
                         Ok(None) => {
                             // the initiating account pays using its main purse
-                            trace!(%transaction_hash, "direct invocation with account payment");
+                            info!(%transaction_hash, "direct invocation with account payment");
                             initiator_addr.clone().into()
                         }
                         Err(err) => {
-                            trace!(%transaction_hash, "failed to resolve contract self payment");
+                            info!(%transaction_hash, "failed to resolve contract self payment");
                             artifact_builder
                                 .with_state_result_error(err)
                                 .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
@@ -360,7 +360,7 @@ pub fn execute_finalized_block(
                     }
                 } else {
                     // the initiating account pays using its main purse
-                    trace!(%transaction_hash, "account session with standard payment");
+                    info!(%transaction_hash, "account session with standard payment");
                     initiator_addr.clone().into()
                 }
             } else if is_v2_wasm {
@@ -441,7 +441,7 @@ pub fn execute_finalized_block(
                         .with_error_message(msg)
                         .with_transfer_result(transfer_result)
                         .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
-                    trace!(%transaction_hash, balance_identifier=?BalanceIdentifier::PenalizedPayment, "account session with custom payment failed");
+                    info!(%transaction_hash, balance_identifier=?BalanceIdentifier::PenalizedPayment, "account session with custom payment failed");
                     BalanceIdentifier::PenalizedPayment
                 } else {
                     // commit successful effects
@@ -450,7 +450,7 @@ pub fn execute_finalized_block(
                     artifact_builder
                         .with_wasm_v1_result(pay_result)
                         .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
-                    trace!(%transaction_hash, balance_identifier=?BalanceIdentifier::Payment, "account session with custom payment success");
+                    info!(%transaction_hash, balance_identifier=?BalanceIdentifier::Payment, "account session with custom payment success");
                     BalanceIdentifier::Payment
                 }
             } else {
@@ -612,10 +612,10 @@ pub fn execute_finalized_block(
                         &session_input_data,
                     ) {
                         Ok(wasm_v1_request) => {
-                            trace!(%transaction_hash, ?lane_id, ?wasm_v1_request, "able to get wasm v1 request");
+                            info!(%transaction_hash, ?lane_id, ?wasm_v1_request, "able to get wasm v1 request");
                             let wasm_v1_result =
                                 execution_engine_v1.execute(&scratch_state, wasm_v1_request);
-                            trace!(%transaction_hash, ?lane_id, ?wasm_v1_result, "able to get wasm v1 result");
+                            info!(%transaction_hash, ?lane_id, ?wasm_v1_result, "able to get wasm v1 result");
                             state_root_hash = scratch_state.commit_effects(
                                 state_root_hash,
                                 wasm_v1_result.effects().clone(),

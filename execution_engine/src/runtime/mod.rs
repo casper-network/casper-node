@@ -1364,6 +1364,26 @@ where
         self.call_contract(contract_hash, entry_point_name, args)
     }
 
+    pub fn call_package_version_with_stack(
+        &mut self,
+        contract_package_hash: PackageHash,
+        protocol_version_major: Option<ProtocolVersionMajor>,
+        version: Option<EntityVersion>,
+        entry_point_name: String,
+        args: RuntimeArgs,
+        stack: RuntimeStack,
+    ) -> Result<CLValue, ExecError> {
+        self.stack = Some(stack);
+
+        self.call_package_version(
+            contract_package_hash,
+            protocol_version_major,
+            version,
+            entry_point_name,
+            args,
+        )
+    }
+
     pub(crate) fn execute_module_bytes(
         &mut self,
         module_bytes: &Bytes,
@@ -1497,6 +1517,7 @@ where
         package: &Package,
     ) -> Result<EntityVersionKey, ExecError> {
         let enabled_versions = package.enabled_versions();
+        println!("{:?}", enabled_versions);
 
         let current_protocol_version_major = self.context.protocol_version().value().major;
 
