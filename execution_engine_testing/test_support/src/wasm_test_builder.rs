@@ -1228,7 +1228,7 @@ where
 
     /// The current engine config
     pub fn engine_config(&self) -> &EngineConfig {
-        &self.execution_engine.config()
+        self.execution_engine.config()
     }
 
     /// Update chainspec

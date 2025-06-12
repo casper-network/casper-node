@@ -6,7 +6,7 @@ use casper_engine_test_support::{
 use crate::lmdb_fixture;
 use casper_execution_engine::{
     engine_state,
-    engine_state::{EngineConfig, EngineConfigBuilder, Error},
+    engine_state::{EngineConfigBuilder, Error},
     execution::ExecError,
 };
 use casper_types::{
