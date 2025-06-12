@@ -1,6 +1,13 @@
+//! A module for computing unique type identifiers (UIDs) via compile-time hashing.
 use xxhash_rust::const_xxh64::xxh64;
 
 const TYPE_UID_SEED: u64 = 0;
+
+/// Hashes a byte slice into a 64-bit unsigned integer using xxHash64 with a predefined seed.
+const fn hash_bytes(bytes: &[u8]) -> u64 {
+    xxh64(bytes, TYPE_UID_SEED)
+}
+
 /// A unique identifier for a type, represented as a 64-bit unsigned integer.
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
 pub struct Uid(u64);
@@ -11,22 +18,32 @@ impl From<u64> for Uid {
     }
 }
 
+impl std::fmt::Display for Uid {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "0x{:x}", self.0)
+    }
+}
+
 impl Uid {
+    /// The UID for an untyped value, which is zero.
+    pub const UNTYPED: Uid = Uid(0);
+
     /// Creates a new `Uid` from bytes.
     pub const fn from_bytes(bytes: &[u8]) -> Self {
         // Use xxh64 to hash the bytes into a u64
-        Uid(xxh64(bytes, TYPE_UID_SEED))
+        Uid(hash_bytes(bytes))
     }
 
     /// Creates a new `Uid` from a string.
     pub const fn from_name(s: &str) -> Self {
         // Use xxh64 to hash the string into a u64
-        Uid(xxh64(s.as_bytes(), TYPE_UID_SEED))
+        Uid(hash_bytes(s.as_bytes()))
     }
 
     /// Creates a new `Uid` from a value.
     ///
     /// This does not involve any hashing and is intended for use with known values.
+    #[inline]
     pub const fn from_u64(value: u64) -> Self {
         Uid(value)
     }
@@ -44,6 +61,7 @@ impl Uid {
     }
 
     /// Returns the underlying UID as a `u64`.
+    #[inline]
     pub const fn as_u64(&self) -> u64 {
         self.0
     }

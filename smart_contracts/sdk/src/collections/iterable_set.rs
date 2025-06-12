@@ -1,5 +1,7 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 
+use crate::type_uid::TypeUid;
+
 use super::{IterableMap, IterableMapHash};
 
 /// An iterable set backed by a map.
@@ -7,7 +9,7 @@ pub struct IterableSet<V> {
     pub(crate) map: IterableMap<V, ()>,
 }
 
-impl<V: IterableMapHash + BorshSerialize + BorshDeserialize + Clone> IterableSet<V> {
+impl<V: IterableMapHash + BorshSerialize + BorshDeserialize + Clone + TypeUid> IterableSet<V> {
     /// Creates an empty [IterableMap] with the given prefix.
     pub fn new<S: Into<String>>(prefix: S) -> Self {
         Self {
@@ -51,7 +53,7 @@ impl<V: IterableMapHash + BorshSerialize + BorshDeserialize + Clone> IterableSet
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::casper::native::dispatch;
+    use crate::{casper::native::dispatch, TypeUid};
     use borsh::{BorshDeserialize, BorshSerialize};
 
     #[test]
@@ -135,7 +137,8 @@ mod tests {
         .unwrap();
     }
 
-    #[derive(BorshSerialize, BorshDeserialize, Clone, Debug, PartialEq)]
+    #[derive(BorshSerialize, BorshDeserialize, Clone, Debug, PartialEq, TypeUid)]
+    #[type_uid(crate = "crate")]
     struct TestStruct {
         field1: u64,
         field2: String,

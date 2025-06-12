@@ -1,7 +1,8 @@
 use crate::{
     abi::{CasperABI, Declaration, Definition, StructField},
-    casper::{self, read_into_vec},
+    casper,
     serializers::borsh::{BorshDeserialize, BorshSerialize},
+    type_uid::{TypeUid, Uid},
 };
 use casper_executor_wasm_common::keyspace::Keyspace;
 use const_fnv1a_hash::fnv1a_hash_str_64;
@@ -25,7 +26,7 @@ pub(crate) const fn compute_prefix(input: &str) -> [u8; 8] {
 impl<K, V> Map<K, V>
 where
     K: BorshSerialize,
-    V: BorshSerialize + BorshDeserialize,
+    V: BorshSerialize + BorshDeserialize + TypeUid,
 {
     pub fn new<S: Into<String>>(name: S) -> Self {
         Self {
@@ -41,7 +42,7 @@ where
         // the wasm.
         key.serialize(&mut context_key).unwrap();
         let prefix = Keyspace::Context(&context_key);
-        casper::write(prefix, &borsh::to_vec(value).unwrap()).unwrap();
+        casper::write(prefix, value).unwrap();
     }
 
     pub fn remove(&mut self, key: &K) {
@@ -54,9 +55,8 @@ where
         let mut key_bytes = self.name.as_bytes().to_owned();
         key.serialize(&mut key_bytes).unwrap();
         let prefix = Keyspace::Context(&key_bytes);
-        read_into_vec(prefix)
-            .unwrap()
-            .map(|vec| borsh::from_slice(&vec).unwrap())
+
+        casper::read::<V>(prefix).unwrap()
     }
 
     fn compute_prefix_for_key(&self, key: &K) -> Vec<u8> {
@@ -87,8 +87,14 @@ impl<K: CasperABI, V: CasperABI> CasperABI for Map<K, V> {
     }
 }
 
+impl<K: TypeUid, V: TypeUid> TypeUid for Map<K, V> {
+    const UID: Uid = Uid::from_fields("Map", &[K::UID, V::UID, String::UID]);
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
+    use crate::casper::native::dispatch;
+
     use super::*;
 
     #[test]
@@ -99,24 +105,26 @@ pub(crate) mod tests {
         assert_eq!(fnv1a_hash_str_64("hello"), back);
     }
 
-    #[ignore]
     #[test]
     fn test_map() {
-        let mut map = Map::<u64, u64>::new("test");
-        map.insert(&1, &2);
-        assert_eq!(map.get(&1), Some(2));
-        assert_eq!(map.get(&2), None);
-        map.insert(&2, &3);
-        assert_eq!(map.get(&1), Some(2));
-        assert_eq!(map.get(&2), Some(3));
+        dispatch(|| {
+            let mut map = Map::<u64, u64>::new("test");
+            map.insert(&1, &2);
+            assert_eq!(map.get(&1), Some(2));
+            assert_eq!(map.get(&2), None);
+            map.insert(&2, &3);
+            assert_eq!(map.get(&1), Some(2));
+            assert_eq!(map.get(&2), Some(3));
 
-        let mut map = Map::<u64, u64>::new("test2");
-        assert_eq!(map.get(&1), None);
-        map.insert(&1, &22);
-        assert_eq!(map.get(&1), Some(22));
-        assert_eq!(map.get(&2), None);
-        map.insert(&2, &33);
-        assert_eq!(map.get(&1), Some(22));
-        assert_eq!(map.get(&2), Some(33));
+            let mut map = Map::<u64, u64>::new("test2");
+            assert_eq!(map.get(&1), None);
+            map.insert(&1, &22);
+            assert_eq!(map.get(&1), Some(22));
+            assert_eq!(map.get(&2), None);
+            map.insert(&2, &33);
+            assert_eq!(map.get(&1), Some(22));
+            assert_eq!(map.get(&2), Some(33));
+        })
+        .unwrap();
     }
 }

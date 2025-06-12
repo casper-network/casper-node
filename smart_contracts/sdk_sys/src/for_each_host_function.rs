@@ -8,7 +8,7 @@ macro_rules! for_each_host_function {
                 key_ptr: *const u8,
                 key_size: usize,
                 info: *mut $crate::ReadInfo,
-                alloc: extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8,
+                alloc: Option<extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8>,
                 alloc_ctx: *const core::ffi::c_void,
             ) -> u32;
             pub fn casper_write(

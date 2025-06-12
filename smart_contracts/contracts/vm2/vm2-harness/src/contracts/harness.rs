@@ -111,13 +111,13 @@ impl Harness {
                 casper::write(Keyspace::PaymentInfo("counter"), &[payment_info]).unwrap();
 
                 let mut buffer = [255; 1];
-                assert_eq!(
-                    casper::read(Keyspace::PaymentInfo("counter"), |size| {
+                assert!(matches!(
+                    casper::read_raw_bytes(Keyspace::PaymentInfo("counter"), |size| {
                         assert_eq!(size, 1, "Size should be 1");
                         NonNull::new(&mut buffer[0])
                     }),
-                    Ok(Some(()))
-                );
+                    Ok(Some(_))
+                ));
                 assert_eq!(&buffer, &[payment_info]);
             }
 

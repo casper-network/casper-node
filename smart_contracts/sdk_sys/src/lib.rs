@@ -9,11 +9,15 @@ pub struct Param {
 /// Signature of a function pointer that a host understands.
 pub type Fptr = extern "C" fn() -> ();
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 #[repr(C)]
 pub struct ReadInfo {
+    /// Pointer to the data as returned from user's callback code.
     pub data: *const u8,
     /// Size in bytes.
+    ///
+    /// `data + size` will point to the last element in the buffer and must not exceed the size of
+    /// the buffer allocated by the host.
     pub size: usize,
     /// UID of the stored type
     pub type_uid: u64,

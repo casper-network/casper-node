@@ -636,7 +636,7 @@ fn perform_test(seed: &mut Seed, flipper_address: Address) {
         let value_2 = [8, 9, 10, 11, 12, 13, 14, 15];
         let keyspace = Keyspace::Context(&key);
         // No value exists
-        assert_eq!(casper::read(keyspace, |_size| None), Ok(None));
+        assert_eq!(casper::read_raw_bytes(keyspace, |_size| None), Ok(None));
 
         // Write a value
         casper::write(keyspace, &value_1).unwrap();

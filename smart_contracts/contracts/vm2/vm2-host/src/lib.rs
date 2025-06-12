@@ -124,7 +124,7 @@ impl MinHostWrapper {
     }
 
     pub fn read(&self) {
-        casper::read(Keyspace::Context(&[]), |_| None).ok();
+        casper::read_raw_bytes(Keyspace::Context(&[]), |_| None).ok();
     }
 
     pub fn ret(&self) {
@@ -140,7 +140,7 @@ impl MinHostWrapper {
     }
 
     pub fn write(&self) {
-        casper::write(Keyspace::Context(&[]), &[]).ok();
+        casper::write(Keyspace::Context(&[]), ()).ok();
     }
 
     pub fn write_n_bytes(&self, n: u64) {

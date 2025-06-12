@@ -209,7 +209,7 @@ fn process_casper_message_for_struct(
     }
 
     quote! {
-        #[derive(#crate_path::serializers::borsh::BorshSerialize)]
+        #[derive(#crate_path::serializers::borsh::BorshSerialize, #crate_path::TypeUid)]
         #[borsh(crate = #borsh_path)]
         #maybe_derive_abi
         #item_struct
@@ -1108,6 +1108,7 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
                                 T: #trait_name
                                     + #crate_path::serializers::borsh::BorshDeserialize
                                     + #crate_path::serializers::borsh::BorshSerialize
+                                    + #crate_path::type_uid::TypeUid
                                     + Default
                             {
                                 #[derive(#crate_path::serializers::borsh::BorshDeserialize)]
@@ -1314,7 +1315,7 @@ fn generate_casper_state_for_struct(
     let maybe_derive_abi = get_maybe_derive_abi(crate_path.clone());
 
     quote! {
-        #[derive(#crate_path::serializers::borsh::BorshSerialize, #crate_path::serializers::borsh::BorshDeserialize)]
+        #[derive(#crate_path::serializers::borsh::BorshSerialize, #crate_path::serializers::borsh::BorshDeserialize, #crate_path::TypeUid)]
         #[borsh(crate = #borsh_path)]
         #maybe_derive_abi
         #item_struct
@@ -1344,7 +1345,7 @@ fn generate_casper_state_for_enum(
     let maybe_derive_abi = get_maybe_derive_abi(crate_path.clone());
 
     quote! {
-        #[derive(#crate_path::serializers::borsh::BorshSerialize, #crate_path::serializers::borsh::BorshDeserialize)]
+        #[derive(#crate_path::serializers::borsh::BorshSerialize, #crate_path::serializers::borsh::BorshDeserialize, #crate_path::TypeUid)]
         #[borsh(use_discriminant = true, crate = #borsh_path)]
         #[repr(u32)]
         #maybe_derive_abi
@@ -1411,7 +1412,7 @@ fn process_casper_contract_state_for_struct(
     };
 
     quote! {
-        #[derive(#crate_path::serializers::borsh::BorshSerialize, #crate_path::serializers::borsh::BorshDeserialize)]
+        #[derive(#crate_path::serializers::borsh::BorshSerialize, #crate_path::serializers::borsh::BorshDeserialize, #crate_path::TypeUid)]
         #[borsh(crate = #borsh_path)]
         #maybe_derive_abi
         #contract_struct
@@ -1834,6 +1835,32 @@ pub fn derive_type_uid(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let name = input.ident;
 
+    // Extract crate path from #[type_uid(crate = "crate_path")] attribute
+    let crate_path = input
+        .attrs
+        .iter()
+        .find_map(|attr| {
+            if attr.path().is_ident("type_uid") {
+                attr.parse_args::<syn::Meta>().ok().and_then(|meta| {
+                    if let syn::Meta::NameValue(nv) = meta {
+                        if nv.path.is_ident("crate") {
+                            if let syn::Expr::Lit(expr_lit) = nv.value {
+                                if let syn::Lit::Str(lit_str) = expr_lit.lit {
+                                    return Some(lit_str.value());
+                                }
+                            }
+                        }
+                    }
+                    None
+                })
+            } else {
+                None
+            }
+        })
+        .unwrap_or_else(|| "casper_contract_sdk".to_string());
+
+    let crate_path_token: proc_macro2::TokenStream = crate_path.parse().unwrap();
+
     match &input.data {
         syn::Data::Struct(ds) => {
             let fields = &ds.fields;
@@ -1849,8 +1876,8 @@ pub fn derive_type_uid(input: TokenStream) -> TokenStream {
             }
 
             TokenStream::from(quote! {
-                impl casper_contract_sdk::type_uid::TypeUid for #name {
-                    const UID: casper_contract_sdk::type_uid::Uid = casper_contract_sdk::type_uid::Uid::from_fields(
+                impl #crate_path_token::type_uid::TypeUid for #name {
+                    const UID: #crate_path_token::type_uid::Uid = #crate_path_token::type_uid::Uid::from_fields(
                         stringify!(#name),
                         &[
                             #(#mixer,)*
@@ -1875,13 +1902,12 @@ pub fn derive_type_uid(input: TokenStream) -> TokenStream {
                     });
                 }
                 if let Some((_, discriminant)) = &variant.discriminant {
-                    field_mixers.push(
-                        quote! { casper_contract_sdk::type_uid::Uid::from_u64(#discriminant) },
-                    );
+                    field_mixers
+                        .push(quote! { #crate_path_token::type_uid::Uid::from_u64(#discriminant) });
                 }
 
                 mixer.push(quote! {
-                    casper_contract_sdk::type_uid::Uid::from_fields(
+                    #crate_path_token::type_uid::Uid::from_fields(
                         stringify!(#variant_name),
                         &[
                             #(#field_mixers,)*
@@ -1891,8 +1917,8 @@ pub fn derive_type_uid(input: TokenStream) -> TokenStream {
             }
 
             TokenStream::from(quote! {
-                impl casper_contract_sdk::type_uid::TypeUid for #name {
-                    const UID: casper_contract_sdk::type_uid::Uid = casper_contract_sdk::type_uid::Uid::from_fields(
+                impl #crate_path_token::type_uid::TypeUid for #name {
+                    const UID: #crate_path_token::type_uid::Uid = #crate_path_token::type_uid::Uid::from_fields(
                         stringify!(#name),
                         &[#(#mixer,)*]
                     );

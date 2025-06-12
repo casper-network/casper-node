@@ -1,8 +1,9 @@
 use crate::{
     abi::{CasperABI, Declaration, Definition, Definitions, StructField},
-    casper::{self, read_into_vec},
+    casper,
     prelude::{cmp::Ordering, marker::PhantomData},
     serializers::borsh::{BorshDeserialize, BorshSerialize},
+    type_uid::{TypeUid, Uid},
 };
 
 use casper_executor_wasm_common::keyspace::Keyspace;
@@ -40,7 +41,7 @@ impl<T: CasperABI> CasperABI for Vector<T> {
 
 impl<T> Vector<T>
 where
-    T: BorshSerialize + BorshDeserialize,
+    T: BorshSerialize + BorshDeserialize + TypeUid,
 {
     /// Constructs a new, empty [`Vector<T>`].
     ///
@@ -58,7 +59,7 @@ where
     pub fn push(&mut self, value: T) {
         let prefix_bytes = self.compute_prefix_bytes_for_index(self.length);
         let prefix = Keyspace::Context(&prefix_bytes);
-        casper::write(prefix, &borsh::to_vec(&value).unwrap()).unwrap();
+        casper::write(prefix, value).unwrap();
         self.length += 1;
     }
 
@@ -84,9 +85,17 @@ where
     pub fn get(&self, index: u64) -> Option<T> {
         let prefix = self.compute_prefix_bytes_for_index(index);
         let item_keyspace = Keyspace::Context(&prefix);
-        read_into_vec(item_keyspace)
-            .unwrap()
-            .map(|vec| borsh::from_slice(&vec).unwrap())
+        casper::read::<T>(item_keyspace).unwrap()
+        // casper::read(item_keyspace)
+        //     .map_err(|_| ())
+        //     .ok()
+        //     .and_then(|bytes| borsh::from_slice(&bytes).ok())
+        // Uncomment the following line if you want to read into a vector instead
+        // of deserializing directly.
+        //
+        // read_into_vec(item_keyspace)
+        //     .unwrap()
+        //     .map(|vec| borsh::from_slice(&vec).unwrap())
     }
 
     /// Returns an iterator over self, with elements deserialized.
@@ -269,8 +278,12 @@ where
     fn write(&self, index: u64, value: T) {
         let prefix_bytes = self.compute_prefix_bytes_for_index(index);
         let prefix = Keyspace::Context(&prefix_bytes);
-        casper::write(prefix, &borsh::to_vec(&value).unwrap()).unwrap();
+        casper::write(prefix, value).unwrap();
     }
+}
+
+impl<T: Ord + TypeUid> TypeUid for Vector<T> {
+    const UID: Uid = Uid::from_fields("Vector", &[String::UID, u64::UID]);
 }
 
 fn compute_prefix_bytes_for_index(prefix: &str, index: u64) -> Vec<u8> {
@@ -282,6 +295,8 @@ fn compute_prefix_bytes_for_index(prefix: &str, index: u64) -> Vec<u8> {
 #[cfg(all(test, feature = "std"))]
 pub(crate) mod tests {
     use core::ptr::NonNull;
+
+    use crate::TypeUid;
 
     use self::casper::native::dispatch;
 
@@ -295,7 +310,7 @@ pub(crate) mod tests {
         for idx in 0..64 {
             let prefix = compute_prefix_bytes_for_index(prefix, idx);
             let mut value: [u8; 8] = [0; 8];
-            let result = casper::read(Keyspace::Context(&prefix), |size| {
+            let result = casper::read_raw_bytes(Keyspace::Context(&prefix), |size| {
                 assert_eq!(size, 8);
                 NonNull::new(value.as_mut_ptr())
             })
@@ -501,7 +516,8 @@ pub(crate) mod tests {
 
     #[test]
     fn test_struct_elements() {
-        #[derive(BorshSerialize, BorshDeserialize, PartialEq, Debug)]
+        #[derive(BorshSerialize, BorshDeserialize, PartialEq, Debug, TypeUid)]
+        #[type_uid(crate = "crate")]
         struct TestStruct {
             field: u64,
         }

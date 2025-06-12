@@ -43,6 +43,13 @@ impl<Arg1: WasmerConvert, Arg2: WasmerConvert, Ret: WasmerConvert> WasmerConvert
     type Output = u32; // Function pointers are 32-bit addressable
 }
 
+impl<T> WasmerConvert for Option<T>
+where
+    T: WasmerConvert,
+{
+    type Output = u32; // Option of pointer is represented as a pointer, and it's representation should be transparent.
+}
+
 const DEFAULT_ENV_NAME: &str = "env";
 
 /// This function will populate imports object with all host functions that are defined.

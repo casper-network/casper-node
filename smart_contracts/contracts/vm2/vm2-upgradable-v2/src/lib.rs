@@ -5,23 +5,27 @@ use casper_contract_macros::casper;
 use casper_contract_sdk::{
     casper::{self, Entity},
     log,
-    serializers::borsh::BorshDeserialize,
 };
 
 const CURRENT_VERSION: &str = "v2";
 
-#[derive(BorshDeserialize, Debug)]
-#[borsh(crate = "casper_contract_sdk::serializers::borsh")]
-pub struct UpgradableContractV1 {
-    /// The current state of the flipper.
-    value: u8,
-    /// The owner of the contract.
-    owner: Entity,
-}
+mod v1 {
+    //! This module contains the original version of the UpgradableContract.
+    //!
+    //! It is used to keep the name of `UpgradableContract` for the original version
+    //! while allowing the new version to be named `UpgradableContractV2`.
+    //!
+    //! This keeps the UID consistent with the UID already in the global state.
 
-impl Default for UpgradableContractV1 {
-    fn default() -> Self {
-        panic!("Unable to instantiate contract without a constructor");
+    use casper_contract_sdk::prelude::*;
+
+    #[derive(Debug, PanicOnDefault)]
+    #[casper(contract_state)]
+    pub struct UpgradableContract {
+        /// The current state of the flipper.
+        pub(crate) value: u8,
+        /// The owner of the contract.
+        pub(crate) owner: Entity,
     }
 }
 
@@ -35,8 +39,8 @@ pub struct UpgradableContractV2 {
     owner: Entity,
 }
 
-impl From<UpgradableContractV1> for UpgradableContractV2 {
-    fn from(old: UpgradableContractV1) -> Self {
+impl From<v1::UpgradableContract> for UpgradableContractV2 {
+    fn from(old: v1::UpgradableContract) -> Self {
         Self {
             value: old.value as u64,
             owner: old.owner,
@@ -91,7 +95,7 @@ impl UpgradableContractV2 {
     #[casper(ignore_state)]
     pub fn migrate() {
         log!("Reading old state...");
-        let old_state: UpgradableContractV1 = casper::read_state().unwrap();
+        let old_state: v1::UpgradableContract = casper::read_state().unwrap();
         log!("Old state {old_state:?}");
         let new_state = UpgradableContractV2::from(old_state);
         log!("Success! New state: {new_state:?}");

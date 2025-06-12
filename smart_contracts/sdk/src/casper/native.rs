@@ -141,7 +141,7 @@ pub enum NativeTrap {
     Panic(Box<dyn std::any::Any + Send + 'static>),
 }
 
-pub type Container = BTreeMap<u64, BTreeMap<Bytes, Bytes>>;
+pub type Container = BTreeMap<u64, BTreeMap<Bytes, (u64, Bytes)>>;
 
 #[derive(Clone, Debug)]
 #[allow(dead_code)]
@@ -263,13 +263,14 @@ impl Environment {
             None => return Ok(HOST_ERROR_NOT_FOUND),
         };
         match value {
-            Some(tagged_value) => {
+            Some((tagged_value_uid, tagged_value)) => {
                 let ptr = NonNull::new(alloc(tagged_value.len(), alloc_ctx as _));
 
                 if let Some(ptr) = ptr {
                     unsafe {
                         (*info).data = ptr.as_ptr();
                         (*info).size = tagged_value.len();
+                        (*info).type_uid = tagged_value_uid;
                     }
 
                     unsafe {
@@ -294,6 +295,7 @@ impl Environment {
         key_size: usize,
         value_ptr: *const u8,
         value_size: usize,
+        value_type_uid: u64,
     ) -> Result<u32, NativeTrap> {
         assert!(!key_ptr.is_null());
         assert!(!value_ptr.is_null());
@@ -306,7 +308,7 @@ impl Environment {
         let mut db = self.db.write().unwrap();
         db.entry(key_space).or_default().insert(
             Bytes::from(key_bytes.to_vec()),
-            Bytes::from(value_bytes.to_vec()),
+            (value_type_uid, Bytes::from(value_bytes.to_vec())),
         );
         Ok(HOST_ERROR_SUCCESS)
     }
@@ -718,11 +720,19 @@ mod symbols {
         key_size: usize,
         value_ptr: *const u8,
         value_size: usize,
+        value_type_uid: u64,
     ) -> u32 {
         let _name = "casper_write";
         let _args = (&key_space, &key_ptr, &key_size, &value_ptr, &value_size);
         let _call_result = with_current_environment(|stub| {
-            stub.casper_write(key_space, key_ptr, key_size, value_ptr, value_size)
+            stub.casper_write(
+                key_space,
+                key_ptr,
+                key_size,
+                value_ptr,
+                value_size,
+                value_type_uid,
+            )
         });
         crate::casper::native::handle_ret(_call_result)
     }
@@ -910,6 +920,9 @@ mod tests {
     fn foo() {
         dispatch(|| {
             casper::print("Hello");
+
+            assert_eq!(casper::get_caller(), DEFAULT_ADDRESS);
+
             casper::write(Keyspace::Context(b"test"), b"value 1").unwrap();
 
             let change_context_1 =

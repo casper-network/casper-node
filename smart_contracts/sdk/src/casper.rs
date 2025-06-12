@@ -11,7 +11,7 @@ use crate::{
     },
     reserve_vec_space,
     serializers::borsh::{BorshDeserialize, BorshSerialize},
-    type_uid::TypeUid,
+    type_uid::{TypeUid, Uid},
     types::{Address, CallError},
     Message, ToCallData,
 };
@@ -107,23 +107,55 @@ pub fn ret(flags: ReturnFlags, data: Option<&[u8]>) {
     unreachable!()
 }
 
-/// Read from the global state.
-pub fn read<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
-    key: Keyspace,
-    f: F,
-) -> Result<Option<()>, CommonResult> {
-    let (key_space, key_bytes) = match key {
+/// Unpack the keyspace for FFI usage.
+fn unpack_keyspace_for_ffi(key: Keyspace<'_>) -> (u64, &[u8]) {
+    match key {
         Keyspace::State => (KeyspaceTag::State as u64, &[][..]),
         Keyspace::Context(key_bytes) => (KeyspaceTag::Context as u64, key_bytes),
         Keyspace::NamedKey(key_bytes) => (KeyspaceTag::NamedKey as u64, key_bytes.as_bytes()),
         Keyspace::PaymentInfo(payload) => (KeyspaceTag::PaymentInfo as u64, payload.as_bytes()),
+    }
+}
+
+pub fn read_raw_into(
+    key: Keyspace,
+    buffer: &mut [u8],
+) -> Result<Option<casper_contract_sdk_sys::ReadInfo>, CommonResult> {
+    let (key_space, key_bytes) = unpack_keyspace_for_ffi(key);
+
+    let mut info = MaybeUninit::uninit();
+
+    let ctx = buffer.as_mut_ptr();
+
+    let ret = unsafe {
+        casper_contract_sdk_sys::casper_read(
+            key_space,
+            key_bytes.as_ptr(),
+            key_bytes.len(),
+            info.as_mut_ptr(),
+            None,
+            ctx as *mut _,
+        )
     };
 
-    let mut info = casper_contract_sdk_sys::ReadInfo {
-        data: ptr::null(),
-        size: 0,
-        type_uid: 0,
-    };
+    match result_from_code(ret) {
+        Ok(()) => {
+            let info = unsafe { info.assume_init() };
+            Ok(Some(info))
+        }
+        Err(CommonResult::NotFound) => Ok(None),
+        Err(err) => Err(err),
+    }
+}
+
+/// Read from the global state.
+pub fn read_raw_bytes<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
+    key: Keyspace,
+    f: F,
+) -> Result<Option<casper_contract_sdk_sys::ReadInfo>, CommonResult> {
+    let (key_space, key_bytes) = unpack_keyspace_for_ffi(key);
+
+    let mut info = MaybeUninit::uninit();
 
     extern "C" fn alloc_cb<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
         len: usize,
@@ -144,28 +176,30 @@ pub fn read<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
             key_space,
             key_bytes.as_ptr(),
             key_bytes.len(),
-            &mut info as *mut casper_contract_sdk_sys::ReadInfo,
-            alloc_cb::<F>,
+            info.as_mut_ptr(),
+            Some(alloc_cb::<F>),
             ctx,
         )
     };
 
     match result_from_code(ret) {
-        Ok(()) => Ok(Some(())),
+        Ok(()) => {
+            let info = unsafe { info.assume_init() };
+            Ok(Some(info))
+        }
         Err(CommonResult::NotFound) => Ok(None),
         Err(err) => Err(err),
     }
 }
 
 /// Write to the global state, typed as an ordinary byte array.
-pub fn write(key: Keyspace, value: &[u8]) -> Result<(), CommonResult> {
+pub fn write_raw_bytes(key: Keyspace, type_uid: Uid, value: &[u8]) -> Result<(), CommonResult> {
     let (key_space, key_bytes) = match key {
         Keyspace::State => (KeyspaceTag::State as u64, &[][..]),
         Keyspace::Context(key_bytes) => (KeyspaceTag::Context as u64, key_bytes),
         Keyspace::NamedKey(key_bytes) => (KeyspaceTag::NamedKey as u64, key_bytes.as_bytes()),
         Keyspace::PaymentInfo(payload) => (KeyspaceTag::PaymentInfo as u64, payload.as_bytes()),
     };
-    let value_type_uid = <[u8]>::UID;
     let ret = unsafe {
         casper_contract_sdk_sys::casper_write(
             key_space,
@@ -173,33 +207,37 @@ pub fn write(key: Keyspace, value: &[u8]) -> Result<(), CommonResult> {
             key_bytes.len(),
             value.as_ptr(),
             value.len(),
-            value_type_uid.as_u64(),
+            type_uid.as_u64(),
         )
     };
     result_from_code(ret)
 }
 
-/// Write typed to global state.
-pub fn write_t<T: BorshSerialize + TypeUid>(key: Keyspace, value: T) -> Result<(), CommonResult> {
-    let value = borsh::to_vec(&value).map_err(|_| CommonResult::InvalidData)?;
-    let value_type_uid = T::UID;
-    let (key_space, key_bytes) = match key {
-        Keyspace::State => (KeyspaceTag::State as u64, &[][..]),
-        Keyspace::Context(key_bytes) => (KeyspaceTag::Context as u64, key_bytes),
-        Keyspace::NamedKey(key_bytes) => (KeyspaceTag::NamedKey as u64, key_bytes.as_bytes()),
-        Keyspace::PaymentInfo(payload) => (KeyspaceTag::PaymentInfo as u64, payload.as_bytes()),
-    };
-    let ret = unsafe {
-        casper_contract_sdk_sys::casper_write(
-            key_space,
-            key_bytes.as_ptr(),
-            key_bytes.len(),
-            value.as_ptr(),
-            value.len(),
-            value_type_uid.as_u64(),
-        )
-    };
-    result_from_code(ret)
+/// Write typed value to a global state.
+pub fn write<T: BorshSerialize + TypeUid>(key: Keyspace, value: T) -> Result<(), CommonResult> {
+    let serialized_value = borsh::to_vec(&value).map_err(|_| CommonResult::InvalidData)?;
+    write_raw_bytes(key, T::UID, &serialized_value)?;
+    Ok(())
+}
+
+pub fn read<T: BorshDeserialize + TypeUid>(key: Keyspace) -> Result<Option<T>, CommonResult> {
+    let mut vec = Vec::new();
+    let read_info = read_raw_bytes(key, |size| reserve_vec_space(&mut vec, size))?;
+    match read_info {
+        Some(read_info) => {
+            if read_info.type_uid != T::UID.as_u64() {
+                print(&format!(
+                    "Type UID mismatch: expected {}, got {}",
+                    T::UID,
+                    Uid::from_u64(read_info.type_uid)
+                ));
+                unreachable!();
+            }
+            let value = borsh::from_slice(&vec).map_err(|_| CommonResult::InvalidData)?;
+            Ok(Some(value))
+        }
+        None => Ok(None),
+    }
 }
 
 /// Remove from the global state.
@@ -341,7 +379,7 @@ pub fn upgrade(
 /// Read from the global state into a vector of bytes, disregarding the type uid.
 pub fn read_into_vec(key: Keyspace) -> Result<Option<Vec<u8>>, CommonResult> {
     let mut vec = Vec::new();
-    let out = read(key, |size| reserve_vec_space(&mut vec, size))?.map(|()| vec);
+    let out = read_raw_bytes(key, |size| reserve_vec_space(&mut vec, size))?.map(|_read_info| vec);
     Ok(out)
 }
 
@@ -349,27 +387,25 @@ pub fn read_into_vec(key: Keyspace) -> Result<Option<Vec<u8>>, CommonResult> {
 pub fn has_state() -> Result<bool, CommonResult> {
     // TODO: Host side optimized `casper_exists` to check if given entry exists in the global state.
     let mut vec = Vec::new();
-    let read_info = read(Keyspace::State, |size| reserve_vec_space(&mut vec, size))?;
+    let read_info = read_raw_bytes(Keyspace::State, |size| reserve_vec_space(&mut vec, size))?;
     match read_info {
-        Some(()) => Ok(true),
+        Some(_read_info) => Ok(true),
         None => Ok(false),
     }
 }
 
 /// Read state from the global state.
-pub fn read_state<T: Default + BorshDeserialize>() -> Result<T, CommonResult> {
-    let mut vec = Vec::new();
-    let read_info = read(Keyspace::State, |size| reserve_vec_space(&mut vec, size))?;
+pub fn read_state<T: Default + BorshDeserialize + TypeUid>() -> Result<T, CommonResult> {
+    let read_info = read::<T>(Keyspace::State)?;
     match read_info {
-        Some(()) => Ok(borsh::from_slice(&vec).unwrap()),
+        Some(value) => Ok(value),
         None => Ok(T::default()),
     }
 }
 
 /// Write state to the global state.
-pub fn write_state<T: BorshSerialize>(state: &T) -> Result<(), CommonResult> {
-    let new_state = borsh::to_vec(state).unwrap();
-    write(Keyspace::State, &new_state)?;
+pub fn write_state<T: BorshSerialize + TypeUid>(state: &T) -> Result<(), CommonResult> {
+    write(Keyspace::State, state)?;
     Ok(())
 }
 
@@ -515,6 +551,16 @@ impl CasperABI for Entity {
             ],
         }
     }
+}
+
+impl TypeUid for Entity {
+    const UID: Uid = Uid::from_fields(
+        "Entity",
+        &[
+            Uid::from_fields("Account", &[<[u8; 32]>::UID]),
+            Uid::from_fields("Contract", &[<[u8; 32]>::UID]),
+        ],
+    );
 }
 
 /// Get the balance of an account or contract.

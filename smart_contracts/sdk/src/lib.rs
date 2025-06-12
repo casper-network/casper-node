@@ -27,6 +27,7 @@ use casper::{CallResult, Entity};
 pub use casper_contract_macros as macros;
 pub use casper_contract_sdk_sys as sys;
 pub use casper_executor_wasm_common;
+pub use macros::TypeUid;
 use types::{Address, CallError};
 
 cfg_if::cfg_if! {

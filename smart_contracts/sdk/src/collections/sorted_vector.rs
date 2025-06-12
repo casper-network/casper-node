@@ -1,6 +1,9 @@
 use crate::serializers::borsh::{BorshDeserialize, BorshSerialize};
 
-use crate::abi::CasperABI;
+use crate::{
+    abi::CasperABI,
+    type_uid::{TypeUid, Uid},
+};
 
 use super::Vector;
 
@@ -37,7 +40,7 @@ impl<T: Ord + CasperABI> CasperABI for SortedVector<T> {
 
 impl<T> SortedVector<T>
 where
-    T: BorshSerialize + BorshDeserialize + Ord,
+    T: BorshSerialize + BorshDeserialize + TypeUid + Ord,
 {
     pub fn new<S: Into<String>>(prefix: S) -> Self {
         Self {
@@ -87,7 +90,9 @@ where
         self.vector.retain(f);
     }
 }
-
+impl<T: Ord + TypeUid> TypeUid for SortedVector<T> {
+    const UID: Uid = Uid::from_fields("SortedVector", &[Vector::<T>::UID]);
+}
 #[cfg(all(test, feature = "std"))]
 mod tests {
     use crate::casper::native::dispatch;

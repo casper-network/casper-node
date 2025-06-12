@@ -37,7 +37,8 @@ where
 
     pub fn contains_key(&self, key: T) -> bool {
         let lookup_key = self.lookup.lookup(self.prefix.as_bytes(), &key);
-        let entry = casper::read(Keyspace::Context(lookup_key.as_ref()), |_size| None).unwrap();
+        let entry =
+            casper::read_raw_bytes(Keyspace::Context(lookup_key.as_ref()), |_size| None).unwrap();
         entry.is_some()
     }
 }

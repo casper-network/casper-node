@@ -1,14 +1,18 @@
-use core::marker::PhantomData;
-
+use crate::TypeUid;
 use borsh::{BorshDeserialize, BorshSerialize};
 use bytes::BufMut;
 use casper_executor_wasm_common::keyspace::Keyspace;
 use const_fnv1a_hash::fnv1a_hash_64;
+use core::marker::PhantomData;
 
-use crate::casper::{self, read_into_vec};
+use crate::{
+    casper,
+    type_uid::{TypeUid, Uid},
+};
 
 /// A pointer that uniquely identifies a value written into the map.
-#[derive(BorshSerialize, BorshDeserialize, Debug, Clone, Copy, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Clone, Copy, PartialEq, TypeUid)]
+#[type_uid(crate = "crate")]
 pub struct IterableMapPtr {
     /// The key hash
     pub(crate) hash: u64,
@@ -76,10 +80,17 @@ pub struct IterableMapEntry<K, V> {
     pub(crate) previous: Option<IterableMapPtr>,
 }
 
+impl<K: TypeUid, V: TypeUid> TypeUid for IterableMapEntry<K, V> {
+    const UID: Uid = Uid::from_fields(
+        "IterableMapEntry",
+        &[K::UID, V::UID, <Option<IterableMapPtr>>::UID],
+    );
+}
+
 impl<K, V> IterableMap<K, V>
 where
-    K: IterableMapHash,
-    V: BorshSerialize + BorshDeserialize,
+    K: IterableMapHash + TypeUid,
+    V: BorshSerialize + BorshDeserialize + TypeUid,
 {
     /// Creates an empty [IterableMap] with the given prefix.
     pub fn new<S: Into<String>>(prefix: S) -> Self {
@@ -134,12 +145,9 @@ where
         };
 
         // Write the entry and return previous value if it exists
-        let mut entry_bytes = Vec::new();
-        entry_to_write.serialize(&mut entry_bytes).unwrap();
-
         let prefix = self.create_prefix_from_ptr(&ptr);
         let keyspace = Keyspace::Context(&prefix);
-        casper::write(keyspace, &entry_bytes).unwrap();
+        casper::write(keyspace, &entry_to_write).unwrap();
 
         previous
     }
@@ -179,9 +187,7 @@ where
             };
 
             // Write the updated value
-            let mut entry_bytes = Vec::new();
-            tombstone.serialize(&mut entry_bytes).unwrap();
-            casper::write(to_remove_context_key, &entry_bytes).unwrap();
+            casper::write(to_remove_context_key, &tombstone).unwrap();
         } else {
             // There is no child, so we can safely purge this entry entirely.
             casper::remove(to_remove_context_key).unwrap();
@@ -216,9 +222,7 @@ where
                 current_entry.previous = at_remove_ptr.previous;
 
                 // Re-write the updated current entry
-                let mut entry_bytes = Vec::new();
-                current_entry.serialize(&mut entry_bytes).unwrap();
-                casper::write(current_context_key, &entry_bytes).unwrap();
+                casper::write(current_context_key, &current_entry).unwrap();
 
                 return at_remove_ptr.value;
             }
@@ -345,11 +349,8 @@ where
     }
 
     fn get_entry(&self, keyspace: Keyspace) -> Option<IterableMapEntry<K, V>> {
-        match read_into_vec(keyspace) {
-            Ok(Some(vec)) => {
-                let entry: IterableMapEntry<K, V> = borsh::from_slice(&vec).unwrap();
-                Some(entry)
-            }
+        match casper::read::<IterableMapEntry<K, V>>(keyspace) {
+            Ok(Some(entry)) => Some(entry),
             Ok(None) => None,
             Err(_) => None,
         }
@@ -390,7 +391,7 @@ where
 ///
 /// This iterator performs no allocation beyond internal buffers,
 /// and deserialization errors are treated as iteration termination.
-pub struct IterableMapIter<'a, K, V> {
+pub struct IterableMapIter<'a, K: TypeUid, V: TypeUid> {
     prefix: &'a str,
     current: Option<IterableMapPtr>,
     _marker: PhantomData<(K, V)>,
@@ -398,8 +399,8 @@ pub struct IterableMapIter<'a, K, V> {
 
 impl<'a, K, V> IntoIterator for &'a IterableMap<K, V>
 where
-    K: BorshDeserialize,
-    V: BorshDeserialize,
+    K: BorshDeserialize + TypeUid,
+    V: BorshDeserialize + TypeUid,
 {
     type Item = (K, V);
     type IntoIter = IterableMapIter<'a, K, V>;
@@ -415,8 +416,8 @@ where
 
 impl<K, V> Iterator for IterableMapIter<'_, K, V>
 where
-    K: BorshDeserialize,
-    V: BorshDeserialize,
+    K: BorshDeserialize + TypeUid,
+    V: BorshDeserialize + TypeUid,
 {
     type Item = (K, V);
 
@@ -431,9 +432,8 @@ where
 
         let context_key = Keyspace::Context(&key_bytes);
 
-        match read_into_vec(context_key) {
-            Ok(Some(vec)) => {
-                let entry: IterableMapEntry<K, V> = borsh::from_slice(&vec).unwrap();
+        match casper::read::<IterableMapEntry<K, V>>(context_key) {
+            Ok(Some(entry)) => {
                 self.current = entry.previous;
                 Some((
                     entry.key,
@@ -692,7 +692,8 @@ mod tests {
 
     #[test]
     fn struct_as_key() {
-        #[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq, Eq)]
+        #[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq, Eq, TypeUid)]
+        #[type_uid(crate = "crate")]
         struct TestKey {
             id: u64,
             name: String,
@@ -793,7 +794,8 @@ mod tests {
 
     #[test]
     fn unit_struct_as_key() {
-        #[derive(BorshSerialize, BorshDeserialize, PartialEq)]
+        #[derive(BorshSerialize, BorshDeserialize, PartialEq, TypeUid)]
+        #[type_uid(crate = "crate")]
         struct UnitKey;
 
         impl IterableMapHash for UnitKey {}
@@ -806,7 +808,8 @@ mod tests {
         .unwrap();
     }
 
-    #[derive(Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
+    #[derive(Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, TypeUid)]
+    #[type_uid(crate = "crate")]
     struct CollidingKey(u64, u64);
 
     impl IterableMapHash for CollidingKey {

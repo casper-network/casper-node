@@ -20,11 +20,6 @@ impl Default for UpgradableContract {
     }
 }
 
-// trait ContractPackage {
-//     fn versions: BTreeMap<>,
-
-// }
-
 #[casper]
 impl UpgradableContract {
     #[casper(constructor)]
