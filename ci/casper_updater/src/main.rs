@@ -25,7 +25,6 @@
     macro_expanded_macro_exports_accessed_by_absolute_paths,
     mutable_transmutes,
     no_mangle_const_items,
-    order_dependent_trait_objects,
     overflowing_literals,
     pub_use_of_private_extern_crate,
     unknown_crate_types
