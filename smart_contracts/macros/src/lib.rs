@@ -891,7 +891,7 @@ fn generate_impl_trait_for_contract(
 
     let macro_name = format_ident!("enumerate_{trait_name}_symbols");
     let ref_trait = format_ident!("{}Ext", trait_path.segments.last().unwrap().ident);
-    let ref_name  = format_ident!("{}Ref", self_ty.to_token_stream().to_string());
+    let ref_name = format_ident!("{}Ref", self_ty.to_token_stream().to_string());
 
     let visitor = if impl_meta.compile_as_dependency {
         quote! {
