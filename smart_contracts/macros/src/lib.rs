@@ -975,7 +975,6 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
     };
 
     let trait_name = &item_trait.ident;
-    let trait_name_lower = trait_name.to_string().to_lowercase();
 
     let vis = &item_trait.vis;
     let mut dispatch_functions = Vec::new();
@@ -1012,7 +1011,7 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
                 let export_name = if method_attribute.fallback {
                     CASPER_RESERVED_FALLBACK_EXPORT.to_string()
                 } else {
-                    format!("{}_{}", trait_name_lower, func_name_str)
+                    format!("{}_{}", trait_name, func_name_str)
                 };
 
                 let export_ident = format_ident!("{}", &func_name_str);
