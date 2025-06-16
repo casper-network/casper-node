@@ -456,6 +456,7 @@ fn valid_wasm_txn(
     txn
 }
 
+#[allow(clippy::too_many_arguments)]
 fn valid_versioned_call_txn(
     initiator: &SecretKey,
     chain_name: &str,
@@ -639,8 +640,7 @@ async fn should_correctly_manage_entity_version_calls() {
             .execution_pre_state
             .lock()
             .expect("must get lock");
-        let hash = prestate.pre_state_root_hash();
-        hash
+        prestate.pre_state_root_hash()
     };
 
     let key = Key::Account(node_1_public_key.to_account_hash());
@@ -720,8 +720,7 @@ async fn should_correctly_manage_entity_version_calls() {
             .execution_pre_state
             .lock()
             .expect("must get lock");
-        let hash = prestate.pre_state_root_hash();
-        hash
+        prestate.pre_state_root_hash()
     };
 
     let query_request = QueryRequest::new(pre_state_hash, package_key, vec![]);

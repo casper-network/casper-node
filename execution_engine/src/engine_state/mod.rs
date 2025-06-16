@@ -102,12 +102,7 @@ impl ExecutionEngineV1 {
             }
         };
         let mut named_keys = runtime_footprint.named_keys().clone();
-        let execution_kind = match ExecutionKind::new(
-            &mut *tc.borrow_mut(),
-            &named_keys,
-            &executable_item,
-            entry_point,
-        ) {
+        let execution_kind = match ExecutionKind::new(&named_keys, &executable_item, entry_point) {
             Ok(execution_kind) => execution_kind,
             Err(ese) => return WasmV1Result::precondition_failure(gas_limit, ese),
         };
@@ -174,12 +169,7 @@ impl ExecutionEngineV1 {
             }
         };
         let mut named_keys = runtime_footprint.named_keys().clone();
-        let execution_kind = match ExecutionKind::new(
-            &mut *tc.borrow_mut(),
-            &named_keys,
-            &executable_item,
-            entry_point,
-        ) {
+        let execution_kind = match ExecutionKind::new(&named_keys, &executable_item, entry_point) {
             Ok(execution_kind) => execution_kind,
             Err(ese) => return WasmV1Result::precondition_failure(gas_limit, ese),
         };

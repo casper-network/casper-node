@@ -1364,6 +1364,7 @@ where
         self.call_contract(contract_hash, entry_point_name, args)
     }
 
+    /// Call a version within a package by pushing a stack element onto the frame.
     pub fn call_package_version_with_stack(
         &mut self,
         contract_package_hash: PackageHash,

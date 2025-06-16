@@ -1,14 +1,9 @@
 //! Units of execution.
 
-use casper_storage::{
-    global_state::{error::Error as GlobalStateError, state::StateReader},
-    tracking_copy::{TrackingCopy, TrackingCopyExt},
-};
 use casper_types::{
     bytesrepr::Bytes,
     contracts::{NamedKeys, ProtocolVersionMajor},
-    AddressableEntityHash, EntityVersion, Key, PackageHash, StoredValue,
-    TransactionInvocationTarget,
+    AddressableEntityHash, EntityVersion, Key, PackageHash, TransactionInvocationTarget,
 };
 
 use super::{wasm_v1::SessionKind, Error, ExecutableItem};
@@ -44,18 +39,14 @@ pub(crate) enum ExecutionKind<'a> {
 }
 
 impl<'a> ExecutionKind<'a> {
-    pub(crate) fn new<R>(
-        tracking_copy: &mut TrackingCopy<R>,
+    pub(crate) fn new(
         named_keys: &NamedKeys,
         executable_item: &'a ExecutableItem,
         entry_point: String,
-    ) -> Result<Self, Error>
-    where
-        R: StateReader<Key, StoredValue, Error = GlobalStateError>,
-    {
+    ) -> Result<Self, Error> {
         match executable_item {
             ExecutableItem::Invocation(target) => {
-                Self::new_direct_invocation(tracking_copy, named_keys, target, entry_point)
+                Self::new_direct_invocation(named_keys, target, entry_point)
             }
             ExecutableItem::PaymentBytes(module_bytes)
             | ExecutableItem::SessionBytes {
@@ -70,15 +61,11 @@ impl<'a> ExecutionKind<'a> {
         }
     }
 
-    fn new_direct_invocation<R>(
-        tracking_copy: &mut TrackingCopy<R>,
+    fn new_direct_invocation(
         named_keys: &NamedKeys,
         target: &TransactionInvocationTarget,
         entry_point: String,
-    ) -> Result<Self, Error>
-    where
-        R: StateReader<Key, StoredValue, Error = GlobalStateError>,
-    {
+    ) -> Result<Self, Error> {
         let entity_hash = match target {
             TransactionInvocationTarget::ByHash(addr) => AddressableEntityHash::new(*addr),
             TransactionInvocationTarget::ByName(alias) => {

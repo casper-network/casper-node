@@ -138,21 +138,6 @@ impl TransactionInvocationTarget {
         }
     }
 
-    #[cfg(test)]
-    pub fn new_package_alias_with_major_and_entity(
-        hash: PackageHash,
-        entity_version: Option<EntityVersion>,
-        // TODO: This is a place holder until it gets swapped out
-        // for the major only
-        major_key: Option<EntityVersionKey>,
-    ) -> Self {
-        TransactionInvocationTarget::ByPackageHash {
-            addr: hash.value(),
-            version,
-            version_key,
-        }
-    }
-
     /// Returns the contract `hash_addr`, if any.
     pub fn contract_by_hash(&self) -> Option<HashAddr> {
         if let TransactionInvocationTarget::ByHash(hash_addr) = self {

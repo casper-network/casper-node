@@ -4,14 +4,15 @@ use super::fields_container::{FieldsContainer, FieldsContainerError};
 use crate::types::transaction::initiator_addr_and_secret_key::InitiatorAddrAndSecretKey;
 use casper_types::{
     bytesrepr::{Bytes, ToBytes},
-    Digest, EntityVersion, InitiatorAddr, PricingMode, RuntimeArgs, SecretKey, TimeDiff, Timestamp,
+    Digest, InitiatorAddr, PricingMode, RuntimeArgs, SecretKey, TimeDiff, Timestamp,
     TransactionArgs, TransactionEntryPoint, TransactionRuntimeParams, TransactionScheduling,
     TransactionTarget, TransactionV1, TransactionV1Payload,
 };
 #[cfg(test)]
 use casper_types::{
-    testing::TestRng, AddressableEntityHash, Approval, CLValueError, EntityVersionKey, PackageHash,
-    PublicKey, TransactionConfig, TransactionInvocationTarget, TransferTarget, URef, U512,
+    testing::TestRng, AddressableEntityHash, Approval, CLValueError, EntityVersion,
+    EntityVersionKey, PackageHash, PublicKey, TransactionConfig, TransactionInvocationTarget,
+    TransferTarget, URef, U512,
 };
 use core::marker::PhantomData;
 #[cfg(test)]
@@ -416,6 +417,7 @@ impl<'a> TransactionV1Builder<'a> {
 
     /// Returns a new `TransactionV1Builder` suitable for building a transaction for running session
     /// logic, i.e. compiled Wasm.
+    #[cfg(test)]
     pub(crate) fn new_session_with_runtime_args(
         is_install_upgrade: bool,
         module_bytes: Bytes,
