@@ -83,37 +83,34 @@ impl<'a> ExecutionKind<'a> {
             }
             TransactionInvocationTarget::ByPackageHash {
                 addr,
-                version_key,
-                version, // version is defunct and should not be used
+                version,
+                protocol_version_major,
             } => {
-                let protocol_version_major = version_key.map(|vk| vk.protocol_version_major());
-
                 let package_hash = PackageHash::from(*addr);
                 return Ok(Self::VersionedCall {
                     package_hash,
                     entity_version: *version,
-                    protocol_version_major,
+                    protocol_version_major: *protocol_version_major,
                     entry_point,
                 });
             }
             TransactionInvocationTarget::ByPackageName {
-                name: alias,
-                version_key,
-                version, // version is defunct and should not be used
+                name,
+                version,
+                protocol_version_major,
             } => {
                 let package_key = named_keys
-                    .get(alias)
-                    .ok_or_else(|| Error::Exec(ExecError::NamedKeyNotFound(alias.to_string())))?;
+                    .get(name)
+                    .ok_or_else(|| Error::Exec(ExecError::NamedKeyNotFound(name.to_string())))?;
 
                 let package_hash = match package_key {
                     Key::Hash(hash) | Key::SmartContract(hash) => PackageHash::new(*hash),
                     _ => return Err(Error::InvalidKeyVariant(*package_key)),
                 };
-                let protocol_version_major = version_key.map(|vk| vk.protocol_version_major());
                 return Ok(Self::VersionedCall {
                     package_hash,
                     entity_version: *version,
-                    protocol_version_major,
+                    protocol_version_major: *protocol_version_major,
                     entry_point,
                 });
             }

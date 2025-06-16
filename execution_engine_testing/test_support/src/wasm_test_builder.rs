@@ -1715,6 +1715,11 @@ where
         self.get_named_keys(EntityAddr::System(system_entity_hash.value()))
     }
 
+    /// Returns the named keys for a system contract.
+    pub fn get_named_keys_for_contract(&self, contract_hash: AddressableEntityHash) -> NamedKeys {
+        self.get_named_keys(EntityAddr::SmartContract(contract_hash.value()))
+    }
+
     /// Get the named keys for an entity.
     pub fn get_named_keys(&self, entity_addr: EntityAddr) -> NamedKeys {
         let state_root_hash = self.get_post_state_hash();

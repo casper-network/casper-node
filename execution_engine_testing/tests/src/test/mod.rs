@@ -1,3 +1,4 @@
+mod calling_packages_by_version_query;
 mod chainspec_registry;
 mod check_transfer_success;
 mod contract_api;

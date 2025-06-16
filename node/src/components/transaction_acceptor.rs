@@ -7,7 +7,7 @@ mod tests;
 use std::{collections::BTreeSet, fmt::Debug, sync::Arc};
 
 use casper_types::{
-    ContractRuntimeTag, InvalidDeploy, InvalidTransaction, InvalidTransactionV1, PackageAddr,
+    contracts::ProtocolVersionMajor, ContractRuntimeTag, InvalidTransaction, InvalidTransactionV1,
 };
 use datasize::DataSize;
 use prometheus::Registry;
@@ -17,10 +17,10 @@ use casper_storage::data_access_layer::{balance::BalanceHandling, BalanceRequest
 use casper_types::{
     account::AccountHash, addressable_entity::AddressableEntity, system::auction::ARG_AMOUNT,
     AddressableEntityHash, AddressableEntityIdentifier, BlockHeader, Chainspec, EntityAddr,
-    EntityKind, EntityVersionKey, ExecutableDeployItem, ExecutableDeployItemIdentifier,
-    InitiatorAddr, Package, PackageHash, PackageIdentifier, Timestamp, Transaction,
-    TransactionEntryPoint, TransactionInvocationTarget, TransactionTarget,
-    DEFAULT_ENTRY_POINT_NAME, U512,
+    EntityKind, EntityVersion, EntityVersionKey, ExecutableDeployItem,
+    ExecutableDeployItemIdentifier, InitiatorAddr, Package, PackageAddr, PackageHash,
+    PackageIdentifier, Timestamp, Transaction, TransactionEntryPoint, TransactionInvocationTarget,
+    TransactionTarget, DEFAULT_ENTRY_POINT_NAME, U512,
 };
 
 use crate::{
@@ -341,24 +341,10 @@ impl TransactionAcceptor {
             | ExecutableDeployItemIdentifier::AddressableEntity(
                 AddressableEntityIdentifier::Name(_),
             )
-            | ExecutableDeployItemIdentifier::Package(PackageIdentifier::NameWithVersion {
+            | ExecutableDeployItemIdentifier::Package(PackageIdentifier::Name { .. })
+            | ExecutableDeployItemIdentifier::Package(PackageIdentifier::NameWithMajorVersion {
                 ..
             }) => self.verify_body(effect_builder, event_metadata, block_header),
-            ExecutableDeployItemIdentifier::Package(PackageIdentifier::Name {
-                version, ..
-            }) => {
-                if version.is_some() {
-                    return self.reject_transaction(
-                        effect_builder,
-                        *event_metadata,
-                        Error::InvalidTransaction(InvalidTransaction::Deploy(
-                            InvalidDeploy::TargetingPackageVersionNotSupported,
-                        )),
-                    );
-                }
-                self.verify_body(effect_builder, event_metadata, block_header)
-            }
-
             ExecutableDeployItemIdentifier::AddressableEntity(
                 AddressableEntityIdentifier::Hash(contract_hash),
             ) => {
@@ -382,37 +368,18 @@ impl TransactionAcceptor {
                     block_header,
                     maybe_entity: result.into_option(),
                 }),
-            ExecutableDeployItemIdentifier::Package(PackageIdentifier::Hash {
-                package_hash,
-                version,
-            }) => {
-                if version.is_some() {
-                    return self.reject_transaction(
-                        effect_builder,
-                        *event_metadata,
-                        Error::InvalidTransaction(InvalidTransaction::Deploy(
-                            InvalidDeploy::TargetingPackageVersionNotSupported,
-                        )),
-                    );
-                }
-                effect_builder
-                    .get_package(*block_header.state_root_hash(), package_hash.value())
-                    .event(move |maybe_package| Event::GetPackageResult {
-                        event_metadata,
-                        block_header,
-                        is_payment: true,
-                        package_hash,
-                        maybe_package_version_key: None,
-                        maybe_package,
-                    })
-            }
             ExecutableDeployItemIdentifier::Package(
-                ref contract_package_identifier @ PackageIdentifier::HashWithVersion {
+                ref contract_package_identifier @ PackageIdentifier::Hash { package_hash, .. },
+            )
+            | ExecutableDeployItemIdentifier::Package(
+                ref contract_package_identifier @ PackageIdentifier::HashWithMajorVersion {
                     package_hash,
                     ..
                 },
             ) => {
-                let maybe_package_version_key = contract_package_identifier.version_key();
+                let maybe_entity_version = contract_package_identifier.version();
+                let maybe_protocol_version_major =
+                    contract_package_identifier.protocol_version_major();
                 effect_builder
                     .get_package(*block_header.state_root_hash(), package_hash.value())
                     .event(move |maybe_package| Event::GetPackageResult {
@@ -420,7 +387,8 @@ impl TransactionAcceptor {
                         block_header,
                         is_payment: true,
                         package_hash,
-                        maybe_package_version_key,
+                        maybe_entity_version,
+                        maybe_protocol_version_major,
                         maybe_package,
                     })
             }
@@ -483,19 +451,9 @@ impl TransactionAcceptor {
                 }
             }
             ExecutableDeployItem::StoredContractByHash { .. }
-            | ExecutableDeployItem::StoredContractByName { .. } => (),
-            ExecutableDeployItem::StoredVersionedContractByHash { version, .. }
-            | ExecutableDeployItem::StoredVersionedContractByName { version, .. } => {
-                if version.is_some() {
-                    return self.reject_transaction(
-                        effect_builder,
-                        *event_metadata,
-                        Error::InvalidTransaction(InvalidTransaction::Deploy(
-                            InvalidDeploy::TargetingPackageVersionNotSupported,
-                        )),
-                    );
-                }
-            }
+            | ExecutableDeployItem::StoredContractByName { .. }
+            | ExecutableDeployItem::StoredVersionedContractByHash { .. }
+            | ExecutableDeployItem::StoredVersionedContractByName { .. } => (),
         }
 
         match session.identifier() {
@@ -508,24 +466,10 @@ impl TransactionAcceptor {
             | ExecutableDeployItemIdentifier::AddressableEntity(
                 AddressableEntityIdentifier::Name(_),
             )
-            | ExecutableDeployItemIdentifier::Package(PackageIdentifier::NameWithVersion {
+            | ExecutableDeployItemIdentifier::Package(PackageIdentifier::Name { .. })
+            | ExecutableDeployItemIdentifier::Package(PackageIdentifier::NameWithMajorVersion {
                 ..
             }) => self.validate_transaction_cryptography(effect_builder, event_metadata),
-            ExecutableDeployItemIdentifier::Package(PackageIdentifier::Name {
-                version, ..
-            }) => {
-                if version.is_some() {
-                    self.reject_transaction(
-                        effect_builder,
-                        *event_metadata,
-                        Error::InvalidTransaction(InvalidTransaction::Deploy(
-                            InvalidDeploy::TargetingPackageVersionNotSupported,
-                        )),
-                    )
-                } else {
-                    self.validate_transaction_cryptography(effect_builder, event_metadata)
-                }
-            }
             ExecutableDeployItemIdentifier::AddressableEntity(
                 AddressableEntityIdentifier::Hash(entity_hash),
             ) => {
@@ -549,36 +493,15 @@ impl TransactionAcceptor {
                     block_header,
                     maybe_entity: result.into_option(),
                 }),
-            ExecutableDeployItemIdentifier::Package(PackageIdentifier::Hash {
-                package_hash,
-                version,
-                ..
-            }) => {
-                if version.is_some() {
-                    self.reject_transaction(
-                        effect_builder,
-                        *event_metadata,
-                        Error::InvalidTransaction(InvalidTransaction::Deploy(
-                            InvalidDeploy::TargetingPackageVersionNotSupported,
-                        )),
-                    )
-                } else {
-                    effect_builder
-                        .get_package(*block_header.state_root_hash(), package_hash.value())
-                        .event(move |maybe_package| Event::GetPackageResult {
-                            event_metadata,
-                            block_header,
-                            is_payment: false,
-                            package_hash,
-                            maybe_package_version_key: None,
-                            maybe_package,
-                        })
-                }
-            }
             ExecutableDeployItemIdentifier::Package(
-                ref package_identifier @ PackageIdentifier::HashWithVersion { package_hash, .. },
+                ref package_identifier @ PackageIdentifier::Hash { package_hash, .. },
+            )
+            | ExecutableDeployItemIdentifier::Package(
+                ref package_identifier @ PackageIdentifier::HashWithMajorVersion {
+                    package_hash, ..
+                },
             ) => {
-                let maybe_package_version_key = package_identifier.version_key();
+                let maybe_package_version = package_identifier.version();
                 effect_builder
                     .get_package(*block_header.state_root_hash(), package_hash.value())
                     .event(move |maybe_package| Event::GetPackageResult {
@@ -586,7 +509,8 @@ impl TransactionAcceptor {
                         block_header,
                         is_payment: false,
                         package_hash,
-                        maybe_package_version_key,
+                        maybe_entity_version: maybe_package_version,
+                        maybe_protocol_version_major: None,
                         maybe_package,
                     })
             }
@@ -601,7 +525,11 @@ impl TransactionAcceptor {
     ) -> Effects<Event> {
         enum NextStep {
             GetContract(EntityAddr),
-            GetPackage(PackageAddr, Option<EntityVersionKey>),
+            GetPackage(
+                PackageAddr,
+                Option<EntityVersion>,
+                Option<ProtocolVersionMajor>,
+            ),
             CryptoValidation,
         }
 
@@ -626,32 +554,12 @@ impl TransactionAcceptor {
                     TransactionInvocationTarget::ByPackageHash {
                         addr,
                         version,
-                        version_key,
-                    } => {
-                        if version.is_some() {
-                            return self.reject_transaction(
-                                effect_builder,
-                                *event_metadata,
-                                Error::InvalidTransaction(InvalidTransaction::V1(
-                                    InvalidTransactionV1::TargetingPackageVersionNotSupported,
-                                )),
-                            );
-                        }
-                        NextStep::GetPackage(*addr, *version_key)
-                    }
-                    TransactionInvocationTarget::ByPackageName { version, .. } => {
-                        if version.is_some() {
-                            return self.reject_transaction(
-                                effect_builder,
-                                *event_metadata,
-                                Error::InvalidTransaction(InvalidTransaction::V1(
-                                    InvalidTransactionV1::TargetingPackageVersionNotSupported,
-                                )),
-                            );
-                        }
+                        protocol_version_major,
+                    } => NextStep::GetPackage(*addr, *version, *protocol_version_major),
+                    TransactionInvocationTarget::ByName(_)
+                    | TransactionInvocationTarget::ByPackageName { .. } => {
                         NextStep::CryptoValidation
                     }
-                    TransactionInvocationTarget::ByName(_) => NextStep::CryptoValidation,
                 },
                 TransactionTarget::Native | TransactionTarget::Session { .. } => {
                     NextStep::CryptoValidation
@@ -673,14 +581,19 @@ impl TransactionAcceptor {
                         maybe_entity: result.into_option(),
                     })
             }
-            NextStep::GetPackage(package_addr, maybe_package_version_key) => effect_builder
+            NextStep::GetPackage(
+                package_addr,
+                maybe_entity_version,
+                maybe_protocol_version_major,
+            ) => effect_builder
                 .get_package(*block_header.state_root_hash(), package_addr)
                 .event(move |maybe_package| Event::GetPackageResult {
                     event_metadata,
                     block_header,
                     is_payment: false,
                     package_hash: PackageHash::new(package_addr),
-                    maybe_package_version_key,
+                    maybe_entity_version,
+                    maybe_protocol_version_major,
                     maybe_package,
                 }),
             NextStep::CryptoValidation => {
@@ -813,7 +726,8 @@ impl TransactionAcceptor {
         block_header: Box<BlockHeader>,
         is_payment: bool,
         package_hash: PackageHash,
-        maybe_contract_version_key: Option<EntityVersionKey>,
+        maybe_contract_version: Option<EntityVersion>,
+        maybe_protocol_version_major: Option<ProtocolVersionMajor>,
         maybe_package: Option<Box<Package>>,
     ) -> Effects<Event> {
         let package = match maybe_package {
@@ -827,7 +741,16 @@ impl TransactionAcceptor {
             }
         };
 
-        let entity_version_key = match maybe_contract_version_key {
+        let maybe_entity_version_key = match self.resolve_entity_version_key(
+            package.as_ref(),
+            maybe_contract_version,
+            maybe_protocol_version_major,
+            &block_header,
+        ) {
+            Ok(maybe) => maybe,
+            Err(err) => return self.reject_transaction(effect_builder, *event_metadata, *err),
+        };
+        let entity_version_key = match maybe_entity_version_key {
             Some(version) => version,
             None => {
                 // We continue to the next step in None case due to the subjective
@@ -876,6 +799,43 @@ impl TransactionAcceptor {
                 self.reject_transaction(effect_builder, *event_metadata, error)
             }
         }
+    }
+
+    /// Resolves EntityVersionKey for a given contract. Returning Some(k) means that k is an enabled
+    /// version matching the criteria. Returning None doesn't mean there is no fit - it means
+    /// that we can't for sure determine the version key since the state at execution might be
+    /// different - we must assume that a valid EntityVersionKey might be present for the package or
+    /// error out during execution
+    fn resolve_entity_version_key(
+        &self,
+        package: &Package,
+        maybe_entity_version: Option<EntityVersion>,
+        maybe_protocol_version_major: Option<ProtocolVersionMajor>,
+        block_header: &BlockHeader,
+    ) -> Result<Option<EntityVersionKey>, Box<Error>> {
+        let entity_version_key = match (maybe_entity_version, maybe_protocol_version_major) {
+            (Some(entity_version), Some(major)) => EntityVersionKey::new(major, entity_version),
+            (Some(_), None) | (None, Some(_)) | (None, None) => return Ok(None), /* In this case
+                                                                                  * the runtime
+                                                                                  * needs to do
+                                                                                  * the
+                                                                                  * determination, at this point we can't be sure which versions will be available on execution */
+        };
+
+        if package.is_version_missing(entity_version_key) {
+            return Err(Box::new(Error::parameter_failure(
+                block_header,
+                ParameterFailure::MissingEntityAtVersion { entity_version_key },
+            )));
+        }
+
+        if !package.is_version_enabled(entity_version_key) {
+            return Err(Box::new(Error::parameter_failure(
+                block_header,
+                ParameterFailure::DisabledEntityAtVersion { entity_version_key },
+            )));
+        }
+        Ok(Some(entity_version_key))
     }
 
     fn validate_transaction_cryptography<REv: ReactorEventT>(
@@ -1105,7 +1065,8 @@ impl<REv: ReactorEventT> Component<REv> for TransactionAcceptor {
                 block_header,
                 is_payment,
                 package_hash,
-                maybe_package_version_key,
+                maybe_entity_version,
+                maybe_protocol_version_major,
                 maybe_package,
             } => self.handle_get_package_result(
                 effect_builder,
@@ -1113,7 +1074,8 @@ impl<REv: ReactorEventT> Component<REv> for TransactionAcceptor {
                 block_header,
                 is_payment,
                 package_hash,
-                maybe_package_version_key,
+                maybe_entity_version,
+                maybe_protocol_version_major,
                 maybe_package,
             ),
             Event::GetEntryPointResult {
@@ -1204,15 +1166,9 @@ fn deploy_payment_is_valid(
             }
         }
         ExecutableDeployItem::StoredContractByHash { .. }
-        | ExecutableDeployItem::StoredContractByName { .. } => (),
-        ExecutableDeployItem::StoredVersionedContractByHash { version, .. }
-        | ExecutableDeployItem::StoredVersionedContractByName { version, .. } => {
-            if version.is_some() {
-                return Err(Error::InvalidTransaction(InvalidTransaction::Deploy(
-                    InvalidDeploy::TargetingPackageVersionNotSupported,
-                )));
-            }
-        }
+        | ExecutableDeployItem::StoredContractByName { .. }
+        | ExecutableDeployItem::StoredVersionedContractByHash { .. }
+        | ExecutableDeployItem::StoredVersionedContractByName { .. } => (),
     }
     Ok(())
 }

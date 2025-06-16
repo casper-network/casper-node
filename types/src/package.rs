@@ -238,6 +238,11 @@ impl EntityVersions {
         let (_, value) = self.0.last_key_value()?;
         Some(value)
     }
+
+    /// Returns an iterator over the `AddressableEntityHash`s (i.e. the map's values).
+    pub fn iter_entries(&self) -> impl Iterator<Item = (&EntityVersionKey, &EntityAddr)> {
+        self.0.iter()
+    }
 }
 
 impl ToBytes for EntityVersions {
