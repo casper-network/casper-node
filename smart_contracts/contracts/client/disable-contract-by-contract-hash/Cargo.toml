@@ -1,0 +1,17 @@
+[package]
+name = "disable-contract-by-contract-hash"
+version = "0.1.0"
+authors = ["Michał Papierski <michal@casperlabs.io>"]
+edition = "2021"
+
+[[bin]]
+name = "disable_contract_by_contract_hash"
+path = "src/main.rs"
+bench = false
+doctest = false
+test = false
+
+[dependencies]
+casper-contract = { path = "../../../contract" }
+casper-types = { path = "../../../../types" }
+

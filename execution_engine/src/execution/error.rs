@@ -192,6 +192,12 @@ pub enum Error {
     /// Incompatible transaction runtime.
     #[error("Incompatible runtime: {0}")]
     IncompatibleRuntime(ContractRuntimeTag),
+    /// No matching entity version key.
+    #[error("No matching entity version key")]
+    NoMatchingEntityVersionKey,
+    /// Multiple entries for one entity version.
+    #[error("Multiple entries for one entity version")]
+    CollisionInEntityVersion,
 }
 
 impl From<PreprocessingError> for Error {

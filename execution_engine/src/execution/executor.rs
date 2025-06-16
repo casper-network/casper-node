@@ -95,6 +95,7 @@ impl Executor {
         let allow_install_upgrade = match execution_kind {
             ExecutionKind::InstallerUpgrader(_)
             | ExecutionKind::Stored { .. }
+            | ExecutionKind::VersionedCall { .. }
             | ExecutionKind::Deploy(_) => AllowInstallUpgrade::Allowed,
             ExecutionKind::Standard(_) => AllowInstallUpgrade::Forbidden,
         };
@@ -135,6 +136,19 @@ impl Executor {
                 // `Runtime::execute_contract`).
                 runtime.call_contract_with_stack(entity_hash, &entry_point, args, stack)
             }
+            ExecutionKind::VersionedCall {
+                package_hash,
+                entity_version,
+                protocol_version_major,
+                entry_point,
+            } => runtime.call_package_version_with_stack(
+                package_hash,
+                protocol_version_major,
+                entity_version,
+                entry_point,
+                args,
+                stack,
+            ),
         };
         match result {
             Ok(ret) => WasmV1Result::new(

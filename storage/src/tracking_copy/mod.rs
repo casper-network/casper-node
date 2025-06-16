@@ -127,10 +127,10 @@ impl Query {
     }
 
     /// Panics if `unvisited_names` is empty.
-    fn next_name(&mut self) -> &String {
-        let next_name = self.unvisited_names.pop_front().unwrap();
+    fn next_name(&mut self) -> Option<&String> {
+        let next_name = self.unvisited_names.pop_front()?;
         self.visited_names.push(next_name);
-        self.visited_names.last().unwrap()
+        self.visited_names.last()
     }
 
     fn navigate(&mut self, key: Key) {
@@ -706,7 +706,7 @@ where
 
             let value = stored_value.value().to_owned();
 
-            // Following code does a patching on the `StoredValue` that unwraps an inner
+            // Following code does a patching on the `StoredValue` to get an inner
             // `DictionaryValue` for dictionaries only.
             let value = match handle_stored_dictionary_value(query.current_key, value) {
                 Ok(patched_stored_value) => patched_stored_value,
@@ -731,20 +731,56 @@ where
 
             match stored_value {
                 StoredValue::Account(account) => {
-                    let name = query.next_name();
-                    if let Some(key) = account.named_keys().get(name) {
-                        query.navigate(*key);
+                    let mut maybe_msg_prefix: Option<String> = None;
+                    if let Some(name) = query.next_name() {
+                        if let Some(key) = account.named_keys().get(name) {
+                            query.navigate(*key);
+                        } else {
+                            maybe_msg_prefix = Some(format!("Name {} not found in Account", name));
+                        }
                     } else {
-                        let msg_prefix = format!("Name {} not found in Account", name);
+                        maybe_msg_prefix = Some("All names visited".to_string());
+                    }
+                    if let Some(msg_prefix) = maybe_msg_prefix {
                         return Ok(query.into_not_found_result(&msg_prefix));
                     }
                 }
                 StoredValue::Contract(contract) => {
-                    let name = query.next_name();
-                    if let Some(key) = contract.named_keys().get(name) {
-                        query.navigate(*key);
+                    let mut maybe_msg_prefix: Option<String> = None;
+                    if let Some(name) = query.next_name() {
+                        if let Some(key) = contract.named_keys().get(name) {
+                            query.navigate(*key);
+                        } else {
+                            maybe_msg_prefix = Some(format!("Name {} not found in Contract", name));
+                        }
                     } else {
-                        let msg_prefix = format!("Name {} not found in Contract", name);
+                        maybe_msg_prefix = Some("All names visited".to_string());
+                    }
+                    if let Some(msg_prefix) = maybe_msg_prefix {
+                        return Ok(query.into_not_found_result(&msg_prefix));
+                    }
+                }
+                StoredValue::AddressableEntity(_) => {
+                    let current_key = query.current_key;
+                    let mut maybe_msg_prefix: Option<String> = None;
+                    if let Some(name) = query.next_name() {
+                        if let Key::AddressableEntity(addr) = current_key {
+                            let named_key_addr =
+                                match NamedKeyAddr::new_from_string(addr, name.clone()) {
+                                    Ok(named_key_addr) => Key::NamedKey(named_key_addr),
+                                    Err(error) => {
+                                        let msg_prefix = format!("{}", error);
+                                        return Ok(query.into_not_found_result(&msg_prefix));
+                                    }
+                                };
+                            query.navigate_for_named_key(named_key_addr);
+                        } else {
+                            maybe_msg_prefix = Some("Invalid base key".to_string());
+                        }
+                    } else {
+                        maybe_msg_prefix = Some("All names visited".to_string());
+                    }
+                    if let Some(msg_prefix) = maybe_msg_prefix {
                         return Ok(query.into_not_found_result(&msg_prefix));
                     }
                 }
@@ -788,25 +824,6 @@ where
                         cl_value
                     );
                     return Ok(query.into_not_found_result(&msg_prefix));
-                }
-                StoredValue::AddressableEntity(_) => {
-                    let current_key = query.current_key;
-                    let name = query.next_name();
-
-                    if let Key::AddressableEntity(addr) = current_key {
-                        let named_key_addr = match NamedKeyAddr::new_from_string(addr, name.clone())
-                        {
-                            Ok(named_key_addr) => Key::NamedKey(named_key_addr),
-                            Err(error) => {
-                                let msg_prefix = format!("{}", error);
-                                return Ok(query.into_not_found_result(&msg_prefix));
-                            }
-                        };
-                        query.navigate_for_named_key(named_key_addr);
-                    } else {
-                        let msg_prefix = "Invalid base key".to_string();
-                        return Ok(query.into_not_found_result(&msg_prefix));
-                    }
                 }
                 StoredValue::ContractWasm(_) => {
                     return Ok(query.into_not_found_result("ContractWasm value found."));
@@ -969,10 +986,14 @@ pub fn validate_query_proof(
     }
 
     let mut proofs_iter = proofs.iter();
-    let mut path_components_iter = path.iter();
+    let first_proof = match proofs_iter.next() {
+        Some(proof) => proof,
+        None => {
+            return Err(ValidationError::PathLengthDifferentThanProofLessOne);
+        }
+    };
 
-    // length check above means we are safe to unwrap here
-    let first_proof = proofs_iter.next().unwrap();
+    let mut path_components_iter = path.iter();
 
     if first_proof.key() != &expected_first_key.normalize() {
         return Err(ValidationError::UnexpectedKey);
@@ -1045,8 +1066,10 @@ pub fn validate_query_merkle_proof(
 
     let mut proofs_iter = proofs.iter();
 
-    // length check above means we are safe to unwrap here
-    let first_proof = proofs_iter.next().unwrap();
+    let first_proof = match proofs_iter.next() {
+        Some(proof) => proof,
+        None => return Err(ValidationError::PathLengthDifferentThanProofLessOne),
+    };
 
     if hash != &compute_state_hash(first_proof)? {
         return Err(ValidationError::InvalidProofHash);

@@ -10,8 +10,9 @@ use casper_types::{
     contract_messages::{MessagePayload, MessageTopicOperation},
     contracts::{ContractHash, ContractPackageHash, ContractVersion, NamedKeys},
     system::CallerInfo,
-    ApiError, BlockTime, CLTyped, CLValue, Digest, HashAlgorithm, Key, Phase, ProtocolVersion,
-    RuntimeArgs, URef, BLAKE2B_DIGEST_LENGTH, BLOCKTIME_SERIALIZED_LENGTH, PHASE_SERIALIZED_LENGTH,
+    ApiError, BlockTime, CLTyped, CLValue, Digest, EntityVersion, HashAlgorithm, Key, Phase,
+    ProtocolVersion, RuntimeArgs, URef, BLAKE2B_DIGEST_LENGTH, BLOCKTIME_SERIALIZED_LENGTH,
+    PHASE_SERIALIZED_LENGTH,
 };
 
 use crate::{contract_api, ext_ffi, unwrap_or_revert::UnwrapOrRevert};
@@ -135,8 +136,8 @@ pub fn call_versioned_contract<T: CLTyped + FromBytes>(
 /// `call_package_version` doesn't return. Otherwise `call_package_version` returns `()`.
 pub fn call_package_version<T: CLTyped + FromBytes>(
     contract_package_hash: ContractPackageHash,
-    major_version: u32,
-    contract_version: ContractVersion,
+    major_version: Option<u32>,
+    contract_version: Option<EntityVersion>,
     entry_point_name: &str,
     runtime_args: RuntimeArgs,
 ) -> T {
