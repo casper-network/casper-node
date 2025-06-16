@@ -811,6 +811,27 @@ impl Package {
         current_version + 1
     }
 
+    pub fn current_entity_version_for(
+        &self,
+        protocol_version: ProtocolVersionMajor,
+    ) -> EntityVersionKey {
+        let current_version = self
+            .enabled_versions()
+            .0
+            .keys()
+            .rev()
+            .find_map(|&entity_version_key| {
+                if entity_version_key.protocol_version_major() == protocol_version {
+                    Some(entity_version_key.entity_version())
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(0);
+
+        EntityVersionKey::new(protocol_version, current_version)
+    }
+
     /// Return the entity version key for the newest enabled entity version.
     pub fn current_entity_version(&self) -> Option<EntityVersionKey> {
         self.enabled_versions().0.keys().next_back().copied()

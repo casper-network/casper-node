@@ -69,6 +69,7 @@ fn should_run_regression() {
     let direct_call_v2_request = ExecuteRequestBuilder::key_versioned_contract_call_by_name(
         *DEFAULT_ACCOUNT_ADDR,
         PACKAGE_HASH_NAME,
+        Some(2),
         Some(EntityVersionKey::new(2, 2)),
         DO_SOMETHING_ENTRYPOINT,
         RuntimeArgs::new(),
@@ -86,6 +87,7 @@ fn should_run_regression() {
     let direct_call_v1_request = ExecuteRequestBuilder::key_versioned_contract_call_by_name(
         *DEFAULT_ACCOUNT_ADDR,
         PACKAGE_HASH_NAME,
+        Some(1),
         Some(EntityVersionKey::new(2, 1)),
         DO_SOMETHING_ENTRYPOINT,
         RuntimeArgs::new(),
@@ -134,6 +136,7 @@ fn should_run_regression() {
     let direct_call_v2_request = ExecuteRequestBuilder::key_versioned_contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
         contract_package_hash,
+        Some(2),
         Some(EntityVersionKey::new(2, 2)),
         DO_SOMETHING_ENTRYPOINT,
         RuntimeArgs::new(),
@@ -143,6 +146,7 @@ fn should_run_regression() {
     let direct_call_v1_request = ExecuteRequestBuilder::key_versioned_contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
         contract_package_hash,
+        Some(1),
         Some(EntityVersionKey::new(2, 1)),
         DO_SOMETHING_ENTRYPOINT,
         RuntimeArgs::new(),

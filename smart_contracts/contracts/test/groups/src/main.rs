@@ -49,10 +49,9 @@ pub extern "C" fn restricted_session_caller() {
         .into_entity_hash_addr()
         .unwrap_or_revert()
         .into();
-    runtime::call_package_version(
+    runtime::call_versioned_contract(
         contract_package_hash,
-        2u32,
-        ENTITY_INITIAL_VERSION,
+        Some(ENTITY_INITIAL_VERSION),
         RESTRICTED_SESSION,
         runtime_args! {},
     )
@@ -62,10 +61,9 @@ fn contract_caller() {
     let package_hash: ContractPackageHash = runtime::get_named_arg(ARG_PACKAGE_HASH);
     let contract_version = ENTITY_INITIAL_VERSION;
     let runtime_args = runtime_args! {};
-    runtime::call_package_version(
+    runtime::call_versioned_contract(
         package_hash,
-        2,
-        contract_version,
+        Some(contract_version),
         RESTRICTED_CONTRACT,
         runtime_args,
     )

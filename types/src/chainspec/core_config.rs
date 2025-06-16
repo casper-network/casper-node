@@ -187,6 +187,9 @@ pub struct CoreConfig {
     /// This value is used as the penalty payment amount, the minimum balance amount,
     /// and the minimum consumed amount.
     pub baseline_motes_amount: u64,
+    /// The flag on whether the engine will return an error for multiple
+    /// entity versions.
+    pub return_error_on_collision: bool,
 }
 
 impl CoreConfig {
@@ -331,6 +334,7 @@ impl CoreConfig {
             validator_credit_cap,
             enable_addressable_entity: DEFAULT_ENABLE_ENTITY,
             baseline_motes_amount: DEFAULT_BASELINE_MOTES_AMOUNT,
+            return_error_on_collision: false,
         }
     }
 }
@@ -377,6 +381,7 @@ impl Default for CoreConfig {
             validator_credit_cap: Ratio::new(1, 5),
             enable_addressable_entity: DEFAULT_ENABLE_ENTITY,
             baseline_motes_amount: DEFAULT_BASELINE_MOTES_AMOUNT,
+            return_error_on_collision: false,
         }
     }
 }
@@ -425,6 +430,7 @@ impl ToBytes for CoreConfig {
         buffer.extend(self.validator_credit_cap.to_bytes()?);
         buffer.extend(self.enable_addressable_entity.to_bytes()?);
         buffer.extend(self.baseline_motes_amount.to_bytes()?);
+        buffer.extend(self.return_error_on_collision.to_bytes()?);
         Ok(buffer)
     }
 
@@ -469,6 +475,7 @@ impl ToBytes for CoreConfig {
             + self.validator_credit_cap.serialized_length()
             + self.enable_addressable_entity.serialized_length()
             + self.baseline_motes_amount.serialized_length()
+            + self.return_error_on_collision.serialized_length()
     }
 }
 
@@ -513,6 +520,7 @@ impl FromBytes for CoreConfig {
         let (validator_credit_cap, remainder) = Ratio::from_bytes(remainder)?;
         let (enable_addressable_entity, remainder) = FromBytes::from_bytes(remainder)?;
         let (baseline_motes_amount, remainder) = u64::from_bytes(remainder)?;
+        let (return_error_on_collision, remainder) = bool::from_bytes(remainder)?;
         let config = CoreConfig {
             era_duration,
             minimum_era_height,
@@ -552,6 +560,7 @@ impl FromBytes for CoreConfig {
             validator_credit_cap,
             enable_addressable_entity,
             baseline_motes_amount,
+            return_error_on_collision,
         };
         Ok((config, remainder))
     }

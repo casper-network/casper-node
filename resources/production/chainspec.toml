@@ -175,6 +175,8 @@ administrators = []
 enable_addressable_entity = false
 # This value is used as the penalty payment amount, the lowest cost, and the minimum balance amount.
 baseline_motes_amount = 2_500_000_000
+# Flag on whether collision of multiple entity versions returns an execution error.
+return_error_on_collision = false
 
 [highway]
 # Highway dynamically chooses its round length, between minimum_block_time and maximum_round_length.

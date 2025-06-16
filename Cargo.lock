@@ -1000,6 +1000,7 @@ dependencies = [
  "erased-serde",
  "fake_instant",
  "fs2",
+ "fs_extra",
  "futures",
  "futures-io",
  "hex-buffer-serde 0.3.0",
@@ -2048,6 +2049,14 @@ dependencies = [
 
 [[package]]
 name = "disable-contract"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
+name = "disable-contract-by-contract-hash"
 version = "0.1.0"
 dependencies = [
  "casper-contract",
@@ -4902,6 +4911,14 @@ dependencies = [
 
 [[package]]
 name = "purse-holder-stored-upgrader"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
+name = "purse-holder-stored-upgrader-v2-2"
 version = "0.1.0"
 dependencies = [
  "casper-contract",

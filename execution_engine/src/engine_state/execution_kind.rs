@@ -1,12 +1,9 @@
 //! Units of execution.
 
-use casper_storage::{
-    global_state::{error::Error as GlobalStateError, state::StateReader},
-    tracking_copy::{TrackingCopy, TrackingCopyExt},
-};
 use casper_types::{
-    bytesrepr::Bytes, contracts::NamedKeys, AddressableEntityHash, Key, PackageHash, StoredValue,
-    TransactionInvocationTarget,
+    bytesrepr::Bytes,
+    contracts::{NamedKeys, ProtocolVersionMajor},
+    AddressableEntityHash, EntityVersion, Key, PackageHash, TransactionInvocationTarget,
 };
 
 use super::{wasm_v1::SessionKind, Error, ExecutableItem};
@@ -31,21 +28,25 @@ pub(crate) enum ExecutionKind<'a> {
     /// This is equivalent to the `Standard` variant with the exception that this kind will be
     /// allowed to install or upgrade stored entities to retain existing (pre-node 2.0) behavior.
     Deploy(&'a Bytes),
+    /// A call to an entity/contract in a package/contract package.
+    VersionedCall {
+        package_hash: PackageHash,
+        entity_version: Option<EntityVersion>,
+        protocol_version_major: Option<ProtocolVersionMajor>,
+        /// Entry point.
+        entry_point: String,
+    },
 }
 
 impl<'a> ExecutionKind<'a> {
-    pub(crate) fn new<R>(
-        tracking_copy: &mut TrackingCopy<R>,
+    pub(crate) fn new(
         named_keys: &NamedKeys,
         executable_item: &'a ExecutableItem,
         entry_point: String,
-    ) -> Result<Self, Error>
-    where
-        R: StateReader<Key, StoredValue, Error = GlobalStateError>,
-    {
+    ) -> Result<Self, Error> {
         match executable_item {
             ExecutableItem::Invocation(target) => {
-                Self::new_direct_invocation(tracking_copy, named_keys, target, entry_point)
+                Self::new_direct_invocation(named_keys, target, entry_point)
             }
             ExecutableItem::PaymentBytes(module_bytes)
             | ExecutableItem::SessionBytes {
@@ -60,15 +61,11 @@ impl<'a> ExecutionKind<'a> {
         }
     }
 
-    fn new_direct_invocation<R>(
-        tracking_copy: &mut TrackingCopy<R>,
+    fn new_direct_invocation(
         named_keys: &NamedKeys,
         target: &TransactionInvocationTarget,
         entry_point: String,
-    ) -> Result<Self, Error>
-    where
-        R: StateReader<Key, StoredValue, Error = GlobalStateError>,
-    {
+    ) -> Result<Self, Error> {
         let entity_hash = match target {
             TransactionInvocationTarget::ByHash(addr) => AddressableEntityHash::new(*addr),
             TransactionInvocationTarget::ByName(alias) => {
@@ -87,42 +84,22 @@ impl<'a> ExecutionKind<'a> {
             TransactionInvocationTarget::ByPackageHash {
                 addr,
                 version_key,
-                version: _, // version is defunct and should not be used
+                version, // version is defunct and should not be used
             } => {
+                let protocol_version_major = version_key.map(|vk| vk.protocol_version_major());
+
                 let package_hash = PackageHash::from(*addr);
-                let package = tracking_copy.get_package(*addr)?;
-
-                let maybe_version_key = version_key;
-
-                let entity_version_key = maybe_version_key
-                    .or_else(|| package.current_entity_version())
-                    .ok_or(Error::Exec(ExecError::NoActiveEntityVersions(package_hash)))?;
-
-                if package.is_version_missing(entity_version_key) {
-                    return Err(Error::Exec(ExecError::MissingEntityVersion(
-                        entity_version_key,
-                    )));
-                }
-
-                if !package.is_version_enabled(entity_version_key) {
-                    return Err(Error::Exec(ExecError::DisabledEntityVersion(
-                        entity_version_key,
-                    )));
-                }
-
-                let entity_addr =
-                    *package
-                        .lookup_entity_hash(entity_version_key)
-                        .ok_or(Error::Exec(ExecError::InvalidEntityVersion(
-                            entity_version_key,
-                        )))?;
-
-                AddressableEntityHash::new(entity_addr.value())
+                return Ok(Self::VersionedCall {
+                    package_hash,
+                    entity_version: *version,
+                    protocol_version_major,
+                    entry_point,
+                });
             }
             TransactionInvocationTarget::ByPackageName {
                 name: alias,
                 version_key,
-                version: _, // version is defunct and should not be used
+                version, // version is defunct and should not be used
             } => {
                 let package_key = named_keys
                     .get(alias)
@@ -132,34 +109,13 @@ impl<'a> ExecutionKind<'a> {
                     Key::Hash(hash) | Key::SmartContract(hash) => PackageHash::new(*hash),
                     _ => return Err(Error::InvalidKeyVariant(*package_key)),
                 };
-
-                let package = tracking_copy.get_package(package_hash.value())?;
-
-                let entity_version_key =
-                    version_key
-                        .or_else(|| package.current_entity_version())
-                        .ok_or(Error::Exec(ExecError::NoActiveEntityVersions(package_hash)))?;
-
-                if package.is_version_missing(entity_version_key) {
-                    return Err(Error::Exec(ExecError::MissingEntityVersion(
-                        entity_version_key,
-                    )));
-                }
-
-                if !package.is_version_enabled(entity_version_key) {
-                    return Err(Error::Exec(ExecError::DisabledEntityVersion(
-                        entity_version_key,
-                    )));
-                }
-
-                let entity_addr =
-                    *package
-                        .lookup_entity_hash(entity_version_key)
-                        .ok_or(Error::Exec(ExecError::InvalidEntityVersion(
-                            entity_version_key,
-                        )))?;
-
-                AddressableEntityHash::new(entity_addr.value())
+                let protocol_version_major = version_key.map(|vk| vk.protocol_version_major());
+                return Ok(Self::VersionedCall {
+                    package_hash,
+                    entity_version: *version,
+                    protocol_version_major,
+                    entry_point,
+                });
             }
         };
         Ok(ExecutionKind::Stored {
