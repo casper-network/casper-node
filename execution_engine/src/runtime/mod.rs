@@ -1517,8 +1517,6 @@ where
         package: &Package,
     ) -> Result<EntityVersionKey, ExecError> {
         let enabled_versions = package.enabled_versions();
-        println!("{:?}", enabled_versions);
-
         let current_protocol_version_major = self.context.protocol_version().value().major;
 
         let mut possible_versions = vec![];
