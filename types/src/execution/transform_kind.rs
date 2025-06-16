@@ -20,6 +20,7 @@ use crate::{
 
 /// Taxonomy of Transform.
 #[derive(PartialEq, Eq, Debug, Clone)]
+#[allow(clippy::large_enum_variant)]
 pub enum TransformInstruction {
     /// Store a StoredValue.
     Store(StoredValue),
@@ -53,6 +54,7 @@ impl From<StoredValue> for TransformInstruction {
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
+#[allow(clippy::large_enum_variant)]
 pub enum TransformKindV2 {
     /// An identity transformation that does not modify a value in the global state.
     ///
