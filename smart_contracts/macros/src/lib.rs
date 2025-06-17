@@ -890,12 +890,14 @@ fn generate_impl_trait_for_contract(
     };
 
     let macro_name = format_ident!("enumerate_{trait_name}_symbols");
+    let ref_trait = format_ident!("{}Ext", trait_path.segments.last().unwrap().ident);
+    let ref_name = format_ident!("{}Ref", self_ty.to_token_stream().to_string());
 
     let visitor = if impl_meta.compile_as_dependency {
         quote! {
             const _: () = {
                 macro_rules! visitor {
-                    ($($vis:vis $name:ident as $export_name:ident => $dispatch:ident,)*) => {
+                    ($( $vis:vis $name:ident as $export_name:ident => $dispatch:ident , $schema:ident , )*) => {
                         $(
                             $vis fn $name() {
                                 #path_to_macro::$dispatch::<#self_ty>();
@@ -911,7 +913,7 @@ fn generate_impl_trait_for_contract(
         quote! {
             const _: () = {
                 macro_rules! visitor {
-                    ($($vis:vis $name:ident as $export_name:ident => $dispatch:ident,)*) => {
+                    ($( $vis:vis $name:ident as $export_name:ident => $dispatch:ident , $schema:ident , )*) => {
                         $(
                             #[export_name = stringify!($export_name)]
                             $vis extern "C" fn $name() {
@@ -929,6 +931,12 @@ fn generate_impl_trait_for_contract(
                                     file: file!(),
                                     line: line!(),
                                 };
+                            };
+
+                            const _: () = {
+                                #[casper_contract_sdk::linkme::distributed_slice(casper_contract_sdk::abi_generator::ENTRYPOINTS)]
+                                #[linkme(crate = casper_contract_sdk::linkme)]
+                                static ENTRY_POINTS: fn() -> casper_contract_sdk::schema::SchemaEntryPoint = <#ref_name as #ref_trait>::$schema;
                             };
                         )*
                     }
@@ -975,6 +983,7 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
     };
 
     let trait_name = &item_trait.ident;
+
     let vis = &item_trait.vis;
     let mut dispatch_functions = Vec::new();
     // let mut dispatch_table = Vec::new();
@@ -995,6 +1004,7 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
                 }
 
                 let func_name = func.sig.ident.clone();
+                let func_name_str = func_name.to_string();
 
                 if func_name.to_string().starts_with("__casper_") {
                     return TokenStream::from(
@@ -1007,12 +1017,14 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
                 }
 
                 let export_name = if method_attribute.fallback {
-                    format_ident!("{}", CASPER_RESERVED_FALLBACK_EXPORT)
+                    CASPER_RESERVED_FALLBACK_EXPORT.to_string()
                 } else {
-                    format_ident!("{}", &func_name)
+                    format!("{}_{}", trait_name, func_name_str)
                 };
 
-                let _result = match &func.sig.output {
+                let export_ident = format_ident!("{}", &func_name_str);
+
+                let result = match &func.sig.output {
                     syn::ReturnType::Default => {
                         populate_definitions.push(quote! {
                             definitions.populate_one::<()>();
@@ -1143,8 +1155,20 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
                     }
                 };
 
+                let schema_helper_ident = format_ident!("__casper_schema_entry_point_{func_name}");
+                extra_code.push(quote! {
+                    fn #schema_helper_ident () -> casper_contract_sdk::schema::SchemaEntryPoint {
+                        casper_contract_sdk::schema::SchemaEntryPoint {
+                            name: stringify!(#export_name).into(),
+                            arguments: vec![ #(#args,)* ],
+                            result: #result,
+                            flags: casper_contract_sdk::casper_executor_wasm_common::flags::EntryPointFlags::from_bits(#_flags).unwrap(),
+                        }
+                    }
+                });
+
                 macro_symbols.push(quote! {
-                    #vis #func_name as #export_name => #dispatch_func_name
+                    #vis #func_name as #export_ident => #dispatch_func_name , #schema_helper_ident
                 });
 
                 dispatch_functions.push(quote! { #handle_dispatch });
@@ -1169,30 +1193,31 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
                 let is_fallback = method_attribute.fallback;
 
                 if !is_fallback {
+                    let entry_point_lit = LitStr::new(&export_name, Span::call_site());
                     extra_code.push(quote! {
-                    fn #func_name<'a>(#self_ty #(#arg_names: #arg_types,)*) -> impl #crate_path::ToCallData<Return<'a> = #call_data_return_lifetime> {
-                        #[derive(#crate_path::serializers::borsh::BorshSerialize)]
-                        #[borsh(crate = #borsh_path)]
-                        struct CallData {
-                            #(pub #arg_names: #arg_types,)*
-                        }
+                        fn #func_name<'a>(#self_ty #(#arg_names: #arg_types,)*) -> impl #crate_path::ToCallData<Return<'a> = #call_data_return_lifetime> {
+                            #[derive(#crate_path::serializers::borsh::BorshSerialize)]
+                            #[borsh(crate = #borsh_path)]
+                            struct CallData {
+                                #(pub #arg_names: #arg_types,)*
+                            }
 
-                        impl #crate_path::ToCallData for CallData {
-                            // const SELECTOR: vm_common::selector::Selector = vm_common::selector::Selector::new(#selector_value);
+                            impl #crate_path::ToCallData for CallData {
+                                // const SELECTOR: vm_common::selector::Selector = vm_common::selector::Selector::new(#selector_value);
 
-                            type Return<'a> = #call_data_return_lifetime;
+                                type Return<'a> = #call_data_return_lifetime;
 
-                            fn entry_point(&self) -> &str { stringify!(#func_name) }
-                            fn input_data(&self) -> Option<Vec<u8>> {
-                                #input_data_content
+                                fn entry_point(&self) -> &str { #entry_point_lit }
+                                fn input_data(&self) -> Option<Vec<u8>> {
+                                    #input_data_content
+                                }
+                            }
+
+                            CallData {
+                                #(#arg_names,)*
                             }
                         }
-
-                        CallData {
-                            #(#arg_names,)*
-                        }
-                    }
-                });
+                    });
                 }
             }
             syn::TraitItem::Type(_) => {
