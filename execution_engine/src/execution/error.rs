@@ -195,9 +195,9 @@ pub enum Error {
     /// No matching entity version key.
     #[error("No matching entity version key")]
     NoMatchingEntityVersionKey,
-    /// Multiple entries for one entity version.
-    #[error("Multiple entries for one entity version")]
-    CollisionInEntityVersion,
+    /// Ambiguous entity version and unable to determine entity version key.
+    #[error("Ambiguous entity version")]
+    AmbiguousEntityVersion,
 }
 
 impl From<PreprocessingError> for Error {

@@ -150,7 +150,9 @@ impl ContractRuntime {
             .with_refund_handling(chainspec.core_config.refund_handling)
             .with_fee_handling(chainspec.core_config.fee_handling)
             .with_enable_entity(enable_addressable_entity)
-            .with_enable_entity(chainspec.core_config.return_error_on_collision)
+            .with_trap_on_ambiguous_entity_version(
+                chainspec.core_config.trap_on_ambiguous_entity_version,
+            )
             .with_protocol_version(chainspec.protocol_version())
             .with_storage_costs(chainspec.storage_costs)
             .build();

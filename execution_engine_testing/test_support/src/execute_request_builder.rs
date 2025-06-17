@@ -417,6 +417,12 @@ impl ExecuteRequestBuilder {
         self
     }
 
+    /// Sets the protocol version for the execution request
+    pub fn with_protocol_version(mut self, protocol_version: ProtocolVersion) -> Self {
+        self.protocol_version = protocol_version;
+        self
+    }
+
     /// Consumes self and returns an `ExecuteRequest`.
     pub fn build(self) -> ExecuteRequest {
         let ExecuteRequestBuilder {
