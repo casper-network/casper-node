@@ -1627,9 +1627,6 @@ fn should_not_require_monotonic_cases(trap: bool) {
         .expect("must get package as stored value")
         .into_contract_package()
         .expect("must get package");
-
-    let versions = contract_package.versions();
-
     let current_version = contract_package
         .current_contract_version()
         .expect("must have the latest current version");
