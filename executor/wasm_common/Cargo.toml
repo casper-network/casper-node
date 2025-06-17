@@ -11,12 +11,15 @@ license = "Apache-2.0"
 [dependencies]
 bitflags = "2.9"
 blake2 = "0.10"
+bnum = { version = "0.13.0", features = ["borsh", "num-integer", "num-traits"] }
 borsh = { version = "1.5", features = ["derive"] }
+bytes = "1.10.1"
 casper-contract-sdk-sys = { version = "0.1.2", path = "../../smart_contracts/sdk_sys" }
 num-derive = { workspace = true }
 num-traits = { workspace = true }
-thiserror = "2"
 safe-transmute = "0.11"
+thiserror = "2"
+xxhash-rust = { version = "0.8", default-features = false, features = ["const_xxh64"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 serde = { version = "1", features = ["derive"] }

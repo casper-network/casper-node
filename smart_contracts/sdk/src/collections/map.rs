@@ -1,8 +1,8 @@
 use crate::{
     abi::{CasperABI, Declaration, Definition, StructField},
     casper,
+    common::type_uid::{TypeUid, Uid},
     serializers::borsh::{BorshDeserialize, BorshSerialize},
-    type_uid::{TypeUid, Uid},
 };
 use casper_executor_wasm_common::keyspace::Keyspace;
 use const_fnv1a_hash::fnv1a_hash_str_64;

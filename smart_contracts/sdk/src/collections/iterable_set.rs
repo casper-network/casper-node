@@ -1,6 +1,6 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 
-use crate::type_uid::TypeUid;
+use crate::common::type_uid::TypeUid;
 
 use super::{IterableMap, IterableMapHash};
 

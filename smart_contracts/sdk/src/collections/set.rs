@@ -31,8 +31,7 @@ where
 
     pub fn insert(&mut self, key: T) {
         let lookup_key = self.lookup.lookup(self.prefix.as_bytes(), &key);
-        let value: [u8; 0] = [];
-        casper::write(Keyspace::Context(lookup_key.as_ref()), &value).unwrap();
+        casper::write(Keyspace::Context(lookup_key.as_ref()), ()).unwrap();
     }
 
     pub fn contains_key(&self, key: T) -> bool {
@@ -45,7 +44,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::prelude::*;
+    use crate::{casper::native::dispatch, prelude::*};
 
     use crate::serializers::borsh::BorshSerialize;
 
@@ -62,19 +61,22 @@ mod tests {
     #[ignore]
     #[test]
     fn should_insert() {
-        let mut set: Set<Flag> = Set::new("Prefix".to_string());
+        dispatch(|| {
+            let mut set: Set<Flag> = Set::new("Prefix".to_string());
 
-        assert!(!set.contains_key(Flag::A));
-        assert!(!set.contains_key(Flag::B));
-        assert!(!set.contains_key(Flag::C));
+            assert!(!set.contains_key(Flag::A));
+            assert!(!set.contains_key(Flag::B));
+            assert!(!set.contains_key(Flag::C));
 
-        set.insert(Flag::A);
-        assert!(set.contains_key(Flag::A));
+            set.insert(Flag::A);
+            assert!(set.contains_key(Flag::A));
 
-        set.insert(Flag::B);
-        assert!(set.contains_key(Flag::B));
+            set.insert(Flag::B);
+            assert!(set.contains_key(Flag::B));
 
-        set.insert(Flag::C);
-        assert!(set.contains_key(Flag::C));
+            set.insert(Flag::C);
+            assert!(set.contains_key(Flag::C));
+        })
+        .unwrap();
     }
 }

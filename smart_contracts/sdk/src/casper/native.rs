@@ -268,7 +268,7 @@ impl Environment {
 
                 if let Some(ptr) = ptr {
                     unsafe {
-                        (*info).data = ptr.as_ptr();
+                        (*info).data_ptr = ptr.as_ptr();
                         (*info).size = tagged_value.len();
                         (*info).type_uid = tagged_value_uid;
                     }
@@ -912,7 +912,7 @@ mod symbols {
 mod tests {
     use casper_executor_wasm_common::keyspace::Keyspace;
 
-    use crate::casper;
+    use crate::{casper, tagged_bytes::TaggedBytes, type_uid::TypeUid};
 
     use super::*;
 
@@ -938,20 +938,20 @@ mod tests {
                 with_current_environment(|stub| stub.smart_contract(Entity::Contract([1; 32])));
             dispatch_with(change_context_1, || {
                 assert_eq!(
-                    casper::read_into_vec(Keyspace::Context(b"test")),
-                    Ok(Some(b"value 2".to_vec()))
+                    casper::read_tagged_bytes(Keyspace::Context(b"test")),
+                    Ok(Some(TaggedBytes::from_value(b"value 2").unwrap()))
                 );
                 assert_eq!(
-                    casper::read_into_vec(Keyspace::State),
-                    Ok(Some(b"state".to_vec()))
+                    casper::read_tagged_bytes(Keyspace::State),
+                    Ok(Some(TaggedBytes::from_value(b"state").unwrap()))
                 );
             })
             .unwrap();
 
             assert_eq!(casper::get_caller(), DEFAULT_ADDRESS);
             assert_eq!(
-                casper::read_into_vec(Keyspace::Context(b"test")),
-                Ok(Some(b"value 1".to_vec()))
+                casper::read_tagged_bytes(Keyspace::Context(b"test")),
+                Ok(Some(TaggedBytes::from_value(b"value 1").unwrap()))
             );
         })
         .unwrap();

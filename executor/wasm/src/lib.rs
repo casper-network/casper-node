@@ -15,6 +15,8 @@ use casper_executor_wasm_common::{
     chain_utils,
     error::{CallError, TrapCode},
     flags::ReturnFlags,
+    tagged_bytes::TaggedBytes,
+    type_uid::{TypeUid, Uid},
 };
 use casper_executor_wasm_host::context::Context;
 use casper_executor_wasm_interface::{
@@ -720,17 +722,30 @@ impl ExecutorV2 {
             .try_into()
             .expect("Should convert consumed gas to u64");
 
-        let mut output = wasm_v1_result
+        let mut output_bytes = wasm_v1_result
             .ret()
             .map(|ret| bytesrepr::serialize(ret).unwrap())
             .map(Bytes::from);
+
+        // TODO: Compute type uid for a CLValue once its extracted into separate repo
+        // If the output is empty, we still need to return a TaggedBytes with an empty Bytes.
+        //
+        let clvalue_uid = Uid::UNTYPED;
+        let mut output = output_bytes.map(|bytes| TaggedBytes::from_raw_parts(clvalue_uid, bytes));
 
         let host_error = match wasm_v1_result.error() {
             Some(EngineError::Exec(ExecError::GasLimit)) => Some(CallError::CalleeGasDepleted),
             Some(EngineError::Exec(ExecError::Revert(revert_code))) => {
                 assert!(output.is_none(), "output should be None"); // ExecutionEngineV1 sets output to None when error occurred.
+                                                                    // Convert revert code to u32 and serialize it as output.
+                                                                    // We're not calculating uid of an ApiError because it may still change in between
+                                                                    // releases and modifying variants may change the uid.
+                                                                    // Using u32 as a revert code is a more future proof solution.
                 let revert_code: u32 = (*revert_code).into();
-                output = Some(revert_code.to_le_bytes().to_vec().into()); // Pass serialized revert code as output.
+                output = Some(TaggedBytes::from_raw_parts(
+                    u32::UID,
+                    revert_code.to_le_bytes().to_vec().into(),
+                )); // Pass serialized revert code as output tagged as "u32".
                 Some(CallError::CalleeReverted)
             }
             Some(_) => Some(CallError::CalleeTrapped(TrapCode::UnreachableCodeReached)),

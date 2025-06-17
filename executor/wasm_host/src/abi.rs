@@ -7,6 +7,9 @@ pub(crate) struct ReadInfo {
     pub(crate) data: u32,
     /// Size in bytes.
     pub(crate) data_size: u32,
+    /// Type UID of the data.
+    ///
+    /// This is a 64-bit unsigned integer that represents the type of the data.
     pub(crate) data_type: u64,
 }
 
@@ -20,3 +23,18 @@ pub(crate) struct CreateResult {
 }
 
 unsafe impl TriviallyTransmutable for CreateResult {}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub(crate) struct CallResult {
+    /// Allocated pointer.
+    pub(crate) data_ptr: u32,
+    /// Size in bytes.
+    pub(crate) data_size: u32,
+    /// Type UID of the data.
+    ///
+    /// This is a 64-bit unsigned integer that represents the type of the data.
+    pub(crate) data_type: u64,
+}
+
+unsafe impl TriviallyTransmutable for CallResult {}

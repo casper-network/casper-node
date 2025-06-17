@@ -1,9 +1,9 @@
 use crate::{
     abi::{CasperABI, Declaration, Definition, Definitions, StructField},
     casper,
+    common::type_uid::{TypeUid, Uid},
     prelude::{cmp::Ordering, marker::PhantomData},
     serializers::borsh::{BorshDeserialize, BorshSerialize},
-    type_uid::{TypeUid, Uid},
 };
 
 use casper_executor_wasm_common::keyspace::Keyspace;

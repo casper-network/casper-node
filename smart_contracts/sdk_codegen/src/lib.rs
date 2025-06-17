@@ -2,7 +2,7 @@ pub mod support;
 
 use casper_contract_sdk::{
     abi::{Declaration, Definition, Primitive},
-    casper_executor_wasm_common::flags::EntryPointFlags,
+    common::flags::EntryPointFlags,
     schema::{Schema, SchemaType},
 };
 use codegen::{Field, Scope, Type};

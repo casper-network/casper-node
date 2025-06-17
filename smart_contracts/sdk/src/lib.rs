@@ -17,7 +17,6 @@ pub mod collections;
 pub mod contrib;
 #[cfg(feature = "std")]
 pub mod schema;
-pub mod type_uid;
 pub mod types;
 
 use crate::prelude::{marker::PhantomData, ptr::NonNull};
@@ -26,7 +25,7 @@ use crate::serializers::borsh::{BorshDeserialize, BorshSerialize};
 use casper::{CallResult, Entity};
 pub use casper_contract_macros as macros;
 pub use casper_contract_sdk_sys as sys;
-pub use casper_executor_wasm_common;
+pub use casper_executor_wasm_common as common;
 pub use macros::TypeUid;
 use types::{Address, CallError};
 
@@ -115,19 +114,16 @@ macro_rules! log {
 #[macro_export]
 macro_rules! revert {
     () => {{
-        $crate::casper::ret(
-            $crate::casper_executor_wasm_common::flags::ReturnFlags::REVERT,
-            None,
-        );
+        $crate::casper::ret_tagged_bytes($crate::common::flags::ReturnFlags::REVERT, None);
         unreachable!()
     }};
     ($arg:expr) => {{
         let value = $arg;
-        let data =
-            $crate::serializers::borsh::to_vec(&value).expect("Revert value should serialize");
-        $crate::casper::ret(
-            $crate::casper_executor_wasm_common::flags::ReturnFlags::REVERT,
-            Some(data.as_slice()),
+        let tagged_bytes = $crate::common::tagged_bytes::TaggedBytes::from_value(&value)
+            .expect("Revert value should serialize");
+        $crate::casper::ret_tagged_bytes(
+            $crate::common::flags::ReturnFlags::REVERT,
+            Some(tagged_bytes),
         );
         #[allow(unreachable_code)]
         value

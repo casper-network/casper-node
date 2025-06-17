@@ -3,6 +3,10 @@ pub mod native;
 
 use crate::{
     abi::{CasperABI, EnumVariant},
+    common::{
+        tagged_bytes::TaggedBytes,
+        type_uid::{TypeUid, Uid},
+    },
     prelude::{
         ffi::c_void,
         marker::PhantomData,
@@ -11,7 +15,6 @@ use crate::{
     },
     reserve_vec_space,
     serializers::borsh::{BorshDeserialize, BorshSerialize},
-    type_uid::{TypeUid, Uid},
     types::{Address, CallError},
     Message, ToCallData,
 };
@@ -93,16 +96,36 @@ pub fn copy_input_to(dest: &mut [u8]) -> Option<&[u8]> {
     Some(&dest[..length])
 }
 
-/// Return from the contract, tagged as arbitrary u8 array.
-pub fn ret(flags: ReturnFlags, data: Option<&[u8]>) {
-    let (data_ptr, data_len) = match data {
-        Some(data) => (data.as_ptr(), data.len()),
-        None => (ptr::null(), 0),
-    };
-    let data_type_uid = <[u8]>::UID.as_u64();
+///
+pub fn ret_raw_bytes(flags: ReturnFlags, data_type_uid: Uid, data: Option<&[u8]>) {
     unsafe {
-        casper_contract_sdk_sys::casper_return(flags.bits(), data_ptr, data_len, data_type_uid)
-    };
+        casper_contract_sdk_sys::casper_return(
+            flags.bits(),
+            data.map(|slice| slice.as_ptr()).unwrap_or(ptr::null()),
+            data.map(|slice| slice.len()).unwrap_or(0),
+            data_type_uid.as_u64(),
+        );
+    }
+}
+
+pub fn ret_tagged_bytes(flags: ReturnFlags, tagged_bytes: Option<TaggedBytes>) {
+    ret_raw_bytes(
+        flags,
+        tagged_bytes
+            .as_ref()
+            .map(|tagged| tagged.tag().clone())
+            .unwrap_or(Uid::UNTYPED),
+        tagged_bytes
+            .as_ref()
+            .map(|tagged_bytes| tagged_bytes.bytes().as_ref()),
+    );
+}
+
+/// Return from the contract, tagged as arbitrary u8 array.
+pub fn ret<T: BorshSerialize + TypeUid>(flags: ReturnFlags, data: Option<T>) {
+    let tagged_bytes = data.map(|value| TaggedBytes::from_value(&value).unwrap());
+    ret_tagged_bytes(flags, tagged_bytes);
+
     #[cfg(target_arch = "wasm32")]
     unreachable!()
 }
@@ -213,6 +236,12 @@ pub fn write_raw_bytes(key: Keyspace, type_uid: Uid, value: &[u8]) -> Result<(),
     result_from_code(ret)
 }
 
+/// Write tagged bytes to a global state.
+pub fn write_tagged_bytes(key: Keyspace, tagged_bytes: TaggedBytes) -> Result<(), CommonResult> {
+    write_raw_bytes(key, tagged_bytes.tag(), &tagged_bytes.bytes())?;
+    Ok(())
+}
+
 /// Write typed value to a global state.
 pub fn write<T: BorshSerialize + TypeUid>(key: Keyspace, value: T) -> Result<(), CommonResult> {
     let serialized_value = borsh::to_vec(&value).map_err(|_| CommonResult::InvalidData)?;
@@ -221,20 +250,16 @@ pub fn write<T: BorshSerialize + TypeUid>(key: Keyspace, value: T) -> Result<(),
 }
 
 pub fn read<T: BorshDeserialize + TypeUid>(key: Keyspace) -> Result<Option<T>, CommonResult> {
-    let mut vec = Vec::new();
-    let read_info = read_raw_bytes(key, |size| reserve_vec_space(&mut vec, size))?;
-    match read_info {
-        Some(read_info) => {
-            if read_info.type_uid != T::UID.as_u64() {
-                print(&format!(
-                    "Type UID mismatch: expected {}, got {}",
-                    T::UID,
-                    Uid::from_u64(read_info.type_uid)
-                ));
-                unreachable!();
+    let tagged_bytes = read_tagged_bytes(key)?;
+    match tagged_bytes {
+        Some(tagged_bytes) => {
+            match tagged_bytes.to_value() {
+                Ok(value) => Ok(Some(value)),
+                Err(_error) => {
+                    // If deserialization fails, return an error.
+                    return Err(CommonResult::InvalidData);
+                }
             }
-            let value = borsh::from_slice(&vec).map_err(|_| CommonResult::InvalidData)?;
-            Ok(Some(value))
         }
         None => Ok(None),
     }
@@ -377,10 +402,18 @@ pub fn upgrade(
 }
 
 /// Read from the global state into a vector of bytes, disregarding the type uid.
-pub fn read_into_vec(key: Keyspace) -> Result<Option<Vec<u8>>, CommonResult> {
-    let mut vec = Vec::new();
-    let out = read_raw_bytes(key, |size| reserve_vec_space(&mut vec, size))?.map(|_read_info| vec);
-    Ok(out)
+pub fn read_tagged_bytes(key: Keyspace) -> Result<Option<TaggedBytes>, CommonResult> {
+    let mut vec: Vec<u8> = Vec::new();
+    let read_info = read_raw_bytes(key, |size| reserve_vec_space(&mut vec, size))?;
+    let tagged_bytes = match read_info {
+        Some(read_info) => {
+            let tagged_bytes =
+                TaggedBytes::from_raw_parts(Uid::from_u64(read_info.type_uid), vec.into());
+            Some(tagged_bytes)
+        }
+        None => None,
+    };
+    Ok(tagged_bytes)
 }
 
 /// Read from the global state into a vector.

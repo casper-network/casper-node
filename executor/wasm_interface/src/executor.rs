@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use borsh::BorshSerialize;
 use bytes::Bytes;
+use casper_executor_wasm_common::tagged_bytes::TaggedBytes;
 use casper_storage::{
     global_state::{error::Error as GlobalStateError, GlobalStateReader},
     tracking_copy::TrackingCopyCache,
@@ -231,7 +232,7 @@ pub struct ExecuteResult {
     /// Error while executing Wasm: traps, memory access errors, etc.
     pub host_error: Option<CallError>,
     /// Output produced by the Wasm contract.
-    pub output: Option<Bytes>,
+    pub output: Option<TaggedBytes>,
     /// Gas usage.
     pub gas_usage: GasUsage,
     /// Effects produced by the execution.
@@ -256,7 +257,7 @@ impl ExecuteResult {
         self.host_error.as_ref()
     }
 
-    pub fn output(&self) -> Option<&Bytes> {
+    pub fn output(&self) -> Option<&TaggedBytes> {
         self.output.as_ref()
     }
 
@@ -271,7 +272,7 @@ pub struct ExecuteWithProviderResult {
     /// Error while executing Wasm: traps, memory access errors, etc.
     pub host_error: Option<CallError>,
     /// Output produced by the Wasm contract.
-    output: Option<Bytes>,
+    output: Option<TaggedBytes>,
     /// Gas usage.
     gas_usage: GasUsage,
     /// Effects produced by the execution.
@@ -286,7 +287,7 @@ impl ExecuteWithProviderResult {
     #[must_use]
     pub fn new(
         host_error: Option<CallError>,
-        output: Option<Bytes>,
+        output: Option<TaggedBytes>,
         gas_usage: GasUsage,
         effects: Effects,
         post_state_hash: Digest,
@@ -302,7 +303,7 @@ impl ExecuteWithProviderResult {
         }
     }
 
-    pub fn output(&self) -> Option<&Bytes> {
+    pub fn output(&self) -> Option<&TaggedBytes> {
         self.output.as_ref()
     }
 

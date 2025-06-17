@@ -468,8 +468,7 @@ fn generate_impl_for_contract(
                         syn::ReturnType::Type(..) => {
                             // There is a return value so call casper_return.
                             Some(quote! {
-                                let ret_bytes = casper_contract_sdk::serializers::borsh::to_vec(&_ret).unwrap();
-                                casper_contract_sdk::casper::ret(flags, Some(&ret_bytes));
+                                casper_contract_sdk::casper::ret(flags, Some(_ret));
                             })
                         }
                     }
@@ -519,7 +518,7 @@ fn generate_impl_for_contract(
                     quote! {
                         let _ret: &Result<_, _> = &_ret;
                         if _ret.is_err() {
-                            flags |= casper_contract_sdk::casper_executor_wasm_common::flags::ReturnFlags::REVERT;
+                            flags |= casper_contract_sdk::common::flags::ReturnFlags::REVERT;
                         }
 
                     }
@@ -565,7 +564,7 @@ fn generate_impl_for_contract(
 
                         #(#prelude;)*
 
-                        let mut flags = casper_contract_sdk::casper_executor_wasm_common::flags::ReturnFlags::empty();
+                        let mut flags = casper_contract_sdk::common::flags::ReturnFlags::empty();
 
                         #handle_call;
 
@@ -757,7 +756,7 @@ fn generate_impl_for_contract(
                         name: stringify!(#func_name).into(),
                         arguments: vec![ #(#args,)* ],
                         result: #result,
-                        flags: casper_contract_sdk::casper_executor_wasm_common::flags::EntryPointFlags::from_bits(#bits).unwrap(),
+                        flags: casper_contract_sdk::common::flags::EntryPointFlags::from_bits(#bits).unwrap(),
                     }
                 }
             });
@@ -1108,7 +1107,7 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
                                 T: #trait_name
                                     + #crate_path::serializers::borsh::BorshDeserialize
                                     + #crate_path::serializers::borsh::BorshSerialize
-                                    + #crate_path::type_uid::TypeUid
+                                    + #crate_path::common::type_uid::TypeUid
                                     + Default
                             {
                                 #[derive(#crate_path::serializers::borsh::BorshDeserialize)]
@@ -1117,7 +1116,7 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
                                     #(#args_attrs,)*
                                 }
 
-                                let mut flags = #crate_path::casper_executor_wasm_common::flags::ReturnFlags::empty();
+                                let mut flags = #crate_path::common::flags::ReturnFlags::empty();
                                 let mut instance: T = #crate_path::casper::read_state().unwrap();
                                 let input = #crate_path::prelude::casper::copy_input();
                                 let args: Arguments = #crate_path::serializers::borsh::from_slice(&input).unwrap();
@@ -1126,8 +1125,7 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
 
                                 #crate_path::casper::write_state(&instance).unwrap();
 
-                                let ret_bytes = #crate_path::serializers::borsh::to_vec(&ret).unwrap();
-                                #crate_path::casper::ret(flags, Some(&ret_bytes));
+                                #crate_path::casper::ret(flags, Some(ret));
                             }
                         }
                     }
@@ -1148,7 +1146,6 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
 
                                 let input = #crate_path::prelude::casper::copy_input();
                                 let args: Arguments = #crate_path::serializers::borsh::from_slice(&input).unwrap();
-
 
                                 let _ret = <T as #trait_name>::#func_name(#(args.#arg_names,)*);
                             }
@@ -1402,9 +1399,10 @@ fn process_casper_contract_state_for_struct(
             #[no_mangle]
             pub extern "C" fn __casper_schema() {
                 use #crate_path::casper::ret;
-                use #crate_path::casper_executor_wasm_common::flags::ReturnFlags;
+                use #crate_path::common::flags::ReturnFlags;
                 let bytes = SCHEMA.unwrap_or_default().as_bytes();
-                ret(ReturnFlags::empty(), Some(bytes));
+                // Schema entry point will return untyped bytes for consumers to use. It is untyped on purpose to avoid illusion of some binary structure in the returned bytes.
+                ret_raw_bytes(ReturnFlags::empty(), #crate_path::casper::type_uid::Uid::UNTYPED.as_u64(), Some(bytes));
             }
         }
         #[cfg(not(feature = "__embed_schema"))]
@@ -1876,8 +1874,8 @@ pub fn derive_type_uid(input: TokenStream) -> TokenStream {
             }
 
             TokenStream::from(quote! {
-                impl #crate_path_token::type_uid::TypeUid for #name {
-                    const UID: #crate_path_token::type_uid::Uid = #crate_path_token::type_uid::Uid::from_fields(
+                impl #crate_path_token::common::type_uid::TypeUid for #name {
+                    const UID: #crate_path_token::common::type_uid::Uid = #crate_path_token::common::type_uid::Uid::from_fields(
                         stringify!(#name),
                         &[
                             #(#mixer,)*
@@ -1903,11 +1901,11 @@ pub fn derive_type_uid(input: TokenStream) -> TokenStream {
                 }
                 if let Some((_, discriminant)) = &variant.discriminant {
                     field_mixers
-                        .push(quote! { #crate_path_token::type_uid::Uid::from_u64(#discriminant) });
+                        .push(quote! { #crate_path_token::common::type_uid::Uid::from_u64(#discriminant) });
                 }
 
                 mixer.push(quote! {
-                    #crate_path_token::type_uid::Uid::from_fields(
+                    #crate_path_token::common::type_uid::Uid::from_fields(
                         stringify!(#variant_name),
                         &[
                             #(#field_mixers,)*
@@ -1917,8 +1915,8 @@ pub fn derive_type_uid(input: TokenStream) -> TokenStream {
             }
 
             TokenStream::from(quote! {
-                impl #crate_path_token::type_uid::TypeUid for #name {
-                    const UID: #crate_path_token::type_uid::Uid = #crate_path_token::type_uid::Uid::from_fields(
+                impl #crate_path_token::common::type_uid::TypeUid for #name {
+                    const UID: #crate_path_token::common::type_uid::Uid = #crate_path_token::common::type_uid::Uid::from_fields(
                         stringify!(#name),
                         &[#(#mixer,)*]
                     );

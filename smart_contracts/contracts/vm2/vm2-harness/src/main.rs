@@ -9,7 +9,7 @@ extern crate alloc;
 use casper_contract_macros::casper;
 use casper_contract_sdk::{
     casper::{self, emit, emit_raw, Entity},
-    casper_executor_wasm_common::{error::CommonResult, keyspace::Keyspace},
+    common::{error::CommonResult, keyspace::Keyspace, tagged_bytes::TaggedBytes},
     log,
     types::{Address, CallError},
 };
@@ -632,28 +632,28 @@ fn perform_test(seed: &mut Seed, flipper_address: Address) {
     {
         next_test(&mut counter, "Removing from global state");
         let key = [0, 1, 2, 3];
-        let value_1 = [4, 5, 6, 7];
-        let value_2 = [8, 9, 10, 11, 12, 13, 14, 15];
+        let value_1 = TaggedBytes::from_value(&[4u8, 5, 6, 7]).unwrap();
+        let value_2 = TaggedBytes::from_value(&[8u8, 9, 10, 11, 12, 13, 14, 15]).unwrap();
         let keyspace = Keyspace::Context(&key);
         // No value exists
         assert_eq!(casper::read_raw_bytes(keyspace, |_size| None), Ok(None));
 
         // Write a value
-        casper::write(keyspace, &value_1).unwrap();
+        casper::write_tagged_bytes(keyspace, value_1.clone()).unwrap();
         // Value exists
-        assert_eq!(casper::read_into_vec(keyspace), Ok(Some(value_1.to_vec())));
+        assert_eq!(casper::read_tagged_bytes(keyspace), Ok(Some(value_1)));
         // Remove the value
         casper::remove(keyspace).unwrap();
         // No value exists
-        assert_eq!(casper::read_into_vec(keyspace), Ok(None));
+        assert_eq!(casper::read_tagged_bytes(keyspace), Ok(None));
         // Removing again (aka removing non-existent key) should raise an error
         assert_eq!(casper::remove(keyspace), Err(CommonResult::NotFound));
         // Re-reading already purged value wouldn't be an issue
-        assert_eq!(casper::read_into_vec(keyspace), Ok(None));
+        assert_eq!(casper::read_tagged_bytes(keyspace), Ok(None));
         // Write a new value under same key
-        casper::write(keyspace, &value_2).unwrap();
+        casper::write_tagged_bytes(keyspace, value_2.clone()).unwrap();
         // New value exists
-        assert_eq!(casper::read_into_vec(keyspace), Ok(Some(value_2.to_vec())));
+        assert_eq!(casper::read_tagged_bytes(keyspace), Ok(Some(value_2)));
 
         // Attempting to remove a definetely non-existent key should be an error
         let keyspace = Keyspace::Context(b"this key definetely does not exists");
@@ -678,7 +678,10 @@ pub fn yet_another_exported_function(arg1: u64, arg2: String) {
 #[cfg(test)]
 mod tests {
     use casper::native::{dispatch_with, EntryPointKind, Environment, ENTRY_POINTS};
-    use casper_contract_sdk::casper::native::{self, dispatch};
+    use casper_contract_sdk::{
+        casper::native::{self, dispatch},
+        type_uid::TypeUid,
+    };
     use contracts::harness::{Harness, INITIAL_GREETING};
 
     use super::*;
@@ -727,6 +730,11 @@ mod tests {
     #[test]
     fn foo() {
         assert_eq!(Harness::default().into_greeting(), "Default value");
+    }
+
+    #[test]
+    fn foobar() {
+        dbg!(Harness::UID);
     }
 }
 

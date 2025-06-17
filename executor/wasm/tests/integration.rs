@@ -523,7 +523,7 @@ fn upgradable() {
             execute_request,
         );
         let output = res.output().expect("should have output");
-        let version: String = borsh::from_slice(output).expect("should deserialize");
+        let version: String = output.to_value().expect("should convert to value");
         version
     };
     assert_eq!(version_before_upgrade, "v1");
@@ -595,7 +595,7 @@ fn upgradable() {
             execute_request,
         );
         let output = res.output().expect("should have output");
-        let version: String = borsh::from_slice(output).expect("should deserialize");
+        let version: String = output.to_value().expect("should convert to value");
         version
     };
     assert_eq!(version_after_upgrade, "v2");

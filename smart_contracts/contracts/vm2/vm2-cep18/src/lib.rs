@@ -158,7 +158,7 @@ mod tests {
             let new_env = new_env.smart_contract(Entity::Contract(create_result.contract_address));
             dispatch_with(new_env, || {
                 // This is the caller of the contract
-                casper::read_into_vec(Keyspace::State)
+                casper::read_tagged_bytes(Keyspace::State)
                     .expect("ok")
                     .expect("ok");
             })

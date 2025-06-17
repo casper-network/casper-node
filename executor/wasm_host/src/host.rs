@@ -1,7 +1,6 @@
 use std::{borrow::Cow, num::NonZeroU32, sync::Arc};
 
 use bytes::Bytes;
-use casper_contract_sdk::type_uid::TypeUid;
 use casper_executor_wasm_common::{
     chain_utils,
     entry_point::{
@@ -17,6 +16,8 @@ use casper_executor_wasm_common::{
     },
     flags::ReturnFlags,
     keyspace::{Keyspace, KeyspaceTag},
+    tagged_bytes::TaggedBytes,
+    type_uid::{TypeUid, Uid},
 };
 use casper_executor_wasm_interface::{
     executor::{ExecuteRequestBuilder, ExecuteResult, ExecutionKind, Executor},
@@ -35,7 +36,7 @@ use casper_types::{
     ByteCodeKind, CLType, CLValue, ContractRuntimeTag, Digest, EntityAddr, EntityEntryPoint,
     EntityKind, EntryPointAccess, EntryPointAddr, EntryPointPayment, EntryPointType,
     EntryPointValue, HashAddr, HostFunctionV2, Key, Package, PackageHash, ProtocolVersion,
-    StoredValue, TaggedBytes, URef, U512,
+    StoredValue, URef, U512,
 };
 use either::Either;
 use num_derive::FromPrimitive;
@@ -185,7 +186,9 @@ pub fn casper_write<S: GlobalStateReader, E: Executor>(
 
     let stored_value = match keyspace {
         Keyspace::State | Keyspace::Context(_) | Keyspace::NamedKey(_) => {
-            let tagged_bytes = TaggedBytes::new(value_type_uid, value.into());
+            // let uid = Uid::from_u64(value_type_uid);
+            let tagged_bytes = casper_types::TaggedBytes::new(value_type_uid, value.into());
+
             StoredValue::TaggedBytes(tagged_bytes)
         }
         Keyspace::PaymentInfo(_) => {
@@ -561,18 +564,15 @@ pub fn casper_return<S: GlobalStateReader, E: Executor>(
 
     let flags = ReturnFlags::from_bits_retain(flags);
     let data = if data_ptr == 0 {
+        // The data pointer is zero, meaning no data to return, so data_type_uid is not relevant,
+        // although it's not validated to be "0".
         None
     } else {
-        caller
+        let uid = Uid::from_u64(data_type_uid);
+        let data_bytes = caller
             .memory_read(data_ptr, data_len.try_into_wrapped()?)
-            .map(|data| {
-                let mut buffer = Vec::with_capacity(
-                    data_type_uid.serialized_length() + data.serialized_length(),
-                );
-                data_type_uid.write_bytes(&mut buffer).ok()?;
-                data.write_bytes(&mut buffer).ok()?;
-                Some(Bytes::from(data))
-            })?
+            .map(Bytes::from)?;
+        Some(TaggedBytes::from_raw_parts(uid, data_bytes))
     };
     Err(VMError::Return { flags, data })
 }
@@ -933,14 +933,14 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
         }) => {
             if let Some(output) = output {
                 let out_ptr: u32 = if cb_alloc != 0 {
-                    caller.alloc(cb_alloc, output.len(), cb_ctx)?
+                    caller.alloc(cb_alloc, output.bytes().len(), cb_ctx)?
                 } else {
                     // treats alloc_ctx as data
                     cb_ctx
                 };
 
                 if out_ptr != 0 {
-                    caller.memory_write(out_ptr, &output)?;
+                    caller.memory_write(out_ptr, &output.bytes())?;
                 }
             }
 

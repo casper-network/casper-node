@@ -748,7 +748,6 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.12",
- "xxhash-rust",
 ]
 
 [[package]]
@@ -911,7 +910,9 @@ version = "0.1.2"
 dependencies = [
  "bitflags 2.9.1",
  "blake2 0.10.6",
+ "bnum",
  "borsh",
+ "bytes",
  "casper-contract-sdk-sys",
  "hex",
  "num-derive",
@@ -919,6 +920,7 @@ dependencies = [
  "safe-transmute",
  "serde",
  "thiserror 2.0.12",
+ "xxhash-rust",
 ]
 
 [[package]]

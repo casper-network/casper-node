@@ -2,7 +2,7 @@ use crate::serializers::borsh::{BorshDeserialize, BorshSerialize};
 
 use crate::{
     abi::CasperABI,
-    type_uid::{TypeUid, Uid},
+    common::type_uid::{TypeUid, Uid},
 };
 
 use super::Vector;

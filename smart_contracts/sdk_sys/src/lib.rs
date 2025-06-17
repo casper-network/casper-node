@@ -13,7 +13,7 @@ pub type Fptr = extern "C" fn() -> ();
 #[repr(C)]
 pub struct ReadInfo {
     /// Pointer to the data as returned from user's callback code.
-    pub data: *const u8,
+    pub data_ptr: *const u8,
     /// Size in bytes.
     ///
     /// `data + size` will point to the last element in the buffer and must not exceed the size of

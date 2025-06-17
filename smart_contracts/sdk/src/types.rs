@@ -1,26 +1,16 @@
-use casper_contract_macros::TypeUid;
-use casper_executor_wasm_common::error::{
+use crate::common::error::{
     CALLEE_GAS_DEPLETED, CALLEE_NOT_CALLABLE, CALLEE_REVERTED, CALLEE_TRAPPED,
 };
+use casper_contract_macros::TypeUid;
 
 use crate::{
     abi::{CasperABI, Declaration, Definition, EnumVariant},
     prelude::fmt,
     serializers::borsh::{BorshDeserialize, BorshSerialize},
-    type_uid::{TypeUid, Uid},
 };
-
-pub type Address = [u8; 32];
 pub use bnum::types::U256;
 
-impl<const N: usize> TypeUid for bnum::BUint<N> {
-    /// The UID for U256 is defined as a constant.
-    ///
-    /// The UID is computed is equal to UID of a fixed-size array of 32 `u64` elements. This is
-    /// consistent with how we handle fixed-size arrays in the SDK, and how U256 is represented in
-    /// the schema itself: a fixed-size sequence.
-    const UID: Uid = <[u64; N]>::UID;
-}
+pub type Address = [u8; 32];
 
 // Keep in sync with [`casper_executor_wasm_common::error::CallError`].
 #[derive(Debug, Copy, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, TypeUid)]

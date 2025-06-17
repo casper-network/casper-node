@@ -7,7 +7,7 @@ use core::marker::PhantomData;
 
 use crate::{
     casper,
-    type_uid::{TypeUid, Uid},
+    common::type_uid::{TypeUid, Uid},
 };
 
 /// A pointer that uniquely identifies a value written into the map.

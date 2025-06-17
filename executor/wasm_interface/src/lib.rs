@@ -7,6 +7,7 @@ use thiserror::Error;
 use casper_executor_wasm_common::{
     error::{CallError, TrapCode, CALLEE_SUCCEEDED},
     flags::ReturnFlags,
+    tagged_bytes::TaggedBytes,
 };
 
 /// Interface version for the Wasm host functions.
@@ -104,7 +105,7 @@ pub enum VMError {
     #[error("Return 0x{flags:?} {data:?}")]
     Return {
         flags: ReturnFlags,
-        data: Option<Bytes>,
+        data: Option<TaggedBytes>,
     },
     #[error("export: {0}")]
     Export(ExportError),
@@ -124,7 +125,7 @@ pub enum VMError {
 
 impl VMError {
     /// Returns the output data if the error is a `Return` error.
-    pub fn into_output_data(self) -> Option<Bytes> {
+    pub fn into_output_data(self) -> Option<TaggedBytes> {
         match self {
             VMError::Return { data, .. } => data,
             _ => None,

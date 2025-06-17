@@ -5,3 +5,5 @@ pub mod env_info;
 pub mod error;
 pub mod flags;
 pub mod keyspace;
+pub mod tagged_bytes;
+pub mod type_uid;
