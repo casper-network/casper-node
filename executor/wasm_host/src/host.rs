@@ -44,7 +44,7 @@ use num_traits::FromPrimitive;
 use tracing::{error, info, warn};
 
 use crate::{
-    abi::{CreateResult, ReadInfo},
+    abi::{self, CreateResult, ReadInfo},
     context::Context,
     system::{self, MintArgs, MintTransferArgs},
 };
@@ -842,6 +842,7 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
     entry_point_len: u32,
     input_ptr: u32,
     input_len: u32,
+    call_result_ptr: u32,
     cb_alloc: u32,
     cb_ctx: u32,
 ) -> VMResult<u32> {
@@ -918,6 +919,12 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
         .build()
         .map_err(|_| InternalHostError::ExecuteRequestBuildFailure)?;
 
+    let mut call_result = abi::CallResult {
+        data_ptr: 0,
+        data_size: 0,
+        data_type: Uid::UNTYPED.as_u64(),
+    };
+
     let (gas_usage, host_result) = match caller
         .context()
         .executor
@@ -937,6 +944,12 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
                 } else {
                     // treats alloc_ctx as data
                     cb_ctx
+                };
+
+                call_result = abi::CallResult {
+                    data_ptr: out_ptr,
+                    data_size: output.bytes().len().try_into_wrapped()?,
+                    data_type: output.type_uid().as_u64(),
                 };
 
                 if out_ptr != 0 {
@@ -967,6 +980,11 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
             return Err(VMError::Execute(execute_error));
         }
     };
+
+    if call_result_ptr != 0 {
+        let call_result_bytes = safe_transmute::transmute_one_to_bytes(&call_result);
+        caller.memory_write(call_result_ptr, call_result_bytes)?;
+    }
 
     let gas_spent = gas_usage
         .gas_limit()

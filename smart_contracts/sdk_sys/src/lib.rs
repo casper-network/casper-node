@@ -37,6 +37,20 @@ pub struct UpgradeResult {
     pub version: u32,
 }
 
+#[repr(C)]
+#[derive(Debug)]
+pub struct CallResult {
+    /// Pointer to the data as returned from user's callback code.
+    pub data_ptr: *const u8,
+    /// Size in bytes.
+    ///
+    /// `data + size` will point to the last element in the buffer and must not exceed the size of
+    /// the buffer allocated by the host.
+    pub data_size: usize,
+    /// UID of the stored type
+    pub type_uid: u64,
+}
+
 macro_rules! visit_host_function {
     ( $( $(#[$cfg:meta])? $vis:vis fn $name:ident $(( $($arg:ident: $argty:ty,)* ))? $(-> $ret:ty)?;)+) => {
         $(

@@ -52,6 +52,7 @@ macro_rules! for_each_host_function {
                 entry_point_size: usize,
                 input_ptr: *const u8,
                 input_size: usize,
+                call_result_ptr: *mut $crate::CallResult,
                 alloc: extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8, // For capturing output data
                 alloc_ctx: *const core::ffi::c_void,
             ) -> u32;

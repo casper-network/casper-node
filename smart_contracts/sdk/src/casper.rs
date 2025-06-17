@@ -19,6 +19,7 @@ use crate::{
     Message, ToCallData,
 };
 
+use bnum::cast::As;
 use casper_contract_sdk_sys::casper_env_info;
 use casper_executor_wasm_common::{
     env_info::EnvInfo,
@@ -323,7 +324,8 @@ pub(crate) fn call_into<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
     entry_point: &str,
     input_data: &[u8],
     alloc: Option<F>,
-) -> Result<(), CallError> {
+) -> Result<casper_contract_sdk_sys::CallResult, CallError> {
+    let mut call_result = MaybeUninit::uninit();
     let result_code = unsafe {
         casper_contract_sdk_sys::casper_call(
             address.as_ptr(),
@@ -333,11 +335,13 @@ pub(crate) fn call_into<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
             entry_point.len(),
             input_data.as_ptr(),
             input_data.len(),
+            call_result.as_mut_ptr(),
             alloc_callback::<F>,
             &alloc as *const _ as *mut _,
         )
     };
-    call_result_from_code(result_code)
+    call_result_from_code(result_code)?;
+    Ok(unsafe { call_result.assume_init() })
 }
 
 fn call_result_from_code(result_code: u32) -> Result<(), CallError> {
@@ -354,22 +358,50 @@ pub fn casper_call(
     transferred_value: u64,
     entry_point: &str,
     input_data: &[u8],
-) -> (Option<Vec<u8>>, Result<(), CallError>) {
-    let mut output = None;
-    let result_code = call_into(
+) -> Result<Option<TaggedBytes>, CallError> {
+    #[cfg(debug_assertions)]
+    let mut was_alloc_callback_executed = false;
+
+    let mut vec = Vec::new();
+    let call_result = call_into(
         address,
         transferred_value,
         entry_point,
         input_data,
         Some(|size| {
-            let mut vec = Vec::new();
-            reserve_vec_space(&mut vec, size);
-            let result = Some(unsafe { ptr::NonNull::new_unchecked(vec.as_mut_ptr()) });
-            output = Some(vec);
-            result
+            #[cfg(debug_assertions)]
+            {
+                if was_alloc_callback_executed {
+                    panic!("Alloc callback called multiple times");
+                }
+                was_alloc_callback_executed = true;
+            }
+            reserve_vec_space(&mut vec, size)
         }),
-    );
-    (output, result_code)
+    )?;
+
+    let tagged_bytes = if vec.as_ptr() == ptr::dangling() {
+        #[cfg(debug_assertions)]
+        {
+            if was_alloc_callback_executed {
+                panic!("Alloc callback was called, but no data was returned");
+            }
+        }
+        // No data was returned from called contract, so we return None.
+        None
+    } else {
+        #[cfg(debug_assertions)]
+        {
+            if !was_alloc_callback_executed {
+                panic!("Alloc callback was not called, but data was returned");
+            }
+        }
+
+        let tagged_bytes =
+            TaggedBytes::from_raw_parts(Uid::from_u64(call_result.type_uid), vec.into());
+        Some(tagged_bytes)
+    };
+    Ok(tagged_bytes)
 }
 
 /// Upgrade the contract.
