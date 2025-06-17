@@ -3698,31 +3698,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "key-putter-v1"
-version = "0.1.0"
-dependencies = [
- "casper-contract",
- "casper-types",
-]
-
-[[package]]
-name = "key-putter-v2"
-version = "0.1.0"
-dependencies = [
- "casper-contract",
- "casper-types",
-]
-
-[[package]]
-name = "key-putter-v3"
-version = "0.1.0"
-dependencies = [
- "casper-contract",
- "casper-types",
-]
-
-[[package]]
-name = "key-putter-v4"
+name = "key-putter"
 version = "0.1.0"
 dependencies = [
  "casper-contract",

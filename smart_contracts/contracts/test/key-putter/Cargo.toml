@@ -1,11 +1,11 @@
 [package]
-name = "key-putter-v1"
+name = "key-putter"
 version = "0.1.0"
 authors = ["CasperLabs <https://discord.com/invite/Q38s3Vh>"]
 edition = "2021"
 
 [[bin]]
-name = "key_putter_v1"
+name = "key_putter"
 path = "src/main.rs"
 bench = false
 doctest = false
