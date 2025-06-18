@@ -14,6 +14,7 @@ VM2_LIBS=(
   "vm2-upgradable-v2"
   "vm2-legacy-counter-proxy"
   "vm2-host"
+
 )
 
 

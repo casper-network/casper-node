@@ -5,7 +5,7 @@
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 
 use casper_executor_wasm_common::error::{CallError, TrapCode};
-use casper_executor_wasm_interface::HostResult;
+use casper_executor_wasm_interface::CallResult;
 use casper_storage::{
     global_state::GlobalStateReader,
     system::{
@@ -162,7 +162,7 @@ pub(crate) fn mint_transfer<R: GlobalStateReader>(
     id: TransactionHash,
     address_generator: Arc<RwLock<AddressGenerator>>,
     args: MintTransferArgs,
-) -> HostResult {
+) -> CallResult {
     let transfer_result: Result<(), casper_types::system::mint::Error> =
         match dispatch_system_contract(
             tracking_copy,

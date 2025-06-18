@@ -40,6 +40,8 @@ pub struct UpgradeResult {
 #[repr(C)]
 #[derive(Debug)]
 pub struct CallResult {
+    /// Gas limit used for the call.
+    pub call_outcome: u32,
     /// Pointer to the data as returned from user's callback code.
     pub data_ptr: *const u8,
     /// Size in bytes.

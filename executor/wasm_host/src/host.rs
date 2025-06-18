@@ -21,7 +21,7 @@ use casper_executor_wasm_common::{
 };
 use casper_executor_wasm_interface::{
     executor::{ExecuteRequestBuilder, ExecuteResult, ExecutionKind, Executor},
-    u32_from_host_result, Caller, InternalHostError, VMError, VMResult,
+    u32_from_call_result, Caller, InternalHostError, VMError, VMResult,
 };
 use casper_storage::{
     global_state::GlobalStateReader,
@@ -783,7 +783,7 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
                 .execute(tracking_copy_for_ctor, execute_request)
             {
                 Ok(ExecuteResult {
-                    host_error,
+                    call_error: host_error,
                     output,
                     gas_usage,
                     effects,
@@ -884,7 +884,7 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
             Ok(entry_point) => entry_point,
             Err(utf8_error) => {
                 error!(%utf8_error, "entry point name is not a valid utf-8 string; unable to call");
-                return Ok(CALLEE_NOT_CALLABLE);
+                return Ok(HOST_ERROR_INVALID_INPUT);
             }
         }
     };
@@ -919,56 +919,63 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
         .build()
         .map_err(|_| InternalHostError::ExecuteRequestBuildFailure)?;
 
-    let mut call_result = abi::CallResult {
-        data_ptr: 0,
-        data_size: 0,
-        data_type: Uid::UNTYPED.as_u64(),
-    };
-
-    let (gas_usage, host_result) = match caller
+    let gas_usage = match caller
         .context()
         .executor
         .execute(tracking_copy, execute_request)
     {
         Ok(ExecuteResult {
-            host_error,
+            call_error,
             output,
             gas_usage,
             effects,
             cache,
             messages,
         }) => {
-            if let Some(output) = output {
-                let out_ptr: u32 = if cb_alloc != 0 {
-                    caller.alloc(cb_alloc, output.bytes().len(), cb_ctx)?
-                } else {
-                    // treats alloc_ctx as data
-                    cb_ctx
-                };
+            dbg!(call_error);
+            let call_outcome = call_error.map(|e| e.into_u32()).unwrap_or(CALLEE_SUCCEEDED);
 
-                call_result = abi::CallResult {
-                    data_ptr: out_ptr,
-                    data_size: output.bytes().len().try_into_wrapped()?,
-                    data_type: output.type_uid().as_u64(),
-                };
+            let abi_call_result = match output {
+                Some(output) => {
+                    let out_ptr: u32 = if cb_alloc != 0 {
+                        caller.alloc(cb_alloc, output.bytes().len(), cb_ctx)?
+                    } else {
+                        // treats alloc_ctx as data
+                        cb_ctx
+                    };
 
-                if out_ptr != 0 {
-                    caller.memory_write(out_ptr, &output.bytes())?;
+                    if out_ptr != 0 {
+                        caller.memory_write(out_ptr, &output.bytes())?;
+                    }
+
+                    abi::CallResult {
+                        call_outcome,
+                        data_ptr: out_ptr,
+                        data_size: output.bytes().len().try_into_wrapped()?,
+                        data_type: output.tag().as_u64(),
+                    }
                 }
-            }
-
-            let host_result = match host_error {
-                Some(host_error) => Err(host_error),
-                None => {
-                    caller
-                        .context_mut()
-                        .tracking_copy
-                        .apply_changes(effects, cache, messages);
-                    Ok(())
-                }
+                None => abi::CallResult {
+                    call_outcome,
+                    data_ptr: 0,
+                    data_size: 0,
+                    data_type: Uid::UNTYPED.as_u64(),
+                },
             };
 
-            (gas_usage, host_result)
+            if call_result_ptr != 0 {
+                let call_result_bytes = safe_transmute::transmute_one_to_bytes(&abi_call_result);
+                caller.memory_write(call_result_ptr, call_result_bytes)?;
+            }
+
+            if call_error.is_none() {
+                caller
+                    .context_mut()
+                    .tracking_copy
+                    .apply_changes(effects, cache, messages);
+            }
+
+            gas_usage
         }
         Err(execute_error) => {
             error!(
@@ -981,11 +988,6 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
         }
     };
 
-    if call_result_ptr != 0 {
-        let call_result_bytes = safe_transmute::transmute_one_to_bytes(&call_result);
-        caller.memory_write(call_result_ptr, call_result_bytes)?;
-    }
-
     let gas_spent = gas_usage
         .gas_limit()
         .checked_sub(gas_usage.remaining_points())
@@ -993,7 +995,7 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
 
     caller.consume_gas(gas_spent)?;
 
-    Ok(u32_from_host_result(host_result))
+    Ok(HOST_ERROR_SUCCESS)
 }
 
 pub fn casper_env_balance<S: GlobalStateReader, E: Executor>(
@@ -1145,7 +1147,7 @@ pub fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
 
     if entity_addr_len != 32 {
         // Invalid entity address; failing to proceed with the transfer
-        return Ok(u32_from_host_result(Err(CallError::NotCallable)));
+        return Ok(u32_from_call_result(Err(CallError::NotCallable)));
     }
 
     let amount = {
@@ -1170,7 +1172,7 @@ pub fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
             Ok((entity_addr, runtime_footprint)) => (entity_addr, runtime_footprint),
             Err(TrackingCopyError::KeyNotFound(key)) => {
                 warn!(?key, "Account not found");
-                return Ok(u32_from_host_result(Err(CallError::NotCallable)));
+                return Ok(u32_from_call_result(Err(CallError::NotCallable)));
             }
             Err(error) => {
                 error!(?error, "Error while reading from storage; aborting");
@@ -1190,7 +1192,7 @@ pub fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
                         .map_err(|_| InternalHostError::TypeConversion)?
                 }
                 Ok(Some(other)) => panic!("should be cl value but got {other:?}"),
-                Ok(None) => return Ok(u32_from_host_result(Err(CallError::NotCallable))),
+                Ok(None) => return Ok(u32_from_call_result(Err(CallError::NotCallable))),
                 Err(error) => {
                     error!(
                         ?error,
@@ -1213,12 +1215,12 @@ pub fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
                                 ?smart_contract_key,
                                 "Unable to find latest addressible entity hash for contract"
                             );
-                            return Ok(u32_from_host_result(Err(CallError::NotCallable)));
+                            return Ok(u32_from_call_result(Err(CallError::NotCallable)));
                         }
                     }
                 }
                 Ok(Some(other)) => panic!("should be smart contract but got {other:?}"),
-                Ok(None) => return Ok(u32_from_host_result(Err(CallError::NotCallable))),
+                Ok(None) => return Ok(u32_from_call_result(Err(CallError::NotCallable))),
                 Err(error) => {
                     error!(
                         ?error,
@@ -1254,7 +1256,7 @@ pub fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
         },
         Err(TrackingCopyError::KeyNotFound(key)) => {
             warn!(?key, "Transfer recipient not found");
-            return Ok(u32_from_host_result(Err(CallError::NotCallable)));
+            return Ok(u32_from_call_result(Err(CallError::NotCallable)));
         }
         Err(error) => {
             error!(?error, "Error while reading from storage; aborting");
@@ -1280,7 +1282,7 @@ pub fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
         args,
     );
 
-    Ok(u32_from_host_result(result))
+    Ok(u32_from_call_result(result))
 }
 
 pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
@@ -1452,7 +1454,7 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
             .execute(tracking_copy_for_ctor, execute_request)
         {
             Ok(ExecuteResult {
-                host_error,
+                call_error: host_error,
                 output,
                 gas_usage,
                 effects,

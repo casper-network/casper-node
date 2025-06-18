@@ -26,11 +26,11 @@ impl From<u32> for InterfaceVersion {
     }
 }
 
-pub type HostResult = Result<(), CallError>;
+pub type CallResult = Result<(), CallError>;
 
 /// Converts a host result into a u32.
 #[must_use]
-pub fn u32_from_host_result(result: HostResult) -> u32 {
+pub fn u32_from_call_result(result: CallResult) -> u32 {
     match result {
         Ok(()) => CALLEE_SUCCEEDED,
         Err(host_error) => host_error.into_u32(),

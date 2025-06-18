@@ -4,7 +4,7 @@
 //! a single owner to control the contract. This module provides a simple implementation
 //! of this pattern, allowing for ownership to be transferred or renounced.
 use borsh::{BorshDeserialize, BorshSerialize};
-use casper_contract_macros::CasperABI;
+use casper_contract_macros::{CasperABI, TypeUid};
 
 #[allow(unused_imports)]
 use crate as casper_contract_sdk;
@@ -25,7 +25,7 @@ impl Default for OwnableState {
 }
 
 /// Represents the possible errors that can occur during ownership operations.
-#[derive(CasperABI, BorshSerialize, BorshDeserialize)]
+#[derive(CasperABI, BorshSerialize, BorshDeserialize, TypeUid)]
 #[casper(path = crate)]
 pub enum OwnableError {
     /// The caller is not authorized to perform the action.

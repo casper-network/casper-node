@@ -230,7 +230,7 @@ impl ExecuteRequestBuilder {
 #[derive(Debug)]
 pub struct ExecuteResult {
     /// Error while executing Wasm: traps, memory access errors, etc.
-    pub host_error: Option<CallError>,
+    pub call_error: Option<CallError>,
     /// Output produced by the Wasm contract.
     pub output: Option<TaggedBytes>,
     /// Gas usage.
@@ -254,7 +254,7 @@ impl ExecuteResult {
     }
 
     pub fn host_error(&self) -> Option<&CallError> {
-        self.host_error.as_ref()
+        self.call_error.as_ref()
     }
 
     pub fn output(&self) -> Option<&TaggedBytes> {

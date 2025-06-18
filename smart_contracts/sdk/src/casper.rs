@@ -19,11 +19,10 @@ use crate::{
     Message, ToCallData,
 };
 
-use bnum::cast::As;
 use casper_contract_sdk_sys::casper_env_info;
 use casper_executor_wasm_common::{
     env_info::EnvInfo,
-    error::{result_from_code, CommonResult, HOST_ERROR_SUCCESS},
+    error::{result_from_code, CommonResult, CALLEE_SUCCEEDED, HOST_ERROR_SUCCESS},
     flags::ReturnFlags,
     keyspace::{Keyspace, KeyspaceTag},
 };
@@ -324,7 +323,7 @@ pub(crate) fn call_into<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
     entry_point: &str,
     input_data: &[u8],
     alloc: Option<F>,
-) -> Result<casper_contract_sdk_sys::CallResult, CallError> {
+) -> Result<casper_contract_sdk_sys::CallResult, CommonResult> {
     let mut call_result = MaybeUninit::uninit();
     let result_code = unsafe {
         casper_contract_sdk_sys::casper_call(
@@ -340,12 +339,17 @@ pub(crate) fn call_into<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
             &alloc as *const _ as *mut _,
         )
     };
-    call_result_from_code(result_code)?;
-    Ok(unsafe { call_result.assume_init() })
+
+    print(&format!("casper_call result code: {}", result_code));
+    result_from_code(result_code)?;
+
+    let res = Ok(unsafe { call_result.assume_init() });
+    print(&format!("casper_call res code: {:?}", res));
+    res
 }
 
 fn call_result_from_code(result_code: u32) -> Result<(), CallError> {
-    if result_code == HOST_ERROR_SUCCESS {
+    if result_code == CALLEE_SUCCEEDED {
         Ok(())
     } else {
         Err(CallError::try_from(result_code).expect("Unexpected error code"))
@@ -358,7 +362,7 @@ pub fn casper_call(
     transferred_value: u64,
     entry_point: &str,
     input_data: &[u8],
-) -> Result<Option<TaggedBytes>, CallError> {
+) -> (Option<TaggedBytes>, Result<(), CallError>) {
     #[cfg(debug_assertions)]
     let mut was_alloc_callback_executed = false;
 
@@ -378,9 +382,10 @@ pub fn casper_call(
             }
             reserve_vec_space(&mut vec, size)
         }),
-    )?;
+    )
+    .expect("Failed to call contract");
 
-    let tagged_bytes = if vec.as_ptr() == ptr::dangling() {
+    let tagged_bytes = if call_result.data_ptr == ptr::null() {
         #[cfg(debug_assertions)]
         {
             if was_alloc_callback_executed {
@@ -401,7 +406,18 @@ pub fn casper_call(
             TaggedBytes::from_raw_parts(Uid::from_u64(call_result.type_uid), vec.into());
         Some(tagged_bytes)
     };
-    Ok(tagged_bytes)
+
+    print(&format!(
+        "casper_call data_ptr: {:?}, type_uid: {}, data_len: {}, call_outcome: {}",
+        call_result.data_ptr, call_result.type_uid, call_result.data_size, call_result.call_outcome
+    ));
+    let call_outcome = call_result_from_code(call_result.call_outcome);
+    print(&format!(
+        "casper_call outcome: {:?}, tagged_bytes: {:?}",
+        call_outcome, tagged_bytes
+    ));
+
+    (tagged_bytes, call_outcome)
 }
 
 /// Upgrade the contract.
@@ -476,7 +492,7 @@ pub fn write_state<T: BorshSerialize + TypeUid>(state: &T) -> Result<(), CommonR
 
 #[derive(Debug)]
 pub struct CallResult<T: ToCallData> {
-    pub data: Option<Vec<u8>>,
+    pub data: Option<TaggedBytes>,
     pub result: Result<(), CallError>,
     pub marker: PhantomData<T>,
 }
@@ -484,12 +500,12 @@ pub struct CallResult<T: ToCallData> {
 impl<T: ToCallData> CallResult<T> {
     pub fn into_result<'a>(self) -> Result<T::Return<'a>, CallError>
     where
-        <T as ToCallData>::Return<'a>: BorshDeserialize,
+        <T as ToCallData>::Return<'a>: BorshDeserialize + TypeUid,
     {
         match self.result {
             Ok(()) | Err(CallError::CalleeReverted) => {
-                let data = self.data.unwrap_or_default();
-                Ok(borsh::from_slice(&data).unwrap())
+                let value = self.data.unwrap_or_default().to_value().unwrap();
+                Ok(value)
             }
             Err(call_error) => Err(call_error),
         }
@@ -508,16 +524,22 @@ pub fn call<T: ToCallData>(
 ) -> Result<CallResult<T>, CallError> {
     let input_data = call_data.input_data().unwrap_or_default();
 
-    let (maybe_data, result_code) = casper_call(
+    let (tagged_bytes, call_outcome) = casper_call(
         contract_address,
         transferred_value,
         call_data.entry_point(),
         &input_data,
     );
-    match result_code {
+
+    print(&format!(
+        "casper_call result: {:?}, tagged_bytes: {:?}",
+        call_outcome, tagged_bytes
+    ));
+
+    match call_outcome {
         Ok(()) | Err(CallError::CalleeReverted) => Ok(CallResult::<T> {
-            data: maybe_data,
-            result: result_code,
+            data: tagged_bytes,
+            result: call_outcome,
             marker: PhantomData,
         }),
         Err(error) => Err(error),

@@ -298,7 +298,7 @@ impl ExecutorV2 {
 
                 match Self::execute_with_tracking_copy(self, forked_tc, execute_request) {
                     Ok(ExecuteResult {
-                        host_error,
+                        call_error: host_error,
                         output,
                         gas_usage,
                         effects,
@@ -473,7 +473,7 @@ impl ExecutorV2 {
                                 }
                                 Err(error) => {
                                     return Ok(ExecuteResult {
-                                        host_error: Some(error),
+                                        call_error: Some(error),
                                         output: None,
                                         gas_usage: GasUsage::new(
                                             gas_limit,
@@ -583,7 +583,7 @@ impl ExecutorV2 {
 
         match vm_result {
             Ok(()) => Ok(ExecuteResult {
-                host_error: None,
+                call_error: None,
                 output: None,
                 gas_usage,
                 effects: final_tracking_copy.effects(),
@@ -606,7 +606,7 @@ impl ExecutorV2 {
                 };
 
                 Ok(ExecuteResult {
-                    host_error,
+                    call_error: host_error,
                     output: data,
                     gas_usage,
                     effects: initial_tracking_copy.effects(),
@@ -615,7 +615,7 @@ impl ExecutorV2 {
                 })
             }
             Err(VMError::OutOfGas) => Ok(ExecuteResult {
-                host_error: Some(CallError::CalleeGasDepleted),
+                call_error: Some(CallError::CalleeGasDepleted),
                 output: None,
                 gas_usage,
                 effects: final_tracking_copy.effects(),
@@ -623,7 +623,7 @@ impl ExecutorV2 {
                 messages: final_tracking_copy.messages(),
             }),
             Err(VMError::Trap(trap_code)) => Ok(ExecuteResult {
-                host_error: Some(CallError::CalleeTrapped(trap_code)),
+                call_error: Some(CallError::CalleeTrapped(trap_code)),
                 output: None,
                 gas_usage,
                 effects: initial_tracking_copy.effects(),
@@ -633,7 +633,7 @@ impl ExecutorV2 {
             Err(VMError::Export(export_error)) => {
                 error!(?export_error, "export error");
                 Ok(ExecuteResult {
-                    host_error: Some(CallError::NotCallable),
+                    call_error: Some(CallError::NotCallable),
                     output: None,
                     gas_usage,
                     effects: initial_tracking_copy.effects(),
@@ -764,7 +764,7 @@ impl ExecutorV2 {
 
         let fork2 = tracking_copy.fork2();
         Ok(ExecuteResult {
-            host_error,
+            call_error: host_error,
             output,
             gas_usage: GasUsage::new(gas_limit, remaining_points),
             effects: fork2.effects(),
@@ -797,7 +797,7 @@ impl ExecutorV2 {
 
         match self.execute_with_tracking_copy(tracking_copy, execute_request) {
             Ok(ExecuteResult {
-                host_error,
+                call_error: host_error,
                 output,
                 gas_usage,
                 effects,

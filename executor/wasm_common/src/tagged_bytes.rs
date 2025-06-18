@@ -8,6 +8,15 @@ pub struct TaggedBytes {
     bytes: Bytes,
 }
 
+impl Default for TaggedBytes {
+    fn default() -> Self {
+        TaggedBytes {
+            tag: Uid::UNTYPED,
+            bytes: Bytes::new(),
+        }
+    }
+}
+
 impl TaggedBytes {
     /// Creates a new `TaggedBytes` with the given tag and bytes.
     pub const fn from_raw_parts(tag: Uid, bytes: Bytes) -> Self {
@@ -27,7 +36,7 @@ impl TaggedBytes {
     /// Attempts to deserialize the bytes into a type `T` that implements `BorshDeserialize`.
     pub fn to_value<T: BorshDeserialize + TypeUid>(&self) -> borsh::io::Result<T> {
         // Ensure the tag matches the UID of the type T
-        if self.tag != T::UID {
+        if self.tag != Uid::UNTYPED && self.tag != T::UID {
             return Err(borsh::io::Error::new(
                 borsh::io::ErrorKind::InvalidData,
                 "Tag does not match type UID",

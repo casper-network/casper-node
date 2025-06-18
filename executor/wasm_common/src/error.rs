@@ -72,7 +72,7 @@ pub fn result_from_code(code: u32) -> Result<(), CommonResult> {
 }
 
 /// Wasm trap code.
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Copy, Clone)]
 pub enum TrapCode {
     /// Trap code for out of bounds memory access.
     #[error("call stack exhausted")]
@@ -113,7 +113,7 @@ pub const CALLEE_HOST_ERROR: u32 = 5;
 /// Represents the result of a host function call.
 ///
 /// 0 is used as a success.
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Copy, Clone)]
 pub enum CallError {
     /// Callee contract reverted.
     #[error("callee reverted")]

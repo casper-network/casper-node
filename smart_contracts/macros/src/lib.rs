@@ -932,6 +932,7 @@ fn generate_impl_trait_for_contract(
                                 };
                             };
 
+                            #[cfg(not(target_arch = "wasm32"))]
                             const _: () = {
                                 #[casper_contract_sdk::linkme::distributed_slice(casper_contract_sdk::abi_generator::ENTRYPOINTS)]
                                 #[linkme(crate = casper_contract_sdk::linkme)]
@@ -1021,7 +1022,7 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
                     format!("{}_{}", trait_name, func_name_str)
                 };
 
-                let export_ident = format_ident!("{}", &func_name_str);
+                let export_ident = format_ident!("{trait_name}_{func_name_str}");
 
                 let result = match &func.sig.output {
                     syn::ReturnType::Default => {
@@ -1155,12 +1156,13 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
 
                 let schema_helper_ident = format_ident!("__casper_schema_entry_point_{func_name}");
                 extra_code.push(quote! {
+                    #[cfg(not(target_arch = "wasm32"))]
                     fn #schema_helper_ident () -> casper_contract_sdk::schema::SchemaEntryPoint {
                         casper_contract_sdk::schema::SchemaEntryPoint {
                             name: stringify!(#export_name).into(),
                             arguments: vec![ #(#args,)* ],
                             result: #result,
-                            flags: casper_contract_sdk::casper_executor_wasm_common::flags::EntryPointFlags::from_bits(#_flags).unwrap(),
+                            flags: casper_contract_sdk::common::flags::EntryPointFlags::from_bits(#_flags).unwrap(),
                         }
                     }
                 });
@@ -1201,8 +1203,6 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
                             }
 
                             impl #crate_path::ToCallData for CallData {
-                                // const SELECTOR: vm_common::selector::Selector = vm_common::selector::Selector::new(#selector_value);
-
                                 type Return<'a> = #call_data_return_lifetime;
 
                                 fn entry_point(&self) -> &str { #entry_point_lit }

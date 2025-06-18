@@ -182,7 +182,7 @@ impl<T: ContractRef> ContractHandle<T> {
         func: impl FnOnce(T) -> CallData,
     ) -> Result<CallData::Return<'a>, CallError>
     where
-        CallData::Return<'a>: BorshDeserialize,
+        CallData::Return<'a>: BorshDeserialize + common::type_uid::TypeUid,
     {
         self.build_call().call(func)
     }
@@ -263,7 +263,7 @@ impl<T: ContractRef> CallBuilder<T> {
         func: impl FnOnce(T) -> CallData,
     ) -> Result<CallData::Return<'a>, CallError>
     where
-        CallData::Return<'a>: BorshDeserialize,
+        CallData::Return<'a>: BorshDeserialize + common::type_uid::TypeUid,
     {
         let inst = T::new();
         let call_data = func(inst);

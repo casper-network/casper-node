@@ -2,7 +2,12 @@
 #![cfg_attr(target_arch = "wasm32", no_std)]
 
 use casper_contract_macros::{casper, PanicOnDefault};
-use casper_contract_sdk::{casper, log, types::Address};
+use casper_contract_sdk::{
+    casper,
+    common::{tagged_bytes::TaggedBytes, type_uid::Uid},
+    log,
+    types::Address,
+};
 
 /// This contract implements a simple LegacyCounterProxy.
 #[derive(PanicOnDefault)]
@@ -31,7 +36,13 @@ impl LegacyCounterProxy {
         let (inc_result_1, host_error) =
             casper::casper_call(&self.legacy_address, 0, "counter_inc", &EMPTY_RUNTIME_ARGS);
         log!("inc_result {:?}", inc_result_1);
-        assert_eq!(inc_result_1, Some(CL_VALUE_UNIT_BYTES.to_vec()));
+        assert_eq!(
+            inc_result_1,
+            Some(TaggedBytes::from_raw_parts(
+                Uid::UNTYPED,
+                CL_VALUE_UNIT_BYTES.to_vec().into()
+            ))
+        );
         let _ = host_error.expect("No error 2");
 
         let (counter_get_result_2, host_error) =
@@ -43,7 +54,13 @@ impl LegacyCounterProxy {
         let (inc_result_2, host_error) =
             casper::casper_call(&self.legacy_address, 0, "counter_inc", &EMPTY_RUNTIME_ARGS);
         log!("inc_result {:?}", inc_result_2);
-        assert_eq!(inc_result_2, Some(CL_VALUE_UNIT_BYTES.to_vec()));
+        assert_eq!(
+            inc_result_2,
+            Some(TaggedBytes::from_raw_parts(
+                Uid::UNTYPED,
+                CL_VALUE_UNIT_BYTES.to_vec().into()
+            ))
+        );
         let _ = host_error.expect("No error 4");
 
         let (counter_get_result_3, host_error) =

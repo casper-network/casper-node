@@ -27,6 +27,8 @@ unsafe impl TriviallyTransmutable for CreateResult {}
 #[repr(C)]
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub(crate) struct CallResult {
+    /// Result of the call.
+    pub(crate) call_outcome: u32,
     /// Allocated pointer.
     pub(crate) data_ptr: u32,
     /// Size in bytes.
