@@ -318,18 +318,20 @@ impl ExecutableDeployItem {
             | ExecutableDeployItem::StoredContractByName { .. }
             | ExecutableDeployItem::Transfer { .. } => None,
 
-            ExecutableDeployItem::StoredVersionedContractByHash {
-                hash, version: _, ..
-            } => Some(PackageIdentifier::HashWithVersion {
-                package_hash: PackageHash::new(hash.value()),
-                version_key: None,
-            }),
-            ExecutableDeployItem::StoredVersionedContractByName {
-                name, version: _, ..
-            } => Some(PackageIdentifier::NameWithVersion {
-                name: name.clone(),
-                version_key: None,
-            }),
+            ExecutableDeployItem::StoredVersionedContractByHash { hash, version, .. } => {
+                Some(PackageIdentifier::HashWithMajorVersion {
+                    package_hash: PackageHash::new(hash.value()),
+                    version: *version,
+                    protocol_version_major: None,
+                })
+            }
+            ExecutableDeployItem::StoredVersionedContractByName { name, version, .. } => {
+                Some(PackageIdentifier::NameWithMajorVersion {
+                    name: name.clone(),
+                    version: *version,
+                    protocol_version_major: None,
+                })
+            }
         }
     }
 

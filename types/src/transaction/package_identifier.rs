@@ -14,7 +14,8 @@ use serde::{Deserialize, Serialize};
 use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    EntityVersion, EntityVersionKey, PackageHash,
+    contracts::ProtocolVersionMajor,
+    EntityVersion, PackageHash,
 };
 #[cfg(doc)]
 use crate::{ExecutableDeployItem, TransactionTarget};
@@ -56,22 +57,30 @@ pub enum PackageIdentifier {
         version: Option<EntityVersion>,
     },
     /// The hash and optional version key identifying the contract package.
-    HashWithVersion {
+    HashWithMajorVersion {
         /// The hash of the contract package.
         package_hash: PackageHash,
-        /// The version key of the contract package.
+        /// The major protocol version of the contract package.
+        ///
+        /// `None` implies latest major protocol version.
+        protocol_version_major: Option<ProtocolVersionMajor>,
+        /// The version of the contract package.
         ///
         /// `None` implies latest version.
-        version_key: Option<EntityVersionKey>,
+        version: Option<EntityVersion>,
     },
     /// The name and optional version key identifying the contract package.
-    NameWithVersion {
+    NameWithMajorVersion {
         /// The name of the contract package.
         name: String,
-        /// The version key of the contract package.
+        /// The major protocol version of the contract package.
+        ///
+        /// `None` implies latest major protocol version.
+        protocol_version_major: Option<ProtocolVersionMajor>,
+        /// The version of the contract package.
         ///
         /// `None` implies latest version.
-        version_key: Option<EntityVersionKey>,
+        version: Option<EntityVersion>,
     },
 }
 
@@ -79,24 +88,28 @@ impl PackageIdentifier {
     /// Returns the optional version of the contract package.
     ///
     /// `None` implies latest version.
-    #[deprecated(since = "5.0.1", note = "please use `version_key` instead")]
     pub fn version(&self) -> Option<EntityVersion> {
         match self {
-            PackageIdentifier::HashWithVersion { .. }
-            | PackageIdentifier::NameWithVersion { .. } => None,
-            PackageIdentifier::Hash { version, .. } | PackageIdentifier::Name { version, .. } => {
-                *version
-            }
+            PackageIdentifier::HashWithMajorVersion { version, .. }
+            | PackageIdentifier::NameWithMajorVersion { version, .. }
+            | PackageIdentifier::Hash { version, .. }
+            | PackageIdentifier::Name { version, .. } => *version,
         }
     }
 
     /// Returns the optional version key of the contract package.
     ///
     /// `None` implies latest version.
-    pub fn version_key(&self) -> Option<EntityVersionKey> {
+    pub fn protocol_version_major(&self) -> Option<ProtocolVersionMajor> {
         match self {
-            PackageIdentifier::HashWithVersion { version_key, .. }
-            | PackageIdentifier::NameWithVersion { version_key, .. } => *version_key,
+            PackageIdentifier::HashWithMajorVersion {
+                protocol_version_major,
+                ..
+            }
+            | PackageIdentifier::NameWithMajorVersion {
+                protocol_version_major,
+                ..
+            } => *protocol_version_major,
             PackageIdentifier::Hash { .. } | PackageIdentifier::Name { .. } => None,
         }
     }
@@ -104,17 +117,26 @@ impl PackageIdentifier {
     /// Returns a random `PackageIdentifier`.
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
-        let version_key = rng.gen::<bool>().then(|| rng.gen::<EntityVersionKey>());
-        if rng.gen() {
-            PackageIdentifier::HashWithVersion {
+        match rng.gen_range(0..4) {
+            0 => PackageIdentifier::Hash {
                 package_hash: PackageHash::new(rng.gen()),
-                version_key,
-            }
-        } else {
-            PackageIdentifier::NameWithVersion {
+                version: rng.gen(),
+            },
+            1 => PackageIdentifier::Name {
                 name: rng.random_string(1..21),
-                version_key,
-            }
+                version: rng.gen(),
+            },
+            2 => PackageIdentifier::HashWithMajorVersion {
+                package_hash: PackageHash::new(rng.gen()),
+                protocol_version_major: rng.gen(),
+                version: rng.gen(),
+            },
+            3 => PackageIdentifier::NameWithMajorVersion {
+                name: rng.random_string(1..21),
+                protocol_version_major: rng.gen(),
+                version: rng.gen(),
+            },
+            _ => unreachable!("Unexpected tag"),
         }
     }
 }
@@ -146,19 +168,29 @@ impl Display for PackageIdentifier {
             PackageIdentifier::Name { name, .. } => {
                 write!(formatter, "package-id({}, latest)", name)
             }
-            PackageIdentifier::HashWithVersion {
+            PackageIdentifier::HashWithMajorVersion {
                 package_hash,
-                version_key,
+                protocol_version_major,
+                version,
             } => {
                 write!(
                     formatter,
-                    "package-id({}, {:?})",
+                    "package-id-HashWithVersion({}, protocol_version_major: {:?}, version: {:?})",
                     HexFmt(package_hash),
-                    version_key
+                    protocol_version_major,
+                    version,
                 )
             }
-            PackageIdentifier::NameWithVersion { name, version_key } => {
-                write!(formatter, "package-id({}, {:?})", name, version_key)
+            PackageIdentifier::NameWithMajorVersion {
+                name,
+                protocol_version_major,
+                version,
+            } => {
+                write!(
+                    formatter,
+                    "package-id-NameWithVersion({},protocol_version_major: {:?}, version: {:?})",
+                    name, protocol_version_major, version,
+                )
             }
         }
     }
@@ -175,23 +207,30 @@ impl ToBytes for PackageIdentifier {
                 package_hash.write_bytes(writer)?;
                 version.write_bytes(writer)
             }
-            PackageIdentifier::HashWithVersion {
-                package_hash,
-                version_key,
-            } => {
-                HASH_WITH_VERSION_TAG.write_bytes(writer)?;
-                package_hash.write_bytes(writer)?;
-                version_key.write_bytes(writer)
-            }
             PackageIdentifier::Name { name, version } => {
                 NAME_TAG.write_bytes(writer)?;
                 name.write_bytes(writer)?;
                 version.write_bytes(writer)
             }
-            PackageIdentifier::NameWithVersion { name, version_key } => {
+            PackageIdentifier::HashWithMajorVersion {
+                package_hash,
+                protocol_version_major,
+                version,
+            } => {
+                HASH_WITH_VERSION_TAG.write_bytes(writer)?;
+                package_hash.write_bytes(writer)?;
+                protocol_version_major.write_bytes(writer)?;
+                version.write_bytes(writer)
+            }
+            PackageIdentifier::NameWithMajorVersion {
+                name,
+                protocol_version_major,
+                version,
+            } => {
                 NAME_WITH_VERSION_TAG.write_bytes(writer)?;
                 name.write_bytes(writer)?;
-                version_key.write_bytes(writer)
+                protocol_version_major.write_bytes(writer)?;
+                version.write_bytes(writer)
             }
         }
     }
@@ -212,12 +251,23 @@ impl ToBytes for PackageIdentifier {
                 PackageIdentifier::Name { name, version } => {
                     name.serialized_length() + version.serialized_length()
                 }
-                PackageIdentifier::HashWithVersion {
+                PackageIdentifier::HashWithMajorVersion {
                     package_hash,
-                    version_key,
-                } => package_hash.serialized_length() + version_key.serialized_length(),
-                PackageIdentifier::NameWithVersion { name, version_key } => {
-                    name.serialized_length() + version_key.serialized_length()
+                    protocol_version_major,
+                    version,
+                } => {
+                    package_hash.serialized_length()
+                        + protocol_version_major.serialized_length()
+                        + version.serialized_length()
+                }
+                PackageIdentifier::NameWithMajorVersion {
+                    name,
+                    protocol_version_major,
+                    version,
+                } => {
+                    name.serialized_length()
+                        + protocol_version_major.serialized_length()
+                        + version.serialized_length()
                 }
             }
     }
@@ -244,17 +294,24 @@ impl FromBytes for PackageIdentifier {
             }
             HASH_WITH_VERSION_TAG => {
                 let (package_hash, remainder) = PackageHash::from_bytes(remainder)?;
-                let (version_key, remainder) = Option::<EntityVersionKey>::from_bytes(remainder)?;
-                let id = PackageIdentifier::HashWithVersion {
+                let (protocol_version_major, remainder) = Option::from_bytes(remainder)?;
+                let (version, remainder) = Option::from_bytes(remainder)?;
+                let id = PackageIdentifier::HashWithMajorVersion {
                     package_hash,
-                    version_key,
+                    protocol_version_major,
+                    version,
                 };
                 Ok((id, remainder))
             }
             NAME_WITH_VERSION_TAG => {
                 let (name, remainder) = String::from_bytes(remainder)?;
-                let (version_key, remainder) = Option::<EntityVersionKey>::from_bytes(remainder)?;
-                let id = PackageIdentifier::NameWithVersion { name, version_key };
+                let (protocol_version_major, remainder) = Option::from_bytes(remainder)?;
+                let (version, remainder) = Option::from_bytes(remainder)?;
+                let id = PackageIdentifier::NameWithMajorVersion {
+                    name,
+                    protocol_version_major,
+                    version,
+                };
                 Ok((id, remainder))
             }
             _ => Err(bytesrepr::Error::Formatting),

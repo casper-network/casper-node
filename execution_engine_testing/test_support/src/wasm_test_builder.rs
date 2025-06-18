@@ -268,7 +268,8 @@ impl LmdbWasmTestBuilder {
                     .unwrap();
                 self.post_state_hash = Some(post_state_hash);
                 let mut engine_config = self.chainspec.engine_config();
-                engine_config.set_protocol_version(upgrade_config.new_protocol_version());
+                let new_protocol_version = upgrade_config.new_protocol_version();
+                engine_config.set_protocol_version(new_protocol_version);
                 self.execution_engine = Rc::new(ExecutionEngineV1::new(engine_config));
                 ProtocolUpgradeResult::Success {
                     post_state_hash,
@@ -1713,6 +1714,11 @@ where
         system_entity_hash: AddressableEntityHash,
     ) -> NamedKeys {
         self.get_named_keys(EntityAddr::System(system_entity_hash.value()))
+    }
+
+    /// Returns the named keys for a system contract.
+    pub fn get_named_keys_for_contract(&self, contract_hash: AddressableEntityHash) -> NamedKeys {
+        self.get_named_keys(EntityAddr::SmartContract(contract_hash.value()))
     }
 
     /// Get the named keys for an entity.

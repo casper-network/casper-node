@@ -31,14 +31,16 @@ use casper_types::{
     account::{Account, AccountHash, ActionThresholds, AssociatedKeys, Weight},
     addressable_entity::AddressableEntity,
     bytesrepr::Bytes,
-    contracts::{ContractPackage, NamedKeys},
+    contracts::{
+        ContractHash, ContractPackage, ContractPackageStatus, ContractVersionKey, NamedKeys,
+    },
     global_state::TrieMerkleProof,
     testing::TestRng,
-    Block, BlockV2, CLValue, Chainspec, ChainspecRawBytes, Contract, Deploy, EraId, HashAddr,
-    InvalidDeploy, InvalidTransaction, InvalidTransactionV1, Key, PackageAddr, PricingHandling,
-    PricingMode, ProtocolVersion, PublicKey, SecretKey, StoredValue, TestBlockBuilder, TimeDiff,
-    Timestamp, Transaction, TransactionArgs, TransactionConfig, TransactionRuntimeParams,
-    TransactionV1, URef, DEFAULT_BASELINE_MOTES_AMOUNT,
+    Block, BlockV2, CLValue, Chainspec, ChainspecRawBytes, Contract, Deploy, EraId, Groups,
+    HashAddr, InvalidDeploy, InvalidTransaction, InvalidTransactionV1, Key, PackageAddr,
+    PricingHandling, PricingMode, ProtocolVersion, PublicKey, SecretKey, StoredValue,
+    TestBlockBuilder, TimeDiff, Timestamp, Transaction, TransactionArgs, TransactionConfig,
+    TransactionRuntimeParams, TransactionV1, URef, DEFAULT_BASELINE_MOTES_AMOUNT,
 };
 
 use super::*;
@@ -153,7 +155,7 @@ enum Error {
     Metrics(#[from] prometheus::Error),
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 enum ContractScenario {
     Valid,
     MissingContractAtHash,
@@ -161,7 +163,22 @@ enum ContractScenario {
     MissingEntryPoint,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
+enum HashOrName {
+    Hash,
+    Name,
+}
+#[derive(Clone, PartialEq, Eq, Debug)]
+enum ContractVersionExistance {
+    PackageDoesNotExist,
+    PackageExists(
+        bool,
+        BTreeMap<ContractVersionKey, ContractHash>,
+        BTreeSet<ContractVersionKey>,
+    ),
+}
+
+#[derive(Clone, PartialEq, Eq, Debug)]
 enum ContractPackageScenario {
     Valid,
     MissingPackageAtHash,
@@ -169,13 +186,13 @@ enum ContractPackageScenario {
     MissingContractVersion,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 enum TxnType {
     Deploy,
     V1,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 enum TestScenario {
     FromPeerInvalidTransaction(TxnType),
     FromPeerInvalidTransactionZeroPayment(TxnType),
@@ -226,13 +243,12 @@ enum TestScenario {
     WasmDeployWithTooBigPayment,
     RedelegateExceedingMaximumDelegation,
     DelegateExceedingMaximumDelegation,
-    V1ByPackageHashTargetsVersion,
-    V1ByPackageNameTargetsVersion,
-    DeployPaymentStoredVersionedContractByHashTargetsVersion,
-    DeployPaymentStoredVersionedContractByNameTargetsVersion,
-    DeploySessionStoredVersionedContractByHashTargetsVersion,
-    DeploySessionStoredVersionedContractByNameTargetsVersion,
-
+    V1ByPackage(
+        HashOrName,
+        Option<EntityVersion>,
+        Option<ProtocolVersionMajor>,
+        ContractVersionExistance,
+    ),
     VmCasperV2ByPackageHash,
 }
 
@@ -288,13 +304,8 @@ impl TestScenario {
             | TestScenario::WasmDeployWithTooBigPayment
             | TestScenario::RedelegateExceedingMaximumDelegation
             | TestScenario::DelegateExceedingMaximumDelegation
-            | TestScenario::V1ByPackageHashTargetsVersion
-            | TestScenario::V1ByPackageNameTargetsVersion
-            | TestScenario::DeployPaymentStoredVersionedContractByHashTargetsVersion
-            | TestScenario::DeployPaymentStoredVersionedContractByNameTargetsVersion
-            | TestScenario::DeploySessionStoredVersionedContractByHashTargetsVersion
-            | TestScenario::DeploySessionStoredVersionedContractByNameTargetsVersion
-            | TestScenario::VmCasperV2ByPackageHash => Source::Client,
+            | TestScenario::VmCasperV2ByPackageHash
+            | TestScenario::V1ByPackage(..) => Source::Client,
         }
     }
 
@@ -439,7 +450,6 @@ impl TestScenario {
             TestScenario::DeployWithPaymentOne => {
                 Transaction::from(Deploy::random_with_payment_one(rng))
             }
-
             TestScenario::TransactionWithPaymentOne => {
                 let timestamp = Timestamp::now()
                     + Config::default().timestamp_leeway
@@ -463,7 +473,6 @@ impl TestScenario {
                 .unwrap();
                 Transaction::from(txn)
             }
-
             TestScenario::FromPeerCustomPaymentContract(contract_scenario)
             | TestScenario::FromClientCustomPaymentContract(contract_scenario) => {
                 match contract_scenario {
@@ -490,14 +499,9 @@ impl TestScenario {
                     ContractPackageScenario::MissingPackageAtHash => {
                         Transaction::from(Deploy::random_with_missing_payment_package_by_hash(rng))
                     }
-                    ContractPackageScenario::MissingContractVersion => {
-                        //Keeping this enum because the Transaction::V1 version of this test is
-                        // still valid,
-                        // still FromPeerCustomPaymentContractPackage(MissingContractVersion) and
-                        // FromClientCustomPaymentContractPackage(MissingContractVersion) should not
-                        // be called
-                        todo!("This scenario is no longer valid and is not called")
-                    }
+                    ContractPackageScenario::MissingContractVersion => Transaction::from(
+                        Deploy::random_with_nonexistent_contract_version_in_payment_package(rng),
+                    ),
                 }
             }
             TestScenario::FromPeerSessionContract(TxnType::Deploy, contract_scenario)
@@ -572,13 +576,9 @@ impl TestScenario {
                 ContractPackageScenario::MissingPackageAtHash => {
                     Transaction::from(Deploy::random_with_missing_session_package_by_hash(rng))
                 }
-                ContractPackageScenario::MissingContractVersion => {
-                    //Keeping this enum because the Transaction::V1 version of this test is still
-                    // valid,
-                    // still FromPeerSessionContractPackage(MissingContractVersion) and
-                    // FromClientSessionContractPackage(MissingContractVersion) should not be called
-                    todo!("This scenario is no longer valid and is not called")
-                }
+                ContractPackageScenario::MissingContractVersion => Transaction::from(
+                    Deploy::random_with_nonexistent_contract_version_in_payment_package(rng),
+                ),
             },
             TestScenario::FromPeerSessionContractPackage(
                 TxnType::V1,
@@ -591,6 +591,7 @@ impl TestScenario {
                 ContractPackageScenario::Valid | ContractPackageScenario::MissingPackageAtName => {
                     let txn = TransactionV1Builder::new_targeting_package_via_alias(
                         "Test",
+                        None,
                         None,
                         "call",
                         TransactionRuntimeParams::VmCasperV1,
@@ -606,6 +607,7 @@ impl TestScenario {
                     let txn = TransactionV1Builder::new_targeting_package(
                         PackageHash::new(PackageAddr::default()),
                         None,
+                        None,
                         "call",
                         TransactionRuntimeParams::VmCasperV1,
                     )
@@ -619,7 +621,8 @@ impl TestScenario {
                 ContractPackageScenario::MissingContractVersion => {
                     let txn = TransactionV1Builder::new_targeting_package(
                         PackageHash::new(PackageAddr::default()),
-                        Some(EntityVersionKey::new(2, 6)),
+                        Some(6),
+                        Some(2),
                         "call",
                         TransactionRuntimeParams::VmCasperV1,
                     )
@@ -813,68 +816,12 @@ impl TestScenario {
                 .unwrap();
                 Transaction::from(txn)
             }
-            TestScenario::V1ByPackageHashTargetsVersion => {
-                let txn = TransactionV1Builder::new_targeting_stored(
-                    TransactionInvocationTarget::ByPackageHash {
-                        addr: [1; 32],
-                        version: Some(1),
-                        version_key: None,
-                    },
-                    "x",
-                    TransactionRuntimeParams::VmCasperV1,
-                )
-                .with_chain_name("casper-example")
-                .with_secret_key(&secret_key)
-                .build()
-                .unwrap();
-                Transaction::from(txn)
-            }
-            TestScenario::V1ByPackageNameTargetsVersion => {
-                let txn = TransactionV1Builder::new_targeting_stored(
-                    TransactionInvocationTarget::ByPackageName {
-                        name: "xyz".to_string(),
-                        version: Some(1),
-                        version_key: None,
-                    },
-                    "x",
-                    TransactionRuntimeParams::VmCasperV1,
-                )
-                .with_chain_name("casper-example")
-                .with_secret_key(&secret_key)
-                .build()
-                .unwrap();
-                Transaction::from(txn)
-            }
-            TestScenario::DeployPaymentStoredVersionedContractByHashTargetsVersion => {
-                Transaction::from(Deploy::random_with_payment_package_version_by_hash(
-                    Some(10),
-                    rng,
-                ))
-            }
-            TestScenario::DeployPaymentStoredVersionedContractByNameTargetsVersion => {
-                Transaction::from(Deploy::random_with_versioned_payment_package_by_name(
-                    Some(10),
-                    rng,
-                ))
-            }
-            TestScenario::DeploySessionStoredVersionedContractByHashTargetsVersion => {
-                Transaction::from(Deploy::random_with_versioned_session_package_by_hash(
-                    Some(10),
-                    rng,
-                ))
-            }
-            TestScenario::DeploySessionStoredVersionedContractByNameTargetsVersion => {
-                Transaction::from(Deploy::random_with_versioned_session_package_by_name(
-                    Some(10),
-                    rng,
-                ))
-            }
             TestScenario::VmCasperV2ByPackageHash => {
                 let txn = TransactionV1Builder::new_targeting_stored(
                     TransactionInvocationTarget::ByPackageHash {
                         addr: [1; 32],
                         version: None,
-                        version_key: None,
+                        protocol_version_major: None,
                     },
                     "x",
                     TransactionRuntimeParams::VmCasperV2 {
@@ -889,80 +836,107 @@ impl TestScenario {
                 .unwrap();
                 Transaction::from(txn)
             }
+            TestScenario::V1ByPackage(hash_or_name, maybe_version, maybe_protocol_version, ..) => {
+                let id = match hash_or_name {
+                    HashOrName::Hash => TransactionInvocationTarget::ByPackageHash {
+                        addr: [1; 32],
+                        version: *maybe_version,
+                        protocol_version_major: *maybe_protocol_version,
+                    },
+                    HashOrName::Name => TransactionInvocationTarget::ByPackageName {
+                        name: "xyz".to_owned(),
+                        version: *maybe_version,
+                        protocol_version_major: *maybe_protocol_version,
+                    },
+                };
+                let txn = TransactionV1Builder::new_targeting_stored(
+                    id,
+                    "x",
+                    TransactionRuntimeParams::VmCasperV1,
+                )
+                .with_chain_name("casper-example")
+                .with_secret_key(&secret_key)
+                .build()
+                .unwrap();
+                Transaction::from(txn)
+            }
         }
     }
 
     fn is_valid_transaction_case(&self) -> bool {
         match self {
             TestScenario::FromPeerRepeatedValidTransaction(_)
-            | TestScenario::FromPeerExpired(_)
-            | TestScenario::FromPeerValidTransaction(_)
-            | TestScenario::FromPeerMissingAccount(_) // account check skipped if from peer
-            | TestScenario::FromPeerAccountWithInsufficientWeight(_) // account check skipped if from peer
-            | TestScenario::FromPeerAccountWithInvalidAssociatedKeys(_) // account check skipped if from peer
-            | TestScenario::FromClientRepeatedValidTransaction(_)
-            | TestScenario::FromClientValidTransaction(_)
-            | TestScenario::FromClientSlightlyFutureDatedTransaction(_)
-            | TestScenario::FromClientSignedByAdmin(..) => true,
+                    | TestScenario::FromPeerExpired(_)
+                    | TestScenario::FromPeerValidTransaction(_)
+                    | TestScenario::FromPeerMissingAccount(_) // account check skipped if from peer
+                    | TestScenario::FromPeerAccountWithInsufficientWeight(_) // account check skipped if from peer
+                    | TestScenario::FromPeerAccountWithInvalidAssociatedKeys(_) // account check skipped if from peer
+                    | TestScenario::FromClientRepeatedValidTransaction(_)
+                    | TestScenario::FromClientValidTransaction(_)
+                    | TestScenario::FromClientSlightlyFutureDatedTransaction(_)
+                    | TestScenario::FromClientSignedByAdmin(..) => true,
             TestScenario::FromPeerInvalidTransaction(_)
-            | TestScenario::FromPeerInvalidTransactionZeroPayment(_)
-            | TestScenario::FromClientInsufficientBalance(_)
-            | TestScenario::FromClientMissingAccount(_)
-            | TestScenario::FromClientInvalidTransaction(_)
-            | TestScenario::FromClientInvalidTransactionZeroPayment(_)
-            | TestScenario::FromClientFutureDatedTransaction(_)
-            | TestScenario::FromClientAccountWithInsufficientWeight(_)
-            | TestScenario::FromClientAccountWithInvalidAssociatedKeys(_)
-            | TestScenario::AccountWithUnknownBalance
-            | TestScenario::DeployWithEmptySessionModuleBytes
-            | TestScenario::DeployWithNativeTransferInPayment
-            | TestScenario::DeployWithoutPaymentAmount
-            | TestScenario::DeployWithMangledPaymentAmount
-            | TestScenario::DeployWithMangledTransferAmount
-            | TestScenario::DeployWithoutTransferAmount
-            | TestScenario::DeployWithoutTransferTarget
-            | TestScenario::DeployWithPaymentOne
-            | TestScenario::BalanceCheckForDeploySentByPeer
-            | TestScenario::FromClientExpired(_) => false,
+                    | TestScenario::FromPeerInvalidTransactionZeroPayment(_)
+                    | TestScenario::FromClientInsufficientBalance(_)
+                    | TestScenario::FromClientMissingAccount(_)
+                    | TestScenario::FromClientInvalidTransaction(_)
+                    | TestScenario::FromClientInvalidTransactionZeroPayment(_)
+                    | TestScenario::FromClientFutureDatedTransaction(_)
+                    | TestScenario::FromClientAccountWithInsufficientWeight(_)
+                    | TestScenario::FromClientAccountWithInvalidAssociatedKeys(_)
+                    | TestScenario::AccountWithUnknownBalance
+                    | TestScenario::DeployWithEmptySessionModuleBytes
+                    | TestScenario::DeployWithNativeTransferInPayment
+                    | TestScenario::DeployWithoutPaymentAmount
+                    | TestScenario::DeployWithMangledPaymentAmount
+                    | TestScenario::DeployWithMangledTransferAmount
+                    | TestScenario::DeployWithoutTransferAmount
+                    | TestScenario::DeployWithoutTransferTarget
+                    | TestScenario::DeployWithPaymentOne
+                    | TestScenario::BalanceCheckForDeploySentByPeer
+                    | TestScenario::FromClientExpired(_) => false,
             TestScenario::FromPeerCustomPaymentContract(contract_scenario)
-            | TestScenario::FromPeerSessionContract(_, contract_scenario)
-            | TestScenario::FromClientCustomPaymentContract(contract_scenario)
-            | TestScenario::FromClientSessionContract(_, contract_scenario) => match contract_scenario
-            {
-                ContractScenario::Valid
-                | ContractScenario::MissingContractAtName => true,
-                | ContractScenario::MissingContractAtHash
-                | ContractScenario::MissingEntryPoint => false,
-            },
+                    | TestScenario::FromPeerSessionContract(_, contract_scenario)
+                    | TestScenario::FromClientCustomPaymentContract(contract_scenario)
+                    | TestScenario::FromClientSessionContract(_, contract_scenario) => match contract_scenario
+                    {
+                        ContractScenario::Valid
+                        | ContractScenario::MissingContractAtName => true,
+                        | ContractScenario::MissingContractAtHash
+                        | ContractScenario::MissingEntryPoint => false,
+                    },
             TestScenario::FromPeerCustomPaymentContractPackage(contract_package_scenario)
-            | TestScenario::FromPeerSessionContractPackage(_, contract_package_scenario)
-            | TestScenario::FromClientCustomPaymentContractPackage(contract_package_scenario)
-            | TestScenario::FromClientSessionContractPackage(_, contract_package_scenario) => {
-                match contract_package_scenario {
-                    ContractPackageScenario::Valid
-                    | ContractPackageScenario::MissingPackageAtName => true,
-                    | ContractPackageScenario::MissingPackageAtHash
-                    | ContractPackageScenario::MissingContractVersion => false,
+                    | TestScenario::FromPeerSessionContractPackage(_, contract_package_scenario)
+                    | TestScenario::FromClientCustomPaymentContractPackage(contract_package_scenario)
+                    | TestScenario::FromClientSessionContractPackage(_, contract_package_scenario) => {
+                        match contract_package_scenario {
+                            ContractPackageScenario::Valid
+                            | ContractPackageScenario::MissingPackageAtName => true,
+                            | ContractPackageScenario::MissingPackageAtHash
+                            | ContractPackageScenario::MissingContractVersion => false,
+                        }
+                    },
+            TestScenario::InvalidPricingModeForTransactionV1
+                    | TestScenario::TooLowGasPriceToleranceForTransactionV1
+                    | TestScenario::TransactionWithPaymentOne
+                    | TestScenario::TooLowGasPriceToleranceForDeploy
+                    | TestScenario::InvalidFields
+                    | TestScenario::InvalidFieldsFromPeer
+                    | TestScenario::InvalidArgumentsKind
+                    | TestScenario::WasmTransactionWithTooBigPayment
+                    | TestScenario::WasmDeployWithTooBigPayment
+                    | TestScenario::RedelegateExceedingMaximumDelegation { .. }
+                    | TestScenario::DelegateExceedingMaximumDelegation { .. }
+                    | TestScenario::VmCasperV2ByPackageHash => false,
+            TestScenario::V1ByPackage(hash_or_name, _, _, scenario, ..) => {
+                match hash_or_name {
+                    HashOrName::Hash => match scenario {
+                            ContractVersionExistance::PackageDoesNotExist | ContractVersionExistance::PackageExists(false, ..) => false,
+                            ContractVersionExistance::PackageExists(true, ..) => true,
+                        },
+                    HashOrName::Name => true,
                 }
             },
-            TestScenario::InvalidPricingModeForTransactionV1
-            | TestScenario::TooLowGasPriceToleranceForTransactionV1
-            | TestScenario::TransactionWithPaymentOne
-            | TestScenario::TooLowGasPriceToleranceForDeploy
-            | TestScenario::InvalidFields
-            | TestScenario::InvalidFieldsFromPeer
-            | TestScenario::InvalidArgumentsKind
-            | TestScenario::WasmTransactionWithTooBigPayment
-            | TestScenario::WasmDeployWithTooBigPayment
-            | TestScenario::RedelegateExceedingMaximumDelegation { .. }
-            | TestScenario::DelegateExceedingMaximumDelegation { .. }
-            | TestScenario::V1ByPackageHashTargetsVersion
-            | TestScenario::V1ByPackageNameTargetsVersion
-            | TestScenario::DeployPaymentStoredVersionedContractByHashTargetsVersion
-            | TestScenario::DeployPaymentStoredVersionedContractByNameTargetsVersion
-            | TestScenario::DeploySessionStoredVersionedContractByHashTargetsVersion
-            | TestScenario::DeploySessionStoredVersionedContractByNameTargetsVersion
-            | TestScenario::VmCasperV2ByPackageHash => false,
         }
     }
 
@@ -980,7 +954,7 @@ impl TestScenario {
             | TestScenario::FromPeerSessionContract(_, contract_scenario)
             | TestScenario::FromClientCustomPaymentContract(contract_scenario)
             | TestScenario::FromClientSessionContract(_, contract_scenario) => {
-                Some(*contract_scenario)
+                Some(contract_scenario.clone())
             }
             _ => None,
         }
@@ -991,7 +965,7 @@ impl TestScenario {
     }
 }
 
-fn create_account(account_hash: AccountHash, test_scenario: TestScenario) -> Account {
+fn create_account(account_hash: AccountHash, test_scenario: &TestScenario) -> Account {
     match test_scenario {
         TestScenario::FromPeerAccountWithInvalidAssociatedKeys(_)
         | TestScenario::FromClientAccountWithInvalidAssociatedKeys(_) => {
@@ -1062,52 +1036,80 @@ impl reactor::Reactor for Reactor {
                     request: query_request,
                     responder,
                 } => {
-                    let query_result =
-                        if let Key::Hash(_) | Key::SmartContract(_) = query_request.key() {
-                            match self.test_scenario {
-                                TestScenario::FromPeerCustomPaymentContractPackage(
-                                    ContractPackageScenario::MissingPackageAtHash,
-                                )
-                                | TestScenario::FromPeerSessionContractPackage(
-                                    _,
-                                    ContractPackageScenario::MissingPackageAtHash,
-                                )
-                                | TestScenario::FromClientCustomPaymentContractPackage(
-                                    ContractPackageScenario::MissingPackageAtHash,
-                                )
-                                | TestScenario::FromClientSessionContractPackage(
-                                    _,
-                                    ContractPackageScenario::MissingPackageAtHash,
-                                ) => QueryResult::ValueNotFound(String::new()),
-                                TestScenario::FromPeerCustomPaymentContractPackage(
-                                    ContractPackageScenario::MissingContractVersion,
-                                )
-                                | TestScenario::FromPeerSessionContractPackage(
-                                    _,
-                                    ContractPackageScenario::MissingContractVersion,
-                                )
-                                | TestScenario::FromClientCustomPaymentContractPackage(
-                                    ContractPackageScenario::MissingContractVersion,
-                                )
-                                | TestScenario::FromClientSessionContractPackage(
-                                    _,
-                                    ContractPackageScenario::MissingContractVersion,
-                                )
-                                | TestScenario::VmCasperV2ByPackageHash => QueryResult::Success {
-                                    value: Box::new(StoredValue::ContractPackage(
-                                        ContractPackage::default(),
-                                    )),
-                                    proofs: vec![],
-                                },
-
-                                _ => panic!(
-                                    "unexpected query: {query_request:?} in {:?}",
-                                    self.test_scenario
-                                ),
+                    let query_result = if let Key::Hash(_) | Key::SmartContract(_) =
+                        query_request.key()
+                    {
+                        match &self.test_scenario {
+                            TestScenario::FromPeerCustomPaymentContractPackage(
+                                ContractPackageScenario::MissingPackageAtHash,
+                            )
+                            | TestScenario::FromPeerSessionContractPackage(
+                                _,
+                                ContractPackageScenario::MissingPackageAtHash,
+                            )
+                            | TestScenario::FromClientCustomPaymentContractPackage(
+                                ContractPackageScenario::MissingPackageAtHash,
+                            )
+                            | TestScenario::FromClientSessionContractPackage(
+                                _,
+                                ContractPackageScenario::MissingPackageAtHash,
+                            ) => QueryResult::ValueNotFound(String::new()),
+                            TestScenario::FromPeerCustomPaymentContractPackage(
+                                ContractPackageScenario::MissingContractVersion,
+                            )
+                            | TestScenario::FromPeerSessionContractPackage(
+                                _,
+                                ContractPackageScenario::MissingContractVersion,
+                            )
+                            | TestScenario::FromClientCustomPaymentContractPackage(
+                                ContractPackageScenario::MissingContractVersion,
+                            )
+                            | TestScenario::FromClientSessionContractPackage(
+                                _,
+                                ContractPackageScenario::MissingContractVersion,
+                            )
+                            | TestScenario::VmCasperV2ByPackageHash => QueryResult::Success {
+                                value: Box::new(StoredValue::ContractPackage(
+                                    ContractPackage::default(),
+                                )),
+                                proofs: vec![],
+                            },
+                            TestScenario::V1ByPackage(
+                                hash_or_name,
+                                _,
+                                _,
+                                scenario
+                            ) => {
+                                match hash_or_name {
+                                    HashOrName::Hash => match scenario {
+                                        ContractVersionExistance::PackageDoesNotExist => QueryResult::ValueNotFound("xyz".to_owned()),
+                                        ContractVersionExistance::PackageExists(_, versions, disabled_versions) => {
+                                            let contract_package = ContractPackage::new(
+                                                URef::default(),
+                                                versions.clone(),
+                                                disabled_versions.clone(),
+                                                Groups::default(),
+                                                ContractPackageStatus::Unlocked,
+                                            );
+                                            QueryResult::Success {
+                                                value: Box::new(StoredValue::ContractPackage(
+                                                    contract_package,
+                                                )),
+                                                proofs: vec![],
+                                            }
+                                        },
+                                    },
+                                    HashOrName::Name => unreachable!("Calling contract by name should not result in a package fetch in transaction acceptor"),
+                                }
                             }
-                        } else {
-                            panic!("expect only queries using Key::Package variant");
-                        };
+                            _ => panic!(
+                                "unexpected query: {query_request:?} in {:?}",
+                                self.test_scenario
+                            ),
+                        }
+                    } else {
+                        panic!("expect only queries using Key::Package variant");
+                    };
                     responder.respond(query_result).ignore()
                 }
                 ContractRuntimeRequest::GetBalance {
@@ -1210,7 +1212,7 @@ impl reactor::Reactor for Reactor {
                         AddressableEntityResult::ValueNotFound("missing account".to_string())
                     } else if let EntityAddr::Account(account_hash) = entity_addr {
                         let account =
-                            create_account(AccountHash::new(account_hash), self.test_scenario);
+                            create_account(AccountHash::new(account_hash), &self.test_scenario);
                         AddressableEntityResult::Success {
                             entity: AddressableEntity::from(account),
                         }
@@ -1251,6 +1253,12 @@ impl reactor::Reactor for Reactor {
                                     entity: AddressableEntity::from(contract),
                                 }
                             }
+                            TestScenario::V1ByPackage(_, _, _, _) => {
+                                let contract = Contract::default();
+                                AddressableEntityResult::Success {
+                                    entity: AddressableEntity::from(contract),
+                                }
+                            }
                             _ => panic!("unexpected GetAddressableEntity: {:?}", entity_addr),
                         }
                     } else {
@@ -1265,21 +1273,26 @@ impl reactor::Reactor for Reactor {
                     responder,
                     ..
                 } => {
-                    let contract_scenario = self
-                        .test_scenario
-                        .contract_scenario()
-                        .expect("must get contract scenario");
-                    let result = match contract_scenario {
-                        ContractScenario::Valid => EntryPointExistsResult::Success,
-                        ContractScenario::MissingContractAtHash
-                        | ContractScenario::MissingContractAtName
-                        | ContractScenario::MissingEntryPoint => {
-                            EntryPointExistsResult::ValueNotFound(
-                                "entry point not found".to_string(),
-                            )
-                        }
-                    };
-                    responder.respond(result).ignore()
+                    if matches!(self.test_scenario, TestScenario::V1ByPackage(..)) {
+                        let result = EntryPointExistsResult::Success;
+                        responder.respond(result).ignore()
+                    } else {
+                        let contract_scenario = self
+                            .test_scenario
+                            .contract_scenario()
+                            .expect("must get contract scenario");
+                        let result = match contract_scenario {
+                            ContractScenario::Valid => EntryPointExistsResult::Success,
+                            ContractScenario::MissingContractAtHash
+                            | ContractScenario::MissingContractAtName
+                            | ContractScenario::MissingEntryPoint => {
+                                EntryPointExistsResult::ValueNotFound(
+                                    "entry point not found".to_string(),
+                                )
+                            }
+                        };
+                        responder.respond(result).ignore()
+                    }
                 }
                 _ => panic!("should not receive {:?}", event),
             },
@@ -1432,7 +1445,7 @@ async fn run_transaction_acceptor_without_timeout(
     let admin = SecretKey::random(rng);
     let (mut chainspec, chainspec_raw_bytes) =
         <(Chainspec, ChainspecRawBytes)>::from_resources("local");
-    let mut chainspec = match test_scenario {
+    let mut chainspec = match &test_scenario {
         TestScenario::TooLowGasPriceToleranceForTransactionV1 => {
             chainspec.with_pricing_handling(PricingHandling::Fixed);
             chainspec
@@ -1447,7 +1460,7 @@ async fn run_transaction_acceptor_without_timeout(
 
     let chainspec = Arc::new(chainspec);
     let mut runner: Runner<ConditionCheckReactor<Reactor>> = Runner::new(
-        test_scenario,
+        test_scenario.clone(),
         chainspec.clone(),
         Arc::new(chainspec_raw_bytes),
         rng,
@@ -1517,11 +1530,11 @@ async fn run_transaction_acceptor_without_timeout(
     runner
         .process_injected_effects(schedule_accept_transaction(&txn, source, txn_responder))
         .await;
-
+    let test_scenario_clone = test_scenario.clone();
     // Tests where the transaction is already in storage will not trigger any transaction acceptor
     // announcement, so use the transaction acceptor `PutToStorage` event as the condition.
     let stopping_condition = move |event: &Event| -> bool {
-        match test_scenario {
+        match &test_scenario_clone {
             // Check that invalid transactions sent by a client raise the `InvalidTransaction`
             // announcement with the appropriate source.
             TestScenario::FromClientInvalidTransaction(_)
@@ -1551,12 +1564,6 @@ async fn run_transaction_acceptor_without_timeout(
             | TestScenario::WasmDeployWithTooBigPayment
             | TestScenario::RedelegateExceedingMaximumDelegation { .. }
             | TestScenario::DelegateExceedingMaximumDelegation { .. }
-            | TestScenario::V1ByPackageHashTargetsVersion
-            | TestScenario::V1ByPackageNameTargetsVersion
-            | TestScenario::DeployPaymentStoredVersionedContractByHashTargetsVersion
-            | TestScenario::DeployPaymentStoredVersionedContractByNameTargetsVersion
-            | TestScenario::DeploySessionStoredVersionedContractByHashTargetsVersion
-            | TestScenario::DeploySessionStoredVersionedContractByNameTargetsVersion
             | TestScenario::VmCasperV2ByPackageHash => {
                 matches!(
                     event,
@@ -1687,6 +1694,68 @@ async fn run_transaction_acceptor_without_timeout(
                     ..
                 })
             ),
+            TestScenario::V1ByPackage(
+                hash_or_name,
+                entity_version,
+                protocol_version_major,
+                scenario,
+            ) => match hash_or_name {
+                HashOrName::Hash => match scenario {
+                    ContractVersionExistance::PackageDoesNotExist => {
+                        matches!(
+                            event,
+                            Event::TransactionAcceptorAnnouncement(
+                                TransactionAcceptorAnnouncement::InvalidTransaction {
+                                    source: Source::Client,
+                                    ..
+                                }
+                            )
+                        )
+                    }
+                    ContractVersionExistance::PackageExists(false, ..) => {
+                        if entity_version.is_none() && protocol_version_major.is_none() {
+                            return matches!(
+                                event,
+                                Event::TransactionAcceptorAnnouncement(
+                                    TransactionAcceptorAnnouncement::AcceptedNewTransaction {
+                                        source: Source::Client,
+                                        ..
+                                    }
+                                )
+                            );
+                        }
+                        matches!(
+                            event,
+                            Event::TransactionAcceptorAnnouncement(
+                                TransactionAcceptorAnnouncement::InvalidTransaction {
+                                    source: Source::Client,
+                                    ..
+                                }
+                            )
+                        )
+                    }
+                    ContractVersionExistance::PackageExists(true, ..) => {
+                        matches!(
+                            event,
+                            Event::TransactionAcceptorAnnouncement(
+                                TransactionAcceptorAnnouncement::AcceptedNewTransaction {
+                                    source: Source::Client,
+                                    ..
+                                }
+                            )
+                        )
+                    }
+                },
+                HashOrName::Name => matches!(
+                    event,
+                    Event::TransactionAcceptorAnnouncement(
+                        TransactionAcceptorAnnouncement::AcceptedNewTransaction {
+                            source: Source::Client,
+                            ..
+                        }
+                    )
+                ),
+            },
         }
     };
     runner
@@ -2875,81 +2944,6 @@ async fn should_reject_native_redelegate_with_exceeding_amount() {
         )))
     ));
 }
-#[tokio::test]
-async fn should_reject_transactions_targets_package_version() {
-    let result = run_transaction_acceptor(TestScenario::V1ByPackageHashTargetsVersion).await;
-    assert!(matches!(
-        result,
-        Err(super::Error::InvalidTransaction(InvalidTransaction::V1(
-            InvalidTransactionV1::TargetingPackageVersionNotSupported
-        )))
-    ));
-}
-#[tokio::test]
-async fn should_reject_transactions_targets_package_version_2() {
-    let result = run_transaction_acceptor(TestScenario::V1ByPackageNameTargetsVersion).await;
-    assert!(matches!(
-        result,
-        Err(super::Error::InvalidTransaction(InvalidTransaction::V1(
-            InvalidTransactionV1::TargetingPackageVersionNotSupported
-        )))
-    ));
-}
-
-#[tokio::test]
-async fn should_reject_transactions_targets_package_version_3() {
-    let result = run_transaction_acceptor(
-        TestScenario::DeployPaymentStoredVersionedContractByHashTargetsVersion,
-    )
-    .await;
-    assert!(matches!(
-        result,
-        Err(super::Error::InvalidTransaction(
-            InvalidTransaction::Deploy(InvalidDeploy::TargetingPackageVersionNotSupported)
-        ))
-    ));
-}
-
-#[tokio::test]
-async fn should_reject_transactions_targets_package_version_4() {
-    let result = run_transaction_acceptor(
-        TestScenario::DeployPaymentStoredVersionedContractByNameTargetsVersion,
-    )
-    .await;
-    assert!(matches!(
-        result,
-        Err(super::Error::InvalidTransaction(
-            InvalidTransaction::Deploy(InvalidDeploy::TargetingPackageVersionNotSupported)
-        ))
-    ));
-}
-
-#[tokio::test]
-async fn should_reject_transactions_targets_package_version_5() {
-    let result = run_transaction_acceptor(
-        TestScenario::DeploySessionStoredVersionedContractByHashTargetsVersion,
-    )
-    .await;
-    assert!(matches!(
-        result,
-        Err(super::Error::InvalidTransaction(
-            InvalidTransaction::Deploy(InvalidDeploy::TargetingPackageVersionNotSupported)
-        ))
-    ));
-}
-#[tokio::test]
-async fn should_reject_transactions_targets_package_version_6() {
-    let result = run_transaction_acceptor(
-        TestScenario::DeploySessionStoredVersionedContractByNameTargetsVersion,
-    )
-    .await;
-    assert!(matches!(
-        result,
-        Err(super::Error::InvalidTransaction(
-            InvalidTransaction::Deploy(InvalidDeploy::TargetingPackageVersionNotSupported)
-        ))
-    ));
-}
 
 #[tokio::test]
 async fn foobar() {
@@ -2963,4 +2957,111 @@ async fn foobar() {
         ),
         "{result:?}"
     );
+}
+
+#[tokio::test]
+async fn should_fail_if_package_doesnt_exist_by_hash() {
+    let result = run_transaction_acceptor(TestScenario::V1ByPackage(
+        HashOrName::Hash,
+        None,
+        None,
+        ContractVersionExistance::PackageDoesNotExist,
+    ))
+    .await;
+    assert!(matches!(
+        result,
+        Err(super::Error::Parameters {
+            failure: ParameterFailure::NoSuchPackageAtHash { .. },
+            ..
+        })
+    ));
+}
+
+#[tokio::test]
+async fn should_not_fail_if_package_doesnt_exist_by_name() {
+    let result = run_transaction_acceptor(TestScenario::V1ByPackage(
+        HashOrName::Name,
+        None,
+        None,
+        ContractVersionExistance::PackageDoesNotExist,
+    ))
+    .await;
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn should_approve_if_transaction_references_no_version_or_major() {
+    let result = run_transaction_acceptor(TestScenario::V1ByPackage(
+        HashOrName::Hash,
+        None,
+        None,
+        ContractVersionExistance::PackageExists(true, BTreeMap::new(), BTreeSet::new()),
+    ))
+    .await;
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn should_approve_if_transaction_references_package_by_name() {
+    let result = run_transaction_acceptor(TestScenario::V1ByPackage(
+        HashOrName::Name,
+        None,
+        None,
+        ContractVersionExistance::PackageExists(true, BTreeMap::new(), BTreeSet::new()),
+    ))
+    .await;
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn should_approve_if_transaction_references_version_and_no_major() {
+    let result = run_transaction_acceptor(TestScenario::V1ByPackage(
+        HashOrName::Hash,
+        Some(1),
+        None,
+        ContractVersionExistance::PackageExists(true, BTreeMap::new(), BTreeSet::new()),
+    ))
+    .await;
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn should_fail_when_asking_for_non_active_exact_version() {
+    let versions = BTreeMap::from([
+        (ContractVersionKey::new(1, 1), ContractHash::from([2; 32])),
+        (ContractVersionKey::new(2, 1), ContractHash::from([3; 32])),
+    ]);
+    let disabled = BTreeSet::from_iter(vec![ContractVersionKey::new(1, 1)].into_iter());
+    let result = run_transaction_acceptor(TestScenario::V1ByPackage(
+        HashOrName::Hash,
+        Some(2),
+        Some(2), //Assuming current protocol version >= 2
+        ContractVersionExistance::PackageExists(false, versions, disabled),
+    ))
+    .await;
+    assert!(matches!(
+        result,
+        Err(super::Error::Parameters {
+            failure: ParameterFailure::MissingEntityAtVersion { .. },
+            ..
+        })
+    ))
+}
+
+#[tokio::test]
+async fn should_succeed_when_asking_for_active_exact_version() {
+    let versions = BTreeMap::from([
+        (ContractVersionKey::new(1, 1), ContractHash::from([2; 32])),
+        (ContractVersionKey::new(2, 1), ContractHash::from([3; 32])),
+        (ContractVersionKey::new(2, 2), ContractHash::from([4; 32])),
+    ]);
+    let disabled = BTreeSet::from_iter(vec![ContractVersionKey::new(1, 1)].into_iter());
+    let result = run_transaction_acceptor(TestScenario::V1ByPackage(
+        HashOrName::Hash,
+        Some(2),
+        Some(2), //Assuming current protocol version >= 2
+        ContractVersionExistance::PackageExists(true, versions, disabled),
+    ))
+    .await;
+    assert!(result.is_ok())
 }

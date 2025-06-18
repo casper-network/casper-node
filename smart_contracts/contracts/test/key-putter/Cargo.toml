@@ -1,0 +1,16 @@
+[package]
+name = "key-putter"
+version = "0.1.0"
+authors = ["CasperLabs <https://discord.com/invite/Q38s3Vh>"]
+edition = "2021"
+
+[[bin]]
+name = "key_putter"
+path = "src/main.rs"
+bench = false
+doctest = false
+test = false
+
+[dependencies]
+casper-contract = { path = "../../../contract" }
+casper-types = { path = "../../../../types" }

@@ -10,9 +10,9 @@ use casper_types::{
 };
 #[cfg(test)]
 use casper_types::{
-    testing::TestRng, AddressableEntityHash, Approval, CLValueError, EntityVersion,
-    EntityVersionKey, PackageHash, PublicKey, TransactionConfig, TransactionInvocationTarget,
-    TransferTarget, URef, U512,
+    contracts::ProtocolVersionMajor, testing::TestRng, AddressableEntityHash, Approval,
+    CLValueError, EntityVersion, PackageHash, PublicKey, TransactionConfig,
+    TransactionInvocationTarget, TransferTarget, URef, U512,
 };
 use core::marker::PhantomData;
 #[cfg(test)]
@@ -355,11 +355,16 @@ impl<'a> TransactionV1Builder<'a> {
     #[cfg(test)]
     pub(crate) fn new_targeting_package<E: Into<String>>(
         hash: PackageHash,
-        version_key: Option<EntityVersionKey>,
+        version: Option<EntityVersion>,
+        protocol_version_major: Option<ProtocolVersionMajor>,
         entry_point: E,
         runtime: TransactionRuntimeParams,
     ) -> Self {
-        let id = TransactionInvocationTarget::new_package_with_key(hash, version_key);
+        let id = TransactionInvocationTarget::new_package_with_major(
+            hash,
+            version,
+            protocol_version_major,
+        );
         Self::new_targeting_stored(id, entry_point, runtime)
     }
 
@@ -368,16 +373,16 @@ impl<'a> TransactionV1Builder<'a> {
     #[cfg(test)]
     pub(crate) fn new_targeting_package_with_runtime_args<E: Into<String>>(
         hash: PackageHash,
-        entity_version: Option<EntityVersion>,
-        version_key: Option<EntityVersionKey>,
+        version: Option<EntityVersion>,
+        protocol_version_major: Option<ProtocolVersionMajor>,
         entry_point: E,
         runtime: TransactionRuntimeParams,
         runtime_args: RuntimeArgs,
     ) -> Self {
         let id = TransactionInvocationTarget::ByPackageHash {
             addr: hash.value(),
-            version: entity_version,
-            version_key,
+            version,
+            protocol_version_major,
         };
         Self::new_targeting_stored_with_runtime_args(id, entry_point, runtime, runtime_args)
     }
@@ -387,11 +392,16 @@ impl<'a> TransactionV1Builder<'a> {
     #[cfg(test)]
     pub(crate) fn new_targeting_package_via_alias<A: Into<String>, E: Into<String>>(
         alias: A,
-        version_key: Option<EntityVersionKey>,
+        version: Option<EntityVersion>,
+        protocol_version_major: Option<ProtocolVersionMajor>,
         entry_point: E,
         runtime: TransactionRuntimeParams,
     ) -> Self {
-        let id = TransactionInvocationTarget::new_package_alias_with_key(alias.into(), version_key);
+        let id = TransactionInvocationTarget::new_package_alias_with_major(
+            alias.into(),
+            version,
+            protocol_version_major,
+        );
         Self::new_targeting_stored(id, entry_point, runtime)
     }
 

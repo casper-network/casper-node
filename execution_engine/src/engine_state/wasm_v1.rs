@@ -758,7 +758,7 @@ fn build_session_info_for_executable_item(
             session = ExecutableItem::Invocation(TransactionInvocationTarget::ByPackageHash {
                 addr: hash.value(),
                 version: *version,
-                version_key: None,
+                protocol_version_major: None,
             });
             session_entry_point = entry_point.clone();
             session_args = args.clone();
@@ -772,7 +772,7 @@ fn build_session_info_for_executable_item(
             session = ExecutableItem::Invocation(TransactionInvocationTarget::ByPackageName {
                 name: name.to_owned(),
                 version: *version,
-                version_key: None,
+                protocol_version_major: None,
             });
             session_entry_point = entry_point.clone();
             session_args = args.clone();
@@ -924,7 +924,7 @@ fn build_payment_info_for_executable_item(
             item: ExecutableItem::Invocation(TransactionInvocationTarget::ByPackageHash {
                 addr: hash.value(),
                 version: *version,
-                version_key: None,
+                protocol_version_major: None,
             }),
             entry_point: entry_point.clone(),
             args: args.clone(),
@@ -938,7 +938,7 @@ fn build_payment_info_for_executable_item(
             item: ExecutableItem::Invocation(TransactionInvocationTarget::ByPackageName {
                 name: name.clone(),
                 version: *version,
-                version_key: None,
+                protocol_version_major: None,
             }),
             entry_point: entry_point.clone(),
             args: args.clone(),

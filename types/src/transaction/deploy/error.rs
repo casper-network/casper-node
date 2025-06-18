@@ -161,9 +161,6 @@ pub enum InvalidDeploy {
 
     /// Pricing mode not supported
     PricingModeNotSupported,
-
-    // Passing ExecutableDeployItem::StoredVersionedContractByHash::version not supported
-    TargetingPackageVersionNotSupported,
 }
 
 impl Display for InvalidDeploy {
@@ -305,7 +302,6 @@ impl Display for InvalidDeploy {
                             }
             InvalidDeploy::InvalidPaymentAmount => write!(formatter, "invalid payment amount",),
             InvalidDeploy::PricingModeNotSupported => write!(formatter, "pricing mode not supported",),
-            InvalidDeploy::TargetingPackageVersionNotSupported => write!(formatter, "passing `version` in payment and session Versioned variants is not supported",),
         }
     }
 }
@@ -346,8 +342,7 @@ impl StdError for InvalidDeploy {
             | InvalidDeploy::NoLaneMatch
             | InvalidDeploy::ExceededLaneGasLimit { .. }
             | InvalidDeploy::InvalidPaymentAmount
-            | InvalidDeploy::PricingModeNotSupported
-            | InvalidDeploy::TargetingPackageVersionNotSupported => None,
+            | InvalidDeploy::PricingModeNotSupported => None,
         }
     }
 }

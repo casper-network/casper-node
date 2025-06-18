@@ -1750,7 +1750,6 @@ where
                 protocol_version_major,
             } => {
                 let package = self.context.get_package(contract_package_hash)?;
-
                 let entity_version_key = match (version, protocol_version_major) {
                     (Some(entity_version), Some(major)) => {
                         EntityVersionKey::new(major, entity_version)

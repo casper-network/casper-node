@@ -1073,23 +1073,38 @@ pub fn transaction_invocation_target_arb() -> impl Strategy<Value = TransactionI
         Just(TransactionInvocationTarget::new_invocable_entity_alias(
             "abcd".to_string()
         )),
-        Just(TransactionInvocationTarget::new_package_alias_with_key(
+        Just(TransactionInvocationTarget::new_package_alias_with_major(
             "abcd".to_string(),
+            None,
             None
         )),
-        Just(TransactionInvocationTarget::new_package_alias_with_key(
+        Just(TransactionInvocationTarget::new_package_alias_with_major(
             "abcd".to_string(),
-            Some(EntityVersionKey::new(2, 15))
+            Some(1),
+            None
+        )),
+        Just(TransactionInvocationTarget::new_package_alias_with_major(
+            "abcd".to_string(),
+            Some(1),
+            Some(1)
+        )),
+        Just(TransactionInvocationTarget::new_package_alias_with_major(
+            "abcd".to_string(),
+            None,
+            Some(1)
         )),
         u8_slice_32().prop_map(|addr| {
-            TransactionInvocationTarget::new_package_with_key(addr.into(), None)
+            TransactionInvocationTarget::new_package_with_major(addr.into(), None, None)
         }),
         u8_slice_32().prop_map(|addr| {
-            TransactionInvocationTarget::new_package_with_key(
-                addr.into(),
-                Some(EntityVersionKey::new(1, 150)),
-            )
+            TransactionInvocationTarget::new_package_with_major(addr.into(), Some(1), Some(2))
         }),
+        u8_slice_32().prop_map(|addr| {
+            TransactionInvocationTarget::new_package_with_major(addr.into(), None, Some(2))
+        }),
+        u8_slice_32().prop_map(|addr| {
+            TransactionInvocationTarget::new_package_with_major(addr.into(), Some(1), None)
+        })
     ]
 }
 
