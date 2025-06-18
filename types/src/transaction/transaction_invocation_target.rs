@@ -9,10 +9,10 @@ use crate::{
         Error::{self, Formatting},
         FromBytes, ToBytes,
     },
+    contracts::ProtocolVersionMajor,
     serde_helpers,
     transaction::serialization::CalltableSerializationEnvelopeBuilder,
-    AddressableEntityHash, EntityVersion, EntityVersionKey, HashAddr, PackageAddr, PackageHash,
-    PackageIdentifier,
+    AddressableEntityHash, EntityVersion, HashAddr, PackageAddr, PackageHash, PackageIdentifier,
 };
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
@@ -55,31 +55,29 @@ pub enum TransactionInvocationTarget {
             schemars(with = "String", description = "Hex-encoded address of the package.")
         )]
         addr: PackageAddr,
-        /// This field is considered unused, it needs to stay in the type definition for backwards
-        /// compatibility
-        version: Option<EntityVersion>,
-        /// The package version key.
+        /// The package version.
         ///
-        /// If `None`, the latest enabled version is implied. From a serializatoin point of view
-        /// `None` means that this field should NOT have an entry in the calltable
-        /// serialization representation
+        /// If `None`, the latest enabled version is implied.
+        version: Option<EntityVersion>,
+        /// The major protocol version of the contract package.
+        ///
+        /// `None` implies latest major protocol version.
         #[serde(skip_serializing_if = "Option::is_none")]
-        version_key: Option<EntityVersionKey>,
+        protocol_version_major: Option<ProtocolVersionMajor>,
     },
     /// The alias and optional version identifying the package.
     ByPackageName {
         /// The package name.
         name: String,
-        /// This field is considered unused, it needs to stay in the type definition for backwards
-        /// compatibility
-        version: Option<EntityVersion>,
-        /// The package version key.
+        /// The package version.
         ///
-        /// If `None`, the latest enabled version is implied. From a serializatoin point of view
-        /// `None` means that this field should NOT have an entry in the calltable
-        /// serialization representation
+        /// If `None`, the latest enabled version is implied.
+        version: Option<EntityVersion>,
+        /// The major protocol version of the contract package.
+        ///
+        /// `None` implies latest major protocol version.
         #[serde(skip_serializing_if = "Option::is_none")]
-        version_key: Option<EntityVersionKey>,
+        protocol_version_major: Option<ProtocolVersionMajor>,
     },
 }
 
@@ -95,46 +93,64 @@ impl TransactionInvocationTarget {
     }
 
     /// Returns a new `TransactionInvocationTarget::Package`.
-    #[deprecated(since = "5.0.1", note = "please use `new_package_with_key` instead")]
+    #[deprecated(since = "5.0.1", note = "please use `new_package_with_major` instead")]
     pub fn new_package(hash: PackageHash, version: Option<EntityVersion>) -> Self {
         TransactionInvocationTarget::ByPackageHash {
             addr: hash.value(),
             version,
-            version_key: None,
+            protocol_version_major: None,
         }
     }
 
     /// Returns a new `TransactionInvocationTarget::Package`.
-    pub fn new_package_with_key(hash: PackageHash, version_key: Option<EntityVersionKey>) -> Self {
+    pub fn new_package_with_major(
+        hash: PackageHash,
+        version: Option<EntityVersion>,
+        protocol_version_major: Option<ProtocolVersionMajor>,
+    ) -> Self {
         TransactionInvocationTarget::ByPackageHash {
             addr: hash.value(),
-            version: None,
-            version_key,
+            version,
+            protocol_version_major,
         }
     }
 
     /// Returns a new `TransactionInvocationTarget::PackageAlias`.
     #[deprecated(
         since = "5.0.1",
-        note = "please use `new_package_alias_with_key` instead"
+        note = "please use `new_package_alias_with_major` instead"
     )]
     pub fn new_package_alias(alias: String, version: Option<EntityVersion>) -> Self {
         TransactionInvocationTarget::ByPackageName {
             name: alias,
             version,
-            version_key: None,
+            protocol_version_major: None,
         }
     }
 
     /// Returns a new `TransactionInvocationTarget::PackageAlias`.
-    pub fn new_package_alias_with_key(
+    pub fn new_package_alias_with_major(
         alias: String,
-        version_key: Option<EntityVersionKey>,
+        version: Option<EntityVersion>,
+        protocol_version_major: Option<ProtocolVersionMajor>,
     ) -> Self {
         TransactionInvocationTarget::ByPackageName {
             name: alias,
-            version: None,
-            version_key,
+            version,
+            protocol_version_major,
+        }
+    }
+
+    #[cfg(test)]
+    pub fn new_package_alias_with_major_and_entity(
+        hash: PackageHash,
+        version: Option<EntityVersion>,
+        protocol_version_major: Option<ProtocolVersionMajor>,
+    ) -> Self {
+        TransactionInvocationTarget::ByPackageHash {
+            addr: hash.value(),
+            version,
+            protocol_version_major,
         }
     }
 
@@ -167,19 +183,21 @@ impl TransactionInvocationTarget {
             TransactionInvocationTarget::ByHash(_) | TransactionInvocationTarget::ByName(_) => None,
             TransactionInvocationTarget::ByPackageHash {
                 addr,
-                version: _,
-                version_key,
-            } => Some(PackageIdentifier::HashWithVersion {
+                version,
+                protocol_version_major,
+            } => Some(PackageIdentifier::HashWithMajorVersion {
                 package_hash: PackageHash::new(*addr),
-                version_key: *version_key,
+                version: *version,
+                protocol_version_major: *protocol_version_major,
             }),
             TransactionInvocationTarget::ByPackageName {
                 name: alias,
-                version: _,
-                version_key,
-            } => Some(PackageIdentifier::NameWithVersion {
+                version,
+                protocol_version_major,
+            } => Some(PackageIdentifier::NameWithMajorVersion {
                 name: alias.clone(),
-                version_key: *version_key,
+                version: *version,
+                protocol_version_major: *protocol_version_major,
             }),
         }
     }
@@ -201,34 +219,34 @@ impl TransactionInvocationTarget {
             TransactionInvocationTarget::ByPackageHash {
                 addr,
                 version,
-                version_key,
+                protocol_version_major,
             } => {
                 let mut field_sizes = vec![
                     crate::bytesrepr::U8_SERIALIZED_LENGTH,
                     addr.serialized_length(),
                     version.serialized_length(),
                 ];
-                if let Some(version_key) = version_key {
-                    //When we serialize version_key we put the actual value,
+                if let Some(protocol_version_major) = protocol_version_major {
+                    //When we serialize protocol_version_major we put the actual value,
                     // if we want to denote `None` we don't put an entry in the calltable.
-                    field_sizes.push(version_key.serialized_length());
+                    field_sizes.push(protocol_version_major.serialized_length());
                 }
                 field_sizes
             }
             TransactionInvocationTarget::ByPackageName {
                 name,
                 version,
-                version_key,
+                protocol_version_major,
             } => {
                 let mut field_sizes = vec![
                     crate::bytesrepr::U8_SERIALIZED_LENGTH,
                     name.serialized_length(),
                     version.serialized_length(),
                 ];
-                if let Some(version_key) = version_key {
-                    //When we serialize version_key we put the actual value,
+                if let Some(protocol_version_major) = protocol_version_major {
+                    //When we serialize protocol_version_major we put the actual value,
                     // if we want to denote `None` we don't put an entry in the calltable.
-                    field_sizes.push(version_key.serialized_length());
+                    field_sizes.push(protocol_version_major.serialized_length());
                 }
                 field_sizes
             }
@@ -243,13 +261,13 @@ impl TransactionInvocationTarget {
             1 => TransactionInvocationTarget::ByName(rng.random_string(1..21)),
             2 => TransactionInvocationTarget::ByPackageHash {
                 addr: rng.gen(),
-                version: None,
-                version_key: rng.gen::<bool>().then(|| rng.gen::<EntityVersionKey>()),
+                version: rng.gen(),
+                protocol_version_major: rng.gen(),
             },
             3 => TransactionInvocationTarget::ByPackageName {
                 name: rng.random_string(1..21),
-                version: None,
-                version_key: rng.gen::<bool>().then(|| rng.gen::<EntityVersionKey>()),
+                version: rng.gen(),
+                protocol_version_major: rng.gen(),
             },
             _ => unreachable!(),
         }
@@ -267,12 +285,12 @@ const BY_NAME_NAME_INDEX: u16 = 1;
 const BY_PACKAGE_HASH_VARIANT: u8 = 2;
 const BY_PACKAGE_HASH_ADDR_INDEX: u16 = 1;
 const BY_PACKAGE_HASH_VERSION_INDEX: u16 = 2;
-const BY_PACKAGE_HASH_VERSION_KEY_INDEX: u16 = 3;
+const BY_PACKAGE_HASH_PROTOCOL_VERSION_MAJOR_INDEX: u16 = 3;
 
 const BY_PACKAGE_NAME_VARIANT: u8 = 3;
 const BY_PACKAGE_NAME_NAME_INDEX: u16 = 1;
 const BY_PACKAGE_NAME_VERSION_INDEX: u16 = 2;
-const BY_PACKAGE_NAME_VERSION_KEY_INDEX: u16 = 3;
+const BY_PACKAGE_NAME_PROTOCOL_VERSION_MAJOR_INDEX: u16 = 3;
 
 impl ToBytes for TransactionInvocationTarget {
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
@@ -292,35 +310,44 @@ impl ToBytes for TransactionInvocationTarget {
             TransactionInvocationTarget::ByPackageHash {
                 addr,
                 version,
-                version_key,
+                protocol_version_major,
             } => {
                 let mut builder =
                     CalltableSerializationEnvelopeBuilder::new(self.serialized_field_lengths())?
                         .add_field(TAG_FIELD_INDEX, &BY_PACKAGE_HASH_VARIANT)?
                         .add_field(BY_PACKAGE_HASH_ADDR_INDEX, &addr)?
                         .add_field(BY_PACKAGE_HASH_VERSION_INDEX, &version)?;
-                if let Some(version_key) = version_key {
-                    //We do this to support transactions that were created before the `version_key`
-                    // fix. The pre-fix transactions will not have a
-                    // BY_PACKAGE_HASH_VERSION_KEY_INDEX entry and
-                    builder = builder.add_field(BY_PACKAGE_HASH_VERSION_KEY_INDEX, &version_key)?;
+                if let Some(protocol_version_major) = protocol_version_major {
+                    //We do this to support transactions that were created before the
+                    // `protocol_version_major` fix. The pre-fix transactions
+                    // will not have a BY_PACKAGE_HASH_PROTOCOL_VERSION_MAJOR_INDEX
+                    // entry and we need to maintain ability to deserialize them.
+                    builder = builder.add_field(
+                        BY_PACKAGE_HASH_PROTOCOL_VERSION_MAJOR_INDEX,
+                        protocol_version_major,
+                    )?;
                 }
                 builder.binary_payload_bytes()
             }
             TransactionInvocationTarget::ByPackageName {
                 name,
                 version,
-                version_key,
+                protocol_version_major,
             } => {
                 let mut builder =
                     CalltableSerializationEnvelopeBuilder::new(self.serialized_field_lengths())?
                         .add_field(TAG_FIELD_INDEX, &BY_PACKAGE_NAME_VARIANT)?
                         .add_field(BY_PACKAGE_NAME_NAME_INDEX, &name)?
                         .add_field(BY_PACKAGE_NAME_VERSION_INDEX, &version)?;
-                if let Some(version_key) = version_key {
-                    //We do this hooplah to support transactions that were created before the
-                    // `version_key` fix
-                    builder = builder.add_field(BY_PACKAGE_NAME_VERSION_KEY_INDEX, &version_key)?;
+                if let Some(protocol_version_major) = protocol_version_major {
+                    //We do this to support transactions that were created before the
+                    // `protocol_version_major` fix. The pre-fix transactions
+                    // will not have a BY_PACKAGE_HASH_PROTOCOL_VERSION_MAJOR_INDEX
+                    // entry and we need to maintain ability to deserialize them.
+                    builder = builder.add_field(
+                        BY_PACKAGE_NAME_PROTOCOL_VERSION_MAJOR_INDEX,
+                        protocol_version_major,
+                    )?;
                 }
                 builder.binary_payload_bytes()
             }
@@ -364,14 +391,14 @@ impl FromBytes for TransactionInvocationTarget {
                 window.verify_index(BY_PACKAGE_HASH_VERSION_INDEX)?;
                 let (version, window) =
                     window.deserialize_and_maybe_next::<Option<EntityVersion>>()?;
-                let version_key = if let Some(window) = window {
-                    window.verify_index(BY_PACKAGE_HASH_VERSION_KEY_INDEX)?;
-                    let (version_key, window) =
-                        window.deserialize_and_maybe_next::<EntityVersionKey>()?;
+                let protocol_version_major = if let Some(window) = window {
+                    window.verify_index(BY_PACKAGE_HASH_PROTOCOL_VERSION_MAJOR_INDEX)?;
+                    let (protocol_version_major, window) =
+                        window.deserialize_and_maybe_next::<ProtocolVersionMajor>()?;
                     if window.is_some() {
                         return Err(Formatting);
                     }
-                    Some(version_key)
+                    Some(protocol_version_major)
                 } else {
                     if window.is_some() {
                         return Err(Formatting);
@@ -382,7 +409,7 @@ impl FromBytes for TransactionInvocationTarget {
                 Ok(TransactionInvocationTarget::ByPackageHash {
                     addr,
                     version,
-                    version_key,
+                    protocol_version_major,
                 })
             }
             BY_PACKAGE_NAME_VARIANT => {
@@ -393,14 +420,14 @@ impl FromBytes for TransactionInvocationTarget {
                 window.verify_index(BY_PACKAGE_NAME_VERSION_INDEX)?;
                 let (version, window) =
                     window.deserialize_and_maybe_next::<Option<EntityVersion>>()?;
-                let version_key = if let Some(window) = window {
-                    window.verify_index(BY_PACKAGE_NAME_VERSION_KEY_INDEX)?;
-                    let (version_key, window) =
-                        window.deserialize_and_maybe_next::<EntityVersionKey>()?;
+                let protocol_version_major = if let Some(window) = window {
+                    window.verify_index(BY_PACKAGE_NAME_PROTOCOL_VERSION_MAJOR_INDEX)?;
+                    let (protocol_version_major, window) =
+                        window.deserialize_and_maybe_next::<ProtocolVersionMajor>()?;
                     if window.is_some() {
                         return Err(Formatting);
                     }
-                    Some(version_key)
+                    Some(protocol_version_major)
                 } else {
                     if window.is_some() {
                         return Err(Formatting);
@@ -410,7 +437,7 @@ impl FromBytes for TransactionInvocationTarget {
                 Ok(TransactionInvocationTarget::ByPackageName {
                     name,
                     version,
-                    version_key,
+                    protocol_version_major,
                 })
             }
             _ => Err(Formatting),
@@ -431,25 +458,25 @@ impl Display for TransactionInvocationTarget {
             TransactionInvocationTarget::ByPackageHash {
                 addr,
                 version,
-                version_key,
+                protocol_version_major,
             } => {
                 write!(
                     formatter,
-                    "package({:10}, version {:?}, version_key {:?})",
+                    "package({:10}, version {:?}, protocol_version_major {:?})",
                     HexFmt(addr),
                     version,
-                    version_key
+                    protocol_version_major
                 )
             }
             TransactionInvocationTarget::ByPackageName {
                 name: alias,
                 version,
-                version_key,
+                protocol_version_major,
             } => {
                 write!(
                     formatter,
-                    "package({}, version {:?}, version_key {:?})",
-                    alias, version, version_key
+                    "package({}, version {:?}, protocol_version_major {:?})",
+                    alias, version, protocol_version_major
                 )
             }
         }
@@ -470,22 +497,22 @@ impl Debug for TransactionInvocationTarget {
             TransactionInvocationTarget::ByPackageHash {
                 addr,
                 version,
-                version_key,
+                protocol_version_major,
             } => formatter
                 .debug_struct("Package")
                 .field("addr", &HexFmt(addr))
                 .field("version", version)
-                .field("version_key", version_key)
+                .field("protocol_version_major", protocol_version_major)
                 .finish(),
             TransactionInvocationTarget::ByPackageName {
                 name: alias,
                 version,
-                version_key,
+                protocol_version_major,
             } => formatter
                 .debug_struct("PackageAlias")
                 .field("alias", alias)
                 .field("version", version)
-                .field("version_key", version_key)
+                .field("protocol_version_major", protocol_version_major)
                 .finish(),
         }
     }
@@ -499,16 +526,41 @@ mod tests {
 
     #[test]
     fn json_should_not_produce_version_key_if_none() {
-        let alias = TransactionInvocationTarget::new_package_alias_with_key("abc".to_owned(), None);
+        let alias = TransactionInvocationTarget::new_package_alias_with_major(
+            "abc".to_owned(),
+            Some(111),
+            None,
+        );
         assert!(!serde_json::to_string(&alias)
             .unwrap()
-            .contains("\"version_key\""));
+            .contains("\"protocol_version_major\""));
 
-        let package =
-            TransactionInvocationTarget::new_package_with_key(PackageHash::from([1; 32]), None);
+        let alias = TransactionInvocationTarget::new_package_alias_with_major(
+            "abc".to_owned(),
+            Some(111),
+            Some(5),
+        );
+        assert!(serde_json::to_string(&alias)
+            .unwrap()
+            .contains("\"protocol_version_major\":5"));
+
+        let package = TransactionInvocationTarget::new_package_with_major(
+            PackageHash::from([1; 32]),
+            Some(222),
+            None,
+        );
         assert!(!serde_json::to_string(&package)
             .unwrap()
-            .contains("\"version_key\""));
+            .contains("\"protocol_version_major\""));
+
+        let package = TransactionInvocationTarget::new_package_with_major(
+            PackageHash::from([1; 32]),
+            Some(222),
+            Some(5),
+        );
+        assert!(serde_json::to_string(&package)
+            .unwrap()
+            .contains("\"protocol_version_major\":5"));
     }
 
     #[test]
@@ -541,11 +593,11 @@ mod tests {
         let expected = TransactionInvocationTarget::ByPackageHash {
             addr,
             version,
-            version_key: None,
+            protocol_version_major: None,
         };
         let expected_bytes = expected.to_bytes().unwrap();
-        assert_eq!(bytes, expected_bytes); //We want the "legacy" binary representation and current representation without version_key
-                                           // equal
+        assert_eq!(bytes, expected_bytes); //We want the "legacy" binary representation and current representation without
+                                           // protocol_version_major equal
 
         let (got, remainder) = TransactionInvocationTarget::from_bytes(&bytes).unwrap();
         assert_eq!(expected, got);
@@ -574,11 +626,11 @@ mod tests {
         let expected = TransactionInvocationTarget::ByPackageName {
             name,
             version,
-            version_key: None,
+            protocol_version_major: None,
         };
         let expected_bytes = expected.to_bytes().unwrap();
-        assert_eq!(bytes, expected_bytes); //We want the "legacy" binary representation and current representation without version_key
-                                           // equal
+        assert_eq!(bytes, expected_bytes); //We want the "legacy" binary representation and current representation without
+                                           // protocol_version_major equal
 
         let (got, remainder) = TransactionInvocationTarget::from_bytes(&bytes).unwrap();
         assert_eq!(expected, got);
@@ -590,12 +642,12 @@ mod tests {
         let target = TransactionInvocationTarget::ByPackageHash {
             addr: [1; 32],
             version: Some(11),
-            version_key: Some(EntityVersionKey::new(1, 2)),
+            protocol_version_major: Some(2),
         };
         let bytes = target.to_bytes().unwrap();
         let (number_of_fields, _) = u32::from_bytes(&bytes).unwrap();
-        assert_eq!(number_of_fields, 4); //We want the enum tag, addr, version (even if it's None) and version_key to have been
-                                         // serialized
+        assert_eq!(number_of_fields, 4); //We want the enum tag, addr, version (even if it's None) and protocol_version_major to
+                                         // have been serialized
         let (got, remainder) = TransactionInvocationTarget::from_bytes(&bytes).unwrap();
         assert_eq!(target, got);
         assert!(remainder.is_empty());
@@ -606,12 +658,12 @@ mod tests {
         let target = TransactionInvocationTarget::ByPackageName {
             name: "xyz".to_string(),
             version: Some(11),
-            version_key: Some(EntityVersionKey::new(1, 2)),
+            protocol_version_major: Some(3),
         };
         let bytes = target.to_bytes().unwrap();
         let (number_of_fields, _) = u32::from_bytes(&bytes).unwrap();
-        assert_eq!(number_of_fields, 4); //We want the enum tag, addr, version (even if it's None) and version_key to have been
-                                         // serialized
+        assert_eq!(number_of_fields, 4); //We want the enum tag, addr, version (even if it's None) and protocol_version_major to
+                                         // have been serialized
         let (got, remainder) = TransactionInvocationTarget::from_bytes(&bytes).unwrap();
         assert_eq!(target, got);
         assert!(remainder.is_empty());

@@ -9,10 +9,10 @@ use serde::Serialize;
 use tempfile::TempDir;
 
 use casper_types::{
-    bytesrepr::Bytes, runtime_args, BlockHash, Chainspec, ChainspecRawBytes, Deploy, Digest,
-    EntityVersion, EntityVersionKey, EraId, ExecutableDeployItem, PackageHash, PricingMode,
-    PublicKey, RuntimeArgs, SecretKey, TimeDiff, Timestamp, Transaction, TransactionConfig,
-    TransactionRuntimeParams, MINT_LANE_ID, U512,
+    bytesrepr::Bytes, contracts::ProtocolVersionMajor, runtime_args, BlockHash, Chainspec,
+    ChainspecRawBytes, Deploy, Digest, EntityVersion, EraId, ExecutableDeployItem, PackageHash,
+    PricingMode, PublicKey, RuntimeArgs, SecretKey, TimeDiff, Timestamp, Transaction,
+    TransactionConfig, TransactionRuntimeParams, MINT_LANE_ID, U512,
 };
 
 use super::*;
@@ -464,14 +464,14 @@ fn valid_versioned_call_txn(
     entry_point: &str,
     package_hash: PackageHash,
     runtime_args: RuntimeArgs,
-    entity_version: Option<EntityVersion>,
-    entity_version_key: Option<EntityVersionKey>,
+    version: Option<EntityVersion>,
+    protocol_version_major: Option<ProtocolVersionMajor>,
 ) -> Transaction {
     let mut txn = Transaction::from(
         TransactionV1Builder::new_targeting_package_with_runtime_args(
             package_hash,
-            entity_version,
-            entity_version_key,
+            version,
+            protocol_version_major,
             entry_point,
             TransactionRuntimeParams::VmCasperV1,
             runtime_args,
@@ -772,7 +772,7 @@ async fn should_correctly_manage_entity_version_calls() {
             "purse_name" => "purse"
         },
         Some(1),
-        Some(EntityVersionKey::new(2, 0)),
+        Some(2),
     );
 
     let call_by_major_version = valid_versioned_call_txn(
@@ -789,7 +789,7 @@ async fn should_correctly_manage_entity_version_calls() {
             "purse_name" => "purse"
         },
         None,
-        Some(EntityVersionKey::new(2, 0)),
+        Some(2),
     );
 
     let lane_id =
