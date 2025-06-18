@@ -896,6 +896,19 @@ impl Deploy {
     }
 
     /// Returns a random invalid `Deploy` with custom payment specified as a stored versioned
+    /// contract by hash, but calling an invalid entry point.
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
+    pub fn random_with_nonexistent_contract_version_in_payment_package(rng: &mut TestRng) -> Self {
+        let payment = ExecutableDeployItem::StoredVersionedContractByHash {
+            hash: [19; 32].into(),
+            version: Some(6u32),
+            entry_point: "non-existent-entry-point".to_string(),
+            args: Default::default(),
+        };
+        Self::random_transfer_with_payment(rng, payment)
+    }
+
+    /// Returns a random invalid `Deploy` with custom payment specified as a stored versioned
     /// contract by hash, but missing the runtime args.
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub fn random_with_payment_package_version_by_hash(

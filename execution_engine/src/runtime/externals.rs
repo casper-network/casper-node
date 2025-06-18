@@ -12,7 +12,9 @@ use casper_types::{
     api_error,
     bytesrepr::{self, ToBytes},
     contract_messages::MessageTopicOperation,
-    contracts::{ContractPackageHash, EntryPoints as ContractEntryPoints, NamedKeys},
+    contracts::{
+        ContractPackageHash, EntryPoints as ContractEntryPoints, NamedKeys, ProtocolVersionMajor,
+    },
     AddressableEntityHash, ApiError, EntityVersion, Gas, Group, HashAlgorithm, HostFunction,
     HostFunctionCost, Key, PackageHash, PackageStatus, PublicKey, Signature, StoredValue, URef,
     U512, UREF_SERIALIZED_LENGTH,
@@ -1577,9 +1579,10 @@ where
 
                 let contract_package_hash: PackageHash =
                     self.t_from_mem(contract_package_hash_ptr, contract_package_hash_size)?;
-                let major_version: u32 = self.t_from_mem(major_version_ptr, major_version_size)?;
-                let contract_version: EntityVersion =
+                let contract_version: Option<EntityVersion> =
                     self.t_from_mem(contract_version_ptr, contract_version_size)?;
+                let major_version: Option<ProtocolVersionMajor> =
+                    self.t_from_mem(major_version_ptr, major_version_size)?;
                 let entry_point_name: String =
                     self.t_from_mem(entry_point_name_ptr, entry_point_name_size)?;
                 let args_bytes: Vec<u8> = {

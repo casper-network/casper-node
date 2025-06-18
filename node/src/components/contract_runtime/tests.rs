@@ -1,15 +1,18 @@
-use std::{collections::BTreeMap, iter, sync::Arc, time::Duration};
+use std::{collections::BTreeMap, iter, path::PathBuf, sync::Arc, time::Duration};
 
+use casper_storage::data_access_layer::{QueryRequest, QueryResult};
 use derive_more::{Display, From};
+use fs_extra::dir;
 use prometheus::Registry;
 use rand::RngCore;
 use serde::Serialize;
 use tempfile::TempDir;
 
 use casper_types::{
-    bytesrepr::Bytes, runtime_args, BlockHash, Chainspec, ChainspecRawBytes, Deploy, Digest, EraId,
-    ExecutableDeployItem, PublicKey, SecretKey, TimeDiff, Timestamp, Transaction,
-    TransactionConfig, MINT_LANE_ID, U512,
+    bytesrepr::Bytes, contracts::ProtocolVersionMajor, runtime_args, BlockHash, Chainspec,
+    ChainspecRawBytes, Deploy, Digest, EntityVersion, EraId, ExecutableDeployItem, PackageHash,
+    PricingMode, PublicKey, RuntimeArgs, SecretKey, TimeDiff, Timestamp, Transaction,
+    TransactionConfig, TransactionRuntimeParams, MINT_LANE_ID, U512,
 };
 
 use super::*;
@@ -22,10 +25,21 @@ use crate::{
     protocol::Message,
     reactor::{self, EventQueueHandle, ReactorEvent, Runner},
     testing::{self, network::NetworkedReactor, ConditionCheckReactor},
-    types::{BlockPayload, ExecutableBlock, FinalizedBlock, InternalEraReport, MetaBlockState},
+    types::{
+        transaction::{
+            calculate_transaction_lane_for_transaction,
+            transaction_v1_builder::TransactionV1Builder,
+        },
+        BlockPayload, ExecutableBlock, FinalizedBlock, InternalEraReport, MetaBlockState,
+    },
     utils::{Loadable, WithDir, RESOURCES_PATH},
     NodeRng,
 };
+
+const FIXTURES_DIRECTORY: &str = "../execution_engine_testing/tests/fixtures";
+fn path_to_lmdb_fixtures() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join(FIXTURES_DIRECTORY)
+}
 
 const RECENT_ERA_COUNT: u64 = 5;
 const MAX_TTL: TimeDiff = TimeDiff::from_seconds(86400);
@@ -75,6 +89,11 @@ impl Unhandled for NetworkRequest<Message> {}
 
 impl Unhandled for UnexecutedBlockAnnouncement {}
 
+struct TestConfig {
+    config: Config,
+    fixture_name: Option<String>,
+}
+
 struct Reactor {
     storage: Storage,
     contract_runtime: ContractRuntime,
@@ -83,7 +102,7 @@ struct Reactor {
 
 impl reactor::Reactor for Reactor {
     type Event = Event;
-    type Config = Config;
+    type Config = TestConfig;
     type Error = ConfigError;
 
     fn new(
@@ -96,6 +115,12 @@ impl reactor::Reactor for Reactor {
         _rng: &mut NodeRng,
     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
         let (storage_config, storage_tempdir) = storage::Config::new_for_tests(1);
+        if let Some(fixture_name) = config.fixture_name {
+            let source = path_to_lmdb_fixtures().join(&fixture_name);
+            fs_extra::copy_items(&[source], &storage_tempdir, &dir::CopyOptions::default())
+                .expect("should copy global state fixture");
+        }
+
         let storage_withdir = WithDir::new(storage_tempdir.path(), storage_config);
         let storage = Storage::new(
             &storage_withdir,
@@ -112,7 +137,7 @@ impl reactor::Reactor for Reactor {
         .unwrap();
 
         let contract_runtime =
-            ContractRuntime::new(storage.root_path(), &config, chainspec, registry)?;
+            ContractRuntime::new(storage.root_path(), &config.config, chainspec, registry)?;
 
         let reactor = Reactor {
             storage,
@@ -194,6 +219,10 @@ async fn should_not_set_shared_pre_state_to_lower_block_height() {
     let config = Config {
         max_global_state_size: Some(100 * 1024 * 1024),
         ..Config::default()
+    };
+    let config = TestConfig {
+        config,
+        fixture_name: None,
     };
     let (chainspec, chainspec_raw_bytes) =
         <(Chainspec, ChainspecRawBytes)>::from_resources("local");
@@ -394,6 +423,428 @@ async fn should_not_set_shared_pre_state_to_lower_block_height() {
     // Check that the next block height expected by the contract runtime is `next_block_height` and
     // not 3.
     assert_eq!(actual, expected);
+}
+
+fn valid_wasm_txn(
+    initiator: &SecretKey,
+    chain_name: &str,
+    pricing_mode: PricingMode,
+    name: &str,
+    runtime_args: RuntimeArgs,
+) -> Transaction {
+    let contract_file = RESOURCES_PATH
+        .join("..")
+        .join("target")
+        .join("wasm32-unknown-unknown")
+        .join("release")
+        .join(format!("{name}.wasm"));
+    let module_bytes = Bytes::from(std::fs::read(contract_file).expect("cannot read module bytes"));
+    let mut txn = Transaction::from(
+        TransactionV1Builder::new_session_with_runtime_args(
+            true,
+            module_bytes,
+            TransactionRuntimeParams::VmCasperV1,
+            runtime_args,
+        )
+        .with_chain_name(chain_name)
+        .with_pricing_mode(pricing_mode)
+        .with_initiator_addr(PublicKey::from(initiator))
+        .build()
+        .unwrap(),
+    );
+    txn.sign(initiator);
+    txn
+}
+
+#[allow(clippy::too_many_arguments)]
+fn valid_versioned_call_txn(
+    initiator: &SecretKey,
+    chain_name: &str,
+    pricing_mode: PricingMode,
+    entry_point: &str,
+    package_hash: PackageHash,
+    runtime_args: RuntimeArgs,
+    version: Option<EntityVersion>,
+    protocol_version_major: Option<ProtocolVersionMajor>,
+) -> Transaction {
+    let mut txn = Transaction::from(
+        TransactionV1Builder::new_targeting_package_with_runtime_args(
+            package_hash,
+            version,
+            protocol_version_major,
+            entry_point,
+            TransactionRuntimeParams::VmCasperV1,
+            runtime_args,
+        )
+        .with_chain_name(chain_name)
+        .with_pricing_mode(pricing_mode)
+        .with_initiator_addr(PublicKey::from(initiator))
+        .build()
+        .unwrap(),
+    );
+    txn.sign(initiator);
+    txn
+}
+
+#[tokio::test]
+async fn should_correctly_manage_entity_version_calls() {
+    testing::init_logging();
+
+    let config = Config {
+        max_global_state_size: Some(100 * 1024 * 1024),
+        ..Config::default()
+    };
+    let config = TestConfig {
+        config,
+        fixture_name: None,
+    };
+    let (chainspec, chainspec_raw_bytes) =
+        <(Chainspec, ChainspecRawBytes)>::from_resources("local");
+    let chainspec = Arc::new(chainspec);
+    let chainspec_raw_bytes = Arc::new(chainspec_raw_bytes);
+
+    let mut rng = crate::new_rng();
+    let rng = &mut rng;
+
+    let mut runner: Runner<ConditionCheckReactor<Reactor>> = Runner::new(
+        config,
+        Arc::clone(&chainspec),
+        Arc::clone(&chainspec_raw_bytes),
+        rng,
+    )
+    .await
+    .unwrap();
+
+    // Commit genesis to set up initial global state.
+    let post_commit_genesis_state_hash = runner
+        .reactor()
+        .inner()
+        .contract_runtime
+        .commit_genesis(chainspec.as_ref(), chainspec_raw_bytes.as_ref())
+        .as_legacy()
+        .unwrap()
+        .0;
+
+    let initial_pre_state = ExecutionPreState::new(
+        0,
+        post_commit_genesis_state_hash,
+        BlockHash::default(),
+        Digest::default(),
+    );
+    runner
+        .reactor_mut()
+        .inner_mut()
+        .contract_runtime
+        .set_initial_state(initial_pre_state);
+
+    // Create the genesis immediate switch block.
+    let block_0 = ExecutableBlock::from_finalized_block_and_transactions(
+        FinalizedBlock::new(
+            BlockPayload::default(),
+            Some(InternalEraReport::default()),
+            Timestamp::now(),
+            EraId::new(0),
+            0,
+            PublicKey::System,
+        ),
+        vec![],
+    );
+
+    runner
+        .process_injected_effects(execute_block(block_0))
+        .await;
+    runner
+        .crank_until(rng, execution_completed, TEST_TIMEOUT)
+        .await;
+
+    // Create the first block of era 1.
+    let block_1 = ExecutableBlock::from_finalized_block_and_transactions(
+        FinalizedBlock::new(
+            BlockPayload::default(),
+            None,
+            Timestamp::now(),
+            EraId::new(1),
+            1,
+            PublicKey::System,
+        ),
+        vec![],
+    );
+    runner
+        .process_injected_effects(execute_block(block_1))
+        .await;
+    runner
+        .crank_until(rng, execution_completed, TEST_TIMEOUT)
+        .await;
+
+    // Prepare to create a block which will take a while to execute, i.e. loaded with many deploys
+    // transferring from node-1's main account to new random public keys.
+    let node_1_secret_key = SecretKey::from_file(
+        RESOURCES_PATH
+            .join("local")
+            .join("secret_keys")
+            .join("node-1.pem"),
+    )
+    .unwrap();
+
+    let node_1_public_key = PublicKey::from(&node_1_secret_key);
+    let chain_name = chainspec.network_config.name.clone();
+    let installer_transaction = valid_wasm_txn(
+        &node_1_secret_key,
+        &chain_name,
+        PricingMode::PaymentLimited {
+            payment_amount: 250_000_000_000,
+            gas_price_tolerance: 3,
+            standard_payment: true,
+        },
+        "purse_holder_stored",
+        runtime_args! {
+            "is_locked" => false
+        },
+    );
+
+    let lane_id =
+        calculate_transaction_lane_for_transaction(&installer_transaction, &chainspec).unwrap();
+
+    let mut txn_set = BTreeMap::new();
+    let txn_hash = installer_transaction.hash();
+    let approvals = installer_transaction.approvals();
+
+    txn_set.insert(lane_id, vec![(txn_hash, approvals)]);
+
+    let block_payload = BlockPayload::new(txn_set, vec![], Default::default(), true, 1u8);
+    let block_2 = ExecutableBlock::from_finalized_block_and_transactions(
+        FinalizedBlock::new(
+            block_payload,
+            None,
+            Timestamp::now(),
+            EraId::new(1),
+            2,
+            PublicKey::System,
+        ),
+        vec![installer_transaction],
+    );
+    runner
+        .process_injected_effects(execute_block(block_2))
+        .await;
+
+    // Crank until execution is scheduled.
+    runner
+        .crank_until(rng, execution_completed, TEST_TIMEOUT)
+        .await;
+
+    let pre_state_hash = {
+        let prestate = runner
+            .reactor()
+            .inner()
+            .contract_runtime
+            .execution_pre_state
+            .lock()
+            .expect("must get lock");
+        prestate.pre_state_root_hash()
+    };
+
+    let key = Key::Account(node_1_public_key.to_account_hash());
+    let query_request = QueryRequest::new(pre_state_hash, key, vec![]);
+
+    let package_key = if let QueryResult::Success { value, .. } = runner
+        .reactor()
+        .inner()
+        .contract_runtime
+        .data_access_layer
+        .query(query_request)
+    {
+        *value
+            .as_account()
+            .expect("must get account")
+            .named_keys()
+            .get("purse_holder")
+            .expect("must get package key")
+    } else {
+        panic!("query failed");
+    };
+
+    let package_hash = package_key
+        .into_hash_addr()
+        .map(PackageHash::new)
+        .expect("must get package hash");
+
+    let upgrader_transaction = valid_wasm_txn(
+        &node_1_secret_key,
+        &chain_name,
+        PricingMode::PaymentLimited {
+            payment_amount: 250_000_000_000,
+            gas_price_tolerance: 3,
+            standard_payment: true,
+        },
+        "purse_holder_stored_upgrader",
+        runtime_args! {
+            "contract_package" => package_hash
+        },
+    );
+
+    let lane_id =
+        calculate_transaction_lane_for_transaction(&upgrader_transaction, &chainspec).unwrap();
+
+    let mut txn_set = BTreeMap::new();
+    let txn_hash = upgrader_transaction.hash();
+    let approvals = upgrader_transaction.approvals();
+
+    txn_set.insert(lane_id, vec![(txn_hash, approvals)]);
+
+    let block_payload = BlockPayload::new(txn_set, vec![], Default::default(), true, 1u8);
+    let block_2 = ExecutableBlock::from_finalized_block_and_transactions(
+        FinalizedBlock::new(
+            block_payload,
+            None,
+            Timestamp::now(),
+            EraId::new(1),
+            3,
+            PublicKey::System,
+        ),
+        vec![upgrader_transaction],
+    );
+    runner
+        .process_injected_effects(execute_block(block_2))
+        .await;
+
+    // Crank until execution is scheduled.
+    runner
+        .crank_until(rng, execution_completed, TEST_TIMEOUT)
+        .await;
+
+    let pre_state_hash = {
+        let prestate = runner
+            .reactor()
+            .inner()
+            .contract_runtime
+            .execution_pre_state
+            .lock()
+            .expect("must get lock");
+        prestate.pre_state_root_hash()
+    };
+
+    let query_request = QueryRequest::new(pre_state_hash, package_key, vec![]);
+    if let QueryResult::Success { value, .. } = runner
+        .reactor()
+        .inner()
+        .contract_runtime
+        .data_access_layer
+        .query(query_request)
+    {
+        let versions = value
+            .as_contract_package()
+            .expect("must get account")
+            .versions();
+
+        assert_eq!(2, versions.len())
+    } else {
+        panic!("query failed");
+    };
+
+    let call_by_entity_version_1 = valid_versioned_call_txn(
+        &node_1_secret_key,
+        &chain_name,
+        PricingMode::PaymentLimited {
+            payment_amount: 250_000_000_000,
+            gas_price_tolerance: 3,
+            standard_payment: true,
+        },
+        "add_named_purse",
+        package_hash,
+        runtime_args! {
+            "purse_name" => "purse"
+        },
+        Some(1),
+        None,
+    );
+
+    let call_by_major_version_and_entity_version = valid_versioned_call_txn(
+        &node_1_secret_key,
+        &chain_name,
+        PricingMode::PaymentLimited {
+            payment_amount: 250_000_000_000,
+            gas_price_tolerance: 3,
+            standard_payment: true,
+        },
+        "add_named_purse",
+        package_hash,
+        runtime_args! {
+            "purse_name" => "purse"
+        },
+        Some(1),
+        Some(2),
+    );
+
+    let call_by_major_version = valid_versioned_call_txn(
+        &node_1_secret_key,
+        &chain_name,
+        PricingMode::PaymentLimited {
+            payment_amount: 250_000_000_000,
+            gas_price_tolerance: 3,
+            standard_payment: true,
+        },
+        "add",
+        package_hash,
+        runtime_args! {
+            "purse_name" => "purse"
+        },
+        None,
+        Some(2),
+    );
+
+    let lane_id =
+        calculate_transaction_lane_for_transaction(&call_by_entity_version_1, &chainspec).unwrap();
+
+    let txns = vec![
+        call_by_entity_version_1,
+        call_by_major_version_and_entity_version,
+        call_by_major_version,
+    ];
+
+    let mut txn_set = BTreeMap::new();
+    let val = txns
+        .iter()
+        .map(|txn| {
+            let hash = txn.hash();
+            let approvals = txn.approvals();
+            (hash, approvals)
+        })
+        .collect();
+
+    txn_set.insert(lane_id, val);
+
+    let block_payload = BlockPayload::new(txn_set, vec![], Default::default(), true, 1u8);
+    let block_3 = ExecutableBlock::from_finalized_block_and_transactions(
+        FinalizedBlock::new(
+            block_payload,
+            None,
+            Timestamp::now(),
+            EraId::new(1),
+            4,
+            PublicKey::System,
+        ),
+        txns.clone(),
+    );
+    runner
+        .process_injected_effects(execute_block(block_3))
+        .await;
+
+    // Crank until execution is scheduled.
+    runner
+        .crank_until(rng, execution_completed, TEST_TIMEOUT)
+        .await;
+
+    for txn in txns.iter() {
+        let hash = txn.hash();
+        let results = runner
+            .reactor()
+            .inner()
+            .storage
+            .read_execution_result(&hash)
+            .unwrap();
+
+        assert!(results.error_message().is_none())
+    }
 }
 
 #[cfg(test)]

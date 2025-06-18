@@ -10,8 +10,9 @@ use casper_types::{
 };
 #[cfg(test)]
 use casper_types::{
-    testing::TestRng, AddressableEntityHash, Approval, CLValueError, EntityVersionKey, PackageHash,
-    PublicKey, TransactionConfig, TransactionInvocationTarget, TransferTarget, URef, U512,
+    contracts::ProtocolVersionMajor, testing::TestRng, AddressableEntityHash, Approval,
+    CLValueError, EntityVersion, PackageHash, PublicKey, TransactionConfig,
+    TransactionInvocationTarget, TransferTarget, URef, U512,
 };
 use core::marker::PhantomData;
 #[cfg(test)]
@@ -309,6 +310,22 @@ impl<'a> TransactionV1Builder<'a> {
         builder
     }
 
+    #[cfg(test)]
+    pub(crate) fn new_targeting_stored_with_runtime_args<E: Into<String>>(
+        id: TransactionInvocationTarget,
+        entry_point: E,
+        runtime: TransactionRuntimeParams,
+        runtime_args: RuntimeArgs,
+    ) -> Self {
+        let target = TransactionTarget::Stored { id, runtime };
+        let mut builder = TransactionV1Builder::new();
+        builder.args = TransactionArgs::Named(runtime_args);
+        builder.target = target;
+        builder.entry_point = TransactionEntryPoint::Custom(entry_point.into());
+        builder.scheduling = Self::DEFAULT_SCHEDULING;
+        builder
+    }
+
     /// Returns a new `TransactionV1Builder` suitable for building a transaction targeting a stored
     /// entity.
     #[cfg(test)]
@@ -338,12 +355,36 @@ impl<'a> TransactionV1Builder<'a> {
     #[cfg(test)]
     pub(crate) fn new_targeting_package<E: Into<String>>(
         hash: PackageHash,
-        version_key: Option<EntityVersionKey>,
+        version: Option<EntityVersion>,
+        protocol_version_major: Option<ProtocolVersionMajor>,
         entry_point: E,
         runtime: TransactionRuntimeParams,
     ) -> Self {
-        let id = TransactionInvocationTarget::new_package_with_key(hash, version_key);
+        let id = TransactionInvocationTarget::new_package_with_major(
+            hash,
+            version,
+            protocol_version_major,
+        );
         Self::new_targeting_stored(id, entry_point, runtime)
+    }
+
+    /// Returns a new `TransactionV1Builder` suitable for building a transaction targeting a
+    /// package.
+    #[cfg(test)]
+    pub(crate) fn new_targeting_package_with_runtime_args<E: Into<String>>(
+        hash: PackageHash,
+        version: Option<EntityVersion>,
+        protocol_version_major: Option<ProtocolVersionMajor>,
+        entry_point: E,
+        runtime: TransactionRuntimeParams,
+        runtime_args: RuntimeArgs,
+    ) -> Self {
+        let id = TransactionInvocationTarget::ByPackageHash {
+            addr: hash.value(),
+            version,
+            protocol_version_major,
+        };
+        Self::new_targeting_stored_with_runtime_args(id, entry_point, runtime, runtime_args)
     }
 
     /// Returns a new `TransactionV1Builder` suitable for building a transaction targeting a
@@ -351,11 +392,16 @@ impl<'a> TransactionV1Builder<'a> {
     #[cfg(test)]
     pub(crate) fn new_targeting_package_via_alias<A: Into<String>, E: Into<String>>(
         alias: A,
-        version_key: Option<EntityVersionKey>,
+        version: Option<EntityVersion>,
+        protocol_version_major: Option<ProtocolVersionMajor>,
         entry_point: E,
         runtime: TransactionRuntimeParams,
     ) -> Self {
-        let id = TransactionInvocationTarget::new_package_alias_with_key(alias.into(), version_key);
+        let id = TransactionInvocationTarget::new_package_alias_with_major(
+            alias.into(),
+            version,
+            protocol_version_major,
+        );
         Self::new_targeting_stored(id, entry_point, runtime)
     }
 
@@ -373,6 +419,28 @@ impl<'a> TransactionV1Builder<'a> {
         };
         let mut builder = TransactionV1Builder::new();
         builder.args = TransactionArgs::Named(RuntimeArgs::new());
+        builder.target = target;
+        builder.entry_point = TransactionEntryPoint::Call;
+        builder.scheduling = Self::DEFAULT_SCHEDULING;
+        builder
+    }
+
+    /// Returns a new `TransactionV1Builder` suitable for building a transaction for running session
+    /// logic, i.e. compiled Wasm.
+    #[cfg(test)]
+    pub(crate) fn new_session_with_runtime_args(
+        is_install_upgrade: bool,
+        module_bytes: Bytes,
+        runtime: TransactionRuntimeParams,
+        runtime_args: RuntimeArgs,
+    ) -> Self {
+        let target = TransactionTarget::Session {
+            is_install_upgrade,
+            module_bytes,
+            runtime,
+        };
+        let mut builder = TransactionV1Builder::new();
+        builder.args = TransactionArgs::Named(runtime_args);
         builder.target = target;
         builder.entry_point = TransactionEntryPoint::Call;
         builder.scheduling = Self::DEFAULT_SCHEDULING;

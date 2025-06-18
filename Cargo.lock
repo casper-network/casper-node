@@ -1000,6 +1000,7 @@ dependencies = [
  "erased-serde",
  "fake_instant",
  "fs2",
+ "fs_extra",
  "futures",
  "futures-io",
  "hex-buffer-serde 0.3.0",
@@ -1178,15 +1179,15 @@ dependencies = [
 
 [[package]]
 name = "casper-wasm"
-version = "0.46.2"
+version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b23c58e3ab6d99d509534a23c988be743d6383c5a329095262efae90b7d9725e"
+checksum = "ae5f83854f18c7ac13e6a26899807ea842929ada0735071d1271fe182668c907"
 
 [[package]]
 name = "casper-wasm-utils"
-version = "3.0.0"
+version = "4.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "15d9f1a2269d52961812862f67d209ef29742d06b47634e2982a96e80d0fe2b4"
+checksum = "529aa2929d3df679a1a4d471f36478ba266298647245c24b451ba8a507122fdc"
 dependencies = [
  "byteorder",
  "casper-wasm",
@@ -1195,9 +1196,9 @@ dependencies = [
 
 [[package]]
 name = "casper-wasmi"
-version = "0.14.0"
+version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0319f5a421cce8a5b87f441230607a53c57a065ddc45703ea1e355cd2831397e"
+checksum = "52b097d82c4765906b58ae22a9349ac2c5b3f8da0b8a9cb8fb0b9e932b65196b"
 dependencies = [
  "casper-wasm",
  "casper-wasmi-core",
@@ -1219,9 +1220,9 @@ dependencies = [
 
 [[package]]
 name = "casper-wasmi-validation"
-version = "0.6.0"
+version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "218e1bb3693233149b6ac945cd26ea3e5fb5e50ac523cc87fb3ee6579a9eb789"
+checksum = "688a46c29a4e861e42a3e849c1df494b7e83255537b891739181753ee9786c97"
 dependencies = [
  "casper-wasm",
 ]
@@ -2048,6 +2049,14 @@ dependencies = [
 
 [[package]]
 name = "disable-contract"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
+name = "disable-contract-by-contract-hash"
 version = "0.1.0"
 dependencies = [
  "casper-contract",
@@ -3689,6 +3698,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "key-putter"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4902,6 +4919,14 @@ dependencies = [
 
 [[package]]
 name = "purse-holder-stored-upgrader"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
+name = "purse-holder-stored-upgrader-v2-2"
 version = "0.1.0"
 dependencies = [
  "casper-contract",
@@ -6851,7 +6876,7 @@ version = "1.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "97fee6b57c6a41524a810daee9286c02d7752c4253064d0b05472833a438f675"
 dependencies = [
- "cfg-if 0.1.10",
+ "cfg-if 1.0.0",
  "static_assertions",
 ]
 

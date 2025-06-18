@@ -4,7 +4,11 @@ use casper_engine_test_support::{
 };
 
 use crate::lmdb_fixture;
-use casper_execution_engine::{engine_state, execution::ExecError};
+use casper_execution_engine::{
+    engine_state,
+    engine_state::{EngineConfigBuilder, Error},
+    execution::ExecError,
+};
 use casper_types::{
     account::AccountHash,
     addressable_entity::{AssociatedKeys, Weight},
@@ -1015,34 +1019,24 @@ fn call_and_migrate_purse_holder_contract(migration_scenario: MigrationScenario)
 
     let execute_request = match migration_scenario {
         MigrationScenario::ByPackageName(maybe_contract_version) => {
-            let req = ExecuteRequestBuilder::versioned_contract_call_by_name(
+            ExecuteRequestBuilder::versioned_contract_call_by_name(
                 *DEFAULT_ACCOUNT_ADDR,
                 HASH_KEY_NAME,
                 maybe_contract_version,
                 ENTRY_POINT_ADD,
                 runtime_args,
             )
-            .build();
-            if maybe_contract_version.is_some() {
-                builder.exec(req).expect_failure();
-                return;
-            }
-            req
+            .build()
         }
         MigrationScenario::ByPackageHash(maybe_contract_version) => {
-            let req = ExecuteRequestBuilder::versioned_contract_call_by_hash(
+            ExecuteRequestBuilder::versioned_contract_call_by_hash(
                 *DEFAULT_ACCOUNT_ADDR,
                 package_hash,
                 maybe_contract_version,
                 ENTRY_POINT_ADD,
                 runtime_args,
             )
-            .build();
-            if maybe_contract_version.is_some() {
-                builder.exec(req).expect_failure();
-                return;
-            }
-            req
+            .build()
         }
         MigrationScenario::ByContractHash => ExecuteRequestBuilder::contract_call_by_hash(
             *DEFAULT_ACCOUNT_ADDR,
@@ -1117,10 +1111,7 @@ fn should_correct_migrate_contract_when_invoked_by_package_name() {
 #[ignore]
 #[test]
 fn should_correctly_migrate_contract_when_invoked_by_name_and_version() {
-    /* TODO The current Execution Engine Testing framework doesn't support calling a specific package version
-     // we should reinstantiate this test once we add that possibility
     call_and_migrate_purse_holder_contract(MigrationScenario::ByPackageName(Some(INITIAL_VERSION)))
-    */
 }
 
 #[ignore]
@@ -1132,10 +1123,7 @@ fn should_correct_migrate_contract_when_invoked_by_package_hash() {
 #[ignore]
 #[test]
 fn should_correct_migrate_contract_when_invoked_by_package_hash_and_specific_version() {
-    /* TODO The current Execution Engine Testing framework doesn't support calling a specific package version
-     // we should reinstantiate this test once we add that possibility
     call_and_migrate_purse_holder_contract(MigrationScenario::ByPackageHash(Some(INITIAL_VERSION)))
-    */
 }
 
 #[ignore]
@@ -1231,21 +1219,346 @@ fn should_correctly_retain_disabled_contract_version() {
     .build();
 
     builder.exec(exec_request).expect_failure();
+}
 
-    let package_hash = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
-        .expect("must get account")
+fn setup_state_for_version_tests(
+    should_return_error_on_collision: bool,
+) -> (LmdbWasmTestBuilder, ContractPackageHash) {
+    const THREE_VERSION_FIXTURE: &str = "three_version_fixture";
+
+    let (mut builder, lmdb_fixture_state, _temp_dir) =
+        lmdb_fixture::builder_from_global_state_fixture(THREE_VERSION_FIXTURE);
+
+    let previous_protocol_version = lmdb_fixture_state.genesis_protocol_version();
+
+    let new_protocol_version =
+        ProtocolVersion::from_parts(previous_protocol_version.value().major + 1, 0, 0);
+
+    let activation_point = EraId::new(0u64);
+
+    let mut upgrade_request = UpgradeRequestBuilder::new()
+        .with_current_protocol_version(previous_protocol_version)
+        .with_new_protocol_version(new_protocol_version)
+        .with_activation_point(activation_point)
+        .with_new_gas_hold_handling(HoldBalanceHandling::Accrued)
+        .with_new_gas_hold_interval(24 * 60 * 60 * 60)
+        .with_enable_addressable_entity(false)
+        .build();
+
+    let config = EngineConfigBuilder::new()
+        .with_return_error_on_collision(should_return_error_on_collision)
+        .build();
+
+    println!("{:?}", config);
+
+    builder
+        .with_block_time(Timestamp::now().into())
+        .upgrade_using_scratch(&mut upgrade_request)
+        .expect_upgrade_success();
+
+    builder.with_engine_config(config);
+
+    let account = builder
+        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
+        .expect("must have account as stored value")
+        .as_account()
+        .expect("have account")
+        .to_owned();
+
+    let contract_package_hash = account
         .named_keys()
-        .get("do_nothing_package_hash")
+        .get("purse_holder")
         .expect("must have key")
         .into_hash_addr()
         .map(ContractPackageHash::new)
-        .expect("must have contract package hash");
+        .expect("must have package hash");
+
+    (builder, contract_package_hash)
+}
+
+fn execute_no_major_some_entity_version_calls(should_return_error_on_collision: bool) {
+    let (mut builder, contract_package_hash) =
+        setup_state_for_version_tests(should_return_error_on_collision);
+
+    let config = builder.engine_config();
+    println!("{:?}", config);
+
+    let actual_return_err_flag = config.return_error_on_collision();
+    assert_eq!(should_return_error_on_collision, actual_return_err_flag);
 
     let runtime_args = runtime_args! {
-        "contract_package_hash" => package_hash,
-        "major_version" => 1u32,
-        "version" => 1u32,
+        "contract_package_hash" => contract_package_hash,
+        "version" => Some(1),
+        "major_version" => None::<u32>,
+        "entry_point" => "add_named_purse".to_string(),
+        "purse_name" => "v_1_1_purse",
+    };
+
+    let contract_name = format!("{}.wasm", "call_package_version_by_hash");
+    let exec_request =
+        ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, &contract_name, runtime_args)
+            .build();
+
+    builder.exec(exec_request).expect_success().commit();
+
+    let runtime_args = runtime_args! {
+        "contract_package_hash" => contract_package_hash,
+        "version" => Some(2),
+        "major_version" => None::<u32>,
+        "entry_point" => "add".to_string(),
+        "purse_name" => "v_1_2_purse",
+    };
+
+    let contract_name = format!("{}.wasm", "call_package_version_by_hash");
+    let exec_request =
+        ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, &contract_name, runtime_args)
+            .build();
+
+    builder.exec(exec_request).expect_success().commit();
+
+    let runtime_args = runtime_args! {
+        "contract_package_hash" => contract_package_hash,
+        "version" => Some(3),
+        "major_version" => None::<u32>,
+        "entry_point" => "add".to_string(),
+        "purse_name" => "v_1_3_purse",
+    };
+
+    let contract_name = format!("{}.wasm", "call_package_version_by_hash");
+    let exec_request =
+        ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, &contract_name, runtime_args)
+            .build();
+
+    builder.exec(exec_request).expect_success().commit();
+
+    let runtime_args = runtime_args! {
+        "contract_package" => contract_package_hash
+    };
+    let exec_request = {
+        let contract_name = format!("{}.wasm", "purse_holder_stored_upgrader");
+        ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, &contract_name, runtime_args).build()
+    };
+
+    builder.exec(exec_request).expect_success().commit();
+
+    let runtime_args = runtime_args! {
+        "contract_package_hash" => contract_package_hash,
+        "version" => Some(1),
+        "major_version" => None::<u32>,
+        "entry_point" => "add".to_string(),
+        "purse_name" => "v_1_1_purse",
+    };
+
+    let contract_name = format!("{}.wasm", "call_package_version_by_hash");
+    let exec_request =
+        ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, &contract_name, runtime_args)
+            .build();
+
+    if actual_return_err_flag {
+        builder.exec(exec_request).expect_failure();
+        let expected_error = Error::Exec(ExecError::CollisionInEntityVersion);
+        builder.assert_error(expected_error);
+        return;
+    }
+
+    builder.exec(exec_request).expect_success().commit();
+
+    let runtime_args = runtime_args! {
+        "contract_package_hash" => contract_package_hash,
+        "version" => Some(1),
+        "major_version" => Some(1),
+        "entry_point" => "add_named_purse".to_string(),
+        "purse_name" => "v_1_1_purse",
+    };
+
+    let contract_name = format!("{}.wasm", "call_package_version_by_hash");
+    let exec_request =
+        ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, &contract_name, runtime_args)
+            .build();
+
+    builder.exec(exec_request).expect_success().commit();
+
+    let runtime_args = runtime_args! {
+        "contract_package_hash" => contract_package_hash,
+        "version" => None::<u32>,
+        "major_version" => None::<u32>,
+        "entry_point" => "add".to_string(),
+        "purse_name" => "v_1_1_purse",
+    };
+
+    let contract_name = format!("{}.wasm", "call_package_version_by_hash");
+    let exec_request =
+        ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, &contract_name, runtime_args)
+            .build();
+
+    builder.exec(exec_request).expect_success().commit();
+
+    let contract_package = builder
+        .query(None, Key::Hash(contract_package_hash.value()), &[])
+        .expect("must have contract package as stored value")
+        .into_contract_package()
+        .expect("must get contract package");
+
+    let disable_hash = contract_package
+        .current_contract_hash()
+        .expect("must get hash");
+
+    let runtime_args = runtime_args! {
+        "contract_package_hash" => contract_package_hash,
+        "contract_hash" => disable_hash,
+    };
+
+    let contract_name = format!("{}.wasm", "disable_contract_by_contract_hash");
+    let exec_request =
+        ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, &contract_name, runtime_args)
+            .build();
+
+    builder.exec(exec_request).expect_success().commit();
+
+    let runtime_args = runtime_args! {
+        "contract_package_hash" => contract_package_hash,
+        "version" => Some(1),
+        "major_version" => None::<u32>,
+        "entry_point" => "add_named_purse".to_string(),
+        "purse_name" => "v_1_1_purse",
+    };
+
+    let contract_name = format!("{}.wasm", "call_package_version_by_hash");
+    let exec_request =
+        ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, &contract_name, runtime_args)
+            .build();
+
+    builder.exec(exec_request).expect_success().commit();
+}
+
+#[ignore]
+#[test]
+fn should_correctly_manage_entity_version_calls_with_error_flag_off() {
+    execute_no_major_some_entity_version_calls(false)
+}
+
+#[ignore]
+#[test]
+fn should_correctly_return_error_for_multiple_entity_versions() {
+    execute_no_major_some_entity_version_calls(true)
+}
+
+#[ignore]
+#[test]
+fn should_call_correct_version_when_specifying_only_major_version() {
+    let (mut builder, contract_package_hash) = setup_state_for_version_tests(false);
+
+    // There are three 1.x versions in the package.
+    // The 1.1 version has an entry point `add_named_purse` while the 1.2 and 1.3
+    // rename the entry point to `add`
+    // Thus a call specifying 1.1 should work, however as per the rules, if 1.*
+    // is specified, then 1.3 should be invoked and the call should fail with
+    // the 1.1 entry point name.
+    let runtime_args = runtime_args! {
+        "contract_package_hash" => contract_package_hash,
+        "version" => Some(1),
+        "major_version" => Some(1),
+        "entry_point" => "add_named_purse".to_string(),
+        "purse_name" => "v_1_1_purse",
+    };
+
+    let contract_name = format!("{}.wasm", "call_package_version_by_hash");
+    let exec_request =
+        ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, &contract_name, runtime_args)
+            .build();
+
+    builder.exec(exec_request).expect_success().commit();
+
+    let runtime_args = runtime_args! {
+        "contract_package_hash" => contract_package_hash,
+        "version" => None::<u32>,
+        "major_version" => Some(1),
+        "entry_point" => "add_named_purse".to_string(),
+        "purse_name" => "v_1_1_purse",
+    };
+
+    let contract_name = format!("{}.wasm", "call_package_version_by_hash");
+    let exec_request =
+        ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, &contract_name, runtime_args)
+            .build();
+
+    builder.exec(exec_request).expect_failure();
+
+    let expected_error = Error::Exec(ExecError::NoSuchMethod("add_named_purse".to_string()));
+
+    builder.assert_error(expected_error);
+
+    let runtime_args = runtime_args! {
+        "contract_package_hash" => contract_package_hash,
+        "version" => None::<u32>,
+        "major_version" => Some(1),
+        "entry_point" => "add".to_string(),
+        "purse_name" => "v_1_1_purse",
+    };
+
+    let contract_name = format!("{}.wasm", "call_package_version_by_hash");
+    let exec_request =
+        ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, &contract_name, runtime_args)
+            .build();
+
+    builder.exec(exec_request).expect_success().commit();
+}
+
+#[ignore]
+#[test]
+fn should_correctly_invoke_version_in_package_when_no_versions_are_specified() {
+    let (mut builder, contract_package_hash) = setup_state_for_version_tests(false);
+
+    let runtime_args = runtime_args! {
+        "contract_package_hash" => contract_package_hash,
+        "version" => None::<u32>,
+        "major_version" => None::<u32>,
+        "entry_point" => "add".to_string(),
+        "purse_name" => "v_1_1_purse",
+    };
+
+    let contract_name = format!("{}.wasm", "call_package_version_by_hash");
+    let exec_request =
+        ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, &contract_name, runtime_args)
+            .build();
+
+    builder.exec(exec_request).expect_success().commit();
+
+    let runtime_args = runtime_args! {
+        "contract_package" => contract_package_hash
+    };
+    let exec_request = {
+        let contract_name = format!("{}.wasm", "purse_holder_stored_upgrader_v2_2");
+        ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, &contract_name, runtime_args).build()
+    };
+
+    builder.exec(exec_request).expect_success().commit();
+
+    let runtime_args = runtime_args! {
+        "contract_package_hash" => contract_package_hash,
+        "version" => None::<u32>,
+        "major_version" => None::<u32>,
+        "entry_point" => "add".to_string(),
+        "purse_name" => "v_1_1_purse",
+    };
+
+    let contract_name = format!("{}.wasm", "call_package_version_by_hash");
+    let exec_request =
+        ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, &contract_name, runtime_args)
+            .build();
+
+    builder.exec(exec_request).expect_failure();
+
+    let expected_error = Error::Exec(ExecError::NoSuchMethod("add".to_string()));
+
+    builder.assert_error(expected_error);
+
+    let runtime_args = runtime_args! {
+        "contract_package_hash" => contract_package_hash,
+        "version" => None::<u32>,
+        "major_version" => None::<u32>,
+        "entry_point" => "delegate".to_string(),
+        "purse_name" => "v_1_1_purse",
     };
 
     let contract_name = format!("{}.wasm", "call_package_version_by_hash");

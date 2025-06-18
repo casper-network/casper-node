@@ -48,7 +48,7 @@ use casper_types::{
     },
     contracts::{
         ContractHash, ContractPackage, ContractPackageHash, ContractPackageStatus,
-        ContractVersions, DisabledVersions, NamedKeys,
+        ContractVersions, DisabledVersions, NamedKeys, ProtocolVersionMajor,
     },
     system::{
         self,
@@ -83,11 +83,7 @@ enum CallContractIdentifier {
     ContractPackage {
         contract_package_hash: HashAddr,
         version: Option<EntityVersion>,
-    },
-    PackageVersion {
-        contract_package_hash: HashAddr,
-        major_version: u32,
-        version: EntityVersion,
+        protocol_version_major: Option<ProtocolVersionMajor>,
     },
 }
 
@@ -1368,6 +1364,27 @@ where
         self.call_contract(contract_hash, entry_point_name, args)
     }
 
+    /// Call a version within a package by pushing a stack element onto the frame.
+    pub fn call_package_version_with_stack(
+        &mut self,
+        contract_package_hash: PackageHash,
+        protocol_version_major: Option<ProtocolVersionMajor>,
+        version: Option<EntityVersion>,
+        entry_point_name: String,
+        args: RuntimeArgs,
+        stack: RuntimeStack,
+    ) -> Result<CLValue, ExecError> {
+        self.stack = Some(stack);
+
+        self.call_package_version(
+            contract_package_hash,
+            protocol_version_major,
+            version,
+            entry_point_name,
+            args,
+        )
+    }
+
     pub(crate) fn execute_module_bytes(
         &mut self,
         module_bytes: &Bytes,
@@ -1450,13 +1467,13 @@ where
         entry_point_name: String,
         args: RuntimeArgs,
     ) -> Result<CLValue, ExecError> {
-        let contract_package_hash = contract_package_hash.value();
-        let identifier = CallContractIdentifier::ContractPackage {
+        self.call_package_version(
             contract_package_hash,
-            version: contract_version,
-        };
-
-        self.execute_contract(identifier, &entry_point_name, args)
+            None,
+            contract_version,
+            entry_point_name,
+            args,
+        )
     }
 
     /// Calls `version` of the contract living at `key`, invoking `method` with
@@ -1465,19 +1482,71 @@ where
     pub fn call_package_version(
         &mut self,
         contract_package_hash: PackageHash,
-        major_version: u32,
-        contract_version: EntityVersion,
+        protocol_version_major: Option<ProtocolVersionMajor>,
+        version: Option<EntityVersion>,
         entry_point_name: String,
         args: RuntimeArgs,
     ) -> Result<CLValue, ExecError> {
+        /*
+        m e
+        - - :   pick the highest enabled version, considering the major protocol version first, then the entity version
+        - + :   walk down from the highest major protocol version, so highest..2.+ then 1.+
+                   If there is only one, its that one (no guessing)
+                   If there are more than one, but the entity version is in the range of only one major version
+                   If there is a collision,
+                      It would be safer to error on this collision, however
+                      we are making a best attempt and picking the highest protocol version
+                      add a chainspec setting to either error or pick the highest in this ambigious case
+                      pick the highest protocol version
+        + - :   pick the highest enabled entity version for the given major
+        + + :   pick the version key based on +.+
+        */
+
         let contract_package_hash = contract_package_hash.value();
-        let identifier = CallContractIdentifier::PackageVersion {
+        let identifier = CallContractIdentifier::ContractPackage {
             contract_package_hash,
-            major_version,
-            version: contract_version,
+            version,
+            protocol_version_major,
         };
 
         self.execute_contract(identifier, &entry_point_name, args)
+    }
+
+    fn get_protocol_version_for_entity_version(
+        &self,
+        entity_version: EntityVersion,
+        package: &Package,
+    ) -> Result<EntityVersionKey, ExecError> {
+        let enabled_versions = package.enabled_versions();
+        let current_protocol_version_major = self.context.protocol_version().value().major;
+
+        let mut possible_versions = vec![];
+
+        for protocol_version_major in (1..=current_protocol_version_major).rev() {
+            let entity_version_key = EntityVersionKey::new(protocol_version_major, entity_version);
+            // If there is a corresponding addr then its an enabled valid entity version key
+            if enabled_versions.get(&entity_version_key).is_some() {
+                possible_versions.push(entity_version_key)
+            }
+        }
+
+        if possible_versions.is_empty() {
+            return Err(ExecError::NoMatchingEntityVersionKey);
+        }
+
+        if possible_versions.len() > 1 && self.context.engine_config().return_error_on_collision {
+            return Err(ExecError::CollisionInEntityVersion);
+        }
+
+        // If possible versions has more than one, then the element to be popped
+        // will be the version key which has the same entity version, but the highest protocol
+        // version If there is only one version key matching the entity version then we will
+        // correctly pop the singular element in the possible versions.
+        // This sort is load bearing.
+        possible_versions.sort();
+        // This unwrap is safe as long as we exit early on possible versions being empty
+        let entity_version_key = possible_versions.pop().unwrap();
+        Ok(entity_version_key)
     }
 
     fn get_key_from_entity_addr(&self, entity_addr: EntityAddr) -> Key {
@@ -1673,85 +1742,32 @@ where
             CallContractIdentifier::ContractPackage {
                 contract_package_hash,
                 version,
+                protocol_version_major,
             } => {
-                if version.is_some() {
-                    return Err(ExecError::Revert(ApiError::UnexpectedContractRefVariant));
-                }
-
                 let package = self.context.get_package(contract_package_hash)?;
-
-                let entity_version_key = match package.current_entity_version() {
-                    Some(v) => v,
-                    None => {
-                        return Err(ExecError::NoActiveEntityVersions(
-                            contract_package_hash.into(),
-                        ));
+                let entity_version_key = match (version, protocol_version_major) {
+                    (Some(entity_version), Some(major)) => {
+                        EntityVersionKey::new(major, entity_version)
                     }
-                };
-
-                if package.is_version_missing(entity_version_key) {
-                    return Err(ExecError::MissingEntityVersion(entity_version_key));
-                }
-
-                if !package.is_version_enabled(entity_version_key) {
-                    return Err(ExecError::DisabledEntityVersion(entity_version_key));
-                }
-
-                let hash_addr = package
-                    .lookup_entity_hash(entity_version_key)
-                    .copied()
-                    .ok_or(ExecError::MissingEntityVersion(entity_version_key))?
-                    .value();
-
-                let entity_addr = if self.context.is_system_addressable_entity(&hash_addr)? {
-                    EntityAddr::new_system(hash_addr)
-                } else {
-                    EntityAddr::new_smart_contract(hash_addr)
-                };
-
-                let footprint = match self.context.read_gs(&Key::Hash(hash_addr))? {
-                    Some(StoredValue::Contract(contract)) => {
-                        if self.context.engine_config().enable_entity {
-                            self.migrate_contract_and_contract_package(hash_addr)?;
-                        };
-                        let maybe_system_entity_type = self.maybe_system_type(hash_addr);
-                        RuntimeFootprint::new_contract_footprint(
-                            ContractHash::new(hash_addr),
-                            contract,
-                            maybe_system_entity_type,
-                        )
-                    }
-                    Some(_) | None => {
-                        if !self.context.engine_config().enable_entity {
-                            return Err(ExecError::KeyNotFound(Key::Hash(hash_addr)));
+                    (None, Some(major)) => package.current_entity_version_for(major),
+                    (Some(entity_version), None) => {
+                        match self.get_protocol_version_for_entity_version(entity_version, &package)
+                        {
+                            Ok(entity_version_key) => entity_version_key,
+                            Err(err) => {
+                                return Err(err);
+                            }
                         }
-                        let key = Key::AddressableEntity(entity_addr);
-                        let entity = self.context.read_gs_typed::<AddressableEntity>(&key)?;
-                        let entity_named_keys = self
-                            .context
-                            .state()
-                            .borrow_mut()
-                            .get_named_keys(entity_addr)?;
-                        let entry_points = self.context.get_casper_vm_v1_entry_point(key)?;
-                        RuntimeFootprint::new_entity_footprint(
-                            entity_addr,
-                            entity,
-                            entity_named_keys,
-                            entry_points,
-                        )
                     }
+                    (None, None) => match package.current_entity_version() {
+                        Some(v) => v,
+                        None => {
+                            return Err(ExecError::NoActiveEntityVersions(
+                                contract_package_hash.into(),
+                            ));
+                        }
+                    },
                 };
-
-                (footprint, entity_addr, package)
-            }
-            CallContractIdentifier::PackageVersion {
-                contract_package_hash,
-                major_version,
-                version,
-            } => {
-                let package = self.context.get_package(contract_package_hash)?;
-
-                let entity_version_key = EntityVersionKey::new(major_version, version);
 
                 if package.is_version_missing(entity_version_key) {
                     return Err(ExecError::MissingEntityVersion(entity_version_key));
@@ -2223,8 +2239,8 @@ where
     fn call_package_version_host_buffer(
         &mut self,
         contract_package_hash: PackageHash,
-        major_version: u32,
-        contract_version: EntityVersion,
+        protocol_version_major: Option<ProtocolVersionMajor>,
+        contract_version: Option<EntityVersion>,
         entry_point_name: String,
         args_bytes: &[u8],
         result_size_ptr: u32,
@@ -2252,7 +2268,7 @@ where
 
         let result = self.call_package_version(
             contract_package_hash,
-            major_version,
+            protocol_version_major,
             contract_version,
             entry_point_name,
             args,

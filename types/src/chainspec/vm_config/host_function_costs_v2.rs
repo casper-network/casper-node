@@ -21,7 +21,7 @@ pub type Cost = u64;
 /// but to avoid changing the public API of that crate, we are creating a new struct
 /// with the same name and fields.
 ///
-/// There is some opportunity to unify the code to turn [`HostFunction`] into a generic struct
+/// There is some opportunity to unify the code to turn `HostFunction` into a generic struct
 /// that generalizes over the cost type, but that would require a lot of work and
 /// is not worth it at this time.
 #[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Debug)]

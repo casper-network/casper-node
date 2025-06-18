@@ -28,8 +28,8 @@ pub extern "C" fn call() {
 
     runtime::call_package_version(
         contract_package_hash.into(),
-        major_version,
-        version_number,
+        Some(major_version),
+        Some(version_number),
         ENTRY_FUNCTION_NAME,
         runtime_args,
     )

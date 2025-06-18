@@ -60,8 +60,8 @@ pub extern "C" fn call() {
             Some(contract_version) => {
                 runtime::call_package_version::<()>(
                     contract_package_hash,
-                    major_version,
-                    contract_version,
+                    Some(major_version),
+                    Some(contract_version),
                     DO_SOMETHING_ENTRYPOINT,
                     RuntimeArgs::default(),
                 );
