@@ -932,7 +932,6 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
             cache,
             messages,
         }) => {
-            dbg!(call_error);
             let call_outcome = call_error.map(|e| e.into_u32()).unwrap_or(CALLEE_SUCCEEDED);
 
             let abi_call_result = match output {
@@ -963,6 +962,7 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
                 },
             };
 
+            dbg!(abi_call_result);
             if call_result_ptr != 0 {
                 let call_result_bytes = safe_transmute::transmute_one_to_bytes(&abi_call_result);
                 caller.memory_write(call_result_ptr, call_result_bytes)?;

@@ -22,7 +22,7 @@ use crate::{
 use casper_contract_sdk_sys::casper_env_info;
 use casper_executor_wasm_common::{
     env_info::EnvInfo,
-    error::{result_from_code, CommonResult, CALLEE_SUCCEEDED, HOST_ERROR_SUCCESS},
+    error::{result_from_code, CommonResult, CALLEE_SUCCEEDED},
     flags::ReturnFlags,
     keyspace::{Keyspace, KeyspaceTag},
 };
@@ -340,12 +340,9 @@ pub(crate) fn call_into<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
         )
     };
 
-    print(&format!("casper_call result code: {}", result_code));
     result_from_code(result_code)?;
 
-    let res = Ok(unsafe { call_result.assume_init() });
-    print(&format!("casper_call res code: {:?}", res));
-    res
+    Ok(unsafe { call_result.assume_init() })
 }
 
 fn call_result_from_code(result_code: u32) -> Result<(), CallError> {
@@ -407,15 +404,7 @@ pub fn casper_call(
         Some(tagged_bytes)
     };
 
-    print(&format!(
-        "casper_call data_ptr: {:?}, type_uid: {}, data_len: {}, call_outcome: {}",
-        call_result.data_ptr, call_result.type_uid, call_result.data_size, call_result.call_outcome
-    ));
     let call_outcome = call_result_from_code(call_result.call_outcome);
-    print(&format!(
-        "casper_call outcome: {:?}, tagged_bytes: {:?}",
-        call_outcome, tagged_bytes
-    ));
 
     (tagged_bytes, call_outcome)
 }
@@ -530,11 +519,6 @@ pub fn call<T: ToCallData>(
         call_data.entry_point(),
         &input_data,
     );
-
-    print(&format!(
-        "casper_call result: {:?}, tagged_bytes: {:?}",
-        call_outcome, tagged_bytes
-    ));
 
     match call_outcome {
         Ok(()) | Err(CallError::CalleeReverted) => Ok(CallResult::<T> {

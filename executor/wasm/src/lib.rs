@@ -722,7 +722,7 @@ impl ExecutorV2 {
             .try_into()
             .expect("Should convert consumed gas to u64");
 
-        let mut output_bytes = wasm_v1_result
+        let output_bytes = wasm_v1_result
             .ret()
             .map(|ret| bytesrepr::serialize(ret).unwrap())
             .map(Bytes::from);

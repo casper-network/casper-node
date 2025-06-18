@@ -9,7 +9,9 @@ extern crate alloc;
 use casper_contract_macros::casper;
 use casper_contract_sdk::{
     casper::{self, emit, emit_raw, Entity},
-    common::{error::CommonResult, keyspace::Keyspace, tagged_bytes::TaggedBytes},
+    common::{
+        error::CommonResult, keyspace::Keyspace, tagged_bytes::TaggedBytes, type_uid::TypeUid,
+    },
     log,
     types::{Address, CallError},
 };
@@ -108,6 +110,17 @@ fn perform_test(seed: &mut Seed, flipper_address: Address) {
                 .expect("Should call");
 
             assert_eq!(counter_value_before + 1, counter_value_after);
+
+            let (tagged_bytes, call_result) =
+                casper::casper_call(&contract_handle.contract_address(), 0, "counter", &[]);
+
+            assert_eq!(call_result, Ok(()));
+            let tagged_bytes = tagged_bytes.unwrap_or_default();
+            assert_eq!(tagged_bytes.tag(), u64::UID);
+            assert_eq!(
+                tagged_bytes.bytes().as_ref(),
+                &counter_value_after.to_le_bytes()
+            );
         }
 
         {
@@ -680,7 +693,7 @@ mod tests {
     use casper::native::{dispatch_with, EntryPointKind, Environment, ENTRY_POINTS};
     use casper_contract_sdk::{
         casper::native::{self, dispatch},
-        type_uid::TypeUid,
+        common::type_uid::TypeUid,
     };
     use contracts::harness::{Harness, INITIAL_GREETING};
 
