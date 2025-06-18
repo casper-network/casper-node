@@ -53,7 +53,7 @@ pub const DEFAULT_BALANCE_HOLD_INTERVAL: TimeDiff = TimeDiff::from_seconds(24 * 
 /// Default entity flag.
 pub const DEFAULT_ENABLE_ENTITY: bool = false;
 
-pub(crate) const DEFAULT_RETURN_ERROR_ON_COLLISION: bool = false;
+pub(crate) const DEFAULT_TRAP_ON_AMBIGUOUS_ENTITY_VERSION: bool = false;
 
 /// The runtime configuration of the execution engine
 #[derive(Debug, Clone)]
@@ -92,7 +92,7 @@ pub struct EngineConfig {
     /// Compute auction rewards.
     pub(crate) compute_rewards: bool,
     pub(crate) enable_entity: bool,
-    pub(crate) return_error_on_collision: bool,
+    pub(crate) trap_on_ambiguous_entity_version: bool,
     storage_costs: StorageCosts,
 }
 
@@ -117,7 +117,7 @@ impl Default for EngineConfig {
             compute_rewards: DEFAULT_COMPUTE_REWARDS,
             protocol_version: DEFAULT_PROTOCOL_VERSION,
             enable_entity: DEFAULT_ENABLE_ENTITY,
-            return_error_on_collision: DEFAULT_RETURN_ERROR_ON_COLLISION,
+            trap_on_ambiguous_entity_version: DEFAULT_TRAP_ON_AMBIGUOUS_ENTITY_VERSION,
             storage_costs: Default::default(),
         }
     }
@@ -219,9 +219,9 @@ impl EngineConfig {
         self.compute_rewards
     }
 
-    /// Returns the flag is the runtime should error on multiple entity version collisions.
-    pub fn return_error_on_collision(&self) -> bool {
-        self.return_error_on_collision
+    /// Returns the `trap_on_ambiguous_entity_version` flag.
+    pub fn trap_on_ambiguous_entity_version(&self) -> bool {
+        self.trap_on_ambiguous_entity_version
     }
 
     /// Sets the protocol version of the config.
@@ -266,7 +266,7 @@ pub struct EngineConfigBuilder {
     compute_rewards: Option<bool>,
     balance_hold_interval: Option<TimeDiff>,
     enable_entity: Option<bool>,
-    return_error_on_collision: Option<bool>,
+    trap_on_ambiguous_entity_version: Option<bool>,
     storage_costs: Option<StorageCosts>,
 }
 
@@ -422,8 +422,11 @@ impl EngineConfigBuilder {
     }
 
     /// Sets the flag if the runtime returns an error on entity version collision.
-    pub fn with_return_error_on_collision(mut self, return_error_on_collision: bool) -> Self {
-        self.return_error_on_collision = Some(return_error_on_collision);
+    pub fn with_trap_on_ambiguous_entity_version(
+        mut self,
+        trap_on_ambiguous_entity_version: bool,
+    ) -> Self {
+        self.trap_on_ambiguous_entity_version = Some(trap_on_ambiguous_entity_version);
         self
     }
 
@@ -480,9 +483,9 @@ impl EngineConfigBuilder {
             .unwrap_or(DEFAULT_MAX_DELEGATORS_PER_VALIDATOR);
         let compute_rewards = self.compute_rewards.unwrap_or(DEFAULT_COMPUTE_REWARDS);
         let enable_entity = self.enable_entity.unwrap_or(DEFAULT_ENABLE_ENTITY);
-        let return_error_on_collision = self
-            .return_error_on_collision
-            .unwrap_or(DEFAULT_RETURN_ERROR_ON_COLLISION);
+        let trap_on_ambiguous_entity_version = self
+            .trap_on_ambiguous_entity_version
+            .unwrap_or(DEFAULT_TRAP_ON_AMBIGUOUS_ENTITY_VERSION);
         let storage_costs = self.storage_costs.unwrap_or_default();
 
         EngineConfig {
@@ -504,7 +507,7 @@ impl EngineConfigBuilder {
             max_delegators_per_validator,
             compute_rewards,
             enable_entity,
-            return_error_on_collision,
+            trap_on_ambiguous_entity_version,
             storage_costs,
         }
     }
