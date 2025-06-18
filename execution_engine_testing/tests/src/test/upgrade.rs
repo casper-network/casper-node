@@ -1576,7 +1576,7 @@ fn should_correctly_invoke_version_in_package_when_no_versions_are_specified() {
     builder.exec(exec_request).expect_success().commit();
 }
 
-fn should_not_require_monotonic_cases(trap: bool) {
+fn should_not_require_subsequent_cases(trap: bool) {
     let (mut builder, contract_package_hash) = setup_state_for_version_tests(trap);
 
     let previous_protocol_version = builder.engine_config().protocol_version();
@@ -1658,14 +1658,14 @@ fn should_not_require_monotonic_cases(trap: bool) {
 
 #[ignore]
 #[test]
-fn should_not_require_monotonic_increasing_versions_to_correctly_identify_version_key_with_trap_set(
+fn should_not_require_subsequent_increasing_versions_to_correctly_identify_version_key_with_trap_set(
 ) {
-    should_not_require_monotonic_cases(true)
+    should_not_require_subsequent_cases(true)
 }
 
 #[ignore]
 #[test]
-fn should_not_require_monotonic_increasing_versions_to_correctly_identify_version_key_with_trap_unset(
+fn should_not_require_subsequent_increasing_versions_to_correctly_identify_version_key_with_trap_unset(
 ) {
-    should_not_require_monotonic_cases(false)
+    should_not_require_subsequent_cases(false)
 }
