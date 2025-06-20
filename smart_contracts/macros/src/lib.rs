@@ -1159,7 +1159,7 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
                     #[cfg(not(target_arch = "wasm32"))]
                     fn #schema_helper_ident () -> casper_contract_sdk::schema::SchemaEntryPoint {
                         casper_contract_sdk::schema::SchemaEntryPoint {
-                            name: stringify!(#export_name).into(),
+                            name: (#export_name).into(),
                             arguments: vec![ #(#args,)* ],
                             result: #result,
                             flags: casper_contract_sdk::common::flags::EntryPointFlags::from_bits(#_flags).unwrap(),
@@ -1561,6 +1561,8 @@ pub fn entry_point(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
 #[proc_macro_derive(CasperABI, attributes(casper))]
 pub fn derive_casper_abi(input: TokenStream) -> TokenStream {
+    let crate_path_token = quote! { casper_contract_sdk };
+
     let res = if let Ok(input) = syn::parse::<ItemStruct>(input.clone()) {
         let mut populate_definitions = Vec::new();
         let name = input.ident.clone();
@@ -1576,7 +1578,7 @@ pub fn derive_casper_abi(input: TokenStream) -> TokenStream {
                         });
 
                         items.push(quote! {
-                            casper_contract_sdk::abi::StructField {
+                            #crate_path_token::abi::StructField {
                                 name: stringify!(#field_name).into(),
                                 decl: <#segment>::declaration(),
                             }
@@ -1588,18 +1590,18 @@ pub fn derive_casper_abi(input: TokenStream) -> TokenStream {
         }
 
         Ok(quote! {
-            impl casper_contract_sdk::abi::CasperABI for #name {
-                fn populate_definitions(definitions: &mut casper_contract_sdk::abi::Definitions) {
+            impl #crate_path_token::abi::CasperABI for #name {
+                fn populate_definitions(definitions: &mut #crate_path_token::abi::Definitions) {
                     #(#populate_definitions)*;
                 }
 
-                fn declaration() -> casper_contract_sdk::abi::Declaration {
+                fn declaration() -> #crate_path_token::abi::Declaration {
                     const DECL: &str = concat!(module_path!(), "::", stringify!(#name));
                     DECL.into()
                 }
 
-                fn definition() -> casper_contract_sdk::abi::Definition {
-                    casper_contract_sdk::abi::Definition::Struct {
+                fn type_def() -> #crate_path_token::abi::TypeDef {
+                    #crate_path_token::abi::TypeDef::Struct {
                         items: vec![
                             #(#items,)*
                         ]
@@ -1621,7 +1623,7 @@ pub fn derive_casper_abi(input: TokenStream) -> TokenStream {
         // });
 
         all_definitions.push(quote! {
-            casper_contract_sdk::abi::Definition::Enum {
+            #crate_path_token::abi::Definition::Enum {
                 name: stringify!(#name).into(),
             }
         });
@@ -1671,9 +1673,9 @@ pub fn derive_casper_abi(input: TokenStream) -> TokenStream {
                                 });
 
                                 fields.push(quote! {
-                                    casper_contract_sdk::abi::StructField {
+                                    #crate_path_token::abi::StructField {
                                         name: stringify!(#field_name).into(),
-                                        decl: <#path as casper_contract_sdk::abi::CasperABI>::declaration()
+                                        decl: <#path as #crate_path_token::abi::CasperABI>::declaration()
                                     }
                                 });
                             }
@@ -1684,7 +1686,7 @@ pub fn derive_casper_abi(input: TokenStream) -> TokenStream {
                     populate_definitions.push(quote! {
                         definitions.populate_custom(
                             stringify!(#variant_name).into(),
-                            casper_contract_sdk::abi::Definition::Struct {
+                            #crate_path_token::abi::Definition::Struct {
                                 items: vec![
                                     #(#fields,)*
                                 ],
@@ -1710,7 +1712,7 @@ pub fn derive_casper_abi(input: TokenStream) -> TokenStream {
                                     });
 
                                     fields.push(quote! {
-                                        <#type_name as casper_contract_sdk::abi::CasperABI>::declaration()
+                                        <#type_name as #crate_path_token::abi::CasperABI>::declaration()
                                     });
                                 }
                             }
@@ -1721,7 +1723,7 @@ pub fn derive_casper_abi(input: TokenStream) -> TokenStream {
                     populate_definitions.push(quote! {
                         definitions.populate_custom(
                             stringify!(#variant_name).into(),
-                            casper_contract_sdk::abi::Definition::Tuple {
+                            #crate_path_token::abi::Definition::Tuple {
                                 items: vec![
                                     #(#fields,)*
                                 ],
@@ -1735,7 +1737,7 @@ pub fn derive_casper_abi(input: TokenStream) -> TokenStream {
             };
 
             all_variants.push(quote! {
-                casper_contract_sdk::abi::EnumVariant {
+                #crate_path_token::abi::EnumVariant {
                     name: stringify!(#variant_name).into(),
                     discriminant: #current_discriminant,
                     decl: #variant_decl,
@@ -1746,18 +1748,18 @@ pub fn derive_casper_abi(input: TokenStream) -> TokenStream {
         }
 
         Ok(quote! {
-            impl casper_contract_sdk::abi::CasperABI for #name {
-                fn populate_definitions(definitions: &mut casper_contract_sdk::abi::Definitions) {
+            impl #crate_path_token::abi::CasperABI for #name {
+                fn populate_definitions(definitions: &mut #crate_path_token::abi::Definitions) {
                     #(#populate_definitions)*;
                 }
 
-                fn declaration() -> casper_contract_sdk::abi::Declaration {
+                fn declaration() -> #crate_path_token::abi::Declaration {
                     const DECL: &str = concat!(module_path!(), "::", stringify!(#name));
                     DECL.into()
                 }
 
-                fn definition() -> casper_contract_sdk::abi::Definition {
-                    casper_contract_sdk::abi::Definition::Enum {
+                fn type_def() -> #crate_path_token::abi::TypeDef {
+                    #crate_path_token::abi::TypeDef::Enum {
                         items: vec![
                             #(#all_variants,)*
                         ],

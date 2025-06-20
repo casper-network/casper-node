@@ -211,7 +211,7 @@ pub struct HostFunctionCostsV2 {
     /// Cost of calling the `copy_input` host function.
     pub copy_input: HostFunctionV2<[Cost; 2]>,
     /// Cost of calling the `ret` host function.
-    pub ret: HostFunctionV2<[Cost; 2]>,
+    pub ret: HostFunctionV2<[Cost; 4]>,
     /// Cost of calling the `create` host function.
     pub create: HostFunctionV2<[Cost; 10]>,
     /// Cost of calling the `transfer` host function.
@@ -271,6 +271,7 @@ impl Default for HostFunctionCostsV2 {
                     NOT_USED,
                     NOT_USED,
                     NOT_USED,
+                    NOT_USED,
                     DEFAULT_WRITE_SIZE_WEIGHT,
                 ],
             ),
@@ -279,7 +280,7 @@ impl Default for HostFunctionCostsV2 {
                 DEFAULT_COPY_INPUT_COST,
                 [NOT_USED, DEFAULT_COPY_INPUT_VALUE_SIZE_WEIGHT],
             ),
-            ret: HostFunctionV2::new(DEFAULT_RET_COST, [NOT_USED, DEFAULT_RET_VALUE_SIZE_WEIGHT]),
+            ret: HostFunctionV2::new(DEFAULT_RET_COST, [NOT_USED, NOT_USED, NOT_USED, DEFAULT_RET_VALUE_SIZE_WEIGHT]),
             create: HostFunctionV2::new(
                 DEFAULT_CREATE_COST,
                 [

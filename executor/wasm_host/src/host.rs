@@ -561,7 +561,7 @@ pub fn casper_return<S: GlobalStateReader, E: Executor>(
         &mut caller,
         &ret_cost,
         [
-            u64::from(flasgs),
+            u64::from(flags),
             data_type_uid,
             u64::from(data_ptr),
             u64::from(data_len),

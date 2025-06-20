@@ -10,33 +10,33 @@
 //!
 //! For security reasons you may want to combine `AccessControl` or `Ownable` with
 //! this trait to ensure that only selected entities can manage the pause state.
-use crate::{self as casper_contract_sdk, casper, casper::Entity, macros::casper};
+use casper_contract_sdk::{casper, casper::Entity, macros::casper};
 
 #[casper]
 pub struct PausedState {
     paused: bool,
 }
 
-#[casper(path = crate)]
+#[casper]
 pub enum PausableError {
     EnforcedPause,
     ExpectedPause,
 }
 
 /// The `Paused` event is emitted when the contract is paused.
-#[casper(message, path = crate)]
+#[casper(message)]
 pub struct Paused {
     entity: Entity,
 }
 
 /// The `Unpaused` event is emitted when the contract is unpaused.
-#[casper(message, path = crate)]
+#[casper(message)]
 pub struct Unpaused {
     entity: Entity,
 }
 
 /// Pausable is a trait that provides a simple way to pause and unpause a contract.
-#[casper(path = crate, export = true)]
+#[casper(export = true)]
 pub trait Pausable {
     /// The state of the contract, which contains the paused state.
     #[casper(private)]

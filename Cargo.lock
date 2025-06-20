@@ -766,6 +766,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "casper-contract-sdk-contrib"
+version = "0.1.0"
+dependencies = [
+ "base16",
+ "casper-contract-sdk",
+]
+
+[[package]]
 name = "casper-contract-sdk-sys"
 version = "0.1.2"
 
@@ -7094,6 +7102,7 @@ version = "0.1.0"
 dependencies = [
  "casper-contract-sdk",
  "casper-contract-sdk-codegen",
+ "casper-contract-sdk-contrib",
  "serde_json",
 ]
 
@@ -7103,6 +7112,7 @@ version = "0.1.0"
 dependencies = [
  "borsh",
  "casper-contract-sdk",
+ "casper-contract-sdk-contrib",
  "vm2-cep18",
 ]
 
@@ -7150,6 +7160,7 @@ dependencies = [
  "base16",
  "casper-contract-macros",
  "casper-contract-sdk",
+ "casper-contract-sdk-contrib",
  "serde_json",
 ]
 

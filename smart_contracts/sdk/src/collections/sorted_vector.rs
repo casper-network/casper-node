@@ -22,8 +22,8 @@ impl<T: Ord + CasperABI> CasperABI for SortedVector<T> {
         format!("SortedVector<{}>", T::declaration())
     }
 
-    fn definition() -> crate::abi::Definition {
-        crate::abi::Definition::Struct {
+    fn type_def() -> crate::abi::TypeDef {
+        crate::abi::TypeDef::Struct {
             items: vec![
                 crate::abi::StructField {
                     name: "prefix".into(),

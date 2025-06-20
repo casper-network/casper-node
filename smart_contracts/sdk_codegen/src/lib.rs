@@ -1,7 +1,7 @@
 pub mod support;
 
 use casper_contract_sdk::{
-    abi::{Declaration, Definition, Primitive},
+    abi::{Declaration, Definition, Primitive, TypeDef},
     common::flags::EntryPointFlags,
     schema::{Schema, SchemaType},
 };
@@ -153,11 +153,11 @@ impl Codegen {
                 // println!("Processing type {decl}");
 
                 // Enqueue all unprocessed definitions that depend on the current definition
-                match def {
-                    Definition::Primitive(_primitive) => {
+                match &def.type_def {
+                    TypeDef::Primitive(_primitive) => {
                         continue;
                     }
-                    Definition::Mapping { key, value } => {
+                    TypeDef::Mapping { key, value } => {
                         if !processed.contains(key) {
                             queue.push_front(key);
                             continue;
@@ -168,16 +168,16 @@ impl Codegen {
                             continue;
                         }
                     }
-                    Definition::Sequence { decl } => {
+                    TypeDef::Sequence { decl } => {
                         queue.push_front(decl);
                     }
-                    Definition::FixedSequence { length: _, decl } => {
+                    TypeDef::FixedSequence { length: _, decl } => {
                         if !processed.contains(decl) {
                             queue.push_front(decl);
                             continue;
                         }
                     }
-                    Definition::Tuple { items } => {
+                    TypeDef::Tuple { items } => {
                         for item in items {
                             if !processed.contains(item) {
                                 queue.push_front(item);
@@ -187,7 +187,7 @@ impl Codegen {
 
                         // queue.push_front(decl);
                     }
-                    Definition::Enum { items } => {
+                    TypeDef::Enum { items } => {
                         for item in items {
                             if !processed.contains(&item.decl) {
                                 queue.push_front(&item.decl);
@@ -195,7 +195,7 @@ impl Codegen {
                             }
                         }
                     }
-                    Definition::Struct { items } => {
+                    TypeDef::Struct { items } => {
                         for item in items {
                             if !processed.contains(&item.decl) {
                                 queue.push_front(&item.decl);
@@ -206,29 +206,29 @@ impl Codegen {
                 }
             }
 
-            match next_def {
-                Definition::Primitive(_) => {}
-                Definition::Mapping { key, value } => {
+            match &next_def.type_def {
+                TypeDef::Primitive(_) => {}
+                TypeDef::Mapping { key, value } => {
                     assert!(processed.contains(key));
                     assert!(processed.contains(value));
                 }
-                Definition::Sequence { decl } => {
+                TypeDef::Sequence { decl } => {
                     assert!(processed.contains(decl));
                 }
-                Definition::FixedSequence { length: _, decl } => {
+                TypeDef::FixedSequence { length: _, decl } => {
                     assert!(processed.contains(decl));
                 }
-                Definition::Tuple { items } => {
+                TypeDef::Tuple { items } => {
                     for item in items {
                         assert!(processed.contains(&item));
                     }
                 }
-                Definition::Enum { items } => {
+                TypeDef::Enum { items } => {
                     for item in items {
                         assert!(processed.contains(&item.decl));
                     }
                 }
-                Definition::Struct { items } => {
+                TypeDef::Struct { items } => {
                     for item in items {
                         assert!(processed.contains(&item.decl));
                     }
@@ -243,16 +243,17 @@ impl Codegen {
             for decl in deps.into_iter().rev() {
                 // println!("generate {decl}");
 
-                let def = self
+                let type_def = self
                     .schema
                     .definitions
                     .get(decl)
                     .cloned()
-                    .or_else(|| Primitive::from_str(decl).ok().map(Definition::Primitive))
+                    .map(|d| d.type_def)
+                    .or_else(|| Primitive::from_str(decl).ok().map(TypeDef::Primitive))
                     .unwrap_or_else(|| panic!("Missing definition for {}", decl));
 
-                match def {
-                    Definition::Primitive(primitive) => {
+                match type_def {
+                    TypeDef::Primitive(primitive) => {
                         let (from, to) = match primitive {
                             Primitive::Char => ("Char", "char"),
                             Primitive::U8 => ("U8", "u8"),
@@ -273,11 +274,11 @@ impl Codegen {
                         scope.new_type_alias(from, to).vis("pub");
                         self.type_mapping.insert(decl.to_string(), from.to_string());
                     }
-                    Definition::Mapping { key: _, value: _ } => {
+                    TypeDef::Mapping { key: _, value: _ } => {
                         // println!("Processing mapping type {key:?} -> {value:?}");
                         todo!()
                     }
-                    Definition::Sequence { decl: seq_decl } => {
+                    TypeDef::Sequence { decl: seq_decl } => {
                         println!("Processing sequence type {decl:?}");
                         if decl.as_str() == "String"
                             && Primitive::from_str(&seq_decl) == Ok(Primitive::Char)
@@ -295,7 +296,7 @@ impl Codegen {
                             self.type_mapping.insert(decl.to_string(), type_name);
                         }
                     }
-                    Definition::FixedSequence {
+                    TypeDef::FixedSequence {
                         length,
                         decl: fixed_seq_decl,
                     } => {
@@ -311,7 +312,7 @@ impl Codegen {
                         scope.new_type_alias(&type_name, format!("[{}; {}]", mapped_type, length));
                         self.type_mapping.insert(decl.to_string(), type_name);
                     }
-                    Definition::Tuple { items } => {
+                    TypeDef::Tuple { items } => {
                         if decl.as_str() == "()" && items.is_empty() {
                             self.type_mapping.insert("()".to_owned(), "()".to_owned());
                             continue;
@@ -342,7 +343,7 @@ impl Codegen {
 
                         self.type_mapping.insert(decl.to_string(), struct_name);
                     }
-                    Definition::Enum { items } => {
+                    TypeDef::Enum { items } => {
                         println!("Processing enum type {decl} {items:?}");
 
                         let mut items: Vec<&casper_contract_sdk::abi::EnumVariant> =
@@ -454,7 +455,7 @@ impl Codegen {
                             None => {}
                         }
                     }
-                    Definition::Struct { items } => {
+                    TypeDef::Struct { items } => {
                         println!("Processing struct type {items:?}");
 
                         let type_name = slugify_type(decl);

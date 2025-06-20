@@ -1,1 +1,441 @@
-/Users/michal/Dev/casperlabs-node/smart_contracts/sdk-codegen/tests/fixtures/cep18_schema.json
+{
+    "definitions": {
+        "()": {
+            "items": [],
+            "type": "Tuple",
+            "uid": "0x17923773536366447561"
+        },
+        "(Entity, Entity)": {
+            "items": [
+                "Entity",
+                "Entity"
+            ],
+            "type": "Tuple",
+            "uid": "0x14566685442707741513"
+        },
+        "Bool": {
+            "Bool": null,
+            "type": "Primitive",
+            "uid": "0x3576033007926074557"
+        },
+        "Entity": {
+            "items": [
+                {
+                    "decl": "[U8; 32]",
+                    "discriminant": 0,
+                    "name": "Account"
+                },
+                {
+                    "decl": "[U8; 32]",
+                    "discriminant": 1,
+                    "name": "Contract"
+                }
+            ],
+            "type": "Enum",
+            "uid": "0x459650648068022376"
+        },
+        "Map<(Entity, Entity), U256>": {
+            "items": [
+                {
+                    "decl": "U64",
+                    "name": "prefix"
+                }
+            ],
+            "type": "Struct",
+            "uid": "0x7466343034373576445"
+        },
+        "Map<Entity, SortedVector<[U8; 32]>>": {
+            "items": [
+                {
+                    "decl": "U64",
+                    "name": "prefix"
+                }
+            ],
+            "type": "Struct",
+            "uid": "0x14980423567507265482"
+        },
+        "Map<Entity, U256>": {
+            "items": [
+                {
+                    "decl": "U64",
+                    "name": "prefix"
+                }
+            ],
+            "type": "Struct",
+            "uid": "0x18132856583006337366"
+        },
+        "Option<Entity>": {
+            "items": [
+                {
+                    "decl": "()",
+                    "discriminant": 0,
+                    "name": "None"
+                },
+                {
+                    "decl": "Entity",
+                    "discriminant": 1,
+                    "name": "Some"
+                }
+            ],
+            "type": "Enum",
+            "uid": "0x13017415027281374212"
+        },
+        "SortedVector<[U8; 32]>": {
+            "items": [
+                {
+                    "decl": "String",
+                    "name": "prefix"
+                },
+                {
+                    "decl": "U64",
+                    "name": "length"
+                }
+            ],
+            "type": "Struct",
+            "uid": "0x11867821361382681768"
+        },
+        "String": {
+            "decl": "Char",
+            "type": "Sequence",
+            "uid": "0x11185468331699686439"
+        },
+        "U256": {
+            "decl": "U64",
+            "length": 4,
+            "type": "FixedSequence",
+            "uid": "0x10531149323833954772"
+        },
+        "U64": {
+            "U64": null,
+            "type": "Primitive",
+            "uid": "0x2349832248386242596"
+        },
+        "U8": {
+            "U8": null,
+            "type": "Primitive",
+            "uid": "0x11375172123957710531"
+        },
+        "[U8; 32]": {
+            "decl": "U8",
+            "length": 32,
+            "type": "FixedSequence",
+            "uid": "0x5349615808821284970"
+        },
+        "casper_contract_sdk_contrib::access_control::AccessControlState": {
+            "items": [
+                {
+                    "decl": "Map<Entity, SortedVector<[U8; 32]>>",
+                    "name": "roles"
+                }
+            ],
+            "type": "Struct",
+            "uid": "0x612060481653865254"
+        },
+        "casper_contract_sdk_contrib::cep18::Approve": {
+            "items": [
+                {
+                    "decl": "Entity",
+                    "name": "owner"
+                },
+                {
+                    "decl": "Entity",
+                    "name": "spender"
+                },
+                {
+                    "decl": "U256",
+                    "name": "amount"
+                }
+            ],
+            "type": "Struct",
+            "uid": "0x12056399457355089419"
+        },
+        "casper_contract_sdk_contrib::cep18::CEP18State": {
+            "items": [
+                {
+                    "decl": "String",
+                    "name": "name"
+                },
+                {
+                    "decl": "String",
+                    "name": "symbol"
+                },
+                {
+                    "decl": "U8",
+                    "name": "decimals"
+                },
+                {
+                    "decl": "U256",
+                    "name": "total_supply"
+                },
+                {
+                    "decl": "Map<Entity, U256>",
+                    "name": "balances"
+                },
+                {
+                    "decl": "Map<(Entity, Entity), U256>",
+                    "name": "allowances"
+                },
+                {
+                    "decl": "Bool",
+                    "name": "enable_mint_burn"
+                }
+            ],
+            "type": "Struct",
+            "uid": "0x8862830395704994598"
+        },
+        "casper_contract_sdk_contrib::cep18::Transfer": {
+            "items": [
+                {
+                    "decl": "Option<Entity>",
+                    "name": "from"
+                },
+                {
+                    "decl": "Entity",
+                    "name": "to"
+                },
+                {
+                    "decl": "U256",
+                    "name": "amount"
+                }
+            ],
+            "type": "Struct",
+            "uid": "0x5526833529681923718"
+        },
+        "casper_contract_sdk_contrib::pausable::Paused": {
+            "items": [
+                {
+                    "decl": "Entity",
+                    "name": "entity"
+                }
+            ],
+            "type": "Struct",
+            "uid": "0x12316074696863955280"
+        },
+        "casper_contract_sdk_contrib::pausable::Unpaused": {
+            "items": [
+                {
+                    "decl": "Entity",
+                    "name": "entity"
+                }
+            ],
+            "type": "Struct",
+            "uid": "0x11655858640413590207"
+        },
+        "vm2_cep18::TokenContract": {
+            "items": [
+                {
+                    "decl": "casper_contract_sdk_contrib::cep18::CEP18State",
+                    "name": "state"
+                },
+                {
+                    "decl": "casper_contract_sdk_contrib::access_control::AccessControlState",
+                    "name": "access_control"
+                }
+            ],
+            "type": "Struct",
+            "uid": "0x11613501569075187333"
+        }
+    },
+    "entry_points": [
+        {
+            "arguments": [
+                {
+                    "decl": "String",
+                    "name": "token_name"
+                }
+            ],
+            "flags": 1,
+            "name": "new",
+            "result": "vm2_cep18::TokenContract"
+        },
+        {
+            "arguments": [],
+            "flags": 0,
+            "name": "my_balance",
+            "result": "U256"
+        },
+        {
+            "arguments": [],
+            "flags": 0,
+            "name": "CEP18_name",
+            "result": "String"
+        },
+        {
+            "arguments": [],
+            "flags": 0,
+            "name": "CEP18_symbol",
+            "result": "String"
+        },
+        {
+            "arguments": [],
+            "flags": 0,
+            "name": "CEP18_decimals",
+            "result": "U8"
+        },
+        {
+            "arguments": [],
+            "flags": 0,
+            "name": "CEP18_total_supply",
+            "result": "U256"
+        },
+        {
+            "arguments": [
+                {
+                    "decl": "Entity",
+                    "name": "address"
+                }
+            ],
+            "flags": 0,
+            "name": "CEP18_balance_of",
+            "result": "U256"
+        },
+        {
+            "arguments": [
+                {
+                    "decl": "Entity",
+                    "name": "spender"
+                },
+                {
+                    "decl": "Entity",
+                    "name": "owner"
+                }
+            ],
+            "flags": 0,
+            "name": "CEP18_allowance",
+            "result": "()"
+        },
+        {
+            "arguments": [
+                {
+                    "decl": "Entity",
+                    "name": "spender"
+                },
+                {
+                    "decl": "U256",
+                    "name": "amount"
+                }
+            ],
+            "flags": 0,
+            "name": "CEP18_approve",
+            "result": "Result<(), casper_contract_sdk_contrib::cep18::Cep18Error>"
+        },
+        {
+            "arguments": [
+                {
+                    "decl": "Entity",
+                    "name": "spender"
+                },
+                {
+                    "decl": "U256",
+                    "name": "amount"
+                }
+            ],
+            "flags": 0,
+            "name": "CEP18_decrease_allowance",
+            "result": "Result<(), casper_contract_sdk_contrib::cep18::Cep18Error>"
+        },
+        {
+            "arguments": [
+                {
+                    "decl": "Entity",
+                    "name": "spender"
+                },
+                {
+                    "decl": "U256",
+                    "name": "amount"
+                }
+            ],
+            "flags": 0,
+            "name": "CEP18_increase_allowance",
+            "result": "Result<(), casper_contract_sdk_contrib::cep18::Cep18Error>"
+        },
+        {
+            "arguments": [
+                {
+                    "decl": "Entity",
+                    "name": "recipient"
+                },
+                {
+                    "decl": "U256",
+                    "name": "amount"
+                }
+            ],
+            "flags": 0,
+            "name": "CEP18_transfer",
+            "result": "Result<(), casper_contract_sdk_contrib::cep18::Cep18Error>"
+        },
+        {
+            "arguments": [
+                {
+                    "decl": "Entity",
+                    "name": "owner"
+                },
+                {
+                    "decl": "Entity",
+                    "name": "recipient"
+                },
+                {
+                    "decl": "U256",
+                    "name": "amount"
+                }
+            ],
+            "flags": 0,
+            "name": "CEP18_transfer_from",
+            "result": "Result<(), casper_contract_sdk_contrib::cep18::Cep18Error>"
+        },
+        {
+            "arguments": [
+                {
+                    "decl": "Entity",
+                    "name": "owner"
+                },
+                {
+                    "decl": "U256",
+                    "name": "amount"
+                }
+            ],
+            "flags": 0,
+            "name": "Mintable_mint",
+            "result": "Result<(), casper_contract_sdk_contrib::cep18::Cep18Error>"
+        },
+        {
+            "arguments": [
+                {
+                    "decl": "Entity",
+                    "name": "owner"
+                },
+                {
+                    "decl": "U256",
+                    "name": "amount"
+                }
+            ],
+            "flags": 0,
+            "name": "Burnable_burn",
+            "result": "Result<(), casper_contract_sdk_contrib::cep18::Cep18Error>"
+        }
+    ],
+    "messages": [
+        {
+            "decl": "casper_contract_sdk_contrib::cep18::Transfer",
+            "name": "Transfer"
+        },
+        {
+            "decl": "casper_contract_sdk_contrib::cep18::Approve",
+            "name": "Approve"
+        },
+        {
+            "decl": "casper_contract_sdk_contrib::pausable::Paused",
+            "name": "Paused"
+        },
+        {
+            "decl": "casper_contract_sdk_contrib::pausable::Unpaused",
+            "name": "Unpaused"
+        }
+    ],
+    "name": "contract",
+    "type": {
+        "state": "Contract",
+        "type": "Contract"
+    },
+    "version": null
+}

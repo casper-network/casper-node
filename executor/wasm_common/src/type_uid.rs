@@ -1,4 +1,9 @@
 //! A module for computing unique type identifiers (UIDs) via compile-time hashing.
+use std::{
+    collections::{BTreeMap, BTreeSet, HashMap, LinkedList},
+    fmt::{LowerHex, UpperHex},
+};
+
 use xxhash_rust::const_xxh64::xxh64;
 
 const TYPE_UID_SEED: u64 = 0;
@@ -21,6 +26,18 @@ impl From<u64> for Uid {
 impl std::fmt::Display for Uid {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "0x{:016x}", self.0)
+    }
+}
+
+impl LowerHex for Uid {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl UpperHex for Uid {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 
@@ -143,6 +160,22 @@ impl<T: TypeUid, const N: usize> TypeUid for [T; N] {
         // 3) finally fold in the element’s fingerprint
         with_len.combine(T::UID)
     };
+}
+
+impl<T: TypeUid> TypeUid for LinkedList<T> {
+    const UID: Uid = Uid::from_fields("LinkedList", &[T::UID]);
+}
+
+impl<T: TypeUid> TypeUid for BTreeSet<T> {
+    const UID: Uid = Uid::from_fields("BTreeSet", &[T::UID]);
+}
+
+impl<K: TypeUid, V: TypeUid> TypeUid for BTreeMap<K, V> {
+    const UID: Uid = Uid::from_fields("BTreeMap", &[K::UID, V::UID]);
+}
+
+impl<K: TypeUid, V: TypeUid> TypeUid for HashMap<K, V> {
+    const UID: Uid = Uid::from_fields("HashMap", &[K::UID, V::UID]);
 }
 
 macro_rules! impl_type_uid_for_tuple {

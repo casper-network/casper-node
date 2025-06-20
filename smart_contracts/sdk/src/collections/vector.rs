@@ -1,5 +1,5 @@
 use crate::{
-    abi::{CasperABI, Declaration, Definition, Definitions, StructField},
+    abi::{CasperABI, Declaration, Definition, Definitions, StructField, TypeDef},
     casper,
     common::type_uid::{TypeUid, Uid},
     prelude::{cmp::Ordering, marker::PhantomData},
@@ -23,8 +23,8 @@ impl<T: CasperABI> CasperABI for Vector<T> {
         format!("Vector<{}>", T::declaration())
     }
 
-    fn definition() -> Definition {
-        Definition::Struct {
+    fn type_def() -> TypeDef {
+        TypeDef::Struct {
             items: vec![
                 StructField {
                     name: "prefix".into(),
@@ -282,7 +282,7 @@ where
     }
 }
 
-impl<T: Ord + TypeUid> TypeUid for Vector<T> {
+impl<T: TypeUid> TypeUid for Vector<T> {
     const UID: Uid = Uid::from_fields("Vector", &[String::UID, u64::UID]);
 }
 

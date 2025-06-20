@@ -2,15 +2,10 @@
 #![cfg_attr(target_arch = "wasm32", no_std)]
 
 use casper_contract_macros::{blake2b256, casper};
-use casper_contract_sdk::{
-    casper,
-    contrib::{
-        access_control::{AccessControl, AccessControlExt, AccessControlState, Role},
-        ownable::{Ownable, OwnableError, OwnableExt, OwnableState},
-    },
-    log,
-    prelude::*,
-    ContractBuilder, ContractHandle,
+use casper_contract_sdk::{casper, log, prelude::*, ContractBuilder, ContractHandle};
+use casper_contract_sdk_contrib::{
+    access_control::{AccessControl, AccessControlExt, AccessControlState, Role},
+    ownable::{Ownable, OwnableError, OwnableExt, OwnableState},
 };
 
 pub const GREET_RETURN_VALUE: u64 = 123456789;
@@ -102,7 +97,7 @@ impl Counter for HasTraits {
     }
 }
 
-#[casper(path = casper_contract_sdk::contrib::ownable)]
+#[casper(path = casper_contract_sdk_contrib::ownable)]
 impl Ownable for HasTraits {
     fn state(&self) -> &OwnableState {
         &self.ownable_state
@@ -127,7 +122,7 @@ impl Into<Role> for UserRole {
     }
 }
 
-#[casper(path = casper_contract_sdk::contrib::access_control)]
+#[casper(path = casper_contract_sdk_contrib::access_control)]
 impl AccessControl for HasTraits {
     fn state(&self) -> &AccessControlState {
         &self.access_control_state

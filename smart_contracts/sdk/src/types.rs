@@ -1,5 +1,6 @@
-use crate::common::error::{
-    CALLEE_GAS_DEPLETED, CALLEE_NOT_CALLABLE, CALLEE_REVERTED, CALLEE_TRAPPED,
+use crate::{
+    abi::TypeDef,
+    common::error::{CALLEE_GAS_DEPLETED, CALLEE_NOT_CALLABLE, CALLEE_REVERTED, CALLEE_TRAPPED},
 };
 use casper_contract_macros::TypeUid;
 
@@ -55,8 +56,8 @@ impl CasperABI for CallError {
         "CallError".into()
     }
 
-    fn definition() -> Definition {
-        Definition::Enum {
+    fn type_def() -> TypeDef {
+        TypeDef::Enum {
             items: vec![
                 EnumVariant {
                     name: "CalleeReverted".into(),

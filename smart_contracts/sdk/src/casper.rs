@@ -606,8 +606,8 @@ impl CasperABI for Entity {
         "Entity".into()
     }
 
-    fn definition() -> crate::abi::Definition {
-        crate::abi::Definition::Enum {
+    fn type_def() -> crate::abi::TypeDef {
+        crate::abi::TypeDef::Enum {
             items: vec![
                 EnumVariant {
                     name: "Account".into(),

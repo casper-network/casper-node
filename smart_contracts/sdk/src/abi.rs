@@ -1,9 +1,12 @@
 use core::mem;
 
-use crate::prelude::{
-    collections,
-    collections::{BTreeMap, BTreeSet, HashMap, LinkedList},
-    str::FromStr,
+use crate::{
+    common::type_uid::{TypeUid, Uid},
+    prelude::{
+        collections,
+        collections::{BTreeMap, BTreeSet, HashMap, LinkedList},
+        str::FromStr,
+    },
 };
 use impl_trait_for_tuples::impl_for_tuples;
 use serde::{Deserialize, Serialize};
@@ -70,7 +73,7 @@ pub trait Keyable {
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
 #[serde(tag = "type")]
-pub enum Definition {
+pub enum TypeDef {
     /// Primitive type.
     ///
     /// Examples: u64, i32, f32, bool, etc
@@ -110,10 +113,45 @@ pub enum Definition {
     },
 }
 
-impl Definition {
+/// Represents a unique identifier for a type definition in the ABI.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct AbiJsonValue(Uid);
+
+impl Serialize for AbiJsonValue {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let hex_string = format!("0x{:016x}", self.0);
+        serializer.serialize_str(&hex_string)
+    }
+}
+
+impl<'de> Deserialize<'de> for AbiJsonValue {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        let hex_str = s.strip_prefix("0x").unwrap_or(&s);
+        let uid = u64::from_str_radix(hex_str, 16)
+            .map_err(|e| serde::de::Error::custom(format!("Invalid hex string: {}", e)))?;
+        Ok(AbiJsonValue(Uid::from(uid)))
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
+pub struct Definition {
+    /// The type definition.
+    #[serde(flatten)]
+    pub type_def: TypeDef,
+    pub uid: AbiJsonValue, // Unique identifier for the type definition.
+}
+
+impl TypeDef {
     pub fn unit() -> Self {
         // Empty struct should be equivalent to `()` in Rust in other languages.
-        Definition::Tuple { items: Vec::new() }
+        Self::Tuple { items: Vec::new() }
     }
 
     pub fn as_struct(&self) -> Option<&[StructField]> {
@@ -145,11 +183,16 @@ impl Definition {
 pub struct Definitions(BTreeMap<Declaration, Definition>);
 
 impl Definitions {
-    pub fn populate_one<T: CasperABI>(&mut self) {
+    pub fn populate_one<T: CasperABI + TypeUid>(&mut self) {
         T::populate_definitions(self);
 
         let decl = T::declaration();
-        let def = T::definition();
+        let type_def = T::type_def();
+
+        let def = Definition {
+            type_def,
+            uid: AbiJsonValue(T::UID),
+        };
 
         self.populate_custom(decl, def);
     }
@@ -190,10 +233,15 @@ impl IntoIterator for Definitions {
 
 pub type Declaration = String;
 
-pub trait CasperABI {
+pub trait CasperABI: TypeUid {
     fn populate_definitions(definitions: &mut Definitions);
     fn declaration() -> Declaration; // "String"
-    fn definition() -> Definition; // Sequence { Char }
+    fn type_def() -> TypeDef; // Sequence { Char }
+    fn definition() -> Definition {
+        let type_def = Self::type_def();
+        let uid = AbiJsonValue(Self::UID);
+        Definition { type_def, uid }
+    }
 }
 
 impl<T> CasperABI for &T
@@ -208,8 +256,8 @@ where
         T::declaration()
     }
 
-    fn definition() -> Definition {
-        T::definition()
+    fn type_def() -> TypeDef {
+        T::type_def()
     }
 }
 
@@ -225,8 +273,8 @@ where
         T::declaration()
     }
 
-    fn definition() -> Definition {
-        T::definition()
+    fn type_def() -> TypeDef {
+        T::type_def()
     }
 }
 
@@ -251,10 +299,10 @@ macro_rules! impl_abi_for_types {
                 stringify!($def).into()
             }
 
-            fn definition() -> Definition {
+            fn type_def() -> TypeDef {
                 use Primitive::*;
                 const PRIMITIVE: Primitive = $def;
-                Definition::Primitive(PRIMITIVE)
+                TypeDef::Primitive(PRIMITIVE)
             }
         }
 
@@ -274,8 +322,8 @@ impl CasperABI for () {
         "()".into()
     }
 
-    fn definition() -> Definition {
-        Definition::unit()
+    fn type_def() -> TypeDef {
+        TypeDef::unit()
     }
 }
 
@@ -307,9 +355,9 @@ impl CasperABI for Tuple {
         format!("({})", items.join(", "))
     }
 
-    fn definition() -> Definition {
+    fn type_def() -> TypeDef {
         let items = <[_]>::into_vec(Box::new([for_tuples!( #( Tuple::declaration() ),* )]));
-        Definition::Tuple { items }
+        TypeDef::Tuple { items }
     }
 }
 
@@ -325,8 +373,8 @@ impl<T: CasperABI, E: CasperABI> CasperABI for Result<T, E> {
         format!("Result<{t_decl}, {e_decl}>")
     }
 
-    fn definition() -> Definition {
-        Definition::Enum {
+    fn type_def() -> TypeDef {
+        TypeDef::Enum {
             items: vec![
                 EnumVariant {
                     name: "Ok".into(),
@@ -347,8 +395,8 @@ impl<T: CasperABI> CasperABI for Option<T> {
     fn declaration() -> Declaration {
         format!("Option<{}>", T::declaration())
     }
-    fn definition() -> Definition {
-        Definition::Enum {
+    fn type_def() -> TypeDef {
+        TypeDef::Enum {
             items: vec![
                 EnumVariant {
                     name: "None".into(),
@@ -378,8 +426,8 @@ impl<T: CasperABI> CasperABI for Vec<T> {
     fn declaration() -> Declaration {
         format!("Vec<{}>", T::declaration())
     }
-    fn definition() -> Definition {
-        Definition::Sequence {
+    fn type_def() -> TypeDef {
+        TypeDef::Sequence {
             decl: T::declaration(),
         }
     }
@@ -393,8 +441,8 @@ impl<T: CasperABI, const N: usize> CasperABI for [T; N] {
     fn declaration() -> Declaration {
         format!("[{}; {N}]", T::declaration())
     }
-    fn definition() -> Definition {
-        Definition::FixedSequence {
+    fn type_def() -> TypeDef {
+        TypeDef::FixedSequence {
             length: N.try_into().expect("N is too big"),
             decl: T::declaration(),
         }
@@ -411,8 +459,8 @@ impl<K: CasperABI, V: CasperABI> CasperABI for BTreeMap<K, V> {
         format!("BTreeMap<{}, {}>", K::declaration(), V::declaration())
     }
 
-    fn definition() -> Definition {
-        Definition::Mapping {
+    fn type_def() -> TypeDef {
+        TypeDef::Mapping {
             key: K::declaration(),
             value: V::declaration(),
         }
@@ -429,8 +477,8 @@ impl<K: CasperABI, V: CasperABI> CasperABI for HashMap<K, V> {
         format!("HashMap<{}, {}>", K::declaration(), V::declaration())
     }
 
-    fn definition() -> Definition {
-        Definition::Mapping {
+    fn type_def() -> TypeDef {
+        TypeDef::Mapping {
             key: K::declaration(),
             value: V::declaration(),
         }
@@ -443,8 +491,8 @@ impl CasperABI for String {
     fn declaration() -> Declaration {
         "String".into()
     }
-    fn definition() -> Definition {
-        Definition::Sequence {
+    fn type_def() -> TypeDef {
+        TypeDef::Sequence {
             decl: char::declaration(),
         }
     }
@@ -456,8 +504,8 @@ impl CasperABI for str {
     fn declaration() -> Declaration {
         "String".into()
     }
-    fn definition() -> Definition {
-        Definition::Sequence {
+    fn type_def() -> TypeDef {
+        TypeDef::Sequence {
             decl: char::declaration(),
         }
     }
@@ -470,8 +518,8 @@ impl CasperABI for &str {
         "String".into()
     }
 
-    fn definition() -> Definition {
-        Definition::Sequence {
+    fn type_def() -> TypeDef {
+        TypeDef::Sequence {
             decl: char::declaration(),
         }
     }
@@ -485,8 +533,8 @@ impl<T: CasperABI> CasperABI for LinkedList<T> {
     fn declaration() -> Declaration {
         format!("LinkedList<{}>", T::declaration())
     }
-    fn definition() -> Definition {
-        Definition::Sequence {
+    fn type_def() -> TypeDef {
+        TypeDef::Sequence {
             decl: T::declaration(),
         }
     }
@@ -500,8 +548,8 @@ impl<T: CasperABI> CasperABI for BTreeSet<T> {
     fn declaration() -> Declaration {
         format!("BTreeSet<{}>", T::declaration())
     }
-    fn definition() -> Definition {
-        Definition::Sequence {
+    fn type_def() -> TypeDef {
+        TypeDef::Sequence {
             decl: T::declaration(),
         }
     }
@@ -518,9 +566,9 @@ impl<const N: usize> CasperABI for bnum::BUint<N> {
         format!("U{width_bits}")
     }
 
-    fn definition() -> Definition {
+    fn type_def() -> TypeDef {
         let length: u32 = N.try_into().expect("N is too big");
-        Definition::FixedSequence {
+        TypeDef::FixedSequence {
             length,
             decl: u64::declaration(),
         }
@@ -538,7 +586,7 @@ mod tests {
     fn u256_schema() {
         assert_eq!(U256::declaration(), "U256");
         assert_eq!(
-            U256::definition(),
+            U256::type_def(),
             Definition::FixedSequence {
                 length: 4,
                 decl: u64::declaration()

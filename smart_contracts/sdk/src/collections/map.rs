@@ -1,5 +1,5 @@
 use crate::{
-    abi::{CasperABI, Declaration, Definition, StructField},
+    abi::{CasperABI, Declaration, Definition, StructField, TypeDef},
     casper,
     common::type_uid::{TypeUid, Uid},
     serializers::borsh::{BorshDeserialize, BorshSerialize},
@@ -76,9 +76,10 @@ impl<K: CasperABI, V: CasperABI> CasperABI for Map<K, V> {
     fn declaration() -> Declaration {
         format!("Map<{}, {}>", K::declaration(), V::declaration())
     }
+
     #[inline]
-    fn definition() -> Definition {
-        Definition::Struct {
+    fn type_def() -> TypeDef {
+        TypeDef::Struct {
             items: vec![StructField {
                 name: "prefix".into(),
                 decl: u64::declaration(),
