@@ -128,6 +128,7 @@ pub fn casper_write<S: GlobalStateReader, E: Executor>(
             key_space,
             u64::from(key_ptr),
             u64::from(key_size),
+            value_type_uid,
             u64::from(value_ptr),
             u64::from(value_size),
         ],
@@ -559,7 +560,12 @@ pub fn casper_return<S: GlobalStateReader, E: Executor>(
     charge_host_function_call(
         &mut caller,
         &ret_cost,
-        [u64::from(data_ptr), u64::from(data_len)],
+        [
+            u64::from(flasgs),
+            data_type_uid,
+            u64::from(data_ptr),
+            u64::from(data_len),
+        ],
     )?;
 
     let flags = ReturnFlags::from_bits_retain(flags);

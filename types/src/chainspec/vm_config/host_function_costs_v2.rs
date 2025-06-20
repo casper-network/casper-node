@@ -205,7 +205,7 @@ pub struct HostFunctionCostsV2 {
     /// Cost of calling the `read` host function.
     pub read: HostFunctionV2<[Cost; 6]>,
     /// Cost of calling the `write` host function.
-    pub write: HostFunctionV2<[Cost; 5]>,
+    pub write: HostFunctionV2<[Cost; 6]>,
     /// Cost of calling the `remove` host function.
     pub remove: HostFunctionV2<[Cost; 3]>,
     /// Cost of calling the `copy_input` host function.
