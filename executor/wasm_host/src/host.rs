@@ -116,9 +116,9 @@ pub fn casper_write<S: GlobalStateReader, E: Executor>(
     key_space: u64,
     key_ptr: u32,
     key_size: u32,
+    value_type_uid: u64,
     value_ptr: u32,
     value_size: u32,
-    value_type_uid: u64,
 ) -> VMResult<u32> {
     let write_cost = caller.context().config.host_function_costs().write;
     charge_host_function_call(
@@ -551,9 +551,9 @@ pub fn casper_copy_input<S: GlobalStateReader, E: Executor>(
 pub fn casper_return<S: GlobalStateReader, E: Executor>(
     mut caller: impl Caller<Context = Context<S, E>>,
     flags: u32,
+    data_type_uid: u64,
     data_ptr: u32,
     data_len: u32,
-    data_type_uid: u64,
 ) -> VMResult<()> {
     let ret_cost = caller.context().config.host_function_costs().ret;
     charge_host_function_call(

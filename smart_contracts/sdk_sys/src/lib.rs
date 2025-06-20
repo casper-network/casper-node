@@ -54,7 +54,7 @@ pub struct CallResult {
 }
 
 macro_rules! visit_host_function {
-    ( $( $(#[$cfg:meta])? $vis:vis fn $name:ident $(( $($arg:ident: $argty:ty,)* ))? $(-> $ret:ty)?;)+) => {
+    ( $( $(#[$cfg:meta])? $vis:vis fn $name:ident $(( $($arg:ident: $argty:ty  $(,)* )* ))? $(-> $ret:ty)?;)+) => {
         $(
             $(#[$cfg])? $vis fn $name($($($arg: $argty,)*)?) $(-> $ret)?;
         )*
@@ -66,7 +66,7 @@ extern "C" {
 }
 
 macro_rules! visit_host_function_name {
-    ( $( $(#[$cfg:meta])? $vis:vis fn $name:ident $(( $($arg:ident: $argty:ty,)* ))? $(-> $ret:ty)?;)+) => {
+    ( $( $(#[$cfg:meta])? $vis:vis fn $name:ident $(( $($arg:ident: $argty:ty $(,)? )*  ))? $(-> $ret:ty)?;)+) => {
         &[
             $(
                 stringify!($name),

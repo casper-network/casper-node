@@ -15,17 +15,17 @@ macro_rules! for_each_host_function {
                 key_space: u64,
                 key_ptr: *const u8,
                 key_size: usize,
+                value_type_uid: u64,
                 value_ptr: *const u8,
                 value_size: usize,
-                value_type_uid: u64,
             ) -> u32;
             pub fn casper_remove(
                 key_space: u64,
                 key_ptr: *const u8,
                 key_size: usize,
             ) -> u32;
-            pub fn casper_print(msg_ptr: *const u8, msg_size: usize,);
-            pub fn casper_return(flags: u32, data_ptr: *const u8, data_len: usize, data_type_uid: u64,);
+            pub fn casper_print(msg_ptr: *const u8, msg_size: usize);
+            pub fn casper_return(flags: u32, data_type_uid: u64, data_ptr: *const u8, data_len: usize);
             pub fn casper_copy_input(
                 alloc: extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8,
                 alloc_ctx: *const core::ffi::c_void,
@@ -65,10 +65,10 @@ macro_rules! for_each_host_function {
                 input_size: usize,
             ) -> u32;
             #[doc = r"Get balance of an entity by its address."]
-            pub fn casper_env_balance(entity_kind: u32, entity_addr_ptr: *const u8, entity_addr_len: usize, output_ptr: *mut core::ffi::c_void,) -> u32;
-            pub fn casper_env_info(info_ptr: *const u8, info_size: u32,) -> u32;
-            pub fn casper_transfer(entity_addr_ptr: *const u8, entity_addr_len: usize, amount: *const core::ffi::c_void,) -> u32;
-            pub fn casper_emit(topic_ptr: *const u8, topic_size: usize, payload_uid: u64, payload_ptr: *const u8, payload_size: usize,) -> u32;
+            pub fn casper_env_balance(entity_kind: u32, entity_addr_ptr: *const u8, entity_addr_len: usize, output_ptr: *mut core::ffi::c_void) -> u32;
+            pub fn casper_env_info(info_ptr: *const u8, info_size: u32) -> u32;
+            pub fn casper_transfer(entity_addr_ptr: *const u8, entity_addr_len: usize, amount: *const core::ffi::c_void) -> u32;
+            pub fn casper_emit(topic_ptr: *const u8, topic_size: usize, payload_uid: u64, payload_ptr: *const u8, payload_size: usize) -> u32;
         }
     };
 }

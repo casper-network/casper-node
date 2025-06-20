@@ -101,9 +101,9 @@ pub fn ret_raw_bytes(flags: ReturnFlags, data_type_uid: Uid, data: Option<&[u8]>
     unsafe {
         casper_contract_sdk_sys::casper_return(
             flags.bits(),
+            data_type_uid.as_u64(),
             data.map(|slice| slice.as_ptr()).unwrap_or(ptr::null()),
             data.map(|slice| slice.len()).unwrap_or(0),
-            data_type_uid.as_u64(),
         );
     }
 }
@@ -228,9 +228,9 @@ pub fn write_raw_bytes(key: Keyspace, type_uid: Uid, value: &[u8]) -> Result<(),
             key_space,
             key_bytes.as_ptr(),
             key_bytes.len(),
+            type_uid.as_u64(),
             value.as_ptr(),
             value.len(),
-            type_uid.as_u64(),
         )
     };
     result_from_code(ret)

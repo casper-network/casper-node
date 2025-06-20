@@ -64,7 +64,7 @@ pub(crate) fn generate_casper_imports<S: GlobalStateReader + 'static, E: Executo
             <$ret as $crate::imports::WasmerConvert>::Output
         };
         (@convert_ret) => { () };
-        ( $( $(#[$cfg:meta])? $vis:vis fn $name:ident $(( $($arg:ident: $argty:ty,)* ))? $(-> $ret:ty)?;)+) => {
+        ( $( $(#[$cfg:meta])? $vis:vis fn $name:ident $(( $($arg:ident: $argty:ty $(,)?)* ))? $(-> $ret:ty)?;)+) => {
             $(
                 imports.define($crate::imports::DEFAULT_ENV_NAME, stringify!($name), wasmer::Function::new_typed_with_env(
                     store,
