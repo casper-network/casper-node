@@ -1,6 +1,6 @@
 use crate::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    checksummed_hex, crypto, EntityAddr, Key,
+    checksummed_hex, crypto, EntityAddr, Key, TaggedBytes,
 };
 
 use alloc::{string::String, vec::Vec};
@@ -121,6 +121,8 @@ const MESSAGE_PAYLOAD_TAG_LENGTH: usize = U8_SERIALIZED_LENGTH;
 pub const MESSAGE_PAYLOAD_STRING_TAG: u8 = 0;
 /// Tag for a message payload that contains raw bytes.
 pub const MESSAGE_PAYLOAD_BYTES_TAG: u8 = 1;
+/// Tag for a message payload that contains tagged bytes.
+pub const MESSAGE_PAYLOAD_TAGGED_BYTES_TAG: u8 = 2;
 
 /// The payload of the message emitted by an addressable entity during execution.
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
@@ -131,6 +133,8 @@ pub enum MessagePayload {
     String(String),
     /// Message represented as raw bytes.
     Bytes(Bytes),
+    /// Message represented as tagged bytes.
+    TaggedBytes(TaggedBytes),
 }
 
 impl MessagePayload {
@@ -166,6 +170,12 @@ impl From<Bytes> for MessagePayload {
     }
 }
 
+impl From<TaggedBytes> for MessagePayload {
+    fn from(tagged_bytes: TaggedBytes) -> Self {
+        Self::TaggedBytes(tagged_bytes)
+    }
+}
+
 impl ToBytes for MessagePayload {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
@@ -178,6 +188,10 @@ impl ToBytes for MessagePayload {
                 buffer.insert(0, MESSAGE_PAYLOAD_BYTES_TAG);
                 buffer.extend(message_bytes.to_bytes()?);
             }
+            MessagePayload::TaggedBytes(tagged_bytes) => {
+                buffer.insert(0, MESSAGE_PAYLOAD_TAGGED_BYTES_TAG);
+                buffer.extend(tagged_bytes.to_bytes()?);
+            }
         }
         Ok(buffer)
     }
@@ -187,6 +201,7 @@ impl ToBytes for MessagePayload {
             + match self {
                 MessagePayload::String(message_string) => message_string.serialized_length(),
                 MessagePayload::Bytes(message_bytes) => message_bytes.serialized_length(),
+                MessagePayload::TaggedBytes(tagged_bytes) => tagged_bytes.serialized_length(),
             }
     }
 }
@@ -202,6 +217,10 @@ impl FromBytes for MessagePayload {
             MESSAGE_PAYLOAD_BYTES_TAG => {
                 let (message_bytes, remainder): (Bytes, _) = FromBytes::from_bytes(remainder)?;
                 Ok((Self::Bytes(message_bytes), remainder))
+            }
+            MESSAGE_PAYLOAD_TAGGED_BYTES_TAG => {
+                let (tagged_bytes, remainder): (TaggedBytes, _) = FromBytes::from_bytes(remainder)?;
+                Ok((Self::TaggedBytes(tagged_bytes), remainder))
             }
             _ => Err(bytesrepr::Error::Formatting),
         }
@@ -502,8 +521,17 @@ mod tests {
         let message_checksum = MessageChecksum([1; MESSAGE_CHECKSUM_LENGTH]);
         bytesrepr::test_serialization_roundtrip(&message_checksum);
 
-        let message_payload = MessagePayload::random(rng);
-        bytesrepr::test_serialization_roundtrip(&message_payload);
+        let message_payload_1 = MessagePayload::String("Hello, world!".to_string());
+        bytesrepr::test_serialization_roundtrip(&message_payload_1);
+
+        let message_payload_2 = MessagePayload::Bytes(vec![255; 64].into());
+        bytesrepr::test_serialization_roundtrip(&message_payload_2);
+
+        let message_payload_3 = MessagePayload::TaggedBytes(TaggedBytes::new(
+            123u64,
+            u64::MAX.to_le_bytes().to_vec().into(),
+        ));
+        bytesrepr::test_serialization_roundtrip(&message_payload_3);
 
         let message = Message::random(rng);
         bytesrepr::test_serialization_roundtrip(&message);

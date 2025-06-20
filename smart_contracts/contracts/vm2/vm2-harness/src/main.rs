@@ -16,6 +16,7 @@ use casper_contract_sdk::{
     types::{Address, CallError},
 };
 
+use casper_executor_wasm_common::type_uid::Uid;
 use contracts::token_owner::TokenOwnerContractRef;
 
 #[casper(message)]
@@ -116,7 +117,7 @@ fn perform_test(seed: &mut Seed, flipper_address: Address) {
 
             assert_eq!(call_result, Ok(()));
             let tagged_bytes = tagged_bytes.unwrap_or_default();
-            assert_eq!(tagged_bytes.tag(), u64::UID);
+            assert_eq!(tagged_bytes.type_uid(), u64::UID);
             assert_eq!(
                 tagged_bytes.bytes().as_ref(),
                 &counter_value_after.to_le_bytes()
@@ -616,10 +617,13 @@ fn perform_test(seed: &mut Seed, flipper_address: Address) {
 
         let small_topic_name = "a".repeat(32);
         let large_topic_name = "a".repeat(257);
-        let large_payload_data = vec![0; 16384];
+        let large_payload_data = TaggedBytes::from_value(&vec![0u8; 16384]).unwrap();
 
         assert_eq!(
-            emit_raw(&large_topic_name, &[]),
+            emit_raw(
+                &large_topic_name,
+                &TaggedBytes::from_raw_parts(Uid::UNTYPED, Default::default())
+            ),
             Err(CommonResult::TopicTooLong)
         );
         assert_eq!(
@@ -629,14 +633,20 @@ fn perform_test(seed: &mut Seed, flipper_address: Address) {
 
         for i in 0..127u64 {
             assert_eq!(
-                emit_raw(&format!("Topic{i}"), &i.to_be_bytes()),
+                emit_raw(
+                    &format!("Topic{i}"),
+                    &TaggedBytes::from_value(&i.to_be_bytes()).unwrap()
+                ),
                 Ok(()),
                 "Emitting message with small payload failed"
             );
         }
 
         assert_eq!(
-            emit_raw(&format!("Topic128"), &[128]),
+            emit_raw(
+                &format!("Topic128"),
+                &TaggedBytes::from_value(&128u64).unwrap()
+            ),
             Err(CommonResult::TooManyTopics),
             "Emitting message with small payload failed"
         );

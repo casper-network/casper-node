@@ -35,10 +35,10 @@ use casper_storage::{
     AddressGenerator, KeyPrefix,
 };
 use casper_types::{
-    account::AccountHash, BlockHash, ChainspecRegistry, Digest, EntityAddr, GenesisAccount,
-    GenesisConfig, HostFunctionCostsV2, HostFunctionV2, Key, MessageLimits, Motes, Phase,
-    ProtocolVersion, PublicKey, SecretKey, StorageCosts, StoredValue, SystemConfig, Timestamp,
-    TransactionHash, TransactionV1Hash, WasmConfig, WasmV2Config, U512,
+    account::AccountHash, contract_messages::MessagePayload, BlockHash, ChainspecRegistry, Digest,
+    EntityAddr, GenesisAccount, GenesisConfig, HostFunctionCostsV2, HostFunctionV2, Key,
+    MessageLimits, Motes, Phase, ProtocolVersion, PublicKey, SecretKey, StorageCosts, StoredValue,
+    SystemConfig, Timestamp, TransactionHash, TransactionV1Hash, WasmConfig, WasmV2Config, U512,
 };
 use fs_extra::dir;
 use itertools::Itertools;
@@ -404,6 +404,16 @@ fn cep18() {
     assert_eq!(messages[1].topic_name(), "Transfer");
     assert_eq!(messages[1].topic_index(), 1);
     assert_eq!(messages[1].block_index(), 1);
+
+    let MessagePayload::TaggedBytes(payload_0) = messages[0].payload() else {
+        panic!("Wrong message payload")
+    };
+    let MessagePayload::TaggedBytes(payload_1) = messages[1].payload() else {
+        panic!("Wrong message payload")
+    };
+
+    assert_eq!(payload_0.type_uid(), payload_1.type_uid());
+    assert_ne!(payload_0.bytes(), payload_1.bytes());
 }
 
 fn make_global_state_with_genesis() -> (LmdbGlobalState, Digest, TempDir) {

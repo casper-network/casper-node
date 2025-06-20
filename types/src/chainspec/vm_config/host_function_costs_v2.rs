@@ -225,7 +225,7 @@ pub struct HostFunctionCostsV2 {
     /// Cost of calling the `print` host function.
     pub print: HostFunctionV2<[Cost; 2]>,
     /// Cost of calling the `emit` host function.
-    pub emit: HostFunctionV2<[Cost; 4]>,
+    pub emit: HostFunctionV2<[Cost; 5]>,
     /// Cost of calling the `env_info` host function.
     pub env_info: HostFunctionV2<[Cost; 2]>,
 }
@@ -314,6 +314,7 @@ impl Default for HostFunctionCostsV2 {
                 [
                     NOT_USED,
                     DEFAULT_EMIT_TOPIC_SIZE_WEIGHT,
+                    NOT_USED,
                     NOT_USED,
                     DEFAULT_EMIT_PAYLOAD_SIZE_HEIGHT,
                 ],

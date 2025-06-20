@@ -4,14 +4,14 @@ use bytes::Bytes;
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Hash, Clone)]
 pub struct TaggedBytes {
-    tag: Uid,
+    type_uid: Uid,
     bytes: Bytes,
 }
 
 impl Default for TaggedBytes {
     fn default() -> Self {
         TaggedBytes {
-            tag: Uid::UNTYPED,
+            type_uid: Uid::UNTYPED,
             bytes: Bytes::new(),
         }
     }
@@ -19,13 +19,13 @@ impl Default for TaggedBytes {
 
 impl TaggedBytes {
     /// Creates a new `TaggedBytes` with the given tag and bytes.
-    pub const fn from_raw_parts(tag: Uid, bytes: Bytes) -> Self {
-        TaggedBytes { tag, bytes }
+    pub const fn from_raw_parts(type_uid: Uid, bytes: Bytes) -> Self {
+        TaggedBytes { type_uid, bytes }
     }
 
     /// Returns the tag of the `TaggedBytes`.
-    pub fn tag(&self) -> Uid {
-        self.tag
+    pub fn type_uid(&self) -> Uid {
+        self.type_uid
     }
 
     /// Returns the bytes of the `TaggedBytes`.
@@ -33,10 +33,18 @@ impl TaggedBytes {
         &self.bytes
     }
 
+    /// Returns the bytes of the `TaggedBytes` as a `Bytes` instance.
+    ///
+    /// Useful for extracting the raw bytes for further processing or serialization, but be careful
+    /// type tag associated with the bytes will be lost.
+    pub fn into_bytes(self) -> Bytes {
+        self.bytes
+    }
+
     /// Attempts to deserialize the bytes into a type `T` that implements `BorshDeserialize`.
     pub fn to_value<T: BorshDeserialize + TypeUid>(&self) -> borsh::io::Result<T> {
         // Ensure the tag matches the UID of the type T
-        if self.tag != Uid::UNTYPED && self.tag != T::UID {
+        if self.type_uid != Uid::UNTYPED && self.type_uid != T::UID {
             return Err(borsh::io::Error::new(
                 borsh::io::ErrorKind::InvalidData,
                 "Tag does not match type UID",
@@ -50,7 +58,7 @@ impl TaggedBytes {
     pub fn from_value<T: BorshSerialize + TypeUid>(value: &T) -> borsh::io::Result<Self> {
         let bytes = borsh::to_vec(value)?;
         Ok(TaggedBytes {
-            tag: T::UID,
+            type_uid: T::UID,
             bytes: Bytes::from(bytes),
         })
     }
@@ -86,7 +94,7 @@ mod tests {
         let bytes = Bytes::from(vec![1, 2, 3, 4]);
         let tagged_bytes = TaggedBytes::from_raw_parts(tag, bytes.clone());
 
-        assert_eq!(tagged_bytes.tag(), tag);
+        assert_eq!(tagged_bytes.type_uid(), tag);
         assert_eq!(tagged_bytes.bytes(), &bytes);
     }
 
@@ -98,7 +106,7 @@ mod tests {
         };
 
         let tagged_bytes = TaggedBytes::from_value(&test_struct).unwrap();
-        assert_eq!(tagged_bytes.tag(), TestStruct::UID);
+        assert_eq!(tagged_bytes.type_uid(), TestStruct::UID);
 
         let deserialized: TestStruct = tagged_bytes.to_value().unwrap();
         assert_eq!(deserialized, test_struct);
@@ -117,9 +125,9 @@ mod tests {
         let tagged_bytes1 = TaggedBytes::from_value(&test_struct).unwrap();
         let tagged_bytes2 = TaggedBytes::from_value(&another_struct).unwrap();
 
-        assert_eq!(tagged_bytes1.tag(), TestStruct::UID);
-        assert_eq!(tagged_bytes2.tag(), AnotherTestStruct::UID);
-        assert_ne!(tagged_bytes1.tag(), tagged_bytes2.tag());
+        assert_eq!(tagged_bytes1.type_uid(), TestStruct::UID);
+        assert_eq!(tagged_bytes2.type_uid(), AnotherTestStruct::UID);
+        assert_ne!(tagged_bytes1.type_uid(), tagged_bytes2.type_uid());
     }
 
     #[test]
@@ -136,7 +144,7 @@ mod tests {
         let deserialized: EmptyStruct = tagged_bytes.to_value().unwrap();
 
         assert_eq!(deserialized, empty);
-        assert_eq!(tagged_bytes.tag(), EmptyStruct::UID);
+        assert_eq!(tagged_bytes.type_uid(), EmptyStruct::UID);
     }
 
     #[test]

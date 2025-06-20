@@ -26,6 +26,16 @@ impl TaggedBytes {
     pub fn deconstruct(self) -> (u64, Bytes) {
         (self.type_uid, self.bytes)
     }
+
+    /// Constructs a `TaggedBytes` from its raw parts.
+    pub fn type_uid(&self) -> u64 {
+        self.type_uid
+    }
+
+    /// Returns the bytes contained in this `TaggedBytes`.
+    pub fn bytes(&self) -> &Bytes {
+        &self.bytes
+    }
 }
 
 impl ToBytes for TaggedBytes {

@@ -218,8 +218,8 @@ fn process_casper_message_for_struct(
             const TOPIC: &'static str = stringify!(#struct_name);
 
             #[inline]
-            fn payload(&self) -> Vec<u8> {
-                #crate_path::serializers::borsh::to_vec(self).unwrap()
+            fn payload(&self) -> #crate_path::common::tagged_bytes::TaggedBytes {
+                #crate_path::common::tagged_bytes::TaggedBytes::from_value(self).expect("Serialization to succeed")
             }
         }
 

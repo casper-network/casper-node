@@ -5,10 +5,7 @@ use casper_executor_wasm_common::keyspace::Keyspace;
 use const_fnv1a_hash::fnv1a_hash_64;
 use core::marker::PhantomData;
 
-use crate::{
-    casper,
-    common::type_uid::{TypeUid, Uid},
-};
+use crate::{casper, common::type_uid::Uid};
 
 /// A pointer that uniquely identifies a value written into the map.
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone, Copy, PartialEq, TypeUid)]

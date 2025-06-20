@@ -951,7 +951,7 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
                         call_outcome,
                         data_ptr: out_ptr,
                         data_size: output.bytes().len().try_into_wrapped()?,
-                        data_type: output.tag().as_u64(),
+                        data_type: output.type_uid().as_u64(),
                     }
                 }
                 None => abi::CallResult {
@@ -962,7 +962,6 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
                 },
             };
 
-            dbg!(abi_call_result);
             if call_result_ptr != 0 {
                 let call_result_bytes = safe_transmute::transmute_one_to_bytes(&abi_call_result);
                 caller.memory_write(call_result_ptr, call_result_bytes)?;
@@ -1552,6 +1551,7 @@ pub fn casper_emit<S: GlobalStateReader, E: Executor>(
     mut caller: impl Caller<Context = Context<S, E>>,
     topic_name_ptr: u32,
     topic_name_size: u32,
+    payload_uid: u64,
     payload_ptr: u32,
     payload_size: u32,
 ) -> VMResult<u32> {
@@ -1564,6 +1564,7 @@ pub fn casper_emit<S: GlobalStateReader, E: Executor>(
         [
             u64::from(topic_name_ptr),
             u64::from(topic_name_size),
+            payload_uid,
             u64::from(payload_ptr),
             u64::from(payload_size),
         ],
@@ -1586,7 +1587,10 @@ pub fn casper_emit<S: GlobalStateReader, E: Executor>(
         topic
     };
 
-    let payload = caller.memory_read(payload_ptr, payload_size as usize)?;
+    let payload = {
+        let payload_bytes = caller.memory_read(payload_ptr, payload_size as usize)?;
+        TaggedBytes::from_raw_parts(Uid::from_u64(payload_uid), payload_bytes.into())
+    };
 
     let entity_addr = context_to_entity_addr(caller.context());
 
@@ -1627,7 +1631,9 @@ pub fn casper_emit<S: GlobalStateReader, E: Executor>(
     };
 
     let current_block_time = caller.context().block_time;
-    eprintln!("📩 {topic_name}: {payload:?} (at {current_block_time:?})");
+    let payload_bytes = payload.bytes();
+    let uid = payload.type_uid();
+    eprintln!("📩 {topic_name}: {payload_bytes:?} uid={uid} (at {current_block_time:?})");
 
     let topic_key = Key::Message(MessageAddr::new_topic_addr(entity_addr, topic_name_hash));
     let prev_topic_summary = match caller.context_mut().tracking_copy.read(&topic_key) {
@@ -1706,7 +1712,12 @@ pub fn casper_emit<S: GlobalStateReader, E: Executor>(
     };
 
     // Under v2 runtime messages are only limited to bytes.
-    let message_payload = MessagePayload::Bytes(payload.into());
+    let message_payload = MessagePayload::TaggedBytes({
+        casper_types::TaggedBytes::new(
+            payload.type_uid().as_u64(),
+            payload.into_bytes().to_vec().into(),
+        )
+    });
 
     let message = Message::new(
         entity_addr,

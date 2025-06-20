@@ -113,7 +113,7 @@ pub fn ret_tagged_bytes(flags: ReturnFlags, tagged_bytes: Option<TaggedBytes>) {
         flags,
         tagged_bytes
             .as_ref()
-            .map(|tagged| tagged.tag().clone())
+            .map(|tagged| tagged.type_uid().clone())
             .unwrap_or(Uid::UNTYPED),
         tagged_bytes
             .as_ref()
@@ -238,7 +238,7 @@ pub fn write_raw_bytes(key: Keyspace, type_uid: Uid, value: &[u8]) -> Result<(),
 
 /// Write tagged bytes to a global state.
 pub fn write_tagged_bytes(key: Keyspace, tagged_bytes: TaggedBytes) -> Result<(), CommonResult> {
-    write_raw_bytes(key, tagged_bytes.tag(), &tagged_bytes.bytes())?;
+    write_raw_bytes(key, tagged_bytes.type_uid(), &tagged_bytes.bytes())?;
     Ok(())
 }
 
@@ -685,13 +685,14 @@ pub fn get_block_time() -> u64 {
 }
 
 #[doc(hidden)]
-pub fn emit_raw(topic: &str, payload: &[u8]) -> Result<(), CommonResult> {
+pub fn emit_raw(topic: &str, payload: &TaggedBytes) -> Result<(), CommonResult> {
     let ret = unsafe {
         casper_contract_sdk_sys::casper_emit(
             topic.as_ptr(),
             topic.len(),
-            payload.as_ptr(),
-            payload.len(),
+            payload.type_uid().as_u64(),
+            payload.bytes().as_ptr(),
+            payload.bytes().len(),
         )
     };
     result_from_code(ret)

@@ -7,6 +7,7 @@ extern crate alloc;
 pub mod abi;
 pub mod prelude;
 pub mod serializers;
+use casper_executor_wasm_common::{tagged_bytes::TaggedBytes, type_uid::TypeUid};
 #[cfg(not(target_arch = "wasm32"))]
 pub use linkme;
 
@@ -352,10 +353,11 @@ impl<'a, T: ContractRef> ContractBuilder<'a, T> {
 }
 
 /// Trait for converting a message data to a string.
-pub trait Message: BorshSerialize {
+pub trait Message: BorshSerialize + TypeUid {
     const TOPIC: &'static str;
-    /// Converts the message data to a string.
-    fn payload(&self) -> Vec<u8>;
+
+    /// Converts the message data to a tagged bytes.
+    fn payload(&self) -> TaggedBytes;
 }
 
 #[cfg(test)]
