@@ -115,9 +115,9 @@ pub enum TypeDef {
 
 /// Represents a unique identifier for a type definition in the ABI.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct AbiJsonValue(Uid);
+pub struct UidJsonValue(Uid);
 
-impl Serialize for AbiJsonValue {
+impl Serialize for UidJsonValue {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -127,7 +127,7 @@ impl Serialize for AbiJsonValue {
     }
 }
 
-impl<'de> Deserialize<'de> for AbiJsonValue {
+impl<'de> Deserialize<'de> for UidJsonValue {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
@@ -136,7 +136,7 @@ impl<'de> Deserialize<'de> for AbiJsonValue {
         let hex_str = s.strip_prefix("0x").unwrap_or(&s);
         let uid = u64::from_str_radix(hex_str, 16)
             .map_err(|e| serde::de::Error::custom(format!("Invalid hex string: {}", e)))?;
-        Ok(AbiJsonValue(Uid::from(uid)))
+        Ok(UidJsonValue(Uid::from(uid)))
     }
 }
 
@@ -145,7 +145,7 @@ pub struct Definition {
     /// The type definition.
     #[serde(flatten)]
     pub type_def: TypeDef,
-    pub uid: AbiJsonValue, // Unique identifier for the type definition.
+    pub uid: UidJsonValue, // Unique identifier for the type definition.
 }
 
 impl TypeDef {
@@ -191,7 +191,7 @@ impl Definitions {
 
         let def = Definition {
             type_def,
-            uid: AbiJsonValue(T::UID),
+            uid: UidJsonValue(T::UID),
         };
 
         self.populate_custom(decl, def);
@@ -239,7 +239,7 @@ pub trait CasperABI: TypeUid {
     fn type_def() -> TypeDef; // Sequence { Char }
     fn definition() -> Definition {
         let type_def = Self::type_def();
-        let uid = AbiJsonValue(Self::UID);
+        let uid = UidJsonValue(Self::UID);
         Definition { type_def, uid }
     }
 }

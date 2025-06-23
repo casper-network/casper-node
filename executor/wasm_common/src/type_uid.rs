@@ -31,13 +31,13 @@ impl std::fmt::Display for Uid {
 
 impl LowerHex for Uid {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
+        write!(f, "{:x}", self.0)
     }
 }
 
 impl UpperHex for Uid {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
+        write!(f, "{:X}", self.0)
     }
 }
 
@@ -273,9 +273,12 @@ mod tests {
 
     #[test]
     fn display() {
+        let uid = Uid::from_u64(0x0004567890abcdef);
         assert_eq!(
-            Uid::from_u64(0x0004567890abcdef).to_string(),
+            uid.to_string(),
             "0x0004567890abcdef"
         );
+        assert_eq!(format!("{:x}", uid), "4567890abcdef");
+        assert_eq!(format!("{:X}", uid), "4567890ABCDEF");
     }
 }
