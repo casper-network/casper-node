@@ -3,9 +3,7 @@ use crate::serializers::borsh::{BorshDeserialize, BorshSerialize};
 #[cfg(not(target_arch = "wasm32"))]
 use crate::abi::CasperABI;
 
-use crate::{
-    common::type_uid::{TypeUid, Uid},
-};
+use crate::common::type_uid::{TypeUid, Uid};
 
 use super::Vector;
 

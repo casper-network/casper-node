@@ -103,9 +103,10 @@ pub fn casper_collect_schema() -> Schema {
 pub unsafe extern "C" fn cargo_casper_collect_schema(size_ptr: *mut u64) -> *mut u8 {
     let schema = casper_collect_schema();
     // Convert the schema to a JSON value.
-    let schema: serde_json::Value = serde_json::to_value(schema).expect("Schema to JSON conversion");
+    let schema: serde_json::Value =
+        serde_json::to_value(schema).expect("Schema to JSON conversion");
     // Write the schema using the provided writer in a canonical JSON format.
-    let mut json_bytes = canonical_json::to_string(&schema).expect("Serialized schema");
+    let mut json_bytes = serde_json::to_string(&schema).expect("Serialized schema");
     NonNull::new(size_ptr)
         .expect("expected non-null ptr")
         .write(json_bytes.len().try_into().expect("usize to u64"));

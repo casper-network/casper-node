@@ -1,10 +1,10 @@
-use crate::{
-    common::error::{CALLEE_GAS_DEPLETED, CALLEE_NOT_CALLABLE, CALLEE_REVERTED, CALLEE_TRAPPED},
+use crate::common::error::{
+    CALLEE_GAS_DEPLETED, CALLEE_NOT_CALLABLE, CALLEE_REVERTED, CALLEE_TRAPPED,
 };
 use casper_contract_macros::TypeUid;
 
 #[cfg(not(target_arch = "wasm32"))]
-use crate::abi::{CasperABI, TypeDef, Declaration, EnumVariant};
+use crate::abi::{CasperABI, Declaration, EnumVariant, TypeDef};
 
 use crate::{
     prelude::fmt,

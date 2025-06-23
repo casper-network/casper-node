@@ -623,24 +623,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "canonical_json"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f89083fd014d71c47a718d7f4ac050864dac8587668dbe90baf9e261064c5710"
-dependencies = [
- "hex",
- "regex",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
-]
-
-[[package]]
 name = "cargo-casper"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "atty",
+ "blake3",
  "cargo_metadata 0.19.2",
  "casper-contract-sdk",
  "casper-contract-sdk-sys",
@@ -748,7 +736,6 @@ dependencies = [
  "bnum",
  "borsh",
  "bytes",
- "canonical_json",
  "casper-contract-macros",
  "casper-contract-sdk-sys",
  "casper-executor-wasm-common",

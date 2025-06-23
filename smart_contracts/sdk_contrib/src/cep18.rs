@@ -58,9 +58,8 @@
 //!   }
 //! }
 //! ```
-use casper_contract_sdk::types::U256;
 use super::access_control::{AccessControl, AccessControlError, Role};
-use casper_contract_sdk::{collections::Map, macros::blake2b256, prelude::*};
+use casper_contract_sdk::{collections::Map, macros::blake2b256, prelude::*, types::U256};
 
 /// While the code consuming this contract needs to define further error variants, it can
 /// return those via the `Error::User` variant or equivalently via the `ApiError::User`

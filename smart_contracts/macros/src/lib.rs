@@ -1398,11 +1398,12 @@ fn process_casper_contract_state_for_struct(
 
             #[no_mangle]
             pub extern "C" fn __casper_schema() {
-                use #crate_path::casper::ret;
+                use #crate_path::casper::ret_raw_bytes;
                 use #crate_path::common::flags::ReturnFlags;
+                use #crate_path::common::type_uid::Uid;
                 let bytes = SCHEMA.unwrap_or_default().as_bytes();
                 // Schema entry point will return untyped bytes for consumers to use. It is untyped on purpose to avoid illusion of some binary structure in the returned bytes.
-                ret_raw_bytes(ReturnFlags::empty(), #crate_path::casper::type_uid::Uid::UNTYPED.as_u64(), Some(bytes));
+                ret_raw_bytes(ReturnFlags::empty(), Uid::UNTYPED, Some(bytes));
             }
         }
         #[cfg(not(feature = "__embed_schema"))]

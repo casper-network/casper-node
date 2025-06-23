@@ -21,9 +21,9 @@ impl Artifact {
 
     /// Collects schema from the built artifact.
     ///
-    /// This returns a [`serde_json::Value`] to skip validation of a `Schema` object structure which
-    /// (in theory) can differ.
-    pub(crate) fn collect_schema(&self) -> serde_json::Result<serde_json::Value> {
+    /// This returns a [`Vec`] to treat it as a blob of bytes that contains
+    /// canonical representatiton of the contract's schema.
+    pub(crate) fn collect_schema(&self) -> Vec<u8> {
         let collect_schema: Symbol<CollectSchema> =
             unsafe { self.library.get(COLLECT_SCHEMA_FUNC.as_bytes()).unwrap() };
 
@@ -35,6 +35,6 @@ impl Artifact {
             unsafe { Vec::from_raw_parts(leaked_json_bytes, length, length) }
         };
 
-        serde_json::from_slice(&json_bytes)
+        json_bytes
     }
 }

@@ -81,7 +81,15 @@ pub fn build_schema_impl<W: Write>(
         .context("Failed loading the built contract")?;
 
     let artifact = Artifact::from_path(artifact_path).context("Load library")?;
-    let collected = artifact.collect_schema().context("Collect schema")?;
-    serde_json::to_writer(output_writer, &collected).context("Serialize collected schema")?;
+    let collected_canonical_schema = artifact.collect_schema();
+
+    let schema_hash = blake3::hash(&collected_canonical_schema).to_hex();
+
+    eprintln!("  Unique schema hash: {schema_hash}");
+
+    output_writer
+        .write_all(&collected_canonical_schema)
+        .context("Write collected schema to output")?;
+
     Ok(())
 }
