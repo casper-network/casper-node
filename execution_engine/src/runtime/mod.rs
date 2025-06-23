@@ -1534,8 +1534,13 @@ where
             return Err(ExecError::NoMatchingEntityVersionKey);
         }
 
-        if possible_versions.len() > 1 && self.context.engine_config().return_error_on_collision {
-            return Err(ExecError::CollisionInEntityVersion);
+        if possible_versions.len() > 1
+            && self
+                .context
+                .engine_config()
+                .trap_on_ambiguous_entity_version
+        {
+            return Err(ExecError::AmbiguousEntityVersion);
         }
 
         // If possible versions has more than one, then the element to be popped
@@ -1745,7 +1750,6 @@ where
                 protocol_version_major,
             } => {
                 let package = self.context.get_package(contract_package_hash)?;
-
                 let entity_version_key = match (version, protocol_version_major) {
                     (Some(entity_version), Some(major)) => {
                         EntityVersionKey::new(major, entity_version)

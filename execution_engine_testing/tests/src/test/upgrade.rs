@@ -1111,10 +1111,6 @@ fn should_correct_migrate_contract_when_invoked_by_package_name() {
 #[ignore]
 #[test]
 fn should_correctly_migrate_contract_when_invoked_by_name_and_version() {
-    /* TODO The current Execution Engine Testing framework doesn't support calling a specific package version
-     // we should reinstantiate this test once we add that possibility
-
-    */
     call_and_migrate_purse_holder_contract(MigrationScenario::ByPackageName(Some(INITIAL_VERSION)))
 }
 
@@ -1127,10 +1123,7 @@ fn should_correct_migrate_contract_when_invoked_by_package_hash() {
 #[ignore]
 #[test]
 fn should_correct_migrate_contract_when_invoked_by_package_hash_and_specific_version() {
-    /* TODO The current Execution Engine Testing framework doesn't support calling a specific
-     * package version we should reinstantiate this test once we add that possibility
-     */
-    call_and_migrate_purse_holder_contract(MigrationScenario::ByPackageHash(Some(1)))
+    call_and_migrate_purse_holder_contract(MigrationScenario::ByPackageHash(Some(INITIAL_VERSION)))
 }
 
 #[ignore]
@@ -1229,7 +1222,7 @@ fn should_correctly_retain_disabled_contract_version() {
 }
 
 fn setup_state_for_version_tests(
-    should_return_error_on_collision: bool,
+    should_trap_on_ambiguous_entity_version: bool,
 ) -> (LmdbWasmTestBuilder, ContractPackageHash) {
     const THREE_VERSION_FIXTURE: &str = "three_version_fixture";
 
@@ -1253,10 +1246,8 @@ fn setup_state_for_version_tests(
         .build();
 
     let config = EngineConfigBuilder::new()
-        .with_return_error_on_collision(should_return_error_on_collision)
+        .with_trap_on_ambiguous_entity_version(should_trap_on_ambiguous_entity_version)
         .build();
-
-    println!("{:?}", config);
 
     builder
         .with_block_time(Timestamp::now().into())
@@ -1283,15 +1274,17 @@ fn setup_state_for_version_tests(
     (builder, contract_package_hash)
 }
 
-fn execute_no_major_some_entity_version_calls(should_return_error_on_collision: bool) {
+fn execute_no_major_some_entity_version_calls(trap_on_ambiguous_entity_version: bool) {
     let (mut builder, contract_package_hash) =
-        setup_state_for_version_tests(should_return_error_on_collision);
+        setup_state_for_version_tests(trap_on_ambiguous_entity_version);
 
     let config = builder.engine_config();
-    println!("{:?}", config);
 
-    let actual_return_err_flag = config.return_error_on_collision();
-    assert_eq!(should_return_error_on_collision, actual_return_err_flag);
+    let actual_trap_on_ambiguous_entity_version = config.trap_on_ambiguous_entity_version();
+    assert_eq!(
+        trap_on_ambiguous_entity_version,
+        actual_trap_on_ambiguous_entity_version
+    );
 
     let runtime_args = runtime_args! {
         "contract_package_hash" => contract_package_hash,
@@ -1361,9 +1354,9 @@ fn execute_no_major_some_entity_version_calls(should_return_error_on_collision: 
         ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, &contract_name, runtime_args)
             .build();
 
-    if actual_return_err_flag {
+    if actual_trap_on_ambiguous_entity_version {
         builder.exec(exec_request).expect_failure();
-        let expected_error = Error::Exec(ExecError::CollisionInEntityVersion);
+        let expected_error = Error::Exec(ExecError::AmbiguousEntityVersion);
         builder.assert_error(expected_error);
         return;
     }
@@ -1574,4 +1567,98 @@ fn should_correctly_invoke_version_in_package_when_no_versions_are_specified() {
             .build();
 
     builder.exec(exec_request).expect_success().commit();
+}
+
+fn should_not_require_subsequent_cases(trap: bool) {
+    let (mut builder, contract_package_hash) = setup_state_for_version_tests(trap);
+
+    let previous_protocol_version = builder.engine_config().protocol_version();
+
+    let new_protocol_version =
+        ProtocolVersion::from_parts(previous_protocol_version.value().major + 1, 0, 0);
+
+    let activation_point = EraId::new(0u64);
+
+    let mut upgrade_request = UpgradeRequestBuilder::new()
+        .with_current_protocol_version(previous_protocol_version)
+        .with_new_protocol_version(new_protocol_version)
+        .with_activation_point(activation_point)
+        .with_new_gas_hold_handling(HoldBalanceHandling::Accrued)
+        .with_new_gas_hold_interval(24 * 60 * 60 * 60)
+        .with_enable_addressable_entity(false)
+        .build();
+
+    builder
+        .with_block_time(Timestamp::now().into())
+        .upgrade_using_scratch(&mut upgrade_request)
+        .expect_upgrade_success();
+
+    let config = EngineConfigBuilder::new()
+        .with_protocol_version(new_protocol_version)
+        .with_trap_on_ambiguous_entity_version(trap)
+        .build();
+
+    builder.with_engine_config(config);
+
+    let config = builder.engine_config();
+    let protocol_version = config.protocol_version();
+
+    let runtime_args = runtime_args! {
+        "contract_package" => contract_package_hash
+    };
+    let exec_request = {
+        let contract_name = format!("{}.wasm", "purse_holder_stored_upgrader_v2_2");
+        ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, &contract_name, runtime_args)
+            .with_protocol_version(protocol_version)
+            .build()
+    };
+
+    builder.exec(exec_request).expect_success().commit();
+
+    let contract_package = builder
+        .query(None, Key::Hash(contract_package_hash.value()), &[])
+        .expect("must get package as stored value")
+        .into_contract_package()
+        .expect("must get package");
+    let current_version = contract_package
+        .current_contract_version()
+        .expect("must have the latest current version");
+
+    assert_eq!(current_version.protocol_version_major(), 3);
+
+    let runtime_args = runtime_args! {
+        "contract_package_hash" => contract_package_hash,
+        "version" => Some(1),
+        "major_version" => None::<u32>,
+        "entry_point" => "delegate".to_string(),
+        "purse_name" => "v_1_1_purse",
+    };
+
+    let contract_name = format!("{}.wasm", "call_package_version_by_hash");
+    let exec_request =
+        ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, &contract_name, runtime_args)
+            .with_protocol_version(protocol_version)
+            .build();
+
+    if trap {
+        builder.exec(exec_request).expect_failure();
+        let expected_error = Error::Exec(ExecError::AmbiguousEntityVersion);
+        builder.assert_error(expected_error);
+    } else {
+        builder.exec(exec_request).expect_success().commit();
+    }
+}
+
+#[ignore]
+#[test]
+fn should_not_require_subsequent_increasing_versions_to_correctly_identify_version_key_with_trap_set(
+) {
+    should_not_require_subsequent_cases(true)
+}
+
+#[ignore]
+#[test]
+fn should_not_require_subsequent_increasing_versions_to_correctly_identify_version_key_with_trap_unset(
+) {
+    should_not_require_subsequent_cases(false)
 }

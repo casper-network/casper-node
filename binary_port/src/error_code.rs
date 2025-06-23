@@ -368,10 +368,8 @@ pub enum ErrorCode {
     InvalidReservedSlots = 115,
     #[error("Transaction attempts to set a delegation amount above the highest allowed value")]
     InvalidDelegationAmount = 116,
-    #[error("Calling a stored contract by targeting it's `version` is not supported")]
-    TargetingPackageVersionNotSupported = 117,
     #[error("the transaction invocation target is unsupported under V2 runtime")]
-    UnsupportedInvocationTarget = 118,
+    UnsupportedInvocationTarget = 117,
 }
 
 impl TryFrom<u16> for ErrorCode {
@@ -456,9 +454,6 @@ impl From<InvalidDeploy> for ErrorCode {
             }
             InvalidDeploy::InvalidPaymentAmount => ErrorCode::InvalidDeployInvalidPaymentAmount,
             InvalidDeploy::PricingModeNotSupported => ErrorCode::PricingModeNotSupported,
-            InvalidDeploy::TargetingPackageVersionNotSupported => {
-                ErrorCode::TargetingPackageVersionNotSupported
-            }
             _ => ErrorCode::InvalidDeployUnspecified,
         }
     }
@@ -572,9 +567,6 @@ impl From<InvalidTransactionV1> for ErrorCode {
             InvalidTransactionV1::InvalidReservedSlots { .. } => ErrorCode::InvalidReservedSlots,
             InvalidTransactionV1::InvalidDelegationAmount { .. } => {
                 ErrorCode::InvalidDelegationAmount
-            }
-            InvalidTransactionV1::TargetingPackageVersionNotSupported => {
-                ErrorCode::TargetingPackageVersionNotSupported
             }
             InvalidTransactionV1::UnsupportedInvocationTarget { .. } => {
                 ErrorCode::UnsupportedInvocationTarget

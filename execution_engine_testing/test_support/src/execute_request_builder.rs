@@ -4,11 +4,11 @@ use casper_execution_engine::engine_state::{
     BlockInfo, ExecutableItem, SessionDataV1, SessionInputData, WasmV1Request,
 };
 use casper_types::{
-    account::AccountHash, addressable_entity::DEFAULT_ENTRY_POINT_NAME, runtime_args,
-    AddressableEntityHash, BlockHash, BlockTime, Digest, EntityVersion, EntityVersionKey, Gas,
-    InitiatorAddr, PackageHash, Phase, PricingMode, ProtocolVersion, RuntimeArgs,
-    TransactionEntryPoint, TransactionHash, TransactionInvocationTarget, TransactionRuntimeParams,
-    TransactionTarget, TransactionV1Hash,
+    account::AccountHash, addressable_entity::DEFAULT_ENTRY_POINT_NAME,
+    contracts::ProtocolVersionMajor, runtime_args, AddressableEntityHash, BlockHash, BlockTime,
+    Digest, EntityVersion, Gas, InitiatorAddr, PackageHash, Phase, PricingMode, ProtocolVersion,
+    RuntimeArgs, TransactionEntryPoint, TransactionHash, TransactionInvocationTarget,
+    TransactionRuntimeParams, TransactionTarget, TransactionV1Hash,
 };
 
 use crate::{
@@ -68,13 +68,16 @@ impl ExecuteRequestBuilder {
     pub const DEFAULT_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V2_0_0;
 
     /// Converts a `SessionInputData` into an `ExecuteRequestBuilder`.
-    pub fn from_session_input_data(session_input_data: &SessionInputData) -> Self {
+    pub fn from_session_input_data_for_protocol_version(
+        session_input_data: &SessionInputData,
+        protocol_version: ProtocolVersion,
+    ) -> Self {
         let block_info = BlockInfo::new(
             Self::DEFAULT_STATE_HASH,
             BlockTime::new(DEFAULT_BLOCK_TIME),
             BlockHash::default(),
             0,
-            DEFAULT_PROTOCOL_VERSION,
+            protocol_version,
         );
         let authorization_keys = session_input_data.signers();
         let session =
@@ -96,7 +99,7 @@ impl ExecuteRequestBuilder {
                 BlockTime::new(DEFAULT_BLOCK_TIME),
                 BlockHash::default(),
                 0,
-                DEFAULT_PROTOCOL_VERSION,
+                protocol_version,
             );
             let request = WasmV1Request::new_custom_payment(
                 block_info,
@@ -130,15 +133,31 @@ impl ExecuteRequestBuilder {
         }
     }
 
+    /// Converts a `SessionInputData` into an `ExecuteRequestBuilder`.
+    pub fn from_session_input_data(session_input_data: &SessionInputData) -> Self {
+        Self::from_session_input_data_for_protocol_version(
+            session_input_data,
+            DEFAULT_PROTOCOL_VERSION,
+        )
+    }
+
     /// Converts a `DeployItem` into an `ExecuteRequestBuilder`.
     pub fn from_deploy_item(deploy_item: &DeployItem) -> Self {
+        Self::from_deploy_item_for_protocol_version(deploy_item, DEFAULT_PROTOCOL_VERSION)
+    }
+
+    /// Converts a `DeployItem` into an `ExecuteRequestBuilder`.
+    pub fn from_deploy_item_for_protocol_version(
+        deploy_item: &DeployItem,
+        protocol_version: ProtocolVersion,
+    ) -> Self {
         let authorization_keys = deploy_item.authorization_keys.clone();
         let block_info = BlockInfo::new(
             Self::DEFAULT_STATE_HASH,
             BlockTime::new(DEFAULT_BLOCK_TIME),
             BlockHash::default(),
             0,
-            DEFAULT_PROTOCOL_VERSION,
+            protocol_version,
         );
         let session = deploy_item
             .new_session_from_deploy_item(block_info, Gas::new(DEFAULT_GAS_LIMIT))
@@ -196,6 +215,21 @@ impl ExecuteRequestBuilder {
         session_file: &str,
         session_args: RuntimeArgs,
     ) -> Self {
+        Self::standard_with_protocol_version(
+            account_hash,
+            session_file,
+            session_args,
+            DEFAULT_PROTOCOL_VERSION,
+        )
+    }
+
+    /// Returns an [`ExecuteRequest`] derived from a deploy with standard dependencies.
+    pub fn standard_with_protocol_version(
+        account_hash: AccountHash,
+        session_file: &str,
+        session_args: RuntimeArgs,
+        protocol_version: ProtocolVersion,
+    ) -> Self {
         let deploy_item = DeployItemBuilder::new()
             .with_address(account_hash)
             .with_session_code(session_file, session_args)
@@ -204,7 +238,7 @@ impl ExecuteRequestBuilder {
             })
             .with_authorization_keys(&[account_hash])
             .build();
-        Self::from_deploy_item(&deploy_item)
+        Self::from_deploy_item_for_protocol_version(&deploy_item, protocol_version)
     }
 
     /// Returns an [`ExecuteRequest`] derived from a deploy with session module bytes.
@@ -260,11 +294,11 @@ impl ExecuteRequestBuilder {
 
     /// Returns an [`ExecuteRequest`] derived from a deploy with a session item that will call a
     /// versioned stored contract by hash.
-    pub fn key_versioned_contract_call_by_hash(
+    pub fn contract_call_by_hash_versioned_with_major(
         sender: AccountHash,
         contract_package_hash: PackageHash,
         version: Option<EntityVersion>,
-        version_key: Option<EntityVersionKey>,
+        protocol_version_major: Option<ProtocolVersionMajor>,
         entry_point_name: &str,
         args: RuntimeArgs,
     ) -> Self {
@@ -273,7 +307,7 @@ impl ExecuteRequestBuilder {
             id: TransactionInvocationTarget::ByPackageHash {
                 addr: contract_package_hash.value(),
                 version,
-                version_key,
+                protocol_version_major,
             },
             runtime: TransactionRuntimeParams::VmCasperV1,
         };
@@ -327,11 +361,11 @@ impl ExecuteRequestBuilder {
 
     /// Returns an [`ExecuteRequest`] derived from a deploy with a session item that will call a
     /// versioned stored contract by name.
-    pub fn key_versioned_contract_call_by_name(
+    pub fn contract_call_by_name_versioned_with_major(
         sender: AccountHash,
         contract_name: &str,
         version: Option<EntityVersion>,
-        version_key: Option<EntityVersionKey>,
+        protocol_version_major: Option<ProtocolVersionMajor>,
         entry_point_name: &str,
         args: RuntimeArgs,
     ) -> Self {
@@ -340,7 +374,7 @@ impl ExecuteRequestBuilder {
             id: TransactionInvocationTarget::ByPackageName {
                 name: contract_name.to_owned(),
                 version,
-                version_key,
+                protocol_version_major,
             },
             runtime: TransactionRuntimeParams::VmCasperV1,
         };
@@ -414,6 +448,12 @@ impl ExecuteRequestBuilder {
     /// Sets the authorization keys used by the [`WasmV1Request`]s.
     pub fn with_authorization_keys(mut self, authorization_keys: BTreeSet<AccountHash>) -> Self {
         self.authorization_keys = authorization_keys;
+        self
+    }
+
+    /// Sets the protocol version for the execution request
+    pub fn with_protocol_version(mut self, protocol_version: ProtocolVersion) -> Self {
+        self.protocol_version = protocol_version;
         self
     }
 

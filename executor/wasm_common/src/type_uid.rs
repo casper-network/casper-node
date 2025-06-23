@@ -274,10 +274,7 @@ mod tests {
     #[test]
     fn display() {
         let uid = Uid::from_u64(0x0004567890abcdef);
-        assert_eq!(
-            uid.to_string(),
-            "0x0004567890abcdef"
-        );
+        assert_eq!(uid.to_string(), "0x0004567890abcdef");
         assert_eq!(format!("{:x}", uid), "4567890abcdef");
         assert_eq!(format!("{:X}", uid), "4567890ABCDEF");
     }
