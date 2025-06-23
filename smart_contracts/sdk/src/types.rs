@@ -1,11 +1,12 @@
 use crate::{
-    abi::TypeDef,
     common::error::{CALLEE_GAS_DEPLETED, CALLEE_NOT_CALLABLE, CALLEE_REVERTED, CALLEE_TRAPPED},
 };
 use casper_contract_macros::TypeUid;
 
+#[cfg(not(target_arch = "wasm32"))]
+use crate::abi::{CasperABI, TypeDef, Declaration, EnumVariant};
+
 use crate::{
-    abi::{CasperABI, Declaration, Definition, EnumVariant},
     prelude::fmt,
     serializers::borsh::{BorshDeserialize, BorshSerialize},
 };
@@ -49,6 +50,7 @@ impl TryFrom<u32> for CallError {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl CasperABI for CallError {
     fn populate_definitions(_definitions: &mut crate::abi::Definitions) {}
 

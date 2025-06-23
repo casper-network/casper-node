@@ -1,5 +1,7 @@
-use casper_contract_macros::TypeUid;
-use casper_contract_sdk::type_uid::{TypeUid, Uid};
+use casper_contract_sdk::{
+    common::type_uid::{TypeUid, Uid},
+    macros::TypeUid,
+};
 
 #[allow(dead_code)]
 #[derive(TypeUid)]

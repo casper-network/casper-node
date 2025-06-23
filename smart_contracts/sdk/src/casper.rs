@@ -1,8 +1,9 @@
 #[cfg(all(not(target_arch = "wasm32"), feature = "std"))]
 pub mod native;
+#[cfg(not(target_arch = "wasm32"))]
+use crate::abi::{CasperABI, EnumVariant};
 
 use crate::{
-    abi::{CasperABI, EnumVariant},
     common::{
         tagged_bytes::TaggedBytes,
         type_uid::{TypeUid, Uid},
@@ -96,7 +97,7 @@ pub fn copy_input_to(dest: &mut [u8]) -> Option<&[u8]> {
     Some(&dest[..length])
 }
 
-///
+/// Return raw bytes from the contract.
 pub fn ret_raw_bytes(flags: ReturnFlags, data_type_uid: Uid, data: Option<&[u8]>) {
     unsafe {
         casper_contract_sdk_sys::casper_return(
@@ -113,7 +114,7 @@ pub fn ret_tagged_bytes(flags: ReturnFlags, tagged_bytes: Option<TaggedBytes>) {
         flags,
         tagged_bytes
             .as_ref()
-            .map(|tagged| tagged.type_uid().clone())
+            .map(|tagged| tagged.type_uid())
             .unwrap_or(Uid::UNTYPED),
         tagged_bytes
             .as_ref()
@@ -238,7 +239,7 @@ pub fn write_raw_bytes(key: Keyspace, type_uid: Uid, value: &[u8]) -> Result<(),
 
 /// Write tagged bytes to a global state.
 pub fn write_tagged_bytes(key: Keyspace, tagged_bytes: TaggedBytes) -> Result<(), CommonResult> {
-    write_raw_bytes(key, tagged_bytes.type_uid(), &tagged_bytes.bytes())?;
+    write_raw_bytes(key, tagged_bytes.type_uid(), tagged_bytes.bytes())?;
     Ok(())
 }
 
@@ -257,7 +258,7 @@ pub fn read<T: BorshDeserialize + TypeUid>(key: Keyspace) -> Result<Option<T>, C
                 Ok(value) => Ok(Some(value)),
                 Err(_error) => {
                     // If deserialization fails, return an error.
-                    return Err(CommonResult::InvalidData);
+                    Err(CommonResult::InvalidData)
                 }
             }
         }
@@ -382,7 +383,7 @@ pub fn casper_call(
     )
     .expect("Failed to call contract");
 
-    let tagged_bytes = if call_result.data_ptr == ptr::null() {
+    let tagged_bytes = if call_result.data_ptr.is_null() {
         #[cfg(debug_assertions)]
         {
             if was_alloc_callback_executed {
@@ -597,6 +598,7 @@ impl Entity {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl CasperABI for Entity {
     fn populate_definitions(definitions: &mut crate::abi::Definitions) {
         definitions.populate_one::<[u8; 32]>();

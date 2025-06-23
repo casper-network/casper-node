@@ -58,11 +58,7 @@
 //!   }
 //! }
 //! ```
-use casper_contract_sdk::{
-    serializers::borsh::{BorshDeserialize, BorshSerialize},
-    types::U256,
-};
-// use casper_contract_sdk::macros::{CasperABI, TypeUid};
+use casper_contract_sdk::types::U256;
 use super::access_control::{AccessControl, AccessControlError, Role};
 use casper_contract_sdk::{collections::Map, macros::blake2b256, prelude::*};
 

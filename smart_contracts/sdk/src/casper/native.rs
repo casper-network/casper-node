@@ -912,7 +912,7 @@ mod symbols {
 mod tests {
     use casper_executor_wasm_common::keyspace::Keyspace;
 
-    use crate::{casper, tagged_bytes::TaggedBytes, type_uid::TypeUid};
+    use crate::{casper, common::tagged_bytes::TaggedBytes};
 
     use super::*;
 

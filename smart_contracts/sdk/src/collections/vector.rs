@@ -1,5 +1,6 @@
+#[cfg(not(target_arch = "wasm32"))]
+use crate::abi::{CasperABI, Declaration, Definitions, StructField, TypeDef};
 use crate::{
-    abi::{CasperABI, Declaration, Definition, Definitions, StructField, TypeDef},
     casper,
     common::type_uid::{TypeUid, Uid},
     prelude::{cmp::Ordering, marker::PhantomData},
@@ -16,6 +17,7 @@ pub struct Vector<T> {
     pub(crate) _marker: PhantomData<T>,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl<T: CasperABI> CasperABI for Vector<T> {
     fn populate_definitions(_definitions: &mut Definitions) {}
 

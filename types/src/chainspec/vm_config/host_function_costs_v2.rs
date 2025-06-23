@@ -280,7 +280,10 @@ impl Default for HostFunctionCostsV2 {
                 DEFAULT_COPY_INPUT_COST,
                 [NOT_USED, DEFAULT_COPY_INPUT_VALUE_SIZE_WEIGHT],
             ),
-            ret: HostFunctionV2::new(DEFAULT_RET_COST, [NOT_USED, NOT_USED, NOT_USED, DEFAULT_RET_VALUE_SIZE_WEIGHT]),
+            ret: HostFunctionV2::new(
+                DEFAULT_RET_COST,
+                [NOT_USED, NOT_USED, NOT_USED, DEFAULT_RET_VALUE_SIZE_WEIGHT],
+            ),
             create: HostFunctionV2::new(
                 DEFAULT_CREATE_COST,
                 [

@@ -1,7 +1,7 @@
 pub mod support;
 
 use casper_contract_sdk::{
-    abi::{Declaration, Definition, Primitive, TypeDef},
+    abi::{Declaration, Primitive, TypeDef},
     common::flags::EntryPointFlags,
     schema::{Schema, SchemaType},
 };

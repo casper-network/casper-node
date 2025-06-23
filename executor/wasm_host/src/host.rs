@@ -950,7 +950,7 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
                     };
 
                     if out_ptr != 0 {
-                        caller.memory_write(out_ptr, &output.bytes())?;
+                        caller.memory_write(out_ptr, output.bytes())?;
                     }
 
                     abi::CallResult {

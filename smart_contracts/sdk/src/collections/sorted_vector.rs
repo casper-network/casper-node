@@ -1,7 +1,9 @@
 use crate::serializers::borsh::{BorshDeserialize, BorshSerialize};
 
+#[cfg(not(target_arch = "wasm32"))]
+use crate::abi::CasperABI;
+
 use crate::{
-    abi::CasperABI,
     common::type_uid::{TypeUid, Uid},
 };
 
@@ -13,6 +15,7 @@ pub struct SortedVector<T: Ord> {
     vector: Vector<T>,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl<T: Ord + CasperABI> CasperABI for SortedVector<T> {
     fn populate_definitions(definitions: &mut crate::abi::Definitions) {
         T::populate_definitions(definitions)

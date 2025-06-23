@@ -578,7 +578,7 @@ impl<const N: usize> CasperABI for bnum::BUint<N> {
 #[cfg(test)]
 mod tests {
     use crate::{
-        abi::{CasperABI, Definition},
+        abi::{CasperABI, TypeDef},
         types::U256,
     };
 
@@ -587,7 +587,7 @@ mod tests {
         assert_eq!(U256::declaration(), "U256");
         assert_eq!(
             U256::type_def(),
-            Definition::FixedSequence {
+            TypeDef::FixedSequence {
                 length: 4,
                 decl: u64::declaration()
             }

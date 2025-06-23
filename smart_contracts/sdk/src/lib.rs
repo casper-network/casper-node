@@ -4,6 +4,7 @@
 #[macro_use]
 extern crate alloc;
 
+#[cfg(not(target_arch = "wasm32"))]
 pub mod abi;
 pub mod prelude;
 pub mod serializers;
@@ -15,7 +16,7 @@ pub use linkme;
 pub mod abi_generator;
 pub mod casper;
 pub mod collections;
-#[cfg(feature = "std")]
+#[cfg(all(feature = "std", not(target_arch = "wasm32")))]
 pub mod schema;
 pub mod types;
 

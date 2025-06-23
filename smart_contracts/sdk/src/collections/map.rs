@@ -1,5 +1,6 @@
+#[cfg(not(target_arch = "wasm32"))]
+use crate::abi::{CasperABI, Declaration, StructField, TypeDef};
 use crate::{
-    abi::{CasperABI, Declaration, Definition, StructField, TypeDef},
     casper,
     common::type_uid::{TypeUid, Uid},
     serializers::borsh::{BorshDeserialize, BorshSerialize},
@@ -67,6 +68,7 @@ where
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl<K: CasperABI, V: CasperABI> CasperABI for Map<K, V> {
     fn populate_definitions(definitions: &mut crate::abi::Definitions) {
         definitions.populate_one::<K>();
