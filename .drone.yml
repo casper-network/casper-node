@@ -240,7 +240,7 @@ steps:
 - name: upload-to-s3-genesis
   image: plugins/s3
   settings:
-    bucket: 'genesis.casperlabs.io'
+    bucket: 'genesis.casper.network'
     region: 'us-east-2'
     access_key:
       from_secret: drone_genesis_key_id
@@ -253,7 +253,7 @@ steps:
 - name: nctl-s3-build
   <<: *buildenv_upload
   commands:
-  - "aws s3 rm s3://nctl.casperlabs.io/${DRONE_BRANCH} --recursive"
+  - "aws s3 rm s3://nctl.casper.network/${DRONE_BRANCH} --recursive"
   - "./ci/nctl_upgrade_stage.sh"
   when:
     branch:
@@ -263,7 +263,7 @@ steps:
 - name: nctl-bucket-upload
   image: plugins/s3-sync:latest
   settings:
-    bucket: 'nctl.casperlabs.io'
+    bucket: 'nctl.casper.network'
     access_key:
       from_secret: put-drone-aws-ak
     secret_key:
@@ -377,13 +377,13 @@ steps:
 - name: nctl-s3-build
   <<: *buildenv_upload
   commands:
-  - "aws s3 rm s3://nctl.casperlabs.io/${DRONE_TAG} --recursive"
+  - "aws s3 rm s3://nctl.casper.network/${DRONE_TAG} --recursive"
   - "./ci/nctl_upgrade_stage.sh"
 
 - name: nctl-bucket-upload
   image: plugins/s3-sync:latest
   settings:
-    bucket: 'nctl.casperlabs.io'
+    bucket: 'nctl.casper.network'
     access_key:
       from_secret: put-drone-aws-ak
     secret_key:
