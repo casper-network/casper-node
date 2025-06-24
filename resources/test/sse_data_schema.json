@@ -3977,14 +3977,14 @@
           "additionalProperties": false
         },
         {
-          "description": "Raw bytes. Similar to a [`crate::StoredValue::CLValue`] but does not incur overhead of a [`crate::CLValue`] and [`crate::CLType`].",
+          "description": "Bytes tagged with a unique type id. Similar to a [`crate::StoredValue::CLValue`] but does not incur overhead of a [`crate::CLValue`] and [`crate::CLType`].",
           "type": "object",
           "required": [
-            "RawBytes"
+            "TaggedBytes"
           ],
           "properties": {
-            "RawBytes": {
-              "type": "string"
+            "TaggedBytes": {
+              "$ref": "#/definitions/TaggedBytes"
             }
           },
           "additionalProperties": false
@@ -4916,6 +4916,24 @@
         }
       ]
     },
+    "TaggedBytes": {
+      "description": "A container for arbitrary bytes, tagged with a unique type id.",
+      "type": "object",
+      "required": [
+        "bytes",
+        "type_uid"
+      ],
+      "properties": {
+        "type_uid": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "bytes": {
+          "$ref": "#/definitions/Bytes"
+        }
+      }
+    },
     "TransformError": {
       "description": "Error type for applying and combining transforms.\n\nA `TypeMismatch` occurs when a transform cannot be applied because the types are not compatible (e.g. trying to add a number to a string).",
       "oneOf": [
@@ -5098,6 +5116,19 @@
           "properties": {
             "Bytes": {
               "$ref": "#/definitions/Bytes"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Message represented as tagged bytes.",
+          "type": "object",
+          "required": [
+            "TaggedBytes"
+          ],
+          "properties": {
+            "TaggedBytes": {
+              "$ref": "#/definitions/TaggedBytes"
             }
           },
           "additionalProperties": false

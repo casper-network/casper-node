@@ -11,6 +11,7 @@ use std::{
 
 use crate::linkme::distributed_slice;
 use bytes::Bytes;
+use casper_contract_sdk_sys::CallResult;
 use casper_executor_wasm_common::{
     env_info::EnvInfo,
     error::{
@@ -18,6 +19,7 @@ use casper_executor_wasm_common::{
         HOST_ERROR_NOT_FOUND, HOST_ERROR_SUCCESS,
     },
     flags::ReturnFlags,
+    tagged_bytes::TaggedBytes,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use rand::Rng;
@@ -137,7 +139,7 @@ pub fn invoke_export_by_name(name: &str) {
 
 #[derive(Debug)]
 pub enum NativeTrap {
-    Return(ReturnFlags, Bytes),
+    Return(ReturnFlags, TaggedBytes),
     Panic(Box<dyn std::any::Any + Send + 'static>),
 }
 
@@ -293,9 +295,9 @@ impl Environment {
         key_space: u64,
         key_ptr: *const u8,
         key_size: usize,
+        value_type_uid: u64,
         value_ptr: *const u8,
         value_size: usize,
-        value_type_uid: u64,
     ) -> Result<u32, NativeTrap> {
         assert!(!key_ptr.is_null());
         assert!(!value_ptr.is_null());
@@ -342,6 +344,7 @@ impl Environment {
     fn casper_return(
         &self,
         flags: u32,
+        data_type_uid: u64,
         data_ptr: *const u8,
         data_len: usize,
     ) -> Result<Infallible, NativeTrap> {
@@ -351,7 +354,8 @@ impl Environment {
         } else {
             Bytes::copy_from_slice(unsafe { slice::from_raw_parts(data_ptr, data_len) })
         };
-        Err(NativeTrap::Return(return_flags, data))
+        let tagged_bytes = TaggedBytes::from_raw_parts(data_type_uid.into(), data);
+        Err(NativeTrap::Return(return_flags, tagged_bytes))
     }
 
     fn casper_copy_input(
@@ -463,11 +467,11 @@ impl Environment {
 
             match result {
                 Ok(()) => {}
-                Err(NativeTrap::Return(flags, bytes)) => {
+                Err(NativeTrap::Return(flags, tagged_bytes)) => {
                     if flags.contains(ReturnFlags::REVERT) {
                         todo!("Constructor returned with a revert flag");
                     }
-                    assert!(bytes.is_empty(), "When returning from the constructor it is expected that no bytes are passed in a return function");
+                    assert!(tagged_bytes.bytes().is_empty(), "When returning from the constructor it is expected that no bytes are passed in a return function");
                 }
                 Err(NativeTrap::Panic(_panic)) => {
                     todo!();
@@ -483,11 +487,12 @@ impl Environment {
         &self,
         address_ptr: *const u8,
         address_size: usize,
-        transferred_value: u64,
+        transferred_amount: u64,
         entry_point_ptr: *const u8,
         entry_point_size: usize,
         input_ptr: *const u8,
         input_size: usize,
+        call_result_ptr: *mut CallResult,
         alloc: extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8, /* For capturing output
                                                                          * data */
         alloc_ctx: *const core::ffi::c_void,
@@ -501,9 +506,10 @@ impl Environment {
             let entry_point = std::str::from_utf8(entry_point).expect("Valid UTF-8 string");
             entry_point.to_string()
         };
+        let mut call_result = NonNull::new(call_result_ptr).expect("Valid pointer");
 
         assert_eq!(
-            transferred_value, 0,
+            transferred_amount, 0,
             "Transferred value is not supported in native mode"
         );
 
@@ -535,21 +541,42 @@ impl Environment {
 
         match unfolded {
             Ok(()) => Ok(CALLEE_SUCCEEDED),
-            Err(NativeTrap::Return(flags, bytes)) => {
-                let ptr = NonNull::new(alloc(bytes.len(), alloc_ctx.cast_mut()));
+            Err(NativeTrap::Return(flags, tagged_bytes)) => {
+                let ptr = NonNull::new(alloc(tagged_bytes.bytes().len(), alloc_ctx.cast_mut()));
                 if let Some(output_ptr) = ptr {
                     unsafe {
-                        ptr::copy_nonoverlapping(bytes.as_ptr(), output_ptr.as_ptr(), bytes.len());
+                        ptr::copy_nonoverlapping(
+                            tagged_bytes.bytes().as_ptr(),
+                            output_ptr.as_ptr(),
+                            tagged_bytes.bytes().len(),
+                        );
                     }
                 }
 
-                if flags.contains(ReturnFlags::REVERT) {
-                    Ok(CALLEE_REVERTED)
-                } else {
-                    Ok(CALLEE_SUCCEEDED)
-                }
+                // let info = info_ptr.as_mut();
+                let call_result = unsafe { call_result.as_mut() };
+                *call_result = CallResult {
+                    call_outcome: if flags.contains(ReturnFlags::REVERT) {
+                        CALLEE_REVERTED
+                    } else {
+                        CALLEE_SUCCEEDED
+                    },
+                    data_ptr: ptr::null_mut(),
+                    data_size: tagged_bytes.bytes().len(),
+                    type_uid: tagged_bytes.type_uid().as_u64(),
+                };
+
+                Ok(HOST_ERROR_SUCCESS)
             }
             Err(NativeTrap::Panic(panic)) => {
+                let call_result = unsafe { call_result.as_mut() };
+                *call_result = CallResult {
+                    call_outcome: CALLEE_TRAPPED,
+                    data_ptr: ptr::null_mut(),
+                    data_size: 0,
+                    type_uid: 0,
+                };
+
                 eprintln!("Panic {panic:?}");
                 Ok(CALLEE_TRAPPED)
             }
@@ -718,9 +745,9 @@ mod symbols {
         key_space: u64,
         key_ptr: *const u8,
         key_size: usize,
+        value_type_uid: u64,
         value_ptr: *const u8,
         value_size: usize,
-        value_type_uid: u64,
     ) -> u32 {
         let _name = "casper_write";
         let _args = (&key_space, &key_ptr, &key_size, &value_ptr, &value_size);
@@ -729,9 +756,9 @@ mod symbols {
                 key_space,
                 key_ptr,
                 key_size,
+                value_type_uid,
                 value_ptr,
                 value_size,
-                value_type_uid,
             )
         });
         crate::casper::native::handle_ret(_call_result)
@@ -754,16 +781,22 @@ mod symbols {
         crate::casper::native::handle_ret(_call_result);
     }
 
-    use casper_executor_wasm_common::error::HOST_ERROR_SUCCESS;
+    use casper_executor_wasm_common::{error::HOST_ERROR_SUCCESS, type_uid::Uid};
 
     use crate::casper::native::LAST_TRAP;
 
     #[no_mangle]
-    pub extern "C" fn casper_return(flags: u32, data_ptr: *const u8, data_len: usize) {
+    pub extern "C" fn casper_return(
+        flags: u32,
+        data_type_uid: u64,
+        data_ptr: *const u8,
+        data_len: usize,
+    ) {
         let _name = "casper_return";
-        let _args = (&flags, &data_ptr, &data_len);
-        let _call_result =
-            with_current_environment(|stub| stub.casper_return(flags, data_ptr, data_len));
+        let _args = (&flags, &data_type_uid, &data_ptr, &data_len);
+        let _call_result = with_current_environment(|stub| {
+            stub.casper_return(flags, data_type_uid, data_ptr, data_len)
+        });
         let err = _call_result.unwrap_err(); // SAFE
         LAST_TRAP.with(|last_trap| last_trap.borrow_mut().replace(err));
     }
@@ -819,8 +852,8 @@ mod symbols {
         entry_point_size: usize,
         input_ptr: *const u8,
         input_size: usize,
-        alloc: extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8, /* For capturing output
-                                                                         * data */
+        call_result_ptr: *mut casper_contract_sdk_sys::CallResult,
+        alloc: extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8,
         alloc_ctx: *const core::ffi::c_void,
     ) -> u32 {
         let _call_result = with_current_environment(|stub| {
@@ -832,6 +865,7 @@ mod symbols {
                 entry_point_size,
                 input_ptr,
                 input_size,
+                call_result_ptr,
                 alloc,
                 alloc_ctx,
             )
@@ -891,13 +925,17 @@ mod symbols {
     pub extern "C" fn casper_emit(
         topic_ptr: *const u8,
         topic_size: usize,
+        payload_uid: u64,
         data_ptr: *const u8,
         data_size: usize,
     ) -> u32 {
         let topic = unsafe { slice::from_raw_parts(topic_ptr, topic_size) };
         let data = unsafe { slice::from_raw_parts(data_ptr, data_size) };
         let topic = std::str::from_utf8(topic).expect("Valid UTF-8 string");
-        println!("Emitting event with topic: {topic:?} and data: {data:?}");
+        let payload_uid = Uid::from_u64(payload_uid);
+        println!(
+            "Emitting event with topic: {topic:?}, payload_uid: {payload_uid}, and data: {data:?}"
+        );
         HOST_ERROR_SUCCESS
     }
 
@@ -969,7 +1007,7 @@ mod tests {
     #[test]
     fn test_returns() {
         dispatch_with(Environment::default(), || {
-            let _ = with_current_environment(|stub| stub.casper_return(0, ptr::null(), 0));
+            let _ = with_current_environment(|stub| stub.casper_return(0, 0, ptr::null(), 0));
         })
         .unwrap();
     }

@@ -55,6 +55,7 @@ macro_rules! for_each_host_function {
                 call_result_ptr: *mut $crate::CallResult,
                 alloc: extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8, // For capturing output data
                 alloc_ctx: *const core::ffi::c_void,
+
             ) -> u32;
             pub fn casper_upgrade(
                 code_ptr: *const u8,
