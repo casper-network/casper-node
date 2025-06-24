@@ -37,6 +37,7 @@ enum Foo {
     Variant2 { a: u64, b: String },
     Variant3(u8, u16, u32, u64),
     Variant4 = 1234,
+    Variant5(String) = 5678,
 }
 
 #[test]
@@ -64,6 +65,7 @@ fn test_struct_type_uid() {
                 Uid::from_fields("Variant2", &[u64::UID, String::UID]), // Variant2
                 Uid::from_fields("Variant3", &[u8::UID, u16::UID, u32::UID, u64::UID]), // Variant3
                 Uid::from_fields("Variant4", &[Uid::from(1234_u64)]),
+                Uid::from_fields("Variant5", &[String::UID, Uid::from(5678_u64)]), // Variant5
             ]
         )
     );
