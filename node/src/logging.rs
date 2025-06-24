@@ -24,7 +24,7 @@ use tracing_subscriber::{
     EnvFilter, Registry,
 };
 
-const LOG_CONFIGURATION_ENVVAR: &str = "RUST_LOG";
+const LOG_VERBOSITY_LEVEL_ENVVAR: &str = "RUST_LOG";
 
 const LOG_FIELD_MESSAGE: &str = "message";
 const LOG_FIELD_TARGET: &str = "log.target";
@@ -337,9 +337,9 @@ pub fn init_with_config(config: &LoggingConfig) -> anyhow::Result<()> {
     let formatter = format::debug_fn(format_into_debug_writer as FormatDebugFn);
 
     let filter = EnvFilter::new(
-        env::var(LOG_CONFIGURATION_ENVVAR)
+        env::var(LOG_VERBOSITY_LEVEL_ENVVAR)
             .as_deref()
-            .unwrap_or("warn,casper_node=debug"),
+            .unwrap_or("warn,casper_node=info"),
     );
 
     match config.format {
