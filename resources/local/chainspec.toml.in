@@ -415,7 +415,7 @@ read = { cost = 0, arguments = [0, 0, 0, 0, 0, 0] }
 write = { cost = 0, arguments = [0, 0, 0, 0, 0, 0] }
 remove = { cost = 0, arguments = [0, 0, 0] }
 copy_input = { cost = 0, arguments = [0, 0] }
-ret = { cost = 0, arguments = [0, 0, 0, 0, 0] }
+ret = { cost = 0, arguments = [0, 0, 0, 0] }
 create = { cost = 0, arguments = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] }
 transfer = { cost = 0, arguments = [0, 0, 0] }
 env_balance = { cost = 0, arguments = [0, 0, 0, 0] }
