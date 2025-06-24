@@ -354,7 +354,7 @@ fn when_disamiguous_calls_are_disabled_then_ambiguous_call_by_hash_will_fail() {
         .clone();
     assert!(matches!(
         error,
-        Error::Exec(ExecError::CollisionInEntityVersion)
+        Error::Exec(ExecError::AmbiguousEntityVersion)
     ))
 }
 
@@ -388,7 +388,7 @@ fn when_disamiguous_calls_are_disabled_then_ambiguous_call_by_name_will_fail() {
         .clone();
     assert!(matches!(
         error,
-        Error::Exec(ExecError::CollisionInEntityVersion)
+        Error::Exec(ExecError::AmbiguousEntityVersion)
     ))
 }
 
@@ -617,7 +617,7 @@ fn exec_put_key_by_package_hash(
 fn upgrade_version(
     builder: &mut LmdbWasmTestBuilder,
     new_protocol_version_major: ProtocolVersionMajor,
-    should_return_error_on_collision: bool,
+    should_trap_on_ambiguous_entity_version: bool,
 ) {
     if new_protocol_version_major <= 1 {
         panic!("Can't upgrade to 1 or 0 major version");
@@ -637,7 +637,7 @@ fn upgrade_version(
         .with_enable_addressable_entity(false)
         .build();
     let config = EngineConfigBuilder::new()
-        .with_return_error_on_collision(should_return_error_on_collision)
+        .with_trap_on_ambiguous_entity_version(should_trap_on_ambiguous_entity_version)
         .build();
     builder
         .with_block_time(Timestamp::now().into())
