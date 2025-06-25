@@ -30,6 +30,7 @@ use casper_types::{
     addressable_entity::{ActionThresholds, AssociatedKeys, MessageTopicError, NamedKeyAddr},
     bytesrepr::ToBytes,
     contract_messages::{Message, MessageAddr, MessagePayload, MessageTopicSummary},
+    execution::{TransformKindV2, TransformV2},
     AddressableEntity, BlockGlobalAddr, BlockHash, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash,
     ByteCodeKind, CLType, CLValue, ContractRuntimeTag, Digest, EntityAddr, EntityEntryPoint,
     EntityKind, EntryPointAccess, EntryPointAddr, EntryPointPayment, EntryPointType,
@@ -117,6 +118,11 @@ pub fn casper_write<S: GlobalStateReader, E: Executor>(
     value_ptr: u32,
     value_size: u32,
 ) -> VMResult<u32> {
+    // In read-only mode, writing is not allowed
+    if caller.context().read_only {
+        return Ok(HOST_ERROR_INVALID_INPUT);
+    }
+
     let write_cost = caller.context().config.host_function_costs().write;
     charge_host_function_call(
         &mut caller,
@@ -230,10 +236,15 @@ pub fn casper_remove<S: GlobalStateReader, E: Executor>(
     key_ptr: u32,
     key_size: u32,
 ) -> VMResult<u32> {
-    let write_cost = caller.context().config.host_function_costs().remove;
+    // In read-only mode, removing is not allowed
+    if caller.context().read_only {
+        return Ok(HOST_ERROR_INVALID_INPUT);
+    }
+
+    let remove_cost = caller.context().config.host_function_costs().remove;
     charge_host_function_call(
         &mut caller,
-        &write_cost,
+        &remove_cost,
         [key_space, u64::from(key_ptr), u64::from(key_size)],
     )?;
 
@@ -575,6 +586,11 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
     seed_len: u32,
     result_ptr: u32,
 ) -> VMResult<u32> {
+    // In read-only mode, contract creation is not allowed
+    if caller.context().read_only {
+        return Ok(HOST_ERROR_INVALID_INPUT);
+    }
+
     let create_cost = caller.context().config.host_function_costs().create;
     charge_host_function_call(
         &mut caller,
@@ -829,6 +845,11 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
     cb_alloc: u32,
     cb_ctx: u32,
 ) -> VMResult<u32> {
+    // In read-only mode, transfers are not allowed
+    if caller.context().read_only {
+        return Ok(HOST_ERROR_INVALID_INPUT);
+    }
+
     let call_cost = caller.context().config.host_function_costs().call;
     charge_host_function_call(
         &mut caller,
@@ -1098,6 +1119,11 @@ pub fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
     entity_addr_len: u32,
     amount_ptr: u32,
 ) -> VMResult<u32> {
+    // In read-only mode, transfers are not allowed
+    if caller.context().read_only {
+        return Ok(HOST_ERROR_INVALID_INPUT);
+    }
+
     let transfer_cost = caller.context().config.host_function_costs().transfer;
     charge_host_function_call(
         &mut caller,
@@ -1258,6 +1284,11 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
     input_ptr: u32,
     input_size: u32,
 ) -> VMResult<u32> {
+    // In read-only mode, contract upgrades are not allowed
+    if caller.context().read_only {
+        return Ok(HOST_ERROR_INVALID_INPUT);
+    }
+
     let upgrade_cost = caller.context().config.host_function_costs().upgrade;
     charge_host_function_call(
         &mut caller,
@@ -1519,6 +1550,11 @@ pub fn casper_emit<S: GlobalStateReader, E: Executor>(
     payload_ptr: u32,
     payload_size: u32,
 ) -> VMResult<u32> {
+    // In read-only mode, emitting messages is not allowed
+    if caller.context().read_only {
+        return Ok(HOST_ERROR_INVALID_INPUT);
+    }
+
     // Charge for parameter weights.
     let emit_host_function = caller.context().config.host_function_costs().emit;
 

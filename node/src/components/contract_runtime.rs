@@ -9,7 +9,7 @@ mod operations;
 mod rewards;
 #[cfg(test)]
 mod tests;
-mod types;
+pub(crate) mod types;
 mod utils;
 
 use std::{
@@ -50,7 +50,7 @@ use casper_types::{
 
 use crate::{
     components::{fetcher::FetchResponse, Component, ComponentState},
-    contract_runtime::{types::EraPrice, utils::handle_protocol_upgrade},
+    contract_runtime::{types::EraPrice, types::ExecutionPreState, utils::handle_protocol_upgrade, utils::run_intensive_task, operations::speculatively_execute},
     effect::{
         announcements::{
             ContractRuntimeAnnouncement, FatalAnnouncement, MetaBlockAnnouncement,
@@ -76,12 +76,7 @@ use metrics::Metrics;
 #[cfg(test)]
 pub(crate) use operations::compute_execution_results_checksum;
 pub use operations::execute_finalized_block;
-use operations::speculatively_execute;
-pub(crate) use types::{
-    BlockAndExecutionArtifacts, ExecutionArtifact, ExecutionPreState, SpeculativeExecutionResult,
-    StepOutcome,
-};
-use utils::{exec_or_requeue, run_intensive_task};
+use utils::{exec_or_requeue};
 
 const COMPONENT_NAME: &str = "contract_runtime";
 

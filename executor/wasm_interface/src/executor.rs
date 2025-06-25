@@ -51,6 +51,11 @@ pub struct ExecuteRequest {
     pub parent_block_hash: BlockHash,
     /// Block height.
     pub block_height: u64,
+    /// Whether the execution is in read-only mode.
+    ///
+    /// In read-only mode, the contract cannot make any state changes (writes, transfers, etc.)
+    /// and no gas is charged for the execution.
+    pub read_only: bool,
 }
 
 /// Builder for `ExecuteRequest`.
@@ -69,6 +74,7 @@ pub struct ExecuteRequestBuilder {
     state_hash: Option<Digest>,
     parent_block_hash: Option<BlockHash>,
     block_height: Option<u64>,
+    read_only: Option<bool>,
 }
 
 impl ExecuteRequestBuilder {
@@ -188,6 +194,13 @@ impl ExecuteRequestBuilder {
         self
     }
 
+    /// Set the read-only mode.
+    #[must_use]
+    pub fn with_read_only(mut self, read_only: bool) -> Self {
+        self.read_only = Some(read_only);
+        self
+    }
+
     /// Build the `ExecuteRequest`.
     pub fn build(self) -> Result<ExecuteRequest, &'static str> {
         let initiator = self.initiator.ok_or("Initiator is not set")?;
@@ -207,6 +220,7 @@ impl ExecuteRequestBuilder {
             .parent_block_hash
             .ok_or("Parent block hash is not set")?;
         let block_height = self.block_height.ok_or("Block height is not set")?;
+        let read_only = self.read_only.unwrap_or(false);
         Ok(ExecuteRequest {
             initiator,
             caller_key,
@@ -221,6 +235,7 @@ impl ExecuteRequestBuilder {
             state_hash,
             parent_block_hash,
             block_height,
+            read_only,
         })
     }
 }
@@ -378,4 +393,255 @@ pub trait Executor: Clone + Send {
         tracking_copy: TrackingCopy<R>,
         execute_request: ExecuteRequest,
     ) -> Result<ExecuteResult, ExecuteError>;
+
+    /// Execute a read-only query on a contract.
+    ///
+    /// This method executes a contract in read-only mode without making any state changes
+    /// or broadcasting the transaction.
+    fn query<R: GlobalStateReader + 'static>(
+        &self,
+        tracking_copy: TrackingCopy<R>,
+        query_request: QueryRequest,
+    ) -> Result<QueryResult, ExecuteError>;
+}
+
+/// Request to execute a read-only query on a Wasm contract.
+///
+/// Executes a contract in read-only mode without broadcasting or gossiping the transaction, since
+/// no state changes are made. A gas limit must be provided to prevent infinite loops and resource
+/// exhaustion attacks.
+#[derive(Debug)]
+pub struct QueryRequest {
+    /// The address of the account that would initiate the contract call.
+    pub initiator: AccountHash,
+    /// The address of the contract to query.
+    pub contract_address: HashAddr,
+    /// The entry point to call.
+    pub entry_point: String,
+    /// Input data for the query.
+    pub input: Bytes,
+    /// Gas limit for the query execution.
+    /// 
+    /// This prevents infinite loops and resource exhaustion attacks.
+    /// The caller is not charged actual tokens, but must provide a limit
+    /// to protect against malicious contracts that could stall the node.
+    pub gas_limit: u64,
+    /// Block time for the query context.
+    pub block_time: BlockTime,
+    /// State root hash to query against.
+    pub state_hash: Digest,
+    /// Parent block hash for context.
+    pub parent_block_hash: BlockHash,
+    /// Block height for context.
+    pub block_height: u64,
+    /// Chain name for context.
+    pub chain_name: Arc<str>,
+}
+
+/// REST API request for executing a read-only query on a Wasm contract.
+#[derive(Debug, serde::Deserialize)]
+pub struct QueryRequestRest {
+    /// The address of the account that would initiate the contract call.
+    pub initiator: AccountHash,
+    /// The address of the contract to query.
+    pub contract_address: HashAddr,
+    /// The entry point to call.
+    pub entry_point: String,
+    /// Input data for the query (as hex string).
+    pub input: String,
+    /// Gas limit for the query execution.
+    pub gas_limit: u64,
+    /// Block time for the query context.
+    pub block_time: BlockTime,
+    /// State root hash to query against.
+    pub state_hash: Digest,
+    /// Parent block hash for context.
+    pub parent_block_hash: BlockHash,
+    /// Block height for context.
+    pub block_height: u64,
+    /// Chain name for context.
+    pub chain_name: Arc<str>,
+}
+
+impl TryFrom<QueryRequestRest> for QueryRequest {
+    type Error = String;
+
+    fn try_from(rest_request: QueryRequestRest) -> Result<Self, Self::Error> {
+        // Parse hex input string to bytes
+        let input_bytes = hex::decode(&rest_request.input)
+            .map_err(|e| format!("Invalid hex input: {}", e))?;
+        
+        Ok(QueryRequest {
+            initiator: rest_request.initiator,
+            contract_address: rest_request.contract_address,
+            entry_point: rest_request.entry_point,
+            input: Bytes::from(input_bytes),
+            gas_limit: rest_request.gas_limit,
+            block_time: rest_request.block_time,
+            state_hash: rest_request.state_hash,
+            parent_block_hash: rest_request.parent_block_hash,
+            block_height: rest_request.block_height,
+            chain_name: rest_request.chain_name,
+        })
+    }
+}
+
+/// Result of executing a read-only query.
+#[derive(Debug)]
+pub struct QueryResult {
+    /// Error while executing the query, if any.
+    pub error: Option<CallError>,
+    /// Output data returned by the contract.
+    pub output: Option<Bytes>,
+    /// Gas usage tracked during execution. Use `gas_spent()` to get the gas consumed.
+    pub gas_usage: GasUsage,
+}
+
+impl QueryResult {
+    /// Returns the error if the query failed.
+    pub fn error(&self) -> Option<&CallError> {
+        self.error.as_ref()
+    }
+
+    /// Returns the output data if the query succeeded.
+    pub fn output(&self) -> Option<&Bytes> {
+        self.output.as_ref()
+    }
+
+    /// Returns the gas usage.
+    pub fn gas_usage(&self) -> &GasUsage {
+        &self.gas_usage
+    }
+
+    /// Returns the gas spent.
+    pub fn gas_spent(&self) -> u64 {
+        self.gas_usage.gas_spent()
+    }
+
+    /// Returns true if the query was successful.
+    pub fn is_success(&self) -> bool {
+        self.error.is_none()
+    }
+}
+
+/// Builder for `QueryRequest`.
+#[derive(Default)]
+pub struct QueryRequestBuilder {
+    initiator: Option<AccountHash>,
+    contract_address: Option<HashAddr>,
+    entry_point: Option<String>,
+    input: Option<Bytes>,
+    gas_limit: Option<u64>,
+    block_time: Option<BlockTime>,
+    state_hash: Option<Digest>,
+    parent_block_hash: Option<BlockHash>,
+    block_height: Option<u64>,
+    chain_name: Option<Arc<str>>,
+}
+
+impl QueryRequestBuilder {
+    /// Set the initiator's address.
+    #[must_use]
+    pub fn with_initiator(mut self, initiator: AccountHash) -> Self {
+        self.initiator = Some(initiator);
+        self
+    }
+
+    /// Set the contract address to query.
+    #[must_use]
+    pub fn with_contract_address(mut self, contract_address: HashAddr) -> Self {
+        self.contract_address = Some(contract_address);
+        self
+    }
+
+    /// Set the entry point to call.
+    #[must_use]
+    pub fn with_entry_point(mut self, entry_point: String) -> Self {
+        self.entry_point = Some(entry_point);
+        self
+    }
+
+    /// Set the input data.
+    #[must_use]
+    pub fn with_input(mut self, input: Bytes) -> Self {
+        self.input = Some(input);
+        self
+    }
+
+    /// Set the input data that can be serialized.
+    #[must_use]
+    pub fn with_serialized_input<T: BorshSerialize>(self, input: T) -> Self {
+        let input = borsh::to_vec(&input)
+            .map(Bytes::from)
+            .expect("should serialize input");
+        self.with_input(input)
+    }
+
+    /// Set the gas limit.
+    #[must_use]
+    pub fn with_gas_limit(mut self, gas_limit: u64) -> Self {
+        self.gas_limit = Some(gas_limit);
+        self
+    }
+
+    /// Set the block time.
+    #[must_use]
+    pub fn with_block_time(mut self, block_time: BlockTime) -> Self {
+        self.block_time = Some(block_time);
+        self
+    }
+
+    /// Set the state hash.
+    #[must_use]
+    pub fn with_state_hash(mut self, state_hash: Digest) -> Self {
+        self.state_hash = Some(state_hash);
+        self
+    }
+
+    /// Set the parent block hash.
+    #[must_use]
+    pub fn with_parent_block_hash(mut self, parent_block_hash: BlockHash) -> Self {
+        self.parent_block_hash = Some(parent_block_hash);
+        self
+    }
+
+    /// Set the block height.
+    #[must_use]
+    pub fn with_block_height(mut self, block_height: u64) -> Self {
+        self.block_height = Some(block_height);
+        self
+    }
+
+    /// Set the chain name.
+    #[must_use]
+    pub fn with_chain_name<T: Into<Arc<str>>>(mut self, chain_name: T) -> Self {
+        self.chain_name = Some(chain_name.into());
+        self
+    }
+
+    /// Build the `QueryRequest`.
+    pub fn build(self) -> Result<QueryRequest, &'static str> {
+        let initiator = self.initiator.ok_or("Initiator is not set")?;
+        let contract_address = self.contract_address.ok_or("Contract address is not set")?;
+        let entry_point = self.entry_point.ok_or("Entry point is not set")?;
+        let input = self.input.ok_or("Input is not set")?;
+        let gas_limit = self.gas_limit.ok_or("Gas limit is not set")?;
+        let block_time = self.block_time.ok_or("Block time is not set")?;
+        let state_hash = self.state_hash.ok_or("State hash is not set")?;
+        let parent_block_hash = self.parent_block_hash.ok_or("Parent block hash is not set")?;
+        let block_height = self.block_height.ok_or("Block height is not set")?;
+        let chain_name = self.chain_name.ok_or("Chain name is not set")?;
+        Ok(QueryRequest {
+            initiator,
+            contract_address,
+            entry_point,
+            input,
+            gas_limit,
+            block_time,
+            state_hash,
+            parent_block_hash,
+            block_height,
+            chain_name,
+        })
+    }
 }

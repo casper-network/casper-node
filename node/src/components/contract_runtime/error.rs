@@ -16,7 +16,7 @@ use casper_storage::{
 use casper_types::{bytesrepr, CLValueError, Digest, EraId, PublicKey, U512};
 
 use crate::{
-    components::contract_runtime::ExecutionPreState,
+    contract_runtime::types::ExecutionPreState,
     types::{ChunkingError, ExecutableBlock, InternalEraReport},
 };
 

@@ -66,7 +66,7 @@ use futures::{future::BoxFuture, FutureExt};
 
 use self::error::Error;
 use crate::{
-    contract_runtime::SpeculativeExecutionResult,
+    contract_runtime::types::SpeculativeExecutionResult,
     effect::{
         requests::{
             AcceptTransactionRequest, BlockSynchronizerRequest, ChainspecRawBytesRequest,

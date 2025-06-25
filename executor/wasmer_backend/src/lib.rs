@@ -287,18 +287,22 @@ where
         context: Context<S, E>,
         config: Config,
     ) -> Result<Self, WasmPreparationError> {
+        let wasm_bytes: Bytes = wasm_bytes.into();
+
         let engine = {
             let mut singlepass_compiler = Singlepass::new();
             let gatekeeper_config = GatekeeperConfig::default();
             singlepass_compiler.push_middleware(Arc::new(Gatekeeper::new(gatekeeper_config)));
+
+            // Always apply gas metering for protection against infinite loops
+            // In read-only mode, gas is tracked but not charged to the caller
             singlepass_compiler
                 .push_middleware(gas_metering::gas_metering_middleware(config.gas_limit()));
+
             singlepass_compiler
         };
 
         let engine = Engine::from(engine);
-
-        let wasm_bytes: Bytes = wasm_bytes.into();
 
         let module = Module::new(&engine, &wasm_bytes)
             .map_err(|error| WasmPreparationError::Compile(error.to_string()))?;
@@ -407,6 +411,7 @@ where
     type Context = Context<S, E>;
     fn call_export(&mut self, name: &str) -> (Result<(), VMError>, GasUsage) {
         let vm_result = self.call_export(name);
+
         let remaining_points = metering::get_remaining_points(&mut self.store, &self.instance);
         match remaining_points {
             metering::MeteringPoints::Remaining(remaining_points) => {
@@ -415,7 +420,7 @@ where
             }
             metering::MeteringPoints::Exhausted => {
                 let gas_usage = GasUsage::new(self.config.gas_limit(), 0);
-                (Err(VMError::OutOfGas), gas_usage)
+                (vm_result, gas_usage)
             }
         }
     }
@@ -445,6 +450,7 @@ where
             input: data.context.input.clone(),
             block_time: data.context.block_time,
             message_limits: data.context.message_limits,
+            read_only: data.context.read_only,
         }
     }
 }

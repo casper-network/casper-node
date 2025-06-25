@@ -16,7 +16,9 @@ use crate::{
         exec_queue::{ExecQueue, QueueItem},
         execute_finalized_block,
         metrics::Metrics,
-        rewards, BlockAndExecutionArtifacts, BlockExecutionError, ExecutionPreState, StepOutcome,
+        rewards,
+        types::{BlockAndExecutionArtifacts, ExecutionPreState, StepOutcome},
+        BlockExecutionError,
     },
     effect::{
         announcements::{ContractRuntimeAnnouncement, FatalAnnouncement, MetaBlockAnnouncement},

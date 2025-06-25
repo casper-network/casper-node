@@ -20,9 +20,10 @@ use casper_executor_wasm_host::context::Context;
 use casper_executor_wasm_interface::{
     executor::{
         ExecuteError, ExecuteRequest, ExecuteRequestBuilder, ExecuteResult,
-        ExecuteWithProviderError, ExecuteWithProviderResult, ExecutionKind, Executor,
+        ExecuteWithProviderError, ExecuteWithProviderResult, ExecutionKind, Executor, QueryRequest,
+        QueryResult,
     },
-    ConfigBuilder, GasUsage, VMError, WasmInstance,
+    ConfigBuilder, GasUsage, InternalHostError, VMError, WasmInstance,
 };
 use casper_executor_wasmer_backend::WasmerEngine;
 use casper_storage::{
@@ -31,7 +32,7 @@ use casper_storage::{
         state::{CommitProvider, StateProvider},
         GlobalStateReader,
     },
-    TrackingCopy,
+    AddressGenerator, TrackingCopy,
 };
 use casper_types::{
     account::AccountHash,
@@ -39,7 +40,7 @@ use casper_types::{
     bytesrepr, AddressableEntity, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind,
     ContractRuntimeTag, Digest, EntityAddr, EntityKind, Gas, Groups, InitiatorAddr, Key,
     MessageLimits, Package, PackageHash, PackageStatus, Phase, ProtocolVersion, StorageCosts,
-    StoredValue, TransactionInvocationTarget, URef, WasmV2Config, U512,
+    StoredValue, TransactionHash, TransactionInvocationTarget, URef, WasmV2Config, U512,
 };
 use install::{InstallContractError, InstallContractRequest, InstallContractResult};
 use parking_lot::RwLock;
@@ -360,6 +361,7 @@ impl ExecutorV2 {
             state_hash,
             parent_block_hash,
             block_height,
+            read_only,
         } = execute_request;
 
         // TODO: Purse uref does not need to be optional once value transfers to WasmBytes are
@@ -555,6 +557,7 @@ impl ExecutorV2 {
             input,
             block_time,
             message_limits: self.config.message_limits,
+            read_only,
         };
 
         let wasm_instance_config = ConfigBuilder::new()
@@ -845,6 +848,48 @@ impl Executor for ExecutorV2 {
         execute_request: ExecuteRequest,
     ) -> Result<ExecuteResult, ExecuteError> {
         self.execute_with_tracking_copy(tracking_copy, execute_request)
+    }
+
+    fn query<R: GlobalStateReader + 'static>(
+        &self,
+        tracking_copy: TrackingCopy<R>,
+        query_request: QueryRequest,
+    ) -> Result<QueryResult, ExecuteError> {
+        // Convert QueryRequest to ExecuteRequest with read-only mode enabled
+        let execute_request = ExecuteRequestBuilder::default()
+            .with_initiator(query_request.initiator)
+            .with_caller_key(Key::Account(query_request.initiator))
+            .with_gas_limit(query_request.gas_limit) // Use the provided gas limit for protection
+            .with_target(ExecutionKind::Stored {
+                address: query_request.contract_address,
+                entry_point: query_request.entry_point,
+            })
+            .with_input(query_request.input)
+            .with_transferred_value(0) // Must be 0 for read-only queries
+            .with_transaction_hash(TransactionHash::from_raw([0; 32])) // Dummy hash for queries
+            .with_address_generator(AddressGenerator::new(&[0; 32], Phase::Session))
+            .with_chain_name(query_request.chain_name)
+            .with_block_time(query_request.block_time)
+            .with_state_hash(query_request.state_hash)
+            .with_parent_block_hash(query_request.parent_block_hash)
+            .with_block_height(query_request.block_height)
+            .with_read_only(true) // Enable read-only mode
+            .build()
+            .map_err(|_| {
+                ExecuteError::InternalHost(InternalHostError::ExecuteRequestBuildFailure)
+            })?;
+
+        // Execute the query in read-only mode
+        let execute_result = self.execute_with_tracking_copy(tracking_copy, execute_request)?;
+
+        // Convert ExecuteResult to QueryResult
+        let query_result = QueryResult {
+            error: execute_result.host_error,
+            output: execute_result.output,
+            gas_usage: execute_result.gas_usage,
+        };
+
+        Ok(query_result)
     }
 }
 
