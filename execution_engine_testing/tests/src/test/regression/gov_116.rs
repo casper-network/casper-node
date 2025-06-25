@@ -18,7 +18,7 @@ use casper_types::{
     U256, U512,
 };
 
-const MINIMUM_BONDED_AMOUNT: u64 = 1_000;
+const MINIMUM_BONDED_AMOUNT: u64 = 20_000_000_000_000;
 
 /// Validator with smallest stake will withdraw most of his stake to ensure we did move time forward
 /// to unlock his whole vesting schedule.

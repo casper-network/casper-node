@@ -29,7 +29,7 @@ const CONTRACT_ADD_BID: &str = "add_bid.wasm";
 const CONTRACT_WITHDRAW_BID: &str = "withdraw_bid.wasm";
 
 const GENESIS_VALIDATOR_STAKE: u64 = 50_000;
-const GENESIS_ACCOUNT_STAKE: u64 = 100_000;
+const GENESIS_ACCOUNT_STAKE: u64 = 10_000_000_000_001;
 const TRANSFER_AMOUNT: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 
 const ARG_AMOUNT: &str = "amount";
