@@ -42,12 +42,14 @@ use casper_types::{
 use super::{
     types::{SpeculativeExecutionResult, StepOutcome},
     utils::{self, calculate_prune_eras},
-    BlockExecutionError, Metrics, StateResultError,
-    APPROVALS_CHECKSUM_NAME, EXECUTION_RESULTS_CHECKSUM_NAME,
+    BlockExecutionError, Metrics, StateResultError, APPROVALS_CHECKSUM_NAME,
+    EXECUTION_RESULTS_CHECKSUM_NAME,
 };
 use crate::{
     components::fetcher::FetchItem,
-    contract_runtime::types::{BlockAndExecutionArtifacts, ExecutionArtifactBuilder, ExecutionPreState},
+    contract_runtime::types::{
+        BlockAndExecutionArtifacts, ExecutionArtifactBuilder, ExecutionPreState,
+    },
     types::{self, Chunkable, ExecutableBlock, InternalEraReport, MetaTransaction},
 };
 

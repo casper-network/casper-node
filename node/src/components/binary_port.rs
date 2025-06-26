@@ -35,7 +35,15 @@ use casper_storage::{
     KeyPrefix as StorageKeyPrefix,
 };
 use casper_types::{
-    account::AccountHash, addressable_entity::NamedKeyAddr, bytesrepr::{self, Bytes, FromBytes, ToBytes}, contracts::{ContractHash, ContractPackage, ContractPackageHash}, execution::ExecutorQueryRequest, BlockHeader, BlockIdentifier, BlockWithSignatures, ByteCode, ByteCodeAddr, ByteCodeHash, Chainspec, ContractWasm, ContractWasmHash, Digest, EntityAddr, GlobalStateIdentifier, Key, Package, PackageAddr, Peers, ProtocolVersion, Rewards, StoredValue, TimeDiff, Timestamp, Transaction, URef
+    account::AccountHash,
+    addressable_entity::NamedKeyAddr,
+    bytesrepr::{self, Bytes, FromBytes, ToBytes},
+    contracts::{ContractHash, ContractPackage, ContractPackageHash},
+    execution::ExecutorQueryRequest,
+    BlockHeader, BlockIdentifier, BlockWithSignatures, ByteCode, ByteCodeAddr, ByteCodeHash,
+    Chainspec, ContractWasm, ContractWasmHash, Digest, EntityAddr, GlobalStateIdentifier, Key,
+    Package, PackageAddr, Peers, ProtocolVersion, Rewards, StoredValue, TimeDiff, Timestamp,
+    Transaction, URef,
 };
 use connection_terminator::ConnectionTerminator;
 use thiserror::Error as ThisError;
@@ -1395,9 +1403,7 @@ async fn try_query_execution<REv>(
 where
     REv: From<Event> + From<ContractRuntimeRequest> + From<StorageRequest>,
 {
-    let result = effect_builder
-        .query_contract(query_request)
-        .await;
+    let result = effect_builder.query_contract(query_request).await;
 
     if result.is_success() {
         // Return the output bytes on success

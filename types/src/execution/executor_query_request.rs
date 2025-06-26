@@ -1,4 +1,10 @@
-use crate::{account::AccountHash, bytesrepr::{self, Bytes, FromBytes, ToBytes}, BlockHash, BlockTime, Digest, Gas, HashAddr};
+use alloc::{string::String, vec::Vec};
+
+use crate::{
+    account::AccountHash,
+    bytesrepr::{self, Bytes, FromBytes, ToBytes},
+    BlockHash, BlockTime, Digest, Gas, HashAddr,
+};
 
 /// A request to execute a read-only query on a contract.
 ///
@@ -16,7 +22,7 @@ pub struct ExecutorQueryRequest {
     /// Input data for the query.
     pub input: Vec<u8>,
     /// Gas limit for the query execution.
-    /// 
+    ///
     /// This prevents infinite loops and resource exhaustion attacks.
     /// The caller is not charged actual tokens, but must provide a limit
     /// to protect against malicious contracts that could stall the node.
@@ -82,7 +88,7 @@ impl FromBytes for ExecutorQueryRequest {
 impl ExecutorQueryRequest {
     pub fn random(rng: &mut crate::testing::TestRng) -> Self {
         use rand::Rng;
-        
+
         ExecutorQueryRequest {
             initiator: AccountHash::new(rng.gen()),
             contract_address: rng.gen(),
@@ -226,7 +232,9 @@ impl ExecutorQueryRequestBuilder {
         let gas_limit = self.gas_limit.ok_or("Gas limit is not set")?;
         let block_time = self.block_time.ok_or("Block time is not set")?;
         let state_hash = self.state_hash.ok_or("State hash is not set")?;
-        let parent_block_hash = self.parent_block_hash.ok_or("Parent block hash is not set")?;
+        let parent_block_hash = self
+            .parent_block_hash
+            .ok_or("Parent block hash is not set")?;
         let block_height = self.block_height.ok_or("Block height is not set")?;
         let chain_name = self.chain_name.ok_or("Chain name is not set")?;
         Ok(ExecutorQueryRequest {

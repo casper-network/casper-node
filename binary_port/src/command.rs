@@ -1,7 +1,9 @@
 use core::convert::TryFrom;
 
 use casper_types::{
-    bytesrepr::{self, FromBytes, ToBytes}, execution::ExecutorQueryRequest, Transaction
+    bytesrepr::{self, FromBytes, ToBytes},
+    execution::ExecutorQueryRequest,
+    Transaction,
 };
 
 use crate::get_request::GetRequest;

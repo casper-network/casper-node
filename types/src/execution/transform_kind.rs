@@ -212,7 +212,7 @@ impl TransformKindV2 {
                 }
             },
             TransformKindV2::Failure(error) => Err(error),
-            TransformKindV2::Ret(bytes) => {
+            TransformKindV2::Ret(_bytes) => {
                 let expected = "Contract or Account".to_string();
                 let found = "Ret".to_string();
                 Err(StoredValueTypeMismatch::new(expected, found).into())

@@ -36,7 +36,7 @@ use casper_storage::{
         GenesisRequest, GenesisResult, TrieRequest,
     },
     global_state::{
-        state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider, ScratchProvider},
+        state::{lmdb::LmdbGlobalState, CommitProvider, ScratchProvider, StateProvider},
         transaction_source::lmdb::LmdbEnvironment,
         trie_store::lmdb::LmdbTrieStore,
     },
@@ -44,12 +44,17 @@ use casper_storage::{
     tracking_copy::TrackingCopyError,
 };
 use casper_types::{
-    account::AccountHash, execution::ExecutorQueryResult, ActivationPoint, Chainspec, ChainspecRawBytes, ChainspecRegistry, EntityAddr, EraId, Gas, Key, PublicKey
+    account::AccountHash, execution::ExecutorQueryResult, ActivationPoint, Chainspec,
+    ChainspecRawBytes, ChainspecRegistry, EntityAddr, EraId, Gas, Key, PublicKey,
 };
 
 use crate::{
     components::{fetcher::FetchResponse, Component, ComponentState},
-    contract_runtime::{types::EraPrice, types::ExecutionPreState, utils::handle_protocol_upgrade, utils::run_intensive_task, operations::speculatively_execute},
+    contract_runtime::{
+        operations::speculatively_execute,
+        types::{EraPrice, ExecutionPreState},
+        utils::{handle_protocol_upgrade, run_intensive_task},
+    },
     effect::{
         announcements::{
             ContractRuntimeAnnouncement, FatalAnnouncement, MetaBlockAnnouncement,
@@ -75,7 +80,7 @@ use metrics::Metrics;
 #[cfg(test)]
 pub(crate) use operations::compute_execution_results_checksum;
 pub use operations::execute_finalized_block;
-use utils::{exec_or_requeue};
+use utils::exec_or_requeue;
 
 use casper_executor_wasm_interface::executor::Executor;
 
@@ -341,23 +346,23 @@ impl ContractRuntime {
                     let start = Instant::now();
                     let result = run_intensive_task(move || {
                         // Create a tracking copy for the query
-                        let state = data_access_layer
-                            .get_scratch_global_state();
+                        let state = data_access_layer.get_scratch_global_state();
                         let tracking_copy = state
                             .tracking_copy(query_request.state_hash)
                             .expect("should get tracking copy result")
                             .expect("should create tracking copy");
-                        
+
                         // Execute the query
                         execution_engine_v2.query(tracking_copy, query_request)
-                    }).await;
+                    })
+                    .await;
 
                     let result = result.unwrap_or(ExecutorQueryResult {
                         error: Some(()),
                         output: None,
                         gas_usage: Gas::new(0),
                     });
-                    
+
                     metrics.run_query.observe(start.elapsed().as_secs_f64());
                     trace!("contract query completed");
                     responder.respond(result).await

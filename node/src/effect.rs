@@ -106,7 +106,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use casper_executor_wasm_interface::executor::ExecuteError;
 use datasize::DataSize;
 use futures::{channel::oneshot, future::BoxFuture, FutureExt};
 use once_cell::sync::Lazy;
@@ -131,7 +130,9 @@ use casper_storage::{
     DbRawBytesSpec,
 };
 use casper_types::{
-    execution::{Effects as ExecutionEffects, ExecutionResult, ExecutorQueryRequest, ExecutorQueryResult},
+    execution::{
+        Effects as ExecutionEffects, ExecutionResult, ExecutorQueryRequest, ExecutorQueryResult,
+    },
     Approval, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures,
     BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest, EntityAddr, EraId,
     ExecutionInfo, FinalitySignature, FinalitySignatureId, FinalitySignatureV2, HashAddr, Key,
@@ -1965,7 +1966,10 @@ impl<REv> EffectBuilder<REv> {
         REv: From<ContractRuntimeRequest>,
     {
         self.make_request(
-            |responder| ContractRuntimeRequest::QueryContract { query_request, responder },
+            |responder| ContractRuntimeRequest::QueryContract {
+                query_request,
+                responder,
+            },
             QueueKind::ContractRuntime,
         )
         .await

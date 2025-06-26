@@ -8,7 +8,10 @@ use casper_storage::{
     AddressGenerator, TrackingCopy,
 };
 use casper_types::{
-    account::AccountHash, bytesrepr::{self, FromBytes, ToBytes}, contract_messages::Messages, execution::{Effects, ExecutorQueryRequest, ExecutorQueryResult}, BlockHash, BlockTime, Digest, HashAddr, Key, TransactionHash
+    account::AccountHash,
+    contract_messages::Messages,
+    execution::{Effects, ExecutorQueryRequest, ExecutorQueryResult},
+    BlockHash, BlockTime, Digest, HashAddr, Key, TransactionHash,
 };
 use parking_lot::RwLock;
 use thiserror::Error;
