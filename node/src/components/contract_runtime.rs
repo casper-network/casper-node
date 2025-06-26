@@ -152,6 +152,7 @@ impl ContractRuntime {
             )
             .with_protocol_version(chainspec.protocol_version())
             .with_storage_costs(chainspec.storage_costs)
+            .with_minimum_bid_amount(chainspec.core_config.minimum_bid_amount)
             .build();
 
         let data_access_layer = Arc::new(

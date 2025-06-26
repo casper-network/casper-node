@@ -58,11 +58,12 @@ static GENESIS_VALIDATORS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
     let mut vec = Vec::with_capacity(GENESIS_VALIDATOR_PUBLIC_KEYS.len());
 
     for (index, public_key) in GENESIS_VALIDATOR_PUBLIC_KEYS.iter().enumerate() {
+        let bond = MINIMUM_BONDED_AMOUNT + index as u64;
         let account = GenesisAccount::account(
             public_key.clone(),
             Motes::new(MINIMUM_ACCOUNT_CREATION_BALANCE),
             Some(GenesisValidator::new(
-                Motes::new((index + 1) * 1_000),
+                Motes::new(bond),
                 DelegationRate::zero(),
             )),
         );
