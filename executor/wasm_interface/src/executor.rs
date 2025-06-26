@@ -9,7 +9,7 @@ use casper_storage::{
 };
 use casper_types::{
     account::AccountHash, contract_messages::Messages, execution::Effects, BlockHash, BlockTime,
-    Digest, HashAddr, Key, TransactionHash,
+    Digest, HashAddr, Key, TransactionHash, bytesrepr::{self, FromBytes, ToBytes},
 };
 use parking_lot::RwLock;
 use thiserror::Error;
@@ -405,12 +405,12 @@ pub trait Executor: Clone + Send {
     ) -> Result<QueryResult, ExecuteError>;
 }
 
-/// Request to execute a read-only query on a Wasm contract.
+/// A request to execute a read-only query on a contract.
 ///
-/// Executes a contract in read-only mode without broadcasting or gossiping the transaction, since
-/// no state changes are made. A gas limit must be provided to prevent infinite loops and resource
+/// This allows off-chain querying of contract state without making global state changes
+/// or costing gas. A gas limit must be provided to prevent infinite loops and resource
 /// exhaustion attacks.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct QueryRequest {
     /// The address of the account that would initiate the contract call.
     pub initiator: AccountHash,
@@ -419,7 +419,7 @@ pub struct QueryRequest {
     /// The entry point to call.
     pub entry_point: String,
     /// Input data for the query.
-    pub input: Bytes,
+    pub input: Vec<u8>,
     /// Gas limit for the query execution.
     /// 
     /// This prevents infinite loops and resource exhaustion attacks.
@@ -435,54 +435,72 @@ pub struct QueryRequest {
     /// Block height for context.
     pub block_height: u64,
     /// Chain name for context.
-    pub chain_name: Arc<str>,
+    pub chain_name: String,
 }
 
-/// REST API request for executing a read-only query on a Wasm contract.
-#[derive(Debug, serde::Deserialize)]
-pub struct QueryRequestRest {
-    /// The address of the account that would initiate the contract call.
-    pub initiator: AccountHash,
-    /// The address of the contract to query.
-    pub contract_address: HashAddr,
-    /// The entry point to call.
-    pub entry_point: String,
-    /// Input data for the query (as hex string).
-    pub input: String,
-    /// Gas limit for the query execution.
-    pub gas_limit: u64,
-    /// Block time for the query context.
-    pub block_time: BlockTime,
-    /// State root hash to query against.
-    pub state_hash: Digest,
-    /// Parent block hash for context.
-    pub parent_block_hash: BlockHash,
-    /// Block height for context.
-    pub block_height: u64,
-    /// Chain name for context.
-    pub chain_name: Arc<str>,
+impl ToBytes for QueryRequest {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut writer = bytesrepr::allocate_buffer(self)?;
+        self.state_hash.write_bytes(&mut writer)?;
+        self.contract_address.write_bytes(&mut writer)?;
+        self.entry_point.write_bytes(&mut writer)?;
+        self.input.write_bytes(&mut writer)?;
+        self.gas_limit.write_bytes(&mut writer)?;
+        Ok(writer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.state_hash.serialized_length()
+            + self.contract_address.serialized_length()
+            + self.entry_point.serialized_length()
+            + self.input.serialized_length()
+            + self.gas_limit.serialized_length()
+    }
 }
 
-impl TryFrom<QueryRequestRest> for QueryRequest {
-    type Error = String;
+impl FromBytes for QueryRequest {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (state_hash, remainder) = FromBytes::from_bytes(bytes)?;
+        let (contract_address, remainder) = FromBytes::from_bytes(remainder)?;
+        let (entry_point, remainder) = FromBytes::from_bytes(remainder)?;
+        let (input, remainder) = FromBytes::from_bytes(remainder)?;
+        let (gas_limit, remainder) = FromBytes::from_bytes(remainder)?;
+        Ok((
+            QueryRequest {
+                initiator: AccountHash::default(),
+                contract_address,
+                entry_point,
+                input,
+                gas_limit,
+                block_time: BlockTime::default(),
+                state_hash,
+                parent_block_hash: BlockHash::default(),
+                block_height: 0,
+                chain_name: String::default(),
+            },
+            remainder,
+        ))
+    }
+}
 
-    fn try_from(rest_request: QueryRequestRest) -> Result<Self, Self::Error> {
-        // Parse hex input string to bytes
-        let input_bytes = hex::decode(&rest_request.input)
-            .map_err(|e| format!("Invalid hex input: {}", e))?;
+#[cfg(test)]
+impl QueryRequest {
+    pub(crate) fn random(rng: &mut casper_types::testing::TestRng) -> Self {
+        use casper_types::testing::TestRng;
+        use rand::Rng;
         
-        Ok(QueryRequest {
-            initiator: rest_request.initiator,
-            contract_address: rest_request.contract_address,
-            entry_point: rest_request.entry_point,
-            input: Bytes::from(input_bytes),
-            gas_limit: rest_request.gas_limit,
-            block_time: rest_request.block_time,
-            state_hash: rest_request.state_hash,
-            parent_block_hash: rest_request.parent_block_hash,
-            block_height: rest_request.block_height,
-            chain_name: rest_request.chain_name,
-        })
+        QueryRequest {
+            initiator: AccountHash::random(rng),
+            contract_address: HashAddr::random(rng),
+            entry_point: format!("entry_point_{}", rng.gen::<u32>()),
+            input: vec![rng.gen::<u8>(); 32],
+            gas_limit: rng.gen_range(1000..1000000),
+            block_time: BlockTime::new(rng.gen()),
+            state_hash: Digest::random(rng),
+            parent_block_hash: BlockHash::random(rng),
+            block_height: rng.gen(),
+            chain_name: String::default(),
+        }
     }
 }
 
@@ -530,13 +548,13 @@ pub struct QueryRequestBuilder {
     initiator: Option<AccountHash>,
     contract_address: Option<HashAddr>,
     entry_point: Option<String>,
-    input: Option<Bytes>,
+    input: Option<Vec<u8>>,
     gas_limit: Option<u64>,
     block_time: Option<BlockTime>,
     state_hash: Option<Digest>,
     parent_block_hash: Option<BlockHash>,
     block_height: Option<u64>,
-    chain_name: Option<Arc<str>>,
+    chain_name: Option<String>,
 }
 
 impl QueryRequestBuilder {
@@ -563,7 +581,7 @@ impl QueryRequestBuilder {
 
     /// Set the input data.
     #[must_use]
-    pub fn with_input(mut self, input: Bytes) -> Self {
+    pub fn with_input(mut self, input: Vec<u8>) -> Self {
         self.input = Some(input);
         self
     }
@@ -572,7 +590,7 @@ impl QueryRequestBuilder {
     #[must_use]
     pub fn with_serialized_input<T: BorshSerialize>(self, input: T) -> Self {
         let input = borsh::to_vec(&input)
-            .map(Bytes::from)
+            .map(Vec::from)
             .expect("should serialize input");
         self.with_input(input)
     }
@@ -614,7 +632,7 @@ impl QueryRequestBuilder {
 
     /// Set the chain name.
     #[must_use]
-    pub fn with_chain_name<T: Into<Arc<str>>>(mut self, chain_name: T) -> Self {
+    pub fn with_chain_name<T: Into<String>>(mut self, chain_name: T) -> Self {
         self.chain_name = Some(chain_name.into());
         self
     }

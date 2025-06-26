@@ -179,6 +179,8 @@ use requests::{
     UpgradeWatcherRequest,
 };
 
+use casper_executor_wasm_interface::executor::{QueryRequest as ExecutorQueryRequest, QueryResult as ExecutorQueryResult, ExecuteError as ExecutorExecuteError};
+
 /// A resource that will never be available, thus trying to acquire it will wait forever.
 static UNOBTAINABLE: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(0));
 
@@ -1950,6 +1952,21 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| ContractRuntimeRequest::Query { request, responder },
+            QueueKind::ContractRuntime,
+        )
+        .await
+    }
+
+    /// Requests a contract query be executed on the Contract Runtime component.
+    pub(crate) async fn query_contract(
+        self,
+        query_request: ExecutorQueryRequest,
+    ) -> Result<ExecutorQueryResult, ExecutorExecuteError>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::QueryContract { query_request, responder },
             QueueKind::ContractRuntime,
         )
         .await

@@ -36,7 +36,7 @@ use casper_storage::{
         GenesisRequest, GenesisResult, TrieRequest,
     },
     global_state::{
-        state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
+        state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider, ScratchProvider},
         transaction_source::lmdb::LmdbEnvironment,
         trie_store::lmdb::LmdbTrieStore,
     },
@@ -77,6 +77,8 @@ use metrics::Metrics;
 pub(crate) use operations::compute_execution_results_checksum;
 pub use operations::execute_finalized_block;
 use utils::{exec_or_requeue};
+
+use casper_executor_wasm_interface::executor::Executor;
 
 const COMPONENT_NAME: &str = "contract_runtime";
 
@@ -323,6 +325,34 @@ impl ContractRuntime {
                     let result = data_access_layer.query(query_request);
                     metrics.run_query.observe(start.elapsed().as_secs_f64());
                     trace!(?result, "query result");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
+            ContractRuntimeRequest::QueryContract {
+                query_request,
+                responder,
+            } => {
+                trace!(?query_request, "contract query");
+                let metrics = Arc::clone(&self.metrics);
+                let execution_engine_v2 = self.execution_engine_v2.clone();
+                let data_access_layer = Arc::clone(&self.data_access_layer);
+                async move {
+                    let start = Instant::now();
+                    let result = run_intensive_task(move || {
+                        // Create a tracking copy for the query
+                        let state = data_access_layer
+                            .get_scratch_global_state();
+                        let tracking_copy = state
+                            .tracking_copy(query_request.state_hash)
+                            .expect("should get tracking copy result")
+                            .expect("should create tracking copy");
+                        
+                        // Execute the query
+                        execution_engine_v2.query(tracking_copy, query_request)
+                    }).await;
+                    metrics.run_query.observe(start.elapsed().as_secs_f64());
+                    trace!("contract query completed");
                     responder.respond(result).await
                 }
                 .ignore()

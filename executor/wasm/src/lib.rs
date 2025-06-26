@@ -864,7 +864,7 @@ impl Executor for ExecutorV2 {
                 address: query_request.contract_address,
                 entry_point: query_request.entry_point,
             })
-            .with_input(query_request.input)
+            .with_input(query_request.input.into())
             .with_transferred_value(0) // Must be 0 for read-only queries
             .with_transaction_hash(TransactionHash::from_raw([0; 32])) // Dummy hash for queries
             .with_address_generator(AddressGenerator::new(&[0; 32], Phase::Session))

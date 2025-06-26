@@ -32,6 +32,9 @@ const DEFAULT_ACCEPT_TRANSACTION_REQUEST_TERMINATION_DELAY: &str = "24 seconds";
 // Default amount of time which is given to a connection to extend it's lifetime when a valid
 // [`Command::TrySpeculativeExec`] is sent to the node
 const DEFAULT_SPECULATIVE_EXEC_REQUEST_TERMINATION_DELAY: &str = "0 seconds";
+// Default amount of time which is given to a connection to extend it's lifetime when a valid
+// [`Command::TryQuery`] is sent to the node
+const DEFAULT_QUERY_REQUEST_TERMINATION_DELAY: &str = "30 seconds";
 
 /// Binary port server configuration.
 #[derive(Clone, DataSize, Debug, Deserialize, Serialize)]
@@ -76,6 +79,9 @@ pub struct Config {
     // The amount of time which is given to a connection to extend it's lifetime when a valid
     // [`Command::TrySpeculativeExec`] is sent to the node
     pub speculative_exec_request_termination_delay: TimeDiff,
+    // The amount of time which is given to a connection to extend it's lifetime when a valid
+    // [`Command::TryQuery`] is sent to the node
+    pub query_request_termination_delay: TimeDiff,
 }
 
 impl Config {
@@ -114,6 +120,10 @@ impl Config {
             .unwrap(),
             speculative_exec_request_termination_delay: TimeDiff::from_str(
                 DEFAULT_SPECULATIVE_EXEC_REQUEST_TERMINATION_DELAY,
+            )
+            .unwrap(),
+            query_request_termination_delay: TimeDiff::from_str(
+                DEFAULT_QUERY_REQUEST_TERMINATION_DELAY,
             )
             .unwrap(),
         }

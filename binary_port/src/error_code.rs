@@ -370,6 +370,9 @@ pub enum ErrorCode {
     InvalidDelegationAmount = 116,
     #[error("the transaction invocation target is unsupported under V2 runtime")]
     UnsupportedInvocationTarget = 117,
+    /// Query execution failed
+    #[error("query execution failed")]
+    QueryFailed = 118,
 }
 
 impl TryFrom<u16> for ErrorCode {

@@ -37,6 +37,7 @@ use casper_types::{
     HashAddr, NextUpgrade, ProtocolUpgradeConfig, PublicKey, TimeDiff, Timestamp, Transaction,
     TransactionHash, TransactionId, Transfer,
 };
+use casper_executor_wasm_interface::executor::{QueryRequest as ExecutorQueryRequest, QueryResult as ExecutorQueryResult, ExecuteError as ExecutorExecuteError};
 
 use super::{AutoClosingResponder, GossipTarget, Responder};
 use crate::{
@@ -775,6 +776,14 @@ pub(crate) enum ContractRuntimeRequest {
         /// Responder to call with the query result.
         responder: Responder<QueryResult>,
     },
+    /// A contract query request.
+    QueryContract {
+        /// Contract query request.
+        #[serde(skip_serializing)]
+        query_request: ExecutorQueryRequest,
+        /// Responder to call with the query result.
+        responder: Responder<Result<ExecutorQueryResult, ExecutorExecuteError>>,
+    },
     /// A query by prefix request.
     QueryByPrefix {
         /// Query by prefix request.
@@ -892,6 +901,9 @@ impl Display for ContractRuntimeRequest {
                 ..
             } => {
                 write!(formatter, "query request: {:?}", query_request)
+            }
+            ContractRuntimeRequest::QueryContract { query_request, .. } => {
+                write!(formatter, "contract query request: {:?}", query_request)
             }
             ContractRuntimeRequest::QueryByPrefix { request, .. } => {
                 write!(formatter, "query by prefix request: {:?}", request)

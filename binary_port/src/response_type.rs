@@ -119,6 +119,8 @@ pub enum ResponseType {
     PackageWithProof,
     /// Addressable entity information.
     AddressableEntityInformation,
+    /// Result of a contract query execution.
+    QueryResult,
 }
 
 impl ResponseType {
@@ -145,7 +147,7 @@ impl ResponseType {
 
     #[cfg(test)]
     pub(crate) fn random(rng: &mut TestRng) -> Self {
-        Self::try_from(rng.gen_range(0..44)).unwrap()
+        Self::try_from(rng.gen_range(0..45)).unwrap()
     }
 }
 
@@ -228,6 +230,7 @@ impl TryFrom<u8> for ResponseType {
             x if x == ResponseType::AddressableEntityInformation as u8 => {
                 Ok(ResponseType::AddressableEntityInformation)
             }
+            x if x == ResponseType::QueryResult as u8 => Ok(ResponseType::QueryResult),
             _ => Err(()),
         }
     }
@@ -290,6 +293,7 @@ impl fmt::Display for ResponseType {
             ResponseType::AddressableEntityInformation => {
                 write!(f, "AddressableEntityInformation")
             }
+            ResponseType::QueryResult => write!(f, "QueryResult"),
         }
     }
 }
