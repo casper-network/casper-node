@@ -142,7 +142,7 @@ fn should_slash_validator_and_their_delegators() {
         .expect_success();
 
     //
-    // Other genesis validator withdraws withdraws his bid
+    // Other genesis validator withdraws his bid
     //
 
     let withdraw_bid_request = ExecuteRequestBuilder::standard(

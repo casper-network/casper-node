@@ -18,7 +18,7 @@ use casper_types::{
     U256, U512,
 };
 
-const MINIMUM_BONDED_AMOUNT: u64 = 20_000_000_000_000;
+const MINIMUM_BONDED_AMOUNT: u64 = 1_000;
 
 /// Validator with smallest stake will withdraw most of his stake to ensure we did move time forward
 /// to unlock his whole vesting schedule.
@@ -58,11 +58,12 @@ static GENESIS_VALIDATORS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
     let mut vec = Vec::with_capacity(GENESIS_VALIDATOR_PUBLIC_KEYS.len());
 
     for (index, public_key) in GENESIS_VALIDATOR_PUBLIC_KEYS.iter().enumerate() {
+        let bond = MINIMUM_BONDED_AMOUNT + index as u64;
         let account = GenesisAccount::account(
             public_key.clone(),
             Motes::new(MINIMUM_ACCOUNT_CREATION_BALANCE),
             Some(GenesisValidator::new(
-                Motes::new((index + 1) * 1_000),
+                Motes::new(bond),
                 DelegationRate::zero(),
             )),
         );
