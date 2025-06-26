@@ -35,16 +35,8 @@ use casper_storage::{
     KeyPrefix as StorageKeyPrefix,
 };
 use casper_types::{
-    account::AccountHash,
-    addressable_entity::NamedKeyAddr,
-    bytesrepr::{self, Bytes, FromBytes, ToBytes},
-    contracts::{ContractHash, ContractPackage, ContractPackageHash},
-    BlockHeader, BlockIdentifier, BlockWithSignatures, ByteCode, ByteCodeAddr, ByteCodeHash,
-    Chainspec, ContractWasm, ContractWasmHash, Digest, EntityAddr, GlobalStateIdentifier, Key,
-    Package, PackageAddr, Peers, ProtocolVersion, Rewards, StoredValue, TimeDiff, Timestamp,
-    Transaction, URef,
+    account::AccountHash, addressable_entity::NamedKeyAddr, bytesrepr::{self, Bytes, FromBytes, ToBytes}, contracts::{ContractHash, ContractPackage, ContractPackageHash}, execution::ExecutorQueryRequest, BlockHeader, BlockIdentifier, BlockWithSignatures, ByteCode, ByteCodeAddr, ByteCodeHash, Chainspec, ContractWasm, ContractWasmHash, Digest, EntityAddr, GlobalStateIdentifier, Key, Package, PackageAddr, Peers, ProtocolVersion, Rewards, StoredValue, TimeDiff, Timestamp, Transaction, URef
 };
-use casper_executor_wasm_interface::executor::{QueryRequest as ExecutorQueryRequest, QueryResult as ExecutorQueryResult, ExecuteError as ExecutorExecuteError};
 use connection_terminator::ConnectionTerminator;
 use thiserror::Error as ThisError;
 
@@ -230,9 +222,9 @@ where
             }
             try_speculative_execution(effect_builder, transaction).await
         }
-        Command::TryQuery { query_request_bytes } => {
+        Command::TryQuery { query_request } => {
             metrics.binary_port_try_query_count.inc();
-            try_query(effect_builder, query_request_bytes).await
+            try_query_execution(effect_builder, query_request).await
         }
         Command::Get(get_req) => {
             handle_get_request(get_req, effect_builder, config, metrics, protocol_version).await
@@ -1396,43 +1388,27 @@ where
     }
 }
 
-async fn try_query<REv>(
+async fn try_query_execution<REv>(
     effect_builder: EffectBuilder<REv>,
-    query_request_bytes: Vec<u8>,
+    query_request: ExecutorQueryRequest,
 ) -> BinaryResponse
 where
     REv: From<Event> + From<ContractRuntimeRequest> + From<StorageRequest>,
 {
-    // Deserialize the query request from bytes
-    let query_request = match ExecutorQueryRequest::from_bytes(&query_request_bytes) {
-        Ok((request, _)) => request,
-        Err(_) => {
-            return BinaryResponse::new_error(ErrorCode::MalformedCommand);
-        }
-    };
-
     let result = effect_builder
         .query_contract(query_request)
         .await;
 
-    match result {
-        Ok(query_result) => {
-            if query_result.is_success() {
-                // Return the output bytes on success
-                if let Some(output) = query_result.output() {
-                    BinaryResponse::from_raw_bytes(ResponseType::QueryResult, output.to_vec())
-                } else {
-                    BinaryResponse::from_raw_bytes(ResponseType::QueryResult, vec![])
-                }
-            } else {
-                // Return error message on failure
-                BinaryResponse::new_error(ErrorCode::QueryFailed)
-            }
+    if result.is_success() {
+        // Return the output bytes on success
+        if let Some(output) = result.output() {
+            BinaryResponse::from_raw_bytes(ResponseType::QueryResult, output.to_vec())
+        } else {
+            BinaryResponse::from_raw_bytes(ResponseType::QueryResult, vec![])
         }
-        Err(error) => {
-            debug!(%error, "query execution failed");
-            BinaryResponse::new_error(ErrorCode::QueryFailed)
-        }
+    } else {
+        // Return error message on failure
+        BinaryResponse::new_error(ErrorCode::QueryFailed)
     }
 }
 

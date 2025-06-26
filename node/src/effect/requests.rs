@@ -31,13 +31,12 @@ use casper_storage::{
     DbRawBytesSpec,
 };
 use casper_types::{
-    execution::ExecutionResult, Approval, AvailableBlockRange, Block, BlockHash, BlockHeader,
+    execution::{ExecutionResult, ExecutorQueryRequest, ExecutorQueryResult}, Approval, AvailableBlockRange, Block, BlockHash, BlockHeader,
     BlockSignatures, BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest,
     DisplayIter, EntityAddr, EraId, ExecutionInfo, FinalitySignature, FinalitySignatureId,
     HashAddr, NextUpgrade, ProtocolUpgradeConfig, PublicKey, TimeDiff, Timestamp, Transaction,
     TransactionHash, TransactionId, Transfer,
 };
-use casper_executor_wasm_interface::executor::{QueryRequest as ExecutorQueryRequest, QueryResult as ExecutorQueryResult, ExecuteError as ExecutorExecuteError};
 
 use super::{AutoClosingResponder, GossipTarget, Responder};
 use crate::{
@@ -776,13 +775,13 @@ pub(crate) enum ContractRuntimeRequest {
         /// Responder to call with the query result.
         responder: Responder<QueryResult>,
     },
-    /// A contract query request.
+    /// A read-only contract query request.
     QueryContract {
         /// Contract query request.
         #[serde(skip_serializing)]
         query_request: ExecutorQueryRequest,
         /// Responder to call with the query result.
-        responder: Responder<Result<ExecutorQueryResult, ExecutorExecuteError>>,
+        responder: Responder<ExecutorQueryResult>,
     },
     /// A query by prefix request.
     QueryByPrefix {

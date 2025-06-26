@@ -44,8 +44,7 @@ use casper_storage::{
     tracking_copy::TrackingCopyError,
 };
 use casper_types::{
-    account::AccountHash, ActivationPoint, Chainspec, ChainspecRawBytes, ChainspecRegistry,
-    EntityAddr, EraId, Key, PublicKey,
+    account::AccountHash, execution::ExecutorQueryResult, ActivationPoint, Chainspec, ChainspecRawBytes, ChainspecRegistry, EntityAddr, EraId, Gas, Key, PublicKey
 };
 
 use crate::{
@@ -352,6 +351,13 @@ impl ContractRuntime {
                         // Execute the query
                         execution_engine_v2.query(tracking_copy, query_request)
                     }).await;
+
+                    let result = result.unwrap_or(ExecutorQueryResult {
+                        error: Some(()),
+                        output: None,
+                        gas_usage: Gas::new(0),
+                    });
+                    
                     metrics.run_query.observe(start.elapsed().as_secs_f64());
                     trace!("contract query completed");
                     responder.respond(result).await

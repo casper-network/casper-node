@@ -1,9 +1,7 @@
 use core::convert::TryFrom;
 
 use casper_types::{
-    bytesrepr::{self, FromBytes, ToBytes},
-    Transaction,
-    account::AccountHash,
+    bytesrepr::{self, FromBytes, ToBytes}, execution::ExecutorQueryRequest, Transaction
 };
 
 use crate::get_request::GetRequest;
@@ -118,8 +116,8 @@ pub enum Command {
     },
     /// Request to execute a read-only query on a contract.
     TryQuery {
-        /// Query request as serialized bytes.
-        query_request_bytes: Vec<u8>,
+        /// Query request.
+        query_request: ExecutorQueryRequest,
     },
 }
 
@@ -145,7 +143,7 @@ impl Command {
                 transaction: Transaction::random(rng),
             },
             CommandTag::TryQuery => Self::TryQuery {
-                query_request_bytes: Vec::new(),
+                query_request: ExecutorQueryRequest::random(rng),
             },
         }
     }
@@ -163,7 +161,7 @@ impl ToBytes for Command {
             Command::Get(inner) => inner.write_bytes(writer),
             Command::TryAcceptTransaction { transaction } => transaction.write_bytes(writer),
             Command::TrySpeculativeExec { transaction } => transaction.write_bytes(writer),
-            Command::TryQuery { query_request_bytes } => query_request_bytes.write_bytes(writer),
+            Command::TryQuery { query_request } => query_request.write_bytes(writer),
         }
     }
 
@@ -172,7 +170,7 @@ impl ToBytes for Command {
             Command::Get(inner) => inner.serialized_length(),
             Command::TryAcceptTransaction { transaction } => transaction.serialized_length(),
             Command::TrySpeculativeExec { transaction } => transaction.serialized_length(),
-            Command::TryQuery { query_request_bytes } => query_request_bytes.serialized_length(),
+            Command::TryQuery { query_request } => query_request.serialized_length(),
         }
     }
 }
@@ -195,8 +193,8 @@ impl TryFrom<(CommandTag, &[u8])> for Command {
                 (Command::TrySpeculativeExec { transaction }, remainder)
             }
             CommandTag::TryQuery => {
-                let (query_request_bytes, remainder) = FromBytes::from_bytes(bytes)?;
-                (Command::TryQuery { query_request_bytes }, remainder)
+                let (query_request, remainder) = FromBytes::from_bytes(bytes)?;
+                (Command::TryQuery { query_request }, remainder)
             }
         };
         if !remainder.is_empty() {

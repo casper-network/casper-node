@@ -20,8 +20,7 @@ use casper_executor_wasm_host::context::Context;
 use casper_executor_wasm_interface::{
     executor::{
         ExecuteError, ExecuteRequest, ExecuteRequestBuilder, ExecuteResult,
-        ExecuteWithProviderError, ExecuteWithProviderResult, ExecutionKind, Executor, QueryRequest,
-        QueryResult,
+        ExecuteWithProviderError, ExecuteWithProviderResult, ExecutionKind, Executor,
     },
     ConfigBuilder, GasUsage, InternalHostError, VMError, WasmInstance,
 };
@@ -35,12 +34,7 @@ use casper_storage::{
     AddressGenerator, TrackingCopy,
 };
 use casper_types::{
-    account::AccountHash,
-    addressable_entity::{ActionThresholds, AssociatedKeys},
-    bytesrepr, AddressableEntity, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind,
-    ContractRuntimeTag, Digest, EntityAddr, EntityKind, Gas, Groups, InitiatorAddr, Key,
-    MessageLimits, Package, PackageHash, PackageStatus, Phase, ProtocolVersion, StorageCosts,
-    StoredValue, TransactionHash, TransactionInvocationTarget, URef, WasmV2Config, U512,
+    account::AccountHash, addressable_entity::{ActionThresholds, AssociatedKeys}, bytesrepr, execution::{ExecutorQueryRequest, ExecutorQueryResult}, AddressableEntity, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, ContractRuntimeTag, Digest, EntityAddr, EntityKind, Gas, Groups, InitiatorAddr, Key, MessageLimits, Package, PackageHash, PackageStatus, Phase, ProtocolVersion, StorageCosts, StoredValue, TransactionHash, TransactionInvocationTarget, URef, WasmV2Config, U512
 };
 use install::{InstallContractError, InstallContractRequest, InstallContractResult};
 use parking_lot::RwLock;
@@ -853,8 +847,8 @@ impl Executor for ExecutorV2 {
     fn query<R: GlobalStateReader + 'static>(
         &self,
         tracking_copy: TrackingCopy<R>,
-        query_request: QueryRequest,
-    ) -> Result<QueryResult, ExecuteError> {
+        query_request: ExecutorQueryRequest,
+    ) -> Result<ExecutorQueryResult, ExecuteError> {
         // Convert QueryRequest to ExecuteRequest with read-only mode enabled
         let execute_request = ExecuteRequestBuilder::default()
             .with_initiator(query_request.initiator)
@@ -881,12 +875,13 @@ impl Executor for ExecutorV2 {
 
         // Execute the query in read-only mode
         let execute_result = self.execute_with_tracking_copy(tracking_copy, execute_request)?;
+        let output_bytes: Option<Vec<u8>> = execute_result.output.map(|x| x.into());
 
         // Convert ExecuteResult to QueryResult
-        let query_result = QueryResult {
-            error: execute_result.host_error,
-            output: execute_result.output,
-            gas_usage: execute_result.gas_usage,
+        let query_result = ExecutorQueryResult {
+            error: execute_result.host_error.map(|_| ()),
+            output: output_bytes.map(|x| x.into()),
+            gas_usage: Gas::new(execute_result.gas_usage.gas_spent()),
         };
 
         Ok(query_result)

@@ -106,6 +106,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use casper_executor_wasm_interface::executor::ExecuteError;
 use datasize::DataSize;
 use futures::{channel::oneshot, future::BoxFuture, FutureExt};
 use once_cell::sync::Lazy;
@@ -130,7 +131,7 @@ use casper_storage::{
     DbRawBytesSpec,
 };
 use casper_types::{
-    execution::{Effects as ExecutionEffects, ExecutionResult},
+    execution::{Effects as ExecutionEffects, ExecutionResult, ExecutorQueryRequest, ExecutorQueryResult},
     Approval, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures,
     BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest, EntityAddr, EraId,
     ExecutionInfo, FinalitySignature, FinalitySignatureId, FinalitySignatureV2, HashAddr, Key,
@@ -178,8 +179,6 @@ use requests::{
     StorageRequest, SyncGlobalStateRequest, TransactionBufferRequest, TrieAccumulatorRequest,
     UpgradeWatcherRequest,
 };
-
-use casper_executor_wasm_interface::executor::{QueryRequest as ExecutorQueryRequest, QueryResult as ExecutorQueryResult, ExecuteError as ExecutorExecuteError};
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
 static UNOBTAINABLE: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(0));
@@ -1961,7 +1960,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn query_contract(
         self,
         query_request: ExecutorQueryRequest,
-    ) -> Result<ExecutorQueryResult, ExecutorExecuteError>
+    ) -> ExecutorQueryResult
     where
         REv: From<ContractRuntimeRequest>,
     {
