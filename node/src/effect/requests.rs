@@ -31,7 +31,7 @@ use casper_storage::{
     DbRawBytesSpec,
 };
 use casper_types::{
-    execution::{ExecutionResult, ExecutorQueryRequest, ExecutorQueryResult},
+    execution::{ExecutionResult, VmQueryRequest, ExecutorQueryResult},
     Approval, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures,
     BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest, DisplayIter,
     EntityAddr, EraId, ExecutionInfo, FinalitySignature, FinalitySignatureId, HashAddr,
@@ -777,10 +777,10 @@ pub(crate) enum ContractRuntimeRequest {
         responder: Responder<QueryResult>,
     },
     /// A read-only contract query request.
-    QueryContract {
+    VmRead {
         /// Contract query request.
         #[serde(skip_serializing)]
-        query_request: ExecutorQueryRequest,
+        query_request: VmQueryRequest,
         /// Responder to call with the query result.
         responder: Responder<ExecutorQueryResult>,
     },
@@ -902,7 +902,7 @@ impl Display for ContractRuntimeRequest {
             } => {
                 write!(formatter, "query request: {:?}", query_request)
             }
-            ContractRuntimeRequest::QueryContract { query_request, .. } => {
+            ContractRuntimeRequest::VmRead { query_request, .. } => {
                 write!(formatter, "contract query request: {:?}", query_request)
             }
             ContractRuntimeRequest::QueryByPrefix { request, .. } => {

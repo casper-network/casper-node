@@ -12,7 +12,7 @@ use casper_binary_port::{
 use casper_executor_wasm_common::chain_utils;
 use casper_storage::global_state::state::CommitProvider;
 use casper_types::{
-    account::AccountHash, addressable_entity::{ActionThresholds, AssociatedKeys, NamedKeyAddr, NamedKeyValue}, bytesrepr::{Bytes, FromBytes, ToBytes}, contracts::{ContractHash, ContractPackage, ContractPackageHash}, execution::{Effects, ExecutorQueryRequest, TransformKindV2, TransformV2}, system::auction::DelegatorKind, testing::TestRng, Account, AddressableEntity, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockIdentifier, BlockSynchronizerStatus, BlockTime, BlockWithSignatures, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLValue, CLValueDictionary, ChainspecRawBytes, Contract, ContractRuntimeTag, ContractWasm, ContractWasmHash, DictionaryAddr, Digest, EntityAddr, EntityKind, EntityVersions, GlobalStateIdentifier, Key, KeyTag, NextUpgrade, Package, PackageAddr, PackageHash, Peers, PricingMode, ProtocolVersion, PublicKey, Rewards, SecretKey, StoredValue, Transaction, TransactionArgs, TransactionRuntimeParams, Transfer, URef, U512, RuntimeArgs
+    account::AccountHash, addressable_entity::{ActionThresholds, AssociatedKeys, NamedKeyAddr, NamedKeyValue}, bytesrepr::{Bytes, FromBytes, ToBytes}, contracts::{ContractHash, ContractPackage, ContractPackageHash}, execution::{Effects, VmQueryRequest, TransformKindV2, TransformV2}, system::auction::DelegatorKind, testing::TestRng, Account, AddressableEntity, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockIdentifier, BlockSynchronizerStatus, BlockTime, BlockWithSignatures, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLValue, CLValueDictionary, ChainspecRawBytes, Contract, ContractRuntimeTag, ContractWasm, ContractWasmHash, DictionaryAddr, Digest, EntityAddr, EntityKind, EntityVersions, GlobalStateIdentifier, Key, KeyTag, NextUpgrade, Package, PackageAddr, PackageHash, Peers, PricingMode, ProtocolVersion, PublicKey, Rewards, SecretKey, StoredValue, Transaction, TransactionArgs, TransactionRuntimeParams, Transfer, URef, U512, RuntimeArgs
 };
 use futures::{SinkExt, StreamExt};
 use rand::Rng;
@@ -1484,7 +1484,7 @@ async fn binary_port_vm_query() {
     // Read the contract value (0) using a vm query
     let vm_query_request_id = 1;
     let vm_query_request = Command::TryVmQuery {
-        vm_query_request: ExecutorQueryRequest {
+        vm_query_request: VmQueryRequest {
             initiator: sender_pk.to_account_hash(),
             contract_address,
             entry_point: "get".into(),

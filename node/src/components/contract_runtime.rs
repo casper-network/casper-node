@@ -334,7 +334,7 @@ impl ContractRuntime {
                 }
                 .ignore()
             }
-            ContractRuntimeRequest::QueryContract {
+            ContractRuntimeRequest::VmRead {
                 query_request,
                 responder,
             } => {

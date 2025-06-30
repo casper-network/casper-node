@@ -14,7 +14,7 @@ pub use execution_result::ExecutionResult;
 pub use execution_result_v1::ExecutionResultV1;
 pub use execution_result_v2::ExecutionResultV2;
 pub use executor_query_request::{
-    ExecutorQueryRequest, ExecutorQueryRequestBuilder, ExecutorQueryResult,
+    VmQueryRequest, ExecutorQueryRequestBuilder, ExecutorQueryResult,
 };
 pub use transform::TransformV2;
 pub use transform_error::TransformError;

@@ -10,7 +10,7 @@ use casper_storage::{
 use casper_types::{
     account::AccountHash,
     contract_messages::Messages,
-    execution::{Effects, ExecutorQueryRequest, ExecutorQueryResult},
+    execution::{Effects, VmQueryRequest, ExecutorQueryResult},
     BlockHash, BlockTime, Digest, HashAddr, Key, TransactionHash,
 };
 use parking_lot::RwLock;
@@ -403,6 +403,6 @@ pub trait Executor: Clone + Send {
     fn query<R: GlobalStateReader + 'static>(
         &self,
         tracking_copy: TrackingCopy<R>,
-        query_request: ExecutorQueryRequest,
+        query_request: VmQueryRequest,
     ) -> Result<ExecutorQueryResult, ExecuteError>;
 }

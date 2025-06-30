@@ -131,7 +131,7 @@ use casper_storage::{
 };
 use casper_types::{
     execution::{
-        Effects as ExecutionEffects, ExecutionResult, ExecutorQueryRequest, ExecutorQueryResult,
+        Effects as ExecutionEffects, ExecutionResult, VmQueryRequest, ExecutorQueryResult,
     },
     Approval, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures,
     BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest, EntityAddr, EraId,
@@ -1958,15 +1958,15 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Requests a contract query be executed on the Contract Runtime component.
-    pub(crate) async fn query_contract(
+    pub(crate) async fn query_vm_read(
         self,
-        query_request: ExecutorQueryRequest,
+        query_request: VmQueryRequest,
     ) -> ExecutorQueryResult
     where
         REv: From<ContractRuntimeRequest>,
     {
         self.make_request(
-            |responder| ContractRuntimeRequest::QueryContract {
+            |responder| ContractRuntimeRequest::VmRead {
                 query_request,
                 responder,
             },

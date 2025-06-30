@@ -2,7 +2,7 @@ use core::convert::TryFrom;
 
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    execution::ExecutorQueryRequest,
+    execution::VmQueryRequest,
     Transaction,
 };
 
@@ -119,7 +119,7 @@ pub enum Command {
     /// Request to execute a read-only query on a contract.
     TryVmQuery {
         /// A virtual-machine query request.
-        vm_query_request: ExecutorQueryRequest,
+        vm_query_request: VmQueryRequest,
     },
 }
 
@@ -145,7 +145,7 @@ impl Command {
                 transaction: Transaction::random(rng),
             },
             CommandTag::TryVmQuery => Self::TryVmQuery {
-                vm_query_request: ExecutorQueryRequest::random(rng),
+                vm_query_request: VmQueryRequest::random(rng),
             },
         }
     }

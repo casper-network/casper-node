@@ -39,7 +39,7 @@ use casper_types::{
     addressable_entity::NamedKeyAddr,
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     contracts::{ContractHash, ContractPackage, ContractPackageHash},
-    execution::ExecutorQueryRequest,
+    execution::VmQueryRequest,
     BlockHeader, BlockIdentifier, BlockWithSignatures, ByteCode, ByteCodeAddr, ByteCodeHash,
     Chainspec, ContractWasm, ContractWasmHash, Digest, EntityAddr, GlobalStateIdentifier, Key,
     Package, PackageAddr, Peers, ProtocolVersion, Rewards, StoredValue, TimeDiff, Timestamp,
@@ -1398,12 +1398,12 @@ where
 
 async fn try_vm_query_execution<REv>(
     effect_builder: EffectBuilder<REv>,
-    query_request: ExecutorQueryRequest,
+    query_request: VmQueryRequest,
 ) -> BinaryResponse
 where
     REv: From<Event> + From<ContractRuntimeRequest> + From<StorageRequest>,
 {
-    let result = effect_builder.query_contract(query_request).await;
+    let result = effect_builder.query_vm_read(query_request).await;
 
     if result.is_success() {
         // Return the output bytes on success

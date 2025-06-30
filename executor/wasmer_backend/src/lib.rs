@@ -294,8 +294,6 @@ where
             let gatekeeper_config = GatekeeperConfig::default();
             singlepass_compiler.push_middleware(Arc::new(Gatekeeper::new(gatekeeper_config)));
 
-            // Always apply gas metering for protection against infinite loops
-            // In read-only mode, gas is tracked but not charged to the caller
             singlepass_compiler
                 .push_middleware(gas_metering::gas_metering_middleware(config.gas_limit()));
 

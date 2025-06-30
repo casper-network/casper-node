@@ -37,7 +37,7 @@ use casper_types::{
     account::AccountHash,
     addressable_entity::{ActionThresholds, AssociatedKeys},
     bytesrepr,
-    execution::{ExecutorQueryRequest, ExecutorQueryResult},
+    execution::{VmQueryRequest, ExecutorQueryResult},
     AddressableEntity, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, ContractRuntimeTag,
     Digest, EntityAddr, EntityKind, Gas, Groups, InitiatorAddr, Key, MessageLimits, Package,
     PackageHash, PackageStatus, Phase, ProtocolVersion, StorageCosts, StoredValue, TransactionHash,
@@ -854,7 +854,7 @@ impl Executor for ExecutorV2 {
     fn query<R: GlobalStateReader + 'static>(
         &self,
         tracking_copy: TrackingCopy<R>,
-        query_request: ExecutorQueryRequest,
+        query_request: VmQueryRequest,
     ) -> Result<ExecutorQueryResult, ExecuteError> {
         // Convert QueryRequest to ExecuteRequest with read-only mode enabled
         let execute_request = ExecuteRequestBuilder::default()
