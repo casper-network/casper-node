@@ -992,6 +992,7 @@ dependencies = [
  "casper-binary-port",
  "casper-execution-engine",
  "casper-executor-wasm",
+ "casper-executor-wasm-common",
  "casper-executor-wasm-interface",
  "casper-storage",
  "casper-types",
