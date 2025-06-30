@@ -1,14 +1,14 @@
-use std::{collections::BTreeMap, fmt};
-
-use datasize::DataSize;
-use serde::Serialize;
-
-use casper_types::{
-    BlockV2, EraId, PublicKey, RewardedSignatures, Timestamp, Transaction, TransactionHash,
-    AUCTION_LANE_ID, INSTALL_UPGRADE_LANE_ID, MINT_LANE_ID, U512,
-};
-
 use super::{FinalizedBlock, InternalEraReport};
+use casper_types::{
+    BlockV2, Chainspec, EraId, PublicKey, RewardedSignatures, Timestamp, Transaction,
+    TransactionHash, AUCTION_LANE_ID, INSTALL_UPGRADE_LANE_ID, MINT_LANE_ID, U512,
+};
+use datasize::DataSize;
+use num_rational::Ratio;
+use serde::Serialize;
+use std::collections::HashMap;
+use std::{collections::BTreeMap, fmt};
+use tracing::warn;
 
 /// Data necessary for a block to be executed.
 #[derive(DataSize, Debug, Clone, PartialEq, Serialize)]
@@ -95,6 +95,74 @@ impl ExecutableBlock {
             rewards: block.era_end().map(|era_end| era_end.rewards().clone()),
             next_era_gas_price: block.era_end().map(|era_end| era_end.next_era_gas_price()),
             current_gas_price: block.header().current_gas_price(),
+        }
+    }
+
+    pub(crate) fn switch_block_utilization_score(&self, chainspec: &Chainspec) -> Option<u64> {
+        let cfg = &chainspec.transaction_config.transaction_v1_config;
+        let per_block_capacity = cfg.get_max_block_count();
+        let max_block_size = chainspec.transaction_config.max_block_size as u64;
+        let block_gas_limit = chainspec.transaction_config.block_gas_limit;
+
+        let mut has_hit_slot_limit = false;
+        let mut transaction_hash_to_lane_id = HashMap::new();
+
+        for (lane_id, transactions) in self.transaction_map.iter() {
+            transaction_hash_to_lane_id.extend(
+                transactions
+                    .iter()
+                    .map(|transaction| (transaction, *lane_id)),
+            );
+            let max_count = cfg.get_max_transaction_count(*lane_id);
+            if max_count == transactions.len() as u64 {
+                has_hit_slot_limit = true;
+            }
+        }
+
+        if has_hit_slot_limit {
+            Some(100u64)
+        } else if self.transactions.is_empty() {
+            Some(0u64)
+        } else {
+            let size_utilization: u64 = {
+                let total_size_of_transactions: u64 = self
+                    .transactions
+                    .iter()
+                    .map(|transaction| transaction.size_estimate() as u64)
+                    .sum();
+
+                Ratio::new(total_size_of_transactions * 100, max_block_size).to_integer()
+            };
+            let gas_utilization: u64 = {
+                let total_gas_limit: u64 = self
+                    .transactions
+                    .iter()
+                    .map(
+                        |transaction| match transaction_hash_to_lane_id.get(&transaction.hash()) {
+                            Some(lane_id) => match &transaction.gas_limit(chainspec, *lane_id) {
+                                Ok(gas_limit) => gas_limit.value().as_u64(),
+                                Err(_) => {
+                                    warn!("Unable to determine gas limit");
+                                    0u64
+                                }
+                            },
+                            None => {
+                                warn!("Unable to determine gas limit");
+                                0u64
+                            }
+                        },
+                    )
+                    .sum();
+
+                Ratio::new(total_gas_limit * 100, block_gas_limit).to_integer()
+            };
+
+            let slot_utilization =
+                Ratio::new(self.transactions.len() as u64 * 100, per_block_capacity).to_integer();
+
+            let utilization_scores = [slot_utilization, gas_utilization, size_utilization];
+
+            utilization_scores.iter().max().copied()
         }
     }
 }

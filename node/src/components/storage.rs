@@ -1002,17 +1002,14 @@ impl Storage {
                     Some(db_raw) => responder.respond(Some(db_raw)).ignore(),
                 }
             }
-            StorageRequest::GetBlockUtilizationScore {
+            StorageRequest::GetEraUtilizationScore {
                 era_id,
                 block_height,
                 switch_block_utilization,
                 responder,
             } => {
-                let utilization = self.get_block_utilization_score(
-                    era_id,
-                    block_height,
-                    switch_block_utilization,
-                );
+                let utilization =
+                    self.get_era_utilization_score(era_id, block_height, switch_block_utilization);
 
                 responder.respond(utilization).ignore()
             }
@@ -2033,20 +2030,26 @@ impl Storage {
         Ok(Some(ret))
     }
 
-    fn get_block_utilization_score(
+    fn get_era_utilization_score(
         &mut self,
         era_id: EraId,
         block_height: u64,
         block_utilization: u64,
-    ) -> Option<(u64, u64)> {
+    ) -> Option<(u64, u64, u64)> {
         let ret = match self.utilization_tracker.get_mut(&era_id) {
             Some(utilization) => {
                 utilization.entry(block_height).or_insert(block_utilization);
 
                 let transaction_count = utilization.values().sum();
                 let block_count = utilization.keys().len() as u64;
+                // BIG TODO: must determine expected number of blocks from the block_height
+                // minus the height of the previous switch block
+                // sw-e1 -> b1 b2 b3 b4 sw-e2
+                // 11       12 13 14 15 16
+                // answer: 5 (16-11)
+                let total_blocks_for_era = block_count;
 
-                Some((transaction_count, block_count))
+                Some((transaction_count, block_count, total_blocks_for_era))
             }
             None => {
                 let mut utilization = BTreeMap::new();
@@ -2055,7 +2058,8 @@ impl Storage {
                 self.utilization_tracker.insert(era_id, utilization);
 
                 let block_count = 1u64;
-                Some((block_utilization, block_count))
+                let total_blocks_for_era = block_count;
+                Some((block_utilization, block_count, total_blocks_for_era))
             }
         };
 
