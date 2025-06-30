@@ -31,7 +31,7 @@ use casper_storage::{
     DbRawBytesSpec,
 };
 use casper_types::{
-    execution::{ExecutionResult, VmQueryRequest, ExecutorQueryResult},
+    execution::{ExecutionResult, ExecutorQueryResult, VmQueryRequest},
     Approval, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures,
     BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest, DisplayIter,
     EntityAddr, EraId, ExecutionInfo, FinalitySignature, FinalitySignatureId, HashAddr,

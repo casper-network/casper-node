@@ -30,7 +30,7 @@ use crate::{
 };
 use casper_types::{
     addressable_entity::NamedKeyAddr,
-    bytesrepr::{self, Bytes, ToBytes},
+    bytesrepr::{self, ToBytes},
     contract_messages::{Message, Messages},
     contracts::NamedKeys,
     execution::{Effects, TransformError, TransformInstruction, TransformKindV2, TransformV2},

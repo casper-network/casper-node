@@ -106,7 +106,7 @@ fn metered_write<S: GlobalStateReader, E: Executor>(
     if caller.context().read_only {
         return Err(InternalHostError::AttemptWriteInReadOnly.into());
     }
-    
+
     charge_gas_storage(caller, value.serialized_length())?;
     caller.context_mut().tracking_copy.write(key, value);
     Ok(())
