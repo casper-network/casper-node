@@ -117,9 +117,9 @@ pub enum Command {
         transaction: Transaction,
     },
     /// Request to execute a read-only query on a contract.
-    TryQuery {
-        /// Query request.
-        query_request: ExecutorQueryRequest,
+    TryVmQuery {
+        /// A virtual-machine query request.
+        vm_query_request: ExecutorQueryRequest,
     },
 }
 
@@ -130,7 +130,7 @@ impl Command {
             Command::Get(_) => CommandTag::Get,
             Command::TryAcceptTransaction { .. } => CommandTag::TryAcceptTransaction,
             Command::TrySpeculativeExec { .. } => CommandTag::TrySpeculativeExec,
-            Command::TryQuery { .. } => CommandTag::TryQuery,
+            Command::TryVmQuery { .. } => CommandTag::TryVmQuery,
         }
     }
 
@@ -144,8 +144,8 @@ impl Command {
             CommandTag::TrySpeculativeExec => Self::TrySpeculativeExec {
                 transaction: Transaction::random(rng),
             },
-            CommandTag::TryQuery => Self::TryQuery {
-                query_request: ExecutorQueryRequest::random(rng),
+            CommandTag::TryVmQuery => Self::TryVmQuery {
+                vm_query_request: ExecutorQueryRequest::random(rng),
             },
         }
     }
@@ -163,7 +163,7 @@ impl ToBytes for Command {
             Command::Get(inner) => inner.write_bytes(writer),
             Command::TryAcceptTransaction { transaction } => transaction.write_bytes(writer),
             Command::TrySpeculativeExec { transaction } => transaction.write_bytes(writer),
-            Command::TryQuery { query_request } => query_request.write_bytes(writer),
+            Command::TryVmQuery { vm_query_request: query_request } => query_request.write_bytes(writer),
         }
     }
 
@@ -172,7 +172,7 @@ impl ToBytes for Command {
             Command::Get(inner) => inner.serialized_length(),
             Command::TryAcceptTransaction { transaction } => transaction.serialized_length(),
             Command::TrySpeculativeExec { transaction } => transaction.serialized_length(),
-            Command::TryQuery { query_request } => query_request.serialized_length(),
+            Command::TryVmQuery { vm_query_request: query_request } => query_request.serialized_length(),
         }
     }
 }
@@ -194,9 +194,9 @@ impl TryFrom<(CommandTag, &[u8])> for Command {
                 let (transaction, remainder) = FromBytes::from_bytes(bytes)?;
                 (Command::TrySpeculativeExec { transaction }, remainder)
             }
-            CommandTag::TryQuery => {
+            CommandTag::TryVmQuery => {
                 let (query_request, remainder) = FromBytes::from_bytes(bytes)?;
-                (Command::TryQuery { query_request }, remainder)
+                (Command::TryVmQuery { vm_query_request: query_request }, remainder)
             }
         };
         if !remainder.is_empty() {
@@ -217,7 +217,7 @@ pub enum CommandTag {
     /// Request to execute a transaction speculatively.
     TrySpeculativeExec = 2,
     /// Request to execute a read-only query on a contract.
-    TryQuery = 3,
+    TryVmQuery = 3,
 }
 
 impl CommandTag {
@@ -228,7 +228,7 @@ impl CommandTag {
             0 => CommandTag::Get,
             1 => CommandTag::TryAcceptTransaction,
             2 => CommandTag::TrySpeculativeExec,
-            3 => CommandTag::TryQuery,
+            3 => CommandTag::TryVmQuery,
             _ => unreachable!(),
         }
     }
@@ -242,7 +242,7 @@ impl TryFrom<u8> for CommandTag {
             0 => Ok(CommandTag::Get),
             1 => Ok(CommandTag::TryAcceptTransaction),
             2 => Ok(CommandTag::TrySpeculativeExec),
-            3 => Ok(CommandTag::TryQuery),
+            3 => Ok(CommandTag::TryVmQuery),
             _ => Err(InvalidCommandTag),
         }
     }

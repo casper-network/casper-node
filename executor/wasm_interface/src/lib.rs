@@ -94,6 +94,8 @@ pub enum InternalHostError {
     AccountRecordNotFound,
     #[error("message did not have a checksum")]
     MessageChecksumMissing,
+    #[error("attempted writing in read-only mode")]
+    AttemptWriteInReadOnly,
 }
 
 /// The outcome of a call.

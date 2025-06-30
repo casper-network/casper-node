@@ -103,6 +103,10 @@ fn metered_write<S: GlobalStateReader, E: Executor>(
     key: Key,
     value: StoredValue,
 ) -> VMResult<()> {
+    if caller.context().read_only {
+        return Err(InternalHostError::AttemptWriteInReadOnly.into());
+    }
+    
     charge_gas_storage(caller, value.serialized_length())?;
     caller.context_mut().tracking_copy.write(key, value);
     Ok(())
@@ -119,7 +123,7 @@ pub fn casper_write<S: GlobalStateReader, E: Executor>(
 ) -> VMResult<u32> {
     // In read-only mode, writing is not allowed
     if caller.context().read_only {
-        return Ok(HOST_ERROR_INVALID_INPUT);
+        return Err(InternalHostError::AttemptWriteInReadOnly.into());
     }
 
     let write_cost = caller.context().config.host_function_costs().write;
@@ -237,7 +241,7 @@ pub fn casper_remove<S: GlobalStateReader, E: Executor>(
 ) -> VMResult<u32> {
     // In read-only mode, removing is not allowed
     if caller.context().read_only {
-        return Ok(HOST_ERROR_INVALID_INPUT);
+        return Err(InternalHostError::AttemptWriteInReadOnly.into());
     }
 
     let remove_cost = caller.context().config.host_function_costs().remove;
@@ -587,7 +591,7 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
 ) -> VMResult<u32> {
     // In read-only mode, contract creation is not allowed
     if caller.context().read_only {
-        return Ok(HOST_ERROR_INVALID_INPUT);
+        return Err(InternalHostError::AttemptWriteInReadOnly.into());
     }
 
     let create_cost = caller.context().config.host_function_costs().create;
@@ -846,7 +850,7 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
 ) -> VMResult<u32> {
     // In read-only mode, transfers are not allowed
     if caller.context().read_only {
-        return Ok(HOST_ERROR_INVALID_INPUT);
+        return Err(InternalHostError::AttemptWriteInReadOnly.into());
     }
 
     let call_cost = caller.context().config.host_function_costs().call;
@@ -1120,7 +1124,7 @@ pub fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
 ) -> VMResult<u32> {
     // In read-only mode, transfers are not allowed
     if caller.context().read_only {
-        return Ok(HOST_ERROR_INVALID_INPUT);
+        return Err(InternalHostError::AttemptWriteInReadOnly.into());
     }
 
     let transfer_cost = caller.context().config.host_function_costs().transfer;
@@ -1285,7 +1289,7 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
 ) -> VMResult<u32> {
     // In read-only mode, contract upgrades are not allowed
     if caller.context().read_only {
-        return Ok(HOST_ERROR_INVALID_INPUT);
+        return Err(InternalHostError::AttemptWriteInReadOnly.into());
     }
 
     let upgrade_cost = caller.context().config.host_function_costs().upgrade;
@@ -1551,7 +1555,7 @@ pub fn casper_emit<S: GlobalStateReader, E: Executor>(
 ) -> VMResult<u32> {
     // In read-only mode, emitting messages is not allowed
     if caller.context().read_only {
-        return Ok(HOST_ERROR_INVALID_INPUT);
+        return Err(InternalHostError::AttemptWriteInReadOnly.into());
     }
 
     // Charge for parameter weights.

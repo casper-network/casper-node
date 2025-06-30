@@ -185,7 +185,7 @@ impl BinaryRequestTerminationDelayValues {
             Command::Get(GetRequest::Trie { .. }) => self.get_trie,
             Command::TryAcceptTransaction { .. } => self.accept_transaction,
             Command::TrySpeculativeExec { .. } => self.speculative_exec,
-            Command::TryQuery { .. } => self.query_request,
+            Command::TryVmQuery { .. } => self.query_request,
         }
     }
 }
@@ -230,9 +230,9 @@ where
             }
             try_speculative_execution(effect_builder, transaction).await
         }
-        Command::TryQuery { query_request } => {
+        Command::TryVmQuery { vm_query_request } => {
             metrics.binary_port_try_query_count.inc();
-            try_query_execution(effect_builder, query_request).await
+            try_vm_query_execution(effect_builder, vm_query_request).await
         }
         Command::Get(get_req) => {
             handle_get_request(get_req, effect_builder, config, metrics, protocol_version).await
@@ -1396,7 +1396,7 @@ where
     }
 }
 
-async fn try_query_execution<REv>(
+async fn try_vm_query_execution<REv>(
     effect_builder: EffectBuilder<REv>,
     query_request: ExecutorQueryRequest,
 ) -> BinaryResponse

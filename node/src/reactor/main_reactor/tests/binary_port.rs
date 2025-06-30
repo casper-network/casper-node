@@ -7,31 +7,11 @@ use std::{
 };
 
 use casper_binary_port::{
-    AccountInformation, AddressableEntityInformation, BalanceResponse, BinaryMessage,
-    BinaryMessageCodec, BinaryResponse, BinaryResponseAndRequest, Command, CommandHeader,
-    ConsensusStatus, ConsensusValidatorChanges, ContractInformation, DictionaryItemIdentifier,
-    DictionaryQueryResult, EntityIdentifier, EraIdentifier, ErrorCode, GetRequest,
-    GetTrieFullResult, GlobalStateEntityQualifier, GlobalStateQueryResult, GlobalStateRequest,
-    InformationRequest, InformationRequestTag, KeyPrefix, LastProgress, NetworkName, NodeStatus,
-    PackageIdentifier, PurseIdentifier, ReactorStateName, RecordId, ResponseType, RewardResponse,
-    Uptime, ValueWithProof,
+    AccountInformation, AddressableEntityInformation, BalanceResponse, BinaryMessage, BinaryMessageCodec, BinaryResponse, BinaryResponseAndRequest, Command, CommandHeader, CommandTag, ConsensusStatus, ConsensusValidatorChanges, ContractInformation, DictionaryItemIdentifier, DictionaryQueryResult, EntityIdentifier, EraIdentifier, ErrorCode, GetRequest, GetTrieFullResult, GlobalStateEntityQualifier, GlobalStateQueryResult, GlobalStateRequest, InformationRequest, InformationRequestTag, KeyPrefix, LastProgress, NetworkName, NodeStatus, PackageIdentifier, PurseIdentifier, ReactorStateName, RecordId, ResponseType, RewardResponse, Uptime, ValueWithProof
 };
 use casper_storage::global_state::state::CommitProvider;
 use casper_types::{
-    account::AccountHash,
-    addressable_entity::{ActionThresholds, AssociatedKeys, NamedKeyAddr, NamedKeyValue},
-    bytesrepr::{Bytes, FromBytes, ToBytes},
-    contracts::{ContractHash, ContractPackage, ContractPackageHash},
-    execution::{Effects, TransformKindV2, TransformV2},
-    system::auction::DelegatorKind,
-    testing::TestRng,
-    Account, AddressableEntity, AvailableBlockRange, Block, BlockHash, BlockHeader,
-    BlockIdentifier, BlockSynchronizerStatus, BlockWithSignatures, ByteCode, ByteCodeAddr,
-    ByteCodeHash, ByteCodeKind, CLValue, CLValueDictionary, ChainspecRawBytes, Contract,
-    ContractRuntimeTag, ContractWasm, ContractWasmHash, DictionaryAddr, Digest, EntityAddr,
-    EntityKind, EntityVersions, GlobalStateIdentifier, Key, KeyTag, NextUpgrade, Package,
-    PackageAddr, PackageHash, Peers, ProtocolVersion, PublicKey, Rewards, SecretKey, StoredValue,
-    Transaction, Transfer, URef, U512,
+    account::AccountHash, addressable_entity::{ActionThresholds, AssociatedKeys, NamedKeyAddr, NamedKeyValue}, bytesrepr::{Bytes, FromBytes, ToBytes}, contracts::{ContractHash, ContractPackage, ContractPackageHash}, execution::{Effects, ExecutorQueryRequest, TransformKindV2, TransformV2}, system::auction::DelegatorKind, testing::TestRng, Account, AddressableEntity, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockIdentifier, BlockSynchronizerStatus, BlockTime, BlockWithSignatures, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLValue, CLValueDictionary, ChainspecRawBytes, Contract, ContractRuntimeTag, ContractWasm, ContractWasmHash, DictionaryAddr, Digest, EntityAddr, EntityKind, EntityVersions, GlobalStateIdentifier, Key, KeyTag, NextUpgrade, Package, PackageAddr, PackageHash, Peers, PricingMode, ProtocolVersion, PublicKey, Rewards, SecretKey, StoredValue, Transaction, TransactionRuntimeParams, Transfer, URef, U512
 };
 use futures::{SinkExt, StreamExt};
 use rand::Rng;
@@ -43,7 +23,7 @@ use crate::{
     testing::{
         self, filter_reactor::FilterReactor, network::TestingNetwork, ConditionCheckReactor,
     },
-    types::{transaction::transaction_v1_builder::TransactionV1Builder, NodeId},
+    types::{transaction::transaction_v1_builder::TransactionV1Builder, NodeId}, utils::RESOURCES_PATH,
 };
 
 use crate::reactor::main_reactor::tests::{
@@ -1324,7 +1304,7 @@ fn try_accept_transaction(key: &SecretKey) -> TestCase {
         TransactionV1Builder::new_targeting_invocable_entity_via_alias(
             "Test",
             "call",
-            casper_types::TransactionRuntimeParams::VmCasperV1,
+            TransactionRuntimeParams::VmCasperV1,
         )
         .with_secret_key(key)
         .with_chain_name("casper-example")
@@ -1398,6 +1378,134 @@ async fn binary_port_component_rejects_requests_with_invalid_header_version() {
         binary_response_and_request.response().error_code(),
         ErrorCode::CommandHeaderVersionMismatch as u16
     );
+
+    let (_net, _rng) = timeout(Duration::from_secs(10), finish_cranking)
+        .await
+        .unwrap_or_else(|_| panic!("should finish cranking without timeout"));
+}
+
+#[tokio::test]
+async fn binary_port_vm_query() {
+    testing::init_logging();
+
+    let (
+        mut client,
+        (
+            finish_cranking,
+            TestData {
+                mut rng,
+                protocol_version,
+                chainspec_raw_bytes: network_chainspec_raw_bytes,
+                highest_block,
+                secret_signing_key,
+                state_root_hash,
+                effects,
+                era_one_validator,
+            },
+        ),
+    ) = setup().await;
+
+    // Install a VM2 counter contract
+    let contract_file = RESOURCES_PATH
+        .join("..")
+        .join("target")
+        .join("wasm32-unknown-unknown")
+        .join("release")
+        .join("ee_601_regression.wasm");
+
+    let module_bytes = Bytes::from(std::fs::read(contract_file).expect("cannot read module bytes"));
+
+    let mut transaction = Transaction::from(
+        TransactionV1Builder::new_session(
+            false,
+            module_bytes,
+            TransactionRuntimeParams::VmCasperV2 {
+                transferred_value: 0,
+                seed: None,
+            },
+        )
+        .with_chain_name("casper-example")
+        .with_pricing_mode(PricingMode::PaymentLimited {
+            payment_amount: 1_000,
+            gas_price_tolerance: 1,
+            standard_payment: true,
+        })
+        .with_secret_key(&secret_signing_key)
+        .build()
+        .unwrap(),
+    );
+    transaction.sign(&secret_signing_key);
+
+    let put_txn_request_id = 0;
+
+    let put_txn_request = Command::TryAcceptTransaction {
+        transaction
+    };
+
+    let put_txn_request_bytes = {
+        let header = CommandHeader::new(CommandTag::TryAcceptTransaction, put_txn_request_id);
+        let header_bytes = ToBytes::to_bytes(&header).expect("should serialize");
+        let request_bytes = ToBytes::to_bytes(&put_txn_request).expect("should serialize");
+
+        [header_bytes, request_bytes].concat()
+    };
+
+    client
+        .send(BinaryMessage::new(put_txn_request_bytes))
+        .await
+        .expect("should send message");
+
+    let response = timeout(Duration::from_secs(10), client.next())
+        .await
+        .expect("should complete without timeout")
+        .expect("should have bytes")
+        .expect("should have ok response");
+    let (binary_response_and_request, _): (BinaryResponseAndRequest, _) =
+        FromBytes::from_bytes(response.payload()).expect("should deserialize response");
+    assert!(binary_response_and_request.is_success());
+
+    // Read the contract value (0) using a vm query
+    let sender_pk = PublicKey::from(secret_signing_key.as_ref());
+    
+    let vm_query_request_id = 1;
+    let vm_query_request = Command::TryVmQuery {
+        vm_query_request: ExecutorQueryRequest {
+            initiator: sender_pk.to_account_hash(),
+            contract_address: todo!(),          // Need to somehow get the contract address
+            entry_point: "read".into(),
+            input: Vec::new(),
+            gas_limit: 100,
+            block_time: BlockTime::new(0),
+            state_hash: todo!(),                // Need to somehow get state hash
+            parent_block_hash: todo!(),         // Need to somehow get parent block hash
+            block_height: 0,                    // Need to figure out the appropriate block ehight
+            chain_name: "casper-example".into(),
+        }
+    };
+
+    let try_query_request_bytes = {
+        let header = CommandHeader::new(CommandTag::TryVmQuery, vm_query_request_id);
+        let header_bytes = ToBytes::to_bytes(&header).expect("should serialize");
+        let request_bytes = ToBytes::to_bytes(&vm_query_request).expect("should serialize");
+
+        [header_bytes, request_bytes].concat()
+    };
+
+    client
+        .send(BinaryMessage::new(try_query_request_bytes))
+        .await
+        .expect("should send message");
+
+    let response = timeout(Duration::from_secs(10), client.next())
+        .await
+        .expect("should complete without timeout")
+        .expect("should have bytes")
+        .expect("should have ok response");
+    let (binary_response_and_request, _): (BinaryResponseAndRequest, _) =
+        FromBytes::from_bytes(response.payload()).expect("should deserialize response");
+    let bytes = binary_response_and_request.response().payload();
+    println!("RETURNED BYTES: {bytes:?}");
+    assert!(binary_response_and_request.is_success());
 
     let (_net, _rng) = timeout(Duration::from_secs(10), finish_cranking)
         .await
