@@ -6,8 +6,10 @@ use casper_types::{
 use datasize::DataSize;
 use num_rational::Ratio;
 use serde::Serialize;
-use std::collections::HashMap;
-use std::{collections::BTreeMap, fmt};
+use std::{
+    collections::{BTreeMap, HashMap},
+    fmt,
+};
 use tracing::warn;
 
 /// Data necessary for a block to be executed.
