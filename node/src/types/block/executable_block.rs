@@ -98,7 +98,7 @@ impl ExecutableBlock {
         }
     }
 
-    pub(crate) fn switch_block_utilization_score(&self, chainspec: &Chainspec) -> Option<u64> {
+    pub(crate) fn calc_utilization_score(&self, chainspec: &Chainspec) -> Option<u64> {
         let cfg = &chainspec.transaction_config.transaction_v1_config;
         let per_block_capacity = cfg.get_max_block_count();
         let max_block_size = chainspec.transaction_config.max_block_size as u64;

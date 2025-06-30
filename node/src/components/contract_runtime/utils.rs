@@ -139,7 +139,7 @@ where
     // we need to calculate the utilization of the block we are about to execute
     // and include it in the tally of the utilization for the entire era.
     let executable_block_utilization_score =
-        match executable_block.switch_block_utilization_score(&chainspec) {
+        match executable_block.calc_utilization_score(&chainspec) {
             Some(score) => score,
             None => {
                 return EraEndInstruction::Fatal(format!(
