@@ -9,7 +9,7 @@ mod operations;
 mod rewards;
 #[cfg(test)]
 mod tests;
-pub(crate) mod types;
+mod types;
 mod utils;
 
 use std::{
@@ -52,7 +52,7 @@ use crate::{
     components::{fetcher::FetchResponse, Component, ComponentState},
     contract_runtime::{
         operations::speculatively_execute,
-        types::{EraPrice, ExecutionPreState},
+        types::EraPrice,
         utils::{handle_protocol_upgrade, run_intensive_task},
     },
     effect::{
@@ -80,6 +80,9 @@ use metrics::Metrics;
 #[cfg(test)]
 pub(crate) use operations::compute_execution_results_checksum;
 pub use operations::execute_finalized_block;
+pub(crate) use types::{
+    ExecutionArtifact, ExecutionPreState, SpeculativeExecutionResult,
+};
 use utils::exec_or_requeue;
 
 use casper_executor_wasm_interface::executor::Executor;

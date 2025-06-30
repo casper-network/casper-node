@@ -153,7 +153,7 @@ use crate::{
         network::{blocklist::BlocklistJustification, FromIncoming, NetworkInsights},
         transaction_acceptor,
     },
-    contract_runtime::types::{ExecutionPreState, SpeculativeExecutionResult},
+    contract_runtime::{ExecutionPreState, SpeculativeExecutionResult},
     failpoints::FailpointActivation,
     reactor::{main_reactor::ReactorState, EventQueueHandle, QueueKind},
     types::{

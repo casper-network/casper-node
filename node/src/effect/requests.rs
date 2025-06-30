@@ -47,7 +47,7 @@ use crate::{
             TrieAccumulatorResponse,
         },
         consensus::{ClContext, ProposedBlock},
-        contract_runtime::types::{ExecutionPreState, SpeculativeExecutionResult},
+        contract_runtime::{ExecutionPreState, SpeculativeExecutionResult},
         diagnostics_port::StopAtSpec,
         fetcher::{FetchItem, FetchResult},
         gossiper::GossipItem,

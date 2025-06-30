@@ -418,7 +418,7 @@ where
             }
             metering::MeteringPoints::Exhausted => {
                 let gas_usage = GasUsage::new(self.config.gas_limit(), 0);
-                (vm_result, gas_usage)
+                (Err(VMError::OutOfGas), gas_usage)
             }
         }
     }

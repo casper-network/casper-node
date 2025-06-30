@@ -10,7 +10,7 @@ use crate::{
         block_synchronizer::{self, BlockSynchronizerProgress},
         diagnostics_port, event_stream_server, network, rest_server, upgrade_watcher,
     },
-    contract_runtime::types::ExecutionPreState,
+    contract_runtime::ExecutionPreState,
     effect::{announcements::ControlAnnouncement, EffectBuilder, EffectExt, Effects},
     fatal,
     reactor::main_reactor::{

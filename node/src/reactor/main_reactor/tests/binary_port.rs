@@ -30,8 +30,8 @@ use casper_types::{
     ByteCodeHash, ByteCodeKind, CLValue, CLValueDictionary, ChainspecRawBytes, Contract,
     ContractRuntimeTag, ContractWasm, ContractWasmHash, DictionaryAddr, Digest, EntityAddr,
     EntityKind, EntityVersions, GlobalStateIdentifier, Key, KeyTag, NextUpgrade, Package,
-    PackageAddr, PackageHash, Peers, ProtocolVersion, PublicKey, Rewards, SecretKey,
-    StoredValue, Transaction, TransactionRuntimeParams, Transfer, URef, U512,
+    PackageAddr, PackageHash, Peers, ProtocolVersion, PublicKey, Rewards, SecretKey, StoredValue,
+    Transaction, TransactionRuntimeParams, Transfer, URef, U512,
 };
 use futures::{SinkExt, StreamExt};
 use rand::Rng;

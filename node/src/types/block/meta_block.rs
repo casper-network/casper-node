@@ -14,7 +14,7 @@ use casper_types::{
 pub(crate) use merge_mismatch_error::MergeMismatchError;
 pub(crate) use state::State;
 
-use crate::contract_runtime::types::ExecutionArtifact;
+use crate::contract_runtime::ExecutionArtifact;
 
 /// A block along with its execution results and state recording which actions have been taken
 /// related to the block.
