@@ -169,7 +169,7 @@ where
             let next_gas_price = if era_score >= go_up {
                 current_gas_price.saturating_add(1).max(max)
             } else if era_score <= go_down {
-                current_gas_price.saturating_sub(1).min(min)
+                current_gas_price.saturating_sub(1).max(min)
             } else {
                 current_gas_price
             };
