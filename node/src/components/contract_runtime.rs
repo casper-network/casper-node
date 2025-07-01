@@ -44,7 +44,7 @@ use casper_storage::{
     tracking_copy::TrackingCopyError,
 };
 use casper_types::{
-    account::AccountHash, execution::ExecutorQueryResult, ActivationPoint, Chainspec,
+    account::AccountHash, execution::{ExecutorQueryResult, QueryError}, ActivationPoint, Chainspec,
     ChainspecRawBytes, ChainspecRegistry, EntityAddr, EraId, Gas, Key, PublicKey,
 };
 
@@ -361,7 +361,7 @@ impl ContractRuntime {
                     .await;
 
                     let result = result.unwrap_or(ExecutorQueryResult {
-                        error: Some(()),
+                        error: Some(QueryError::InternalHostError),
                         output: None,
                         gas_usage: Gas::new(0),
                     });

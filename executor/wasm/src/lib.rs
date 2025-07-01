@@ -37,7 +37,7 @@ use casper_types::{
     account::AccountHash,
     addressable_entity::{ActionThresholds, AssociatedKeys},
     bytesrepr,
-    execution::{ExecutorQueryResult, VmQueryRequest},
+    execution::{ExecutorQueryResult, QueryError, VmQueryRequest},
     AddressableEntity, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, ContractRuntimeTag,
     Digest, EntityAddr, EntityKind, Gas, Groups, InitiatorAddr, Key, MessageLimits, Package,
     PackageHash, PackageStatus, Phase, ProtocolVersion, StorageCosts, StoredValue, TransactionHash,
@@ -886,7 +886,12 @@ impl Executor for ExecutorV2 {
 
         // Convert ExecuteResult to QueryResult
         let query_result = ExecutorQueryResult {
-            error: execute_result.host_error.map(|_| ()),
+            error: execute_result.host_error.map(|call_error| match call_error {
+                CallError::CalleeReverted => QueryError::CalleeReverted,
+                CallError::CalleeTrapped(_) => QueryError::CalleeTrapped,
+                CallError::CalleeGasDepleted => QueryError::CalleeGasDepleted,
+                CallError::NotCallable => QueryError::NotCallable,
+            }),
             output: output_bytes.map(|x| x.into()),
             gas_usage: Gas::new(execute_result.gas_usage.gas_spent()),
         };

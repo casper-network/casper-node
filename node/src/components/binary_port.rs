@@ -39,7 +39,7 @@ use casper_types::{
     addressable_entity::NamedKeyAddr,
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     contracts::{ContractHash, ContractPackage, ContractPackageHash},
-    execution::VmQueryRequest,
+    execution::{QueryError, VmQueryRequest},
     BlockHeader, BlockIdentifier, BlockWithSignatures, ByteCode, ByteCodeAddr, ByteCodeHash,
     Chainspec, ContractWasm, ContractWasmHash, Digest, EntityAddr, GlobalStateIdentifier, Key,
     Package, PackageAddr, Peers, ProtocolVersion, Rewards, StoredValue, TimeDiff, Timestamp,
