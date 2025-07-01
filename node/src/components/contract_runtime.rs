@@ -44,8 +44,10 @@ use casper_storage::{
     tracking_copy::TrackingCopyError,
 };
 use casper_types::{
-    account::AccountHash, execution::{ExecutorQueryResult, QueryError}, ActivationPoint, Chainspec,
-    ChainspecRawBytes, ChainspecRegistry, EntityAddr, EraId, Gas, Key, PublicKey,
+    account::AccountHash,
+    execution::{ExecutorQueryResult, QueryError},
+    ActivationPoint, Chainspec, ChainspecRawBytes, ChainspecRegistry, EntityAddr, EraId, Gas, Key,
+    PublicKey,
 };
 
 use crate::{
@@ -80,9 +82,7 @@ use metrics::Metrics;
 #[cfg(test)]
 pub(crate) use operations::compute_execution_results_checksum;
 pub use operations::execute_finalized_block;
-pub(crate) use types::{
-    ExecutionArtifact, ExecutionPreState, SpeculativeExecutionResult,
-};
+pub(crate) use types::{ExecutionArtifact, ExecutionPreState, SpeculativeExecutionResult};
 use utils::exec_or_requeue;
 
 use casper_executor_wasm_interface::executor::Executor;

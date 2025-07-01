@@ -10,8 +10,8 @@ use casper_binary_port::{
 };
 
 use casper_types::{
-    BlockHeader, Digest, GlobalStateIdentifier, KeyTag, PublicKey, Timestamp, Transaction,
-    TransactionV1, execution::VmQueryRequest,
+    execution::VmQueryRequest, BlockHeader, Digest, GlobalStateIdentifier, KeyTag, PublicKey,
+    Timestamp, Transaction, TransactionV1,
 };
 
 use crate::{

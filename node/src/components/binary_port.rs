@@ -39,7 +39,7 @@ use casper_types::{
     addressable_entity::NamedKeyAddr,
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     contracts::{ContractHash, ContractPackage, ContractPackageHash},
-    execution::{QueryError, VmQueryRequest},
+    execution::VmQueryRequest,
     BlockHeader, BlockIdentifier, BlockWithSignatures, ByteCode, ByteCodeAddr, ByteCodeHash,
     Chainspec, ContractWasm, ContractWasmHash, Digest, EntityAddr, GlobalStateIdentifier, Key,
     Package, PackageAddr, Peers, ProtocolVersion, Rewards, StoredValue, TimeDiff, Timestamp,
@@ -233,9 +233,7 @@ where
         Command::TryVmQuery { vm_query_request } => {
             metrics.binary_port_try_query_count.inc();
             if !config.allow_request_vm_query {
-                debug!(
-                    "received a request for VM query execution while the feature is disabled"
-                );
+                debug!("received a request for VM query execution while the feature is disabled");
                 return BinaryResponse::new_error(ErrorCode::FunctionDisabled);
             }
             try_vm_query_execution(effect_builder, vm_query_request).await
