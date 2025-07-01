@@ -2042,12 +2042,23 @@ impl Storage {
 
                 let transaction_count = utilization.values().sum();
                 let block_count = utilization.keys().len() as u64;
-                // BIG TODO: must determine expected number of blocks from the block_height
-                // minus the height of the previous switch block
-                // sw-e1 -> b1 b2 b3 b4 sw-e2
-                // 11       12 13 14 15 16
-                // answer: 5 (16-11)
-                let total_blocks_for_era = block_count;
+                let total_blocks_for_era = match era_id.predecessor() {
+                    Some(previous_era) => {
+                        let previous_switch_block_height =
+                            match self.get_switch_block_by_era_id(&previous_era) {
+                                Ok(Some(block)) => block.height(),
+                                Ok(None) | Err(_) => return None,
+                            };
+                        // Determine expected number of blocks from the block_height
+                        // minus the height of the previous switch block
+                        // sw-e1 -> b1 b2 b3 b4 sw-e2
+                        // 11       12 13 14 15 16
+                        // answer: 5 (16-11)
+                        block_height.saturating_sub(previous_switch_block_height)
+                    }
+                    // Genesis case
+                    None => block_height,
+                };
 
                 Some((transaction_count, block_count, total_blocks_for_era))
             }

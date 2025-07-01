@@ -241,7 +241,7 @@ pub(super) async fn exec_and_check_next<REv>(
         EraEndInstruction::ExecNonSwitch => None,
         EraEndInstruction::ExecSwitch { next_gas_price } => Some(next_gas_price),
         EraEndInstruction::NoExec => {
-            debug!("ContractRuntime: unable to execute - try again later");
+            info!("ContractRuntime: unable to execute - try again later");
             exec_queue.insert(QueueItem {
                 meta_block_state,
                 executable_block,
