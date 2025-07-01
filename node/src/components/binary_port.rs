@@ -232,6 +232,12 @@ where
         }
         Command::TryVmQuery { vm_query_request } => {
             metrics.binary_port_try_query_count.inc();
+            if !config.allow_request_vm_query {
+                debug!(
+                    "received a request for VM query execution while the feature is disabled"
+                );
+                return BinaryResponse::new_error(ErrorCode::FunctionDisabled);
+            }
             try_vm_query_execution(effect_builder, vm_query_request).await
         }
         Command::Get(get_req) => {

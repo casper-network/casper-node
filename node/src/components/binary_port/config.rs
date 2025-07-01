@@ -53,6 +53,8 @@ pub struct Config {
     pub allow_request_get_trie: bool,
     /// Flag used to enable/disable the [`TrySpeculativeExec`] request.
     pub allow_request_speculative_exec: bool,
+    /// Flag used to enable/disable the [`TryVmQuery`] request.
+    pub allow_request_vm_query: bool,
     /// Maximum size of the binary port message.
     pub max_message_size_bytes: u32,
     /// Maximum number of connections to the server.
@@ -93,6 +95,7 @@ impl Config {
             allow_request_get_all_values: false,
             allow_request_get_trie: false,
             allow_request_speculative_exec: false,
+            allow_request_vm_query: false,
             max_message_size_bytes: DEFAULT_MAX_MESSAGE_SIZE,
             max_connections: DEFAULT_MAX_CONNECTIONS,
             qps_limit: DEFAULT_QPS_LIMIT,

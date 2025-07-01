@@ -11,7 +11,7 @@ use casper_binary_port::{
 
 use casper_types::{
     BlockHeader, Digest, GlobalStateIdentifier, KeyTag, PublicKey, Timestamp, Transaction,
-    TransactionV1,
+    TransactionV1, execution::VmQueryRequest,
 };
 
 use crate::{
@@ -56,6 +56,7 @@ struct TestCase {
     allow_request_get_all_values: bool,
     allow_request_get_trie: bool,
     allow_request_speculative_exec: bool,
+    allow_request_vm_query: bool,
     request_generator: Either<fn(&mut TestRng) -> Command, Command>,
 }
 
@@ -67,6 +68,7 @@ async fn should_enqueue_requests_for_enabled_functions() {
         allow_request_get_all_values: ENABLED,
         allow_request_get_trie: rng.gen(),
         allow_request_speculative_exec: rng.gen(),
+        allow_request_vm_query: rng.gen(),
         request_generator: Either::Left(|_| all_values_request()),
     };
 
@@ -74,6 +76,7 @@ async fn should_enqueue_requests_for_enabled_functions() {
         allow_request_get_all_values: rng.gen(),
         allow_request_get_trie: ENABLED,
         allow_request_speculative_exec: rng.gen(),
+        allow_request_vm_query: rng.gen(),
         request_generator: Either::Left(|_| trie_request()),
     };
 
@@ -81,13 +84,23 @@ async fn should_enqueue_requests_for_enabled_functions() {
         allow_request_get_all_values: rng.gen(),
         allow_request_get_trie: rng.gen(),
         allow_request_speculative_exec: ENABLED,
+        allow_request_vm_query: rng.gen(),
         request_generator: Either::Left(try_speculative_exec_request),
+    };
+
+    let try_vm_query_enabled = TestCase {
+        allow_request_get_all_values: rng.gen(),
+        allow_request_get_trie: rng.gen(),
+        allow_request_speculative_exec: rng.gen(),
+        allow_request_vm_query: ENABLED,
+        request_generator: Either::Left(try_vm_query_request),
     };
 
     for test_case in [
         get_all_values_enabled,
         get_trie_enabled,
         try_speculative_exec_enabled,
+        try_vm_query_enabled,
     ] {
         let (_, mut runner) = run_test_case(test_case, &mut rng).await;
 
@@ -111,6 +124,7 @@ async fn should_return_error_for_disabled_functions() {
         allow_request_get_all_values: DISABLED,
         allow_request_get_trie: rng.gen(),
         allow_request_speculative_exec: rng.gen(),
+        allow_request_vm_query: rng.gen(),
         request_generator: Either::Left(|_| all_values_request()),
     };
 
@@ -118,6 +132,7 @@ async fn should_return_error_for_disabled_functions() {
         allow_request_get_all_values: rng.gen(),
         allow_request_get_trie: DISABLED,
         allow_request_speculative_exec: rng.gen(),
+        allow_request_vm_query: rng.gen(),
         request_generator: Either::Left(|_| trie_request()),
     };
 
@@ -125,13 +140,23 @@ async fn should_return_error_for_disabled_functions() {
         allow_request_get_all_values: rng.gen(),
         allow_request_get_trie: rng.gen(),
         allow_request_speculative_exec: DISABLED,
+        allow_request_vm_query: rng.gen(),
         request_generator: Either::Left(try_speculative_exec_request),
+    };
+
+    let try_vm_query_disabled = TestCase {
+        allow_request_get_all_values: rng.gen(),
+        allow_request_get_trie: rng.gen(),
+        allow_request_speculative_exec: rng.gen(),
+        allow_request_vm_query: DISABLED,
+        request_generator: Either::Left(try_vm_query_request),
     };
 
     for test_case in [
         get_all_values_disabled,
         get_trie_disabled,
         try_speculative_exec_disabled,
+        try_vm_query_disabled,
     ] {
         let (receiver, mut runner) = run_test_case(test_case, &mut rng).await;
 
@@ -159,6 +184,7 @@ async fn should_return_empty_response_when_fetching_empty_key() {
             allow_request_get_all_values: DISABLED,
             allow_request_get_trie: DISABLED,
             allow_request_speculative_exec: DISABLED,
+            allow_request_vm_query: DISABLED,
             request_generator: Either::Right(request),
         })
         .collect();
@@ -186,6 +212,7 @@ async fn run_test_case(
         allow_request_get_all_values,
         allow_request_get_trie,
         allow_request_speculative_exec,
+        allow_request_vm_query,
         request_generator,
     }: TestCase,
     rng: &mut TestRng,
@@ -198,6 +225,7 @@ async fn run_test_case(
         allow_request_get_all_values,
         allow_request_get_trie,
         allow_request_speculative_exec,
+        allow_request_vm_query,
         max_message_size_bytes: 1024,
         max_connections: 2,
         ..Default::default()
@@ -448,6 +476,12 @@ fn trie_request() -> Command {
 fn try_speculative_exec_request(rng: &mut TestRng) -> Command {
     Command::TrySpeculativeExec {
         transaction: Transaction::V1(TransactionV1::random(rng)),
+    }
+}
+
+fn try_vm_query_request(rng: &mut TestRng) -> Command {
+    Command::TryVmQuery {
+        vm_query_request: VmQueryRequest::random(rng),
     }
 }
 
