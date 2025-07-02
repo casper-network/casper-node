@@ -952,6 +952,7 @@ where
     }
 
     /// Executes a request to call the system auction contract.
+    #[deprecated]
     pub fn run_auction(
         &mut self,
         era_end_timestamp_millis: u64,

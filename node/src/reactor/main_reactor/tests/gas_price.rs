@@ -1,8 +1,8 @@
 use std::{sync::Arc, time::Duration};
 
 use casper_types::{
-    testing::TestRng, Chainspec, PricingHandling, PricingMode, PublicKey, SecretKey, TimeDiff,
-    Transaction, TransactionV1Config, U512,
+    testing::TestRng, Chainspec, EraId, PricingHandling, PricingMode, PublicKey, SecretKey,
+    TimeDiff, Transaction, TransactionV1Config, U512,
 };
 
 use crate::{
@@ -39,15 +39,14 @@ async fn run_gas_price_scenario(gas_price_scenario: GasPriceScenario) {
 
     let non_validating_secret_key = SecretKey::random(&mut rng);
     let non_validating_public_key = PublicKey::from(&non_validating_secret_key);
-    secret_keys.push(Arc::new(non_validating_secret_key));
+    //    secret_keys.push(Arc::new(non_validating_secret_key));
 
     let max_gas_price: u8 = 3;
 
-    let mut transaction_config = TransactionV1Config::default();
-    transaction_config.native_mint_lane.max_transaction_count = 1;
-
     let spec_override = match gas_price_scenario {
         GasPriceScenario::SlotUtilization => {
+            let mut transaction_config = TransactionV1Config::default();
+            transaction_config.native_mint_lane.max_transaction_count = 1;
             ConfigsOverride::default().with_transaction_v1_config(transaction_config)
         }
         GasPriceScenario::SizeUtilization(block_size) => {
@@ -78,7 +77,7 @@ async fn run_gas_price_scenario(gas_price_scenario: GasPriceScenario) {
     let chain_name = fixture.chainspec.network_config.name.clone();
 
     // Run the network at load for at least 5 eras.
-    for _ in 0..5 {
+    for _ in 0..max_gas_price {
         let rng = fixture.rng_mut();
         let target_public_key = PublicKey::random(rng);
         let fixed_native_mint_transaction =
@@ -103,6 +102,7 @@ async fn run_gas_price_scenario(gas_price_scenario: GasPriceScenario) {
         current_era = next_era;
     }
 
+    assert_eq!(current_era, EraId::new(5));
     let expected_gas_price = fixture.chainspec.vacancy_config.max_gas_price;
     let actual_gas_price = fixture.get_current_era_price();
     assert_eq!(actual_gas_price, expected_gas_price);
