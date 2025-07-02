@@ -5961,31 +5961,3 @@ fn should_mark_bids_with_less_than_minimum_bid_amount_as_inactive_via_upgrade() 
 
     assert!(bid.inactive())
 }
-
-#[ignore]
-#[test]
-fn should_prune_delegator_from_validator_bid_when_delegated_amount_drops_below_min() {
-    let mut builder = LmdbWasmTestBuilder::default();
-
-    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
-
-    let validator_1_fund_request = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_TRANSFER_TO_ACCOUNT,
-        runtime_args! {
-            ARG_TARGET => *NON_FOUNDER_VALIDATOR_1_ADDR,
-            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
-        },
-    )
-    .build();
-
-    let delegator_1_fund_request = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_TRANSFER_TO_ACCOUNT,
-        runtime_args! {
-            ARG_TARGET => *BID_ACCOUNT_1_ADDR,
-            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
-        },
-    )
-    .build();
-}
