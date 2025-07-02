@@ -5,10 +5,9 @@ use casper_types::{
     TimeDiff, Transaction, TransactionV1Config, U512,
 };
 
-use crate::reactor::main_reactor::tests::ERA_ZERO;
 use crate::{
     reactor::main_reactor::tests::{
-        configs_override::ConfigsOverride, fixture::TestFixture, ONE_MIN,
+        configs_override::ConfigsOverride, fixture::TestFixture, ERA_ZERO, ONE_MIN,
     },
     types::transaction::transaction_v1_builder::TransactionV1Builder,
 };
