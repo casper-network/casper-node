@@ -2040,7 +2040,7 @@ impl Storage {
             Some(utilization) => {
                 utilization.entry(block_height).or_insert(block_utilization);
 
-                let transaction_count = utilization.values().sum();
+                let era_utilization = utilization.values().sum();
                 let block_count = utilization.keys().len() as u64;
                 let total_blocks_for_era = match era_id.predecessor() {
                     Some(previous_era) => {
@@ -2060,7 +2060,7 @@ impl Storage {
                     None => block_height,
                 };
 
-                Some((transaction_count, block_count, total_blocks_for_era))
+                Some((era_utilization, block_count, total_blocks_for_era))
             }
             None => {
                 let mut utilization = BTreeMap::new();

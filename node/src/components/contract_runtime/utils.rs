@@ -69,6 +69,7 @@ where
 }
 
 // Maybe era end processing instructions.
+#[derive(Debug)]
 enum EraEndInstruction {
     // Is not a switch block.
     ExecNonSwitch,
@@ -136,6 +137,11 @@ where
     let block_height = executable_block.height;
     info!(%era_id, %block_height, "End of era calculating new gas price");
 
+    if let Some(next_gas_price) = executable_block.next_era_gas_price {
+        // keep up nodes are executing a block as determined by validators
+        // and the next era gas price is already determined
+        return EraEndInstruction::ExecSwitch { next_gas_price };
+    }
     // we need to calculate the utilization of the block we are about to execute
     // and include it in the tally of the utilization for the entire era.
     let executable_block_utilization_score =
@@ -167,7 +173,7 @@ where
             let max = chainspec.vacancy_config.max_gas_price;
             let min = chainspec.vacancy_config.min_gas_price;
             let next_gas_price = if era_score >= go_up {
-                current_gas_price.saturating_add(1).max(max)
+                current_gas_price.saturating_add(1).min(max)
             } else if era_score <= go_down {
                 current_gas_price.saturating_sub(1).max(min)
             } else {
@@ -229,15 +235,16 @@ pub(super) async fn exec_and_check_next<REv>(
         }
     };
 
-    let maybe_next_era_gas_price = match handle_era_end(
+    let era_end_instruction = handle_era_end(
         data_access_layer.clone(),
         chainspec.clone(),
         metrics.clone(),
         effect_builder,
         &mut executable_block,
     )
-    .await
-    {
+    .await;
+    info!(?era_end_instruction, "era_end_instruction");
+    let maybe_next_era_gas_price = match era_end_instruction {
         EraEndInstruction::ExecNonSwitch => None,
         EraEndInstruction::ExecSwitch { next_gas_price } => Some(next_gas_price),
         EraEndInstruction::NoExec => {
