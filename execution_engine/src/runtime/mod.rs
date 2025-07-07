@@ -50,6 +50,7 @@ use casper_types::{
         ContractHash, ContractPackage, ContractPackageHash, ContractPackageStatus,
         ContractVersions, DisabledVersions, NamedKeys, ProtocolVersionMajor,
     },
+    execution::RetValue,
     system::{
         self,
         auction::{self, DelegatorKind, EraInfo},
@@ -694,7 +695,7 @@ where
                     self.context
                         .state()
                         .borrow_mut()
-                        .ret(key, Bytes::from(cl_value.inner_bytes().clone()));
+                        .ret(key, RetValue::CLValue(cl_value.clone()));
                 }
 
                 let urefs = match &self.host_buffer {

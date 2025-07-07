@@ -30,10 +30,12 @@ use crate::{
 };
 use casper_types::{
     addressable_entity::NamedKeyAddr,
-    bytesrepr::{self, Bytes, ToBytes},
+    bytesrepr::{self, ToBytes},
     contract_messages::{Message, Messages},
     contracts::NamedKeys,
-    execution::{Effects, TransformError, TransformInstruction, TransformKindV2, TransformV2},
+    execution::{
+        Effects, RetValue, TransformError, TransformInstruction, TransformKindV2, TransformV2,
+    },
     global_state::TrieMerkleProof,
     handle_stored_dictionary_value, BlockGlobalAddr, CLType, CLValue, CLValueError, Digest, Key,
     KeyTag, StoredValue, StoredValueTypeMismatch, U512,
@@ -182,7 +184,6 @@ pub struct GenericTrackingCopyCache<M: Copy + Debug> {
     reads_cached: LinkedHashMap<Key, StoredValue>,
     muts_cached: BTreeMap<KeyWithByteRepr, StoredValue>,
     prunes_cached: BTreeSet<Key>,
-    rets_cached: BTreeMap<Key, Bytes>,
     meter: M,
 }
 
@@ -198,7 +199,6 @@ impl<M: Meter<Key, StoredValue> + Copy + Default> GenericTrackingCopyCache<M> {
             reads_cached: LinkedHashMap::new(),
             muts_cached: BTreeMap::new(),
             prunes_cached: BTreeSet::new(),
-            rets_cached: BTreeMap::new(),
             meter,
         }
     }
@@ -236,11 +236,6 @@ impl<M: Meter<Key, StoredValue> + Copy + Default> GenericTrackingCopyCache<M> {
     /// Inserts `key` and `value` pair to Write/Add cache.
     pub fn insert_prune(&mut self, key: Key) {
         self.prunes_cached.insert(key);
-    }
-
-    /// Registers a ret in the cache
-    pub fn insert_ret(&mut self, key: Key, bytes: Bytes) {
-        self.rets_cached.insert(key, bytes);
     }
 
     /// Gets value from `key` in the cache.
@@ -593,12 +588,11 @@ where
     }
 
     /// Registers a contract return
-    pub fn ret(&mut self, key: Key, bytes: Bytes) {
+    pub fn ret(&mut self, key: Key, value: RetValue) {
         let normalized_key = key.normalize();
-        self.cache.insert_ret(normalized_key, bytes.clone());
         self.effects.push(TransformV2::new(
             normalized_key,
-            TransformKindV2::Ret(bytes),
+            TransformKindV2::Ret(value),
         ));
     }
 

@@ -13,8 +13,9 @@ use tracing::error;
 
 use super::TransformError;
 use crate::{
-    bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::NamedKeys,
+    execution::ret_value::RetValue,
     CLType, CLTyped, CLValue, Key, StoredValue, StoredValueTypeMismatch, U128, U256, U512,
 };
 
@@ -90,7 +91,7 @@ pub enum TransformKindV2 {
     /// Represents the case where applying a transform would cause an error.
     Failure(TransformError),
     /// Registers a value return from the contract
-    Ret(Bytes),
+    Ret(RetValue),
 }
 
 impl TransformKindV2 {
@@ -212,11 +213,7 @@ impl TransformKindV2 {
                 }
             },
             TransformKindV2::Failure(error) => Err(error),
-            TransformKindV2::Ret(_bytes) => {
-                let expected = "Contract or Account".to_string();
-                let found = "Ret".to_string();
-                Err(StoredValueTypeMismatch::new(expected, found).into())
-            }
+            TransformKindV2::Ret(_) => Ok(store(stored_value)),
         }
     }
 

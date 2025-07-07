@@ -1,7 +1,7 @@
 use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, LOCAL_GENESIS_REQUEST,
 };
-use casper_types::RuntimeArgs;
+use casper_types::{execution::RetValue, RuntimeArgs};
 
 const CONTRACT_VM1_RET_TEST: &str = "ret_journal_test.wasm";
 const EXPECTED_RET_BYTES: &[u8] = b"casper_ret test data";
@@ -42,9 +42,13 @@ fn vm1_casper_ret_emits_ret_transforms() {
         }
     });
 
-    let (_, bytes) = ret_transform.expect("Expected to find a Ret transform in the effects");
+    let (_, value) = ret_transform.expect("Expected to find a Ret transform in the effects");
+    let RetValue::CLValue(value) = value else {
+        panic!("Expected VM1 return value to be a CLValue");
+    };
+
     assert_eq!(
-        bytes.as_slice(),
+        value.inner_bytes(),
         EXPECTED_RET_BYTES,
         "Return data should match what was passed to casper_ret"
     );
