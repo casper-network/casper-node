@@ -199,6 +199,7 @@ pub(super) async fn exec_and_check_next<REv>(
     metrics: Arc<Metrics>,
     mut exec_queue: ExecQueue,
     shared_pre_state: Arc<Mutex<ExecutionPreState>>,
+    current_pre_state: ExecutionPreState,
     effect_builder: EffectBuilder<REv>,
     mut executable_block: ExecutableBlock,
     key_block_height_for_activation_point: u64,
@@ -261,7 +262,6 @@ pub(super) async fn exec_and_check_next<REv>(
     };
 
     let current_gas_price = executable_block.current_gas_price;
-    let current_pre_state = shared_pre_state.lock().unwrap().clone();
     let contract_runtime_metrics = metrics.clone();
     let task = move || {
         debug!("ContractRuntime: execute_finalized_block");

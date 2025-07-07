@@ -632,8 +632,8 @@ impl ContractRuntime {
                 let mut exec_queue = self.exec_queue.clone();
                 let finalized_block_height = executable_block.height;
                 let era_id = executable_block.era_id;
-                let next_block_height =
-                    self.execution_pre_state.lock().unwrap().next_block_height();
+                let current_pre_state = self.execution_pre_state.lock().unwrap();
+                let next_block_height = current_pre_state.next_block_height();
                 match finalized_block_height.cmp(&next_block_height) {
                     // An old block: it won't be enqueued:
                     Ordering::Less => {
@@ -694,6 +694,7 @@ impl ContractRuntime {
                                 metrics,
                                 exec_queue,
                                 shared_pre_state,
+                                current_pre_state.clone(),
                                 effect_builder,
                                 executable_block,
                                 key_block_height_for_activation_point,
