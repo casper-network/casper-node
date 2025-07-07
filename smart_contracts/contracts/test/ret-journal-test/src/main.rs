@@ -8,7 +8,7 @@ use casper_types::CLValue;
 pub extern "C" fn call() {
     // Create some data to return
     let return_data = b"casper_ret test data";
-    
+
     // Call casper_ret with the data as CLValue
     let cl_value = CLValue::from_t(return_data).unwrap();
     runtime::ret(cl_value);

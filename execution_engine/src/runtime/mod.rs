@@ -691,7 +691,10 @@ where
                 // Emit Ret transform to the execution journal
                 if let Some(cl_value) = &self.host_buffer {
                     let key = self.context.get_context_key();
-                    self.context.state().borrow_mut().ret(key, Bytes::from(cl_value.inner_bytes().clone()));
+                    self.context
+                        .state()
+                        .borrow_mut()
+                        .ret(key, Bytes::from(cl_value.inner_bytes().clone()));
                 }
 
                 let urefs = match &self.host_buffer {

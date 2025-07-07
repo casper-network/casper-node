@@ -13,6 +13,7 @@ mod host_function_costs;
 mod manage_groups;
 mod private_chain;
 mod regression;
+mod ret;
 mod stack_overflow;
 mod step;
 mod storage_costs;
@@ -20,7 +21,6 @@ mod system_contracts;
 mod system_costs;
 mod tutorial;
 mod upgrade;
-mod vm1_casper_ret_test;
 mod wasmless_transfer;
 
 // NOTE: the original execution engine also handled charging for gas costs
