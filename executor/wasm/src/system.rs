@@ -16,8 +16,8 @@ use casper_storage::{
     AddressGenerator, TrackingCopy,
 };
 use casper_types::{
-    account::AccountHash, CLValueError, ContextAccessRights, EntityAddr, Key, Phase,
-    ProtocolVersion, PublicKey, SystemHashRegistry, TransactionHash, URef, U512,
+    account::AccountHash, CLValueError, ContextAccessRights, EntityAddr, GenesisConfig, Key, Phase,
+    ProtocolVersion, PublicKey, StorageCosts, SystemConfig, SystemHashRegistry, Timestamp, TransactionHash, URef, U512, WasmConfig,
 };
 use parking_lot::RwLock;
 use thiserror::Error;
@@ -216,8 +216,8 @@ mod tests {
         AddressGenerator,
     };
     use casper_types::{
-        ChainspecRegistry, Digest, GenesisConfig, Phase, ProtocolVersion, TransactionHash,
-        TransactionV1Hash, U512,
+        ChainspecRegistry, Digest, GenesisConfig, Phase, ProtocolVersion, StorageCosts, SystemConfig, Timestamp, TransactionHash,
+        TransactionV1Hash, U512, WasmConfig,
     };
     use parking_lot::RwLock;
 
@@ -228,7 +228,21 @@ mod tests {
         let (global_state, mut root_hash, _tempdir) =
             global_state::state::lmdb::make_temporary_global_state([]);
 
-        let genesis_config = GenesisConfig::default();
+        let genesis_config = GenesisConfig::new(
+            vec![],
+            WasmConfig::default(),
+            SystemConfig::default(),
+            10,
+            10,
+            0,
+            Default::default(),
+            14,
+            Timestamp::now().millis(),
+            casper_types::HoldBalanceHandling::Accrued,
+            0,
+            true,
+            StorageCosts::default(),
+        );
 
         let genesis_request: GenesisRequest = GenesisRequest::new(
             Digest::hash("foo"),
@@ -285,7 +299,7 @@ mod tests {
         assert_eq!(ret.unwrap(), Ok(U512::from(1000u64)));
 
         let post_root_hash = global_state
-            .commit(root_hash, tracking_copy.effects())
+            .commit_effects(root_hash, tracking_copy.effects())
             .expect("Should apply effect");
 
         assert_ne!(post_root_hash, root_hash);
