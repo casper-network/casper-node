@@ -20,6 +20,7 @@ mod system_contracts;
 mod system_costs;
 mod tutorial;
 mod upgrade;
+mod vm1_casper_ret_test;
 mod wasmless_transfer;
 
 // NOTE: the original execution engine also handled charging for gas costs
