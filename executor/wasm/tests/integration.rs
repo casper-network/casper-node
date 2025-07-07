@@ -1062,19 +1062,15 @@ fn casper_return_writes_to_execution_journal() {
 
     let execute_result = run_wasm_session(
         &mut executor,
-        &mut global_state,
+        &global_state,
         state_root_hash,
         execute_request,
     );
-
-    // Verify that the execution was successful
-    // The run_wasm_session function already panics if there's a host error
 
     // Check that the effects contain a Ret transform
     let effects = execute_result.effects();
     let transforms = effects.transforms();
 
-    // Find the Ret transform
     let ret_transform = transforms.iter().find(|transform| {
         matches!(
             transform.kind(),
@@ -1105,6 +1101,6 @@ fn casper_return_writes_to_execution_journal() {
     assert_eq!(
         ret_transform.key(),
         &expected_key,
-        "Ret transform should be for the contract key"
+        "Ret transform should be under the contract key"
     );
 }
