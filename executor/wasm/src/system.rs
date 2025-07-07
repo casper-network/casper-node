@@ -16,8 +16,8 @@ use casper_storage::{
     AddressGenerator, TrackingCopy,
 };
 use casper_types::{
-    account::AccountHash, CLValueError, ContextAccessRights, EntityAddr, GenesisConfig, Key, Phase,
-    ProtocolVersion, PublicKey, StorageCosts, SystemConfig, SystemHashRegistry, Timestamp, TransactionHash, URef, U512, WasmConfig,
+    account::AccountHash, CLValueError, ContextAccessRights, EntityAddr, Key, Phase,
+    ProtocolVersion, PublicKey, SystemHashRegistry, TransactionHash, URef, U512,
 };
 use parking_lot::RwLock;
 use thiserror::Error;
@@ -216,8 +216,8 @@ mod tests {
         AddressGenerator,
     };
     use casper_types::{
-        ChainspecRegistry, Digest, GenesisConfig, Phase, ProtocolVersion, StorageCosts, SystemConfig, Timestamp, TransactionHash,
-        TransactionV1Hash, U512, WasmConfig,
+        ChainspecRegistry, Digest, GenesisConfig, Phase, ProtocolVersion, StorageCosts,
+        SystemConfig, Timestamp, TransactionHash, TransactionV1Hash, WasmConfig, U512,
     };
     use parking_lot::RwLock;
 

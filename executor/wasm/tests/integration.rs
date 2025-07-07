@@ -1073,24 +1073,38 @@ fn casper_return_writes_to_execution_journal() {
     // Check that the effects contain a Ret transform
     let effects = execute_result.effects();
     let transforms = effects.transforms();
-    
+
     // Find the Ret transform
     let ret_transform = transforms.iter().find(|transform| {
-        matches!(transform.kind(), casper_types::execution::TransformKindV2::Ret(_))
+        matches!(
+            transform.kind(),
+            casper_types::execution::TransformKindV2::Ret(_)
+        )
     });
 
-    assert!(ret_transform.is_some(), "Expected to find a Ret transform in the effects");
-    
+    assert!(
+        ret_transform.is_some(),
+        "Expected to find a Ret transform in the effects"
+    );
+
     let ret_transform = ret_transform.unwrap();
     match ret_transform.kind() {
         casper_types::execution::TransformKindV2::Ret(bytes) => {
             // The ret function in the test contract calls casper::ret with [1, 2, 3] data
-            assert_eq!(bytes.as_slice(), &[1, 2, 3], "Return data should match what was passed to casper::ret");
+            assert_eq!(
+                bytes.as_slice(),
+                &[1, 2, 3],
+                "Return data should match what was passed to casper::ret"
+            );
         }
         _ => panic!("Expected Ret transform kind"),
     }
 
     // Verify the key is the contract address
     let expected_key = casper_types::Key::SmartContract(contract_address);
-    assert_eq!(ret_transform.key(), &expected_key, "Ret transform should be for the contract key");
+    assert_eq!(
+        ret_transform.key(),
+        &expected_key,
+        "Ret transform should be for the contract key"
+    );
 }

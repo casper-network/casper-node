@@ -37,7 +37,7 @@ use casper_types::{
     account::AccountHash,
     addressable_entity::{ActionThresholds, AssociatedKeys},
     bytesrepr, AddressableEntity, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind,
-    ContractRuntimeTag, Digest, EntityAddr, EntityKind, execution::Effects, Gas, Groups, InitiatorAddr, Key,
+    ContractRuntimeTag, Digest, EntityAddr, EntityKind, Gas, Groups, InitiatorAddr, Key,
     MessageLimits, Package, PackageHash, PackageStatus, Phase, ProtocolVersion, StorageCosts,
     StoredValue, TransactionInvocationTarget, URef, WasmV2Config, U512,
 };
@@ -788,31 +788,16 @@ impl ExecutorV2 {
                 effects,
                 cache: _,
                 messages,
-            }) => {
-                // Filter out Ret transforms before committing to global state
-                let mut filtered_effects = Effects::new();
-                for transform in effects.transforms() {
-                    match transform.kind() {
-                        casper_types::execution::TransformKindV2::Ret(_) => {
-                            continue;
-                        }
-                        _ => {
-                            filtered_effects.push(transform.clone());
-                        }
-                    }
-                }
-
-                match state_provider.commit_effects(state_root_hash, filtered_effects) {
-                    Ok(post_state_hash) => Ok(ExecuteWithProviderResult::new(
-                        host_error,
-                        output,
-                        gas_usage,
-                        effects,
-                        post_state_hash,
-                        messages,
-                    )),
-                    Err(error) => Err(error.into()),
-                }
+            }) => match state_provider.commit_effects(state_root_hash, effects.clone()) {
+                Ok(post_state_hash) => Ok(ExecuteWithProviderResult::new(
+                    host_error,
+                    output,
+                    gas_usage,
+                    effects,
+                    post_state_hash,
+                    messages,
+                )),
+                Err(error) => Err(error.into()),
             },
             Err(error) => Err(ExecuteWithProviderError::Execute(error)),
         }
