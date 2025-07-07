@@ -1084,9 +1084,8 @@ fn casper_return_writes_to_execution_journal() {
     let ret_transform = ret_transform.unwrap();
     match ret_transform.kind() {
         casper_types::execution::TransformKindV2::Ret(bytes) => {
-            // The ret function in the test contract calls casper::ret with empty flags and None data
-            // So we expect empty bytes
-            assert_eq!(bytes.as_slice(), &[] as &[u8], "Return data should be empty for the test contract");
+            // The ret function in the test contract calls casper::ret with [1, 2, 3] data
+            assert_eq!(bytes.as_slice(), &[1, 2, 3], "Return data should match what was passed to casper::ret");
         }
         _ => panic!("Expected Ret transform kind"),
     }
