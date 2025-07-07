@@ -102,7 +102,7 @@ fn metered_write<S: GlobalStateReader, E: Executor>(
     caller: &mut impl Caller<Context = Context<S, E>>,
     key: Key,
     value: StoredValue,
-) -> VMResult<()> {
+) -> VMResult<()> {   
     charge_gas_storage(caller, value.serialized_length())?;
     caller.context_mut().tracking_copy.write(key, value);
     Ok(())
@@ -230,10 +230,10 @@ pub fn casper_remove<S: GlobalStateReader, E: Executor>(
     key_ptr: u32,
     key_size: u32,
 ) -> VMResult<u32> {
-    let write_cost = caller.context().config.host_function_costs().remove;
+    let remove_cost = caller.context().config.host_function_costs().remove;
     charge_host_function_call(
         &mut caller,
-        &write_cost,
+        &remove_cost,
         [key_space, u64::from(key_ptr), u64::from(key_size)],
     )?;
 
@@ -556,6 +556,13 @@ pub fn casper_return<S: GlobalStateReader, E: Executor>(
         let data = caller
             .memory_read(data_ptr, data_len.try_into_wrapped()?)
             .map(Bytes::from)?;
+        
+        let key = caller.context().callee;
+        caller.context_mut().tracking_copy.ret(
+            key,
+            casper_types::bytesrepr::Bytes::from(data.to_vec())
+        );
+
         Some(data)
     };
     Err(VMError::Return { flags, data })
