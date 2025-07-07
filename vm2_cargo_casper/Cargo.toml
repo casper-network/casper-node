@@ -1,5 +1,5 @@
 [package]
-name = "cargo-casper"
+name = "vm2-cargo-casper"
 version = "0.1.0"
 edition = "2021"
 
