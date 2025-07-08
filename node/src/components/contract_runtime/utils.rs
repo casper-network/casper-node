@@ -9,7 +9,7 @@ use std::{
     sync::{Arc, Mutex},
     time::Instant,
 };
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 
 use crate::{
     contract_runtime::{
@@ -68,8 +68,130 @@ where
     }
 }
 
+// Maybe era end processing instructions.
+#[derive(Debug)]
+enum EraEndInstruction {
+    // Is not a switch block.
+    ExecNonSwitch,
+    // Is a switch block, and we can calc next era gas price, thus we can exec.
+    ExecSwitch { next_gas_price: u8 },
+    // Is a switch block, but we cannot calc a new gas price.
+    NoExec,
+    // Fatal with error string.
+    Fatal(String),
+}
+
+/// This currently handles reward and dynamic gas price calculation. If in future
+/// similar end of era determinations need to be made, they should potentially
+/// be added here.
+async fn handle_era_end<REv>(
+    data_access_layer: Arc<DataAccessLayer<LmdbGlobalState>>,
+    chainspec: Arc<Chainspec>,
+    metrics: Arc<Metrics>,
+    effect_builder: EffectBuilder<REv>,
+    executable_block: &mut ExecutableBlock,
+) -> EraEndInstruction
+where
+    REv: From<ContractRuntimeRequest>
+        + From<ContractRuntimeAnnouncement>
+        + From<StorageRequest>
+        + From<MetaBlockAnnouncement>
+        + From<FatalAnnouncement>
+        + Send,
+{
+    if executable_block.era_report.is_none() {
+        return EraEndInstruction::ExecNonSwitch;
+    }
+    // this logic could be further broken down to each part if desired
+
+    // reward stuff
+    if executable_block.rewards.is_none() {
+        executable_block.rewards = Some(if chainspec.core_config.compute_rewards {
+            let rewards = match rewards::fetch_data_and_calculate_rewards_for_era(
+                effect_builder,
+                data_access_layer.clone(),
+                chainspec.as_ref(),
+                &metrics,
+                executable_block.clone(),
+            )
+            .await
+            {
+                Ok(rewards) => rewards,
+                Err(e) => {
+                    return EraEndInstruction::Fatal(format!(
+                        "Failed to compute the rewards: {e:?}"
+                    ));
+                }
+            };
+
+            debug!("rewards successfully computed");
+
+            rewards
+        } else {
+            BTreeMap::new()
+        });
+    }
+
+    // dynamic gas price stuff
+    let era_id = executable_block.era_id;
+    let block_height = executable_block.height;
+    info!(%era_id, %block_height, "End of era calculating new gas price");
+
+    if let Some(next_gas_price) = executable_block.next_era_gas_price {
+        // keep up nodes are executing a block as determined by validators
+        // and the next era gas price is already determined
+        return EraEndInstruction::ExecSwitch { next_gas_price };
+    }
+    // we need to calculate the utilization of the block we are about to execute
+    // and include it in the tally of the utilization for the entire era.
+    let executable_block_utilization_score =
+        match executable_block.calc_utilization_score(&chainspec) {
+            Some(score) => score,
+            None => {
+                return EraEndInstruction::Fatal(format!(
+                    "could not calc utilization of executable block {}",
+                    block_height
+                ));
+            }
+        };
+
+    // BLOCKING CALL
+    match effect_builder
+        .get_era_utilization(era_id, block_height, executable_block_utilization_score)
+        .await
+    {
+        Some((utilization, block_count, total_block_count)) => {
+            if block_count != total_block_count {
+                return EraEndInstruction::NoExec;
+            }
+
+            let current_gas_price = executable_block.current_gas_price;
+            let era_score = { Ratio::new(utilization, block_count).to_integer() };
+
+            let go_up = chainspec.vacancy_config.upper_threshold;
+            let go_down = chainspec.vacancy_config.lower_threshold;
+            let max = chainspec.vacancy_config.max_gas_price;
+            let min = chainspec.vacancy_config.min_gas_price;
+            let next_gas_price = if era_score >= go_up {
+                current_gas_price.saturating_add(1).min(max)
+            } else if era_score <= go_down {
+                current_gas_price.saturating_sub(1).max(min)
+            } else {
+                current_gas_price
+            };
+            info!(%next_gas_price, "Calculated new gas price");
+            EraEndInstruction::ExecSwitch { next_gas_price }
+        }
+        None => {
+            let error = BlockExecutionError::FailedToGetNewEraGasPrice { era_id };
+            EraEndInstruction::Fatal(format!("{}", error))
+        }
+    }
+}
+
+/// This function can fatal.
 #[allow(clippy::too_many_arguments)]
-pub(super) async fn exec_or_requeue<REv>(
+pub(super) async fn exec_and_check_next<REv>(
     data_access_layer: Arc<DataAccessLayer<LmdbGlobalState>>,
     execution_engine_v1: Arc<ExecutionEngineV1>,
     execution_engine_v2: ExecutorV2,
@@ -91,192 +213,56 @@ pub(super) async fn exec_or_requeue<REv>(
         + Send,
 {
     debug!("ContractRuntime: execute_finalized_block_or_requeue");
-    let contract_runtime_metrics = metrics.clone();
-    let is_era_end = executable_block.era_report.is_some();
-    let current_gas_price = executable_block.current_gas_price;
+
+    // FIRST determine if we are aware of the last switch block header
     let era_id = executable_block.era_id;
-    let block_height = executable_block.height;
-
-    if is_era_end && executable_block.rewards.is_none() {
-        executable_block.rewards = Some(if chainspec.core_config.compute_rewards {
-            let rewards = match rewards::fetch_data_and_calculate_rewards_for_era(
-                effect_builder,
-                data_access_layer.clone(),
-                chainspec.as_ref(),
-                &metrics,
-                executable_block.clone(),
-            )
-            .await
-            {
-                Ok(rewards) => rewards,
-                Err(e) => {
-                    return fatal!(effect_builder, "Failed to compute the rewards: {e:?}").await;
-                }
-            };
-
-            debug!("rewards successfully computed");
-
-            rewards
-        } else {
-            BTreeMap::new()
-        });
-    }
-
-    let maybe_next_era_gas_price = if is_era_end && executable_block.next_era_gas_price.is_none() {
-        let max_block_size = chainspec.transaction_config.max_block_size as u64;
-        let block_gas_limit = chainspec.transaction_config.block_gas_limit;
-        let go_up = chainspec.vacancy_config.upper_threshold;
-        let go_down = chainspec.vacancy_config.lower_threshold;
-        let max = chainspec.vacancy_config.max_gas_price;
-        let min = chainspec.vacancy_config.min_gas_price;
-        info!(%era_id, %block_height, "End of era calculating new gas price");
-        let era_id = executable_block.era_id;
-        let block_height = executable_block.height;
-
-        let per_block_capacity = chainspec
-            .transaction_config
-            .transaction_v1_config
-            .get_max_block_count();
-
-        let switch_block_utilization_score = {
-            let mut has_hit_slot_limt = false;
-            let mut transaction_hash_to_lane_id = HashMap::new();
-
-            for (lane_id, transactions) in executable_block.transaction_map.iter() {
-                transaction_hash_to_lane_id.extend(
-                    transactions
-                        .iter()
-                        .map(|transaction| (transaction, *lane_id)),
-                );
-                let max_count = chainspec
-                    .transaction_config
-                    .transaction_v1_config
-                    .get_max_transaction_count(*lane_id);
-                if max_count == transactions.len() as u64 {
-                    has_hit_slot_limt = true;
-                }
-            }
-
-            if has_hit_slot_limt {
-                100u64
-            } else if executable_block.transactions.is_empty() {
-                0u64
-            } else {
-                let size_utilization: u64 = {
-                    let total_size_of_transactions: u64 = executable_block
-                        .transactions
-                        .iter()
-                        .map(|transaction| transaction.size_estimate() as u64)
-                        .sum();
-
-                    Ratio::new(total_size_of_transactions * 100, max_block_size).to_integer()
-                };
-                let gas_utilization: u64 = {
-                    let total_gas_limit: u64 = executable_block
-                        .transactions
-                        .iter()
-                        .map(|transaction| {
-                            match transaction_hash_to_lane_id.get(&transaction.hash()) {
-                                Some(lane_id) => {
-                                    match &transaction.gas_limit(&chainspec, *lane_id) {
-                                        Ok(gas_limit) => gas_limit.value().as_u64(),
-                                        Err(_) => {
-                                            warn!("Unable to determine gas limit");
-                                            0u64
-                                        }
-                                    }
-                                }
-                                None => {
-                                    warn!("Unable to determine gas limit");
-                                    0u64
-                                }
-                            }
-                        })
-                        .sum();
-
-                    Ratio::new(total_gas_limit * 100, block_gas_limit).to_integer()
-                };
-
-                let slot_utilization = Ratio::new(
-                    executable_block.transactions.len() as u64 * 100,
-                    per_block_capacity,
+    let last_switch_block_hash = match era_id.predecessor() {
+        Some(previous_era) => {
+            let switch_block_header = effect_builder
+                .get_switch_block_header_by_era_id_from_storage(previous_era)
+                .await;
+            if switch_block_header.is_none() {
+                return fatal!(
+                    effect_builder,
+                    "switch block header can only be none for genesis era"
                 )
-                .to_integer();
-
-                let utilization_scores = [slot_utilization, gas_utilization, size_utilization];
-
-                match utilization_scores.iter().max() {
-                    Some(max_score) => *max_score,
-                    None => {
-                        let error = BlockExecutionError::FailedToGetNewEraGasPrice { era_id };
-                        return fatal!(effect_builder, "{}", error).await;
-                    }
-                }
+                .await;
             }
-        };
-
-        let maybe_utilization = effect_builder
-            .get_block_utilization(era_id, block_height, switch_block_utilization_score)
-            .await;
-        debug!(
-            %era_id,
-            %block_height,
-            ?maybe_utilization,
-            "Calculated utilization for block"
-        );
-
-        match maybe_utilization {
-            None => {
-                let error = BlockExecutionError::FailedToGetNewEraGasPrice { era_id };
-                return fatal!(effect_builder, "{}", error).await;
-            }
-            Some((utilization, block_count)) => {
-                let era_score = { Ratio::new(utilization, block_count).to_integer() };
-
-                let new_gas_price = if era_score >= go_up {
-                    let new_gas_price = current_gas_price.saturating_add(1);
-                    if new_gas_price > max {
-                        max
-                    } else {
-                        new_gas_price
-                    }
-                } else if era_score <= go_down {
-                    let new_gas_price = current_gas_price.saturating_sub(1);
-                    if new_gas_price <= min {
-                        min
-                    } else {
-                        new_gas_price
-                    }
-                } else {
-                    current_gas_price
-                };
-                info!(%new_gas_price, "Calculated new gas price");
-                Some(new_gas_price)
-            }
+            switch_block_header.map(|header| header.block_hash())
         }
-    } else if executable_block.next_era_gas_price.is_some() {
-        debug!(
-            %era_id,
-            %block_height,
-            next_era_gas_price = executable_block.next_era_gas_price,
-            "New gas price obtained from block"
-        );
-        executable_block.next_era_gas_price
-    } else {
-        None
+        None => {
+            // genesis era
+            None
+        }
     };
 
-    let era_id = executable_block.era_id;
-
-    let last_switch_block_hash = if let Some(previous_era) = era_id.predecessor() {
-        let switch_block_header = effect_builder
-            .get_switch_block_header_by_era_id_from_storage(previous_era)
-            .await;
-        switch_block_header.map(|header| header.block_hash())
-    } else {
-        None
+    let era_end_instruction = handle_era_end(
+        data_access_layer.clone(),
+        chainspec.clone(),
+        metrics.clone(),
+        effect_builder,
+        &mut executable_block,
+    )
+    .await;
+    debug!(?era_end_instruction, "era_end_instruction");
+    let maybe_next_era_gas_price = match era_end_instruction {
+        EraEndInstruction::ExecNonSwitch => None,
+        EraEndInstruction::ExecSwitch { next_gas_price } => Some(next_gas_price),
+        EraEndInstruction::NoExec => {
+            info!("ContractRuntime: unable to execute - try again later");
+            exec_queue.insert(QueueItem {
+                meta_block_state,
+                executable_block,
+            });
+            return;
+        }
+        EraEndInstruction::Fatal(msg) => {
+            return fatal!(effect_builder, "{}", msg).await;
+        }
     };
 
+    let current_gas_price = executable_block.current_gas_price;
+    let contract_runtime_metrics = metrics.clone();
     let task = move || {
         debug!("ContractRuntime: execute_finalized_block");
         execute_finalized_block(
@@ -306,6 +292,7 @@ pub(super) async fn exec_or_requeue<REv>(
         }
     };
 
+    // from this point onward we are dealing with the block we just created by executing
     let new_execution_pre_state = ExecutionPreState::from_block_header(block.header());
     {
         // The `shared_pre_state` could have been set to a block we just fully synced after
@@ -329,6 +316,7 @@ pub(super) async fn exec_or_requeue<REv>(
     }
 
     let current_era_id = block.era_id();
+    let block_height = block.height();
 
     if let Some(StepOutcome {
         step_effects,
@@ -399,6 +387,8 @@ pub(super) async fn exec_or_requeue<REv>(
             )
             .await;
     }
+
+    // TODO: if it is an error why allow it in the first place?
     if meta_block_state
         .register_as_executed()
         .was_already_registered()
@@ -411,19 +401,17 @@ pub(super) async fn exec_or_requeue<REv>(
         );
     }
 
-    let meta_block = MetaBlock::new_forward(block, execution_artifacts, meta_block_state);
-    effect_builder.announce_meta_block(meta_block).await;
-
-    // If the child is already finalized, start execution.
-    let next_block = exec_queue.remove(new_execution_pre_state.next_block_height());
-
     if let Some(next_era_gas_price) = maybe_next_era_gas_price {
         effect_builder
             .announce_new_era_gas_price(current_era_id.successor(), next_era_gas_price)
             .await;
     }
+    let meta_block = MetaBlock::new_forward(block, execution_artifacts, meta_block_state);
+    effect_builder.announce_meta_block(meta_block).await;
 
-    // We schedule the next block from the queue to be executed:
+    let next_block = exec_queue.remove(new_execution_pre_state.next_block_height());
+
+    // We schedule the next block from the queue to be executed, if available.
     if let Some(QueueItem {
         executable_block,
         meta_block_state,
@@ -612,7 +600,7 @@ mod tests {
     #[test]
     fn calculation_is_lazy() {
         // NOTE: Range of EraInfos is lazy, so it does not consume memory, but getting the last
-        // batch out of u64::MAX of erainfos needs to iterate over all chunks.
+        // batch out of u64::MAX of era info needs to iterate over all chunks.
         assert!(calculate_prune_eras(EraId::new(u64::MAX), 0, u64::MAX, 100,).is_none(),);
         assert_eq!(
             calculate_prune_eras(EraId::new(u64::MAX), 1, 100, 100)

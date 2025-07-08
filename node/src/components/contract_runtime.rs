@@ -81,7 +81,7 @@ pub(crate) use types::{
     BlockAndExecutionArtifacts, ExecutionArtifact, ExecutionPreState, SpeculativeExecutionResult,
     StepOutcome,
 };
-use utils::{exec_or_requeue, run_intensive_task};
+use utils::{exec_and_check_next, run_intensive_task};
 
 const COMPONENT_NAME: &str = "contract_runtime";
 
@@ -635,7 +635,7 @@ impl ContractRuntime {
                 let current_pre_state = self.execution_pre_state.lock().unwrap();
                 let next_block_height = current_pre_state.next_block_height();
                 match finalized_block_height.cmp(&next_block_height) {
-                    // An old block: it won't be executed:
+                    // An old block: it won't be enqueued:
                     Ordering::Less => {
                         debug!(
                             %era_id,
@@ -645,7 +645,7 @@ impl ContractRuntime {
                         );
                         effects.extend(
                             effect_builder
-                                .announce_unexecuted_block(finalized_block_height)
+                                .announce_not_enqueuing_old_executable_block(finalized_block_height)
                                 .ignore(),
                         );
                     }
@@ -662,13 +662,10 @@ impl ContractRuntime {
                             finalized_block_height,
                             executable_block.transactions.len()
                         );
-                        exec_queue.insert(
-                            finalized_block_height,
-                            QueueItem {
-                                executable_block,
-                                meta_block_state,
-                            },
-                        );
+                        exec_queue.insert(QueueItem {
+                            executable_block,
+                            meta_block_state,
+                        });
                     }
                     // This is the next block to be executed, we do it right away:
                     Ordering::Equal => {
@@ -683,8 +680,13 @@ impl ContractRuntime {
                         let chainspec = Arc::clone(&self.chainspec);
                         let metrics = Arc::clone(&self.metrics);
                         let shared_pre_state = Arc::clone(&self.execution_pre_state);
+                        // the way this works is inobvious. if the current executable block
+                        // executes and its child is enqueued the underlying logic will
+                        // update the pre-state to refer to the child, pop the child from the queue,
+                        // and send a new event of this kind with the child. it will then get into
+                        // this match arm and get executed without being re-enqueued.
                         effects.extend(
-                            exec_or_requeue(
+                            exec_and_check_next(
                                 data_access_layer,
                                 execution_engine_v1,
                                 execution_engine_v2,

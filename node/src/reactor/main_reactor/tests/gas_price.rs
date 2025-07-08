@@ -1,13 +1,13 @@
 use std::{sync::Arc, time::Duration};
 
 use casper_types::{
-    testing::TestRng, Chainspec, PricingHandling, PricingMode, PublicKey, SecretKey, TimeDiff,
-    Transaction, TransactionV1Config, U512,
+    testing::TestRng, Chainspec, EraId, PricingHandling, PricingMode, PublicKey, SecretKey,
+    TimeDiff, Transaction, TransactionV1Config, U512,
 };
 
 use crate::{
     reactor::main_reactor::tests::{
-        configs_override::ConfigsOverride, fixture::TestFixture, ERA_ONE, ONE_MIN,
+        configs_override::ConfigsOverride, fixture::TestFixture, ERA_ZERO, ONE_MIN,
     },
     types::transaction::transaction_v1_builder::TransactionV1Builder,
 };
@@ -41,13 +41,13 @@ async fn run_gas_price_scenario(gas_price_scenario: GasPriceScenario) {
     let non_validating_public_key = PublicKey::from(&non_validating_secret_key);
     secret_keys.push(Arc::new(non_validating_secret_key));
 
+    let min_gas_price: u8 = 1;
     let max_gas_price: u8 = 3;
-
-    let mut transaction_config = TransactionV1Config::default();
-    transaction_config.native_mint_lane.max_transaction_count = 1;
 
     let spec_override = match gas_price_scenario {
         GasPriceScenario::SlotUtilization => {
+            let mut transaction_config = TransactionV1Config::default();
+            transaction_config.native_mint_lane.max_transaction_count = 1;
             ConfigsOverride::default().with_transaction_v1_config(transaction_config)
         }
         GasPriceScenario::SizeUtilization(block_size) => {
@@ -60,25 +60,41 @@ async fn run_gas_price_scenario(gas_price_scenario: GasPriceScenario) {
     .with_lower_threshold(5u64)
     .with_upper_threshold(10u64)
     .with_minimum_era_height(5)
+    .with_min_gas_price(min_gas_price)
     .with_max_gas_price(max_gas_price);
 
     let mut fixture =
         TestFixture::new_with_keys(rng, secret_keys, stakes, Some(spec_override)).await;
 
+    assert_eq!(
+        min_gas_price,
+        fixture.chainspec.vacancy_config.min_gas_price
+    );
+    assert_eq!(
+        max_gas_price,
+        fixture.chainspec.vacancy_config.max_gas_price
+    );
+
     let alice_secret_key = Arc::clone(&fixture.node_contexts[0].secret_key);
     let alice_public_key = PublicKey::from(&*alice_secret_key);
 
     fixture
-        .run_until_stored_switch_block_header(ERA_ONE, ONE_MIN)
+        .run_until_stored_switch_block_header(ERA_ZERO, ONE_MIN)
         .await;
 
-    let switch_block = fixture.switch_block(ERA_ONE);
+    let mut switch_block = fixture.switch_block(ERA_ZERO);
+    let mut next_gas_price = switch_block
+        .era_end()
+        .expect("this is a switch block")
+        .next_era_gas_price();
+    assert_eq!(next_gas_price, min_gas_price, "price should start at min");
 
     let mut current_era = switch_block.era_id();
     let chain_name = fixture.chainspec.network_config.name.clone();
 
+    assert_eq!(current_era, EraId::new(0), "current era should be genesis");
     // Run the network at load for at least 5 eras.
-    for _ in 0..5 {
+    for idx in 1..=max_gas_price {
         let rng = fixture.rng_mut();
         let target_public_key = PublicKey::random(rng);
         let fixed_native_mint_transaction =
@@ -100,15 +116,38 @@ async fn run_gas_price_scenario(gas_price_scenario: GasPriceScenario) {
         fixture
             .run_until_stored_switch_block_header(next_era, ONE_MIN)
             .await;
+        switch_block = fixture.switch_block(EraId::new(idx as u64));
+        next_gas_price = switch_block
+            .era_end()
+            .expect("this is a switch block")
+            .next_era_gas_price();
+        let expected = {
+            let mut val = min_gas_price + idx;
+            if val > max_gas_price {
+                val = max_gas_price;
+            }
+            val
+        };
+        assert_eq!(
+            next_gas_price, expected,
+            "price goes up by 1 each era (with current settings), up to the max"
+        );
         current_era = next_era;
     }
 
-    let expected_gas_price = fixture.chainspec.vacancy_config.max_gas_price;
-    let actual_gas_price = fixture.get_current_era_price();
-    assert_eq!(actual_gas_price, expected_gas_price);
+    assert_eq!(
+        next_gas_price, max_gas_price,
+        "calculated gas price should match the max gas price"
+    );
+    assert_eq!(
+        current_era,
+        EraId::new(max_gas_price as u64),
+        "we cranked a number of eras to walk up to the max price"
+    );
+
     let gas_price_for_non_validating_node =
         fixture.get_block_gas_price_by_public_key(Some(&non_validating_public_key));
-    assert_eq!(actual_gas_price, gas_price_for_non_validating_node);
+    assert_eq!(max_gas_price, gas_price_for_non_validating_node);
     let rng = fixture.rng_mut();
     let target_public_key = PublicKey::random(rng);
 
