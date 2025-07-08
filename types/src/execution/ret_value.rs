@@ -11,10 +11,7 @@ use crate::{
     CLValue,
 };
 
-/// Error type for applying and combining transforms.
-///
-/// A `TypeMismatch` occurs when a transform cannot be applied because the types are not compatible
-/// (e.g. trying to add a number to a string).
+/// Type disambiguating between the formatting of the returned data.
 #[derive(PartialEq, Eq, Clone, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
@@ -30,11 +27,11 @@ impl ToBytes for RetValue {
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         match self {
             RetValue::CLValue(bytes) => {
-                (RetTag::CLValue as u8).write_bytes(writer)?;
+                (RetValueTag::CLValue as u8).write_bytes(writer)?;
                 bytes.write_bytes(writer)
             }
             RetValue::Bytes(bytes) => {
-                (RetTag::Bytes as u8).write_bytes(writer)?;
+                (RetValueTag::Bytes as u8).write_bytes(writer)?;
                 bytes.write_bytes(writer)
             }
         }
@@ -59,11 +56,11 @@ impl FromBytes for RetValue {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (tag, remainder) = u8::from_bytes(bytes)?;
         match tag {
-            tag if tag == RetTag::CLValue as u8 => {
+            tag if tag == RetValueTag::CLValue as u8 => {
                 let (value, remainder) = CLValue::from_bytes(remainder)?;
                 Ok((RetValue::CLValue(value), remainder))
             }
-            tag if tag == RetTag::Bytes as u8 => {
+            tag if tag == RetValueTag::Bytes as u8 => {
                 let (bytes, remainder) = Bytes::from_bytes(remainder)?;
                 Ok((RetValue::Bytes(bytes), remainder))
             }
@@ -73,7 +70,7 @@ impl FromBytes for RetValue {
 }
 
 #[repr(u8)]
-enum RetTag {
+enum RetValueTag {
     CLValue = 0,
     Bytes = 1,
 }
