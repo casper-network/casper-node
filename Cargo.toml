@@ -20,7 +20,7 @@ members = [
     "smart_contracts/sdk_codegen",
     "smart_contracts/sdk_sys",
     "smart_contracts/macros",
-    "cargo_casper",
+    "vm2_cargo_casper",
     # "utils/highway-rewards-analysis",
     # "utils/highway-state-grapher",
     "executor/wasm_common",

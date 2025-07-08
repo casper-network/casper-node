@@ -933,6 +933,7 @@ fn generate_impl_trait_for_contract(
                                 };
                             };
 
+                            #[cfg(not(target_arch = "wasm32"))]
                             const _: () = {
                                 #[casper_contract_sdk::linkme::distributed_slice(casper_contract_sdk::abi_generator::ENTRYPOINTS)]
                                 #[linkme(crate = casper_contract_sdk::linkme)]
