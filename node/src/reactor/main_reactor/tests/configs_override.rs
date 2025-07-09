@@ -126,6 +126,13 @@ impl ConfigsOverride {
         self.transaction_v1_override = Some(transaction_v1config);
         self
     }
+
+    pub(crate) fn with_idle_tolerance(mut self, idle_tolernace: TimeDiff) -> Self {
+        let mut config = NodeConfigOverride::default();
+        config.idle_tolerance = Some(idle_tolernace);
+        self.node_config_override = config;
+        self
+    }
 }
 
 impl Default for ConfigsOverride {
@@ -164,4 +171,5 @@ impl Default for ConfigsOverride {
 #[derive(Clone, Default)]
 pub(crate) struct NodeConfigOverride {
     pub sync_handling_override: Option<SyncHandling>,
+    pub idle_tolerance: Option<TimeDiff>,
 }

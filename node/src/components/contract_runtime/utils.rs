@@ -161,6 +161,7 @@ where
         .await
     {
         Some((utilization, block_count, total_block_count)) => {
+            info!(?block_count, "block_count");
             if block_count != total_block_count {
                 return EraEndInstruction::NoExec;
             }
@@ -244,7 +245,7 @@ pub(super) async fn exec_and_check_next<REv>(
         &mut executable_block,
     )
     .await;
-    debug!(?era_end_instruction, "era_end_instruction");
+    info!(?era_end_instruction, "era_end_instruction");
     let maybe_next_era_gas_price = match era_end_instruction {
         EraEndInstruction::ExecNonSwitch => None,
         EraEndInstruction::ExecSwitch { next_gas_price } => Some(next_gas_price),

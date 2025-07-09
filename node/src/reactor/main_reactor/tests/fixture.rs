@@ -395,9 +395,13 @@ impl TestFixture {
         };
         let NodeConfigOverride {
             sync_handling_override,
+            idle_tolerance,
         } = node_config_override;
         if let Some(sync_handling) = sync_handling_override {
             cfg.node.sync_handling = sync_handling;
+        }
+        if let Some(idle) = idle_tolerance {
+            cfg.node.idle_tolerance = idle
         }
 
         // Additionally set up storage in a temporary directory.
@@ -882,6 +886,45 @@ impl TestFixture {
                 }
             }
         }
+    }
+
+    pub(crate) fn delete_block_utilization_score_by_block_hash_in_node(
+        &mut self,
+        node_public_key: &PublicKey,
+        block_hash: BlockHash,
+    ) {
+        let (_, runner) = self
+            .network
+            .nodes_mut()
+            .iter_mut()
+            .find(|(_, runner)| runner.main_reactor().consensus.public_key() == node_public_key)
+            .expect("should have runner");
+
+        runner
+            .main_reactor_as_mut()
+            .storage
+            .delete_block_utilization_score_by_block_hash(block_hash)
+    }
+
+    pub(crate) async fn check_reactor_state(&mut self, public_key: &PublicKey, within: Duration) {
+        self.try_run_until(
+            move |nodes| {
+                let (_, runner) = nodes
+                    .iter()
+                    .find(|(_, runner)| runner.main_reactor().consensus.public_key() == public_key)
+                    .expect("should have runner");
+                let state = runner.main_reactor().state;
+                state == ReactorState::CatchUp
+            },
+            within,
+        )
+        .await
+        .unwrap_or_else(|_| {
+            panic!(
+                "should have reactor state within {} seconds",
+                within.as_secs_f64(),
+            )
+        })
     }
 
     #[inline(always)]
