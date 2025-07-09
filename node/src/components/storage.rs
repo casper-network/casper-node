@@ -2402,7 +2402,5 @@ impl Storage {
         era_score
             .remove(&height)
             .expect("must have previous entry for this height");
-
-        info!("UT {:?}", self.utilization_tracker.keys().len())
     }
 }

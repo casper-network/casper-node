@@ -906,27 +906,6 @@ impl TestFixture {
             .delete_block_utilization_score_by_block_hash(block_hash)
     }
 
-    pub(crate) async fn check_reactor_state(&mut self, public_key: &PublicKey, within: Duration) {
-        self.try_run_until(
-            move |nodes| {
-                let (_, runner) = nodes
-                    .iter()
-                    .find(|(_, runner)| runner.main_reactor().consensus.public_key() == public_key)
-                    .expect("should have runner");
-                let state = runner.main_reactor().state;
-                state == ReactorState::CatchUp
-            },
-            within,
-        )
-        .await
-        .unwrap_or_else(|_| {
-            panic!(
-                "should have reactor state within {} seconds",
-                within.as_secs_f64(),
-            )
-        })
-    }
-
     #[inline(always)]
     pub(crate) fn network_mut(&mut self) -> &mut TestingNetwork<FilterReactor<MainReactor>> {
         &mut self.network

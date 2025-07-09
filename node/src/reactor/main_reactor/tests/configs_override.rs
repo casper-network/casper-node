@@ -128,8 +128,10 @@ impl ConfigsOverride {
     }
 
     pub(crate) fn with_idle_tolerance(mut self, idle_tolernace: TimeDiff) -> Self {
-        let mut config = NodeConfigOverride::default();
-        config.idle_tolerance = Some(idle_tolernace);
+        let config = NodeConfigOverride {
+            idle_tolerance: Some(idle_tolernace),
+            ..Default::default()
+        };
         self.node_config_override = config;
         self
     }

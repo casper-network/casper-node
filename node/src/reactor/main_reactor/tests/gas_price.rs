@@ -1,4 +1,3 @@
-use num_rational::Ratio;
 use std::{sync::Arc, time::Duration};
 
 use casper_types::{
@@ -297,19 +296,17 @@ async fn gas_price_calc_should_not_stall_network() {
 
     fixture.delete_block_utilization_score_by_block_hash_in_node(&node_public_key, block_hash);
 
-    let delay = fixture
-        .node_contexts
-        .first()
-        .expect("must have node")
-        .config
-        .node
-        .idle_tolerance;
-
-    fixture
-        .check_reactor_state(&node_public_key, Duration::from(delay))
-        .await;
-
     fixture
         .run_until_stored_switch_block_header(ERA_TWO, ONE_MIN)
         .await;
+
+    let price_node_0 = fixture.get_block_gas_price_by_public_key(Some(&PublicKey::from(
+        &*fixture.node_contexts[0].secret_key,
+    )));
+
+    let price_node_1 = fixture.get_block_gas_price_by_public_key(Some(&PublicKey::from(
+        &*fixture.node_contexts[1].secret_key,
+    )));
+
+    assert_eq!(price_node_0, price_node_1);
 }
