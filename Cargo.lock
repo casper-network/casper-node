@@ -928,6 +928,7 @@ dependencies = [
  "casper-storage",
  "casper-types",
  "parking_lot",
+ "serde",
  "thiserror 2.0.12",
 ]
 

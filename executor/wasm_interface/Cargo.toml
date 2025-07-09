@@ -16,3 +16,4 @@ casper-storage = { version = "2.1.1", path = "../../storage" }
 casper-types = { version = "6.0.1", path = "../../types" }
 parking_lot = "0.12"
 thiserror = "2"
+serde = { version = "1.0.219", features = ["derive"] }

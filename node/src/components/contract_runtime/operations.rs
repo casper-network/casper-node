@@ -673,6 +673,13 @@ pub fn execute_finalized_block(
                                 artifact_builder.with_wasm_v2_result(wasm_v2_result);
                             }
                             Err(wasm_v2_error) => {
+                                if let Some(internal_host_error) =
+                                    wasm_v2_error.as_internal_host_error()
+                                {
+                                    return Err(BlockExecutionError::Vm2InternalError(
+                                        internal_host_error,
+                                    ));
+                                }
                                 artifact_builder.with_wasm_v2_error(wasm_v2_error);
                             }
                         }

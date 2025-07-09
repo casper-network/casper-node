@@ -8,6 +8,7 @@ use casper_executor_wasm_common::{
     error::{CallError, TrapCode, CALLEE_SUCCEEDED},
     flags::ReturnFlags,
 };
+use serde::Serialize;
 
 /// Interface version for the Wasm host functions.
 ///
@@ -71,7 +72,7 @@ pub enum MemoryError {
     NonUtf8String,
 }
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone, Serialize)]
 /// Represents a catastrophic internal host error.
 pub enum InternalHostError {
     #[error("type conversion failure")]
