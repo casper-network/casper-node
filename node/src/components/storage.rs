@@ -2384,4 +2384,23 @@ impl Storage {
             execution_result,
         })
     }
+
+    pub(crate) fn delete_block_utilization_score_by_block_hash(&mut self, block_hash: BlockHash) {
+        let txn = self.block_store.checkout_ro().expect("mut get read only");
+        let block_header: BlockHeader = txn
+            .read(block_hash)
+            .expect("should read")
+            .expect("must have header");
+
+        let era = block_header.era_id();
+        let height = block_header.height();
+
+        let era_score = self
+            .utilization_tracker
+            .get_mut(&era)
+            .expect("must have era tracker");
+        era_score
+            .remove(&height)
+            .expect("must have previous entry for this height");
+    }
 }
