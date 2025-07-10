@@ -8,7 +8,7 @@ use casper_types::{
 use crate::{
     reactor::main_reactor::tests::{
         configs_override::ConfigsOverride, fixture::TestFixture, initial_stakes::InitialStakes,
-        ERA_ONE, ERA_TWO, ERA_ZERO, ONE_MIN, TEN_SECS,
+        ERA_ONE, ERA_TWO, ERA_ZERO, ONE_MIN, TEN_SECS, THIRTY_SECS,
     },
     types::transaction::transaction_v1_builder::TransactionV1Builder,
 };
@@ -300,13 +300,14 @@ async fn gas_price_calc_should_not_stall_network() {
         .run_until_stored_switch_block_header(ERA_TWO, ONE_MIN)
         .await;
 
-    let price_node_0 = fixture.get_block_gas_price_by_public_key(Some(&PublicKey::from(
-        &*fixture.node_contexts[0].secret_key,
-    )));
+    let gas_price = fixture
+        .switch_block(ERA_TWO)
+        .header()
+        .era_end()
+        .unwrap()
+        .next_era_gas_price();
 
-    let price_node_1 = fixture.get_block_gas_price_by_public_key(Some(&PublicKey::from(
-        &*fixture.node_contexts[1].secret_key,
-    )));
-
-    assert_eq!(price_node_0, price_node_1);
+    fixture
+        .check_gas_price_for_nodes(gas_price, THIRTY_SECS)
+        .await;
 }
