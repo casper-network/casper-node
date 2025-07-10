@@ -5,7 +5,7 @@ mod deploy;
 mod error;
 mod execution_info;
 mod initiator_addr;
-#[cfg(any(feature = "std", test, feature = "testing"))]
+#[cfg(any(test, feature = "testing"))]
 mod initiator_addr_and_secret_key;
 mod package_identifier;
 mod pricing_mode;
@@ -73,7 +73,7 @@ pub use deploy::{
 pub use error::InvalidTransaction;
 pub use execution_info::ExecutionInfo;
 pub use initiator_addr::InitiatorAddr;
-#[cfg(any(feature = "std", feature = "testing", test))]
+#[cfg(any(feature = "testing", test))]
 pub(crate) use initiator_addr_and_secret_key::InitiatorAddrAndSecretKey;
 pub use package_identifier::PackageIdentifier;
 pub use pricing_mode::{PricingMode, PricingModeError};
@@ -86,7 +86,7 @@ pub use transaction_scheduling::TransactionScheduling;
 pub use transaction_target::{TransactionRuntimeParams, TransactionTarget};
 #[cfg(feature = "json-schema")]
 pub(crate) use transaction_v1::arg_handling;
-#[cfg(any(feature = "std", feature = "testing", feature = "gens", test))]
+#[cfg(any(feature = "testing", feature = "gens", test))]
 pub(crate) use transaction_v1::fields_container::FieldsContainer;
 pub use transaction_v1::{
     InvalidTransactionV1, TransactionArgs, TransactionV1, TransactionV1DecodeFromJsonError,
