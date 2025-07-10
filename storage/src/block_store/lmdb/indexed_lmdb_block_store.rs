@@ -24,7 +24,7 @@ use crate::block_store::{
 };
 use casper_types::{
     execution::ExecutionResult, Approval, Block, BlockBody, BlockHash, BlockHeader,
-    BlockSignatures, Digest, EraId, ProtocolVersion, Transaction, TransactionHash, Transfer,
+    BlockSignatures, Digest, EraId, Transaction, TransactionHash, Transfer,
 };
 
 /// Indexed lmdb block store.
@@ -129,7 +129,6 @@ impl IndexedLmdbBlockStore {
     pub fn new(
         block_store: LmdbBlockStore,
         hard_reset_to_start_of_era: Option<EraId>,
-        protocol_version: ProtocolVersion,
     ) -> Result<IndexedLmdbBlockStore, BlockStoreError> {
         // We now need to restore the block-height index. Log messages allow timing here.
         info!("indexing block store");
@@ -150,12 +149,11 @@ impl IndexedLmdbBlockStore {
         let mut init_fn =
             |cursor: &mut RwCursor, block_header: BlockHeader| -> Result<(), BlockStoreError> {
                 let should_retain_block = match hard_reset_to_start_of_era {
-                    Some(invalid_era) => {
-                        // Retain blocks from eras before the hard reset era, and blocks after this
+                    Some(activation_era) => {
+                        // Retain blocks from eras before the activation era, and blocks after this
                         // era if they are from the current protocol version (as otherwise a node
                         // restart would purge them again, despite them being valid).
-                        block_header.era_id() < invalid_era
-                            || block_header.protocol_version() == protocol_version
+                        block_header.era_id() < activation_era
                     }
                     None => true,
                 };
@@ -165,7 +163,7 @@ impl IndexedLmdbBlockStore {
                 //
                 // If there is an existing value, the updated value should be `false` iff the
                 // existing value and `should_retain_block` are both `false`.
-                // Otherwise the updated value should be `true`.
+                // Otherwise, the updated value should be `true`.
                 match block_body_hashes.entry(*block_header.body_hash()) {
                     Entry::Vacant(entry) => {
                         entry.insert(should_retain_block);

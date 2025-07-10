@@ -276,7 +276,7 @@ impl Storage {
 
         let block_store = LmdbBlockStore::new(root.as_path(), total_size)?;
         let indexed_block_store =
-            IndexedLmdbBlockStore::new(block_store, hard_reset_to_start_of_era, protocol_version)?;
+            IndexedLmdbBlockStore::new(block_store, hard_reset_to_start_of_era)?;
 
         let metrics = registry.map(Metrics::new).transpose()?;
 
