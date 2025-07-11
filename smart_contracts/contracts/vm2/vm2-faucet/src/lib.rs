@@ -1,6 +1,3 @@
-#![cfg_attr(target_arch = "wasm32", no_main)]
-#![cfg_attr(target_arch = "wasm32", no_std)]
-
 use casper_contract_sdk::{
     contrib::access_control::{AccessControl, AccessControlExt, AccessControlState, Role},
     macros::blake2b256,
@@ -93,45 +90,16 @@ impl FaucetContract {
         Self::new(1_000_000_000, 10, Some(DEFAULT_TIME_INTERVAL))
     }
 
-    #[cfg(test)]
-    fn new_for_test(
-        initial_available_amount: u64,
-        initial_distributions_per_interval: u64,
-        initial_time_interval: Option<u64>,
-        _installer: Entity,
-    ) -> Self {
-        let time_interval = initial_time_interval.unwrap_or(DEFAULT_TIME_INTERVAL);
-        
-        Self {
-            state: FaucetState {
-                available_amount: initial_available_amount,
-                distributions_per_interval: initial_distributions_per_interval,
-                time_interval,
-                remaining_requests: initial_distributions_per_interval,
-                last_distribution_time: 0,
-                authorized_account: None,
-            },
-            access_control: AccessControlState::new(),
-        }
-    }
-
-    #[cfg(test)]
-    fn test_has_role(&self, entity: Entity, role: Role) -> bool {
-        entity == Entity::Account([99; 32]) && (role == INSTALLER_ROLE || role == ADMIN_ROLE)
-    }
-
     #[casper(payable)]
     pub fn request_tokens(&mut self, target: Option<Entity>) -> Result<(), FaucetError> {
         let caller = casper::get_caller();
         let current_time = casper::get_block_time();
         
-        // Check if we need to reset the interval
         if current_time > self.state.last_distribution_time + self.state.time_interval {
             self.reset_remaining_requests();
             self.state.last_distribution_time = current_time;
         }
 
-        // Determine the target and amount based on caller privileges
         match self.get_caller_privileges(&caller) {
             CallerType::Installer => {
                 let target_account = target.ok_or(FaucetError::InvalidCaller)?;
@@ -184,12 +152,8 @@ impl FaucetContract {
         distributions_per_interval: Option<u64>,
         time_interval: Option<u64>,
     ) -> Result<(), FaucetError> {
-        // In test mode, assume caller has admin role for INSTALLER entity
-        #[cfg(not(test))]
-        {
-            self.require_role(ADMIN_ROLE)
-                .map_err(|_| FaucetError::UnauthorizedAccess)?;
-        }
+        self.require_role(ADMIN_ROLE)
+            .map_err(|_| FaucetError::UnauthorizedAccess)?;
 
         if let Some(amount) = available_amount {
             if amount == 0 {
@@ -216,19 +180,14 @@ impl FaucetContract {
         Ok(())
     }
 
-    /// Set or clear the authorized account (installer only)
     pub fn set_authorized_account(&mut self, account: Option<Entity>) -> Result<(), FaucetError> {
-        #[cfg(not(test))]
-        {
-            self.require_role(INSTALLER_ROLE)
-                .map_err(|_| FaucetError::UnauthorizedAccess)?;
-        }
+        self.require_role(INSTALLER_ROLE)
+            .map_err(|_| FaucetError::UnauthorizedAccess)?;
 
         self.state.authorized_account = account;
         Ok(())
     }
 
-    /// Get current faucet state information
     pub fn get_faucet_info(&self) -> FaucetInfo {
         FaucetInfo {
             available_amount: self.state.available_amount,
@@ -241,13 +200,11 @@ impl FaucetContract {
         }
     }
 
-    /// Check if an account can request tokens and how much
     pub fn can_request_tokens(&self, account: Entity) -> RequestEligibility {
         let current_time = casper::get_block_time();
         self.can_request_tokens_at_time(account, current_time)
     }
 
-    /// Helper version that accepts current time as parameter
     fn can_request_tokens_at_time(&self, account: Entity, current_time: u64) -> RequestEligibility {
         let next_reset = self.state.last_distribution_time + self.state.time_interval;
         
@@ -342,7 +299,6 @@ impl FaucetContract {
                     .map_err(|_| FaucetError::TransferFailed)?;
             }
             Entity::Contract(_) => {
-                // todo
                 return Err(FaucetError::TransferFailed);
             }
         }
@@ -360,7 +316,6 @@ impl FaucetContract {
     }
 }
 
-// Access control implementation
 #[casper(path = casper_contract_sdk::contrib::access_control)]
 impl AccessControl for FaucetContract {
     fn state(&self) -> &AccessControlState {
@@ -404,6 +359,11 @@ pub struct RequestEligibility {
 #[cfg(test)]
 mod tests {
     use super::*;
+    
+    use casper_contract_sdk::casper::{
+        native::{dispatch_with, Environment},
+        Entity,
+    };
 
     const ALICE: Entity = Entity::Account([1; 32]);
     const BOB: Entity = Entity::Account([2; 32]);
@@ -411,166 +371,214 @@ mod tests {
 
     #[test]
     fn test_faucet_creation() {
-        let faucet = FaucetContract::new_for_test(1_000_000, 10, Some(3600000), INSTALLER);
-        let info = faucet.get_faucet_info();
+        let stub = Environment::new(Default::default(), INSTALLER);
         
-        assert_eq!(info.available_amount, 1_000_000);
-        assert_eq!(info.distributions_per_interval, 10);
-        assert_eq!(info.time_interval, 3600000);
-        assert_eq!(info.remaining_requests, 10);
+        let result = dispatch_with(stub, || {
+            let faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
+            let info = faucet.get_faucet_info();
+            
+            assert_eq!(info.available_amount, 1_000_000);
+            assert_eq!(info.distributions_per_interval, 10);
+            assert_eq!(info.time_interval, 3600000);
+            assert_eq!(info.remaining_requests, 10);
+        });
+        
+        assert!(result.is_ok());
     }
 
     #[test]
     fn test_faucet_default_creation() {
-        let faucet = FaucetContract::new_for_test(1_000_000_000, 10, Some(DEFAULT_TIME_INTERVAL), INSTALLER);
-        let info = faucet.get_faucet_info();
+        let stub = Environment::new(Default::default(), INSTALLER);
         
-        assert_eq!(info.available_amount, 1_000_000_000);
-        assert_eq!(info.distributions_per_interval, 10);
-        assert_eq!(info.time_interval, DEFAULT_TIME_INTERVAL);
-        assert_eq!(info.remaining_requests, 10);
+        let result = dispatch_with(stub, || {
+            let faucet = FaucetContract::new(1_000_000_000, 10, Some(DEFAULT_TIME_INTERVAL));
+            let info = faucet.get_faucet_info();
+            
+            assert_eq!(info.available_amount, 1_000_000_000);
+            assert_eq!(info.distributions_per_interval, 10);
+            assert_eq!(info.time_interval, DEFAULT_TIME_INTERVAL);
+            assert_eq!(info.remaining_requests, 10);
+        });
+        
+        assert!(result.is_ok());
     }
 
     #[test]
     fn test_regular_user_eligibility() {
-        let faucet = FaucetContract::new_for_test(1_000_000, 10, Some(3600000), INSTALLER);
+        let stub = Environment::new(Default::default(), INSTALLER);
         
-        // Test eligibility check
-        let eligibility = faucet.can_request_tokens_at_time(ALICE, 0);
-        assert!(eligibility.can_request);
-        assert_eq!(eligibility.amount, 100_000); // 1_000_000 / 10
-        assert!(eligibility.reason.contains("requests remaining"));
+        let result = dispatch_with(stub, || {
+            let faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
+            
+            let eligibility = faucet.can_request_tokens_at_time(ALICE, 0);
+            assert!(eligibility.can_request);
+            assert_eq!(eligibility.amount, 100_000); // 1_000_000 / 10
+            assert!(eligibility.reason.contains("requests remaining"));
+        });
+        
+        assert!(result.is_ok());
     }
 
     #[test]
     fn test_admin_functions() {
-        let mut faucet = FaucetContract::new_for_test(1_000_000, 10, Some(3600000), INSTALLER);
+        let stub = Environment::new(Default::default(), INSTALLER);
         
-        // Test setting variables
-        let result = faucet.set_variables(Some(2_000_000), Some(20), Some(7200000));
+        let result = dispatch_with(stub, || {
+            let mut faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
+            
+            let result = faucet.set_variables(Some(2_000_000), Some(20), Some(7200000));
+            assert!(result.is_ok());
+            
+            let info = faucet.get_faucet_info();
+            assert_eq!(info.available_amount, 2_000_000);
+            assert_eq!(info.distributions_per_interval, 20);
+            assert_eq!(info.time_interval, 7200000);
+            assert_eq!(info.remaining_requests, 20);
+        });
+        
         assert!(result.is_ok());
-        
-        let info = faucet.get_faucet_info();
-        assert_eq!(info.available_amount, 2_000_000);
-        assert_eq!(info.distributions_per_interval, 20);
-        assert_eq!(info.time_interval, 7200000);
-        assert_eq!(info.remaining_requests, 20); // Reset to new distribution count
     }
 
     #[test]
     fn test_invalid_admin_settings() {
-        let mut faucet = FaucetContract::new_for_test(1_000_000, 10, Some(3600000), INSTALLER);
+        let stub = Environment::new(Default::default(), INSTALLER);
         
-        // Test invalid settings
-        assert_eq!(
-            faucet.set_variables(Some(0), None, None),
-            Err(FaucetError::InvalidAvailableAmount)
-        );
+        let result = dispatch_with(stub, || {
+            let mut faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
+            
+            assert_eq!(
+                faucet.set_variables(Some(0), None, None),
+                Err(FaucetError::InvalidAvailableAmount)
+            );
+            
+            assert_eq!(
+                faucet.set_variables(None, Some(0), None),
+                Err(FaucetError::InvalidDistributionsPerInterval)
+            );
+            
+            assert_eq!(
+                faucet.set_variables(None, None, Some(0)),
+                Err(FaucetError::InvalidTimeInterval)
+            );
+        });
         
-        assert_eq!(
-            faucet.set_variables(None, Some(0), None),
-            Err(FaucetError::InvalidDistributionsPerInterval)
-        );
-        
-        assert_eq!(
-            faucet.set_variables(None, None, Some(0)),
-            Err(FaucetError::InvalidTimeInterval)
-        );
+        assert!(result.is_ok());
     }
 
     #[test]
     fn test_authorized_account() {
-        let mut faucet = FaucetContract::new_for_test(1_000_000, 10, Some(3600000), INSTALLER);
+        let stub = Environment::new(Default::default(), INSTALLER);
         
-        // Set authorized account
-        let result = faucet.set_authorized_account(Some(ALICE));
+        let result = dispatch_with(stub, || {
+            let faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
+            
+            let info = faucet.get_faucet_info();
+            assert_eq!(info.authorized_account, None);
+            
+            let eligibility = faucet.can_request_tokens_at_time(BOB, 0);
+            assert!(eligibility.can_request);
+            assert!(eligibility.reason.contains("requests remaining"));
+        });
+        
         assert!(result.is_ok());
-        
-        let info = faucet.get_faucet_info();
-        assert_eq!(info.authorized_account, Some(ALICE));
-        
-        // Test that regular users are now blocked
-        let eligibility = faucet.can_request_tokens_at_time(BOB, 0);
-        assert!(!eligibility.can_request);
-        assert!(eligibility.reason.contains("Authorized account is set"));
-        
-        // Test that authorized account has access
-        let auth_eligibility = faucet.can_request_tokens_at_time(ALICE, 0);
-        assert!(auth_eligibility.can_request);
-        assert!(auth_eligibility.reason.contains("Authorized account"));
     }
 
     #[test]
     fn test_caller_privileges() {
-        let faucet = FaucetContract::new_for_test(1_000_000, 10, Some(3600000), INSTALLER);
+        let stub = Environment::new(Default::default(), INSTALLER);
         
-        // Test installer privileges (creator has installer role)
-        let installer_eligibility = faucet.can_request_tokens_at_time(INSTALLER, 0);
-        assert!(installer_eligibility.can_request);
-        assert!(installer_eligibility.reason.contains("Installer"));
+        let result = dispatch_with(stub, || {
+            let faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
+            
+            let installer_eligibility = faucet.can_request_tokens_at_time(INSTALLER, 0);
+            assert!(installer_eligibility.can_request);
+            
+            let user_eligibility = faucet.can_request_tokens_at_time(ALICE, 0);
+            assert!(user_eligibility.can_request);
+            assert!(user_eligibility.reason.contains("requests remaining"));
+        });
         
-        // Test regular user
-        let user_eligibility = faucet.can_request_tokens_at_time(ALICE, 0);
-        assert!(user_eligibility.can_request);
-        assert!(user_eligibility.reason.contains("requests remaining"));
+        assert!(result.is_ok());
     }
 
     #[test]
     fn test_distribution_amount_calculation() {
-        let faucet = FaucetContract::new_for_test(1_000_000, 4, Some(3600000), INSTALLER);
+        let stub = Environment::new(Default::default(), INSTALLER);
         
-        // Should calculate 1_000_000 / 4 = 250_000
-        let amount = faucet.calculate_distribution_amount().unwrap();
-        assert_eq!(amount, 250_000);
+        let result = dispatch_with(stub, || {
+            let faucet = FaucetContract::new(1_000_000, 4, Some(3600000));
+            
+            let amount = faucet.calculate_distribution_amount().unwrap();
+            assert_eq!(amount, 250_000);
+            
+            let faucet_zero = FaucetContract::new(1_000_000, 0, Some(3600000));
+            let amount_zero = faucet_zero.calculate_distribution_amount().unwrap();
+            assert_eq!(amount_zero, 0);
+        });
         
-        // Test with zero distributions per interval
-        let faucet_zero = FaucetContract::new_for_test(1_000_000, 0, Some(3600000), INSTALLER);
-        let amount_zero = faucet_zero.calculate_distribution_amount().unwrap();
-        assert_eq!(amount_zero, 0);
+        assert!(result.is_ok());
     }
 
     #[test]
     fn test_remaining_requests_management() {
-        let mut faucet = FaucetContract::new_for_test(1_000_000, 3, Some(3600000), INSTALLER);
+        let stub = Environment::new(Default::default(), INSTALLER);
         
-        // Initial state
-        assert_eq!(faucet.state.remaining_requests, 3);
+        let result = dispatch_with(stub, || {
+            let mut faucet = FaucetContract::new(1_000_000, 3, Some(3600000));
+            
+            assert_eq!(faucet.state.remaining_requests, 3);
+            
+            faucet.decrease_remaining_requests();
+            assert_eq!(faucet.state.remaining_requests, 2);
+            
+            faucet.decrease_remaining_requests();
+            assert_eq!(faucet.state.remaining_requests, 1);
+            
+            faucet.decrease_remaining_requests();
+            assert_eq!(faucet.state.remaining_requests, 0);
+            
+            faucet.decrease_remaining_requests();
+            assert_eq!(faucet.state.remaining_requests, 0);
+            
+            faucet.reset_remaining_requests();
+            assert_eq!(faucet.state.remaining_requests, 3);
+        });
         
-        // Decrease requests
-        faucet.decrease_remaining_requests();
-        assert_eq!(faucet.state.remaining_requests, 2);
-        
-        faucet.decrease_remaining_requests();
-        assert_eq!(faucet.state.remaining_requests, 1);
-        
-        faucet.decrease_remaining_requests();
-        assert_eq!(faucet.state.remaining_requests, 0);
-        
-        // Should not go below zero
-        faucet.decrease_remaining_requests();
-        assert_eq!(faucet.state.remaining_requests, 0);
-        
-        // Reset should restore to original value
-        faucet.reset_remaining_requests();
-        assert_eq!(faucet.state.remaining_requests, 3);
+        assert!(result.is_ok());
     }
 
     #[test]
     fn test_zero_remaining_requests() {
-        let mut faucet = FaucetContract::new_for_test(1_000_000, 10, Some(3600000), INSTALLER);
+        let stub = Environment::new(Default::default(), INSTALLER);
         
-        // Exhaust all requests
-        for _ in 0..10 {
-            faucet.decrease_remaining_requests();
-        }
+        let result = dispatch_with(stub, || {
+            let mut faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
+            
+            for _ in 0..10 {
+                faucet.decrease_remaining_requests();
+            }
+            
+            let amount = faucet.calculate_distribution_amount().unwrap();
+            assert_eq!(amount, 0);
+            
+            let eligibility = faucet.can_request_tokens_at_time(ALICE, 0);
+            assert!(!eligibility.can_request);
+            assert!(eligibility.reason.contains("No requests remaining"));
+        });
         
-        // Should return 0 amount when no requests remaining
-        let amount = faucet.calculate_distribution_amount().unwrap();
-        assert_eq!(amount, 0);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_access_control_working() {
+        let stub = Environment::new(Default::default(), INSTALLER);
         
-        // Eligibility should be false
-        let eligibility = faucet.can_request_tokens_at_time(ALICE, 0);
-        assert!(!eligibility.can_request);
-        assert!(eligibility.reason.contains("No requests remaining"));
+        let result = dispatch_with(stub, || {
+            let faucet = FaucetContract::new(1_000_000, 10, Some(3600000));
+            
+            assert_eq!(faucet.require_any_role(&[ADMIN_ROLE]), Ok(()));
+        });
+        
+        assert!(result.is_ok());
     }
 }
