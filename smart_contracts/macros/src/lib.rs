@@ -18,6 +18,7 @@ use casper_executor_wasm_common::flags::EntryPointFlags;
 struct MethodAttribute {
     #[darling(default)]
     constructor: bool,
+    /// Does not read or write state and does not require "self" argument.
     #[darling(default)]
     ignore_state: bool,
     #[darling(default)]

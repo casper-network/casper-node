@@ -216,6 +216,23 @@ impl CLType {
     }
 }
 
+impl ToBytes for CLType {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut stream = Vec::with_capacity(self.serialized_length());
+        self.append_bytes(&mut stream)?;
+        Ok(stream)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.append_bytes(writer)?;
+        Ok(())
+    }
+}
+
 impl Display for CLType {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
