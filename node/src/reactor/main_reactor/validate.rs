@@ -1,3 +1,4 @@
+use casper_types::Timestamp;
 use std::time::Duration;
 use tracing::{debug, info, warn};
 
@@ -41,6 +42,12 @@ impl MainReactor {
 
         let queue_depth = self.contract_runtime.queue_depth();
         if queue_depth > 0 {
+            let idleness = Timestamp::now().saturating_diff(last_progress);
+            if idleness > self.idle_tolerance {
+                warn!("Validate: idleness tolerance reached with backed up queue, switching to catch up");
+                return ValidateInstruction::CatchUp;
+            }
+
             warn!("Validate: should_validate queue_depth {}", queue_depth);
             return ValidateInstruction::CheckLater(
                 "allow time for contract runtime execution to occur".to_string(),

@@ -23,7 +23,7 @@ pub(crate) enum InitiatorAddrAndSecretKey<'a> {
 
 impl InitiatorAddrAndSecretKey<'_> {
     /// The address of the initiator of a `TransactionV1`.
-    pub fn initiator_addr(&self) -> InitiatorAddr {
+    pub(crate) fn initiator_addr(&self) -> InitiatorAddr {
         match self {
             InitiatorAddrAndSecretKey::Both { initiator_addr, .. }
             | InitiatorAddrAndSecretKey::InitiatorAddr(initiator_addr) => initiator_addr.clone(),
@@ -34,7 +34,7 @@ impl InitiatorAddrAndSecretKey<'_> {
     }
 
     /// The secret key of the initiator of a `TransactionV1`.
-    pub fn secret_key(&self) -> Option<&SecretKey> {
+    pub(crate) fn secret_key(&self) -> Option<&SecretKey> {
         match self {
             InitiatorAddrAndSecretKey::Both { secret_key, .. }
             | InitiatorAddrAndSecretKey::SecretKey(secret_key) => Some(secret_key),

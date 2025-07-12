@@ -15,25 +15,10 @@ use core::{
 #[cfg(any(feature = "std", test))]
 use std::convert::TryFrom;
 
-#[cfg(feature = "datasize")]
-use datasize::DataSize;
 #[cfg(any(feature = "std", test))]
-use itertools::Itertools;
-#[cfg(feature = "json-schema")]
-use once_cell::sync::Lazy;
-#[cfg(any(feature = "once_cell", test))]
-use once_cell::sync::OnceCell;
+use super::{get_lane_for_non_install_wasm, PricingMode};
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
-use rand::Rng;
-#[cfg(feature = "json-schema")]
-use schemars::JsonSchema;
-#[cfg(any(feature = "std", test))]
-use serde::{Deserialize, Serialize};
-#[cfg(any(all(feature = "std", feature = "testing"), test))]
-use tracing::{debug, warn};
-
-#[cfg(any(feature = "std", test))]
-use super::{get_lane_for_non_install_wasm, InitiatorAddr, InitiatorAddrAndSecretKey, PricingMode};
+use super::{InitiatorAddr, InitiatorAddrAndSecretKey};
 #[cfg(any(
     all(feature = "std", feature = "testing"),
     feature = "json-schema",
@@ -58,6 +43,22 @@ use crate::{
     transaction::{Approval, ApprovalsHash},
     Digest, DisplayIter, PublicKey, SecretKey, TimeDiff, Timestamp,
 };
+#[cfg(feature = "datasize")]
+use datasize::DataSize;
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
+use itertools::Itertools;
+#[cfg(feature = "json-schema")]
+use once_cell::sync::Lazy;
+#[cfg(any(feature = "once_cell", test))]
+use once_cell::sync::OnceCell;
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
+use rand::Rng;
+#[cfg(feature = "json-schema")]
+use schemars::JsonSchema;
+#[cfg(any(feature = "std", test))]
+use serde::{Deserialize, Serialize};
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
+use tracing::{debug, warn};
 
 #[cfg(any(feature = "std", test))]
 use crate::{chainspec::PricingHandling, Chainspec, Phase, TransactionV1Config, MINT_LANE_ID};
@@ -197,7 +198,7 @@ impl Deploy {
         )
     }
 
-    #[cfg(any(feature = "std", test))]
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
     #[allow(clippy::too_many_arguments)]
     fn build(
         timestamp: Timestamp,

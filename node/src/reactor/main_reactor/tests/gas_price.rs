@@ -7,7 +7,8 @@ use casper_types::{
 
 use crate::{
     reactor::main_reactor::tests::{
-        configs_override::ConfigsOverride, fixture::TestFixture, ERA_ZERO, ONE_MIN,
+        configs_override::ConfigsOverride, fixture::TestFixture, initial_stakes::InitialStakes,
+        ERA_ONE, ERA_TWO, ERA_ZERO, ONE_MIN, TEN_SECS, THIRTY_SECS,
     },
     types::transaction::transaction_v1_builder::TransactionV1Builder,
 };
@@ -226,4 +227,87 @@ async fn should_raise_gas_price_to_ceiling_and_reduce_to_floor_based_on_size_con
     let size_limit = 600u32;
     let scenario = GasPriceScenario::SizeUtilization(size_limit);
     run_gas_price_scenario(scenario).await
+}
+
+#[tokio::test]
+async fn gas_price_calc_should_not_stall_network() {
+    let initial_stakes = InitialStakes::AllEqual {
+        count: 5,
+        stake: 1_000_000_000,
+    };
+
+    let min_gas_price: u8 = 1;
+    let max_gas_price: u8 = 3;
+    let minimum_era_height = 5;
+
+    let mut transaction_config = TransactionV1Config::default();
+    transaction_config.native_mint_lane.max_transaction_count = 1;
+
+    let spec_override = ConfigsOverride::default()
+        .with_transaction_v1_config(transaction_config)
+        .with_lower_threshold(5u64)
+        .with_upper_threshold(10u64)
+        .with_minimum_era_height(minimum_era_height)
+        .with_idle_tolerance(TimeDiff::from_seconds(1))
+        .with_min_gas_price(min_gas_price)
+        .with_max_gas_price(max_gas_price);
+
+    let mut fixture = TestFixture::new(initial_stakes, Some(spec_override)).await;
+
+    // Run through the first era.
+    fixture
+        .run_until_stored_switch_block_header(ERA_ONE, ONE_MIN)
+        .await;
+
+    let chain_name = fixture.chainspec.network_config.name.clone();
+    let secret_key = Arc::clone(&fixture.node_contexts[0].secret_key);
+
+    let rng = fixture.rng_mut();
+    let target_public_key = PublicKey::random(rng);
+    let node_secret_key = Arc::clone(&fixture.node_contexts[0].secret_key);
+    let node_public_key = PublicKey::from(&*node_secret_key);
+
+    let fixed_native_mint_transaction = TransactionV1Builder::new_transfer(
+        10_000_000_000u64,
+        None,
+        target_public_key.clone(),
+        None,
+    )
+    .expect("must get builder")
+    .with_chain_name(chain_name.clone())
+    .with_secret_key(&secret_key)
+    .with_ttl(TimeDiff::from_seconds(120 * 10))
+    .with_pricing_mode(PricingMode::Fixed {
+        gas_price_tolerance: max_gas_price,
+        additional_computation_factor: 0,
+    })
+    .build()
+    .expect("must get transaction");
+
+    let txn = Transaction::V1(fixed_native_mint_transaction);
+    let txn_hash = txn.hash();
+    fixture.inject_transaction(txn).await;
+
+    fixture
+        .run_until_executed_transaction(&txn_hash, TEN_SECS)
+        .await;
+
+    let block_hash = *fixture.highest_complete_block().hash();
+
+    fixture.delete_block_utilization_score_by_block_hash_in_node(&node_public_key, block_hash);
+
+    fixture
+        .run_until_stored_switch_block_header(ERA_TWO, ONE_MIN)
+        .await;
+
+    let gas_price = fixture
+        .switch_block(ERA_TWO)
+        .header()
+        .era_end()
+        .unwrap()
+        .next_era_gas_price();
+
+    fixture
+        .check_gas_price_for_nodes(gas_price, THIRTY_SECS)
+        .await;
 }
