@@ -3145,9 +3145,7 @@ fn should_not_restake_after_full_unbond() {
 
     let withdraws = builder.get_unbonds();
     let unbond_kind = UnbondKind::DelegatedPublicKey(DELEGATOR_1.clone());
-    let unbond = withdraws
-        .get(&unbond_kind)
-        .expect("should have validator entry");
+    let unbond = withdraws.get(&unbond_kind).expect("should have entry");
     let delegator_unbond_amount = unbond[0].eras().first().expect("should be era").amount();
 
     assert_eq!(
@@ -3160,7 +3158,6 @@ fn should_not_restake_after_full_unbond() {
     builder.advance_eras_by(2);
 
     // validator receives rewards after this step.
-
     builder.advance_era();
 
     // Delegator should not remain delegated even though they were eligible for rewards in the
