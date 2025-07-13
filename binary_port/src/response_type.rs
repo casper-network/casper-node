@@ -120,7 +120,7 @@ pub enum ResponseType {
     /// Addressable entity information.
     AddressableEntityInformation,
     /// Result of a contract query execution.
-    QueryResult,
+    VmReadResult,
 }
 
 impl ResponseType {
@@ -230,7 +230,7 @@ impl TryFrom<u8> for ResponseType {
             x if x == ResponseType::AddressableEntityInformation as u8 => {
                 Ok(ResponseType::AddressableEntityInformation)
             }
-            x if x == ResponseType::QueryResult as u8 => Ok(ResponseType::QueryResult),
+            x if x == ResponseType::VmReadResult as u8 => Ok(ResponseType::VmReadResult),
             _ => Err(()),
         }
     }
@@ -293,7 +293,7 @@ impl fmt::Display for ResponseType {
             ResponseType::AddressableEntityInformation => {
                 write!(f, "AddressableEntityInformation")
             }
-            ResponseType::QueryResult => write!(f, "QueryResult"),
+            ResponseType::VmReadResult => write!(f, "QueryResult"),
         }
     }
 }

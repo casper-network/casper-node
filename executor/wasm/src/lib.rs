@@ -37,7 +37,7 @@ use casper_types::{
     account::AccountHash,
     addressable_entity::{ActionThresholds, AssociatedKeys},
     bytesrepr,
-    execution::{ExecutorQueryResult, QueryError, VmQueryRequest},
+    execution::{ExecutorQueryResult, QueryError, VmReadRequest},
     AddressableEntity, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, ContractRuntimeTag,
     Digest, EntityAddr, EntityKind, Gas, Groups, InitiatorAddr, Key, MessageLimits, Package,
     PackageHash, PackageStatus, Phase, ProtocolVersion, StorageCosts, StoredValue, TransactionHash,
@@ -851,29 +851,29 @@ impl Executor for ExecutorV2 {
         self.execute_with_tracking_copy(tracking_copy, execute_request)
     }
 
-    fn query<R: GlobalStateReader + 'static>(
+    fn read_query<R: GlobalStateReader + 'static>(
         &self,
         tracking_copy: TrackingCopy<R>,
-        query_request: VmQueryRequest,
+        request: VmReadRequest,
     ) -> Result<ExecutorQueryResult, ExecuteError> {
-        // Convert QueryRequest to ExecuteRequest with read-only mode enabled
+        // Convert VmReadRequest to ExecuteRequest with read-only mode enabled
         let execute_request = ExecuteRequestBuilder::default()
-            .with_initiator(query_request.initiator)
-            .with_caller_key(Key::Account(query_request.initiator))
-            .with_gas_limit(query_request.gas_limit) // Use the provided gas limit for protection
+            .with_initiator(request.initiator)
+            .with_caller_key(Key::Account(request.initiator))
+            .with_gas_limit(request.gas_limit) // Use the provided gas limit for protection
             .with_target(ExecutionKind::Stored {
-                address: query_request.contract_address,
-                entry_point: query_request.entry_point,
+                address: request.contract_address,
+                entry_point: request.entry_point,
             })
-            .with_input(query_request.input.into())
+            .with_input(request.input.into())
             .with_transferred_value(0) // Must be 0 for read-only queries
             .with_transaction_hash(TransactionHash::from_raw([0; 32])) // Dummy hash for queries
             .with_address_generator(AddressGenerator::new(&[0; 32], Phase::Session))
-            .with_chain_name(query_request.chain_name)
-            .with_block_time(query_request.block_time)
-            .with_state_hash(query_request.state_hash)
-            .with_parent_block_hash(query_request.parent_block_hash)
-            .with_block_height(query_request.block_height)
+            .with_chain_name(request.chain_name)
+            .with_block_time(request.block_time)
+            .with_state_hash(request.state_hash)
+            .with_parent_block_hash(request.parent_block_hash)
+            .with_block_height(request.block_height)
             .with_read_only(true) // Enable read-only mode
             .build()
             .map_err(|_| {
@@ -884,7 +884,7 @@ impl Executor for ExecutorV2 {
         let execute_result = self.execute_with_tracking_copy(tracking_copy, execute_request)?;
         let output_bytes: Option<Vec<u8>> = execute_result.output.map(|x| x.into());
 
-        // Convert ExecuteResult to QueryResult
+        // Convert ExecuteResult to VmReadResult
         let query_result = ExecutorQueryResult {
             error: execute_result
                 .host_error

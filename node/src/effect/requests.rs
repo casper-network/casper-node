@@ -31,7 +31,7 @@ use casper_storage::{
     DbRawBytesSpec,
 };
 use casper_types::{
-    execution::{ExecutionResult, ExecutorQueryResult, VmQueryRequest},
+    execution::{ExecutionResult, ExecutorQueryResult, VmReadRequest},
     Approval, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures,
     BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest, DisplayIter,
     EntityAddr, EraId, ExecutionInfo, FinalitySignature, FinalitySignatureId, HashAddr,
@@ -780,7 +780,7 @@ pub(crate) enum ContractRuntimeRequest {
     VmRead {
         /// Contract query request.
         #[serde(skip_serializing)]
-        query_request: VmQueryRequest,
+        query_request: VmReadRequest,
         /// Responder to call with the query result.
         responder: Responder<ExecutorQueryResult>,
     },

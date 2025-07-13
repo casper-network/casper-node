@@ -334,8 +334,8 @@ allow_request_get_trie = false
 # Flag that enables the `TrySpeculativeExec` request. Disabled by default.
 allow_request_speculative_exec = false
 
-# Flag that enables the `TryVmQuery` request. Disabled by default.
-allow_request_vm_query = false
+# Flag that enables the `TryVmRead` request. Disabled by default.
+allow_request_vm_read = false
 
 # Maximum size of a message in bytes.
 max_message_size_bytes = 134_217_728

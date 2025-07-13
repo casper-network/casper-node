@@ -130,9 +130,7 @@ use casper_storage::{
     DbRawBytesSpec,
 };
 use casper_types::{
-    execution::{
-        Effects as ExecutionEffects, ExecutionResult, ExecutorQueryResult, VmQueryRequest,
-    },
+    execution::{Effects as ExecutionEffects, ExecutionResult, ExecutorQueryResult, VmReadRequest},
     Approval, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures,
     BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest, EntityAddr, EraId,
     ExecutionInfo, FinalitySignature, FinalitySignatureId, FinalitySignatureV2, HashAddr, Key,
@@ -1961,7 +1959,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Requests a contract query be executed on the Contract Runtime component.
-    pub(crate) async fn query_vm_read(self, query_request: VmQueryRequest) -> ExecutorQueryResult
+    pub(crate) async fn query_vm_read(self, query_request: VmReadRequest) -> ExecutorQueryResult
     where
         REv: From<ContractRuntimeRequest>,
     {

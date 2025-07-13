@@ -10,7 +10,7 @@ use casper_storage::{
 use casper_types::{
     account::AccountHash,
     contract_messages::Messages,
-    execution::{Effects, ExecutorQueryResult, VmQueryRequest},
+    execution::{Effects, ExecutorQueryResult, VmReadRequest},
     BlockHash, BlockTime, Digest, HashAddr, Key, TransactionHash,
 };
 use parking_lot::RwLock;
@@ -400,9 +400,9 @@ pub trait Executor: Clone + Send {
     ///
     /// This method executes a contract in read-only mode without making any state changes
     /// or broadcasting the transaction.
-    fn query<R: GlobalStateReader + 'static>(
+    fn read_query<R: GlobalStateReader + 'static>(
         &self,
         tracking_copy: TrackingCopy<R>,
-        query_request: VmQueryRequest,
+        query_request: VmReadRequest,
     ) -> Result<ExecutorQueryResult, ExecuteError>;
 }

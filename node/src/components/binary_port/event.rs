@@ -47,7 +47,7 @@ impl Display for Event {
                 Command::TrySpeculativeExec { transaction, .. } => {
                     write!(f, "try speculative exec ({})", transaction.hash())
                 }
-                Command::TryVmQuery { .. } => {
+                Command::TryVmRead { .. } => {
                     write!(f, "try query")
                 }
             },

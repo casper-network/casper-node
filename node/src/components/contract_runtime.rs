@@ -52,11 +52,7 @@ use casper_types::{
 
 use crate::{
     components::{fetcher::FetchResponse, Component, ComponentState},
-    contract_runtime::{
-        operations::speculatively_execute,
-        types::EraPrice,
-        utils::{handle_protocol_upgrade, run_intensive_task},
-    },
+    contract_runtime::{types::EraPrice, utils::handle_protocol_upgrade},
     effect::{
         announcements::{
             ContractRuntimeAnnouncement, FatalAnnouncement, MetaBlockAnnouncement,
@@ -74,6 +70,7 @@ use crate::{
     },
     NodeRng,
 };
+use casper_executor_wasm_interface::executor::Executor;
 pub(crate) use config::Config;
 pub(crate) use error::{BlockExecutionError, ConfigError, ContractRuntimeError, StateResultError};
 pub(crate) use event::Event;
@@ -83,10 +80,7 @@ use metrics::Metrics;
 pub(crate) use operations::compute_execution_results_checksum;
 pub use operations::execute_finalized_block;
 use operations::speculatively_execute;
-pub(crate) use types::{
-    BlockAndExecutionArtifacts, ExecutionArtifact, ExecutionPreState, SpeculativeExecutionResult,
-    StepOutcome,
-};
+pub(crate) use types::{ExecutionArtifact, ExecutionPreState, SpeculativeExecutionResult};
 use utils::{exec_and_check_next, run_intensive_task};
 
 const COMPONENT_NAME: &str = "contract_runtime";
@@ -343,22 +337,22 @@ impl ContractRuntime {
                 query_request,
                 responder,
             } => {
-                trace!(?query_request, "contract query");
+                trace!(?query_request, "vm read");
                 let metrics = Arc::clone(&self.metrics);
                 let execution_engine_v2 = self.execution_engine_v2.clone();
                 let data_access_layer = Arc::clone(&self.data_access_layer);
                 async move {
                     let start = Instant::now();
                     let result = run_intensive_task(move || {
-                        // Create a tracking copy for the query
+                        // Create a tracking copy for the request
                         let state = data_access_layer.get_scratch_global_state();
                         let tracking_copy = state
                             .tracking_copy(query_request.state_hash)
                             .expect("should get tracking copy result")
                             .expect("should create tracking copy");
 
-                        // Execute the query
-                        execution_engine_v2.query(tracking_copy, query_request)
+                        // Execute the request
+                        execution_engine_v2.read_query(tracking_copy, query_request)
                     })
                     .await;
 

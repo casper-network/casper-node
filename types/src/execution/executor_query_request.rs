@@ -12,7 +12,7 @@ use crate::{
 /// or costing gas. A gas limit must be provided to prevent infinite loops and resource
 /// exhaustion attacks.
 #[derive(Debug, PartialEq)]
-pub struct VmQueryRequest {
+pub struct VmReadRequest {
     /// The address of the account that would initiate the contract call.
     pub initiator: AccountHash,
     /// The address of the contract to query.
@@ -39,7 +39,7 @@ pub struct VmQueryRequest {
     pub chain_name: String,
 }
 
-impl ToBytes for VmQueryRequest {
+impl ToBytes for VmReadRequest {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut writer = bytesrepr::allocate_buffer(self)?;
         self.state_hash.write_bytes(&mut writer)?;
@@ -59,7 +59,7 @@ impl ToBytes for VmQueryRequest {
     }
 }
 
-impl FromBytes for VmQueryRequest {
+impl FromBytes for VmReadRequest {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (state_hash, remainder) = FromBytes::from_bytes(bytes)?;
         let (contract_address, remainder) = FromBytes::from_bytes(remainder)?;
@@ -67,7 +67,7 @@ impl FromBytes for VmQueryRequest {
         let (input, remainder) = FromBytes::from_bytes(remainder)?;
         let (gas_limit, remainder) = FromBytes::from_bytes(remainder)?;
         Ok((
-            VmQueryRequest {
+            VmReadRequest {
                 initiator: AccountHash::default(),
                 contract_address,
                 entry_point,
@@ -85,11 +85,11 @@ impl FromBytes for VmQueryRequest {
 }
 
 #[cfg(any(feature = "testing", test))]
-impl VmQueryRequest {
+impl VmReadRequest {
     pub fn random(rng: &mut crate::testing::TestRng) -> Self {
         use rand::Rng;
 
-        VmQueryRequest {
+        VmReadRequest {
             initiator: AccountHash::new(rng.gen()),
             contract_address: rng.gen(),
             entry_point: format!("entry_point_{}", rng.gen::<u32>()),
@@ -254,7 +254,7 @@ impl ExecutorQueryRequestBuilder {
     }
 
     /// Build the `QueryRequest`.
-    pub fn build(self) -> Result<VmQueryRequest, &'static str> {
+    pub fn build(self) -> Result<VmReadRequest, &'static str> {
         let initiator = self.initiator.ok_or("Initiator is not set")?;
         let contract_address = self.contract_address.ok_or("Contract address is not set")?;
         let entry_point = self.entry_point.ok_or("Entry point is not set")?;
@@ -267,7 +267,7 @@ impl ExecutorQueryRequestBuilder {
             .ok_or("Parent block hash is not set")?;
         let block_height = self.block_height.ok_or("Block height is not set")?;
         let chain_name = self.chain_name.ok_or("Chain name is not set")?;
-        Ok(VmQueryRequest {
+        Ok(VmReadRequest {
             initiator,
             contract_address,
             entry_point,
