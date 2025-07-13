@@ -13,9 +13,7 @@ pub use effects::Effects;
 pub use execution_result::ExecutionResult;
 pub use execution_result_v1::ExecutionResultV1;
 pub use execution_result_v2::ExecutionResultV2;
-pub use executor_query_request::{
-    ExecutorQueryRequestBuilder, ExecutorQueryResult, QueryError, VmReadRequest,
-};
+pub use executor_query_request::{VmReadError, VmReadRequest, VmReadRequestBuilder, VmReadResult};
 pub use transform::TransformV2;
 pub use transform_error::TransformError;
 pub use transform_kind::{TransformInstruction, TransformKindV2};

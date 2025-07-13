@@ -37,7 +37,7 @@ use casper_types::{
     account::AccountHash,
     addressable_entity::{ActionThresholds, AssociatedKeys},
     bytesrepr,
-    execution::{ExecutorQueryResult, QueryError, VmReadRequest},
+    execution::{VmReadError, VmReadRequest, VmReadResult},
     AddressableEntity, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, ContractRuntimeTag,
     Digest, EntityAddr, EntityKind, Gas, Groups, InitiatorAddr, Key, MessageLimits, Package,
     PackageHash, PackageStatus, Phase, ProtocolVersion, StorageCosts, StoredValue, TransactionHash,
@@ -855,7 +855,7 @@ impl Executor for ExecutorV2 {
         &self,
         tracking_copy: TrackingCopy<R>,
         request: VmReadRequest,
-    ) -> Result<ExecutorQueryResult, ExecuteError> {
+    ) -> Result<VmReadResult, ExecuteError> {
         // Convert VmReadRequest to ExecuteRequest with read-only mode enabled
         let execute_request = ExecuteRequestBuilder::default()
             .with_initiator(request.initiator)
@@ -885,14 +885,14 @@ impl Executor for ExecutorV2 {
         let output_bytes: Option<Vec<u8>> = execute_result.output.map(|x| x.into());
 
         // Convert ExecuteResult to VmReadResult
-        let query_result = ExecutorQueryResult {
+        let query_result = VmReadResult {
             error: execute_result
                 .host_error
                 .map(|call_error| match call_error {
-                    CallError::CalleeReverted => QueryError::CalleeReverted,
-                    CallError::CalleeTrapped(_) => QueryError::CalleeTrapped,
-                    CallError::CalleeGasDepleted => QueryError::CalleeGasDepleted,
-                    CallError::NotCallable => QueryError::NotCallable,
+                    CallError::CalleeReverted => VmReadError::CalleeReverted,
+                    CallError::CalleeTrapped(_) => VmReadError::CalleeTrapped,
+                    CallError::CalleeGasDepleted => VmReadError::CalleeGasDepleted,
+                    CallError::NotCallable => VmReadError::NotCallable,
                 }),
             output: output_bytes.map(|x| x.into()),
             gas_usage: Gas::new(execute_result.gas_usage.gas_spent()),

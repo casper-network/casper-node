@@ -106,7 +106,7 @@ impl VmReadRequest {
 
 /// Errors that can occur during query execution.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum QueryError {
+pub enum VmReadError {
     /// The contract reverted execution.
     CalleeReverted,
     /// The contract trapped during execution.
@@ -121,33 +121,33 @@ pub enum QueryError {
     InternalHostError,
 }
 
-impl core::fmt::Display for QueryError {
+impl core::fmt::Display for VmReadError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            QueryError::CalleeReverted => write!(f, "contract reverted"),
-            QueryError::CalleeTrapped => write!(f, "contract trapped"),
-            QueryError::CalleeGasDepleted => write!(f, "contract gas depleted"),
-            QueryError::NotCallable => write!(f, "contract not callable"),
-            QueryError::CodeNotFound => write!(f, "contract code not found"),
-            QueryError::InternalHostError => write!(f, "internal host error"),
+            VmReadError::CalleeReverted => write!(f, "contract reverted"),
+            VmReadError::CalleeTrapped => write!(f, "contract trapped"),
+            VmReadError::CalleeGasDepleted => write!(f, "contract gas depleted"),
+            VmReadError::NotCallable => write!(f, "contract not callable"),
+            VmReadError::CodeNotFound => write!(f, "contract code not found"),
+            VmReadError::InternalHostError => write!(f, "internal host error"),
         }
     }
 }
 
 /// Result of executing a read-only query.
 #[derive(Debug)]
-pub struct ExecutorQueryResult {
+pub struct VmReadResult {
     /// Error while executing the query, if any.
-    pub error: Option<QueryError>,
+    pub error: Option<VmReadError>,
     /// Output data returned by the contract.
     pub output: Option<Bytes>,
     /// Gas usage tracked during execution. Use `gas_spent()` to get the gas consumed.
     pub gas_usage: Gas,
 }
 
-impl ExecutorQueryResult {
+impl VmReadResult {
     /// Returns the error if the query failed.
-    pub fn error(&self) -> Option<&QueryError> {
+    pub fn error(&self) -> Option<&VmReadError> {
         self.error.as_ref()
     }
 
@@ -169,7 +169,7 @@ impl ExecutorQueryResult {
 
 /// Builder for `QueryRequest`.
 #[derive(Default)]
-pub struct ExecutorQueryRequestBuilder {
+pub struct VmReadRequestBuilder {
     initiator: Option<AccountHash>,
     contract_address: Option<HashAddr>,
     entry_point: Option<String>,
@@ -182,7 +182,7 @@ pub struct ExecutorQueryRequestBuilder {
     chain_name: Option<String>,
 }
 
-impl ExecutorQueryRequestBuilder {
+impl VmReadRequestBuilder {
     /// Set the initiator's address.
     #[must_use]
     pub fn with_initiator(mut self, initiator: AccountHash) -> Self {

@@ -10,7 +10,7 @@ use casper_storage::{
 use casper_types::{
     account::AccountHash,
     contract_messages::Messages,
-    execution::{Effects, ExecutorQueryResult, VmReadRequest},
+    execution::{Effects, VmReadRequest, VmReadResult},
     BlockHash, BlockTime, Digest, HashAddr, Key, TransactionHash,
 };
 use parking_lot::RwLock;
@@ -404,5 +404,5 @@ pub trait Executor: Clone + Send {
         &self,
         tracking_copy: TrackingCopy<R>,
         query_request: VmReadRequest,
-    ) -> Result<ExecutorQueryResult, ExecuteError>;
+    ) -> Result<VmReadResult, ExecuteError>;
 }

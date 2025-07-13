@@ -45,7 +45,7 @@ use casper_storage::{
 };
 use casper_types::{
     account::AccountHash,
-    execution::{ExecutorQueryResult, QueryError},
+    execution::{VmReadError, VmReadResult},
     ActivationPoint, Chainspec, ChainspecRawBytes, ChainspecRegistry, EntityAddr, EraId, Gas, Key,
     PublicKey,
 };
@@ -356,8 +356,8 @@ impl ContractRuntime {
                     })
                     .await;
 
-                    let result = result.unwrap_or(ExecutorQueryResult {
-                        error: Some(QueryError::InternalHostError),
+                    let result = result.unwrap_or(VmReadResult {
+                        error: Some(VmReadError::InternalHostError),
                         output: None,
                         gas_usage: Gas::new(0),
                     });
