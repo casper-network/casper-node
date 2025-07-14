@@ -32,7 +32,7 @@ build-vm2-contract-rs/%:
 build-vm2-contracts-rs: $(patsubst %, build-vm2-contract-rs/%, $(VM2_CONTRACTS))
 
 .PHONY: build-all-contracts-rs
-build-all-contracts-rs: $(patsubst %, build-contract-rs/%, $(ALL_CONTRACTS))
+build-all-contracts-rs: build-vm2-contracts-rs $(patsubst %, build-contract-rs/%, $(ALL_CONTRACTS))
 
 .PHONY: build-client-contracts-rs
 build-client-contracts-rs: $(patsubst %, build-contract-rs/%, $(CLIENT_CONTRACTS))
