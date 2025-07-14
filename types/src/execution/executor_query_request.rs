@@ -56,16 +56,16 @@ impl ToBytes for VmReadRequest {
     }
 
     fn serialized_length(&self) -> usize {
-        self.initiator.serialized_length() +
-            self.contract_address.serialized_length() +
-            self.entry_point.serialized_length() + 
-            self.input.serialized_length() +
-            self.gas_limit.serialized_length() +
-            self.block_time.serialized_length() +
-            self.state_hash.serialized_length() +
-            self.parent_block_hash.serialized_length() +
-            self.block_height.serialized_length() +
-            self.chain_name.serialized_length()
+        self.initiator.serialized_length()
+            + self.contract_address.serialized_length()
+            + self.entry_point.serialized_length()
+            + self.input.serialized_length()
+            + self.gas_limit.serialized_length()
+            + self.block_time.serialized_length()
+            + self.state_hash.serialized_length()
+            + self.parent_block_hash.serialized_length()
+            + self.block_height.serialized_length()
+            + self.chain_name.serialized_length()
     }
 }
 

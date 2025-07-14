@@ -909,7 +909,7 @@ fn get_purse_for_entity<R: GlobalStateReader>(
     let stored_value = tracking_copy
         .read(&entity_key)
         .expect("should read account")
-        .expect(&format!("should have accounts : {entity_key:?}"));
+        .expect("should have account");
     match stored_value {
         StoredValue::CLValue(addressable_entity_key) => {
             let key = addressable_entity_key
@@ -918,7 +918,7 @@ fn get_purse_for_entity<R: GlobalStateReader>(
             let stored_value = tracking_copy
                 .read(&key)
                 .expect("should read account")
-                .expect("should have accounts2");
+                .expect("should have account");
 
             let addressable_entity = stored_value
                 .into_addressable_entity()

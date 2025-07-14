@@ -17,28 +17,44 @@ use casper_binary_port::{
     Uptime, ValueWithProof,
 };
 use casper_executor_wasm_common::chain_utils;
-use casper_executor_wasm_interface::executor::ExecuteRequestBuilder;
 use casper_storage::global_state::state::CommitProvider;
 use casper_types::{
-    account::AccountHash, addressable_entity::{ActionThresholds, AssociatedKeys, NamedKeyAddr, NamedKeyValue}, bytesrepr::{self, Bytes, FromBytes, ToBytes}, contracts::{ContractHash, ContractPackage, ContractPackageHash}, execution::{Effects, TransformKindV2, TransformV2, VmReadRequest}, system::auction::DelegatorKind, testing::TestRng, Account, AddressableEntity, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockIdentifier, BlockSynchronizerStatus, BlockWithSignatures, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLValue, CLValueDictionary, ChainspecRawBytes, Contract, ContractRuntimeTag, ContractWasm, ContractWasmHash, DictionaryAddr, Digest, EntityAddr, EntityKind, EntityVersions, GlobalStateIdentifier, HashAddr, Key, KeyTag, NextUpgrade, Package, PackageAddr, PackageHash, Peers, ProtocolVersion, PublicKey, Rewards, SecretKey, StoredValue, Transaction, TransactionArgs, TransactionEntryPoint, TransactionRuntimeParams, TransactionV1, Transfer, URef, U512
+    account::AccountHash,
+    addressable_entity::{ActionThresholds, AssociatedKeys, NamedKeyAddr, NamedKeyValue},
+    bytesrepr::{self, Bytes, FromBytes, ToBytes},
+    contracts::{ContractHash, ContractPackage, ContractPackageHash},
+    execution::{Effects, TransformKindV2, TransformV2, VmReadRequest},
+    system::auction::DelegatorKind,
+    testing::TestRng,
+    Account, AddressableEntity, AvailableBlockRange, Block, BlockHash, BlockHeader,
+    BlockIdentifier, BlockSynchronizerStatus, BlockWithSignatures, ByteCode, ByteCodeAddr,
+    ByteCodeHash, ByteCodeKind, CLValue, CLValueDictionary, ChainspecRawBytes, Contract,
+    ContractRuntimeTag, ContractWasm, ContractWasmHash, DictionaryAddr, Digest, EntityAddr,
+    EntityKind, EntityVersions, GlobalStateIdentifier, HashAddr, Key, KeyTag, NextUpgrade, Package,
+    PackageAddr, PackageHash, Peers, ProtocolVersion, PublicKey, Rewards, SecretKey, StoredValue,
+    Transaction, TransactionArgs, TransactionEntryPoint, TransactionRuntimeParams, Transfer, URef,
+    U512,
 };
 use futures::{SinkExt, StreamExt};
-use log::info;
-use once_cell::sync::Lazy;
 use rand::Rng;
 use tokio::{net::TcpStream, time::timeout};
 use tokio_util::codec::Framed;
 
 use crate::{
-    components::{block_accumulator, event_stream_server::{Event, ReactorEventT}}, reactor::{main_reactor::{tests::configs_override::{ConfigsOverride, NodeConfigOverride}, MainEvent, MainReactor}, ReactorEvent, Runner}, testing::{
+    components::block_accumulator,
+    reactor::{
+        main_reactor::{tests::configs_override::ConfigsOverride, MainEvent, MainReactor},
+        Runner,
+    },
+    testing::{
         self, filter_reactor::FilterReactor, network::TestingNetwork, ConditionCheckReactor,
-    }, types::{transaction::transaction_v1_builder::TransactionV1Builder, NodeId}, utils::{Loadable, RESOURCES_PATH}
+    },
+    types::{transaction::transaction_v1_builder::TransactionV1Builder, NodeId},
+    utils::RESOURCES_PATH,
 };
 
 use crate::reactor::main_reactor::tests::{
-    fixture::TestFixture,
-    initial_stakes::InitialStakes,
-    ERA_ONE,
+    fixture::TestFixture, initial_stakes::InitialStakes, ERA_ONE,
 };
 
 const GUARANTEED_BLOCK_HEIGHT: u64 = 5;
@@ -1351,8 +1367,10 @@ fn try_spec_exec_invalid(rng: &mut TestRng) -> TestCase {
 async fn binary_port_vm_read_request_test() {
     testing::init_logging();
 
-    let alice_secret_key = Arc::new(SecretKey::ed25519_from_bytes([0xAA; SecretKey::ED25519_LENGTH]).unwrap());
-    let bob_secret_key = Arc::new(SecretKey::ed25519_from_bytes([0xBB; SecretKey::ED25519_LENGTH]).unwrap());
+    let alice_secret_key =
+        Arc::new(SecretKey::ed25519_from_bytes([0xAA; SecretKey::ED25519_LENGTH]).unwrap());
+    let bob_secret_key =
+        Arc::new(SecretKey::ed25519_from_bytes([0xBB; SecretKey::ED25519_LENGTH]).unwrap());
     let alice_public_key = PublicKey::from(&*alice_secret_key);
     let bob_public_key = PublicKey::from(&*bob_secret_key);
 
@@ -1362,7 +1380,7 @@ async fn binary_port_vm_read_request_test() {
     ]
     .into_iter()
     .collect();
-    
+
     let rng = TestRng::new();
     let mut fixture = TestFixture::new_with_keys(
         rng,
@@ -1383,17 +1401,25 @@ async fn binary_port_vm_read_request_test() {
         .first()
         .expect("should have at least one node")
         .id;
-    
+
     // Wait for network to start storing blocks
-    fixture.network_mut().crank_all_until(
-        &node_0,
-        &mut rng,
-        |e| matches!(e, MainEvent::BlockAccumulator(block_accumulator::Event::Stored {
-            maybe_block_signatures: _,
-            maybe_meta_block: _,
-        })),
-        Duration::from_secs(30),
-    ).await;
+    fixture
+        .network_mut()
+        .crank_all_until(
+            &node_0,
+            &mut rng,
+            |e| {
+                matches!(
+                    e,
+                    MainEvent::BlockAccumulator(block_accumulator::Event::Stored {
+                        maybe_block_signatures: _,
+                        maybe_meta_block: _,
+                    })
+                )
+            },
+            Duration::from_secs(30),
+        )
+        .await;
 
     // Install a VM2 flipper contract
     let contract_file = RESOURCES_PATH
@@ -1402,7 +1428,8 @@ async fn binary_port_vm_read_request_test() {
         .join("wasm32-unknown-unknown")
         .join("release")
         .join("vm2_flipper.wasm");
-    let module_bytes = Bytes::from(std::fs::read(contract_file).expect("couldn't read module bytes"));
+    let module_bytes =
+        Bytes::from(std::fs::read(contract_file).expect("couldn't read module bytes"));
     let bytecode_hash = chain_utils::compute_wasm_bytecode_hash(&module_bytes);
     let contract_address: HashAddr = chain_utils::compute_predictable_address(
         chain_name.as_bytes(),
@@ -1416,7 +1443,7 @@ async fn binary_port_vm_read_request_test() {
             module_bytes,
             TransactionRuntimeParams::VmCasperV2 {
                 transferred_value: 0,
-                seed: None
+                seed: None,
             },
         )
         .with_transaction_args(TransactionArgs::Bytesrepr(Bytes::new()))
@@ -1430,7 +1457,9 @@ async fn binary_port_vm_read_request_test() {
 
     let txn_hash = txn.hash();
     fixture.inject_transaction(txn).await;
-    fixture.run_until_executed_transaction(&txn_hash, Duration::from_secs(30)).await;
+    fixture
+        .run_until_executed_transaction(&txn_hash, Duration::from_secs(30))
+        .await;
 
     let (_node_id, runner) = fixture.network.nodes().iter().next().unwrap();
     runner
@@ -1491,9 +1520,12 @@ async fn binary_port_vm_read_request_test() {
         [header_bytes, request_bytes].concat()
     };
     let binary_message = BinaryMessage::new(request_bytes);
-  
-    client.send(binary_message).await.expect("Failed to send VM read request");
-    
+
+    client
+        .send(binary_message)
+        .await
+        .expect("Failed to send VM read request");
+
     // Receive and verify response
     let response = timeout(Duration::from_secs(10), client.next())
         .await
@@ -1502,16 +1534,15 @@ async fn binary_port_vm_read_request_test() {
         .unwrap_or_else(|err| panic!("should have ok response: {}", err));
 
     let binary_response_and_request: BinaryResponseAndRequest =
-        bytesrepr::deserialize(response.payload().to_vec())
-            .expect("should deserialize response");
+        bytesrepr::deserialize(response.payload().to_vec()).expect("should deserialize response");
     let response_obj = binary_response_and_request.response();
     assert!(response_obj.is_success());
 
     // The get entrypoint in flipper should return a single boolean value
-    let (flipper_state, remainder) = bool::from_bytes(response_obj.payload())
-        .expect("should deserialize");
+    let (flipper_state, remainder) =
+        bool::from_bytes(response_obj.payload()).expect("should deserialize");
     assert!(remainder.is_empty());
-    assert_eq!(flipper_state, false);
+    assert!(!flipper_state);
 
     finish_cranking.await;
 }
