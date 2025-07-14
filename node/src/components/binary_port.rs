@@ -236,7 +236,7 @@ where
                 debug!("received a request for VM query execution while the feature is disabled");
                 return BinaryResponse::new_error(ErrorCode::FunctionDisabled);
             }
-            try_vm_query_execution(effect_builder, vm_read_request).await
+            try_vm_read_execution(effect_builder, vm_read_request).await
         }
         Command::Get(get_req) => {
             handle_get_request(get_req, effect_builder, config, metrics, protocol_version).await
@@ -1400,7 +1400,7 @@ where
     }
 }
 
-async fn try_vm_query_execution<REv>(
+async fn try_vm_read_execution<REv>(
     effect_builder: EffectBuilder<REv>,
     vm_read_request: VmReadRequest,
 ) -> BinaryResponse
