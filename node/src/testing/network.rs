@@ -205,7 +205,7 @@ where
     /// Crank all runners once, returning the number of events processed.
     ///
     /// Panics if any node returns an exit code.
-    async fn crank_all(&mut self, rng: &mut TestRng) -> usize {
+    pub(crate) async fn crank_all(&mut self, rng: &mut TestRng) -> usize {
         let mut event_count = 0;
         for node in self.nodes.values_mut() {
             let node_id = node.reactor().node_id();

@@ -16,45 +16,36 @@ use casper_binary_port::{
     PackageIdentifier, PurseIdentifier, ReactorStateName, RecordId, ResponseType, RewardResponse,
     Uptime, ValueWithProof,
 };
+use casper_executor_wasm_common::chain_utils;
+use casper_executor_wasm_interface::executor::ExecuteRequestBuilder;
 use casper_storage::global_state::state::CommitProvider;
 use casper_types::{
-    account::AccountHash,
-    addressable_entity::{ActionThresholds, AssociatedKeys, NamedKeyAddr, NamedKeyValue},
-    bytesrepr::{Bytes, FromBytes, ToBytes},
-    contracts::{ContractHash, ContractPackage, ContractPackageHash},
-    execution::{Effects, TransformKindV2, TransformV2},
-    system::auction::DelegatorKind,
-    testing::TestRng,
-    Account, AddressableEntity, AvailableBlockRange, Block, BlockHash, BlockHeader,
-    BlockIdentifier, BlockSynchronizerStatus, BlockWithSignatures, ByteCode, ByteCodeAddr,
-    ByteCodeHash, ByteCodeKind, CLValue, CLValueDictionary, ChainspecRawBytes, Contract,
-    ContractRuntimeTag, ContractWasm, ContractWasmHash, DictionaryAddr, Digest, EntityAddr,
-    EntityKind, EntityVersions, GlobalStateIdentifier, Key, KeyTag, NextUpgrade, Package,
-    PackageAddr, PackageHash, Peers, ProtocolVersion, PublicKey, Rewards, SecretKey, StoredValue,
-    Transaction, TransactionRuntimeParams, Transfer, URef, U512,
+    account::AccountHash, addressable_entity::{ActionThresholds, AssociatedKeys, NamedKeyAddr, NamedKeyValue}, bytesrepr::{self, Bytes, FromBytes, ToBytes}, contracts::{ContractHash, ContractPackage, ContractPackageHash}, execution::{Effects, TransformKindV2, TransformV2, VmReadRequest}, system::auction::DelegatorKind, testing::TestRng, Account, AddressableEntity, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockIdentifier, BlockSynchronizerStatus, BlockWithSignatures, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLValue, CLValueDictionary, ChainspecRawBytes, Contract, ContractRuntimeTag, ContractWasm, ContractWasmHash, DictionaryAddr, Digest, EntityAddr, EntityKind, EntityVersions, GlobalStateIdentifier, HashAddr, Key, KeyTag, NextUpgrade, Package, PackageAddr, PackageHash, Peers, ProtocolVersion, PublicKey, Rewards, SecretKey, StoredValue, Transaction, TransactionRuntimeParams, TransactionV1, Transfer, URef, U512
 };
 use futures::{SinkExt, StreamExt};
+use log::info;
+use once_cell::sync::Lazy;
 use rand::Rng;
 use tokio::{net::TcpStream, time::timeout};
 use tokio_util::codec::Framed;
 
 use crate::{
-    reactor::{main_reactor::MainReactor, Runner},
-    testing::{
+    components::{block_accumulator, event_stream_server::{Event, ReactorEventT}}, reactor::{main_reactor::{tests::configs_override::{ConfigsOverride, NodeConfigOverride}, MainEvent, MainReactor}, ReactorEvent, Runner}, testing::{
         self, filter_reactor::FilterReactor, network::TestingNetwork, ConditionCheckReactor,
-    },
-    types::{transaction::transaction_v1_builder::TransactionV1Builder, NodeId},
+    }, types::{transaction::transaction_v1_builder::TransactionV1Builder, NodeId}, utils::{Loadable, RESOURCES_PATH}
 };
 
 use crate::reactor::main_reactor::tests::{
-    fixture::TestFixture, initial_stakes::InitialStakes, ERA_ONE,
+    fixture::TestFixture,
+    initial_stakes::InitialStakes,
+    ERA_ONE,
 };
 
-const GUARANTEED_BLOCK_HEIGHT: u64 = 4;
+const GUARANTEED_BLOCK_HEIGHT: u64 = 5;
+const MESSAGE_SIZE: u32 = 4_194_304;
 
 const TEST_DICT_NAME: &str = "test_dict";
 const TEST_DICT_ITEM_KEY: &str = "test_key";
-const MESSAGE_SIZE: u32 = 1024 * 1024 * 10;
 
 struct TestData {
     rng: TestRng,
@@ -1354,6 +1345,187 @@ fn try_spec_exec_invalid(rng: &mut TestRng) -> TestCase {
         request: Command::TrySpeculativeExec { transaction },
         asserter: Box::new(|response| ErrorCode::try_from(response.error_code()).is_ok()),
     }
+}
+
+#[tokio::test]
+async fn binary_port_vm_read_request_test() {
+    testing::init_logging();
+
+    pub(crate) static ALICE_SECRET_KEY: Lazy<Arc<SecretKey>> = Lazy::new(|| {
+        Arc::new(SecretKey::ed25519_from_bytes([0xAA; SecretKey::ED25519_LENGTH]).unwrap())
+    });
+    pub(crate) static ALICE_PUBLIC_KEY: Lazy<PublicKey> =
+        Lazy::new(|| PublicKey::from(&*ALICE_SECRET_KEY.clone()));
+    
+    pub(crate) static BOB_SECRET_KEY: Lazy<Arc<SecretKey>> = Lazy::new(|| {
+        Arc::new(SecretKey::ed25519_from_bytes([0xBB; SecretKey::ED25519_LENGTH]).unwrap())
+    });
+    pub(crate) static BOB_PUBLIC_KEY: Lazy<PublicKey> =
+        Lazy::new(|| PublicKey::from(&*BOB_SECRET_KEY.clone()));
+
+    let alice_secret_key = ALICE_SECRET_KEY.clone();
+    let bob_secret_key = BOB_SECRET_KEY.clone();
+    let alice_public_key = PublicKey::from(&*alice_secret_key);
+    let bob_public_key = PublicKey::from(&*bob_secret_key);
+
+    let stakes = vec![
+        (alice_public_key.clone(), U512::from(u128::MAX)),
+        (bob_public_key.clone(), U512::from(1)),
+    ]
+    .into_iter()
+    .collect();
+    
+    let rng = TestRng::new();
+    let mut fixture = TestFixture::new_with_keys(
+        rng,
+        vec![alice_secret_key.clone(), bob_secret_key.clone()],
+        stakes,
+        Some(ConfigsOverride {
+            vm_casper_v2: true,
+            ..Default::default()
+        }),
+    )
+    .await;
+
+    let chain_name = fixture.chainspec.network_config.name.clone();
+    let mut rng = fixture.rng_mut().create_child();
+
+    let node_0 = fixture
+        .node_contexts
+        .first()
+        .expect("should have at least one node")
+        .id;
+    
+    // Wait for network to produce blocks
+    fixture.network_mut().crank_all_until(
+        &node_0,
+        &mut rng,
+        |e| matches!(e, MainEvent::BlockAccumulator(block_accumulator::Event::Stored {
+            maybe_block_signatures: _,
+            maybe_meta_block: _,
+        })),
+        Duration::from_secs(30),
+    ).await;
+
+    // Install a VM2 flipper contract
+    let contract_file = RESOURCES_PATH
+        .join("..")
+        .join("target")
+        .join("wasm32-unknown-unknown")
+        .join("release")
+        .join("vm2_flipper.wasm");
+    let module_bytes = Bytes::from(std::fs::read(contract_file).expect("couldn't read module bytes"));
+    let bytecode_hash = chain_utils::compute_wasm_bytecode_hash(&module_bytes);
+    let contract_address: HashAddr = chain_utils::compute_predictable_address(
+        chain_name.as_bytes(),
+        EntityAddr::new_account(ALICE_PUBLIC_KEY.to_account_hash().value()).value(),
+        bytecode_hash,
+        None,
+    );
+    let mut txn = Transaction::from(
+        TransactionV1Builder::new_session(
+            false,
+            module_bytes,
+            TransactionRuntimeParams::VmCasperV2 {
+                transferred_value: 0,
+                seed: None
+            },
+        )
+        .with_chain_name(chain_name.clone())
+        .with_initiator_addr(ALICE_PUBLIC_KEY.to_owned())
+        .build()
+        .unwrap(),
+    );
+    txn.sign(&ALICE_SECRET_KEY);
+
+    let txn_hash = txn.hash();
+    fixture.inject_transaction(txn).await;
+    fixture.run_until_executed_transaction(&txn_hash, Duration::from_secs(30)).await;
+
+    let (_node_id, runner) = fixture.network.nodes().iter().next().unwrap();
+    runner
+        .main_reactor()
+        .storage()
+        .read_execution_info(txn_hash)
+        .expect("Expected transaction to be included in a block.");
+
+    // Create a VM read request to call the get method
+    let (latest_block, state_root_hash) = {
+        let (_, runner) = fixture.network.nodes().iter().next().unwrap();
+        let storage = runner.main_reactor().storage();
+
+        let latest_block = storage
+            .read_highest_block()
+            .expect("Should have blocks after settling on block production");
+        let state_root_hash = *latest_block.state_root_hash();
+        (latest_block, state_root_hash)
+    };
+
+    let vm_read_request = VmReadRequest {
+        initiator: alice_public_key.to_account_hash(),
+        contract_address,
+        entry_point: "get".to_string(),
+        input: vec![],
+        gas_limit: 100_000_000,
+        block_time: latest_block.timestamp().into(),
+        state_hash: state_root_hash,
+        parent_block_hash: *latest_block.parent_hash(),
+        block_height: latest_block.height(),
+        chain_name: chain_name.clone(),
+    };
+
+    // Connect to binary port (1st node)
+    let (_, first_node) = fixture.network.nodes().iter().next().unwrap();
+    let binary_port_addr = first_node
+        .main_reactor()
+        .binary_port
+        .bind_address()
+        .expect("should be bound");
+    let address = format!("localhost:{}", binary_port_addr.port());
+
+    let stream = TcpStream::connect(address.clone())
+        .await
+        .expect("should create stream");
+    let mut client = Framed::new(stream, BinaryMessageCodec::new(MESSAGE_SIZE));
+
+    // Create and send the command
+    let command = Command::TryVmRead { vm_read_request };
+
+    let command_bytes = {
+        let header = CommandHeader::new(command.tag(), 1_u16);
+        let header_bytes = ToBytes::to_bytes(&header).expect("should serialize header");
+        let command_bytes = ToBytes::to_bytes(&command).expect("should serialize command");
+        [header_bytes, command_bytes].concat()
+    };
+    
+    let binary_message = BinaryMessage::new(command_bytes);
+  
+    client.send(binary_message).await.expect("Failed to send VM read request");
+
+    // Crank
+    fixture.network_mut().crank_all_until(
+        &node_0,
+        &mut rng,
+        |e| matches!(e, MainEvent::BlockAccumulator(block_accumulator::Event::Stored {
+            maybe_block_signatures: _,
+            maybe_meta_block: _,
+        })),
+        Duration::from_secs(30),
+    ).await;
+    
+    // Receive and verify response
+    let response = timeout(Duration::from_secs(30), client.next())
+        .await
+        .unwrap_or_else(|_| panic!("VM read request should complete without timeout"))
+        .unwrap_or_else(|| panic!("should have response"))
+        .unwrap_or_else(|err| panic!("should have ok response: {}", err));
+
+    let binary_response_and_request: BinaryResponseAndRequest =
+        bytesrepr::deserialize(response.payload().to_vec())
+            .expect("should deserialize response");
+
+    let response_obj = binary_response_and_request.response();
+    assert!(response_obj.is_success());
 }
 
 #[tokio::test]

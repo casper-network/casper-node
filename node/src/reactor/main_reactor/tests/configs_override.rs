@@ -36,6 +36,7 @@ pub(crate) struct ConfigsOverride {
     pub chain_name: Option<String>,
     pub gas_hold_balance_handling: Option<HoldBalanceHandling>,
     pub transaction_v1_override: Option<TransactionV1Config>,
+    pub vm_casper_v2: bool,
     pub node_config_override: NodeConfigOverride,
 }
 
@@ -165,6 +166,7 @@ impl Default for ConfigsOverride {
             chain_name: None,
             gas_hold_balance_handling: None,
             transaction_v1_override: None,
+            vm_casper_v2: false,
             node_config_override: NodeConfigOverride::default(),
         }
     }
