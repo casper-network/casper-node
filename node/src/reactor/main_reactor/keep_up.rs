@@ -256,7 +256,7 @@ impl MainReactor {
                 }
             }
             SyncInstruction::BlockSync { block_hash } => {
-                debug!("KeepUp: BlockSync: {:?}", block_hash);
+                info!("KeepUp: BlockSync: {:?}", block_hash);
                 if self
                     .block_synchronizer
                     .register_block_by_hash(block_hash, false)

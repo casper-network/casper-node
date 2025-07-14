@@ -316,6 +316,7 @@ async fn should_start_in_isolation() {
     let spec_override = ConfigsOverride {
         node_config_override: NodeConfigOverride {
             sync_handling_override: Some(SyncHandling::Isolated),
+            idle_tolerance: None,
         },
         ..Default::default()
     };
@@ -367,6 +368,7 @@ async fn should_be_peerless_in_isolation() {
     let spec_override = ConfigsOverride {
         node_config_override: NodeConfigOverride {
             sync_handling_override: Some(SyncHandling::Isolated),
+            idle_tolerance: None,
         },
         ..Default::default()
     };

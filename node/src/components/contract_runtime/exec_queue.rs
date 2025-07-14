@@ -27,7 +27,8 @@ impl ExecQueue {
             .remove(&height)
     }
 
-    pub fn insert(&mut self, height: u64, item: QueueItem) {
+    pub fn insert(&mut self, item: QueueItem) {
+        let height = item.executable_block.height;
         self.0
             .lock()
             .expect("components::contract_runtime: couldn't insert into the queue; mutex poisoned")

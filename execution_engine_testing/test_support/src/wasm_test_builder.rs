@@ -952,6 +952,9 @@ where
     }
 
     /// Executes a request to call the system auction contract.
+    /// This ONLY executes the run_auction logic of the auction. If you are testing
+    /// specifically that function, this is sufficient. However, to match the standard
+    /// end of era auction behavior the comprehensive `step` function should be used instead.
     pub fn run_auction(
         &mut self,
         era_end_timestamp_millis: u64,
@@ -971,7 +974,7 @@ where
         self.exec(exec_request).expect_success().commit()
     }
 
-    /// Increments engine state.
+    /// Increments engine state at end of era (rewards, auction, unbond, etc.).
     pub fn step(&mut self, step_request: StepRequest) -> StepResult {
         let step_result = self.data_access_layer.step(step_request);
 
