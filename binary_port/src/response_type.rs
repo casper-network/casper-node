@@ -293,7 +293,7 @@ impl fmt::Display for ResponseType {
             ResponseType::AddressableEntityInformation => {
                 write!(f, "AddressableEntityInformation")
             }
-            ResponseType::VmReadResult => write!(f, "QueryResult"),
+            ResponseType::VmReadResult => write!(f, "VmReadResult"),
         }
     }
 }

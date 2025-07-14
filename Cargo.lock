@@ -927,7 +927,6 @@ dependencies = [
  "casper-executor-wasm-common",
  "casper-storage",
  "casper-types",
- "hex",
  "parking_lot",
  "serde",
  "thiserror 2.0.12",

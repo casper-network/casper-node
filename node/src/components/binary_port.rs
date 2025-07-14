@@ -162,7 +162,7 @@ struct BinaryRequestTerminationDelayValues {
     get_trie: TimeDiff,
     accept_transaction: TimeDiff,
     speculative_exec: TimeDiff,
-    query_request: TimeDiff,
+    vm_read_request: TimeDiff,
 }
 
 impl BinaryRequestTerminationDelayValues {
@@ -174,7 +174,7 @@ impl BinaryRequestTerminationDelayValues {
             get_trie: config.get_trie_request_termination_delay,
             accept_transaction: config.accept_transaction_request_termination_delay,
             speculative_exec: config.speculative_exec_request_termination_delay,
-            query_request: config.query_request_termination_delay,
+            vm_read_request: config.try_vm_read_request_termination_delay,
         }
     }
     fn get_life_termination_delay(&self, request: &Command) -> TimeDiff {
@@ -185,7 +185,7 @@ impl BinaryRequestTerminationDelayValues {
             Command::Get(GetRequest::Trie { .. }) => self.get_trie,
             Command::TryAcceptTransaction { .. } => self.accept_transaction,
             Command::TrySpeculativeExec { .. } => self.speculative_exec,
-            Command::TryVmRead { .. } => self.query_request,
+            Command::TryVmRead { .. } => self.vm_read_request,
         }
     }
 }
@@ -231,7 +231,7 @@ where
             try_speculative_execution(effect_builder, transaction).await
         }
         Command::TryVmRead { vm_read_request } => {
-            metrics.binary_port_try_query_count.inc();
+            metrics.binary_port_try_vm_read_count.inc();
             if !config.allow_request_vm_read {
                 debug!("received a request for VM query execution while the feature is disabled");
                 return BinaryResponse::new_error(ErrorCode::FunctionDisabled);
@@ -1402,12 +1402,12 @@ where
 
 async fn try_vm_query_execution<REv>(
     effect_builder: EffectBuilder<REv>,
-    query_request: VmReadRequest,
+    vm_read_request: VmReadRequest,
 ) -> BinaryResponse
 where
     REv: From<Event> + From<ContractRuntimeRequest> + From<StorageRequest>,
 {
-    let result = effect_builder.query_vm_read(query_request).await;
+    let result = effect_builder.query_vm_read(vm_read_request).await;
 
     if result.is_success() {
         // Return the output bytes on success

@@ -57,11 +57,11 @@ use crate::reactor::main_reactor::tests::{
     fixture::TestFixture, initial_stakes::InitialStakes, ERA_ONE,
 };
 
-const GUARANTEED_BLOCK_HEIGHT: u64 = 5;
-const MESSAGE_SIZE: u32 = 4_194_304;
+const GUARANTEED_BLOCK_HEIGHT: u64 = 4;
 
 const TEST_DICT_NAME: &str = "test_dict";
 const TEST_DICT_ITEM_KEY: &str = "test_key";
+const MESSAGE_SIZE: u32 = 1024 * 1024 * 10;
 
 struct TestData {
     rng: TestRng,

@@ -33,8 +33,8 @@ const DEFAULT_ACCEPT_TRANSACTION_REQUEST_TERMINATION_DELAY: &str = "24 seconds";
 // [`Command::TrySpeculativeExec`] is sent to the node
 const DEFAULT_SPECULATIVE_EXEC_REQUEST_TERMINATION_DELAY: &str = "0 seconds";
 // Default amount of time which is given to a connection to extend it's lifetime when a valid
-// [`Command::TryQuery`] is sent to the node
-const DEFAULT_QUERY_REQUEST_TERMINATION_DELAY: &str = "30 seconds";
+// [`Command::TryVmRead`] is sent to the node
+const DEFAULT_TRY_VM_READ_REQUEST_TERMINATION_DELAY: &str = "30 seconds";
 
 /// Binary port server configuration.
 #[derive(Clone, DataSize, Debug, Deserialize, Serialize)]
@@ -82,8 +82,8 @@ pub struct Config {
     // [`Command::TrySpeculativeExec`] is sent to the node
     pub speculative_exec_request_termination_delay: TimeDiff,
     // The amount of time which is given to a connection to extend it's lifetime when a valid
-    // [`Command::TryQuery`] is sent to the node
-    pub query_request_termination_delay: TimeDiff,
+    // [`Command::TryVmRead`] is sent to the node
+    pub try_vm_read_request_termination_delay: TimeDiff,
 }
 
 impl Config {
@@ -125,8 +125,8 @@ impl Config {
                 DEFAULT_SPECULATIVE_EXEC_REQUEST_TERMINATION_DELAY,
             )
             .unwrap(),
-            query_request_termination_delay: TimeDiff::from_str(
-                DEFAULT_QUERY_REQUEST_TERMINATION_DELAY,
+            try_vm_read_request_termination_delay: TimeDiff::from_str(
+                DEFAULT_TRY_VM_READ_REQUEST_TERMINATION_DELAY,
             )
             .unwrap(),
         }

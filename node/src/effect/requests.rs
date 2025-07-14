@@ -903,7 +903,7 @@ impl Display for ContractRuntimeRequest {
                 write!(formatter, "query request: {:?}", query_request)
             }
             ContractRuntimeRequest::VmRead { query_request, .. } => {
-                write!(formatter, "contract query request: {:?}", query_request)
+                write!(formatter, "vm read request: {:?}", query_request)
             }
             ContractRuntimeRequest::QueryByPrefix { request, .. } => {
                 write!(formatter, "query by prefix request: {:?}", request)
