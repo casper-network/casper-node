@@ -20,7 +20,7 @@ pub struct VmReadRequest {
     /// The entry point to call.
     pub entry_point: String,
     /// Input data for the query.
-    pub input: Vec<u8>,
+    pub input: Bytes,
     /// Gas limit for the query execution.
     ///
     /// This prevents infinite loops and resource exhaustion attacks.
@@ -42,42 +42,57 @@ pub struct VmReadRequest {
 impl ToBytes for VmReadRequest {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut writer = bytesrepr::allocate_buffer(self)?;
-        self.state_hash.write_bytes(&mut writer)?;
+        self.initiator.write_bytes(&mut writer)?;
         self.contract_address.write_bytes(&mut writer)?;
         self.entry_point.write_bytes(&mut writer)?;
         self.input.write_bytes(&mut writer)?;
         self.gas_limit.write_bytes(&mut writer)?;
+        self.block_time.write_bytes(&mut writer)?;
+        self.state_hash.write_bytes(&mut writer)?;
+        self.parent_block_hash.write_bytes(&mut writer)?;
+        self.block_height.write_bytes(&mut writer)?;
+        self.chain_name.write_bytes(&mut writer)?;
         Ok(writer)
     }
 
     fn serialized_length(&self) -> usize {
-        self.state_hash.serialized_length()
-            + self.contract_address.serialized_length()
-            + self.entry_point.serialized_length()
-            + self.input.serialized_length()
-            + self.gas_limit.serialized_length()
+        self.initiator.serialized_length() +
+            self.contract_address.serialized_length() +
+            self.entry_point.serialized_length() + 
+            self.input.serialized_length() +
+            self.gas_limit.serialized_length() +
+            self.block_time.serialized_length() +
+            self.state_hash.serialized_length() +
+            self.parent_block_hash.serialized_length() +
+            self.block_height.serialized_length() +
+            self.chain_name.serialized_length()
     }
 }
 
 impl FromBytes for VmReadRequest {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (state_hash, remainder) = FromBytes::from_bytes(bytes)?;
+        let (initiator, remainder) = FromBytes::from_bytes(bytes)?;
         let (contract_address, remainder) = FromBytes::from_bytes(remainder)?;
         let (entry_point, remainder) = FromBytes::from_bytes(remainder)?;
         let (input, remainder) = FromBytes::from_bytes(remainder)?;
         let (gas_limit, remainder) = FromBytes::from_bytes(remainder)?;
+        let (block_time, remainder) = FromBytes::from_bytes(remainder)?;
+        let (state_hash, remainder) = FromBytes::from_bytes(remainder)?;
+        let (parent_block_hash, remainder) = FromBytes::from_bytes(remainder)?;
+        let (block_height, remainder) = FromBytes::from_bytes(remainder)?;
+        let (chain_name, remainder) = FromBytes::from_bytes(remainder)?;
         Ok((
             VmReadRequest {
-                initiator: AccountHash::default(),
+                initiator,
                 contract_address,
                 entry_point,
                 input,
                 gas_limit,
-                block_time: BlockTime::default(),
+                block_time,
                 state_hash,
-                parent_block_hash: BlockHash::default(),
-                block_height: 0,
-                chain_name: String::default(),
+                parent_block_hash,
+                block_height,
+                chain_name,
             },
             remainder,
         ))
@@ -93,7 +108,7 @@ impl VmReadRequest {
             initiator: AccountHash::new(rng.gen()),
             contract_address: rng.gen(),
             entry_point: format!("entry_point_{}", rng.gen::<u32>()),
-            input: vec![rng.gen::<u8>(); 32],
+            input: vec![rng.gen::<u8>(); 32].into(),
             gas_limit: rng.gen_range(1000..1000000),
             block_time: BlockTime::new(rng.gen()),
             state_hash: Digest::random(rng),
@@ -173,7 +188,7 @@ pub struct VmReadRequestBuilder {
     initiator: Option<AccountHash>,
     contract_address: Option<HashAddr>,
     entry_point: Option<String>,
-    input: Option<Vec<u8>>,
+    input: Option<Bytes>,
     gas_limit: Option<u64>,
     block_time: Option<BlockTime>,
     state_hash: Option<Digest>,
@@ -206,7 +221,7 @@ impl VmReadRequestBuilder {
 
     /// Set the input data.
     #[must_use]
-    pub fn with_input(mut self, input: Vec<u8>) -> Self {
+    pub fn with_input(mut self, input: Bytes) -> Self {
         self.input = Some(input);
         self
     }

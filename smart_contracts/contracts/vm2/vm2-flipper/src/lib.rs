@@ -5,15 +5,10 @@ use casper_contract_sdk::prelude::*;
 
 /// This contract implements a simple flipper.
 #[casper(contract_state)]
+#[derive(Default)]
 pub struct Flipper {
     /// The current state of the flipper.
     value: bool,
-}
-
-impl Default for Flipper {
-    fn default() -> Self {
-        panic!("Unable to instantiate contract without a constructor");
-    }
 }
 
 #[casper]

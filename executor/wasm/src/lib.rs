@@ -865,7 +865,7 @@ impl Executor for ExecutorV2 {
                 address: request.contract_address,
                 entry_point: request.entry_point,
             })
-            .with_input(request.input.into())
+            .with_input(Bytes::copy_from_slice(request.input.inner_bytes()))
             .with_transferred_value(0) // Must be 0 for read-only queries
             .with_transaction_hash(TransactionHash::from_raw([0; 32])) // Dummy hash for queries
             .with_address_generator(AddressGenerator::new(&[0; 32], Phase::Session))
@@ -909,7 +909,7 @@ fn get_purse_for_entity<R: GlobalStateReader>(
     let stored_value = tracking_copy
         .read(&entity_key)
         .expect("should read account")
-        .expect("should have account");
+        .expect(&format!("should have accounts : {entity_key:?}"));
     match stored_value {
         StoredValue::CLValue(addressable_entity_key) => {
             let key = addressable_entity_key
@@ -918,7 +918,7 @@ fn get_purse_for_entity<R: GlobalStateReader>(
             let stored_value = tracking_copy
                 .read(&key)
                 .expect("should read account")
-                .expect("should have account");
+                .expect("should have accounts2");
 
             let addressable_entity = stored_value
                 .into_addressable_entity()

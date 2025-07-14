@@ -516,6 +516,7 @@ pub fn execute_finalized_block(
             }
 
             trace!(%transaction_hash, ?lane_id, "eligible for execution");
+
             match lane_id {
                 lane_id if lane_id == MINT_LANE_ID => {
                     let runtime_args = transaction_args

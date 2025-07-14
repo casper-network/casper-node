@@ -776,9 +776,9 @@ pub(crate) enum ContractRuntimeRequest {
         /// Responder to call with the query result.
         responder: Responder<QueryResult>,
     },
-    /// A read-only contract query request.
+    /// A read-only contract execution request.
     VmRead {
-        /// Contract query request.
+        /// Read request,
         #[serde(skip_serializing)]
         query_request: VmReadRequest,
         /// Responder to call with the query result.

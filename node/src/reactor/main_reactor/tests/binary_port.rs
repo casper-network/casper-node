@@ -20,7 +20,7 @@ use casper_executor_wasm_common::chain_utils;
 use casper_executor_wasm_interface::executor::ExecuteRequestBuilder;
 use casper_storage::global_state::state::CommitProvider;
 use casper_types::{
-    account::AccountHash, addressable_entity::{ActionThresholds, AssociatedKeys, NamedKeyAddr, NamedKeyValue}, bytesrepr::{self, Bytes, FromBytes, ToBytes}, contracts::{ContractHash, ContractPackage, ContractPackageHash}, execution::{Effects, TransformKindV2, TransformV2, VmReadRequest}, system::auction::DelegatorKind, testing::TestRng, Account, AddressableEntity, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockIdentifier, BlockSynchronizerStatus, BlockWithSignatures, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLValue, CLValueDictionary, ChainspecRawBytes, Contract, ContractRuntimeTag, ContractWasm, ContractWasmHash, DictionaryAddr, Digest, EntityAddr, EntityKind, EntityVersions, GlobalStateIdentifier, HashAddr, Key, KeyTag, NextUpgrade, Package, PackageAddr, PackageHash, Peers, ProtocolVersion, PublicKey, Rewards, SecretKey, StoredValue, Transaction, TransactionRuntimeParams, TransactionV1, Transfer, URef, U512
+    account::AccountHash, addressable_entity::{ActionThresholds, AssociatedKeys, NamedKeyAddr, NamedKeyValue}, bytesrepr::{self, Bytes, FromBytes, ToBytes}, contracts::{ContractHash, ContractPackage, ContractPackageHash}, execution::{Effects, TransformKindV2, TransformV2, VmReadRequest}, system::auction::DelegatorKind, testing::TestRng, Account, AddressableEntity, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockIdentifier, BlockSynchronizerStatus, BlockWithSignatures, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLValue, CLValueDictionary, ChainspecRawBytes, Contract, ContractRuntimeTag, ContractWasm, ContractWasmHash, DictionaryAddr, Digest, EntityAddr, EntityKind, EntityVersions, GlobalStateIdentifier, HashAddr, Key, KeyTag, NextUpgrade, Package, PackageAddr, PackageHash, Peers, ProtocolVersion, PublicKey, Rewards, SecretKey, StoredValue, Transaction, TransactionArgs, TransactionEntryPoint, TransactionRuntimeParams, TransactionV1, Transfer, URef, U512
 };
 use futures::{SinkExt, StreamExt};
 use log::info;
@@ -1351,20 +1351,8 @@ fn try_spec_exec_invalid(rng: &mut TestRng) -> TestCase {
 async fn binary_port_vm_read_request_test() {
     testing::init_logging();
 
-    pub(crate) static ALICE_SECRET_KEY: Lazy<Arc<SecretKey>> = Lazy::new(|| {
-        Arc::new(SecretKey::ed25519_from_bytes([0xAA; SecretKey::ED25519_LENGTH]).unwrap())
-    });
-    pub(crate) static ALICE_PUBLIC_KEY: Lazy<PublicKey> =
-        Lazy::new(|| PublicKey::from(&*ALICE_SECRET_KEY.clone()));
-    
-    pub(crate) static BOB_SECRET_KEY: Lazy<Arc<SecretKey>> = Lazy::new(|| {
-        Arc::new(SecretKey::ed25519_from_bytes([0xBB; SecretKey::ED25519_LENGTH]).unwrap())
-    });
-    pub(crate) static BOB_PUBLIC_KEY: Lazy<PublicKey> =
-        Lazy::new(|| PublicKey::from(&*BOB_SECRET_KEY.clone()));
-
-    let alice_secret_key = ALICE_SECRET_KEY.clone();
-    let bob_secret_key = BOB_SECRET_KEY.clone();
+    let alice_secret_key = Arc::new(SecretKey::ed25519_from_bytes([0xAA; SecretKey::ED25519_LENGTH]).unwrap());
+    let bob_secret_key = Arc::new(SecretKey::ed25519_from_bytes([0xBB; SecretKey::ED25519_LENGTH]).unwrap());
     let alice_public_key = PublicKey::from(&*alice_secret_key);
     let bob_public_key = PublicKey::from(&*bob_secret_key);
 
@@ -1396,7 +1384,7 @@ async fn binary_port_vm_read_request_test() {
         .expect("should have at least one node")
         .id;
     
-    // Wait for network to produce blocks
+    // Wait for network to start storing blocks
     fixture.network_mut().crank_all_until(
         &node_0,
         &mut rng,
@@ -1418,7 +1406,7 @@ async fn binary_port_vm_read_request_test() {
     let bytecode_hash = chain_utils::compute_wasm_bytecode_hash(&module_bytes);
     let contract_address: HashAddr = chain_utils::compute_predictable_address(
         chain_name.as_bytes(),
-        EntityAddr::new_account(ALICE_PUBLIC_KEY.to_account_hash().value()).value(),
+        EntityAddr::new_account(alice_public_key.to_account_hash().value()).value(),
         bytecode_hash,
         None,
     );
@@ -1431,12 +1419,14 @@ async fn binary_port_vm_read_request_test() {
                 seed: None
             },
         )
+        .with_transaction_args(TransactionArgs::Bytesrepr(Bytes::new()))
         .with_chain_name(chain_name.clone())
-        .with_initiator_addr(ALICE_PUBLIC_KEY.to_owned())
+        .with_initiator_addr(alice_public_key.to_owned())
+        .with_entry_point(TransactionEntryPoint::Custom("default".into()))
         .build()
         .unwrap(),
     );
-    txn.sign(&ALICE_SECRET_KEY);
+    txn.sign(&alice_secret_key);
 
     let txn_hash = txn.hash();
     fixture.inject_transaction(txn).await;
@@ -1465,7 +1455,7 @@ async fn binary_port_vm_read_request_test() {
         initiator: alice_public_key.to_account_hash(),
         contract_address,
         entry_point: "get".to_string(),
-        input: vec![],
+        input: Bytes::new(),
         gas_limit: 100_000_000,
         block_time: latest_block.timestamp().into(),
         state_hash: state_root_hash,
@@ -1488,33 +1478,24 @@ async fn binary_port_vm_read_request_test() {
         .expect("should create stream");
     let mut client = Framed::new(stream, BinaryMessageCodec::new(MESSAGE_SIZE));
 
-    // Create and send the command
-    let command = Command::TryVmRead { vm_read_request };
+    // Let the network run in the background while we wait for the request to be processed
+    let finish_cranking = fixture.run_until_stopped(rng.create_child());
 
-    let command_bytes = {
-        let header = CommandHeader::new(command.tag(), 1_u16);
-        let header_bytes = ToBytes::to_bytes(&header).expect("should serialize header");
-        let command_bytes = ToBytes::to_bytes(&command).expect("should serialize command");
-        [header_bytes, command_bytes].concat()
+    // Create and send the command
+    let request = Command::TryVmRead { vm_read_request };
+    let request_bytes = {
+        let header = CommandHeader::new(request.tag(), 16);
+        let header_bytes = ToBytes::to_bytes(&header).expect("should serialize");
+        let request_bytes = ToBytes::to_bytes(&request).expect("should serialize");
+
+        [header_bytes, request_bytes].concat()
     };
-    
-    let binary_message = BinaryMessage::new(command_bytes);
+    let binary_message = BinaryMessage::new(request_bytes);
   
     client.send(binary_message).await.expect("Failed to send VM read request");
-
-    // Crank
-    fixture.network_mut().crank_all_until(
-        &node_0,
-        &mut rng,
-        |e| matches!(e, MainEvent::BlockAccumulator(block_accumulator::Event::Stored {
-            maybe_block_signatures: _,
-            maybe_meta_block: _,
-        })),
-        Duration::from_secs(30),
-    ).await;
     
     // Receive and verify response
-    let response = timeout(Duration::from_secs(30), client.next())
+    let response = timeout(Duration::from_secs(10), client.next())
         .await
         .unwrap_or_else(|_| panic!("VM read request should complete without timeout"))
         .unwrap_or_else(|| panic!("should have response"))
@@ -1523,9 +1504,16 @@ async fn binary_port_vm_read_request_test() {
     let binary_response_and_request: BinaryResponseAndRequest =
         bytesrepr::deserialize(response.payload().to_vec())
             .expect("should deserialize response");
-
     let response_obj = binary_response_and_request.response();
     assert!(response_obj.is_success());
+
+    // The get entrypoint in flipper should return a single boolean value
+    let (flipper_state, remainder) = bool::from_bytes(response_obj.payload())
+        .expect("should deserialize");
+    assert!(remainder.is_empty());
+    assert_eq!(flipper_state, false);
+
+    finish_cranking.await;
 }
 
 #[tokio::test]
