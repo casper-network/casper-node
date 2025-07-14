@@ -4,7 +4,6 @@ use crate::{
     compat::types::{CLType, CLTyped, CLValue, U512},
     serializers::borsh::{io, BorshDeserialize, BorshSerialize},
 };
-use num_traits::Zero;
 
 pub type NamedArg<'a> = (&'a String, &'a CLValue);
 

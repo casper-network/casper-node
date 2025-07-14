@@ -13,10 +13,12 @@ pub struct Contract;
 
 #[casper]
 impl Contract {
+    #[casper(ignore_state)]
     pub fn accepts_named_args_1(runtime_args: RuntimeArgs) -> CLValue {
         // Simpliest example of a contract that accepts named arguments.
         // It retrieves the named argument "to" and returns a greeting message.
-        // RuntimeArgs is deserialized from the input data, and a CLValue is returned as serialized bytes.
+        // RuntimeArgs is deserialized from the input data, and a CLValue is returned as serialized
+        // bytes.
 
         // Retrieve the named argument "flipped"
         let to: String = runtime_args
@@ -29,8 +31,14 @@ impl Contract {
         CLValue::from_t(result).unwrap()
     }
 
-    pub fn compatibility_layer() {
+    #[casper(manual)]
+    pub fn uses_compatibility_layer(&self) {
+        // This variant does not use the compatibility layer, but still has a state.
+    }
 
+    #[casper(ignore_state, manual)]
+    pub fn uses_compatibility_layer_no_state() {
+        // No self parameter so no state, and uses compatibility layer for args.
     }
 }
 
@@ -43,7 +51,7 @@ mod tests {
         let mut runtime_args = RuntimeArgs::new();
         runtime_args.insert("to", String::from("world")).unwrap();
 
-        let result = Contract::accepts_named_args(runtime_args);
+        let result = Contract::accepts_named_args_1(runtime_args);
 
         let result: String = result.into_t().expect("Failed to convert result to String");
         assert_eq!(result, "Hello, world!");

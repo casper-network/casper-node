@@ -48,6 +48,6 @@ pub fn get_blocktime() -> u64 {
 }
 
 pub fn get_parent_block_hash() -> [u8; 32] {
-    let env_info = casper::get_env_info();
+    let _env_info = casper::get_env_info();
     todo!();
 }
