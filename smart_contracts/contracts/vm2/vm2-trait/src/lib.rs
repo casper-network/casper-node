@@ -3,6 +3,7 @@
 
 use casper_contract_macros::{blake2b256, casper};
 use casper_contract_sdk::{
+    abi::CasperABI,
     casper,
     contrib::{
         access_control::{AccessControl, AccessControlExt, AccessControlState, Role},
@@ -55,10 +56,6 @@ pub trait Counter {
 
     fn get_counter_value(&self) -> u64 {
         self.counter_state().value
-    }
-
-    fn get_counter_state(&self) -> CounterState {
-        self.counter_state().clone()
     }
 
     #[casper(private)]

@@ -1364,7 +1364,7 @@ fn try_spec_exec_invalid(rng: &mut TestRng) -> TestCase {
 }
 
 #[tokio::test]
-async fn binary_port_vm_read_request_test() {
+async fn binary_port_vm_read_request() {
     testing::init_logging();
 
     let alice_secret_key =
