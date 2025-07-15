@@ -50,6 +50,7 @@ use casper_types::{
         ContractHash, ContractPackage, ContractPackageHash, ContractPackageStatus,
         ContractVersions, DisabledVersions, NamedKeys, ProtocolVersionMajor,
     },
+    execution::RetValue,
     system::{
         self,
         auction::{self, DelegatorKind, EraInfo},
@@ -687,6 +688,15 @@ where
                 // Set the result field in the runtime and return the proper element of the `Error`
                 // enum indicating that the reason for exiting the module was a call to ret.
                 self.host_buffer = bytesrepr::deserialize_from_slice(buf).ok();
+
+                // Emit Ret transform to the execution journal
+                if let Some(cl_value) = &self.host_buffer {
+                    let key = self.context.get_context_key();
+                    self.context
+                        .state()
+                        .borrow_mut()
+                        .ret(key, RetValue::CLValue(cl_value.clone()));
+                }
 
                 let urefs = match &self.host_buffer {
                     Some(buf) => utils::extract_urefs(buf),

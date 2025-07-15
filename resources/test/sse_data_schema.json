@@ -3704,6 +3704,19 @@
             }
           },
           "additionalProperties": false
+        },
+        {
+          "description": "Registers a value return from the contract",
+          "type": "object",
+          "required": [
+            "Ret"
+          ],
+          "properties": {
+            "Ret": {
+              "$ref": "#/definitions/RetValue"
+            }
+          },
+          "additionalProperties": false
         }
       ]
     },
@@ -5018,6 +5031,37 @@
           "type": "string"
         }
       }
+    },
+    "RetValue": {
+      "description": "Type disambiguating between the formatting of the returned data.",
+      "oneOf": [
+        {
+          "description": "The returned data is CLValue.",
+          "type": "object",
+          "required": [
+            "CLValue"
+          ],
+          "properties": {
+            "CLValue": {
+              "$ref": "#/definitions/CLValue"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "The returned data is serialized bytes.",
+          "type": "object",
+          "required": [
+            "Bytes"
+          ],
+          "properties": {
+            "Bytes": {
+              "$ref": "#/definitions/Bytes"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
     },
     "Message": {
       "description": "Message that was emitted by an addressable entity during execution.",
