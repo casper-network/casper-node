@@ -1408,6 +1408,7 @@ where
                             HashAlgorithm::Blake2b => cryptography::blake2b(input),
                             HashAlgorithm::Blake3 => cryptography::blake3(input),
                             HashAlgorithm::Sha256 => cryptography::sha256(input),
+                            HashAlgorithm::Keccak256 => cryptography::keccak256(input),
                         }
                     })?;
 

@@ -41,3 +41,8 @@ pub fn blake3<T: AsRef<[u8]>>(data: T) -> [u8; DIGEST_LENGTH] {
 pub fn sha256<T: AsRef<[u8]>>(data: T) -> [u8; DIGEST_LENGTH] {
     Sha256::digest(data).into()
 }
+
+/// The 32-byte digest keccak256 hash function
+pub fn keccak256<T: AsRef<[u8]>>(data: T) -> [u8; DIGEST_LENGTH] {
+    keccak_hash::keccak(data).to_fixed_bytes()
+}
