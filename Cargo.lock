@@ -1025,7 +1025,7 @@ dependencies = [
  "serde_repr",
  "shlex",
  "signal-hook",
- "signature 1.6.4",
+ "signature 1.2.2",
  "smallvec",
  "static_assertions",
  "stats_alloc",
@@ -5355,6 +5355,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ret-journal-test"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "ret-uref"
 version = "0.1.0"
 dependencies = [
@@ -5891,9 +5899,9 @@ dependencies = [
 
 [[package]]
 name = "signature"
-version = "1.6.4"
+version = "1.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "74233d3b3b2f6d4b006dc19dee745e73e2a6bfb6f93607cd3b02bd5b00797d7c"
+checksum = "29f060a7d147e33490ec10da418795238fd7545bba241504d6b31a409f2e6210"
 
 [[package]]
 name = "signature"

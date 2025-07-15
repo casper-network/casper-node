@@ -30,6 +30,7 @@ use casper_types::{
     addressable_entity::{ActionThresholds, AssociatedKeys, MessageTopicError, NamedKeyAddr},
     bytesrepr::ToBytes,
     contract_messages::{Message, MessageAddr, MessagePayload, MessageTopicSummary},
+    execution::RetValue,
     AddressableEntity, BlockGlobalAddr, BlockHash, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash,
     ByteCodeKind, CLType, CLValue, ContractRuntimeTag, Digest, EntityAddr, EntityEntryPoint,
     EntityKind, EntryPointAccess, EntryPointAddr, EntryPointPayment, EntryPointType,
@@ -570,6 +571,14 @@ pub fn casper_return<S: GlobalStateReader, E: Executor>(
         let data = caller
             .memory_read(data_ptr, data_len.try_into_wrapped()?)
             .map(Bytes::from)?;
+
+        let key = caller.context().callee;
+        let bytes = casper_types::bytesrepr::Bytes::from(data.to_vec());
+        caller
+            .context_mut()
+            .tracking_copy
+            .ret(key, RetValue::Bytes(bytes));
+
         Some(data)
     };
     Err(VMError::Return { flags, data })
