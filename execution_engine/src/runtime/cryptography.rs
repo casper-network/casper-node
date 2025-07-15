@@ -5,6 +5,7 @@ use blake2::{
     digest::{Update, VariableOutput},
     Blake2bVar,
 };
+use keccak_asm::Digest as KeccakDigest;
 use sha2::{Digest, Sha256};
 
 /// The number of bytes in a hash.
@@ -44,5 +45,12 @@ pub fn sha256<T: AsRef<[u8]>>(data: T) -> [u8; DIGEST_LENGTH] {
 
 /// The 32-byte digest keccak256 hash function
 pub fn keccak256<T: AsRef<[u8]>>(data: T) -> [u8; DIGEST_LENGTH] {
-    keccak_hash::keccak(data).to_fixed_bytes()
+    use keccak_asm::Keccak256;
+
+    let mut h = Keccak256::new();
+    KeccakDigest::update(&mut h, &data);
+    let mut out = [0u8; 32];
+    let result = KeccakDigest::finalize(h);
+    out.copy_from_slice(&result);
+    out
 }
