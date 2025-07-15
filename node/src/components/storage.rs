@@ -49,17 +49,6 @@ use casper_storage::block_store::{
     BlockStoreError, BlockStoreProvider, BlockStoreTransaction, DataReader, DataWriter,
 };
 
-use std::{
-    borrow::Cow,
-    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
-    convert::TryInto,
-    fmt::{self, Display, Formatter},
-    fs::{self, OpenOptions},
-    io::ErrorKind,
-    path::{Path, PathBuf},
-    sync::Arc,
-};
-
 use casper_storage::DbRawBytesSpec;
 #[cfg(test)]
 use casper_types::BlockWithSignatures;
@@ -75,7 +64,18 @@ use datasize::DataSize;
 use num_rational::Ratio;
 use prometheus::Registry;
 use smallvec::SmallVec;
-use tracing::{debug, error, info, warn};
+use std::{
+    borrow::Cow,
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
+    convert::TryInto,
+    fmt::{self, Display, Formatter},
+    fs::{self, OpenOptions},
+    io::ErrorKind,
+    path::{Path, PathBuf},
+    sync::Arc,
+    time::Instant,
+};
+use tracing::{debug, error, info, trace, warn};
 
 use crate::{
     components::{
@@ -134,7 +134,7 @@ pub struct Storage {
     activation_era: EraId,
     /// The height of the final switch block of the previous protocol version.
     key_block_height_for_activation_point: Option<u64>,
-    /// Whether or not memory deduplication is enabled.
+    /// Whether memory deduplication is enabled.
     enable_mem_deduplication: bool,
     /// An in-memory pool of already loaded serialized items.
     ///
@@ -186,6 +186,10 @@ where
 {
     type Event = Event;
 
+    fn name(&self) -> &str {
+        COMPONENT_NAME
+    }
+
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
@@ -228,10 +232,6 @@ where
             Ok(effects) => effects,
             Err(err) => fatal!(effect_builder, "storage error: {}", err).ignore(),
         }
-    }
-
-    fn name(&self) -> &str {
-        COMPONENT_NAME
     }
 }
 
@@ -433,7 +433,7 @@ impl Storage {
             }
             NetRequest::LegacyDeploy(ref serialized_id) => {
                 let id = decode_item_id::<LegacyDeploy>(serialized_id)?;
-                let opt_item = self.get_legacy_deploy(id)?;
+                let opt_item = self.get_deploy(id)?;
                 let fetch_response = FetchResponse::from_opt(id, opt_item);
 
                 Ok(self.update_pool_and_send(
@@ -507,8 +507,15 @@ impl Storage {
                 )?)
             }
             NetRequest::SyncLeap(ref serialized_id) => {
-                let item_id = decode_item_id::<SyncLeap>(serialized_id)?;
-                let fetch_response = self.get_sync_leap(item_id)?;
+                let sync_leap_identifier = decode_item_id::<SyncLeap>(serialized_id)?;
+                let tracker = Instant::now();
+                let fetch_response = self.get_sync_leap(sync_leap_identifier)?;
+
+                let elapsed = tracker.elapsed().as_secs_f64();
+                trace!("storage sync_leap elapsed: {} seconds", elapsed);
+                if let Some(metrics) = &self.metrics {
+                    metrics.sync_leap.observe(elapsed)
+                }
 
                 Ok(self.update_pool_and_send(
                     effect_builder,
@@ -661,7 +668,7 @@ impl Storage {
                 deploy_hash,
                 responder,
             } => {
-                let maybe_legacy_deploy = self.get_legacy_deploy(deploy_hash)?;
+                let maybe_legacy_deploy = self.get_deploy(deploy_hash)?;
                 responder.respond(maybe_legacy_deploy).ignore()
             }
             StorageRequest::GetTransaction {
@@ -794,7 +801,7 @@ impl Storage {
                 only_from_available_block_range,
                 responder,
             } => {
-                if !(self.should_return_block(block_height, only_from_available_block_range)) {
+                if !self.should_return_block(block_height, only_from_available_block_range) {
                     return Ok(responder.respond(None).ignore());
                 }
 
@@ -1021,7 +1028,7 @@ impl Storage {
         block_height: u64,
         only_from_available_block_range: bool,
     ) -> Result<Option<BlockHeader>, FatalStorageError> {
-        if !(self.should_return_block(block_height, only_from_available_block_range)) {
+        if !self.should_return_block(block_height, only_from_available_block_range) {
             Ok(None)
         } else {
             let txn = self.block_store.checkout_ro()?;
@@ -1118,7 +1125,7 @@ impl Storage {
             ];
 
             match scores.iter().max() {
-                Some(max_utlization) => *max_utlization,
+                Some(max_utilization) => *max_utilization,
                 None => {
                     // This should never happen as we just created the scores vector to find the
                     // max value
@@ -1202,7 +1209,7 @@ impl Storage {
         self.completed_blocks.highest_sequence().map(Sequence::high)
     }
 
-    /// Retrieves the contiguous segment of the block chain starting at the highest known switch
+    /// Retrieves the contiguous segment of the blockchain starting at the highest known switch
     /// block such that the blocks' timestamps cover a duration of at least the max TTL for deploys
     /// (a chainspec setting).
     ///
@@ -1289,7 +1296,7 @@ impl Storage {
                 // This should be unreachable as the `BlockSynchronizer` should ensure we have the
                 // correct approvals before it then calls this method.  By returning `Ok(None)` the
                 // node would be stalled at this block, but should eventually sync leap due to lack
-                // of progress.  It would then backfill this block without executing it.
+                // of progress.  It would then back-fill this block without executing it.
                 error!(?block_hash, "Storage: transaction with incorrect approvals");
                 return Ok(None);
             }
@@ -1327,10 +1334,10 @@ impl Storage {
         };
 
         let mut transactions = vec![];
-        for (transaction, _) in (self
-            .get_transactions_with_finalized_approvals(block.all_transactions())?)
-        .into_iter()
-        .flatten()
+        for (transaction, _) in self
+            .get_transactions_with_finalized_approvals(block.all_transactions())?
+            .into_iter()
+            .flatten()
         {
             transactions.push(transaction);
         }
@@ -1422,7 +1429,7 @@ impl Storage {
             None => return Ok(None),
         };
 
-        if !(self.should_return_block(block_header.height(), only_from_available_block_range)) {
+        if !self.should_return_block(block_header.height(), only_from_available_block_range) {
             return Ok(None);
         }
 
@@ -1467,7 +1474,7 @@ impl Storage {
     }
 
     /// Returns headers of all known switch blocks after the trusted block but before
-    /// highest block, with signatures, plus the signed highest block.
+    /// the highest block, with signatures, plus the signed highest block.
     fn get_block_headers_with_signatures(
         &self,
         txn: &(impl DataReader<BlockHash, BlockSignatures> + DataReader<EraId, BlockHeader>),
@@ -1614,7 +1621,7 @@ impl Storage {
     }
 
     /// Retrieves a deploy from the deploy store by deploy hash.
-    fn get_legacy_deploy(
+    fn get_deploy(
         &self,
         deploy_hash: DeployHash,
     ) -> Result<Option<LegacyDeploy>, FatalStorageError> {
@@ -1869,7 +1876,7 @@ impl Storage {
         }
     }
 
-    /// Returns `count` highest switch block headers, sorted from lowest (oldest) to highest.
+    /// Returns `count` the highest switch block headers, sorted from lowest (oldest) to highest.
     pub(crate) fn read_highest_switch_block_headers(
         &self,
         count: u64,
@@ -2297,7 +2304,7 @@ impl Storage {
             .expect("should create ro txn");
         let block: Block = ro_txn.read(block_hash).expect("should read block")?;
 
-        if !(self.should_return_block(block.height(), only_from_available_block_range)) {
+        if !self.should_return_block(block.height(), only_from_available_block_range) {
             return None;
         }
         if block_hash != *block.hash() {
@@ -2326,7 +2333,7 @@ impl Storage {
         height: u64,
         only_from_available_block_range: bool,
     ) -> Option<BlockWithSignatures> {
-        if !(self.should_return_block(height, only_from_available_block_range)) {
+        if !self.should_return_block(height, only_from_available_block_range) {
             return None;
         }
         let ro_txn = self

@@ -177,7 +177,7 @@ pub(crate) type Scheduler<Ev> = WeightedRoundRobin<(Option<NonZeroU64>, Ev), Que
 /// Event queue handle
 ///
 /// The event queue handle is how almost all parts of the application interact with the reactor
-/// outside of the normal event loop. It gives different parts a chance to schedule messages that
+/// outside the normal event loop. It gives different parts a chance to schedule messages that
 /// stem from things like external IO.
 #[derive(DataSize, Debug)]
 pub(crate) struct EventQueueHandle<REv>
@@ -186,7 +186,7 @@ where
 {
     /// A reference to the scheduler of the event queue.
     scheduler: &'static Scheduler<REv>,
-    /// Flag indicating whether or not the reactor processing this event queue is shutting down.
+    /// Flag indicating whether the reactor processing this event queue is shutting down.
     is_shutting_down: SharedFlag,
 }
 
