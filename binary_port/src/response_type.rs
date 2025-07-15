@@ -23,8 +23,9 @@ use crate::{
         ConsensusStatus, ConsensusValidatorChanges, GetTrieFullResult, LastProgress, NetworkName,
         ReactorStateName, RewardResponse,
     },
-    AccountInformation, AddressableEntityInformation, BalanceResponse, ContractInformation,
-    DictionaryQueryResult, RecordId, TransactionWithExecutionInfo, Uptime, ValueWithProof,
+    AccountInformation, AddressableEntityInformation, BalanceResponse, BidsInformation,
+    ContractInformation, DictionaryQueryResult, RecordId, TransactionWithExecutionInfo, Uptime,
+    ValueWithProof,
 };
 
 /// A type of the payload being returned in a binary response.
@@ -119,6 +120,8 @@ pub enum ResponseType {
     PackageWithProof,
     /// Addressable entity information.
     AddressableEntityInformation,
+    /// Bids information.
+    BidsInformation,
 }
 
 impl ResponseType {
@@ -228,6 +231,7 @@ impl TryFrom<u8> for ResponseType {
             x if x == ResponseType::AddressableEntityInformation as u8 => {
                 Ok(ResponseType::AddressableEntityInformation)
             }
+            x if x == ResponseType::BidsInformation as u8 => Ok(ResponseType::BidsInformation),
             _ => Err(()),
         }
     }
@@ -289,6 +293,9 @@ impl fmt::Display for ResponseType {
             ResponseType::PackageWithProof => write!(f, "PackageWithProof"),
             ResponseType::AddressableEntityInformation => {
                 write!(f, "AddressableEntityInformation")
+            }
+            ResponseType::BidsInformation => {
+                write!(f, "BidsInformation")
             }
         }
     }
@@ -450,6 +457,10 @@ impl PayloadEntity for ValueWithProof<Package> {
 
 impl PayloadEntity for AddressableEntityInformation {
     const RESPONSE_TYPE: ResponseType = ResponseType::AddressableEntityInformation;
+}
+
+impl PayloadEntity for BidsInformation {
+    const RESPONSE_TYPE: ResponseType = ResponseType::BidsInformation;
 }
 
 impl<T> PayloadEntity for Box<T>

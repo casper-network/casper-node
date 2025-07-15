@@ -1,5 +1,7 @@
 use alloc::vec::Vec;
 use core::fmt::{self, Display, Formatter};
+#[cfg(any(feature = "testing", test))]
+use rand::{distributions::Standard, prelude::Distribution, Rng};
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
@@ -260,6 +262,19 @@ impl Display for Delegator {
             self.bonding_purse,
             self.validator_public_key
         )
+    }
+}
+
+#[cfg(any(feature = "testing", test))]
+impl Distribution<Delegator> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Delegator {
+        Delegator {
+            delegator_public_key: rng.gen(),
+            staked_amount: rng.gen(),
+            bonding_purse: rng.gen(),
+            validator_public_key: rng.gen(),
+            vesting_schedule: rng.gen(),
+        }
     }
 }
 

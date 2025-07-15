@@ -12,6 +12,8 @@ use datasize::DataSize;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+#[cfg(any(feature = "testing", test))]
+use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     CLType, CLTyped, PublicKey,
@@ -60,6 +62,15 @@ impl Reservation {
     /// Gets the delegation rate of the provided bid
     pub fn delegation_rate(&self) -> &DelegationRate {
         &self.delegation_rate
+    }
+
+    #[cfg(any(feature = "testing", test))]
+    pub fn random_for_delegator(rng: &mut TestRng, delegator_kind: DelegatorKind) -> Self {
+        Self {
+            delegator_kind,
+            validator_public_key: rng.gen(),
+            delegation_rate: rng.gen(),
+        }
     }
 }
 
