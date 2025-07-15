@@ -33,11 +33,12 @@ use casper_storage::{
 };
 use casper_types::{
     execution::{ExecutionResult, VmReadRequest, VmReadResult},
-    system::auction::DelegatorKind, Approval, AvailableBlockRange, Block, BlockHash,
-    BlockHeader, BlockSignatures, BlockSynchronizerStatus, BlockV2,
-    ChainspecRawBytes, DeployHash, Digest, DisplayIter, EntityAddr, EraId, ExecutionInfo,
-    FinalitySignature, FinalitySignatureId, HashAddr, NextUpgrade, ProtocolUpgradeConfig,
-    PublicKey, TimeDiff, Timestamp, Transaction, TransactionHash, TransactionId, Transfer,
+    system::auction::DelegatorKind,
+    Approval, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures,
+    BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest, DisplayIter,
+    EntityAddr, EraId, ExecutionInfo, FinalitySignature, FinalitySignatureId, HashAddr,
+    NextUpgrade, ProtocolUpgradeConfig, PublicKey, TimeDiff, Timestamp, Transaction,
+    TransactionHash, TransactionId, Transfer,
 };
 
 use super::{AutoClosingResponder, GossipTarget, Responder};
