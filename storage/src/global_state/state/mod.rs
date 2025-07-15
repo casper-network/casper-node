@@ -2721,6 +2721,10 @@ where
                 // effectively a noop.
                 continue;
             }
+            (_, TransformKindV2::Ret(_)) => {
+                // Ret transforms are not committed to global state.
+                continue;
+            }
             (ReadResult::NotFound, TransformKindV2::Write(new_value)) => {
                 TransformInstruction::store(new_value)
             }

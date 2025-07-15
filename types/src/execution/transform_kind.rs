@@ -15,6 +15,7 @@ use super::TransformError;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::NamedKeys,
+    execution::ret_value::RetValue,
     CLType, CLTyped, CLValue, Key, StoredValue, StoredValueTypeMismatch, U128, U256, U512,
 };
 
@@ -89,6 +90,8 @@ pub enum TransformKindV2 {
     Prune(Key),
     /// Represents the case where applying a transform would cause an error.
     Failure(TransformError),
+    /// Registers a value return from the contract
+    Ret(RetValue),
 }
 
 impl TransformKindV2 {
@@ -210,6 +213,7 @@ impl TransformKindV2 {
                 }
             },
             TransformKindV2::Failure(error) => Err(error),
+            TransformKindV2::Ret(_) => Ok(store(stored_value)),
         }
     }
 
@@ -260,6 +264,7 @@ impl ToBytes for TransformKindV2 {
                 TransformKindV2::AddKeys(named_keys) => named_keys.serialized_length(),
                 TransformKindV2::Failure(error) => error.serialized_length(),
                 TransformKindV2::Prune(value) => value.serialized_length(),
+                TransformKindV2::Ret(value) => value.serialized_length(),
             }
     }
 
@@ -300,6 +305,10 @@ impl ToBytes for TransformKindV2 {
             }
             TransformKindV2::Prune(value) => {
                 (TransformTag::Prune as u8).write_bytes(writer)?;
+                value.write_bytes(writer)
+            }
+            TransformKindV2::Ret(value) => {
+                (TransformTag::Ret as u8).write_bytes(writer)?;
                 value.write_bytes(writer)
             }
         }
@@ -429,6 +438,7 @@ enum TransformTag {
     AddKeys = 7,
     Failure = 8,
     Prune = 9,
+    Ret = 10,
 }
 
 #[cfg(test)]
