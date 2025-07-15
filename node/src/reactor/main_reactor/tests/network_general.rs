@@ -19,7 +19,7 @@ use casper_types::{
     execution::TransformKindV2,
     system::{auction::BidAddr, AUCTION},
     testing::TestRng,
-    AvailableBlockRange, Deploy, EraId, Key, Peers, PublicKey, SecretKey, StoredValue, TimeDiff,
+    AvailableBlockRange, Deploy, Key, Peers, PublicKey, SecretKey, StoredValue, TimeDiff,
     Timestamp, Transaction,
 };
 
