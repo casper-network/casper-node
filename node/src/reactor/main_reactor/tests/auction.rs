@@ -139,7 +139,7 @@ async fn should_error_on_validator_unbond_to_large() {
             msg
         );
     } else {
-        assert!(false, "unexpected execution result");
+        panic!("unexpected execution result");
     }
 }
 
