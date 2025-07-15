@@ -50,6 +50,8 @@ pub mod step;
 mod system_entity_registry;
 /// Tagged values provider.
 pub mod tagged_values;
+#[cfg(test)]
+pub mod tests;
 mod total_supply;
 mod trie;
 

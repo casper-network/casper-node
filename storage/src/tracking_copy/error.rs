@@ -88,6 +88,9 @@ pub enum Error {
     #[error("flag")]
     /// Attempted to fetch an entity or an associated record
     AddressableEntityDisable,
+    /// Error occurred when trying to rewrap a historical record
+    #[error("Error when mapping historical entity to contemporary form {0}")]
+    ErrorWhenRewraping(String),
 }
 
 impl Error {
@@ -141,3 +144,13 @@ impl From<crate::global_state::error::Error> for Error {
         Error::Storage(gse)
     }
 }
+
+impl PartialEq for Error {
+    fn eq(&self, other: &Self) -> bool {
+        let left = self.to_string();
+        let right = other.to_string();
+        left.eq(&right)
+    }
+}
+
+impl Eq for Error {}

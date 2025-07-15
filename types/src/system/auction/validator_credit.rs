@@ -6,6 +6,8 @@ use crate::{
 use alloc::vec::Vec;
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+#[cfg(any(feature = "testing", test))]
+use rand::{distributions::Standard, prelude::Distribution, Rng};
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -105,6 +107,17 @@ impl FromBytes for ValidatorCredit {
             },
             remainder,
         ))
+    }
+}
+
+#[cfg(any(feature = "testing", test))]
+impl Distribution<ValidatorCredit> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ValidatorCredit {
+        ValidatorCredit {
+            validator_public_key: rng.gen(),
+            era_id: EraId::new(rng.gen()),
+            amount: rng.gen(),
+        }
     }
 }
 
