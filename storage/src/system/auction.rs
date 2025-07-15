@@ -193,8 +193,15 @@ pub trait Auction:
         let mut validator_bid = read_validator_bid(self, &validator_bid_key)?;
         let staked_amount = validator_bid.staked_amount();
 
-        // An attempt to unbond more than is staked results in unbonding the staked amount.
-        let unbonding_amount = U512::min(amount, validator_bid.staked_amount());
+        // An attempt to unbond more than is staked results in an error.
+        // We've gone back and forth on this behavior.
+        // * In 1.x it was an error.
+        // * In 2.0 it was changed to interpret it as "up to amount" and not error, by request.
+        // * In 2.1 it is restored to the original 1.x behavior, also by request.
+        let unbonding_amount = validator_bid
+            .staked_amount()
+            .checked_sub(amount)
+            .ok_or(Error::UnbondTooLarge)?;
 
         let era_end_timestamp_millis = detail::get_era_end_timestamp_millis(self)?;
         let updated_stake =
