@@ -67,3 +67,24 @@ fn should_run_generic_hash_sha256() {
         .expect_success()
         .commit();
 }
+
+#[ignore]
+#[test]
+fn should_run_generic_hash_keccak256() {
+    LmdbWasmTestBuilder::default()
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone())
+        .exec(
+            ExecuteRequestBuilder::standard(
+                *DEFAULT_ACCOUNT_ADDR,
+                GENERIC_HASH_WASM,
+                runtime_args! {
+                    "data" => "keccak256 hash test",
+                    "algorithm" => HashAlgorithm::Keccak256 as u8,
+                    "expected" => [0x12, 0x7E, 0x0A, 0x91, 0x17, 0x10, 0x3B, 0xA8, 0xD9, 0xCE, 0x0C, 0xC4, 0x5F, 0xD9, 0x3C, 0x0B, 0xBF, 0x5F, 0xB9, 0xC2, 0x1B, 0x16, 0x09, 0xD1, 0x25, 0x50, 0xBC, 0x81, 0xB3, 0xA2, 0x62, 0x14]
+                },
+            )
+            .build(),
+        )
+        .expect_success()
+        .commit();
+}
