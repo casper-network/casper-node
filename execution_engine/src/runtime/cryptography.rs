@@ -6,7 +6,7 @@ use blake2::{
     Blake2bVar,
 };
 use keccak_asm::Digest as KeccakDigest;
-use sha2::{Digest, Sha256};
+use sha2::Sha256;
 
 /// The number of bytes in a hash.
 /// All hash functions in this module have a digest length of 32.
