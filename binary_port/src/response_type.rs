@@ -23,8 +23,9 @@ use crate::{
         ConsensusStatus, ConsensusValidatorChanges, GetTrieFullResult, LastProgress, NetworkName,
         ReactorStateName, RewardResponse,
     },
-    AccountInformation, AddressableEntityInformation, BalanceResponse, ContractInformation,
-    DictionaryQueryResult, RecordId, TransactionWithExecutionInfo, Uptime, ValueWithProof,
+    AccountInformation, AddressableEntityInformation, BalanceResponse, BidsInformation,
+    ContractInformation, DictionaryQueryResult, RecordId, TransactionWithExecutionInfo, Uptime,
+    ValueWithProof,
 };
 
 /// A type of the payload being returned in a binary response.
@@ -119,6 +120,8 @@ pub enum ResponseType {
     PackageWithProof,
     /// Addressable entity information.
     AddressableEntityInformation,
+    /// Bids information.
+    BidsInformation,
     /// Result of a read-only contract execution.
     VmReadResult,
 }
@@ -230,6 +233,7 @@ impl TryFrom<u8> for ResponseType {
             x if x == ResponseType::AddressableEntityInformation as u8 => {
                 Ok(ResponseType::AddressableEntityInformation)
             }
+            x if x == ResponseType::BidsInformation as u8 => Ok(ResponseType::BidsInformation),
             x if x == ResponseType::VmReadResult as u8 => Ok(ResponseType::VmReadResult),
             _ => Err(()),
         }
@@ -292,6 +296,9 @@ impl fmt::Display for ResponseType {
             ResponseType::PackageWithProof => write!(f, "PackageWithProof"),
             ResponseType::AddressableEntityInformation => {
                 write!(f, "AddressableEntityInformation")
+            }
+            ResponseType::BidsInformation => {
+                write!(f, "BidsInformation")
             }
             ResponseType::VmReadResult => write!(f, "VmReadResult"),
         }
@@ -454,6 +461,10 @@ impl PayloadEntity for ValueWithProof<Package> {
 
 impl PayloadEntity for AddressableEntityInformation {
     const RESPONSE_TYPE: ResponseType = ResponseType::AddressableEntityInformation;
+}
+
+impl PayloadEntity for BidsInformation {
+    const RESPONSE_TYPE: ResponseType = ResponseType::BidsInformation;
 }
 
 impl<T> PayloadEntity for Box<T>

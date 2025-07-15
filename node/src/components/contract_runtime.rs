@@ -31,6 +31,7 @@ use tracing::{debug, error, info, trace};
 use casper_execution_engine::engine_state::{EngineConfigBuilder, ExecutionEngineV1};
 use casper_storage::{
     data_access_layer::{
+        bids::{DelegatorBidRequest, ValidatorBidRequest},
         AddressableEntityRequest, AddressableEntityResult, BlockStore, DataAccessLayer,
         EntryPointExistsRequest, ExecutionResultsChecksumRequest, FlushRequest, FlushResult,
         GenesisRequest, GenesisResult, TrieRequest,
@@ -485,7 +486,6 @@ impl ContractRuntime {
                         AddressableEntityResult::Success { .. } |
                         AddressableEntityResult::Failure(_) => result,
                     };
-
                     metrics
                         .addressable_entity
                         .observe(start.elapsed().as_secs_f64());
@@ -774,6 +774,31 @@ impl ContractRuntime {
                 self.current_gas_price = EraPrice::new(era_id, new_gas_price);
                 Effects::new()
             }
+            ContractRuntimeRequest::ValidatorBids {
+                state_root_hash,
+                validator,
+                responder,
+            } => responder
+                .respond(
+                    self.data_access_layer
+                        .validator_bids(ValidatorBidRequest::new(state_root_hash, validator)),
+                )
+                .ignore(),
+            ContractRuntimeRequest::DelegatorBids {
+                state_root_hash,
+                validator,
+                delegator,
+                responder,
+            } => responder
+                .respond(
+                    self.data_access_layer
+                        .delegator_bids(DelegatorBidRequest::new(
+                            state_root_hash,
+                            validator,
+                            delegator,
+                        )),
+                )
+                .ignore(),
         }
     }
 

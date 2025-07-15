@@ -21,6 +21,7 @@ use casper_binary_port::{
 use casper_storage::{
     block_store::types::ApprovalsHashes,
     data_access_layer::{
+        bids::{DelegatorBidsResult, ValidatorBidsResult},
         prefixed_values::{PrefixedValuesRequest, PrefixedValuesResult},
         tagged_values::{TaggedValuesRequest, TaggedValuesResult},
         AddressableEntityResult, BalanceRequest, BalanceResult, EntryPointExistsResult,
@@ -32,11 +33,11 @@ use casper_storage::{
 };
 use casper_types::{
     execution::{ExecutionResult, VmReadRequest, VmReadResult},
-    Approval, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures,
-    BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest, DisplayIter,
-    EntityAddr, EraId, ExecutionInfo, FinalitySignature, FinalitySignatureId, HashAddr,
-    NextUpgrade, ProtocolUpgradeConfig, PublicKey, TimeDiff, Timestamp, Transaction,
-    TransactionHash, TransactionId, Transfer,
+    system::auction::DelegatorKind, Approval, AvailableBlockRange, Block, BlockHash,
+    BlockHeader, BlockSignatures, BlockSynchronizerStatus, BlockV2,
+    ChainspecRawBytes, DeployHash, Digest, DisplayIter, EntityAddr, EraId, ExecutionInfo,
+    FinalitySignature, FinalitySignatureId, HashAddr, NextUpgrade, ProtocolUpgradeConfig,
+    PublicKey, TimeDiff, Timestamp, Transaction, TransactionHash, TransactionId, Transfer,
 };
 
 use super::{AutoClosingResponder, GossipTarget, Responder};
@@ -886,6 +887,17 @@ pub(crate) enum ContractRuntimeRequest {
     UpdatePreState {
         new_pre_state: ExecutionPreState,
     },
+    ValidatorBids {
+        state_root_hash: Digest,
+        validator: PublicKey,
+        responder: Responder<ValidatorBidsResult>,
+    },
+    DelegatorBids {
+        state_root_hash: Digest,
+        validator: PublicKey,
+        delegator: DelegatorKind,
+        responder: Responder<DelegatorBidsResult>,
+    },
 }
 
 impl Display for ContractRuntimeRequest {
@@ -1000,6 +1012,23 @@ impl Display for ContractRuntimeRequest {
                     new_pre_state
                 )
             }
+            ContractRuntimeRequest::ValidatorBids {
+                state_root_hash,
+                validator,
+                responder: _,
+            } => write!(
+                formatter,
+                "fetch validator bid: {state_root_hash}, {validator}"
+            ),
+            ContractRuntimeRequest::DelegatorBids {
+                state_root_hash,
+                validator,
+                delegator,
+                responder: _,
+            } => write!(
+                formatter,
+                "fetch delegator bid: {state_root_hash}, {validator}, {delegator}"
+            ),
         }
     }
 }

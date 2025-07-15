@@ -11,18 +11,21 @@ mod tests;
 use std::{convert::TryFrom, net::SocketAddr, sync::Arc};
 
 use casper_binary_port::{
-    AccountInformation, AddressableEntityInformation, BalanceResponse, BinaryMessage,
-    BinaryMessageCodec, BinaryResponse, BinaryResponseAndRequest, Command, CommandHeader,
-    CommandTag, ContractInformation, DictionaryItemIdentifier, DictionaryQueryResult,
-    EntityIdentifier, EraIdentifier, ErrorCode, GetRequest, GetTrieFullResult,
-    GlobalStateEntityQualifier, GlobalStateQueryResult, GlobalStateRequest, InformationRequest,
-    InformationRequestTag, KeyPrefix, NodeStatus, PackageIdentifier, PurseIdentifier,
-    ReactorStateName, RecordId, ResponseType, RewardResponse, TransactionWithExecutionInfo,
-    ValueWithProof,
+    AccountInformation, AddressableEntityInformation, BalanceResponse, BidsInformation,
+    BinaryMessage, BinaryMessageCodec, BinaryResponse, BinaryResponseAndRequest, Command,
+    CommandHeader, CommandTag, ContractInformation, DictionaryItemIdentifier,
+    DictionaryQueryResult, EntityIdentifier, EraIdentifier, ErrorCode, GetRequest,
+    GetTrieFullResult, GlobalStateEntityQualifier, GlobalStateQueryResult, GlobalStateRequest,
+    InformationRequest, InformationRequestTag, KeyPrefix, NodeStatus, PackageIdentifier,
+    PurseIdentifier, ReactorStateName, RecordId, ResponseType, RewardResponse,
+    TransactionWithExecutionInfo, ValueWithProof,
 };
 use casper_storage::{
     data_access_layer::{
         balance::BalanceHandling,
+        bids::{
+            DelegatorBidRequest, DelegatorBidsResult, ValidatorBidRequest, ValidatorBidsResult,
+        },
         prefixed_values::{PrefixedValuesRequest, PrefixedValuesResult},
         tagged_values::{TaggedValuesRequest, TaggedValuesResult, TaggedValuesSelection},
         BalanceIdentifier, BalanceRequest, BalanceResult, ProofHandling, ProofsResult,
@@ -40,10 +43,11 @@ use casper_types::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     contracts::{ContractHash, ContractPackage, ContractPackageHash},
     execution::VmReadRequest,
+    system::auction::{BidKind, DelegatorKind},
     BlockHeader, BlockIdentifier, BlockWithSignatures, ByteCode, ByteCodeAddr, ByteCodeHash,
     Chainspec, ContractWasm, ContractWasmHash, Digest, EntityAddr, GlobalStateIdentifier, Key,
-    Package, PackageAddr, Peers, ProtocolVersion, Rewards, StoredValue, TimeDiff, Timestamp,
-    Transaction, URef,
+    Package, PackageAddr, Peers, ProtocolVersion, PublicKey, Rewards, StoredValue, TimeDiff,
+    Timestamp, Transaction, URef,
 };
 use connection_terminator::ConnectionTerminator;
 use thiserror::Error as ThisError;
@@ -916,6 +920,53 @@ where
     }
 }
 
+/// Returns bids relevant to a given validator_key
+async fn get_get_validator_bids<REv>(
+    effect_builder: EffectBuilder<REv>,
+    state_root_hash: Digest,
+    validator_key: Box<PublicKey>,
+) -> Result<Vec<BidKind>, ErrorCode>
+where
+    REv: From<Event>
+        + From<StorageRequest>
+        + From<ContractRuntimeRequest>
+        + From<ReactorInfoRequest>,
+{
+    let request = ValidatorBidRequest::new(state_root_hash, *validator_key);
+    match effect_builder.get_get_validator_bids(request).await {
+        ValidatorBidsResult::RootNotFound => Err(ErrorCode::RootNotFound),
+        ValidatorBidsResult::Success { bids } => Ok(bids),
+        ValidatorBidsResult::Failure(error) => {
+            warn!(%error, "failed when querying for ValidatorBid");
+            Err(ErrorCode::FailedQuery)
+        }
+    }
+}
+
+/// Returns bids relevant to a given delegator in scope of a validatoe (identified by public key)
+async fn get_delegator_bid<REv>(
+    effect_builder: EffectBuilder<REv>,
+    state_root_hash: Digest,
+    validator_public_key: PublicKey,
+    delegator: DelegatorKind,
+) -> Result<Vec<BidKind>, ErrorCode>
+where
+    REv: From<Event>
+        + From<StorageRequest>
+        + From<ContractRuntimeRequest>
+        + From<ReactorInfoRequest>,
+{
+    let request = DelegatorBidRequest::new(state_root_hash, validator_public_key, delegator);
+    match effect_builder.get_delegator_bid(request).await {
+        DelegatorBidsResult::RootNotFound => Err(ErrorCode::RootNotFound),
+        DelegatorBidsResult::Success { bids } => Ok(bids),
+        DelegatorBidsResult::Failure(error) => {
+            warn!(%error, "failed when querying for DelegatorBid");
+            Err(ErrorCode::FailedQuery)
+        }
+    }
+}
+
 async fn get_entity<REv>(
     effect_builder: EffectBuilder<REv>,
     state_root_hash: Digest,
@@ -1347,6 +1398,42 @@ where
                 }
             }
         }
+        InformationRequest::ValidatorBid {
+            state_identifier,
+            public_key,
+        } => {
+            let Some(state_root_hash) =
+                resolve_state_root_hash(effect_builder, state_identifier).await
+            else {
+                return BinaryResponse::new_error(ErrorCode::RootNotFound);
+            };
+            match get_get_validator_bids(effect_builder, state_root_hash, public_key).await {
+                Ok(bids) => BinaryResponse::from_value(BidsInformation::new(bids)),
+                Err(err) => BinaryResponse::new_error(err),
+            }
+        }
+        InformationRequest::DelegatorBid {
+            state_identifier,
+            validator_public_key,
+            delegator,
+        } => {
+            let Some(state_root_hash) =
+                resolve_state_root_hash(effect_builder, state_identifier).await
+            else {
+                return BinaryResponse::new_error(ErrorCode::RootNotFound);
+            };
+            match get_delegator_bid(
+                effect_builder,
+                state_root_hash,
+                *validator_public_key,
+                *delegator,
+            )
+            .await
+            {
+                Ok(bids) => BinaryResponse::from_value(BidsInformation::new(bids)),
+                Err(err) => BinaryResponse::new_error(err),
+            }
+        }
     }
 }
 
@@ -1443,7 +1530,7 @@ where
         + From<ChainspecRawBytesRequest>
         + Send,
 {
-    let codec = BinaryMessageCodec::new(config.max_message_size_bytes);
+    let mut codec = BinaryMessageCodec::new(config.max_message_size_bytes);
     let mut framed = Framed::new(stream, codec);
     monitor
         .terminate_at(Timestamp::now() + config.initial_connection_lifetime)
@@ -1456,7 +1543,6 @@ where
                     debug!("remote party closed the connection");
                     return Ok(());
                 };
-                let limiter_response = rate_limiter.lock().await.throttle();
                 let binary_message = result?;
                 let payload = binary_message.payload();
                 if payload.is_empty() {
@@ -1465,9 +1551,12 @@ where
                     return Err(Error::NoPayload);
                 }
                 let mut bytes_buf = bytes::BytesMut::with_capacity(payload.len() + 4);
-                let response =
-                    handle_payload(effect_builder, payload, limiter_response, &monitor, &life_extensions_config).await;
-                codec.clone().encode(binary_message, &mut bytes_buf)?;
+                let response = if let LimiterResponse::Throttled = rate_limiter.lock().await.throttle() {
+                    BinaryResponse::new_error(ErrorCode::RequestThrottled)
+                } else {
+                    handle_payload(effect_builder, payload, &monitor, &life_extensions_config).await
+                };
+                let _ = &mut codec.encode(binary_message, &mut bytes_buf)?;
                 framed
                     .send(BinaryMessage::new(
                         BinaryResponseAndRequest::new(response, Bytes::from(bytes_buf.freeze().to_vec())).to_bytes()?,
@@ -1510,7 +1599,6 @@ fn extract_header(payload: &[u8]) -> Result<(CommandHeader, &[u8]), ErrorCode> {
 async fn handle_payload<REv>(
     effect_builder: EffectBuilder<REv>,
     payload: &[u8],
-    limiter_response: LimiterResponse,
     connection_terminator: &ConnectionTerminator,
     life_extensions_config: &BinaryRequestTerminationDelayValues,
 ) -> BinaryResponse
@@ -1521,10 +1609,6 @@ where
         Ok(header) => header,
         Err(error_code) => return BinaryResponse::new_error(error_code),
     };
-
-    if let LimiterResponse::Throttled = limiter_response {
-        return BinaryResponse::new_error(ErrorCode::RequestThrottled);
-    }
 
     // we might receive a request added in a minor version if we're behind
     let Ok(tag) = CommandTag::try_from(header.type_tag()) else {
