@@ -363,7 +363,7 @@ impl ContractRuntime {
                     });
 
                     metrics.run_query.observe(start.elapsed().as_secs_f64());
-                    trace!("contract query completed");
+                    trace!("read-only contract request completed");
                     responder.respond(result).await
                 }
                 .ignore()

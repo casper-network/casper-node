@@ -1958,7 +1958,7 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Requests a read-only contract query be executed on the Contract Runtime component.
+    /// Requests a read-only contract execution on the Contract Runtime component.
     pub(crate) async fn query_vm_read(self, query_request: VmReadRequest) -> VmReadResult
     where
         REv: From<ContractRuntimeRequest>,

@@ -119,7 +119,7 @@ pub enum ResponseType {
     PackageWithProof,
     /// Addressable entity information.
     AddressableEntityInformation,
-    /// Result of a contract query execution.
+    /// Result of a read-only contract execution.
     VmReadResult,
 }
 
