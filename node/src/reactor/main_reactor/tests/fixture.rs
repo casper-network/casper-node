@@ -886,6 +886,28 @@ impl TestFixture {
         }
     }
 
+    /// Returns the execution results from storage.
+    /// Panics on error.
+    #[track_caller]
+    pub(crate) fn transaction_execution_result(
+        &self,
+        txn_hash: &TransactionHash,
+    ) -> ExecutionResult {
+        let node_0 = self
+            .node_contexts
+            .first()
+            .expect("should have at least one node")
+            .id;
+        self.network
+            .nodes()
+            .get(&node_0)
+            .expect("should have node 0")
+            .main_reactor()
+            .storage()
+            .read_execution_result(txn_hash)
+            .expect("node 0 should have given execution result")
+    }
+
     #[inline(always)]
     pub(crate) fn network_mut(&mut self) -> &mut TestingNetwork<FilterReactor<MainReactor>> {
         &mut self.network
