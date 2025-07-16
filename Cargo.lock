@@ -831,6 +831,7 @@ dependencies = [
  "hostname",
  "humantime",
  "itertools 0.10.5",
+ "keccak-asm",
  "linked-hash-map",
  "log",
  "num",
@@ -3678,6 +3679,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "keccak-asm"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "505d1856a39b200489082f90d897c3f07c455563880bc5952e38eabf731c83b6"
+dependencies = [
+ "digest 0.10.7",
+ "sha3-asm",
+]
+
+[[package]]
 name = "key-management-thresholds"
 version = "0.1.0"
 dependencies = [
@@ -5891,6 +5902,16 @@ dependencies = [
  "cfg-if 1.0.1",
  "cpufeatures",
  "digest 0.10.7",
+]
+
+[[package]]
+name = "sha3-asm"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c28efc5e327c837aa837c59eae585fc250715ef939ac32881bcc11677cd02d46"
+dependencies = [
+ "cc",
+ "cfg-if 1.0.1",
 ]
 
 [[package]]
