@@ -398,7 +398,7 @@ pub trait Executor: Clone + Send {
 
     /// Execute a contract in restricted mode.
     ///
-    /// This method executes a contract in read-only mode without making any state changes
+    /// This method executes a contract without making any state changes
     /// or broadcasting the transaction.
     fn execute_restricted<R: GlobalStateReader + 'static>(
         &self,
