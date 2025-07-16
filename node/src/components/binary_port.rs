@@ -8,7 +8,7 @@ mod rate_limiter;
 #[cfg(test)]
 mod tests;
 
-use std::{convert::TryFrom, net::SocketAddr, sync::Arc};
+use std::{convert::TryFrom, net::{IpAddr, SocketAddr}, sync::Arc};
 
 use casper_binary_port::{
     AccountInformation, AddressableEntityInformation, BalanceResponse, BidsInformation,
@@ -196,6 +196,7 @@ impl BinaryRequestTerminationDelayValues {
 
 async fn handle_request<REv>(
     req: Command,
+    peer_ip: IpAddr,
     effect_builder: EffectBuilder<REv>,
     config: &Config,
     metrics: &Metrics,
@@ -236,8 +237,8 @@ where
         }
         Command::TryVmRead { vm_read_request } => {
             metrics.binary_port_try_vm_read_count.inc();
-            if !config.allow_request_vm_read {
-                debug!("received a request for VM query execution while the feature is disabled");
+            if !config.vm_read_allowed_ips.contains(&peer_ip.to_string()) {
+                debug!(%peer_ip, "received a VM read request from IP not in allowed list");
                 return BinaryResponse::new_error(ErrorCode::FunctionDisabled);
             }
             try_vm_read_execution(effect_builder, vm_read_request).await
@@ -1511,6 +1512,7 @@ where
 
 async fn handle_client_loop<REv>(
     stream: TcpStream,
+    peer_ip: IpAddr,
     effect_builder: EffectBuilder<REv>,
     config: Arc<Config>,
     rate_limiter: Arc<Mutex<RateLimiter>>,
@@ -1554,7 +1556,7 @@ where
                 let response = if let LimiterResponse::Throttled = rate_limiter.lock().await.throttle() {
                     BinaryResponse::new_error(ErrorCode::RequestThrottled)
                 } else {
-                    handle_payload(effect_builder, payload, &monitor, &life_extensions_config).await
+                    handle_payload(effect_builder, payload, peer_ip, &monitor, &life_extensions_config).await
                 };
                 let _ = &mut codec.encode(binary_message, &mut bytes_buf)?;
                 framed
@@ -1599,6 +1601,7 @@ fn extract_header(payload: &[u8]) -> Result<(CommandHeader, &[u8]), ErrorCode> {
 async fn handle_payload<REv>(
     effect_builder: EffectBuilder<REv>,
     payload: &[u8],
+    peer_ip: IpAddr,
     connection_terminator: &ConnectionTerminator,
     life_extensions_config: &BinaryRequestTerminationDelayValues,
 ) -> BinaryResponse
@@ -1628,7 +1631,7 @@ where
 
     effect_builder
         .make_request(
-            |responder| Event::HandleRequest { request, responder },
+            |responder| Event::HandleRequest { request, peer_ip, responder },
             QueueKind::Regular,
         )
         .await
@@ -1656,8 +1659,10 @@ async fn handle_client<REv>(
 {
     let keep_alive_monitor = ConnectionTerminator::new();
     let life_extensions_config = BinaryRequestTerminationDelayValues::from_config(&config);
+    let peer_ip = addr.ip();
     if let Err(err) = handle_client_loop(
         stream,
+        peer_ip,
         effect_builder,
         config,
         rate_limiter,
@@ -1960,13 +1965,14 @@ where
                     }
                     responder.respond(()).ignore()
                 }
-                Event::HandleRequest { request, responder } => {
+                Event::HandleRequest { request, peer_ip, responder } => {
                     let config = Arc::clone(&self.config);
                     let metrics = Arc::clone(&self.metrics);
                     let protocol_version = self.chainspec.protocol_version();
                     async move {
                         let response = handle_request(
                             request,
+                            peer_ip,
                             effect_builder,
                             &config,
                             &metrics,
