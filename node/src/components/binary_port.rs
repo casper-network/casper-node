@@ -170,7 +170,6 @@ struct BinaryRequestTerminationDelayValues {
     get_trie: TimeDiff,
     accept_transaction: TimeDiff,
     speculative_exec: TimeDiff,
-
     call_restricted_request: TimeDiff,
 }
 
@@ -183,7 +182,6 @@ impl BinaryRequestTerminationDelayValues {
             get_trie: config.get_trie_request_termination_delay,
             accept_transaction: config.accept_transaction_request_termination_delay,
             speculative_exec: config.speculative_exec_request_termination_delay,
-
             call_restricted_request: config.try_call_restricted_request_termination_delay,
         }
     }
@@ -195,7 +193,6 @@ impl BinaryRequestTerminationDelayValues {
             Command::Get(GetRequest::Trie { .. }) => self.get_trie,
             Command::TryAcceptTransaction { .. } => self.accept_transaction,
             Command::TrySpeculativeExec { .. } => self.speculative_exec,
-
             Command::TryCallRestricted { .. } => self.call_restricted_request,
         }
     }
@@ -242,7 +239,6 @@ where
             }
             try_speculative_execution(effect_builder, transaction).await
         }
-
         Command::TryCallRestricted {
             call_restricted_request,
         } => {
@@ -1508,9 +1504,7 @@ async fn try_call_restricted_execution<REv>(
 where
     REv: From<Event> + From<ContractRuntimeRequest> + From<StorageRequest>,
 {
-    // For now, delegate to the existing vm_read function using backward compatibility
-    let vm_read_request = call_restricted_request; // This works due to type alias
-    let result = effect_builder.execute_restricted(vm_read_request).await;
+    let result = effect_builder.execute_restricted(call_restricted_request).await;
 
     if result.is_success() {
         // Return the output bytes on success

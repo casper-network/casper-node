@@ -857,7 +857,7 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
     cb_alloc: u32,
     cb_ctx: u32,
 ) -> VMResult<u32> {
-    // In restricted mode, transfers are not allowed
+    // In restricted mode, contract calls are not allowed
     if caller.context().restricted {
         return Err(InternalHostError::AttemptWriteInRestricted.into());
     }

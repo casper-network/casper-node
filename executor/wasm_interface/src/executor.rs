@@ -396,13 +396,13 @@ pub trait Executor: Clone + Send {
         execute_request: ExecuteRequest,
     ) -> Result<ExecuteResult, ExecuteError>;
 
-    /// Execute a read-only query on a contract.
+    /// Execute a contract in restricted mode.
     ///
     /// This method executes a contract in read-only mode without making any state changes
     /// or broadcasting the transaction.
     fn execute_restricted<R: GlobalStateReader + 'static>(
         &self,
         tracking_copy: TrackingCopy<R>,
-        query_request: CallRestrictedRequest,
+        request: CallRestrictedRequest,
     ) -> Result<CallRestrictedResult, ExecuteError>;
 }

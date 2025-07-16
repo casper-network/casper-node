@@ -116,7 +116,7 @@ pub enum Command {
         /// Transaction to execute.
         transaction: Transaction,
     },
-    /// Request to execute a read-only query on a contract.
+    /// Request to execute contract in restricted mode.
     TryCallRestricted {
         /// A call-restricted read request.
         call_restricted_request: CallRestrictedRequest,
