@@ -122,8 +122,8 @@ pub enum ResponseType {
     AddressableEntityInformation,
     /// Bids information.
     BidsInformation,
-    /// Result of a read-only contract execution.
-    VmReadResult,
+    /// Result of a restricted contract execution.
+    CallRestrictedResult,
 }
 
 impl ResponseType {
@@ -234,7 +234,7 @@ impl TryFrom<u8> for ResponseType {
                 Ok(ResponseType::AddressableEntityInformation)
             }
             x if x == ResponseType::BidsInformation as u8 => Ok(ResponseType::BidsInformation),
-            x if x == ResponseType::VmReadResult as u8 => Ok(ResponseType::VmReadResult),
+            x if x == ResponseType::CallRestrictedResult as u8 => Ok(ResponseType::CallRestrictedResult),
             _ => Err(()),
         }
     }
@@ -300,7 +300,7 @@ impl fmt::Display for ResponseType {
             ResponseType::BidsInformation => {
                 write!(f, "BidsInformation")
             }
-            ResponseType::VmReadResult => write!(f, "VmReadResult"),
+            ResponseType::CallRestrictedResult => write!(f, "CallRestrictedResult"),
         }
     }
 }

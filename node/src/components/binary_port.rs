@@ -42,7 +42,7 @@ use casper_types::{
     addressable_entity::NamedKeyAddr,
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     contracts::{ContractHash, ContractPackage, ContractPackageHash},
-    execution::VmReadRequest,
+    execution::CallRestrictedRequest,
     system::auction::{BidKind, DelegatorKind},
     BlockHeader, BlockIdentifier, BlockWithSignatures, ByteCode, ByteCodeAddr, ByteCodeHash,
     Chainspec, ContractWasm, ContractWasmHash, Digest, EntityAddr, GlobalStateIdentifier, Key,
@@ -166,7 +166,8 @@ struct BinaryRequestTerminationDelayValues {
     get_trie: TimeDiff,
     accept_transaction: TimeDiff,
     speculative_exec: TimeDiff,
-    vm_read_request: TimeDiff,
+
+    call_restricted_request: TimeDiff,
 }
 
 impl BinaryRequestTerminationDelayValues {
@@ -178,7 +179,8 @@ impl BinaryRequestTerminationDelayValues {
             get_trie: config.get_trie_request_termination_delay,
             accept_transaction: config.accept_transaction_request_termination_delay,
             speculative_exec: config.speculative_exec_request_termination_delay,
-            vm_read_request: config.try_vm_read_request_termination_delay,
+
+            call_restricted_request: config.try_call_restricted_request_termination_delay,
         }
     }
     fn get_life_termination_delay(&self, request: &Command) -> TimeDiff {
@@ -189,7 +191,8 @@ impl BinaryRequestTerminationDelayValues {
             Command::Get(GetRequest::Trie { .. }) => self.get_trie,
             Command::TryAcceptTransaction { .. } => self.accept_transaction,
             Command::TrySpeculativeExec { .. } => self.speculative_exec,
-            Command::TryVmRead { .. } => self.vm_read_request,
+
+            Command::TryCallRestricted { .. } => self.call_restricted_request,
         }
     }
 }
@@ -235,13 +238,13 @@ where
             }
             try_speculative_execution(effect_builder, transaction).await
         }
-        Command::TryVmRead { vm_read_request } => {
-            metrics.binary_port_try_vm_read_count.inc();
-            if !config.vm_read_allowed_ips.contains(&peer_ip.to_string()) {
-                debug!(%peer_ip, "received a VM read request from IP not in allowed list");
+
+        Command::TryCallRestricted { call_restricted_request } => {
+            metrics.binary_port_try_call_restricted_count.inc();
+            if !config.call_restricted_allowed_ips.contains(&peer_ip.to_string()) {
                 return BinaryResponse::new_error(ErrorCode::FunctionDisabled);
             }
-            try_vm_read_execution(effect_builder, vm_read_request).await
+            try_call_restricted_execution(effect_builder, call_restricted_request).await
         }
         Command::Get(get_req) => {
             handle_get_request(get_req, effect_builder, config, metrics, protocol_version).await
@@ -1488,25 +1491,28 @@ where
     }
 }
 
-async fn try_vm_read_execution<REv>(
+
+async fn try_call_restricted_execution<REv>(
     effect_builder: EffectBuilder<REv>,
-    vm_read_request: VmReadRequest,
+    call_restricted_request: CallRestrictedRequest,
 ) -> BinaryResponse
 where
     REv: From<Event> + From<ContractRuntimeRequest> + From<StorageRequest>,
 {
-    let result = effect_builder.query_vm_read(vm_read_request).await;
+    // For now, delegate to the existing vm_read function using backward compatibility
+    let vm_read_request = call_restricted_request; // This works due to type alias
+    let result = effect_builder.execute_restricted(vm_read_request).await;
 
     if result.is_success() {
         // Return the output bytes on success
         if let Some(output) = result.output() {
-            BinaryResponse::from_raw_bytes(ResponseType::VmReadResult, output.to_vec())
+            BinaryResponse::from_raw_bytes(ResponseType::CallRestrictedResult, output.to_vec())
         } else {
-            BinaryResponse::from_raw_bytes(ResponseType::VmReadResult, vec![])
+            BinaryResponse::from_raw_bytes(ResponseType::CallRestrictedResult, vec![])
         }
     } else {
         // Return error message on failure
-        BinaryResponse::new_error(ErrorCode::VmReadFailed)
+        BinaryResponse::new_error(ErrorCode::CallRestrictedFailed)
     }
 }
 

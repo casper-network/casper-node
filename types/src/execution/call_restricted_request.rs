@@ -6,13 +6,13 @@ use crate::{
     BlockHash, BlockTime, Digest, Gas, HashAddr,
 };
 
-/// A request to execute a read-only query on a contract.
+/// A request to execute a restricted getter on a contract.
 ///
 /// This allows off-chain querying of contract state without making global state changes
 /// or costing gas. A gas limit must be provided to prevent infinite loops and resource
 /// exhaustion attacks.
 #[derive(Debug, PartialEq)]
-pub struct VmReadRequest {
+pub struct CallRestrictedRequest {
     /// The address of the account that would initiate the contract call.
     pub initiator: AccountHash,
     /// The address of the contract to query.
@@ -39,7 +39,7 @@ pub struct VmReadRequest {
     pub chain_name: String,
 }
 
-impl ToBytes for VmReadRequest {
+impl ToBytes for CallRestrictedRequest {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut writer = bytesrepr::allocate_buffer(self)?;
         self.initiator.write_bytes(&mut writer)?;
@@ -53,6 +53,19 @@ impl ToBytes for VmReadRequest {
         self.block_height.write_bytes(&mut writer)?;
         self.chain_name.write_bytes(&mut writer)?;
         Ok(writer)
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.initiator.write_bytes(writer)?;
+        self.contract_address.write_bytes(writer)?;
+        self.entry_point.write_bytes(writer)?;
+        self.input.write_bytes(writer)?;
+        self.gas_limit.write_bytes(writer)?;
+        self.block_time.write_bytes(writer)?;
+        self.state_hash.write_bytes(writer)?;
+        self.parent_block_hash.write_bytes(writer)?;
+        self.block_height.write_bytes(writer)?;
+        self.chain_name.write_bytes(writer)
     }
 
     fn serialized_length(&self) -> usize {
@@ -69,7 +82,7 @@ impl ToBytes for VmReadRequest {
     }
 }
 
-impl FromBytes for VmReadRequest {
+impl FromBytes for CallRestrictedRequest {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (initiator, remainder) = FromBytes::from_bytes(bytes)?;
         let (contract_address, remainder) = FromBytes::from_bytes(remainder)?;
@@ -82,7 +95,7 @@ impl FromBytes for VmReadRequest {
         let (block_height, remainder) = FromBytes::from_bytes(remainder)?;
         let (chain_name, remainder) = FromBytes::from_bytes(remainder)?;
         Ok((
-            VmReadRequest {
+            CallRestrictedRequest {
                 initiator,
                 contract_address,
                 entry_point,
@@ -100,11 +113,12 @@ impl FromBytes for VmReadRequest {
 }
 
 #[cfg(any(feature = "testing", test))]
-impl VmReadRequest {
+impl CallRestrictedRequest {
+    /// Generates a random request for testing.
     pub fn random(rng: &mut crate::testing::TestRng) -> Self {
         use rand::Rng;
 
-        VmReadRequest {
+        CallRestrictedRequest {
             initiator: AccountHash::new(rng.gen()),
             contract_address: rng.gen(),
             entry_point: format!("entry_point_{}", rng.gen::<u32>()),
@@ -119,9 +133,9 @@ impl VmReadRequest {
     }
 }
 
-/// Errors that can occur during query execution.
+/// Errors that can occur during restricted execution.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum VmReadError {
+pub enum CallRestrictedError {
     /// The contract reverted execution.
     CalleeReverted,
     /// The contract trapped during execution.
@@ -136,37 +150,37 @@ pub enum VmReadError {
     InternalHostError,
 }
 
-impl core::fmt::Display for VmReadError {
+impl core::fmt::Display for CallRestrictedError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            VmReadError::CalleeReverted => write!(f, "contract reverted"),
-            VmReadError::CalleeTrapped => write!(f, "contract trapped"),
-            VmReadError::CalleeGasDepleted => write!(f, "contract gas depleted"),
-            VmReadError::NotCallable => write!(f, "contract not callable"),
-            VmReadError::CodeNotFound => write!(f, "contract code not found"),
-            VmReadError::InternalHostError => write!(f, "internal host error"),
+            CallRestrictedError::CalleeReverted => write!(f, "contract reverted"),
+            CallRestrictedError::CalleeTrapped => write!(f, "contract trapped"),
+            CallRestrictedError::CalleeGasDepleted => write!(f, "contract gas depleted"),
+            CallRestrictedError::NotCallable => write!(f, "contract not callable"),
+            CallRestrictedError::CodeNotFound => write!(f, "contract code not found"),
+            CallRestrictedError::InternalHostError => write!(f, "internal host error"),
         }
     }
 }
 
-/// Result of executing a read-only query.
+/// Result of executing a restricted getter.
 #[derive(Debug)]
-pub struct VmReadResult {
-    /// Error while executing the query, if any.
-    pub error: Option<VmReadError>,
+pub struct CallRestrictedResult {
+    /// Error while executing, if any.
+    pub error: Option<CallRestrictedError>,
     /// Output data returned by the contract.
     pub output: Option<Bytes>,
-    /// Gas usage tracked during execution. Use `gas_spent()` to get the gas consumed.
+    /// Gas usage tracked during execution.
     pub gas_usage: Gas,
 }
 
-impl VmReadResult {
-    /// Returns the error if the query failed.
-    pub fn error(&self) -> Option<&VmReadError> {
+impl CallRestrictedResult {
+    /// Returns the error if the execution failed.
+    pub fn error(&self) -> Option<&CallRestrictedError> {
         self.error.as_ref()
     }
 
-    /// Returns the output data if the query succeeded.
+    /// Returns the output data if the execution succeeded.
     pub fn output(&self) -> Option<&Bytes> {
         self.output.as_ref()
     }
@@ -182,9 +196,9 @@ impl VmReadResult {
     }
 }
 
-/// Builder for `QueryRequest`.
+/// Builder for `CallRestrictedRequest`.
 #[derive(Default)]
-pub struct VmReadRequestBuilder {
+pub struct CallRestrictedRequestBuilder {
     initiator: Option<AccountHash>,
     contract_address: Option<HashAddr>,
     entry_point: Option<String>,
@@ -197,7 +211,7 @@ pub struct VmReadRequestBuilder {
     chain_name: Option<String>,
 }
 
-impl VmReadRequestBuilder {
+impl CallRestrictedRequestBuilder {
     /// Set the initiator's address.
     #[must_use]
     pub fn with_initiator(mut self, initiator: AccountHash) -> Self {
@@ -268,8 +282,8 @@ impl VmReadRequestBuilder {
         self
     }
 
-    /// Build the `QueryRequest`.
-    pub fn build(self) -> Result<VmReadRequest, &'static str> {
+    /// Build the `CallRestrictedRequest`.
+    pub fn build(self) -> Result<CallRestrictedRequest, &'static str> {
         let initiator = self.initiator.ok_or("Initiator is not set")?;
         let contract_address = self.contract_address.ok_or("Contract address is not set")?;
         let entry_point = self.entry_point.ok_or("Entry point is not set")?;
@@ -282,7 +296,7 @@ impl VmReadRequestBuilder {
             .ok_or("Parent block hash is not set")?;
         let block_height = self.block_height.ok_or("Block height is not set")?;
         let chain_name = self.chain_name.ok_or("Chain name is not set")?;
-        Ok(VmReadRequest {
+        Ok(CallRestrictedRequest {
             initiator,
             contract_address,
             entry_point,

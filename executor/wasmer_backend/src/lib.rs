@@ -448,7 +448,7 @@ where
             input: data.context.input.clone(),
             block_time: data.context.block_time,
             message_limits: data.context.message_limits,
-            read_only: data.context.read_only,
+            restricted: data.context.restricted,
         }
     }
 }

@@ -50,8 +50,9 @@ impl Display for Event {
                 Command::TrySpeculativeExec { transaction, .. } => {
                     write!(f, "try speculative exec ({}) from {}", transaction.hash(), peer_ip)
                 }
-                Command::TryVmRead { .. } => {
-                    write!(f, "try vm read from {}", peer_ip)
+
+                Command::TryCallRestricted { .. } => {
+                    write!(f, "try call restricted from {}", peer_ip)
                 }
             },
         }

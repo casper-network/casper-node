@@ -33,9 +33,9 @@ pub struct Context<S: GlobalStateReader, E: Executor> {
     pub chain_name: Arc<str>,
     pub input: Bytes,
     pub block_time: BlockTime,
-    /// Whether the execution is in read-only mode.
+    /// Whether the execution is in restricted mode.
     ///
-    /// In read-only mode, the contract cannot make any state changes (writes, transfers, etc.)
+    /// In restricted mode, the contract cannot make any state changes (writes, transfers, etc.)
     /// and no gas is charged for the execution.
-    pub read_only: bool,
+    pub restricted: bool,
 }

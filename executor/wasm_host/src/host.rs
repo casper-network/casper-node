@@ -104,8 +104,8 @@ fn metered_write<S: GlobalStateReader, E: Executor>(
     key: Key,
     value: StoredValue,
 ) -> VMResult<()> {
-    if caller.context().read_only {
-        return Err(InternalHostError::AttemptWriteInReadOnly.into());
+    if caller.context().restricted {
+        return Err(InternalHostError::AttemptWriteInRestricted.into());
     }
 
     charge_gas_storage(caller, value.serialized_length())?;
@@ -122,9 +122,9 @@ pub fn casper_write<S: GlobalStateReader, E: Executor>(
     value_ptr: u32,
     value_size: u32,
 ) -> VMResult<u32> {
-    // In read-only mode, writing is not allowed
-    if caller.context().read_only {
-        return Err(InternalHostError::AttemptWriteInReadOnly.into());
+    // In restricted mode, writing is not allowed
+    if caller.context().restricted {
+        return Err(InternalHostError::AttemptWriteInRestricted.into());
     }
 
     let write_cost = caller.context().config.host_function_costs().write;
@@ -240,9 +240,9 @@ pub fn casper_remove<S: GlobalStateReader, E: Executor>(
     key_ptr: u32,
     key_size: u32,
 ) -> VMResult<u32> {
-    // In read-only mode, removing is not allowed
-    if caller.context().read_only {
-        return Err(InternalHostError::AttemptWriteInReadOnly.into());
+    // In restricted mode, removing is not allowed
+    if caller.context().restricted {
+        return Err(InternalHostError::AttemptWriteInRestricted.into());
     }
 
     let remove_cost = caller.context().config.host_function_costs().remove;
@@ -598,9 +598,9 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
     seed_len: u32,
     result_ptr: u32,
 ) -> VMResult<u32> {
-    // In read-only mode, contract creation is not allowed
-    if caller.context().read_only {
-        return Err(InternalHostError::AttemptWriteInReadOnly.into());
+    // In restricted mode, contract creation is not allowed
+    if caller.context().restricted {
+        return Err(InternalHostError::AttemptWriteInRestricted.into());
     }
 
     let create_cost = caller.context().config.host_function_costs().create;
@@ -857,11 +857,11 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
     cb_alloc: u32,
     cb_ctx: u32,
 ) -> VMResult<u32> {
-    // In read-only mode, transfers are not allowed
-    if caller.context().read_only {
-        return Err(InternalHostError::AttemptWriteInReadOnly.into());
+    // In restricted mode, transfers are not allowed
+    if caller.context().restricted {
+        return Err(InternalHostError::AttemptWriteInRestricted.into());
     }
-
+    
     let call_cost = caller.context().config.host_function_costs().call;
     charge_host_function_call(
         &mut caller,
@@ -1131,9 +1131,9 @@ pub fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
     entity_addr_len: u32,
     amount_ptr: u32,
 ) -> VMResult<u32> {
-    // In read-only mode, transfers are not allowed
-    if caller.context().read_only {
-        return Err(InternalHostError::AttemptWriteInReadOnly.into());
+    // In restricted mode, transfers are not allowed
+    if caller.context().restricted {
+        return Err(InternalHostError::AttemptWriteInRestricted.into());
     }
 
     let transfer_cost = caller.context().config.host_function_costs().transfer;
@@ -1296,9 +1296,9 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
     input_ptr: u32,
     input_size: u32,
 ) -> VMResult<u32> {
-    // In read-only mode, contract upgrades are not allowed
-    if caller.context().read_only {
-        return Err(InternalHostError::AttemptWriteInReadOnly.into());
+    // In restricted mode, contract upgrades are not allowed
+    if caller.context().restricted {
+        return Err(InternalHostError::AttemptWriteInRestricted.into());
     }
 
     let upgrade_cost = caller.context().config.host_function_costs().upgrade;
@@ -1562,9 +1562,9 @@ pub fn casper_emit<S: GlobalStateReader, E: Executor>(
     payload_ptr: u32,
     payload_size: u32,
 ) -> VMResult<u32> {
-    // In read-only mode, emitting messages is not allowed
-    if caller.context().read_only {
-        return Err(InternalHostError::AttemptWriteInReadOnly.into());
+    // In restricted mode, emitting messages is not allowed
+    if caller.context().restricted {
+        return Err(InternalHostError::AttemptWriteInRestricted.into());
     }
 
     // Charge for parameter weights.

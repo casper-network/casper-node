@@ -32,7 +32,7 @@ use casper_storage::{
     DbRawBytesSpec,
 };
 use casper_types::{
-    execution::{ExecutionResult, VmReadRequest, VmReadResult},
+    execution::{ExecutionResult, CallRestrictedRequest, CallRestrictedResult},
     system::auction::DelegatorKind,
     Approval, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures,
     BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest, DisplayIter,
@@ -778,13 +778,13 @@ pub(crate) enum ContractRuntimeRequest {
         /// Responder to call with the query result.
         responder: Responder<QueryResult>,
     },
-    /// A read-only contract execution request.
-    VmRead {
-        /// Read request,
+    /// A restricted contract execution request.
+    CallRestricted {
+        /// Restricted execution request,
         #[serde(skip_serializing)]
-        query_request: VmReadRequest,
+        request: CallRestrictedRequest,
         /// Responder to call with the query result.
-        responder: Responder<VmReadResult>,
+        responder: Responder<CallRestrictedResult>,
     },
     /// A query by prefix request.
     QueryByPrefix {
@@ -915,8 +915,8 @@ impl Display for ContractRuntimeRequest {
             } => {
                 write!(formatter, "query request: {:?}", query_request)
             }
-            ContractRuntimeRequest::VmRead { query_request, .. } => {
-                write!(formatter, "vm read request: {:?}", query_request)
+            ContractRuntimeRequest::CallRestricted { request, .. } => {
+                write!(formatter, "call restricted request: {:?}", request)
             }
             ContractRuntimeRequest::QueryByPrefix { request, .. } => {
                 write!(formatter, "query by prefix request: {:?}", request)

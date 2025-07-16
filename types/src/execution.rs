@@ -8,7 +8,7 @@ mod ret_value;
 mod transform;
 mod transform_error;
 mod transform_kind;
-mod vm_read_request;
+mod call_restricted_request;
 
 pub use effects::Effects;
 pub use execution_result::ExecutionResult;
@@ -18,4 +18,4 @@ pub use ret_value::RetValue;
 pub use transform::TransformV2;
 pub use transform_error::TransformError;
 pub use transform_kind::{TransformInstruction, TransformKindV2};
-pub use vm_read_request::{VmReadError, VmReadRequest, VmReadRequestBuilder, VmReadResult};
+pub use call_restricted_request::{CallRestrictedError, CallRestrictedRequest, CallRestrictedRequestBuilder, CallRestrictedResult};

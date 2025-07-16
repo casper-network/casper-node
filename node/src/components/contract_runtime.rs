@@ -46,7 +46,7 @@ use casper_storage::{
 };
 use casper_types::{
     account::AccountHash,
-    execution::{VmReadError, VmReadResult},
+    execution::{CallRestrictedError, CallRestrictedResult},
     ActivationPoint, Chainspec, ChainspecRawBytes, ChainspecRegistry, EntityAddr, EraId, Gas, Key,
     PublicKey,
 };
@@ -334,11 +334,11 @@ impl ContractRuntime {
                 }
                 .ignore()
             }
-            ContractRuntimeRequest::VmRead {
-                query_request,
+            ContractRuntimeRequest::CallRestricted {
+                request,
                 responder,
             } => {
-                trace!(?query_request, "vm read");
+                trace!(?request, "call restricted");
                 let metrics = Arc::clone(&self.metrics);
                 let execution_engine_v2 = self.execution_engine_v2.clone();
                 let data_access_layer = Arc::clone(&self.data_access_layer);
@@ -348,23 +348,23 @@ impl ContractRuntime {
                         // Create a tracking copy for the request
                         let state = data_access_layer.get_scratch_global_state();
                         let tracking_copy = state
-                            .tracking_copy(query_request.state_hash)
+                            .tracking_copy(request.state_hash)
                             .expect("should get tracking copy result")
                             .expect("should create tracking copy");
 
                         // Execute the request
-                        execution_engine_v2.read_query(tracking_copy, query_request)
+                        execution_engine_v2.execute_restricted(tracking_copy, request)
                     })
                     .await;
 
-                    let result = result.unwrap_or(VmReadResult {
-                        error: Some(VmReadError::InternalHostError),
+                    let result = result.unwrap_or(CallRestrictedResult {
+                        error: Some(CallRestrictedError::InternalHostError),
                         output: None,
                         gas_usage: Gas::new(0),
                     });
 
                     metrics.run_query.observe(start.elapsed().as_secs_f64());
-                    trace!("read-only contract request completed");
+                    trace!("restricted contract request completed");
                     responder.respond(result).await
                 }
                 .ignore()

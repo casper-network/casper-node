@@ -335,9 +335,9 @@ allow_request_get_trie = false
 # Flag that enables the `TrySpeculativeExec` request. Disabled by default.
 allow_request_speculative_exec = false
 
-# IP addresses allowed to make `TryVmRead` requests. Empty list means no access allowed.
-# Supports individual IP address strings. An IP string of "*" matches to all IPs.
-vm_read_allowed_ips = []
+# IP addresses allowed to make `TryCallRestricted` requests. Empty list means no access allowed.
+# Supports IP address strings like "127.0.0.1" or "::1".
+call_restricted_allowed_ips = []
 
 # Maximum size of a message in bytes.
 max_message_size_bytes = 4_194_304

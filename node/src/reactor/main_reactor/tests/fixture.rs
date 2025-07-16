@@ -391,7 +391,7 @@ impl TestFixture {
                 allow_request_get_all_values: true,
                 allow_request_get_trie: true,
                 allow_request_speculative_exec: true,
-                vm_read_allowed_ips: vec![
+                call_restricted_allowed_ips: vec![
                     "127.0.0.1".to_string()
                 ],
                 ..Default::default()

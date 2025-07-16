@@ -2,7 +2,7 @@ use core::convert::TryFrom;
 
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    execution::VmReadRequest,
+    execution::CallRestrictedRequest,
     Transaction,
 };
 
@@ -117,9 +117,9 @@ pub enum Command {
         transaction: Transaction,
     },
     /// Request to execute a read-only query on a contract.
-    TryVmRead {
-        /// A virtual-machine read request.
-        vm_read_request: VmReadRequest,
+    TryCallRestricted {
+        /// A call-restricted read request.
+        call_restricted_request: CallRestrictedRequest,
     },
 }
 
@@ -130,7 +130,7 @@ impl Command {
             Command::Get(_) => CommandTag::Get,
             Command::TryAcceptTransaction { .. } => CommandTag::TryAcceptTransaction,
             Command::TrySpeculativeExec { .. } => CommandTag::TrySpeculativeExec,
-            Command::TryVmRead { .. } => CommandTag::TryVmRead,
+            Command::TryCallRestricted { .. } => CommandTag::TryCallRestricted,
         }
     }
 
@@ -144,8 +144,8 @@ impl Command {
             CommandTag::TrySpeculativeExec => Self::TrySpeculativeExec {
                 transaction: Transaction::random(rng),
             },
-            CommandTag::TryVmRead => Self::TryVmRead {
-                vm_read_request: VmReadRequest::random(rng),
+            CommandTag::TryCallRestricted => Self::TryCallRestricted {
+                call_restricted_request: CallRestrictedRequest::random(rng),
             },
         }
     }
@@ -163,7 +163,7 @@ impl ToBytes for Command {
             Command::Get(inner) => inner.write_bytes(writer),
             Command::TryAcceptTransaction { transaction } => transaction.write_bytes(writer),
             Command::TrySpeculativeExec { transaction } => transaction.write_bytes(writer),
-            Command::TryVmRead { vm_read_request } => vm_read_request.write_bytes(writer),
+            Command::TryCallRestricted { call_restricted_request } => call_restricted_request.write_bytes(writer),
         }
     }
 
@@ -172,7 +172,7 @@ impl ToBytes for Command {
             Command::Get(inner) => inner.serialized_length(),
             Command::TryAcceptTransaction { transaction } => transaction.serialized_length(),
             Command::TrySpeculativeExec { transaction } => transaction.serialized_length(),
-            Command::TryVmRead { vm_read_request } => vm_read_request.serialized_length(),
+            Command::TryCallRestricted { call_restricted_request } => call_restricted_request.serialized_length(),
         }
     }
 }
@@ -194,9 +194,9 @@ impl TryFrom<(CommandTag, &[u8])> for Command {
                 let (transaction, remainder) = FromBytes::from_bytes(bytes)?;
                 (Command::TrySpeculativeExec { transaction }, remainder)
             }
-            CommandTag::TryVmRead => {
-                let (vm_read_request, remainder) = FromBytes::from_bytes(bytes)?;
-                (Command::TryVmRead { vm_read_request }, remainder)
+            CommandTag::TryCallRestricted => {
+                let (call_restricted_request, remainder) = FromBytes::from_bytes(bytes)?;
+                (Command::TryCallRestricted { call_restricted_request }, remainder)
             }
         };
         if !remainder.is_empty() {
@@ -216,8 +216,8 @@ pub enum CommandTag {
     TryAcceptTransaction = 1,
     /// Request to execute a transaction speculatively.
     TrySpeculativeExec = 2,
-    /// Request to execute a read-only query on a contract.
-    TryVmRead = 3,
+    /// Request to execute a restricted getter on a contract.
+    TryCallRestricted = 3,
 }
 
 impl CommandTag {
@@ -228,7 +228,7 @@ impl CommandTag {
             0 => CommandTag::Get,
             1 => CommandTag::TryAcceptTransaction,
             2 => CommandTag::TrySpeculativeExec,
-            3 => CommandTag::TryVmRead,
+            3 => CommandTag::TryCallRestricted,
             _ => unreachable!(),
         }
     }
@@ -242,7 +242,7 @@ impl TryFrom<u8> for CommandTag {
             0 => Ok(CommandTag::Get),
             1 => Ok(CommandTag::TryAcceptTransaction),
             2 => Ok(CommandTag::TrySpeculativeExec),
-            3 => Ok(CommandTag::TryVmRead),
+            3 => Ok(CommandTag::TryCallRestricted),
             _ => Err(InvalidCommandTag),
         }
     }

@@ -10,7 +10,7 @@ use casper_storage::{
 use casper_types::{
     account::AccountHash,
     contract_messages::Messages,
-    execution::{Effects, VmReadRequest, VmReadResult},
+    execution::{Effects, CallRestrictedRequest, CallRestrictedResult},
     BlockHash, BlockTime, Digest, HashAddr, Key, TransactionHash,
 };
 use parking_lot::RwLock;
@@ -53,11 +53,11 @@ pub struct ExecuteRequest {
     pub parent_block_hash: BlockHash,
     /// Block height.
     pub block_height: u64,
-    /// Whether the execution is in read-only mode.
+    /// Whether the execution is in restricted mode.
     ///
-    /// In read-only mode, the contract cannot make any state changes (writes, transfers, etc.)
+    /// In restricted mode, the contract cannot make any state changes (writes, transfers, etc.)
     /// and no gas is charged for the execution.
-    pub read_only: bool,
+    pub restricted: bool,
 }
 
 /// Builder for `ExecuteRequest`.
@@ -76,7 +76,7 @@ pub struct ExecuteRequestBuilder {
     state_hash: Option<Digest>,
     parent_block_hash: Option<BlockHash>,
     block_height: Option<u64>,
-    read_only: Option<bool>,
+    restricted: Option<bool>,
 }
 
 impl ExecuteRequestBuilder {
@@ -196,10 +196,10 @@ impl ExecuteRequestBuilder {
         self
     }
 
-    /// Set the read-only mode.
+    /// Set the restricted mode.
     #[must_use]
-    pub fn with_read_only(mut self, read_only: bool) -> Self {
-        self.read_only = Some(read_only);
+    pub fn with_restricted(mut self, restricted: bool) -> Self {
+        self.restricted = Some(restricted);
         self
     }
 
@@ -222,7 +222,7 @@ impl ExecuteRequestBuilder {
             .parent_block_hash
             .ok_or("Parent block hash is not set")?;
         let block_height = self.block_height.ok_or("Block height is not set")?;
-        let read_only = self.read_only.unwrap_or(false);
+        let restricted = self.restricted.unwrap_or(false);
         Ok(ExecuteRequest {
             initiator,
             caller_key,
@@ -237,7 +237,7 @@ impl ExecuteRequestBuilder {
             state_hash,
             parent_block_hash,
             block_height,
-            read_only,
+            restricted,
         })
     }
 }
@@ -400,9 +400,9 @@ pub trait Executor: Clone + Send {
     ///
     /// This method executes a contract in read-only mode without making any state changes
     /// or broadcasting the transaction.
-    fn read_query<R: GlobalStateReader + 'static>(
+    fn execute_restricted<R: GlobalStateReader + 'static>(
         &self,
         tracking_copy: TrackingCopy<R>,
-        query_request: VmReadRequest,
-    ) -> Result<VmReadResult, ExecuteError>;
+        query_request: CallRestrictedRequest,
+    ) -> Result<CallRestrictedResult, ExecuteError>;
 }

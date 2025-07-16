@@ -23,7 +23,7 @@ use casper_types::{
     addressable_entity::{ActionThresholds, AssociatedKeys, NamedKeyAddr, NamedKeyValue},
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     contracts::{ContractHash, ContractPackage, ContractPackageHash},
-    execution::{Effects, TransformKindV2, TransformV2, VmReadRequest},
+    execution::{Effects, TransformKindV2, TransformV2, CallRestrictedRequest},
     system::auction::DelegatorKind,
     testing::TestRng,
     Account, AddressableEntity, AvailableBlockRange, Block, BlockHash, BlockHeader,
@@ -1364,7 +1364,7 @@ fn try_spec_exec_invalid(rng: &mut TestRng) -> TestCase {
 }
 
 #[tokio::test]
-async fn binary_port_vm_read_request() {
+async fn binary_port_call_restricted_request() {
     testing::init_logging();
 
     let alice_secret_key =
@@ -1480,7 +1480,7 @@ async fn binary_port_vm_read_request() {
         (latest_block, state_root_hash)
     };
 
-    let vm_read_request = VmReadRequest {
+    let call_restricted_request = CallRestrictedRequest {
         initiator: alice_public_key.to_account_hash(),
         contract_address,
         entry_point: "get".to_string(),
@@ -1511,7 +1511,7 @@ async fn binary_port_vm_read_request() {
     let finish_cranking = fixture.run_until_stopped(rng.create_child());
 
     // Create and send the command
-    let request = Command::TryVmRead { vm_read_request };
+    let request = Command::TryCallRestricted { call_restricted_request };
     let request_bytes = {
         let header = CommandHeader::new(request.tag(), 16);
         let header_bytes = ToBytes::to_bytes(&header).expect("should serialize");

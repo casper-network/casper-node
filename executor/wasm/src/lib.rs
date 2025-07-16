@@ -34,14 +34,7 @@ use casper_storage::{
     AddressGenerator, TrackingCopy,
 };
 use casper_types::{
-    account::AccountHash,
-    addressable_entity::{ActionThresholds, AssociatedKeys},
-    bytesrepr,
-    execution::{VmReadError, VmReadRequest, VmReadResult},
-    AddressableEntity, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, ContractRuntimeTag,
-    Digest, EntityAddr, EntityKind, Gas, Groups, InitiatorAddr, Key, MessageLimits, Package,
-    PackageHash, PackageStatus, Phase, ProtocolVersion, StorageCosts, StoredValue, TransactionHash,
-    TransactionInvocationTarget, URef, WasmV2Config, U512,
+    account::AccountHash, addressable_entity::{ActionThresholds, AssociatedKeys}, bytesrepr, execution::{CallRestrictedError, CallRestrictedRequest, CallRestrictedResult}, AddressableEntity, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, ContractRuntimeTag, Digest, EntityAddr, EntityKind, Gas, Groups, InitiatorAddr, Key, MessageLimits, Package, PackageHash, PackageStatus, Phase, ProtocolVersion, StorageCosts, StoredValue, TransactionHash, TransactionInvocationTarget, URef, WasmV2Config, U512
 };
 use install::{InstallContractError, InstallContractRequest, InstallContractResult};
 use parking_lot::RwLock;
@@ -362,7 +355,7 @@ impl ExecutorV2 {
             state_hash,
             parent_block_hash,
             block_height,
-            read_only,
+            restricted,
         } = execute_request;
 
         // TODO: Purse uref does not need to be optional once value transfers to WasmBytes are
@@ -558,7 +551,7 @@ impl ExecutorV2 {
             input,
             block_time,
             message_limits: self.config.message_limits,
-            read_only,
+            restricted,
         };
 
         let wasm_instance_config = ConfigBuilder::new()
@@ -851,12 +844,12 @@ impl Executor for ExecutorV2 {
         self.execute_with_tracking_copy(tracking_copy, execute_request)
     }
 
-    fn read_query<R: GlobalStateReader + 'static>(
+    fn execute_restricted<R: GlobalStateReader + 'static>(
         &self,
         tracking_copy: TrackingCopy<R>,
-        request: VmReadRequest,
-    ) -> Result<VmReadResult, ExecuteError> {
-        // Convert VmReadRequest to ExecuteRequest with read-only mode enabled
+        request: CallRestrictedRequest,
+    ) -> Result<CallRestrictedResult, ExecuteError> {
+        // Convert CallRestrictedRequest to ExecuteRequest with restricted mode enabled
         let execute_request = ExecuteRequestBuilder::default()
             .with_initiator(request.initiator)
             .with_caller_key(Key::Account(request.initiator))
@@ -866,7 +859,7 @@ impl Executor for ExecutorV2 {
                 entry_point: request.entry_point,
             })
             .with_input(Bytes::copy_from_slice(request.input.inner_bytes()))
-            .with_transferred_value(0) // Must be 0 for read-only queries
+            .with_transferred_value(0) // Must be 0 for restricted queries
             .with_transaction_hash(TransactionHash::from_raw([0; 32])) // Dummy hash for queries
             .with_address_generator(AddressGenerator::new(&[0; 32], Phase::Session))
             .with_chain_name(request.chain_name)
@@ -874,25 +867,25 @@ impl Executor for ExecutorV2 {
             .with_state_hash(request.state_hash)
             .with_parent_block_hash(request.parent_block_hash)
             .with_block_height(request.block_height)
-            .with_read_only(true) // Enable read-only mode
+            .with_restricted(true) // Enable restricted mode
             .build()
             .map_err(|_| {
                 ExecuteError::InternalHost(InternalHostError::ExecuteRequestBuildFailure)
             })?;
 
-        // Execute the query in read-only mode
+        // Execute the query in restricted mode
         let execute_result = self.execute_with_tracking_copy(tracking_copy, execute_request)?;
         let output_bytes: Option<Vec<u8>> = execute_result.output.map(|x| x.into());
 
-        // Convert ExecuteResult to VmReadResult
-        let query_result = VmReadResult {
+        // Convert ExecuteResult to CallRestrictedResult
+        let query_result = CallRestrictedResult {
             error: execute_result
                 .host_error
                 .map(|call_error| match call_error {
-                    CallError::CalleeReverted => VmReadError::CalleeReverted,
-                    CallError::CalleeTrapped(_) => VmReadError::CalleeTrapped,
-                    CallError::CalleeGasDepleted => VmReadError::CalleeGasDepleted,
-                    CallError::NotCallable => VmReadError::NotCallable,
+                    CallError::CalleeReverted => CallRestrictedError::CalleeReverted,
+                    CallError::CalleeTrapped(_) => CallRestrictedError::CalleeTrapped,
+                    CallError::CalleeGasDepleted => CallRestrictedError::CalleeGasDepleted,
+                    CallError::NotCallable => CallRestrictedError::NotCallable,
                 }),
             output: output_bytes.map(|x| x.into()),
             gas_usage: Gas::new(execute_result.gas_usage.gas_spent()),
