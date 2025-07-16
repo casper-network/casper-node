@@ -1504,7 +1504,9 @@ async fn try_call_restricted_execution<REv>(
 where
     REv: From<Event> + From<ContractRuntimeRequest> + From<StorageRequest>,
 {
-    let result = effect_builder.execute_restricted(call_restricted_request).await;
+    let result = effect_builder
+        .execute_restricted(call_restricted_request)
+        .await;
 
     if result.is_success() {
         // Return the output bytes on success

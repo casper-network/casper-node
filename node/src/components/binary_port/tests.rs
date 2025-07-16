@@ -92,7 +92,7 @@ async fn should_enqueue_requests_for_enabled_functions() {
         request_generator: Either::Left(try_speculative_exec_request),
     };
 
-    let try_vm_query_enabled = TestCase {
+    let try_restricted_execution_enabled = TestCase {
         allow_request_get_all_values: rng.gen(),
         allow_request_get_trie: rng.gen(),
         allow_request_speculative_exec: rng.gen(),
@@ -104,7 +104,7 @@ async fn should_enqueue_requests_for_enabled_functions() {
         get_all_values_enabled,
         get_trie_enabled,
         try_speculative_exec_enabled,
-        try_vm_query_enabled,
+        try_restricted_execution_enabled,
     ] {
         let (_, mut runner) = run_test_case(test_case, &mut rng).await;
 
@@ -148,7 +148,7 @@ async fn should_return_error_for_disabled_functions() {
         request_generator: Either::Left(try_speculative_exec_request),
     };
 
-    let try_vm_query_disabled = TestCase {
+    let try_restricted_execution_disabled = TestCase {
         allow_request_get_all_values: rng.gen(),
         allow_request_get_trie: rng.gen(),
         allow_request_speculative_exec: rng.gen(),
@@ -160,7 +160,7 @@ async fn should_return_error_for_disabled_functions() {
         get_all_values_disabled,
         get_trie_disabled,
         try_speculative_exec_disabled,
-        try_vm_query_disabled,
+        try_restricted_execution_disabled,
     ] {
         let (receiver, mut runner) = run_test_case(test_case, &mut rng).await;
 
