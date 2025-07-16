@@ -247,10 +247,11 @@ where
             call_restricted_request,
         } => {
             metrics.binary_port_try_call_restricted_count.inc();
-            if !config
+            let enable_for_peer = config
                 .call_restricted_allowed_ips
-                .contains(&peer_ip.to_string())
-            {
+                .iter()
+                .any(|ip| ip == "*" || ip == &peer_ip.to_string());
+            if !enable_for_peer {
                 return BinaryResponse::new_error(ErrorCode::FunctionDisabled);
             }
             try_call_restricted_execution(effect_builder, call_restricted_request).await
