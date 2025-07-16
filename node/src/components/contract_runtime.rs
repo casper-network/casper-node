@@ -334,10 +334,7 @@ impl ContractRuntime {
                 }
                 .ignore()
             }
-            ContractRuntimeRequest::CallRestricted {
-                request,
-                responder,
-            } => {
+            ContractRuntimeRequest::CallRestricted { request, responder } => {
                 trace!(?request, "call restricted");
                 let metrics = Arc::clone(&self.metrics);
                 let execution_engine_v2 = self.execution_engine_v2.clone();

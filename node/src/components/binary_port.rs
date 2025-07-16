@@ -8,7 +8,11 @@ mod rate_limiter;
 #[cfg(test)]
 mod tests;
 
-use std::{convert::TryFrom, net::{IpAddr, SocketAddr}, sync::Arc};
+use std::{
+    convert::TryFrom,
+    net::{IpAddr, SocketAddr},
+    sync::Arc,
+};
 
 use casper_binary_port::{
     AccountInformation, AddressableEntityInformation, BalanceResponse, BidsInformation,
@@ -239,9 +243,14 @@ where
             try_speculative_execution(effect_builder, transaction).await
         }
 
-        Command::TryCallRestricted { call_restricted_request } => {
+        Command::TryCallRestricted {
+            call_restricted_request,
+        } => {
             metrics.binary_port_try_call_restricted_count.inc();
-            if !config.call_restricted_allowed_ips.contains(&peer_ip.to_string()) {
+            if !config
+                .call_restricted_allowed_ips
+                .contains(&peer_ip.to_string())
+            {
                 return BinaryResponse::new_error(ErrorCode::FunctionDisabled);
             }
             try_call_restricted_execution(effect_builder, call_restricted_request).await
@@ -1491,7 +1500,6 @@ where
     }
 }
 
-
 async fn try_call_restricted_execution<REv>(
     effect_builder: EffectBuilder<REv>,
     call_restricted_request: CallRestrictedRequest,
@@ -1637,7 +1645,11 @@ where
 
     effect_builder
         .make_request(
-            |responder| Event::HandleRequest { request, peer_ip, responder },
+            |responder| Event::HandleRequest {
+                request,
+                peer_ip,
+                responder,
+            },
             QueueKind::Regular,
         )
         .await
@@ -1971,7 +1983,11 @@ where
                     }
                     responder.respond(()).ignore()
                 }
-                Event::HandleRequest { request, peer_ip, responder } => {
+                Event::HandleRequest {
+                    request,
+                    peer_ip,
+                    responder,
+                } => {
                     let config = Arc::clone(&self.config);
                     let metrics = Arc::clone(&self.metrics);
                     let protocol_version = self.chainspec.protocol_version();

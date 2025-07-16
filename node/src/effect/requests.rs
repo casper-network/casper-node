@@ -32,7 +32,7 @@ use casper_storage::{
     DbRawBytesSpec,
 };
 use casper_types::{
-    execution::{ExecutionResult, CallRestrictedRequest, CallRestrictedResult},
+    execution::{CallRestrictedRequest, CallRestrictedResult, ExecutionResult},
     system::auction::DelegatorKind,
     Approval, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures,
     BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest, DisplayIter,

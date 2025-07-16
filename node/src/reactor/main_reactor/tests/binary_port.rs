@@ -23,7 +23,7 @@ use casper_types::{
     addressable_entity::{ActionThresholds, AssociatedKeys, NamedKeyAddr, NamedKeyValue},
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     contracts::{ContractHash, ContractPackage, ContractPackageHash},
-    execution::{Effects, TransformKindV2, TransformV2, CallRestrictedRequest},
+    execution::{CallRestrictedRequest, Effects, TransformKindV2, TransformV2},
     system::auction::DelegatorKind,
     testing::TestRng,
     Account, AddressableEntity, AvailableBlockRange, Block, BlockHash, BlockHeader,
@@ -1511,7 +1511,9 @@ async fn binary_port_call_restricted_request() {
     let finish_cranking = fixture.run_until_stopped(rng.create_child());
 
     // Create and send the command
-    let request = Command::TryCallRestricted { call_restricted_request };
+    let request = Command::TryCallRestricted {
+        call_restricted_request,
+    };
     let request_bytes = {
         let header = CommandHeader::new(request.tag(), 16);
         let header_bytes = ToBytes::to_bytes(&header).expect("should serialize");

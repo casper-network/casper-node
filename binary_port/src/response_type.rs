@@ -234,7 +234,9 @@ impl TryFrom<u8> for ResponseType {
                 Ok(ResponseType::AddressableEntityInformation)
             }
             x if x == ResponseType::BidsInformation as u8 => Ok(ResponseType::BidsInformation),
-            x if x == ResponseType::CallRestrictedResult as u8 => Ok(ResponseType::CallRestrictedResult),
+            x if x == ResponseType::CallRestrictedResult as u8 => {
+                Ok(ResponseType::CallRestrictedResult)
+            }
             _ => Err(()),
         }
     }

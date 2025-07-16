@@ -1,5 +1,6 @@
 //! Types related to execution of deploys.
 
+mod call_restricted_request;
 mod effects;
 mod execution_result;
 pub mod execution_result_v1;
@@ -8,8 +9,10 @@ mod ret_value;
 mod transform;
 mod transform_error;
 mod transform_kind;
-mod call_restricted_request;
 
+pub use call_restricted_request::{
+    CallRestrictedError, CallRestrictedRequest, CallRestrictedRequestBuilder, CallRestrictedResult,
+};
 pub use effects::Effects;
 pub use execution_result::ExecutionResult;
 pub use execution_result_v1::ExecutionResultV1;
@@ -18,4 +21,3 @@ pub use ret_value::RetValue;
 pub use transform::TransformV2;
 pub use transform_error::TransformError;
 pub use transform_kind::{TransformInstruction, TransformKindV2};
-pub use call_restricted_request::{CallRestrictedError, CallRestrictedRequest, CallRestrictedRequestBuilder, CallRestrictedResult};

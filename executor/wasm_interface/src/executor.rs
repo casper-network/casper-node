@@ -10,7 +10,7 @@ use casper_storage::{
 use casper_types::{
     account::AccountHash,
     contract_messages::Messages,
-    execution::{Effects, CallRestrictedRequest, CallRestrictedResult},
+    execution::{CallRestrictedRequest, CallRestrictedResult, Effects},
     BlockHash, BlockTime, Digest, HashAddr, Key, TransactionHash,
 };
 use parking_lot::RwLock;

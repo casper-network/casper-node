@@ -133,7 +133,9 @@ use casper_storage::{
     DbRawBytesSpec,
 };
 use casper_types::{
-    execution::{Effects as ExecutionEffects, ExecutionResult, CallRestrictedRequest, CallRestrictedResult},
+    execution::{
+        CallRestrictedRequest, CallRestrictedResult, Effects as ExecutionEffects, ExecutionResult,
+    },
     Approval, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures,
     BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest, EntityAddr, EraId,
     ExecutionInfo, FinalitySignature, FinalitySignatureId, FinalitySignatureV2, HashAddr, Key,
@@ -1962,15 +1964,15 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Requests a restricted contract execution on the Contract Runtime component.
-    pub(crate) async fn execute_restricted(self, request: CallRestrictedRequest) -> CallRestrictedResult
+    pub(crate) async fn execute_restricted(
+        self,
+        request: CallRestrictedRequest,
+    ) -> CallRestrictedResult
     where
         REv: From<ContractRuntimeRequest>,
     {
         self.make_request(
-            |responder| ContractRuntimeRequest::CallRestricted {
-                request,
-                responder,
-            },
+            |responder| ContractRuntimeRequest::CallRestricted { request, responder },
             QueueKind::ContractRuntime,
         )
         .await

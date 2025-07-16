@@ -54,8 +54,8 @@ pub struct Config {
     pub allow_request_get_trie: bool,
     /// Flag used to enable/disable the [`TrySpeculativeExec`] request.
     pub allow_request_speculative_exec: bool,
-    /// IP addresses allowed to make [`TryCallRestricted`] requests. Empty list means no access allowed.
-    /// Supports IP address strings like "127.0.0.1" or "::1".
+    /// IP addresses allowed to make [`TryCallRestricted`] requests. Empty list means no access
+    /// allowed. Supports IP address strings like "127.0.0.1" or "::1".
     pub call_restricted_allowed_ips: Vec<String>,
     /// Maximum size of the binary port message.
     pub max_message_size_bytes: u32,

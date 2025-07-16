@@ -30,7 +30,8 @@ const BINARY_PORT_TRIE_COUNT_NAME: &str = "binary_port_get_trie_count";
 const BINARY_PORT_TRIE_COUNT_HELP: &str = "number of Get queries received for the trie state";
 
 const BINARY_PORT_TRY_CALL_RESTRICTED_COUNT_NAME: &str = "binary_port_try_call_restricted_count";
-const BINARY_PORT_TRY_CALL_RESTRICTED_COUNT_HELP: &str = "number of TryCallRestricted queries received";
+const BINARY_PORT_TRY_CALL_RESTRICTED_COUNT_HELP: &str =
+    "number of TryCallRestricted queries received";
 
 /// Metrics.
 #[derive(Debug)]

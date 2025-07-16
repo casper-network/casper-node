@@ -861,7 +861,7 @@ pub fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
     if caller.context().restricted {
         return Err(InternalHostError::AttemptWriteInRestricted.into());
     }
-    
+
     let call_cost = caller.context().config.host_function_costs().call;
     charge_host_function_call(
         &mut caller,
