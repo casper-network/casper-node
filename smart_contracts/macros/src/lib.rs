@@ -969,11 +969,6 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
     // let mut dispatch_table = Vec::new();
     let mut extra_code = Vec::new();
 
-    let mut abi_extras = Vec::new();
-
-    #[cfg(not(feature = "__abi_generator"))]
-    abi_extras.push(quote! {});
-
     // let mut schema_entry_points = Vec::new();
     let mut populate_definitions = Vec::new();
     let mut macro_symbols = Vec::new();
@@ -1141,7 +1136,7 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
                 let schema_helper_ident = format_ident!("__casper_schema_entry_point_{func_name}");
                 #[cfg(feature = "__abi_generator")]
                 {
-                    abi_extras.push(quote! {
+                    extra_code.push(quote! {
                         fn #schema_helper_ident() -> casper_contract_sdk::schema::SchemaEntryPoint {
                             casper_contract_sdk::schema::SchemaEntryPoint {
                                 name: stringify!(#export_name).into(),
@@ -1244,7 +1239,6 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
     let extension_struct = quote! {
         #vis trait #ext_struct_trait: Sized {
             #(#extra_code)*
-            #(#abi_extras)*
         }
 
         #vis struct #ref_struct;
