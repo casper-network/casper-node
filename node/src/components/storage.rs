@@ -509,7 +509,19 @@ impl Storage {
             NetRequest::SyncLeap(ref serialized_id) => {
                 let sync_leap_identifier = decode_item_id::<SyncLeap>(serialized_id)?;
                 let tracker = Instant::now();
-                let fetch_response = self.get_sync_leap(sync_leap_identifier)?;
+                let fetch_response = {
+                    match self.get_sync_leap(sync_leap_identifier) {
+                        Ok(ret) => ret,
+                        Err(err) => {
+                            let elapsed = tracker.elapsed().as_secs_f64();
+                            if let Some(metrics) = &self.metrics {
+                                metrics.sync_leap.observe(elapsed)
+                            }
+                            error!(%err, elapsed, "storage sync_leap failed",);
+                            return Err(err.into());
+                        }
+                    }
+                };
 
                 let elapsed = tracker.elapsed().as_secs_f64();
                 trace!("storage sync_leap elapsed: {} seconds", elapsed);
