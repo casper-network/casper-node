@@ -388,6 +388,9 @@ pub enum ExecuteError {
     InternalHost(#[from] InternalHostError),
     #[error("Code not found")]
     CodeNotFound(HashAddr),
+    // Wasm attempted to return flags that are not supported
+    #[error("Return flags are not supported: {0}")]
+    ReturnFlagsNotSupported(u32),
 }
 
 #[derive(Debug, Error)]
