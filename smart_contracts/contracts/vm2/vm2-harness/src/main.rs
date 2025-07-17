@@ -155,19 +155,6 @@ fn perform_test(seed: &mut Seed, flipper_address: Address) {
             call_result.into_result().unwrap(),
             Err(CustomError::WithBody("Reverted".to_string()))
         );
-
-        log!("Revert on error success (err case)");
-        // let should_revert_on_error: TypedCall<(bool,), Result<(), CustomError>> =
-        //     TypedCall::new(contract_address, selector!("should_revert_on_error"));
-        // let result = should_revert_on_error.call((false,));
-        // assert!(!result.did_revert());
-
-        // let result = should_revert_on_error.call((true,));
-        // assert!(result.did_revert());
-        // assert_eq!(
-        //     result.into_return_value(),
-        //     Err(CustomError::WithBody("Reverted".to_string()))
-        // );
     }
 
     // Constructor with args
