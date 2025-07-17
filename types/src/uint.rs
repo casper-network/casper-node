@@ -997,4 +997,12 @@ mod tests {
             "integer overflow when casting to u64"
         );
     }
+
+    #[test]
+    fn images() {
+        dbg!(U512::from(0u64).to_bytes());
+        dbg!(U512::from(1u64).to_bytes());
+        dbg!(U512::from(u64::MAX as u128 + 1).to_bytes());
+        dbg!(U512::MAX.to_bytes());
+    }
 }

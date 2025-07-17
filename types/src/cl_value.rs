@@ -280,6 +280,13 @@ mod tests {
     }
 
     #[test]
+    fn foo() {
+        let clvalue = CLValue::from_t(URef::new([0xBA; 32], AccessRights::READ_ADD_WRITE))
+            .expect("should create CLValue from URef");
+        dbg!(clvalue.to_bytes().unwrap());
+    }
+
+    #[test]
     fn serde_roundtrip() {
         let cl_value = CLValue::from_t(true).unwrap();
         let serialized = bincode::serialize(&cl_value).unwrap();

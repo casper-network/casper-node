@@ -9,10 +9,7 @@ use casper_execution_engine::{
     execution::ExecError,
 };
 use casper_types::{
-    account::AccountHash,
-    runtime_args,
-    system::auction::{self, BidsExt, DelegationRate},
-    ApiError, PublicKey, RuntimeArgs, SecretKey, U512,
+    account::AccountHash, bytesrepr::ToBytes, runtime_args, system::auction::{self, BidsExt, DelegationRate}, ApiError, CLType, EntityEntryPoint, EntryPointAccess, EntryPointPayment, EntryPointType, EntryPoints, Parameter, PublicKey, RuntimeArgs, SecretKey, U512
 };
 
 static ACCOUNT_1_SECRET_KEY: Lazy<SecretKey> =
@@ -485,3 +482,48 @@ fn regression_20210831_should_fail_to_activate_bid() {
         error_2
     );
 }
+
+const SOURCE_PURSE_ARG_NAME: &str = "source_purse";
+const RECIPIENT_MAINNET_ARG_NAME: &str = "recipient_mainnet";
+const AMOUNT_ARG_NAME: &str = "amount";
+pub const ADMIN_WITHDRAW_ENTRY_POINT_NAME: &str = "admin_withdraw";
+pub const RECIPIENT_ARG_NAME: &str = "recipient";
+
+#[test]
+fn foo() {
+    let entry_points = {
+        let mut entry_points = EntryPoints::new();
+
+        let lock_tokens = EntityEntryPoint::new(
+            "lock_tokens",
+            vec![
+                Parameter::new(SOURCE_PURSE_ARG_NAME, CLType::URef),
+                Parameter::new(RECIPIENT_MAINNET_ARG_NAME, CLType::PublicKey),
+                Parameter::new(AMOUNT_ARG_NAME, CLType::U512),
+            ],
+            CLType::Unit,
+            EntryPointAccess::Public,
+            EntryPointType::Called,
+            EntryPointPayment::Caller,
+        );
+
+        let admin_withdraw = EntityEntryPoint::new(
+            ADMIN_WITHDRAW_ENTRY_POINT_NAME,
+            vec![
+                Parameter::new(RECIPIENT_ARG_NAME, CLType::PublicKey),
+                Parameter::new(AMOUNT_ARG_NAME, CLType::U512),
+            ],
+            CLType::Unit,
+            EntryPointAccess::Public,
+            EntryPointType::Called,
+            EntryPointPayment::Caller,
+        );
+
+        entry_points.add_entry_point(lock_tokens);
+        entry_points.add_entry_point(admin_withdraw);
+
+        entry_points
+    };
+dbg!(entry_points.to_bytes());
+}
+    

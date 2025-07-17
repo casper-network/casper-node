@@ -74,6 +74,7 @@ mod transfer_result;
 mod uint;
 mod uref;
 mod validator_change;
+pub mod public_key;
 
 #[cfg(all(feature = "std", any(feature = "std-fs-io", test)))]
 use libc::{c_long, sysconf, _SC_PAGESIZE};

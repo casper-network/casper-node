@@ -1,12 +1,16 @@
 use borsh::BorshDeserialize;
 use casper_executor_wasm_common::flags::ReturnFlags;
+use once_cell::sync::Lazy;
 
 use crate::{
     casper,
     compat::types::{CLValue, RuntimeArgs},
 };
 
-static mut RUNTIME_ARGS: Option<RuntimeArgs> = None;
+static CASPER_RUNTIME_ARGS: Lazy<RuntimeArgs> = Lazy::new(|| {
+    let arg_bytes = casper::copy_input();
+    borsh::from_slice(&arg_bytes).expect("Failed to deserialize runtime arguments")
+});
 
 fn get_runtime_args() -> RuntimeArgs {
     let arg_bytes = casper::copy_input();
