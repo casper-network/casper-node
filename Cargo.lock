@@ -623,6 +623,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "cargo-casper"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "atty",
+ "cargo_metadata 0.19.2",
+ "casper-contract-sdk",
+ "casper-contract-sdk-sys",
+ "clap 4.5.41",
+ "clap-cargo",
+ "crossterm",
+ "include_dir",
+ "libloading",
+ "once_cell",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.12",
+ "wabt",
+]
+
+[[package]]
 name = "cargo-platform"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -876,11 +897,15 @@ dependencies = [
  "digest 0.10.7",
  "fs_extra",
  "itertools 0.14.0",
+ "log",
+ "num-rational",
  "once_cell",
  "parking_lot",
+ "serde",
  "serde_json",
  "tempfile",
  "thiserror 2.0.12",
+ "toml 0.5.11",
  "tracing",
 ]
 
@@ -7191,27 +7216,6 @@ name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
-
-[[package]]
-name = "vm2-cargo-casper"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "atty",
- "cargo_metadata 0.19.2",
- "casper-contract-sdk",
- "casper-contract-sdk-sys",
- "clap 4.5.41",
- "clap-cargo",
- "crossterm",
- "include_dir",
- "libloading",
- "once_cell",
- "serde",
- "serde_json",
- "thiserror 2.0.12",
- "wabt",
-]
 
 [[package]]
 name = "vm2-cep18"
