@@ -4,10 +4,11 @@ use crate::{
     data_access_layer::BalanceIdentifier,
     system::{
         burn::{BurnArgs, BurnError},
-        runtime_native::{Config as NativeRuntimeConfig, TransferConfig},
+        runtime_native::TransferConfig,
         transfer::{TransferArgs, TransferError},
     },
     tracking_copy::TrackingCopyCache,
+    RuntimeNativeConfig,
 };
 use casper_types::{
     account::AccountHash, execution::Effects, Digest, InitiatorAddr, ProtocolVersion, RuntimeArgs,
@@ -84,7 +85,7 @@ pub enum TransferRequestArgs {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TransferRequest {
     /// Config.
-    config: NativeRuntimeConfig,
+    config: RuntimeNativeConfig,
     /// State root hash.
     state_hash: Digest,
     /// Protocol version.
@@ -103,7 +104,7 @@ impl TransferRequest {
     /// Creates new request object.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        config: NativeRuntimeConfig,
+        config: RuntimeNativeConfig,
         state_hash: Digest,
         protocol_version: ProtocolVersion,
         transaction_hash: TransactionHash,
@@ -126,7 +127,7 @@ impl TransferRequest {
     /// Creates new request instance with runtime args.
     #[allow(clippy::too_many_arguments)]
     pub fn with_runtime_args(
-        config: NativeRuntimeConfig,
+        config: RuntimeNativeConfig,
         state_hash: Digest,
         protocol_version: ProtocolVersion,
         transaction_hash: TransactionHash,
@@ -149,7 +150,7 @@ impl TransferRequest {
     /// Creates new request object using balance identifiers.
     #[allow(clippy::too_many_arguments)]
     pub fn new_indirect(
-        config: NativeRuntimeConfig,
+        config: RuntimeNativeConfig,
         state_hash: Digest,
         protocol_version: ProtocolVersion,
         transaction_hash: TransactionHash,
@@ -170,7 +171,7 @@ impl TransferRequest {
     }
 
     /// Returns a reference to the runtime config.
-    pub fn config(&self) -> &NativeRuntimeConfig {
+    pub fn config(&self) -> &RuntimeNativeConfig {
         &self.config
     }
 
@@ -217,7 +218,7 @@ impl TransferRequest {
     /// Used by `WasmTestBuilder` to set the appropriate state root hash and transfer config before
     /// executing the transfer.
     #[doc(hidden)]
-    pub fn set_state_hash_and_config(&mut self, state_hash: Digest, config: NativeRuntimeConfig) {
+    pub fn set_state_hash_and_config(&mut self, state_hash: Digest, config: RuntimeNativeConfig) {
         self.state_hash = state_hash;
         self.config = config;
     }
@@ -280,7 +281,7 @@ pub enum BurnRequestArgs {
 /// Request for motes burn.
 pub struct BurnRequest {
     /// Config.
-    config: NativeRuntimeConfig,
+    config: RuntimeNativeConfig,
     /// State root hash.
     state_hash: Digest,
     /// Protocol version.
@@ -299,7 +300,7 @@ impl BurnRequest {
     /// Creates new request object.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        config: NativeRuntimeConfig,
+        config: RuntimeNativeConfig,
         state_hash: Digest,
         protocol_version: ProtocolVersion,
         transaction_hash: TransactionHash,
@@ -322,7 +323,7 @@ impl BurnRequest {
     /// Creates new request instance with runtime args.
     #[allow(clippy::too_many_arguments)]
     pub fn with_runtime_args(
-        config: NativeRuntimeConfig,
+        config: RuntimeNativeConfig,
         state_hash: Digest,
         protocol_version: ProtocolVersion,
         transaction_hash: TransactionHash,
@@ -343,7 +344,7 @@ impl BurnRequest {
     }
 
     /// Returns a reference to the runtime config.
-    pub fn config(&self) -> &NativeRuntimeConfig {
+    pub fn config(&self) -> &RuntimeNativeConfig {
         &self.config
     }
 
@@ -385,7 +386,7 @@ impl BurnRequest {
     /// Used by `WasmTestBuilder` to set the appropriate state root hash and runtime config before
     /// executing the burn.
     #[doc(hidden)]
-    pub fn set_state_hash_and_config(&mut self, state_hash: Digest, config: NativeRuntimeConfig) {
+    pub fn set_state_hash_and_config(&mut self, state_hash: Digest, config: RuntimeNativeConfig) {
         self.state_hash = state_hash;
         self.config = config;
     }

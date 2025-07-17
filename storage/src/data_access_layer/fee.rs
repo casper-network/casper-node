@@ -1,9 +1,9 @@
 use std::collections::BTreeSet;
 use thiserror::Error;
 
-use crate::system::{
-    runtime_native::{Config as NativeRuntimeConfig, TransferConfig},
-    transfer::TransferError,
+use crate::{
+    system::{runtime_native::TransferConfig, transfer::TransferError},
+    RuntimeNativeConfig,
 };
 use casper_types::{
     account::AccountHash, execution::Effects, BlockTime, Digest, FeeHandling, ProtocolVersion,
@@ -15,14 +15,14 @@ use crate::tracking_copy::TrackingCopyError;
 /// Fee request.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FeeRequest {
-    config: NativeRuntimeConfig,
+    config: RuntimeNativeConfig,
     state_hash: Digest,
     block_time: BlockTime,
 }
 
 impl FeeRequest {
     /// Ctor.
-    pub fn new(config: NativeRuntimeConfig, state_hash: Digest, block_time: BlockTime) -> Self {
+    pub fn new(config: RuntimeNativeConfig, state_hash: Digest, block_time: BlockTime) -> Self {
         FeeRequest {
             config,
             state_hash,
@@ -31,7 +31,7 @@ impl FeeRequest {
     }
 
     /// Returns config.
-    pub fn config(&self) -> &NativeRuntimeConfig {
+    pub fn config(&self) -> &RuntimeNativeConfig {
         &self.config
     }
 

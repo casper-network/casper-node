@@ -41,9 +41,9 @@ use casper_storage::{
         trie::Trie,
         trie_store::lmdb::LmdbTrieStore,
     },
-    system::runtime_native::{Config as NativeRuntimeConfig, TransferConfig},
+    system::runtime_native::TransferConfig,
     tracking_copy::{TrackingCopyEntityExt, TrackingCopyExt},
-    AddressGenerator,
+    AddressGenerator, RuntimeNativeConfig,
 };
 
 use casper_types::{
@@ -570,7 +570,7 @@ impl LmdbWasmTestBuilder {
         let pre_state_hash = self.post_state_hash.expect("expected post_state_hash");
         transfer_request.set_state_hash_and_config(
             pre_state_hash,
-            self.native_runtime_config(transfer_request.protocol_version()),
+            self.runtime_native_config(transfer_request.protocol_version()),
         );
         let transfer_result = self.data_access_layer.transfer(transfer_request);
         let gas = Gas::new(self.chainspec.system_costs_config.mint_costs().transfer);
@@ -832,7 +832,7 @@ where
             U512::from(*config.core_config.validator_credit_cap.denom()),
         );
         let enable_addressable_entity = config.core_config.enable_addressable_entity;
-        let native_runtime_config = casper_storage::system::runtime_native::Config::new(
+        let runtime_native_config = RuntimeNativeConfig::new(
             protocol_version,
             TransferConfig::Unadministered,
             fee_handling,
@@ -851,7 +851,7 @@ where
         );
 
         let bidding_req = BiddingRequest::new(
-            native_runtime_config,
+            runtime_native_config,
             post_state,
             transaction_hash,
             initiator,
@@ -989,7 +989,7 @@ where
         step_result
     }
 
-    fn native_runtime_config(&self, protocol_version: ProtocolVersion) -> NativeRuntimeConfig {
+    fn runtime_native_config(&self, protocol_version: ProtocolVersion) -> RuntimeNativeConfig {
         let administrators: BTreeSet<AccountHash> = self
             .chainspec
             .core_config
@@ -1005,7 +1005,7 @@ where
             U512::from(*self.chainspec.core_config.validator_credit_cap.denom()),
         );
 
-        NativeRuntimeConfig::new(
+        RuntimeNativeConfig::new(
             protocol_version,
             transfer_config,
             self.chainspec.core_config.fee_handling,
@@ -1031,10 +1031,10 @@ where
         protocol_version: ProtocolVersion,
         block_time: u64,
     ) -> FeeResult {
-        let native_runtime_config = self.native_runtime_config(protocol_version);
+        let runtime_native_config = self.runtime_native_config(protocol_version);
 
         let pre_state_hash = pre_state_hash.or(self.post_state_hash).unwrap();
-        let fee_req = FeeRequest::new(native_runtime_config, pre_state_hash, block_time.into());
+        let fee_req = FeeRequest::new(runtime_native_config, pre_state_hash, block_time.into());
         let fee_result = self.data_access_layer.distribute_fees(fee_req);
 
         if let FeeResult::Success {
@@ -1056,9 +1056,9 @@ where
         block_time: u64,
     ) -> BlockRewardsResult {
         let pre_state_hash = pre_state_hash.or(self.post_state_hash).unwrap();
-        let native_runtime_config = self.native_runtime_config(protocol_version);
+        let runtime_native_config = self.runtime_native_config(protocol_version);
         let distribute_req = BlockRewardsRequest::new(
-            native_runtime_config,
+            runtime_native_config,
             pre_state_hash,
             BlockTime::new(block_time),
             rewards,
@@ -1086,9 +1086,9 @@ where
         handle_fee_mode: HandleFeeMode,
     ) -> HandleFeeResult {
         let pre_state_hash = pre_state_hash.or(self.post_state_hash).unwrap();
-        let native_runtime_config = self.native_runtime_config(protocol_version);
+        let runtime_native_config = self.runtime_native_config(protocol_version);
         let handle_fee_request = HandleFeeRequest::new(
-            native_runtime_config,
+            runtime_native_config,
             pre_state_hash,
             transaction_hash,
             handle_fee_mode,
@@ -2002,7 +2002,7 @@ where
     /// Advances eras by num_eras
     pub fn advance_eras_by(&mut self, num_eras: u64) {
         let step_request_builder = StepRequestBuilder::new()
-            .with_runtime_config(self.native_runtime_config(ProtocolVersion::V2_0_0))
+            .with_runtime_config(self.runtime_native_config(ProtocolVersion::V2_0_0))
             .with_run_auction(true);
 
         for _ in 0..num_eras {
@@ -2038,7 +2038,7 @@ where
     pub fn step_request_builder(&mut self) -> StepRequestBuilder {
         StepRequestBuilder::new()
             .with_parent_state_hash(self.get_post_state_hash())
-            .with_runtime_config(self.native_runtime_config(ProtocolVersion::V2_0_0))
+            .with_runtime_config(self.runtime_native_config(ProtocolVersion::V2_0_0))
     }
 
     /// Returns a trie by hash.

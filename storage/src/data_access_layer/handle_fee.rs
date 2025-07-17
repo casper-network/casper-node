@@ -1,6 +1,5 @@
 use crate::{
-    data_access_layer::BalanceIdentifier, system::runtime_native::Config as NativeRuntimeConfig,
-    tracking_copy::TrackingCopyError,
+    data_access_layer::BalanceIdentifier, tracking_copy::TrackingCopyError, RuntimeNativeConfig,
 };
 use casper_types::{
     execution::Effects, Digest, EraId, InitiatorAddr, ProtocolVersion, PublicKey, TransactionHash,
@@ -78,7 +77,7 @@ impl HandleFeeMode {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HandleFeeRequest {
     /// The runtime config.
-    pub(crate) config: NativeRuntimeConfig,
+    pub(crate) config: RuntimeNativeConfig,
     /// State root hash.
     pub(crate) state_hash: Digest,
     /// Transaction hash.
@@ -91,7 +90,7 @@ impl HandleFeeRequest {
     /// Creates new request instance with runtime args.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        config: NativeRuntimeConfig,
+        config: RuntimeNativeConfig,
         state_hash: Digest,
         transaction_hash: TransactionHash,
         handle_fee_mode: HandleFeeMode,
@@ -105,7 +104,7 @@ impl HandleFeeRequest {
     }
 
     /// Returns config.
-    pub fn config(&self) -> &NativeRuntimeConfig {
+    pub fn config(&self) -> &RuntimeNativeConfig {
         &self.config
     }
 

@@ -1416,7 +1416,7 @@ fn invoked_contract_will_pay(
 
 #[allow(clippy::too_many_arguments)]
 fn commit_step(
-    native_runtime_config: RuntimeNativeConfig,
+    runtime_native_config: RuntimeNativeConfig,
     scratch_state: &ScratchGlobalState,
     maybe_metrics: Option<Arc<Metrics>>,
     state_hash: Digest,
@@ -1435,7 +1435,7 @@ fn commit_step(
         .collect();
 
     let step_request = StepRequest::new(
-        native_runtime_config,
+        runtime_native_config,
         state_hash,
         vec![], // <-- casper mainnet currently does not slash
         evict_items,
