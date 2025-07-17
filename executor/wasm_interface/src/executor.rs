@@ -5,7 +5,7 @@ use bytes::Bytes;
 use casper_storage::{
     global_state::{error::Error as GlobalStateError, GlobalStateReader},
     tracking_copy::TrackingCopyCache,
-    AddressGenerator, TrackingCopy,
+    AddressGenerator, RuntimeNativeConfig, TrackingCopy,
 };
 use casper_types::{
     account::AccountHash,
@@ -58,6 +58,8 @@ pub struct ExecuteRequest {
     /// In restricted mode, the contract cannot make any state changes (writes, transfers, etc.)
     /// and no gas is charged for the execution.
     pub restricted: bool,
+    /// Runtime native config.
+    pub runtime_native_config: RuntimeNativeConfig,
 }
 
 /// Builder for `ExecuteRequest`.
@@ -77,6 +79,7 @@ pub struct ExecuteRequestBuilder {
     parent_block_hash: Option<BlockHash>,
     block_height: Option<u64>,
     restricted: Option<bool>,
+    runtime_native_config: Option<RuntimeNativeConfig>,
 }
 
 impl ExecuteRequestBuilder {
@@ -203,6 +206,15 @@ impl ExecuteRequestBuilder {
         self
     }
 
+    /// Set the runtime native config.
+    pub fn with_runtime_native_config(
+        mut self,
+        runtime_native_config: RuntimeNativeConfig,
+    ) -> Self {
+        self.runtime_native_config = Some(runtime_native_config);
+        self
+    }
+
     /// Build the `ExecuteRequest`.
     pub fn build(self) -> Result<ExecuteRequest, &'static str> {
         let initiator = self.initiator.ok_or("Initiator is not set")?;
@@ -223,6 +235,9 @@ impl ExecuteRequestBuilder {
             .ok_or("Parent block hash is not set")?;
         let block_height = self.block_height.ok_or("Block height is not set")?;
         let restricted = self.restricted.unwrap_or(false);
+        let runtime_native_config = self
+            .runtime_native_config
+            .ok_or("Runtime native config not set")?;
         Ok(ExecuteRequest {
             initiator,
             caller_key,
@@ -238,6 +253,7 @@ impl ExecuteRequestBuilder {
             parent_block_hash,
             block_height,
             restricted,
+            runtime_native_config,
         })
     }
 }

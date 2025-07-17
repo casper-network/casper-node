@@ -338,8 +338,6 @@ pub struct BiddingRequest {
     pub(crate) config: NativeRuntimeConfig,
     /// State root hash.
     pub(crate) state_hash: Digest,
-    /// The protocol version.
-    pub(crate) protocol_version: ProtocolVersion,
     /// The auction method.
     pub(crate) auction_method: AuctionMethod,
     /// Transaction hash.
@@ -356,7 +354,6 @@ impl BiddingRequest {
     pub fn new(
         config: NativeRuntimeConfig,
         state_hash: Digest,
-        protocol_version: ProtocolVersion,
         transaction_hash: TransactionHash,
         initiator: InitiatorAddr,
         authorization_keys: BTreeSet<AccountHash>,
@@ -365,7 +362,6 @@ impl BiddingRequest {
         Self {
             config,
             state_hash,
-            protocol_version,
             transaction_hash,
             initiator,
             authorization_keys,
@@ -385,7 +381,7 @@ impl BiddingRequest {
 
     /// Returns the protocol version.
     pub fn protocol_version(&self) -> ProtocolVersion {
-        self.protocol_version
+        self.config.protocol_version()
     }
 
     /// Returns the auction method.

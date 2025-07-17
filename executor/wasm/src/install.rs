@@ -3,7 +3,9 @@ use std::sync::Arc;
 use bytes::Bytes;
 use casper_executor_wasm_common::error::CallError;
 use casper_executor_wasm_interface::{executor::ExecuteError, GasUsage};
-use casper_storage::{global_state::error::Error as GlobalStateError, AddressGenerator};
+use casper_storage::{
+    global_state::error::Error as GlobalStateError, AddressGenerator, RuntimeNativeConfig,
+};
 use casper_types::{
     account::AccountHash, execution::Effects, BlockHash, BlockTime, Digest, TransactionHash,
 };
@@ -42,6 +44,8 @@ pub struct InstallContractRequest {
     pub(crate) block_height: u64,
     /// Seed used for smart contract hash computation.
     pub(crate) seed: Option<[u8; 32]>,
+    /// Runtime native config.
+    pub(crate) runtime_native_config: RuntimeNativeConfig,
 }
 
 #[derive(Default)]
@@ -59,6 +63,7 @@ pub struct InstallContractRequestBuilder {
     state_hash: Option<Digest>,
     parent_block_hash: Option<BlockHash>,
     block_height: Option<u64>,
+    runtime_native_config: Option<RuntimeNativeConfig>,
     seed: Option<[u8; 32]>,
 }
 
@@ -141,6 +146,14 @@ impl InstallContractRequestBuilder {
         self
     }
 
+    pub fn with_runtime_native_config(
+        mut self,
+        runtime_native_config: RuntimeNativeConfig,
+    ) -> Self {
+        self.runtime_native_config = Some(runtime_native_config);
+        self
+    }
+
     pub fn build(self) -> Result<InstallContractRequest, &'static str> {
         let initiator = self.initiator.ok_or("Initiator not set")?;
         let gas_limit = self.gas_limit.ok_or("Gas limit not set")?;
@@ -156,6 +169,9 @@ impl InstallContractRequestBuilder {
         let state_hash = self.state_hash.ok_or("State hash not set")?;
         let parent_block_hash = self.parent_block_hash.ok_or("Parent block hash not set")?;
         let block_height = self.block_height.ok_or("Block height not set")?;
+        let runtime_native_config = self
+            .runtime_native_config
+            .ok_or("Runtime native config not set")?;
         Ok(InstallContractRequest {
             initiator,
             gas_limit,
@@ -171,6 +187,7 @@ impl InstallContractRequestBuilder {
             state_hash,
             parent_block_hash,
             block_height,
+            runtime_native_config,
         })
     }
 }
@@ -187,6 +204,7 @@ pub struct InstallContractResult {
     /// Post state hash after installation.
     pub(crate) post_state_hash: Digest,
 }
+
 impl InstallContractResult {
     pub fn effects(&self) -> &Effects {
         &self.effects

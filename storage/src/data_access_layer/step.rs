@@ -70,8 +70,6 @@ pub struct StepRequest {
     /// State root hash.
     state_hash: Digest,
 
-    /// Protocol version for this request.
-    protocol_version: ProtocolVersion,
     /// List of validators to be slashed.
     ///
     /// A slashed validator is removed from the next validator set.
@@ -97,7 +95,6 @@ impl StepRequest {
     pub fn new(
         config: Config,
         state_hash: Digest,
-        protocol_version: ProtocolVersion,
         slash_items: Vec<SlashItem>,
         evict_items: Vec<EvictItem>,
         next_era_id: EraId,
@@ -106,7 +103,6 @@ impl StepRequest {
         Self {
             config,
             state_hash,
-            protocol_version,
             slash_items,
             evict_items,
             next_era_id,
@@ -139,7 +135,7 @@ impl StepRequest {
 
     /// Returns protocol_version.
     pub fn protocol_version(&self) -> ProtocolVersion {
-        self.protocol_version
+        self.config.protocol_version()
     }
 
     /// Returns slash_items.

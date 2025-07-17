@@ -2,14 +2,13 @@ use casper_storage::{
     data_access_layer::{EvictItem, RewardItem, SlashItem, StepRequest},
     system::runtime_native::{Config, TransferConfig},
 };
-use casper_types::{Digest, EraId, ProtocolVersion};
+use casper_types::{Digest, EraId};
 
 /// Builder for creating a [`StepRequest`].
 #[derive(Debug, Clone)]
 pub struct StepRequestBuilder {
     runtime_config: Config,
     parent_state_hash: Digest,
-    protocol_version: ProtocolVersion,
     slash_items: Vec<SlashItem>,
     reward_items: Vec<RewardItem>,
     evict_items: Vec<EvictItem>,
@@ -39,12 +38,6 @@ impl StepRequestBuilder {
     /// Sets `parent_state_hash` to the given [`Digest`].
     pub fn with_parent_state_hash(mut self, parent_state_hash: Digest) -> Self {
         self.parent_state_hash = parent_state_hash;
-        self
-    }
-
-    /// Sets `protocol_version` to the given [`ProtocolVersion`].
-    pub fn with_protocol_version(mut self, protocol_version: ProtocolVersion) -> Self {
-        self.protocol_version = protocol_version;
         self
     }
 
@@ -95,7 +88,6 @@ impl StepRequestBuilder {
         StepRequest::new(
             self.runtime_config,
             self.parent_state_hash,
-            self.protocol_version,
             self.slash_items,
             self.evict_items,
             self.next_era_id,
@@ -109,7 +101,6 @@ impl Default for StepRequestBuilder {
         StepRequestBuilder {
             runtime_config: Default::default(),
             parent_state_hash: Default::default(),
-            protocol_version: Default::default(),
             slash_items: Default::default(),
             evict_items: Default::default(),
             run_auction: true, //<-- run_auction by default

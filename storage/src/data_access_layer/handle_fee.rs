@@ -81,8 +81,6 @@ pub struct HandleFeeRequest {
     pub(crate) config: NativeRuntimeConfig,
     /// State root hash.
     pub(crate) state_hash: Digest,
-    /// The protocol version.
-    pub(crate) protocol_version: ProtocolVersion,
     /// Transaction hash.
     pub(crate) transaction_hash: TransactionHash,
     /// Handle fee mode.
@@ -95,14 +93,12 @@ impl HandleFeeRequest {
     pub fn new(
         config: NativeRuntimeConfig,
         state_hash: Digest,
-        protocol_version: ProtocolVersion,
         transaction_hash: TransactionHash,
         handle_fee_mode: HandleFeeMode,
     ) -> Self {
         Self {
             config,
             state_hash,
-            protocol_version,
             transaction_hash,
             handle_fee_mode,
         }
@@ -120,7 +116,7 @@ impl HandleFeeRequest {
 
     /// Returns handle protocol version.
     pub fn protocol_version(&self) -> ProtocolVersion {
-        self.protocol_version
+        self.config.protocol_version()
     }
 
     /// Returns handle transaction hash.

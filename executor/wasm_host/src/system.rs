@@ -15,14 +15,14 @@ use casper_storage::{
     global_state::GlobalStateReader,
     system::{
         mint::Mint,
-        runtime_native::{Config, Id, RuntimeNative},
+        runtime_native::{Id, RuntimeNative},
     },
     tracking_copy::{TrackingCopyEntityExt, TrackingCopyError},
-    AddressGenerator, TrackingCopy,
+    AddressGenerator, RuntimeNativeConfig, TrackingCopy,
 };
 use casper_types::{
-    account::AccountHash, CLValueError, ContextAccessRights, EntityAddr, Key, Phase,
-    ProtocolVersion, PublicKey, SystemHashRegistry, TransactionHash, URef, U512,
+    account::AccountHash, CLValueError, ContextAccessRights, EntityAddr, Key, Phase, PublicKey,
+    SystemHashRegistry, TransactionHash, URef, U512,
 };
 use parking_lot::RwLock;
 use thiserror::Error;
@@ -44,6 +44,7 @@ enum DispatchError {
 
 fn dispatch_system_contract<R: GlobalStateReader, Ret>(
     tracking_copy: &mut TrackingCopy<R>,
+    runtime_native_config: RuntimeNativeConfig,
     transaction_hash: TransactionHash,
     address_generator: Arc<RwLock<AddressGenerator>>,
     system_contract: &'static str,
@@ -68,8 +69,7 @@ fn dispatch_system_contract<R: GlobalStateReader, Ret>(
         .runtime_footprint_by_entity_addr(entity_addr)
         .map_err(DispatchError::MissingRuntimeFootprint)?;
 
-    let config = Config::default();
-    let protocol_version = ProtocolVersion::V1_0_0;
+    //let config = Config::default();
 
     let access_rights = ContextAccessRights::new(*system_entity_addr, []);
     let address = PublicKey::System.to_account_hash();
@@ -81,8 +81,7 @@ fn dispatch_system_contract<R: GlobalStateReader, Ret>(
 
     let ret = {
         let runtime = RuntimeNative::new(
-            config,
-            protocol_version,
+            runtime_native_config,
             Id::Transaction(transaction_hash),
             address_generator,
             Rc::clone(&forked_tracking_copy),
@@ -119,14 +118,16 @@ pub(crate) struct MintArgs {
     pub(crate) initial_balance: U512,
 }
 
-pub(crate) fn mint_mint<R: GlobalStateReader>(
+pub(crate) fn create_purse<R: GlobalStateReader>(
     tracking_copy: &mut TrackingCopy<R>,
+    runtime_native_config: RuntimeNativeConfig,
     transaction_hash: TransactionHash,
     address_generator: Arc<RwLock<AddressGenerator>>,
     args: MintArgs,
 ) -> Result<URef, CallError> {
     let mint_result = match dispatch_system_contract(
         tracking_copy,
+        runtime_native_config,
         transaction_hash,
         address_generator,
         "mint",
@@ -159,8 +160,9 @@ pub(crate) struct MintTransferArgs {
     pub(crate) id: Option<u64>,
 }
 
-pub(crate) fn mint_transfer<R: GlobalStateReader>(
+pub(crate) fn transfer<R: GlobalStateReader>(
     tracking_copy: &mut TrackingCopy<R>,
+    runtime_native_config: RuntimeNativeConfig,
     id: TransactionHash,
     address_generator: Arc<RwLock<AddressGenerator>>,
     args: MintTransferArgs,
@@ -168,6 +170,7 @@ pub(crate) fn mint_transfer<R: GlobalStateReader>(
     let transfer_result: Result<(), casper_types::system::mint::Error> =
         match dispatch_system_contract(
             tracking_copy,
+            runtime_native_config,
             id,
             address_generator,
             "mint",

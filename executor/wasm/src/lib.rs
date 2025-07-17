@@ -179,6 +179,7 @@ impl ExecutorV2 {
             state_hash,
             parent_block_hash,
             block_height,
+            runtime_native_config,
         } = install_request;
 
         let bytecode_hash = chain_utils::compute_wasm_bytecode_hash(&wasm_bytes);
@@ -239,8 +240,9 @@ impl ExecutorV2 {
             Key::AddressableEntity(EntityAddr::SmartContract(smart_contract_addr));
 
         // TODO: abort(str) as an alternative to trap
-        let main_purse: URef = match system::mint_mint(
+        let main_purse: URef = match system::create_purse(
             &mut tracking_copy,
+            runtime_native_config.clone(),
             transaction_hash,
             Arc::clone(&address_generator),
             MintArgs {
@@ -291,6 +293,7 @@ impl ExecutorV2 {
                     .with_state_hash(state_hash)
                     .with_parent_block_hash(parent_block_hash)
                     .with_block_height(block_height)
+                    .with_runtime_native_config(runtime_native_config)
                     .build()
                     .expect("should build");
 
@@ -363,6 +366,7 @@ impl ExecutorV2 {
             parent_block_hash,
             block_height,
             restricted,
+            runtime_native_config,
         } = execute_request;
 
         // TODO: Purse uref does not need to be optional once value transfers to WasmBytes are
@@ -406,7 +410,7 @@ impl ExecutorV2 {
                             EntityKind::Account(_) => todo!(),
                             EntityKind::SmartContract(ContractRuntimeTag::VmCasperV1) => {
                                 // We need to short circuit here to execute v1 contracts with legacy
-                                // execut
+                                // execute
 
                                 let block_info = BlockInfo::new(
                                     state_hash,
@@ -463,8 +467,9 @@ impl ExecutorV2 {
                                 }
                             };
 
-                            match system::mint_transfer(
+                            match system::transfer(
                                 &mut tracking_copy,
+                                runtime_native_config.clone(),
                                 transaction_hash,
                                 Arc::clone(&address_generator),
                                 args,
@@ -559,6 +564,7 @@ impl ExecutorV2 {
             block_time,
             message_limits: self.config.message_limits,
             restricted,
+            runtime_native_config,
         };
 
         let wasm_instance_config = ConfigBuilder::new()
@@ -673,7 +679,7 @@ impl ExecutorV2 {
         input: &Bytes,
         tracking_copy: &mut TrackingCopy<R>,
         block_info: BlockInfo,
-        transaction_hash: casper_types::TransactionHash,
+        transaction_hash: TransactionHash,
         gas_limit: u64,
     ) -> Result<ExecuteResult, ExecuteError>
     where
@@ -905,7 +911,7 @@ impl Executor for ExecutorV2 {
 fn get_purse_for_entity<R: GlobalStateReader>(
     tracking_copy: &mut TrackingCopy<R>,
     entity_key: Key,
-) -> casper_types::URef {
+) -> URef {
     let stored_value = tracking_copy
         .read(&entity_key)
         .expect("should read account")

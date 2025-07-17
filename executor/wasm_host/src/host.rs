@@ -308,7 +308,7 @@ pub fn casper_remove<S: GlobalStateReader, E: Executor>(
             caller.context_mut().tracking_copy.prune(global_state_key);
         }
         Ok(None) => {
-            // Entry does not exists, and we can't proceed with the prune operation
+            // Entry does not exist, and we can't proceed with the prune operation
             return Ok(HOST_ERROR_NOT_FOUND);
         }
         Err(error) => {
@@ -440,7 +440,7 @@ pub fn casper_read<S: GlobalStateReader, E: Executor>(
             // deprecate this.
             todo!("Unsupported {stored_value:?}")
         }
-        Ok(None) => return Ok(HOST_ERROR_NOT_FOUND), // Entry does not exists
+        Ok(None) => return Ok(HOST_ERROR_NOT_FOUND), // Entry does not exist
         Err(error) => {
             // To protect the network against potential non-determinism (i.e. one validator runs out
             // of space or just faces I/O issues that other validators may not have) we're simply
@@ -482,15 +482,17 @@ fn keyspace_to_global_state_key<S: GlobalStateReader, E: Executor>(
         Keyspace::State => Some(Key::State(entity_addr)),
         Keyspace::Context(bytes) => {
             let digest = Digest::hash(bytes);
-            Some(casper_types::Key::NamedKey(
-                NamedKeyAddr::new_named_key_entry(entity_addr, digest.value()),
-            ))
+            Some(Key::NamedKey(NamedKeyAddr::new_named_key_entry(
+                entity_addr,
+                digest.value(),
+            )))
         }
         Keyspace::NamedKey(payload) => {
             let digest = Digest::hash(payload.as_bytes());
-            Some(casper_types::Key::NamedKey(
-                NamedKeyAddr::new_named_key_entry(entity_addr, digest.value()),
-            ))
+            Some(Key::NamedKey(NamedKeyAddr::new_named_key_entry(
+                entity_addr,
+                digest.value(),
+            )))
         }
         Keyspace::PaymentInfo(payload) => {
             let entry_point_addr =
@@ -702,7 +704,7 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
         .map_err(|_| VMError::Internal(InternalHostError::TrackingCopy))?
         .is_some()
     {
-        return VMResult::Err(VMError::Internal(InternalHostError::ContractAlreadyExists));
+        return Err(VMError::Internal(InternalHostError::ContractAlreadyExists));
     }
 
     metered_write(
@@ -726,8 +728,10 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
     // TODO: abort(str) as an alternative to trap
     let address_generator = Arc::clone(&caller.context().address_generator);
     let transaction_hash = caller.context().transaction_hash;
-    let main_purse: URef = match system::mint_mint(
+    let runtime_native_config = caller.context().runtime_native_config.clone();
+    let main_purse: URef = match system::create_purse(
         &mut caller.context_mut().tracking_copy,
+        runtime_native_config,
         transaction_hash,
         address_generator,
         MintArgs {
@@ -1025,10 +1029,10 @@ pub fn casper_env_balance<S: GlobalStateReader, E: Executor>(
             let account_key = Key::Account(account_hash);
             match caller.context_mut().tracking_copy.read(&account_key) {
                 Ok(Some(StoredValue::CLValue(clvalue))) => {
-                    let addressible_entity_key = clvalue
+                    let addressable_entity_key = clvalue
                         .into_t::<Key>()
                         .map_err(|_| InternalHostError::TypeConversion)?;
-                    Either::Right(addressible_entity_key)
+                    Either::Right(addressable_entity_key)
                 }
                 Ok(Some(StoredValue::Account(account))) => Either::Left(account.main_purse()),
                 Ok(Some(other_entity)) => {
@@ -1053,16 +1057,16 @@ pub fn casper_env_balance<S: GlobalStateReader, E: Executor>(
             match caller.context_mut().tracking_copy.read(&smart_contract_key) {
                 Ok(Some(StoredValue::SmartContract(smart_contract_package))) => {
                     match smart_contract_package.versions().latest() {
-                        Some(addressible_entity_hash) => {
+                        Some(addressable_entity_hash) => {
                             let key = Key::AddressableEntity(EntityAddr::SmartContract(
-                                addressible_entity_hash.value(),
+                                addressable_entity_hash.value(),
                             ));
                             Either::Right(key)
                         }
                         None => {
                             warn!(
                                 ?smart_contract_key,
-                                "Unable to find latest addressible entity hash for contract"
+                                "Unable to find latest addressable entity hash for contract"
                             );
                             return Ok(HOST_ERROR_SUCCESS);
                         }
@@ -1209,13 +1213,13 @@ pub fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
             match caller.context_mut().tracking_copy.read(&smart_contract_key) {
                 Ok(Some(StoredValue::SmartContract(smart_contract_package))) => {
                     match smart_contract_package.versions().latest() {
-                        Some(addressible_entity_hash) => Key::AddressableEntity(
-                            EntityAddr::SmartContract(addressible_entity_hash.value()),
+                        Some(addressable_entity_hash) => Key::AddressableEntity(
+                            EntityAddr::SmartContract(addressable_entity_hash.value()),
                         ),
                         None => {
                             warn!(
                                 ?smart_contract_key,
-                                "Unable to find latest addressible entity hash for contract"
+                                "Unable to find latest addressable entity hash for contract"
                             );
                             return Ok(u32_from_host_result(Err(CallError::NotCallable)));
                         }
@@ -1269,6 +1273,7 @@ pub fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
     // are no entry points.
     let transaction_hash = caller.context().transaction_hash;
     let address_generator = Arc::clone(&caller.context().address_generator);
+    let runtime_native_config = caller.context().runtime_native_config.clone();
     let args = MintTransferArgs {
         source: callee_purse,
         target: target_purse,
@@ -1277,8 +1282,9 @@ pub fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
         id: None,
     };
 
-    let result = system::mint_transfer(
+    let result = system::transfer(
         &mut caller.context_mut().tracking_copy,
+        runtime_native_config,
         transaction_hash,
         address_generator,
         args,
@@ -1356,16 +1362,16 @@ pub fn casper_upgrade<S: GlobalStateReader + 'static, E: Executor>(
             match caller.context_mut().tracking_copy.read(&smart_contract_key) {
                 Ok(Some(StoredValue::SmartContract(smart_contract_package))) => {
                     match smart_contract_package.versions().latest() {
-                        Some(addressible_entity_hash) => {
+                        Some(addressable_entity_hash) => {
                             let key = Key::AddressableEntity(EntityAddr::SmartContract(
-                                addressible_entity_hash.value(),
+                                addressable_entity_hash.value(),
                             ));
                             (smart_contract_addr, key)
                         }
                         None => {
                             warn!(
                                 ?smart_contract_key,
-                                "Unable to find latest addressible entity hash for contract"
+                                "Unable to find latest addressable entity hash for contract"
                             );
                             return Ok(CALLEE_NOT_CALLABLE);
                         }
@@ -1621,8 +1627,8 @@ pub fn casper_emit<S: GlobalStateReader, E: Executor>(
             // New topic is created
         }
         Err(MessageTopicError::DuplicateTopic) => {
-            // We're lazily creating message topics and this operation is idempotent. Therefore
-            // already existing topic is not an issue.
+            // We're lazily creating message topics and this operation is idempotent.
+            // Therefore, already existing topic is not an issue.
         }
         Err(MessageTopicError::MaxTopicsExceeded) => {
             // We're validating the size of topics before adding them

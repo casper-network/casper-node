@@ -17,22 +17,15 @@ use crate::tracking_copy::TrackingCopyError;
 pub struct FeeRequest {
     config: NativeRuntimeConfig,
     state_hash: Digest,
-    protocol_version: ProtocolVersion,
     block_time: BlockTime,
 }
 
 impl FeeRequest {
     /// Ctor.
-    pub fn new(
-        config: NativeRuntimeConfig,
-        state_hash: Digest,
-        protocol_version: ProtocolVersion,
-        block_time: BlockTime,
-    ) -> Self {
+    pub fn new(config: NativeRuntimeConfig, state_hash: Digest, block_time: BlockTime) -> Self {
         FeeRequest {
             config,
             state_hash,
-            protocol_version,
             block_time,
         }
     }
@@ -49,7 +42,7 @@ impl FeeRequest {
 
     /// Returns protocol_version.
     pub fn protocol_version(&self) -> ProtocolVersion {
-        self.protocol_version
+        self.config.protocol_version()
     }
 
     /// Returns fee handling setting.

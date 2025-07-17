@@ -2,7 +2,9 @@ use std::sync::Arc;
 
 use bytes::Bytes;
 use casper_executor_wasm_interface::executor::Executor;
-use casper_storage::{global_state::GlobalStateReader, AddressGenerator, TrackingCopy};
+use casper_storage::{
+    global_state::GlobalStateReader, AddressGenerator, RuntimeNativeConfig, TrackingCopy,
+};
 use casper_types::{
     account::AccountHash, BlockTime, Key, MessageLimits, StorageCosts, TransactionHash,
     WasmV2Config,
@@ -38,4 +40,6 @@ pub struct Context<S: GlobalStateReader, E: Executor> {
     /// In restricted mode, the contract cannot make any state changes (writes, transfers, etc.)
     /// and no gas is charged for the execution.
     pub restricted: bool,
+    /// Runtime native config.
+    pub runtime_native_config: RuntimeNativeConfig,
 }
