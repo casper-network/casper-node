@@ -893,7 +893,7 @@ fn generate_impl_trait_for_contract(
     let ref_trait = format_ident!("{}Ext", trait_path.segments.last().unwrap().ident);
     let ref_name = format_ident!("{}Ref", self_ty.to_token_stream().to_string());
 
-    let visitor = if impl_meta.compile_as_dependency {
+    let visitor = if impl_meta.compile_as_dependency || cfg!(not(feature = "__abi_generator")) {
         quote! {
             const _: () = {
                 macro_rules! visitor {
@@ -989,6 +989,12 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
     let mut dispatch_functions = Vec::new();
     // let mut dispatch_table = Vec::new();
     let mut extra_code = Vec::new();
+
+    let mut abi_extras = Vec::new();
+
+    #[cfg(not(feature = "__abi_generator"))]
+    abi_extras.push(quote! {});
+
     // let mut schema_entry_points = Vec::new();
     let mut populate_definitions = Vec::new();
     let mut macro_symbols = Vec::new();
@@ -1025,6 +1031,7 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
 
                 let export_ident = format_ident!("{}", &func_name_str);
 
+                #[cfg(feature = "__abi_generator")]
                 let result = match &func.sig.output {
                     syn::ReturnType::Default => {
                         populate_definitions.push(quote! {
@@ -1157,16 +1164,19 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
                 };
 
                 let schema_helper_ident = format_ident!("__casper_schema_entry_point_{func_name}");
-                extra_code.push(quote! {
-                    fn #schema_helper_ident () -> casper_contract_sdk::schema::SchemaEntryPoint {
-                        casper_contract_sdk::schema::SchemaEntryPoint {
-                            name: stringify!(#export_name).into(),
-                            arguments: vec![ #(#args,)* ],
-                            result: #result,
-                            flags: casper_contract_sdk::casper_executor_wasm_common::flags::EntryPointFlags::from_bits(#_flags).unwrap(),
+                #[cfg(feature = "__abi_generator")]
+                {
+                    abi_extras.push(quote! {
+                        fn #schema_helper_ident() -> casper_contract_sdk::schema::SchemaEntryPoint {
+                            casper_contract_sdk::schema::SchemaEntryPoint {
+                                name: stringify!(#export_name).into(),
+                                arguments: vec![ #(#args,)* ],
+                                result: #result,
+                                flags: casper_contract_sdk::casper_executor_wasm_common::flags::EntryPointFlags::from_bits(#_flags).unwrap(),
+                            }
                         }
-                    }
-                });
+                    });
+                }
 
                 macro_symbols.push(quote! {
                     #vis #func_name as #export_ident => #dispatch_func_name , #schema_helper_ident
@@ -1232,7 +1242,7 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
         }
     }
     let ref_struct = format_ident!("{trait_name}Ref");
-    let ref_struct_trait = format_ident!("{trait_name}Ext");
+    let ext_struct_trait = format_ident!("{trait_name}Ext");
 
     let macro_name = format_ident!("enumerate_{trait_name}_symbols");
 
@@ -1263,8 +1273,9 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
     };
 
     let extension_struct = quote! {
-        #vis trait #ref_struct_trait: Sized {
+        #vis trait #ext_struct_trait: Sized {
             #(#extra_code)*
+            #(#abi_extras)*
         }
 
         #vis struct #ref_struct;
@@ -1278,7 +1289,7 @@ fn casper_trait_definition(mut item_trait: ItemTrait, trait_meta: TraitMeta) -> 
         #(#dispatch_functions)*
 
         // TODO: Rename Ext with Ref, since Ref struct can be pub(crate)'d
-        impl #ref_struct_trait for #ref_struct {}
+        impl #ext_struct_trait for #ref_struct {}
             impl #crate_path::ContractRef for #ref_struct {
                 fn new() -> Self {
                     #ref_struct
