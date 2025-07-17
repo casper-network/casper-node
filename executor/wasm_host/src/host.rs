@@ -45,7 +45,7 @@ use tracing::{error, info, warn};
 use crate::{
     abi::{CreateResult, ReadInfo},
     context::Context,
-    system::{self, MintArgs, MintTransferArgs},
+    system::{self, MintTransferArgs},
 };
 
 #[derive(Debug, Copy, Clone, FromPrimitive, PartialEq)]
@@ -734,9 +734,6 @@ pub fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
         runtime_native_config,
         transaction_hash,
         address_generator,
-        MintArgs {
-            initial_balance: U512::zero(),
-        },
     ) {
         Ok(uref) => uref,
         Err(mint_error) => {
@@ -1274,13 +1271,7 @@ pub fn casper_transfer<S: GlobalStateReader + 'static, E: Executor>(
     let transaction_hash = caller.context().transaction_hash;
     let address_generator = Arc::clone(&caller.context().address_generator);
     let runtime_native_config = caller.context().runtime_native_config.clone();
-    let args = MintTransferArgs {
-        source: callee_purse,
-        target: target_purse,
-        amount: U512::from(amount),
-        maybe_to: None,
-        id: None,
-    };
+    let args = MintTransferArgs::new_simple(callee_purse, target_purse, U512::from(amount));
 
     let result = system::transfer(
         &mut caller.context_mut().tracking_copy,

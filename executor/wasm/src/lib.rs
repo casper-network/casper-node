@@ -41,11 +41,11 @@ use casper_types::{
     AddressableEntity, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, ContractRuntimeTag,
     Digest, EntityAddr, EntityKind, Gas, Groups, InitiatorAddr, Key, MessageLimits, Package,
     PackageHash, PackageStatus, Phase, ProtocolVersion, StorageCosts, StoredValue, TransactionHash,
-    TransactionInvocationTarget, URef, WasmV2Config, U512,
+    TransactionInvocationTarget, URef, WasmV2Config,
 };
 use install::{InstallContractError, InstallContractRequest, InstallContractResult};
 use parking_lot::RwLock;
-use system::{MintArgs, MintTransferArgs};
+use system::MintTransferArgs;
 use tracing::{error, warn};
 
 const DEFAULT_WASM_ENTRY_POINT: &str = "call";
@@ -245,9 +245,6 @@ impl ExecutorV2 {
             runtime_native_config.clone(),
             transaction_hash,
             Arc::clone(&address_generator),
-            MintArgs {
-                initial_balance: U512::zero(),
-            },
         ) {
             Ok(uref) => uref,
             Err(mint_error) => {
@@ -409,9 +406,8 @@ impl ExecutorV2 {
                             EntityKind::System(_) => todo!(),
                             EntityKind::Account(_) => todo!(),
                             EntityKind::SmartContract(ContractRuntimeTag::VmCasperV1) => {
-                                // We need to short circuit here to execute v1 contracts with legacy
-                                // execute
-
+                                // We need to short circuit here to execute v1 contracts with
+                                // vm1 execute
                                 let block_info = BlockInfo::new(
                                     state_hash,
                                     block_time,
@@ -452,44 +448,28 @@ impl ExecutorV2 {
                             .take_bytes();
 
                         if transferred_value != 0 {
-                            let args = {
-                                let maybe_to = None;
-                                let source = source_purse;
-                                let target = addressable_entity.main_purse();
-                                let amount = transferred_value;
-                                let id = None;
-                                MintTransferArgs {
-                                    maybe_to,
-                                    source,
-                                    target,
-                                    amount: amount.into(),
-                                    id,
-                                }
-                            };
-
-                            match system::transfer(
+                            if let Err(error) = system::transfer(
                                 &mut tracking_copy,
                                 runtime_native_config.clone(),
                                 transaction_hash,
                                 Arc::clone(&address_generator),
-                                args,
+                                MintTransferArgs::new_simple(
+                                    source_purse,
+                                    addressable_entity.main_purse(),
+                                    transferred_value.into(),
+                                ),
                             ) {
-                                Ok(()) => {
-                                    // Transfer succeed, go on
-                                }
-                                Err(error) => {
-                                    return Ok(ExecuteResult {
-                                        host_error: Some(error),
-                                        output: None,
-                                        gas_usage: GasUsage::new(
-                                            gas_limit,
-                                            gas_limit - DEFAULT_MINT_TRANSFER_GAS_COST,
-                                        ),
-                                        effects: tracking_copy.effects(),
-                                        cache: tracking_copy.cache(),
-                                        messages: tracking_copy.messages(),
-                                    });
-                                }
+                                return Ok(ExecuteResult {
+                                    host_error: Some(error),
+                                    output: None,
+                                    gas_usage: GasUsage::new(
+                                        gas_limit,
+                                        gas_limit - DEFAULT_MINT_TRANSFER_GAS_COST,
+                                    ),
+                                    effects: tracking_copy.effects(),
+                                    cache: tracking_copy.cache(),
+                                    messages: tracking_copy.messages(),
+                                });
                             }
                         }
 
